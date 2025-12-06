@@ -1,0 +1,35 @@
+# ============================================================
+# TRADE Project Requirements
+# ============================================================
+# Dependencies for the TRADE trading bot.
+# Python Version: 3.10+ recommended
+# ============================================================
+
+# Core Dependencies
+python-dotenv>=1.0.0
+pandas>=2.0.0
+requests>=2.31.0
+
+# Bybit API - Official Python SDK
+# https://github.com/bybit-exchange/pybit
+pybit>=5.13.0
+
+# Required by pybit for RSA authentication
+pycryptodome>=3.19.0
+
+# WebSocket support (used by pybit)
+websocket-client>=1.6.0
+
+# Utilities
+termcolor>=2.3.0
+rich>=13.0.0
+
+# Data Processing
+numpy>=1.24.0
+pyyaml>=6.0.0
+
+# DuckDB for historical data storage
+duckdb>=0.9.0
+
+# Technical Analysis (optional - for future strategy modules)
+TA-Lib>=0.4.28

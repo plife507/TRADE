@@ -1,0 +1,200 @@
+# TRADE Bot - Cursor Project Rules
+
+Safety-first Bybit futures trading bot. See PROJECT_RULES.md for comprehensive rules.
+
+## CRITICAL RULES - NEVER VIOLATE
+
+### NO HARDCODING - ABSOLUTE REQUIREMENT
+NEVER hardcode values that should be configurable:
+1. Strategy classes - Load dynamically from research/ using StrategyLoader
+2. Symbols/pairs - Always from config or user input, never in code
+3. Timeframes - Use TimeframeConfig, never string literals like "15m"
+4. Indicator parameters - EMA lengths, RSI periods as class attributes or config
+5. Risk parameters - Position sizes, leverage, stops from config.risk.*
+6. File paths - Use Path objects or config paths, never string literals
+7. API endpoints - From config based on BYBIT_USE_DEMO environment
+8. Rate limits - Use rate_limiter.py, never hardcode delays
+
+### Trading Execution Flow (MANDATORY)
+ALL trades MUST flow through: Strategy → Risk Manager → Order Executor → Exchange
+- NEVER call exchange methods directly from strategies
+- NEVER bypass risk_manager for "quick" trades
+- NEVER execute orders without Signal objects
+- NEVER skip position size validation
+
+### Strategy Location
+- Concrete strategies live in research/strategies/{pending|final|archived}/, NOT src/strategies/
+- src/strategies/ contains only: base_strategy.py, templates, and configs
+- Use StrategyLoader to load strategies dynamically
+
+### API Abstraction
+- Use ExchangeManager for all trading operations, never call pybit directly
+- All API calls must go through rate_limiter.py
+- Use batch endpoints when possible (10 orders = 1 API call)
+
+### Markdown File Editing Efficiency (TOKEN CONSERVATION)
+**CRITICAL**: When editing markdown files (.md, .mdx), NEVER rewrite the entire file. Only edit the specific sections that need changes.
+- Use `search_replace` tool to make targeted edits to specific lines/sections
+- Identify the exact section needing changes and edit only that portion
+- Preserve all other content unchanged
+- This rule applies to ALL markdown files: documentation, README files, CLAUDE.md, etc.
+- Rewriting entire markdown files wastes tokens and API usage unnecessarily
+- **IF a full rewrite is truly necessary**: ALWAYS prompt the user first and wait for explicit approval before rewriting the entire file
+
+## Architecture Rules
+
+### File Organization
+- Keep files under 1500 lines - split into logical modules if larger
+- DO NOT move existing files without explicit user permission
+- Each module should have a single, clear responsibility
+
+### Module Boundaries
+- core/ = Trading logic, risk management, order execution (no exchange-specific code)
+- exchanges/ = Exchange-specific API wrappers (BybitClient, future HyperLiquid support)
+- data/ = Market data fetching, storage, backtesting data loading
+- strategies/ = Base classes and templates only (concrete strategies live in research/)
+- utils/ = Shared utilities (logging, rate limiting, helpers)
+
+## Configuration Pattern
+
+Always use:
+```python
+from src.config.config import get_config
+config = get_config()
+config.risk.max_leverage      # Not hardcoded
+config.bybit.use_demo         # Not hardcoded
+config.trading.mode           # Not hardcoded
+```
+
+## Code Quality
+
+### Type Hints
+- Use type hints for all function parameters and returns
+- Use dataclasses for structured data (Signal, MarketSnapshot, etc.)
+- Use Enums for constants (TimeInForce, TriggerBy, etc.)
+
+### Error Handling & Logging
+- Minimal error handling - let errors surface for visibility
+- Network/API errors should not crash the bot (graceful degradation)
+- Use get_logger() from src.utils.logger
+- Log all trading decisions with reasoning
+- Log all risk rejections with details
+- Never log API keys or secrets
+
+### Dependencies
+- Update requirements.txt when adding packages
+- Pin versions for production dependencies
+- Keep dependencies minimal - only what's needed
+
+## Safety Rules
+
+- All new trading features must work with Demo API first (BYBIT_USE_DEMO=true)
+- Panic button must remain accessible in all modes
+- Circuit breakers (daily loss, min balance) must be checked before every trade
+- Never expose API keys in logs or output
+- Demo API uses api-demo.bybit.com (fake money), Main API uses api.bybit.com (REAL money)
+
+## Rate Limiting
+
+Bybit V5 API limits:
+- IP (all requests): 600/5sec, bot uses 100/sec (403 = 10min ban)
+- Order create/amend/cancel: 10/sec/symbol, bot uses 8/sec
+- Batch orders: 10/sec, max 10 orders/batch
+- Position/Account GET: 50/sec, bot uses 40/sec
+
+Best practices:
+- Use batch endpoints when possible
+- Cache instrument info in ExchangeManager._instruments
+- Use WebSocket for real-time data instead of polling
+- Monitor X-Bapi-Limit-Status headers, warn when < 5
+- Exponential backoff on 10006 errors (rate limited)
+- Separate API keys for data vs trading (different rate limit pools)
+
+## Strategy Development
+
+### Strategy Interface
+- Must inherit from BaseStrategy
+- Implement generate_signals() for single-TF or generate_signals_multi_tf() for MTF
+- Return List[Signal] objects, never execute trades directly
+- Use MarketSnapshot (legacy) or MultiTFSnapshot (MTF) for data
+- All parameters must come from StrategyConfig, not hardcoded
+
+### RBI Workflow
+ideas.txt → AI Research → backtests/{date}/ → Testing → strategies/pending/ → Validation → strategies/final/ → Live Trading
+
+## Multi-Timeframe (MTF) Rules
+
+- Use TimeframeConfig for timeframe management
+- Use MultiTFSnapshot for MTF data (not MarketSnapshot)
+- Implement generate_signals_multi_tf() for MTF strategies
+- Use preset timeframes (swing, day, intraday, scalp) when possible
+- HTF = trend/bias, MTF = structure, LTF = entry timing
+- Always normalize timeframes using normalize_timeframe()
+- Store in API format ("240" for 4H, "D" for daily)
+
+## Data Management
+
+- MarketData for live data (with caching)
+- HistoricalDataStore for DuckDB operations
+- BacktestLoader for backtesting data
+- NO synthetic/fake data - fail fast if real data unavailable
+- Historical data → data/market_data.duckdb
+- Logs → logs/ with date-based naming
+
+Caching Strategy:
+- Prices: 1-5 second cache
+- OHLCV: 1 minute cache
+- Funding: 5 minute cache
+- Instrument info: Cache in ExchangeManager
+
+## CLI Rules
+
+- All menus use numbered options
+- Exit commands: q, quit, exit, x, back, b work at any prompt
+- Color-coded output for status/warnings/errors
+- Panic button always available (option 8 in main menu)
+- Use termcolor for colored output
+
+## Quick Reference Checklist
+
+When adding new features, verify:
+- [ ] No hardcoded values (symbols, timeframes, sizes, paths)
+- [ ] Uses config system for all settings
+- [ ] Trades flow through: Strategy → Risk → Executor → Exchange
+- [ ] Works in demo mode first
+- [ ] Respects rate limits
+- [ ] Logs all decisions
+- [ ] File under 1500 lines (split if needed)
+- [ ] Follows existing directory structure
+- [ ] Type hints on all functions
+- [ ] Updated requirements.txt if needed
+- [ ] Strategies in research/, not src/strategies/
+- [ ] Uses ExchangeManager, not direct pybit calls
+- [ ] All parameters from config, not hardcoded
+
+## Project Philosophy
+
+1. Safety first - Demo mode default, hard caps on leverage/position
+2. Rate limit aware - Every API call goes through rate limiter
+3. Agent-ready - Modular design for multi-agent swarm integration
+4. Real data only - No synthetic data, fail fast on errors
+5. Demo API first - All new trading logic tested on Bybit Demo API (api-demo.bybit.com) before main API
+6. No real funds early - real mode only after passing demo + paper phases
+7. Risk before profit - All orders go through risk_manager; no direct raw calls
+8. Extensive logging - Every order, position change, risk rejection, panic activation logged
+9. Graceful error handling - Network/API errors handled without crashes
+10. Small real size - Hard caps on per-trade and daily risk in real mode
+
+### API Modes
+
+- Demo API (BYBIT_USE_DEMO=true): Uses api-demo.bybit.com with $1,000 fake money
+- Main API (BYBIT_USE_DEMO=false): Uses api.bybit.com with REAL money
+- Trading Modes: paper (simulated) or real (executes orders)
+
+## Reference Files
+
+- PROJECT_RULES.md - Comprehensive development rules
+- CLAUDE.md - Detailed guidance for AI assistants
+- PROJECT_DESCRIPTION.md - Full project documentation
+- Bybit V5 API docs: C:\CODE\AI\reference\exchanges\bybit\docs\v5\
+
