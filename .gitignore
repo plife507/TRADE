@@ -52,10 +52,9 @@ data/market_data.duckdb.wal
 # Data (optional - uncomment if you don't want to track)
 # data/historical/
 
-# Reference materials (embedded git repos - excluded from GitHub)
-# These are large reference docs maintained separately
-reference/exchanges/bybit/
-reference/exchanges/pybit/
+# Reference materials - excluded from repository
+# Keep reference materials outside the repo (e.g., in C:\CODE\AI\reference\)
+reference/
 
 # OS
 .DS_Store

@@ -2,15 +2,17 @@
 
 ## Where to Find Reference Documentation
 
-### Reference Materials in This Project
-Reference materials are maintained in this project's `reference/` folder:
+### Reference Materials Location
+**Reference materials should be kept OUTSIDE this repository.**
+
+Recommended location:
 ```
-C:\CODE\AI\TRADE\reference\
+C:\CODE\AI\reference\
 ```
 
 This includes:
-- **Bybit API Documentation**: `C:\CODE\AI\TRADE\reference\exchanges\bybit\`
-- **Pybit SDK**: `C:\CODE\AI\TRADE\reference\exchanges\pybit\`
+- **Bybit API Documentation**: `C:\CODE\AI\reference\exchanges\bybit\`
+- **Pybit SDK**: `C:\CODE\AI\reference\exchanges\pybit\`
 - Other exchange documentation and research materials
 
 ### External References
@@ -36,14 +38,16 @@ Project-specific documentation that's directly relevant to TRADE:
 
 ### Accessing Reference Materials
 
-When developing, reference materials are in this project:
+When developing, reference materials should be in the central reference library:
 ```python
 # Bybit API docs are at:
-C:\CODE\AI\TRADE\reference\exchanges\bybit\docs\v5\
+C:\CODE\AI\reference\exchanges\bybit\docs\v5\
 
 # Pybit SDK examples:
-C:\CODE\AI\TRADE\reference\exchanges\pybit\examples\
+C:\CODE\AI\reference\exchanges\pybit\examples\
 ```
+
+**Note:** If you have a `reference/` folder in this project, it's for local development only and is excluded from git.
 
 ### If You Need Reference in Repo
 
