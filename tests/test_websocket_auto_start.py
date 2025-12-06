@@ -14,7 +14,7 @@ import sys
 import time
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config.config import get_config
 from src.core.application import Application, reset_application

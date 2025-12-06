@@ -245,7 +245,7 @@ The bot supports all Bybit UTA order types:
 - **Order Management**: `get_open_orders`, `cancel_order`, `amend_order`, `cancel_all_orders`
 - **Batch Orders**: `batch_market_orders`, `batch_limit_orders`, `batch_cancel_orders`
 
-See `test_comprehensive_smoke.py` for full test coverage.
+See `tests/test_comprehensive_smoke.py` for test coverage.
 
 ## Environment Variables
 
