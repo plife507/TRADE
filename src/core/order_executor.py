@@ -4,6 +4,11 @@ Order executor - handles trade execution through risk checks.
 Flow: Signal → RiskManager.check() → ExchangeManager
 
 Now supports WebSocket-fed order and execution tracking for faster feedback.
+
+SAFETY GUARD RAILS:
+- Validates trading mode consistency before executing any order
+- Blocks TRADING_MODE=real with BYBIT_USE_DEMO=true (dangerous mismatch)
+- Warns when paper trading on LIVE API
 """
 
 import time
@@ -14,6 +19,7 @@ from datetime import datetime
 from .exchange_manager import ExchangeManager, OrderResult
 from .risk_manager import RiskManager, Signal, RiskCheckResult
 from .position_manager import PositionManager, PortfolioSnapshot
+from ..config.config import get_config, TradingMode
 from ..utils.logger import get_logger
 
 
@@ -182,6 +188,28 @@ class OrderExecutor:
     
     # ==================== Core Execution ====================
     
+    def _validate_trading_mode(self) -> tuple[bool, str]:
+        """
+        SAFETY GUARD RAIL: Validate trading mode consistency.
+        
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        config = get_config()
+        is_consistent, messages = config.validate_trading_mode_consistency()
+        
+        if not is_consistent:
+            # Return the first error message
+            error_msg = messages[0] if messages else "Trading mode consistency check failed"
+            return False, error_msg
+        
+        # Log warnings but don't block
+        for msg in messages:
+            if "[WARN]" in msg:
+                self.logger.warning(msg.replace("[WARN] ", ""))
+        
+        return True, ""
+    
     def execute(self, signal: Signal) -> ExecutionResult:
         """
         Execute a trading signal through risk checks.
@@ -192,6 +220,22 @@ class OrderExecutor:
         Returns:
             ExecutionResult with full details
         """
+        # SAFETY GUARD RAIL: Validate trading mode consistency FIRST
+        is_valid, error_msg = self._validate_trading_mode()
+        if not is_valid:
+            self.logger.error(f"Trading mode validation failed: {error_msg}")
+            # Create a minimal risk check result for the error case
+            from .risk_manager import RiskCheckResult
+            risk_result = RiskCheckResult(allowed=False, reason=error_msg)
+            result = ExecutionResult(
+                success=False,
+                signal=signal,
+                risk_check=risk_result,
+                error=error_msg
+            )
+            self._invoke_callbacks(result)
+            return result
+        
         self.logger.info(f"Executing signal: {signal.symbol} {signal.direction} ${signal.size_usd:.2f}")
         
         # Get current portfolio state

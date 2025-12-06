@@ -188,6 +188,42 @@ class ExchangeManager:
         except Exception as e:
             self.logger.warning(f"Could not setup WebSocket cleanup: {e}")
     
+    def _validate_trading_operation(self) -> None:
+        """
+        SAFETY GUARD RAIL: Validate that trading operation is safe to execute.
+        
+        This prevents dangerous mismatches between TRADING_MODE and BYBIT_USE_DEMO.
+        
+        Raises:
+            ValueError: If there's a dangerous mismatch that could lead to 
+                       unexpected behavior (e.g., user thinks they're live trading
+                       but they're on demo)
+        """
+        # Reload config to get fresh values (in case env changed)
+        config = get_config()
+        
+        # === CRITICAL SAFETY CHECK ===
+        # Block trading if user says "real" but API is demo
+        # This prevents user thinking they're live trading when they're not
+        if config.trading.mode == TradingMode.REAL and config.bybit.use_demo:
+            raise ValueError(
+                "SAFETY CHECK FAILED: TRADING_MODE=real but BYBIT_USE_DEMO=true. "
+                "You indicated REAL trading mode but are connected to DEMO API. "
+                "Orders would execute on DEMO account, not LIVE. "
+                "Set BYBIT_USE_DEMO=false to enable live trading, or use TRADING_MODE=paper."
+            )
+        
+        # === WARNING: Paper trading on LIVE API ===
+        # This is allowed but user should be aware
+        if config.trading.mode == TradingMode.PAPER and not config.bybit.use_demo:
+            # Log warning but don't block - paper trading on live API is valid
+            # (used when testing paper trading logic with live data)
+            self.logger.warning(
+                "TRADING_MODE=paper but BYBIT_USE_DEMO=false: "
+                "Connected to LIVE API for paper trading. Trades will be simulated "
+                "but API reads your real account data."
+            )
+    
     def _on_position_update_cleanup(self, position_data):
         """
         Callback triggered when position updates via WebSocket.
@@ -570,6 +606,9 @@ class ExchangeManager:
             OrderResult with success status and details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Ensure we're tracking this symbol for real-time updates
             self._ensure_symbol_tracked(symbol)
             
@@ -628,6 +667,9 @@ class ExchangeManager:
             OrderResult with success status and details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Ensure we're tracking this symbol for real-time updates
             self._ensure_symbol_tracked(symbol)
             
@@ -700,6 +742,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Ensure we're tracking this symbol for real-time updates
             self._ensure_symbol_tracked(symbol)
             
@@ -778,6 +823,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Ensure we're tracking this symbol for real-time updates
             self._ensure_symbol_tracked(symbol)
             
@@ -864,6 +912,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             price = self._round_price(symbol, price)
             qty = self._calculate_qty(symbol, usd_amount, price)
             
@@ -953,6 +1004,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             price = self._round_price(symbol, price)
             qty = self._calculate_qty(symbol, usd_amount, price)
             
@@ -1042,6 +1096,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             price = self.get_price(symbol)
             trigger_price = self._round_price(symbol, trigger_price)
             qty = self._calculate_qty(symbol, usd_amount, price)
@@ -1141,6 +1198,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             price = self.get_price(symbol)
             trigger_price = self._round_price(symbol, trigger_price)
             qty = self._calculate_qty(symbol, usd_amount, price)
@@ -1228,6 +1288,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             trigger_price = self._round_price(symbol, trigger_price)
             limit_price = self._round_price(symbol, limit_price)
             qty = self._calculate_qty(symbol, usd_amount, limit_price)
@@ -1319,6 +1382,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             trigger_price = self._round_price(symbol, trigger_price)
             limit_price = self._round_price(symbol, limit_price)
             qty = self._calculate_qty(symbol, usd_amount, limit_price)
@@ -1398,6 +1464,12 @@ class ExchangeManager:
         Returns:
             OrderResult
         """
+        # SAFETY GUARD RAIL: Validate trading mode consistency
+        try:
+            self._validate_trading_operation()
+        except ValueError as e:
+            return OrderResult(success=False, error=str(e))
+        
         position = self.get_position(symbol)
         
         if position is None or not position.is_open:
@@ -1457,6 +1529,12 @@ class ExchangeManager:
         Returns:
             List of OrderResults for each position
         """
+        # SAFETY GUARD RAIL: Validate trading mode consistency
+        try:
+            self._validate_trading_operation()
+        except ValueError as e:
+            return [OrderResult(success=False, error=str(e))]
+        
         results = []
         positions = self.get_all_positions()
         
@@ -1534,6 +1612,9 @@ class ExchangeManager:
             return False
         
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             self.bybit.cancel_order(
                 symbol=symbol,
                 order_id=order_id,
@@ -1556,6 +1637,9 @@ class ExchangeManager:
             True if successful
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # First check if there are any orders to cancel
             orders = self.get_open_orders(symbol)
             if not orders:
@@ -1849,6 +1933,9 @@ class ExchangeManager:
             return False
         
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Build kwargs with only provided values
             kwargs = {
                 "symbol": symbol,
@@ -1893,6 +1980,9 @@ class ExchangeManager:
             leverage = max_leverage
         
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             self.bybit.set_leverage(symbol, leverage)
             return True
         except BybitAPIError as e:
@@ -1917,6 +2007,9 @@ class ExchangeManager:
             True if successful
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Use raw pybit session for this
             result = self.bybit.session.switch_margin_mode(
                 category="linear",
@@ -1945,6 +2038,9 @@ class ExchangeManager:
             True if successful
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             result = self.bybit.session.switch_position_mode(
                 category="linear",
                 mode=0 if mode == "MergedSingle" else 3,  # 0=one-way, 3=hedge
@@ -1970,6 +2066,9 @@ class ExchangeManager:
             True if successful
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             result = self.bybit.session.add_or_reduce_margin(
                 category="linear",
                 symbol=symbol,
@@ -2000,6 +2099,9 @@ class ExchangeManager:
             True if successful
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             self.bybit.set_trading_stop(
                 symbol=symbol,
                 trailing_stop=str(trailing_stop),
@@ -2034,6 +2136,9 @@ class ExchangeManager:
             OrderResult with success status and details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Ensure we're tracking this symbol for real-time updates
             self._ensure_symbol_tracked(symbol)
             
@@ -2110,6 +2215,9 @@ class ExchangeManager:
             OrderResult with success status and details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Ensure we're tracking this symbol for real-time updates
             self._ensure_symbol_tracked(symbol)
             
@@ -2184,6 +2292,9 @@ class ExchangeManager:
             True if successful
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             self.bybit.set_trading_stop(
                 symbol=symbol,
                 take_profit=str(take_profit) if take_profit else "0",
@@ -2228,6 +2339,9 @@ class ExchangeManager:
             OrderResult with order details
         """
         try:
+            # SAFETY GUARD RAIL: Validate trading mode consistency
+            self._validate_trading_operation()
+            
             # Auto-detect trigger direction if not specified
             if trigger_direction is None:
                 current_price = self.get_price(symbol)
@@ -2529,6 +2643,12 @@ class ExchangeManager:
         Returns:
             List of OrderResults
         """
+        # SAFETY GUARD RAIL: Validate trading mode consistency
+        try:
+            self._validate_trading_operation()
+        except ValueError as e:
+            return [OrderResult(success=False, error=str(e))]
+        
         if len(orders) > 10:
             self.logger.warning("Batch orders limited to 10, splitting...")
             results = []
@@ -2614,6 +2734,12 @@ class ExchangeManager:
         Returns:
             List of OrderResults
         """
+        # SAFETY GUARD RAIL: Validate trading mode consistency
+        try:
+            self._validate_trading_operation()
+        except ValueError as e:
+            return [OrderResult(success=False, error=str(e))]
+        
         if len(orders) > 10:
             self.logger.warning("Batch orders limited to 10, splitting...")
             results = []
@@ -2698,6 +2824,13 @@ class ExchangeManager:
         Returns:
             List of success booleans
         """
+        # SAFETY GUARD RAIL: Validate trading mode consistency
+        try:
+            self._validate_trading_operation()
+        except ValueError as e:
+            self.logger.error(str(e))
+            return [False] * len(orders)
+        
         if len(orders) > 10:
             self.logger.warning("Batch cancel limited to 10, splitting...")
             results = []
@@ -2737,6 +2870,13 @@ class ExchangeManager:
         Returns:
             List of success booleans
         """
+        # SAFETY GUARD RAIL: Validate trading mode consistency
+        try:
+            self._validate_trading_operation()
+        except ValueError as e:
+            self.logger.error(str(e))
+            return [False] * len(orders)
+        
         if len(orders) > 10:
             self.logger.warning("Batch amend limited to 10, splitting...")
             results = []

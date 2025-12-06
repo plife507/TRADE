@@ -94,3 +94,61 @@ All configuration via `api_keys.env`:
 - Market: `get_price`, `get_ohlcv`, `get_funding_rate`
 
 See `src/tools/__init__.py` for the complete list.
+
+## Known Limitations & Future Refactoring
+
+### ExchangeManager Singleton Limitation
+
+**Current State:**
+- `ExchangeManager` uses a singleton pattern via `_get_exchange_manager()` in `src/tools/shared.py`
+- Only **one instance** can exist per process, locked to the `BYBIT_USE_DEMO` setting at initialization
+- Cannot have both demo and live instances simultaneously
+- Cannot switch between demo/live without process restart
+
+**Current Approach (Demo Phase):**
+- ✅ **Safe for demo trading**: Single environment per process is actually a safety feature
+- ✅ **Simple and clear**: One process = one environment, no confusion
+- ✅ **Sufficient for current needs**: Demo account testing, strategy development, agent integration
+
+**Future Refactoring (Before Going Live):**
+
+When ready for live trading, consider refactoring to support:
+
+1. **Trading Profiles System**
+   - Introduce `TradingProfile` abstraction (name, env, keys, risk config)
+   - Support multiple profiles per process (demo + live, or multiple accounts)
+   - Each profile owns its own `ExchangeManager`, `RiskManager`, etc.
+
+2. **ExchangeManager Factory Pattern**
+   - Replace singleton with factory: `get_exchange_manager(profile_id: str = "default")`
+   - Registry pattern: `{profile_id -> ExchangeManager}`
+   - `ExchangeManager` constructor accepts explicit `profile` or `use_demo` parameter
+
+3. **Profile-Aware Tools & API**
+   - Tools accept optional `profile_id` parameter
+   - Tool Registry can be profile-scoped (agent gets only demo tools)
+   - HTTP API endpoints include profile selection
+   - All operations explicitly specify which environment they target
+
+4. **Enhanced Safety Guard Rails**
+   - Live profiles require explicit enablement (`ALLOW_LIVE_TRADING=true`)
+   - Profile validation and isolation
+   - Logging always includes `profile_id` and environment
+   - No fallback between live/demo credentials
+
+**Alternative Approach (Simpler):**
+- Keep singleton pattern but run **separate processes** for demo and live
+- Orchestrator/agents choose environment by **which service URL** they call
+- Each process is locked to one environment (safety feature)
+- No code refactoring needed, just deployment architecture
+
+**Decision Point:**
+- If you need **multiple environments in one process** (e.g., agent swarm with mixed demo/live): Refactor to profiles
+- If **one environment per process is acceptable**: Keep current design, use separate deployments
+
+**Files to Modify (if refactoring):**
+- `src/tools/shared.py` - Factory function instead of singleton
+- `src/core/exchange_manager.py` - Accept profile/config parameter
+- `src/config/config.py` - Profile management
+- `src/tools/*.py` - Add profile_id parameter to tools
+- `src/tools/tool_registry.py` - Profile-aware tool registration

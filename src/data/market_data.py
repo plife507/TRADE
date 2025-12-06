@@ -107,14 +107,28 @@ class MarketData:
         # Lazy import to avoid circular dependency
         self._realtime_state = None
         
-        # Use separate DATA API key (read-only) to avoid rate limit conflicts
-        data_key, data_secret = self.config.bybit.get_data_credentials()
+        # ALWAYS use LIVE API for market data fetching (for accuracy)
+        # Market data must be accurate - DEMO API may have different/simulated data
+        data_key, data_secret = self.config.bybit.get_live_data_credentials()
         
-        # Initialize client with official pybit library
+        # Warn if LIVE data credentials are not configured
+        if not data_key or not data_secret:
+            self.logger.warning(
+                "LIVE data API credentials not configured! "
+                "Market data requires LIVE API access for accurate data. "
+                "Set BYBIT_LIVE_DATA_API_KEY/SECRET or BYBIT_LIVE_API_KEY/SECRET."
+            )
+        
+        # Initialize client with LIVE API (use_demo=False)
+        # This ensures we get real market data regardless of trading mode
         self.client = BybitClient(
             api_key=data_key if data_key else None,
             api_secret=data_secret if data_secret else None,
-            use_demo=self.config.bybit.use_demo,  # Demo or live API
+            use_demo=False,  # ALWAYS use LIVE API for data accuracy
+        )
+        
+        self.logger.debug(
+            "MarketData initialized with LIVE API (api.bybit.com) for accurate data"
         )
         
         # Cache with configurable TTLs (for REST fallback)

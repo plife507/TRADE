@@ -137,6 +137,33 @@ class BybitConfig:
         """Check if valid credentials are configured for current mode."""
         key, secret = self.get_credentials()
         return bool(key and secret)
+    
+    def get_live_data_credentials(self) -> tuple:
+        """
+        Get LIVE data API credentials (always LIVE, regardless of use_demo setting).
+        
+        Historical and market data should always use LIVE API for accuracy.
+        The LIVE API has real market data that matches production trading.
+        
+        This method ALWAYS returns LIVE credentials, never DEMO.
+        
+        Returns:
+            Tuple of (api_key, api_secret) for LIVE data API
+        """
+        # Always return LIVE data keys, regardless of use_demo setting
+        key = self.live_data_api_key or self.live_api_key or self.data_api_key or self.api_key
+        secret = self.live_data_api_secret or self.live_api_secret or self.data_api_secret or self.api_secret
+        return key, secret
+    
+    def has_live_data_credentials(self) -> bool:
+        """
+        Check if LIVE data API credentials are configured.
+        
+        Used to warn users if LIVE data keys are missing (data operations
+        will fail or fallback to unauthenticated access).
+        """
+        key, secret = self.get_live_data_credentials()
+        return bool(key and secret)
 
 
 @dataclass
@@ -564,6 +591,12 @@ class Config:
         if not api_key or not api_secret:
             return False, f"No API credentials for {self.bybit.get_mode_name()} mode"
         
+        # === SAFETY GUARD RAIL: Validate trading mode consistency ===
+        is_consistent, messages = self.validate_trading_mode_consistency()
+        if not is_consistent:
+            # Return the first error message
+            return False, messages[0] if messages else "Trading mode consistency check failed"
+        
         # In LIVE mode with REAL trading, extra confirmation
         if self.bybit.is_live and self.trading.mode == TradingMode.REAL:
             # All checks passed for live real trading
@@ -571,6 +604,69 @@ class Config:
         
         # Demo mode or paper trading is always allowed with credentials
         return True, f"{self.bybit.get_mode_name()} mode ready"
+    
+    def validate_trading_mode_consistency(self) -> tuple[bool, List[str]]:
+        """
+        SAFETY GUARD RAIL: Validate that trading mode matches API environment.
+        
+        This prevents dangerous mismatches like:
+        - TRADING_MODE=real but BYBIT_USE_DEMO=true (would trade on demo instead of live)
+        - Ensures user intention matches actual API behavior
+        
+        Returns:
+            Tuple of (is_valid, list of errors/warnings)
+            - is_valid: True if configuration is safe for trading
+            - messages: List of error/warning strings explaining any issues
+        """
+        errors = []
+        warnings = []
+        
+        # === CRITICAL SAFETY CHECK ===
+        # Block trading if user says "real" but API is demo
+        # This prevents user thinking they're live trading when they're not
+        if self.trading.mode == TradingMode.REAL and self.bybit.use_demo:
+            errors.append(
+                "SAFETY CHECK FAILED: TRADING_MODE=real but BYBIT_USE_DEMO=true. "
+                "You indicated REAL trading mode but are connected to DEMO API. "
+                "Set BYBIT_USE_DEMO=false to enable live trading, or use TRADING_MODE=paper for demo."
+            )
+        
+        # === WARNING: Paper trading on LIVE API ===
+        # This is allowed but user should be aware
+        if self.trading.mode == TradingMode.PAPER and not self.bybit.use_demo:
+            warnings.append(
+                "TRADING_MODE=paper but BYBIT_USE_DEMO=false: "
+                "Using LIVE API for paper trading. Trades will be simulated but "
+                "API calls interact with your real account (read operations)."
+            )
+        
+        # All errors are blocking, warnings are informational
+        all_messages = [f"[ERROR] {e}" for e in errors] + [f"[WARN] {w}" for w in warnings]
+        
+        return len(errors) == 0, all_messages
+    
+    def validate_data_credentials(self) -> tuple[bool, List[str]]:
+        """
+        Validate that LIVE data credentials are configured.
+        
+        Data operations (historical data, market data) always use LIVE API
+        for accuracy. This method checks if those credentials are available.
+        
+        Returns:
+            Tuple of (has_credentials, list of warnings)
+        """
+        warnings = []
+        
+        key, secret = self.bybit.get_live_data_credentials()
+        
+        if not key or not secret:
+            warnings.append(
+                "LIVE data API credentials not configured. "
+                "Historical data and market data require LIVE API access. "
+                "Set BYBIT_LIVE_DATA_API_KEY/SECRET or BYBIT_LIVE_API_KEY/SECRET."
+            )
+        
+        return bool(key and secret), warnings
     
     def summary(self) -> str:
         """Generate a human-readable configuration summary for Unified Trading Account."""
@@ -589,6 +685,7 @@ class Config:
         # Check for credentials
         trading_key, _ = self.bybit.get_credentials()
         data_key, _ = self.bybit.get_data_credentials()
+        live_data_key, _ = self.bybit.get_live_data_credentials()
         
         # Money status
         if self.bybit.is_live and self.trading.is_real:
@@ -597,6 +694,10 @@ class Config:
             money_status = "⚠️  Using LIVE API (paper trading)"
         else:
             money_status = "✓ FAKE MONEY (Demo account)"
+        
+        # Safety check status
+        is_consistent, consistency_msgs = self.validate_trading_mode_consistency()
+        safety_status = "✓ PASSED" if is_consistent else "✗ FAILED"
         
         lines = [
             "=" * 55,
@@ -609,6 +710,16 @@ class Config:
             f"Status:       {money_status}",
             f"  {env_warning}",
             "",
+            f"Safety Check: {safety_status}",
+        ]
+        
+        # Add any safety messages
+        if consistency_msgs:
+            for msg in consistency_msgs:
+                lines.append(f"  {msg}")
+        
+        lines.extend([
+            "",
             f"Runner: {ws_mode}",
             f"Symbols: {', '.join(self.trading.default_symbols) or '(none configured)'}",
             "",
@@ -618,9 +729,12 @@ class Config:
             f"  Max Daily Loss:  ${self.risk.max_daily_loss_usd:,.0f}",
             f"  Min Balance:     ${self.risk.min_balance_usd:,.0f}",
             "",
-            f"Bybit API Keys ({self.bybit.get_mode_name()}):",
+            f"API Keys - Trading ({self.bybit.get_mode_name()}):",
             f"  Trading (R/W): {'✓ Configured' if trading_key else '✗ Missing'}",
             f"  Data (R/O):    {'✓ Configured' if data_key else '✗ Missing'}",
+            "",
+            "API Keys - Data (ALWAYS LIVE for accuracy):",
+            f"  LIVE Data:     {'✓ Configured' if live_data_key else '✗ Missing (required for historical/market data)'}",
             "",
             "WebSocket Streams:",
             f"  Enabled: {self.websocket.enable_websocket}",
@@ -632,7 +746,7 @@ class Config:
             f"  Enabled: {self.data.enable_capture}",
             f"  Symbols: {', '.join(self.data.capture_symbols) or '(none)'}",
             "=" * 55,
-        ]
+        ])
         return "\n".join(lines)
     
     def summary_short(self) -> str:

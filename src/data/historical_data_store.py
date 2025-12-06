@@ -178,12 +178,28 @@ class HistoricalDataStore:
         self.config = get_config()
         self.logger = get_logger()
         
-        # Initialize Bybit client for API calls
-        api_key, api_secret = self.config.bybit.get_data_credentials()
+        # ALWAYS use LIVE API for historical data fetching (for accuracy)
+        # Historical data must be accurate - DEMO API may have different/simulated data
+        api_key, api_secret = self.config.bybit.get_live_data_credentials()
+        
+        # Warn if LIVE data credentials are not configured
+        if not api_key or not api_secret:
+            self.logger.warning(
+                "LIVE data API credentials not configured! "
+                "Historical data sync requires LIVE API access for accurate data. "
+                "Set BYBIT_LIVE_DATA_API_KEY/SECRET or BYBIT_LIVE_API_KEY/SECRET."
+            )
+        
+        # Initialize client with LIVE API (use_demo=False)
+        # This ensures we get real market data regardless of trading mode
         self.client = BybitClient(
             api_key=api_key if api_key else None,
             api_secret=api_secret if api_secret else None,
-            use_demo=self.config.bybit.use_demo,
+            use_demo=False,  # ALWAYS use LIVE API for data accuracy
+        )
+        
+        self.logger.info(
+            "HistoricalDataStore initialized with LIVE API (api.bybit.com) for accurate data"
         )
         
         self._init_schema()

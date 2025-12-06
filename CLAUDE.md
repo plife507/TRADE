@@ -285,6 +285,84 @@ Rate limiter in `src/utils/rate_limiter.py` handles this.
 - **Panic button**: `panic_close_all_tool()` closes all positions
 - **Risk limits**: Enforced by `RiskManager`
 - **Demo mode**: Default safe testing environment
+- **Trading mode validation**: Prevents dangerous mismatches between TRADING_MODE and BYBIT_USE_DEMO
+
+## DEMO vs LIVE API - Critical Safety Architecture
+
+### API Environments
+
+Bybit provides two separate API environments:
+
+| Environment | API Endpoint | WebSocket | Money | Purpose |
+|-------------|--------------|-----------|-------|---------|
+| **DEMO** | api-demo.bybit.com | stream-demo.bybit.com | FAKE ($1000) | Testing, development |
+| **LIVE** | api.bybit.com | stream.bybit.com | REAL | Production trading |
+
+### Data vs Trading Separation (IMPORTANT!)
+
+The bot separates **data operations** from **trading operations**:
+
+| Operation | API Used | Reason |
+|-----------|----------|--------|
+| Historical data sync | **ALWAYS LIVE** | Accurate market data |
+| Market data (prices, tickers) | **ALWAYS LIVE** | Real market prices |
+| Data capture | **ALWAYS LIVE** | Accurate data collection |
+| Trading (orders, positions) | **Configured** | Depends on BYBIT_USE_DEMO |
+
+```python
+# Data operations ALWAYS use LIVE API (regardless of BYBIT_USE_DEMO)
+from src.data.historical_data_store import get_historical_store
+store = get_historical_store()  # Uses api.bybit.com
+
+# Trading operations use configured API
+from src.core.exchange_manager import ExchangeManager
+exchange = ExchangeManager()  # Uses api-demo.bybit.com or api.bybit.com
+```
+
+### Safety Guard Rails
+
+The bot includes built-in safety checks to prevent dangerous mismatches:
+
+```python
+# BLOCKED - Would execute on wrong account!
+TRADING_MODE=real + BYBIT_USE_DEMO=true  # ❌ ERROR: Can't do "real" trading on demo
+
+# ALLOWED with warning
+TRADING_MODE=paper + BYBIT_USE_DEMO=false  # ⚠️ WARN: Using live API for paper trading
+
+# Normal operations
+TRADING_MODE=paper + BYBIT_USE_DEMO=true   # ✅ Demo trading (safe)
+TRADING_MODE=real + BYBIT_USE_DEMO=false   # ✅ Live trading (real money!)
+```
+
+### Validation at Multiple Levels
+
+1. **Config Validation** (`config.validate_trading_mode_consistency()`)
+2. **Pre-Trade Validation** (`ExchangeManager._validate_trading_operation()`)
+3. **Order Executor Validation** (`OrderExecutor._validate_trading_mode()`)
+
+### Configuring API Keys
+
+```bash
+# LIVE Data API (REQUIRED for all data operations)
+BYBIT_LIVE_DATA_API_KEY=your_live_readonly_key
+BYBIT_LIVE_DATA_API_SECRET=your_live_readonly_secret
+
+# Demo Trading API (for testing)
+BYBIT_DEMO_API_KEY=your_demo_key
+BYBIT_DEMO_API_SECRET=your_demo_secret
+
+# Live Trading API (for production - handle with care!)
+BYBIT_LIVE_API_KEY=your_live_trading_key
+BYBIT_LIVE_API_SECRET=your_live_trading_secret
+```
+
+### Best Practices
+
+1. **Always configure LIVE data API keys** - Required for accurate historical/market data
+2. **Start with DEMO trading** - Use `BYBIT_USE_DEMO=true` for development
+3. **Use read-only keys for data** - Separate rate limit pools (120 RPS vs 50 RPS)
+4. **Test safety checks** - Try invalid configurations to see error messages
 
 ## Reference Documentation
 
