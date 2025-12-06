@@ -9,13 +9,13 @@
 - CLI functionality is the primary interface for this project
 
 ## Reference Folder
-**`C:\CODE\AI\ai-engineering-toolkit\reference\`** is the central reference library for all projects in the AI workspace:
-- **Bybit Exchange Documentation**: `C:\CODE\AI\ai-engineering-toolkit\reference\exchanges\bybit\`
+**`C:\CODE\AI\TRADE\reference\`** contains reference materials for this project:
+- **Bybit Exchange Documentation**: `C:\CODE\AI\TRADE\reference\exchanges\bybit\`
   - Official Bybit V5 API documentation
   - API specifications in `docs/v5/`
   - Rate limit documentation
   - WebSocket documentation
-- **Official Bybit Python Library**: `C:\CODE\AI\ai-engineering-toolkit\reference\exchanges\pybit\`
+- **Official Bybit Python Library**: `C:\CODE\AI\TRADE\reference\exchanges\pybit\`
   - Official `pybit` Python SDK source code
   - Examples and usage patterns
   - Library documentation

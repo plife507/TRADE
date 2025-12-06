@@ -46,9 +46,10 @@ logs/
 # Data (optional - uncomment if you don't want to track)
 # data/historical/
 
-# Reference materials (use central reference library at C:\CODE\AI\reference\)
-# Large reference docs should not be in the repo - they're maintained separately
-reference/
+# Reference materials (embedded git repos - excluded from GitHub)
+# These are large reference docs maintained separately
+reference/exchanges/bybit/
+reference/exchanges/pybit/
 
 # OS
 .DS_Store
