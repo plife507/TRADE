@@ -3,14 +3,14 @@
 ## Where to Find Reference Documentation
 
 ### Central Reference Library
-All reference materials are maintained in the central workspace reference library:
+All reference materials are maintained in the AI Engineering Toolkit:
 ```
-C:\CODE\AI\reference\
+C:\CODE\AI\ai-engineering-toolkit\reference\
 ```
 
 This includes:
-- **Bybit API Documentation**: `C:\CODE\AI\reference\exchanges\bybit\`
-- **Pybit SDK**: `C:\CODE\AI\reference\exchanges\pybit\`
+- **Bybit API Documentation**: `C:\CODE\AI\ai-engineering-toolkit\reference\exchanges\bybit\`
+- **Pybit SDK**: `C:\CODE\AI\ai-engineering-toolkit\reference\exchanges\pybit\`
 - Other exchange documentation and research materials
 
 ### Why Not in This Repo?
@@ -36,10 +36,10 @@ Project-specific documentation that's directly relevant to TRADE:
 When developing, reference the central library:
 ```python
 # Bybit API docs are at:
-C:\CODE\AI\reference\exchanges\bybit\docs\v5\
+C:\CODE\AI\ai-engineering-toolkit\reference\exchanges\bybit\docs\v5\
 
 # Pybit SDK examples:
-C:\CODE\AI\reference\exchanges\pybit\examples\
+C:\CODE\AI\ai-engineering-toolkit\reference\exchanges\pybit\examples\
 ```
 
 ### If You Need Reference in Repo

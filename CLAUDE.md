@@ -288,5 +288,5 @@ Rate limiter in `src/utils/rate_limiter.py` handles this.
 
 ## Reference Documentation
 
-- **Bybit API**: `C:\CODE\AI\reference\exchanges\bybit\docs\v5\`
-- **pybit SDK**: `C:\CODE\AI\reference\exchanges\pybit\`
+- **Bybit API**: `C:\CODE\AI\ai-engineering-toolkit\reference\exchanges\bybit\docs\v5\`
+- **pybit SDK**: `C:\CODE\AI\ai-engineering-toolkit\reference\exchanges\pybit\`
