@@ -7,8 +7,10 @@ Now supports WebSocket-fed order and execution tracking for faster feedback.
 
 SAFETY GUARD RAILS:
 - Validates trading mode consistency before executing any order
-- Blocks TRADING_MODE=real with BYBIT_USE_DEMO=true (dangerous mismatch)
-- Warns when paper trading on LIVE API
+- Enforces strict mode/API mapping:
+  - PAPER mode → DEMO API only (BYBIT_USE_DEMO=true)
+  - REAL mode → LIVE API only (BYBIT_USE_DEMO=false)
+- Blocks any other combination as invalid configuration
 """
 
 import time

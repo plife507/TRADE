@@ -108,15 +108,15 @@ class MarketData:
         self._realtime_state = None
         
         # ALWAYS use LIVE API for market data fetching (for accuracy)
-        # Market data must be accurate - DEMO API may have different/simulated data
+        # Market data must be accurate - DEMO API may return different prices
         data_key, data_secret = self.config.bybit.get_live_data_credentials()
         
-        # Warn if LIVE data credentials are not configured
+        # Error if LIVE data credentials are not configured (STRICT - no fallback)
         if not data_key or not data_secret:
-            self.logger.warning(
-                "LIVE data API credentials not configured! "
+            self.logger.error(
+                "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY/SECRET not configured! "
                 "Market data requires LIVE API access for accurate data. "
-                "Set BYBIT_LIVE_DATA_API_KEY/SECRET or BYBIT_LIVE_API_KEY/SECRET."
+                "No fallback to trading keys or generic keys is allowed."
             )
         
         # Initialize client with LIVE API (use_demo=False)
@@ -127,8 +127,20 @@ class MarketData:
             use_demo=False,  # ALWAYS use LIVE API for data accuracy
         )
         
-        self.logger.debug(
-            "MarketData initialized with LIVE API (api.bybit.com) for accurate data"
+        # Log detailed API environment info (STRICT - canonical keys only)
+        key_status = "authenticated" if data_key else "NO KEY"
+        # Determine key source - STRICT: only canonical key
+        if self.config.bybit.live_data_api_key:
+            key_source = "BYBIT_LIVE_DATA_API_KEY"
+        else:
+            key_source = "MISSING (BYBIT_LIVE_DATA_API_KEY required)"
+        
+        self.logger.info(
+            f"MarketData initialized: "
+            f"API=LIVE (api.bybit.com), "
+            f"auth={key_status}, "
+            f"key_source={key_source}, "
+            f"prefer_websocket={prefer_websocket}"
         )
         
         # Cache with configurable TTLs (for REST fallback)
@@ -171,7 +183,7 @@ class MarketData:
     
     def get_data_source(self, symbol: str) -> str:
         """Get the data source used for last query of this symbol."""
-        return self._last_source.get(symbol, "unknown")
+        return self._last_source.get(symbol, "not queried yet")
     
     def set_prefer_websocket(self, prefer: bool):
         """Enable or disable WebSocket preference."""

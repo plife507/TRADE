@@ -15,7 +15,7 @@ from .core import (
     RiskManager,
     panic_close_all,
 )
-from .data import get_market_data, get_data_capture
+from .data import get_market_data, get_historical_store
 
 __all__ = [
     "__version__",
@@ -25,5 +25,5 @@ __all__ = [
     "RiskManager",
     "panic_close_all",
     "get_market_data",
-    "get_data_capture",
+    "get_historical_store",
 ]

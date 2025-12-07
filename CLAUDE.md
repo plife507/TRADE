@@ -93,6 +93,58 @@ result = registry.execute("market_buy", symbol="SOLUSDT", usd_amount=100)
 spec = registry.get_tool_info("market_buy")
 ```
 
+### Historical Data Tools
+Data tools are available via the registry for orchestrators/agents:
+
+```python
+# List data tools by category
+registry.list_tools(category="data.info")     # Database info, symbol status
+registry.list_tools(category="data.sync")     # Sync, build history, fill gaps
+registry.list_tools(category="data.maintenance")  # Heal, delete, vacuum
+
+# Build complete history for a symbol (OHLCV + funding + OI)
+result = registry.execute("build_symbol_history", symbols=["BTCUSDT"], period="1M")
+
+# Sync forward to now (only new candles, no backfill)
+result = registry.execute("sync_to_now", symbols=["BTCUSDT", "ETHUSDT"])
+
+# View symbol timeframe ranges with date coverage
+result = registry.execute("get_symbol_timeframe_ranges")
+```
+
+### Time-Range Aware History Queries (CRITICAL)
+
+**All history endpoints require explicit time ranges.** We never rely on Bybit's implicit defaults (24h for transaction log, 7d for orders, etc.).
+
+```python
+from src.utils.time_range import TimeRange, parse_time_window
+
+# Create time ranges from presets
+time_range = TimeRange.last_24h()
+time_range = TimeRange.last_7d()
+time_range = TimeRange.from_window_string("4h")
+
+# Tools accept window string or explicit timestamps
+result = registry.execute("get_order_history", window="7d", symbol="BTCUSDT")
+result = registry.execute("get_transaction_log", window="24h", category="linear")
+result = registry.execute("get_borrow_history", window="30d")  # Max 30d for borrow
+
+# Results include time_range metadata
+print(result.data["time_range"])  # {"start_ms": ..., "end_ms": ..., "label": "last_7d"}
+```
+
+**Bybit API Time Constraints:**
+
+| Endpoint | Default (without params) | Max Range |
+|----------|--------------------------|-----------|
+| Transaction Log | 24 hours | 7 days |
+| Order History | 7 days | 7 days |
+| Trade History | 7 days | 7 days |
+| Closed PnL | 7 days | 7 days |
+| Borrow History | 30 days | 30 days |
+
+The `TimeRange` abstraction enforces these limits and ensures all API calls include explicit `startTime`/`endTime` parameters.
+
 ### Exchange Access
 ```python
 from src.core.exchange_manager import ExchangeManager
@@ -254,10 +306,18 @@ See `tests/test_comprehensive_smoke.py` for test coverage.
 TRADING_MODE=paper
 BYBIT_USE_DEMO=true
 
-BYBIT_DEMO_API_KEY=your_key
-BYBIT_DEMO_API_SECRET=your_secret
-BYBIT_LIVE_API_KEY=your_key
-BYBIT_LIVE_API_SECRET=your_secret
+# STRICT: Canonical keys required (no fallbacks)
+# Demo trading (required for DEMO mode)
+BYBIT_DEMO_API_KEY=your_demo_key
+BYBIT_DEMO_API_SECRET=your_demo_secret
+
+# Live trading (required for LIVE mode)
+BYBIT_LIVE_API_KEY=your_live_key
+BYBIT_LIVE_API_SECRET=your_live_secret
+
+# Live data (ALWAYS required - data uses LIVE API)
+BYBIT_LIVE_DATA_API_KEY=your_live_readonly_key
+BYBIT_LIVE_DATA_API_SECRET=your_live_readonly_secret
 
 MAX_LEVERAGE=3
 MAX_POSITION_SIZE_USD=50
@@ -319,21 +379,22 @@ from src.core.exchange_manager import ExchangeManager
 exchange = ExchangeManager()  # Uses api-demo.bybit.com or api.bybit.com
 ```
 
-### Safety Guard Rails
+### Safety Guard Rails (Strict Mapping)
 
-The bot includes built-in safety checks to prevent dangerous mismatches:
+The bot enforces a **strict 1:1 mapping** between trading mode and API environment:
 
 ```python
-# BLOCKED - Would execute on wrong account!
-TRADING_MODE=real + BYBIT_USE_DEMO=true  # ❌ ERROR: Can't do "real" trading on demo
+# ✅ VALID COMBINATIONS (only these two are allowed)
+TRADING_MODE=paper + BYBIT_USE_DEMO=true   # ✅ Demo account (fake funds, real API orders)
+TRADING_MODE=real + BYBIT_USE_DEMO=false   # ✅ Live account (real funds, real API orders)
 
-# ALLOWED with warning
-TRADING_MODE=paper + BYBIT_USE_DEMO=false  # ⚠️ WARN: Using live API for paper trading
-
-# Normal operations
-TRADING_MODE=paper + BYBIT_USE_DEMO=true   # ✅ Demo trading (safe)
-TRADING_MODE=real + BYBIT_USE_DEMO=false   # ✅ Live trading (real money!)
+# ❌ INVALID COMBINATIONS (hard errors, blocked at startup)
+TRADING_MODE=real + BYBIT_USE_DEMO=true   # ❌ BLOCKED: REAL mode requires LIVE API
+TRADING_MODE=paper + BYBIT_USE_DEMO=false  # ❌ BLOCKED: PAPER mode requires DEMO API
 ```
+
+**Key Point**: We never simulate trades. Both modes execute real orders on Bybit.
+The difference is which account (demo vs live) receives those orders.
 
 ### Validation at Multiple Levels
 
@@ -359,12 +420,60 @@ BYBIT_LIVE_API_SECRET=your_live_trading_secret
 
 ### Best Practices
 
-1. **Always configure LIVE data API keys** - Required for accurate historical/market data
+1. **Configure all 3 required keys** - BYBIT_DEMO_API_KEY (for demo), BYBIT_LIVE_API_KEY (for live), BYBIT_LIVE_DATA_API_KEY (for data)
 2. **Start with DEMO trading** - Use `BYBIT_USE_DEMO=true` for development
 3. **Use read-only keys for data** - Separate rate limit pools (120 RPS vs 50 RPS)
-4. **Test safety checks** - Try invalid configurations to see error messages
+4. **No fallbacks** - Missing keys cause hard errors; generic keys (BYBIT_API_KEY) are NOT used
+
+## API Modes & Visibility
+
+### Where to See Current API Environment
+
+The bot provides multiple ways to inspect which APIs are in use:
+
+1. **CLI Header**: Shows trading mode (DEMO/LIVE) and API URLs in the subtitle
+2. **CLI Menus**: Data Builder and Market Data menus show data API source status
+3. **Connection Test** (Option 6): Displays detailed API environment table
+4. **Health Check** (Option 7): Shows API environment and mode consistency status
+5. **Logs**: All components log their API mode on initialization
+
+### Programmatic Access
+
+Use `get_api_environment_tool()` or the registry:
+
+```python
+from src.tools import get_api_environment_tool
+
+result = get_api_environment_tool()
+if result.success:
+    print(result.data["trading"]["mode"])  # "DEMO" or "LIVE"
+    print(result.data["data"]["mode"])     # Always "LIVE"
+    print(result.data["websocket"]["mode"]) # Matches trading mode
+
+# Via registry (for agents)
+registry.execute("get_api_environment")
+```
+
+### Key Points
+
+- **Data Builder & Market Data**: Always use LIVE API (`api.bybit.com`) for accuracy
+- **Trading operations**: Use DEMO or LIVE based on `BYBIT_USE_DEMO` setting
+- **WebSocket**: Matches trading mode (DEMO streams for demo trading)
 
 ## Reference Documentation
+
+### Exchange API Reference (CRITICAL)
+
+**ALWAYS reference `C:\CODE\AI\TRADE\reference\exchanges` for ALL API and exchange interface information.**
+
+When working with exchange APIs, endpoints, or implementing exchange features:
+1. **First consult** the reference documentation in `C:\CODE\AI\TRADE\reference\exchanges\`
+2. **Bybit API docs**: `C:\CODE\AI\TRADE\reference\exchanges\bybit\docs\v5\` - Complete API reference, endpoints, parameters, error codes
+3. **pybit SDK**: `C:\CODE\AI\TRADE\reference\exchanges\pybit\` - SDK implementation details, examples, usage patterns
+4. **Never guess** API parameters, endpoints, rate limits, or behavior - always verify against reference docs
+5. **When in doubt**, read the reference files before implementing or modifying exchange-related code
+
+### Reference Paths
 
 - **Bybit API**: `C:\CODE\AI\TRADE\reference\exchanges\bybit\docs\v5\`
 - **pybit SDK**: `C:\CODE\AI\TRADE\reference\exchanges\pybit\`

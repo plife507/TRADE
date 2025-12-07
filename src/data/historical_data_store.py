@@ -179,15 +179,15 @@ class HistoricalDataStore:
         self.logger = get_logger()
         
         # ALWAYS use LIVE API for historical data fetching (for accuracy)
-        # Historical data must be accurate - DEMO API may have different/simulated data
+        # Historical data must be accurate - DEMO API may return different data
         api_key, api_secret = self.config.bybit.get_live_data_credentials()
         
-        # Warn if LIVE data credentials are not configured
+        # Error if LIVE data credentials are not configured (STRICT - no fallback)
         if not api_key or not api_secret:
-            self.logger.warning(
-                "LIVE data API credentials not configured! "
+            self.logger.error(
+                "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY/SECRET not configured! "
                 "Historical data sync requires LIVE API access for accurate data. "
-                "Set BYBIT_LIVE_DATA_API_KEY/SECRET or BYBIT_LIVE_API_KEY/SECRET."
+                "No fallback to trading keys or generic keys is allowed."
             )
         
         # Initialize client with LIVE API (use_demo=False)
@@ -198,14 +198,26 @@ class HistoricalDataStore:
             use_demo=False,  # ALWAYS use LIVE API for data accuracy
         )
         
+        # Log detailed API environment info (STRICT - canonical keys only)
+        key_status = "authenticated" if api_key else "NO KEY"
+        # Determine key source - STRICT: only canonical key
+        if self.config.bybit.live_data_api_key:
+            key_source = "BYBIT_LIVE_DATA_API_KEY"
+        else:
+            key_source = "MISSING (BYBIT_LIVE_DATA_API_KEY required)"
+        
         self.logger.info(
-            "HistoricalDataStore initialized with LIVE API (api.bybit.com) for accurate data"
+            f"HistoricalDataStore initialized: "
+            f"API=LIVE (api.bybit.com), "
+            f"auth={key_status}, "
+            f"key_source={key_source}"
         )
         
         self._init_schema()
     
     def _init_schema(self):
         """Initialize database schema."""
+        # OHLCV candle data
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS ohlcv (
                 symbol VARCHAR NOT NULL,
@@ -232,6 +244,49 @@ class HistoricalDataStore:
             )
         """)
         
+        # Funding rates data
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS funding_rates (
+                symbol VARCHAR NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                funding_rate DOUBLE,
+                funding_rate_interval_hours INTEGER DEFAULT 8,
+                PRIMARY KEY (symbol, timestamp)
+            )
+        """)
+        
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS funding_metadata (
+                symbol VARCHAR NOT NULL,
+                first_timestamp TIMESTAMP,
+                last_timestamp TIMESTAMP,
+                record_count INTEGER,
+                last_sync TIMESTAMP,
+                PRIMARY KEY (symbol)
+            )
+        """)
+        
+        # Open interest data
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS open_interest (
+                symbol VARCHAR NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                open_interest DOUBLE,
+                PRIMARY KEY (symbol, timestamp)
+            )
+        """)
+        
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS open_interest_metadata (
+                symbol VARCHAR NOT NULL,
+                first_timestamp TIMESTAMP,
+                last_timestamp TIMESTAMP,
+                record_count INTEGER,
+                last_sync TIMESTAMP,
+                PRIMARY KEY (symbol)
+            )
+        """)
+        
         # Create indexes for faster queries
         try:
             self.conn.execute("""
@@ -248,6 +303,38 @@ class HistoricalDataStore:
             """)
         except Exception:
             pass  # Index may already exist
+        
+        try:
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_funding_symbol 
+                ON funding_rates(symbol)
+            """)
+        except Exception:
+            pass
+        
+        try:
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_funding_timestamp 
+                ON funding_rates(timestamp)
+            """)
+        except Exception:
+            pass
+        
+        try:
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_oi_symbol 
+                ON open_interest(symbol)
+            """)
+        except Exception:
+            pass
+        
+        try:
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_oi_timestamp 
+                ON open_interest(timestamp)
+            """)
+        except Exception:
+            pass
     
     # ==================== PERIOD PARSING ====================
     
@@ -390,6 +477,119 @@ class HistoricalDataStore:
                     results[key] = -1
         
         return results
+    
+    def sync_forward(
+        self,
+        symbols: Union[str, List[str]],
+        timeframes: List[str] = None,
+        progress_callback: Callable = None,
+        show_spinner: bool = True,
+    ) -> Dict[str, int]:
+        """
+        Sync data forward from the last stored candle to now (no backfill).
+        
+        This is a lightweight sync that only fetches new data after the last
+        stored timestamp, without scanning or backfilling older history.
+        
+        Args:
+            symbols: Single symbol or list of symbols
+            timeframes: List of timeframes or None for all
+            progress_callback: Optional callback(symbol, timeframe, status)
+            show_spinner: Show animated spinner during sync
+        
+        Returns:
+            Dict mapping "symbol_timeframe" to number of candles synced
+        """
+        if isinstance(symbols, str):
+            symbols = [symbols]
+        
+        # Normalize symbols to uppercase for consistency
+        symbols = [s.upper() for s in symbols]
+        
+        timeframes = timeframes or list(TIMEFRAMES.keys())
+        results = {}
+        total_synced = 0
+        
+        for symbol in symbols:
+            for tf in timeframes:
+                key = f"{symbol}_{tf}"
+                
+                if progress_callback:
+                    progress_callback(symbol, tf, f"{ActivityEmoji.SYNC} syncing forward")
+                
+                # Show spinner for individual sync
+                spinner = None
+                if show_spinner and not progress_callback:
+                    spinner = ActivitySpinner(f"Syncing {symbol} {tf} forward", ActivityEmoji.CANDLE)
+                    spinner.start()
+                
+                try:
+                    count = self._sync_forward_symbol_timeframe(symbol, tf)
+                    results[key] = count
+                    total_synced += max(0, count)
+                    
+                    if spinner:
+                        if count > 0:
+                            spinner.stop(f"{symbol} {tf}: +{count} candles {ActivityEmoji.SPARKLE}")
+                        else:
+                            spinner.stop(f"{symbol} {tf}: already current {ActivityEmoji.SUCCESS}")
+                    elif progress_callback:
+                        emoji = ActivityEmoji.SUCCESS if count >= 0 else ActivityEmoji.ERROR
+                        progress_callback(symbol, tf, f"{emoji} done (+{count} candles)")
+                        
+                except Exception as e:
+                    self.logger.error(f"Failed to sync forward {key}: {e}")
+                    results[key] = -1
+                    
+                    if spinner:
+                        spinner.stop(f"{symbol} {tf}: error", success=False)
+                    elif progress_callback:
+                        progress_callback(symbol, tf, f"{ActivityEmoji.ERROR} error: {e}")
+        
+        return results
+    
+    def _sync_forward_symbol_timeframe(
+        self,
+        symbol: str,
+        timeframe: str,
+    ) -> int:
+        """Sync a single symbol/timeframe forward from last timestamp to now."""
+        # Normalize symbol to uppercase for consistency
+        symbol = symbol.upper()
+        bybit_tf = TIMEFRAMES.get(timeframe, timeframe)
+        tf_minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
+        
+        # Check what we already have
+        existing = self.conn.execute("""
+            SELECT MAX(timestamp) as last_ts
+            FROM ohlcv
+            WHERE symbol = ? AND timeframe = ?
+        """, [symbol, timeframe]).fetchone()
+        
+        last_ts = existing[0] if existing and existing[0] else None
+        
+        if last_ts is None:
+            # No data at all - nothing to sync forward from
+            # User should use regular sync or build_symbol_history first
+            return 0
+        
+        # Start from one interval after last_ts to avoid overlap
+        start = last_ts + timedelta(minutes=tf_minutes)
+        end = datetime.now()
+        
+        # If we're already current (less than one interval behind), skip
+        if start >= end:
+            return 0
+        
+        # Fetch new data
+        df = self._fetch_from_api(symbol, bybit_tf, start, end)
+        
+        if not df.empty:
+            self._store_dataframe(symbol, timeframe, df)
+            self._update_metadata(symbol, timeframe)
+            return len(df)
+        
+        return 0
     
     def _sync_symbol_timeframe(
         self,
@@ -564,6 +764,430 @@ class HistoricalDataStore:
             INSERT OR REPLACE INTO sync_metadata 
             VALUES (?, ?, ?, ?, ?, ?)
         """, [symbol, timeframe, stats[0], stats[1], stats[2], datetime.now()])
+    
+    # ==================== FUNDING RATE SYNC ====================
+    
+    def sync_funding(
+        self,
+        symbols: Union[str, List[str]],
+        period: str = "3M",
+        progress_callback: Callable = None,
+        show_spinner: bool = True,
+    ) -> Dict[str, int]:
+        """
+        Sync funding rate history for symbols.
+        
+        Args:
+            symbols: Single symbol or list of symbols
+            period: How far back to sync ("1Y", "6M", "3M", "1M", "2W", "1W")
+            progress_callback: Optional callback(symbol, status)
+            show_spinner: Show animated spinner during sync
+        
+        Returns:
+            Dict mapping symbol to number of records synced
+        """
+        if isinstance(symbols, str):
+            symbols = [symbols]
+        
+        symbols = [s.upper() for s in symbols]
+        target_start = datetime.now() - self.parse_period(period)
+        
+        results = {}
+        
+        for symbol in symbols:
+            if progress_callback:
+                progress_callback(symbol, f"{ActivityEmoji.SYNC} syncing funding rates")
+            
+            spinner = None
+            if show_spinner and not progress_callback:
+                spinner = ActivitySpinner(f"Fetching {symbol} funding rates", ActivityEmoji.DOLLAR)
+                spinner.start()
+            
+            try:
+                count = self._sync_funding_symbol(symbol, target_start)
+                results[symbol] = count
+                
+                if spinner:
+                    spinner.stop(f"{symbol} funding: {count} records {ActivityEmoji.SPARKLE}")
+                elif progress_callback:
+                    emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
+                    progress_callback(symbol, f"{emoji} done ({count:,} records)")
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to sync funding for {symbol}: {e}")
+                results[symbol] = -1
+                
+                if spinner:
+                    spinner.stop(f"{symbol} funding: error", success=False)
+                elif progress_callback:
+                    progress_callback(symbol, f"{ActivityEmoji.ERROR} error: {e}")
+        
+        return results
+    
+    def _sync_funding_symbol(self, symbol: str, target_start: datetime) -> int:
+        """Sync funding rate data for a single symbol."""
+        symbol = symbol.upper()
+        
+        # Check existing data
+        existing = self.conn.execute("""
+            SELECT MAX(timestamp) as last_ts
+            FROM funding_rates
+            WHERE symbol = ?
+        """, [symbol]).fetchone()
+        
+        last_ts = existing[0] if existing[0] else None
+        
+        # Determine start point
+        if last_ts and last_ts > target_start:
+            # Only fetch newer data
+            fetch_start = last_ts
+        else:
+            fetch_start = target_start
+        
+        # Fetch from API
+        all_records = []
+        current_end = datetime.now()
+        
+        # Bybit funding API returns max 200 records per request
+        while current_end > fetch_start:
+            try:
+                records = self.client.get_funding_rate(
+                    symbol=symbol,
+                    limit=200,
+                )
+                
+                if not records:
+                    break
+                
+                # Parse records
+                for r in records:
+                    ts = datetime.fromtimestamp(int(r.get("fundingRateTimestamp", 0)) / 1000)
+                    if ts >= fetch_start and ts <= current_end:
+                        all_records.append({
+                            "symbol": symbol,
+                            "timestamp": ts,
+                            "funding_rate": float(r.get("fundingRate", 0)),
+                        })
+                
+                # Move window back
+                if records:
+                    earliest_ts = min(
+                        int(r.get("fundingRateTimestamp", 0)) for r in records
+                    )
+                    current_end = datetime.fromtimestamp(earliest_ts / 1000) - timedelta(hours=1)
+                else:
+                    break
+                
+                time.sleep(0.1)  # Rate limiting
+                
+            except Exception as e:
+                self.logger.warning(f"Funding API error for {symbol}: {e}")
+                break
+        
+        if not all_records:
+            return 0
+        
+        # Store in DuckDB
+        df = pd.DataFrame(all_records)
+        self._store_funding(symbol, df)
+        
+        return len(all_records)
+    
+    def _store_funding(self, symbol: str, df: pd.DataFrame):
+        """Store funding rate DataFrame in DuckDB."""
+        if df.empty:
+            return
+        
+        symbol = symbol.upper()
+        df = df.copy()
+        df["symbol"] = symbol
+        
+        # Remove timezone if present
+        if df["timestamp"].dt.tz is not None:
+            df["timestamp"] = df["timestamp"].dt.tz_localize(None)
+        
+        # Ensure columns
+        df = df[["symbol", "timestamp", "funding_rate"]]
+        
+        # Insert or replace
+        self.conn.execute("""
+            INSERT OR REPLACE INTO funding_rates (symbol, timestamp, funding_rate)
+            SELECT symbol, timestamp, funding_rate FROM df
+        """)
+        
+        # Update metadata
+        self._update_funding_metadata(symbol)
+    
+    def _update_funding_metadata(self, symbol: str):
+        """Update funding metadata for a symbol."""
+        stats = self.conn.execute("""
+            SELECT 
+                MIN(timestamp) as first_ts,
+                MAX(timestamp) as last_ts,
+                COUNT(*) as count
+            FROM funding_rates
+            WHERE symbol = ?
+        """, [symbol]).fetchone()
+        
+        self.conn.execute("""
+            INSERT OR REPLACE INTO funding_metadata 
+            VALUES (?, ?, ?, ?, ?)
+        """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
+    
+    def get_funding(
+        self,
+        symbol: str,
+        period: str = None,
+        start: datetime = None,
+        end: datetime = None,
+    ) -> pd.DataFrame:
+        """
+        Get funding rate data as DataFrame.
+        
+        Args:
+            symbol: Trading symbol
+            period: Period string ("1M", "2W", etc.) - alternative to start/end
+            start: Start datetime
+            end: End datetime
+        
+        Returns:
+            DataFrame with timestamp, funding_rate
+        """
+        symbol = symbol.upper()
+        
+        query = """
+            SELECT timestamp, funding_rate
+            FROM funding_rates
+            WHERE symbol = ?
+        """
+        params = [symbol]
+        
+        if period:
+            start = datetime.now() - self.parse_period(period)
+        
+        if start:
+            query += " AND timestamp >= ?"
+            params.append(start)
+        
+        if end:
+            query += " AND timestamp <= ?"
+            params.append(end)
+        
+        query += " ORDER BY timestamp"
+        
+        return self.conn.execute(query, params).df()
+    
+    # ==================== OPEN INTEREST SYNC ====================
+    
+    def sync_open_interest(
+        self,
+        symbols: Union[str, List[str]],
+        period: str = "1M",
+        interval: str = "1h",
+        progress_callback: Callable = None,
+        show_spinner: bool = True,
+    ) -> Dict[str, int]:
+        """
+        Sync open interest history for symbols.
+        
+        Args:
+            symbols: Single symbol or list of symbols
+            period: How far back to sync ("1Y", "6M", "3M", "1M", "2W", "1W")
+            interval: Data interval (5min, 15min, 30min, 1h, 4h, 1d)
+            progress_callback: Optional callback(symbol, status)
+            show_spinner: Show animated spinner during sync
+        
+        Returns:
+            Dict mapping symbol to number of records synced
+        """
+        if isinstance(symbols, str):
+            symbols = [symbols]
+        
+        symbols = [s.upper() for s in symbols]
+        target_start = datetime.now() - self.parse_period(period)
+        
+        results = {}
+        
+        for symbol in symbols:
+            if progress_callback:
+                progress_callback(symbol, f"{ActivityEmoji.SYNC} syncing open interest")
+            
+            spinner = None
+            if show_spinner and not progress_callback:
+                spinner = ActivitySpinner(f"Fetching {symbol} open interest", ActivityEmoji.CHART)
+                spinner.start()
+            
+            try:
+                count = self._sync_open_interest_symbol(symbol, target_start, interval)
+                results[symbol] = count
+                
+                if spinner:
+                    spinner.stop(f"{symbol} OI: {count} records {ActivityEmoji.SPARKLE}")
+                elif progress_callback:
+                    emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
+                    progress_callback(symbol, f"{emoji} done ({count:,} records)")
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to sync OI for {symbol}: {e}")
+                results[symbol] = -1
+                
+                if spinner:
+                    spinner.stop(f"{symbol} OI: error", success=False)
+                elif progress_callback:
+                    progress_callback(symbol, f"{ActivityEmoji.ERROR} error: {e}")
+        
+        return results
+    
+    def _sync_open_interest_symbol(self, symbol: str, target_start: datetime, interval: str) -> int:
+        """Sync open interest data for a single symbol."""
+        symbol = symbol.upper()
+        
+        # Check existing data
+        existing = self.conn.execute("""
+            SELECT MAX(timestamp) as last_ts
+            FROM open_interest
+            WHERE symbol = ?
+        """, [symbol]).fetchone()
+        
+        last_ts = existing[0] if existing[0] else None
+        
+        # Determine start point
+        if last_ts and last_ts > target_start:
+            fetch_start = last_ts
+        else:
+            fetch_start = target_start
+        
+        # Fetch from API
+        all_records = []
+        current_end = datetime.now()
+        
+        # Bybit OI API returns max 200 records per request
+        while current_end > fetch_start:
+            try:
+                records = self.client.get_open_interest(
+                    symbol=symbol,
+                    interval=interval,
+                    limit=200,
+                )
+                
+                if not records:
+                    break
+                
+                # Parse records
+                for r in records:
+                    ts = datetime.fromtimestamp(int(r.get("timestamp", 0)) / 1000)
+                    if ts >= fetch_start and ts <= current_end:
+                        all_records.append({
+                            "symbol": symbol,
+                            "timestamp": ts,
+                            "open_interest": float(r.get("openInterest", 0)),
+                        })
+                
+                # Move window back
+                if records:
+                    earliest_ts = min(int(r.get("timestamp", 0)) for r in records)
+                    current_end = datetime.fromtimestamp(earliest_ts / 1000) - timedelta(hours=1)
+                else:
+                    break
+                
+                time.sleep(0.1)  # Rate limiting
+                
+            except Exception as e:
+                self.logger.warning(f"OI API error for {symbol}: {e}")
+                break
+        
+        if not all_records:
+            return 0
+        
+        # Store in DuckDB
+        df = pd.DataFrame(all_records)
+        self._store_open_interest(symbol, df)
+        
+        return len(all_records)
+    
+    def _store_open_interest(self, symbol: str, df: pd.DataFrame):
+        """Store open interest DataFrame in DuckDB."""
+        if df.empty:
+            return
+        
+        symbol = symbol.upper()
+        df = df.copy()
+        df["symbol"] = symbol
+        
+        # Remove timezone if present
+        if df["timestamp"].dt.tz is not None:
+            df["timestamp"] = df["timestamp"].dt.tz_localize(None)
+        
+        # Ensure columns
+        df = df[["symbol", "timestamp", "open_interest"]]
+        
+        # Insert or replace
+        self.conn.execute("""
+            INSERT OR REPLACE INTO open_interest (symbol, timestamp, open_interest)
+            SELECT symbol, timestamp, open_interest FROM df
+        """)
+        
+        # Update metadata
+        self._update_oi_metadata(symbol)
+    
+    def _update_oi_metadata(self, symbol: str):
+        """Update open interest metadata for a symbol."""
+        stats = self.conn.execute("""
+            SELECT 
+                MIN(timestamp) as first_ts,
+                MAX(timestamp) as last_ts,
+                COUNT(*) as count
+            FROM open_interest
+            WHERE symbol = ?
+        """, [symbol]).fetchone()
+        
+        self.conn.execute("""
+            INSERT OR REPLACE INTO open_interest_metadata 
+            VALUES (?, ?, ?, ?, ?)
+        """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
+    
+    def get_open_interest(
+        self,
+        symbol: str,
+        period: str = None,
+        start: datetime = None,
+        end: datetime = None,
+    ) -> pd.DataFrame:
+        """
+        Get open interest data as DataFrame.
+        
+        Args:
+            symbol: Trading symbol
+            period: Period string ("1M", "2W", etc.) - alternative to start/end
+            start: Start datetime
+            end: End datetime
+        
+        Returns:
+            DataFrame with timestamp, open_interest
+        """
+        symbol = symbol.upper()
+        
+        query = """
+            SELECT timestamp, open_interest
+            FROM open_interest
+            WHERE symbol = ?
+        """
+        params = [symbol]
+        
+        if period:
+            start = datetime.now() - self.parse_period(period)
+        
+        if start:
+            query += " AND timestamp >= ?"
+            params.append(start)
+        
+        if end:
+            query += " AND timestamp <= ?"
+            params.append(end)
+        
+        query += " ORDER BY timestamp"
+        
+        return self.conn.execute(query, params).df()
     
     # ==================== GAP DETECTION & FILLING ====================
     
@@ -1104,7 +1728,8 @@ class HistoricalDataStore:
     
     def get_database_stats(self) -> Dict:
         """Get overall database statistics."""
-        stats = self.conn.execute("""
+        # OHLCV stats
+        ohlcv_stats = self.conn.execute("""
             SELECT 
                 COUNT(DISTINCT symbol) as symbols,
                 COUNT(DISTINCT symbol || '_' || timeframe) as combinations,
@@ -1112,14 +1737,44 @@ class HistoricalDataStore:
             FROM ohlcv
         """).fetchone()
         
+        # Funding stats
+        funding_stats = self.conn.execute("""
+            SELECT 
+                COUNT(DISTINCT symbol) as symbols,
+                COUNT(*) as total_records
+            FROM funding_rates
+        """).fetchone()
+        
+        # Open interest stats
+        oi_stats = self.conn.execute("""
+            SELECT 
+                COUNT(DISTINCT symbol) as symbols,
+                COUNT(*) as total_records
+            FROM open_interest
+        """).fetchone()
+        
         file_size = self.db_path.stat().st_size if self.db_path.exists() else 0
         
         return {
             "db_path": str(self.db_path),
             "file_size_mb": round(file_size / (1024 * 1024), 2),
-            "symbols": stats[0],
-            "symbol_timeframe_combinations": stats[1],
-            "total_candles": stats[2],
+            "ohlcv": {
+                "symbols": ohlcv_stats[0],
+                "symbol_timeframe_combinations": ohlcv_stats[1],
+                "total_candles": ohlcv_stats[2],
+            },
+            "funding_rates": {
+                "symbols": funding_stats[0],
+                "total_records": funding_stats[1],
+            },
+            "open_interest": {
+                "symbols": oi_stats[0],
+                "total_records": oi_stats[1],
+            },
+            # Legacy fields for backwards compatibility
+            "symbols": ohlcv_stats[0],
+            "symbol_timeframe_combinations": ohlcv_stats[1],
+            "total_candles": ohlcv_stats[2],
         }
     
     # ==================== MAINTENANCE ====================

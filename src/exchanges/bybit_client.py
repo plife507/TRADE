@@ -8,7 +8,7 @@ providing a clean interface with:
 - Integration with trading bot logger
 - Custom rate limiting layer
 
-Reference: C:/CODE/AI/reference/exchanges/pybit/
+Reference: C:/CODE/AI/TRADE/reference/exchanges/pybit/
 """
 
 import time
@@ -30,6 +30,7 @@ from pybit.exceptions import (
 from ..utils.rate_limiter import RateLimiter, create_bybit_limiters
 from ..utils.logger import get_logger
 from ..utils.helpers import safe_float
+from ..utils.time_range import TimeRange
 
 
 # Re-export pybit exceptions for backwards compatibility
@@ -143,6 +144,15 @@ class BybitClient:
             self.base_url = "https://api-testnet.bybit.com"
         else:
             self.base_url = "https://api.bybit.com"
+        
+        # Log initialization details
+        mode_str = "DEMO" if use_demo else "LIVE"
+        auth_status = "authenticated" if api_key else "public-only"
+        self.logger.info(
+            f"BybitClient initialized: mode={mode_str}, "
+            f"base_url={self.base_url}, "
+            f"auth={auth_status}"
+        )
         
         # Rate limiters (additional layer on top of pybit's built-in)
         self._limiters = create_bybit_limiters()
@@ -761,12 +771,11 @@ class BybitClient:
     @handle_pybit_errors
     def get_order_history(
         self,
+        time_range: TimeRange,
         symbol: str = None,
         order_id: str = None,
         order_link_id: str = None,
         order_status: str = None,
-        start_time: int = None,
-        end_time: int = None,
         limit: int = 50,
         cursor: str = None,
         category: str = "linear",
@@ -774,13 +783,14 @@ class BybitClient:
         """
         Get order history.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit 7-day default.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 7 days)
             symbol: Trading symbol
             order_id: Specific order ID
             order_link_id: Custom order ID
             order_status: Filter by status
-            start_time: Start timestamp (ms)
-            end_time: End timestamp (ms)
             limit: Results limit
             cursor: Pagination cursor
             category: Market category
@@ -790,9 +800,15 @@ class BybitClient:
         """
         self._private_limiter.acquire()
         
+        # Always include explicit time range - never rely on API defaults
+        time_params = time_range.to_bybit_params()
+        self.logger.debug(f"get_order_history: {time_range.label} ({time_range.format_range()})")
+        
         kwargs = {
             "category": category,
             "limit": min(limit, 50),
+            "startTime": time_params["startTime"],
+            "endTime": time_params["endTime"],
         }
         if symbol:
             kwargs["symbol"] = symbol
@@ -802,10 +818,6 @@ class BybitClient:
             kwargs["orderLinkId"] = order_link_id
         if order_status:
             kwargs["orderStatus"] = order_status
-        if start_time:
-            kwargs["startTime"] = start_time
-        if end_time:
-            kwargs["endTime"] = end_time
         if cursor:
             kwargs["cursor"] = cursor
         
@@ -973,10 +985,9 @@ class BybitClient:
     @handle_pybit_errors
     def get_executions(
         self,
+        time_range: TimeRange,
         symbol: str = None,
         order_id: str = None,
-        start_time: int = None,
-        end_time: int = None,
         limit: int = 50,
         cursor: str = None,
         category: str = "linear",
@@ -984,11 +995,12 @@ class BybitClient:
         """
         Get trade execution history.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit 7-day default.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 7 days)
             symbol: Trading symbol
             order_id: Specific order ID
-            start_time: Start timestamp (ms)
-            end_time: End timestamp (ms)
             limit: Results limit
             cursor: Pagination cursor
             category: Market category
@@ -998,18 +1010,20 @@ class BybitClient:
         """
         self._private_limiter.acquire()
         
+        # Always include explicit time range - never rely on API defaults
+        time_params = time_range.to_bybit_params()
+        self.logger.debug(f"get_executions: {time_range.label} ({time_range.format_range()})")
+        
         kwargs = {
             "category": category,
             "limit": min(limit, 50),
+            "startTime": time_params["startTime"],
+            "endTime": time_params["endTime"],
         }
         if symbol:
             kwargs["symbol"] = symbol
         if order_id:
             kwargs["orderId"] = order_id
-        if start_time:
-            kwargs["startTime"] = start_time
-        if end_time:
-            kwargs["endTime"] = end_time
         if cursor:
             kwargs["cursor"] = cursor
         
@@ -1020,9 +1034,8 @@ class BybitClient:
     @handle_pybit_errors
     def get_closed_pnl(
         self,
+        time_range: TimeRange,
         symbol: str = None,
-        start_time: int = None,
-        end_time: int = None,
         limit: int = 50,
         cursor: str = None,
         category: str = "linear",
@@ -1030,10 +1043,11 @@ class BybitClient:
         """
         Get closed position PnL records.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit 7-day default.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 7 days)
             symbol: Trading symbol
-            start_time: Start timestamp (ms)
-            end_time: End timestamp (ms)
             limit: Results limit
             cursor: Pagination cursor
             category: Market category
@@ -1043,16 +1057,18 @@ class BybitClient:
         """
         self._private_limiter.acquire()
         
+        # Always include explicit time range - never rely on API defaults
+        time_params = time_range.to_bybit_params()
+        self.logger.debug(f"get_closed_pnl: {time_range.label} ({time_range.format_range()})")
+        
         kwargs = {
             "category": category,
             "limit": min(limit, 50),
+            "startTime": time_params["startTime"],
+            "endTime": time_params["endTime"],
         }
         if symbol:
             kwargs["symbol"] = symbol
-        if start_time:
-            kwargs["startTime"] = start_time
-        if end_time:
-            kwargs["endTime"] = end_time
         if cursor:
             kwargs["cursor"] = cursor
         
@@ -1504,20 +1520,22 @@ class BybitClient:
     @handle_pybit_errors
     def get_transaction_log(
         self,
+        time_range: TimeRange,
         account_type: str = "UNIFIED",
         category: str = None,
         currency: str = None,
         base_coin: str = None,
         log_type: str = None,
-        start_time: int = None,
-        end_time: int = None,
         limit: int = 50,
         cursor: str = None,
     ) -> Dict:
         """
         Get transaction logs in Unified account.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit 24-hour default.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 7 days)
             account_type: UNIFIED (default)
             category: spot, linear, option
             currency: Filter by currency
@@ -1525,8 +1543,6 @@ class BybitClient:
             log_type: TRANSFER_IN, TRANSFER_OUT, TRADE, SETTLEMENT, 
                      DELIVERY, LIQUIDATION, BONUS, FEE_REFUND, INTEREST,
                      CURRENCY_BUY, CURRENCY_SELL
-            start_time: Start timestamp (ms)
-            end_time: End timestamp (ms)
             limit: Results limit (max 50)
             cursor: Pagination cursor
         
@@ -1535,7 +1551,16 @@ class BybitClient:
         """
         self._private_limiter.acquire()
         
-        kwargs = {"accountType": account_type, "limit": min(limit, 50)}
+        # Always include explicit time range - never rely on API defaults
+        time_params = time_range.to_bybit_params()
+        self.logger.debug(f"get_transaction_log: {time_range.label} ({time_range.format_range()})")
+        
+        kwargs = {
+            "accountType": account_type,
+            "limit": min(limit, 50),
+            "startTime": time_params["startTime"],
+            "endTime": time_params["endTime"],
+        }
         if category:
             kwargs["category"] = category
         if currency:
@@ -1544,10 +1569,6 @@ class BybitClient:
             kwargs["baseCoin"] = base_coin
         if log_type:
             kwargs["type"] = log_type
-        if start_time:
-            kwargs["startTime"] = start_time
-        if end_time:
-            kwargs["endTime"] = end_time
         if cursor:
             kwargs["cursor"] = cursor
         
@@ -1618,19 +1639,19 @@ class BybitClient:
     @handle_pybit_errors
     def get_borrow_history(
         self,
+        time_range: TimeRange,
         currency: str = None,
-        start_time: int = None,
-        end_time: int = None,
         limit: int = 50,
         cursor: str = None,
     ) -> Dict:
         """
         Get borrow/interest history.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit 30-day default.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 30 days)
             currency: e.g., USDC, USDT, BTC, ETH
-            start_time: Start timestamp (ms)
-            end_time: End timestamp (ms)
             limit: Results limit (max 50)
             cursor: Pagination cursor
         
@@ -1639,13 +1660,17 @@ class BybitClient:
         """
         self._private_limiter.acquire()
         
-        kwargs = {"limit": min(limit, 50)}
+        # Always include explicit time range - never rely on API defaults
+        time_params = time_range.to_bybit_params()
+        self.logger.debug(f"get_borrow_history: {time_range.label} ({time_range.format_range()})")
+        
+        kwargs = {
+            "limit": min(limit, 50),
+            "startTime": time_params["startTime"],
+            "endTime": time_params["endTime"],
+        }
         if currency:
             kwargs["currency"] = currency
-        if start_time:
-            kwargs["startTime"] = start_time
-        if end_time:
-            kwargs["endTime"] = end_time
         if cursor:
             kwargs["cursor"] = cursor
         

@@ -6,6 +6,7 @@ These tools provide exchange connection testing, health checks, and status repor
 
 from typing import Optional, Dict, Any
 from .shared import ToolResult, _get_exchange_manager, _get_realtime_state
+from src.config.config import get_config
 
 
 def test_connection_tool() -> ToolResult:
@@ -343,6 +344,10 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
     total_count = len(tests)
     all_passed = passed_count == total_count
     
+    # Get API environment info
+    config = get_config()
+    api_env = config.get_api_environment_summary()
+    
     return ToolResult(
         success=all_passed,
         message=f"Health check: {passed_count}/{total_count} passed",
@@ -351,7 +356,91 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
             "passed_count": passed_count,
             "total_count": total_count,
             "all_passed": all_passed,
+            "api_environment": {
+                "trading_mode": api_env["trading"]["mode"],
+                "trading_base_url": api_env["trading"]["base_url"],
+                "data_mode": api_env["data"]["mode"],
+                "data_base_url": api_env["data"]["base_url"],
+                "websocket_mode": api_env["websocket"]["mode"],
+            },
         },
         source="rest_api",
     )
+
+
+def get_api_environment_tool() -> ToolResult:
+    """
+    Get comprehensive API environment information.
+    
+    Returns detailed info about:
+    - Trading API: DEMO vs LIVE, base URL, key status
+    - Data API: Always LIVE, base URL, key status
+    - WebSocket: Mode, URLs, enabled status
+    - Safety: Mode consistency validation
+    
+    Use this tool to verify which APIs the bot is configured to use.
+    
+    Returns:
+        ToolResult with API environment details
+    """
+    try:
+        config = get_config()
+        env = config.get_api_environment_summary()
+        
+        # Build human-readable message
+        trading = env["trading"]
+        data = env["data"]
+        websocket = env["websocket"]
+        safety = env["safety"]
+        
+        trading_status = f"Trading: {trading['mode']} ({trading['base_url']})"
+        data_status = f"Data: {data['mode']} ({data['base_url']})"
+        
+        if safety["mode_consistent"]:
+            safety_msg = "Mode consistency: ✓ OK"
+        else:
+            safety_msg = f"Mode consistency: ✗ WARNING - {safety['messages'][0] if safety['messages'] else 'Issues detected'}"
+        
+        return ToolResult(
+            success=True,
+            message=f"{trading_status} | {data_status}",
+            data={
+                "trading": {
+                    "mode": trading["mode"],
+                    "base_url": trading["base_url"],
+                    "key_configured": trading["key_configured"],
+                    "key_source": trading["key_source"],
+                    "is_demo": trading["is_demo"],
+                    "is_live": trading["is_live"],
+                    "trading_mode": trading.get("trading_mode", "not set"),
+                    "is_paper": trading.get("is_paper", False),
+                    "is_real": trading.get("is_real", False),
+                },
+                "data": {
+                    "mode": data["mode"],
+                    "base_url": data["base_url"],
+                    "key_configured": data["key_configured"],
+                    "key_source": data["key_source"],
+                    "note": data["note"],
+                },
+                "websocket": {
+                    "mode": websocket["mode"],
+                    "public_url": websocket["public_url"],
+                    "private_url": websocket["private_url"],
+                    "enabled": websocket.get("enabled", False),
+                    "auto_start": websocket.get("auto_start", False),
+                },
+                "safety": {
+                    "mode_consistent": safety["mode_consistent"],
+                    "messages": safety["messages"],
+                },
+                "display_string": config.get_api_environment_display(),
+            },
+            source="config",
+        )
+    except Exception as e:
+        return ToolResult(
+            success=False,
+            error=f"Failed to get API environment: {str(e)}",
+        )
 

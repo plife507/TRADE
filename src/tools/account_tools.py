@@ -2,10 +2,14 @@
 Account management tools for TRADE trading bot.
 
 These tools provide account balance, exposure, and portfolio-level operations.
+
+CRITICAL: All history tools require explicit time ranges. We never rely on
+Bybit's implicit defaults (24h for transaction log, 7d for orders, etc.).
 """
 
 from typing import Optional, Dict, Any
 from .shared import ToolResult, _get_exchange_manager, _get_realtime_state, _is_websocket_connected
+from ..utils.time_range import TimeRange, parse_time_window
 
 
 def get_account_balance_tool() -> ToolResult:
@@ -150,25 +154,54 @@ def get_portfolio_snapshot_tool() -> ToolResult:
         )
 
 
-def get_order_history_tool(symbol: Optional[str] = None, limit: int = 10) -> ToolResult:
+def get_order_history_tool(
+    window: Optional[str] = None,
+    start_ms: Optional[int] = None,
+    end_ms: Optional[int] = None,
+    symbol: Optional[str] = None,
+    limit: int = 50,
+) -> ToolResult:
     """
-    Get recent order history.
+    Get order history within a specified time range.
+    
+    CRITICAL: A time range is REQUIRED. Either provide 'window' OR both 'start_ms' and 'end_ms'.
+    Defaults to last 7 days if nothing provided.
     
     Args:
+        window: Time window string (e.g., "24h", "7d"). Max 7 days.
+        start_ms: Start timestamp in milliseconds (used if window not provided)
+        end_ms: End timestamp in milliseconds (used if window not provided)
         symbol: Filter by symbol (None for all)
-        limit: Maximum number of orders to return
+        limit: Maximum number of orders to return (1-50)
     
     Returns:
-        ToolResult with list of recent orders
+        ToolResult with list of orders and time_range metadata
     """
     try:
+        # Parse time range (defaults to 7d for order history)
+        time_range = parse_time_window(
+            window=window,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            endpoint_type="order_history",
+            default_window="7d",
+        )
+        
         exchange = _get_exchange_manager()
-        orders = exchange.get_order_history(symbol=symbol, limit=limit)
+        orders = exchange.get_order_history(
+            time_range=time_range,
+            symbol=symbol,
+            limit=limit,
+        )
         
         return ToolResult(
             success=True,
-            message=f"Retrieved {len(orders)} orders",
-            data={"orders": orders, "count": len(orders)},
+            message=f"Retrieved {len(orders)} orders ({time_range.label})",
+            data={
+                "orders": orders,
+                "count": len(orders),
+                "time_range": time_range.to_dict(),
+            },
             source="rest_api",
         )
     except Exception as e:
@@ -178,30 +211,56 @@ def get_order_history_tool(symbol: Optional[str] = None, limit: int = 10) -> Too
         )
 
 
-def get_closed_pnl_tool(symbol: Optional[str] = None, limit: int = 10) -> ToolResult:
+def get_closed_pnl_tool(
+    window: Optional[str] = None,
+    start_ms: Optional[int] = None,
+    end_ms: Optional[int] = None,
+    symbol: Optional[str] = None,
+    limit: int = 50,
+) -> ToolResult:
     """
-    Get recent closed P&L records.
+    Get closed P&L records within a specified time range.
+    
+    CRITICAL: A time range is REQUIRED. Either provide 'window' OR both 'start_ms' and 'end_ms'.
+    Defaults to last 7 days if nothing provided.
     
     Args:
+        window: Time window string (e.g., "24h", "7d"). Max 7 days.
+        start_ms: Start timestamp in milliseconds (used if window not provided)
+        end_ms: End timestamp in milliseconds (used if window not provided)
         symbol: Filter by symbol (None for all)
-        limit: Maximum number of records to return
+        limit: Maximum number of records to return (1-50)
     
     Returns:
-        ToolResult with closed P&L data and total
+        ToolResult with closed P&L data, total, and time_range metadata
     """
     try:
+        # Parse time range (defaults to 7d for closed PnL)
+        time_range = parse_time_window(
+            window=window,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            endpoint_type="closed_pnl",
+            default_window="7d",
+        )
+        
         exchange = _get_exchange_manager()
-        closed_pnl = exchange.get_closed_pnl(symbol=symbol, limit=limit)
+        closed_pnl = exchange.get_closed_pnl(
+            time_range=time_range,
+            symbol=symbol,
+            limit=limit,
+        )
         
         total_pnl = sum(float(p.get('closedPnl', 0)) for p in closed_pnl)
         
         return ToolResult(
             success=True,
-            message=f"Closed PnL: ${total_pnl:,.2f} ({len(closed_pnl)} trades)",
+            message=f"Closed PnL: ${total_pnl:,.2f} ({len(closed_pnl)} trades, {time_range.label})",
             data={
                 "records": closed_pnl,
                 "count": len(closed_pnl),
                 "total_pnl": total_pnl,
+                "time_range": time_range.to_dict(),
             },
             source="rest_api",
         )
@@ -217,15 +276,24 @@ def get_closed_pnl_tool(symbol: Optional[str] = None, limit: int = 10) -> ToolRe
 # ==============================================================================
 
 def get_transaction_log_tool(
+    window: Optional[str] = None,
+    start_ms: Optional[int] = None,
+    end_ms: Optional[int] = None,
     category: Optional[str] = None,
     currency: Optional[str] = None,
     log_type: Optional[str] = None,
-    limit: int = 20,
+    limit: int = 50,
 ) -> ToolResult:
     """
-    Get transaction logs from Unified account.
+    Get transaction logs from Unified account within a specified time range.
+    
+    CRITICAL: A time range is REQUIRED. Either provide 'window' OR both 'start_ms' and 'end_ms'.
+    Defaults to last 7 days if nothing provided (max for transaction log is 7 days).
     
     Args:
+        window: Time window string (e.g., "24h", "7d"). Max 7 days.
+        start_ms: Start timestamp in milliseconds (used if window not provided)
+        end_ms: End timestamp in milliseconds (used if window not provided)
         category: spot, linear, option (None for all)
         currency: Filter by currency (e.g., USDT, BTC)
         log_type: TRADE, SETTLEMENT, TRANSFER_IN, TRANSFER_OUT,
@@ -233,11 +301,21 @@ def get_transaction_log_tool(
         limit: Maximum records (1-50)
     
     Returns:
-        ToolResult with transaction log data
+        ToolResult with transaction log data and time_range metadata
     """
     try:
+        # Parse time range (defaults to 7d for transaction log)
+        time_range = parse_time_window(
+            window=window,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            endpoint_type="transaction_log",
+            default_window="7d",
+        )
+        
         exchange = _get_exchange_manager()
         result = exchange.get_transaction_log(
+            time_range=time_range,
             category=category,
             currency=currency,
             log_type=log_type,
@@ -248,11 +326,12 @@ def get_transaction_log_tool(
         
         return ToolResult(
             success=True,
-            message=f"Retrieved {len(records)} transaction log entries",
+            message=f"Retrieved {len(records)} transaction log entries ({time_range.label})",
             data={
                 "records": records,
                 "count": len(records),
                 "nextPageCursor": result.get("nextPageCursor"),
+                "time_range": time_range.to_dict(),
             },
             source="rest_api",
         )
@@ -336,31 +415,54 @@ def set_collateral_coin_tool(coin: str, enabled: bool) -> ToolResult:
 
 
 def get_borrow_history_tool(
+    window: Optional[str] = None,
+    start_ms: Optional[int] = None,
+    end_ms: Optional[int] = None,
     currency: Optional[str] = None,
-    limit: int = 20,
+    limit: int = 50,
 ) -> ToolResult:
     """
-    Get borrow/interest history.
+    Get borrow/interest history within a specified time range.
+    
+    CRITICAL: A time range is REQUIRED. Either provide 'window' OR both 'start_ms' and 'end_ms'.
+    Defaults to last 30 days if nothing provided (max for borrow history is 30 days).
     
     Args:
+        window: Time window string (e.g., "7d", "30d"). Max 30 days.
+        start_ms: Start timestamp in milliseconds (used if window not provided)
+        end_ms: End timestamp in milliseconds (used if window not provided)
         currency: Filter by currency (e.g., USDT, BTC)
         limit: Maximum records (1-50)
     
     Returns:
-        ToolResult with borrow history records
+        ToolResult with borrow history records and time_range metadata
     """
     try:
+        # Parse time range (defaults to 30d for borrow history)
+        time_range = parse_time_window(
+            window=window,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            endpoint_type="borrow_history",
+            default_window="30d",
+        )
+        
         exchange = _get_exchange_manager()
-        result = exchange.get_borrow_history(currency=currency, limit=limit)
+        result = exchange.get_borrow_history(
+            time_range=time_range,
+            currency=currency,
+            limit=limit,
+        )
         
         records = result.get("list", [])
         
         return ToolResult(
             success=True,
-            message=f"Retrieved {len(records)} borrow history entries",
+            message=f"Retrieved {len(records)} borrow history entries ({time_range.label})",
             data={
                 "records": records,
                 "count": len(records),
+                "time_range": time_range.to_dict(),
             },
             source="rest_api",
         )

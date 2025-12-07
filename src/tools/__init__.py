@@ -134,6 +134,7 @@ from .diagnostics_tools import (
     get_websocket_status_tool,
     exchange_health_check_tool,
     is_healthy_for_trading_tool,
+    get_api_environment_tool,
 )
 
 # Market data tools
@@ -153,6 +154,7 @@ from .data_tools import (
     list_cached_symbols_tool,
     get_symbol_status_tool,
     get_symbol_summary_tool,
+    get_symbol_timeframe_ranges_tool,
     sync_symbols_tool,
     sync_range_tool,
     fill_gaps_tool,
@@ -160,6 +162,17 @@ from .data_tools import (
     delete_symbol_tool,
     cleanup_empty_symbols_tool,
     vacuum_database_tool,
+    # Funding rate tools
+    sync_funding_tool,
+    get_funding_history_tool,
+    # Open interest tools
+    sync_open_interest_tool,
+    get_open_interest_history_tool,
+    # Sync to now tools
+    sync_to_now_tool,
+    sync_to_now_and_fill_gaps_tool,
+    # Composite build tools
+    build_symbol_history_tool,
 )
 
 __all__ = [
@@ -239,6 +252,7 @@ __all__ = [
     "get_websocket_status_tool",
     "exchange_health_check_tool",
     "is_healthy_for_trading_tool",
+    "get_api_environment_tool",
     
     # Market data tools
     "get_price_tool",
@@ -254,6 +268,7 @@ __all__ = [
     "list_cached_symbols_tool",
     "get_symbol_status_tool",
     "get_symbol_summary_tool",
+    "get_symbol_timeframe_ranges_tool",
     "sync_symbols_tool",
     "sync_range_tool",
     "fill_gaps_tool",
@@ -261,4 +276,15 @@ __all__ = [
     "delete_symbol_tool",
     "cleanup_empty_symbols_tool",
     "vacuum_database_tool",
+    # Funding rate tools
+    "sync_funding_tool",
+    "get_funding_history_tool",
+    # Open interest tools
+    "sync_open_interest_tool",
+    "get_open_interest_history_tool",
+    # Sync to now tools
+    "sync_to_now_tool",
+    "sync_to_now_and_fill_gaps_tool",
+    # Composite build tools
+    "build_symbol_history_tool",
 ]

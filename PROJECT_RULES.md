@@ -7,6 +7,30 @@
 3. **Tools as API**: All operations go through `src/tools/*` with `ToolRegistry` for orchestration.
 4. **No Hardcoding**: Symbols, sizes, paths from config.
 
+## Strict Trading Mode / API Mapping
+
+**Canonical Contract**: Trading mode and API environment have a strict 1:1 mapping:
+
+| TRADING_MODE | BYBIT_USE_DEMO | Result | Account |
+|--------------|----------------|--------|---------|
+| `paper` | `true` | ✅ Valid | Demo account (fake funds) |
+| `real` | `false` | ✅ Valid | Live account (real funds) |
+| `paper` | `false` | ❌ BLOCKED | Invalid configuration |
+| `real` | `true` | ❌ BLOCKED | Invalid configuration |
+
+**Key Points**:
+- We **never simulate** trades. Both modes execute real orders on Bybit.
+- The difference is which account (demo vs live) receives those orders.
+- Invalid combinations are hard errors that block startup/trading.
+- Data API (market data, historical data) **always** uses LIVE API for accuracy.
+- WebSocket endpoints match the trading mode (demo WS for paper, live WS for real).
+
+**Strict API Key Contract (No Fallbacks)**:
+- `BYBIT_DEMO_API_KEY` → Required for DEMO mode trading
+- `BYBIT_LIVE_API_KEY` → Required for LIVE mode trading
+- `BYBIT_LIVE_DATA_API_KEY` → Required for all data operations (always LIVE)
+- Generic keys (`BYBIT_API_KEY`) are **NOT used** - no fallbacks allowed
+
 ## Code Organization
 
 ### What Goes Where
@@ -73,6 +97,7 @@ symbols = config.trading.default_symbols
 2. **Risk Limits**: Never bypass risk manager
 3. **Panic Available**: Panic button must always work
 4. **Log Everything**: Every order, every error
+5. **Real Interface Testing**: Always test through actual CLI/interface, never synthetic unit tests alone
 
 ## Tool Registry
 

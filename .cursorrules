@@ -32,6 +32,13 @@ ALL trades MUST flow through: Strategy → Risk Manager → Order Executor → E
 - All API calls must go through rate_limiter.py
 - Use batch endpoints when possible (10 orders = 1 API call)
 
+### Exchange API Reference (CRITICAL)
+**ALWAYS reference `C:\CODE\AI\TRADE\reference\exchanges` for ALL API and exchange interface information.**
+- Bybit API documentation: `C:\CODE\AI\TRADE\reference\exchanges\bybit\docs\v5\`
+- pybit SDK reference: `C:\CODE\AI\TRADE\reference\exchanges\pybit\`
+- When implementing exchange features, endpoints, or understanding API behavior, consult these reference files FIRST
+- Never guess API parameters, endpoints, or behavior - always verify against the reference documentation
+
 ### Markdown File Editing Efficiency (TOKEN CONSERVATION)
 **CRITICAL**: When editing markdown files (.md, .mdx), NEVER rewrite the entire file. Only edit the specific sections that need changes.
 - Use `search_replace` tool to make targeted edits to specific lines/sections
@@ -40,6 +47,15 @@ ALL trades MUST flow through: Strategy → Risk Manager → Order Executor → E
 - This rule applies to ALL markdown files: documentation, README files, CLAUDE.md, etc.
 - Rewriting entire markdown files wastes tokens and API usage unnecessarily
 - **IF a full rewrite is truly necessary**: ALWAYS prompt the user first and wait for explicit approval before rewriting the entire file
+
+### Testing Through Real Interfaces (NO SYNTHETIC TESTS)
+**CRITICAL**: Always validate changes by walking through the actual interface.
+- NEVER rely solely on synthetic unit tests - they can pass while real usage fails
+- After making changes, run the actual CLI (`python trade_cli.py`) to verify
+- Test through the same paths a real user would use
+- Unit tests are supplementary, not a replacement for real interface testing
+- If a feature works in tests but fails in CLI, the tests are incomplete
+- Always verify with real API calls (demo mode) when testing trading features
 
 ## Architecture Rules
 
@@ -196,5 +212,10 @@ When adding new features, verify:
 - PROJECT_RULES.md - Comprehensive development rules
 - CLAUDE.md - Detailed guidance for AI assistants
 - PROJECT_DESCRIPTION.md - Full project documentation
-- Bybit V5 API docs: C:\CODE\AI\reference\exchanges\bybit\docs\v5\
+
+### Exchange API Reference Directory
+
+**CRITICAL**: Always reference `C:\CODE\AI\TRADE\reference\exchanges\` for ALL API and exchange interface information:
+- Bybit V5 API docs: `C:\CODE\AI\TRADE\reference\exchanges\bybit\docs\v5\`
+- pybit SDK: `C:\CODE\AI\TRADE\reference\exchanges\pybit\`
 

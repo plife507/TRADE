@@ -13,10 +13,11 @@ from dotenv import load_dotenv
 # The config only stores user-configured symbols from environment variables
 
 
-# Trading modes
+# Trading modes - strict mapping to API environments
+# PAPER must use DEMO API, REAL must use LIVE API
 class TradingMode:
-    PAPER = "paper"  # Demo mode - simulated trades (safe for testing)
-    REAL = "real"    # Live trading (REAL MONEY!)
+    PAPER = "paper"  # Demo trading on Bybit demo account (fake money, real API orders)
+    REAL = "real"    # Live trading on Bybit live account (real money, real API orders)
 
 
 @dataclass
@@ -54,11 +55,13 @@ class BybitConfig:
     live_data_api_key: str = ""
     live_data_api_secret: str = ""
     
-    # Legacy/fallback keys (used if mode-specific keys not set)
-    api_key: str = ""
-    api_secret: str = ""
-    data_api_key: str = ""
-    data_api_secret: str = ""
+    # DEPRECATED: Legacy/generic keys - NOT used in strict mode
+    # These fields exist only for backward compatibility inspection.
+    # All credential behavior uses only the canonical 4 keys above.
+    api_key: str = ""       # DEPRECATED: Use demo_api_key or live_api_key
+    api_secret: str = ""    # DEPRECATED: Use demo_api_secret or live_api_secret
+    data_api_key: str = ""  # DEPRECATED: Use live_data_api_key
+    data_api_secret: str = ""  # DEPRECATED: Use live_data_api_secret
     
     # Endpoints
     demo_base_url: str = "https://api-demo.bybit.com"   # DEMO (FAKE MONEY)
@@ -69,37 +72,47 @@ class BybitConfig:
     
     def get_credentials(self) -> tuple:
         """
-        Get trading API key and secret for current mode.
+        Get trading API key and secret for current mode (STRICT - no fallbacks).
         
-        Returns appropriate credentials based on demo/live mode.
-        Falls back to generic keys if mode-specific keys not set.
+        CANONICAL KEY CONTRACT:
+        - DEMO mode (use_demo=True): Returns ONLY demo_api_key / demo_api_secret
+        - LIVE mode (use_demo=False): Returns ONLY live_api_key / live_api_secret
+        
+        No fallback to generic keys. If mode-specific keys are not set,
+        validation will fail and block startup.
+        
+        Returns:
+            Tuple of (api_key, api_secret) for current trading mode
         """
         if self.use_demo:
-            # Try demo-specific keys first, then fallback
-            key = self.demo_api_key or self.api_key
-            secret = self.demo_api_secret or self.api_secret
+            # STRICT: DEMO mode requires BYBIT_DEMO_API_KEY (no fallback)
+            return self.demo_api_key, self.demo_api_secret
         else:
-            # Try live-specific keys first, then fallback
-            key = self.live_api_key or self.api_key
-            secret = self.live_api_secret or self.api_secret
-        return key, secret
+            # STRICT: LIVE mode requires BYBIT_LIVE_API_KEY (no fallback)
+            return self.live_api_key, self.live_api_secret
     
     def get_data_credentials(self) -> tuple:
         """
-        Get data API key and secret for current mode (read-only, for market data).
+        Get data API key and secret for current mode (STRICT - no fallbacks).
         
         Data keys have higher rate limits (120 RPS vs 50 RPS).
-        Falls back to trading keys if data keys not set.
+        
+        CANONICAL KEY CONTRACT:
+        - DEMO mode (use_demo=True): Returns ONLY demo_data_api_key / demo_data_api_secret
+        - LIVE mode (use_demo=False): Returns ONLY live_data_api_key / live_data_api_secret
+        
+        NOTE: For historical/market data, use get_live_data_credentials() instead,
+        which ALWAYS returns LIVE data keys regardless of trading mode.
+        
+        Returns:
+            Tuple of (api_key, api_secret) for current mode's data operations
         """
         if self.use_demo:
-            # Try demo data keys, then demo trading keys, then generic
-            key = self.demo_data_api_key or self.demo_api_key or self.data_api_key or self.api_key
-            secret = self.demo_data_api_secret or self.demo_api_secret or self.data_api_secret or self.api_secret
+            # STRICT: DEMO mode data uses BYBIT_DEMO_DATA_API_KEY (no fallback)
+            return self.demo_data_api_key, self.demo_data_api_secret
         else:
-            # Try live data keys, then live trading keys, then generic
-            key = self.live_data_api_key or self.live_api_key or self.data_api_key or self.api_key
-            secret = self.live_data_api_secret or self.live_api_secret or self.data_api_secret or self.api_secret
-        return key, secret
+            # STRICT: LIVE mode data uses BYBIT_LIVE_DATA_API_KEY (no fallback)
+            return self.live_data_api_key, self.live_data_api_secret
     
     def get_base_url(self) -> str:
         """Get base URL based on demo/live mode."""
@@ -140,30 +153,119 @@ class BybitConfig:
     
     def get_live_data_credentials(self) -> tuple:
         """
-        Get LIVE data API credentials (always LIVE, regardless of use_demo setting).
+        Get LIVE data API credentials (STRICT - no fallbacks).
         
         Historical and market data should always use LIVE API for accuracy.
         The LIVE API has real market data that matches production trading.
         
-        This method ALWAYS returns LIVE credentials, never DEMO.
+        CANONICAL KEY CONTRACT:
+        - This method ALWAYS returns live_data_api_key / live_data_api_secret
+        - Regardless of use_demo setting (data is always from LIVE API)
+        - No fallback to trading keys or generic keys
+        
+        If BYBIT_LIVE_DATA_API_KEY is not set, validation will fail
+        and data operations will be blocked.
         
         Returns:
             Tuple of (api_key, api_secret) for LIVE data API
         """
-        # Always return LIVE data keys, regardless of use_demo setting
-        key = self.live_data_api_key or self.live_api_key or self.data_api_key or self.api_key
-        secret = self.live_data_api_secret or self.live_api_secret or self.data_api_secret or self.api_secret
-        return key, secret
+        # STRICT: Data operations require BYBIT_LIVE_DATA_API_KEY (no fallback)
+        return self.live_data_api_key, self.live_data_api_secret
     
     def has_live_data_credentials(self) -> bool:
         """
-        Check if LIVE data API credentials are configured.
+        Check if LIVE data API credentials are configured (STRICT).
         
-        Used to warn users if LIVE data keys are missing (data operations
-        will fail or fallback to unauthenticated access).
+        Returns True only if BYBIT_LIVE_DATA_API_KEY and SECRET are set.
+        Data operations require these keys; no fallback is allowed.
         """
-        key, secret = self.get_live_data_credentials()
-        return bool(key and secret)
+        # STRICT: Only check live_data_api_key (no fallback chain)
+        return bool(self.live_data_api_key and self.live_data_api_secret)
+    
+    def get_api_environment_summary(self) -> dict:
+        """
+        Get a comprehensive summary of API environment configuration.
+        
+        This provides a single place to inspect which APIs are being used for:
+        - Trading (demo vs live, based on use_demo setting)
+        - Data (always live for accuracy)
+        - WebSocket (matches trading mode)
+        
+        Returns:
+            Dict with trading, data, and websocket environment info
+        """
+        # Trading API environment
+        trading_key, _ = self.get_credentials()
+        trading_mode = "DEMO" if self.use_demo else "LIVE"
+        trading_url = self.demo_base_url if self.use_demo else self.live_base_url
+        
+        # Determine which key is used for trading (STRICT - canonical keys only)
+        if self.use_demo:
+            if self.demo_api_key:
+                trading_key_source = "BYBIT_DEMO_API_KEY"
+            else:
+                trading_key_source = "MISSING (BYBIT_DEMO_API_KEY required)"
+        else:
+            if self.live_api_key:
+                trading_key_source = "BYBIT_LIVE_API_KEY"
+            else:
+                trading_key_source = "MISSING (BYBIT_LIVE_API_KEY required)"
+        
+        # Data API environment (STRICT - always LIVE, always live_data_api_key)
+        data_key, _ = self.get_live_data_credentials()
+        if self.live_data_api_key:
+            data_key_source = "BYBIT_LIVE_DATA_API_KEY"
+        else:
+            data_key_source = "MISSING (BYBIT_LIVE_DATA_API_KEY required)"
+        
+        # WebSocket environment (matches trading mode)
+        ws_mode = "DEMO" if self.use_demo else "LIVE"
+        ws_public_url = "wss://stream-demo.bybit.com" if self.use_demo else "wss://stream.bybit.com"
+        ws_private_url = ws_public_url  # Same host for public/private
+        
+        return {
+            "trading": {
+                "mode": trading_mode,
+                "base_url": trading_url,
+                "key_configured": bool(trading_key),
+                "key_source": trading_key_source,
+                "is_demo": self.use_demo,
+                "is_live": not self.use_demo,
+            },
+            "data": {
+                "mode": "LIVE",  # Data is ALWAYS live
+                "base_url": self.live_base_url,
+                "key_configured": bool(data_key),
+                "key_source": data_key_source,
+                "note": "Data API always uses LIVE for accuracy",
+            },
+            "websocket": {
+                "mode": ws_mode,
+                "public_url": ws_public_url,
+                "private_url": ws_private_url,
+            },
+        }
+    
+    def get_api_environment_display(self) -> str:
+        """
+        Get a short human-readable API environment string for display.
+        
+        Returns:
+            String like "Trading: DEMO | Data: LIVE"
+        """
+        env = self.get_api_environment_summary()
+        trading = env["trading"]
+        data = env["data"]
+        
+        trading_str = f"Trading: {trading['mode']}"
+        if not trading["key_configured"]:
+            trading_str += " (no key)"
+        
+        data_str = f"Data: {data['mode']}"
+        if not data["key_configured"]:
+            data_str += " (public only)"
+        
+        return f"{trading_str} | {data_str}"
 
 
 @dataclass
@@ -201,19 +303,11 @@ class RiskConfig:
 
 @dataclass
 class DataConfig:
-    """Data collection configuration."""
-    enable_capture: bool = False
-    capture_symbols: List[str] = field(default_factory=list)  # Must be set via env var or explicitly
-    capture_timeframes: List[str] = field(default_factory=lambda: ["1m", "5m", "15m", "1h", "4h", "1d"])
-    capture_interval_seconds: int = 60
+    """Data configuration for market data and historical storage."""
+    # DuckDB storage path
+    db_path: str = "data/market_data.duckdb"
     
-    # Storage paths
-    data_dir: str = "data/historical"
-    ohlcv_dir: str = "data/historical/ohlcv"
-    funding_dir: str = "data/historical/funding"
-    oi_dir: str = "data/historical/open_interest"
-    
-    # Cache settings (for live data)
+    # Cache settings (for live MarketData module)
     price_cache_seconds: int = 2
     ohlcv_cache_seconds: int = 60
     funding_cache_seconds: int = 300
@@ -313,8 +407,18 @@ class LogConfig:
 
 @dataclass 
 class TradingConfig:
-    """Main trading configuration."""
-    # Mode (paper = demo, real = live trading)
+    """
+    Main trading configuration.
+    
+    Trading modes have a strict 1:1 mapping to API environments:
+    - PAPER mode → must use DEMO API (BYBIT_USE_DEMO=true)
+    - REAL mode → must use LIVE API (BYBIT_USE_DEMO=false)
+    
+    We never simulate trades in this codebase; both modes execute
+    real orders on the Bybit API. The difference is which account
+    (demo vs live) receives those orders.
+    """
+    # Mode (paper = demo account, real = live account)
     mode: str = TradingMode.PAPER
     
     # Symbols - must be set via env var (DEFAULT_SYMBOLS) or passed explicitly
@@ -329,17 +433,26 @@ class TradingConfig:
     
     @property
     def is_paper(self) -> bool:
-        """Paper mode = simulated trades (demo)."""
+        """Paper mode = demo trading on Bybit demo account (fake money)."""
         return self.mode == TradingMode.PAPER
     
     @property
     def is_real(self) -> bool:
-        """Real mode = live trading."""
+        """Real mode = live trading on Bybit live account (real money)."""
         return self.mode == TradingMode.REAL
     
     @property
     def uses_real_money(self) -> bool:
-        """Only real mode with demo=false uses actual money."""
+        """
+        Check if this configuration uses real money.
+        
+        Real money is at risk only when:
+        - TRADING_MODE=real AND BYBIT_USE_DEMO=false
+        
+        This requires checking both trading mode and API environment,
+        but TradingConfig only knows its own mode. The full check
+        happens in Config.validate_trading_mode_consistency().
+        """
         return self.mode == TradingMode.REAL
 
 
@@ -382,29 +495,31 @@ class Config:
     
     def _load_bybit_config(self) -> BybitConfig:
         """
-        Load Bybit configuration from environment.
+        Load Bybit configuration from environment (STRICT - no fallbacks).
         
-        Supports separate API keys for Demo and Live modes:
-        - BYBIT_DEMO_API_KEY / BYBIT_DEMO_API_SECRET for demo
-        - BYBIT_LIVE_API_KEY / BYBIT_LIVE_API_SECRET for live
+        CANONICAL KEY CONTRACT (only these 4 key pairs are used):
+        - BYBIT_DEMO_API_KEY / SECRET → DEMO trading (fake money)
+        - BYBIT_LIVE_API_KEY / SECRET → LIVE trading (real money)
+        - BYBIT_LIVE_DATA_API_KEY / SECRET → Data operations (always LIVE)
+        - BYBIT_DEMO_DATA_API_KEY / SECRET → Demo data (optional)
         
-        Falls back to generic BYBIT_API_KEY / BYBIT_API_SECRET if
-        mode-specific keys are not set.
+        Legacy/generic keys (BYBIT_API_KEY, BYBIT_DATA_API_KEY) are loaded
+        for backward compatibility inspection but are NOT used for behavior.
         """
         return BybitConfig(
-            # Demo API keys (api-demo.bybit.com)
+            # CANONICAL: Demo trading keys (api-demo.bybit.com)
             demo_api_key=os.getenv("BYBIT_DEMO_API_KEY", ""),
             demo_api_secret=os.getenv("BYBIT_DEMO_API_SECRET", ""),
             demo_data_api_key=os.getenv("BYBIT_DEMO_DATA_API_KEY", ""),
             demo_data_api_secret=os.getenv("BYBIT_DEMO_DATA_API_SECRET", ""),
             
-            # Live API keys (api.bybit.com - REAL MONEY!)
+            # CANONICAL: Live trading keys (api.bybit.com - REAL MONEY!)
             live_api_key=os.getenv("BYBIT_LIVE_API_KEY", ""),
             live_api_secret=os.getenv("BYBIT_LIVE_API_SECRET", ""),
             live_data_api_key=os.getenv("BYBIT_LIVE_DATA_API_KEY", ""),
             live_data_api_secret=os.getenv("BYBIT_LIVE_DATA_API_SECRET", ""),
             
-            # Fallback/legacy keys (used if mode-specific keys not set)
+            # DEPRECATED: Legacy keys - loaded for inspection only, NOT used for behavior
             api_key=os.getenv("BYBIT_API_KEY", os.getenv("BYBIT_MAINNET_API_KEY", "")),
             api_secret=os.getenv("BYBIT_API_SECRET", os.getenv("BYBIT_MAINNET_API_SECRET", "")),
             data_api_key=os.getenv("BYBIT_DATA_API_KEY", os.getenv("BYBIT_MAINNET_DATA_API_KEY", "")),
@@ -425,13 +540,11 @@ class Config:
     
     def _load_data_config(self) -> DataConfig:
         """Load data configuration from environment."""
-        symbols_str = os.getenv("DATA_CAPTURE_SYMBOLS", "")
-        # Only create list if symbols are actually configured
-        capture_symbols = [s.strip().upper() for s in symbols_str.split(",") if s.strip()] if symbols_str else []
         return DataConfig(
-            enable_capture=os.getenv("ENABLE_DATA_CAPTURE", "false").lower() == "true",
-            capture_symbols=capture_symbols,
-            capture_interval_seconds=int(os.getenv("DATA_CAPTURE_INTERVAL_SECONDS", "60")),
+            db_path=os.getenv("DATA_DB_PATH", "data/market_data.duckdb"),
+            price_cache_seconds=int(os.getenv("PRICE_CACHE_SECONDS", "2")),
+            ohlcv_cache_seconds=int(os.getenv("OHLCV_CACHE_SECONDS", "60")),
+            funding_cache_seconds=int(os.getenv("FUNDING_CACHE_SECONDS", "300")),
         )
     
     def _load_log_config(self) -> LogConfig:
@@ -508,38 +621,42 @@ class Config:
         errors = []
         warnings = []
         
-        # === API Credentials Validation ===
+        # === API Credentials Validation (STRICT - no fallbacks) ===
         api_key, api_secret = self.bybit.get_credentials()
         mode_name = self.bybit.get_mode_name()
         
+        # Trading keys are REQUIRED for the current mode
         if not api_key or not api_secret:
-            errors.append(f"Bybit {mode_name} API credentials not configured")
             if self.bybit.is_demo:
-                errors.append("  Set BYBIT_DEMO_API_KEY and BYBIT_DEMO_API_SECRET in .env")
+                errors.append(
+                    f"MISSING REQUIRED KEY: BYBIT_DEMO_API_KEY and BYBIT_DEMO_API_SECRET are required for {mode_name} mode. "
+                    "No fallback keys are used. Set these environment variables in .env or api_keys.env."
+                )
             else:
-                errors.append("  Set BYBIT_LIVE_API_KEY and BYBIT_LIVE_API_SECRET in .env")
+                errors.append(
+                    f"MISSING REQUIRED KEY: BYBIT_LIVE_API_KEY and BYBIT_LIVE_API_SECRET are required for {mode_name} mode. "
+                    "No fallback keys are used. Set these environment variables in .env or api_keys.env."
+                )
         
-        # Verify correct key type for mode
-        if self.bybit.is_demo:
-            if not self.bybit.demo_api_key and self.bybit.api_key:
-                warnings.append("Using fallback API key for DEMO mode - consider using BYBIT_DEMO_API_KEY")
-        else:
-            if not self.bybit.live_api_key and self.bybit.api_key:
-                warnings.append("⚠️ Using fallback API key for LIVE mode - consider using BYBIT_LIVE_API_KEY")
-        
-        # === Environment & Trading Mode Consistency ===
-        # If trading mode is REAL but using DEMO API, that's a mismatch
-        if self.trading.mode == TradingMode.REAL and self.bybit.is_demo:
-            warnings.append(
-                "⚠️ TRADING_MODE=real but BYBIT_USE_DEMO=true: "
-                "Trades will execute on DEMO account (no real money)"
+        # Data keys are ALWAYS required (data always uses LIVE API)
+        if not self.bybit.has_live_data_credentials():
+            errors.append(
+                "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY and BYBIT_LIVE_DATA_API_SECRET are required for data operations. "
+                "Historical and market data always use the LIVE API for accuracy. No fallback keys are used."
             )
         
-        # If trading mode is PAPER but using LIVE API
+        # === Environment & Trading Mode Consistency (STRICT) ===
+        # Only two valid combinations: PAPER+DEMO or REAL+LIVE
+        if self.trading.mode == TradingMode.REAL and self.bybit.is_demo:
+            errors.append(
+                "INVALID: TRADING_MODE=real but BYBIT_USE_DEMO=true. "
+                "REAL mode requires LIVE API (BYBIT_USE_DEMO=false)."
+            )
+        
         if self.trading.mode == TradingMode.PAPER and self.bybit.is_live:
-            warnings.append(
-                "TRADING_MODE=paper but BYBIT_USE_DEMO=false: "
-                "API calls use LIVE account but trades are simulated"
+            errors.append(
+                "INVALID: TRADING_MODE=paper but BYBIT_USE_DEMO=false. "
+                "PAPER mode requires DEMO API (BYBIT_USE_DEMO=true)."
             )
         
         # === LIVE Mode Extra Validation ===
@@ -586,10 +703,12 @@ class Config:
         Returns:
             Tuple of (can_trade, reason if not)
         """
-        # Must have valid credentials
+        # Must have valid credentials (STRICT - canonical keys only)
         api_key, api_secret = self.bybit.get_credentials()
         if not api_key or not api_secret:
-            return False, f"No API credentials for {self.bybit.get_mode_name()} mode"
+            mode = self.bybit.get_mode_name()
+            key_name = "BYBIT_DEMO_API_KEY" if self.bybit.is_demo else "BYBIT_LIVE_API_KEY"
+            return False, f"MISSING REQUIRED KEY: {key_name} required for {mode} mode (no fallback)"
         
         # === SAFETY GUARD RAIL: Validate trading mode consistency ===
         is_consistent, messages = self.validate_trading_mode_consistency()
@@ -597,84 +716,133 @@ class Config:
             # Return the first error message
             return False, messages[0] if messages else "Trading mode consistency check failed"
         
-        # In LIVE mode with REAL trading, extra confirmation
+        # In LIVE mode with REAL trading
         if self.bybit.is_live and self.trading.mode == TradingMode.REAL:
-            # All checks passed for live real trading
-            return True, "LIVE REAL TRADING ENABLED"
+            return True, "LIVE trading on real-money account ENABLED"
         
-        # Demo mode or paper trading is always allowed with credentials
+        # DEMO mode with PAPER trading
+        if self.bybit.is_demo and self.trading.mode == TradingMode.PAPER:
+            return True, "DEMO trading on fake-money account ready"
+        
+        # Should not reach here if validation passed
         return True, f"{self.bybit.get_mode_name()} mode ready"
     
     def validate_trading_mode_consistency(self) -> tuple[bool, List[str]]:
         """
-        SAFETY GUARD RAIL: Validate that trading mode matches API environment.
+        SAFETY GUARD RAIL: Validate strict mapping between trading mode and API environment.
         
-        This prevents dangerous mismatches like:
-        - TRADING_MODE=real but BYBIT_USE_DEMO=true (would trade on demo instead of live)
-        - Ensures user intention matches actual API behavior
+        Enforces the canonical contract:
+        - PAPER mode MUST use DEMO API (BYBIT_USE_DEMO=true)
+        - REAL mode MUST use LIVE API (BYBIT_USE_DEMO=false)
+        
+        Any other combination is a hard error that blocks startup/trading.
+        We never simulate trades; both modes execute real orders on Bybit.
+        The difference is which account (demo vs live) receives those orders.
         
         Returns:
-            Tuple of (is_valid, list of errors/warnings)
-            - is_valid: True if configuration is safe for trading
-            - messages: List of error/warning strings explaining any issues
+            Tuple of (is_valid, list of errors)
+            - is_valid: True only if configuration matches one of the two valid combos
+            - messages: List of error strings explaining any violations
         """
         errors = []
-        warnings = []
         
-        # === CRITICAL SAFETY CHECK ===
-        # Block trading if user says "real" but API is demo
-        # This prevents user thinking they're live trading when they're not
+        # === INVALID: REAL mode on DEMO API ===
+        # User says "real" but API is demo - dangerous mismatch
         if self.trading.mode == TradingMode.REAL and self.bybit.use_demo:
             errors.append(
-                "SAFETY CHECK FAILED: TRADING_MODE=real but BYBIT_USE_DEMO=true. "
-                "You indicated REAL trading mode but are connected to DEMO API. "
-                "Set BYBIT_USE_DEMO=false to enable live trading, or use TRADING_MODE=paper for demo."
+                "INVALID CONFIGURATION: TRADING_MODE=real but BYBIT_USE_DEMO=true. "
+                "REAL mode requires LIVE API. Set BYBIT_USE_DEMO=false to enable live trading, "
+                "or use TRADING_MODE=paper for demo account trading."
             )
         
-        # === WARNING: Paper trading on LIVE API ===
-        # This is allowed but user should be aware
+        # === INVALID: PAPER mode on LIVE API ===
+        # User says "paper" but API is live - also a mismatch
         if self.trading.mode == TradingMode.PAPER and not self.bybit.use_demo:
-            warnings.append(
-                "TRADING_MODE=paper but BYBIT_USE_DEMO=false: "
-                "Using LIVE API for paper trading. Trades will be simulated but "
-                "API calls interact with your real account (read operations)."
+            errors.append(
+                "INVALID CONFIGURATION: TRADING_MODE=paper but BYBIT_USE_DEMO=false. "
+                "PAPER mode requires DEMO API. Set BYBIT_USE_DEMO=true for paper/demo trading, "
+                "or use TRADING_MODE=real for live account trading."
             )
         
-        # All errors are blocking, warnings are informational
-        all_messages = [f"[ERROR] {e}" for e in errors] + [f"[WARN] {w}" for w in warnings]
+        # Format all errors
+        all_messages = [f"[ERROR] {e}" for e in errors]
         
         return len(errors) == 0, all_messages
     
     def validate_data_credentials(self) -> tuple[bool, List[str]]:
         """
-        Validate that LIVE data credentials are configured.
+        Validate that LIVE data credentials are configured (STRICT).
         
         Data operations (historical data, market data) always use LIVE API
-        for accuracy. This method checks if those credentials are available.
+        for accuracy. This method checks if BYBIT_LIVE_DATA_API_KEY is set.
+        
+        CANONICAL KEY CONTRACT:
+        - Data operations require BYBIT_LIVE_DATA_API_KEY (no fallback)
+        - Missing keys cause this to return (False, [error_message])
         
         Returns:
-            Tuple of (has_credentials, list of warnings)
+            Tuple of (has_credentials, list of error messages)
         """
-        warnings = []
+        errors = []
         
-        key, secret = self.bybit.get_live_data_credentials()
+        # STRICT: Only check live_data_api_key (no fallback to trading keys)
+        has_keys = self.bybit.has_live_data_credentials()
         
-        if not key or not secret:
-            warnings.append(
-                "LIVE data API credentials not configured. "
-                "Historical data and market data require LIVE API access. "
-                "Set BYBIT_LIVE_DATA_API_KEY/SECRET or BYBIT_LIVE_API_KEY/SECRET."
+        if not has_keys:
+            errors.append(
+                "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY and BYBIT_LIVE_DATA_API_SECRET are required. "
+                "Historical and market data always use the LIVE API for accuracy. "
+                "No fallback to trading keys or generic keys is allowed."
             )
         
-        return bool(key and secret), warnings
+        return has_keys, errors
+    
+    def get_api_environment_summary(self) -> dict:
+        """
+        Get a comprehensive summary of API environment configuration.
+        
+        Delegates to BybitConfig.get_api_environment_summary() and adds
+        additional config-level information like trading mode.
+        
+        Returns:
+            Dict with trading, data, websocket environment info plus config details
+        """
+        env_summary = self.bybit.get_api_environment_summary()
+        
+        # Add trading mode info
+        env_summary["trading"]["trading_mode"] = self.trading.mode
+        env_summary["trading"]["is_paper"] = self.trading.is_paper
+        env_summary["trading"]["is_real"] = self.trading.is_real
+        
+        # Add websocket config details
+        env_summary["websocket"]["enabled"] = self.websocket.enable_websocket
+        env_summary["websocket"]["auto_start"] = self.websocket.auto_start
+        
+        # Add consistency check status
+        is_consistent, msgs = self.validate_trading_mode_consistency()
+        env_summary["safety"] = {
+            "mode_consistent": is_consistent,
+            "messages": msgs,
+        }
+        
+        return env_summary
+    
+    def get_api_environment_display(self) -> str:
+        """
+        Get a short human-readable API environment string for display.
+        
+        Returns:
+            String like "Trading: DEMO | Data: LIVE"
+        """
+        return self.bybit.get_api_environment_display()
     
     def summary(self) -> str:
         """Generate a human-readable configuration summary for Unified Trading Account."""
         # Trading mode
         if self.trading.is_paper:
-            trade_mode = "PAPER (simulated trades)"
+            trade_mode = "PAPER (demo trading on fake-money account)"
         else:
-            trade_mode = "REAL (executing trades)"
+            trade_mode = "REAL (live trading on real-money account)"
         
         # Environment (DEMO vs LIVE)
         env_display = self.bybit.get_mode_display()

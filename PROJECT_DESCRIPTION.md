@@ -44,8 +44,7 @@ TRADE/
 │   │
 │   ├── data/
 │   │   ├── market_data.py          # Live market data access
-│   │   ├── data_capture.py         # Historical data collection
-│   │   ├── historical_data_store.py # DuckDB storage
+│   │   ├── historical_data_store.py # DuckDB storage (OHLCV, funding, OI)
 │   │   ├── realtime_state.py       # WebSocket state management
 │   │   └── realtime_bootstrap.py   # WebSocket bootstrap
 │   │
@@ -78,13 +77,35 @@ TRADE/
 
 | Mode | API Endpoint | Description |
 |------|--------------|-------------|
-| **DEMO** (`BYBIT_USE_DEMO=true`) | api-demo.bybit.com | Fake money for testing |
-| **LIVE** (`BYBIT_USE_DEMO=false`) | api.bybit.com | **REAL MONEY** |
+| **DEMO** (`BYBIT_USE_DEMO=true`) | api-demo.bybit.com | Demo account (fake funds) |
+| **LIVE** (`BYBIT_USE_DEMO=false`) | api.bybit.com | Live account (**REAL FUNDS**) |
 
-| Trading Mode | Description |
-|--------------|-------------|
-| `paper` | Simulated trades |
-| `real` | Actual order execution |
+| Trading Mode | Required API | Description |
+|--------------|--------------|-------------|
+| `paper` | DEMO API | Demo account trading (fake funds, real API orders) |
+| `real` | LIVE API | Live account trading (real funds, real API orders) |
+
+**Note**: PAPER mode MUST use DEMO API, REAL mode MUST use LIVE API. Other combinations are blocked.
+
+### API Environment Visibility
+
+The bot provides multiple ways to see which APIs are in use:
+
+| Location | What It Shows |
+|----------|---------------|
+| **CLI Header** | Trading mode (DEMO/LIVE), API URLs in subtitle |
+| **Data Builder Menu** | Data source: LIVE API, key status |
+| **Market Data Menu** | Market data source, authentication status |
+| **Connection Test** | Full API environment table |
+| **Health Check** | API environment + mode consistency check |
+| **Logs** | All components log their API mode on init |
+
+**Programmatic Access** (for agents/orchestrators):
+```python
+from src.tools import get_api_environment_tool
+result = get_api_environment_tool()
+# Returns: trading mode, data mode, URLs, key status, safety checks
+```
 
 ## Core Components
 
@@ -141,3 +162,45 @@ Core dependencies (see `requirements.txt`):
 - `pandas>=2.0.0` - Data processing
 - `duckdb>=0.9.0` - Historical data storage
 - `python-dotenv>=1.0.0` - Environment configuration
+
+## Historical Data Builder
+
+The Data Builder provides comprehensive historical data management via `src/tools/data_tools.py`.
+
+### Data Types Stored
+- **OHLCV Candles**: 1m, 5m, 15m, 1h, 4h, 1d timeframes
+- **Funding Rates**: 8-hour funding rate history
+- **Open Interest**: Configurable intervals (5min to 1d)
+
+### Key Operations
+
+| Tool | Description |
+|------|-------------|
+| `get_symbol_timeframe_ranges_tool` | View detailed per-symbol/timeframe date ranges and health |
+| `build_symbol_history_tool` | One-click sync of OHLCV, funding, and OI for symbols |
+| `sync_to_now_tool` | Fetch only new candles since last sync (forward-only) |
+| `sync_to_now_and_fill_gaps_tool` | Sync forward AND backfill any gaps in history |
+
+### CLI Menu (Data Builder)
+Access via Main Menu → Data Builder:
+- **Database Info**: Stats, symbols, timeframe ranges
+- **Build Data**: Full history builder, sync forward, sync+fill gaps
+- **Sync Individual**: OHLCV, funding, open interest separately
+- **Maintenance**: Fill gaps, heal data, delete symbols, vacuum
+
+### ToolRegistry Integration
+All data tools are registered for orchestrator/agent use:
+
+```python
+from src.tools.tool_registry import get_registry
+
+registry = get_registry()
+
+# List data tools
+registry.list_tools(category="data.sync")   # sync operations
+registry.list_tools(category="data.info")   # info/query tools
+
+# Execute data tools
+result = registry.execute("build_symbol_history", symbols=["BTCUSDT"], period="1M")
+result = registry.execute("sync_to_now", symbols=["BTCUSDT", "ETHUSDT"])
+```

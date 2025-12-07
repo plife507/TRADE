@@ -66,8 +66,7 @@ TRADE/
 │   │
 │   ├── data/                 # Data modules
 │   │   ├── market_data.py        # Live market data
-│   │   ├── data_capture.py       # Historical data collection
-│   │   ├── historical_data_store.py  # DuckDB storage
+│   │   ├── historical_data_store.py  # DuckDB storage (OHLCV, funding, OI)
 │   │   ├── realtime_state.py     # WebSocket state
 │   │   └── realtime_bootstrap.py # WS bootstrap
 │   │
@@ -98,15 +97,16 @@ TRADE/
 
 | Mode | API | Description |
 |------|-----|-------------|
-| `BYBIT_USE_DEMO=true` | api-demo.bybit.com | Demo trading with fake money |
-| `BYBIT_USE_DEMO=false` | api.bybit.com | **LIVE trading with REAL money** |
+| `BYBIT_USE_DEMO=true` | api-demo.bybit.com | Demo account (fake funds) |
+| `BYBIT_USE_DEMO=false` | api.bybit.com | **Live account (REAL funds)** |
 
-| TRADING_MODE | Description |
-|--------------|-------------|
-| `paper` | Simulated trades (learning/testing) |
-| `real` | Executes actual orders |
+| TRADING_MODE | Required API | Description |
+|--------------|--------------|-------------|
+| `paper` | DEMO API | Demo account trading (fake funds, real API orders) |
+| `real` | LIVE API | Live account trading (real funds, real API orders) |
 
-**Start with Demo mode**, test thoroughly, then switch to Live when ready.
+**Strict mapping**: `paper` mode MUST use `BYBIT_USE_DEMO=true`, `real` mode MUST use `BYBIT_USE_DEMO=false`.
+Other combinations are blocked. Start with Demo mode, test thoroughly, then switch to Live when ready.
 
 ## CLI Menu
 
@@ -148,6 +148,26 @@ if result.success:
     print(f"Order filled: {result.data}")
 ```
 
+### History Tools (Time-Range Required)
+
+All history endpoints require explicit time ranges. We never rely on Bybit's hidden defaults.
+
+```python
+from src.tools import get_order_history_tool, get_transaction_log_tool
+
+# Using window string (recommended)
+result = get_order_history_tool(window="7d", symbol="BTCUSDT")
+result = get_transaction_log_tool(window="24h", category="linear")
+
+# Using explicit timestamps (ms)
+result = get_order_history_tool(start_ms=1700000000000, end_ms=1700600000000)
+
+# Results include time_range metadata
+print(result.data["time_range"]["label"])  # "last_7d"
+```
+
+The CLI prompts for time ranges when accessing history menus (Order History, Closed PnL, Transaction Log, Borrow History).
+
 ### Tool Registry (For Orchestrators/Bots)
 ```python
 from src.tools.tool_registry import get_registry
@@ -180,11 +200,13 @@ See `examples/orchestrator_example.py` for complete usage patterns.
 TRADING_MODE=paper              # paper or real
 BYBIT_USE_DEMO=true             # true = demo API, false = LIVE
 
-# API Keys
-BYBIT_DEMO_API_KEY=your_demo_key
+# API Keys (STRICT - mode-specific keys required, no generic fallbacks)
+BYBIT_DEMO_API_KEY=your_demo_key           # Required for DEMO mode
 BYBIT_DEMO_API_SECRET=your_demo_secret
-BYBIT_LIVE_API_KEY=your_live_key
+BYBIT_LIVE_API_KEY=your_live_key           # Required for LIVE mode
 BYBIT_LIVE_API_SECRET=your_live_secret
+BYBIT_LIVE_DATA_API_KEY=your_data_key      # Required for data (always LIVE)
+BYBIT_LIVE_DATA_API_SECRET=your_data_secret
 
 # Risk (optional)
 MAX_LEVERAGE=3

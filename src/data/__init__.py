@@ -1,11 +1,12 @@
 """
-Data modules for market data and historical data collection.
+Data modules for market data and historical data storage.
 
-Live market data, data capture, and historical data storage (DuckDB).
+- MarketData: Live market data with caching
+- HistoricalDataStore: DuckDB-backed historical OHLCV, funding rates, and open interest
+- RealtimeState/RealtimeBootstrap: WebSocket real-time data
 """
 
 from .market_data import MarketData, get_market_data, reset_market_data
-from .data_capture import DataCapture, get_data_capture
 from .historical_data_store import HistoricalDataStore, get_historical_store
 from .realtime_state import (
     RealtimeState,
@@ -37,10 +38,7 @@ __all__ = [
     "MarketData",
     "get_market_data",
     "reset_market_data",
-    # Data Capture
-    "DataCapture",
-    "get_data_capture",
-    # Historical Data Store
+    # Historical Data Store (DuckDB)
     "HistoricalDataStore",
     "get_historical_store",
     # Real-time State

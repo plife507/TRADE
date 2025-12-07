@@ -449,6 +449,76 @@ class ToolRegistry:
         )
         
         # =====================================================================
+        # ACCOUNT HISTORY TOOLS (Time-Range Required)
+        # =====================================================================
+        from . import (
+            get_order_history_tool, get_closed_pnl_tool,
+            get_transaction_log_tool, get_borrow_history_tool,
+        )
+        
+        self._register(
+            name="get_order_history",
+            function=get_order_history_tool,
+            description="Get order history within a time range (max 7 days)",
+            category="account.history",
+            parameters={
+                "window": {"type": "string", "description": "Time window (24h, 7d). Max 7 days.", "default": "7d"},
+                "start_ms": {"type": "integer", "description": "Start timestamp ms (alternative to window)", "optional": True},
+                "end_ms": {"type": "integer", "description": "End timestamp ms (alternative to window)", "optional": True},
+                "symbol": {"type": "string", "description": "Filter by symbol", "optional": True},
+                "limit": {"type": "integer", "description": "Max results (1-50)", "default": 50},
+            },
+            required=[],
+        )
+        
+        self._register(
+            name="get_closed_pnl",
+            function=get_closed_pnl_tool,
+            description="Get closed P&L records within a time range (max 7 days)",
+            category="account.history",
+            parameters={
+                "window": {"type": "string", "description": "Time window (24h, 7d). Max 7 days.", "default": "7d"},
+                "start_ms": {"type": "integer", "description": "Start timestamp ms (alternative to window)", "optional": True},
+                "end_ms": {"type": "integer", "description": "End timestamp ms (alternative to window)", "optional": True},
+                "symbol": {"type": "string", "description": "Filter by symbol", "optional": True},
+                "limit": {"type": "integer", "description": "Max results (1-50)", "default": 50},
+            },
+            required=[],
+        )
+        
+        self._register(
+            name="get_transaction_log",
+            function=get_transaction_log_tool,
+            description="Get transaction logs within a time range (max 7 days)",
+            category="account.history",
+            parameters={
+                "window": {"type": "string", "description": "Time window (24h, 7d). Max 7 days.", "default": "7d"},
+                "start_ms": {"type": "integer", "description": "Start timestamp ms (alternative to window)", "optional": True},
+                "end_ms": {"type": "integer", "description": "End timestamp ms (alternative to window)", "optional": True},
+                "category": {"type": "string", "description": "spot, linear, option", "optional": True},
+                "currency": {"type": "string", "description": "Filter by currency (USDT, BTC)", "optional": True},
+                "log_type": {"type": "string", "description": "TRADE, SETTLEMENT, TRANSFER_IN, etc.", "optional": True},
+                "limit": {"type": "integer", "description": "Max results (1-50)", "default": 50},
+            },
+            required=[],
+        )
+        
+        self._register(
+            name="get_borrow_history",
+            function=get_borrow_history_tool,
+            description="Get borrow/interest history within a time range (max 30 days)",
+            category="account.history",
+            parameters={
+                "window": {"type": "string", "description": "Time window (7d, 30d). Max 30 days.", "default": "30d"},
+                "start_ms": {"type": "integer", "description": "Start timestamp ms (alternative to window)", "optional": True},
+                "end_ms": {"type": "integer", "description": "End timestamp ms (alternative to window)", "optional": True},
+                "currency": {"type": "string", "description": "Filter by currency (USDT, BTC)", "optional": True},
+                "limit": {"type": "integer", "description": "Max results (1-50)", "default": 50},
+            },
+            required=[],
+        )
+        
+        # =====================================================================
         # MARKET DATA TOOLS
         # =====================================================================
         from . import get_price_tool, get_ohlcv_tool, get_funding_rate_tool
@@ -486,6 +556,330 @@ class ToolRegistry:
                 "symbol": {"type": "string", "description": "Trading symbol"},
             },
             required=["symbol"],
+        )
+        
+        # =====================================================================
+        # DATA TOOLS - Database Info
+        # =====================================================================
+        from . import (
+            get_database_stats_tool, list_cached_symbols_tool,
+            get_symbol_status_tool, get_symbol_summary_tool,
+            get_symbol_timeframe_ranges_tool,
+        )
+        
+        self._register(
+            name="get_database_stats",
+            function=get_database_stats_tool,
+            description="Get database statistics (size, symbol count, candle count)",
+            category="data.info",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="list_cached_symbols",
+            function=list_cached_symbols_tool,
+            description="List all symbols currently cached in the database",
+            category="data.info",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="get_symbol_status",
+            function=get_symbol_status_tool,
+            description="Get per-symbol aggregate status (total candles, gaps, timeframe count)",
+            category="data.info",
+            parameters={
+                "symbol": {"type": "string", "description": "Specific symbol to check", "optional": True},
+            },
+            required=[],
+        )
+        
+        self._register(
+            name="get_symbol_summary",
+            function=get_symbol_summary_tool,
+            description="Get high-level summary of all cached symbols",
+            category="data.info",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="get_symbol_timeframe_ranges",
+            function=get_symbol_timeframe_ranges_tool,
+            description="Get detailed per-symbol/timeframe breakdown with date ranges and health",
+            category="data.info",
+            parameters={
+                "symbol": {"type": "string", "description": "Specific symbol to check", "optional": True},
+            },
+            required=[],
+        )
+        
+        # =====================================================================
+        # DATA TOOLS - Sync
+        # =====================================================================
+        from . import (
+            sync_symbols_tool, sync_range_tool,
+            sync_funding_tool, sync_open_interest_tool,
+            sync_to_now_tool, sync_to_now_and_fill_gaps_tool,
+            build_symbol_history_tool,
+        )
+        
+        self._register(
+            name="sync_symbols",
+            function=sync_symbols_tool,
+            description="Sync OHLCV data for symbols by period",
+            category="data.sync",
+            parameters={
+                "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync"},
+                "period": {"type": "string", "description": "Period (1D, 1W, 1M, 3M, 6M, 1Y)", "default": "1M"},
+                "timeframes": {"type": "array", "items": {"type": "string"}, "description": "Timeframes to sync", "optional": True},
+            },
+            required=["symbols"],
+        )
+        
+        self._register(
+            name="sync_range",
+            function=sync_range_tool,
+            description="Sync OHLCV data for a specific date range",
+            category="data.sync",
+            parameters={
+                "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync"},
+                "start": {"type": "string", "description": "Start datetime (ISO format)"},
+                "end": {"type": "string", "description": "End datetime (ISO format)"},
+                "timeframes": {"type": "array", "items": {"type": "string"}, "description": "Timeframes to sync", "optional": True},
+            },
+            required=["symbols", "start", "end"],
+        )
+        
+        self._register(
+            name="sync_funding",
+            function=sync_funding_tool,
+            description="Sync funding rate history for symbols",
+            category="data.sync",
+            parameters={
+                "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync"},
+                "period": {"type": "string", "description": "Period (1M, 3M, 6M, 1Y)", "default": "3M"},
+            },
+            required=["symbols"],
+        )
+        
+        self._register(
+            name="sync_open_interest",
+            function=sync_open_interest_tool,
+            description="Sync open interest history for symbols",
+            category="data.sync",
+            parameters={
+                "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync"},
+                "period": {"type": "string", "description": "Period (1D, 1W, 1M, 3M)", "default": "1M"},
+                "interval": {"type": "string", "description": "Data interval (5min, 15min, 30min, 1h, 4h, 1d)", "default": "1h"},
+            },
+            required=["symbols"],
+        )
+        
+        self._register(
+            name="sync_to_now",
+            function=sync_to_now_tool,
+            description="Sync data forward from last stored candle to now (no backfill)",
+            category="data.sync",
+            parameters={
+                "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync forward"},
+                "timeframes": {"type": "array", "items": {"type": "string"}, "description": "Timeframes to sync", "optional": True},
+            },
+            required=["symbols"],
+        )
+        
+        self._register(
+            name="sync_to_now_and_fill_gaps",
+            function=sync_to_now_and_fill_gaps_tool,
+            description="Sync forward to now AND fill any gaps in existing data",
+            category="data.sync",
+            parameters={
+                "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync and heal"},
+                "timeframes": {"type": "array", "items": {"type": "string"}, "description": "Timeframes to sync", "optional": True},
+            },
+            required=["symbols"],
+        )
+        
+        self._register(
+            name="build_symbol_history",
+            function=build_symbol_history_tool,
+            description="Build complete historical data (OHLCV + funding + open interest) for symbols",
+            category="data.sync",
+            parameters={
+                "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to build history for"},
+                "period": {"type": "string", "description": "Period (1D, 1W, 1M, 3M, 6M, 1Y)", "default": "1M"},
+                "timeframes": {"type": "array", "items": {"type": "string"}, "description": "OHLCV timeframes", "optional": True},
+                "oi_interval": {"type": "string", "description": "Open interest interval", "optional": True},
+            },
+            required=["symbols"],
+        )
+        
+        # =====================================================================
+        # DATA TOOLS - Maintenance
+        # =====================================================================
+        from . import (
+            fill_gaps_tool, heal_data_tool,
+            delete_symbol_tool, cleanup_empty_symbols_tool, vacuum_database_tool,
+            get_funding_history_tool, get_open_interest_history_tool,
+        )
+        
+        self._register(
+            name="fill_gaps",
+            function=fill_gaps_tool,
+            description="Auto-detect and fill gaps in cached data",
+            category="data.maintenance",
+            parameters={
+                "symbol": {"type": "string", "description": "Specific symbol (None for all)", "optional": True},
+                "timeframe": {"type": "string", "description": "Specific timeframe (None for all)", "optional": True},
+            },
+            required=[],
+        )
+        
+        self._register(
+            name="heal_data",
+            function=heal_data_tool,
+            description="Run comprehensive data integrity check and repair",
+            category="data.maintenance",
+            parameters={
+                "symbol": {"type": "string", "description": "Specific symbol (None for all)", "optional": True},
+                "fix_issues": {"type": "boolean", "description": "Auto-fix issues", "default": True},
+                "fill_gaps_after": {"type": "boolean", "description": "Fill gaps after fixing", "default": True},
+            },
+            required=[],
+        )
+        
+        self._register(
+            name="delete_symbol",
+            function=delete_symbol_tool,
+            description="Delete all data for a symbol",
+            category="data.maintenance",
+            parameters={
+                "symbol": {"type": "string", "description": "Symbol to delete"},
+                "vacuum": {"type": "boolean", "description": "Vacuum database after deletion", "default": True},
+            },
+            required=["symbol"],
+        )
+        
+        self._register(
+            name="cleanup_empty_symbols",
+            function=cleanup_empty_symbols_tool,
+            description="Remove symbols with no data (invalid symbols)",
+            category="data.maintenance",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="vacuum_database",
+            function=vacuum_database_tool,
+            description="Vacuum the database to reclaim space",
+            category="data.maintenance",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="get_funding_history",
+            function=get_funding_history_tool,
+            description="Get funding rate history for a symbol from database",
+            category="data.query",
+            parameters={
+                "symbol": {"type": "string", "description": "Trading symbol"},
+                "period": {"type": "string", "description": "Period (1M, 3M, etc)", "optional": True},
+            },
+            required=["symbol"],
+        )
+        
+        self._register(
+            name="get_open_interest_history",
+            function=get_open_interest_history_tool,
+            description="Get open interest history for a symbol from database",
+            category="data.query",
+            parameters={
+                "symbol": {"type": "string", "description": "Trading symbol"},
+                "period": {"type": "string", "description": "Period (1M, 3M, etc)", "optional": True},
+            },
+            required=["symbol"],
+        )
+        
+        # =====================================================================
+        # SYSTEM/DIAGNOSTICS TOOLS
+        # =====================================================================
+        from . import (
+            get_api_environment_tool,
+            test_connection_tool,
+            get_server_time_offset_tool,
+            get_rate_limit_status_tool,
+            get_websocket_status_tool,
+            exchange_health_check_tool,
+            is_healthy_for_trading_tool,
+        )
+        
+        self._register(
+            name="get_api_environment",
+            function=get_api_environment_tool,
+            description="Get API environment info (trading mode, data mode, URLs, key status)",
+            category="system.info",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="test_connection",
+            function=test_connection_tool,
+            description="Test exchange connection and return status",
+            category="system.diagnostics",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="get_server_time_offset",
+            function=get_server_time_offset_tool,
+            description="Get time offset between local machine and exchange server",
+            category="system.diagnostics",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="get_rate_limit_status",
+            function=get_rate_limit_status_tool,
+            description="Get current rate limit status from exchange",
+            category="system.diagnostics",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="get_websocket_status",
+            function=get_websocket_status_tool,
+            description="Get detailed WebSocket connection status",
+            category="system.diagnostics",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="exchange_health_check",
+            function=exchange_health_check_tool,
+            description="Run comprehensive health check on exchange connection",
+            category="system.diagnostics",
+            parameters={
+                "symbol": {"type": "string", "description": "Symbol to use for public API tests"},
+            },
+            required=["symbol"],
+        )
+        
+        self._register(
+            name="is_healthy_for_trading",
+            function=is_healthy_for_trading_tool,
+            description="Quick health check for agents before trading",
+            category="system.diagnostics",
+            parameters={},
+            required=[],
         )
     
     def _register(

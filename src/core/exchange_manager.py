@@ -22,6 +22,7 @@ from ..exchanges.bybit_client import BybitClient, BybitAPIError
 from ..config.config import get_config, TradingMode
 from ..utils.logger import get_logger
 from ..utils.helpers import safe_float
+from ..utils.time_range import TimeRange
 
 
 # ==================== Type Definitions ====================
@@ -144,7 +145,21 @@ class ExchangeManager:
         self.config = get_config()
         self.logger = get_logger()
         
-        self.use_demo = self.config.bybit.use_demo
+        # === STRICT MODE/API MAPPING ASSERTION ===
+        # Only two valid combinations: PAPER+DEMO or REAL+LIVE
+        trading_mode = self.config.trading.mode
+        use_demo = self.config.bybit.use_demo
+        
+        valid_paper = (trading_mode == TradingMode.PAPER and use_demo == True)
+        valid_real = (trading_mode == TradingMode.REAL and use_demo == False)
+        
+        if not (valid_paper or valid_real):
+            raise ValueError(
+                f"INVALID MODE/API MAPPING: TRADING_MODE={trading_mode}, BYBIT_USE_DEMO={use_demo}. "
+                f"Valid combinations: (paper, True) or (real, False)."
+            )
+        
+        self.use_demo = use_demo
         
         # Get API credentials
         api_key, api_secret = self.config.bybit.get_credentials()
@@ -156,8 +171,31 @@ class ExchangeManager:
             use_demo=self.use_demo,  # Demo or live trading
         )
         
-        mode = "Demo (fake money)" if self.use_demo else "LIVE (real money!)"
-        self.logger.info(f"Bybit {mode}: {self.bybit.base_url}")
+        # Log detailed trading environment info
+        mode = "DEMO (fake money)" if self.use_demo else "LIVE (REAL MONEY!)"
+        key_status = "authenticated" if api_key else "NO KEY"
+        trading_mode = self.config.trading.mode
+        
+        # Determine key source for logging (STRICT - canonical keys only)
+        if self.use_demo:
+            if self.config.bybit.demo_api_key:
+                key_source = "BYBIT_DEMO_API_KEY"
+            else:
+                key_source = "MISSING (BYBIT_DEMO_API_KEY required)"
+        else:
+            if self.config.bybit.live_api_key:
+                key_source = "BYBIT_LIVE_API_KEY"
+            else:
+                key_source = "MISSING (BYBIT_LIVE_API_KEY required)"
+        
+        self.logger.info(
+            f"ExchangeManager initialized: "
+            f"API={mode}, "
+            f"base_url={self.bybit.base_url}, "
+            f"trading_mode={trading_mode}, "
+            f"auth={key_status}, "
+            f"key_source={key_source}"
+        )
         
         # Cache for instrument info (min sizes, tick sizes, etc.)
         self._instruments: Dict[str, dict] = {}
@@ -202,26 +240,24 @@ class ExchangeManager:
         # Reload config to get fresh values (in case env changed)
         config = get_config()
         
-        # === CRITICAL SAFETY CHECK ===
-        # Block trading if user says "real" but API is demo
-        # This prevents user thinking they're live trading when they're not
+        # === STRICT MODE/API MAPPING ===
+        # Only two valid combinations: PAPER+DEMO or REAL+LIVE
+        # Both execute real orders on Bybit; the difference is which account.
+        
+        # INVALID: REAL mode on DEMO API
         if config.trading.mode == TradingMode.REAL and config.bybit.use_demo:
             raise ValueError(
-                "SAFETY CHECK FAILED: TRADING_MODE=real but BYBIT_USE_DEMO=true. "
-                "You indicated REAL trading mode but are connected to DEMO API. "
-                "Orders would execute on DEMO account, not LIVE. "
-                "Set BYBIT_USE_DEMO=false to enable live trading, or use TRADING_MODE=paper."
+                "INVALID CONFIGURATION: TRADING_MODE=real but BYBIT_USE_DEMO=true. "
+                "REAL mode requires LIVE API. Orders would go to DEMO account instead of LIVE. "
+                "Set BYBIT_USE_DEMO=false for live trading, or use TRADING_MODE=paper for demo."
             )
         
-        # === WARNING: Paper trading on LIVE API ===
-        # This is allowed but user should be aware
+        # INVALID: PAPER mode on LIVE API
         if config.trading.mode == TradingMode.PAPER and not config.bybit.use_demo:
-            # Log warning but don't block - paper trading on live API is valid
-            # (used when testing paper trading logic with live data)
-            self.logger.warning(
-                "TRADING_MODE=paper but BYBIT_USE_DEMO=false: "
-                "Connected to LIVE API for paper trading. Trades will be simulated "
-                "but API reads your real account data."
+            raise ValueError(
+                "INVALID CONFIGURATION: TRADING_MODE=paper but BYBIT_USE_DEMO=false. "
+                "PAPER mode requires DEMO API. Orders would go to LIVE account with real money. "
+                "Set BYBIT_USE_DEMO=true for paper/demo trading, or use TRADING_MODE=real for live."
             )
     
     def _on_position_update_cleanup(self, position_data):
@@ -2568,13 +2604,17 @@ class ExchangeManager:
     
     def get_order_history(
         self,
+        time_range: TimeRange,
         symbol: str = None,
         limit: int = 50,
     ) -> List[Dict]:
         """
         Get order history.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit defaults.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 7 days)
             symbol: Specific symbol (None for all)
             limit: Max results
         
@@ -2582,17 +2622,29 @@ class ExchangeManager:
             List of order records
         """
         try:
-            result = self.bybit.get_order_history(symbol=symbol, limit=limit)
+            result = self.bybit.get_order_history(
+                time_range=time_range,
+                symbol=symbol,
+                limit=limit,
+            )
             return result.get("list", [])
         except Exception as e:
             self.logger.error(f"Get order history failed: {e}")
             return []
     
-    def get_executions(self, symbol: str = None, limit: int = 50) -> List[Dict]:
+    def get_executions(
+        self,
+        time_range: TimeRange,
+        symbol: str = None,
+        limit: int = 50,
+    ) -> List[Dict]:
         """
         Get trade execution history.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit defaults.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 7 days)
             symbol: Specific symbol (None for all)
             limit: Max results
         
@@ -2600,16 +2652,28 @@ class ExchangeManager:
             List of execution records
         """
         try:
-            return self.bybit.get_executions(symbol=symbol, limit=limit)
+            return self.bybit.get_executions(
+                time_range=time_range,
+                symbol=symbol,
+                limit=limit,
+            )
         except Exception as e:
             self.logger.error(f"Get executions failed: {e}")
             return []
     
-    def get_closed_pnl(self, symbol: str = None, limit: int = 50) -> List[Dict]:
+    def get_closed_pnl(
+        self,
+        time_range: TimeRange,
+        symbol: str = None,
+        limit: int = 50,
+    ) -> List[Dict]:
         """
         Get closed position PnL history.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit defaults.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 7 days)
             symbol: Specific symbol (None for all)
             limit: Max results
         
@@ -2617,7 +2681,11 @@ class ExchangeManager:
             List of closed PnL records
         """
         try:
-            result = self.bybit.get_closed_pnl(symbol=symbol, limit=limit)
+            result = self.bybit.get_closed_pnl(
+                time_range=time_range,
+                symbol=symbol,
+                limit=limit,
+            )
             return result.get("list", [])
         except Exception as e:
             self.logger.error(f"Get closed PnL failed: {e}")
@@ -2912,22 +2980,22 @@ class ExchangeManager:
     
     def get_transaction_log(
         self,
+        time_range: TimeRange,
         category: str = None,
         currency: str = None,
         log_type: str = None,
-        start_time: int = None,
-        end_time: int = None,
         limit: int = 50,
     ) -> Dict:
         """
         Get transaction logs from Unified account.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit 24-hour default.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 7 days)
             category: spot, linear, option
             currency: Filter by currency
             log_type: TRADE, SETTLEMENT, TRANSFER_IN, TRANSFER_OUT, etc.
-            start_time: Start timestamp (ms)
-            end_time: End timestamp (ms)
             limit: Max results (1-50)
         
         Returns:
@@ -2935,11 +3003,10 @@ class ExchangeManager:
         """
         try:
             result = self.bybit.get_transaction_log(
+                time_range=time_range,
                 category=category,
                 currency=currency,
                 log_type=log_type,
-                start_time=start_time,
-                end_time=end_time,
                 limit=limit,
             )
             return result
@@ -2988,13 +3055,17 @@ class ExchangeManager:
     
     def get_borrow_history(
         self,
+        time_range: TimeRange,
         currency: str = None,
         limit: int = 50,
     ) -> Dict:
         """
         Get borrow/interest history.
         
+        CRITICAL: TimeRange is REQUIRED. We never rely on Bybit's implicit 30-day default.
+        
         Args:
+            time_range: Required TimeRange specifying the query window (max 30 days)
             currency: e.g., USDC, USDT, BTC
             limit: Max results
         
@@ -3003,6 +3074,7 @@ class ExchangeManager:
         """
         try:
             result = self.bybit.get_borrow_history(
+                time_range=time_range,
                 currency=currency,
                 limit=limit,
             )

@@ -198,6 +198,11 @@ class RealtimeBootstrap:
                 use_demo=self.app_config.bybit.use_demo,
             )
         
+        # Log WebSocket environment (matches trading mode)
+        ws_env = "DEMO (stream-demo.bybit.com)" if self.app_config.bybit.use_demo else "LIVE (stream.bybit.com)"
+        account_type = "fake-money demo account" if self.app_config.bybit.use_demo else "real-money live account"
+        self.logger.info(f"RealtimeBootstrap: WebSocket environment={ws_env}, account={account_type}")
+        
         # State management
         self.state = state or get_realtime_state()
         self.sub_config = config or SubscriptionConfig()
