@@ -12,12 +12,18 @@ NO business logic lives here. All operations go through src/tools/*.
 All symbols, amounts, and parameters are passed from user input.
 
 Strategies, backtesting, and runners will be added in Phase 2.
+
+Non-interactive smoke test modes:
+  python trade_cli.py --smoke data            # Data builder smoke test only
+  python trade_cli.py --smoke full            # Full CLI smoke test (data + trading + diagnostics)
+  python trade_cli.py --smoke data_extensive  # Extensive data test (clean DB, gaps, fill, sync)
 """
 
+import argparse
 import os
 import sys
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Rich imports
 from rich.console import Console
@@ -36,6 +42,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.config.config import get_config
 from src.core.application import Application, get_application
 from src.utils.logger import setup_logger, get_logger
+from src.utils.cli_display import format_action_status, format_action_complete, get_action_label, format_data_result
+from src.cli.menus import (
+    data_menu as data_menu_handler,
+    market_data_menu as market_data_menu_handler,
+    orders_menu as orders_menu_handler,
+    market_orders_menu as market_orders_menu_handler,
+    limit_orders_menu as limit_orders_menu_handler,
+    stop_orders_menu as stop_orders_menu_handler,
+    manage_orders_menu as manage_orders_menu_handler,
+    positions_menu as positions_menu_handler,
+    account_menu as account_menu_handler,
+)
+from src.cli.smoke_tests import (
+    run_smoke_suite,
+    run_data_builder_smoke,
+    run_full_cli_smoke,
+    run_extensive_data_smoke,
+    run_comprehensive_order_smoke,
+)
 from src.tools import (
     # Shared types
     ToolResult,
@@ -121,6 +146,8 @@ from src.tools import (
     get_funding_history_tool,
     sync_open_interest_tool,
     get_open_interest_history_tool,
+    # OHLCV query tools
+    get_ohlcv_history_tool,
     # Sync to now tools
     sync_to_now_tool,
     sync_to_now_and_fill_gaps_tool,
@@ -253,7 +280,7 @@ def get_choice(valid_range: range = None) -> int:
             choice = int(choice_input)
             
             if valid_range and choice not in valid_range:
-                console.print(f"[red]Invalid choice. Please enter a number between {valid_range.start} and {valid_range.stop-1}.[/]")
+                print_error_below_menu(f"Invalid choice. Please enter a number between {valid_range.start} and {valid_range.stop-1}.")
                 continue
             return choice
         except (EOFError, KeyboardInterrupt):
@@ -261,8 +288,213 @@ def get_choice(valid_range: range = None) -> int:
             console.print("\n[yellow]Cancelled.[/]")
             return BACK
         except ValueError:
-            console.print(f"[red]Invalid input. Please enter a number or 'back'/'b' to go back.[/]")
+            print_error_below_menu("Invalid input. Please enter a number or 'back'/'b' to go back.")
             continue
+
+
+class TimeRangeSelection:
+    """
+    Result from time range selection - can be a preset window or custom start/end.
+    
+    Usage:
+        selection = select_time_range_cli(max_days=7)
+        if selection.is_back:
+            continue  # User cancelled
+        
+        # Pass to tool - either window OR start_ms/end_ms will be set
+        result = get_order_history_tool(
+            window=selection.window,
+            start_ms=selection.start_ms,
+            end_ms=selection.end_ms,
+            ...
+        )
+    """
+    def __init__(
+        self,
+        window: Optional[str] = None,
+        start_ms: Optional[int] = None,
+        end_ms: Optional[int] = None,
+        is_back: bool = False,
+    ):
+        self.window = window
+        self.start_ms = start_ms
+        self.end_ms = end_ms
+        self.is_back = is_back
+    
+    @property
+    def is_custom(self) -> bool:
+        """True if this is a custom range (start_ms/end_ms set)."""
+        return self.start_ms is not None and self.end_ms is not None
+    
+    @property
+    def is_preset(self) -> bool:
+        """True if this is a preset window (window string set)."""
+        return self.window is not None and not self.is_custom
+
+
+def _parse_datetime_input(value: str) -> Optional[datetime]:
+    """
+    Parse a datetime string in various common formats.
+    
+    Supports:
+    - YYYY-MM-DD
+    - YYYY-MM-DD HH:MM
+    - YYYY-MM-DD HH:MM:SS
+    - YYYY-MM-DDTHH:MM:SS (ISO)
+    
+    Returns:
+        datetime object or None if parsing failed
+    """
+    value = value.strip()
+    if not value:
+        return None
+    
+    formats = [
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    
+    return None
+
+
+def select_time_range_cli(
+    max_days: int = 7,
+    default: str = "24h",
+    include_custom: bool = True,
+    endpoint_name: str = "history",
+) -> TimeRangeSelection:
+    """
+    Prompt user to select a time range for history queries.
+    
+    Supports both preset windows (24h, 7d, 30d) and custom date ranges.
+    
+    Args:
+        max_days: Maximum allowed days (7 for most, 30 for borrow history)
+        default: Default window if user just presses Enter
+        include_custom: Whether to include custom date option
+        endpoint_name: Name of the endpoint for error messages
+    
+    Returns:
+        TimeRangeSelection with either:
+        - window set (for presets like "24h", "7d")
+        - start_ms/end_ms set (for custom ranges)
+        - is_back=True (if user cancelled)
+    """
+    console.print("\n[bold cyan]Select time range:[/]")
+    console.print("  1) Last 24 hours")
+    console.print("  2) Last 7 days")
+    
+    if max_days >= 30:
+        console.print("  3) Last 30 days")
+        max_preset_option = 3
+    else:
+        max_preset_option = 2
+    
+    custom_option = max_preset_option + 1 if include_custom else None
+    if include_custom:
+        console.print(f"  {custom_option}) [bold green]Custom date range[/]")
+    
+    console.print(f"\n[dim]Default: {default}. Max: {max_days} days.[/]")
+    
+    max_option = custom_option if include_custom else max_preset_option
+    choice_input = get_input(f"Time range [1-{max_option}]", "1")
+    if choice_input is BACK:
+        return TimeRangeSelection(is_back=True)
+    
+    # Handle preset selections
+    window_map = {
+        "1": "24h",
+        "2": "7d",
+        "3": "30d" if max_days >= 30 else "7d",
+    }
+    
+    # Check if custom was selected
+    if include_custom and choice_input == str(custom_option):
+        return _prompt_custom_date_range(max_days, endpoint_name)
+    
+    # Return preset window
+    window = window_map.get(choice_input, default)
+    return TimeRangeSelection(window=window)
+
+
+def _prompt_custom_date_range(
+    max_days: int,
+    endpoint_name: str,
+) -> TimeRangeSelection:
+    """
+    Prompt user for custom start and end dates.
+    
+    Args:
+        max_days: Maximum allowed range in days
+        endpoint_name: Name of the endpoint for error messages
+    
+    Returns:
+        TimeRangeSelection with start_ms/end_ms set, or is_back=True
+    """
+    console.print("\n[bold cyan]Custom Date Range[/]")
+    console.print(f"[dim]Format: YYYY-MM-DD or YYYY-MM-DD HH:MM (UTC)[/]")
+    console.print(f"[dim]Maximum range: {max_days} days[/]")
+    
+    # Get start date
+    start_input = get_input("Start date (e.g., 2024-01-01)")
+    if start_input is BACK:
+        return TimeRangeSelection(is_back=True)
+    
+    start_dt = _parse_datetime_input(start_input)
+    if start_dt is None:
+        print_error_below_menu(
+            f"Invalid start date format: '{start_input}'",
+            "Use YYYY-MM-DD or YYYY-MM-DD HH:MM format"
+        )
+        return TimeRangeSelection(is_back=True)
+    
+    # Get end date (default to now)
+    default_end = datetime.now().strftime("%Y-%m-%d %H:%M")
+    end_input = get_input(f"End date (default: now)", default_end)
+    if end_input is BACK:
+        return TimeRangeSelection(is_back=True)
+    
+    end_dt = _parse_datetime_input(end_input)
+    if end_dt is None:
+        print_error_below_menu(
+            f"Invalid end date format: '{end_input}'",
+            "Use YYYY-MM-DD or YYYY-MM-DD HH:MM format"
+        )
+        return TimeRangeSelection(is_back=True)
+    
+    # Validate: start < end
+    if start_dt >= end_dt:
+        print_error_below_menu(
+            "Start date must be before end date",
+            f"Start: {start_dt}, End: {end_dt}"
+        )
+        return TimeRangeSelection(is_back=True)
+    
+    # Validate: range within max_days
+    duration = end_dt - start_dt
+    if duration.days > max_days:
+        print_error_below_menu(
+            f"Date range too large for {endpoint_name}",
+            f"Requested {duration.days} days, maximum is {max_days} days"
+        )
+        return TimeRangeSelection(is_back=True)
+    
+    # Convert to milliseconds
+    start_ms = int(start_dt.timestamp() * 1000)
+    end_ms = int(end_dt.timestamp() * 1000)
+    
+    console.print(f"\n[green]✓ Using custom range: {start_dt.strftime('%Y-%m-%d %H:%M')} to {end_dt.strftime('%Y-%m-%d %H:%M')} ({duration.days}d {duration.seconds // 3600}h)[/]")
+    
+    return TimeRangeSelection(start_ms=start_ms, end_ms=end_ms)
 
 
 def get_time_window(
@@ -271,7 +503,10 @@ def get_time_window(
     include_custom: bool = True,
 ) -> str:
     """
-    Prompt user to select a time window for history queries.
+    DEPRECATED: Use select_time_range_cli() for full custom date support.
+    
+    This function is kept for backwards compatibility but only returns
+    window strings (no custom date ranges).
     
     Args:
         max_days: Maximum allowed days (7 for most, 30 for borrow history)
@@ -281,31 +516,135 @@ def get_time_window(
     Returns:
         Window string like "24h", "7d", "30d" or BACK sentinel
     """
-    console.print("\n[bold cyan]Select time range:[/]")
-    console.print("  1) Last 24 hours")
-    console.print("  2) Last 7 days")
-    if max_days >= 30:
-        console.print("  3) Last 30 days")
-        max_option = 3
-    else:
-        max_option = 2
+    selection = select_time_range_cli(
+        max_days=max_days,
+        default=default,
+        include_custom=False,  # Don't offer custom in legacy function
+    )
     
-    if include_custom:
-        console.print(f"  {max_option + 1}) Custom (coming soon)")
-    
-    console.print(f"\n[dim]Default: {default}. Max: {max_days} days.[/]")
-    
-    choice_input = get_input(f"Time range [1-{max_option}]", "1")
-    if choice_input is BACK:
+    if selection.is_back:
         return BACK
     
-    window_map = {
-        "1": "24h",
-        "2": "7d",
-        "3": "30d" if max_days >= 30 else "7d",
-    }
+    return selection.window or default
+
+
+def print_error_below_menu(error_message: str, error_details: str = None):
+    """
+    Print error message below the static menu with proper formatting.
     
-    return window_map.get(choice_input, default)
+    Ensures errors appear clearly separated from the menu content.
+    """
+    # Add spacing to separate from menu
+    console.print()  # Empty line
+    console.print("[dim]" + "─" * 80 + "[/dim]")  # Separator line
+    
+    # Print error panel
+    error_text = f"[bold red]✗ Error:[/] {error_message}"
+    if error_details:
+        error_text += f"\n[dim]{error_details}[/dim]"
+    
+    console.print(Panel(
+        error_text,
+        border_style="red",
+        title="[bold red]ERROR[/]",
+        padding=(1, 2)
+    ))
+    
+    # Add spacing after error
+    console.print()
+
+
+def run_tool_action(action_key: str, tool_fn, *args, **kwargs) -> ToolResult:
+    """
+    Execute a tool with an emoji-enhanced status display.
+    
+    Shows a running status while the tool executes, ensuring no blank cursor.
+    
+    Args:
+        action_key: Action key for status message (e.g., "account.view_balance")
+        tool_fn: The tool function to call
+        *args, **kwargs: Arguments to pass to the tool
+            - Display-only kwargs (for_symbol, etc.) are used for status but not passed to tool
+    
+    Returns:
+        ToolResult from the tool function
+    """
+    # Build status message with parameters (uses all kwargs including display-only)
+    status_msg = format_action_status(action_key, **kwargs)
+    
+    # Filter out display-only kwargs before passing to tool function
+    display_only_keys = {"for_symbol"}
+    tool_kwargs = {k: v for k, v in kwargs.items() if k not in display_only_keys}
+    
+    try:
+        with console.status(f"[bold cyan]{status_msg}[/]", spinner="dots"):
+            result = tool_fn(*args, **tool_kwargs)
+        return result
+    except Exception as e:
+        print_error_below_menu(str(e), f"Action: {get_action_label(action_key)}")
+        return ToolResult(success=False, error=str(e), message="", data=None)
+
+
+def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, **kwargs) -> ToolResult:
+    """
+    Execute a long-running tool with status display and Ctrl+C handling.
+    
+    For data operations that may take significant time and support cancellation.
+    
+    Args:
+        action_key: Action key for status message
+        tool_fn: The tool function to call
+        *args: Positional arguments
+        cancel_store: Whether to call store.cancel() on KeyboardInterrupt
+        **kwargs: Keyword arguments
+            - Display-only kwargs (for_symbol, etc.) are used for status but not passed to tool
+    
+    Returns:
+        ToolResult from the tool function
+    """
+    from src.core.application import get_application
+    
+    # Build status message (uses all kwargs including display-only)
+    status_msg = format_action_status(action_key, **kwargs)
+    
+    # Filter out display-only kwargs before passing to tool function
+    display_only_keys = {"for_symbol"}
+    tool_kwargs = {k: v for k, v in kwargs.items() if k not in display_only_keys}
+    
+    # Suppress shutdown during long operations
+    app = get_application()
+    app.suppress_shutdown()
+    
+    try:
+        console.print(f"\n[bold cyan]{status_msg}[/]")
+        console.print("[dim]Press Ctrl+C to cancel gracefully[/]\n")
+        
+        with console.status(f"[bold green]▶ {get_action_label(action_key)} in progress...[/]", spinner="dots"):
+            result = tool_fn(*args, **tool_kwargs)
+        
+        # Show completion message
+        complete_msg = format_action_complete(action_key, **kwargs)
+        console.print(f"[green]✓ {complete_msg}[/]")
+        
+        return result
+        
+    except KeyboardInterrupt:
+        console.print(f"\n[yellow]⚠️  Operation cancelled by user[/]")
+        if cancel_store:
+            try:
+                from src.data.historical_data_store import get_historical_store
+                store = get_historical_store()
+                store.cancel()
+            except Exception:
+                pass  # Store may not be initialized
+        return ToolResult(success=False, error="Cancelled by user", message="Operation cancelled", data=None)
+        
+    except Exception as e:
+        print_error_below_menu(str(e), f"Action: {get_action_label(action_key)}")
+        return ToolResult(success=False, error=str(e), message="", data=None)
+        
+    finally:
+        app.restore_shutdown()
 
 
 def print_result(result: ToolResult):
@@ -358,7 +697,83 @@ def print_result(result: ToolResult):
             else:
                 console.print(f"[cyan]Data:[/] {result.data}")
     else:
-        console.print(Panel(f"[bold red]✗ Error: {result.error}[/]", border_style="red"))
+        # Use robust error printing below menu
+        print_error_below_menu(result.error)
+
+
+def print_data_result(action_key: str, result: ToolResult):
+    """
+    Print a data builder ToolResult with specialized formatting.
+    
+    Uses the format_data_result function from cli_display to get
+    rich table/summary formatting for data operations.
+    """
+    if not result.success:
+        print_error_below_menu(result.error)
+        return
+    
+    # Try specialized formatter first
+    formatted = format_data_result(action_key, result.data, result.message)
+    
+    if formatted is None:
+        # Fall back to generic print_result
+        print_result(result)
+        return
+    
+    # Print success message
+    console.print(Panel(f"[bold green]✓ {result.message}[/]", border_style="green"))
+    
+    format_type = formatted.get("type", "simple")
+    title = formatted.get("title", "Result")
+    footer = formatted.get("footer")
+    
+    if format_type == "table":
+        # Rich table display
+        columns = formatted.get("columns", [])
+        rows = formatted.get("rows", [])
+        
+        if rows:
+            table = Table(show_header=True, header_style="bold magenta", title=title, 
+                         title_style="bold cyan", border_style="blue")
+            
+            # Add columns with appropriate styles
+            for col in columns:
+                if col in ("Symbol", "Symbol/TF"):
+                    table.add_column(col, style="bold yellow")
+                elif col in ("Candles", "Records", "Filled"):
+                    table.add_column(col, justify="right", style="cyan")
+                elif col in ("Status", "Valid"):
+                    table.add_column(col, justify="center")
+                elif col in ("From", "To"):
+                    table.add_column(col, style="dim")
+                else:
+                    table.add_column(col)
+            
+            # Add rows
+            for row in rows:
+                values = [str(row.get(col, "")) for col in columns]
+                # Color status indicators
+                colored_values = []
+                for i, val in enumerate(values):
+                    if val == "✓" or val.startswith("✓"):
+                        colored_values.append(f"[green]{val}[/]")
+                    elif val == "✗" or val.startswith("⚠"):
+                        colored_values.append(f"[yellow]{val}[/]")
+                    elif val == "Error":
+                        colored_values.append(f"[red]{val}[/]")
+                    else:
+                        colored_values.append(val)
+                table.add_row(*colored_values)
+            
+            console.print(table)
+    
+    elif format_type == "simple":
+        content = formatted.get("content", "")
+        console.print(Panel(content, title=title, border_style="cyan"))
+    
+    # Print footer if present
+    if footer:
+        console.print(f"[dim]{footer}[/]")
 
 
 def print_order_preview(order_type: str, symbol: str, side: str, qty_usd: float, price: float = None, **kwargs):
@@ -460,1190 +875,48 @@ class TradeCLI:
     # ==================== ACCOUNT MENU ====================
     
     def account_menu(self):
-        """Account and balance menu."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=30)
-            menu.add_column("Description", style="dim", width=45)
-            
-            menu.add_row("1", "View Balance", "Current account balance (USDT, BTC, etc.)")
-            menu.add_row("2", "View Exposure", "Total position exposure and margin used")
-            menu.add_row("3", "Account Info", "Account details, margin mode, risk limits")
-            menu.add_row("4", "Portfolio Snapshot", "Complete portfolio with positions & PnL")
-            menu.add_row("5", "Order History", "Recent orders [dim](select time range, max 7d)[/]")
-            menu.add_row("6", "Closed PnL", "Realized PnL [dim](select time range, max 7d)[/]")
-            menu.add_row("", "", "")
-            menu.add_row("", "[dim]--- Unified Account ---[/]", "")
-            menu.add_row("7", "Transaction Log", "Transactions [dim](select time range, max 7d)[/]")
-            menu.add_row("8", "Collateral Info", "Collateral coins and their settings")
-            menu.add_row("9", "Set Collateral Coin", "Enable/disable coins as collateral")
-            menu.add_row("10", "Borrow History", "Borrow records [dim](select time range, max 30d)[/]")
-            menu.add_row("11", "Coin Greeks (Options)", "Options Greeks for base coins")
-            menu.add_row("12", "Set Margin Mode", "Switch between Regular/Portfolio margin")
-            menu.add_row("13", "Transferable Amount", "Amount available to transfer out")
-            menu.add_row("14", "Back to Main Menu", "Return to main menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]ACCOUNT & BALANCE[/]", border_style="blue"))
-            
-            choice = get_choice(valid_range=range(1, 15))
-            
-            # Handle back command from menu choice
-            if choice is BACK:
-                break
-            
-            if choice == 1:
-                result = get_account_balance_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 2:
-                result = get_total_exposure_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 3:
-                result = get_account_info_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 4:
-                result = get_portfolio_snapshot_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 5:
-                # Order History - requires time range (max 7 days)
-                window = get_time_window(max_days=7, default="7d")
-                if window is BACK:
-                    continue
-                symbol = get_input("Symbol (blank for all)", "")
-                if symbol is BACK:
-                    continue
-                limit_input = get_input("Limit (1-50)", "50")
-                if limit_input is BACK:
-                    continue
-                try:
-                    limit = int(limit_input)
-                    result = get_order_history_tool(
-                        window=window,
-                        symbol=symbol if symbol else None,
-                        limit=limit,
-                    )
-                    print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{limit_input}' is not a valid number[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 6:
-                # Closed PnL - requires time range (max 7 days)
-                window = get_time_window(max_days=7, default="7d")
-                if window is BACK:
-                    continue
-                symbol = get_input("Symbol (blank for all)", "")
-                if symbol is BACK:
-                    continue
-                limit_input = get_input("Limit (1-50)", "50")
-                if limit_input is BACK:
-                    continue
-                try:
-                    limit = int(limit_input)
-                    result = get_closed_pnl_tool(
-                        window=window,
-                        symbol=symbol if symbol else None,
-                        limit=limit,
-                    )
-                    print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{limit_input}' is not a valid number[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 7:
-                # Transaction Log - requires time range (max 7 days)
-                window = get_time_window(max_days=7, default="7d")
-                if window is BACK:
-                    continue
-                category = get_input("Category (spot/linear/option, blank for all)", "")
-                if category is BACK:
-                    continue
-                currency = get_input("Currency (blank for all)", "")
-                if currency is BACK:
-                    continue
-                log_type = get_input("Type (TRADE/SETTLEMENT/TRANSFER_IN/etc, blank for all)", "")
-                if log_type is BACK:
-                    continue
-                limit_input = get_input("Limit (1-50)", "50")
-                if limit_input is BACK:
-                    continue
-                try:
-                    limit = int(limit_input)
-                    result = get_transaction_log_tool(
-                        window=window,
-                        category=category if category else None,
-                        currency=currency if currency else None,
-                        log_type=log_type if log_type else None,
-                        limit=limit,
-                    )
-                    print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{limit_input}' is not a valid number[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 8:
-                currency = get_input("Currency (blank for all)", "")
-                result = get_collateral_info_tool(currency=currency if currency else None)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 9:
-                coin = get_input("Coin (e.g., BTC, ETH, USDT)")
-                action = get_input("Enable as collateral? (yes/no)", "yes")
-                enabled = action.lower() in ("yes", "y", "true", "1")
-                result = set_collateral_coin_tool(coin, enabled)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 10:
-                # Borrow History - requires time range (max 30 days)
-                window = get_time_window(max_days=30, default="30d")
-                if window is BACK:
-                    continue
-                currency = get_input("Currency (blank for all)", "")
-                if currency is BACK:
-                    continue
-                limit_input = get_input("Limit (1-50)", "50")
-                if limit_input is BACK:
-                    continue
-                try:
-                    limit = int(limit_input)
-                    result = get_borrow_history_tool(
-                        window=window,
-                        currency=currency if currency else None,
-                        limit=limit,
-                    )
-                    print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{limit_input}' is not a valid number[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 11:
-                base_coin = get_input("Base coin (BTC/ETH, blank for all)", "")
-                result = get_coin_greeks_tool(base_coin=base_coin if base_coin else None)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 12:
-                console.print("\n[bold]Margin modes:[/]")
-                console.print("  1. Regular Margin (default)")
-                console.print("  2. Portfolio Margin")
-                mode_choice = get_input("Select mode", "1")
-                portfolio_margin = mode_choice == "2"
-                result = set_account_margin_mode_tool(portfolio_margin)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 13:
-                coin = get_input("Coin (e.g., USDT, BTC)")
-                result = get_transferable_amount_tool(coin)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 14:
-                break
+        """Account menu. Delegates to src.cli.menus.account_menu."""
+        account_menu_handler(self)
     
     # ==================== POSITIONS MENU ====================
     
     def positions_menu(self):
-        """Positions management menu."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            # Show trading API status
-            config = get_config()
-            api_env = config.bybit.get_api_environment_summary()
-            trading = api_env["trading"]
-            api_status_line = Text()
-            api_status_line.append("Trading API: ", style="dim")
-            if trading["is_demo"]:
-                api_status_line.append(f"{trading['mode']} ", style="bold green")
-                api_status_line.append("(demo account - fake funds)", style="green")
-            else:
-                api_status_line.append(f"{trading['mode']} ", style="bold red")
-                api_status_line.append("(live account - REAL FUNDS)", style="bold red")
-            api_status_line.append(f" │ {trading['base_url']}", style="dim")
-            console.print(Panel(api_status_line, border_style="dim yellow" if not trading["is_demo"] else "dim green"))
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=30)
-            menu.add_column("Description", style="dim", width=45)
-            
-            menu.add_row("1", "List Open Positions", "Show all open positions with PnL, size, entry price")
-            menu.add_row("2", "Position Detail", "Input: Symbol (e.g. BTCUSDT) → Shows detailed position info")
-            menu.add_row("3", "Set Stop Loss", "Input: Symbol, Price → Sets stop loss order")
-            menu.add_row("4", "Set Take Profit", "Input: Symbol, Price → Sets take profit order")
-            menu.add_row("5", "Set TP/SL Together", "Input: Symbol, TP price, SL price → Sets both at once")
-            menu.add_row("6", "Partial Close", "Input: Symbol, % (0-100), Limit price (optional) → Closes portion")
-            menu.add_row("7", "[red]Close Position[/]", "[red]Input: Symbol → Closes entire position at market[/]")
-            menu.add_row("8", "[bold red]Close All Positions[/]", "[bold red]Emergency: Closes ALL positions[/]")
-            menu.add_row("", "", "")
-            menu.add_row("", "[dim]--- Position Config ---[/]", "")
-            menu.add_row("9", "View Risk Limits", "Input: Symbol → Shows available risk limit tiers (IDs & max values)")
-            menu.add_row("10", "Set Risk Limit", "Input: Symbol → Shows tiers, then enter Risk Limit ID (integer)")
-            menu.add_row("11", "Set TP/SL Mode", "Input: Symbol → Choose Full (entire) or Partial (specified qty)")
-            menu.add_row("12", "Switch Margin Mode", "Input: Symbol → Choose Cross (shared) or Isolated (per position)")
-            menu.add_row("13", "Auto-Add Margin", "Input: Symbol → Enable/disable auto-add margin when needed")
-            menu.add_row("14", "Modify Position Margin", "Input: Symbol, Amount → Positive=add, Negative=reduce")
-            menu.add_row("15", "Switch Position Mode", "Choose One-way (Buy OR Sell) or Hedge (Buy AND Sell)")
-            menu.add_row("16", "Back to Main Menu", "Return to main menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]POSITIONS[/]", border_style="blue"))
-            console.print("[dim]💡 Tip: Type 'back' or 'b' at any prompt to cancel and return to menu[/]")
-            
-            choice = get_choice(valid_range=range(1, 17))
-            
-            # Handle back command from menu choice
-            if choice is BACK:
-                break
-            
-            if choice == 1:
-                result = list_open_positions_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 2:
-                symbol = get_input("Symbol (e.g. BTCUSDT, SOLUSDT, ETHUSDT)")
-                if symbol is BACK:
-                    continue
-                result = get_position_detail_tool(symbol)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 3:
-                symbol = get_input("Symbol (e.g. BTCUSDT)")
-                if symbol is BACK:
-                    continue
-                price_input = get_input("Stop Loss Price (USD, e.g. 85000.50)")
-                if price_input is BACK:
-                    continue
-                try:
-                    price = float(price_input)
-                    result = set_stop_loss_tool(symbol, price)
-                    print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{price_input}' is not a valid number[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 4:
-                symbol = get_input("Symbol (e.g. BTCUSDT)")
-                if symbol is BACK:
-                    continue
-                price_input = get_input("Take Profit Price (USD, e.g. 95000.00)")
-                if price_input is BACK:
-                    continue
-                try:
-                    price = float(price_input)
-                    result = set_take_profit_tool(symbol, price)
-                    print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{price_input}' is not a valid number[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 5:
-                symbol = get_input("Symbol (e.g. BTCUSDT)")
-                if symbol is BACK:
-                    continue
-                console.print("[dim]Leave blank to skip either TP or SL[/]")
-                tp = get_input("Take Profit Price (USD, blank to skip)", "")
-                if tp is BACK:
-                    continue
-                sl = get_input("Stop Loss Price (USD, blank to skip)", "")
-                if sl is BACK:
-                    continue
-                try:
-                    result = set_position_tpsl_tool(
-                        symbol,
-                        take_profit=float(tp) if tp else None,
-                        stop_loss=float(sl) if sl else None
-                    )
-                    print_result(result)
-                except ValueError as e:
-                    console.print(f"[red]Error: Invalid price format - {e}[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 6:
-                symbol = get_input("Symbol (e.g. BTCUSDT)")
-                if symbol is BACK:
-                    continue
-                percent_input = get_input("Close Percentage (0-100, e.g. 50 for 50%)", "50")
-                if percent_input is BACK:
-                    continue
-                price = get_input("Limit Price (USD, blank for Market order)", "")
-                if price is BACK:
-                    continue
-                try:
-                    percent = float(percent_input)
-                    if percent < 0 or percent > 100:
-                        console.print("[red]Error: Percentage must be between 0 and 100[/]")
-                    else:
-                        result = partial_close_position_tool(
-                            symbol, 
-                            percent, 
-                            price=float(price) if price else None
-                        )
-                        print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{percent_input}' is not a valid number[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 7:
-                symbol = get_input("Symbol")
-                if symbol is BACK:
-                    continue
-                if Confirm.ask(f"[yellow]Close entire {symbol} position?[/]"):
-                    result = close_position_tool(symbol)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled.[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 8:
-                if Confirm.ask("[bold red]Are you sure you want to CLOSE ALL POSITIONS?[/]"):
-                    result = panic_close_all_tool(reason="User requested close all")
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled.[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 9:
-                symbol = get_input("Symbol (e.g. BTCUSDT, SOLUSDT)")
-                if symbol is BACK:
-                    continue
-                console.print(f"\n[dim]Fetching risk limit tiers for {symbol}...[/]")
-                result = get_risk_limits_tool(symbol)
-                if result.success and result.data:
-                    console.print(f"\n[bold cyan]Available Risk Limit Tiers for {symbol}:[/]")
-                    rl_table = Table(show_header=True, header_style="bold magenta")
-                    rl_table.add_column("Risk Limit ID", style="cyan")
-                    rl_table.add_column("Max Position Value (USD)", justify="right")
-                    rl_table.add_column("Maintenance Margin Rate", justify="right")
-                    
-                    for rl in result.data.get("risk_limits", []):
-                        rl_table.add_row(
-                            str(rl.get('id')), 
-                            f"${float(rl.get('riskLimitValue', 0)):,.0f}",
-                            f"{float(rl.get('maintenanceMarginRate', 0)):.2%}" if rl.get('maintenanceMarginRate') else "N/A"
-                        )
-                    console.print(rl_table)
-                    console.print(f"\n[dim]Use option 10 to set a risk limit by entering the Risk Limit ID number[/]")
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 10:
-                symbol = get_input("Symbol (e.g. BTCUSDT, SOLUSDT)")
-                if symbol is BACK:
-                    continue
-                console.print(f"\n[dim]Fetching available risk limit tiers...[/]")
-                # First show available risk limits
-                limits_result = get_risk_limits_tool(symbol)
-                if limits_result.success and limits_result.data:
-                    console.print(f"\n[bold cyan]Available Risk Limit Tiers for {symbol}:[/]")
-                    rl_table = Table(show_header=True, header_style="bold magenta")
-                    rl_table.add_column("Risk Limit ID", style="cyan")
-                    rl_table.add_column("Max Position Value (USD)", justify="right")
-                    
-                    for rl in limits_result.data.get("risk_limits", [])[:10]:
-                        rl_table.add_row(
-                            str(rl.get('id')), 
-                            f"${float(rl.get('riskLimitValue', 0)):,.0f}"
-                        )
-                    console.print(rl_table)
-                    console.print(f"\n[yellow]Enter the Risk Limit ID number (integer) from the table above[/]")
-                    
-                risk_id_input = get_input("Risk Limit ID (integer number)", "")
-                if risk_id_input is BACK:
-                    continue
-                if not risk_id_input:
-                    console.print("[yellow]Cancelled - no risk limit ID provided[/]")
-                else:
-                    try:
-                        risk_id = int(risk_id_input)
-                        console.print(f"\n[dim]Setting risk limit ID {risk_id} for {symbol}...[/]")
-                        result = set_risk_limit_tool(symbol, risk_id)
-                        print_result(result)
-                    except ValueError:
-                        console.print(f"[red]Error: '{risk_id_input}' is not a valid integer. Please enter a number.[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 11:
-                symbol = get_input("Symbol (e.g. BTCUSDT)")
-                if symbol is BACK:
-                    continue
-                console.print("\n[bold]TP/SL Modes:[/]")
-                console.print("  [cyan]1[/]. Full - TP/SL applies to entire position (default)")
-                console.print("  [cyan]2[/]. Partial - TP/SL applies to specified quantity only")
-                mode_choice = get_input("Select mode (1 or 2)", "1")
-                if mode_choice is BACK:
-                    continue
-                full_mode = mode_choice == "1"
-                result = set_tp_sl_mode_tool(symbol, full_mode)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 12:
-                symbol = get_input("Symbol (e.g. BTCUSDT)")
-                if symbol is BACK:
-                    continue
-                console.print("\n[bold]Margin Modes:[/]")
-                console.print("  [cyan]1[/]. Cross margin - Shares margin across all positions")
-                console.print("  [cyan]2[/]. Isolated margin - Separate margin per position")
-                mode_choice = get_input("Select mode (1 or 2)", "1")
-                if mode_choice is BACK:
-                    continue
-                isolated = mode_choice == "2"
-                leverage_input = get_input("Leverage (1-100, blank to keep current)", "")
-                if leverage_input is BACK:
-                    continue
-                try:
-                    lev_value = int(leverage_input) if leverage_input else None
-                    if lev_value and (lev_value < 1 or lev_value > 100):
-                        console.print("[red]Error: Leverage must be between 1 and 100[/]")
-                        lev_value = None
-                    result = switch_margin_mode_tool(symbol, isolated, lev_value)
-                    print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{leverage_input}' is not a valid integer[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 13:
-                symbol = get_input("Symbol (e.g. BTCUSDT)")
-                if symbol is BACK:
-                    continue
-                console.print("\n[yellow]Auto-add margin automatically adds margin when position is at risk[/]")
-                enabled = Confirm.ask("Enable auto-add margin?", default=False)
-                result = set_auto_add_margin_tool(symbol, enabled)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 14:
-                symbol = get_input("Symbol (e.g. BTCUSDT)")
-                if symbol is BACK:
-                    continue
-                console.print("\n[yellow]Enter positive amount to ADD margin, negative to REDUCE margin[/]")
-                margin_input = get_input("Margin amount (USD, e.g. 100 or -50)", "")
-                if margin_input is BACK:
-                    continue
-                try:
-                    margin = float(margin_input)
-                    result = modify_position_margin_tool(symbol, margin)
-                    print_result(result)
-                except ValueError:
-                    console.print(f"[red]Error: '{margin_input}' is not a valid number[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 15:
-                console.print("\n[bold]Position Modes:[/]")
-                console.print("  [cyan]1[/]. One-way mode - Can only hold Buy OR Sell (not both)")
-                console.print("  [cyan]2[/]. Hedge mode - Can hold both Buy AND Sell simultaneously")
-                console.print("\n[yellow]Note: This affects ALL positions, not just one symbol[/]")
-                mode_choice = get_input("Select mode (1 or 2)", "1")
-                if mode_choice is BACK:
-                    continue
-                hedge_mode = mode_choice == "2"
-                result = switch_position_mode_tool(hedge_mode)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 16:
-                break
+        """Positions menu. Delegates to src.cli.menus.positions_menu."""
+        positions_menu_handler(self)
     
     # ==================== ORDERS MENU ====================
     
     def orders_menu(self):
-        """Orders menu."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            # Show trading API status
-            config = get_config()
-            api_env = config.bybit.get_api_environment_summary()
-            trading = api_env["trading"]
-            api_status_line = Text()
-            api_status_line.append("Trading API: ", style="dim")
-            if trading["is_demo"]:
-                api_status_line.append(f"{trading['mode']} ", style="bold green")
-                api_status_line.append("(demo account - fake funds)", style="green")
-            else:
-                api_status_line.append(f"{trading['mode']} ", style="bold red")
-                api_status_line.append("(live account - REAL FUNDS)", style="bold red")
-            api_status_line.append(f" │ {trading['base_url']}", style="dim")
-            console.print(Panel(api_status_line, border_style="dim yellow" if not trading["is_demo"] else "dim green"))
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=35)
-            menu.add_column("Description", style="dim", width=40)
-            
-            menu.add_row("1", "Market Orders (Buy/Sell/TP/SL)", "Execute immediately at market price")
-            menu.add_row("2", "Limit Orders", "Place limit buy/sell orders at specific price")
-            menu.add_row("3", "Stop Orders (Conditional)", "Stop market/limit orders (trigger-based)")
-            menu.add_row("4", "Manage Orders (List/Amend/Cancel)", "View, modify, or cancel open orders")
-            menu.add_row("5", "Set Leverage", "Set leverage for a trading symbol")
-            menu.add_row("6", "Cancel All Orders", "Cancel all open orders (optionally by symbol)")
-            menu.add_row("7", "Back to Main Menu", "Return to main menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]ORDERS[/]", border_style="blue"))
-            
-            choice = get_choice(valid_range=range(1, 8))
-            
-            if choice == 1:
-                self.market_orders_menu()
-            elif choice == 2:
-                self.limit_orders_menu()
-            elif choice == 3:
-                self.stop_orders_menu()
-            elif choice == 4:
-                self.manage_orders_menu()
-            elif choice == 5:
-                symbol = get_input("Symbol")
-                leverage = int(get_input("Leverage", "3"))
-                result = set_leverage_tool(symbol, leverage)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 6:
-                symbol = get_input("Symbol (blank for all)", "")
-                result = cancel_all_orders_tool(symbol=symbol if symbol else None)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 7:
-                break
+        """Orders menu. Delegates to src.cli.menus.orders_menu."""
+        orders_menu_handler(self)
 
     def market_orders_menu(self):
-        """Market orders menu."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=30)
-            menu.add_column("Description", style="dim", width=45)
-            
-            menu.add_row("1", "Market Buy", "Open long position at current market price")
-            menu.add_row("2", "Market Sell", "Open short position at current market price")
-            menu.add_row("3", "Market Buy with TP/SL", "Buy + set take profit & stop loss")
-            menu.add_row("4", "Market Sell with TP/SL", "Sell + set take profit & stop loss")
-            menu.add_row("5", "Back to Orders Menu", "Return to orders menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]MARKET ORDERS[/]", border_style="blue"))
-            
-            choice = get_choice(valid_range=range(1, 6))
-            
-            if choice == 1:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                print_order_preview("Market Buy", symbol, "Buy", usd)
-                if Confirm.ask("Confirm execution?"):
-                    result = market_buy_tool(symbol, usd)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 2:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                print_order_preview("Market Sell", symbol, "Sell", usd)
-                if Confirm.ask("Confirm execution?"):
-                    result = market_sell_tool(symbol, usd)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 3:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                tp = get_input("Take Profit Price (blank to skip)", "")
-                sl = get_input("Stop Loss Price (blank to skip)", "")
-                print_order_preview("Market Buy + TP/SL", symbol, "Buy", usd, 
-                                  take_profit=tp, stop_loss=sl)
-                if Confirm.ask("Confirm execution?"):
-                    result = market_buy_with_tpsl_tool(
-                        symbol, usd,
-                        take_profit=float(tp) if tp else None,
-                        stop_loss=float(sl) if sl else None
-                    )
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 4:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                tp = get_input("Take Profit Price (blank to skip)", "")
-                sl = get_input("Stop Loss Price (blank to skip)", "")
-                print_order_preview("Market Sell + TP/SL", symbol, "Sell", usd,
-                                  take_profit=tp, stop_loss=sl)
-                if Confirm.ask("Confirm execution?"):
-                    result = market_sell_with_tpsl_tool(
-                        symbol, usd,
-                        take_profit=float(tp) if tp else None,
-                        stop_loss=float(sl) if sl else None
-                    )
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 5:
-                break
+        """Market orders menu. Delegates to src.cli.menus.orders_menu."""
+        market_orders_menu_handler(self)
 
     def limit_orders_menu(self):
-        """Limit orders menu."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=30)
-            menu.add_column("Description", style="dim", width=45)
-            
-            menu.add_row("1", "Limit Buy", "Place limit buy order at specified price")
-            menu.add_row("2", "Limit Sell", "Place limit sell order at specified price")
-            menu.add_row("3", "Back to Orders Menu", "Return to orders menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]LIMIT ORDERS[/]", border_style="blue"))
-            
-            choice = get_choice(valid_range=range(1, 4))
-            
-            if choice == 1:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                price = float(get_input("Limit Price"))
-                tif = get_input("Time in Force (GTC/IOC/FOK/PostOnly)", "GTC")
-                reduce_only = Confirm.ask("Reduce Only?", default=False)
-                
-                print_order_preview("Limit Buy", symbol, "Buy", usd, price=price, 
-                                  tif=tif, reduce_only=reduce_only)
-                
-                if Confirm.ask("Confirm execution?"):
-                    result = limit_buy_tool(symbol, usd, price, time_in_force=tif, reduce_only=reduce_only)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 2:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                price = float(get_input("Limit Price"))
-                tif = get_input("Time in Force (GTC/IOC/FOK/PostOnly)", "GTC")
-                reduce_only = Confirm.ask("Reduce Only?", default=False)
-                
-                print_order_preview("Limit Sell", symbol, "Sell", usd, price=price,
-                                  tif=tif, reduce_only=reduce_only)
-                
-                if Confirm.ask("Confirm execution?"):
-                    result = limit_sell_tool(symbol, usd, price, time_in_force=tif, reduce_only=reduce_only)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 3:
-                break
+        """Limit orders menu. Delegates to src.cli.menus.orders_menu."""
+        limit_orders_menu_handler(self)
 
     def stop_orders_menu(self):
-        """Stop orders menu."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=30)
-            menu.add_column("Description", style="dim", width=45)
-            
-            menu.add_row("1", "Stop Market Buy", "Buy when price rises/falls to trigger")
-            menu.add_row("2", "Stop Market Sell", "Sell when price rises/falls to trigger")
-            menu.add_row("3", "Stop Limit Buy", "Limit buy triggered at stop price")
-            menu.add_row("4", "Stop Limit Sell", "Limit sell triggered at stop price")
-            menu.add_row("5", "Back to Orders Menu", "Return to orders menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]STOP/CONDITIONAL ORDERS[/]", border_style="blue"))
-            
-            choice = get_choice(valid_range=range(1, 6))
-            
-            if choice == 1:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                trigger = float(get_input("Trigger Price"))
-                direction = int(get_input("Trigger Direction (1=Rise, 2=Fall)", "1"))
-                
-                print_order_preview("Stop Market Buy", symbol, "Buy", usd, 
-                                  trigger_price=trigger, 
-                                  condition="Rises to" if direction==1 else "Falls to")
-                
-                if Confirm.ask("Confirm execution?"):
-                    result = stop_market_buy_tool(symbol, usd, trigger, trigger_direction=direction)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 2:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                trigger = float(get_input("Trigger Price"))
-                direction = int(get_input("Trigger Direction (1=Rise, 2=Fall)", "2"))
-                
-                print_order_preview("Stop Market Sell", symbol, "Sell", usd,
-                                  trigger_price=trigger,
-                                  condition="Rises to" if direction==1 else "Falls to")
-                
-                if Confirm.ask("Confirm execution?"):
-                    result = stop_market_sell_tool(symbol, usd, trigger, trigger_direction=direction)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 3:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                trigger = float(get_input("Trigger Price"))
-                limit = float(get_input("Limit Price"))
-                direction = int(get_input("Trigger Direction (1=Rise, 2=Fall)", "1"))
-                
-                print_order_preview("Stop Limit Buy", symbol, "Buy", usd, price=limit,
-                                  trigger_price=trigger,
-                                  condition="Rises to" if direction==1 else "Falls to")
-                
-                if Confirm.ask("Confirm execution?"):
-                    result = stop_limit_buy_tool(symbol, usd, trigger, limit, trigger_direction=direction)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 4:
-                symbol = get_input("Symbol")
-                usd = float(get_input("USD Amount"))
-                trigger = float(get_input("Trigger Price"))
-                limit = float(get_input("Limit Price"))
-                direction = int(get_input("Trigger Direction (1=Rise, 2=Fall)", "2"))
-                
-                print_order_preview("Stop Limit Sell", symbol, "Sell", usd, price=limit,
-                                  trigger_price=trigger,
-                                  condition="Rises to" if direction==1 else "Falls to")
-                
-                if Confirm.ask("Confirm execution?"):
-                    result = stop_limit_sell_tool(symbol, usd, trigger, limit, trigger_direction=direction)
-                    print_result(result)
-                else:
-                    console.print("[yellow]Cancelled[/]")
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 5:
-                break
+        """Stop orders menu. Delegates to src.cli.menus.orders_menu."""
+        stop_orders_menu_handler(self)
 
     def manage_orders_menu(self):
-        """Manage existing orders."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=30)
-            menu.add_column("Description", style="dim", width=45)
-            
-            menu.add_row("1", "List Open Orders", "View all open orders (optionally by symbol)")
-            menu.add_row("2", "Amend Order", "Modify order (qty, price, TP/SL)")
-            menu.add_row("3", "Cancel Order", "Cancel a specific order by ID")
-            menu.add_row("4", "Back to Orders Menu", "Return to orders menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]MANAGE ORDERS[/]", border_style="blue"))
-            
-            choice = get_choice(valid_range=range(1, 5))
-            
-            if choice == 1:
-                symbol = get_input("Symbol (blank for all)", "")
-                result = get_open_orders_tool(symbol=symbol if symbol else None)
-                
-                if result.success and result.data and result.data.get("orders"):
-                    orders = result.data["orders"]
-                    table = Table(title=f"Open Orders ({len(orders)})", show_header=True, header_style="bold magenta")
-                    table.add_column("ID")
-                    table.add_column("Symbol")
-                    table.add_column("Side")
-                    table.add_column("Type")
-                    table.add_column("Qty")
-                    table.add_column("Price")
-                    table.add_column("Status")
-                    
-                    for o in orders:
-                        side_style = "green" if o['side'].lower() == "buy" else "red"
-                        table.add_row(
-                            o['order_id'][-6:], # Short ID
-                            o['symbol'],
-                            f"[{side_style}]{o['side']}[/]",
-                            o['order_type'],
-                            str(o['qty']),
-                            str(o['price']),
-                            o['status']
-                        )
-                    console.print(table)
-                else:
-                    print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 2:
-                symbol = get_input("Symbol")
-                order_id = get_input("Order ID (or Order Link ID)")
-                
-                console.print("[dim]Leave blank to keep current value[/]")
-                new_qty = get_input("New Qty", "")
-                new_price = get_input("New Price", "")
-                new_tp = get_input("New TP", "")
-                new_sl = get_input("New SL", "")
-                
-                result = amend_order_tool(
-                    symbol, 
-                    order_id=order_id,
-                    qty=float(new_qty) if new_qty else None,
-                    price=float(new_price) if new_price else None,
-                    take_profit=float(new_tp) if new_tp else None,
-                    stop_loss=float(new_sl) if new_sl else None
-                )
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 3:
-                symbol = get_input("Symbol")
-                order_id = get_input("Order ID (or Order Link ID)")
-                result = cancel_order_tool(symbol, order_id=order_id)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 4:
-                break
+        """Manage orders menu. Delegates to src.cli.menus.orders_menu."""
+        manage_orders_menu_handler(self)
     
     # ==================== MARKET DATA MENU ====================
     
     def market_data_menu(self):
-        """Market data menu."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            # Show market data API source info
-            config = get_config()
-            data_env = config.bybit.get_api_environment_summary()["data"]
-            key_status = "✓ Authenticated" if data_env["key_configured"] else "⚠ Public Only"
-            api_status_line = Text()
-            api_status_line.append("Market Data Source: ", style="dim")
-            api_status_line.append(f"{data_env['mode']} ", style="bold green")
-            api_status_line.append(f"({data_env['base_url']})", style="dim")
-            api_status_line.append(" │ ", style="dim")
-            if data_env["key_configured"]:
-                api_status_line.append(key_status, style="green")
-            else:
-                api_status_line.append(key_status, style="yellow")
-            console.print(Panel(api_status_line, border_style="dim blue"))
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=30)
-            menu.add_column("Description", style="dim", width=45)
-            
-            menu.add_row("1", "Get Price", "Current market price for a symbol")
-            menu.add_row("2", "Get OHLCV", "Candlestick data (Open, High, Low, Close, Volume)")
-            menu.add_row("3", "Get Funding Rate", "Current funding rate for perpetual futures")
-            menu.add_row("4", "Get Open Interest", "Current open interest for a symbol")
-            menu.add_row("5", "Get Orderbook", "Order book depth (bids/asks)")
-            menu.add_row("6", "Get Instruments", "Symbol info (contract size, tick size, etc.)")
-            menu.add_row("7", "Run Market Data Tests", "Test all market data endpoints")
-            menu.add_row("8", "Back to Main Menu", "Return to main menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]MARKET DATA[/]", border_style="blue"))
-            
-            choice = get_choice(valid_range=range(1, 9))
-            
-            if choice == 1:
-                symbol = get_input("Symbol")
-                result = get_price_tool(symbol)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 2:
-                symbol = get_input("Symbol")
-                interval = get_input("Interval", "15")
-                limit = int(get_input("Limit", "100"))
-                result = get_ohlcv_tool(symbol, interval, limit)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 3:
-                symbol = get_input("Symbol")
-                result = get_funding_rate_tool(symbol)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 4:
-                symbol = get_input("Symbol")
-                result = get_open_interest_tool(symbol)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 5:
-                symbol = get_input("Symbol")
-                limit = int(get_input("Depth Limit", "25"))
-                result = get_orderbook_tool(symbol, limit)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 6:
-                result = get_instruments_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 7:
-                symbol = get_input("Symbol")
-                result = run_market_data_tests_tool(symbol)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            elif choice == 8:
-                break
+        """Market data menu. Delegates to src.cli.menus.market_data_menu."""
+        market_data_menu_handler(self)
     
     # ==================== DATA MENU ====================
     
     def data_menu(self):
-        """Historical data builder menu (DuckDB-only)."""
-        while True:
-            clear_screen()
-            print_header()
-            
-            # Show data API source info
-            config = get_config()
-            data_env = config.bybit.get_api_environment_summary()["data"]
-            key_status = "✓ Configured" if data_env["key_configured"] else "✗ Public Only"
-            api_status_line = Text()
-            api_status_line.append("Data Source: ", style="dim")
-            api_status_line.append(f"{data_env['mode']} ", style="bold green")
-            api_status_line.append(f"({data_env['base_url']})", style="dim")
-            api_status_line.append(" │ API Key: ", style="dim")
-            if data_env["key_configured"]:
-                api_status_line.append(key_status, style="green")
-            else:
-                api_status_line.append(key_status, style="yellow")
-            console.print(Panel(api_status_line, border_style="dim blue"))
-            
-            menu = Table(show_header=False, box=None, padding=(0, 2))
-            menu.add_column("Key", style="cyan bold", justify="right", width=4)
-            menu.add_column("Action", style="bold", width=35)
-            menu.add_column("Description", style="dim", width=40)
-            
-            menu.add_row("", "[dim]--- Database Info ---[/]", "")
-            menu.add_row("1", "Database Stats", "Database size, symbol count, total candles")
-            menu.add_row("2", "List Cached Symbols", "All symbols with data in database")
-            menu.add_row("3", "Symbol Aggregate Status", "Per-symbol totals (candles, gaps, timeframes)")
-            menu.add_row("4", "Symbol Summary (Overview)", "High-level summary per symbol")
-            menu.add_row("5", "Symbol Timeframe Ranges", "Detailed per-symbol/timeframe date ranges")
-            menu.add_row("", "", "")
-            menu.add_row("", "[dim]--- Build Data ---[/]", "")
-            menu.add_row("6", "[bold green]Build Full History[/]", "[green]Sync OHLCV + Funding + OI for symbols[/]")
-            menu.add_row("7", "[bold cyan]Sync Forward to Now[/]", "[cyan]Fetch only new candles (no backfill)[/]")
-            menu.add_row("8", "[bold cyan]Sync Forward + Fill Gaps[/]", "[cyan]Sync new + backfill gaps in history[/]")
-            menu.add_row("", "", "")
-            menu.add_row("", "[dim]--- Sync Data (Individual) ---[/]", "")
-            menu.add_row("9", "Sync OHLCV by Period", "Sync candles for a time period (1D, 1M, etc.)")
-            menu.add_row("10", "Sync OHLCV by Date Range", "Sync candles for specific date range")
-            menu.add_row("11", "Sync Funding Rates", "Sync funding rate history")
-            menu.add_row("12", "Sync Open Interest", "Sync open interest history")
-            menu.add_row("", "", "")
-            menu.add_row("", "[dim]--- Maintenance ---[/]", "")
-            menu.add_row("13", "Fill Gaps", "Detect and fill missing candles in data")
-            menu.add_row("14", "Heal Data", "Comprehensive data integrity check & repair")
-            menu.add_row("15", "[red]Delete Symbol[/]", "[red]Delete all data for a symbol[/]")
-            menu.add_row("16", "Cleanup Empty Symbols", "Remove symbols with no data")
-            menu.add_row("17", "Vacuum Database", "Reclaim disk space after deletions")
-            menu.add_row("", "", "")
-            menu.add_row("18", "Back to Main Menu", "Return to main menu")
-            
-            console.print(Panel(Align.center(menu), title="[bold]DATA BUILDER (DuckDB)[/]", border_style="blue"))
-            
-            choice = get_choice(valid_range=range(1, 19))
-            
-            if choice == 1:
-                # Database Stats
-                result = get_database_stats_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 2:
-                # List Cached Symbols
-                result = list_cached_symbols_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 3:
-                # Symbol Aggregate Status
-                symbol = get_input("Symbol (blank for all)", "")
-                result = get_symbol_status_tool(symbol if symbol else None)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 4:
-                # Symbol Summary (Overview)
-                result = get_symbol_summary_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 5:
-                # Symbol Timeframe Ranges (Detailed)
-                symbol = get_input("Symbol (blank for all)", "")
-                result = get_symbol_timeframe_ranges_tool(symbol if symbol else None)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 6:
-                # Build Full History (OHLCV + Funding + OI)
-                symbol = get_input("Symbol(s) to build (comma-separated)")
-                symbols = [s.strip().upper() for s in symbol.split(",") if s.strip()]
-                if not symbols:
-                    console.print("[red]No symbols provided.[/]")
-                    Prompt.ask("\nPress Enter to continue")
-                    continue
-                
-                period = get_input("Period (1D, 1W, 1M, 3M, 6M, 1Y)", "1M")
-                timeframes_input = get_input("OHLCV Timeframes (comma-separated, blank for all)", "")
-                timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
-                oi_interval = get_input("Open Interest Interval (5min, 15min, 30min, 1h, 4h, 1d)", "1h")
-                
-                console.print(f"\n[dim]Building full history for {symbols} ({period})...[/]")
-                console.print(f"[dim]This will sync OHLCV candles, funding rates, and open interest.[/]")
-                with console.status("[bold green]Building historical data...[/]"):
-                    result = build_symbol_history_tool(
-                        symbols,
-                        period=period,
-                        timeframes=timeframes,
-                        oi_interval=oi_interval,
-                    )
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 7:
-                # Sync Forward to Now (new candles only)
-                symbol = get_input("Symbol(s) to sync forward (comma-separated)")
-                symbols = [s.strip().upper() for s in symbol.split(",") if s.strip()]
-                if not symbols:
-                    console.print("[red]No symbols provided.[/]")
-                    Prompt.ask("\nPress Enter to continue")
-                    continue
-                
-                timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
-                timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
-                
-                console.print(f"\n[dim]Syncing {symbols} forward to now (new candles only)...[/]")
-                with console.status("[bold green]Syncing forward...[/]"):
-                    result = sync_to_now_tool(symbols, timeframes=timeframes)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 8:
-                # Sync Forward + Fill Gaps (complete)
-                symbol = get_input("Symbol(s) to sync and heal (comma-separated)")
-                symbols = [s.strip().upper() for s in symbol.split(",") if s.strip()]
-                if not symbols:
-                    console.print("[red]No symbols provided.[/]")
-                    Prompt.ask("\nPress Enter to continue")
-                    continue
-                
-                timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
-                timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
-                
-                console.print(f"\n[dim]Syncing {symbols} forward and filling gaps...[/]")
-                console.print(f"[dim]This will fetch new candles AND repair any gaps in history.[/]")
-                with console.status("[bold green]Syncing and healing data...[/]"):
-                    result = sync_to_now_and_fill_gaps_tool(symbols, timeframes=timeframes)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 9:
-                # Sync OHLCV by Period
-                symbol = get_input("Symbol (comma-separated for multiple)")
-                symbols = [s.strip().upper() for s in symbol.split(",")]
-                period = get_input("Period (1D, 1W, 1M, 3M, 6M, 1Y)", "1M")
-                timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
-                timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
-                
-                console.print(f"\n[dim]Syncing {symbols} for {period}...[/]")
-                with console.status("[bold green]Syncing data...[/]"):
-                    result = sync_symbols_tool(symbols, period=period, timeframes=timeframes)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 10:
-                # Sync OHLCV by Date Range
-                symbol = get_input("Symbol (comma-separated for multiple)")
-                symbols = [s.strip().upper() for s in symbol.split(",")]
-                start_str = get_input("Start Date (YYYY-MM-DD)")
-                end_str = get_input("End Date (YYYY-MM-DD)", datetime.now().strftime("%Y-%m-%d"))
-                timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
-                timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
-                
-                try:
-                    start_dt = datetime.strptime(start_str, "%Y-%m-%d")
-                    end_dt = datetime.strptime(end_str, "%Y-%m-%d")
-                except ValueError:
-                    console.print("[red]Invalid date format. Use YYYY-MM-DD.[/]")
-                    Prompt.ask("\nPress Enter to continue")
-                    continue
-                
-                console.print(f"\n[dim]Syncing {symbols} from {start_str} to {end_str}...[/]")
-                with console.status("[bold green]Syncing data...[/]"):
-                    result = sync_range_tool(symbols, start=start_dt, end=end_dt, timeframes=timeframes)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 11:
-                # Sync Funding Rates
-                symbol = get_input("Symbol (comma-separated for multiple)")
-                symbols = [s.strip().upper() for s in symbol.split(",")]
-                period = get_input("Period (1M, 3M, 6M, 1Y)", "3M")
-                
-                console.print(f"\n[dim]Syncing funding rates for {symbols}...[/]")
-                with console.status("[bold green]Syncing funding rates...[/]"):
-                    result = sync_funding_tool(symbols, period=period)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 12:
-                # Sync Open Interest
-                symbol = get_input("Symbol (comma-separated for multiple)")
-                symbols = [s.strip().upper() for s in symbol.split(",")]
-                period = get_input("Period (1D, 1W, 1M, 3M)", "1M")
-                interval = get_input("Interval (5min, 15min, 30min, 1h, 4h, 1d)", "1h")
-                
-                console.print(f"\n[dim]Syncing open interest for {symbols}...[/]")
-                with console.status("[bold green]Syncing open interest...[/]"):
-                    result = sync_open_interest_tool(symbols, period=period, interval=interval)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 13:
-                # Fill Gaps
-                symbol = get_input("Symbol (blank for all)", "")
-                timeframe = get_input("Timeframe (blank for all)", "")
-                
-                console.print(f"\n[dim]Scanning and filling gaps...[/]")
-                result = fill_gaps_tool(
-                    symbol=symbol if symbol else None,
-                    timeframe=timeframe if timeframe else None,
-                )
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 14:
-                # Heal Data
-                symbol = get_input("Symbol (blank for all)", "")
-                
-                console.print(f"\n[dim]Running data integrity check and repair...[/]")
-                result = heal_data_tool(symbol=symbol if symbol else None)
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 15:
-                # Delete Symbol
-                symbol = get_input("Symbol to DELETE")
-                if symbol:
-                    if Confirm.ask(f"[bold red]Delete ALL data for {symbol.upper()}?[/]"):
-                        result = delete_symbol_tool(symbol)
-                        print_result(result)
-                    else:
-                        console.print("[yellow]Cancelled.[/]")
-                else:
-                    console.print("[yellow]No symbol provided.[/]")
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 16:
-                # Cleanup Empty Symbols
-                console.print(f"\n[dim]Cleaning up invalid/empty symbols...[/]")
-                result = cleanup_empty_symbols_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 17:
-                # Vacuum Database
-                console.print(f"\n[dim]Vacuuming database...[/]")
-                result = vacuum_database_tool()
-                print_result(result)
-                Prompt.ask("\nPress Enter to continue")
-            
-            elif choice == 18:
-                break
+        """Historical data builder menu (DuckDB-only). Delegates to src.cli.menus.data_menu."""
+        data_menu_handler(self)
     
     # ==================== CONNECTION TEST ====================
     
@@ -1690,22 +963,18 @@ class TradeCLI:
             )
             console.print(env_table)
         
-        console.print("\n[dim]Testing connection to Bybit...[/]")
-        with console.status("[bold green]Connecting to Bybit API...[/]"):
-            result = test_connection_tool()
+        result = run_tool_action("diagnostics.connection", test_connection_tool)
         print_result(result)
         
-        console.print("\n[dim]Checking server time offset...[/]")
-        result = get_server_time_offset_tool()
+        result = run_tool_action("diagnostics.server_time", get_server_time_offset_tool)
         print_result(result)
         
-        console.print("\n[dim]Checking rate limit status...[/]")
-        result = get_rate_limit_status_tool()
+        result = run_tool_action("diagnostics.rate_limits", get_rate_limit_status_tool)
         print_result(result)
         
         # Symbol passed as parameter from user input
         symbol = get_input("\nTest ticker for symbol")
-        result = get_ticker_tool(symbol)
+        result = run_tool_action("diagnostics.ticker", get_ticker_tool, symbol, symbol=symbol)
         print_result(result)
         
         Prompt.ask("\nPress Enter to continue")
@@ -1766,13 +1035,10 @@ class TradeCLI:
         
         symbol = get_input("\nSymbol to test")
         
-        console.print("\n[dim]Running exchange health check...[/]")
-        with console.status("[bold green]Running diagnostics...[/]"):
-            result = exchange_health_check_tool(symbol)
+        result = run_tool_action("diagnostics.health_check", exchange_health_check_tool, symbol, symbol=symbol)
         print_result(result)
         
-        console.print("\n[dim]Checking WebSocket status...[/]")
-        result = get_websocket_status_tool()
+        result = run_tool_action("diagnostics.websocket", get_websocket_status_tool)
         print_result(result)
         
         Prompt.ask("\nPress Enter to continue")
@@ -1799,14 +1065,18 @@ class TradeCLI:
         confirm = get_input("Type 'PANIC' to confirm", "")
         
         if confirm == "PANIC":
-            console.print(f"\n[bold yellow]Executing panic...[/]")
-            with console.status("[bold red]CLOSING EVERYTHING...[/]"):
-                result = panic_close_all_tool(reason="Manual panic from CLI")
+            result = run_tool_action("panic.close_all", panic_close_all_tool, reason="Manual panic from CLI")
             print_result(result)
         else:
             console.print(f"\n[bold green]Panic cancelled.[/]")
         
         Prompt.ask("\nPress Enter to continue")
+
+
+# =============================================================================
+# SMOKE TEST SUITE - Now imported from src.cli.smoke_tests
+# =============================================================================
+# See: src/cli/smoke_tests.py for run_smoke_suite, run_data_builder_smoke, run_full_cli_smoke
 
 
 def select_trading_environment() -> bool:
@@ -1972,12 +1242,110 @@ def _confirm_live_mode(config) -> bool:
         return True
 
 
+def parse_cli_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments for trade_cli.
+    
+    Supports:
+      --smoke data   Run data builder smoke test only
+      --smoke full   Run full CLI smoke test (data + trading + diagnostics)
+    """
+    parser = argparse.ArgumentParser(
+        description="TRADE - Bybit Unified Trading Account CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python trade_cli.py                  # Interactive mode (default)
+  python trade_cli.py --smoke data     # Data builder smoke test
+  python trade_cli.py --smoke full     # Full CLI smoke test
+        """
+    )
+    
+    parser.add_argument(
+        "--smoke",
+        choices=["data", "full", "data_extensive", "orders", "live_check"],
+        default=None,
+        help="Run non-interactive smoke test. 'data'/'full'/'data_extensive'/'orders' use DEMO. 'live_check' tests LIVE connectivity (opt-in, requires LIVE keys)."
+    )
+    
+    return parser.parse_args()
+
+
 def main():
     """Main entry point."""
+    # Parse CLI arguments FIRST (before any config or logging)
+    args = parse_cli_args()
+    
     # Setup logging
     setup_logger()
     
-    # ===== TRADING ENVIRONMENT SELECTOR (before Application init) =====
+    # ===== SMOKE TEST MODE =====
+    # If --smoke is specified, run non-interactive smoke tests
+    if args.smoke:
+        config = get_config()
+        
+        # Special case: live_check uses LIVE credentials (opt-in, dangerous)
+        if args.smoke == "live_check":
+            console.print(Panel(
+                "[bold red]⚠️  LIVE CHECK SMOKE TEST ⚠️[/]\n"
+                "[red]This test uses LIVE API credentials (REAL MONEY account)[/]\n"
+                "[dim]Testing connectivity, balance, and limited order placement[/]",
+                border_style="red"
+            ))
+            # Don't force DEMO - use configured mode (should be LIVE for this test)
+            # If BYBIT_USE_DEMO=false in env, this uses LIVE
+        else:
+            # SAFETY: Force DEMO mode for all other smoke tests
+            config.bybit.use_demo = True
+            config.trading.mode = "paper"
+            
+            console.print(Panel(
+                f"[bold cyan]SMOKE TEST MODE: {args.smoke.upper()}[/]\n"
+                "[dim]Forcing DEMO/PAPER mode for safety[/]",
+                border_style="cyan"
+            ))
+        
+        # Initialize application lifecycle
+        app = get_application()
+        
+        if not app.initialize():
+            console.print(f"\n[bold red]Application initialization failed![/]")
+            print_error_below_menu(str(app.get_status().error))
+            sys.exit(1)
+        
+        # Start application (including WebSocket if enabled)
+        if not app.start():
+            console.print(f"\n[bold yellow]Warning: Application start had issues[/]")
+            console.print(f"[yellow]Continuing with REST API fallback...[/]")
+        
+        try:
+            # Run the appropriate smoke suite
+            if args.smoke == "data_extensive":
+                # Extensive data test with clean database
+                exit_code = run_extensive_data_smoke()
+            elif args.smoke == "orders":
+                # Comprehensive order type testing
+                exit_code = run_comprehensive_order_smoke()
+            elif args.smoke == "live_check":
+                # LIVE connectivity and limited order test
+                from src.cli.smoke_tests import run_live_check_smoke
+                exit_code = run_live_check_smoke()
+            else:
+                exit_code = run_smoke_suite(args.smoke, app, config)
+            sys.exit(exit_code)
+        except KeyboardInterrupt:
+            console.print(f"\n[yellow]Smoke test interrupted.[/]")
+            sys.exit(130)
+        except Exception as e:
+            console.print(f"\n[bold red]Smoke test failed with error:[/] {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        finally:
+            app.stop()
+            console.print(f"[dim]Smoke test complete.[/]")
+    
+    # ===== INTERACTIVE MODE (default) =====
     # This modifies config.bybit.use_demo and config.trading.mode in memory
     # for this session only, without changing api_keys.env
     if not select_trading_environment():
@@ -1989,7 +1357,7 @@ def main():
     
     if not app.initialize():
         console.print(f"\n[bold red]Application initialization failed![/]")
-        console.print(f"[red]Error: {app.get_status().error}[/]")
+        print_error_below_menu(str(app.get_status().error))
         return
     
     # Start application (including WebSocket if enabled)
@@ -2012,7 +1380,7 @@ def main():
     except KeyboardInterrupt:
         console.print(f"\n[yellow]Interrupted. Shutting down...[/]")
     except Exception as e:
-        console.print(f"\n[bold red]Error: {e}[/]")
+        print_error_below_menu(str(e))
         raise
     finally:
         # Graceful shutdown

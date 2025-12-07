@@ -1,13 +1,34 @@
 """
 Data modules for market data and historical data storage.
 
-- MarketData: Live market data with caching
-- HistoricalDataStore: DuckDB-backed historical OHLCV, funding rates, and open interest
-- RealtimeState/RealtimeBootstrap: WebSocket real-time data
+Environment-aware data layer supporting live and demo trading:
+- MarketData: Live market data with caching (env-aware)
+- HistoricalDataStore: DuckDB-backed historical data (env-aware: live/demo)
+- RealtimeState/RealtimeBootstrap: WebSocket real-time data with MTF buffers
+- Sessions: DemoSession/LiveSession for isolated trading environments
+- Backend Protocol: Interface for future MongoDB backend support
 """
 
-from .market_data import MarketData, get_market_data, reset_market_data
-from .historical_data_store import HistoricalDataStore, get_historical_store
+from .market_data import (
+    MarketData,
+    get_market_data,
+    get_live_market_data,
+    get_demo_market_data,
+    reset_market_data,
+)
+from .historical_data_store import (
+    HistoricalDataStore,
+    get_historical_store,
+    get_live_historical_store,
+    get_demo_historical_store,
+    # Module-level env-aware API
+    get_ohlcv,
+    get_latest_ohlcv,
+    append_ohlcv,
+    get_funding,
+    get_open_interest,
+    get_symbol_timeframe_ranges,
+)
 from .realtime_state import (
     RealtimeState,
     get_realtime_state,
@@ -16,6 +37,7 @@ from .realtime_state import (
     OrderbookData,
     TradeData,
     KlineData,
+    MTFCandle,
     PositionData,
     OrderData,
     ExecutionData,
@@ -32,15 +54,38 @@ from .realtime_bootstrap import (
     reset_realtime_bootstrap,
     SubscriptionConfig,
 )
+from .sessions import (
+    SessionConfig,
+    BaseSession,
+    DemoSession,
+    LiveSession,
+    create_demo_session,
+    create_live_session,
+)
+from .backend_protocol import (
+    HistoricalBackend,
+    MongoBackend,
+)
 
 __all__ = [
-    # Market Data
+    # Market Data (env-aware)
     "MarketData",
     "get_market_data",
+    "get_live_market_data",
+    "get_demo_market_data",
     "reset_market_data",
-    # Historical Data Store (DuckDB)
+    # Historical Data Store (DuckDB, env-aware)
     "HistoricalDataStore",
     "get_historical_store",
+    "get_live_historical_store",
+    "get_demo_historical_store",
+    # Module-level env-aware data API
+    "get_ohlcv",
+    "get_latest_ohlcv",
+    "append_ohlcv",
+    "get_funding",
+    "get_open_interest",
+    "get_symbol_timeframe_ranges",
     # Real-time State
     "RealtimeState",
     "get_realtime_state",
@@ -49,6 +94,7 @@ __all__ = [
     "OrderbookData",
     "TradeData",
     "KlineData",
+    "MTFCandle",
     "PositionData",
     "OrderData",
     "ExecutionData",
@@ -63,4 +109,14 @@ __all__ = [
     "get_realtime_bootstrap",
     "reset_realtime_bootstrap",
     "SubscriptionConfig",
+    # Sessions
+    "SessionConfig",
+    "BaseSession",
+    "DemoSession",
+    "LiveSession",
+    "create_demo_session",
+    "create_live_session",
+    # Backend Protocol (future MongoDB)
+    "HistoricalBackend",
+    "MongoBackend",
 ]

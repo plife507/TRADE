@@ -17,6 +17,9 @@ Usage:
     
     # Execute a tool
     result = registry.execute("market_buy", symbol="SOLUSDT", usd_amount=100)
+    
+    # Agent can specify trading_env to validate intent
+    result = registry.execute("market_buy", symbol="SOLUSDT", usd_amount=100, trading_env="demo")
 """
 
 from typing import Dict, Any, List, Optional, Callable
@@ -24,6 +27,15 @@ from dataclasses import dataclass, field
 import inspect
 
 from .shared import ToolResult
+
+
+# Common parameter definition for trading environment validation
+# Used by all trading/account/position tools
+TRADING_ENV_PARAM = {
+    "type": "string",
+    "description": "Trading environment for validation ('demo' or 'live'). Validates caller's intent against process config.",
+    "optional": True,
+}
 
 
 @dataclass
@@ -75,6 +87,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol (e.g., SOLUSDT)"},
                 "usd_amount": {"type": "number", "description": "Position size in USD"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount"],
         )
@@ -87,6 +100,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
                 "usd_amount": {"type": "number", "description": "Position size in USD"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount"],
         )
@@ -101,6 +115,7 @@ class ToolRegistry:
                 "usd_amount": {"type": "number", "description": "Position size in USD"},
                 "take_profit": {"type": "number", "description": "Take profit price", "optional": True},
                 "stop_loss": {"type": "number", "description": "Stop loss price", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount"],
         )
@@ -115,6 +130,7 @@ class ToolRegistry:
                 "usd_amount": {"type": "number", "description": "Position size in USD"},
                 "take_profit": {"type": "number", "description": "Take profit price", "optional": True},
                 "stop_loss": {"type": "number", "description": "Stop loss price", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount"],
         )
@@ -135,6 +151,7 @@ class ToolRegistry:
                 "price": {"type": "number", "description": "Limit price"},
                 "time_in_force": {"type": "string", "description": "GTC, IOC, FOK, or PostOnly", "default": "GTC"},
                 "reduce_only": {"type": "boolean", "description": "Reduce-only order", "default": False},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount", "price"],
         )
@@ -150,6 +167,7 @@ class ToolRegistry:
                 "price": {"type": "number", "description": "Limit price"},
                 "time_in_force": {"type": "string", "description": "GTC, IOC, FOK, or PostOnly", "default": "GTC"},
                 "reduce_only": {"type": "boolean", "description": "Reduce-only order", "default": False},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount", "price"],
         )
@@ -163,6 +181,7 @@ class ToolRegistry:
                 "symbol": {"type": "string", "description": "Trading symbol"},
                 "close_percent": {"type": "number", "description": "Percentage to close (0-100)"},
                 "price": {"type": "number", "description": "Limit price (None for market)", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "close_percent"],
         )
@@ -184,6 +203,7 @@ class ToolRegistry:
                 "trigger_price": {"type": "number", "description": "Price to trigger order"},
                 "trigger_direction": {"type": "integer", "description": "1=rises to, 2=falls to", "default": 1},
                 "reduce_only": {"type": "boolean", "description": "Reduce-only order", "default": False},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount", "trigger_price"],
         )
@@ -199,6 +219,7 @@ class ToolRegistry:
                 "trigger_price": {"type": "number", "description": "Price to trigger order"},
                 "trigger_direction": {"type": "integer", "description": "1=rises to, 2=falls to", "default": 2},
                 "reduce_only": {"type": "boolean", "description": "Reduce-only order", "default": False},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount", "trigger_price"],
         )
@@ -214,6 +235,7 @@ class ToolRegistry:
                 "trigger_price": {"type": "number", "description": "Price to trigger order"},
                 "limit_price": {"type": "number", "description": "Limit price for triggered order"},
                 "trigger_direction": {"type": "integer", "description": "1=rises to, 2=falls to", "default": 1},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount", "trigger_price", "limit_price"],
         )
@@ -229,6 +251,7 @@ class ToolRegistry:
                 "trigger_price": {"type": "number", "description": "Price to trigger order"},
                 "limit_price": {"type": "number", "description": "Limit price for triggered order"},
                 "trigger_direction": {"type": "integer", "description": "1=rises to, 2=falls to", "default": 2},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "usd_amount", "trigger_price", "limit_price"],
         )
@@ -246,6 +269,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Filter by symbol", "optional": True},
                 "order_filter": {"type": "string", "description": "Order/StopOrder/tpslOrder", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=[],
         )
@@ -259,6 +283,7 @@ class ToolRegistry:
                 "symbol": {"type": "string", "description": "Trading symbol"},
                 "order_id": {"type": "string", "description": "Order ID to cancel", "optional": True},
                 "order_link_id": {"type": "string", "description": "Custom order ID", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol"],
         )
@@ -275,6 +300,7 @@ class ToolRegistry:
                 "price": {"type": "number", "description": "New price", "optional": True},
                 "take_profit": {"type": "number", "description": "New TP", "optional": True},
                 "stop_loss": {"type": "number", "description": "New SL", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol"],
         )
@@ -286,6 +312,7 @@ class ToolRegistry:
             category="orders.manage",
             parameters={
                 "symbol": {"type": "string", "description": "Filter by symbol", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=[],
         )
@@ -305,7 +332,9 @@ class ToolRegistry:
             function=list_open_positions_tool,
             description="List all open positions",
             category="positions",
-            parameters={},
+            parameters={
+                "trading_env": TRADING_ENV_PARAM,
+            },
             required=[],
         )
         
@@ -316,6 +345,7 @@ class ToolRegistry:
             category="positions",
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol"],
         )
@@ -327,6 +357,7 @@ class ToolRegistry:
             category="positions",
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol"],
         )
@@ -339,6 +370,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
                 "take_profit": {"type": "number", "description": "Take profit price"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "take_profit"],
         )
@@ -351,6 +383,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
                 "stop_loss": {"type": "number", "description": "Stop loss price"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "stop_loss"],
         )
@@ -362,6 +395,7 @@ class ToolRegistry:
             category="positions.tpsl",
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol"],
         )
@@ -373,6 +407,7 @@ class ToolRegistry:
             category="positions.tpsl",
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol"],
         )
@@ -386,6 +421,7 @@ class ToolRegistry:
                 "symbol": {"type": "string", "description": "Trading symbol"},
                 "trailing_distance": {"type": "number", "description": "Distance in price units (0 to remove)"},
                 "active_price": {"type": "number", "description": "Activation price", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "trailing_distance"],
         )
@@ -398,6 +434,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
                 "callback_rate": {"type": "number", "description": "Callback rate percentage (e.g., 3.0 for 3%)"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "callback_rate"],
         )
@@ -409,6 +446,7 @@ class ToolRegistry:
             category="positions.emergency",
             parameters={
                 "reason": {"type": "string", "description": "Reason for panic close", "optional": True},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=[],
         )
@@ -423,7 +461,9 @@ class ToolRegistry:
             function=get_account_balance_tool,
             description="Get account balance",
             category="account",
-            parameters={},
+            parameters={
+                "trading_env": TRADING_ENV_PARAM,
+            },
             required=[],
         )
         
@@ -432,7 +472,9 @@ class ToolRegistry:
             function=get_portfolio_snapshot_tool,
             description="Get portfolio snapshot with positions",
             category="account",
-            parameters={},
+            parameters={
+                "trading_env": TRADING_ENV_PARAM,
+            },
             required=[],
         )
         
@@ -444,6 +486,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Trading symbol"},
                 "leverage": {"type": "integer", "description": "Leverage value (1-125)"},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=["symbol", "leverage"],
         )
@@ -467,6 +510,7 @@ class ToolRegistry:
                 "end_ms": {"type": "integer", "description": "End timestamp ms (alternative to window)", "optional": True},
                 "symbol": {"type": "string", "description": "Filter by symbol", "optional": True},
                 "limit": {"type": "integer", "description": "Max results (1-50)", "default": 50},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=[],
         )
@@ -482,6 +526,7 @@ class ToolRegistry:
                 "end_ms": {"type": "integer", "description": "End timestamp ms (alternative to window)", "optional": True},
                 "symbol": {"type": "string", "description": "Filter by symbol", "optional": True},
                 "limit": {"type": "integer", "description": "Max results (1-50)", "default": 50},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=[],
         )
@@ -499,6 +544,7 @@ class ToolRegistry:
                 "currency": {"type": "string", "description": "Filter by currency (USDT, BTC)", "optional": True},
                 "log_type": {"type": "string", "description": "TRADE, SETTLEMENT, TRANSFER_IN, etc.", "optional": True},
                 "limit": {"type": "integer", "description": "Max results (1-50)", "default": 50},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=[],
         )
@@ -514,6 +560,7 @@ class ToolRegistry:
                 "end_ms": {"type": "integer", "description": "End timestamp ms (alternative to window)", "optional": True},
                 "currency": {"type": "string", "description": "Filter by currency (USDT, BTC)", "optional": True},
                 "limit": {"type": "integer", "description": "Max results (1-50)", "default": 50},
+                "trading_env": TRADING_ENV_PARAM,
             },
             required=[],
         )
@@ -572,7 +619,9 @@ class ToolRegistry:
             function=get_database_stats_tool,
             description="Get database statistics (size, symbol count, candle count)",
             category="data.info",
-            parameters={},
+            parameters={
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
+            },
             required=[],
         )
         
@@ -581,7 +630,9 @@ class ToolRegistry:
             function=list_cached_symbols_tool,
             description="List all symbols currently cached in the database",
             category="data.info",
-            parameters={},
+            parameters={
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
+            },
             required=[],
         )
         
@@ -592,6 +643,7 @@ class ToolRegistry:
             category="data.info",
             parameters={
                 "symbol": {"type": "string", "description": "Specific symbol to check", "optional": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=[],
         )
@@ -601,7 +653,9 @@ class ToolRegistry:
             function=get_symbol_summary_tool,
             description="Get high-level summary of all cached symbols",
             category="data.info",
-            parameters={},
+            parameters={
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
+            },
             required=[],
         )
         
@@ -612,6 +666,7 @@ class ToolRegistry:
             category="data.info",
             parameters={
                 "symbol": {"type": "string", "description": "Specific symbol to check", "optional": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=[],
         )
@@ -635,6 +690,7 @@ class ToolRegistry:
                 "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync"},
                 "period": {"type": "string", "description": "Period (1D, 1W, 1M, 3M, 6M, 1Y)", "default": "1M"},
                 "timeframes": {"type": "array", "items": {"type": "string"}, "description": "Timeframes to sync", "optional": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=["symbols"],
         )
@@ -649,6 +705,7 @@ class ToolRegistry:
                 "start": {"type": "string", "description": "Start datetime (ISO format)"},
                 "end": {"type": "string", "description": "End datetime (ISO format)"},
                 "timeframes": {"type": "array", "items": {"type": "string"}, "description": "Timeframes to sync", "optional": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=["symbols", "start", "end"],
         )
@@ -661,6 +718,7 @@ class ToolRegistry:
             parameters={
                 "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync"},
                 "period": {"type": "string", "description": "Period (1M, 3M, 6M, 1Y)", "default": "3M"},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=["symbols"],
         )
@@ -674,6 +732,7 @@ class ToolRegistry:
                 "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync"},
                 "period": {"type": "string", "description": "Period (1D, 1W, 1M, 3M)", "default": "1M"},
                 "interval": {"type": "string", "description": "Data interval (5min, 15min, 30min, 1h, 4h, 1d)", "default": "1h"},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=["symbols"],
         )
@@ -686,6 +745,7 @@ class ToolRegistry:
             parameters={
                 "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync forward"},
                 "timeframes": {"type": "array", "items": {"type": "string"}, "description": "Timeframes to sync", "optional": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=["symbols"],
         )
@@ -698,6 +758,7 @@ class ToolRegistry:
             parameters={
                 "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync and heal"},
                 "timeframes": {"type": "array", "items": {"type": "string"}, "description": "Timeframes to sync", "optional": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=["symbols"],
         )
@@ -712,6 +773,7 @@ class ToolRegistry:
                 "period": {"type": "string", "description": "Period (1D, 1W, 1M, 3M, 6M, 1Y)", "default": "1M"},
                 "timeframes": {"type": "array", "items": {"type": "string"}, "description": "OHLCV timeframes", "optional": True},
                 "oi_interval": {"type": "string", "description": "Open interest interval", "optional": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=["symbols"],
         )
@@ -722,6 +784,7 @@ class ToolRegistry:
         from . import (
             fill_gaps_tool, heal_data_tool,
             delete_symbol_tool, cleanup_empty_symbols_tool, vacuum_database_tool,
+            delete_all_data_tool,
             get_funding_history_tool, get_open_interest_history_tool,
         )
         
@@ -733,6 +796,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Specific symbol (None for all)", "optional": True},
                 "timeframe": {"type": "string", "description": "Specific timeframe (None for all)", "optional": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=[],
         )
@@ -746,6 +810,7 @@ class ToolRegistry:
                 "symbol": {"type": "string", "description": "Specific symbol (None for all)", "optional": True},
                 "fix_issues": {"type": "boolean", "description": "Auto-fix issues", "default": True},
                 "fill_gaps_after": {"type": "boolean", "description": "Fill gaps after fixing", "default": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=[],
         )
@@ -758,6 +823,7 @@ class ToolRegistry:
             parameters={
                 "symbol": {"type": "string", "description": "Symbol to delete"},
                 "vacuum": {"type": "boolean", "description": "Vacuum database after deletion", "default": True},
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
             },
             required=["symbol"],
         )
@@ -767,7 +833,9 @@ class ToolRegistry:
             function=cleanup_empty_symbols_tool,
             description="Remove symbols with no data (invalid symbols)",
             category="data.maintenance",
-            parameters={},
+            parameters={
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
+            },
             required=[],
         )
         
@@ -776,18 +844,35 @@ class ToolRegistry:
             function=vacuum_database_tool,
             description="Vacuum the database to reclaim space",
             category="data.maintenance",
-            parameters={},
+            parameters={
+                "env": {"type": "string", "description": "Data environment: 'live' (backtest) or 'demo'", "default": "live", "optional": True},
+            },
+            required=[],
+        )
+        
+        self._register(
+            name="delete_all_data",
+            function=delete_all_data_tool,
+            description="Delete ALL data from the database (OHLCV, funding, OI). DESTRUCTIVE - cannot be undone.",
+            category="data.maintenance",
+            parameters={
+                "vacuum": {"type": "boolean", "description": "Whether to vacuum after deletion", "default": True, "optional": True},
+                "env": {"type": "string", "description": "Data environment (live or demo)", "default": "live", "optional": True},
+            },
             required=[],
         )
         
         self._register(
             name="get_funding_history",
             function=get_funding_history_tool,
-            description="Get funding rate history for a symbol from database",
+            description="Get funding rate history for a symbol from DuckDB. Use either 'period' OR 'start'/'end' (max 365 days).",
             category="data.query",
             parameters={
-                "symbol": {"type": "string", "description": "Trading symbol"},
-                "period": {"type": "string", "description": "Period (1M, 3M, etc)", "optional": True},
+                "symbol": {"type": "string", "description": "Trading symbol (required)"},
+                "period": {"type": "string", "description": "Relative period (1M, 3M, 6M, 1Y) - alternative to start/end", "optional": True},
+                "start": {"type": "string", "description": "Start datetime ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)", "optional": True},
+                "end": {"type": "string", "description": "End datetime ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)", "optional": True},
+                "env": {"type": "string", "description": "Data environment (live or demo)", "default": "live", "optional": True},
             },
             required=["symbol"],
         )
@@ -795,11 +880,33 @@ class ToolRegistry:
         self._register(
             name="get_open_interest_history",
             function=get_open_interest_history_tool,
-            description="Get open interest history for a symbol from database",
+            description="Get open interest history for a symbol from DuckDB. Use either 'period' OR 'start'/'end' (max 365 days).",
             category="data.query",
             parameters={
-                "symbol": {"type": "string", "description": "Trading symbol"},
-                "period": {"type": "string", "description": "Period (1M, 3M, etc)", "optional": True},
+                "symbol": {"type": "string", "description": "Trading symbol (required)"},
+                "period": {"type": "string", "description": "Relative period (1M, 3M, 6M, 1Y) - alternative to start/end", "optional": True},
+                "start": {"type": "string", "description": "Start datetime ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)", "optional": True},
+                "end": {"type": "string", "description": "End datetime ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)", "optional": True},
+                "env": {"type": "string", "description": "Data environment (live or demo)", "default": "live", "optional": True},
+            },
+            required=["symbol"],
+        )
+        
+        from . import get_ohlcv_history_tool
+        
+        self._register(
+            name="get_ohlcv_history",
+            function=get_ohlcv_history_tool,
+            description="Get OHLCV candlestick history for a symbol from DuckDB. Use either 'period' OR 'start'/'end' (max 365 days).",
+            category="data.query",
+            parameters={
+                "symbol": {"type": "string", "description": "Trading symbol (required)"},
+                "timeframe": {"type": "string", "description": "Candle timeframe (1m, 5m, 15m, 1h, 4h, 1d)", "default": "1h"},
+                "period": {"type": "string", "description": "Relative period (1M, 3M, 6M, 1Y) - alternative to start/end", "optional": True},
+                "start": {"type": "string", "description": "Start datetime ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)", "optional": True},
+                "end": {"type": "string", "description": "End datetime ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)", "optional": True},
+                "limit": {"type": "integer", "description": "Max number of candles to return", "optional": True},
+                "env": {"type": "string", "description": "Data environment (live or demo)", "default": "live", "optional": True},
             },
             required=["symbol"],
         )

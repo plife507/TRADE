@@ -184,7 +184,7 @@ result = registry.execute("market_buy", symbol="SOLUSDT", usd_amount=100)
 specs = registry.get_all_tools_info()
 ```
 
-See `examples/orchestrator_example.py` for complete usage patterns.
+See `docs/examples/orchestrator_example.py` for complete usage patterns.
 
 ## Safety Features
 

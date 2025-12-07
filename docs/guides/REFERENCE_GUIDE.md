@@ -31,10 +31,10 @@ Large reference materials (like full API documentation) are **excluded** from th
 Project-specific documentation that's directly relevant to TRADE:
 - `README.md` - Project overview and quick start
 - `CLAUDE.md` - Development guidance for AI assistants
-- `PROJECT_RULES.md` - Coding standards and project rules
-- `SYSTEM_REVIEW.md` - Architecture documentation
-- `PROJECT_DESCRIPTION.md` - Detailed project description
-- `SETUP_GITHUB.md` - GitHub setup instructions
+- `docs/project/PROJECT_RULES.md` - Coding standards and project rules
+- `docs/architecture/SYSTEM_REVIEW.md` - Architecture documentation
+- `docs/project/PROJECT_DESCRIPTION.md` - Detailed project description
+- `docs/guides/SETUP_GITHUB.md` - GitHub setup instructions
 
 ### Accessing Reference Materials
 

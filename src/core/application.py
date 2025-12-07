@@ -109,6 +109,10 @@ class Application:
         
         # Error tracking
         self._last_error: Optional[str] = None
+        
+        # Signal handler state
+        self._original_sigint_handler = None
+        self._suppress_shutdown = False
     
     # ==================== Context Manager ====================
     
@@ -468,7 +472,8 @@ class Application:
     def _register_signal_handlers(self):
         """Register signal handlers for graceful shutdown."""
         try:
-            signal.signal(signal.SIGINT, self._signal_handler)
+            # Save original handler
+            self._original_sigint_handler = signal.signal(signal.SIGINT, self._signal_handler)
             signal.signal(signal.SIGTERM, self._signal_handler)
             self.logger.debug("Signal handlers registered")
         except Exception as e:
@@ -477,9 +482,29 @@ class Application:
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""
+        # If shutdown is suppressed (e.g., during data operations),
+        # raise KeyboardInterrupt directly so it can be caught by try/except blocks
+        # This prevents the ugly "Received SIGINT - initiating shutdown" message
+        if self._suppress_shutdown:
+            raise KeyboardInterrupt("Operation cancelled")
+        
         signal_name = signal.Signals(signum).name
         self.logger.info(f"Received {signal_name} - initiating shutdown")
         self.stop()
+    
+    def suppress_shutdown(self):
+        """Temporarily suppress shutdown on SIGINT (for cancellable operations)."""
+        self._suppress_shutdown = True
+    
+    def restore_shutdown(self):
+        """Restore shutdown handling on SIGINT."""
+        self._suppress_shutdown = False
+        # Re-register handler if it was changed
+        if self._original_sigint_handler is not None:
+            try:
+                signal.signal(signal.SIGINT, self._signal_handler)
+            except Exception:
+                pass
     
     def _atexit_handler(self):
         """Handle process exit."""

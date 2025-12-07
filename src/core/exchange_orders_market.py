@@ -1,0 +1,189 @@
+"""
+Market order methods for ExchangeManager.
+
+Handles:
+- Market buy/sell orders
+- Market orders with TP/SL
+"""
+
+from typing import TYPE_CHECKING
+
+from ..exchanges.bybit_client import BybitAPIError
+
+if TYPE_CHECKING:
+    from .exchange_manager import ExchangeManager, OrderResult
+
+
+def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "OrderResult":
+    """Place a market buy order."""
+    from .exchange_manager import OrderResult
+    from . import exchange_instruments as inst
+    from . import exchange_websocket as ws
+    
+    try:
+        manager._validate_trading_operation()
+        ws.ensure_symbol_tracked(manager, symbol)
+        
+        price = manager.get_price(symbol)
+        qty = inst.calculate_qty(manager, symbol, usd_amount, price)
+        
+        if qty <= 0:
+            return OrderResult(success=False, error=f"Order size too small for {symbol}")
+        
+        result = manager.bybit.create_order(
+            symbol=symbol, side="Buy", order_type="Market", qty=qty,
+        )
+        
+        manager.logger.trade("ORDER_FILLED", symbol=symbol, side="BUY", 
+                            size=usd_amount, price=price, qty=qty)
+        
+        return OrderResult(
+            success=True, order_id=result.get("orderId"), symbol=symbol,
+            side="Buy", order_type="Market", qty=qty, price=price,
+            raw_response=result,
+        )
+        
+    except BybitAPIError as e:
+        manager.logger.error(f"Market buy failed: {e}")
+        return OrderResult(success=False, error=str(e))
+    except Exception as e:
+        manager.logger.error(f"Market buy error: {e}")
+        return OrderResult(success=False, error=str(e))
+
+
+def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "OrderResult":
+    """Place a market sell order (short)."""
+    from .exchange_manager import OrderResult
+    from . import exchange_instruments as inst
+    from . import exchange_websocket as ws
+    
+    try:
+        manager._validate_trading_operation()
+        ws.ensure_symbol_tracked(manager, symbol)
+        
+        price = manager.get_price(symbol)
+        qty = inst.calculate_qty(manager, symbol, usd_amount, price)
+        
+        if qty <= 0:
+            return OrderResult(success=False, error=f"Order size too small for {symbol}")
+        
+        result = manager.bybit.create_order(
+            symbol=symbol, side="Sell", order_type="Market", qty=qty,
+        )
+        
+        manager.logger.trade("ORDER_FILLED", symbol=symbol, side="SELL",
+                            size=usd_amount, price=price, qty=qty)
+        
+        return OrderResult(
+            success=True, order_id=result.get("orderId"), symbol=symbol,
+            side="Sell", order_type="Market", qty=qty, price=price,
+            raw_response=result,
+        )
+        
+    except BybitAPIError as e:
+        manager.logger.error(f"Market sell failed: {e}")
+        return OrderResult(success=False, error=str(e))
+    except Exception as e:
+        manager.logger.error(f"Market sell error: {e}")
+        return OrderResult(success=False, error=str(e))
+
+
+def market_buy_with_tpsl(
+    manager: "ExchangeManager",
+    symbol: str,
+    usd_amount: float,
+    take_profit: float = None,
+    stop_loss: float = None,
+    tpsl_mode: str = "Full",
+) -> "OrderResult":
+    """Place a market buy order with TP/SL."""
+    from .exchange_manager import OrderResult
+    from . import exchange_instruments as inst
+    from . import exchange_websocket as ws
+    
+    try:
+        manager._validate_trading_operation()
+        ws.ensure_symbol_tracked(manager, symbol)
+        
+        price = manager.get_price(symbol)
+        qty = inst.calculate_qty(manager, symbol, usd_amount, price)
+        
+        if qty <= 0:
+            return OrderResult(success=False, error=f"Order size too small for {symbol}")
+        
+        result = manager.bybit.create_order(
+            symbol=symbol, side="Buy", order_type="Market", qty=qty,
+            take_profit=str(take_profit) if take_profit else None,
+            stop_loss=str(stop_loss) if stop_loss else None,
+            tpsl_mode=tpsl_mode if (take_profit or stop_loss) else None,
+        )
+        
+        manager.logger.trade("ORDER_FILLED", symbol=symbol, side="BUY",
+                            size=usd_amount, price=price, qty=qty,
+                            tp=take_profit, sl=stop_loss)
+        
+        return OrderResult(
+            success=True, order_id=result.get("orderId"),
+            order_link_id=result.get("orderLinkId"), symbol=symbol,
+            side="Buy", order_type="Market", qty=qty, price=price,
+            take_profit=take_profit, stop_loss=stop_loss,
+            raw_response=result,
+        )
+        
+    except BybitAPIError as e:
+        manager.logger.error(f"Market buy with TP/SL failed: {e}")
+        return OrderResult(success=False, error=str(e))
+    except Exception as e:
+        manager.logger.error(f"Market buy with TP/SL error: {e}")
+        return OrderResult(success=False, error=str(e))
+
+
+def market_sell_with_tpsl(
+    manager: "ExchangeManager",
+    symbol: str,
+    usd_amount: float,
+    take_profit: float = None,
+    stop_loss: float = None,
+    tpsl_mode: str = "Full",
+) -> "OrderResult":
+    """Place a market sell order with TP/SL (short)."""
+    from .exchange_manager import OrderResult
+    from . import exchange_instruments as inst
+    from . import exchange_websocket as ws
+    
+    try:
+        manager._validate_trading_operation()
+        ws.ensure_symbol_tracked(manager, symbol)
+        
+        price = manager.get_price(symbol)
+        qty = inst.calculate_qty(manager, symbol, usd_amount, price)
+        
+        if qty <= 0:
+            return OrderResult(success=False, error=f"Order size too small for {symbol}")
+        
+        result = manager.bybit.create_order(
+            symbol=symbol, side="Sell", order_type="Market", qty=qty,
+            take_profit=str(take_profit) if take_profit else None,
+            stop_loss=str(stop_loss) if stop_loss else None,
+            tpsl_mode=tpsl_mode if (take_profit or stop_loss) else None,
+        )
+        
+        manager.logger.trade("ORDER_FILLED", symbol=symbol, side="SELL",
+                            size=usd_amount, price=price, qty=qty,
+                            tp=take_profit, sl=stop_loss)
+        
+        return OrderResult(
+            success=True, order_id=result.get("orderId"),
+            order_link_id=result.get("orderLinkId"), symbol=symbol,
+            side="Sell", order_type="Market", qty=qty, price=price,
+            take_profit=take_profit, stop_loss=stop_loss,
+            raw_response=result,
+        )
+        
+    except BybitAPIError as e:
+        manager.logger.error(f"Market sell with TP/SL failed: {e}")
+        return OrderResult(success=False, error=str(e))
+    except Exception as e:
+        manager.logger.error(f"Market sell with TP/SL error: {e}")
+        return OrderResult(success=False, error=str(e))
+

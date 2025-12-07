@@ -33,6 +33,7 @@ from enum import Enum
 
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config
+from ..config.constants import DataEnv, DEFAULT_DATA_ENV, validate_data_env
 from ..utils.logger import get_logger
 from .realtime_state import (
     get_realtime_state,
@@ -42,6 +43,7 @@ from .realtime_state import (
     OrderbookLevel,
     TradeData,
     KlineData,
+    MTFCandle,
     PositionData,
     OrderData,
     ExecutionData,
@@ -99,7 +101,7 @@ class SubscriptionConfig:
     # Advanced: Use LIVE WebSocket for public market data even in DEMO mode
     # This can be useful if DEMO WebSocket streams have connectivity issues
     # Market data (tickers, orderbook, klines) is the same on LIVE and DEMO
-    use_mainnet_for_public_streams: bool = False
+    use_live_for_public_streams: bool = False
     
     @classmethod
     def market_data_only(cls) -> 'SubscriptionConfig':
@@ -146,7 +148,7 @@ class SubscriptionConfig:
             enable_orders=True,
             enable_executions=True,
             enable_wallet=True,
-            use_mainnet_for_public_streams=True,  # Use LIVE streams for market data
+            use_live_for_public_streams=True,  # Use LIVE streams for market data
         )
 
 
@@ -175,6 +177,7 @@ class RealtimeBootstrap:
         client: BybitClient = None,
         state: RealtimeState = None,
         config: SubscriptionConfig = None,
+        env: DataEnv = None,
     ):
         """
         Initialize bootstrap.
@@ -183,9 +186,17 @@ class RealtimeBootstrap:
             client: BybitClient instance (creates one if None)
             state: RealtimeState instance (uses global if None)
             config: Subscription configuration
+            env: Data environment ("live" or "demo"). If None, inferred from use_demo config.
         """
         self.app_config = get_config()
         self.logger = get_logger()
+        
+        # Determine data environment
+        # If not specified, infer from use_demo config (demo trading -> demo env)
+        if env is None:
+            self.env: DataEnv = "demo" if self.app_config.bybit.use_demo else "live"
+        else:
+            self.env = validate_data_env(env)
         
         # Initialize client
         if client:
@@ -201,7 +212,10 @@ class RealtimeBootstrap:
         # Log WebSocket environment (matches trading mode)
         ws_env = "DEMO (stream-demo.bybit.com)" if self.app_config.bybit.use_demo else "LIVE (stream.bybit.com)"
         account_type = "fake-money demo account" if self.app_config.bybit.use_demo else "real-money live account"
-        self.logger.info(f"RealtimeBootstrap: WebSocket environment={ws_env}, account={account_type}")
+        self.logger.info(
+            f"RealtimeBootstrap: data_env={self.env}, "
+            f"WebSocket environment={ws_env}, account={account_type}"
+        )
         
         # State management
         self.state = state or get_realtime_state()
@@ -212,6 +226,10 @@ class RealtimeBootstrap:
         self._running = False
         self._public_connected = False
         self._private_connected = False
+        
+        # MTF buffer configuration
+        # When a closed kline is received, append to the appropriate MTF buffer
+        self._persist_closed_klines_to_mtf: bool = True
         
         # Thread management
         self._lock = threading.Lock()
@@ -414,10 +432,10 @@ class RealtimeBootstrap:
         
         For DEMO mode, public streams (market data) can optionally use LIVE
         endpoints since the market data is the same. This is configured via
-        sub_config.use_mainnet_for_public_streams.
+        sub_config.use_live_for_public_streams.
         """
         # Determine stream mode for logging using DEMO/LIVE terminology
-        if self.sub_config.use_mainnet_for_public_streams:
+        if self.sub_config.use_live_for_public_streams:
             stream_mode = "LIVE (market data shared)"
         elif self.app_config.bybit.is_demo:
             stream_mode = "DEMO"
@@ -431,7 +449,7 @@ class RealtimeBootstrap:
             # This creates the WebSocket connection with correct endpoint
             self.client.connect_public_ws(
                 channel_type="linear",
-                use_mainnet_for_market_data=self.sub_config.use_mainnet_for_public_streams,
+                use_live_for_market_data=self.sub_config.use_live_for_public_streams,
             )
             
             # Ticker streams
@@ -549,12 +567,41 @@ class RealtimeBootstrap:
                 for kline_data in data:
                     kline = KlineData.from_bybit(kline_data, topic)
                     self.state.update_kline(kline)
+                    # Append closed klines to MTF buffer
+                    self._maybe_append_to_mtf_buffer(kline)
             else:
                 kline = KlineData.from_bybit(data, topic)
                 self.state.update_kline(kline)
+                # Append closed klines to MTF buffer
+                self._maybe_append_to_mtf_buffer(kline)
             
         except Exception as e:
             self.logger.warning(f"Error processing kline: {e}")
+    
+    def _maybe_append_to_mtf_buffer(self, kline: KlineData):
+        """
+        Append a closed kline to the MTF buffer if configured.
+        
+        This ensures the MTF ring buffer stays up-to-date with new candles
+        as they close during live execution.
+        """
+        if not self._persist_closed_klines_to_mtf:
+            return
+        
+        if not kline.is_closed:
+            return
+        
+        try:
+            # Convert to MTFCandle and append
+            mtf_candle = MTFCandle.from_kline_data(kline)
+            self.state.append_mtf_candle(
+                env=self.env,
+                symbol=kline.symbol,
+                timeframe=kline.interval,
+                candle=mtf_candle,
+            )
+        except Exception as e:
+            self.logger.debug(f"Error appending to MTF buffer: {e}")
     
     # ==========================================================================
     # Private Streams
@@ -939,7 +986,7 @@ class RealtimeBootstrap:
         else:
             rest_api_mode = "LIVE (REAL MONEY)"
         
-        if self.sub_config.use_mainnet_for_public_streams:
+        if self.sub_config.use_live_for_public_streams:
             public_ws_mode = "LIVE (shared market data)"
         elif self.app_config.bybit.is_demo:
             public_ws_mode = "DEMO"
@@ -968,7 +1015,7 @@ class RealtimeBootstrap:
                 "orders": self.sub_config.enable_orders,
                 "executions": self.sub_config.enable_executions,
                 "wallet": self.sub_config.enable_wallet,
-                "use_mainnet_for_public_streams": self.sub_config.use_mainnet_for_public_streams,
+                "use_live_for_public_streams": self.sub_config.use_live_for_public_streams,
             },
             "state_summary": self.state.get_summary(),
         }
@@ -1015,7 +1062,7 @@ def get_realtime_bootstrap() -> RealtimeBootstrap:
                 enable_orders=ws_config.enable_order_stream,
                 enable_executions=ws_config.enable_execution_stream,
                 enable_wallet=ws_config.enable_wallet_stream,
-                use_mainnet_for_public_streams=ws_config.use_mainnet_for_public_streams,
+                use_live_for_public_streams=ws_config.use_live_for_public_streams,
             )
             
             _realtime_bootstrap = RealtimeBootstrap(config=sub_config)

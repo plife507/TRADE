@@ -162,12 +162,15 @@ from .data_tools import (
     delete_symbol_tool,
     cleanup_empty_symbols_tool,
     vacuum_database_tool,
+    delete_all_data_tool,
     # Funding rate tools
     sync_funding_tool,
     get_funding_history_tool,
     # Open interest tools
     sync_open_interest_tool,
     get_open_interest_history_tool,
+    # OHLCV query tools
+    get_ohlcv_history_tool,
     # Sync to now tools
     sync_to_now_tool,
     sync_to_now_and_fill_gaps_tool,
@@ -276,12 +279,15 @@ __all__ = [
     "delete_symbol_tool",
     "cleanup_empty_symbols_tool",
     "vacuum_database_tool",
+    "delete_all_data_tool",
     # Funding rate tools
     "sync_funding_tool",
     "get_funding_history_tool",
     # Open interest tools
     "sync_open_interest_tool",
     "get_open_interest_history_tool",
+    # OHLCV query tools
+    "get_ohlcv_history_tool",
     # Sync to now tools
     "sync_to_now_tool",
     "sync_to_now_and_fill_gaps_tool",

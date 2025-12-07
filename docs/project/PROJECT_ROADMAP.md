@@ -587,5 +587,5 @@ You've built something **exceptional** for a first project. The foundation is so
 
 ---
 
-**Questions or need clarification?** Review this document, check the codebase, or consult `CLAUDE.md` and `PROJECT_RULES.md` for detailed guidance.
+**Questions or need clarification?** Review this document, check the codebase, or consult `CLAUDE.md` and `docs/project/PROJECT_RULES.md` for detailed guidance.
 

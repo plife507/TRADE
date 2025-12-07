@@ -5,16 +5,23 @@ These tools provide account balance, exposure, and portfolio-level operations.
 
 CRITICAL: All history tools require explicit time ranges. We never rely on
 Bybit's implicit defaults (24h for transaction log, 7d for orders, etc.).
+
+All trading tools accept an optional `trading_env` parameter for agent/orchestrator
+use. This parameter VALIDATES the caller's intent against the process config but
+does NOT switch environments. If the env doesn't match, the tool returns an error.
 """
 
 from typing import Optional, Dict, Any
-from .shared import ToolResult, _get_exchange_manager, _get_realtime_state, _is_websocket_connected
+from .shared import ToolResult, _get_exchange_manager, _get_realtime_state, _is_websocket_connected, validate_trading_env_or_error
 from ..utils.time_range import TimeRange, parse_time_window
 
 
-def get_account_balance_tool() -> ToolResult:
+def get_account_balance_tool(trading_env: Optional[str] = None) -> ToolResult:
     """
     Get account balance information.
+    
+    Args:
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with data containing:
@@ -22,6 +29,9 @@ def get_account_balance_tool() -> ToolResult:
             - available: Available balance for trading
             - used: Balance currently in use (margin)
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         exchange = _get_exchange_manager()
         balance = exchange.get_balance()
@@ -44,13 +54,19 @@ def get_account_balance_tool() -> ToolResult:
         )
 
 
-def get_total_exposure_tool() -> ToolResult:
+def get_total_exposure_tool(trading_env: Optional[str] = None) -> ToolResult:
     """
     Get total position exposure across all positions.
+    
+    Args:
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with data containing exposure in USD
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         exchange = _get_exchange_manager()
         exposure = exchange.get_total_exposure()
@@ -68,13 +84,19 @@ def get_total_exposure_tool() -> ToolResult:
         )
 
 
-def get_account_info_tool() -> ToolResult:
+def get_account_info_tool(trading_env: Optional[str] = None) -> ToolResult:
     """
     Get detailed account information (margin mode, etc.).
+    
+    Args:
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with account configuration details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         exchange = _get_exchange_manager()
         account_info = exchange.bybit.get_account_info()
@@ -96,16 +118,22 @@ def get_account_info_tool() -> ToolResult:
         )
 
 
-def get_portfolio_snapshot_tool() -> ToolResult:
+def get_portfolio_snapshot_tool(trading_env: Optional[str] = None) -> ToolResult:
     """
     Get a comprehensive portfolio snapshot using GlobalRiskView.
     
     Includes equity, margin rates, position counts, exposure breakdown,
     and risk level assessment.
     
+    Args:
+        trading_env: Optional trading environment ("demo" or "live") for validation
+    
     Returns:
         ToolResult with comprehensive portfolio data
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         from ..risk import get_global_risk_view
         
@@ -160,6 +188,7 @@ def get_order_history_tool(
     end_ms: Optional[int] = None,
     symbol: Optional[str] = None,
     limit: int = 50,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Get order history within a specified time range.
@@ -173,10 +202,14 @@ def get_order_history_tool(
         end_ms: End timestamp in milliseconds (used if window not provided)
         symbol: Filter by symbol (None for all)
         limit: Maximum number of orders to return (1-50)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with list of orders and time_range metadata
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         # Parse time range (defaults to 7d for order history)
         time_range = parse_time_window(
@@ -217,6 +250,7 @@ def get_closed_pnl_tool(
     end_ms: Optional[int] = None,
     symbol: Optional[str] = None,
     limit: int = 50,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Get closed P&L records within a specified time range.
@@ -230,10 +264,14 @@ def get_closed_pnl_tool(
         end_ms: End timestamp in milliseconds (used if window not provided)
         symbol: Filter by symbol (None for all)
         limit: Maximum number of records to return (1-50)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with closed P&L data, total, and time_range metadata
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         # Parse time range (defaults to 7d for closed PnL)
         time_range = parse_time_window(
@@ -283,6 +321,7 @@ def get_transaction_log_tool(
     currency: Optional[str] = None,
     log_type: Optional[str] = None,
     limit: int = 50,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Get transaction logs from Unified account within a specified time range.
@@ -299,10 +338,14 @@ def get_transaction_log_tool(
         log_type: TRADE, SETTLEMENT, TRANSFER_IN, TRANSFER_OUT,
                  DELIVERY, LIQUIDATION, BONUS, FEE_REFUND, INTEREST
         limit: Maximum records (1-50)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with transaction log data and time_range metadata
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         # Parse time range (defaults to 7d for transaction log)
         time_range = parse_time_window(
@@ -342,16 +385,20 @@ def get_transaction_log_tool(
         )
 
 
-def get_collateral_info_tool(currency: Optional[str] = None) -> ToolResult:
+def get_collateral_info_tool(currency: Optional[str] = None, trading_env: Optional[str] = None) -> ToolResult:
     """
     Get collateral information for Unified account.
     
     Args:
         currency: Specific currency (None for all)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with collateral info (rates, limits, status)
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         exchange = _get_exchange_manager()
         collateral_info = exchange.get_collateral_info(currency)
@@ -376,17 +423,21 @@ def get_collateral_info_tool(currency: Optional[str] = None) -> ToolResult:
         )
 
 
-def set_collateral_coin_tool(coin: str, enabled: bool) -> ToolResult:
+def set_collateral_coin_tool(coin: str, enabled: bool, trading_env: Optional[str] = None) -> ToolResult:
     """
     Enable or disable a coin as collateral.
     
     Args:
         coin: Coin name (e.g., BTC, ETH, USDT)
         enabled: True to enable, False to disable
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with success status
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not coin or not isinstance(coin, str):
         return ToolResult(success=False, error="Invalid coin parameter")
     
@@ -420,6 +471,7 @@ def get_borrow_history_tool(
     end_ms: Optional[int] = None,
     currency: Optional[str] = None,
     limit: int = 50,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Get borrow/interest history within a specified time range.
@@ -433,10 +485,14 @@ def get_borrow_history_tool(
         end_ms: End timestamp in milliseconds (used if window not provided)
         currency: Filter by currency (e.g., USDT, BTC)
         limit: Maximum records (1-50)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with borrow history records and time_range metadata
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         # Parse time range (defaults to 30d for borrow history)
         time_range = parse_time_window(
@@ -473,16 +529,20 @@ def get_borrow_history_tool(
         )
 
 
-def get_coin_greeks_tool(base_coin: Optional[str] = None) -> ToolResult:
+def get_coin_greeks_tool(base_coin: Optional[str] = None, trading_env: Optional[str] = None) -> ToolResult:
     """
     Get account Greeks information (for options).
     
     Args:
         base_coin: Base coin filter (BTC, ETH, etc.)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with coin greeks data
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         exchange = _get_exchange_manager()
         greeks = exchange.get_coin_greeks(base_coin)
@@ -503,16 +563,20 @@ def get_coin_greeks_tool(base_coin: Optional[str] = None) -> ToolResult:
         )
 
 
-def set_account_margin_mode_tool(portfolio_margin: bool) -> ToolResult:
+def set_account_margin_mode_tool(portfolio_margin: bool, trading_env: Optional[str] = None) -> ToolResult:
     """
     Set account-level margin mode.
     
     Args:
         portfolio_margin: True for Portfolio Margin, False for Regular Margin
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with success status
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         exchange = _get_exchange_manager()
         success = exchange.set_account_margin_mode(portfolio_margin)
@@ -537,16 +601,20 @@ def set_account_margin_mode_tool(portfolio_margin: bool) -> ToolResult:
         )
 
 
-def get_transferable_amount_tool(coin: str) -> ToolResult:
+def get_transferable_amount_tool(coin: str, trading_env: Optional[str] = None) -> ToolResult:
     """
     Get the available amount to transfer for a coin.
     
     Args:
         coin: Coin name (e.g., USDT, BTC)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with transferable amount
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not coin or not isinstance(coin, str):
         return ToolResult(success=False, error="Invalid coin parameter")
     

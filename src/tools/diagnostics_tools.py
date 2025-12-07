@@ -86,17 +86,29 @@ def get_rate_limit_status_tool() -> ToolResult:
         exchange = _get_exchange_manager()
         status = exchange.get_rate_limit_status()
         
-        remaining = status.get("remaining", -1)
-        limit = status.get("limit", -1)
+        # Handle None values safely (before any API request completes)
+        remaining = status.get("remaining")
+        limit = status.get("limit")
         
-        if remaining >= 0 and limit >= 0:
-            is_healthy = remaining > 5
+        # Convert to int if present, else -1
+        try:
+            remaining_int = int(remaining) if remaining is not None else -1
+        except (ValueError, TypeError):
+            remaining_int = -1
+        
+        try:
+            limit_int = int(limit) if limit is not None else -1
+        except (ValueError, TypeError):
+            limit_int = -1
+        
+        if remaining_int >= 0 and limit_int >= 0:
+            is_healthy = remaining_int > 5
             return ToolResult(
                 success=True,
-                message=f"Rate limit: {remaining}/{limit} remaining",
+                message=f"Rate limit: {remaining_int}/{limit_int} remaining",
                 data={
-                    "remaining": remaining,
-                    "limit": limit,
+                    "remaining": remaining_int,
+                    "limit": limit_int,
                     "is_healthy": is_healthy,
                     "raw": status,
                 },
@@ -268,6 +280,12 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
     Returns:
         ToolResult with all test results
     """
+    if not symbol or not isinstance(symbol, str):
+        return ToolResult(
+            success=False,
+            error="Invalid symbol parameter - provide a valid symbol like 'BTCUSDT'",
+        )
+    
     tests = {}
     
     # Test 1: Public API (ticker)
@@ -310,12 +328,22 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
     try:
         exchange = _get_exchange_manager()
         status = exchange.get_rate_limit_status()
-        remaining = status.get("remaining", -1)
-        limit = status.get("limit", -1)
-        if remaining >= 0 and limit >= 0:
+        remaining = status.get("remaining")
+        limit = status.get("limit")
+        # Handle None values safely
+        try:
+            remaining_int = int(remaining) if remaining is not None else -1
+        except (ValueError, TypeError):
+            remaining_int = -1
+        try:
+            limit_int = int(limit) if limit is not None else -1
+        except (ValueError, TypeError):
+            limit_int = -1
+            
+        if remaining_int >= 0 and limit_int >= 0:
             tests["rate_limits"] = {
-                "passed": remaining > 5,
-                "message": f"OK ({remaining}/{limit} remaining)",
+                "passed": remaining_int > 5,
+                "message": f"OK ({remaining_int}/{limit_int} remaining)",
             }
         else:
             tests["rate_limits"] = {
@@ -344,9 +372,21 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
     total_count = len(tests)
     all_passed = passed_count == total_count
     
-    # Get API environment info
-    config = get_config()
-    api_env = config.get_api_environment_summary()
+    # Get API environment info (all 4 legs)
+    try:
+        config = get_config()
+        api_env = config.bybit.get_api_environment_summary()
+        api_environment = {
+            "trading_mode": api_env["trading"]["mode"],
+            "trading_base_url": api_env["trading"]["base_url"],
+            "trade_live_configured": api_env["trade_live"]["key_configured"],
+            "trade_demo_configured": api_env["trade_demo"]["key_configured"],
+            "data_live_configured": api_env["data_live"]["key_configured"],
+            "data_demo_configured": api_env["data_demo"]["key_configured"],
+            "websocket_mode": api_env["websocket"]["mode"],
+        }
+    except Exception:
+        api_environment = {}
     
     return ToolResult(
         success=all_passed,
@@ -356,13 +396,7 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
             "passed_count": passed_count,
             "total_count": total_count,
             "all_passed": all_passed,
-            "api_environment": {
-                "trading_mode": api_env["trading"]["mode"],
-                "trading_base_url": api_env["trading"]["base_url"],
-                "data_mode": api_env["data"]["mode"],
-                "data_base_url": api_env["data"]["base_url"],
-                "websocket_mode": api_env["websocket"]["mode"],
-            },
+            "api_environment": api_environment,
         },
         source="rest_api",
     )
@@ -370,71 +404,99 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
 
 def get_api_environment_tool() -> ToolResult:
     """
-    Get comprehensive API environment information.
+    Get comprehensive API environment information for all 4 legs.
     
-    Returns detailed info about:
-    - Trading API: DEMO vs LIVE, base URL, key status
-    - Data API: Always LIVE, base URL, key status
-    - WebSocket: Mode, URLs, enabled status
-    - Safety: Mode consistency validation
-    
-    Use this tool to verify which APIs the bot is configured to use.
+    The system has 4 independent API legs:
+    - Trade LIVE: Real money trading (api.bybit.com)
+    - Trade DEMO: Fake money trading (api-demo.bybit.com)
+    - Data LIVE: Canonical historical data for backtesting (api.bybit.com)
+    - Data DEMO: Demo-only history for demo validation (api-demo.bybit.com)
     
     Returns:
-        ToolResult with API environment details
+        ToolResult with all 4 leg statuses and current active mode
     """
     try:
         config = get_config()
-        env = config.get_api_environment_summary()
+        env = config.bybit.get_api_environment_summary()
         
-        # Build human-readable message
+        # Current active trading mode
         trading = env["trading"]
-        data = env["data"]
         websocket = env["websocket"]
         safety = env["safety"]
         
-        trading_status = f"Trading: {trading['mode']} ({trading['base_url']})"
-        data_status = f"Data: {data['mode']} ({data['base_url']})"
+        # All 4 legs
+        trade_live = env["trade_live"]
+        trade_demo = env["trade_demo"]
+        data_live = env["data_live"]
+        data_demo = env["data_demo"]
+        
+        # Build status indicators
+        tl = "✓" if trade_live["key_configured"] else "✗"
+        td = "✓" if trade_demo["key_configured"] else "✗"
+        dl = "✓" if data_live["key_configured"] else "✗"
+        dd = "✓" if data_demo["key_configured"] else "✗"
+        
+        trading_status = f"Active Trading: {trading['mode']} ({trading['base_url']})"
+        legs_status = f"Keys: Trade[L:{tl} D:{td}] Data[L:{dl} D:{dd}]"
         
         if safety["mode_consistent"]:
-            safety_msg = "Mode consistency: ✓ OK"
+            safety_msg = "OK"
         else:
-            safety_msg = f"Mode consistency: ✗ WARNING - {safety['messages'][0] if safety['messages'] else 'Issues detected'}"
+            safety_msg = safety["messages"][0] if safety["messages"] else "Issues detected"
         
         return ToolResult(
             success=True,
-            message=f"{trading_status} | {data_status}",
+            message=f"{trading_status} | {legs_status}",
             data={
+                # Current active trading mode (CLI and docs expect "trading")
                 "trading": {
                     "mode": trading["mode"],
                     "base_url": trading["base_url"],
                     "key_configured": trading["key_configured"],
-                    "key_source": trading["key_source"],
                     "is_demo": trading["is_demo"],
                     "is_live": trading["is_live"],
-                    "trading_mode": trading.get("trading_mode", "not set"),
-                    "is_paper": trading.get("is_paper", False),
-                    "is_real": trading.get("is_real", False),
                 },
+                # Legacy "data" key for CLI compatibility (shows LIVE data only)
                 "data": {
-                    "mode": data["mode"],
-                    "base_url": data["base_url"],
-                    "key_configured": data["key_configured"],
-                    "key_source": data["key_source"],
-                    "note": data["note"],
+                    "mode": "LIVE",
+                    "base_url": data_live["base_url"],
+                    "key_configured": data_live["key_configured"],
+                    "key_source": data_live["key_source"],
                 },
+                # All 4 legs explicitly
+                "trade_live": {
+                    "base_url": trade_live["base_url"],
+                    "key_configured": trade_live["key_configured"],
+                    "key_source": trade_live["key_source"],
+                },
+                "trade_demo": {
+                    "base_url": trade_demo["base_url"],
+                    "key_configured": trade_demo["key_configured"],
+                    "key_source": trade_demo["key_source"],
+                },
+                "data_live": {
+                    "base_url": data_live["base_url"],
+                    "key_configured": data_live["key_configured"],
+                    "key_source": data_live["key_source"],
+                    "purpose": data_live["purpose"],
+                },
+                "data_demo": {
+                    "base_url": data_demo["base_url"],
+                    "key_configured": data_demo["key_configured"],
+                    "key_source": data_demo["key_source"],
+                    "purpose": data_demo["purpose"],
+                },
+                # WebSocket
                 "websocket": {
                     "mode": websocket["mode"],
                     "public_url": websocket["public_url"],
                     "private_url": websocket["private_url"],
-                    "enabled": websocket.get("enabled", False),
-                    "auto_start": websocket.get("auto_start", False),
                 },
+                # Safety
                 "safety": {
                     "mode_consistent": safety["mode_consistent"],
                     "messages": safety["messages"],
                 },
-                "display_string": config.get_api_environment_display(),
             },
             source="config",
         )

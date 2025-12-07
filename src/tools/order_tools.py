@@ -8,23 +8,31 @@ These tools provide comprehensive order management:
 - Order Management (amend, cancel, query)
 - Batch Orders (multiple orders at once)
 - Partial Position Closes
+
+All trading tools accept an optional `trading_env` parameter for agent/orchestrator
+use. This parameter VALIDATES the caller's intent against the process config but
+does NOT switch environments. If the env doesn't match, the tool returns an error.
 """
 
 from typing import Optional, Dict, Any, List
-from .shared import ToolResult, _get_exchange_manager
+from .shared import ToolResult, _get_exchange_manager, validate_trading_env_or_error
 
 
-def set_leverage_tool(symbol: str, leverage: int) -> ToolResult:
+def set_leverage_tool(symbol: str, leverage: int, trading_env: Optional[str] = None) -> ToolResult:
     """
     Set leverage for a symbol.
     
     Args:
         symbol: Trading symbol (e.g., "BTCUSDT")
         leverage: Leverage value (1-125, capped by risk settings)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with success status
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -56,17 +64,21 @@ def set_leverage_tool(symbol: str, leverage: int) -> ToolResult:
         )
 
 
-def market_buy_tool(symbol: str, usd_amount: float) -> ToolResult:
+def market_buy_tool(symbol: str, usd_amount: float, trading_env: Optional[str] = None) -> ToolResult:
     """
     Place a market buy order (open long position).
     
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -104,17 +116,21 @@ def market_buy_tool(symbol: str, usd_amount: float) -> ToolResult:
         )
 
 
-def market_sell_tool(symbol: str, usd_amount: float) -> ToolResult:
+def market_sell_tool(symbol: str, usd_amount: float, trading_env: Optional[str] = None) -> ToolResult:
     """
     Place a market sell order (open short position).
     
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -157,6 +173,7 @@ def market_buy_with_tpsl_tool(
     usd_amount: float,
     take_profit: Optional[float] = None,
     stop_loss: Optional[float] = None,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Place a market buy order with take profit and/or stop loss.
@@ -166,10 +183,14 @@ def market_buy_with_tpsl_tool(
         usd_amount: Position size in USD
         take_profit: Take profit price (optional)
         stop_loss: Stop loss price (optional)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -216,6 +237,7 @@ def market_sell_with_tpsl_tool(
     usd_amount: float,
     take_profit: Optional[float] = None,
     stop_loss: Optional[float] = None,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Place a market sell order with take profit and/or stop loss.
@@ -225,10 +247,14 @@ def market_sell_with_tpsl_tool(
         usd_amount: Position size in USD
         take_profit: Take profit price (optional)
         stop_loss: Stop loss price (optional)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -270,16 +296,20 @@ def market_sell_with_tpsl_tool(
         )
 
 
-def get_position_tool(symbol: str) -> ToolResult:
+def get_position_tool(symbol: str, trading_env: Optional[str] = None) -> ToolResult:
     """
     Get position details for a specific symbol.
     
     Args:
         symbol: Trading symbol
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with position data or indication that no position exists
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -326,6 +356,7 @@ def get_position_tool(symbol: str) -> ToolResult:
 def close_position_by_exchange_tool(
     symbol: str,
     cancel_conditional_orders: bool = True,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Close an open position using ExchangeManager directly.
@@ -336,10 +367,14 @@ def close_position_by_exchange_tool(
     Args:
         symbol: Trading symbol
         cancel_conditional_orders: If True, cancel conditional TP orders first
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with close order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -372,16 +407,20 @@ def close_position_by_exchange_tool(
         )
 
 
-def cancel_all_orders_tool(symbol: Optional[str] = None) -> ToolResult:
+def cancel_all_orders_tool(symbol: Optional[str] = None, trading_env: Optional[str] = None) -> ToolResult:
     """
     Cancel all open orders, optionally filtered by symbol.
     
     Args:
         symbol: Trading symbol (None for all symbols)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with cancellation status
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         exchange = _get_exchange_manager()
         success = exchange.cancel_all_orders(symbol)
@@ -419,6 +458,7 @@ def limit_buy_tool(
     price: float,
     time_in_force: str = "GTC",
     reduce_only: bool = False,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Place a limit buy order.
@@ -430,10 +470,14 @@ def limit_buy_tool(
         time_in_force: GTC (Good Till Cancel), IOC (Immediate or Cancel), 
                       FOK (Fill or Kill), or PostOnly
         reduce_only: If True, only reduce position (close only)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -488,6 +532,7 @@ def limit_sell_tool(
     price: float,
     time_in_force: str = "GTC",
     reduce_only: bool = False,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Place a limit sell order.
@@ -498,10 +543,14 @@ def limit_sell_tool(
         price: Limit price
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -558,6 +607,7 @@ def partial_close_position_tool(
     symbol: str,
     close_percent: float,
     price: Optional[float] = None,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Partially close a position by percentage.
@@ -566,10 +616,14 @@ def partial_close_position_tool(
         symbol: Trading symbol
         close_percent: Percentage of position to close (0-100)
         price: Optional limit price (None for market order)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with close order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -664,6 +718,7 @@ def stop_market_buy_tool(
     trigger_direction: int = 1,
     trigger_by: str = "LastPrice",
     reduce_only: bool = False,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Place a stop market buy order (triggers when price reaches trigger).
@@ -680,10 +735,14 @@ def stop_market_buy_tool(
                           2=trigger when price FALLS to trigger_price
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         reduce_only: If True, only reduce position (close only)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -743,6 +802,7 @@ def stop_market_sell_tool(
     trigger_direction: int = 2,
     trigger_by: str = "LastPrice",
     reduce_only: bool = False,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Place a stop market sell order (triggers when price reaches trigger).
@@ -759,10 +819,14 @@ def stop_market_sell_tool(
                           2=trigger when price FALLS to trigger_price
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         reduce_only: If True, only reduce position (close only)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -824,6 +888,7 @@ def stop_limit_buy_tool(
     trigger_by: str = "LastPrice",
     time_in_force: str = "GTC",
     reduce_only: bool = False,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Place a stop limit buy order (triggers limit order when price reaches trigger).
@@ -839,10 +904,14 @@ def stop_limit_buy_tool(
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -906,6 +975,7 @@ def stop_limit_sell_tool(
     trigger_by: str = "LastPrice",
     time_in_force: str = "GTC",
     reduce_only: bool = False,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Place a stop limit sell order (triggers limit order when price reaches trigger).
@@ -921,10 +991,14 @@ def stop_limit_sell_tool(
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with order details
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -987,6 +1061,7 @@ def get_open_orders_tool(
     symbol: Optional[str] = None,
     order_filter: Optional[str] = None,
     limit: int = 50,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Get open orders (real-time).
@@ -996,10 +1071,14 @@ def get_open_orders_tool(
         order_filter: 'Order' (normal), 'StopOrder' (conditional), 
                      'tpslOrder' (TP/SL), or None for all
         limit: Maximum orders to return (1-50)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with open orders list
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     try:
         exchange = _get_exchange_manager()
         orders = exchange.get_open_orders(symbol=symbol)
@@ -1052,6 +1131,7 @@ def cancel_order_tool(
     symbol: str,
     order_id: Optional[str] = None,
     order_link_id: Optional[str] = None,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Cancel a specific order by ID.
@@ -1060,10 +1140,14 @@ def cancel_order_tool(
         symbol: Trading symbol
         order_id: Order ID to cancel (or use order_link_id)
         order_link_id: Custom order ID to cancel (or use order_id)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with success status
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -1113,6 +1197,7 @@ def amend_order_tool(
     take_profit: Optional[float] = None,
     stop_loss: Optional[float] = None,
     trigger_price: Optional[float] = None,
+    trading_env: Optional[str] = None,
 ) -> ToolResult:
     """
     Amend an existing order (modify price, quantity, or TP/SL).
@@ -1126,10 +1211,14 @@ def amend_order_tool(
         take_profit: New TP price (optional)
         stop_loss: New SL price (optional)
         trigger_price: New trigger price for stop orders (optional)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Returns:
         ToolResult with success status
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not symbol or not isinstance(symbol, str):
         return ToolResult(success=False, error="Invalid symbol parameter")
     
@@ -1197,7 +1286,7 @@ def amend_order_tool(
 # Batch Order Tools
 # ==============================================================================
 
-def batch_market_orders_tool(orders: List[Dict[str, Any]]) -> ToolResult:
+def batch_market_orders_tool(orders: List[Dict[str, Any]], trading_env: Optional[str] = None) -> ToolResult:
     """
     Place multiple market orders in a batch (max 10 per batch).
     
@@ -1208,6 +1297,7 @@ def batch_market_orders_tool(orders: List[Dict[str, Any]]) -> ToolResult:
             - usd_amount: Amount in USD
             - take_profit: Optional TP price
             - stop_loss: Optional SL price
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Example:
         orders = [
@@ -1218,6 +1308,9 @@ def batch_market_orders_tool(orders: List[Dict[str, Any]]) -> ToolResult:
     Returns:
         ToolResult with batch results
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not orders or len(orders) == 0:
         return ToolResult(success=False, error="No orders provided")
     
@@ -1259,7 +1352,7 @@ def batch_market_orders_tool(orders: List[Dict[str, Any]]) -> ToolResult:
         )
 
 
-def batch_limit_orders_tool(orders: List[Dict[str, Any]]) -> ToolResult:
+def batch_limit_orders_tool(orders: List[Dict[str, Any]], trading_env: Optional[str] = None) -> ToolResult:
     """
     Place multiple limit orders in a batch (max 10 per batch).
     
@@ -1273,6 +1366,7 @@ def batch_limit_orders_tool(orders: List[Dict[str, Any]]) -> ToolResult:
             - take_profit: Optional TP price
             - stop_loss: Optional SL price
             - reduce_only: Optional (default False)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Example:
         orders = [
@@ -1283,6 +1377,9 @@ def batch_limit_orders_tool(orders: List[Dict[str, Any]]) -> ToolResult:
     Returns:
         ToolResult with batch results
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not orders or len(orders) == 0:
         return ToolResult(success=False, error="No orders provided")
     
@@ -1330,7 +1427,7 @@ def batch_limit_orders_tool(orders: List[Dict[str, Any]]) -> ToolResult:
         )
 
 
-def batch_cancel_orders_tool(orders: List[Dict[str, str]]) -> ToolResult:
+def batch_cancel_orders_tool(orders: List[Dict[str, str]], trading_env: Optional[str] = None) -> ToolResult:
     """
     Cancel multiple orders in a batch (max 10 per batch).
     
@@ -1339,6 +1436,7 @@ def batch_cancel_orders_tool(orders: List[Dict[str, str]]) -> ToolResult:
             - symbol: Trading symbol
             - orderId: Order ID to cancel (or orderLinkId)
             - orderLinkId: Custom order ID (or orderId)
+        trading_env: Optional trading environment ("demo" or "live") for validation
     
     Example:
         orders = [
@@ -1349,6 +1447,9 @@ def batch_cancel_orders_tool(orders: List[Dict[str, str]]) -> ToolResult:
     Returns:
         ToolResult with batch results
     """
+    if error := validate_trading_env_or_error(trading_env):
+        return error
+    
     if not orders or len(orders) == 0:
         return ToolResult(success=False, error="No orders provided")
     

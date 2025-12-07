@@ -9,7 +9,155 @@ IMPORTANT: Symbols should ALWAYS be passed as explicit parameters.
 NO function should have a default symbol value.
 """
 
-from typing import List
+from typing import List, Literal
+from pathlib import Path
+
+
+# ==================== Trading Environment ====================
+
+# TradingEnv: Identifies which trading API environment we're targeting.
+# This maps to the combination of:
+#   - BYBIT_USE_DEMO (true/false) - controls which Bybit API endpoint
+#   - TRADING_MODE (paper/real) - controls order execution style
+#
+# ONLY two valid combinations are allowed (enforced at startup):
+#   - "demo" -> BYBIT_USE_DEMO=true, TRADING_MODE=paper (fake money on api-demo.bybit.com)
+#   - "live" -> BYBIT_USE_DEMO=false, TRADING_MODE=real (real money on api.bybit.com)
+#
+# NOTE: TradingEnv is used by agents/tools to VALIDATE intent, not to switch env.
+# A running process has a fixed trading env set at startup. If an agent requests
+# a different trading_env than the process is configured for, the tool returns an error.
+TradingEnv = Literal["demo", "live"]
+
+# Valid trading environments
+TRADING_ENVS: List[TradingEnv] = ["demo", "live"]
+
+
+def validate_trading_env(env: str) -> TradingEnv:
+    """
+    Validate and normalize a trading environment string.
+    
+    Args:
+        env: The environment to validate (e.g., "live", "DEMO")
+        
+    Returns:
+        Normalized TradingEnv ("live" or "demo")
+        
+    Raises:
+        ValueError: If env is not a valid trading environment
+    """
+    normalized = env.lower().strip()
+    if normalized not in TRADING_ENVS:
+        raise ValueError(f"Invalid trading environment: '{env}'. Must be 'live' or 'demo'.")
+    return normalized  # type: ignore
+
+
+def get_trading_env_mapping() -> dict:
+    """
+    Return documentation of how TradingEnv maps to config settings.
+    
+    Returns:
+        Dict with "demo" and "live" keys, each containing expected config values
+    """
+    return {
+        "demo": {
+            "description": "Demo trading with fake money",
+            "api_endpoint": "api-demo.bybit.com",
+            "use_demo": True,
+            "trading_mode": "paper",
+        },
+        "live": {
+            "description": "Live trading with real money",
+            "api_endpoint": "api.bybit.com",
+            "use_demo": False,
+            "trading_mode": "real",
+        },
+    }
+
+
+# ==================== Data Environment ====================
+
+# DataEnv: Identifies which market data environment we're working with.
+# This is SEPARATE from:
+#   - TRADING_MODE (paper/real) - controls order execution
+#   - BYBIT_USE_DEMO (true/false) - controls which Bybit API endpoint for trading
+#
+# DataEnv controls which historical data store (DuckDB file) is used:
+#   - "live": Canonical live market history for research/backtests/live trading warm-up
+#   - "demo": Demo-only market history for demo session warm-up and testing
+DataEnv = Literal["live", "demo"]
+
+# Valid data environments
+DATA_ENVS: List[DataEnv] = ["live", "demo"]
+
+# Default data environment (always use live for research/backtest)
+DEFAULT_DATA_ENV: DataEnv = "live"
+
+
+def validate_data_env(env: str) -> DataEnv:
+    """
+    Validate and normalize a data environment string.
+    
+    Args:
+        env: The environment to validate (e.g., "live", "DEMO")
+        
+    Returns:
+        Normalized DataEnv ("live" or "demo")
+        
+    Raises:
+        ValueError: If env is not a valid data environment
+    """
+    normalized = env.lower().strip()
+    if normalized not in DATA_ENVS:
+        raise ValueError(f"Invalid data environment: '{env}'. Must be 'live' or 'demo'.")
+    return normalized  # type: ignore
+
+
+# ==================== DuckDB Path and Table Mapping ====================
+
+# Base directory for data files (relative to project root)
+DATA_DIR = Path("data")
+
+# DuckDB file names per environment
+DB_FILENAMES = {
+    "live": "market_data_live.duckdb",
+    "demo": "market_data_demo.duckdb",
+}
+
+# Table name suffixes per environment
+TABLE_SUFFIXES = {
+    "live": "_live",
+    "demo": "_demo",
+}
+
+
+def resolve_db_path(env: DataEnv) -> Path:
+    """
+    Get the DuckDB file path for a given data environment.
+    
+    Args:
+        env: Data environment ("live" or "demo")
+        
+    Returns:
+        Path to the DuckDB file (e.g., data/market_data_live.duckdb)
+    """
+    env = validate_data_env(env)
+    return DATA_DIR / DB_FILENAMES[env]
+
+
+def resolve_table_name(base_table: str, env: DataEnv) -> str:
+    """
+    Get the table name for a given base table and environment.
+    
+    Args:
+        base_table: Base table name (e.g., "ohlcv", "funding_rates", "open_interest")
+        env: Data environment ("live" or "demo")
+        
+    Returns:
+        Full table name with env suffix (e.g., "ohlcv_live", "funding_rates_demo")
+    """
+    env = validate_data_env(env)
+    return f"{base_table}{TABLE_SUFFIXES[env]}"
 
 
 # ==================== Symbol Reference (Display Only) ====================

@@ -6,6 +6,13 @@ Provides:
 - Auto-sync with gap detection and filling
 - Period-based data retrieval (1Y, 6M, 1W, 1D, etc.)
 - DataFrame output for backtesting
+- Environment-aware storage (live vs demo)
+
+Architecture:
+- Each data environment (live/demo) has its own DuckDB file
+- Table names are env-specific (e.g., ohlcv_live, ohlcv_demo)
+- Live history is canonical for research/backtests
+- Demo history is isolated for demo testing sessions
 """
 
 import duckdb
@@ -20,6 +27,13 @@ from dataclasses import dataclass
 
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config
+from ..config.constants import (
+    DataEnv,
+    DEFAULT_DATA_ENV,
+    validate_data_env,
+    resolve_db_path,
+    resolve_table_name,
+)
 from ..utils.logger import get_logger
 
 
@@ -153,8 +167,16 @@ class HistoricalDataStore:
     """
     DuckDB-backed historical market data storage.
     
+    Environment-aware: each env (live/demo) has its own database file
+    with env-specific table names (e.g., ohlcv_live, ohlcv_demo).
+    
     Usage:
+        # Default: live environment
         store = HistoricalDataStore()
+        
+        # Explicit environment
+        live_store = HistoricalDataStore(env="live")
+        demo_store = HistoricalDataStore(env="demo")
         
         # Sync data
         store.sync("BTCUSDT", period="3M")  # 3 months, all timeframes
@@ -165,50 +187,98 @@ class HistoricalDataStore:
         
         # Check status
         status = store.status("BTCUSDT")
+    
+    Attributes:
+        env: Data environment ("live" or "demo")
+        db_path: Path to the DuckDB file
+        table_ohlcv: Name of OHLCV table (e.g., "ohlcv_live")
+        table_sync_metadata: Name of sync metadata table
+        table_funding: Name of funding rates table
+        table_funding_metadata: Name of funding metadata table
+        table_oi: Name of open interest table
+        table_oi_metadata: Name of open interest metadata table
     """
     
-    DEFAULT_DB_PATH = "data/market_data.duckdb"
-    
-    def __init__(self, db_path: str = None):
-        """Initialize the data store."""
-        self.db_path = Path(db_path or self.DEFAULT_DB_PATH)
+    def __init__(self, env: DataEnv = DEFAULT_DATA_ENV, db_path: str = None):
+        """
+        Initialize the data store.
+        
+        Args:
+            env: Data environment ("live" or "demo"). Defaults to "live".
+            db_path: Optional explicit DB path (overrides env-based resolution).
+        """
+        # Validate and store environment
+        self.env: DataEnv = validate_data_env(env)
+        
+        # Resolve DB path based on environment (or use explicit path)
+        if db_path:
+            self.db_path = Path(db_path)
+        else:
+            self.db_path = resolve_db_path(self.env)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Resolve table names for this environment
+        self.table_ohlcv = resolve_table_name("ohlcv", self.env)
+        self.table_sync_metadata = resolve_table_name("sync_metadata", self.env)
+        self.table_funding = resolve_table_name("funding_rates", self.env)
+        self.table_funding_metadata = resolve_table_name("funding_metadata", self.env)
+        self.table_oi = resolve_table_name("open_interest", self.env)
+        self.table_oi_metadata = resolve_table_name("open_interest_metadata", self.env)
         
         self.conn = duckdb.connect(str(self.db_path))
         self.config = get_config()
         self.logger = get_logger()
         
-        # ALWAYS use LIVE API for historical data fetching (for accuracy)
-        # Historical data must be accurate - DEMO API may return different data
-        api_key, api_secret = self.config.bybit.get_live_data_credentials()
+        # Select API and credentials based on data environment
+        # - live: Use LIVE API with LIVE data keys (canonical backtest history)
+        # - demo: Use DEMO API with DEMO data keys (demo-only history)
+        if self.env == "live":
+            # LIVE environment: use LIVE API with dedicated data credentials
+            api_key, api_secret = self.config.bybit.get_live_data_credentials()
+            use_demo_api = False
+            api_name = "LIVE"
+            api_url = "api.bybit.com"
+            
+            if not api_key or not api_secret:
+                self.logger.error(
+                    "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY/SECRET not configured! "
+                    "Historical LIVE data sync requires LIVE data API access. "
+                    "No fallback to trading keys."
+                )
+            key_source = "BYBIT_LIVE_DATA_API_KEY" if api_key else "MISSING"
+        else:
+            # DEMO environment: use DEMO API with dedicated DEMO data credentials
+            api_key, api_secret = self.config.bybit.get_demo_data_credentials()
+            use_demo_api = True
+            api_name = "DEMO"
+            api_url = "api-demo.bybit.com"
+            
+            if not api_key or not api_secret:
+                self.logger.error(
+                    "MISSING REQUIRED KEY: BYBIT_DEMO_DATA_API_KEY/SECRET not configured! "
+                    "Historical DEMO data sync requires DEMO data API access. "
+                    "No fallback to trading keys."
+                )
+            key_source = "BYBIT_DEMO_DATA_API_KEY" if api_key else "MISSING"
         
-        # Error if LIVE data credentials are not configured (STRICT - no fallback)
-        if not api_key or not api_secret:
-            self.logger.error(
-                "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY/SECRET not configured! "
-                "Historical data sync requires LIVE API access for accurate data. "
-                "No fallback to trading keys or generic keys is allowed."
-            )
-        
-        # Initialize client with LIVE API (use_demo=False)
-        # This ensures we get real market data regardless of trading mode
+        # Initialize client with appropriate API endpoint
         self.client = BybitClient(
             api_key=api_key if api_key else None,
             api_secret=api_secret if api_secret else None,
-            use_demo=False,  # ALWAYS use LIVE API for data accuracy
+            use_demo=use_demo_api,
         )
         
-        # Log detailed API environment info (STRICT - canonical keys only)
+        # Cancellation flag for graceful interruption
+        self._cancelled = False
+        
+        # Log API environment info
         key_status = "authenticated" if api_key else "NO KEY"
-        # Determine key source - STRICT: only canonical key
-        if self.config.bybit.live_data_api_key:
-            key_source = "BYBIT_LIVE_DATA_API_KEY"
-        else:
-            key_source = "MISSING (BYBIT_LIVE_DATA_API_KEY required)"
         
         self.logger.info(
             f"HistoricalDataStore initialized: "
-            f"API=LIVE (api.bybit.com), "
+            f"env={self.env}, "
+            f"db={self.db_path}, "
+            f"API={api_name} ({api_url}), "
             f"auth={key_status}, "
             f"key_source={key_source}"
         )
@@ -216,10 +286,10 @@ class HistoricalDataStore:
         self._init_schema()
     
     def _init_schema(self):
-        """Initialize database schema."""
+        """Initialize database schema with env-specific table names."""
         # OHLCV candle data
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS ohlcv (
+        self.conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.table_ohlcv} (
                 symbol VARCHAR NOT NULL,
                 timeframe VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
@@ -228,12 +298,21 @@ class HistoricalDataStore:
                 low DOUBLE,
                 close DOUBLE,
                 volume DOUBLE,
+                turnover DOUBLE,
                 PRIMARY KEY (symbol, timeframe, timestamp)
             )
         """)
         
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS sync_metadata (
+        # Schema migration: add turnover column if missing from existing table
+        try:
+            self.conn.execute(f"""
+                ALTER TABLE {self.table_ohlcv} ADD COLUMN turnover DOUBLE
+            """)
+        except Exception:
+            pass  # Column already exists
+        
+        self.conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.table_sync_metadata} (
                 symbol VARCHAR NOT NULL,
                 timeframe VARCHAR NOT NULL,
                 first_timestamp TIMESTAMP,
@@ -245,8 +324,8 @@ class HistoricalDataStore:
         """)
         
         # Funding rates data
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS funding_rates (
+        self.conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.table_funding} (
                 symbol VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
                 funding_rate DOUBLE,
@@ -255,8 +334,8 @@ class HistoricalDataStore:
             )
         """)
         
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS funding_metadata (
+        self.conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.table_funding_metadata} (
                 symbol VARCHAR NOT NULL,
                 first_timestamp TIMESTAMP,
                 last_timestamp TIMESTAMP,
@@ -267,8 +346,8 @@ class HistoricalDataStore:
         """)
         
         # Open interest data
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS open_interest (
+        self.conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.table_oi} (
                 symbol VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
                 open_interest DOUBLE,
@@ -276,8 +355,8 @@ class HistoricalDataStore:
             )
         """)
         
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS open_interest_metadata (
+        self.conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.table_oi_metadata} (
                 symbol VARCHAR NOT NULL,
                 first_timestamp TIMESTAMP,
                 last_timestamp TIMESTAMP,
@@ -287,51 +366,52 @@ class HistoricalDataStore:
             )
         """)
         
-        # Create indexes for faster queries
+        # Create indexes for faster queries (env-specific index names)
+        idx_suffix = f"_{self.env}"
         try:
-            self.conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_tf 
-                ON ohlcv(symbol, timeframe)
+            self.conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_tf{idx_suffix}
+                ON {self.table_ohlcv}(symbol, timeframe)
             """)
         except Exception:
             pass  # Index may already exist
         
         try:
-            self.conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_ohlcv_timestamp 
-                ON ohlcv(timestamp)
+            self.conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_ohlcv_timestamp{idx_suffix}
+                ON {self.table_ohlcv}(timestamp)
             """)
         except Exception:
             pass  # Index may already exist
         
         try:
-            self.conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_funding_symbol 
-                ON funding_rates(symbol)
+            self.conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_funding_symbol{idx_suffix}
+                ON {self.table_funding}(symbol)
             """)
         except Exception:
             pass
         
         try:
-            self.conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_funding_timestamp 
-                ON funding_rates(timestamp)
+            self.conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_funding_timestamp{idx_suffix}
+                ON {self.table_funding}(timestamp)
             """)
         except Exception:
             pass
         
         try:
-            self.conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_oi_symbol 
-                ON open_interest(symbol)
+            self.conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_oi_symbol{idx_suffix}
+                ON {self.table_oi}(symbol)
             """)
         except Exception:
             pass
         
         try:
-            self.conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_oi_timestamp 
-                ON open_interest(timestamp)
+            self.conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_oi_timestamp{idx_suffix}
+                ON {self.table_oi}(timestamp)
             """)
         except Exception:
             pass
@@ -377,6 +457,14 @@ class HistoricalDataStore:
     
     # ==================== SYNC METHODS ====================
     
+    def cancel(self):
+        """Cancel ongoing data fetching operations."""
+        self._cancelled = True
+    
+    def reset_cancellation(self):
+        """Reset cancellation flag."""
+        self._cancelled = False
+    
     def sync(
         self,
         symbols: Union[str, List[str]],
@@ -385,69 +473,11 @@ class HistoricalDataStore:
         progress_callback: Callable = None,
         show_spinner: bool = True,
     ) -> Dict[str, int]:
-        """
-        Sync historical data for symbols.
-        
-        Auto-detects existing data and only fetches what's missing.
-        
-        Args:
-            symbols: Single symbol or list of symbols
-            period: How far back to sync ("1Y", "6M", "3M", "1M", "2W", "1W", "3D", "1D", "12H")
-            timeframes: List of timeframes or None for all
-            progress_callback: Optional callback(symbol, timeframe, status)
-            show_spinner: Show animated spinner during sync
-        
-        Returns:
-            Dict mapping "symbol_timeframe" to number of candles synced
-        """
-        if isinstance(symbols, str):
-            symbols = [symbols]
-        
-        # Normalize symbols to uppercase for consistency
-        symbols = [s.upper() for s in symbols]
-        
-        timeframes = timeframes or list(TIMEFRAMES.keys())
-        target_start = datetime.now() - self.parse_period(period)
-        
-        results = {}
-        total_synced = 0
-        
-        for symbol in symbols:
-            for tf in timeframes:
-                key = f"{symbol}_{tf}"
-                
-                if progress_callback:
-                    progress_callback(symbol, tf, f"{ActivityEmoji.SYNC} starting")
-                
-                # Show spinner for individual sync
-                spinner = None
-                if show_spinner and not progress_callback:
-                    spinner = ActivitySpinner(f"Fetching {symbol} {tf}", ActivityEmoji.CANDLE)
-                    spinner.start()
-                
-                try:
-                    count = self._sync_symbol_timeframe(
-                        symbol, tf, target_start, datetime.now()
-                    )
-                    results[key] = count
-                    total_synced += max(0, count)
-                    
-                    if spinner:
-                        spinner.stop(f"{symbol} {tf}: {count} candles {ActivityEmoji.SPARKLE}")
-                    elif progress_callback:
-                        emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
-                        progress_callback(symbol, tf, f"{emoji} done ({count:,} candles)")
-                        
-                except Exception as e:
-                    self.logger.error(f"Failed to sync {key}: {e}")
-                    results[key] = -1
-                    
-                    if spinner:
-                        spinner.stop(f"{symbol} {tf}: error", success=False)
-                    elif progress_callback:
-                        progress_callback(symbol, tf, f"{ActivityEmoji.ERROR} error: {e}")
-        
-        return results
+        """Sync historical data for symbols. See module docstring for details."""
+        from . import historical_sync
+        return historical_sync.sync(
+            self, symbols, period, timeframes, progress_callback, show_spinner
+        )
     
     def sync_range(
         self,
@@ -457,26 +487,8 @@ class HistoricalDataStore:
         timeframes: List[str] = None,
     ) -> Dict[str, int]:
         """Sync a specific date range."""
-        if isinstance(symbols, str):
-            symbols = [symbols]
-        
-        # Normalize symbols to uppercase for consistency
-        symbols = [s.upper() for s in symbols]
-        
-        timeframes = timeframes or list(TIMEFRAMES.keys())
-        results = {}
-        
-        for symbol in symbols:
-            for tf in timeframes:
-                key = f"{symbol}_{tf}"
-                try:
-                    count = self._sync_symbol_timeframe(symbol, tf, start, end)
-                    results[key] = count
-                except Exception as e:
-                    self.logger.error(f"Failed to sync {key}: {e}")
-                    results[key] = -1
-        
-        return results
+        from . import historical_sync
+        return historical_sync.sync_range(self, symbols, start, end, timeframes)
     
     def sync_forward(
         self,
@@ -485,111 +497,16 @@ class HistoricalDataStore:
         progress_callback: Callable = None,
         show_spinner: bool = True,
     ) -> Dict[str, int]:
-        """
-        Sync data forward from the last stored candle to now (no backfill).
-        
-        This is a lightweight sync that only fetches new data after the last
-        stored timestamp, without scanning or backfilling older history.
-        
-        Args:
-            symbols: Single symbol or list of symbols
-            timeframes: List of timeframes or None for all
-            progress_callback: Optional callback(symbol, timeframe, status)
-            show_spinner: Show animated spinner during sync
-        
-        Returns:
-            Dict mapping "symbol_timeframe" to number of candles synced
-        """
-        if isinstance(symbols, str):
-            symbols = [symbols]
-        
-        # Normalize symbols to uppercase for consistency
-        symbols = [s.upper() for s in symbols]
-        
-        timeframes = timeframes or list(TIMEFRAMES.keys())
-        results = {}
-        total_synced = 0
-        
-        for symbol in symbols:
-            for tf in timeframes:
-                key = f"{symbol}_{tf}"
-                
-                if progress_callback:
-                    progress_callback(symbol, tf, f"{ActivityEmoji.SYNC} syncing forward")
-                
-                # Show spinner for individual sync
-                spinner = None
-                if show_spinner and not progress_callback:
-                    spinner = ActivitySpinner(f"Syncing {symbol} {tf} forward", ActivityEmoji.CANDLE)
-                    spinner.start()
-                
-                try:
-                    count = self._sync_forward_symbol_timeframe(symbol, tf)
-                    results[key] = count
-                    total_synced += max(0, count)
-                    
-                    if spinner:
-                        if count > 0:
-                            spinner.stop(f"{symbol} {tf}: +{count} candles {ActivityEmoji.SPARKLE}")
-                        else:
-                            spinner.stop(f"{symbol} {tf}: already current {ActivityEmoji.SUCCESS}")
-                    elif progress_callback:
-                        emoji = ActivityEmoji.SUCCESS if count >= 0 else ActivityEmoji.ERROR
-                        progress_callback(symbol, tf, f"{emoji} done (+{count} candles)")
-                        
-                except Exception as e:
-                    self.logger.error(f"Failed to sync forward {key}: {e}")
-                    results[key] = -1
-                    
-                    if spinner:
-                        spinner.stop(f"{symbol} {tf}: error", success=False)
-                    elif progress_callback:
-                        progress_callback(symbol, tf, f"{ActivityEmoji.ERROR} error: {e}")
-        
-        return results
+        """Sync data forward from the last stored candle to now."""
+        from . import historical_sync
+        return historical_sync.sync_forward(
+            self, symbols, timeframes, progress_callback, show_spinner
+        )
     
-    def _sync_forward_symbol_timeframe(
-        self,
-        symbol: str,
-        timeframe: str,
-    ) -> int:
+    def _sync_forward_symbol_timeframe(self, symbol: str, timeframe: str) -> int:
         """Sync a single symbol/timeframe forward from last timestamp to now."""
-        # Normalize symbol to uppercase for consistency
-        symbol = symbol.upper()
-        bybit_tf = TIMEFRAMES.get(timeframe, timeframe)
-        tf_minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
-        
-        # Check what we already have
-        existing = self.conn.execute("""
-            SELECT MAX(timestamp) as last_ts
-            FROM ohlcv
-            WHERE symbol = ? AND timeframe = ?
-        """, [symbol, timeframe]).fetchone()
-        
-        last_ts = existing[0] if existing and existing[0] else None
-        
-        if last_ts is None:
-            # No data at all - nothing to sync forward from
-            # User should use regular sync or build_symbol_history first
-            return 0
-        
-        # Start from one interval after last_ts to avoid overlap
-        start = last_ts + timedelta(minutes=tf_minutes)
-        end = datetime.now()
-        
-        # If we're already current (less than one interval behind), skip
-        if start >= end:
-            return 0
-        
-        # Fetch new data
-        df = self._fetch_from_api(symbol, bybit_tf, start, end)
-        
-        if not df.empty:
-            self._store_dataframe(symbol, timeframe, df)
-            self._update_metadata(symbol, timeframe)
-            return len(df)
-        
-        return 0
+        from . import historical_sync
+        return historical_sync._sync_forward_symbol_timeframe(self, symbol, timeframe)
     
     def _sync_symbol_timeframe(
         self,
@@ -599,60 +516,10 @@ class HistoricalDataStore:
         target_end: datetime,
     ) -> int:
         """Sync a single symbol/timeframe combination."""
-        # Normalize symbol to uppercase for consistency
-        symbol = symbol.upper()
-        bybit_tf = TIMEFRAMES.get(timeframe, timeframe)
-        tf_minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
-        
-        # Check what we already have
-        existing = self.conn.execute("""
-            SELECT MIN(timestamp) as first_ts, MAX(timestamp) as last_ts
-            FROM ohlcv
-            WHERE symbol = ? AND timeframe = ?
-        """, [symbol, timeframe]).fetchone()
-        
-        first_ts, last_ts = existing
-        total_synced = 0
-        
-        # Determine what ranges to fetch
-        ranges_to_fetch = []
-        
-        if first_ts is None:
-            # No data at all - fetch entire range
-            ranges_to_fetch.append((target_start, target_end))
-        else:
-            # Fetch older data if needed (up to but not including first_ts to avoid overlap)
-            if target_start < first_ts:
-                # End at one interval before first_ts to avoid re-fetching that candle
-                older_end = first_ts - timedelta(minutes=tf_minutes)
-                if target_start <= older_end:
-                    ranges_to_fetch.append((target_start, older_end))
-            
-            # Fetch newer data if needed (start after last_ts to avoid overlap)
-            if target_end > last_ts:
-                # Start from one interval after last_ts to avoid re-fetching that candle
-                newer_start = last_ts + timedelta(minutes=tf_minutes)
-                if newer_start <= target_end:
-                    ranges_to_fetch.append((newer_start, target_end))
-        
-        # Fetch each range
-        for range_start, range_end in ranges_to_fetch:
-            df = self._fetch_from_api(symbol, bybit_tf, range_start, range_end)
-            
-            if not df.empty:
-                self._store_dataframe(symbol, timeframe, df)
-                total_synced += len(df)
-        
-        # Only update metadata if we have data (either new or existing)
-        # This prevents invalid symbols from creating empty metadata entries
-        has_data = self.conn.execute("""
-            SELECT COUNT(*) FROM ohlcv WHERE symbol = ? AND timeframe = ?
-        """, [symbol, timeframe]).fetchone()[0] > 0
-        
-        if has_data:
-            self._update_metadata(symbol, timeframe)
-        
-        return total_synced
+        from . import historical_sync
+        return historical_sync._sync_symbol_timeframe(
+            self, symbol, timeframe, target_start, target_end
+        )
     
     def _fetch_from_api(
         self,
@@ -661,66 +528,13 @@ class HistoricalDataStore:
         start: datetime,
         end: datetime,
         show_progress: bool = True,
+        progress_prefix: str = None,
     ) -> pd.DataFrame:
         """Fetch data from Bybit API with visual progress."""
-        all_data = []
-        current_end = end
-        request_count = 0
-        
-        # Convert start/end to pandas Timestamps for consistent comparison with UTC-aware API data
-        start_ts = pd.Timestamp(start, tz='UTC') if start.tzinfo is None else pd.Timestamp(start)
-        end_ts = pd.Timestamp(end, tz='UTC') if end.tzinfo is None else pd.Timestamp(end)
-        current_end_ts = end_ts
-        
-        # Bybit returns max 1000 candles per request
-        while current_end_ts > start_ts:
-            try:
-                # Show inline progress
-                if show_progress:
-                    dots = ActivityEmoji.DOTS[request_count % len(ActivityEmoji.DOTS)]
-                    sys.stdout.write(f"\r    {ActivityEmoji.DOWNLOAD} {dots} Fetching candles... ({request_count * 1000}+)   ")
-                    sys.stdout.flush()
-                
-                df = self.client.get_klines(
-                    symbol=symbol,
-                    interval=bybit_tf,
-                    limit=1000,
-                    end=int(current_end_ts.timestamp() * 1000),
-                )
-                
-                if df.empty:
-                    break
-                
-                all_data.append(df)
-                request_count += 1
-                
-                # Move window back
-                earliest = df["timestamp"].min()
-                if earliest >= current_end_ts:
-                    break
-                current_end_ts = earliest - timedelta(minutes=1)
-                
-                # Rate limiting
-                time.sleep(0.1)
-                
-            except Exception as e:
-                self.logger.warning(f"API fetch error: {e}")
-                break
-        
-        # Clear progress line
-        if show_progress and request_count > 0:
-            sys.stdout.write(f"\r    {ActivityEmoji.SUCCESS} Fetched {request_count} batches                    \n")
-            sys.stdout.flush()
-        
-        if not all_data:
-            return pd.DataFrame()
-        
-        combined = pd.concat(all_data, ignore_index=True)
-        combined = combined.drop_duplicates(subset=["timestamp"])
-        combined = combined[combined["timestamp"] >= start_ts]
-        combined = combined[combined["timestamp"] <= end_ts]
-        
-        return combined.sort_values("timestamp").reset_index(drop=True)
+        from . import historical_sync
+        return historical_sync._fetch_from_api(
+            self, symbol, bybit_tf, start, end, show_progress, progress_prefix
+        )
     
     def _store_dataframe(self, symbol: str, timeframe: str, df: pd.DataFrame):
         """Store DataFrame in DuckDB."""
@@ -744,24 +558,24 @@ class HistoricalDataStore:
         df = df[["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"]]
         
         # Insert or replace (handles duplicates)
-        self.conn.execute("""
-            INSERT OR REPLACE INTO ohlcv 
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_ohlcv} 
             SELECT * FROM df
         """)
     
     def _update_metadata(self, symbol: str, timeframe: str):
         """Update sync metadata for a symbol/timeframe."""
-        stats = self.conn.execute("""
+        stats = self.conn.execute(f"""
             SELECT 
                 MIN(timestamp) as first_ts,
                 MAX(timestamp) as last_ts,
                 COUNT(*) as count
-            FROM ohlcv
+            FROM {self.table_ohlcv}
             WHERE symbol = ? AND timeframe = ?
         """, [symbol, timeframe]).fetchone()
         
-        self.conn.execute("""
-            INSERT OR REPLACE INTO sync_metadata 
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_sync_metadata} 
             VALUES (?, ?, ?, ?, ?, ?)
         """, [symbol, timeframe, stats[0], stats[1], stats[2], datetime.now()])
     
@@ -795,6 +609,11 @@ class HistoricalDataStore:
         results = {}
         
         for symbol in symbols:
+            # Check for cancellation
+            if self._cancelled:
+                self.logger.info("Funding sync cancelled by user")
+                break
+            
             if progress_callback:
                 progress_callback(symbol, f"{ActivityEmoji.SYNC} syncing funding rates")
             
@@ -813,6 +632,14 @@ class HistoricalDataStore:
                     emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
                     progress_callback(symbol, f"{emoji} done ({count:,} records)")
                     
+            except KeyboardInterrupt:
+                self._cancelled = True
+                self.logger.info("Funding sync interrupted by user")
+                if spinner:
+                    spinner.stop(f"{symbol} funding: cancelled", success=False)
+                elif progress_callback:
+                    progress_callback(symbol, f"{ActivityEmoji.WARNING} cancelled")
+                break
             except Exception as e:
                 self.logger.error(f"Failed to sync funding for {symbol}: {e}")
                 results[symbol] = -1
@@ -829,9 +656,9 @@ class HistoricalDataStore:
         symbol = symbol.upper()
         
         # Check existing data
-        existing = self.conn.execute("""
+        existing = self.conn.execute(f"""
             SELECT MAX(timestamp) as last_ts
-            FROM funding_rates
+            FROM {self.table_funding}
             WHERE symbol = ?
         """, [symbol]).fetchone()
         
@@ -847,13 +674,27 @@ class HistoricalDataStore:
         # Fetch from API
         all_records = []
         current_end = datetime.now()
+        request_count = 0
         
         # Bybit funding API returns max 200 records per request
         while current_end > fetch_start:
+            # Check for cancellation
+            if self._cancelled:
+                break
+            
             try:
+                # Show progress
+                dots = ActivityEmoji.DOTS[request_count % len(ActivityEmoji.DOTS)]
+                records_count = request_count * 200
+                sys.stdout.write(f"\r    {ActivityEmoji.DOWNLOAD} {dots} {symbol} funding: Fetching records... ({records_count}+)   ")
+                sys.stdout.flush()
+                
+                # Pass endTime to paginate backwards through history
+                # Bybit: "Passing only endTime returns 200 records up till endTime"
                 records = self.client.get_funding_rate(
                     symbol=symbol,
                     limit=200,
+                    end_time=int(current_end.timestamp() * 1000),
                 )
                 
                 if not records:
@@ -869,6 +710,8 @@ class HistoricalDataStore:
                             "funding_rate": float(r.get("fundingRate", 0)),
                         })
                 
+                request_count += 1
+                
                 # Move window back
                 if records:
                     earliest_ts = min(
@@ -880,9 +723,23 @@ class HistoricalDataStore:
                 
                 time.sleep(0.1)  # Rate limiting
                 
+            except KeyboardInterrupt:
+                self._cancelled = True
+                if request_count > 0:
+                    sys.stdout.write(f"\r    {ActivityEmoji.WARNING} Interrupted fetching {symbol} funding                    \n")
+                    sys.stdout.flush()
+                break
             except Exception as e:
                 self.logger.warning(f"Funding API error for {symbol}: {e}")
                 break
+        
+        # Clear progress line
+        if request_count > 0 and not self._cancelled:
+            sys.stdout.write(f"\r    {ActivityEmoji.SUCCESS} {symbol} funding: Fetched {request_count} batches ({len(all_records):,} records)                    \n")
+            sys.stdout.flush()
+        elif self._cancelled and request_count > 0:
+            sys.stdout.write(f"\r    {ActivityEmoji.WARNING} Cancelled fetching {symbol} funding                    \n")
+            sys.stdout.flush()
         
         if not all_records:
             return 0
@@ -910,8 +767,8 @@ class HistoricalDataStore:
         df = df[["symbol", "timestamp", "funding_rate"]]
         
         # Insert or replace
-        self.conn.execute("""
-            INSERT OR REPLACE INTO funding_rates (symbol, timestamp, funding_rate)
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_funding} (symbol, timestamp, funding_rate)
             SELECT symbol, timestamp, funding_rate FROM df
         """)
         
@@ -920,17 +777,17 @@ class HistoricalDataStore:
     
     def _update_funding_metadata(self, symbol: str):
         """Update funding metadata for a symbol."""
-        stats = self.conn.execute("""
+        stats = self.conn.execute(f"""
             SELECT 
                 MIN(timestamp) as first_ts,
                 MAX(timestamp) as last_ts,
                 COUNT(*) as count
-            FROM funding_rates
+            FROM {self.table_funding}
             WHERE symbol = ?
         """, [symbol]).fetchone()
         
-        self.conn.execute("""
-            INSERT OR REPLACE INTO funding_metadata 
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_funding_metadata} 
             VALUES (?, ?, ?, ?, ?)
         """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
     
@@ -955,9 +812,9 @@ class HistoricalDataStore:
         """
         symbol = symbol.upper()
         
-        query = """
+        query = f"""
             SELECT timestamp, funding_rate
-            FROM funding_rates
+            FROM {self.table_funding}
             WHERE symbol = ?
         """
         params = [symbol]
@@ -1009,6 +866,11 @@ class HistoricalDataStore:
         results = {}
         
         for symbol in symbols:
+            # Check for cancellation
+            if self._cancelled:
+                self.logger.info("Open interest sync cancelled by user")
+                break
+            
             if progress_callback:
                 progress_callback(symbol, f"{ActivityEmoji.SYNC} syncing open interest")
             
@@ -1027,6 +889,14 @@ class HistoricalDataStore:
                     emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
                     progress_callback(symbol, f"{emoji} done ({count:,} records)")
                     
+            except KeyboardInterrupt:
+                self._cancelled = True
+                self.logger.info("Open interest sync interrupted by user")
+                if spinner:
+                    spinner.stop(f"{symbol} OI: cancelled", success=False)
+                elif progress_callback:
+                    progress_callback(symbol, f"{ActivityEmoji.WARNING} cancelled")
+                break
             except Exception as e:
                 self.logger.error(f"Failed to sync OI for {symbol}: {e}")
                 results[symbol] = -1
@@ -1043,9 +913,9 @@ class HistoricalDataStore:
         symbol = symbol.upper()
         
         # Check existing data
-        existing = self.conn.execute("""
+        existing = self.conn.execute(f"""
             SELECT MAX(timestamp) as last_ts
-            FROM open_interest
+            FROM {self.table_oi}
             WHERE symbol = ?
         """, [symbol]).fetchone()
         
@@ -1060,14 +930,27 @@ class HistoricalDataStore:
         # Fetch from API
         all_records = []
         current_end = datetime.now()
+        request_count = 0
         
         # Bybit OI API returns max 200 records per request
         while current_end > fetch_start:
+            # Check for cancellation
+            if self._cancelled:
+                break
+            
             try:
+                # Show progress
+                dots = ActivityEmoji.DOTS[request_count % len(ActivityEmoji.DOTS)]
+                records_count = request_count * 200
+                sys.stdout.write(f"\r    {ActivityEmoji.DOWNLOAD} {dots} {symbol} OI ({interval}): Fetching records... ({records_count}+)   ")
+                sys.stdout.flush()
+                
+                # Pass endTime to paginate backwards through history
                 records = self.client.get_open_interest(
                     symbol=symbol,
                     interval=interval,
                     limit=200,
+                    end_time=int(current_end.timestamp() * 1000),
                 )
                 
                 if not records:
@@ -1083,6 +966,8 @@ class HistoricalDataStore:
                             "open_interest": float(r.get("openInterest", 0)),
                         })
                 
+                request_count += 1
+                
                 # Move window back
                 if records:
                     earliest_ts = min(int(r.get("timestamp", 0)) for r in records)
@@ -1092,9 +977,23 @@ class HistoricalDataStore:
                 
                 time.sleep(0.1)  # Rate limiting
                 
+            except KeyboardInterrupt:
+                self._cancelled = True
+                if request_count > 0:
+                    sys.stdout.write(f"\r    {ActivityEmoji.WARNING} Interrupted fetching {symbol} OI                    \n")
+                    sys.stdout.flush()
+                break
             except Exception as e:
                 self.logger.warning(f"OI API error for {symbol}: {e}")
                 break
+        
+        # Clear progress line
+        if request_count > 0 and not self._cancelled:
+            sys.stdout.write(f"\r    {ActivityEmoji.SUCCESS} {symbol} OI ({interval}): Fetched {request_count} batches ({len(all_records):,} records)                    \n")
+            sys.stdout.flush()
+        elif self._cancelled and request_count > 0:
+            sys.stdout.write(f"\r    {ActivityEmoji.WARNING} Cancelled fetching {symbol} OI                    \n")
+            sys.stdout.flush()
         
         if not all_records:
             return 0
@@ -1122,8 +1021,8 @@ class HistoricalDataStore:
         df = df[["symbol", "timestamp", "open_interest"]]
         
         # Insert or replace
-        self.conn.execute("""
-            INSERT OR REPLACE INTO open_interest (symbol, timestamp, open_interest)
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_oi} (symbol, timestamp, open_interest)
             SELECT symbol, timestamp, open_interest FROM df
         """)
         
@@ -1132,17 +1031,17 @@ class HistoricalDataStore:
     
     def _update_oi_metadata(self, symbol: str):
         """Update open interest metadata for a symbol."""
-        stats = self.conn.execute("""
+        stats = self.conn.execute(f"""
             SELECT 
                 MIN(timestamp) as first_ts,
                 MAX(timestamp) as last_ts,
                 COUNT(*) as count
-            FROM open_interest
+            FROM {self.table_oi}
             WHERE symbol = ?
         """, [symbol]).fetchone()
         
-        self.conn.execute("""
-            INSERT OR REPLACE INTO open_interest_metadata 
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_oi_metadata} 
             VALUES (?, ?, ?, ?, ?)
         """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
     
@@ -1167,9 +1066,9 @@ class HistoricalDataStore:
         """
         symbol = symbol.upper()
         
-        query = """
+        query = f"""
             SELECT timestamp, open_interest
-            FROM open_interest
+            FROM {self.table_oi}
             WHERE symbol = ?
         """
         params = [symbol]
@@ -1192,39 +1091,9 @@ class HistoricalDataStore:
     # ==================== GAP DETECTION & FILLING ====================
     
     def detect_gaps(self, symbol: str, timeframe: str) -> List[Tuple[datetime, datetime]]:
-        """
-        Detect gaps in data for a symbol/timeframe.
-        
-        Returns:
-            List of (gap_start, gap_end) tuples
-        """
-        # Normalize symbol to uppercase for consistency
-        symbol = symbol.upper()
-        
-        df = self.conn.execute("""
-            SELECT timestamp FROM ohlcv
-            WHERE symbol = ? AND timeframe = ?
-            ORDER BY timestamp
-        """, [symbol, timeframe]).df()
-        
-        if df.empty or len(df) < 2:
-            return []
-        
-        # Calculate expected interval
-        tf_minutes = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
-        expected_interval = timedelta(minutes=tf_minutes.get(timeframe, 15))
-        
-        gaps = []
-        timestamps = df["timestamp"].tolist()
-        
-        for i in range(1, len(timestamps)):
-            actual_gap = timestamps[i] - timestamps[i-1]
-            
-            # If gap is more than 1.5x expected, it's a gap
-            if actual_gap > expected_interval * 1.5:
-                gaps.append((timestamps[i-1], timestamps[i]))
-        
-        return gaps
+        """Detect gaps in data for a symbol/timeframe."""
+        from . import historical_maintenance
+        return historical_maintenance.detect_gaps(self, symbol, timeframe)
     
     def fill_gaps(
         self,
@@ -1232,70 +1101,9 @@ class HistoricalDataStore:
         timeframe: str = None,
         progress_callback: Callable = None,
     ) -> Dict[str, int]:
-        """
-        Detect and fill gaps in data.
-        
-        Args:
-            symbol: Specific symbol or None for all
-            timeframe: Specific timeframe or None for all
-            progress_callback: Optional callback(symbol, timeframe, gap_info)
-        
-        Returns:
-            Dict mapping "symbol_timeframe" to number of candles filled
-        """
-        # Normalize symbol to uppercase for consistency
-        if symbol:
-            symbol = symbol.upper()
-        
-        # Get list of symbol/timeframe combinations to check
-        if symbol and timeframe:
-            combinations = [(symbol, timeframe)]
-        elif symbol:
-            combinations = [(symbol, tf) for tf in TIMEFRAMES.keys()]
-        else:
-            # Get all from metadata
-            rows = self.conn.execute("""
-                SELECT DISTINCT symbol, timeframe FROM sync_metadata
-            """).fetchall()
-            combinations = [(r[0], r[1]) for r in rows]
-        
-        results = {}
-        
-        print_activity(f"Scanning {len(combinations)} symbol/timeframe combinations...", ActivityEmoji.SEARCH)
-        
-        for sym, tf in combinations:
-            key = f"{sym}_{tf}"
-            
-            # Show scanning progress
-            sys.stdout.write(f"\r  {ActivityEmoji.SEARCH} Checking {sym} {tf}...          ")
-            sys.stdout.flush()
-            
-            gaps = self.detect_gaps(sym, tf)
-            
-            if not gaps:
-                results[key] = 0
-                continue
-            
-            print(f"\n  {ActivityEmoji.WARNING} Found {len(gaps)} gap(s) in {sym} {tf}")
-            
-            total_filled = 0
-            
-            for i, (gap_start, gap_end) in enumerate(gaps, 1):
-                if progress_callback:
-                    progress_callback(sym, tf, f"{ActivityEmoji.REPAIR} Filling gap {i}/{len(gaps)}: {gap_start} → {gap_end}")
-                else:
-                    print_activity(f"Filling gap {i}/{len(gaps)}: {gap_start} → {gap_end}", ActivityEmoji.REPAIR)
-                
-                count = self._sync_symbol_timeframe(sym, tf, gap_start, gap_end)
-                total_filled += count
-            
-            results[key] = total_filled
-        
-        # Clear scanning line
-        sys.stdout.write(f"\r  {ActivityEmoji.SUCCESS} Scan complete!                    \n")
-        sys.stdout.flush()
-        
-        return results
+        """Detect and fill gaps in data."""
+        from . import historical_maintenance
+        return historical_maintenance.fill_gaps(self, symbol, timeframe, progress_callback)
     
     def heal(
         self,
@@ -1303,283 +1111,11 @@ class HistoricalDataStore:
         fix_issues: bool = True,
         fill_gaps_after: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Comprehensive data integrity check and repair.
-        
-        Checks for:
-        - Duplicate timestamps
-        - Invalid OHLCV (high < low, open/close outside high-low range)
-        - Negative/zero volumes
-        - NULL values in critical columns
-        - Symbol casing inconsistencies
-        - Time gaps
-        
-        Args:
-            symbol: Specific symbol to heal, or None for all
-            fix_issues: If True, automatically fix found issues
-            fill_gaps_after: If True, fill gaps after fixing other issues
-        
-        Returns:
-            Dict with detailed report of issues found and fixed
-        """
-        # Normalize symbol if provided
-        if symbol:
-            symbol = symbol.upper()
-        
-        print_activity("Starting data integrity check...", ActivityEmoji.SEARCH)
-        
-        report = {
-            "checked_at": datetime.now().isoformat(),
-            "symbol_filter": symbol,
-            "issues_found": 0,
-            "issues_fixed": 0,
-            "details": {},
-        }
-        
-        # Build WHERE clause for symbol filter
-        where_clause = f"WHERE symbol = '{symbol}'" if symbol else ""
-        and_clause = f"AND symbol = '{symbol}'" if symbol else ""
-        
-        # 1. Check for duplicates (should be 0 due to PRIMARY KEY)
-        print_activity("Checking for duplicate timestamps...", ActivityEmoji.SEARCH)
-        dupes = self.conn.execute(f"""
-            SELECT symbol, timeframe, timestamp, COUNT(*) as cnt
-            FROM ohlcv
-            {where_clause}
-            GROUP BY symbol, timeframe, timestamp
-            HAVING COUNT(*) > 1
-        """).fetchall()
-        
-        report["details"]["duplicates"] = {
-            "found": len(dupes),
-            "fixed": 0,
-            "samples": [{"symbol": d[0], "timeframe": d[1], "timestamp": str(d[2])} for d in dupes[:5]]
-        }
-        report["issues_found"] += len(dupes)
-        
-        if dupes and fix_issues:
-            # Remove duplicates by keeping one (DuckDB doesn't have ROWID, so we recreate)
-            print_activity(f"Removing {len(dupes)} duplicate entries...", ActivityEmoji.REPAIR)
-            # The PRIMARY KEY constraint should prevent this, but if somehow there are dupes:
-            for sym, tf, ts, cnt in dupes:
-                self.conn.execute("""
-                    DELETE FROM ohlcv 
-                    WHERE symbol = ? AND timeframe = ? AND timestamp = ?
-                """, [sym, tf, ts])
-                # Re-insert one copy (we lost data, but at least it's consistent)
-            report["details"]["duplicates"]["fixed"] = len(dupes)
-            report["issues_fixed"] += len(dupes)
-        
-        # 2. Check for invalid OHLCV (high < low)
-        print_activity("Checking for invalid high < low...", ActivityEmoji.SEARCH)
-        invalid_hl = self.conn.execute(f"""
-            SELECT symbol, timeframe, timestamp, open, high, low, close
-            FROM ohlcv
-            WHERE high < low {and_clause.replace('AND', 'AND' if where_clause else '')}
-        """.replace('AND  AND', 'AND')).fetchall()
-        
-        report["details"]["invalid_high_low"] = {
-            "found": len(invalid_hl),
-            "fixed": 0,
-            "samples": [{"symbol": r[0], "timeframe": r[1], "timestamp": str(r[2])} for r in invalid_hl[:5]]
-        }
-        report["issues_found"] += len(invalid_hl)
-        
-        if invalid_hl and fix_issues:
-            print_activity(f"Removing {len(invalid_hl)} invalid high<low rows...", ActivityEmoji.REPAIR)
-            if symbol:
-                self.conn.execute(f"DELETE FROM ohlcv WHERE high < low AND symbol = ?", [symbol])
-            else:
-                self.conn.execute("DELETE FROM ohlcv WHERE high < low")
-            report["details"]["invalid_high_low"]["fixed"] = len(invalid_hl)
-            report["issues_fixed"] += len(invalid_hl)
-        
-        # 3. Check for negative volumes
-        print_activity("Checking for negative volumes...", ActivityEmoji.SEARCH)
-        neg_vol_count = self.conn.execute(f"""
-            SELECT COUNT(*) FROM ohlcv WHERE volume < 0 {and_clause.replace('AND', 'AND' if where_clause else '')}
-        """.replace('AND  AND', 'AND')).fetchone()[0]
-        
-        report["details"]["negative_volumes"] = {
-            "found": neg_vol_count,
-            "fixed": 0,
-        }
-        report["issues_found"] += neg_vol_count
-        
-        if neg_vol_count > 0 and fix_issues:
-            print_activity(f"Setting {neg_vol_count} negative volumes to 0...", ActivityEmoji.REPAIR)
-            if symbol:
-                self.conn.execute("UPDATE ohlcv SET volume = 0 WHERE volume < 0 AND symbol = ?", [symbol])
-            else:
-                self.conn.execute("UPDATE ohlcv SET volume = 0 WHERE volume < 0")
-            report["details"]["negative_volumes"]["fixed"] = neg_vol_count
-            report["issues_fixed"] += neg_vol_count
-        
-        # 4. Check for NULL values in critical columns
-        print_activity("Checking for NULL values...", ActivityEmoji.SEARCH)
-        null_counts = self.conn.execute(f"""
-            SELECT 
-                SUM(CASE WHEN open IS NULL THEN 1 ELSE 0 END) as null_open,
-                SUM(CASE WHEN high IS NULL THEN 1 ELSE 0 END) as null_high,
-                SUM(CASE WHEN low IS NULL THEN 1 ELSE 0 END) as null_low,
-                SUM(CASE WHEN close IS NULL THEN 1 ELSE 0 END) as null_close,
-                SUM(CASE WHEN volume IS NULL THEN 1 ELSE 0 END) as null_volume,
-                SUM(CASE WHEN timestamp IS NULL THEN 1 ELSE 0 END) as null_ts
-            FROM ohlcv
-            {where_clause}
-        """).fetchone()
-        
-        total_nulls = sum(n or 0 for n in null_counts)
-        report["details"]["null_values"] = {
-            "found": total_nulls,
-            "fixed": 0,
-            "breakdown": {
-                "open": null_counts[0] or 0,
-                "high": null_counts[1] or 0,
-                "low": null_counts[2] or 0,
-                "close": null_counts[3] or 0,
-                "volume": null_counts[4] or 0,
-                "timestamp": null_counts[5] or 0,
-            }
-        }
-        report["issues_found"] += total_nulls
-        
-        if total_nulls > 0 and fix_issues:
-            print_activity(f"Removing {total_nulls} rows with NULL values...", ActivityEmoji.REPAIR)
-            if symbol:
-                self.conn.execute("""
-                    DELETE FROM ohlcv 
-                    WHERE (open IS NULL OR high IS NULL OR low IS NULL OR close IS NULL OR timestamp IS NULL)
-                    AND symbol = ?
-                """, [symbol])
-            else:
-                self.conn.execute("""
-                    DELETE FROM ohlcv 
-                    WHERE open IS NULL OR high IS NULL OR low IS NULL OR close IS NULL OR timestamp IS NULL
-                """)
-            report["details"]["null_values"]["fixed"] = total_nulls
-            report["issues_fixed"] += total_nulls
-        
-        # 5. Check for symbol casing inconsistencies (non-uppercase)
-        print_activity("Checking symbol casing...", ActivityEmoji.SEARCH)
-        # DuckDB doesn't have easy regex, so we check if symbol != UPPER(symbol)
-        bad_casing = self.conn.execute(f"""
-            SELECT DISTINCT symbol FROM ohlcv 
-            WHERE symbol != UPPER(symbol)
-            {and_clause.replace('AND', 'AND' if where_clause else '')}
-        """.replace('AND  AND', 'AND')).fetchall()
-        
-        report["details"]["symbol_casing"] = {
-            "found": len(bad_casing),
-            "fixed": 0,
-            "symbols": [r[0] for r in bad_casing]
-        }
-        report["issues_found"] += len(bad_casing)
-        
-        if bad_casing and fix_issues:
-            print_activity(f"Normalizing {len(bad_casing)} symbol(s) to uppercase...", ActivityEmoji.REPAIR)
-            for (bad_sym,) in bad_casing:
-                # Update to uppercase
-                self.conn.execute("""
-                    UPDATE ohlcv SET symbol = UPPER(symbol) WHERE symbol = ?
-                """, [bad_sym])
-                self.conn.execute("""
-                    UPDATE sync_metadata SET symbol = UPPER(symbol) WHERE symbol = ?
-                """, [bad_sym])
-            report["details"]["symbol_casing"]["fixed"] = len(bad_casing)
-            report["issues_fixed"] += len(bad_casing)
-        
-        # 6. Check for price anomalies (open/close outside high-low range)
-        print_activity("Checking for price anomalies...", ActivityEmoji.SEARCH)
-        price_anomalies = self.conn.execute(f"""
-            SELECT COUNT(*) FROM ohlcv 
-            WHERE (open > high OR open < low OR close > high OR close < low)
-            {and_clause.replace('AND', 'AND' if where_clause else '')}
-        """.replace('AND  AND', 'AND')).fetchone()[0]
-        
-        report["details"]["price_anomalies"] = {
-            "found": price_anomalies,
-            "fixed": 0,
-            "note": "Open/close outside high-low range"
-        }
-        report["issues_found"] += price_anomalies
-        
-        if price_anomalies > 0 and fix_issues:
-            print_activity(f"Removing {price_anomalies} rows with price anomalies...", ActivityEmoji.REPAIR)
-            if symbol:
-                self.conn.execute("""
-                    DELETE FROM ohlcv 
-                    WHERE (open > high OR open < low OR close > high OR close < low)
-                    AND symbol = ?
-                """, [symbol])
-            else:
-                self.conn.execute("""
-                    DELETE FROM ohlcv 
-                    WHERE open > high OR open < low OR close > high OR close < low
-                """)
-            report["details"]["price_anomalies"]["fixed"] = price_anomalies
-            report["issues_fixed"] += price_anomalies
-        
-        # 7. Update metadata after fixes
-        if fix_issues and report["issues_fixed"] > 0:
-            print_activity("Updating metadata...", ActivityEmoji.DATABASE)
-            # Get all symbol/timeframe combinations
-            if symbol:
-                combos = self.conn.execute("""
-                    SELECT DISTINCT symbol, timeframe FROM ohlcv WHERE symbol = ?
-                """, [symbol]).fetchall()
-            else:
-                combos = self.conn.execute("""
-                    SELECT DISTINCT symbol, timeframe FROM ohlcv
-                """).fetchall()
-            
-            for sym, tf in combos:
-                self._update_metadata(sym, tf)
-        
-        # 8. Check and fill gaps
-        print_activity("Checking for time gaps...", ActivityEmoji.SEARCH)
-        if symbol:
-            combos = [(symbol, tf) for tf in TIMEFRAMES.keys()]
-        else:
-            combos = self.conn.execute("""
-                SELECT DISTINCT symbol, timeframe FROM sync_metadata
-            """).fetchall()
-        
-        total_gaps = 0
-        gap_details = {}
-        for sym, tf in combos:
-            gaps = self.detect_gaps(sym, tf)
-            if gaps:
-                total_gaps += len(gaps)
-                gap_details[f"{sym}_{tf}"] = len(gaps)
-        
-        report["details"]["gaps"] = {
-            "found": total_gaps,
-            "filled": 0,
-            "by_symbol_tf": gap_details
-        }
-        report["issues_found"] += total_gaps
-        
-        if total_gaps > 0 and fix_issues and fill_gaps_after:
-            print_activity(f"Filling {total_gaps} gaps...", ActivityEmoji.REPAIR)
-            fill_results = self.fill_gaps(symbol=symbol)
-            filled = sum(v for v in fill_results.values() if v > 0)
-            report["details"]["gaps"]["filled"] = filled
-            report["issues_fixed"] += filled
-        
-        # Summary
-        print("\n" + "=" * 60)
-        if report["issues_found"] == 0:
-            print_activity("Data is healthy! No issues found.", ActivityEmoji.SUCCESS)
-        else:
-            emoji = ActivityEmoji.SUCCESS if report["issues_fixed"] == report["issues_found"] else ActivityEmoji.WARNING
-            print_activity(
-                f"Found {report['issues_found']} issues, fixed {report['issues_fixed']}", 
-                emoji
-            )
-        print("=" * 60 + "\n")
-        
-        return report
+        """Comprehensive data integrity check and repair."""
+        from . import historical_maintenance
+        return historical_maintenance.heal_comprehensive(
+            self, symbol, fix_issues, fill_gaps_after
+        )
     
     # ==================== QUERY METHODS ====================
     
@@ -1607,9 +1143,9 @@ class HistoricalDataStore:
         # Normalize symbol to uppercase for consistency
         symbol = symbol.upper()
         
-        query = """
+        query = f"""
             SELECT timestamp, open, high, low, close, volume
-            FROM ohlcv
+            FROM {self.table_ohlcv}
             WHERE symbol = ? AND timeframe = ?
         """
         params = [symbol, timeframe]
@@ -1690,12 +1226,12 @@ class HistoricalDataStore:
         # Normalize symbol to uppercase for consistency
         if symbol:
             symbol = symbol.upper()
-            rows = self.conn.execute("""
-                SELECT * FROM sync_metadata WHERE symbol = ?
+            rows = self.conn.execute(f"""
+                SELECT * FROM {self.table_sync_metadata} WHERE symbol = ?
             """, [symbol]).fetchall()
         else:
-            rows = self.conn.execute("""
-                SELECT * FROM sync_metadata ORDER BY symbol, timeframe
+            rows = self.conn.execute(f"""
+                SELECT * FROM {self.table_sync_metadata} ORDER BY symbol, timeframe
             """).fetchall()
         
         status = {}
@@ -1721,42 +1257,43 @@ class HistoricalDataStore:
     
     def list_symbols(self) -> List[str]:
         """List all symbols with cached data."""
-        rows = self.conn.execute("""
-            SELECT DISTINCT symbol FROM sync_metadata ORDER BY symbol
+        rows = self.conn.execute(f"""
+            SELECT DISTINCT symbol FROM {self.table_sync_metadata} ORDER BY symbol
         """).fetchall()
         return [r[0] for r in rows]
     
     def get_database_stats(self) -> Dict:
         """Get overall database statistics."""
         # OHLCV stats
-        ohlcv_stats = self.conn.execute("""
+        ohlcv_stats = self.conn.execute(f"""
             SELECT 
                 COUNT(DISTINCT symbol) as symbols,
                 COUNT(DISTINCT symbol || '_' || timeframe) as combinations,
                 COUNT(*) as total_candles
-            FROM ohlcv
+            FROM {self.table_ohlcv}
         """).fetchone()
         
         # Funding stats
-        funding_stats = self.conn.execute("""
+        funding_stats = self.conn.execute(f"""
             SELECT 
                 COUNT(DISTINCT symbol) as symbols,
                 COUNT(*) as total_records
-            FROM funding_rates
+            FROM {self.table_funding}
         """).fetchone()
         
         # Open interest stats
-        oi_stats = self.conn.execute("""
+        oi_stats = self.conn.execute(f"""
             SELECT 
                 COUNT(DISTINCT symbol) as symbols,
                 COUNT(*) as total_records
-            FROM open_interest
+            FROM {self.table_oi}
         """).fetchone()
         
         file_size = self.db_path.stat().st_size if self.db_path.exists() else 0
         
         return {
             "db_path": str(self.db_path),
+            "env": self.env,
             "file_size_mb": round(file_size / (1024 * 1024), 2),
             "ohlcv": {
                 "symbols": ohlcv_stats[0],
@@ -1780,78 +1317,19 @@ class HistoricalDataStore:
     # ==================== MAINTENANCE ====================
     
     def delete_symbol(self, symbol: str) -> int:
-        """
-        Delete all data for a symbol.
-        
-        Returns:
-            Number of candles deleted
-        """
-        # Normalize symbol to uppercase for consistency
-        symbol = symbol.upper()
-        
-        # Get count before delete
-        count = self.conn.execute("""
-            SELECT COUNT(*) FROM ohlcv WHERE symbol = ?
-        """, [symbol]).fetchone()[0]
-        
-        self.conn.execute("DELETE FROM ohlcv WHERE symbol = ?", [symbol])
-        self.conn.execute("DELETE FROM sync_metadata WHERE symbol = ?", [symbol])
-        
-        return count
+        """Delete all data for a symbol."""
+        from . import historical_maintenance
+        return historical_maintenance.delete_symbol(self, symbol)
     
     def delete_symbol_timeframe(self, symbol: str, timeframe: str) -> int:
-        """
-        Delete data for a specific symbol/timeframe combination.
-        
-        Returns:
-            Number of candles deleted
-        """
-        # Normalize symbol to uppercase for consistency
-        symbol = symbol.upper()
-        
-        count = self.conn.execute("""
-            SELECT COUNT(*) FROM ohlcv WHERE symbol = ? AND timeframe = ?
-        """, [symbol, timeframe]).fetchone()[0]
-        
-        self.conn.execute("DELETE FROM ohlcv WHERE symbol = ? AND timeframe = ?", [symbol, timeframe])
-        self.conn.execute("DELETE FROM sync_metadata WHERE symbol = ? AND timeframe = ?", [symbol, timeframe])
-        
-        return count
+        """Delete data for a specific symbol/timeframe combination."""
+        from . import historical_maintenance
+        return historical_maintenance.delete_symbol_timeframe(self, symbol, timeframe)
     
     def cleanup_empty_symbols(self) -> List[str]:
-        """
-        Remove symbols that have metadata but no actual data.
-        This cleans up invalid symbol entries.
-        
-        Returns:
-            List of symbols that were cleaned up
-        """
-        # Find symbols with metadata but no data
-        orphaned = self.conn.execute("""
-            SELECT DISTINCT m.symbol 
-            FROM sync_metadata m 
-            LEFT JOIN ohlcv o ON m.symbol = o.symbol 
-            WHERE o.symbol IS NULL
-        """).fetchall()
-        
-        cleaned = []
-        for row in orphaned:
-            symbol = row[0]
-            self.conn.execute("DELETE FROM sync_metadata WHERE symbol = ?", [symbol])
-            cleaned.append(symbol)
-        
-        # Also find symbols with 0 candles in metadata
-        zero_count = self.conn.execute("""
-            SELECT DISTINCT symbol FROM sync_metadata WHERE candle_count = 0 OR candle_count IS NULL
-        """).fetchall()
-        
-        for row in zero_count:
-            symbol = row[0]
-            if symbol not in cleaned:
-                self.conn.execute("DELETE FROM sync_metadata WHERE symbol = ?", [symbol])
-                cleaned.append(symbol)
-        
-        return cleaned
+        """Remove symbols that have metadata but no actual data."""
+        from . import historical_maintenance
+        return historical_maintenance.cleanup_empty_symbols(self)
     
     def get_symbol_summary(self) -> List[Dict]:
         """
@@ -1861,14 +1339,14 @@ class HistoricalDataStore:
         Returns:
             List of dicts with symbol info
         """
-        rows = self.conn.execute("""
+        rows = self.conn.execute(f"""
             SELECT 
                 symbol,
                 COUNT(DISTINCT timeframe) as timeframes,
                 SUM(candle_count) as total_candles,
                 MIN(first_timestamp) as earliest,
                 MAX(last_timestamp) as latest
-            FROM sync_metadata
+            FROM {self.table_sync_metadata}
             GROUP BY symbol
             ORDER BY symbol
         """).fetchall()
@@ -1893,14 +1371,188 @@ class HistoricalDataStore:
         self.conn.close()
 
 
-# Singleton instance
-_store: Optional[HistoricalDataStore] = None
+# ==============================================================================
+# Env-aware Singleton Instances
+# ==============================================================================
+
+# Cached instances per environment
+_store_live: Optional[HistoricalDataStore] = None
+_store_demo: Optional[HistoricalDataStore] = None
 
 
-def get_historical_store() -> HistoricalDataStore:
-    """Get or create the global HistoricalDataStore instance."""
-    global _store
-    if _store is None:
-        _store = HistoricalDataStore()
-    return _store
+def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV) -> HistoricalDataStore:
+    """
+    Get or create the HistoricalDataStore instance for a given environment.
+    
+    Args:
+        env: Data environment ("live" or "demo"). Defaults to "live".
+        
+    Returns:
+        HistoricalDataStore instance for the specified environment.
+    """
+    global _store_live, _store_demo
+    
+    env = validate_data_env(env)
+    
+    if env == "live":
+        if _store_live is None:
+            _store_live = HistoricalDataStore(env="live")
+        return _store_live
+    else:
+        if _store_demo is None:
+            _store_demo = HistoricalDataStore(env="demo")
+        return _store_demo
+
+
+def get_live_historical_store() -> HistoricalDataStore:
+    """Get the live environment HistoricalDataStore (convenience function)."""
+    return get_historical_store(env="live")
+
+
+def get_demo_historical_store() -> HistoricalDataStore:
+    """Get the demo environment HistoricalDataStore (convenience function)."""
+    return get_historical_store(env="demo")
+
+
+# ==============================================================================
+# Module-level env-aware API (future-proof interface)
+# ==============================================================================
+# These functions provide a stable API surface that can later be swapped
+# to use MongoDB or another backend without changing callers.
+
+def get_ohlcv(
+    symbol: str,
+    timeframe: str,
+    period: str = None,
+    start: datetime = None,
+    end: datetime = None,
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> pd.DataFrame:
+    """
+    Get OHLCV data for a symbol/timeframe.
+    
+    Args:
+        symbol: Trading symbol (e.g., "BTCUSDT")
+        timeframe: Candle timeframe (e.g., "15m", "1h")
+        period: Period string ("1M", "2W", etc.) - alternative to start/end
+        start: Start datetime
+        end: End datetime
+        env: Data environment ("live" or "demo")
+        
+    Returns:
+        DataFrame with timestamp, open, high, low, close, volume
+    """
+    store = get_historical_store(env)
+    return store.get_ohlcv(symbol, timeframe, period=period, start=start, end=end)
+
+
+def get_latest_ohlcv(
+    symbol: str,
+    timeframe: str,
+    limit: int = 100,
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> pd.DataFrame:
+    """
+    Get the most recent OHLCV candles for a symbol/timeframe.
+    
+    Args:
+        symbol: Trading symbol
+        timeframe: Candle timeframe
+        limit: Number of candles to return
+        env: Data environment
+        
+    Returns:
+        DataFrame with the most recent candles
+    """
+    store = get_historical_store(env)
+    # Compute approximate start time based on limit and timeframe
+    from .historical_data_store import TIMEFRAME_MINUTES
+    tf_minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
+    start = datetime.now() - timedelta(minutes=tf_minutes * limit * 2)  # Extra buffer
+    df = store.get_ohlcv(symbol, timeframe, start=start)
+    return df.tail(limit) if len(df) > limit else df
+
+
+def append_ohlcv(
+    symbol: str,
+    timeframe: str,
+    df: pd.DataFrame,
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> None:
+    """
+    Append OHLCV data for a symbol/timeframe.
+    
+    Args:
+        symbol: Trading symbol
+        timeframe: Candle timeframe
+        df: DataFrame with OHLCV data (columns: timestamp, open, high, low, close, volume)
+        env: Data environment
+    """
+    store = get_historical_store(env)
+    store._store_dataframe(symbol, timeframe, df)
+    store._update_metadata(symbol, timeframe)
+
+
+def get_funding(
+    symbol: str,
+    period: str = None,
+    start: datetime = None,
+    end: datetime = None,
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> pd.DataFrame:
+    """
+    Get funding rate data for a symbol.
+    
+    Args:
+        symbol: Trading symbol
+        period: Period string
+        start: Start datetime
+        end: End datetime
+        env: Data environment
+        
+    Returns:
+        DataFrame with timestamp, funding_rate
+    """
+    store = get_historical_store(env)
+    return store.get_funding(symbol, period=period, start=start, end=end)
+
+
+def get_open_interest(
+    symbol: str,
+    period: str = None,
+    start: datetime = None,
+    end: datetime = None,
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> pd.DataFrame:
+    """
+    Get open interest data for a symbol.
+    
+    Args:
+        symbol: Trading symbol
+        period: Period string
+        start: Start datetime
+        end: End datetime
+        env: Data environment
+        
+    Returns:
+        DataFrame with timestamp, open_interest
+    """
+    store = get_historical_store(env)
+    return store.get_open_interest(symbol, period=period, start=start, end=end)
+
+
+def get_symbol_timeframe_ranges(
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> Dict[str, Dict]:
+    """
+    Get available data ranges for all symbol/timeframe combinations.
+    
+    Args:
+        env: Data environment
+        
+    Returns:
+        Dict mapping "SYMBOL_TF" to range info
+    """
+    store = get_historical_store(env)
+    return store.status()
 

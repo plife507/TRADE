@@ -9,10 +9,16 @@ Now supports HYBRID mode:
 - Falls back to REST API if WebSocket data is unavailable or stale
 - Seamlessly transitions between modes
 
+Environment-aware:
+- Accepts env parameter ("live" or "demo") for future differentiation
+- Currently both environments use LIVE API endpoints for accurate market data
+- Demo env will be wired to demo API endpoints in a future phase
+
 Usage:
     from src.data.market_data import get_market_data
     
-    data = get_market_data()
+    data = get_market_data()  # Default: live environment
+    demo_data = get_market_data(env="demo")  # Demo environment (future)
     
     # Get price (uses WebSocket if available, else REST)
     price = data.get_latest_price("BTCUSDT")
@@ -30,6 +36,7 @@ import pandas as pd
 
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config
+from ..config.constants import DataEnv, DEFAULT_DATA_ENV, validate_data_env
 from ..utils.logger import get_logger
 from ..utils.helpers import safe_float
 
@@ -85,21 +92,31 @@ class MarketData:
     - Thread-safe
     - Returns pandas DataFrames where applicable
     - HYBRID mode: Prefers WebSocket data, falls back to REST
+    - Environment-aware: accepts env parameter for future demo API support
     
     Data Source Priority:
     1. RealtimeState (WebSocket-fed cache) - if available and not stale
     2. REST API with caching - fallback
+    
+    Note on env parameter:
+    - Currently both "live" and "demo" environments use LIVE API endpoints
+    - This ensures accurate market data regardless of trading environment
+    - In a future phase, env="demo" may be wired to demo API endpoints
     """
     
-    def __init__(self, prefer_websocket: bool = True):
+    def __init__(self, env: DataEnv = DEFAULT_DATA_ENV, prefer_websocket: bool = True):
         """
         Initialize market data provider.
         
         Args:
+            env: Data environment ("live" or "demo"). Currently both use LIVE API.
             prefer_websocket: If True, prefer WebSocket data when available
         """
         self.config = get_config()
         self.logger = get_logger()
+        
+        # Validate and store environment
+        self.env: DataEnv = validate_data_env(env)
         
         # WebSocket preference
         self._prefer_websocket = prefer_websocket
@@ -109,6 +126,7 @@ class MarketData:
         
         # ALWAYS use LIVE API for market data fetching (for accuracy)
         # Market data must be accurate - DEMO API may return different prices
+        # Note: Even for demo env, we currently use LIVE API; this may change in future
         data_key, data_secret = self.config.bybit.get_live_data_credentials()
         
         # Error if LIVE data credentials are not configured (STRICT - no fallback)
@@ -120,11 +138,12 @@ class MarketData:
             )
         
         # Initialize client with LIVE API (use_demo=False)
-        # This ensures we get real market data regardless of trading mode
+        # This ensures we get real market data regardless of trading mode or env
+        # Future: may use demo API for env="demo" when demo-specific market data is needed
         self.client = BybitClient(
             api_key=data_key if data_key else None,
             api_secret=data_secret if data_secret else None,
-            use_demo=False,  # ALWAYS use LIVE API for data accuracy
+            use_demo=False,  # ALWAYS use LIVE API for data accuracy (for now)
         )
         
         # Log detailed API environment info (STRICT - canonical keys only)
@@ -137,6 +156,7 @@ class MarketData:
         
         self.logger.info(
             f"MarketData initialized: "
+            f"env={self.env}, "
             f"API=LIVE (api.bybit.com), "
             f"auth={key_status}, "
             f"key_source={key_source}, "
@@ -703,19 +723,67 @@ class MarketData:
         }
 
 
-# Singleton instance
-_market_data: Optional[MarketData] = None
+# ==============================================================================
+# Env-aware Singleton Instances
+# ==============================================================================
+
+# Cached instances per environment
+_market_data_live: Optional[MarketData] = None
+_market_data_demo: Optional[MarketData] = None
 
 
-def get_market_data() -> MarketData:
-    """Get or create the global MarketData instance."""
-    global _market_data
-    if _market_data is None:
-        _market_data = MarketData()
-    return _market_data
+def get_market_data(env: DataEnv = DEFAULT_DATA_ENV) -> MarketData:
+    """
+    Get or create the MarketData instance for a given environment.
+    
+    Args:
+        env: Data environment ("live" or "demo"). Defaults to "live".
+        
+    Returns:
+        MarketData instance for the specified environment.
+        
+    Note:
+        Currently both environments use LIVE API endpoints for market data.
+        The env parameter is stored for future differentiation when demo
+        API endpoints may be used for demo-specific market data.
+    """
+    global _market_data_live, _market_data_demo
+    
+    env = validate_data_env(env)
+    
+    if env == "live":
+        if _market_data_live is None:
+            _market_data_live = MarketData(env="live")
+        return _market_data_live
+    else:
+        if _market_data_demo is None:
+            _market_data_demo = MarketData(env="demo")
+        return _market_data_demo
 
 
-def reset_market_data():
-    """Reset the global MarketData instance (for testing)."""
-    global _market_data
-    _market_data = None
+def get_live_market_data() -> MarketData:
+    """Get the live environment MarketData (convenience function)."""
+    return get_market_data(env="live")
+
+
+def get_demo_market_data() -> MarketData:
+    """Get the demo environment MarketData (convenience function)."""
+    return get_market_data(env="demo")
+
+
+def reset_market_data(env: DataEnv = None):
+    """
+    Reset the MarketData instance(s) (for testing).
+    
+    Args:
+        env: Specific environment to reset, or None to reset all.
+    """
+    global _market_data_live, _market_data_demo
+    
+    if env is None:
+        _market_data_live = None
+        _market_data_demo = None
+    elif env == "live":
+        _market_data_live = None
+    elif env == "demo":
+        _market_data_demo = None

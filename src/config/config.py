@@ -172,6 +172,27 @@ class BybitConfig:
         # STRICT: Data operations require BYBIT_LIVE_DATA_API_KEY (no fallback)
         return self.live_data_api_key, self.live_data_api_secret
     
+    def get_demo_data_credentials(self) -> tuple:
+        """
+        Get DEMO data API credentials (STRICT - no fallbacks).
+        
+        DEMO data operations should use dedicated DEMO data keys.
+        There is NO fallback to trading keys.
+        
+        Returns:
+            Tuple of (api_key, api_secret) for DEMO data API
+        """
+        return self.demo_data_api_key, self.demo_data_api_secret
+    
+    def has_demo_data_credentials(self) -> bool:
+        """
+        Check if DEMO data API credentials are configured (STRICT).
+        
+        Returns True only if BYBIT_DEMO_DATA_API_KEY and SECRET are set.
+        """
+        key, secret = self.get_demo_data_credentials()
+        return bool(key and secret)
+    
     def has_live_data_credentials(self) -> bool:
         """
         Check if LIVE data API credentials are configured (STRICT).
@@ -184,65 +205,104 @@ class BybitConfig:
     
     def get_api_environment_summary(self) -> dict:
         """
-        Get a comprehensive summary of API environment configuration.
+        Get a comprehensive summary of ALL 4 API environment legs.
         
-        This provides a single place to inspect which APIs are being used for:
-        - Trading (demo vs live, based on use_demo setting)
-        - Data (always live for accuracy)
-        - WebSocket (matches trading mode)
+        The system has 4 independent API legs:
+        - Trading LIVE: Real money trading (api.bybit.com)
+        - Trading DEMO: Fake money trading (api-demo.bybit.com)
+        - Data LIVE: Canonical historical data for backtesting (api.bybit.com)
+        - Data DEMO: Demo-only history for demo validation (api-demo.bybit.com)
         
         Returns:
-            Dict with trading, data, and websocket environment info
+            Dict with all 4 legs, current active trading mode, and safety info
         """
-        # Trading API environment
-        trading_key, _ = self.get_credentials()
+        # Current trading mode
         trading_mode = "DEMO" if self.use_demo else "LIVE"
         trading_url = self.demo_base_url if self.use_demo else self.live_base_url
         
-        # Determine which key is used for trading (STRICT - canonical keys only)
-        if self.use_demo:
-            if self.demo_api_key:
-                trading_key_source = "BYBIT_DEMO_API_KEY"
-            else:
-                trading_key_source = "MISSING (BYBIT_DEMO_API_KEY required)"
-        else:
-            if self.live_api_key:
-                trading_key_source = "BYBIT_LIVE_API_KEY"
-            else:
-                trading_key_source = "MISSING (BYBIT_LIVE_API_KEY required)"
+        # Trading LIVE leg
+        trade_live_key = bool(self.live_api_key and self.live_api_secret)
+        trade_live_source = "BYBIT_LIVE_API_KEY" if self.live_api_key else "MISSING"
         
-        # Data API environment (STRICT - always LIVE, always live_data_api_key)
-        data_key, _ = self.get_live_data_credentials()
-        if self.live_data_api_key:
-            data_key_source = "BYBIT_LIVE_DATA_API_KEY"
-        else:
-            data_key_source = "MISSING (BYBIT_LIVE_DATA_API_KEY required)"
+        # Trading DEMO leg
+        trade_demo_key = bool(self.demo_api_key and self.demo_api_secret)
+        trade_demo_source = "BYBIT_DEMO_API_KEY" if self.demo_api_key else "MISSING"
+        
+        # Data LIVE leg (canonical backtest data)
+        data_live_key = bool(self.live_data_api_key and self.live_data_api_secret)
+        data_live_source = "BYBIT_LIVE_DATA_API_KEY" if self.live_data_api_key else "MISSING"
+        
+        # Data DEMO leg (demo-only data)
+        data_demo_key = bool(self.demo_data_api_key and self.demo_data_api_secret)
+        data_demo_source = "BYBIT_DEMO_DATA_API_KEY" if self.demo_data_api_key else "MISSING"
         
         # WebSocket environment (matches trading mode)
         ws_mode = "DEMO" if self.use_demo else "LIVE"
         ws_public_url = "wss://stream-demo.bybit.com" if self.use_demo else "wss://stream.bybit.com"
-        ws_private_url = ws_public_url  # Same host for public/private
+        ws_private_url = ws_public_url
+        
+        # Safety validation
+        messages = []
+        if self.use_demo and not trade_demo_key:
+            messages.append("DEMO trading mode selected but BYBIT_DEMO_API_KEY not set")
+        if not self.use_demo and not trade_live_key:
+            messages.append("LIVE trading mode selected but BYBIT_LIVE_API_KEY not set")
         
         return {
+            # Current active trading mode
             "trading": {
                 "mode": trading_mode,
                 "base_url": trading_url,
-                "key_configured": bool(trading_key),
-                "key_source": trading_key_source,
+                "key_configured": trade_demo_key if self.use_demo else trade_live_key,
+                "key_source": trade_demo_source if self.use_demo else trade_live_source,
                 "is_demo": self.use_demo,
                 "is_live": not self.use_demo,
             },
+            # Legacy "data" key for backwards compatibility (shows LIVE data only)
             "data": {
-                "mode": "LIVE",  # Data is ALWAYS live
+                "mode": "LIVE",
                 "base_url": self.live_base_url,
-                "key_configured": bool(data_key),
-                "key_source": data_key_source,
-                "note": "Data API always uses LIVE for accuracy",
+                "key_configured": data_live_key,
+                "key_source": data_live_source,
+                "note": "Use data_live/data_demo for explicit env selection",
             },
+            # All 4 legs explicitly
+            "trade_live": {
+                "mode": "LIVE",
+                "base_url": self.live_base_url,
+                "key_configured": trade_live_key,
+                "key_source": trade_live_source,
+            },
+            "trade_demo": {
+                "mode": "DEMO",
+                "base_url": self.demo_base_url,
+                "key_configured": trade_demo_key,
+                "key_source": trade_demo_source,
+            },
+            "data_live": {
+                "mode": "LIVE",
+                "base_url": self.live_base_url,
+                "key_configured": data_live_key,
+                "key_source": data_live_source,
+                "purpose": "Canonical backtest/research history",
+            },
+            "data_demo": {
+                "mode": "DEMO",
+                "base_url": self.demo_base_url,
+                "key_configured": data_demo_key,
+                "key_source": data_demo_source,
+                "purpose": "Demo-only history for demo validation",
+            },
+            # WebSocket
             "websocket": {
                 "mode": ws_mode,
                 "public_url": ws_public_url,
                 "private_url": ws_private_url,
+            },
+            # Safety validation
+            "safety": {
+                "mode_consistent": len(messages) == 0,
+                "messages": messages,
             },
         }
     
@@ -251,21 +311,21 @@ class BybitConfig:
         Get a short human-readable API environment string for display.
         
         Returns:
-            String like "Trading: DEMO | Data: LIVE"
+            String like "Trading: DEMO | Keys: Trade[L:✓ D:✓] Data[L:✓ D:✗]"
         """
         env = self.get_api_environment_summary()
         trading = env["trading"]
-        data = env["data"]
+        
+        # Status indicators for all 4 legs
+        tl = "✓" if env["trade_live"]["key_configured"] else "✗"
+        td = "✓" if env["trade_demo"]["key_configured"] else "✗"
+        dl = "✓" if env["data_live"]["key_configured"] else "✗"
+        dd = "✓" if env["data_demo"]["key_configured"] else "✗"
         
         trading_str = f"Trading: {trading['mode']}"
-        if not trading["key_configured"]:
-            trading_str += " (no key)"
+        keys_str = f"Keys: Trade[L:{tl} D:{td}] Data[L:{dl} D:{dd}]"
         
-        data_str = f"Data: {data['mode']}"
-        if not data["key_configured"]:
-            data_str += " (public only)"
-        
-        return f"{trading_str} | {data_str}"
+        return f"{trading_str} | {keys_str}"
 
 
 @dataclass
@@ -319,11 +379,11 @@ class WebSocketConfig:
     WebSocket and real-time data configuration.
     
     WebSocket Endpoint Modes:
-    - Mainnet: stream.bybit.com (live trading, real money)
-    - Testnet: stream-testnet.bybit.com (testnet, fake money)
+    - LIVE: stream.bybit.com (live trading, real money)
+    - DEMO: stream-demo.bybit.com (fake money)
     - Demo: stream-demo.bybit.com (demo trading API, fake money)
     
-    For PUBLIC streams (market data), you can optionally use mainnet streams
+    For PUBLIC streams (market data), you can optionally use LIVE streams
     even when trading on demo API since market data is the same.
     
     For PRIVATE streams (positions, orders), the stream must match your
@@ -359,10 +419,10 @@ class WebSocketConfig:
     prefer_websocket_data: bool = True     # Prefer WS data over REST
     fallback_to_polling: bool = True       # Fall back to polling if WS fails
     
-    # Advanced: Use mainnet WebSocket for public market data in demo mode
-    # Market data (tickers, orderbook, klines) is the same on mainnet and demo
-    # This can be useful if demo WebSocket streams have connectivity issues
-    use_mainnet_for_public_streams: bool = False
+    # Advanced: Use LIVE WebSocket for public market data in DEMO mode
+    # Market data (tickers, orderbook, klines) is the same on LIVE and DEMO
+    # This can be useful if DEMO WebSocket streams have connectivity issues
+    use_live_for_public_streams: bool = False
     
     # Rate limiting
     min_evaluation_interval: float = 1.0   # Min seconds between strategy evaluations
@@ -456,6 +516,65 @@ class TradingConfig:
         return self.mode == TradingMode.REAL
 
 
+@dataclass
+class SmokeTestConfig:
+    """
+    Configuration for non-interactive smoke test suite.
+    
+    Loaded from environment variables:
+    - TRADE_SMOKE_SYMBOLS: Comma-separated symbols (e.g., "BTCUSDT,ETHUSDT,SOLUSDT")
+    - TRADE_SMOKE_PERIOD: Time period for data pulls (e.g., "1Y", "6M", "3M")
+    - TRADE_SMOKE_USD_SIZE: Small USD amount for demo trades (e.g., "5")
+    - TRADE_SMOKE_ENABLE_GAP_TESTING: Enable intentional gap testing (e.g., "true")
+    
+    Safety: Smoke tests always run in DEMO/PAPER mode.
+    """
+    # Symbols to test (must have at least 3 for full smoke test)
+    symbols: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    
+    # Period for historical data pulls (1Y = 1 year, 6M = 6 months, etc.)
+    period: str = "1Y"
+    
+    # Small USD amount for demo trading tests (must meet minimum order size)
+    # Default $20 to handle most symbols' minimum order requirements
+    usd_size: float = 20.0
+    
+    # Enable intentional gap testing (creates gaps then tests repair)
+    enable_gap_testing: bool = True
+    
+    # Timeframes to test (subset for faster smoke tests)
+    timeframes: List[str] = field(default_factory=lambda: ["1h", "4h", "1d"])
+    
+    # Open interest interval for smoke test
+    oi_interval: str = "1h"
+    
+    def __post_init__(self):
+        """Validate and normalize configuration."""
+        # Ensure symbols are uppercase
+        self.symbols = [s.upper().strip() for s in self.symbols if s.strip()]
+        
+        # Validate minimum symbols
+        if len(self.symbols) < 3:
+            raise ValueError(
+                f"TRADE_SMOKE_SYMBOLS must have at least 3 symbols, got {len(self.symbols)}: {self.symbols}"
+            )
+        
+        # Validate period format
+        valid_periods = ["1D", "1W", "1M", "3M", "6M", "1Y"]
+        if self.period.upper() not in valid_periods:
+            raise ValueError(
+                f"TRADE_SMOKE_PERIOD must be one of {valid_periods}, got '{self.period}'"
+            )
+        self.period = self.period.upper()
+        
+        # Validate USD size (must be positive but small)
+        if self.usd_size <= 0:
+            raise ValueError(f"TRADE_SMOKE_USD_SIZE must be positive, got {self.usd_size}")
+        if self.usd_size > 100:
+            # Safety cap for smoke tests
+            self.usd_size = 100.0
+
+
 class Config:
     """
     Central configuration manager.
@@ -490,6 +609,7 @@ class Config:
         self.log = self._load_log_config()
         self.trading = self._load_trading_config()
         self.websocket = self._load_websocket_config()
+        self.smoke = self._load_smoke_config()
         
         self._initialized = True
     
@@ -520,10 +640,10 @@ class Config:
             live_data_api_secret=os.getenv("BYBIT_LIVE_DATA_API_SECRET", ""),
             
             # DEPRECATED: Legacy keys - loaded for inspection only, NOT used for behavior
-            api_key=os.getenv("BYBIT_API_KEY", os.getenv("BYBIT_MAINNET_API_KEY", "")),
-            api_secret=os.getenv("BYBIT_API_SECRET", os.getenv("BYBIT_MAINNET_API_SECRET", "")),
-            data_api_key=os.getenv("BYBIT_DATA_API_KEY", os.getenv("BYBIT_MAINNET_DATA_API_KEY", "")),
-            data_api_secret=os.getenv("BYBIT_DATA_API_SECRET", os.getenv("BYBIT_MAINNET_DATA_API_SECRET", "")),
+            api_key=os.getenv("BYBIT_API_KEY", ""),
+            api_secret=os.getenv("BYBIT_API_SECRET", ""),
+            data_api_key=os.getenv("BYBIT_DATA_API_KEY", ""),
+            data_api_secret=os.getenv("BYBIT_DATA_API_SECRET", ""),
             
             # Demo mode (true = api-demo.bybit.com, false = api.bybit.com)
             use_demo=os.getenv("BYBIT_USE_DEMO", "true").lower() == "true",
@@ -589,7 +709,7 @@ class Config:
             enable_wallet_stream=os.getenv("WS_ENABLE_WALLET", "true").lower() == "true",
             prefer_websocket_data=os.getenv("PREFER_WEBSOCKET_DATA", "true").lower() == "true",
             fallback_to_polling=os.getenv("WS_FALLBACK_TO_POLLING", "true").lower() == "true",
-            use_mainnet_for_public_streams=os.getenv("WS_USE_MAINNET_FOR_PUBLIC", "false").lower() == "true",
+            use_live_for_public_streams=os.getenv("WS_USE_LIVE_FOR_PUBLIC", "false").lower() == "true",
             min_evaluation_interval=float(os.getenv("WS_MIN_EVAL_INTERVAL", "1.0")),
             max_evaluations_per_minute=int(os.getenv("WS_MAX_EVALS_PER_MINUTE", "30")),
             # Global risk view settings
@@ -597,6 +717,33 @@ class Config:
             enable_public_liquidation_stream=os.getenv("WS_ENABLE_PUBLIC_LIQUIDATION", "false").lower() == "true",
             max_global_snapshot_frequency=float(os.getenv("WS_MAX_GLOBAL_SNAPSHOT_FREQ", "1.0")),
             enable_risk_caching=os.getenv("WS_ENABLE_RISK_CACHING", "true").lower() == "true",
+        )
+    
+    def _load_smoke_config(self) -> SmokeTestConfig:
+        """
+        Load smoke test configuration from environment.
+        
+        Environment variables:
+        - TRADE_SMOKE_SYMBOLS: Comma-separated symbols (default: BTCUSDT,ETHUSDT,SOLUSDT)
+        - TRADE_SMOKE_PERIOD: Data pull period (default: 1Y)
+        - TRADE_SMOKE_USD_SIZE: Demo trade size in USD (default: 20)
+        - TRADE_SMOKE_ENABLE_GAP_TESTING: Enable gap testing (default: true)
+        """
+        # Parse symbols from comma-separated string
+        symbols_str = os.getenv("TRADE_SMOKE_SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT")
+        symbols = [s.strip().upper() for s in symbols_str.split(",") if s.strip()]
+        
+        # Parse timeframes
+        timeframes_str = os.getenv("TRADE_SMOKE_TIMEFRAMES", "1h,4h,1d")
+        timeframes = [t.strip() for t in timeframes_str.split(",") if t.strip()]
+        
+        return SmokeTestConfig(
+            symbols=symbols,
+            period=os.getenv("TRADE_SMOKE_PERIOD", "1Y"),
+            usd_size=float(os.getenv("TRADE_SMOKE_USD_SIZE", "20")),
+            enable_gap_testing=os.getenv("TRADE_SMOKE_ENABLE_GAP_TESTING", "true").lower() == "true",
+            timeframes=timeframes,
+            oi_interval=os.getenv("TRADE_SMOKE_OI_INTERVAL", "1h"),
         )
     
     def reload(self, env_file: str = ".env"):
