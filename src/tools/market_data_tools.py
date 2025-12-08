@@ -335,7 +335,13 @@ def run_market_data_tests_tool(symbol: str) -> ToolResult:
         ohlcv_results = {}
         for tf in timeframes:
             data = exchange.bybit.get_klines(symbol, interval=tf, limit=10)
-            ohlcv_results[tf] = len(data) if data else 0
+            # Handle both list and DataFrame responses
+            if data is None:
+                ohlcv_results[tf] = 0
+            elif hasattr(data, '__len__'):
+                ohlcv_results[tf] = len(data)
+            else:
+                ohlcv_results[tf] = 0
         
         tests["ohlcv_fetch"] = {
             "passed": all(c > 0 for c in ohlcv_results.values()),

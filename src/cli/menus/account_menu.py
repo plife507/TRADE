@@ -16,6 +16,7 @@ from rich.table import Table
 from rich.prompt import Prompt
 from rich.align import Align
 
+from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper
 from src.tools import (
     get_account_balance_tool,
     get_total_exposure_tool,
@@ -43,7 +44,7 @@ def account_menu(cli: "TradeCLI"):
     """Account and balance menu."""
     from trade_cli import (
         clear_screen, print_header, get_input, get_choice,
-        print_error_below_menu, run_tool_action, print_result,
+        print_error_below_menu, run_tool_action, print_result, print_data_result,
         select_time_range_cli, BACK
     )
     
@@ -51,19 +52,16 @@ def account_menu(cli: "TradeCLI"):
         clear_screen()
         print_header()
         
-        menu = Table(show_header=False, box=None, padding=(0, 2))
-        menu.add_column("Key", style="cyan bold", justify="right", width=4)
-        menu.add_column("Action", style="bold", width=30)
-        menu.add_column("Description", style="dim", width=45)
+        menu = CLIStyles.create_menu_table()
         
-        menu.add_row("1", "View Balance", "Current account balance (USDT, BTC, etc.)")
-        menu.add_row("2", "View Exposure", "Total position exposure and margin used")
-        menu.add_row("3", "Account Info", "Account details, margin mode, risk limits")
-        menu.add_row("4", "Portfolio Snapshot", "Complete portfolio with positions & PnL")
-        menu.add_row("5", "Order History", "Recent orders [dim](select time range, max 7d)[/]")
-        menu.add_row("6", "Closed PnL", "Realized PnL [dim](select time range, max 7d)[/]")
+        menu.add_row("1", f"{CLIIcons.WALLET} View Balance", "Current account balance (USDT, BTC, etc.)")
+        menu.add_row("2", f"{CLIIcons.CHART_UP} View Exposure", "Total position exposure and margin used")
+        menu.add_row("3", f"{CLIIcons.LEDGER} Account Info", "Account details, margin mode, risk limits")
+        menu.add_row("4", f"{CLIIcons.BAG} Portfolio Snapshot", "Complete portfolio with positions & PnL")
+        menu.add_row("5", f"{CLIIcons.LEDGER} Order History", "Recent orders [dim](select time range, max 7d)[/]")
+        menu.add_row("6", f"{CLIIcons.COIN} Closed PnL", "Realized PnL [dim](select time range, max 7d)[/]")
         menu.add_row("", "", "")
-        menu.add_row("", "[dim]--- Unified Account ---[/]", "")
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.BANK} Unified Account ---[/]", "")
         menu.add_row("7", "Transaction Log", "Transactions [dim](select time range, max 7d)[/]")
         menu.add_row("8", "Collateral Info", "Collateral coins and their settings")
         menu.add_row("9", "Set Collateral Coin", "Enable/disable coins as collateral")
@@ -71,9 +69,11 @@ def account_menu(cli: "TradeCLI"):
         menu.add_row("11", "Coin Greeks (Options)", "Options Greeks for base coins")
         menu.add_row("12", "Set Margin Mode", "Switch between Regular/Portfolio margin")
         menu.add_row("13", "Transferable Amount", "Amount available to transfer out")
-        menu.add_row("14", "Back to Main Menu", "Return to main menu")
+        menu.add_row("14", f"{CLIIcons.BACK} Back to Main Menu", "Return to main menu")
         
-        console.print(Panel(Align.center(menu), title="[bold]ACCOUNT & BALANCE[/]", border_style="blue"))
+        BillArtWrapper.print_menu_top()
+        console.print(CLIStyles.get_menu_panel(menu, "ACCOUNT & BALANCE"))
+        BillArtWrapper.print_menu_bottom()
         
         choice = get_choice(valid_range=range(1, 15))
         
@@ -83,19 +83,19 @@ def account_menu(cli: "TradeCLI"):
         
         if choice == 1:
             result = run_tool_action("account.view_balance", get_account_balance_tool)
-            print_result(result)
+            print_data_result("account.view_balance", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 2:
             result = run_tool_action("account.view_exposure", get_total_exposure_tool)
-            print_result(result)
+            print_data_result("account.view_exposure", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 3:
             result = run_tool_action("account.info", get_account_info_tool)
-            print_result(result)
+            print_data_result("account.info", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 4:
             result = run_tool_action("account.portfolio", get_portfolio_snapshot_tool)
-            print_result(result)
+            print_data_result("account.portfolio", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 5:
             # Order History - requires time range (max 7 days)
@@ -118,7 +118,7 @@ def account_menu(cli: "TradeCLI"):
                     symbol=symbol if symbol else None,
                     limit=limit
                 )
-                print_result(result)
+                print_data_result("account.order_history", result)
             except ValueError:
                 print_error_below_menu(f"'{limit_input}' is not a valid number")
             Prompt.ask("\nPress Enter to continue")
@@ -143,7 +143,7 @@ def account_menu(cli: "TradeCLI"):
                     symbol=symbol if symbol else None,
                     limit=limit
                 )
-                print_result(result)
+                print_data_result("account.closed_pnl", result)
             except ValueError:
                 print_error_below_menu(f"'{limit_input}' is not a valid number")
             Prompt.ask("\nPress Enter to continue")
@@ -176,21 +176,27 @@ def account_menu(cli: "TradeCLI"):
                     log_type=log_type if log_type else None,
                     limit=limit
                 )
-                print_result(result)
+                print_data_result("account.transaction_log", result)
             except ValueError:
                 print_error_below_menu(f"'{limit_input}' is not a valid number")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 8:
             currency = get_input("Currency (blank for all)", "")
+            if currency is BACK:
+                continue
             result = run_tool_action("account.collateral_info", get_collateral_info_tool, currency=currency if currency else None)
-            print_result(result)
+            print_data_result("account.collateral_info", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 9:
             coin = get_input("Coin (e.g., BTC, ETH, USDT)")
+            if coin is BACK:
+                continue
             action = get_input("Enable as collateral? (yes/no)", "yes")
+            if action is BACK:
+                continue
             enabled = action.lower() in ("yes", "y", "true", "1")
-            result = run_tool_action("account.set_collateral", set_collateral_coin_tool, coin, enabled, coin=coin)
-            print_result(result)
+            result = run_tool_action("account.set_collateral", set_collateral_coin_tool, coin, enabled)
+            print_data_result("account.set_collateral", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 10:
             # Borrow History - requires time range (max 30 days)
@@ -213,28 +219,34 @@ def account_menu(cli: "TradeCLI"):
                     currency=currency if currency else None,
                     limit=limit
                 )
-                print_result(result)
+                print_data_result("account.borrow_history", result)
             except ValueError:
                 print_error_below_menu(f"'{limit_input}' is not a valid number")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 11:
             base_coin = get_input("Base coin (BTC/ETH, blank for all)", "")
+            if base_coin is BACK:
+                continue
             result = run_tool_action("account.coin_greeks", get_coin_greeks_tool, base_coin=base_coin if base_coin else None)
-            print_result(result)
+            print_data_result("account.coin_greeks", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 12:
             console.print("\n[bold]Margin modes:[/]")
             console.print("  1. Regular Margin (default)")
             console.print("  2. Portfolio Margin")
             mode_choice = get_input("Select mode", "1")
+            if mode_choice is BACK:
+                continue
             portfolio_margin = mode_choice == "2"
             result = run_tool_action("account.set_margin_mode", set_account_margin_mode_tool, portfolio_margin)
-            print_result(result)
+            print_data_result("account.set_margin_mode", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 13:
             coin = get_input("Coin (e.g., USDT, BTC)")
-            result = run_tool_action("account.transferable", get_transferable_amount_tool, coin, coin=coin)
-            print_result(result)
+            if coin is BACK:
+                continue
+            result = run_tool_action("account.transferable", get_transferable_amount_tool, coin=coin)
+            print_data_result("account.transferable", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 14:
             break

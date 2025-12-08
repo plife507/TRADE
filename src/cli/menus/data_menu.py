@@ -24,6 +24,7 @@ from rich.text import Text
 
 from src.config.config import get_config
 from src.config.constants import DataEnv, DEFAULT_DATA_ENV
+from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper
 from src.tools import (
     # Database info tools
     get_database_stats_tool,
@@ -82,72 +83,71 @@ def data_menu(cli: "TradeCLI"):
         # Get status for current selected data env
         if data_env == "live":
             env_info = env_summary["data_live"]
-            env_color = "green"
+            env_color = CLIColors.NEON_GREEN
             env_label = "LIVE (Canonical Backtest Data)"
         else:
             env_info = env_summary["data_demo"]
-            env_color = "cyan"
+            env_color = CLIColors.NEON_CYAN
             env_label = "DEMO (Demo Validation Data)"
         
         key_status = "✓ Key Configured" if env_info["key_configured"] else "✗ No Key"
-        key_color = "green" if env_info["key_configured"] else "yellow"
+        key_color = CLIColors.NEON_GREEN if env_info["key_configured"] else CLIColors.NEON_YELLOW
         
         api_status_line = Text()
-        api_status_line.append("Data Env: ", style="dim")
+        api_status_line.append("Data Env: ", style=CLIColors.DIM_TEXT)
         api_status_line.append(f"{data_env.upper()} ", style=f"bold {env_color}")
-        api_status_line.append(f"({env_info['base_url']})", style="dim")
-        api_status_line.append(" │ ", style="dim")
+        api_status_line.append(f"({env_info['base_url']})", style=CLIColors.DIM_TEXT)
+        api_status_line.append(" │ ", style=CLIColors.DIM_TEXT)
         api_status_line.append(key_status, style=key_color)
-        api_status_line.append(" │ ", style="dim")
-        api_status_line.append(env_label, style="dim italic")
+        api_status_line.append(" │ ", style=CLIColors.DIM_TEXT)
+        api_status_line.append(env_label, style=f"italic {CLIColors.DIM_TEXT}")
         console.print(Panel(api_status_line, border_style=f"dim {env_color}"))
         
-        menu = Table(show_header=False, box=None, padding=(0, 2))
-        menu.add_column("Key", style="cyan bold", justify="right", width=4)
-        menu.add_column("Action", style="bold", width=35)
-        menu.add_column("Description", style="dim", width=40)
+        menu = CLIStyles.create_menu_table()
         
-        menu.add_row("", "[dim]--- Database Info ---[/]", "")
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.DATABASE} Database Info ---[/]", "")
         menu.add_row("1", "Database Stats", "Database size, symbol count, total candles")
         menu.add_row("2", "List Cached Symbols", "All symbols with data in database")
         menu.add_row("3", "Symbol Aggregate Status", "Per-symbol totals (candles, gaps, timeframes)")
         menu.add_row("4", "Symbol Summary (Overview)", "High-level summary per symbol")
         menu.add_row("5", "Symbol Timeframe Ranges", "Detailed per-symbol/timeframe date ranges")
         menu.add_row("", "", "")
-        menu.add_row("", "[dim]--- Build Data ---[/]", "")
-        menu.add_row("6", "[bold green]Build Full History[/]", "[green]Sync OHLCV + Funding + OI for symbols[/]")
-        menu.add_row("7", "[bold cyan]Sync Forward to Now[/]", "[cyan]Fetch only new candles (no backfill)[/]")
-        menu.add_row("8", "[bold cyan]Sync Forward + Fill Gaps[/]", "[cyan]Sync new + backfill gaps in history[/]")
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.MINING} Build Data ---[/]", "")
+        menu.add_row("6", f"[bold {CLIColors.NEON_GREEN}]Build Full History[/]", f"[{CLIColors.NEON_GREEN}]Sync OHLCV + Funding + OI for symbols[/]")
+        menu.add_row("7", f"[bold {CLIColors.NEON_CYAN}]Sync Forward to Now[/]", f"[{CLIColors.NEON_CYAN}]Fetch only new candles (no backfill)[/]")
+        menu.add_row("8", f"[bold {CLIColors.NEON_CYAN}]Sync Forward + Fill Gaps[/]", f"[{CLIColors.NEON_CYAN}]Sync new + backfill gaps in history[/]")
         menu.add_row("", "", "")
-        menu.add_row("", "[dim]--- Sync Data (Individual) ---[/]", "")
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.NETWORK} Sync Data (Individual) ---[/]", "")
         menu.add_row("9", "Sync OHLCV by Period", "Sync candles for a time period (1D, 1M, etc.)")
         menu.add_row("10", "Sync OHLCV by Date Range", "Sync candles for specific date range")
         menu.add_row("11", "Sync Funding Rates", "Sync funding rate history")
         menu.add_row("12", "Sync Open Interest", "Sync open interest history")
         menu.add_row("", "", "")
-        menu.add_row("", "[dim]--- Query Data ---[/]", "")
-        menu.add_row("13", "[bold magenta]Query OHLCV[/]", "[magenta]View cached candles (period or custom range)[/]")
-        menu.add_row("14", "[bold magenta]Query Funding[/]", "[magenta]View cached funding rates[/]")
-        menu.add_row("15", "[bold magenta]Query Open Interest[/]", "[magenta]View cached open interest[/]")
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.LEDGER} Query Data ---[/]", "")
+        menu.add_row("13", f"[bold {CLIColors.NEON_MAGENTA}]Query OHLCV[/]", f"[{CLIColors.NEON_MAGENTA}]View cached candles (period or custom range)[/]")
+        menu.add_row("14", f"[bold {CLIColors.NEON_MAGENTA}]Query Funding[/]", f"[{CLIColors.NEON_MAGENTA}]View cached funding rates[/]")
+        menu.add_row("15", f"[bold {CLIColors.NEON_MAGENTA}]Query Open Interest[/]", f"[{CLIColors.NEON_MAGENTA}]View cached open interest[/]")
         menu.add_row("", "", "")
-        menu.add_row("", "[dim]--- Maintenance ---[/]", "")
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.SETTINGS} Maintenance ---[/]", "")
         menu.add_row("16", "Fill Gaps", "Detect and fill missing candles in data")
         menu.add_row("17", "Heal Data", "Comprehensive data integrity check & repair")
-        menu.add_row("18", "[red]Delete Symbol[/]", "[red]Delete all data for a symbol[/]")
-        menu.add_row("19", "[bold red]Delete ALL Data[/]", "[red]Delete EVERYTHING (OHLCV, funding, OI)[/]")
+        menu.add_row("18", f"[{CLIColors.NEON_RED}]{CLIIcons.ERROR} Delete Symbol[/]", f"[{CLIColors.NEON_RED}]Delete all data for a symbol[/]")
+        menu.add_row("19", f"[bold {CLIColors.NEON_RED}]{CLIIcons.PANIC} Delete ALL Data[/]", f"[{CLIColors.NEON_RED}]Delete EVERYTHING (OHLCV, funding, OI)[/]")
         menu.add_row("20", "Cleanup Empty Symbols", "Remove symbols with no data")
         menu.add_row("21", "Vacuum Database", "Reclaim disk space after deletions")
         menu.add_row("", "", "")
-        menu.add_row("22", "[bold yellow]Run Extensive Data Test[/]", "[yellow]Full smoke test of all data tools[/]")
+        menu.add_row("22", f"[bold {CLIColors.NEON_YELLOW}]{CLIIcons.TARGET} Run Extensive Data Test[/]", f"[{CLIColors.NEON_YELLOW}]Full smoke test of all data tools[/]")
         menu.add_row("", "", "")
-        menu.add_row("", "[dim]--- Environment ---[/]", "")
-        toggle_label = "[bold cyan]Switch to DEMO[/]" if data_env == "live" else "[bold green]Switch to LIVE[/]"
-        toggle_desc = "[cyan]Use demo API for data[/]" if data_env == "live" else "[green]Use live API for data[/]"
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.EXCHANGE} Environment ---[/]", "")
+        toggle_label = f"[bold {CLIColors.NEON_CYAN}]Switch to DEMO[/]" if data_env == "live" else f"[bold {CLIColors.NEON_GREEN}]Switch to LIVE[/]"
+        toggle_desc = f"[{CLIColors.NEON_CYAN}]Use demo API for data[/]" if data_env == "live" else f"[{CLIColors.NEON_GREEN}]Use live API for data[/]"
         menu.add_row("23", toggle_label, toggle_desc)
         menu.add_row("", "", "")
-        menu.add_row("24", "Back to Main Menu", "Return to main menu")
+        menu.add_row("24", f"{CLIIcons.BACK} Back to Main Menu", "Return to main menu")
         
-        console.print(Panel(Align.center(menu), title=f"[bold]DATA BUILDER ({data_env.upper()})[/]", border_style="blue"))
+        BillArtWrapper.print_menu_top()
+        console.print(CLIStyles.get_menu_panel(menu, f"DATA BUILDER ({data_env.upper()})"))
+        BillArtWrapper.print_menu_bottom()
         
         choice = get_choice(valid_range=range(1, 25))
         
@@ -503,7 +503,7 @@ def data_menu(cli: "TradeCLI"):
             if symbol:
                 env_label = data_env.upper()
                 if Confirm.ask(f"[bold red]Delete ALL data for {symbol.upper()} in {env_label} env?[/]"):
-                    result = run_tool_action("data.delete_symbol", delete_symbol_tool, symbol, env=data_env, symbol=symbol)
+                    result = run_tool_action("data.delete_symbol", delete_symbol_tool, symbol, env=data_env)
                     print_data_result("data.delete_symbol", result)
                 else:
                     console.print("[yellow]Cancelled.[/]")

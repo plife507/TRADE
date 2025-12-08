@@ -147,13 +147,19 @@ def _normalize_time_range_params(
 
 def get_database_stats_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
     """
-    Get database statistics (size, symbol count, candle count, funding, OI).
+    Get database statistics with per-symbol and per-timeframe breakdowns.
+    
+    Shows:
+    - Overall stats (file size, symbol counts, total records)
+    - Per-symbol OHLCV breakdown with timeframes and candle counts
+    - Per-symbol funding rates breakdown
+    - Per-symbol open interest breakdown
     
     Args:
         env: Data environment ("live" or "demo"). Defaults to "live".
     
     Returns:
-        ToolResult with database stats
+        ToolResult with detailed database stats
     """
     try:
         store = _get_historical_store(env=env)
@@ -163,16 +169,62 @@ def get_database_stats_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
         funding = stats.get("funding_rates", {})
         oi = stats.get("open_interest", {})
         
-        message = (
-            f"[{env.upper()}] Database: {stats['file_size_mb']} MB | "
-            f"OHLCV: {ohlcv.get('symbols', 0)} symbols, {ohlcv.get('total_candles', 0):,} candles | "
-            f"Funding: {funding.get('total_records', 0):,} records | "
-            f"OI: {oi.get('total_records', 0):,} records"
-        )
+        # Build summary message
+        summary_lines = [
+            f"[{env.upper()}] Database: {stats['file_size_mb']} MB",
+            f"OHLCV: {ohlcv.get('symbols', 0)} symbols, {ohlcv.get('symbol_timeframe_combinations', 0)} combinations, {ohlcv.get('total_candles', 0):,} candles",
+            f"Funding: {funding.get('symbols', 0)} symbols, {funding.get('total_records', 0):,} records",
+            f"Open Interest: {oi.get('symbols', 0)} symbols, {oi.get('total_records', 0):,} records",
+        ]
+        
+        # Build detailed per-symbol breakdown
+        detail_lines = ["\n=== OHLCV Data by Symbol ==="]
+        ohlcv_by_symbol = ohlcv.get("by_symbol", {})
+        if ohlcv_by_symbol:
+            for symbol in sorted(ohlcv_by_symbol.keys()):
+                sym_data = ohlcv_by_symbol[symbol]
+                detail_lines.append(f"\n{symbol}:")
+                detail_lines.append(f"  Total: {sym_data.get('total_candles', 0):,} candles")
+                if sym_data.get("earliest"):
+                    detail_lines.append(f"  Range: {sym_data.get('earliest', 'N/A')[:10]} to {sym_data.get('latest', 'N/A')[:10]}")
+                detail_lines.append(f"  Timeframes:")
+                for tf_data in sym_data.get("timeframes", []):
+                    tf = tf_data.get("timeframe", "N/A")
+                    candles = tf_data.get("candles", 0)
+                    detail_lines.append(f"    {tf:>4s}: {candles:>8,} candles")
+        else:
+            detail_lines.append("  No OHLCV data")
+        
+        detail_lines.append("\n=== Funding Rates by Symbol ===")
+        funding_by_symbol = funding.get("by_symbol", {})
+        if funding_by_symbol:
+            for symbol in sorted(funding_by_symbol.keys()):
+                sym_data = funding_by_symbol[symbol]
+                records = sym_data.get("records", 0)
+                earliest = sym_data.get("earliest", "")[:10] if sym_data.get("earliest") else "N/A"
+                latest = sym_data.get("latest", "")[:10] if sym_data.get("latest") else "N/A"
+                detail_lines.append(f"  {symbol}: {records:>6,} records ({earliest} to {latest})")
+        else:
+            detail_lines.append("  No funding rate data")
+        
+        detail_lines.append("\n=== Open Interest by Symbol ===")
+        oi_by_symbol = oi.get("by_symbol", {})
+        if oi_by_symbol:
+            for symbol in sorted(oi_by_symbol.keys()):
+                sym_data = oi_by_symbol[symbol]
+                records = sym_data.get("records", 0)
+                earliest = sym_data.get("earliest", "")[:10] if sym_data.get("earliest") else "N/A"
+                latest = sym_data.get("latest", "")[:10] if sym_data.get("latest") else "N/A"
+                detail_lines.append(f"  {symbol}: {records:>6,} records ({earliest} to {latest})")
+        else:
+            detail_lines.append("  No open interest data")
+        
+        # Combine summary and details
+        full_message = "\n".join(summary_lines) + "\n" + "\n".join(detail_lines)
         
         return ToolResult(
             success=True,
-            message=message,
+            message=full_message,
             data={**stats, "env": env},
             source="duckdb",
         )

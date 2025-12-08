@@ -23,6 +23,7 @@ from rich.text import Text
 from ..config.config import get_config
 from ..utils.cli_display import format_action_status, format_action_complete, get_action_label, format_data_result
 from ..tools import ToolResult
+from .styles import CLIStyles, CLIColors, BillArtWrapper, BillArtColors
 
 
 # Global Console
@@ -51,53 +52,65 @@ def clear_screen():
 
 
 def print_header():
-    """Print CLI header with clear environment indication."""
+    """Print CLI header with clear environment indication and $100 bill art styling."""
     config = get_config()
     
     is_demo = config.bybit.use_demo
     mode_str = "DEMO" if is_demo else "LIVE"
-    mode_style = "bold green" if is_demo else "bold red"
-    
     trading_mode = config.trading.mode
-    trade_style = "bold yellow" if trading_mode == "paper" else "bold red"
-    
     account_type = "UNIFIED"
     
     api_env = config.bybit.get_api_environment_summary()
     trading_url = api_env["trading"]["base_url"]
     data_url = api_env["data"]["base_url"]
     
-    grid = Table.grid(expand=True)
+    # Print top art decoration
+    BillArtWrapper.print_header_art(is_demo)
+    
+    # Use art wrapper colors if enabled
+    if CLIStyles.use_art_wrapper:
+        demo_color = BillArtColors.GREEN_BRIGHT
+        live_color = BillArtColors.GOLD_BRIGHT
+        mode_color = BillArtColors.GOLD_METALLIC if trading_mode == "paper" else BillArtColors.GOLD_BRIGHT
+        account_color = BillArtColors.BLUE_BRIGHT
+    else:
+        demo_color = CLIColors.NEON_GREEN
+        live_color = CLIColors.NEON_RED
+        mode_color = CLIColors.NEON_YELLOW if trading_mode == "paper" else CLIColors.NEON_RED
+        account_color = CLIColors.NEON_CYAN
+    
+    # Status Grid (HUD style)
+    grid = Table.grid(expand=True, padding=(0, 2))
     grid.add_column(justify="center", ratio=1)
     grid.add_column(justify="center", ratio=1)
     grid.add_column(justify="center", ratio=1)
     
     grid.add_row(
-        f"[{mode_style}]▶ {mode_str} Account[/]",
-        f"Trading: [{trade_style}]{trading_mode.upper()}[/]",
-        f"[cyan]{account_type}[/]"
+        CLIStyles.status_badge(f"{mode_str} Account", demo_color if is_demo else live_color),
+        CLIStyles.status_badge(f"MODE: {trading_mode.upper()}", mode_color),
+        CLIStyles.status_badge(account_type, account_color)
     )
     
+    # Warning for live mode
     warning_panel = None
     if not is_demo:
         warning_panel = Panel(
-            "[bold red]⚠  CAUTION: Connected to LIVE account - REAL MONEY ⚠[/]",
-            border_style="red",
+            f"[bold {BillArtColors.GOLD_BRIGHT}]⚠  CAUTION: Connected to LIVE account - REAL MONEY ⚠[/]",
+            border_style=BillArtColors.GOLD_BRIGHT,
             expand=False
         )
 
-    title = Text("TRADE - Bybit Unified Trading Account", style="bold cyan")
-    subtitle_text = f"[dim]REST: {mode_str}({trading_url}) | DATA: LIVE({data_url}) | Session Mode | v1.0[/dim]"
-        
-    panel = Panel(
-        Align.center(grid),
-        title=title,
-        border_style="cyan" if is_demo else "red",
-        subtitle=subtitle_text
-    )
-    console.print(panel)
+    subtitle_text = f"REST: {mode_str}({trading_url}) | DATA: LIVE({data_url}) | Session Mode | v1.0"
+    
+    console.print(CLIStyles.get_title_panel(subtitle_text, is_demo))
+    console.print(Align.center(grid))
+    
     if warning_panel:
         console.print(Align.center(warning_panel))
+    
+    # Print bottom art decoration
+    BillArtWrapper.print_header_art_bottom(is_demo)
+    console.print()  # Spacer
 
 
 def get_input(prompt: str, default: str = "") -> str:
@@ -137,6 +150,68 @@ def get_choice(valid_range: range = None) -> int:
             continue
 
 
+def get_float_input(prompt: str, default: str = "") -> float:
+    """
+    Get float input from user with error handling.
+    Returns BACK sentinel if exit command detected or None on error.
+    Shows error message and returns None for invalid input (caller should handle).
+    """
+    value = get_input(prompt, default)
+    if value is BACK:
+        return BACK
+    
+    if not value and default:
+        value = default
+    
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        print_error_below_menu(f"Invalid number: '{value}'", "Please enter a valid number (e.g., 100.50)")
+        return None
+
+
+def get_int_input(prompt: str, default: str = "") -> int:
+    """
+    Get integer input from user with error handling.
+    Returns BACK sentinel if exit command detected or None on error.
+    Shows error message and returns None for invalid input (caller should handle).
+    """
+    value = get_input(prompt, default)
+    if value is BACK:
+        return BACK
+    
+    if not value and default:
+        value = default
+    
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        print_error_below_menu(f"Invalid integer: '{value}'", "Please enter a whole number (e.g., 10)")
+        return None
+
+
+def safe_menu_action(action_name: str):
+    """
+    Decorator to wrap menu actions with error handling.
+    Catches all exceptions, displays error, and allows menu to continue.
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Operation cancelled.[/]")
+                return None
+            except Exception as e:
+                print_error_below_menu(
+                    str(e), 
+                    f"Action: {action_name}\nThe operation failed but you can try again."
+                )
+                return None
+        return wrapper
+    return decorator
+
+
 class TimeRangeSelection:
     """Result from time range selection - can be a preset window or custom start/end."""
     def __init__(
@@ -160,11 +235,11 @@ class TimeRangeSelection:
         return self.window is not None and not self.is_custom
 
 
-def _parse_datetime_input(value: str) -> Optional[datetime]:
-    """Parse a datetime string in various common formats."""
+def _parse_datetime_input(value: str, default_now: bool = False) -> Optional[datetime]:
+    """Parse a datetime string. If default_now=True, blank input returns current datetime."""
     value = value.strip()
     if not value:
-        return None
+        return datetime.now() if default_now else None
     
     formats = ["%Y-%m-%d", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"]
     
@@ -184,7 +259,16 @@ def select_time_range_cli(
     endpoint_name: str = "history",
 ) -> TimeRangeSelection:
     """Prompt user to select a time range for history queries."""
-    console.print("\n[bold cyan]Select time range:[/]")
+    from datetime import timedelta
+    
+    # Calculate the earliest allowed date
+    now = datetime.now()
+    earliest = now - timedelta(days=max_days)
+    earliest_str = earliest.strftime("%Y-%m-%d")
+    
+    console.print(f"\n[bold cyan]Select time range for {endpoint_name}:[/]")
+    console.print(f"[yellow]⚠ API Limit: Max {max_days} days (earliest: {earliest_str})[/]")
+    console.print()
     console.print("  1) Last 24 hours")
     console.print("  2) Last 7 days")
     
@@ -196,9 +280,9 @@ def select_time_range_cli(
     
     custom_option = max_preset_option + 1 if include_custom else None
     if include_custom:
-        console.print(f"  {custom_option}) [bold green]Custom date range[/]")
+        console.print(f"  {custom_option}) Custom date range")
     
-    console.print(f"\n[dim]Default: {default}. Max: {max_days} days.[/]")
+    console.print(f"\n[dim]Default: {default}[/]")
     
     max_option = custom_option if include_custom else max_preset_option
     choice_input = get_input(f"Time range [1-{max_option}]", "1")
@@ -216,27 +300,53 @@ def select_time_range_cli(
 
 def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSelection:
     """Prompt user for custom start and end dates."""
-    console.print("\n[bold cyan]Custom Date Range[/]")
-    console.print(f"[dim]Format: YYYY-MM-DD or YYYY-MM-DD HH:MM (UTC)[/]")
-    console.print(f"[dim]Maximum range: {max_days} days[/]")
+    from datetime import timedelta
     
-    start_input = get_input("Start date (e.g., 2024-01-01)")
+    now = datetime.now()
+    earliest = now - timedelta(days=max_days)
+    earliest_str = earliest.strftime("%Y-%m-%d")
+    now_str = now.strftime("%Y-%m-%d %H:%M")
+    
+    console.print("\n[bold cyan]Custom Date Range[/]")
+    console.print(f"[yellow]⚠ Max {max_days} days. Earliest start: {earliest_str}[/]")
+    console.print(f"[dim]Format: YYYY-MM-DD or YYYY-MM-DD HH:MM[/]")
+    
+    start_input = get_input(f"Start date (earliest: {earliest_str})")
     if start_input is BACK:
+        return TimeRangeSelection(is_back=True)
+    
+    if not start_input.strip():
+        print_error_below_menu("Start date is required")
         return TimeRangeSelection(is_back=True)
     
     start_dt = _parse_datetime_input(start_input)
     if start_dt is None:
-        print_error_below_menu(f"Invalid start date format: '{start_input}'", "Use YYYY-MM-DD or YYYY-MM-DD HH:MM format")
+        print_error_below_menu(f"Invalid date: '{start_input}'", "Use YYYY-MM-DD or YYYY-MM-DD HH:MM")
         return TimeRangeSelection(is_back=True)
     
-    default_end = datetime.now().strftime("%Y-%m-%d %H:%M")
-    end_input = get_input(f"End date (default: now)", default_end)
+    # Check if start date is too old
+    if start_dt < earliest:
+        print_error_below_menu(
+            f"Start date too old for {endpoint_name}",
+            f"Earliest allowed: {earliest_str} ({max_days} days ago)"
+        )
+        return TimeRangeSelection(is_back=True)
+    
+    # Calculate max end date based on start
+    max_end = start_dt + timedelta(days=max_days)
+    if max_end > now:
+        max_end = now
+    max_end_str = max_end.strftime("%Y-%m-%d %H:%M")
+    
+    console.print(f"[dim]Valid end range: {start_dt.strftime('%Y-%m-%d')} to {max_end_str}[/]")
+    
+    end_input = get_input("End date (blank = now)")
     if end_input is BACK:
         return TimeRangeSelection(is_back=True)
     
-    end_dt = _parse_datetime_input(end_input)
+    end_dt = _parse_datetime_input(end_input, default_now=True)
     if end_dt is None:
-        print_error_below_menu(f"Invalid end date format: '{end_input}'", "Use YYYY-MM-DD or YYYY-MM-DD HH:MM format")
+        print_error_below_menu(f"Invalid date: '{end_input}'", "Use YYYY-MM-DD or YYYY-MM-DD HH:MM")
         return TimeRangeSelection(is_back=True)
     
     if start_dt >= end_dt:
@@ -245,13 +355,16 @@ def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSel
     
     duration = end_dt - start_dt
     if duration.days > max_days:
-        print_error_below_menu(f"Date range too large for {endpoint_name}", f"Requested {duration.days} days, maximum is {max_days} days")
+        print_error_below_menu(
+            f"Range exceeds {max_days}-day limit for {endpoint_name}",
+            f"Your range: {duration.days} days. Try end date: {max_end_str}"
+        )
         return TimeRangeSelection(is_back=True)
     
     start_ms = int(start_dt.timestamp() * 1000)
     end_ms = int(end_dt.timestamp() * 1000)
     
-    console.print(f"\n[green]✓ Using custom range: {start_dt.strftime('%Y-%m-%d %H:%M')} to {end_dt.strftime('%Y-%m-%d %H:%M')} ({duration.days}d {duration.seconds // 3600}h)[/]")
+    console.print(f"\n[green]✓ Range: {start_dt.strftime('%Y-%m-%d %H:%M')} → {end_dt.strftime('%Y-%m-%d %H:%M')} ({duration.days}d {duration.seconds // 3600}h)[/]")
     
     return TimeRangeSelection(start_ms=start_ms, end_ms=end_ms)
 
@@ -270,6 +383,10 @@ def print_error_below_menu(error_message: str, error_details: str = None):
     """Print error message below the static menu with proper formatting."""
     console.print()
     console.print("[dim]" + "─" * 80 + "[/dim]")
+    
+    # Handle None or empty error messages gracefully
+    if not error_message:
+        error_message = "An unknown error occurred. Please try again."
     
     error_text = f"[bold red]✗ Error:[/] {error_message}"
     if error_details:
@@ -341,12 +458,12 @@ def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, 
 def print_result(result: ToolResult):
     """Print a ToolResult in a formatted way."""
     if result.success:
-        console.print(Panel(f"[bold green]✓ {result.message}[/]", border_style="green"))
+        console.print(Panel(f"[bold {CLIColors.NEON_GREEN}]✓ {result.message}[/]", border_style=CLIColors.NEON_GREEN))
         
         if result.data:
             if isinstance(result.data, list):
                 if result.data and isinstance(result.data[0], dict):
-                    table = Table(show_header=True, header_style="bold magenta")
+                    table = Table(show_header=True, header_style=f"bold {CLIColors.NEON_MAGENTA}", border_style=CLIColors.BORDER)
                     keys = result.data[0].keys()
                     for key in keys:
                         table.add_column(str(key))
@@ -357,40 +474,46 @@ def print_result(result: ToolResult):
                     
                     console.print(table)
                     if len(result.data) > 20:
-                        console.print(f"[dim]... and {len(result.data) - 20} more items[/]")
+                        console.print(f"[{CLIColors.DIM_TEXT}]... and {len(result.data) - 20} more items[/]")
                 else:
                     for item in result.data:
                         console.print(f"  • {item}")
             
             elif isinstance(result.data, dict):
-                tree = Tree("[bold cyan]Result Data[/]")
+                tree = Tree(f"[bold {CLIColors.NEON_CYAN}]Result Data[/]")
                 
                 def add_dict_to_tree(d, parent):
                     for k, v in d.items():
                         if isinstance(v, dict):
-                            branch = parent.add(f"[yellow]{k}[/]")
+                            branch = parent.add(f"[{CLIColors.NEON_YELLOW}]{k}[/]")
                             add_dict_to_tree(v, branch)
                         elif isinstance(v, list):
-                            branch = parent.add(f"[yellow]{k}[/]")
+                            branch = parent.add(f"[{CLIColors.NEON_YELLOW}]{k}[/]")
                             for item in v[:10]:
                                 branch.add(str(item))
                             if len(v) > 10:
-                                branch.add(f"[dim]... {len(v)-10} more[/]")
+                                branch.add(f"[{CLIColors.DIM_TEXT}]... {len(v)-10} more[/]")
                         else:
-                            parent.add(f"[cyan]{k}:[/] {v}")
+                            parent.add(f"[{CLIColors.NEON_CYAN}]{k}:[/] {v}")
                 
                 add_dict_to_tree(result.data, tree)
                 console.print(tree)
             else:
-                console.print(f"[cyan]Data:[/] {result.data}")
+                console.print(f"[{CLIColors.NEON_CYAN}]Data:[/] {result.data}")
     else:
         print_error_below_menu(result.error)
 
 
 def print_data_result(action_key: str, result: ToolResult):
-    """Print a data builder ToolResult with specialized formatting."""
-    if not result.success:
-        print_error_below_menu(result.error)
+    """
+    Print a ToolResult with specialized formatting based on action_key.
+    
+    Uses the action-aware formatter registry in cli_display.py to produce
+    human-friendly tables and summaries instead of raw tree views.
+    """
+    if not result.success and not result.data:
+        # Only show error if there's no data to display
+        print_error_below_menu(result.error or result.message or "An unknown error occurred")
         return
     
     formatted = format_data_result(action_key, result.data, result.message)
@@ -399,7 +522,12 @@ def print_data_result(action_key: str, result: ToolResult):
         print_result(result)
         return
     
-    console.print(Panel(f"[bold green]✓ {result.message}[/]", border_style="green"))
+    # Show success panel with appropriate color based on result.success
+    if result.success:
+        console.print(Panel(f"[bold {CLIColors.NEON_GREEN}]✓ {result.message}[/]", border_style=CLIColors.NEON_GREEN))
+    else:
+        # Partial success or failure with data - show in yellow
+        console.print(Panel(f"[bold {CLIColors.NEON_YELLOW}]⚠ {result.message}[/]", border_style=CLIColors.NEON_YELLOW))
     
     format_type = formatted.get("type", "simple")
     title = formatted.get("title", "Result")
@@ -410,31 +538,72 @@ def print_data_result(action_key: str, result: ToolResult):
         rows = formatted.get("rows", [])
         
         if rows:
-            table = Table(show_header=True, header_style="bold magenta", title=title, 
-                         title_style="bold cyan", border_style="blue")
+            table = Table(show_header=True, header_style=f"bold {CLIColors.NEON_MAGENTA}", title=title, 
+                         title_style=f"bold {CLIColors.NEON_CYAN}", border_style=CLIColors.NEON_CYAN)
             
+            # Smart column styling based on column name
             for col in columns:
-                if col in ("Symbol", "Symbol/TF"):
-                    table.add_column(col, style="bold yellow")
-                elif col in ("Candles", "Records", "Filled"):
-                    table.add_column(col, justify="right", style="cyan")
-                elif col in ("Status", "Valid"):
+                if col in ("Symbol", "Symbol/TF", "Coin"):
+                    table.add_column(col, style=f"bold {CLIColors.NEON_YELLOW}")
+                elif col in ("Side",):
                     table.add_column(col, justify="center")
-                elif col in ("From", "To"):
-                    table.add_column(col, style="dim")
+                elif col in ("Candles", "Records", "Filled", "Qty", "Size", "Volume", "Amount"):
+                    table.add_column(col, justify="right", style=CLIColors.NEON_CYAN)
+                elif col in ("Status", "Valid", "Enabled", "Check"):
+                    table.add_column(col, justify="center")
+                elif col in ("From", "To", "Time"):
+                    table.add_column(col, style=CLIColors.DIM_TEXT)
+                elif col in ("Entry", "Exit", "Price", "Mark", "Open", "High", "Low", "Close"):
+                    table.add_column(col, justify="right")
+                elif col in ("Gross PnL", "Net PnL", "Unreal. PnL", "Fees", "PnL"):
+                    table.add_column(col, justify="right")
+                elif col in ("Leverage", "ID", "Order ID"):
+                    table.add_column(col, justify="center", style=CLIColors.DIM_TEXT)
+                elif col in ("Type", "Field", "Component", "Endpoint", "Category"):
+                    table.add_column(col, style=CLIColors.NEON_CYAN)
+                elif col in ("Value", "Details"):
+                    table.add_column(col)
                 else:
                     table.add_column(col)
             
+            # Row value coloring
             for row in rows:
                 values = [str(row.get(col, "")) for col in columns]
                 colored_values = []
-                for val in values:
+                for idx, val in enumerate(values):
+                    col_name = columns[idx] if idx < len(columns) else ""
+                    
+                    # Status indicators
                     if val == "✓" or val.startswith("✓"):
-                        colored_values.append(f"[green]{val}[/]")
-                    elif val == "✗" or val.startswith("⚠"):
-                        colored_values.append(f"[yellow]{val}[/]")
-                    elif val == "Error":
-                        colored_values.append(f"[red]{val}[/]")
+                        colored_values.append(f"[{CLIColors.NEON_GREEN}]{val}[/]")
+                    elif val == "✗" or val.startswith("⚠") or val == "Error":
+                        colored_values.append(f"[{CLIColors.NEON_YELLOW}]{val}[/]")
+                    # Side coloring
+                    elif col_name == "Side":
+                        if val.upper() in ("BUY", "LONG"):
+                            colored_values.append(f"[{CLIColors.NEON_GREEN}]{val}[/]")
+                        elif val.upper() in ("SELL", "SHORT"):
+                            colored_values.append(f"[{CLIColors.NEON_RED}]{val}[/]")
+                        else:
+                            colored_values.append(val)
+                    # PnL coloring (check for negative sign or negative value)
+                    elif col_name in ("Gross PnL", "Net PnL", "Unreal. PnL", "PnL"):
+                        if val.startswith("-") or val.startswith("-$"):
+                            colored_values.append(f"[{CLIColors.NEON_RED}]{val}[/]")
+                        elif val.startswith("$0") or val == "$0.00" or val == "$0.0000":
+                            colored_values.append(val)
+                        else:
+                            colored_values.append(f"[{CLIColors.NEON_GREEN}]{val}[/]")
+                    # Type indicators for orderbook
+                    elif col_name == "Type":
+                        if val == "ASK":
+                            colored_values.append(f"[{CLIColors.NEON_RED}]{val}[/]")
+                        elif val == "BID":
+                            colored_values.append(f"[{CLIColors.NEON_GREEN}]{val}[/]")
+                        elif "SPREAD" in val:
+                            colored_values.append(f"[{CLIColors.NEON_YELLOW}]{val}[/]")
+                        else:
+                            colored_values.append(val)
                     else:
                         colored_values.append(val)
                 table.add_row(*colored_values)
@@ -443,21 +612,21 @@ def print_data_result(action_key: str, result: ToolResult):
     
     elif format_type == "simple":
         content = formatted.get("content", "")
-        console.print(Panel(content, title=title, border_style="cyan"))
+        console.print(Panel(content, title=title, border_style=CLIColors.NEON_CYAN))
     
     if footer:
-        console.print(f"[dim]{footer}[/]")
+        console.print(f"[{CLIColors.DIM_TEXT}]{footer}[/]")
 
 
 def print_order_preview(order_type: str, symbol: str, side: str, qty_usd: float, price: float = None, **kwargs):
     """Print a preview panel for an order."""
     grid = Table.grid(expand=True, padding=(0, 2))
-    grid.add_column(justify="right", style="cyan")
+    grid.add_column(justify="right", style=CLIColors.NEON_CYAN)
     grid.add_column(justify="left", style="bold white")
     
     grid.add_row("Type:", order_type)
     grid.add_row("Symbol:", symbol)
-    side_style = "green" if side.lower() == "buy" else "red"
+    side_style = CLIColors.NEON_GREEN if side.lower() == "buy" else CLIColors.NEON_RED
     grid.add_row("Side:", f"[{side_style}]{side.upper()}[/]")
     grid.add_row("Amount:", f"${qty_usd:,.2f}")
     
@@ -470,8 +639,8 @@ def print_order_preview(order_type: str, symbol: str, side: str, qty_usd: float,
             
     panel = Panel(
         Align.center(grid),
-        title="[bold yellow]Order Preview[/]",
-        border_style="yellow",
+        title=f"[bold {CLIColors.NEON_YELLOW}]Order Preview[/]",
+        border_style=CLIColors.NEON_YELLOW,
         subtitle="[dim]Press Enter to execute, Ctrl+C to cancel[/]"
     )
     console.print(panel)

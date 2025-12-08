@@ -161,7 +161,7 @@ class BybitClient:
         self._ws_private: Optional[WebSocket] = None
     
     def _sync_server_time(self):
-        """Sync local time with Bybit server to avoid timestamp errors."""
+        """Sync local time with Bybit server to detect clock drift."""
         try:
             before = int(time.time() * 1000)
             server_time = self._session.get_server_time()
@@ -180,7 +180,14 @@ class BybitClient:
             local_time_ms = (before + after) // 2
             self._time_offset_ms = server_time_ms - local_time_ms
             
-            if abs(self._time_offset_ms) > 5000:
+            # Bybit allows max 1000ms ahead, recv_window behind
+            # If local clock is MORE than 1 second AHEAD, authenticated requests WILL fail
+            if self._time_offset_ms < -1000:
+                self.logger.error(
+                    f"CRITICAL: Your system clock is {abs(self._time_offset_ms)}ms AHEAD of Bybit server! "
+                    f"Authenticated API requests will fail. Please sync your system clock."
+                )
+            elif abs(self._time_offset_ms) > 5000:
                 self.logger.warning(
                     f"Large time offset detected: {self._time_offset_ms}ms. "
                     f"Consider syncing your system clock."

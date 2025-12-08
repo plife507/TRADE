@@ -1263,8 +1263,8 @@ class HistoricalDataStore:
         return [r[0] for r in rows]
     
     def get_database_stats(self) -> Dict:
-        """Get overall database statistics."""
-        # OHLCV stats
+        """Get overall database statistics with per-symbol and per-timeframe breakdowns."""
+        # OHLCV stats (aggregate)
         ohlcv_stats = self.conn.execute(f"""
             SELECT 
                 COUNT(DISTINCT symbol) as symbols,
@@ -1273,7 +1273,60 @@ class HistoricalDataStore:
             FROM {self.table_ohlcv}
         """).fetchone()
         
-        # Funding stats
+        # OHLCV per-symbol breakdown
+        ohlcv_by_symbol = self.conn.execute(f"""
+            SELECT 
+                symbol,
+                timeframe,
+                COUNT(*) as candles,
+                MIN(timestamp) as earliest,
+                MAX(timestamp) as latest
+            FROM {self.table_ohlcv}
+            GROUP BY symbol, timeframe
+            ORDER BY symbol, timeframe
+        """).fetchall()
+        
+        # Organize OHLCV by symbol
+        ohlcv_symbols = {}
+        for row in ohlcv_by_symbol:
+            symbol, timeframe, candles, earliest, latest = row
+            if symbol not in ohlcv_symbols:
+                ohlcv_symbols[symbol] = {
+                    "timeframes": [],
+                    "total_candles": 0,
+                    "earliest_dt": None,
+                    "latest_dt": None,
+                }
+            ohlcv_symbols[symbol]["timeframes"].append({
+                "timeframe": timeframe,
+                "candles": candles,
+                "earliest": earliest.isoformat() if earliest else None,
+                "latest": latest.isoformat() if latest else None,
+            })
+            ohlcv_symbols[symbol]["total_candles"] += candles
+            # Track earliest/latest as datetime objects for comparison
+            if earliest:
+                if ohlcv_symbols[symbol]["earliest_dt"] is None or earliest < ohlcv_symbols[symbol]["earliest_dt"]:
+                    ohlcv_symbols[symbol]["earliest_dt"] = earliest
+            if latest:
+                if ohlcv_symbols[symbol]["latest_dt"] is None or latest > ohlcv_symbols[symbol]["latest_dt"]:
+                    ohlcv_symbols[symbol]["latest_dt"] = latest
+        
+        # Convert datetime objects to ISO strings for final output
+        for symbol_data in ohlcv_symbols.values():
+            if symbol_data["earliest_dt"]:
+                symbol_data["earliest"] = symbol_data["earliest_dt"].isoformat()
+            else:
+                symbol_data["earliest"] = None
+            if symbol_data["latest_dt"]:
+                symbol_data["latest"] = symbol_data["latest_dt"].isoformat()
+            else:
+                symbol_data["latest"] = None
+            # Remove temporary datetime fields
+            del symbol_data["earliest_dt"]
+            del symbol_data["latest_dt"]
+        
+        # Funding stats (aggregate)
         funding_stats = self.conn.execute(f"""
             SELECT 
                 COUNT(DISTINCT symbol) as symbols,
@@ -1281,13 +1334,55 @@ class HistoricalDataStore:
             FROM {self.table_funding}
         """).fetchone()
         
-        # Open interest stats
+        # Funding per-symbol breakdown
+        funding_by_symbol = self.conn.execute(f"""
+            SELECT 
+                symbol,
+                COUNT(*) as records,
+                MIN(timestamp) as earliest,
+                MAX(timestamp) as latest
+            FROM {self.table_funding}
+            GROUP BY symbol
+            ORDER BY symbol
+        """).fetchall()
+        
+        funding_symbols = {
+            row[0]: {
+                "records": row[1],
+                "earliest": row[2].isoformat() if row[2] else None,
+                "latest": row[3].isoformat() if row[3] else None,
+            }
+            for row in funding_by_symbol
+        }
+        
+        # Open interest stats (aggregate)
         oi_stats = self.conn.execute(f"""
             SELECT 
                 COUNT(DISTINCT symbol) as symbols,
                 COUNT(*) as total_records
             FROM {self.table_oi}
         """).fetchone()
+        
+        # Open interest per-symbol breakdown
+        oi_by_symbol = self.conn.execute(f"""
+            SELECT 
+                symbol,
+                COUNT(*) as records,
+                MIN(timestamp) as earliest,
+                MAX(timestamp) as latest
+            FROM {self.table_oi}
+            GROUP BY symbol
+            ORDER BY symbol
+        """).fetchall()
+        
+        oi_symbols = {
+            row[0]: {
+                "records": row[1],
+                "earliest": row[2].isoformat() if row[2] else None,
+                "latest": row[3].isoformat() if row[3] else None,
+            }
+            for row in oi_by_symbol
+        }
         
         file_size = self.db_path.stat().st_size if self.db_path.exists() else 0
         
@@ -1299,14 +1394,17 @@ class HistoricalDataStore:
                 "symbols": ohlcv_stats[0],
                 "symbol_timeframe_combinations": ohlcv_stats[1],
                 "total_candles": ohlcv_stats[2],
+                "by_symbol": ohlcv_symbols,
             },
             "funding_rates": {
                 "symbols": funding_stats[0],
                 "total_records": funding_stats[1],
+                "by_symbol": funding_symbols,
             },
             "open_interest": {
                 "symbols": oi_stats[0],
                 "total_records": oi_stats[1],
+                "by_symbol": oi_symbols,
             },
             # Legacy fields for backwards compatibility
             "symbols": ohlcv_stats[0],

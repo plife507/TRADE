@@ -23,18 +23,41 @@ def test_connection_tool() -> ToolResult:
         is_demo = result.get("demo_mode", True)
         env = "DEMO (fake money)" if is_demo else "LIVE (real money)"
         
+        # Determine success - public must work, private should work if key is configured
+        public_ok = result.get("public_ok", False)
+        private_ok = result.get("private_ok")
+        is_success = public_ok and (private_ok is None or private_ok is True)
+        
+        # Collect any errors for display
+        errors = []
+        if result.get("error"):
+            errors.append(f"Public API: {result.get('error')}")
+        if result.get("private_error"):
+            errors.append(f"Private API: {result.get('private_error')}")
+        error_msg = "; ".join(errors) if errors else None
+        
+        # Build status message
+        if is_success:
+            message = f"✓ Connected to {env}"
+        elif not public_ok:
+            message = f"✗ Cannot reach Bybit API ({env})"
+        else:
+            message = f"✗ Public API OK but private API failed ({env})"
+        
         return ToolResult(
-            success=result.get("public_ok", False) and result.get("private_ok", True),
-            message=f"Environment: {env}",
+            success=is_success,
+            message=message,
+            error=error_msg,
             data={
                 "environment": env,
                 "is_demo": is_demo,
                 "base_url": result.get("base_url"),
-                "public_ok": result.get("public_ok"),
-                "private_ok": result.get("private_ok"),
+                "public_ok": public_ok,
+                "private_ok": private_ok,
                 "btc_price": result.get("btc_price"),
                 "usdt_balance": result.get("usdt_balance"),
                 "error": result.get("error"),
+                "private_error": result.get("private_error"),
             },
             source="rest_api",
         )
@@ -58,6 +81,9 @@ def get_server_time_offset_tool() -> ToolResult:
         
         is_synced = abs(offset) < 5000  # Within 5 seconds
         
+        # Check if clock is ahead (which causes ErrCode 10002)
+        clock_ahead = offset < -1000
+        
         return ToolResult(
             success=True,
             message=f"Time offset: {offset}ms ({'synced' if is_synced else 'NOT synced'})",
@@ -65,6 +91,7 @@ def get_server_time_offset_tool() -> ToolResult:
                 "offset_ms": offset,
                 "is_synced": is_synced,
                 "threshold_ms": 5000,
+                "clock_ahead_warning": clock_ahead,
             },
             source="rest_api",
         )
