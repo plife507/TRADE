@@ -397,15 +397,23 @@ def print_error_below_menu(error_message: str, error_details: str = None):
 
 
 def run_tool_action(action_key: str, tool_fn, *args, **kwargs) -> ToolResult:
-    """Execute a tool with an emoji-enhanced status display."""
-    status_msg = format_action_status(action_key, **kwargs)
+    """
+    Execute a tool with status display and error handling.
     
-    display_only_keys = {"for_symbol"}
-    tool_kwargs = {k: v for k, v in kwargs.items() if k not in display_only_keys}
+    Args:
+        action_key: Key for status message formatting (e.g., "orders.list")
+        tool_fn: The tool function to execute
+        *args: Positional arguments passed directly to tool_fn
+        **kwargs: Keyword arguments passed directly to tool_fn
+    
+    Returns:
+        ToolResult from the tool execution
+    """
+    status_msg = format_action_status(action_key, **kwargs)
     
     try:
         with console.status(f"[bold cyan]{status_msg}[/]", spinner="dots"):
-            result = tool_fn(*args, **tool_kwargs)
+            result = tool_fn(*args, **kwargs)
         return result
     except Exception as e:
         print_error_below_menu(str(e), f"Action: {get_action_label(action_key)}")
@@ -413,13 +421,22 @@ def run_tool_action(action_key: str, tool_fn, *args, **kwargs) -> ToolResult:
 
 
 def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, **kwargs) -> ToolResult:
-    """Execute a long-running tool with status display and Ctrl+C handling."""
+    """
+    Execute a long-running tool with status display and Ctrl+C handling.
+    
+    Args:
+        action_key: Key for status message formatting (e.g., "data.sync_ohlcv")
+        tool_fn: The tool function to execute
+        *args: Positional arguments passed directly to tool_fn
+        cancel_store: Whether to cancel HistoricalDataStore on Ctrl+C
+        **kwargs: Keyword arguments passed directly to tool_fn
+    
+    Returns:
+        ToolResult from the tool execution
+    """
     from ..core.application import get_application
     
     status_msg = format_action_status(action_key, **kwargs)
-    
-    display_only_keys = {"for_symbol"}
-    tool_kwargs = {k: v for k, v in kwargs.items() if k not in display_only_keys}
     
     app = get_application()
     app.suppress_shutdown()
@@ -429,7 +446,7 @@ def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, 
         console.print("[dim]Press Ctrl+C to cancel gracefully[/]\n")
         
         with console.status(f"[bold green]▶ {get_action_label(action_key)} in progress...[/]", spinner="dots"):
-            result = tool_fn(*args, **tool_kwargs)
+            result = tool_fn(*args, **kwargs)
         
         complete_msg = format_action_complete(action_key, **kwargs)
         console.print(f"[green]✓ {complete_msg}[/]")

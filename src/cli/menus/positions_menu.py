@@ -157,8 +157,7 @@ def positions_menu(cli: "TradeCLI"):
                 result = run_tool_action(
                     "positions.set_tpsl", set_position_tpsl_tool, symbol,
                     take_profit=float(tp) if tp else None,
-                    stop_loss=float(sl) if sl else None,
-                    symbol=symbol
+                    stop_loss=float(sl) if sl else None
                 )
                 print_data_result("positions.set_tpsl", result)
             except ValueError as e:
@@ -181,8 +180,7 @@ def positions_menu(cli: "TradeCLI"):
                 else:
                     result = run_tool_action(
                         "positions.partial_close", partial_close_position_tool,
-                        symbol, percent, price=float(price) if price else None,
-                        symbol=symbol, percent=percent
+                        symbol, percent, price=float(price) if price else None
                     )
                     print_data_result("positions.partial_close", result)
             except ValueError:

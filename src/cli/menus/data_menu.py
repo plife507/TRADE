@@ -166,7 +166,7 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 3:
             # Symbol Aggregate Status
             symbol = get_input("Symbol (blank for all)", "")
-            result = run_tool_action("data.symbol_status", get_symbol_status_tool, symbol if symbol else None, env=data_env, for_symbol=f" for {symbol}" if symbol else "")
+            result = run_tool_action("data.symbol_status", get_symbol_status_tool, symbol if symbol else None, env=data_env)
             print_data_result("data.symbol_status", result)
             Prompt.ask("\nPress Enter to continue")
         
@@ -179,7 +179,7 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 5:
             # Symbol Timeframe Ranges (Detailed)
             symbol = get_input("Symbol (blank for all)", "")
-            result = run_tool_action("data.timeframe_ranges", get_symbol_timeframe_ranges_tool, symbol if symbol else None, env=data_env, for_symbol=f" for {symbol}" if symbol else "")
+            result = run_tool_action("data.timeframe_ranges", get_symbol_timeframe_ranges_tool, symbol if symbol else None, env=data_env)
             print_data_result("data.timeframe_ranges", result)
             Prompt.ask("\nPress Enter to continue")
         
@@ -199,8 +199,7 @@ def data_menu(cli: "TradeCLI"):
             
             result = run_long_action(
                 "data.build_full_history", build_symbol_history_tool,
-                symbols, period=period, timeframes=timeframes, oi_interval=oi_interval, env=data_env,
-                symbols=symbols
+                symbols, period=period, timeframes=timeframes, oi_interval=oi_interval, env=data_env
             )
             print_data_result("data.build_full_history", result)
             Prompt.ask("\nPress Enter to continue")
@@ -219,8 +218,7 @@ def data_menu(cli: "TradeCLI"):
             
             result = run_long_action(
                 "data.sync_to_now", sync_to_now_tool,
-                symbols, timeframes=timeframes, env=data_env,
-                symbols=symbols
+                symbols, timeframes=timeframes, env=data_env
             )
             print_data_result("data.sync_to_now", result)
             Prompt.ask("\nPress Enter to continue")
@@ -239,8 +237,7 @@ def data_menu(cli: "TradeCLI"):
             
             result = run_long_action(
                 "data.sync_to_now_fill_gaps", sync_to_now_and_fill_gaps_tool,
-                symbols, timeframes=timeframes, env=data_env,
-                symbols=symbols
+                symbols, timeframes=timeframes, env=data_env
             )
             print_data_result("data.sync_to_now_fill_gaps", result)
             Prompt.ask("\nPress Enter to continue")
@@ -255,8 +252,7 @@ def data_menu(cli: "TradeCLI"):
             
             result = run_long_action(
                 "data.sync_ohlcv_period", sync_symbols_tool,
-                symbols, period=period, timeframes=timeframes, env=data_env,
-                symbols=symbols
+                symbols, period=period, timeframes=timeframes, env=data_env
             )
             print_data_result("data.sync_ohlcv_period", result)
             Prompt.ask("\nPress Enter to continue")
@@ -280,8 +276,7 @@ def data_menu(cli: "TradeCLI"):
             
             result = run_long_action(
                 "data.sync_ohlcv_range", sync_range_tool,
-                symbols, start=start_dt, end=end_dt, timeframes=timeframes, env=data_env,
-                symbols=symbols
+                symbols, start=start_dt, end=end_dt, timeframes=timeframes, env=data_env
             )
             print_data_result("data.sync_ohlcv_range", result)
             Prompt.ask("\nPress Enter to continue")
@@ -294,8 +289,7 @@ def data_menu(cli: "TradeCLI"):
             
             result = run_long_action(
                 "data.sync_funding", sync_funding_tool,
-                symbols, period=period, env=data_env,
-                symbols=symbols
+                symbols, period=period, env=data_env
             )
             print_data_result("data.sync_funding", result)
             Prompt.ask("\nPress Enter to continue")
@@ -309,8 +303,7 @@ def data_menu(cli: "TradeCLI"):
             
             result = run_long_action(
                 "data.sync_open_interest", sync_open_interest_tool,
-                symbols, period=period, interval=interval, env=data_env,
-                symbols=symbols
+                symbols, period=period, interval=interval, env=data_env
             )
             print_data_result("data.sync_open_interest", result)
             Prompt.ask("\nPress Enter to continue")
@@ -478,8 +471,7 @@ def data_menu(cli: "TradeCLI"):
                 "data.fill_gaps", fill_gaps_tool,
                 symbol=symbol if symbol else None,
                 timeframe=timeframe if timeframe else None,
-                env=data_env,
-                for_symbol=f" for {symbol}" if symbol else ""
+                env=data_env
             )
             print_data_result("data.fill_gaps", result)
             Prompt.ask("\nPress Enter to continue")
@@ -491,8 +483,7 @@ def data_menu(cli: "TradeCLI"):
             result = run_tool_action(
                 "data.heal", heal_data_tool,
                 symbol=symbol if symbol else None,
-                env=data_env,
-                for_symbol=f" for {symbol}" if symbol else ""
+                env=data_env
             )
             print_data_result("data.heal", result)
             Prompt.ask("\nPress Enter to continue")

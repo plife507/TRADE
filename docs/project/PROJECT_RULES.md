@@ -49,6 +49,42 @@
 - Keep files under 1500 lines
 - Split if larger
 
+## Code Simplicity Guidelines
+
+### Wrapper Functions
+
+When to create a new wrapper function:
+- When it adds validation, logging, or safety checks
+- When it transforms data between layers (e.g., raw API → ToolResult)
+- When it provides a simpler interface to a complex operation
+
+When NOT to create a wrapper:
+- Pure pass-through that just forwards arguments
+- Functions that exist "for completeness" but aren't used
+- Duplicate functionality that exists elsewhere
+
+### Argument Passing in CLI Menus
+
+**Avoid duplicate arguments**: Never pass a value both as a positional arg AND as a keyword arg.
+
+```python
+# BAD - Passes symbol twice, causes TypeError
+result = run_tool_action("data.sync", sync_tool, symbol, symbols=symbol)
+
+# GOOD - Pass positional args first, then only additional kwargs
+result = run_tool_action("data.sync", sync_tool, symbol, env=data_env)
+```
+
+**Consistency**: Either use all positional args or all keyword args for clarity.
+
+### Adding New Features
+
+Before adding a new function/tool/wrapper:
+1. Check if existing code already does what you need
+2. Prefer reusing existing abstractions over creating new ones
+3. Keep the call chain shallow (avoid wrapper → wrapper → wrapper)
+4. If a wrapper is needed, ensure it adds clear value (validation, transformation, error handling)
+
 ## Coding Standards
 
 ### All Tools Return ToolResult

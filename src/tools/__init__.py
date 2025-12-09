@@ -120,9 +120,6 @@ from .order_tools import (
     batch_market_orders_tool,
     batch_limit_orders_tool,
     batch_cancel_orders_tool,
-    # Position query
-    get_position_tool,
-    close_position_by_exchange_tool,
 )
 
 # Diagnostics tools
@@ -243,10 +240,6 @@ __all__ = [
     "batch_market_orders_tool",
     "batch_limit_orders_tool",
     "batch_cancel_orders_tool",
-    # Order tools - Position query
-    "get_position_tool",
-    "close_position_by_exchange_tool",
-    
     # Diagnostics tools
     "test_connection_tool",
     "get_server_time_offset_tool",

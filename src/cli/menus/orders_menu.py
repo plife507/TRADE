@@ -139,7 +139,7 @@ def orders_menu(cli: "TradeCLI"):
                 symbol = get_input("Symbol (blank for all)", "")
                 if symbol is BACK:
                     continue
-                result = run_tool_action("orders.cancel_all", cancel_all_orders_tool, symbol=symbol if symbol else None, for_symbol=f" for {symbol}" if symbol else "")
+                result = run_tool_action("orders.cancel_all", cancel_all_orders_tool, symbol=symbol if symbol else None)
                 print_data_result("orders.cancel_all", result)
                 Prompt.ask("\nPress Enter to continue")
             elif choice == 7:
@@ -232,8 +232,7 @@ def market_orders_menu(cli: "TradeCLI"):
                         "orders.market_buy_tpsl", market_buy_with_tpsl_tool,
                         symbol, usd,
                         take_profit=tp_val,
-                        stop_loss=sl_val,
-                        symbol=symbol, usd_amount=usd
+                        stop_loss=sl_val
                     )
                     print_data_result("orders.market_buy", result)
                 else:
@@ -263,8 +262,7 @@ def market_orders_menu(cli: "TradeCLI"):
                         "orders.market_sell_tpsl", market_sell_with_tpsl_tool,
                         symbol, usd,
                         take_profit=tp_val,
-                        stop_loss=sl_val,
-                        symbol=symbol, usd_amount=usd
+                        stop_loss=sl_val
                     )
                     print_data_result("orders.market_sell", result)
                 else:
@@ -555,7 +553,7 @@ def manage_orders_menu(cli: "TradeCLI"):
                 symbol = get_input("Symbol (blank for all)", "")
                 if symbol is BACK:
                     continue
-                result = run_tool_action("orders.list", get_open_orders_tool, symbol=symbol if symbol else None, for_symbol=f" for {symbol}" if symbol else "")
+                result = run_tool_action("orders.list", get_open_orders_tool, symbol=symbol if symbol else None)
                 print_data_result("orders.list", result)
                 Prompt.ask("\nPress Enter to continue")
             elif choice == 2:
@@ -592,8 +590,7 @@ def manage_orders_menu(cli: "TradeCLI"):
                     qty=qty_val,
                     price=price_val,
                     take_profit=tp_val,
-                    stop_loss=sl_val,
-                    symbol=symbol, order_id=order_id
+                    stop_loss=sl_val
                 )
                 print_data_result("orders.amend", result)
                 Prompt.ask("\nPress Enter to continue")
