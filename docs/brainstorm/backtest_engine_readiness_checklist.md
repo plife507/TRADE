@@ -1,127 +1,146 @@
 # Backtest Engine Readiness Checklist
 
+**Last Updated:** 2025-12-13  
+**Status:** Backtest refactor complete (Phases 0–5)
+
 ## Big Picture
 
-Before building the backtest engine, the main wins are tightening a few **contracts and invariants** so the engine can plug into the existing data, strategy, and risk layers without surprises.
-
-This document captures the highest-leverage areas to improve first.
+This document captured the highest-leverage areas to improve before building the backtest engine. The backtest refactor (Phases 0–5) is now complete. Items marked ✅ are complete; items marked 📋 are future enhancements.
 
 ---
 
 ## 1. Data Contracts & Time Ranges (Backtest‑Ready)
 
-- **Clarify a single “data contract” for backtests**
-  - Define what the engine expects from the data layer for a run:
-    - Symbol set, timeframe(s), exact start/end
-    - Required fields (OHLCV, funding, OI)
-  - Define what the data layer guarantees:
-    - No gaps, or documented gap behavior (error vs forward‑fill)
-    - Timezone: UTC only
-    - Deduplication and sorting guarantees
+**Status:** ✅ COMPLETE
 
-- **Tighten time‑range utilities for backtests**
-  - Promote a canonical `TimeRange` / period abstraction so backtests use it everywhere instead of raw `start`/`end`/`period` strings.
-  - Add explicit helpers like:
-    - `TimeRange.last_n_bars(n, timeframe)`
-    - `TimeRange.from_period("6M")`
-  - The backtest engine should call these helpers rather than re‑implementing logic.
+- ✅ **Single "data contract" for backtests**
+  - Engine expects: symbol, timeframe, exact start/end from system config
+  - Required fields: OHLCV (funding/OI optional per system/config)
+  - Data layer guarantees:
+    - UTC timezone (enforced)
+    - Deduplication and sorting (via DuckDB queries)
+    - Gap detection available via data tools
 
-- **Gaps & data quality policy**
-  - Decide how a backtest should behave if data has:
-    - Missing candles
-    - Partial days
-    - Missing funding/open interest
-  - Implement pre‑flight checks in the data layer:
-    - `validate_backtest_dataset(symbols, timeframes, range, env)`
-    - Returns a structured report with `ok` / `warnings` / `fatal` statuses.
+- ✅ **Time range utilities**
+  - `TimeRange` abstraction exists in `src/utils/time_range.py`
+  - System config uses explicit start/end dates or window presets
+  - Engine uses config dates directly (no re-implementation)
+
+- ✅ **Gaps & data quality**
+  - Warm-up handling: engine extends query range by indicator lookback
+  - First valid bar detection: `find_first_valid_bar()` skips warm-up period
+  - Gap behavior: handled by DuckDB queries (no forward-fill)
+  - Pre-flight: warm-up calculation ensures sufficient data before simulation starts
 
 ---
 
 ## 2. Strategy Interface & Live/Backtest Symmetry
 
-- **Lock in the strategy I/O interface**
-  - Ensure `BaseStrategy` and `Signal` are identical in live vs backtest usage.
-  - For multi‑TF:
-    - Finalize the `MultiTFSnapshot` (or equivalent) shape.
-    - Ensure this is what strategies see in both modes.
+**Status:** ✅ COMPLETE
 
-- **Snapshot abstraction, not raw rows**
-  - The backtest engine should construct the same snapshot objects the live path uses (e.g., `MarketSnapshot` / `MultiTFSnapshot`).
-  - Strategies should never depend on whether they are in live or backtest mode.
+- ✅ **Strategy I/O interface locked in**
+  - `BaseStrategy` and `Signal` are identical in live vs backtest
+  - **`RuntimeSnapshot`** is the canonical strategy input in backtests
+  - Multi‑TF support is implemented via cached `FeatureSnapshot`s (HTF/MTF/LTF) on `RuntimeSnapshot`
 
-- **Config‑driven strategies, no hardcoded params**
-  - Double‑check strategy configs are entirely parameter‑driven:
-    - No hardcoded timeframes, indicator lengths, or thresholds.
-  - This allows sweeping configs in backtests without touching strategy code.
+- ✅ **Snapshot abstraction**
+  - Engine constructs **`RuntimeSnapshot`** objects (canonical)
+  - Strategies receive a stable, explicit snapshot structure (no ambiguous timestamps)
+  - No mode-dependent logic in strategies
+
+- ✅ **Config-driven strategies**
+  - All parameters come from system config YAML
+  - No hardcoded timeframes, indicator lengths, or thresholds
+  - Strategy registry allows dynamic loading by `strategy_id` + `strategy_version`
+  - Config sweeping possible without code changes
 
 ---
 
 ## 3. Execution & Risk Modeling (Simulation Layer)
 
-- **Define a simulated execution interface that mirrors `ExchangeManager`**
-  - Sketch a `SimulatedExchangeManager` (or adapter) with the same methods your strategies and executor currently depend on:
-    - Place order, cancel order, get positions, etc.
-  - In backtests, the engine calls this simulated exchange instead of the real `ExchangeManager`, while keeping:
-    - Strategy → `risk_manager` → `order_executor` unchanged.
+**Status:** ✅ COMPLETE (Modular Architecture)
 
-- **Decide on fill, slippage, and fees model**
-  - Minimal first pass:
-    - Market orders fill at OHLCV close or bid/ask mid.
-    - Limit orders fill if price trades through the level.
-    - Fees: simple constant maker/taker rate from config.
-  - Document these assumptions so they are explicit and can be iterated later.
+- ✅ **Simulated execution interface**
+  - `SimulatedExchange` in `src/backtest/sim/exchange.py` (thin orchestrator)
+  - Modular architecture with specialized modules:
+    - `pricing/` - Price models (mark, spread, intrabar path)
+    - `execution/` - Order execution (slippage, liquidity, impact)
+    - `ledger.py` - USDT accounting with invariants
+    - `funding/` - Funding rate application
+    - `liquidation/` - Mark-based liquidation
+  - Engine uses `SimulatedExchange` instead of `ExchangeManager`
+  - Strategy → `risk_policy` → `risk_manager` → `SimulatedExchange` flow maintained
 
-- **Reuse risk manager where possible**
-  - Aim for the same risk pipeline in backtest and live:
-    - Position sizing, max leverage, daily loss caps.
-  - Only the final execution target should differ (simulated vs real exchange).
+- ✅ **Fill, slippage, and fees model**
+  - **Execution model**: Strategy evaluates at bar close, entry fills at next bar open
+  - **TP/SL**: Checked within bar using intrabar path with deterministic tie-break
+  - **Fees**: Configurable taker/maker rates from `RiskProfileConfig`
+  - **Slippage**: Configurable via `ExecutionConfig` (slippage_bps)
+  - **Impact**: Modeled via execution module
+  - All assumptions documented in `docs/architecture/SIMULATED_EXCHANGE.md`
+
+- ✅ **Risk manager reuse**
+  - `SimulatedRiskManager` for position sizing (same logic as live)
+  - `RiskPolicy` for signal filtering (none vs rules)
+  - Risk profile configurable via YAML
+  - Only execution target differs (simulated vs real exchange)
 
 ---
 
 ## 4. Reproducibility, Config, and Outputs
 
-- **Lock down a backtest config format**
-  - Use a simple YAML/JSON structure for:
-    - Symbols, timeframes, time range (`TimeRange`)
-    - Strategy name + parameters
-    - Environment (live/demo data)
-    - Execution model options
-  - The config should be the only input to a run (no hidden environment state).
+**Status:** ✅ COMPLETE
 
-- **Standardized output structure**
-  - Decide where results live, e.g.:
-    - `backtests/YYYYMMDD_HHMMSS/<run_id>/`
-  - Always write:
-    - Run config snapshot.
-    - Equity curve and per‑trade log.
-    - Summary metrics (CAGR, max drawdown, win rate, average R, etc.).
-    - Data quality & environment info:
-      - Which DuckDB file
-      - Which API environment (live/demo data keys)
+- ✅ **Backtest config format**
+  - YAML-based system configs in `src/strategies/configs/`
+  - Structure includes:
+    - Symbol, timeframe
+    - Windows (hygiene/test with start/end or presets)
+    - Strategy identifier + parameters
+    - Risk profile (equity, leverage, fees, stop conditions)
+    - Data build config (env, period, timeframes)
+  - Config is the only input (no hidden state)
+  - Config loaded via `load_idea_card(idea_card_id)` (IdeaCard system)
 
-- **Determinism and seeds**
-  - If you add any stochastic components (randomized entry offsets, Monte Carlo, etc.):
-    - Define a global `seed` parameter in the config.
-    - Centralize random number generation so runs are reproducible.
+- ✅ **Standardized output structure**
+  - Results stored in: `data/backtests/{system_id}/{symbol}/{tf}/{window_name}/{run_id}/`
+  - Always writes:
+    - `result.json` - BacktestResult contract with metrics + config echo + lineage
+    - `trades.csv` - Per-trade log with entry/exit, PnL, duration
+    - `equity.csv` - Equity curve over time
+    - `account_curve.csv` - Proof-grade account state per bar
+    - `run_manifest.json` - Run metadata + git + config echo
+    - `events.jsonl` - Event log (equity + fills + stop)
+  - Includes:
+    - Run config snapshot (`BacktestRunConfigEcho`)
+    - Summary metrics (PnL, Sharpe, max DD, win rate, etc.)
+    - Proof-grade metrics (V2) with comprehensive breakdown
+    - System UID (deterministic hash) for lineage tracking
+    - Data quality info (warm-up bars, simulation start)
+
+- ✅ **Determinism**
+  - Fully deterministic: same config + same data → same results
+  - No stochastic components
+  - Future: seed parameter can be added to config if needed
 
 ---
 
 ## 5. Performance & Ergonomics
 
-- **Performance expectations up front**
-  - Identify target scale for typical backtests, e.g.:
-    - Number of symbols × timeframes × years.
-  - Test a few DuckDB queries simulating that load.
-  - If needed, add:
-    - Pre‑aggregated views (e.g. `ohlcv_1h_cached`).
-    - Index/ordering checks to keep sequential scanning fast.
+**Status:** ✅ COMPLETE
 
-- **Developer ergonomics: one‑command sanity check**
-  - Before the full engine, add a very small “backtest smoke” command:
-    - For example: `python trade_cli.py --backtest-smoke`.
-  - This can:
-    - Validate data for a standard symbol/timeframe/range.
-    - Load a trivial test strategy.
-    - Confirm contracts without running a full simulation.
+- ✅ **Performance**
+  - DuckDB queries optimized for sequential scanning
+  - Indicators computed once for entire window (vectorized)
+  - Bar-by-bar simulation is O(n) where n = number of bars
+  - Typical backtest (1 symbol, 1 TF, 3 months) completes in seconds
+  - No pre-aggregation needed at current scale
+
+- ✅ **Developer ergonomics**
+  - ✅ Backtest smoke test: `python trade_cli.py --smoke backtest`
+  - ✅ CLI Backtest menu: Interactive system/window selection
+  - ✅ Tools API: `backtest_run_tool(system_id, window_name)`
+  - ✅ System listing: `backtest_list_systems_tool()` shows available configs
+  - ✅ Artifact inspection: Results written to predictable locations
 
 

@@ -3,6 +3,12 @@
 Example: Using Tool Registry with an Orchestrator/Bot
 
 This shows how to build a trading bot that dynamically selects and executes tools.
+
+Key features demonstrated:
+- Basic tool execution
+- Tool discovery for AI agents
+- Distributed tracing with run_id, trace_id, agent_id
+- Logging context propagation for multi-agent systems
 """
 
 import sys
@@ -252,6 +258,145 @@ def example_8_simple_bot():
     # result = bot.close_all("Test complete")
 
 
+def example_9_distributed_tracing():
+    """
+    Distributed tracing with run_id, trace_id, and agent_id.
+    
+    This example shows how to correlate tool calls across a multi-agent
+    or distributed system using the logging context.
+    """
+    print("\n=== Example 9: Distributed Tracing & Correlation ===\n")
+    
+    from src.utils.log_context import (
+        new_run_context,
+        new_tool_call_context,
+        get_log_context,
+    )
+    
+    registry = get_registry()
+    
+    # Start a new "run" - this creates a run_id and trace_id
+    # All tool calls within this context will be correlated
+    with new_run_context(agent_id="strategy-bot-alpha") as ctx:
+        print(f"Run ID: {ctx.run_id}")
+        print(f"Trace ID: {ctx.trace_id}")
+        print(f"Agent ID: {ctx.agent_id}")
+        print()
+        
+        # Method 1: Context is automatically captured by the registry
+        # The tool call inherits run_id, trace_id, agent_id from context
+        result = registry.execute("get_price", symbol="BTCUSDT")
+        if result.success:
+            print(f"BTC Price: ${result.data['price']:,.2f}")
+        
+        # Method 2: Pass context explicitly via meta parameter
+        # Useful when calling from a remote process that received context
+        result = registry.execute(
+            "get_price",
+            symbol="ETHUSDT",
+            meta={
+                "run_id": ctx.run_id,
+                "agent_id": "sub-agent-1",
+                "custom_field": "example_value",
+            }
+        )
+        if result.success:
+            print(f"ETH Price: ${result.data['price']:,.2f}")
+    
+    print("\n[Check logs/events_*.jsonl for correlated events]")
+
+
+def example_10_multi_agent_workflow():
+    """
+    Multi-agent workflow with separate agent IDs but shared run context.
+    
+    This pattern is useful when you have multiple specialized agents
+    (e.g., analysis agent, execution agent, risk agent) working together.
+    """
+    print("\n=== Example 10: Multi-Agent Workflow ===\n")
+    
+    from src.utils.log_context import new_run_context, log_context_scope
+    
+    registry = get_registry()
+    
+    # Start a shared run context for the entire workflow
+    with new_run_context() as run_ctx:
+        print(f"Workflow Run ID: {run_ctx.run_id}")
+        print()
+        
+        # Agent 1: Market Analysis Agent
+        with log_context_scope(agent_id="analysis-agent"):
+            print("Analysis Agent: Checking market conditions...")
+            result = registry.execute("get_price", symbol="SOLUSDT")
+            if result.success:
+                price = result.data["price"]
+                print(f"  SOL Price: ${price:.4f}")
+                signal = "bullish" if price > 0 else "neutral"
+        
+        # Agent 2: Risk Check Agent
+        with log_context_scope(agent_id="risk-agent"):
+            print("Risk Agent: Checking portfolio risk...")
+            result = registry.execute("get_balance")
+            if result.success:
+                balance = result.data.get("available", 0)
+                print(f"  Available Balance: ${balance:.2f}")
+        
+        # Agent 3: Execution Agent
+        with log_context_scope(agent_id="execution-agent"):
+            print("Execution Agent: Ready to execute...")
+            # result = registry.execute("market_buy", symbol="SOLUSDT", usd_amount=50)
+            print("  (Trade execution commented out for safety)")
+        
+        print(f"\nAll agents logged under Run ID: {run_ctx.run_id}")
+
+
+def example_11_cross_process_context():
+    """
+    Propagating context across process boundaries.
+    
+    When you need to call tools from a remote process (e.g., worker),
+    serialize the context and pass it to the remote process.
+    """
+    print("\n=== Example 11: Cross-Process Context Propagation ===\n")
+    
+    from src.utils.log_context import (
+        new_run_context,
+        log_context_scope,
+        get_log_context,
+    )
+    
+    # === ORCHESTRATOR PROCESS ===
+    with new_run_context(agent_id="orchestrator") as ctx:
+        # Serialize context for remote process
+        context_dict = ctx.to_dict()
+        print("Orchestrator: Created context to send to worker:")
+        print(f"  run_id: {context_dict['run_id']}")
+        print(f"  trace_id: {context_dict['trace_id']}")
+        print(f"  agent_id: {context_dict['agent_id']}")
+        print()
+        
+        # === WORKER PROCESS (simulated) ===
+        # In a real system, context_dict would be passed via message queue, HTTP, etc.
+        print("Worker: Received context, executing with correlation...")
+        
+        # Restore context in worker
+        with log_context_scope(
+            run_id=context_dict["run_id"],
+            trace_id=context_dict["trace_id"],
+            agent_id="worker-1",  # Worker has its own agent_id
+        ):
+            registry = get_registry()
+            result = registry.execute("get_price", symbol="BTCUSDT")
+            if result.success:
+                print(f"  Worker result: BTC = ${result.data['price']:,.2f}")
+            
+            # Verify context
+            worker_ctx = get_log_context()
+            print(f"  Worker run_id matches: {worker_ctx.run_id == context_dict['run_id']}")
+    
+    print("\n[All events from both processes share the same run_id/trace_id]")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("TRADE Bot - Tool Registry Examples")
@@ -265,6 +410,9 @@ if __name__ == "__main__":
     example_6_dynamic_tool_selection()
     example_7_position_management_flow()
     example_8_simple_bot()
+    example_9_distributed_tracing()
+    example_10_multi_agent_workflow()
+    example_11_cross_process_context()
     
     print("\n" + "=" * 60)
     print("Examples complete!")

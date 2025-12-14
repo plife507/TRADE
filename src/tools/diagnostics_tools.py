@@ -4,9 +4,20 @@ Diagnostics and connection testing tools for TRADE trading bot.
 These tools provide exchange connection testing, health checks, and status reporting.
 """
 
+import sys
+import os
 from typing import Optional, Dict, Any
 from .shared import ToolResult, _get_exchange_manager, _get_realtime_state
 from src.config.config import get_config
+
+# Windows-safe symbols (avoid Unicode encoding errors on legacy consoles)
+_USE_ASCII = (
+    sys.platform == "win32" 
+    and os.environ.get("PYTHONIOENCODING", "").lower() != "utf-8"
+    and not os.environ.get("WT_SESSION")
+)
+_OK = "[OK]" if _USE_ASCII else "✓"
+_FAIL = "[X]" if _USE_ASCII else "✗"
 
 
 def test_connection_tool() -> ToolResult:
@@ -38,11 +49,11 @@ def test_connection_tool() -> ToolResult:
         
         # Build status message
         if is_success:
-            message = f"✓ Connected to {env}"
+            message = f"{_OK} Connected to {env}"
         elif not public_ok:
-            message = f"✗ Cannot reach Bybit API ({env})"
+            message = f"{_FAIL} Cannot reach Bybit API ({env})"
         else:
-            message = f"✗ Public API OK but private API failed ({env})"
+            message = f"{_FAIL} Public API OK but private API failed ({env})"
         
         return ToolResult(
             success=is_success,
@@ -385,8 +396,8 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
         exchange = _get_exchange_manager()
         conn_result = exchange.test_connection()
         env = "DEMO" if conn_result.get("demo_mode") else "LIVE"
-        pub_ok = "✓" if conn_result.get("public_ok") else "✗"
-        priv_ok = "✓" if conn_result.get("private_ok") else "✗"
+        pub_ok = _OK if conn_result.get("public_ok") else _FAIL
+        priv_ok = _OK if conn_result.get("private_ok") else _FAIL
         tests["connection_test"] = {
             "passed": conn_result.get("public_ok") and conn_result.get("private_ok", True),
             "message": f"{env} - Public: {pub_ok}, Private: {priv_ok}",
@@ -458,10 +469,10 @@ def get_api_environment_tool() -> ToolResult:
         data_demo = env["data_demo"]
         
         # Build status indicators
-        tl = "✓" if trade_live["key_configured"] else "✗"
-        td = "✓" if trade_demo["key_configured"] else "✗"
-        dl = "✓" if data_live["key_configured"] else "✗"
-        dd = "✓" if data_demo["key_configured"] else "✗"
+        tl = _OK if trade_live["key_configured"] else _FAIL
+        td = _OK if trade_demo["key_configured"] else _FAIL
+        dl = _OK if data_live["key_configured"] else _FAIL
+        dd = _OK if data_demo["key_configured"] else _FAIL
         
         trading_status = f"Active Trading: {trading['mode']} ({trading['base_url']})"
         legs_status = f"Keys: Trade[L:{tl} D:{td}] Data[L:{dl} D:{dd}]"

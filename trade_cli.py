@@ -17,6 +17,8 @@ Non-interactive smoke test modes:
   python trade_cli.py --smoke data            # Data builder smoke test only
   python trade_cli.py --smoke full            # Full CLI smoke test (data + trading + diagnostics)
   python trade_cli.py --smoke data_extensive  # Extensive data test (clean DB, gaps, fill, sync)
+  python trade_cli.py --smoke backtest        # Backtest engine smoke test
+  python trade_cli.py --smoke backtest --fresh-db  # Backtest with fresh DB
 """
 
 import argparse
@@ -47,6 +49,7 @@ from src.cli.menus import (
     manage_orders_menu as manage_orders_menu_handler,
     positions_menu as positions_menu_handler,
     account_menu as account_menu_handler,
+    backtest_menu as backtest_menu_handler,
 )
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper, BillArtColors
 # Import shared CLI utilities (canonical implementations)
@@ -63,7 +66,6 @@ from src.cli.utils import (
     get_int_input,
     TimeRangeSelection,
     select_time_range_cli,
-    get_time_window,
     print_error_below_menu,
     run_tool_action,
     run_long_action,
@@ -210,10 +212,11 @@ class TradeCLI:
             menu.add_row("3", f"{CLIIcons.TRADE} Orders", "Place market/limit/stop orders, manage open orders")
             menu.add_row("4", f"{CLIIcons.CHART_UP} Market Data", "Get prices, OHLCV, funding rates, orderbook, instruments")
             menu.add_row("5", f"{CLIIcons.MINING} Data Builder", "Build & manage historical data (DuckDB)")
-            menu.add_row("6", f"{CLIIcons.NETWORK} Connection Test", "Test API connectivity and rate limits")
-            menu.add_row("7", f"{CLIIcons.SETTINGS} Health Check", "Comprehensive system health diagnostic")
-            menu.add_row("8", f"[bold {gold}]{CLIIcons.PANIC} PANIC: Close All & Stop[/]", f"[{gold}]Emergency: Close all positions & cancel orders[/]")
-            menu.add_row("9", f"{CLIIcons.QUIT} Exit", "Exit the CLI")
+            menu.add_row("6", f"{CLIIcons.TARGET} Backtest Engine", "Run strategy backtests, manage systems")
+            menu.add_row("7", f"{CLIIcons.NETWORK} Connection Test", "Test API connectivity and rate limits")
+            menu.add_row("8", f"{CLIIcons.SETTINGS} Health Check", "Comprehensive system health diagnostic")
+            menu.add_row("9", f"[bold {gold}]{CLIIcons.PANIC} PANIC: Close All & Stop[/]", f"[{gold}]Emergency: Close all positions & cancel orders[/]")
+            menu.add_row("10", f"{CLIIcons.QUIT} Exit", "Exit the CLI")
             
             # Use art-themed menu panel
             console.print(CLIStyles.get_menu_panel(menu, "MAIN MENU", is_main=True))
@@ -225,7 +228,7 @@ class TradeCLI:
             tip_color = BillArtColors.GREEN_MONEY if CLIStyles.use_art_wrapper else CLIColors.DIM_TEXT
             console.print(f"[{tip_color}]💡 Tip: Type 'back' or 'b' at any prompt to cancel and return to previous menu[/]")
             
-            choice = get_choice(valid_range=range(1, 10))
+            choice = get_choice(valid_range=range(1, 11))
             
             # Handle back command from main menu (same as exit)
             if choice is BACK:
@@ -244,12 +247,14 @@ class TradeCLI:
                 elif choice == 5:
                     self.data_menu()
                 elif choice == 6:
-                    self.connection_test()
+                    self.backtest_menu()
                 elif choice == 7:
-                    self.health_check()
+                    self.connection_test()
                 elif choice == 8:
-                    self.panic_menu()
+                    self.health_check()
                 elif choice == 9:
+                    self.panic_menu()
+                elif choice == 10:
                     console.print(f"\n[yellow]Goodbye![/]")
                     break
             except KeyboardInterrupt:
@@ -308,6 +313,12 @@ class TradeCLI:
         """Historical data builder menu (DuckDB-only). Delegates to src.cli.menus.data_menu."""
         data_menu_handler(self)
     
+    # ==================== BACKTEST MENU ====================
+    
+    def backtest_menu(self):
+        """Backtest engine menu. Delegates to src.cli.menus.backtest_menu."""
+        backtest_menu_handler(self)
+
     # ==================== CONNECTION TEST ====================
     
     def connection_test(self):
@@ -644,26 +655,570 @@ def parse_cli_args() -> argparse.Namespace:
     Supports:
       --smoke data   Run data builder smoke test only
       --smoke full   Run full CLI smoke test (data + trading + diagnostics)
+      
+      backtest run   Run IdeaCard-based backtest (golden path)
+      backtest preflight   Check data/config without running
+      backtest data-fix    Fix data gaps/coverage
+      backtest list        List available IdeaCards
     """
     parser = argparse.ArgumentParser(
         description="TRADE - Bybit Unified Trading Account CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python trade_cli.py                  # Interactive mode (default)
-  python trade_cli.py --smoke data     # Data builder smoke test
-  python trade_cli.py --smoke full     # Full CLI smoke test
+  python trade_cli.py                              # Interactive mode (default)
+  python trade_cli.py --smoke data                 # Data builder smoke test
+  python trade_cli.py --smoke full                 # Full CLI smoke test
+  
+  # IdeaCard-based backtest (golden path):
+  python trade_cli.py backtest run --idea-card SOLUSDT_15m_ema_crossover
+  python trade_cli.py backtest run --idea-card SOLUSDT_15m_ema_crossover --smoke
+  python trade_cli.py backtest preflight --idea-card SOLUSDT_15m_ema_crossover
+  python trade_cli.py backtest data-fix --idea-card SOLUSDT_15m_ema_crossover
+  python trade_cli.py backtest list
         """
     )
     
     parser.add_argument(
         "--smoke",
-        choices=["data", "full", "data_extensive", "orders", "live_check"],
+        choices=["data", "full", "data_extensive", "orders", "live_check", "backtest"],
         default=None,
-        help="Run non-interactive smoke test. 'data'/'full'/'data_extensive'/'orders' use DEMO. 'live_check' tests LIVE connectivity (opt-in, requires LIVE keys)."
+        help="Run non-interactive smoke test. 'data'/'full'/'data_extensive'/'orders'/'backtest' use DEMO. 'live_check' tests LIVE connectivity (opt-in, requires LIVE keys)."
     )
     
+    parser.add_argument(
+        "--fresh-db",
+        action="store_true",
+        default=False,
+        help="For backtest smoke: wipe database before preparing data"
+    )
+    
+    # Add subcommands
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # backtest subcommand with its own subcommands
+    backtest_parser = subparsers.add_parser("backtest", help="IdeaCard-based backtest (golden path)")
+    backtest_subparsers = backtest_parser.add_subparsers(dest="backtest_command", help="Backtest commands")
+    
+    # backtest run
+    run_parser = backtest_subparsers.add_parser("run", help="Run an IdeaCard backtest")
+    run_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier (e.g., SOLUSDT_15m_ema_crossover)")
+    run_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment (default: live)")
+    run_parser.add_argument("--symbol", help="Override symbol (default: from IdeaCard)")
+    run_parser.add_argument("--start", help="Window start (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
+    run_parser.add_argument("--end", help="Window end (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
+    run_parser.add_argument("--smoke", action="store_true", help="Smoke mode: fast wiring check with small window")
+    run_parser.add_argument("--strict", action="store_true", default=True, help="Strict indicator access (default: True)")
+    run_parser.add_argument("--no-strict", action="store_false", dest="strict", help="Disable strict indicator checks")
+    run_parser.add_argument("--artifacts-dir", help="Override artifacts directory")
+    run_parser.add_argument("--no-artifacts", action="store_true", help="Skip writing artifacts")
+    run_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
+    # backtest preflight
+    preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")
+    preflight_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
+    preflight_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
+    preflight_parser.add_argument("--symbol", help="Override symbol")
+    preflight_parser.add_argument("--start", help="Window start")
+    preflight_parser.add_argument("--end", help="Window end")
+    preflight_parser.add_argument("--fix-gaps", action="store_true", help="Auto-fix data gaps using existing tools")
+    preflight_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
+    # backtest indicators (NEW - indicator key discovery)
+    indicators_parser = backtest_subparsers.add_parser("indicators", help="Discover indicator keys for an IdeaCard")
+    indicators_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
+    indicators_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
+    indicators_parser.add_argument("--symbol", help="Override symbol")
+    indicators_parser.add_argument("--print-keys", action="store_true", default=True, help="Print all indicator keys")
+    indicators_parser.add_argument("--compute", action="store_true", help="Actually compute indicators (requires --start/--end)")
+    indicators_parser.add_argument("--start", help="Window start (for --compute)")
+    indicators_parser.add_argument("--end", help="Window end (for --compute)")
+    indicators_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
+    # backtest data-fix
+    datafix_parser = backtest_subparsers.add_parser("data-fix", help="Fix data for an IdeaCard")
+    datafix_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
+    datafix_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
+    datafix_parser.add_argument("--symbol", help="Override symbol")
+    datafix_parser.add_argument("--start", help="Sync from this date")
+    datafix_parser.add_argument("--sync-to-now", action="store_true", help="Sync data to current time")
+    datafix_parser.add_argument("--fill-gaps", action="store_true", default=True, help="Fill gaps after sync")
+    datafix_parser.add_argument("--heal", action="store_true", help="Run full heal after sync")
+    datafix_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
+    # backtest list
+    list_parser = backtest_subparsers.add_parser("list", help="List available IdeaCards")
+    list_parser.add_argument("--dir", dest="idea_cards_dir", help="Override IdeaCards directory")
+    list_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
+    # backtest idea-card-normalize (NEW - build-time validation)
+    normalize_parser = backtest_subparsers.add_parser(
+        "idea-card-normalize", 
+        help="Validate and normalize an IdeaCard YAML (build-time)"
+    )
+    normalize_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
+    normalize_parser.add_argument("--dir", dest="idea_cards_dir", help="Override IdeaCards directory")
+    normalize_parser.add_argument("--write", action="store_true", help="Write normalized YAML in-place")
+    normalize_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
+    # backtest audit-toolkit (NEW - indicator registry audit)
+    audit_parser = backtest_subparsers.add_parser(
+        "audit-toolkit",
+        help="Audit indicator registry for consistency"
+    )
+    audit_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
     return parser.parse_args()
+
+
+# =============================================================================
+# BACKTEST SUBCOMMAND HANDLERS
+# =============================================================================
+
+def _parse_datetime(dt_str: str) -> "datetime":
+    """Parse datetime string from CLI."""
+    from datetime import datetime
+    
+    # Try various formats
+    for fmt in ["%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"]:
+        try:
+            return datetime.strptime(dt_str, fmt)
+        except ValueError:
+            continue
+    
+    raise ValueError(f"Cannot parse datetime: '{dt_str}'. Use YYYY-MM-DD or YYYY-MM-DD HH:MM")
+
+
+def handle_backtest_run(args) -> int:
+    """Handle `backtest run` subcommand."""
+    import json
+    from pathlib import Path
+    from src.tools.backtest_cli_wrapper import backtest_run_idea_card_tool
+    
+    # Parse dates
+    start = _parse_datetime(args.start) if args.start else None
+    end = _parse_datetime(args.end) if args.end else None
+    artifacts_dir = Path(args.artifacts_dir) if args.artifacts_dir else None
+    
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]BACKTEST RUN[/]\n"
+            f"IdeaCard: {args.idea_card}\n"
+            f"DataEnv: {args.data_env} | Smoke: {args.smoke} | Strict: {args.strict}",
+            border_style="cyan"
+        ))
+    
+    result = backtest_run_idea_card_tool(
+        idea_card_id=args.idea_card,
+        env=args.data_env,
+        symbol=args.symbol,
+        start=start,
+        end=end,
+        smoke=args.smoke,
+        strict=args.strict,
+        write_artifacts=not args.no_artifacts,
+        artifacts_dir=artifacts_dir,
+    )
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    # Print diagnostics
+    if result.data and "preflight" in result.data:
+        preflight = result.data["preflight"]
+        _print_preflight_diagnostics(preflight)
+    
+    if result.success:
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        if result.data and "artifact_dir" in result.data:
+            console.print(f"[dim]Artifacts: {result.data['artifact_dir']}[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        return 1
+
+
+def handle_backtest_preflight(args) -> int:
+    """Handle `backtest preflight` subcommand."""
+    import json
+    from src.tools.backtest_cli_wrapper import backtest_preflight_idea_card_tool, backtest_data_fix_tool
+    
+    # Parse dates
+    start = _parse_datetime(args.start) if args.start else None
+    end = _parse_datetime(args.end) if args.end else None
+    
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]BACKTEST PREFLIGHT[/]\n"
+            f"IdeaCard: {args.idea_card} | DataEnv: {args.data_env}",
+            border_style="cyan"
+        ))
+    
+    result = backtest_preflight_idea_card_tool(
+        idea_card_id=args.idea_card,
+        env=args.data_env,
+        symbol=args.symbol,
+        start=start,
+        end=end,
+    )
+    
+    # Auto-fix gaps if requested
+    if args.fix_gaps and not result.success and result.data and result.data.get("coverage_issue"):
+        if not args.json_output:
+            console.print("\n[yellow]Attempting to fix data gaps...[/]")
+        fix_result = backtest_data_fix_tool(
+            idea_card_id=args.idea_card,
+            env=args.data_env,
+            symbol=args.symbol,
+            sync_to_now=True,
+            fill_gaps=True,
+        )
+        if fix_result.success:
+            if not args.json_output:
+                console.print("[green]Data fix completed, re-running preflight...[/]")
+            # Re-run preflight
+            result = backtest_preflight_idea_card_tool(
+                idea_card_id=args.idea_card,
+                env=args.data_env,
+                symbol=args.symbol,
+                start=start,
+                end=end,
+            )
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "checks": {
+                "idea_card_valid": result.data.get("idea_card_valid") if result.data else None,
+                "has_sufficient_coverage": result.data.get("has_sufficient_coverage") if result.data else None,
+            },
+            "data": result.data,
+            "recommended_fix": result.data.get("coverage_issue") if result.data and not result.success else None,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    # Print diagnostics
+    if result.data:
+        _print_preflight_diagnostics(result.data)
+    
+    if result.success:
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        return 1
+
+
+def handle_backtest_indicators(args) -> int:
+    """Handle `backtest indicators` subcommand."""
+    import json
+    from src.tools.backtest_cli_wrapper import backtest_indicators_tool
+    
+    # Parse dates
+    start = _parse_datetime(args.start) if args.start else None
+    end = _parse_datetime(args.end) if args.end else None
+    
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]BACKTEST INDICATORS[/]\n"
+            f"IdeaCard: {args.idea_card} | DataEnv: {args.data_env}",
+            border_style="cyan"
+        ))
+    
+    result = backtest_indicators_tool(
+        idea_card_id=args.idea_card,
+        data_env=args.data_env,
+        symbol=args.symbol,
+        start=start,
+        end=end,
+        compute_values=args.compute,
+    )
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    if result.success and result.data:
+        data = result.data
+        console.print(f"\n[bold]Indicator Key Discovery[/]")
+        console.print(f"IdeaCard: {data.get('idea_card_id')}")
+        console.print(f"Symbol: {data.get('symbol')}")
+        console.print(f"Exec TF: {data.get('exec_tf')}")
+        if data.get('htf'):
+            console.print(f"HTF: {data.get('htf')}")
+        if data.get('mtf'):
+            console.print(f"MTF: {data.get('mtf')}")
+        
+        console.print(f"\n[bold]Declared Keys (from FeatureSpec output_key):[/]")
+        for role, keys in data.get("declared_keys_by_role", {}).items():
+            console.print(f"  {role}: {keys}")
+        
+        console.print(f"\n[bold]Expanded Keys (actual column names, including multi-output):[/]")
+        for role, keys in data.get("expanded_keys_by_role", {}).items():
+            console.print(f"  {role}: {keys}")
+        
+        if data.get("computed_info"):
+            console.print(f"\n[bold]Computed Info:[/]")
+            for role, info in data["computed_info"].items():
+                if "error" in info:
+                    console.print(f"  {role}: [red]{info['error']}[/]")
+                else:
+                    console.print(f"  {role} ({info.get('tf')}):")
+                    console.print(f"    Data rows: {info.get('data_rows')}")
+                    console.print(f"    First valid bar: {info.get('first_valid_bar')}")
+                    console.print(f"    Computed columns: {info.get('computed_columns')}")
+        
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        return 1
+
+
+def handle_backtest_data_fix(args) -> int:
+    """Handle `backtest data-fix` subcommand."""
+    import json
+    from src.tools.backtest_cli_wrapper import backtest_data_fix_tool
+    
+    # Parse dates
+    start = _parse_datetime(args.start) if args.start else None
+    
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]BACKTEST DATA FIX[/]\n"
+            f"IdeaCard: {args.idea_card} | DataEnv: {args.data_env}\n"
+            f"Sync to now: {args.sync_to_now} | Fill gaps: {args.fill_gaps} | Heal: {args.heal}",
+            border_style="cyan"
+        ))
+    
+    result = backtest_data_fix_tool(
+        idea_card_id=args.idea_card,
+        env=args.data_env,
+        symbol=args.symbol,
+        start=start,
+        sync_to_now=args.sync_to_now,
+        fill_gaps=args.fill_gaps,
+        heal=args.heal,
+    )
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    if result.success:
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        if result.data and "operations" in result.data:
+            for op in result.data["operations"]:
+                status = "OK" if op["success"] else "FAIL"
+                console.print(f"  {status} {op['name']}: {op['message']}")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        return 1
+
+
+def handle_backtest_list(args) -> int:
+    """Handle `backtest list` subcommand."""
+    import json
+    from pathlib import Path
+    from src.tools.backtest_cli_wrapper import backtest_list_idea_cards_tool
+    
+    idea_cards_dir = Path(args.idea_cards_dir) if args.idea_cards_dir else None
+    
+    result = backtest_list_idea_cards_tool(idea_cards_dir=idea_cards_dir)
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    if result.success:
+        console.print(f"\n[bold cyan]Available IdeaCards:[/]")
+        console.print(f"[dim]Directory: {result.data['directory']}[/]\n")
+        
+        for card_id in result.data["idea_cards"]:
+            console.print(f"  - {card_id}")
+        
+        console.print(f"\n[dim]Total: {len(result.data['idea_cards'])} IdeaCards[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        return 1
+
+
+def _print_preflight_diagnostics(diag: dict):
+    """Print preflight diagnostics in a formatted way."""
+    table = Table(title="Preflight Diagnostics", show_header=False, box=None)
+    table.add_column("Key", style="dim", width=25)
+    table.add_column("Value", style="bold")
+    
+    table.add_row("Environment", diag.get("env", "N/A"))
+    table.add_row("Database", diag.get("db_path", "N/A"))
+    table.add_row("OHLCV Table", diag.get("ohlcv_table", "N/A"))
+    table.add_row("Symbol", diag.get("symbol", "N/A"))
+    table.add_row("Exec TF", diag.get("exec_tf", "N/A"))
+    
+    if diag.get("htf"):
+        table.add_row("HTF", diag["htf"])
+    if diag.get("mtf"):
+        table.add_row("MTF", diag["mtf"])
+    
+    console.print(table)
+    
+    # Window info
+    console.print("\n[bold]Window:[/]")
+    if diag.get("requested_start"):
+        console.print(f"  Requested: {diag['requested_start']} -> {diag.get('requested_end', 'now')}")
+    if diag.get("effective_start"):
+        console.print(f"  Effective (with warmup): {diag['effective_start']} -> {diag.get('effective_end', 'now')}")
+    console.print(f"  Warmup: {diag.get('warmup_bars', 0)} bars ({diag.get('warmup_span_minutes', 0)} minutes)")
+    
+    # Coverage
+    console.print("\n[bold]DB Coverage:[/]")
+    if diag.get("db_earliest") and diag.get("db_latest"):
+        console.print(f"  Range: {diag['db_earliest']} -> {diag['db_latest']}")
+        console.print(f"  Bars: {diag.get('db_bar_count', 0):,}")
+    else:
+        console.print("  [yellow]No data found[/]")
+    
+    coverage_ok = diag.get("has_sufficient_coverage", False)
+    coverage_style = "green" if coverage_ok else "red"
+    console.print(f"  Sufficient: [{coverage_style}]{'Yes' if coverage_ok else 'No'}[/]")
+    
+    if diag.get("coverage_issue"):
+        console.print(f"  [yellow]Issue: {diag['coverage_issue']}[/]")
+    
+    # Indicator keys
+    console.print("\n[bold]Declared Indicator Keys:[/]")
+    exec_keys = diag.get("declared_keys_exec", [])
+    htf_keys = diag.get("declared_keys_htf", [])
+    mtf_keys = diag.get("declared_keys_mtf", [])
+    
+    console.print(f"  exec: {exec_keys or '(none)'}")
+    if htf_keys:
+        console.print(f"  htf: {htf_keys}")
+    if mtf_keys:
+        console.print(f"  mtf: {mtf_keys}")
+    
+    # Validation
+    if diag.get("validation_errors"):
+        console.print("\n[bold red]Validation Errors:[/]")
+        for err in diag["validation_errors"]:
+            console.print(f"  [red]• {err}[/]")
+
+
+def handle_backtest_normalize(args) -> int:
+    """Handle `backtest idea-card-normalize` subcommand."""
+    import json
+    from pathlib import Path
+    from src.tools.backtest_cli_wrapper import backtest_idea_card_normalize_tool
+    
+    idea_cards_dir = Path(args.idea_cards_dir) if args.idea_cards_dir else None
+    
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]IDEACARD NORMALIZE[/]\n"
+            f"IdeaCard: {args.idea_card} | Write: {args.write}",
+            border_style="cyan"
+        ))
+    
+    result = backtest_idea_card_normalize_tool(
+        idea_card_id=args.idea_card,
+        idea_cards_dir=idea_cards_dir,
+        write_in_place=args.write,
+    )
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    if result.success:
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        if result.data:
+            if result.data.get("written"):
+                console.print(f"[dim]Written to: {result.data.get('yaml_path')}[/]")
+            if result.data.get("warnings"):
+                for w in result.data["warnings"]:
+                    console.print(f"[yellow]⚠ {w}[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        if result.data and result.data.get("error_details"):
+            console.print(result.data["error_details"])
+        return 1
+
+
+def handle_backtest_audit_toolkit(args) -> int:
+    """Handle `backtest audit-toolkit` subcommand."""
+    import json
+    from src.tools.backtest_cli_wrapper import backtest_audit_toolkit_tool
+    
+    if not args.json_output:
+        console.print(Panel(
+            "[bold cyan]INDICATOR TOOLKIT AUDIT[/]\n"
+            "Checking indicator registry consistency...",
+            border_style="cyan"
+        ))
+    
+    result = backtest_audit_toolkit_tool()
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    if result.success:
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        if result.data:
+            console.print(f"[dim]Supported indicators: {len(result.data.get('supported_indicators', []))}[/]")
+            console.print(f"[dim]Single-output: {result.data.get('single_output_count', 0)}[/]")
+            console.print(f"[dim]Multi-output: {result.data.get('multi_output_count', 0)}[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        if result.data and result.data.get("issues"):
+            console.print("\n[bold]Issues Found:[/]")
+            for issue in result.data["issues"]:
+                console.print(f"  [red]• [{issue['type']}] {issue['indicator']}: {issue['message']}[/]")
+        return 1
 
 
 def main():
@@ -673,6 +1228,31 @@ def main():
     
     # Setup logging
     setup_logger()
+    
+    # ===== BACKTEST SUBCOMMANDS =====
+    # Handle `backtest run/preflight/data-fix/list` subcommands
+    if args.command == "backtest":
+        config = get_config()
+        # Force demo for data env (backtest uses data API, not trading)
+        # But keep data env as specified
+        
+        if args.backtest_command == "run":
+            sys.exit(handle_backtest_run(args))
+        elif args.backtest_command == "preflight":
+            sys.exit(handle_backtest_preflight(args))
+        elif args.backtest_command == "indicators":
+            sys.exit(handle_backtest_indicators(args))
+        elif args.backtest_command == "data-fix":
+            sys.exit(handle_backtest_data_fix(args))
+        elif args.backtest_command == "list":
+            sys.exit(handle_backtest_list(args))
+        elif args.backtest_command == "idea-card-normalize":
+            sys.exit(handle_backtest_normalize(args))
+        elif args.backtest_command == "audit-toolkit":
+            sys.exit(handle_backtest_audit_toolkit(args))
+        else:
+            console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|idea-card-normalize|audit-toolkit} --help[/]")
+            sys.exit(1)
     
     # ===== SMOKE TEST MODE =====
     # If --smoke is specified, run non-interactive smoke tests
@@ -725,6 +1305,10 @@ def main():
                 # LIVE connectivity and limited order test
                 from src.cli.smoke_tests import run_live_check_smoke
                 exit_code = run_live_check_smoke()
+            elif args.smoke == "backtest":
+                # Backtest engine smoke test
+                from src.cli.smoke_tests import run_backtest_smoke
+                exit_code = run_backtest_smoke(fresh_db=args.fresh_db)
             else:
                 exit_code = run_smoke_suite(args.smoke, app, config)
             sys.exit(exit_code)

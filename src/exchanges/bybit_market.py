@@ -177,3 +177,23 @@ def get_risk_limit(client: "BybitClient", symbol: str = None, category: str = "l
     result = client._extract_result(response)
     return result.get("list", [])
 
+
+def get_instrument_launch_time(client: "BybitClient", symbol: str, category: str = "linear") -> Optional[int]:
+    """
+    Get instrument launch timestamp in milliseconds.
+    
+    Args:
+        client: BybitClient instance
+        symbol: Trading symbol (e.g., "BTCUSDT")
+        category: Product category ("linear", "inverse", "spot", "option")
+        
+    Returns:
+        Launch timestamp in milliseconds, or None if not found/not available
+    """
+    info = get_instrument_info(client, symbol=symbol, category=category)
+    if info and "launchTime" in info:
+        try:
+            return int(info["launchTime"])
+        except (ValueError, TypeError):
+            return None
+    return None

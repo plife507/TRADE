@@ -151,6 +151,14 @@ class Application:
         
         self.logger.info("Initializing application...")
         
+        # Emit app.init.start event
+        self.logger.event(
+            "app.init.start",
+            component="application",
+            trading_mode=str(self.config.trading.mode),
+            use_demo=self.config.bybit.use_demo,
+        )
+        
         try:
             # Validate config
             is_valid, messages = self.config.validate()
@@ -180,11 +188,27 @@ class Application:
             
             self._initialized = True
             self.logger.info("Application initialized successfully")
+            
+            # Emit app.init.end event
+            self.logger.event(
+                "app.init.end",
+                component="application",
+                success=True,
+            )
             return True
             
         except Exception as e:
             self._last_error = str(e)
             self.logger.error(f"Application initialization failed: {e}")
+            
+            # Emit app.init.end event (failure)
+            self.logger.event(
+                "app.init.end",
+                level="ERROR",
+                component="application",
+                success=False,
+                error=str(e),
+            )
             return False
     
     def start(self) -> bool:
@@ -207,6 +231,12 @@ class Application:
             return True
         
         self.logger.info("Starting application...")
+        
+        # Emit app.start.start event
+        self.logger.event(
+            "app.start.start",
+            component="application",
+        )
         
         try:
             # Check if risk manager needs websocket
@@ -231,11 +261,28 @@ class Application:
             
             self._running = True
             self.logger.info("Application started")
+            
+            # Emit app.start.end event
+            self.logger.event(
+                "app.start.end",
+                component="application",
+                success=True,
+                websocket_started=should_start_ws,
+            )
             return True
             
         except Exception as e:
             self._last_error = str(e)
             self.logger.error(f"Application start failed: {e}")
+            
+            # Emit app.start.end event (failure)
+            self.logger.event(
+                "app.start.end",
+                level="ERROR",
+                component="application",
+                success=False,
+                error=str(e),
+            )
             return False
     
     def stop(self) -> None:
@@ -249,6 +296,12 @@ class Application:
         
         self._shutting_down = True
         self.logger.info("Stopping application...")
+        
+        # Emit app.stop.start event
+        self.logger.event(
+            "app.stop.start",
+            component="application",
+        )
         
         try:
             # Run shutdown callbacks
@@ -264,8 +317,24 @@ class Application:
             self._running = False
             self.logger.info("Application stopped")
             
+            # Emit app.stop.end event
+            self.logger.event(
+                "app.stop.end",
+                component="application",
+                success=True,
+            )
+            
         except Exception as e:
             self.logger.error(f"Error during shutdown: {e}")
+            
+            # Emit app.stop.end event (with error)
+            self.logger.event(
+                "app.stop.end",
+                level="WARNING",
+                component="application",
+                success=False,
+                error=str(e),
+            )
         
         finally:
             self._shutting_down = False

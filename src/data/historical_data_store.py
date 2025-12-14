@@ -37,38 +37,49 @@ from ..config.constants import (
 from ..utils.logger import get_logger
 
 
-# Activity emojis for visual feedback
+# Activity emojis for visual feedback (with Windows-safe fallbacks)
+import sys
+import os
+
+# Detect if we're on Windows with a non-UTF8 console
+_USE_ASCII = (
+    sys.platform == "win32" 
+    and os.environ.get("PYTHONIOENCODING", "").lower() != "utf-8"
+    and not os.environ.get("WT_SESSION")  # Windows Terminal supports UTF-8
+)
+
+
 class ActivityEmoji:
-    """Fun emojis for different activities."""
+    """Fun emojis for different activities. Falls back to ASCII on Windows."""
     # Data operations
-    SYNC = "📡"
-    DOWNLOAD = "⬇️"
-    UPLOAD = "⬆️"
-    CANDLE = "🕯️"
-    CHART = "📊"
-    DATABASE = "🗄️"
+    SYNC = "[SYNC]" if _USE_ASCII else "📡"
+    DOWNLOAD = "[DL]" if _USE_ASCII else "⬇️"
+    UPLOAD = "[UL]" if _USE_ASCII else "⬆️"
+    CANDLE = "[C]" if _USE_ASCII else "🕯️"
+    CHART = "[CHART]" if _USE_ASCII else "📊"
+    DATABASE = "[DB]" if _USE_ASCII else "🗄️"
     
     # Money/Trading
-    MONEY_BAG = "💰"
-    DOLLAR = "💵"
-    ROCKET = "🚀"
-    STONKS = "📈"
+    MONEY_BAG = "[$]" if _USE_ASCII else "💰"
+    DOLLAR = "[$]" if _USE_ASCII else "💵"
+    ROCKET = "[^]" if _USE_ASCII else "🚀"
+    STONKS = "[+]" if _USE_ASCII else "📈"
     
     # Status
-    LOADING = "⏳"
-    SUCCESS = "✅"
-    ERROR = "❌"
-    WARNING = "⚠️"
-    SEARCH = "🔍"
-    REPAIR = "🔧"
-    TRASH = "🗑️"
-    SPARKLE = "✨"
-    FIRE = "🔥"
+    LOADING = "[...]" if _USE_ASCII else "⏳"
+    SUCCESS = "[OK]" if _USE_ASCII else "✅"
+    ERROR = "[ERR]" if _USE_ASCII else "❌"
+    WARNING = "[WARN]" if _USE_ASCII else "⚠️"
+    SEARCH = "[?]" if _USE_ASCII else "🔍"
+    REPAIR = "[FIX]" if _USE_ASCII else "🔧"
+    TRASH = "[DEL]" if _USE_ASCII else "🗑️"
+    SPARKLE = "[*]" if _USE_ASCII else "✨"
+    FIRE = "[!]" if _USE_ASCII else "🔥"
     
-    # Progress spinners
-    SPINNERS = ["◐", "◓", "◑", "◒"]
-    BARS = ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"]
-    DOTS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    # Progress spinners (ASCII-safe versions)
+    SPINNERS = ["|", "/", "-", "\\"] if _USE_ASCII else ["◐", "◓", "◑", "◒"]
+    BARS = ["#"] * 8 if _USE_ASCII else ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"]
+    DOTS = ["."] * 10 if _USE_ASCII else ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
 
 class ActivitySpinner:
@@ -132,7 +143,7 @@ TIMEFRAMES = {
 }
 
 # Timeframe to minutes mapping (for edge candle calculations)
-TIMEFRAME_MINUTES = {
+TF_MINUTES = {
     "1m": 1,
     "5m": 5,
     "15m": 15,
@@ -140,6 +151,8 @@ TIMEFRAME_MINUTES = {
     "4h": 240,
     "1d": 1440,
 }
+# Alias for backward compatibility
+TIMEFRAME_MINUTES = TF_MINUTES
 
 # Period parsing
 PERIOD_MULTIPLIERS = {
@@ -153,9 +166,9 @@ PERIOD_MULTIPLIERS = {
 
 @dataclass
 class SyncStatus:
-    """Status of a symbol/timeframe sync."""
+    """Status of a symbol/tf sync."""
     symbol: str
-    timeframe: str
+    tf: str
     first_timestamp: Optional[datetime]
     last_timestamp: Optional[datetime]
     candle_count: int
@@ -363,6 +376,24 @@ class HistoricalDataStore:
                 record_count INTEGER,
                 last_sync TIMESTAMP,
                 PRIMARY KEY (symbol)
+            )
+        """)
+        
+        # Extremes metadata table (Phase -1: bounds per symbol/tf after bootstrap)
+        self.table_extremes = resolve_table_name("data_extremes", self.env)
+        self.conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.table_extremes} (
+                symbol VARCHAR NOT NULL,
+                data_type VARCHAR NOT NULL,
+                timeframe VARCHAR,
+                earliest_ts TIMESTAMP,
+                latest_ts TIMESTAMP,
+                row_count INTEGER,
+                gap_count_after_heal INTEGER DEFAULT 0,
+                resolved_launch_time TIMESTAMP,
+                source VARCHAR,
+                last_updated TIMESTAMP,
+                PRIMARY KEY (symbol, data_type, timeframe)
             )
         """)
         
@@ -1122,7 +1153,7 @@ class HistoricalDataStore:
     def get_ohlcv(
         self,
         symbol: str,
-        timeframe: str,
+        tf: str,
         period: str = None,
         start: datetime = None,
         end: datetime = None,
@@ -1132,7 +1163,7 @@ class HistoricalDataStore:
         
         Args:
             symbol: Trading symbol
-            timeframe: Candle timeframe
+            tf: Candle timeframe
             period: Period string ("1M", "2W", etc.) - alternative to start/end
             start: Start datetime
             end: End datetime
@@ -1148,18 +1179,22 @@ class HistoricalDataStore:
             FROM {self.table_ohlcv}
             WHERE symbol = ? AND timeframe = ?
         """
-        params = [symbol, timeframe]
+        params = [symbol, tf]
         
         if period:
             start = datetime.now() - self.parse_period(period)
         
+        # DuckDB stores naive timestamps (UTC assumed)
+        # Strip timezone info to avoid conversion issues
         if start:
             query += " AND timestamp >= ?"
-            params.append(start)
+            start_param = start.replace(tzinfo=None) if start.tzinfo else start
+            params.append(start_param)
         
         if end:
             query += " AND timestamp <= ?"
-            params.append(end)
+            end_param = end.replace(tzinfo=None) if end.tzinfo else end
+            params.append(end_param)
         
         query += " ORDER BY timestamp"
         
@@ -1464,6 +1499,90 @@ class HistoricalDataStore:
         """Reclaim disk space after deletions."""
         self.conn.execute("VACUUM")
     
+    # ==================== EXTREMES METADATA ====================
+    
+    def update_extremes(
+        self,
+        symbol: str,
+        data_type: str,
+        timeframe: Optional[str] = None,
+        earliest_ts: Optional[datetime] = None,
+        latest_ts: Optional[datetime] = None,
+        row_count: int = 0,
+        gap_count: int = 0,
+        launch_time: Optional[datetime] = None,
+        source: str = "full_from_launch",
+    ):
+        """
+        Update extremes metadata for a symbol/data_type/tf.
+        
+        Args:
+            symbol: Trading symbol
+            data_type: "ohlcv", "funding", or "open_interest"
+            timeframe: Timeframe (for OHLCV) or None
+            earliest_ts: Earliest timestamp in DB
+            latest_ts: Latest timestamp in DB
+            row_count: Number of rows
+            gap_count: Gap count after healing
+            launch_time: Resolved instrument launchTime
+            source: Source of the data (e.g., "full_from_launch", "sync_range")
+        """
+        symbol = symbol.upper()
+        tf_value = timeframe if timeframe else "N/A"
+        
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_extremes} 
+            (symbol, data_type, timeframe, earliest_ts, latest_ts, row_count, 
+             gap_count_after_heal, resolved_launch_time, source, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            symbol, data_type, tf_value, earliest_ts, latest_ts,
+            row_count, gap_count, launch_time, source, datetime.now()
+        ])
+    
+    def get_extremes(self, symbol: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get extremes metadata for symbol(s).
+        
+        Args:
+            symbol: Specific symbol or None for all
+            
+        Returns:
+            Dict with extremes per symbol/data_type/tf
+        """
+        if symbol:
+            symbol = symbol.upper()
+            rows = self.conn.execute(f"""
+                SELECT * FROM {self.table_extremes}
+                WHERE symbol = ?
+                ORDER BY data_type, timeframe
+            """, [symbol]).fetchall()
+        else:
+            rows = self.conn.execute(f"""
+                SELECT * FROM {self.table_extremes}
+                ORDER BY symbol, data_type, timeframe
+            """).fetchall()
+        
+        result = {}
+        for row in rows:
+            sym, dtype, tf, earliest, latest, count, gaps, launch, src, updated = row
+            if sym not in result:
+                result[sym] = {}
+            if dtype not in result[sym]:
+                result[sym][dtype] = {}
+            
+            result[sym][dtype][tf] = {
+                "earliest_ts": earliest.isoformat() if earliest else None,
+                "latest_ts": latest.isoformat() if latest else None,
+                "row_count": count,
+                "gap_count_after_heal": gaps,
+                "resolved_launch_time": launch.isoformat() if launch else None,
+                "source": src,
+                "last_updated": updated.isoformat() if updated else None,
+            }
+        
+        return result
+    
     def close(self):
         """Close database connection."""
         self.conn.close()
@@ -1520,18 +1639,18 @@ def get_demo_historical_store() -> HistoricalDataStore:
 
 def get_ohlcv(
     symbol: str,
-    timeframe: str,
+    tf: str,
     period: str = None,
     start: datetime = None,
     end: datetime = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> pd.DataFrame:
     """
-    Get OHLCV data for a symbol/timeframe.
+    Get OHLCV data for a symbol/tf.
     
     Args:
         symbol: Trading symbol (e.g., "BTCUSDT")
-        timeframe: Candle timeframe (e.g., "15m", "1h")
+        tf: Candle timeframe (e.g., "15m", "1h")
         period: Period string ("1M", "2W", etc.) - alternative to start/end
         start: Start datetime
         end: End datetime
@@ -1541,21 +1660,21 @@ def get_ohlcv(
         DataFrame with timestamp, open, high, low, close, volume
     """
     store = get_historical_store(env)
-    return store.get_ohlcv(symbol, timeframe, period=period, start=start, end=end)
+    return store.get_ohlcv(symbol, tf, period=period, start=start, end=end)
 
 
 def get_latest_ohlcv(
     symbol: str,
-    timeframe: str,
+    tf: str,
     limit: int = 100,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> pd.DataFrame:
     """
-    Get the most recent OHLCV candles for a symbol/timeframe.
+    Get the most recent OHLCV candles for a symbol/tf.
     
     Args:
         symbol: Trading symbol
-        timeframe: Candle timeframe
+        tf: Candle timeframe
         limit: Number of candles to return
         env: Data environment
         
@@ -1563,31 +1682,30 @@ def get_latest_ohlcv(
         DataFrame with the most recent candles
     """
     store = get_historical_store(env)
-    # Compute approximate start time based on limit and timeframe
-    from .historical_data_store import TIMEFRAME_MINUTES
-    tf_minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
+    # Compute approximate start time based on limit and tf
+    tf_minutes = TF_MINUTES.get(tf, 15)
     start = datetime.now() - timedelta(minutes=tf_minutes * limit * 2)  # Extra buffer
-    df = store.get_ohlcv(symbol, timeframe, start=start)
+    df = store.get_ohlcv(symbol, tf, start=start)
     return df.tail(limit) if len(df) > limit else df
 
 
 def append_ohlcv(
     symbol: str,
-    timeframe: str,
+    tf: str,
     df: pd.DataFrame,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> None:
     """
-    Append OHLCV data for a symbol/timeframe.
+    Append OHLCV data for a symbol/tf.
     
     Args:
         symbol: Trading symbol
-        timeframe: Candle timeframe
+        tf: Candle timeframe
         df: DataFrame with OHLCV data (columns: timestamp, open, high, low, close, volume)
         env: Data environment
     """
     store = get_historical_store(env)
-    store._store_dataframe(symbol, timeframe, df)
+    store._store_dataframe(symbol, tf, df)
     store._update_metadata(symbol, timeframe)
 
 

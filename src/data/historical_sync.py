@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 # Import constants from main module when running
 def _get_constants():
-    from .historical_data_store import TIMEFRAMES, TIMEFRAME_MINUTES, ActivityEmoji, ActivitySpinner
-    return TIMEFRAMES, TIMEFRAME_MINUTES, ActivityEmoji, ActivitySpinner
+    from .historical_data_store import TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner
+    return TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner
 
 
 def sync(
@@ -27,7 +27,7 @@ def sync(
     show_spinner: bool = True,
 ) -> Dict[str, int]:
     """Sync historical data for symbols."""
-    TIMEFRAMES, TIMEFRAME_MINUTES, ActivityEmoji, ActivitySpinner = _get_constants()
+    TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner = _get_constants()
     
     if isinstance(symbols, str):
         symbols = [symbols]
@@ -183,11 +183,11 @@ def sync_forward(
 
 def _sync_forward_symbol_timeframe(store: "HistoricalDataStore", symbol: str, timeframe: str) -> int:
     """Sync a single symbol/timeframe forward from last timestamp to now."""
-    TIMEFRAMES, TIMEFRAME_MINUTES, _, _ = _get_constants()
+    TIMEFRAMES, TF_MINUTES, _, _ = _get_constants()
     
     symbol = symbol.upper()
     bybit_tf = TIMEFRAMES.get(timeframe, timeframe)
-    tf_minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
+    tf_minutes = TF_MINUTES.get(timeframe, 15)
     
     existing = store.conn.execute(f"""
         SELECT MAX(timestamp) as last_ts
@@ -224,11 +224,11 @@ def _sync_symbol_timeframe(
     target_end: datetime,
 ) -> int:
     """Sync a single symbol/timeframe combination."""
-    TIMEFRAMES, TIMEFRAME_MINUTES, _, _ = _get_constants()
+    TIMEFRAMES, TF_MINUTES, _, _ = _get_constants()
     
     symbol = symbol.upper()
     bybit_tf = TIMEFRAMES.get(timeframe, timeframe)
-    tf_minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
+    tf_minutes = TF_MINUTES.get(timeframe, 15)
     
     existing = store.conn.execute(f"""
         SELECT MIN(timestamp) as first_ts, MAX(timestamp) as last_ts

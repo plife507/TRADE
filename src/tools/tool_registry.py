@@ -24,7 +24,8 @@ Usage:
 
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
-import inspect
+import time
+import uuid
 
 from .shared import ToolResult
 
@@ -988,6 +989,85 @@ class ToolRegistry:
             parameters={},
             required=[],
         )
+        
+        # =====================================================================
+        # BACKTEST TOOLS
+        # =====================================================================
+        from . import (
+            backtest_list_systems_tool,
+            backtest_get_system_tool,
+            backtest_run_tool,
+            backtest_prepare_data_tool,
+            backtest_verify_data_tool,
+            backtest_list_strategies_tool,
+        )
+        
+        self._register(
+            name="backtest_list_systems",
+            function=backtest_list_systems_tool,
+            description="List all available backtest system configurations",
+            category="backtest.systems",
+            parameters={},
+            required=[],
+        )
+        
+        self._register(
+            name="backtest_get_system",
+            function=backtest_get_system_tool,
+            description="Get detailed information about a system configuration",
+            category="backtest.systems",
+            parameters={
+                "system_id": {"type": "string", "description": "System configuration ID"},
+            },
+            required=["system_id"],
+        )
+        
+        self._register(
+            name="backtest_run",
+            function=backtest_run_tool,
+            description="Run a backtest for a system configuration",
+            category="backtest.run",
+            parameters={
+                "system_id": {"type": "string", "description": "System configuration ID"},
+                "window_name": {"type": "string", "description": "Window to run (hygiene or test)", "default": "hygiene"},
+                "write_artifacts": {"type": "boolean", "description": "Whether to write run artifacts", "default": True},
+            },
+            required=["system_id"],
+        )
+        
+        self._register(
+            name="backtest_prepare_data",
+            function=backtest_prepare_data_tool,
+            description="Prepare data for backtesting based on system config",
+            category="backtest.data",
+            parameters={
+                "system_id": {"type": "string", "description": "System configuration ID"},
+                "fresh_db": {"type": "boolean", "description": "If true, delete all data first (opt-in reset)", "default": False},
+            },
+            required=["system_id"],
+        )
+        
+        self._register(
+            name="backtest_verify_data",
+            function=backtest_verify_data_tool,
+            description="Verify data quality for a backtest run",
+            category="backtest.data",
+            parameters={
+                "system_id": {"type": "string", "description": "System configuration ID"},
+                "window_name": {"type": "string", "description": "Window to verify data for", "default": "hygiene"},
+                "heal_gaps": {"type": "boolean", "description": "If true, attempt to heal gaps", "default": True},
+            },
+            required=["system_id"],
+        )
+        
+        self._register(
+            name="backtest_list_strategies",
+            function=backtest_list_strategies_tool,
+            description="List all available strategies",
+            category="backtest.strategies",
+            parameters={},
+            required=[],
+        )
     
     def _register(
         self,
@@ -1048,12 +1128,13 @@ class ToolRegistry:
             tools.append(spec.to_dict())
         return tools
     
-    def execute(self, name: str, **kwargs) -> ToolResult:
+    def execute(self, name: str, *, meta: Optional[Dict[str, Any]] = None, **kwargs) -> ToolResult:
         """
         Execute a tool by name with arguments.
         
         Args:
             name: Tool name
+            meta: Optional metadata dict with context (run_id, agent_id, trace_id, tool_call_id)
             **kwargs: Tool arguments
         
         Returns:
@@ -1061,6 +1142,14 @@ class ToolRegistry:
         
         Example:
             result = registry.execute("market_buy", symbol="SOLUSDT", usd_amount=100)
+            
+            # With agent context:
+            result = registry.execute(
+                "market_buy",
+                symbol="SOLUSDT",
+                usd_amount=100,
+                meta={"run_id": "run-abc123", "agent_id": "strategy-bot"}
+            )
         """
         spec = self._tools.get(name)
         if not spec:
@@ -1073,10 +1162,91 @@ class ToolRegistry:
                 success=False, 
                 error=f"Missing required parameters: {', '.join(missing)}"
             )
+
+        # Import logging utilities
+        from ..utils.logger import get_logger, redact_dict
+        from ..utils.log_context import (
+            new_tool_call_context,
+            context_from_meta,
+            log_context_scope,
+        )
         
+        logger = get_logger()
+        meta = meta or {}
+        
+        # Extract context from meta and set up tool call context
+        ctx_fields = context_from_meta(meta)
+        tool_call_id = meta.get("tool_call_id") or meta.get("call_id")
+        
+        # Redact args for logging
+        safe_args = redact_dict(kwargs)
+        safe_meta = redact_dict(meta)
+        
+        # Execute within a tool call context scope
+        with new_tool_call_context(name, tool_call_id=tool_call_id) as ctx:
+            # Apply any additional context from meta
+            if ctx_fields:
+                with log_context_scope(**ctx_fields):
+                    return self._execute_tool_with_logging(
+                        spec, name, ctx.tool_call_id, safe_args, safe_meta, logger, kwargs
+                    )
+            else:
+                return self._execute_tool_with_logging(
+                    spec, name, ctx.tool_call_id, safe_args, safe_meta, logger, kwargs
+                )
+    
+    def _execute_tool_with_logging(
+        self,
+        spec: ToolSpec,
+        name: str,
+        tool_call_id: str,
+        safe_args: Dict[str, Any],
+        safe_meta: Dict[str, Any],
+        logger,
+        kwargs: Dict[str, Any],
+    ) -> ToolResult:
+        """Execute a tool with structured event logging."""
+        started = time.perf_counter()
+        
+        # Emit tool.call.start event
+        logger.event(
+            "tool.call.start",
+            component="tool_registry",
+            tool_name=name,
+            category=spec.category,
+            args=safe_args,
+            meta=safe_meta,
+        )
+
         try:
-            return spec.function(**kwargs)
+            result = spec.function(**kwargs)
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            
+            # Emit tool.call.end event
+            logger.event(
+                "tool.call.end",
+                component="tool_registry",
+                tool_name=name,
+                success=getattr(result, 'success', None),
+                elapsed_ms=elapsed_ms,
+                message=getattr(result, 'message', None),
+                source=getattr(result, 'source', None),
+            )
+            return result
+            
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            
+            # Emit tool.call.error event
+            logger.event(
+                "tool.call.error",
+                level="ERROR",
+                component="tool_registry",
+                tool_name=name,
+                elapsed_ms=elapsed_ms,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return ToolResult(success=False, error=f"Tool execution failed: {str(e)}")
     
     def execute_batch(self, actions: List[Dict[str, Any]]) -> List[ToolResult]:

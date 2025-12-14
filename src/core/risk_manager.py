@@ -181,6 +181,18 @@ class RiskManager:
                     veto_reason=global_decision.veto_reason.value,
                     details=global_decision.details,
                 )
+                # Emit structured event for risk block
+                self.logger.event(
+                    "risk.check.blocked",
+                    level="WARNING",
+                    component="risk_manager",
+                    symbol=signal.symbol,
+                    direction=signal.direction,
+                    size_usd=signal.size_usd,
+                    block_reason="global_risk",
+                    veto_reason=global_decision.veto_reason.value,
+                    message=global_decision.message,
+                )
                 return RiskCheckResult(
                     allowed=False,
                     reason=f"Global risk: {global_decision.message}",
@@ -193,6 +205,18 @@ class RiskManager:
                 f"Daily loss limit reached: ${self._daily_pnl:.2f}",
                 limit=self.config.max_daily_loss_usd
             )
+            # Emit structured event
+            self.logger.event(
+                "risk.check.blocked",
+                level="WARNING",
+                component="risk_manager",
+                symbol=signal.symbol,
+                direction=signal.direction,
+                size_usd=signal.size_usd,
+                block_reason="daily_loss_limit",
+                daily_pnl=self._daily_pnl,
+                limit=self.config.max_daily_loss_usd,
+            )
             return RiskCheckResult(
                 allowed=False,
                 reason=f"Daily loss limit reached (${self._daily_pnl:.2f} lost today)"
@@ -204,6 +228,18 @@ class RiskManager:
                 "BLOCKED",
                 f"Balance too low: ${portfolio.available:.2f}",
                 min_required=self.config.min_balance_usd
+            )
+            # Emit structured event
+            self.logger.event(
+                "risk.check.blocked",
+                level="WARNING",
+                component="risk_manager",
+                symbol=signal.symbol,
+                direction=signal.direction,
+                size_usd=signal.size_usd,
+                block_reason="min_balance",
+                available=portfolio.available,
+                min_required=self.config.min_balance_usd,
             )
             return RiskCheckResult(
                 allowed=False,

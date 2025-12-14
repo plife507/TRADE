@@ -1,5 +1,8 @@
 ## Environment Routing and Orchestration Overview
 
+**Last Updated:** 2025-12-13  
+**Status:** Current Implementation
+
 This document explains, in detail, how environments are selected and used end‑to‑end:
 
 - How callers (CLI, external scripts, orchestrators) specify **which environment** they want:
@@ -9,6 +12,8 @@ This document explains, in detail, how environments are selected and used end‑
 - How responses come back from REST and WebSocket, and how an orchestration layer can safely reason about *which environment* produced the data.
 
 This is the foundation for building robust orchestration for the Agent Research Factory described in `docs/brainstorm/agent_research_factory_brainstorm.md`.
+
+**Note:** This architecture is implemented and working. Backtest engine uses separate data environment selection via system config.
 
 ---
 

@@ -369,14 +369,6 @@ def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSel
     return TimeRangeSelection(start_ms=start_ms, end_ms=end_ms)
 
 
-def get_time_window(max_days: int = 7, default: str = "24h", include_custom: bool = True) -> str:
-    """DEPRECATED: Use select_time_range_cli() for full custom date support."""
-    selection = select_time_range_cli(max_days=max_days, default=default, include_custom=False)
-    
-    if selection.is_back:
-        return BACK
-    
-    return selection.window or default
 
 
 def print_error_below_menu(error_message: str, error_details: str = None):
@@ -398,7 +390,7 @@ def print_error_below_menu(error_message: str, error_details: str = None):
 
 def run_tool_action(action_key: str, tool_fn, *args, **kwargs) -> ToolResult:
     """
-    Execute a tool with status display and error handling.
+    Execute a tool with status display, error handling, and structured event logging.
     
     Args:
         action_key: Key for status message formatting (e.g., "orders.list")
@@ -409,20 +401,68 @@ def run_tool_action(action_key: str, tool_fn, *args, **kwargs) -> ToolResult:
     Returns:
         ToolResult from the tool execution
     """
-    status_msg = format_action_status(action_key, **kwargs)
+    import time
+    from ..utils.logger import get_logger, redact_dict
+    from ..utils.log_context import new_tool_call_context
     
-    try:
-        with console.status(f"[bold cyan]{status_msg}[/]", spinner="dots"):
-            result = tool_fn(*args, **kwargs)
-        return result
-    except Exception as e:
-        print_error_below_menu(str(e), f"Action: {get_action_label(action_key)}")
-        return ToolResult(success=False, error=str(e), message="", data=None)
+    logger = get_logger()
+    status_msg = format_action_status(action_key, **kwargs)
+    tool_name = getattr(tool_fn, '__name__', action_key)
+    
+    # Redact args for logging
+    safe_kwargs = redact_dict(kwargs)
+    
+    # Execute within a tool call context
+    with new_tool_call_context(tool_name) as ctx:
+        started = time.perf_counter()
+        
+        # Emit tool.call.start event
+        logger.event(
+            "tool.call.start",
+            component="cli",
+            tool_name=tool_name,
+            action_key=action_key,
+            args=safe_kwargs,
+        )
+        
+        try:
+            with console.status(f"[bold cyan]{status_msg}[/]", spinner="dots"):
+                result = tool_fn(*args, **kwargs)
+            
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            
+            # Emit tool.call.end event
+            logger.event(
+                "tool.call.end",
+                component="cli",
+                tool_name=tool_name,
+                success=getattr(result, 'success', None),
+                elapsed_ms=elapsed_ms,
+                message=getattr(result, 'message', None),
+            )
+            return result
+            
+        except Exception as e:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            
+            # Emit tool.call.error event
+            logger.event(
+                "tool.call.error",
+                level="ERROR",
+                component="cli",
+                tool_name=tool_name,
+                elapsed_ms=elapsed_ms,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            
+            print_error_below_menu(str(e), f"Action: {get_action_label(action_key)}")
+            return ToolResult(success=False, error=str(e), message="", data=None)
 
 
 def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, **kwargs) -> ToolResult:
     """
-    Execute a long-running tool with status display and Ctrl+C handling.
+    Execute a long-running tool with status display, Ctrl+C handling, and structured event logging.
     
     Args:
         action_key: Key for status message formatting (e.g., "data.sync_ohlcv")
@@ -434,42 +474,102 @@ def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, 
     Returns:
         ToolResult from the tool execution
     """
+    import time
     from ..core.application import get_application
+    from ..utils.logger import get_logger, redact_dict
+    from ..utils.log_context import new_tool_call_context
     
+    logger = get_logger()
     status_msg = format_action_status(action_key, **kwargs)
+    tool_name = getattr(tool_fn, '__name__', action_key)
+    
+    # Redact args for logging
+    safe_kwargs = redact_dict(kwargs)
     
     app = get_application()
     app.suppress_shutdown()
     
-    try:
-        console.print(f"\n[bold cyan]{status_msg}[/]")
-        console.print("[dim]Press Ctrl+C to cancel gracefully[/]\n")
+    # Execute within a tool call context
+    with new_tool_call_context(tool_name) as ctx:
+        started = time.perf_counter()
         
-        with console.status(f"[bold green]▶ {get_action_label(action_key)} in progress...[/]", spinner="dots"):
-            result = tool_fn(*args, **kwargs)
+        # Emit tool.call.start event
+        logger.event(
+            "tool.call.start",
+            component="cli",
+            tool_name=tool_name,
+            action_key=action_key,
+            args=safe_kwargs,
+            long_running=True,
+        )
         
-        complete_msg = format_action_complete(action_key, **kwargs)
-        console.print(f"[green]✓ {complete_msg}[/]")
-        
-        return result
-        
-    except KeyboardInterrupt:
-        console.print(f"\n[yellow]⚠️  Operation cancelled by user[/]")
-        if cancel_store:
-            try:
-                from ..data.historical_data_store import get_historical_store
-                store = get_historical_store()
-                store.cancel()
-            except Exception:
-                pass
-        return ToolResult(success=False, error="Cancelled by user", message="Operation cancelled", data=None)
-        
-    except Exception as e:
-        print_error_below_menu(str(e), f"Action: {get_action_label(action_key)}")
-        return ToolResult(success=False, error=str(e), message="", data=None)
-        
-    finally:
-        app.restore_shutdown()
+        try:
+            console.print(f"\n[bold cyan]{status_msg}[/]")
+            console.print("[dim]Press Ctrl+C to cancel gracefully[/]\n")
+            
+            with console.status(f"[bold green]▶ {get_action_label(action_key)} in progress...[/]", spinner="dots"):
+                result = tool_fn(*args, **kwargs)
+            
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            
+            complete_msg = format_action_complete(action_key, **kwargs)
+            console.print(f"[green]✓ {complete_msg}[/]")
+            
+            # Emit tool.call.end event
+            logger.event(
+                "tool.call.end",
+                component="cli",
+                tool_name=tool_name,
+                success=getattr(result, 'success', None),
+                elapsed_ms=elapsed_ms,
+                message=getattr(result, 'message', None),
+            )
+            
+            return result
+            
+        except KeyboardInterrupt:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            console.print(f"\n[yellow]⚠️  Operation cancelled by user[/]")
+            
+            if cancel_store:
+                try:
+                    from ..data.historical_data_store import get_historical_store
+                    store = get_historical_store()
+                    store.cancel()
+                except Exception:
+                    pass
+            
+            # Emit tool.call.cancelled event
+            logger.event(
+                "tool.call.cancelled",
+                level="WARNING",
+                component="cli",
+                tool_name=tool_name,
+                elapsed_ms=elapsed_ms,
+                reason="user_interrupt",
+            )
+            
+            return ToolResult(success=False, error="Cancelled by user", message="Operation cancelled", data=None)
+            
+        except Exception as e:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            
+            # Emit tool.call.error event
+            logger.event(
+                "tool.call.error",
+                level="ERROR",
+                component="cli",
+                tool_name=tool_name,
+                elapsed_ms=elapsed_ms,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            
+            print_error_below_menu(str(e), f"Action: {get_action_label(action_key)}")
+            return ToolResult(success=False, error=str(e), message="", data=None)
+            
+        finally:
+            app.restore_shutdown()
 
 
 def print_result(result: ToolResult):

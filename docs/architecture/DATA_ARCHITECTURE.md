@@ -1,4 +1,6 @@
-# TRADE Bot - Data Architecture & Backtesting Guide
+# TRADE Bot — Data Architecture & Storage Guide
+
+**Last Updated:** December 13, 2025
 
 ## Executive Summary
 
@@ -6,7 +8,7 @@ This document provides a comprehensive overview of the data architecture for the
 - **Live Data Sources**: What data we pull from Bybit's live API
 - **Historical Storage**: What data is stored in DuckDB for backtesting
 - **Data Flow**: How data moves from API → Storage → Backtesting
-- **DuckDB Performance Issues**: Solutions for terminal freezing and optimization strategies
+- **DuckDB Performance**: Solutions for optimization and maintenance
 
 ---
 
@@ -135,7 +137,7 @@ Stores OHLCV candlestick data for all symbols and timeframes.
 CREATE TABLE ohlcv (
     symbol VARCHAR NOT NULL,           -- Trading symbol (e.g., "BTCUSDT")
     timeframe VARCHAR NOT NULL,        -- Timeframe ("1m", "5m", "15m", "1h", "4h", "1d")
-    timestamp TIMESTAMP NOT NULL,      -- Candle start time (UTC)
+    timestamp TIMESTAMP NOT NULL,      -- Bar open time / ts_open (UTC)
     open DOUBLE,                       -- Opening price
     high DOUBLE,                       -- Highest price
     low DOUBLE,                        -- Lowest price
@@ -688,7 +690,15 @@ df.to_parquet("btcusdt_1h_1m.parquet")
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2024-12-07  
+**Document Version**: 1.1  
+**Last Updated**: 2025-12-13  
 **Maintained By**: TRADE Bot Development Team
+
+---
+
+## Related Documentation
+
+- `docs/architecture/SIMULATED_EXCHANGE.md` — Backtest accounting model
+- `docs/architecture/SYSTEM_REVIEW.md` — Complete technical overview
+- `docs/architecture/BACKTEST_MODULE_OVERVIEW.md` — Backtest module structure
 

@@ -279,6 +279,11 @@ class BybitClient:
         from . import bybit_market as mkt
         return mkt.get_risk_limit(self, symbol, category)
     
+    @handle_pybit_errors
+    def get_instrument_launch_time(self, symbol: str, category: str = "linear") -> Optional[int]:
+        from . import bybit_market as mkt
+        return mkt.get_instrument_launch_time(self, symbol, category)
+    
     # ==================== Account (delegated) ====================
     
     @handle_pybit_errors

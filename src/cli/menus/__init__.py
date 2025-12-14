@@ -7,6 +7,7 @@ Each menu module handles a specific area:
 - orders_menu: Order placement and management
 - market_data_menu: Market data queries
 - data_menu: Historical data management
+- backtest_menu: Strategy backtesting
 - diagnostics_menu: Connection tests, health checks
 """
 
@@ -15,6 +16,7 @@ from .market_data_menu import market_data_menu
 from .orders_menu import orders_menu, market_orders_menu, limit_orders_menu, stop_orders_menu, manage_orders_menu
 from .positions_menu import positions_menu
 from .account_menu import account_menu
+from .backtest_menu import backtest_menu
 
 __all__ = [
     "data_menu",
@@ -26,4 +28,5 @@ __all__ = [
     "manage_orders_menu",
     "positions_menu",
     "account_menu",
+    "backtest_menu",
 ]

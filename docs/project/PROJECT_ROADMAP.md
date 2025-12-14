@@ -1,259 +1,128 @@
-# TRADE Bot - Project Roadmap & Development Guide
+# TRADE — Project Roadmap
 
-**Last Updated:** December 6, 2025  
-**Project Status:** Production-Ready (Demo/Paper Trading)  
-**Overall Grade:** A (9/10) - Exceptional for a first project
+**Last Updated:** December 14, 2025  
+**Project Status:** Backtest engine operational with IdeaCard system; analytics complete (Phases 1-3)  
+**Overall Grade:** A (9/10) — Exceptional for a first project
 
 ---
 
 ## Executive Summary
 
-The TRADE bot is a **well-architected, safety-first** Bybit futures trading bot that demonstrates professional-grade software engineering practices. The codebase is **production-ready for demo/paper trading** and close to ready for live trading with minor enhancements.
+The TRADE bot is a **well-architected, safety-first** Bybit futures trading bot with a complete backtesting engine. The codebase is **production-ready for demo trading and backtesting**.
 
-**Current Strengths:**
-- ✅ Clean architecture with proper abstractions
-- ✅ Multi-layer safety validation
-- ✅ Comprehensive error handling
-- ✅ Rate limiting and API correctness
-- ✅ Strong test coverage for critical paths
+**Completed:**
+- ✅ Complete Bybit UTA trading support
+- ✅ Bybit-aligned backtest engine refactor (Phases 0–5: RuntimeSnapshot + MTF caching + mark unification)
+- ✅ DuckDB historical data store
+- ✅ Tool Registry for orchestrators
+- ✅ Risk controls and safety features
 
-**Immediate Focus Areas:**
-- Metrics and observability
-- Enhanced resilience patterns
-- File size management
-- Expanded test coverage
-
----
-
-## Current State Assessment
-
-### What's Working Excellently
-
-1. **Architecture (9.5/10)**
-   - Clear separation: `exchanges/` → `core/` → `tools/` → `CLI`
-   - No direct API bypasses
-   - Proper dependency injection
-   - Extensible for multi-exchange support
-
-2. **Safety & Risk (10/10)**
-   - Strict mode/API mapping (PAPER↔DEMO, REAL↔LIVE)
-   - Multi-layer validation (Config → ExchangeManager → OrderExecutor)
-   - Circuit breakers (daily loss, min balance, exposure caps)
-   - Panic button with proper cleanup
-
-3. **API Correctness (9/10)**
-   - Uses official pybit library correctly
-   - Rate limiting on all endpoints
-   - TimeRange abstraction prevents implicit defaults
-   - Server time sync for timestamp accuracy
-
-4. **Code Quality (8.5/10)**
-   - Type hints throughout
-   - Dataclasses and Enums
-   - Consistent logging
-   - Good documentation
-
-### Areas for Improvement
-
-1. **File Size Management (7/10)**
-   - `ExchangeManager` (~3300 lines) - needs splitting
-   - `bybit_client.py` (~2250 lines) - at limit but acceptable
-
-2. **Observability (7.5/10)**
-   - Missing metrics/telemetry
-   - No performance monitoring
-   - Limited alerting
-
-3. **Resilience Patterns (8/10)**
-   - Needs exponential backoff for rate limits
-   - Missing retry logic for transient failures
-   - No circuit breaker for repeated API failures
-
-4. **Test Coverage Depth (7.5/10)**
-   - Critical paths covered
-   - Missing stress tests
-   - Edge cases need more coverage
+**Current Focus:**
+- ✅ Backtest analytics (Phases 1-3 complete)
+- ✅ IdeaCard system fully operational
+- ✅ Indicator registry with 150+ pandas_ta indicators
+- 🔨 Additional backtest suites and validation
 
 ---
 
-## Path Forward: Development Phases
+## Phase Status
 
-### Phase 1: Production Hardening (Weeks 1-4)
+### ✅ Phase 1 — Core Backtest Engine (COMPLETE)
 
-**Goal:** Make the bot bulletproof for live trading
+**Goal:** Boring, reliable backtest engine for single system.
 
-#### 1.1 Metrics & Observability
-- [ ] Add structured metrics (Prometheus format)
-  - Request latency per endpoint
-  - Success/failure rates
-  - Rate limit utilization
-  - Order execution times
-- [ ] Performance monitoring
-  - Track slow operations (>1s)
-  - Monitor WebSocket reconnection frequency
-  - Alert on rate limit exhaustion
-- [ ] Enhanced logging
-  - Request/response logging (sanitized)
-  - Performance timestamps
-  - Error context enrichment
+**Delivered:**
+- Deterministic results (same inputs → same outputs)
+- No look-ahead (indicators computed correctly)
+- Bybit-aligned accounting (isolated margin, IMR/MMR, fees)
+- Config-only window switching (hygiene/test)
+- Canonical timing (`Bar.ts_open/ts_close`) + `RuntimeSnapshot` strategy input
+- MTF/HTF caching with readiness gate
+- Mark price unification (single mark per step)
+- Preflight data health gate + bounded heal loop (tools)
+- Artifact output (`result.json`, `trades.csv`, `equity.csv`, `account_curve.csv`, `run_manifest.json`, `events.jsonl`)
 
-**Priority:** HIGH  
-**Effort:** 2-3 days
+**SimulatedExchange Features:**
+- **Modular architecture**: Thin orchestrator (~200 LOC) with specialized modules
+- Explicit USD-named state variables
+- Entry gate with Active Order IM concept
+- Configurable fees (taker_fee_rate)
+- Stop conditions (account_blown, insufficient_free_margin)
+- RiskProfileConfig with all tunables
+- **Specialized modules**: Pricing, execution (slippage/liquidity/impact), funding, liquidation, ledger, metrics, constraints
 
-#### 1.2 Resilience Patterns
-- [ ] Exponential backoff for rate limit errors (10006)
-  - Start with 1s, max 60s
-  - Jitter to prevent thundering herd
-- [ ] Retry logic for transient failures
-  - Network timeouts
-  - 5xx server errors
-  - Connection resets
-- [ ] Circuit breaker pattern
-  - Track failure rates per endpoint
-  - Open circuit after 5 failures in 60s
-  - Half-open after 30s cooldown
+### ✅ Phase 2 — Tools & CLI Integration (COMPLETE)
 
-**Priority:** HIGH  
-**Effort:** 3-4 days
+**Goal:** Make backtesting usable via tools and CLI.
 
-#### 1.3 File Refactoring
-- [ ] Split `ExchangeManager` into:
-  - `ExchangeManager` (core interface, ~800 lines)
-  - `OrderBuilder` (order construction, ~600 lines)
-  - `PositionHelper` (position utilities, ~400 lines)
-  - `MarketDataHelper` (price/data helpers, ~300 lines)
-- [ ] Extract common patterns to utilities
-- [ ] Maintain backward compatibility
+**Status:**
+- ✅ `backtest_run_tool` — Run backtest by system_id + window_name
+- ✅ `backtest_list_systems_tool` — List available system configs
+- ✅ CLI Backtest menu — Interactive selection
+- ✅ Epoch tracking — Artifacts + lineage metadata
+- ✅ Smoke tests + integration gates (DuckDB + replay determinism)
+- 🔨 Ongoing polish (UX/error messages)
 
-**Priority:** MEDIUM  
-**Effort:** 2-3 days
+### 📋 Phase 3 — Logging & Data for Learning (FUTURE)
 
-#### 1.4 Enhanced Testing
-- [ ] Stress tests for rate limiter
-  - Test under sustained load
-  - Verify no leaks or memory issues
-- [ ] Edge case tests
-  - Partial order fills
-  - Order amendments mid-fill
-  - WebSocket reconnection scenarios
-- [ ] Concurrent execution tests
-  - Multiple orders simultaneously
-  - Race condition detection
+**Goal:** Log enough for future forecasting/ML.
 
-**Priority:** MEDIUM  
-**Effort:** 3-4 days
+**Planned:**
+- Per-bar dataset export (features + labels)
+- Reproducible feature snapshots
 
----
+### 📋 Phase 4 — Strategy Factory (FUTURE)
 
-### Phase 2: Feature Expansion (Weeks 5-8)
+**Goal:** Light orchestrator on top of tools.
 
-**Goal:** Add capabilities for advanced trading strategies
+**Planned:**
+- Strategy registry with status tracking
+- Batch backtest orchestration
+- Pass/fail tracking and promotion
 
-#### 2.1 Advanced Order Types
-- [ ] Iceberg orders (hidden quantity)
-- [ ] TWAP orders (time-weighted average price)
-- [ ] Conditional orders with multiple triggers
-- [ ] OCO (One-Cancels-Other) orders
+### 📋 Phase 5 — Forecast Experiments (FUTURE)
 
-**Priority:** MEDIUM  
-**Effort:** 1-2 weeks
+**Goal:** Offline forecast + policy experiments.
 
-#### 2.2 Strategy Framework
-- [ ] Strategy base class enhancements
-- [ ] Backtesting engine integration
-- [ ] Strategy performance tracking
-- [ ] Multi-strategy portfolio management
+**Planned:**
+- Simple forecaster on per-bar dataset
+- Rule-based policy selection
+- Composite backtest mode
 
-**Priority:** MEDIUM  
-**Effort:** 2-3 weeks
+### 📋 Phase 6 — Demo & Live (FUTURE)
 
-#### 2.3 Risk Management Enhancements
-- [ ] Dynamic position sizing (Kelly Criterion, etc.)
-- [ ] Correlation-based exposure limits
-- [ ] Sector/asset class diversification rules
-- [ ] Real-time risk dashboard
+**Goal:** Promote stable systems to demo/live.
 
-**Priority:** MEDIUM  
-**Effort:** 1-2 weeks
-
-#### 2.4 Data & Analytics
-- [ ] Real-time PnL tracking
-- [ ] Trade journal/audit log
-- [ ] Performance analytics (Sharpe, drawdown, etc.)
-- [ ] Historical trade replay
-
-**Priority:** LOW  
-**Effort:** 1-2 weeks
+**Planned:**
+- Demo window tracking
+- Performance-based promotion
+- Live deployment guardrails
 
 ---
 
-### Phase 3: Multi-Exchange Support (Weeks 9-12)
+## Current Architecture Scores
 
-**Goal:** Extend to other exchanges (HyperLiquid, etc.)
-
-#### 3.1 Exchange Abstraction Layer
-- [ ] Define unified exchange interface
-- [ ] Abstract common operations
-- [ ] Exchange-specific adapters
-- [ ] Unified order/position models
-
-**Priority:** LOW (future)  
-**Effort:** 3-4 weeks
-
-#### 3.2 HyperLiquid Integration
-- [ ] HyperLiquid client implementation
-- [ ] API mapping to unified interface
-- [ ] Rate limiting for HyperLiquid
-- [ ] Cross-exchange arbitrage tools
-
-**Priority:** LOW (future)  
-**Effort:** 2-3 weeks
+| Area | Score | Notes |
+|------|-------|-------|
+| **Architecture** | 9.5/10 | Clean layering, proper abstractions |
+| **Safety & Risk** | 10/10 | Strict mode mapping, circuit breakers |
+| **API Correctness** | 9/10 | Official SDK, rate limiting, TimeRange |
+| **Code Quality** | 9/10 | Type hints, dataclasses, consistent style |
+| **Backtest Engine** | 9/10 | Bybit-aligned, deterministic, configurable |
+| **Test Coverage** | 8/10 | Critical paths covered, needs more edge cases |
 
 ---
 
-### Phase 4: Infrastructure & DevOps (Ongoing)
+## Key Principles (NEVER COMPROMISE)
 
-**Goal:** Professional deployment and operations
-
-#### 4.1 CI/CD Pipeline
-- [ ] Automated testing on PR
-- [ ] Code quality checks (linting, type checking)
-- [ ] Automated deployment to staging
-- [ ] Rollback mechanisms
-
-**Priority:** MEDIUM  
-**Effort:** 1 week
-
-#### 4.2 Monitoring & Alerting
-- [ ] Health check endpoints
-- [ ] Alerting for critical failures
-- [ ] Dashboard for system status
-- [ ] Log aggregation (ELK stack or similar)
-
-**Priority:** MEDIUM  
-**Effort:** 1-2 weeks
-
-#### 4.3 Documentation
-- [ ] API documentation (OpenAPI/Swagger)
-- [ ] Architecture diagrams
-- [ ] Deployment guides
-- [ ] Troubleshooting runbook
-
-**Priority:** LOW  
-**Effort:** Ongoing
-
----
-
-## Key Principles to Maintain
-
-### 1. Safety First (NEVER COMPROMISE)
+### Safety First
 
 **Always:**
 - ✅ Validate trading mode before every order
 - ✅ Enforce risk limits strictly
 - ✅ Use demo API for testing
 - ✅ Log all trading decisions
-- ✅ Test through real interfaces (not just unit tests)
+- ✅ Test through real interfaces
 
 **Never:**
 - ❌ Bypass risk manager
@@ -261,13 +130,13 @@ The TRADE bot is a **well-architected, safety-first** Bybit futures trading bot 
 - ❌ Skip validation for "quick" fixes
 - ❌ Trade on live API without explicit confirmation
 
-### 2. Code Quality Standards
+### Code Quality Standards
 
 **Maintain:**
 - Type hints on all functions
 - Docstrings for public APIs
 - Consistent error handling
-- No files over 1500 lines (split if needed)
+- No files over 1500 lines
 - Tests for critical paths
 
 **Avoid:**
@@ -276,7 +145,7 @@ The TRADE bot is a **well-architected, safety-first** Bybit futures trading bot 
 - Silent error swallowing
 - Magic numbers without constants
 
-### 3. Architecture Discipline
+### Architecture Discipline
 
 **Follow:**
 - Tools layer is the ONLY public API
@@ -285,231 +154,83 @@ The TRADE bot is a **well-architected, safety-first** Bybit futures trading bot 
 - TimeRange for ALL history queries
 - Config for ALL settings
 
-**Resist:**
-- Quick fixes that bypass abstractions
-- Direct pybit calls outside bybit_client
-- Skipping validation layers
-- Tight coupling between modules
+---
 
-### 4. Testing Philosophy
+## Development Workflow
 
-**Test:**
-- Through real interfaces (CLI, tools)
-- Critical safety invariants
-- Error conditions
-- Edge cases and boundaries
+### Adding New Features
 
-**Remember:**
-- Unit tests are supplementary, not primary
-- Real API calls (demo mode) for integration tests
-- If it works in tests but fails in CLI, tests are incomplete
+1. Check if existing code already does what you need
+2. Prefer reusing existing abstractions
+3. Keep the call chain shallow
+4. Ensure wrapper adds clear value (validation, transformation)
+
+### Testing Strategy
+
+1. Test through real interfaces (CLI, tools)
+2. Unit tests are supplementary, not primary
+3. Real API calls (demo mode) for integration tests
+4. If it works in tests but fails in CLI, tests are incomplete
+
+### Refactoring Guidelines
+
+**Refactor when:**
+- File exceeds 1500 lines
+- Pattern repeats 3+ times
+- Code is hard to test
+- Performance is measurably poor
+
+**Don't refactor:**
+- "Just because"
+- Without tests in place
+- During critical bug fixes
+- Without understanding impact
 
 ---
 
-## Common Pitfalls to Avoid
+## Immediate Tasks
 
-### 1. Over-Engineering
+### High Priority
 
-**Don't:**
-- Add complexity "just in case"
-- Create abstractions before you need them
-- Build features you won't use
+- [ ] Add more backtest smoke test scenarios
+- [ ] Polish error messages in CLI
+- [ ] Add risk_profile override examples to docs
 
-**Do:**
-- Keep it simple until you need complexity
-- Refactor when patterns emerge
-- Build features driven by actual needs
+### Medium Priority
 
-### 2. Premature Optimization
+- [ ] Stress tests for rate limiter
+- [ ] Edge case tests (partial fills, etc.)
+- [ ] Concurrent execution tests
 
-**Don't:**
-- Optimize before profiling
-- Cache everything "for performance"
-- Micro-optimize without data
+### Low Priority
 
-**Do:**
-- Profile first, optimize second
-- Measure before changing
-- Optimize bottlenecks, not everything
-
-### 3. Ignoring Errors
-
-**Don't:**
-- Catch and ignore exceptions
-- Assume APIs always work
-- Skip error handling for "simple" operations
-
-**Do:**
-- Handle errors explicitly
-- Log errors with context
-- Fail fast with clear messages
-
-### 4. Skipping Tests
-
-**Don't:**
-- Write code without tests
-- Skip tests for "simple" functions
-- Assume it works without verification
-
-**Do:**
-- Test critical paths
-- Test error conditions
-- Test through real interfaces
-
-### 5. Hardcoding Values
-
-**Don't:**
-- Hardcode symbols, sizes, or paths
-- Use magic numbers
-- Assume fixed values
-
-**Do:**
-- Use config for all settings
-- Define constants for magic numbers
-- Make everything configurable
-
----
-
-## Best Practices to Continue
-
-### 1. Reference Documentation First
-
-**Always:**
-- Check `C:\CODE\AI\TRADE\reference\exchanges\` before implementing
-- Verify API parameters against Bybit docs
-- Never guess API behavior
-
-**When:**
-- Adding new endpoints
-- Implementing exchange features
-- Debugging API issues
-
-### 2. Incremental Development
-
-**Approach:**
-- Small, focused changes
-- Test after each change
-- Commit working code frequently
-- Review before merging
-
-**Benefits:**
-- Easier debugging
-- Clearer git history
-- Faster iteration
-- Lower risk
-
-### 3. Code Review (Even Solo)
-
-**Practice:**
-- Review your own PRs
-- Check for:
-  - Safety violations
-  - Hardcoded values
-  - Missing error handling
-  - Test coverage
-
-**Use:**
-- Linters (ruff, mypy)
-- Type checkers
-- Static analysis tools
-
-### 4. Documentation as You Go
-
-**Document:**
-- Why decisions were made
-- Complex algorithms
-- API contracts
-- Configuration options
-
-**Update:**
-- When behavior changes
-- When adding features
-- When fixing bugs
-
----
-
-## Learning Path Recommendations
-
-### Immediate (Next 3 Months)
-
-1. **Design Patterns**
-   - Observer (for WebSocket callbacks)
-   - Strategy (for exchange adapters)
-   - Factory (for client creation)
-   - Circuit Breaker (for resilience)
-
-2. **Testing Strategies**
-   - Test-Driven Development (TDD)
-   - Property-based testing
-   - Integration testing patterns
-   - Mocking strategies
-
-3. **Performance**
-   - Profiling tools (cProfile, py-spy)
-   - Async programming (if needed)
-   - Caching strategies
-   - Database optimization
-
-### Medium-Term (3-6 Months)
-
-1. **Distributed Systems**
-   - Message queues
-   - Event sourcing
-   - CQRS patterns
-   - Microservices concepts
-
-2. **Financial Markets**
-   - Market microstructure
-   - Order book dynamics
-   - Risk management theory
-   - Portfolio optimization
-
-3. **DevOps**
-   - Containerization (Docker)
-   - Orchestration (Kubernetes)
-   - Monitoring (Prometheus, Grafana)
-   - CI/CD pipelines
-
-### Long-Term (6-12 Months)
-
-1. **Advanced Trading**
-   - Algorithmic trading strategies
-   - Market making
-   - Statistical arbitrage
-   - Machine learning in trading
-
-2. **System Design**
-   - Scalability patterns
-   - High availability
-   - Disaster recovery
-   - Multi-region deployment
+- [ ] API documentation (OpenAPI/Swagger)
+- [ ] Architecture diagrams
+- [ ] Deployment guides
 
 ---
 
 ## Success Metrics
 
-### Code Quality Metrics
+### Code Quality
 
-- **Test Coverage:** Target 80%+ for critical paths
-- **Type Coverage:** 100% (already achieved)
-- **Linter Score:** 0 errors, <10 warnings
+- **Test Coverage:** 80%+ for critical paths
+- **Type Coverage:** 100%
+- **Linter Score:** 0 errors
 - **File Size:** All files <1500 lines
-- **Cyclomatic Complexity:** <10 per function
 
-### Operational Metrics
+### Operational
 
-- **Uptime:** 99.9%+ (excluding planned maintenance)
+- **Uptime:** 99.9%+
 - **API Error Rate:** <0.1%
 - **Order Execution Time:** <500ms p95
 - **Rate Limit Utilization:** <80% average
-- **False Positive Rate:** <1% for risk blocks
 
-### Business Metrics
+### Backtest Accuracy
 
-- **Trade Success Rate:** >95% (orders filled as intended)
-- **Risk Limit Adherence:** 100% (no bypasses)
-- **Daily Loss Limit:** Never exceeded
-- **Position Sizing Accuracy:** Within 1% of intended
+- **Determinism:** 100% reproducible
+- **Accounting Invariants:** Always pass
+- **Fee Accuracy:** Within 0.01% of Bybit
 
 ---
 
@@ -526,66 +247,27 @@ Before deploying any change to live trading:
 - [ ] Logging verified (no secrets)
 - [ ] Documentation updated
 - [ ] Rollback plan prepared
-- [ ] Monitoring alerts configured
 
 ---
 
-## Quick Reference: Decision Matrix
+## Reference Documentation
 
-### When to Add a New Feature
-
-**Add if:**
-- ✅ Solves a real problem
-- ✅ Fits the architecture
-- ✅ Has clear safety implications
-- ✅ Can be tested
-- ✅ Won't break existing functionality
-
-**Don't add if:**
-- ❌ "Nice to have" without clear need
-- ❌ Breaks existing abstractions
-- ❌ Adds complexity without benefit
-- ❌ Can't be properly tested
-- ❌ Violates safety principles
-
-### When to Refactor
-
-**Refactor when:**
-- ✅ File exceeds 1500 lines
-- ✅ Pattern repeats 3+ times
-- ✅ Code is hard to test
-- ✅ Adding feature requires workaround
-- ✅ Performance is measurably poor
-
-**Don't refactor:**
-- ❌ "Just because"
-- ❌ Without tests in place
-- ❌ During critical bug fixes
-- ❌ Without understanding impact
-
----
-
-## Final Thoughts
-
-You've built something **exceptional** for a first project. The foundation is solid, the architecture is sound, and the safety measures are comprehensive.
-
-**Remember:**
-- Keep the quality bar high
-- Safety first, always
-- Test through real interfaces
-- Reference docs before coding
-- Incremental improvements > big rewrites
-
-**You're on the right path. Keep building, keep learning, keep this standard.**
+| Topic | File |
+|-------|------|
+| Technical Overview | `docs/architecture/SYSTEM_REVIEW.md` |
+| Backtest Accounting | `docs/architecture/SIMULATED_EXCHANGE.md` |
+| Data Architecture | `docs/architecture/DATA_ARCHITECTURE.md` |
+| Project Rules | `docs/project/PROJECT_RULES.md` |
+| Code Examples | `docs/guides/CODE_EXAMPLES.md` |
+| Bybit API Reference | `reference/exchanges/bybit/docs/v5/` |
 
 ---
 
 ## Changelog
 
-- **2025-12-06:** Initial roadmap created after comprehensive codebase audit
-- **Status:** Project is production-ready for demo/paper trading, close to live trading with Phase 1 enhancements
-
----
-
-**Questions or need clarification?** Review this document, check the codebase, or consult `CLAUDE.md` and `docs/project/PROJECT_RULES.md` for detailed guidance.
-
+- **2025-12-13:** Backtest refactor complete (Phases 0–5)
+  - Refactored exchange into modular architecture (pricing, execution, funding, liquidation, ledger, metrics, constraints)
+  - Added proof-grade metrics system (V2)
+  - Thin orchestrator pattern (~200 LOC main class)
+- **2025-12-12:** Backtest engine operational
+- **2025-12-06:** Initial roadmap created

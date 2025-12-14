@@ -14,6 +14,12 @@ TRADE provides a complete foundation for Bybit futures trading:
 - Risk controls and safety features
 - Diagnostic tools and health checks
 
+## Roadmap (Backtesting & Strategy Factory)
+
+The practical phased roadmap for the backtest engine, strategy factory, and (later) forecasting layer lives in `docs/project/PROJECT_OVERVIEW.md` and `docs/project/PROJECT_ROADMAP.md`.
+
+**Current Status:** Backtest engine operational with IdeaCard system. Analytics complete (Phases 1-3). See `docs/project/PROJECT_OVERVIEW.md` for details.
+
 ## Quick Start
 
 ### 1. Install Dependencies

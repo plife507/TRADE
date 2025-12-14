@@ -1576,3 +1576,628 @@ def build_symbol_history_tool(
         source="duckdb",
     )
 
+
+# ==================== FULL_FROM_LAUNCH BOOTSTRAP TOOLS ====================
+
+
+# Default timeframe groups for full history sync
+TF_GROUP_LOW = ["1m", "5m", "15m"]      # LTF (high-resolution)
+TF_GROUP_MID = ["1h", "4h"]             # MTF
+TF_GROUP_HIGH = ["1d"]                  # HTF
+
+# All standard timeframes
+ALL_TIMEFRAMES = TF_GROUP_LOW + TF_GROUP_MID + TF_GROUP_HIGH
+
+# Maximum chunk size for range syncing (days)
+MAX_CHUNK_DAYS = 90
+
+# Safety cap to prevent accidental massive pulls (years)
+DEFAULT_MAX_HISTORY_YEARS = 5
+
+
+def get_instrument_launch_time_tool(
+    symbol: str,
+    category: str = "linear",
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> ToolResult:
+    """
+    Get the launch timestamp for a trading instrument from Bybit API.
+    
+    Args:
+        symbol: Trading symbol (e.g., "BTCUSDT", "SOLUSDT")
+        category: Product category ("linear", "inverse", "spot", "option")
+        env: Data environment for API selection
+        
+    Returns:
+        ToolResult with launch_time_ms, launch_datetime, and instrument_info
+    """
+    try:
+        store = _get_historical_store(env=env)
+        launch_ms = store.client.get_instrument_launch_time(symbol, category=category)
+        
+        if launch_ms is None:
+            return ToolResult(
+                success=False,
+                symbol=symbol,
+                error=f"Could not find launchTime for {symbol} (category={category})",
+            )
+        
+        launch_dt = datetime.fromtimestamp(launch_ms / 1000)
+        
+        return ToolResult(
+            success=True,
+            symbol=symbol,
+            message=f"{symbol} launched on {launch_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC",
+            data={
+                "symbol": symbol,
+                "category": category,
+                "launch_time_ms": launch_ms,
+                "launch_datetime": launch_dt.isoformat(),
+                "env": env,
+            },
+            source="bybit_api",
+        )
+        
+    except Exception as e:
+        return ToolResult(
+            success=False,
+            symbol=symbol,
+            error=f"Failed to get launch time: {str(e)}",
+        )
+
+
+def sync_full_from_launch_tool(
+    symbol: str,
+    timeframes: Optional[List[str]] = None,
+    category: str = "linear",
+    max_history_years: float = DEFAULT_MAX_HISTORY_YEARS,
+    sync_funding: bool = True,
+    sync_oi: bool = True,
+    oi_interval: str = "1h",
+    fill_gaps_after: bool = True,
+    heal_after: bool = True,
+    dry_run: bool = False,
+    progress_callback: Optional[Callable] = None,
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> ToolResult:
+    """
+    Bootstrap full historical data for a symbol from its launchTime to now.
+    
+    This is the FULL_FROM_LAUNCH mode for Phase -1 preflight bootstrap.
+    It syncs all required data types (OHLCV, funding, OI) from instrument
+    launchTime → now, using chunk-safe pagination.
+    
+    Args:
+        symbol: Trading symbol (e.g., "SOLUSDT")
+        timeframes: List of timeframes to sync (default: all standard TFs)
+        category: Product category ("linear", "inverse")
+        max_history_years: Safety cap to limit how far back to sync
+        sync_funding: Whether to sync funding rates
+        sync_oi: Whether to sync open interest
+        oi_interval: Open interest interval (5min, 15min, 30min, 1h, 4h, 1d)
+        fill_gaps_after: Whether to run gap fill after sync
+        heal_after: Whether to run heal after sync
+        dry_run: If True, only estimate work without syncing
+        progress_callback: Optional callback for progress updates
+        env: Data environment ("live" or "demo")
+        
+    Returns:
+        ToolResult with sync results and extremes metadata
+    """
+    symbol = symbol.strip().upper()
+    timeframes = timeframes or ALL_TIMEFRAMES
+    
+    try:
+        store = _get_historical_store(env=env)
+        
+        # Step 1: Get instrument launchTime from Bybit API
+        launch_ms = store.client.get_instrument_launch_time(symbol, category=category)
+        
+        if launch_ms is None:
+            return ToolResult(
+                success=False,
+                symbol=symbol,
+                error=f"Could not find launchTime for {symbol} (category={category}). "
+                      f"Symbol may not exist or API unavailable.",
+            )
+        
+        launch_dt = datetime.fromtimestamp(launch_ms / 1000)
+        now_dt = datetime.now()
+        
+        # Apply safety cap
+        earliest_allowed = now_dt - timedelta(days=max_history_years * 365)
+        effective_start = max(launch_dt, earliest_allowed)
+        
+        days_to_sync = (now_dt - effective_start).days
+        
+        # Dry run: estimate only
+        if dry_run:
+            # Estimate candles per timeframe
+            tf_minutes = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
+            estimates = {}
+            total_candles = 0
+            
+            for tf in timeframes:
+                minutes = tf_minutes.get(tf, 60)
+                candles = int((days_to_sync * 24 * 60) / minutes)
+                estimates[tf] = candles
+                total_candles += candles
+            
+            # Estimate funding records (8-hour intervals)
+            funding_estimate = int(days_to_sync * 3) if sync_funding else 0
+            
+            # Estimate OI records
+            oi_intervals = {"5min": 12*24, "15min": 4*24, "30min": 2*24, "1h": 24, "4h": 6, "1d": 1}
+            oi_estimate = int(days_to_sync * oi_intervals.get(oi_interval, 24)) if sync_oi else 0
+            
+            return ToolResult(
+                success=True,
+                symbol=symbol,
+                message=f"[DRY RUN] Would sync {symbol} from {effective_start.date()} to now ({days_to_sync} days)",
+                data={
+                    "dry_run": True,
+                    "symbol": symbol,
+                    "launch_datetime": launch_dt.isoformat(),
+                    "effective_start": effective_start.isoformat(),
+                    "days_to_sync": days_to_sync,
+                    "timeframes": timeframes,
+                    "ohlcv_estimates": estimates,
+                    "total_candles_estimate": total_candles,
+                    "funding_estimate": funding_estimate,
+                    "oi_estimate": oi_estimate,
+                    "safety_cap_applied": launch_dt < earliest_allowed,
+                    "env": env,
+                },
+                source="estimate",
+            )
+        
+        # Step 2: Sync OHLCV in chunks
+        results = {
+            "symbol": symbol,
+            "launch_datetime": launch_dt.isoformat(),
+            "effective_start": effective_start.isoformat(),
+            "effective_end": now_dt.isoformat(),
+            "days_synced": days_to_sync,
+            "env": env,
+            "ohlcv": {"success": False, "total_synced": 0, "by_timeframe": {}},
+            "funding": {"success": False, "total_synced": 0},
+            "open_interest": {"success": False, "total_synced": 0},
+            "gaps_filled": 0,
+            "healed": False,
+        }
+        
+        errors = []
+        
+        # Sync OHLCV per timeframe using chunked approach
+        ohlcv_total = 0
+        for tf in timeframes:
+            if progress_callback:
+                progress_callback(symbol, f"Syncing {tf} OHLCV...")
+            
+            try:
+                # Use sync_range with chunking internally
+                tf_result = _sync_range_chunked(
+                    store=store,
+                    symbol=symbol,
+                    timeframe=tf,
+                    start=effective_start,
+                    end=now_dt,
+                    chunk_days=MAX_CHUNK_DAYS,
+                )
+                results["ohlcv"]["by_timeframe"][tf] = tf_result
+                ohlcv_total += tf_result
+                
+            except Exception as e:
+                errors.append(f"OHLCV {tf}: {str(e)}")
+                results["ohlcv"]["by_timeframe"][tf] = -1
+        
+        results["ohlcv"]["total_synced"] = ohlcv_total
+        results["ohlcv"]["success"] = ohlcv_total > 0
+        
+        # Step 3: Sync funding rates
+        if sync_funding:
+            if progress_callback:
+                progress_callback(symbol, "Syncing funding rates...")
+            
+            try:
+                # Calculate period string based on days
+                period = _days_to_period(days_to_sync)
+                funding_result = store.sync_funding(
+                    symbols=[symbol],
+                    period=period,
+                    show_spinner=False,
+                )
+                funding_count = funding_result.get(symbol, 0)
+                results["funding"]["total_synced"] = funding_count
+                results["funding"]["success"] = funding_count > 0 or funding_count == 0  # 0 is ok if no data
+                
+            except Exception as e:
+                errors.append(f"Funding: {str(e)}")
+        
+        # Step 4: Sync open interest
+        if sync_oi:
+            if progress_callback:
+                progress_callback(symbol, "Syncing open interest...")
+            
+            try:
+                period = _days_to_period(days_to_sync)
+                oi_result = store.sync_open_interest(
+                    symbols=[symbol],
+                    period=period,
+                    interval=oi_interval,
+                    show_spinner=False,
+                )
+                oi_count = oi_result.get(symbol, 0)
+                results["open_interest"]["total_synced"] = oi_count
+                results["open_interest"]["success"] = oi_count > 0 or oi_count == 0
+                
+            except Exception as e:
+                errors.append(f"Open Interest: {str(e)}")
+        
+        # Step 5: Fill gaps
+        if fill_gaps_after:
+            if progress_callback:
+                progress_callback(symbol, "Filling gaps...")
+            
+            try:
+                gap_result = fill_gaps_tool(symbol=symbol, env=env)
+                if gap_result.success:
+                    results["gaps_filled"] = gap_result.data.get("total_filled", 0)
+            except Exception as e:
+                errors.append(f"Gap fill: {str(e)}")
+        
+        # Step 6: Heal data
+        if heal_after:
+            if progress_callback:
+                progress_callback(symbol, "Healing data...")
+            
+            try:
+                heal_result = heal_data_tool(
+                    symbol=symbol,
+                    fix_issues=True,
+                    fill_gaps_after=False,  # Already did gap fill
+                    env=env,
+                )
+                results["healed"] = heal_result.success
+            except Exception as e:
+                errors.append(f"Heal: {str(e)}")
+        
+        # Step 7: Build and persist extremes metadata
+        extremes = _build_extremes_metadata(store, symbol, timeframes)
+        results["extremes"] = extremes
+        
+        # Persist extremes to DuckDB table
+        launch_dt_for_db = datetime.fromtimestamp(launch_ms / 1000) if launch_ms else None
+        _persist_extremes_to_db(store, symbol, extremes, launch_dt_for_db, "full_from_launch")
+        
+        # Build summary
+        total_records = (
+            results["ohlcv"]["total_synced"] +
+            results["funding"]["total_synced"] +
+            results["open_interest"]["total_synced"]
+        )
+        results["total_records"] = total_records
+        results["errors"] = errors if errors else None
+        
+        success = total_records > 0 and len(errors) == 0
+        
+        if success:
+            message = (
+                f"[{env.upper()}] Full bootstrap for {symbol}: "
+                f"{results['ohlcv']['total_synced']:,} OHLCV, "
+                f"{results['funding']['total_synced']:,} funding, "
+                f"{results['open_interest']['total_synced']:,} OI "
+                f"({days_to_sync} days from {effective_start.date()})"
+            )
+        else:
+            message = (
+                f"[{env.upper()}] Partial bootstrap for {symbol}: "
+                f"{total_records:,} records | Errors: {'; '.join(errors)}"
+            )
+        
+        return ToolResult(
+            success=success,
+            symbol=symbol,
+            message=message,
+            data=results,
+            source="duckdb",
+        )
+        
+    except Exception as e:
+        return ToolResult(
+            success=False,
+            symbol=symbol,
+            error=f"Full bootstrap failed: {str(e)}",
+        )
+
+
+def _sync_range_chunked(
+    store,
+    symbol: str,
+    timeframe: str,
+    start: datetime,
+    end: datetime,
+    chunk_days: int = MAX_CHUNK_DAYS,
+) -> int:
+    """
+    Sync a date range in chunks to handle long histories safely.
+    
+    Returns total candles synced.
+    """
+    total_synced = 0
+    current_start = start
+    
+    while current_start < end:
+        chunk_end = min(current_start + timedelta(days=chunk_days), end)
+        
+        # Sync this chunk
+        result = store.sync_range(
+            symbols=[symbol],
+            start=current_start,
+            end=chunk_end,
+            timeframes=[timeframe],
+        )
+        
+        # Accumulate results
+        key = f"{symbol}_{timeframe}"
+        chunk_count = result.get(key, 0)
+        if chunk_count > 0:
+            total_synced += chunk_count
+        
+        current_start = chunk_end
+    
+    return total_synced
+
+
+def _days_to_period(days: int) -> str:
+    """Convert number of days to a period string."""
+    if days >= 365:
+        years = max(1, days // 365)
+        return f"{years}Y"
+    elif days >= 30:
+        months = max(1, days // 30)
+        return f"{months}M"
+    elif days >= 7:
+        weeks = max(1, days // 7)
+        return f"{weeks}W"
+    else:
+        return f"{max(1, days)}D"
+
+
+def _build_extremes_metadata(store, symbol: str, timeframes: List[str]) -> Dict[str, Any]:
+    """
+    Build extremes/bounds metadata for a symbol after sync.
+    
+    Returns metadata about DB coverage for OHLCV (per tf), funding, and OI.
+    """
+    extremes = {
+        "symbol": symbol,
+        "ohlcv": {},
+        "funding": {},
+        "open_interest": {},
+    }
+    
+    # OHLCV per timeframe
+    for tf in timeframes:
+        try:
+            stats = store.conn.execute(f"""
+                SELECT 
+                    MIN(timestamp) as earliest_ts,
+                    MAX(timestamp) as latest_ts,
+                    COUNT(*) as row_count
+                FROM {store.table_ohlcv}
+                WHERE symbol = ? AND timeframe = ?
+            """, [symbol, tf]).fetchone()
+            
+            if stats and stats[2] > 0:
+                extremes["ohlcv"][tf] = {
+                    "earliest_ts": stats[0].isoformat() if stats[0] else None,
+                    "latest_ts": stats[1].isoformat() if stats[1] else None,
+                    "row_count": stats[2],
+                }
+        except Exception:
+            pass
+    
+    # Funding
+    try:
+        stats = store.conn.execute(f"""
+            SELECT 
+                MIN(timestamp) as earliest_ts,
+                MAX(timestamp) as latest_ts,
+                COUNT(*) as record_count
+            FROM {store.table_funding}
+            WHERE symbol = ?
+        """, [symbol]).fetchone()
+        
+        if stats and stats[2] > 0:
+            extremes["funding"] = {
+                "earliest_ts": stats[0].isoformat() if stats[0] else None,
+                "latest_ts": stats[1].isoformat() if stats[1] else None,
+                "record_count": stats[2],
+            }
+    except Exception:
+        pass
+    
+    # Open Interest
+    try:
+        stats = store.conn.execute(f"""
+            SELECT 
+                MIN(timestamp) as earliest_ts,
+                MAX(timestamp) as latest_ts,
+                COUNT(*) as record_count
+            FROM {store.table_oi}
+            WHERE symbol = ?
+        """, [symbol]).fetchone()
+        
+        if stats and stats[2] > 0:
+            extremes["open_interest"] = {
+                "earliest_ts": stats[0].isoformat() if stats[0] else None,
+                "latest_ts": stats[1].isoformat() if stats[1] else None,
+                "record_count": stats[2],
+            }
+    except Exception:
+        pass
+    
+    return extremes
+
+
+def _persist_extremes_to_db(
+    store,
+    symbol: str,
+    extremes: Dict[str, Any],
+    launch_time: Optional[datetime],
+    source: str,
+):
+    """
+    Persist extremes metadata to DuckDB table.
+    
+    Args:
+        store: HistoricalDataStore instance
+        symbol: Trading symbol
+        extremes: Extremes dict from _build_extremes_metadata
+        launch_time: Resolved launch time from Bybit API
+        source: Source identifier (e.g., "full_from_launch")
+    """
+    from datetime import datetime as dt
+    
+    # OHLCV per timeframe
+    for tf, tf_data in extremes.get("ohlcv", {}).items():
+        earliest = None
+        latest = None
+        if tf_data.get("earliest_ts"):
+            try:
+                earliest = dt.fromisoformat(tf_data["earliest_ts"])
+            except (ValueError, TypeError):
+                pass
+        if tf_data.get("latest_ts"):
+            try:
+                latest = dt.fromisoformat(tf_data["latest_ts"])
+            except (ValueError, TypeError):
+                pass
+        
+        store.update_extremes(
+            symbol=symbol,
+            data_type="ohlcv",
+            timeframe=tf,
+            earliest_ts=earliest,
+            latest_ts=latest,
+            row_count=tf_data.get("row_count", 0),
+            gap_count=0,  # Gap count would need separate detection
+            launch_time=launch_time,
+            source=source,
+        )
+    
+    # Funding
+    funding_data = extremes.get("funding", {})
+    if funding_data:
+        earliest = None
+        latest = None
+        if funding_data.get("earliest_ts"):
+            try:
+                earliest = dt.fromisoformat(funding_data["earliest_ts"])
+            except (ValueError, TypeError):
+                pass
+        if funding_data.get("latest_ts"):
+            try:
+                latest = dt.fromisoformat(funding_data["latest_ts"])
+            except (ValueError, TypeError):
+                pass
+        
+        store.update_extremes(
+            symbol=symbol,
+            data_type="funding",
+            timeframe=None,
+            earliest_ts=earliest,
+            latest_ts=latest,
+            row_count=funding_data.get("record_count", 0),
+            gap_count=0,
+            launch_time=launch_time,
+            source=source,
+        )
+    
+    # Open Interest
+    oi_data = extremes.get("open_interest", {})
+    if oi_data:
+        earliest = None
+        latest = None
+        if oi_data.get("earliest_ts"):
+            try:
+                earliest = dt.fromisoformat(oi_data["earliest_ts"])
+            except (ValueError, TypeError):
+                pass
+        if oi_data.get("latest_ts"):
+            try:
+                latest = dt.fromisoformat(oi_data["latest_ts"])
+            except (ValueError, TypeError):
+                pass
+        
+        store.update_extremes(
+            symbol=symbol,
+            data_type="open_interest",
+            timeframe=None,
+            earliest_ts=earliest,
+            latest_ts=latest,
+            row_count=oi_data.get("record_count", 0),
+            gap_count=0,
+            launch_time=launch_time,
+            source=source,
+        )
+
+
+def get_data_extremes_tool(
+    symbol: Optional[str] = None,
+    env: DataEnv = DEFAULT_DATA_ENV,
+) -> ToolResult:
+    """
+    Get extremes/bounds metadata for symbol(s) in the database.
+    
+    Returns coverage information: earliest_ts, latest_ts, row_count per data type.
+    
+    Args:
+        symbol: Specific symbol or None for all symbols
+        env: Data environment ("live" or "demo")
+        
+    Returns:
+        ToolResult with extremes metadata per symbol
+    """
+    try:
+        store = _get_historical_store(env=env)
+        
+        # Get all symbols if not specified
+        if symbol:
+            symbols = [symbol.upper()]
+        else:
+            symbols = store.list_symbols()
+        
+        if not symbols:
+            return ToolResult(
+                success=True,
+                message=f"[{env.upper()}] No symbols in database",
+                data={"extremes": {}, "env": env},
+                source="duckdb",
+            )
+        
+        all_extremes = {}
+        for sym in symbols:
+            # Get all timeframes for this symbol
+            status = store.status(sym)
+            timeframes = list(set(info["timeframe"] for info in status.values()))
+            all_extremes[sym] = _build_extremes_metadata(store, sym, timeframes)
+        
+        return ToolResult(
+            success=True,
+            message=f"[{env.upper()}] Extremes metadata for {len(symbols)} symbol(s)",
+            data={
+                "extremes": all_extremes,
+                "symbol_count": len(symbols),
+                "env": env,
+            },
+            source="duckdb",
+        )
+        
+    except Exception as e:
+        return ToolResult(
+            success=False,
+            error=f"Failed to get extremes: {str(e)}",
+        )
+

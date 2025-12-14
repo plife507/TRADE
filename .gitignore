@@ -67,5 +67,8 @@ htmlcov/
 .tox/
 .nox/
 
+# Backtest artifacts (generated outputs)
+backtests/
+
 # Jupyter
 .ipynb_checkpoints/

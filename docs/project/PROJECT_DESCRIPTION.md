@@ -1,77 +1,83 @@
-# TRADE - Project Description
+# TRADE — Project Description
+
+**Last Updated:** December 13, 2025
 
 ## Overview
 
 TRADE is a **production-ready, modular trading bot** for Bybit Unified Trading Account (UTA). It provides:
 
-- **Complete Bybit UTA Support**: Full HTTP and WebSocket support via official pybit SDK (Demo & Live)
+- **Complete Bybit UTA Support**: Full HTTP and WebSocket via pybit SDK (Demo & Live)
+- **Bybit-Aligned Backtest Engine**: Deterministic simulation with isolated margin model
 - **All Order Types**: Market, Limit, Stop Market, Stop Limit, Batch orders
 - **Position Management**: Open, close, partial close, TP/SL, trailing stops
 - **Tool Registry**: Dynamic tool discovery and execution for orchestrators/bots
 - **Risk Controls**: Leverage limits, position sizing, daily loss limits
-- **Safety Features**: Panic button, circuit breakers
-- **Diagnostic Tools**: Connection tests, health checks, rate limit monitoring
-- **Historical Data**: DuckDB storage for OHLCV data
+- **Historical Data**: DuckDB storage for OHLCV, funding rates, open interest
 
 ## Philosophy
 
-**Safety first. Modular always.**
+**Safety first. Modular always. Tools as the API surface.**
 
-Every operation goes through the **tools layer** (`src/tools/`), which provides a clean API for CLI usage and future agent/HTTP integration.
+Every operation goes through the **tools layer** (`src/tools/`), which provides a clean API for CLI, orchestrators, and AI agent integration.
+
+---
 
 ## Project Structure
 
 ```
 TRADE/
 ├── trade_cli.py                    # Main CLI entry point
-├── api_keys.env                    # Environment variables (API keys)
 ├── requirements.txt                # Python dependencies
 │
 ├── src/
-│   ├── config/
-│   │   ├── config.py               # Central configuration
-│   │   └── constants.py            # Trading constants
-│   │
-│   ├── exchanges/
-│   │   └── bybit_client.py         # Bybit API wrapper
-│   │
-│   ├── core/
+│   ├── config/                     # Central configuration
+│   ├── exchanges/                  # Bybit API wrappers
+│   ├── core/                       # Live trading logic
 │   │   ├── exchange_manager.py     # Unified trading interface
-│   │   ├── position_manager.py     # Position tracking & PnL
 │   │   ├── risk_manager.py         # Risk controls
-│   │   ├── order_executor.py       # Order execution pipeline
+│   │   ├── order_executor.py       # Order execution
 │   │   └── safety.py               # Panic button
 │   │
-│   ├── data/
-│   │   ├── market_data.py          # Live market data access
-│   │   ├── historical_data_store.py # DuckDB storage (OHLCV, funding, OI)
-│   │   ├── realtime_state.py       # WebSocket state management
-│   │   └── realtime_bootstrap.py   # WebSocket bootstrap
+│   ├── backtest/                   # Backtest engine
+│   │   ├── engine.py               # Main backtest runner
+│   │   ├── sim/                    # Modular simulated exchange
+│   │   │   ├── exchange.py        # Thin orchestrator
+│   │   │   ├── ledger.py          # USDT accounting
+│   │   │   ├── pricing/           # Price models
+│   │   │   ├── execution/         # Order execution
+│   │   │   ├── funding/           # Funding rates
+│   │   │   ├── liquidation/       # Liquidation
+│   │   │   ├── metrics/           # Exchange metrics
+│   │   │   ├── constraints/       # Order validation
+│   │   │   └── adapters/          # Data adapters
+│   │   ├── system_config.py        # YAML config + risk profile
+│   │   ├── indicators.py           # EMA/RSI/ATR (no look-ahead)
+│   │   ├── metrics.py              # Performance metrics
+│   │   └── proof_metrics.py        # Proof-grade metrics (V2)
 │   │
-│   ├── risk/
-│   │   └── global_risk.py          # Account-level risk view
+│   ├── data/                       # Market data & storage
+│   │   ├── historical_data_store.py # DuckDB storage
+│   │   └── market_data.py          # Live market data
 │   │
-│   ├── tools/                      # CLI/API surface
-│   │   ├── account_tools.py        # Balance, exposure, account info
-│   │   ├── order_tools.py          # Market, Limit, Stop, Batch orders
-│   │   ├── position_tools.py       # Position management, TP/SL, trailing
-│   │   ├── diagnostics_tools.py    # Connection tests, health checks
-│   │   ├── market_data_tools.py    # Price, OHLCV, funding rates
-│   │   ├── data_tools.py           # Historical data management
-│   │   ├── shared.py               # ToolResult type, helpers
-│   │   └── tool_registry.py        # Tool discovery & orchestration
+│   ├── tools/                      # PUBLIC API SURFACE
+│   │   ├── tool_registry.py        # Tool discovery
+│   │   ├── order_tools.py          # Order operations
+│   │   ├── position_tools.py       # Position management
+│   │   ├── data_tools.py           # Historical data ops
+│   │   └── backtest_tools.py       # Backtest execution
 │   │
-│   └── utils/
-│       ├── logger.py               # Logging system
-│       ├── rate_limiter.py         # API rate limiting
-│       └── helpers.py              # Utility functions
+│   ├── strategies/                 # Base classes + configs
+│   │   ├── configs/                # System YAML files
+│   │   └── registry.py             # Strategy registration
+│   │
+│   └── utils/                      # Logging, rate limiting
 │
-├── data/
-│   ├── market_data.duckdb          # Historical data database
-│   └── historical/                 # Additional data files
-│
-└── logs/                           # Log files
+├── research/strategies/            # (Planned) research strategy implementations
+├── data/                           # DuckDB + backtest artifacts
+└── docs/                           # Documentation
 ```
+
+---
 
 ## Trading Modes
 
@@ -82,125 +88,162 @@ TRADE/
 
 | Trading Mode | Required API | Description |
 |--------------|--------------|-------------|
-| `paper` | DEMO API | Demo account trading (fake funds, real API orders) |
-| `real` | LIVE API | Live account trading (real funds, real API orders) |
+| `paper` | DEMO API | Demo account trading |
+| `real` | LIVE API | Live account trading |
 
-**Note**: PAPER mode MUST use DEMO API, REAL mode MUST use LIVE API. Other combinations are blocked.
+**Note:** PAPER mode MUST use DEMO API, REAL mode MUST use LIVE API. Other combinations are blocked.
 
-### API Environment Visibility
-
-The bot provides multiple ways to see which APIs are in use:
-
-| Location | What It Shows |
-|----------|---------------|
-| **CLI Header** | Trading mode (DEMO/LIVE), API URLs in subtitle |
-| **Data Builder Menu** | Data source: LIVE API, key status |
-| **Market Data Menu** | Market data source, authentication status |
-| **Connection Test** | Full API environment table |
-| **Health Check** | API environment + mode consistency check |
-| **Logs** | All components log their API mode on init |
-
-**Programmatic Access** (for agents/orchestrators):
-```python
-from src.tools import get_api_environment_tool
-result = get_api_environment_tool()
-# Returns: trading mode, data mode, URLs, key status, safety checks
-```
+---
 
 ## Core Components
 
-### Exchange Manager (`src/core/exchange_manager.py`)
-Unified interface for all trading operations:
-- Market, Limit, Stop Market, Stop Limit orders
-- Batch order operations
-- Position management
-- TP/SL and trailing stop handling
-
 ### Tools Layer (`src/tools/`)
+
 Public API surface with 35+ tools:
 - Returns `ToolResult` objects (success/error + data)
 - No direct Bybit API calls from CLI
 - Clean separation for orchestrators/bots/AI agents
 
-### Tool Registry (`src/tools/tool_registry.py`)
-Dynamic tool discovery and execution:
-- List available tools by category
-- Execute tools by name with arguments
-- Get tool specs for AI/LLM function calling
-- Batch execution support
+```python
+from src.tools.tool_registry import ToolRegistry
+
+registry = ToolRegistry()
+result = registry.execute("market_buy", symbol="BTCUSDT", usd_amount=100)
+```
+
+### Backtest Engine (`src/backtest/`)
+
+Bybit-aligned deterministic simulation:
+- Isolated margin model (USDT linear perpetual)
+- Configurable fees, leverage, stop conditions
+- YAML-driven system configuration
+- Hygiene + Test window switching
+
+```python
+from src.tools.backtest_tools import backtest_run_tool
+
+result = backtest_run_tool(
+    system_id="SOLUSDT_5m_ema_rsi_atr_pure",
+    window_name="hygiene",
+)
+```
+
+### SimulatedExchange Accounting
+
+```python
+# Explicit USD-named state (Bybit-aligned)
+exchange.cash_balance_usd      # Realized cash
+exchange.unrealized_pnl_usd    # Mark-to-market PnL
+exchange.equity_usd            # = cash + unrealized_pnl
+exchange.used_margin_usd       # Position IM
+exchange.free_margin_usd       # = equity - used_margin
+exchange.available_balance_usd # = max(0, free_margin)
+```
 
 ### Safety (`src/core/safety.py`)
+
 - Panic close all positions
 - Circuit breakers
 - Risk limit enforcement
 
+---
+
 ## Available Features
 
 ### Order Types
+
 - **Market Orders**: Buy/Sell with optional TP/SL
 - **Limit Orders**: GTC, IOC, FOK, PostOnly
-- **Stop Orders**: Stop Market and Stop Limit (conditional)
+- **Stop Orders**: Stop Market and Stop Limit
 - **Batch Orders**: Up to 10 orders per batch
 - **Partial Closes**: Market or Limit, by percentage
 
 ### Position Management
-- **TP/SL**: Set, modify, remove take profit and stop loss
-- **Trailing Stops**: By distance or percentage callback rate
+
+- **TP/SL**: Set, modify, remove
+- **Trailing Stops**: By distance or percentage
 - **Partial Closes**: Close percentage of position
-- **Panic Close**: Emergency close all positions
+- **Panic Close**: Emergency close all
 
-### Tool Registry
-- **Discovery**: List tools by category
-- **Execution**: Execute tools dynamically
-- **AI Integration**: Function calling format for LLMs
-- **Batch Operations**: Execute multiple tools in sequence
+### Backtest Features
 
-## Dependencies
+- **Deterministic**: Same inputs → same outputs
+- **Config-driven**: YAML system configs
+- **Risk modes**: `none` (pure) or `rules` (with risk manager)
+- **Stop conditions**: `account_blown`, `insufficient_free_margin`
+- **Artifacts**: trades.csv, equity.csv, result.json
 
-Core dependencies (see `requirements.txt`):
-- `pybit>=5.13.0` - Official Bybit Python SDK
-- `pandas>=2.0.0` - Data processing
-- `duckdb>=0.9.0` - Historical data storage
-- `python-dotenv>=1.0.0` - Environment configuration
+---
 
-## Historical Data Builder
+## Risk Profile Configuration
 
-The Data Builder provides comprehensive historical data management via `src/tools/data_tools.py`.
+```yaml
+risk_profile:
+  initial_equity: 1000.0
+  max_leverage: 10.0
+  min_trade_usd: 1.0
+  stop_equity_usd: 0.0
+  taker_fee_rate: 0.0006           # 0.06%
+  maintenance_margin_rate: 0.005   # 0.5%
+  include_est_close_fee_in_entry_gate: false
+```
+
+---
+
+## Historical Data
 
 ### Data Types Stored
+
 - **OHLCV Candles**: 1m, 5m, 15m, 1h, 4h, 1d timeframes
 - **Funding Rates**: 8-hour funding rate history
-- **Open Interest**: Configurable intervals (5min to 1d)
+- **Open Interest**: Configurable intervals
 
 ### Key Operations
 
 | Tool | Description |
 |------|-------------|
-| `get_symbol_timeframe_ranges_tool` | View detailed per-symbol/timeframe date ranges and health |
-| `build_symbol_history_tool` | One-click sync of OHLCV, funding, and OI for symbols |
-| `sync_to_now_tool` | Fetch only new candles since last sync (forward-only) |
-| `sync_to_now_and_fill_gaps_tool` | Sync forward AND backfill any gaps in history |
+| `build_symbol_history_tool` | One-click sync of OHLCV, funding, OI |
+| `sync_to_now_tool` | Fetch only new candles since last sync |
+| `get_symbol_timeframe_ranges_tool` | View date ranges and health |
 
-### CLI Menu (Data Builder)
-Access via Main Menu → Data Builder:
-- **Database Info**: Stats, symbols, timeframe ranges
-- **Build Data**: Full history builder, sync forward, sync+fill gaps
-- **Sync Individual**: OHLCV, funding, open interest separately
-- **Maintenance**: Fill gaps, heal data, delete symbols, vacuum
+---
 
-### ToolRegistry Integration
-All data tools are registered for orchestrator/agent use:
+## Dependencies
 
-```python
-from src.tools.tool_registry import get_registry
+Core dependencies (see `requirements.txt`):
 
-registry = get_registry()
+- `pybit>=5.13.0` — Bybit Python SDK
+- `duckdb>=0.9.0` — Historical data storage
+- `pandas>=2.0.0` — Data processing
+- `rich>=13.0.0` — CLI display
+- `pyyaml>=6.0` — Config parsing
 
-# List data tools
-registry.list_tools(category="data.sync")   # sync operations
-registry.list_tools(category="data.info")   # info/query tools
+---
 
-# Execute data tools
-result = registry.execute("build_symbol_history", symbols=["BTCUSDT"], period="1M")
-result = registry.execute("sync_to_now", symbols=["BTCUSDT", "ETHUSDT"])
+## Quick Start
+
+```bash
+# Run CLI
+python trade_cli.py
+
+# Smoke tests
+python trade_cli.py --smoke full              # Full test
+python trade_cli.py --smoke backtest          # Backtest only
+
+# Environment setup
+cp env.example api_keys.env
+# Edit api_keys.env with your keys
 ```
+
+---
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PROJECT_OVERVIEW.md` | High-level overview |
+| `docs/architecture/SYSTEM_REVIEW.md` | Complete technical review |
+| `docs/architecture/SIMULATED_EXCHANGE.md` | Backtest accounting model |
+| `docs/architecture/DATA_ARCHITECTURE.md` | Data storage details |
+| `docs/project/PROJECT_RULES.md` | Coding standards |
+| `docs/project/PROJECT_ROADMAP.md` | Development roadmap |

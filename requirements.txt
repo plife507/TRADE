@@ -31,5 +31,5 @@ pyyaml>=6.0.0
 # DuckDB for historical data storage
 duckdb>=0.9.0
 
-# Technical Analysis (optional - for future strategy modules)
-TA-Lib>=0.4.28
+# Technical Analysis (pandas_ta - no binary dependencies)
+pandas_ta>=0.3.14b0

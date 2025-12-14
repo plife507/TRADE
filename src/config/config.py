@@ -1056,10 +1056,6 @@ class Config:
             f"  Positions: {self.websocket.enable_position_stream}",
             f"  Orders:    {self.websocket.enable_order_stream}",
             f"  Wallet:    {self.websocket.enable_wallet_stream}",
-            "",
-            "Data Capture:",
-            f"  Enabled: {self.data.enable_capture}",
-            f"  Symbols: {', '.join(self.data.capture_symbols) or '(none)'}",
             "=" * 55,
         ])
         return "\n".join(lines)

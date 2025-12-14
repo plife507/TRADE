@@ -240,6 +240,16 @@ class OrderExecutor:
         
         self.logger.info(f"Executing signal: {signal.symbol} {signal.direction} ${signal.size_usd:.2f}")
         
+        # Emit order.execute.start event
+        self.logger.event(
+            "order.execute.start",
+            component="order_executor",
+            symbol=signal.symbol,
+            direction=signal.direction,
+            size_usd=signal.size_usd,
+            strategy=signal.strategy,
+        )
+        
         # Get current portfolio state
         portfolio = self.position.get_snapshot()
         
@@ -248,6 +258,19 @@ class OrderExecutor:
         
         if not risk_result.allowed:
             self.logger.warning(f"Signal blocked by risk manager: {risk_result.reason}")
+            
+            # Emit order.execute.end event (blocked by risk)
+            self.logger.event(
+                "order.execute.end",
+                level="WARNING",
+                component="order_executor",
+                symbol=signal.symbol,
+                direction=signal.direction,
+                success=False,
+                blocked_by_risk=True,
+                reason=risk_result.reason,
+            )
+            
             result = ExecutionResult(
                 success=False,
                 signal=signal,
@@ -286,6 +309,19 @@ class OrderExecutor:
             
         except Exception as e:
             self.logger.error(f"Order execution failed: {e}")
+            
+            # Emit order.execute.end event (exception)
+            self.logger.event(
+                "order.execute.end",
+                level="ERROR",
+                component="order_executor",
+                symbol=signal.symbol,
+                direction=signal.direction,
+                success=False,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            
             result = ExecutionResult(
                 success=False,
                 signal=signal,
@@ -318,6 +354,18 @@ class OrderExecutor:
             self.logger.info(
                 f"Order executed: {signal.symbol} {signal.direction} "
                 f"${exec_size:.2f} @ {order_result.price}"
+            )
+            
+            # Emit order.execute.end event (success)
+            self.logger.event(
+                "order.execute.end",
+                component="order_executor",
+                symbol=signal.symbol,
+                direction=signal.direction,
+                success=True,
+                executed_size=exec_size,
+                price=order_result.price,
+                order_id=order_result.order_id,
             )
         
         result = ExecutionResult(

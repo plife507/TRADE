@@ -1,5 +1,8 @@
 # Brainstorming Notes: Agentic Trading Research Factory
 
+**Last Updated:** 2025-12-13  
+**Status:** Vision Document - Backtest Foundation Complete
+
 ## 1. Vision
 
 Build a **research factory** where AI/agents:
@@ -8,13 +11,18 @@ Build a **research factory** where AI/agents:
 - Extract and formalize trading ideas into reusable components.
 - Combine components into candidate systems.
 - Test those systems via:
-  - Offline backtesting.
-  - Daily demo trading.
+  - ✅ Offline backtesting (refactor complete: RuntimeSnapshot + MTF caching + mark unification)
+  - 📋 Daily demo trading (Future phase)
 - Gradually promote successful systems to **low-risk live trading**.
 - Scale capital only after live performance is proven.
 
 Key principle:  
 The whole pipeline is **continuous and supervised**. Agents propose, test, and analyze, but **hard-coded risk rules** and human oversight guard real capital.
+
+**Current Status:**
+- ✅ Backtest refactor complete (Phases 0–5: RuntimeSnapshot + MTF caching + mark unification)
+- ✅ Tools & CLI integration complete (backtest tools + CLI menu)
+- 📋 Future: Strategy factory orchestrator, forecasting, demo/live promotions
 
 ---
 
@@ -34,6 +42,10 @@ RAG (Retrieval-Augmented Generation) is used to pull relevant knowledge and modu
 ---
 
 ## 3. Track 1 – Knowledge: Books → Concept KB
+
+**Status:** 📋 Future Phase (Not Current Focus)
+
+**Note:** The backtest engine provides the foundation for testing strategies. Knowledge extraction and concept KB build on top of this foundation.
 
 ### Inputs
 
@@ -86,6 +98,13 @@ RAG (Retrieval-Augmented Generation) is used to pull relevant knowledge and modu
 ---
 
 ## 4. Track 2 – Ideas: Modules → Candidate Systems
+
+**Status:** 📋 Future Phase (Not Current Focus)
+
+**Current Foundation:**
+- ✅ System configs (YAML) define candidate systems
+- ✅ Backtest engine can test systems via `backtest_run_tool()`
+- 📋 Future: Agent-driven system generation and optimization
 
 Agents operate like system designers using LEGO blocks.
 
@@ -317,9 +336,11 @@ RAG is always anchored on:
    - Set up pipeline to chunk and embed books.
    - Build first concept cards and basic modules manually + with LLM help.
 
-3. **Simple backtester + one data source**
-   - Implement minimal backtest engine (no fancy stuff) for 1–2 symbols and TFs.
-   - Integrate with `systems` configs.
+3. ✅ **Simple backtester + one data source** (COMPLETE)
+   - ✅ Modular backtest engine implemented for single symbol/TF
+   - ✅ Integrated with system configs (YAML)
+   - ✅ DuckDB data source with OHLCV, funding, OI
+   - ✅ Tools API for orchestrator integration
 
 4. **Demo trading**
    - Connect DEMO trading.

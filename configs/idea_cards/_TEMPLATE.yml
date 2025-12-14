@@ -1,0 +1,222 @@
+# =============================================================================
+# IdeaCard Template - Standard Format v2.0
+# =============================================================================
+# Copy this template and fill in your strategy details.
+# File naming: {SYMBOL}_{TF}_{strategy_name}.yml (e.g., SOLUSDT_5m_ema_crossover.yml)
+#
+# Validation commands:
+#   python trade_cli.py backtest indicators --idea YOUR_ID --print-keys
+#   python trade_cli.py backtest preflight --idea YOUR_ID
+#   python trade_cli.py backtest run --idea YOUR_ID --start 2025-01-01 --end 2025-02-01
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# IDENTITY (Required)
+# -----------------------------------------------------------------------------
+id: SYMBOL_TF_strategy_name              # Must match filename (without .yml)
+version: "1.0.0"                          # Semantic version (major.minor.patch)
+name: "Human Readable Strategy Name"      # Display name
+description: "One-line description of what this strategy does."
+
+# -----------------------------------------------------------------------------
+# ACCOUNT CONFIG (Required)
+# Defines capital, margin, and fee settings. No defaults - must be explicit.
+# -----------------------------------------------------------------------------
+account:
+  starting_equity_usdt: 10000.0           # Starting capital in USDT
+  max_leverage: 3.0                       # Maximum allowed leverage
+  margin_mode: "isolated_usdt"            # Only "isolated_usdt" supported
+  min_trade_notional_usdt: 10.0           # Minimum trade size in USDT
+  fee_model:
+    taker_bps: 6.0                        # Taker fee in basis points (0.06%)
+    maker_bps: 2.0                        # Maker fee in basis points (0.02%)
+  slippage_bps: 2.0                       # Expected slippage in basis points
+
+# -----------------------------------------------------------------------------
+# SYMBOL UNIVERSE (Required)
+# Currently only first symbol is used (single-symbol backtesting).
+# -----------------------------------------------------------------------------
+symbol_universe:
+  - SOLUSDT                               # Must end in "USDT"
+
+# -----------------------------------------------------------------------------
+# TIMEFRAME CONFIGS (Required: exec, Optional: htf, mtf)
+# Each TF needs: tf, role, warmup_bars, feature_specs
+# -----------------------------------------------------------------------------
+tf_configs:
+  # --- Execution Timeframe (Required) ---
+  # This is where trades execute. All entry/exit signals evaluated here.
+  exec:
+    tf: "5m"                              # Canonical: 1m, 5m, 15m, 1h, 4h, 1d
+    role: "exec"
+    warmup_bars: 200                      # Bars needed for indicator stabilization
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_fast"            # Custom name for this indicator
+        params:
+          length: 20
+        input_source: "close"
+      - indicator_type: "ema"
+        output_key: "ema_slow"
+        params:
+          length: 50
+        input_source: "close"
+      - indicator_type: "atr"
+        output_key: "atr"
+        params:
+          length: 14
+        input_source: "close"
+    required_indicators:                  # List indicators used in signal_rules
+      - "ema_fast"
+      - "ema_slow"
+      - "atr"
+
+  # --- Higher Timeframe (Optional) ---
+  # Used for trend bias/filter. Values forward-fill until next HTF close.
+  htf:
+    tf: "4h"
+    role: "htf"
+    warmup_bars: 250                      # EMA200 needs 200+ bars warmup
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_trend"
+        params:
+          length: 200
+        input_source: "close"
+    required_indicators:
+      - "ema_trend"
+
+  # --- Medium Timeframe (Optional) ---
+  # Used for momentum confirmation. Values forward-fill until next MTF close.
+  mtf:
+    tf: "1h"
+    role: "mtf"
+    warmup_bars: 250
+    feature_specs:
+      - indicator_type: "rsi"
+        output_key: "rsi"
+        params:
+          length: 14
+        input_source: "close"
+    required_indicators:
+      - "rsi"
+
+# -----------------------------------------------------------------------------
+# POSITION POLICY (Required)
+# Controls allowed position directions and behavior.
+# -----------------------------------------------------------------------------
+position_policy:
+  mode: "long_only"                       # long_only, short_only, long_short
+  max_positions_per_symbol: 1             # Only 1 supported currently
+  allow_flip: false                       # Allow reversing position direction
+  allow_scale_in: false                   # Adding to position (not implemented)
+  allow_scale_out: false                  # Partial exits (not implemented)
+
+# -----------------------------------------------------------------------------
+# SIGNAL RULES (Required)
+# All conditions use AND logic. For OR logic, create separate rules.
+# -----------------------------------------------------------------------------
+signal_rules:
+  entry_rules:
+    - direction: "long"
+      conditions:
+        # --- Exec Trigger (when to enter) ---
+        - tf: "exec"
+          indicator_key: "ema_fast"
+          operator: "cross_above"         # cross_above, cross_below for crossovers
+          value: "ema_slow"               # Compare to another indicator
+          is_indicator_comparison: true
+
+        # --- HTF Filter (trend bias) ---
+        - tf: "htf"
+          indicator_key: "close"          # Use "close" for price comparison
+          operator: "gt"                  # gt, gte, lt, lte, eq
+          value: "ema_trend"
+          is_indicator_comparison: true
+
+        # --- MTF Filter (momentum confirmation) ---
+        - tf: "mtf"
+          indicator_key: "rsi"
+          operator: "gte"
+          value: 50                       # Fixed value comparison
+          is_indicator_comparison: false
+
+  exit_rules:
+    - direction: "long"
+      conditions:
+        # Exit on opposite crossover
+        - tf: "exec"
+          indicator_key: "ema_fast"
+          operator: "cross_below"
+          value: "ema_slow"
+          is_indicator_comparison: true
+
+# -----------------------------------------------------------------------------
+# RISK MODEL (Required)
+# Defines stop loss, take profit, and position sizing.
+# -----------------------------------------------------------------------------
+risk_model:
+  stop_loss:
+    type: "percent"                       # percent, atr_multiple
+    value: 2.0                            # 2% stop loss
+    # atr_key: "atr"                      # Required if type="atr_multiple"
+    # buffer_pct: 0.0                     # Optional buffer beyond ATR
+
+  take_profit:
+    type: "rr_ratio"                      # rr_ratio, percent
+    value: 2.0                            # 2:1 reward:risk ratio
+
+  sizing:
+    model: "percent_equity"               # percent_equity, fixed_usdt
+    value: 1.0                            # 1% of equity per trade
+    max_leverage: 3.0                     # Maximum leverage for position
+
+# =============================================================================
+# INDICATOR REFERENCE (Canonical Naming)
+# =============================================================================
+# SUPPORTED INDICATORS (from IndicatorRegistry):
+#
+# Single-output (use output_key directly):
+#   ema, sma, rsi, atr, cci, willr, roc, mom, kama, alma, wma, dema, tema,
+#   trima, zlma, natr, mfi, obv, cmf
+#
+# Multi-output (MUST use expanded keys in signal_rules):
+#   - macd → {output_key}_macd, {output_key}_signal, {output_key}_histogram
+#   - bbands → {output_key}_lower, {output_key}_mid, {output_key}_upper,
+#              {output_key}_bandwidth, {output_key}_percent_b
+#   - stoch → {output_key}_k, {output_key}_d
+#   - stochrsi → {output_key}_k, {output_key}_d
+#   - adx → {output_key}_adx, {output_key}_dmp, {output_key}_dmn
+#   - aroon → {output_key}_up, {output_key}_down, {output_key}_osc
+#   - kc → {output_key}_lower, {output_key}_basis, {output_key}_upper
+#   - donchian → {output_key}_lower, {output_key}_mid, {output_key}_upper
+#   - supertrend → {output_key}_trend, {output_key}_direction,
+#                  {output_key}_long, {output_key}_short
+#   - psar → {output_key}_long, {output_key}_short, {output_key}_af,
+#            {output_key}_reversal
+#   - squeeze → {output_key}_sqz, {output_key}_sqz_on, {output_key}_sqz_off,
+#               {output_key}_no_sqz
+#   - vortex → {output_key}_vip, {output_key}_vim
+#   - dm → {output_key}_dmp, {output_key}_dmn
+#   - fisher → {output_key}_fisher, {output_key}_signal
+#   - tsi → {output_key}_tsi, {output_key}_signal
+#   - kvo → {output_key}_kvo, {output_key}_signal
+#
+# NOTE: required_indicators is AUTO-GENERATED by the normalizer.
+#       You can omit it from your YAML; run:
+#         python trade_cli.py backtest idea-card-normalize --idea-card YOUR_ID --write
+#
+# VALIDATION COMMANDS:
+#   python trade_cli.py backtest idea-card-normalize --idea-card YOUR_ID
+#   python trade_cli.py backtest audit-toolkit
+#
+# OPERATOR REFERENCE:
+#   Comparison: gt, gte, lt, lte, eq
+#   Crossover: cross_above, cross_below (requires history - auto-detected)
+#
+# TF ROLES:
+#   exec - Entry/exit signals execute here (required)
+#   htf - Higher timeframe for trend bias (optional)
+#   mtf - Medium timeframe for momentum (optional)
+# =============================================================================
+

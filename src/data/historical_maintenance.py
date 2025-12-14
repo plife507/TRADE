@@ -13,8 +13,8 @@ if TYPE_CHECKING:
 
 
 def _get_constants():
-    from .historical_data_store import TIMEFRAMES, TIMEFRAME_MINUTES, ActivityEmoji, ActivitySpinner
-    return TIMEFRAMES, TIMEFRAME_MINUTES, ActivityEmoji, ActivitySpinner
+    from .historical_data_store import TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner
+    return TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner
 
 
 def detect_gaps(store: "HistoricalDataStore", symbol: str, timeframe: str) -> List[Tuple[datetime, datetime]]:
@@ -23,10 +23,10 @@ def detect_gaps(store: "HistoricalDataStore", symbol: str, timeframe: str) -> Li
     
     Returns list of (gap_start, gap_end) tuples.
     """
-    TIMEFRAMES, TIMEFRAME_MINUTES, _, _ = _get_constants()
+    TIMEFRAMES, TF_MINUTES, _, _ = _get_constants()
     
     symbol = symbol.upper()
-    tf_minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
+    tf_minutes = TF_MINUTES.get(timeframe, 15)
     
     rows = store.conn.execute(f"""
         SELECT timestamp
@@ -69,7 +69,7 @@ def fill_gaps(
     Returns:
         Dict mapping "symbol_timeframe" to candles filled
     """
-    TIMEFRAMES, TIMEFRAME_MINUTES, ActivityEmoji, ActivitySpinner = _get_constants()
+    TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner = _get_constants()
     from .historical_sync import _fetch_from_api, _store_dataframe, _update_metadata
     
     results = {}

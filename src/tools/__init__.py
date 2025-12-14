@@ -175,6 +175,25 @@ from .data_tools import (
     build_symbol_history_tool,
 )
 
+# Backtest tools (SystemConfig-based, legacy)
+from .backtest_tools import (
+    backtest_list_systems_tool,
+    backtest_get_system_tool,
+    backtest_run_tool,
+    backtest_prepare_data_tool,
+    backtest_verify_data_tool,
+    backtest_list_strategies_tool,
+)
+
+# Backtest CLI wrapper tools (IdeaCard-based, golden path)
+from .backtest_cli_wrapper import (
+    backtest_preflight_idea_card_tool,
+    backtest_run_idea_card_tool,
+    backtest_data_fix_tool,
+    backtest_list_idea_cards_tool,
+    backtest_indicators_tool,
+)
+
 __all__ = [
     # Shared types
     "ToolResult",
@@ -286,4 +305,19 @@ __all__ = [
     "sync_to_now_and_fill_gaps_tool",
     # Composite build tools
     "build_symbol_history_tool",
+    
+    # Backtest tools (SystemConfig-based, legacy)
+    "backtest_list_systems_tool",
+    "backtest_get_system_tool",
+    "backtest_run_tool",
+    "backtest_prepare_data_tool",
+    "backtest_verify_data_tool",
+    "backtest_list_strategies_tool",
+    
+    # Backtest CLI wrapper tools (IdeaCard-based, golden path)
+    "backtest_preflight_idea_card_tool",
+    "backtest_run_idea_card_tool",
+    "backtest_data_fix_tool",
+    "backtest_list_idea_cards_tool",
+    "backtest_indicators_tool",
 ]
