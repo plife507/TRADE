@@ -16,15 +16,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Union, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..idea_card import IdeaCard
+    from ..runtime.indicator_metadata import IndicatorMetadata
 
 from .feature_spec import (
     FeatureSpec,
     FeatureSpecSet,
-    IndicatorType,
     InputSource,
     is_multi_output,
     get_output_names,
@@ -52,19 +53,39 @@ class FeatureArrays:
         arrays: Dict of output_key -> numpy array (float32)
         length: Number of bars
         warmup_bars: Bars needed for all indicators to be valid
+        metadata: Dict of output_key -> IndicatorMetadata (provenance tracking)
     """
     symbol: str
     tf: str
     arrays: Dict[str, np.ndarray] = field(default_factory=dict)
     length: int = 0
     warmup_bars: int = 0
+    metadata: Dict[str, "IndicatorMetadata"] = field(default_factory=dict)
     
     def __post_init__(self):
-        """Validate arrays."""
+        """Validate arrays and metadata consistency."""
         for key, arr in self.arrays.items():
             if len(arr) != self.length:
                 raise ValueError(
                     f"Array '{key}' length {len(arr)} != expected {self.length}"
+                )
+
+        # Validate metadata coverage (strict: every array MUST have metadata)
+        # This is required for provenance tracking - no silent gaps allowed.
+        array_keys = set(self.arrays.keys())
+        metadata_keys = set(self.metadata.keys())
+        if array_keys != metadata_keys:
+            missing = array_keys - metadata_keys
+            extra = metadata_keys - array_keys
+            if missing:
+                raise ValueError(
+                    f"Missing metadata for indicators: {missing}. "
+                    "All indicators must have provenance metadata."
+                )
+            if extra:
+                raise ValueError(
+                    f"Extra metadata without arrays: {extra}. "
+                    "Metadata must match arrays exactly."
                 )
     
     def get(self, key: str) -> Optional[np.ndarray]:
@@ -120,6 +141,31 @@ class FeatureArrays:
         
         return -1
 
+    @classmethod
+    def empty(cls, symbol: str, tf: str, length: int = 0) -> "FeatureArrays":
+        """
+        Factory for empty arrays (no indicators declared).
+
+        Use this instead of creating FeatureArrays with empty dicts directly.
+        Ensures metadata consistency for zero-indicator case.
+
+        Args:
+            symbol: Trading symbol
+            tf: Timeframe string
+            length: Number of bars (default: 0)
+
+        Returns:
+            FeatureArrays with empty arrays and metadata
+        """
+        return cls(
+            symbol=symbol,
+            tf=tf,
+            arrays={},
+            length=length,
+            warmup_bars=0,
+            metadata={},
+        )
+
 
 # =============================================================================
 # Indicator Registry
@@ -128,54 +174,55 @@ class FeatureArrays:
 class IndicatorRegistry:
     """
     Dynamic registry for computing indicators declared in IdeaCard FeatureSpecs.
-    
+
     **ALL pandas_ta indicators are available dynamically!**
     No static registration needed - indicators are computed on-demand based
     on what the IdeaCard declares in its FeatureSpecs.
-    
+
     Reference: `reference/pandas_ta_repo/` for source code
-    
+
     Usage:
         registry = IndicatorRegistry()
-        
+
         # Compute any indicator dynamically based on IdeaCard FeatureSpec
-        ema_series = registry.compute(IndicatorType.EMA, close=close, length=20)
-        adx_dict = registry.compute(IndicatorType.ADX, high=high, low=low, close=close, length=14)
-        kc_dict = registry.compute(IndicatorType.KC, high=high, low=low, close=close, length=20, scalar=2.0)
-        
+        ema_series = registry.compute("ema", close=close, length=20)
+        adx_dict = registry.compute("adx", high=high, low=low, close=close, length=14)
+
         # Custom overrides still supported
-        registry.register(IndicatorType.EMA, custom_ema_fn)
+        registry.register("ema", custom_ema_fn)
     """
-    
+
     def __init__(self):
         """Initialize registry (no static registrations - all dynamic)."""
-        self._custom_registry: Dict[IndicatorType, IndicatorFn] = {}
-    
-    def register(self, indicator_type: IndicatorType, fn: IndicatorFn):
+        self._custom_registry: Dict[str, IndicatorFn] = {}
+
+    def register(self, indicator_type: str, fn: IndicatorFn):
         """
         Register a custom compute function for an indicator type.
-        
+
         Use this to override the default pandas_ta implementation
         or add completely custom indicators.
-        
+
         Args:
-            indicator_type: Type to register
+            indicator_type: Type to register (string)
             fn: Compute function
         """
-        self._custom_registry[indicator_type] = fn
-    
-    def has(self, indicator_type: IndicatorType) -> bool:
+        self._custom_registry[indicator_type.lower()] = fn
+
+    def has(self, indicator_type: str) -> bool:
         """
         Check if indicator type is available.
-        
-        Returns True for ALL valid IndicatorType values since
+
+        Returns True for ALL valid indicator types since
         compute_indicator() handles any pandas_ta indicator dynamically.
+        Validates against the indicator_registry module for supported types.
         """
-        return isinstance(indicator_type, IndicatorType)
-    
+        from ..indicator_registry import get_registry as get_main_registry
+        return get_main_registry().is_supported(indicator_type.lower())
+
     def compute(
         self,
-        indicator_type: IndicatorType,
+        indicator_type: str,
         close: Optional[pd.Series] = None,
         high: Optional[pd.Series] = None,
         low: Optional[pd.Series] = None,
@@ -185,31 +232,33 @@ class IndicatorRegistry:
     ) -> Union[pd.Series, Dict[str, pd.Series]]:
         """
         Compute an indicator dynamically.
-        
+
         Uses pandas_ta compute_indicator() to handle ANY indicator type
         declared in the IdeaCard's FeatureSpecs. Custom overrides take
         precedence if registered.
-        
+
         Args:
-            indicator_type: Type to compute (from IndicatorType enum)
+            indicator_type: Type to compute (string, e.g., "ema", "macd")
             close: Close price series
             high: High price series
             low: Low price series
             open_: Open price series
             volume: Volume series
             **kwargs: Indicator-specific parameters (length, fast, slow, etc.)
-            
+
         Returns:
             pd.Series for single-output, Dict[str, pd.Series] for multi-output
         """
+        key = indicator_type.lower()
+
         # Check for custom override first
-        if indicator_type in self._custom_registry:
-            fn = self._custom_registry[indicator_type]
+        if key in self._custom_registry:
+            fn = self._custom_registry[key]
             return fn(close=close, high=high, low=low, open_=open_, volume=volume, **kwargs)
-        
+
         # Dynamic computation for ALL indicators via compute_indicator()
         return compute_indicator(
-            indicator_name=indicator_type.value,
+            indicator_name=key,
             close=close,
             high=high,
             low=low,
@@ -217,12 +266,13 @@ class IndicatorRegistry:
             volume=volume,
             **kwargs,
         )
-    
-    def list_types(self) -> List[IndicatorType]:
-        """List all available indicator types (all IndicatorType enum values)."""
-        return list(IndicatorType)
-    
-    def list_custom_overrides(self) -> List[IndicatorType]:
+
+    def list_types(self) -> List[str]:
+        """List all available indicator types (from main registry)."""
+        from ..indicator_registry import get_registry as get_main_registry
+        return get_main_registry().list_indicators()
+
+    def list_custom_overrides(self) -> List[str]:
         """List indicator types with custom overrides registered."""
         return list(self._custom_registry.keys())
 
@@ -252,14 +302,14 @@ class FeatureFrameBuilder:
     Usage:
         builder = FeatureFrameBuilder()
         arrays = builder.build(df, spec_set)
-        
+
         # Access arrays
         ema_20 = arrays.get("ema_20")
         macd_line = arrays.get("macd_macd")  # Multi-output
-        
+
         # Or with custom registry
         custom_registry = IndicatorRegistry()
-        custom_registry.register(IndicatorType.EMA, my_custom_ema)
+        custom_registry.register("ema", my_custom_ema)
         builder = FeatureFrameBuilder(registry=custom_registry)
     
     Performance:
@@ -287,6 +337,7 @@ class FeatureFrameBuilder:
         self,
         df: pd.DataFrame,
         spec_set: FeatureSpecSet,
+        tf_role: str = "exec",
     ) -> FeatureArrays:
         """
         Compute all features from spec_set.
@@ -294,22 +345,27 @@ class FeatureFrameBuilder:
         Args:
             df: OHLCV DataFrame with columns: timestamp, open, high, low, close, volume
             spec_set: FeatureSpecSet with indicator specifications
+            tf_role: TF role context (exec/htf/mtf) for metadata provenance
             
         Returns:
-            FeatureArrays with computed indicators
+            FeatureArrays with computed indicators and metadata
             
         Raises:
             KeyError: If an indicator type is not registered
             ValueError: If required feature key is missing from result
         """
+        # Import here to avoid circular imports
+        from ..runtime.indicator_metadata import (
+            IndicatorMetadata,
+            canonicalize_params,
+            compute_feature_spec_id,
+            find_first_valid_idx,
+            get_pandas_ta_version,
+            get_code_version,
+        )
+        
         if df.empty:
-            return FeatureArrays(
-                symbol=spec_set.symbol,
-                tf=spec_set.tf,
-                arrays={},
-                length=0,
-                warmup_bars=0,
-            )
+            return FeatureArrays.empty(spec_set.symbol, spec_set.tf)
         
         # Sort by timestamp to ensure correct order
         df = df.sort_values("timestamp").reset_index(drop=True)
@@ -317,6 +373,14 @@ class FeatureFrameBuilder:
         
         # Build intermediate results dict for chained indicators
         computed: Dict[str, pd.Series] = {}
+        
+        # Metadata collection (key -> IndicatorMetadata)
+        metadata_dict: Dict[str, IndicatorMetadata] = {}
+        
+        # Cache version info (computed once per build)
+        pandas_ta_ver = get_pandas_ta_version()
+        code_ver = get_code_version()
+        computed_at = datetime.now(timezone.utc)
         
         # Extract OHLCV columns
         ohlcv = {
@@ -331,9 +395,24 @@ class FeatureFrameBuilder:
         ohlcv["hlc3"] = (ohlcv["high"] + ohlcv["low"] + ohlcv["close"]) / 3
         ohlcv["ohlc4"] = (ohlcv["open"] + ohlcv["high"] + ohlcv["low"] + ohlcv["close"]) / 4
         
+        # Get timestamps for metadata (optional)
+        timestamps = df["timestamp"].values if "timestamp" in df.columns else None
+        
         # Process specs in order (dependencies already validated)
         for spec in spec_set.specs:
-            self._compute_and_store(spec, ohlcv, computed)
+            self._compute_and_store_with_metadata(
+                spec=spec,
+                ohlcv=ohlcv,
+                computed=computed,
+                metadata_dict=metadata_dict,
+                spec_set=spec_set,
+                tf_role=tf_role,
+                length=length,
+                timestamps=timestamps,
+                pandas_ta_ver=pandas_ta_ver,
+                code_ver=code_ver,
+                computed_at=computed_at,
+            )
         
         # Convert to numpy arrays (float32 if preferred)
         dtype = np.float32 if self.prefer_float32 else np.float64
@@ -358,6 +437,7 @@ class FeatureFrameBuilder:
             arrays=arrays,
             length=length,
             warmup_bars=spec_set.max_warmup_bars,
+            metadata=metadata_dict,
         )
     
     def _compute_and_store(
@@ -368,40 +448,183 @@ class FeatureFrameBuilder:
     ):
         """
         Compute indicator and store results in computed dict.
-        
+
         Handles both single-output and multi-output indicators.
-        
+        NOTE: This method does NOT capture metadata. Use _compute_and_store_with_metadata
+        for the full metadata-enabled path.
+
         Args:
             spec: FeatureSpec to compute
             ohlcv: Dict of OHLCV series
             computed: Dict to store computed indicator series
         """
         ind_type = spec.indicator_type
-        
+        ind_type_str = spec.indicator_type.lower()
+
         # Check if indicator type is registered
         if not self.registry.has(ind_type):
             raise KeyError(
-                f"Unknown indicator type: {ind_type.value}. "
-                f"Registered types: {[t.value for t in self.registry.list_types()]}"
+                f"Unknown indicator type: {ind_type_str}. "
+                f"Registered types: {self.registry.list_types()}"
             )
-        
+
         if is_multi_output(ind_type):
             # Multi-output indicator
             result = self._compute_multi_output(spec, ohlcv, computed)
             output_names = get_output_names(ind_type)
-            
+
             for name in output_names:
                 key = spec.get_output_key(name)
                 if name in result:
                     computed[key] = result[name]
                 else:
                     raise ValueError(
-                        f"Multi-output indicator {ind_type.value} did not produce output '{name}'"
+                        f"Multi-output indicator {ind_type_str} did not produce output '{name}'"
                     )
         else:
             # Single-output indicator
             series = self._compute_single_output(spec, ohlcv, computed)
             computed[spec.output_key] = series
+    
+    def _compute_and_store_with_metadata(
+        self,
+        spec: FeatureSpec,
+        ohlcv: Dict[str, pd.Series],
+        computed: Dict[str, pd.Series],
+        metadata_dict: Dict[str, "IndicatorMetadata"],
+        spec_set: FeatureSpecSet,
+        tf_role: str,
+        length: int,
+        timestamps: Optional[np.ndarray],
+        pandas_ta_ver: str,
+        code_ver: str,
+        computed_at: datetime,
+    ):
+        """
+        Compute indicator, store results, and capture metadata.
+        
+        This is the metadata-enabled version of _compute_and_store.
+        Creates IndicatorMetadata for each output key at computation time.
+        
+        For multi-output indicators, all outputs share the same feature_spec_id.
+        
+        Args:
+            spec: FeatureSpec to compute
+            ohlcv: Dict of OHLCV series
+            computed: Dict to store computed indicator series
+            metadata_dict: Dict to store IndicatorMetadata per output key
+            spec_set: Parent FeatureSpecSet (for symbol, tf)
+            tf_role: TF role context (exec/htf/mtf)
+            length: Total number of bars
+            timestamps: Optional array of timestamps for start_ts/end_ts
+            pandas_ta_ver: pandas_ta version string
+            code_ver: Code version (git SHA)
+            computed_at: Computation timestamp
+        """
+        from ..runtime.indicator_metadata import (
+            IndicatorMetadata,
+            canonicalize_params,
+            compute_feature_spec_id,
+            find_first_valid_idx,
+        )
+
+        ind_type = spec.indicator_type
+        ind_type_str = spec.indicator_type.lower()
+
+        # Check if indicator type is registered
+        if not self.registry.has(ind_type):
+            raise KeyError(
+                f"Unknown indicator type: {ind_type_str}. "
+                f"Registered types: {self.registry.list_types()}"
+            )
+        
+        # Prepare canonical params for metadata
+        params = dict(spec.params) if spec.params else {}
+        if spec.length and "length" not in params:
+            params["length"] = spec.length
+        canonical_params = canonicalize_params(params)
+        
+        # Get input_source as string
+        input_source_str = spec.input_source.value
+        if spec.input_source == InputSource.INDICATOR:
+            input_source_str = f"indicator:{spec.input_indicator_key}"
+        
+        # Compute feature_spec_id (shared for multi-output)
+        feature_spec_id = compute_feature_spec_id(
+            indicator_type=ind_type_str,
+            params=canonical_params,
+            input_source=input_source_str,
+        )
+        
+        # Helper to create metadata for a single output key
+        def create_metadata(output_key: str, arr: np.ndarray) -> IndicatorMetadata:
+            first_valid = find_first_valid_idx(arr)
+            start_bar_idx = first_valid if first_valid >= 0 else 0
+            end_bar_idx = length - 1 if length > 0 else 0
+            
+            # Timestamps (optional)
+            start_ts = None
+            end_ts = None
+            if timestamps is not None and len(timestamps) > 0:
+                try:
+                    if start_bar_idx < len(timestamps):
+                        ts_val = timestamps[start_bar_idx]
+                        if isinstance(ts_val, np.datetime64):
+                            start_ts = pd.Timestamp(ts_val).to_pydatetime()
+                        elif isinstance(ts_val, datetime):
+                            start_ts = ts_val
+                    if end_bar_idx < len(timestamps):
+                        ts_val = timestamps[end_bar_idx]
+                        if isinstance(ts_val, np.datetime64):
+                            end_ts = pd.Timestamp(ts_val).to_pydatetime()
+                        elif isinstance(ts_val, datetime):
+                            end_ts = ts_val
+                except Exception:
+                    pass  # Timestamps are optional, don't fail
+            
+            return IndicatorMetadata(
+                indicator_key=output_key,
+                feature_spec_id=feature_spec_id,
+                indicator_type=ind_type_str,
+                params=canonical_params,
+                input_source=input_source_str,
+                symbol=spec_set.symbol,
+                tf=spec_set.tf,
+                tf_role=tf_role,
+                warmup_bars_declared=spec.warmup_bars,
+                first_valid_idx_observed=first_valid,
+                start_bar_idx=start_bar_idx,
+                end_bar_idx=end_bar_idx,
+                start_ts=start_ts,
+                end_ts=end_ts,
+                pandas_ta_version=pandas_ta_ver,
+                code_version=code_ver,
+                computed_at_utc=computed_at,
+            )
+
+        if is_multi_output(ind_type):
+            # Multi-output indicator
+            result = self._compute_multi_output(spec, ohlcv, computed)
+            output_names = get_output_names(ind_type)
+
+            for name in output_names:
+                key = spec.get_output_key(name)
+                if name in result:
+                    series = result[name]
+                    computed[key] = series
+                    # Create metadata for this output
+                    metadata_dict[key] = create_metadata(key, series.values)
+                else:
+                    raise ValueError(
+                        f"Multi-output indicator {ind_type_str} did not produce output '{name}'"
+                    )
+        else:
+            # Single-output indicator
+            series = self._compute_single_output(spec, ohlcv, computed)
+            key = spec.output_key
+            computed[key] = series
+            # Create metadata for this output
+            metadata_dict[key] = create_metadata(key, series.values)
     
     def _compute_single_output(
         self,
@@ -433,10 +656,11 @@ class FeatureFrameBuilder:
         # Get input series based on spec's input_source
         input_series = self._get_input_series(spec, ohlcv, computed)
         
-        # Dynamic computation - pass all OHLCV data, indicator will use what it needs
+        # Pass input_series as the primary input - single-input indicators use it directly
+        # Multi-input indicators (ATR, MACD) use their own required inputs from registry
         return self.registry.compute(
             ind_type,
-            close=input_series if spec.input_source == InputSource.CLOSE else ohlcv["close"],
+            close=input_series,
             high=ohlcv["high"],
             low=ohlcv["low"],
             open_=ohlcv["open"],
@@ -474,10 +698,11 @@ class FeatureFrameBuilder:
         # Get input series for indicators that use a primary input
         input_series = self._get_input_series(spec, ohlcv, computed)
         
-        # Dynamic computation - pass all OHLCV data, indicator will use what it needs
+        # Pass input_series as the primary input - single-input indicators use it directly
+        # Multi-input indicators (ATR, MACD) use their own required inputs from registry
         return self.registry.compute(
             ind_type,
-            close=input_series if spec.input_source == InputSource.CLOSE else ohlcv["close"],
+            close=input_series,
             high=ohlcv["high"],
             low=ohlcv["low"],
             open_=ohlcv["open"],
@@ -535,6 +760,7 @@ class FeatureFrameBuilder:
         symbol: str,
         tf: str,
         specs: List[FeatureSpec],
+        tf_role: str = "exec",
     ) -> FeatureArrays:
         """
         Convenience method to build from a list of specs.
@@ -544,12 +770,13 @@ class FeatureFrameBuilder:
             symbol: Trading symbol
             tf: Timeframe string
             specs: List of FeatureSpecs
+            tf_role: TF role context (exec/htf/mtf) for metadata provenance
             
         Returns:
-            FeatureArrays with computed indicators
+            FeatureArrays with computed indicators and metadata
         """
         spec_set = FeatureSpecSet(symbol=symbol, tf=tf, specs=specs)
-        return self.build(df, spec_set)
+        return self.build(df, spec_set, tf_role=tf_role)
 
 
 def build_features_from_idea_card(
@@ -592,16 +819,14 @@ def build_features_from_idea_card(
         
         if spec_set is None or not spec_set.specs:
             # No features for this TF - create empty arrays
-            result[role] = FeatureArrays(
+            result[role] = FeatureArrays.empty(
                 symbol=symbol,
                 tf=tf,
-                arrays={},
                 length=len(df) if not df.empty else 0,
-                warmup_bars=0,
             )
         else:
-            # Build features
-            result[role] = builder.build(df, spec_set)
+            # Build features with tf_role for metadata provenance
+            result[role] = builder.build(df, spec_set, tf_role=role)
     
     return result
 
@@ -707,17 +932,11 @@ def build_features_from_idea_card(
         spec_set = idea_card.get_feature_spec_set(role, symbol)
         
         if spec_set and spec_set.specs:
-            # Compute features
-            arrays = builder.build(df, spec_set)
+            # Compute features with tf_role for metadata provenance
+            arrays = builder.build(df, spec_set, tf_role=role)
         else:
             # No features declared for this TF - just use OHLCV
-            arrays = FeatureArrays(
-                symbol=symbol,
-                tf=tf,
-                arrays={},
-                length=len(df),
-                warmup_bars=0,
-            )
+            arrays = FeatureArrays.empty(symbol=symbol, tf=tf, length=len(df))
         
         # Store by role
         if role == "exec":

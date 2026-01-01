@@ -45,10 +45,10 @@ from ..backtest.execution_validation import (
     validate_idea_card_full,
     compute_warmup_requirements,
     get_declared_features_by_role,
-    adapt_idea_card_to_system_config,
 )
 from ..backtest.indicators import get_required_indicator_columns_from_specs
 from ..backtest.system_config import validate_usdt_pair
+from ..backtest.runtime.preflight import run_preflight_gate, PreflightReport, AutoSyncConfig
 from ..utils.logger import get_logger
 
 
@@ -134,137 +134,6 @@ def normalize_timestamp(dt: datetime) -> datetime:
     return dt
 
 
-# =============================================================================
-# Preflight Result
-# =============================================================================
-
-@dataclass
-class PreflightDiagnostics:
-    """Diagnostics from preflight check."""
-    # Environment
-    env: str
-    db_path: str
-    ohlcv_table: str
-    
-    # Symbol/TF
-    symbol: str
-    exec_tf: str
-    htf: Optional[str] = None
-    mtf: Optional[str] = None
-    
-    # Window
-    requested_start: Optional[datetime] = None
-    requested_end: Optional[datetime] = None
-    effective_start: Optional[datetime] = None  # includes warmup
-    effective_end: Optional[datetime] = None
-    warmup_bars: int = 0
-    warmup_span_minutes: int = 0
-    
-    # Coverage
-    db_earliest: Optional[datetime] = None
-    db_latest: Optional[datetime] = None
-    db_bar_count: int = 0
-    has_sufficient_coverage: bool = False
-    coverage_issue: Optional[str] = None
-    
-    # Indicator keys (declared)
-    declared_keys_exec: List[str] = field(default_factory=list)
-    declared_keys_htf: List[str] = field(default_factory=list)
-    declared_keys_mtf: List[str] = field(default_factory=list)
-    
-    # Indicator keys (expanded, including multi-output suffixes)
-    expanded_keys_exec: List[str] = field(default_factory=list)
-    expanded_keys_htf: List[str] = field(default_factory=list)
-    expanded_keys_mtf: List[str] = field(default_factory=list)
-    
-    # Validation
-    idea_card_valid: bool = False
-    idea_card_hash: Optional[str] = None
-    validation_errors: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "env": self.env,
-            "db_path": self.db_path,
-            "ohlcv_table": self.ohlcv_table,
-            "symbol": self.symbol,
-            "exec_tf": self.exec_tf,
-            "htf": self.htf,
-            "mtf": self.mtf,
-            "requested_start": self.requested_start.isoformat() if self.requested_start else None,
-            "requested_end": self.requested_end.isoformat() if self.requested_end else None,
-            "effective_start": self.effective_start.isoformat() if self.effective_start else None,
-            "effective_end": self.effective_end.isoformat() if self.effective_end else None,
-            "warmup_bars": self.warmup_bars,
-            "warmup_span_minutes": self.warmup_span_minutes,
-            "db_earliest": self.db_earliest.isoformat() if self.db_earliest else None,
-            "db_latest": self.db_latest.isoformat() if self.db_latest else None,
-            "db_bar_count": self.db_bar_count,
-            "has_sufficient_coverage": self.has_sufficient_coverage,
-            "coverage_issue": self.coverage_issue,
-            "declared_keys_exec": self.declared_keys_exec,
-            "declared_keys_htf": self.declared_keys_htf,
-            "declared_keys_mtf": self.declared_keys_mtf,
-            "expanded_keys_exec": self.expanded_keys_exec,
-            "expanded_keys_htf": self.expanded_keys_htf,
-            "expanded_keys_mtf": self.expanded_keys_mtf,
-            "idea_card_valid": self.idea_card_valid,
-            "idea_card_hash": self.idea_card_hash,
-            "validation_errors": self.validation_errors,
-        }
-    
-    def format_summary(self) -> str:
-        """Format a human-readable summary for CLI output."""
-        lines = []
-        lines.append(f"Environment: {self.env}")
-        lines.append(f"Database: {self.db_path}")
-        lines.append(f"OHLCV Table: {self.ohlcv_table}")
-        lines.append(f"Symbol: {self.symbol}")
-        lines.append(f"Exec TF: {self.exec_tf}")
-        if self.htf:
-            lines.append(f"HTF: {self.htf}")
-        if self.mtf:
-            lines.append(f"MTF: {self.mtf}")
-        lines.append("")
-        lines.append("Window:")
-        if self.requested_start:
-            lines.append(f"  Requested: {self.requested_start.strftime('%Y-%m-%d %H:%M')} -> {self.requested_end.strftime('%Y-%m-%d %H:%M') if self.requested_end else 'now'}")
-        if self.effective_start:
-            lines.append(f"  Effective (with warmup): {self.effective_start.strftime('%Y-%m-%d %H:%M')} -> {self.effective_end.strftime('%Y-%m-%d %H:%M') if self.effective_end else 'now'}")
-        lines.append(f"  Warmup: {self.warmup_bars} bars ({self.warmup_span_minutes} minutes)")
-        lines.append("")
-        lines.append("DB Coverage:")
-        if self.db_earliest and self.db_latest:
-            lines.append(f"  Range: {self.db_earliest.strftime('%Y-%m-%d %H:%M')} -> {self.db_latest.strftime('%Y-%m-%d %H:%M')}")
-            lines.append(f"  Bars: {self.db_bar_count:,}")
-        else:
-            lines.append("  No data found")
-        lines.append(f"  Sufficient: {'Yes' if self.has_sufficient_coverage else 'No'}")
-        if self.coverage_issue:
-            lines.append(f"  Issue: {self.coverage_issue}")
-        lines.append("")
-        lines.append("Declared Indicator Keys:")
-        lines.append(f"  exec: {self.declared_keys_exec or '(none)'}")
-        if self.declared_keys_htf:
-            lines.append(f"  htf: {self.declared_keys_htf}")
-        if self.declared_keys_mtf:
-            lines.append(f"  mtf: {self.declared_keys_mtf}")
-        
-        # Show expanded keys (multi-output indicators expand to multiple columns)
-        if self.expanded_keys_exec != self.declared_keys_exec:
-            lines.append("")
-            lines.append("Expanded Indicator Keys (after multi-output expansion):")
-            lines.append(f"  exec: {self.expanded_keys_exec}")
-            if self.expanded_keys_htf:
-                lines.append(f"  htf: {self.expanded_keys_htf}")
-            if self.expanded_keys_mtf:
-                lines.append(f"  mtf: {self.expanded_keys_mtf}")
-        if self.validation_errors:
-            lines.append("")
-            lines.append("Validation Errors:")
-            for err in self.validation_errors:
-                lines.append(f"  - {err}")
-        return "\n".join(lines)
 
 
 # =============================================================================
@@ -278,31 +147,35 @@ def backtest_preflight_idea_card_tool(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
     idea_cards_dir: Optional[Path] = None,
+    symbol_override: Optional[str] = None,
+    fix_gaps: bool = False,
 ) -> ToolResult:
     """
-    Run preflight check for an IdeaCard backtest.
+    Run preflight check for an IdeaCard backtest using production preflight gate.
     
-    This is the Phase A gate. Validates:
-    - IdeaCard loads and validates
-    - env/symbol/tf are correct
-    - DuckDB has sufficient coverage for effective window (with warmup)
+    Phase 6: Calls run_preflight_gate() and returns PreflightReport.to_dict() unchanged.
     
     Args:
         idea_card_id: IdeaCard identifier
         env: Data environment ("live" or "demo")
         symbol: Override symbol (default: first in IdeaCard.symbol_universe)
-        start: Window start (default: derive from IdeaCard or DB)
+        start: Window start (required)
         end: Window end (default: now)
         idea_cards_dir: Override IdeaCard directory
+        symbol_override: Alias for symbol (Phase 6 smoke test support)
+        fix_gaps: If True, auto-fetch and fix missing data (uses data tools)
         
     Returns:
-        ToolResult with PreflightDiagnostics in data
+        ToolResult with PreflightReport.to_dict() in data
     """
     try:
+        # Phase 6: symbol_override is an alias for symbol
+        if symbol_override and not symbol:
+            symbol = symbol_override
+        
         # Validate env
         env = validate_data_env(env)
         db_path = resolve_db_path(env)
-        ohlcv_table = resolve_table_name("ohlcv", env)
         
         # Load IdeaCard
         try:
@@ -320,6 +193,12 @@ def backtest_preflight_idea_card_tool(
         
         # Validate IdeaCard
         validation = validate_idea_card_full(idea_card)
+        if not validation.is_valid:
+            return ToolResult(
+                success=False,
+                error=f"IdeaCard validation failed: {[i.message for i in validation.errors]}",
+                data={"validation_errors": [i.message for i in validation.errors]},
+            )
         
         # Resolve symbol
         if symbol is None:
@@ -340,10 +219,8 @@ def backtest_preflight_idea_card_tool(
                 error=str(e),
             )
         
-        # Validate exec_tf
-        exec_tf = validate_canonical_tf(idea_card.exec_tf)
-        htf = validate_canonical_tf(idea_card.htf) if idea_card.htf else None
-        mtf = validate_canonical_tf(idea_card.mtf) if idea_card.mtf else None
+        # Create data loader from HistoricalDataStore
+        store = get_historical_store(env=env)
         
         # Normalize timestamps
         if start:
@@ -353,133 +230,89 @@ def backtest_preflight_idea_card_tool(
         else:
             end = datetime.now().replace(tzinfo=None)
         
-        # Compute warmup
-        warmup_req = compute_warmup_requirements(idea_card)
-        warmup_bars = warmup_req.max_warmup_bars
-        tf_minutes = TF_MINUTES.get(exec_tf, 15)
-        warmup_span_minutes = warmup_bars * tf_minutes
+        # If start is None, query DB for coverage and use last 100 bars (smoke mode support)
+        if start is None:
+            exec_tf = validate_canonical_tf(idea_card.exec_tf)
+            # Query DB for coverage of exec TF
+            key = f"{symbol}_{exec_tf}"
+            db_status = store.status(symbol)
+            # Find the exec TF coverage
+            for db_key, info in db_status.items():
+                if info.get("timeframe") == exec_tf:
+                    last_ts = info.get("last_timestamp")
+                    if last_ts:
+                        # Use last_ts as end if earlier than current end
+                        if last_ts < end:
+                            end = last_ts
+                        # Compute start as 100 bars before end
+                        tf_minutes = TF_MINUTES.get(exec_tf, 15)
+                        start = end - timedelta(minutes=tf_minutes * 100)
+                        logger.info(f"Preflight auto-window: start={start}, end={end} (from DB coverage)")
+                    break
+            
+            # If still None, fail with clear error
+            if start is None:
+                return ToolResult(
+                    success=False,
+                    error=f"No data found for {symbol} {exec_tf} in database. Cannot determine window start. "
+                          f"Use --start to provide explicit window start, or sync data first.",
+                    data={"symbol": symbol, "exec_tf": exec_tf, "env": env},
+                )
         
-        # Compute effective window
-        if start:
-            effective_start = start - timedelta(minutes=warmup_span_minutes)
-        else:
-            # If no start provided, we'll derive from DB
-            effective_start = None
-        effective_end = end
+        def data_loader(sym: str, tf: str, start_dt: datetime, end_dt: datetime) -> pd.DataFrame:
+            """Load OHLCV data from DuckDB."""
+            df = store.get_ohlcv(sym, tf, start=start_dt, end=end_dt)
+            if df is None:
+                return pd.DataFrame()
+            return df
         
-        # Get declared feature keys
-        declared = get_declared_features_by_role(idea_card)
-        declared_keys_exec = sorted(declared.get("exec", set()))
-        declared_keys_htf = sorted(declared.get("htf", set()))
-        declared_keys_mtf = sorted(declared.get("mtf", set()))
-        
-        # Compute expanded keys (multi-output indicators expand to multiple columns)
-        # E.g., macd -> macd_macd, macd_signal, macd_hist
-        expanded_keys_exec = []
-        expanded_keys_htf = []
-        expanded_keys_mtf = []
-        
-        for role, tf_config in idea_card.tf_configs.items():
-            specs = list(tf_config.feature_specs)
-            expanded = get_required_indicator_columns_from_specs(specs)
-            if role == "exec":
-                expanded_keys_exec = sorted(expanded)
-            elif role == "htf":
-                expanded_keys_htf = sorted(expanded)
-            elif role == "mtf":
-                expanded_keys_mtf = sorted(expanded)
-        
-        # Check DB coverage
-        store = get_historical_store(env=env)
-        
-        # Get DB range for this symbol/tf
-        status = store.status(symbol)
-        tf_key = f"{symbol}_{exec_tf}"
-        tf_status = status.get(tf_key, {})
-        
-        db_earliest = tf_status.get("first_timestamp")
-        db_latest = tf_status.get("last_timestamp")
-        db_bar_count = tf_status.get("candle_count", 0)
-        
-        # Check coverage
-        has_sufficient_coverage = False
-        coverage_issue = None
-        
-        if db_bar_count == 0:
-            coverage_issue = f"No data found for {symbol} {exec_tf}. Run: python trade_cli.py backtest data-fix --idea-card {idea_card_id} --env {env}"
-        elif effective_start and db_earliest and effective_start < db_earliest:
-            coverage_issue = (
-                f"Effective window starts at {effective_start.strftime('%Y-%m-%d %H:%M')} "
-                f"but DB earliest is {db_earliest.strftime('%Y-%m-%d %H:%M')}. "
-                f"Either sync earlier data or reduce warmup_multiplier. "
-                f"Run: python trade_cli.py backtest data-fix --idea-card {idea_card_id} --env {env} --start {effective_start.strftime('%Y-%m-%d')}"
+        # Run production preflight gate with optional auto-sync
+        auto_sync_config = None
+        if fix_gaps:
+            auto_sync_config = AutoSyncConfig(
+                enabled=True,
+                max_attempts=2,
+                data_env=env,
             )
-        elif effective_end and db_latest and effective_end > db_latest + timedelta(hours=1):
-            coverage_issue = (
-                f"Window ends at {effective_end.strftime('%Y-%m-%d %H:%M')} "
-                f"but DB latest is {db_latest.strftime('%Y-%m-%d %H:%M')}. "
-                f"Run: python trade_cli.py backtest data-fix --idea-card {idea_card_id} --env {env} --sync-to-now"
-            )
-        else:
-            has_sufficient_coverage = True
         
-        # Build diagnostics
-        diagnostics = PreflightDiagnostics(
-            env=env,
-            db_path=str(db_path),
-            ohlcv_table=ohlcv_table,
-            symbol=symbol,
-            exec_tf=exec_tf,
-            htf=htf,
-            mtf=mtf,
-            requested_start=start,
-            requested_end=end,
-            effective_start=effective_start,
-            effective_end=effective_end,
-            warmup_bars=warmup_bars,
-            warmup_span_minutes=warmup_span_minutes,
-            db_earliest=db_earliest,
-            db_latest=db_latest,
-            db_bar_count=db_bar_count,
-            has_sufficient_coverage=has_sufficient_coverage,
-            coverage_issue=coverage_issue,
-            declared_keys_exec=declared_keys_exec,
-            declared_keys_htf=declared_keys_htf,
-            declared_keys_mtf=declared_keys_mtf,
-            expanded_keys_exec=expanded_keys_exec,
-            expanded_keys_htf=expanded_keys_htf,
-            expanded_keys_mtf=expanded_keys_mtf,
-            idea_card_valid=validation.is_valid,
-            idea_card_hash=validation.hash,
-            validation_errors=[i.message for i in validation.errors] if validation.errors else [],
+        preflight_report = run_preflight_gate(
+            idea_card=idea_card,
+            data_loader=data_loader,
+            window_start=start,
+            window_end=end,
+            auto_sync_missing=fix_gaps,
+            auto_sync_config=auto_sync_config,
         )
         
-        # Log summary
-        logger.info(f"Preflight check for {idea_card_id}:\n{diagnostics.format_summary()}")
+        # Get exec TF info for message
+        exec_tf = validate_canonical_tf(idea_card.exec_tf)
         
-        # Determine success
-        success = validation.is_valid and has_sufficient_coverage
+        # Return PreflightReport.to_dict() unchanged (Phase 6 requirement)
+        report_dict = preflight_report.to_dict()
         
-        if not success:
-            error_msg = []
-            if not validation.is_valid:
-                error_msg.append(f"IdeaCard validation failed: {diagnostics.validation_errors}")
-            if not has_sufficient_coverage:
-                error_msg.append(coverage_issue or "Insufficient DB coverage")
+        # Add env info for convenience
+        report_dict["env"] = env
+        report_dict["db_path"] = str(db_path)
+        report_dict["symbol"] = symbol
+        
+        if preflight_report.overall_status.value == "passed":
+            return ToolResult(
+                success=True,
+                message=f"Preflight OK for {idea_card_id}: {symbol} {exec_tf}",
+                symbol=symbol,
+                data=report_dict,
+            )
+        else:
+            error_msg = preflight_report.error_code or "Preflight check failed"
+            if preflight_report.error_details:
+                error_msg += f": {preflight_report.error_details}"
             
             return ToolResult(
                 success=False,
-                error="; ".join(error_msg),
+                error=error_msg,
                 symbol=symbol,
-                data=diagnostics.to_dict(),
+                data=report_dict,
             )
-        
-        return ToolResult(
-            success=True,
-            message=f"Preflight OK for {idea_card_id}: {symbol} {exec_tf}, {db_bar_count:,} bars available",
-            symbol=symbol,
-            data=diagnostics.to_dict(),
-        )
         
     except Exception as e:
         logger.error(f"Preflight check failed: {e}\n{traceback.format_exc()}")
@@ -506,6 +339,10 @@ def backtest_run_idea_card_tool(
     idea_cards_dir: Optional[Path] = None,
     initial_equity_override: Optional[float] = None,
     max_leverage_override: Optional[float] = None,
+    emit_snapshots: bool = False,
+    symbol_override: Optional[str] = None,
+    fix_gaps: bool = True,
+    validate_artifacts_after: bool = True,
 ) -> ToolResult:
     """
     Run a backtest for an IdeaCard.
@@ -529,12 +366,19 @@ def backtest_run_idea_card_tool(
         idea_cards_dir: Override IdeaCard directory
         initial_equity_override: Override starting equity (defaults to IdeaCard.account.starting_equity_usdt)
         max_leverage_override: Override max leverage (defaults to IdeaCard.account.max_leverage)
+        symbol_override: Alias for symbol (Phase 6 smoke test support)
+        fix_gaps: If True (default), auto-fetch and fix missing data during preflight
+        validate_artifacts_after: If True (default), validate artifacts after run (HARD FAIL if invalid)
         
     Returns:
         ToolResult with backtest results
     """
     try:
-        # Run preflight first
+        # Phase 6: symbol_override is an alias for symbol
+        if symbol_override and not symbol:
+            symbol = symbol_override
+        
+        # Run preflight first (with auto-sync if fix_gaps=True)
         preflight_result = backtest_preflight_idea_card_tool(
             idea_card_id=idea_card_id,
             env=env,
@@ -542,12 +386,13 @@ def backtest_run_idea_card_tool(
             start=start,
             end=end,
             idea_cards_dir=idea_cards_dir,
+            fix_gaps=fix_gaps,
         )
         
         if not preflight_result.success:
             return preflight_result
         
-        diagnostics = preflight_result.data
+        preflight_data = preflight_result.data
         
         # Load IdeaCard
         idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
@@ -575,9 +420,9 @@ def backtest_run_idea_card_tool(
         )
         resolved_min_trade = idea_card.account.min_trade_notional_usdt or 1.0
         
-        # Resolve symbol from diagnostics
-        resolved_symbol = diagnostics["symbol"]
-        exec_tf = diagnostics["exec_tf"]
+        # Resolve symbol from preflight data or IdeaCard
+        resolved_symbol = preflight_data.get("symbol") or idea_card.symbol_universe[0]
+        exec_tf = validate_canonical_tf(idea_card.exec_tf)
         
         # Print Resolved Config Summary (Phase 5.3 requirement)
         logger.info("=" * 60)
@@ -608,10 +453,12 @@ def backtest_run_idea_card_tool(
         logger.info("=" * 60)
         
         # If smoke mode and no start/end provided, use last 100 bars from DB
-        db_latest = diagnostics.get("db_latest")
+        # Get db_latest from coverage data (epoch-ms)
+        coverage = preflight_data.get("coverage", {})
+        db_end_ts_ms = coverage.get("db_end_ts_ms")
         db_latest_dt = None
-        if db_latest:
-            db_latest_dt = datetime.fromisoformat(db_latest) if isinstance(db_latest, str) else db_latest
+        if db_end_ts_ms:
+            db_latest_dt = datetime.fromtimestamp(db_end_ts_ms / 1000)
         
         if smoke:
             if db_latest_dt:
@@ -643,15 +490,14 @@ def backtest_run_idea_card_tool(
             IndicatorGateStatus,
         )
         
-        # Build available keys from declared FeatureSpecs (expanded keys)
+        # Compute expanded keys from IdeaCard FeatureSpecs
         available_keys_by_role = {}
-        for role in ["exec", "htf", "mtf"]:
-            expanded_key = f"expanded_keys_{role}"
-            if expanded_key in diagnostics:
-                available_keys_by_role[role] = set(diagnostics[expanded_key])
-            elif f"declared_keys_{role}" in diagnostics:
-                # Fallback to declared keys if expanded not available
-                available_keys_by_role[role] = set(diagnostics[f"declared_keys_{role}"])
+        declared_keys_by_role = {}
+        for role, tf_config in idea_card.tf_configs.items():
+            specs = list(tf_config.feature_specs)
+            expanded = get_required_indicator_columns_from_specs(specs)
+            available_keys_by_role[role] = set(expanded)
+            declared_keys_by_role[role] = sorted(expanded)
         
         indicator_gate_result = validate_indicator_requirements(
             idea_card=idea_card,
@@ -667,7 +513,7 @@ def backtest_run_idea_card_tool(
                 data={
                     "gate": "indicator_requirements",
                     "result": indicator_gate_result.to_dict(),
-                    "preflight": diagnostics,
+                    "preflight": preflight_data,
                 },
             )
         
@@ -677,18 +523,17 @@ def backtest_run_idea_card_tool(
             logger.info("[GATE] Indicator requirements: SKIPPED (no required_indicators declared)")
         
         # Print indicator keys (Phase B requirement)
-        logger.info(f"Declared indicator keys (exec): {diagnostics['declared_keys_exec']}")
-        if diagnostics.get("declared_keys_htf"):
-            logger.info(f"Declared indicator keys (htf): {diagnostics['declared_keys_htf']}")
-        if diagnostics.get("declared_keys_mtf"):
-            logger.info(f"Declared indicator keys (mtf): {diagnostics['declared_keys_mtf']}")
+        logger.info(f"Declared indicator keys (exec): {declared_keys_by_role.get('exec', [])}")
+        if declared_keys_by_role.get("htf"):
+            logger.info(f"Declared indicator keys (htf): {declared_keys_by_role['htf']}")
+        if declared_keys_by_role.get("mtf"):
+            logger.info(f"Declared indicator keys (mtf): {declared_keys_by_role['mtf']}")
         
         # Use the existing runner infrastructure
         from ..backtest.runner import (
             RunnerConfig,
             RunnerResult,
             run_backtest_with_gates,
-            create_default_engine_factory,
         )
         
         # Set default artifacts dir
@@ -720,12 +565,13 @@ def backtest_run_idea_card_tool(
             skip_preflight=True,  # CLI wrapper already validated
             skip_artifact_validation=True,  # Skip because preflight is skipped (no preflight_report.json)
             data_loader=data_loader,
+            emit_snapshots=emit_snapshots,
         )
         
         # Run backtest with gates
+        # P1.2 Refactor: engine_factory is now handled internally via create_engine_from_idea_card()
         run_result = run_backtest_with_gates(
             config=runner_config,
-            engine_factory=create_default_engine_factory(),
         )
         
         # Extract results
@@ -735,7 +581,7 @@ def backtest_run_idea_card_tool(
                 error=run_result.error_message or "Backtest failed",
                 symbol=resolved_symbol,
                 data={
-                    "preflight": diagnostics,
+                    "preflight": preflight_data,
                     "run_result": run_result.to_dict(),
                     "gate_failed": run_result.gate_failed,
                 },
@@ -746,7 +592,7 @@ def backtest_run_idea_card_tool(
         trades_count = summary.trades_count if summary else 0
         
         result_data = {
-            "preflight": diagnostics,
+            "preflight": preflight_data,
             "idea_card_id": idea_card_id,
             "symbol": resolved_symbol,
             "exec_tf": exec_tf,
@@ -764,6 +610,32 @@ def backtest_run_idea_card_tool(
         
         if run_result.artifact_path:
             result_data["artifact_dir"] = str(run_result.artifact_path)
+            
+            # Phase 2: Post-backtest artifact validation gate
+            # Validates all artifacts exist and conform to standards
+            if validate_artifacts_after:
+                from ..backtest.artifacts import validate_artifacts
+                
+                artifact_validation = validate_artifacts(run_result.artifact_path)
+                result_data["artifact_validation"] = artifact_validation.to_dict()
+                
+                if not artifact_validation.passed:
+                    # HARD FAIL: Artifact validation failures must be caught early
+                    logger.warning(
+                        f"Artifact validation FAILED: {artifact_validation.errors + artifact_validation.pipeline_signature_errors}"
+                    )
+                    return ToolResult(
+                        success=False,
+                        error="Artifact validation failed - see artifact_validation in data for details",
+                        symbol=resolved_symbol,
+                        data=result_data,
+                    )
+                else:
+                    logger.info("[GATE] Artifact validation: PASSED")
+                    if artifact_validation.pipeline_signature_valid:
+                        logger.info("[GATE] Pipeline signature: VALID")
+            else:
+                logger.info("[GATE] Artifact validation: SKIPPED (--no-validate)")
         
         return ToolResult(
             success=True,
@@ -979,11 +851,20 @@ def backtest_indicators_tool(
 # Data Fix (tools-layer dispatch to existing tools)
 # =============================================================================
 
+def _datetime_to_epoch_ms(dt: Optional[datetime]) -> Optional[int]:
+    """Convert datetime to epoch milliseconds."""
+    if dt is None:
+        return None
+    return int(dt.timestamp() * 1000)
+
+
 def backtest_data_fix_tool(
     idea_card_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
     symbol: Optional[str] = None,
     start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    max_lookback_days: int = 7,
     sync_to_now: bool = False,
     fill_gaps: bool = True,
     heal: bool = False,
@@ -992,20 +873,22 @@ def backtest_data_fix_tool(
     """
     Fix data for an IdeaCard backtest by calling existing data tools.
     
-    No new DB logic - dispatches to existing sync/fill/heal tools.
+    Phase 6: Bounded enforcement + progress tracking + structured result.
     
     Args:
         idea_card_id: IdeaCard identifier
         env: Data environment
         symbol: Override symbol
         start: Sync from this date (default: IdeaCard warmup requirements)
+        end: Sync to this date (required for bounded mode)
+        max_lookback_days: Max lookback days (default 7). If (end - start) > this, clamp start.
         sync_to_now: If True, sync data to current time
         fill_gaps: If True, fill gaps after sync
         heal: If True, run full heal after sync
         idea_cards_dir: Override IdeaCard directory
         
     Returns:
-        ToolResult with data fix summary
+        ToolResult with structured data fix summary including bounds and progress
     """
     from .data_tools import (
         sync_range_tool,
@@ -1033,21 +916,57 @@ def backtest_data_fix_tool(
         
         symbol = validate_symbol(symbol)
         
-        # Get all TFs from IdeaCard
+        # Get all TFs from IdeaCard + mandatory 1m for price feed
         tfs = set()
         for role, tf_config in idea_card.tf_configs.items():
             tfs.add(tf_config.tf)
+        # 1m is mandatory for price feed (quote proxy) - always include
+        tfs.add("1m")
         tfs = sorted(tfs)
         
-        results = []
+        # Phase 6: Track progress via callback counter
+        progress_lines_count = 0
+        
+        def progress_callback(sym: str, tf: str, msg: str):
+            nonlocal progress_lines_count
+            progress_lines_count += 1
+            logger.info(f"  [{sym} {tf}] {msg}")
+        
+        operations = []
+        
+        # Phase 6: Bounded enforcement
+        bounds_applied = False
+        original_start = start
+        
+        if end is None:
+            end = datetime.now().replace(tzinfo=None)
+        else:
+            end = normalize_timestamp(end)
+        
+        if start:
+            start = normalize_timestamp(start)
+            requested_days = (end - start).days
+            
+            if requested_days > max_lookback_days:
+                # Clamp start to end - max_lookback_days
+                start = end - timedelta(days=max_lookback_days)
+                bounds_applied = True
+                logger.info(f"Data-fix: Clamped start from {original_start} to {start} (max_lookback_days={max_lookback_days})")
+        
+        # Build bounds info
+        bounds = {
+            "start_ts_ms": _datetime_to_epoch_ms(start),
+            "end_ts_ms": _datetime_to_epoch_ms(end),
+            "cap": {"max_lookback_days": max_lookback_days},
+            "applied": bounds_applied,
+        }
         
         logger.info(f"Data fix for {idea_card_id}: env={env}, db={db_path}, symbol={symbol}, tfs={tfs}")
+        if bounds_applied:
+            logger.info(f"  Bounds applied: start clamped to {start}")
         
         # Sync range if start provided
         if start and not sync_to_now:
-            start = normalize_timestamp(start)
-            end = datetime.now().replace(tzinfo=None)
-            
             result = sync_range_tool(
                 symbols=[symbol],
                 start=start,
@@ -1055,7 +974,13 @@ def backtest_data_fix_tool(
                 timeframes=tfs,
                 env=env,
             )
-            results.append(("sync_range", result))
+            operations.append({
+                "name": "sync_range",
+                "success": result.success,
+                "message": result.message if result.success else result.error,
+            })
+            # Count as progress line
+            progress_lines_count += 1
         
         # Sync to now + fill gaps
         if sync_to_now:
@@ -1064,7 +989,12 @@ def backtest_data_fix_tool(
                 timeframes=tfs,
                 env=env,
             )
-            results.append(("sync_to_now_and_fill_gaps", result))
+            operations.append({
+                "name": "sync_to_now_and_fill_gaps",
+                "success": result.success,
+                "message": result.message if result.success else result.error,
+            })
+            progress_lines_count += 1
         
         # Fill gaps
         if fill_gaps and not sync_to_now:
@@ -1074,7 +1004,13 @@ def backtest_data_fix_tool(
                     timeframe=tf,
                     env=env,
                 )
-                results.append((f"fill_gaps_{tf}", result))
+                operations.append({
+                    "name": "fill_gaps",
+                    "tf": tf,
+                    "success": result.success,
+                    "message": result.message if result.success else result.error,
+                })
+                progress_lines_count += 1
         
         # Heal
         if heal:
@@ -1082,30 +1018,34 @@ def backtest_data_fix_tool(
                 symbol=symbol,
                 env=env,
             )
-            results.append(("heal", result))
+            operations.append({
+                "name": "heal",
+                "success": result.success,
+                "message": result.message if result.success else result.error,
+            })
+            progress_lines_count += 1
         
-        # Summarize
-        all_success = all(r[1].success for r in results)
+        # Summarize - Phase 6: structured result with bounds, operations, progress
+        all_success = all(op.get("success", False) for op in operations)
         summary = {
             "env": env,
             "db_path": str(db_path),
             "symbol": symbol,
             "tfs": tfs,
-            "operations": [
-                {"name": name, "success": result.success, "message": result.message or result.error}
-                for name, result in results
-            ],
+            "bounds": bounds,
+            "operations": operations,
+            "progress_lines_count": progress_lines_count,
         }
         
         if all_success:
             return ToolResult(
                 success=True,
-                message=f"Data fix complete for {symbol}: {len(results)} operations",
+                message=f"Data fix complete for {symbol}: {len(operations)} operations, bounds_applied={bounds_applied}",
                 symbol=symbol,
                 data=summary,
             )
         else:
-            failed = [r[0] for r in results if not r[1].success]
+            failed = [op["name"] for op in operations if not op.get("success", False)]
             return ToolResult(
                 success=False,
                 error=f"Some operations failed: {failed}",
@@ -1281,98 +1221,589 @@ def backtest_idea_card_normalize_tool(
 # Audit Toolkit (indicator registry consistency check)
 # =============================================================================
 
-def backtest_audit_toolkit_tool() -> ToolResult:
+def backtest_idea_card_normalize_batch_tool(
+    idea_cards_dir: Path,
+    write_in_place: bool = False,
+) -> ToolResult:
     """
-    Audit the indicator toolkit for internal consistency.
-    
-    Validates:
-    - All indicators in IndicatorRegistry are actually callable in pandas_ta
-    - Multi-output indicators have correct output_keys defined
-    - MULTI_OUTPUT_KEYS in feature_spec.py matches registry
-    
+    Batch normalize all IdeaCards in a directory.
+
+    Args:
+        idea_cards_dir: Directory containing IdeaCard YAML files
+        write_in_place: If True, write normalized YAML back to files
+
     Returns:
-        ToolResult with audit results
+        ToolResult with batch normalization results
     """
     try:
-        import pandas_ta as ta
-        from ..backtest.indicator_registry import (
-            get_registry,
-            SUPPORTED_INDICATORS,
-        )
-        from ..backtest.features.feature_spec import MULTI_OUTPUT_KEYS, IndicatorType
-        
-        registry = get_registry()
-        issues: List[Dict[str, Any]] = []
-        
-        # Check each supported indicator exists in pandas_ta
-        for name in registry.list_indicators():
-            func = getattr(ta, name, None)
-            if func is None or not callable(func):
-                issues.append({
-                    "type": "MISSING_IN_PANDAS_TA",
-                    "indicator": name,
-                    "message": f"Indicator '{name}' is in SUPPORTED_INDICATORS but not found in pandas_ta",
-                })
-        
-        # Check multi-output indicators have output_keys
-        for name, spec in SUPPORTED_INDICATORS.items():
-            if spec.get("multi_output", False):
-                output_keys = spec.get("output_keys", ())
-                if not output_keys:
-                    issues.append({
-                        "type": "MISSING_OUTPUT_KEYS",
-                        "indicator": name,
-                        "message": f"Multi-output indicator '{name}' has no output_keys defined",
-                    })
-                if not spec.get("primary_output"):
-                    issues.append({
-                        "type": "MISSING_PRIMARY_OUTPUT",
-                        "indicator": name,
-                        "message": f"Multi-output indicator '{name}' has no primary_output defined",
-                    })
-        
-        # Check MULTI_OUTPUT_KEYS consistency
-        for ind_type, keys in MULTI_OUTPUT_KEYS.items():
-            name = ind_type.value
-            if name in SUPPORTED_INDICATORS:
-                registry_keys = tuple(SUPPORTED_INDICATORS[name].get("output_keys", ()))
-                if registry_keys and registry_keys != keys:
-                    issues.append({
-                        "type": "OUTPUT_KEYS_MISMATCH",
-                        "indicator": name,
-                        "message": (
-                            f"Mismatch between MULTI_OUTPUT_KEYS and SUPPORTED_INDICATORS: "
-                            f"MULTI_OUTPUT_KEYS has {keys}, registry has {registry_keys}"
-                        ),
-                    })
-        
-        if issues:
+        from ..backtest.idea_card import list_idea_cards
+
+        # Get all IdeaCard IDs in the directory
+        idea_card_ids = list_idea_cards(base_dir=idea_cards_dir)
+
+        if not idea_card_ids:
             return ToolResult(
                 success=False,
-                error=f"Toolkit audit found {len(issues)} issue(s)",
+                error=f"No IdeaCard YAML files found in {idea_cards_dir}",
+            )
+
+        results = []
+        passed_count = 0
+        failed_count = 0
+
+        logger.info(f"Batch normalizing {len(idea_card_ids)} IdeaCards in {idea_cards_dir}")
+
+        # Process each IdeaCard
+        for idea_card_id in idea_card_ids:
+            try:
+                # Use the existing single-card normalize function
+                single_result = backtest_idea_card_normalize_tool(
+                    idea_card_id=idea_card_id,
+                    idea_cards_dir=idea_cards_dir,
+                    write_in_place=write_in_place,
+                )
+
+                card_result = {
+                    "idea_card_id": idea_card_id,
+                    "success": single_result.success,
+                    "message": single_result.message if single_result.success else single_result.error,
+                    "data": single_result.data,
+                }
+
+                if single_result.success:
+                    passed_count += 1
+                else:
+                    failed_count += 1
+
+                results.append(card_result)
+
+            except Exception as e:
+                logger.error(f"Failed to process {idea_card_id}: {e}")
+                card_result = {
+                    "idea_card_id": idea_card_id,
+                    "success": False,
+                    "message": str(e),
+                    "data": None,
+                }
+                failed_count += 1
+                results.append(card_result)
+
+        # Determine overall success (all cards must pass)
+        overall_success = failed_count == 0
+
+        summary = {
+            "total_cards": len(idea_card_ids),
+            "passed": passed_count,
+            "failed": failed_count,
+            "directory": str(idea_cards_dir),
+            "write_in_place": write_in_place,
+        }
+
+        if overall_success:
+            return ToolResult(
+                success=True,
+                message=f"Batch normalization successful: {passed_count}/{len(idea_card_ids)} cards passed",
                 data={
-                    "issues": issues,
-                    "supported_indicators": registry.list_indicators(),
+                    "summary": summary,
+                    "results": results,
                 },
             )
-        
+        else:
+            return ToolResult(
+                success=False,
+                error=f"Batch normalization failed: {failed_count}/{len(idea_card_ids)} cards failed",
+                data={
+                    "summary": summary,
+                    "results": results,
+                },
+            )
+
+    except Exception as e:
+        logger.error(f"Batch normalization failed: {e}\n{traceback.format_exc()}")
         return ToolResult(
-            success=True,
-            message="Toolkit audit passed: all indicators consistent",
-            data={
-                "supported_indicators": registry.list_indicators(),
-                "multi_output_count": sum(
-                    1 for s in SUPPORTED_INDICATORS.values() if s.get("multi_output")
-                ),
-                "single_output_count": sum(
-                    1 for s in SUPPORTED_INDICATORS.values() if not s.get("multi_output")
-                ),
-            },
+            success=False,
+            error=f"Batch normalization error: {e}",
         )
-        
+
+
+def backtest_audit_math_from_snapshots_tool(run_dir: Path) -> ToolResult:
+    """
+    Audit math parity by comparing snapshot artifacts against fresh pandas_ta computation.
+
+    Args:
+        run_dir: Directory containing snapshots/ subdirectory with artifacts
+
+    Returns:
+        ToolResult with audit results including per-column diff statistics
+    """
+    try:
+        from ..backtest.audits.audit_math_parity import audit_math_parity_from_snapshots
+
+        result = audit_math_parity_from_snapshots(run_dir)
+
+        if result.success:
+            return ToolResult(
+                success=True,
+                message="Math parity audit completed successfully",
+                data=result.data,
+            )
+        else:
+            return ToolResult(
+                success=False,
+                error=result.error_message or "Math parity audit failed",
+                data=result.data,
+            )
+
+    except Exception as e:
+        logger.error(f"Math parity audit failed: {e}\n{traceback.format_exc()}")
+        return ToolResult(
+            success=False,
+            error=f"Math parity audit error: {e}",
+        )
+
+
+def backtest_audit_toolkit_tool(
+    sample_bars: int = 2000,
+    seed: int = 1337,
+    fail_on_extras: bool = False,
+    strict: bool = True,
+) -> ToolResult:
+    """
+    Run the toolkit contract audit over all registry indicators.
+    
+    Gate 1 of the verification suite - ensures the registry is the contract:
+    - Every indicator produces exactly registry-declared canonical outputs
+    - No canonical collisions
+    - No missing declared outputs
+    - Extras are dropped + recorded
+    
+    Uses deterministic synthetic OHLCV data for reproducibility.
+
+    Args:
+        sample_bars: Number of bars in synthetic OHLCV (default: 2000)
+        seed: Random seed for reproducibility (default: 1337)
+        fail_on_extras: If True, treat extras as failures (default: False)
+        strict: If True, fail on any contract breach (default: True)
+
+    Returns:
+        ToolResult with complete audit results
+    """
+    try:
+        from ..backtest.audits.toolkit_contract_audit import run_toolkit_contract_audit
+
+        result = run_toolkit_contract_audit(
+            sample_bars=sample_bars,
+            seed=seed,
+            fail_on_extras=fail_on_extras,
+            strict=strict,
+        )
+
+        if result.success:
+            return ToolResult(
+                success=True,
+                message=(
+                    f"Toolkit contract audit PASSED: {result.passed_indicators}/{result.total_indicators} "
+                    f"indicators OK ({result.indicators_with_extras} have extras dropped)"
+                ),
+                data=result.to_dict(),
+            )
+        else:
+            # Collect failure details
+            failed = [r for r in result.indicator_results if not r.passed]
+            failure_summary = [
+                {
+                    "indicator": r.indicator_type,
+                    "missing": r.missing_outputs,
+                    "collisions": r.collisions,
+                    "error": r.error_message,
+                }
+                for r in failed
+            ]
+            return ToolResult(
+                success=False,
+                error=(
+                    f"Toolkit contract audit FAILED: {result.failed_indicators} indicator(s) "
+                    f"with contract breaches"
+                ),
+                data=result.to_dict(),
+            )
+
+    except Exception as e:
+        logger.error(f"Toolkit contract audit failed: {e}\n{traceback.format_exc()}")
+        return ToolResult(
+            success=False,
+            error=f"Toolkit contract audit error: {e}",
+        )
+
     except Exception as e:
         logger.error(f"Toolkit audit failed: {e}\n{traceback.format_exc()}")
         return ToolResult(
             success=False,
             error=f"Audit error: {e}",
+        )
+
+
+def backtest_audit_in_memory_parity_tool(
+    idea_card: str,
+    start_date: str,
+    end_date: str,
+    output_dir: Optional[str] = None,
+) -> ToolResult:
+    """
+    Run in-memory math parity audit for an IdeaCard.
+    
+    Compares FeatureFrameBuilder output against fresh pandas_ta computation.
+    Does NOT emit snapshot artifacts or Parquet — purely in-memory comparison.
+    
+    Args:
+        idea_card: Path to IdeaCard YAML
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        output_dir: Optional output directory for diff CSV (written only on failure)
+        
+    Returns:
+        ToolResult with parity audit results
+    """
+    try:
+        from ..backtest.audits.audit_in_memory_parity import run_in_memory_parity_for_idea_card
+        
+        output_path = Path(output_dir) if output_dir else None
+        
+        result = run_in_memory_parity_for_idea_card(
+            idea_card_path=idea_card,
+            start_date=start_date,
+            end_date=end_date,
+            output_dir=output_path,
+        )
+        
+        if result.success:
+            return ToolResult(
+                success=True,
+                message=(
+                    f"In-memory parity audit PASSED: {result.summary['passed_columns']}/{result.summary['total_columns']} "
+                    f"columns OK (max_diff={result.summary['max_abs_diff']:.2e})"
+                ),
+                data=result.to_dict(),
+            )
+        else:
+            return ToolResult(
+                success=False,
+                error=(
+                    f"In-memory parity audit FAILED: {result.summary['failed_columns']} column(s) "
+                    f"exceeded tolerance (max_diff={result.summary['max_abs_diff']:.2e})"
+                    if result.summary else result.error_message
+                ),
+                data=result.to_dict(),
+            )
+    
+    except Exception as e:
+        logger.error(f"In-memory parity audit failed: {e}\n{traceback.format_exc()}")
+        return ToolResult(
+            success=False,
+            error=f"In-memory parity audit error: {e}",
+        )
+
+
+def backtest_math_parity_tool(
+    idea_card: str,
+    start_date: str,
+    end_date: str,
+    output_dir: Optional[str] = None,
+    contract_sample_bars: int = 2000,
+    contract_seed: int = 1337,
+) -> ToolResult:
+    """
+    Run math parity audit: contract audit + in-memory parity.
+    
+    Validates indicator math correctness by running:
+    1. Toolkit contract audit (registry validation)
+    2. In-memory math parity audit (indicator computation validation)
+    
+    Args:
+        idea_card: Path to IdeaCard YAML for parity audit
+        start_date: Start date for parity audit (YYYY-MM-DD)
+        end_date: End date for parity audit (YYYY-MM-DD)
+        output_dir: Optional output directory for diff reports
+        contract_sample_bars: Synthetic bars for contract audit
+        contract_seed: Random seed for contract audit
+        
+    Returns:
+        ToolResult with combined audit results
+    """
+    from ..backtest.audits.toolkit_contract_audit import run_toolkit_contract_audit
+    from ..backtest.audits.audit_in_memory_parity import run_in_memory_parity_for_idea_card
+    
+    results = {
+        "contract_audit": None,
+        "parity_audit": None,
+    }
+    
+    try:
+        # Step 1: Toolkit contract audit
+        contract_result = run_toolkit_contract_audit(
+            sample_bars=contract_sample_bars,
+            seed=contract_seed,
+            fail_on_extras=False,
+            strict=True,
+        )
+        results["contract_audit"] = {
+            "success": contract_result.success,
+            "passed": contract_result.passed_indicators,
+            "failed": contract_result.failed_indicators,
+            "total": contract_result.total_indicators,
+        }
+        
+        if not contract_result.success:
+            return ToolResult(
+                success=False,
+                error=f"Math parity FAILED at contract audit: {contract_result.failed_indicators} indicator(s) with breaches",
+                data=results,
+            )
+        
+        # Step 2: In-memory parity audit
+        output_path = Path(output_dir) if output_dir else None
+        parity_result = run_in_memory_parity_for_idea_card(
+            idea_card_path=idea_card,
+            start_date=start_date,
+            end_date=end_date,
+            output_dir=output_path,
+        )
+        results["parity_audit"] = {
+            "success": parity_result.success,
+            "summary": parity_result.summary,
+        }
+        
+        if not parity_result.success:
+            return ToolResult(
+                success=False,
+                error=f"Math parity FAILED: {parity_result.summary.get('failed_columns', 0)} column(s) mismatched",
+                data=results,
+            )
+        
+        # Both passed
+        return ToolResult(
+            success=True,
+            message=(
+                f"Math parity PASSED: "
+                f"contract={contract_result.passed_indicators}/{contract_result.total_indicators}, "
+                f"parity={parity_result.summary['passed_columns']}/{parity_result.summary['total_columns']}"
+            ),
+            data=results,
+        )
+    
+    except Exception as e:
+        logger.error(f"Math parity audit failed: {e}\n{traceback.format_exc()}")
+        return ToolResult(
+            success=False,
+            error=f"Math parity audit error: {e}",
+            data=results,
+        )
+
+
+# =============================================================================
+# Phase 3: Artifact Parity Verification (CSV ↔ Parquet)
+# =============================================================================
+
+def verify_artifact_parity_tool(
+    idea_card_id: str,
+    symbol: str,
+    run_id: Optional[str] = None,
+    base_dir: Optional[str] = None,
+) -> ToolResult:
+    """
+    Verify CSV ↔ Parquet parity for backtest artifacts.
+    
+    Phase 3.1 tool: Validates that dual-written CSV and Parquet files
+    contain identical data. Used during migration validation.
+    
+    Args:
+        idea_card_id: IdeaCard ID
+        symbol: Trading symbol
+        run_id: Specific run ID (e.g., "run-001") or None for latest
+        base_dir: Base backtests directory (default: "backtests")
+        
+    Returns:
+        ToolResult with parity verification results
+    """
+    from ..backtest.artifact_parity_verifier import (
+        verify_idea_card_parity,
+        RunParityResult,
+    )
+    
+    try:
+        # Default base dir
+        backtests_dir = Path(base_dir) if base_dir else Path("backtests")
+        
+        # Run parity verification
+        result = verify_idea_card_parity(
+            base_dir=backtests_dir,
+            idea_card_id=idea_card_id,
+            symbol=symbol,
+            run_id=run_id,
+        )
+        
+        if result.passed:
+            return ToolResult(
+                success=True,
+                message=f"CSV ↔ Parquet parity PASSED: {result.artifacts_passed}/{result.artifacts_checked} artifacts",
+                data=result.to_dict(),
+            )
+        else:
+            return ToolResult(
+                success=False,
+                error=f"CSV ↔ Parquet parity FAILED: {result.artifacts_passed}/{result.artifacts_checked} artifacts passed",
+                data=result.to_dict(),
+            )
+    
+    except Exception as e:
+        logger.error(f"Artifact parity verification failed: {e}\n{traceback.format_exc()}")
+        return ToolResult(
+            success=False,
+            error=f"Parity verification error: {e}",
+        )
+
+
+# =============================================================================
+# Phase 4: Snapshot Plumbing Parity Audit
+# =============================================================================
+
+def backtest_audit_snapshot_plumbing_tool(
+    idea_card_id: str,
+    start_date: str,
+    end_date: str,
+    symbol: Optional[str] = None,
+    max_samples: int = 2000,
+    tolerance: float = 1e-12,
+    strict: bool = True,
+) -> ToolResult:
+    """
+    Run Phase 4 snapshot plumbing parity audit.
+    
+    Validates RuntimeSnapshotView.get_feature() against direct FeedStore reads.
+    This audit proves the plumbing is correct without testing indicator math.
+    
+    Args:
+        idea_card_id: IdeaCard identifier or path
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        symbol: Override symbol (optional, inferred from IdeaCard)
+        max_samples: Max exec bar samples (default: 2000)
+        tolerance: Tolerance for float comparison (default: 1e-12)
+        strict: Stop at first mismatch (default: True)
+        
+    Returns:
+        ToolResult with plumbing parity audit results
+    """
+    from ..backtest.audits.audit_snapshot_plumbing_parity import audit_snapshot_plumbing_parity
+    
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        
+        result = audit_snapshot_plumbing_parity(
+            idea_card_id=idea_card_id,
+            symbol=symbol,
+            start_date=start,
+            end_date=end,
+            max_samples=max_samples,
+            tolerance=tolerance,
+            strict=strict,
+        )
+        
+        if result.success:
+            return ToolResult(
+                success=True,
+                message=(
+                    f"Snapshot plumbing parity PASSED: "
+                    f"{result.total_samples} samples, {result.total_comparisons} comparisons "
+                    f"(runtime: {result.runtime_seconds:.1f}s)"
+                ),
+                data=result.to_dict(),
+            )
+        else:
+            return ToolResult(
+                success=False,
+                error=result.error_message or "Plumbing parity audit failed",
+                data=result.to_dict(),
+            )
+    
+    except Exception as e:
+        logger.error(f"Snapshot plumbing parity audit failed: {e}\n{traceback.format_exc()}")
+        return ToolResult(
+            success=False,
+            error=f"Plumbing audit error: {e}",
+        )
+
+
+# =============================================================================
+# Rollup Parity Audit (1m Price Feed Validation)
+# =============================================================================
+
+def backtest_audit_rollup_parity_tool(
+    n_intervals: int = 10,
+    quotes_per_interval: int = 15,
+    seed: int = 1337,
+    tolerance: float = 1e-10,
+) -> ToolResult:
+    """
+    Run rollup parity audit for ExecRollupBucket and RuntimeSnapshotView accessors.
+
+    Validates the 1m rollup system that aggregates price data between exec closes:
+    - ExecRollupBucket.accumulate() correctly tracks min/max/sum/count
+    - ExecRollupBucket.freeze() produces correct px.rollup.* values
+    - RuntimeSnapshotView accessors return correct rollup values
+    - Rollup values match manual recomputation from 1m quote data
+
+    This is a critical audit for the simulator - rollups are used for:
+    - Zone touch detection (Market Structure)
+    - Intrabar price movement analysis
+    - Stop/limit fill simulation accuracy
+
+    Args:
+        n_intervals: Number of exec intervals to test (default: 10)
+        quotes_per_interval: Approximate quotes per interval (default: 15)
+        seed: Random seed for reproducibility (default: 1337)
+        tolerance: Float comparison tolerance (default: 1e-10)
+
+    Returns:
+        ToolResult with rollup parity audit results
+    """
+    try:
+        from ..backtest.audits.audit_rollup_parity import run_rollup_parity_audit
+
+        result = run_rollup_parity_audit(
+            n_intervals=n_intervals,
+            quotes_per_interval=quotes_per_interval,
+            seed=seed,
+            tolerance=tolerance,
+        )
+
+        if result.success:
+            return ToolResult(
+                success=True,
+                message=(
+                    f"Rollup parity audit PASSED: "
+                    f"{result.passed_intervals}/{result.total_intervals} intervals, "
+                    f"{result.total_comparisons} comparisons "
+                    f"(bucket={result.bucket_tests_passed}, accessors={result.accessor_tests_passed})"
+                ),
+                data=result.to_dict(),
+            )
+        else:
+            return ToolResult(
+                success=False,
+                error=(
+                    f"Rollup parity audit FAILED: "
+                    f"{result.failed_intervals} interval(s) failed, "
+                    f"{result.failed_comparisons} comparison(s) failed"
+                    + (f" - {result.error_message}" if result.error_message else "")
+                ),
+                data=result.to_dict(),
+            )
+
+    except Exception as e:
+        logger.error(f"Rollup parity audit failed: {e}\n{traceback.format_exc()}")
+        return ToolResult(
+            success=False,
+            error=f"Rollup audit error: {e}",
         )

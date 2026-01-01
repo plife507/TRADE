@@ -2,16 +2,22 @@
 Feature specification and computation pipeline.
 
 This module provides:
-- FeatureSpec: Declarative indicator specification
+- FeatureSpec: Declarative indicator specification (string-based indicator types)
 - FeatureFrameBuilder: Vectorized indicator computation
 - IndicatorRegistry: Backend-swappable indicator registry
-- IndicatorType: Supported indicator types (single and multi-output)
 
 All indicators are computed outside the hot loop, vectorized,
 and stored in FeedStore-compatible arrays.
 
+**Registry Consolidation (2025-12-31):**
+- Indicator types are now STRINGS validated against IndicatorRegistry
+- IndicatorType enum has been REMOVED
+- MULTI_OUTPUT_KEYS dict has been REMOVED
+- All metadata lives in SUPPORTED_INDICATORS dict in indicator_registry.py
+- Use registry.is_multi_output() and registry.get_output_suffixes() for queries
+
 **Indicator Availability:**
-- Currently implemented: 8 indicators (EMA, SMA, RSI, ATR, MACD, BBANDS, STOCH, STOCHRSI)
+- Registered: 42 indicators with warmup formulas in indicator_registry.py
 - Available from pandas_ta: 189 indicators total
 - See `reference/pandas_ta/INDICATORS_REFERENCE.md` for complete list
 
@@ -20,14 +26,12 @@ output arrays with automatic key naming based on output_key prefix.
 """
 
 from .feature_spec import (
-    IndicatorType,
     InputSource,
     FeatureSpec,
     FeatureSpecSet,
-    # Multi-output helpers
+    # Multi-output helpers (now delegate to registry)
     is_multi_output,
     get_output_names,
-    MULTI_OUTPUT_KEYS,
     # Factory functions
     ema_spec,
     sma_spec,
@@ -49,14 +53,12 @@ from .feature_frame_builder import (
 
 __all__ = [
     # Core types
-    "IndicatorType",
     "InputSource",
     "FeatureSpec",
     "FeatureSpecSet",
     # Multi-output helpers
     "is_multi_output",
     "get_output_names",
-    "MULTI_OUTPUT_KEYS",
     # Builder and registry
     "FeatureFrameBuilder",
     "FeatureArrays",

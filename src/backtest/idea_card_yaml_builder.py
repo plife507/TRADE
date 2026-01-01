@@ -134,13 +134,32 @@ def build_scope_mappings(
         params = spec.get("params", {})
         location = f"tf_configs.{role}.feature_specs[{i}]"
         
-        # Validate indicator type is supported
+        # Validate indicator type is supported (registry check)
         if not registry.is_supported(indicator_type):
             errors.append(ValidationError(
                 code=ValidationErrorCode.UNSUPPORTED_INDICATOR,
                 message=f"Indicator type '{indicator_type}' is not supported.",
                 location=location,
                 suggestions=registry.list_indicators(),
+            ))
+            continue
+
+        # Validate indicator is callable in pandas_ta (fail loud)
+        try:
+            import pandas_ta as ta
+            ta_func = getattr(ta, indicator_type, None)
+            if ta_func is None or not callable(ta_func):
+                errors.append(ValidationError(
+                    code=ValidationErrorCode.UNSUPPORTED_INDICATOR,
+                    message=f"Indicator '{indicator_type}' is supported in registry but not callable in pandas_ta.",
+                    location=location,
+                ))
+                continue
+        except ImportError:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.UNSUPPORTED_INDICATOR,
+                message="pandas_ta not available for validation.",
+                location=location,
             ))
             continue
         

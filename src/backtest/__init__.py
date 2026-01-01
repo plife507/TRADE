@@ -26,19 +26,6 @@ from .types import (
     WindowConfig,
     StopReason,
 )
-from .proof_metrics_types import (
-    BacktestMetricsV2,
-    PerformanceMetrics,
-    DrawdownMetrics,
-    TradeQualityMetrics,
-    RiskAdjustedMetrics,
-    MarginStressMetrics,
-    EntryFrictionMetrics,
-    LiquidationProximityMetrics,
-    ExposureMetrics,
-    ProfitFactorResult,
-)
-from .proof_metrics import compute_proof_metrics
 from .system_config import (
     SystemConfig,
     RiskProfileConfig,
@@ -51,7 +38,13 @@ from .window_presets import (
     list_available_presets,
     has_preset,
 )
-from .engine import BacktestEngine, PreparedFrame
+from .engine import BacktestEngine
+from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
+from .engine_factory import (
+    run_backtest,
+    create_engine_from_idea_card,
+    run_engine_with_idea_card,
+)
 from .risk_policy import (
     RiskPolicy,
     NoneRiskPolicy,
@@ -94,9 +87,7 @@ from .execution_validation import (
     # Gate 8.2
     compute_warmup_requirements,
     WarmupRequirements,
-    # Gate 8.3
-    adapt_idea_card_to_system_config,
-    IdeaCardSystemConfig,
+    # Gate 8.3 (IdeaCardSystemConfig DELETED - P1.2 Refactor)
     IdeaCardSignalEvaluator,
     SignalDecision,
     EvaluationResult,
@@ -118,19 +109,6 @@ __all__ = [
     "BacktestRunConfigEcho",
     "WindowConfig",
     "StopReason",
-    "PreparedFrame",
-    # Proof-grade metrics
-    "BacktestMetricsV2",
-    "PerformanceMetrics",
-    "DrawdownMetrics",
-    "TradeQualityMetrics",
-    "RiskAdjustedMetrics",
-    "MarginStressMetrics",
-    "EntryFrictionMetrics",
-    "LiquidationProximityMetrics",
-    "ExposureMetrics",
-    "ProfitFactorResult",
-    "compute_proof_metrics",
     # Config
     "SystemConfig",
     "RiskProfileConfig",
@@ -143,6 +121,10 @@ __all__ = [
     "has_preset",
     # Engine
     "BacktestEngine",
+    "PreparedFrame",
+    "MultiTFPreparedFrames",
+    # Factory functions
+    "run_backtest",
     # Risk policies
     "RiskPolicy",
     "NoneRiskPolicy",
@@ -182,12 +164,14 @@ __all__ = [
     "FeatureReference",
     "compute_warmup_requirements",
     "WarmupRequirements",
-    "adapt_idea_card_to_system_config",
-    "IdeaCardSystemConfig",
+    # IdeaCardSystemConfig and adapt_idea_card_to_system_config DELETED (P1.2 Refactor)
     "IdeaCardSignalEvaluator",
     "SignalDecision",
     "EvaluationResult",
     "validate_pre_evaluation",
     "PreEvaluationStatus",
     "validate_idea_card_full",
+    # P1.2 Refactor: New IdeaCard-native engine factory
+    "create_engine_from_idea_card",
+    "run_engine_with_idea_card",
 ]

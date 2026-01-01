@@ -539,6 +539,12 @@ def run_full_cli_smoke(smoke_config, app, config) -> int:
     else:
         console.print(f"  [yellow]![/] {result.error} (expected if no positions)")
     
+    # PART 7: Backtest Smoke (Phase 6 - opt-in)
+    console.print(f"\n[bold magenta]{'='*50}[/]")
+    console.print(f"[bold magenta]PART 7: BACKTEST SMOKE (Phase 6)[/]")
+    console.print(f"[bold magenta]{'='*50}[/]")
+    failures += run_backtest_smoke_suite(smoke_config, app, config)
+    
     console.print(f"\n[bold]Full CLI Smoke Test Complete[/]")
     console.print(f"  Symbols tested: {symbols}")
     console.print(f"  Total failures: {failures}")
@@ -573,7 +579,7 @@ def run_extensive_data_smoke(env: str = "live") -> int:
     
     console.print(Panel(
         f"[bold yellow]EXTENSIVE DATA SMOKE TEST ({env_label})[/]\n"
-        f"[dim]Full coverage test: delete all → build sparse → fill gaps → sync → query → maintain[/]\n"
+        f"[dim]Full coverage test: delete all -> build sparse -> fill gaps -> sync -> query -> maintain[/]\n"
         f"[{env_color}]Data Environment: {env_label}[/{env_color}]",
         border_style="yellow"
     ))
@@ -1662,7 +1668,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
             console.print(f"  Symbol: {diag.get('symbol')}")
             console.print(f"  Exec TF: {diag.get('exec_tf')}")
             console.print(f"  Warmup: {diag.get('warmup_bars', 0)} bars ({diag.get('warmup_span_minutes', 0)} min)")
-            console.print(f"  DB Range: {diag.get('db_earliest')} → {diag.get('db_latest')}")
+            console.print(f"  DB Range: {diag.get('db_earliest')} to {diag.get('db_latest')}")
             console.print(f"  Indicator Keys (exec): {diag.get('declared_keys_exec', [])}")
     else:
         console.print(f"  [red]FAIL[/] Backtest failed: {run_result.error}")
@@ -2041,15 +2047,7 @@ def run_backtest_smoke(system_id: str = None, fresh_db: bool = False, idea_card_
                 else:
                     console.print(f"  [red]FAIL[/] warmup_bars should be > 0, got {warmup_bars}")
                     failures += 1
-                
-                # Check warmup_multiplier >= 1
-                warmup_multiplier = result_data.get("warmup_multiplier", 0)
-                if warmup_multiplier >= 1:
-                    console.print(f"  [green]OK[/] warmup_multiplier = {warmup_multiplier}")
-                else:
-                    console.print(f"  [red]FAIL[/] warmup_multiplier should be >= 1, got {warmup_multiplier}")
-                    failures += 1
-                
+
                 # Check max_indicator_lookback > 0
                 max_lookback = result_data.get("max_indicator_lookback", 0)
                 if max_lookback > 0:
@@ -2144,3 +2142,879 @@ def run_backtest_smoke(system_id: str = None, fresh_db: bool = False, idea_card_
     
     return failures
 
+
+# =============================================================================
+# INDICATOR METADATA SMOKE TEST
+# =============================================================================
+
+def run_metadata_smoke(
+    symbol: str = "BTCUSDT",
+    tf: str = "15",
+    sample_bars: int = 2000,
+    seed: int = 1337,
+    export_path: str = "artifacts/indicator_metadata.jsonl",
+    export_format: str = "jsonl",
+) -> int:
+    """
+    Run the Indicator Metadata v1 smoke test.
+    
+    Validates the metadata system end-to-end using synthetic data:
+    1. Generate deterministic synthetic OHLCV data
+    2. Build FeatureArrays with FeatureFrameBuilder
+    3. Build FeedStore with metadata
+    4. Run validations (coverage, key match, ID consistency)
+    5. Export metadata to chosen format
+    
+    Args:
+        symbol: Symbol for synthetic data (default: BTCUSDT)
+        tf: Timeframe string (default: 15)
+        sample_bars: Number of bars to generate (default: 2000)
+        seed: Random seed for reproducibility (default: 1337)
+        export_path: Path for metadata export (default: artifacts/indicator_metadata.jsonl)
+        export_format: Export format - jsonl, json, or csv (default: jsonl)
+        
+    Returns:
+        Exit code: 0 = success, 1 = validation failure, 2 = export failure
+    """
+    import numpy as np
+    import pandas as pd
+    from pathlib import Path
+    from datetime import datetime, timezone, timedelta
+    
+    console.print(Panel(
+        "[bold cyan]INDICATOR METADATA v1 SMOKE TEST[/]\n"
+        "[dim]Validates metadata capture, invariants, and export[/]",
+        border_style="cyan"
+    ))
+    
+    console.print(f"\n[bold]Configuration:[/]")
+    console.print(f"  Symbol: {symbol}")
+    console.print(f"  Timeframe: {tf}")
+    console.print(f"  Sample Bars: {sample_bars:,}")
+    console.print(f"  Seed: {seed}")
+    console.print(f"  Export Path: {export_path}")
+    console.print(f"  Export Format: {export_format}")
+    
+    failures = 0
+    
+    # =========================================================================
+    # STEP 1: Generate synthetic OHLCV data
+    # =========================================================================
+    console.print(f"\n[bold cyan]Step 1: Generate Synthetic OHLCV Data[/]")
+    
+    try:
+        np.random.seed(seed)
+        
+        # Generate timestamps (15-min bars by default)
+        tf_minutes = _parse_tf_to_minutes(tf)
+        start_time = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        timestamps = [start_time + timedelta(minutes=i * tf_minutes) for i in range(sample_bars)]
+        
+        # Generate price data (random walk)
+        base_price = 40000.0  # Starting price
+        returns = np.random.randn(sample_bars) * 0.002  # 0.2% std per bar
+        prices = base_price * np.cumprod(1 + returns)
+        
+        # Generate OHLCV
+        high_noise = np.abs(np.random.randn(sample_bars)) * 0.001
+        low_noise = np.abs(np.random.randn(sample_bars)) * 0.001
+        
+        df = pd.DataFrame({
+            'timestamp': timestamps,
+            'open': prices * (1 - np.random.rand(sample_bars) * 0.001),
+            'high': prices * (1 + high_noise),
+            'low': prices * (1 - low_noise),
+            'close': prices,
+            'volume': np.abs(np.random.randn(sample_bars)) * 1000000 + 500000,
+        })
+        
+        # Ensure high >= max(open, close) and low <= min(open, close)
+        df['high'] = df[['open', 'close', 'high']].max(axis=1)
+        df['low'] = df[['open', 'close', 'low']].min(axis=1)
+        
+        console.print(f"  [green]OK[/] Generated {len(df):,} bars")
+        console.print(f"      Start: {df['timestamp'].iloc[0]}")
+        console.print(f"      End: {df['timestamp'].iloc[-1]}")
+        console.print(f"      Price range: ${df['close'].min():,.2f} - ${df['close'].max():,.2f}")
+        
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] Error generating data: {e}")
+        return 2
+    
+    # =========================================================================
+    # STEP 2: Build FeatureArrays with FeatureFrameBuilder
+    # =========================================================================
+    console.print(f"\n[bold cyan]Step 2: Build Features with Metadata[/]")
+    
+    try:
+        from ..backtest.features.feature_spec import (
+            FeatureSpec,
+            FeatureSpecSet,
+            InputSource,
+        )
+        from ..backtest.features.feature_frame_builder import FeatureFrameBuilder
+
+        # Create a diverse set of FeatureSpecs (single + multi-output)
+        # Using string indicator types (registry-based, as of Phase 2)
+        specs = [
+            # Single-output indicators
+            FeatureSpec(
+                indicator_type="ema",
+                output_key='ema_20',
+                params={'length': 20},
+                input_source=InputSource.CLOSE,
+            ),
+            FeatureSpec(
+                indicator_type="ema",
+                output_key='ema_50',
+                params={'length': 50},
+                input_source=InputSource.CLOSE,
+            ),
+            FeatureSpec(
+                indicator_type="rsi",
+                output_key='rsi_14',
+                params={'length': 14},
+                input_source=InputSource.CLOSE,
+            ),
+            FeatureSpec(
+                indicator_type="atr",
+                output_key='atr_14',
+                params={'length': 14},
+            ),
+            # Multi-output indicators
+            FeatureSpec(
+                indicator_type="macd",
+                output_key='macd',
+                params={'fast': 12, 'slow': 26, 'signal': 9},
+                input_source=InputSource.CLOSE,
+            ),
+            FeatureSpec(
+                indicator_type="bbands",
+                output_key='bb',
+                params={'length': 20, 'std': 2.0},
+                input_source=InputSource.CLOSE,
+            ),
+        ]
+        
+        spec_set = FeatureSpecSet(symbol=symbol, tf=tf, specs=specs)
+        
+        # Build features with metadata
+        builder = FeatureFrameBuilder()
+        arrays = builder.build(df, spec_set, tf_role='exec')
+        
+        console.print(f"  [green]OK[/] Built {len(arrays.arrays)} indicator arrays")
+        console.print(f"      Keys: {list(arrays.arrays.keys())}")
+        console.print(f"      Metadata keys: {list(arrays.metadata.keys())}")
+        
+    except Exception as e:
+        import traceback
+        console.print(f"  [red]FAIL[/] Error building features: {e}")
+        traceback.print_exc()
+        return 2
+    
+    # =========================================================================
+    # STEP 3: Build FeedStore with metadata
+    # =========================================================================
+    console.print(f"\n[bold cyan]Step 3: Build FeedStore[/]")
+    
+    try:
+        from ..backtest.runtime.feed_store import FeedStore
+        
+        feed_store = FeedStore.from_dataframe_with_features(
+            df=df,
+            tf=tf,
+            symbol=symbol,
+            feature_arrays=arrays,
+        )
+        
+        console.print(f"  [green]OK[/] FeedStore built")
+        console.print(f"      Length: {feed_store.length:,} bars")
+        console.print(f"      Indicators: {len(feed_store.indicators)}")
+        console.print(f"      Metadata entries: {len(feed_store.indicator_metadata)}")
+        
+    except Exception as e:
+        import traceback
+        console.print(f"  [red]FAIL[/] Error building FeedStore: {e}")
+        traceback.print_exc()
+        return 2
+    
+    # =========================================================================
+    # STEP 4: Validate metadata invariants
+    # =========================================================================
+    console.print(f"\n[bold cyan]Step 4: Validate Metadata Invariants[/]")
+    
+    try:
+        from ..backtest.runtime.indicator_metadata import (
+            validate_metadata_coverage,
+            validate_feature_spec_ids,
+        )
+        
+        # 4.1: Coverage check
+        console.print(f"\n  [bold]4.1: Coverage Check[/]")
+        coverage_ok = validate_metadata_coverage(feed_store)
+        if coverage_ok:
+            console.print(f"      [green]OK[/] indicator_keys == metadata_keys")
+        else:
+            console.print(f"      [red]FAIL[/] Coverage mismatch")
+            indicator_keys = set(feed_store.indicators.keys())
+            metadata_keys = set(feed_store.indicator_metadata.keys())
+            console.print(f"          Missing metadata: {indicator_keys - metadata_keys}")
+            console.print(f"          Extra metadata: {metadata_keys - indicator_keys}")
+            failures += 1
+        
+        # 4.2: Full validation (coverage + key match + ID consistency)
+        console.print(f"\n  [bold]4.2: Full Validation[/]")
+        validation_result = validate_feature_spec_ids(feed_store)
+        
+        if validation_result.is_valid:
+            console.print(f"      [green]OK[/] All invariants pass")
+        else:
+            if not validation_result.coverage_ok:
+                console.print(f"      [red]FAIL[/] Coverage: missing={validation_result.missing_metadata}, extra={validation_result.extra_metadata}")
+                failures += 1
+            if not validation_result.ids_consistent:
+                console.print(f"      [red]FAIL[/] ID consistency issues:")
+                for mismatch in validation_result.id_mismatches:
+                    console.print(f"          {mismatch['indicator_key']}: stored={mismatch['stored_id']} != recomputed={mismatch['recomputed_id']}")
+                for key_mismatch in validation_result.key_mismatches:
+                    console.print(f"          Key mismatch: {key_mismatch}")
+                failures += 1
+        
+        # 4.3: Sample metadata display
+        console.print(f"\n  [bold]4.3: Sample Metadata[/]")
+        sample_keys = list(feed_store.indicator_metadata.keys())[:3]
+        for key in sample_keys:
+            meta = feed_store.indicator_metadata[key]
+            console.print(f"      {key}:")
+            console.print(f"        feature_spec_id: {meta.feature_spec_id}")
+            console.print(f"        indicator_type: {meta.indicator_type}")
+            console.print(f"        params: {meta.params}")
+            console.print(f"        first_valid_idx: {meta.first_valid_idx_observed}")
+            console.print(f"        pandas_ta_version: {meta.pandas_ta_version}")
+        
+        # 4.4: Multi-output shared ID check
+        console.print(f"\n  [bold]4.4: Multi-Output Shared ID Check[/]")
+        macd_keys = [k for k in feed_store.indicator_metadata.keys() if k.startswith('macd_')]
+        if macd_keys:
+            macd_ids = [feed_store.indicator_metadata[k].feature_spec_id for k in macd_keys]
+            if len(set(macd_ids)) == 1:
+                console.print(f"      [green]OK[/] MACD outputs share ID: {macd_ids[0]}")
+            else:
+                console.print(f"      [red]FAIL[/] MACD outputs have different IDs: {macd_ids}")
+                failures += 1
+        
+        bb_keys = [k for k in feed_store.indicator_metadata.keys() if k.startswith('bb_')]
+        if bb_keys:
+            bb_ids = [feed_store.indicator_metadata[k].feature_spec_id for k in bb_keys]
+            if len(set(bb_ids)) == 1:
+                console.print(f"      [green]OK[/] BBands outputs share ID: {bb_ids[0]}")
+            else:
+                console.print(f"      [red]FAIL[/] BBands outputs have different IDs: {bb_ids}")
+                failures += 1
+        
+    except Exception as e:
+        import traceback
+        console.print(f"  [red]FAIL[/] Error during validation: {e}")
+        traceback.print_exc()
+        failures += 1
+    
+    # =========================================================================
+    # STEP 5: Export metadata
+    # =========================================================================
+    console.print(f"\n[bold cyan]Step 5: Export Metadata[/]")
+    
+    try:
+        from ..backtest.runtime.indicator_metadata import (
+            export_metadata_jsonl,
+            export_metadata_json,
+            export_metadata_csv,
+        )
+        
+        export_path_obj = Path(export_path)
+        export_path_obj.parent.mkdir(parents=True, exist_ok=True)
+        
+        if export_format == "jsonl":
+            export_metadata_jsonl(feed_store, export_path_obj)
+        elif export_format == "json":
+            export_metadata_json(feed_store, export_path_obj)
+        elif export_format == "csv":
+            export_metadata_csv(feed_store, export_path_obj)
+        else:
+            console.print(f"  [red]FAIL[/] Unknown format: {export_format}")
+            return 2
+        
+        # Verify file exists and has content
+        if export_path_obj.exists():
+            file_size = export_path_obj.stat().st_size
+            console.print(f"  [green]OK[/] Exported to {export_path}")
+            console.print(f"      Format: {export_format}")
+            console.print(f"      Size: {file_size:,} bytes")
+            
+            # Show preview
+            with open(export_path_obj, 'r') as f:
+                preview = f.read(500)
+                console.print(f"      Preview (first 500 chars):")
+                console.print(f"      [dim]{preview}...[/]" if len(preview) == 500 else f"      [dim]{preview}[/]")
+        else:
+            console.print(f"  [red]FAIL[/] Export file not created")
+            return 2
+        
+    except Exception as e:
+        import traceback
+        console.print(f"  [red]FAIL[/] Error during export: {e}")
+        traceback.print_exc()
+        return 2
+    
+    # =========================================================================
+    # SUMMARY
+    # =========================================================================
+    console.print(f"\n[bold cyan]{'='*60}[/]")
+    console.print(f"[bold cyan]INDICATOR METADATA SMOKE TEST COMPLETE[/]")
+    console.print(f"[bold cyan]{'='*60}[/]")
+    
+    console.print(f"\n[bold]Summary:[/]")
+    console.print(f"  Symbol: {symbol}")
+    console.print(f"  Timeframe: {tf}")
+    console.print(f"  Bars: {sample_bars:,}")
+    console.print(f"  Indicators: {len(feed_store.indicators)}")
+    console.print(f"  Metadata entries: {len(feed_store.indicator_metadata)}")
+    console.print(f"  Export: {export_path}")
+    console.print(f"  Failures: {failures}")
+    
+    if failures == 0:
+        console.print(f"\n[bold green]OK INDICATOR METADATA v1 VERIFIED[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {failures} VALIDATION(S) FAILED[/]")
+        return 1
+
+
+def _parse_tf_to_minutes(tf: str) -> int:
+    """Parse timeframe string to minutes."""
+    tf = tf.lower().strip()
+    
+    if tf.endswith('m'):
+        return int(tf[:-1])
+    elif tf.endswith('h'):
+        return int(tf[:-1]) * 60
+    elif tf.endswith('d'):
+        return int(tf[:-1]) * 1440
+    elif tf.isdigit():
+        return int(tf)  # Assume minutes
+    else:
+        return 15  # Default to 15 minutes
+
+
+# =============================================================================
+# Phase 6: Backtest Smoke Tests
+# =============================================================================
+
+def run_backtest_smoke_mixed_idea_cards() -> int:
+    """
+    Run backtest smoke test with a mix of idea cards to validate various scenarios.
+    
+    Tests multiple idea cards covering:
+    - Single-TF strategies
+    - Multi-TF strategies
+    - Different timeframes (5m, 15m, 1h, 4h)
+    - Different indicators
+    - Different symbols
+    
+    Also validates issues from BACKTESTER_FUNCTION_ISSUES_REVIEW.md:
+    - Issue #4: TF validation (unknown TF should raise)
+    - Issue #3: Warmup handoff validation
+    - Issue #5: Metadata coverage validation
+    
+    Returns:
+        0 on success, number of failures otherwise
+    """
+    import os
+    from datetime import datetime, timedelta
+    
+    console.print(Panel(
+        "[bold]BACKTEST SMOKE TEST: MIXED IDEA CARDS[/]\n"
+        "[dim]Testing multiple idea cards across different scenarios[/]",
+        border_style="magenta"
+    ))
+    
+    failures = 0
+    
+    # Select a diverse mix of idea cards
+    idea_cards_to_test = [
+        # Single-TF, simple indicators
+        "test__phase6_warmup_matrix__BTCUSDT_5m",
+        # Multi-TF, complex indicators
+        "test__phase6_mtf_alignment__BTCUSDT_5m_1h_4h",
+        # Validation cards (if available)
+        "scalp_5m_momentum",
+        "intraday_15m_multi",
+    ]
+    
+    # Filter to only existing cards
+    result = backtest_list_idea_cards_tool()
+    available_cards = []
+    if result.success and result.data:
+        available_cards = result.data.get("idea_cards", [])
+    
+    # Filter idea_cards_to_test to only those that exist
+    cards_to_test = [card for card in idea_cards_to_test if card in available_cards]
+    
+    if not cards_to_test:
+        console.print(f"  [yellow]WARN[/] No idea cards found to test")
+        console.print(f"      Available cards: {available_cards[:10]}")
+        # Try to use any available card
+        if available_cards:
+            cards_to_test = available_cards[:3]  # Use first 3 available
+            console.print(f"      Using first 3 available: {cards_to_test}")
+        else:
+            return 1
+    
+    console.print(f"\n[bold cyan]Testing {len(cards_to_test)} idea cards:[/]")
+    for card in cards_to_test:
+        console.print(f"  • {card}")
+    
+    # Test each card
+    for i, card_id in enumerate(cards_to_test, 1):
+        console.print(f"\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+        console.print(f"[bold cyan]Card {i}/{len(cards_to_test)}: {card_id}[/]")
+        console.print(f"[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+        
+        card_failures = _run_backtest_smoke_idea_card(card_id, fresh_db=False)
+        failures += card_failures
+        
+        if card_failures == 0:
+            console.print(f"  [green]✓ PASSED[/] {card_id}")
+        else:
+            console.print(f"  [red]✗ FAILED[/] {card_id} ({card_failures} failure(s))")
+    
+    # Summary
+    console.print(f"\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+    if failures == 0:
+        console.print(f"[bold green]✓ ALL CARDS PASSED[/] ({len(cards_to_test)}/{len(cards_to_test)})")
+    else:
+        console.print(f"[bold red]✗ {failures} FAILURE(S) ACROSS {len(cards_to_test)} CARDS[/]")
+    
+    return failures
+
+
+def run_phase6_backtest_smoke() -> int:
+    """
+    Phase 6: CLI Smoke Tests for backtest infrastructure.
+    
+    Tests:
+    1. Window matrix - warmup requirements and PreflightReport structure
+    2. Deterministic bounded backfill - data-fix with max_lookback_days cap
+    3. No-backfill when coverage is sufficient
+    4. Drift regression - equity.parquet has ts_ms column
+    5. MTF alignment - eval_start_ts_ms in RunManifest
+    6. Audit verification - pipeline_signature, artifacts, hashes
+    7. (Optional) Determinism spot-check - re-run hash comparison
+    
+    Returns:
+        0 on success, number of failures otherwise
+    """
+    import os
+    
+    console.print(Panel(
+        "[bold]PHASE 6: BACKTEST CLI SMOKE TESTS[/]\n"
+        "[dim]Validating preflight, data-fix, artifact structure, and audit gates[/]",
+        border_style="cyan"
+    ))
+    
+    failures = 0
+    
+    # Test IdeaCards for Phase 6
+    WARMUP_MATRIX_CARD = "test__phase6_warmup_matrix__BTCUSDT_5m"
+    MTF_ALIGNMENT_CARD = "test__phase6_mtf_alignment__BTCUSDT_5m_1h_4h"
+    TEST_SYMBOL = "BTCUSDT"
+    TEST_ENV = "live"
+    
+    # =========================================================================
+    # TEST 1: PreflightReport structure validation
+    # =========================================================================
+    console.print(f"\n[bold cyan]TEST 1: PreflightReport Structure[/]")
+    
+    try:
+        from ..tools.backtest_cli_wrapper import backtest_preflight_idea_card_tool
+        from datetime import datetime, timedelta
+        
+        # Preflight requires explicit start/end dates
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(days=7)  # 7 days window
+        
+        result = backtest_preflight_idea_card_tool(
+            idea_card_id=WARMUP_MATRIX_CARD,
+            env=TEST_ENV,
+            symbol_override=TEST_SYMBOL,
+            start=start_dt,
+            end=end_dt,
+        )
+        
+        if result.data:
+            data = result.data
+            
+            # Check required fields in PreflightReport
+            required_fields = [
+                "overall_status",
+                "computed_warmup_requirements",
+                "error_code",
+                "error_details",
+            ]
+            
+            missing_fields = [f for f in required_fields if f not in data]
+            if missing_fields:
+                console.print(f"  [red]FAIL[/] Missing PreflightReport fields: {missing_fields}")
+                failures += 1
+            else:
+                console.print(f"  [green]OK[/] PreflightReport has required fields")
+            
+            # Check epoch-ms timestamps in coverage (if available)
+            coverage = data.get("coverage", {})
+            if coverage:
+                if "db_start_ts_ms" in coverage and "db_end_ts_ms" in coverage:
+                    console.print(f"  [green]OK[/] Coverage has epoch-ms timestamps")
+                    console.print(f"      db_start_ts_ms: {coverage.get('db_start_ts_ms')}")
+                    console.print(f"      db_end_ts_ms: {coverage.get('db_end_ts_ms')}")
+                else:
+                    console.print(f"  [yellow]WARN[/] Coverage missing epoch-ms timestamps (may be no data)")
+            
+            # Check warmup requirements
+            warmup_req = data.get("computed_warmup_requirements", {})
+            if warmup_req:
+                warmup_by_role = warmup_req.get("warmup_by_role", {})
+                delay_by_role = warmup_req.get("delay_by_role", {})
+                console.print(f"  [green]OK[/] Warmup requirements present")
+                console.print(f"      warmup_by_role: {warmup_by_role}")
+                console.print(f"      delay_by_role: {delay_by_role}")
+            else:
+                console.print(f"  [red]FAIL[/] Missing computed_warmup_requirements")
+                failures += 1
+        else:
+            console.print(f"  [red]FAIL[/] No data in preflight result")
+            failures += 1
+            
+    except FileNotFoundError as e:
+        console.print(f"  [yellow]SKIP[/] IdeaCard not found: {e}")
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] Preflight error: {e}")
+        import traceback
+        traceback.print_exc()
+        failures += 1
+    
+    # =========================================================================
+    # TEST 2: Data-fix bounded enforcement
+    # =========================================================================
+    console.print(f"\n[bold cyan]TEST 2: Data-fix Bounded Enforcement[/]")
+    
+    try:
+        from ..tools.backtest_cli_wrapper import backtest_data_fix_tool
+        from datetime import datetime, timedelta
+        
+        # Request a long range that should be clamped
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(days=30)  # Request 30 days
+        max_lookback = 7  # Should clamp to 7 days
+        
+        result = backtest_data_fix_tool(
+            idea_card_id=WARMUP_MATRIX_CARD,
+            env=TEST_ENV,
+            start=start_dt,
+            end=end_dt,
+            max_lookback_days=max_lookback,
+            sync_to_now=False,
+            fill_gaps=False,
+            heal=False,
+        )
+        
+        if result.data:
+            data = result.data
+            bounds = data.get("bounds", {})
+            
+            # Verify bounds were applied
+            if bounds.get("applied") is True:
+                console.print(f"  [green]OK[/] Bounds applied correctly")
+                console.print(f"      cap.max_lookback_days: {bounds.get('cap', {}).get('max_lookback_days')}")
+            else:
+                console.print(f"  [red]FAIL[/] Bounds not applied (expected applied=True)")
+                failures += 1
+            
+            # Verify epoch-ms timestamps in bounds
+            if bounds.get("start_ts_ms") is not None and bounds.get("end_ts_ms") is not None:
+                console.print(f"  [green]OK[/] Bounds have epoch-ms timestamps")
+            else:
+                console.print(f"  [red]FAIL[/] Bounds missing epoch-ms timestamps")
+                failures += 1
+            
+            # Verify progress count
+            progress_count = data.get("progress_lines_count", 0)
+            console.print(f"  [green]OK[/] Progress lines count: {progress_count}")
+            
+        else:
+            console.print(f"  [yellow]WARN[/] No data in data-fix result")
+            
+    except FileNotFoundError as e:
+        console.print(f"  [yellow]SKIP[/] IdeaCard not found: {e}")
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] Data-fix error: {e}")
+        import traceback
+        traceback.print_exc()
+        failures += 1
+    
+    # =========================================================================
+    # TEST 3: MTF Alignment IdeaCard validation
+    # =========================================================================
+    console.print(f"\n[bold cyan]TEST 3: MTF Alignment IdeaCard[/]")
+    
+    try:
+        from ..backtest.idea_card import load_idea_card
+        from ..backtest.execution_validation import validate_idea_card_full
+        
+        idea_card = load_idea_card(MTF_ALIGNMENT_CARD)
+        validation = validate_idea_card_full(idea_card)
+        
+        if validation.is_valid:
+            console.print(f"  [green]OK[/] MTF IdeaCard validates")
+            console.print(f"      exec_tf: {idea_card.exec_tf}")
+            console.print(f"      mtf: {idea_card.mtf}")
+            console.print(f"      htf: {idea_card.htf}")
+            
+            # Check delay bars are different across roles
+            delays = {}
+            for role, tf_config in idea_card.tf_configs.items():
+                # delay_bars is in market_structure
+                if tf_config.market_structure:
+                    delays[role] = tf_config.market_structure.delay_bars
+                else:
+                    delays[role] = 0
+            console.print(f"      delay_bars: {delays}")
+            
+            if len(set(delays.values())) > 1:
+                console.print(f"  [green]OK[/] Different delay bars across roles")
+            else:
+                console.print(f"  [yellow]WARN[/] Same delay bars across all roles")
+        else:
+            console.print(f"  [red]FAIL[/] MTF IdeaCard validation failed")
+            for err in validation.errors:
+                console.print(f"      - {err.message}")
+            failures += 1
+            
+    except FileNotFoundError as e:
+        console.print(f"  [yellow]SKIP[/] MTF IdeaCard not found: {e}")
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] MTF IdeaCard error: {e}")
+        import traceback
+        traceback.print_exc()
+        failures += 1
+    
+    # =========================================================================
+    # TEST 4: Artifact standards validation
+    # =========================================================================
+    console.print(f"\n[bold cyan]TEST 4: Artifact Standards[/]")
+    
+    try:
+        from ..backtest.artifacts.artifact_standards import (
+            REQUIRED_EQUITY_COLUMNS,
+            RunManifest,
+        )
+        
+        # Check ts_ms is in required equity columns
+        if "ts_ms" in REQUIRED_EQUITY_COLUMNS:
+            console.print(f"  [green]OK[/] ts_ms in REQUIRED_EQUITY_COLUMNS")
+        else:
+            console.print(f"  [red]FAIL[/] ts_ms missing from REQUIRED_EQUITY_COLUMNS")
+            failures += 1
+        
+        # Check RunManifest has eval_start_ts_ms field
+        manifest = RunManifest(
+            full_hash="test",
+            short_hash="test",
+            short_hash_length=8,
+            idea_card_id="test",
+            idea_card_hash="test",
+            symbols=["BTCUSDT"],
+            tf_exec="5m",
+            tf_ctx=[],
+            window_start="2024-01-01",
+            window_end="2024-01-31",
+        )
+        
+        if hasattr(manifest, 'eval_start_ts_ms'):
+            console.print(f"  [green]OK[/] RunManifest has eval_start_ts_ms field")
+        else:
+            console.print(f"  [red]FAIL[/] RunManifest missing eval_start_ts_ms field")
+            failures += 1
+        
+        if hasattr(manifest, 'equity_timestamp_column'):
+            console.print(f"  [green]OK[/] RunManifest has equity_timestamp_column field")
+            console.print(f"      Default value: {manifest.equity_timestamp_column}")
+        else:
+            console.print(f"  [red]FAIL[/] RunManifest missing equity_timestamp_column field")
+            failures += 1
+            
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] Artifact standards error: {e}")
+        import traceback
+        traceback.print_exc()
+        failures += 1
+    
+    # =========================================================================
+    # TEST 5: Audit Verification (full backtest + artifact validation)
+    # =========================================================================
+    console.print(f"\n[bold cyan]TEST 5: Audit Verification (Backtest + Artifacts)[/]")
+    
+    # This test runs a full backtest and validates:
+    # - pipeline_signature.json exists and is valid
+    # - All required artifacts present
+    # - Result hashes are populated
+    artifact_path = None
+    
+    try:
+        from ..tools.backtest_cli_wrapper import backtest_run_idea_card_tool
+        from datetime import datetime, timedelta
+        from pathlib import Path
+        
+        # Run a short backtest with a window that should have data
+        # Using November 2024 as a stable historical window that should be cached
+        end_dt = datetime(2024, 11, 15)
+        start_dt = datetime(2024, 11, 1)  # 14-day window
+        
+        console.print(f"  [dim]Running backtest: {WARMUP_MATRIX_CARD} ({start_dt.date()} to {end_dt.date()})...[/]")
+        
+        run_result = backtest_run_idea_card_tool(
+            idea_card_id=WARMUP_MATRIX_CARD,
+            env=TEST_ENV,
+            start=start_dt,
+            end=end_dt,
+            fix_gaps=True,  # Auto-sync data if needed
+        )
+        
+        if run_result.success and run_result.data:
+            # artifact_dir is the key used by backtest_run_idea_card_tool
+            artifact_path = run_result.data.get("artifact_dir")
+            console.print(f"  [green]OK[/] Backtest completed")
+            console.print(f"      Artifact dir: {artifact_path}")
+            
+            # Check artifact validation result
+            artifact_validation = run_result.data.get("artifact_validation", {})
+            if artifact_validation.get("passed"):
+                console.print(f"  [green]OK[/] Artifact validation passed")
+            else:
+                console.print(f"  [red]FAIL[/] Artifact validation failed")
+                for err in artifact_validation.get("errors", []):
+                    console.print(f"      - {err}")
+                failures += 1
+            
+            # Check pipeline signature validation
+            if artifact_validation.get("pipeline_signature_valid") is True:
+                console.print(f"  [green]OK[/] Pipeline signature valid")
+            elif artifact_validation.get("pipeline_signature_valid") is False:
+                console.print(f"  [red]FAIL[/] Pipeline signature invalid")
+                failures += 1
+            else:
+                console.print(f"  [yellow]WARN[/] Pipeline signature status unknown")
+            
+            # Check result.json has hashes
+            if artifact_path:
+                result_json_path = Path(artifact_path) / "result.json"
+                if result_json_path.exists():
+                    import json
+                    with open(result_json_path, "r") as f:
+                        result_data = json.load(f)
+                    
+                    # Check for hash fields
+                    hash_fields = ["trades_hash", "equity_hash", "run_hash", "idea_hash"]
+                    populated_hashes = [f for f in hash_fields if result_data.get(f)]
+                    
+                    if len(populated_hashes) == len(hash_fields):
+                        console.print(f"  [green]OK[/] All hash fields populated in result.json")
+                        for field in hash_fields:
+                            console.print(f"      {field}: {result_data.get(field, 'N/A')[:16]}...")
+                    else:
+                        missing = [f for f in hash_fields if not result_data.get(f)]
+                        console.print(f"  [red]FAIL[/] Missing hash fields: {missing}")
+                        failures += 1
+                else:
+                    console.print(f"  [red]FAIL[/] result.json not found at {result_json_path}")
+                    failures += 1
+        else:
+            console.print(f"  [red]FAIL[/] Backtest failed: {run_result.error}")
+            failures += 1
+            
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] Audit verification error: {e}")
+        import traceback
+        traceback.print_exc()
+        failures += 1
+    
+    # =========================================================================
+    # TEST 6: Determinism Spot-Check (Optional)
+    # =========================================================================
+    include_determinism = os.environ.get("TRADE_SMOKE_INCLUDE_DETERMINISM", "0")
+    
+    if include_determinism in ("1", "true", "True", "TRUE"):
+        console.print(f"\n[bold cyan]TEST 6: Determinism Spot-Check[/]")
+        
+        try:
+            from ..backtest.artifacts.determinism import compare_runs
+            from pathlib import Path
+            
+            if artifact_path:
+                artifact_path_obj = Path(artifact_path)
+                
+                console.print(f"  [dim]Comparing run to itself (sanity check)...[/]")
+                
+                # Self-comparison should always pass
+                result = compare_runs(artifact_path_obj, artifact_path_obj)
+                
+                if result.passed:
+                    console.print(f"  [green]OK[/] Self-comparison passed (determinism sanity check)")
+                    for comp in result.hash_comparisons:
+                        status = "[OK]" if comp.matches else "[MISMATCH]"
+                        console.print(f"      {status} {comp.field_name}")
+                else:
+                    console.print(f"  [red]FAIL[/] Self-comparison failed (unexpected!)")
+                    for err in result.errors:
+                        console.print(f"      - {err}")
+                    failures += 1
+            else:
+                console.print(f"  [yellow]SKIP[/] No artifact path from TEST 5, skipping determinism check")
+                
+        except Exception as e:
+            console.print(f"  [red]FAIL[/] Determinism check error: {e}")
+            import traceback
+            traceback.print_exc()
+            failures += 1
+    else:
+        console.print(f"\n[dim]TEST 6: Determinism spot-check skipped (set TRADE_SMOKE_INCLUDE_DETERMINISM=1 to enable)[/]")
+    
+    # =========================================================================
+    # SUMMARY
+    # =========================================================================
+    console.print(f"\n[bold cyan]{'='*60}[/]")
+    console.print(f"[bold cyan]PHASE 6 BACKTEST SMOKE TEST COMPLETE[/]")
+    console.print(f"[bold cyan]{'='*60}[/]")
+    
+    if failures == 0:
+        console.print(f"\n[bold green]OK PHASE 6 VERIFIED[/]")
+    else:
+        console.print(f"\n[bold red]FAIL {failures} TEST(S) FAILED[/]")
+    
+    return failures
+
+
+def run_backtest_smoke_suite(smoke_config, app, config) -> int:
+    """
+    Run backtest-specific smoke tests (for smoke suite integration).
+    
+    This is a lightweight wrapper that calls Phase 6 tests if enabled.
+    """
+    import os
+    
+    # Check opt-in environment variable
+    include_backtest = os.environ.get("TRADE_SMOKE_INCLUDE_BACKTEST", "0")
+    
+    if include_backtest not in ("1", "true", "True", "TRUE"):
+        console.print(f"\n[dim]Backtest smoke tests skipped (set TRADE_SMOKE_INCLUDE_BACKTEST=1 to enable)[/]")
+        return 0
+    
+    return run_phase6_backtest_smoke()

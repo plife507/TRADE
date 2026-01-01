@@ -1,0 +1,149 @@
+id: coverage_05_multi_trend
+version: 1.0.0
+name: Coverage - Multi Trend
+description: Tests multi-output trend indicators (ADX, AROON, SUPERTREND, VORTEX,
+  DM, PSAR)
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- ETHUSDT
+tf_configs:
+  exec:
+    tf: 1h
+    role: exec
+    warmup_bars: 100
+    feature_specs:
+    - indicator_type: adx
+      output_key: adx
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: aroon
+      output_key: aroon
+      params:
+        length: 25
+      input_source: close
+    - indicator_type: supertrend
+      output_key: st
+      params:
+        length: 10
+        multiplier: 3.0
+      input_source: close
+    - indicator_type: vortex
+      output_key: vortex
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: dm
+      output_key: dm
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: psar
+      output_key: psar
+      params:
+        af0: 0.02
+        af: 0.02
+        max_af: 0.2
+      input_source: close
+    required_indicators:
+    # ADX outputs - all can be valid simultaneously
+    - adx_adx
+    - adx_adxr
+    - adx_dmn
+    - adx_dmp
+    # AROON outputs - all can be valid simultaneously
+    - aroon_down
+    - aroon_osc
+    - aroon_up
+    # DM outputs - all can be valid simultaneously
+    - dm_dmn
+    - dm_dmp
+    # VORTEX outputs - all can be valid simultaneously
+    - vortex_vim
+    - vortex_vip
+    # SuperTrend - long/short are mutually exclusive (only one valid at a time)
+    - st_direction
+    - st_trend
+    - st_long
+    - st_short
+    # PSAR - long/short are mutually exclusive (only one valid at a time)
+    - psar_af
+    - psar_reversal
+    - psar_long
+    - psar_short
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: adx_adx
+      operator: gt
+      value: 20
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: adx_dmp
+      operator: gt
+      value: adx_dmn
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: st_direction
+      operator: eq
+      value: 1
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: adx_adx
+      operator: gt
+      value: 20
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: adx_dmn
+      operator: gt
+      value: adx_dmp
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: st_direction
+      operator: eq
+      value: -1
+      is_indicator_comparison: false
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: st_direction
+      operator: eq
+      value: -1
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: st_direction
+      operator: eq
+      value: 1
+      is_indicator_comparison: false
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.5
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 3.0

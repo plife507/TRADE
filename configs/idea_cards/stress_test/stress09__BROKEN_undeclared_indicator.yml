@@ -1,0 +1,82 @@
+# =============================================================================
+# Stress Test 09 - BROKEN: Undeclared Indicator Reference
+# =============================================================================
+# INTENTIONALLY BROKEN: Signal rule references macd_histogram which is not declared
+# Only EMA is declared in feature_specs
+# Expected error: "UNDECLARED_FEATURE" or similar validation error
+# =============================================================================
+
+id: stress09__BROKEN_undeclared_indicator
+version: "1.0.0"
+name: "BROKEN - Undeclared Indicator"
+description: "Intentionally broken - references macd_histogram without declaring MACD"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - ETHUSDT
+
+tf_configs:
+  exec:
+    tf: "15m"
+    role: "exec"
+    warmup_bars: 100
+    feature_specs:
+      # ONLY EMA declared - MACD is NOT declared
+      - indicator_type: "ema"
+        output_key: "ema_21"
+        params:
+          length: 21
+        input_source: "close"
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+signal_rules:
+  entry_rules:
+    - direction: "long"
+      conditions:
+        # BUG: References macd_histogram which is NOT declared in feature_specs
+        - tf: "exec"
+          indicator_key: "macd_histogram"
+          operator: "cross_above"
+          value: 0
+          is_indicator_comparison: false
+        - tf: "exec"
+          indicator_key: "ema_21"
+          operator: "gt"
+          value: 0
+          is_indicator_comparison: false
+
+  exit_rules:
+    - direction: "long"
+      conditions:
+        - tf: "exec"
+          indicator_key: "ema_21"
+          operator: "lt"
+          value: "close"
+          is_indicator_comparison: true
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 2.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 1.0
+    max_leverage: 3.0

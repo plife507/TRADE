@@ -1,0 +1,126 @@
+id: tf_5m_indicator_rotation
+version: 1.0.0
+name: 5m Timeframe Indicator Rotation
+description: Tests 5m timeframe with rotation of indicators (momentum + MA + volatility)
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 5.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- SOLUSDT
+tf_configs:
+  exec:
+    tf: 5m
+    role: exec
+    warmup_bars: 100
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_9
+      params:
+        length: 9
+      input_source: close
+    - indicator_type: ema
+      output_key: ema_21
+      params:
+        length: 21
+      input_source: close
+    - indicator_type: rsi
+      output_key: rsi_14
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: atr
+      output_key: atr_14
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: macd
+      output_key: macd
+      params:
+        fast: 12
+        slow: 26
+        signal: 9
+      input_source: close
+    - indicator_type: bbands
+      output_key: bb
+      params:
+        length: 20
+        std: 2.0
+      input_source: close
+    required_indicators:
+    - ema_9
+    - ema_21
+    - rsi_14
+    - atr_14
+    - macd_macd
+    - macd_signal
+    - macd_histogram
+    - bb_lower
+    - bb_middle
+    - bb_upper
+    - bb_bandwidth
+    - bb_percent_b
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: ema_9
+      operator: cross_above
+      value: ema_21
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 60
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: ema_9
+      operator: cross_below
+      value: ema_21
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 40
+      is_indicator_comparison: false
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 75
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 25
+      is_indicator_comparison: false
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 2.0
+    atr_key: atr_14
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 5.0

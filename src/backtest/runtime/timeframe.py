@@ -8,7 +8,7 @@ Note: Close detection is data-driven (via close_ts maps), not modulo-based.
 This module only provides duration helpers for warmup/buffer calculations.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Dict
 
 # Import TF_MINUTES from data store (canonical source)
@@ -110,4 +110,44 @@ def get_supported_timeframes() -> Dict[str, int]:
         Dict of tf string -> minutes
     """
     return dict(TF_MINUTES)
+
+
+def ceil_to_tf_close(dt: datetime, tf: str) -> datetime:
+    """
+    Align a datetime to the next TF close boundary (ceiling).
+    
+    If dt is already on a TF close boundary, returns dt unchanged.
+    Otherwise, returns the next TF close after dt.
+    
+    Used for no-lookahead evaluation start alignment:
+    - eval_start = ceil_to_tf_close(window_start, exec_tf) + delay_bars * tf_duration
+    
+    Args:
+        dt: Datetime to align (timezone-naive UTC assumed)
+        tf: Timeframe string (e.g., "5m", "1h", "4h")
+        
+    Returns:
+        Datetime aligned to TF close boundary (ceiling)
+        
+    Examples:
+        >>> ceil_to_tf_close(datetime(2024, 1, 1, 10, 3), "5m")
+        datetime(2024, 1, 1, 10, 5)  # Next 5m close
+        
+        >>> ceil_to_tf_close(datetime(2024, 1, 1, 10, 5), "5m")
+        datetime(2024, 1, 1, 10, 5)  # Already on boundary
+    """
+    tf_min = tf_minutes(tf)
+    
+    # Convert to minutes since epoch for modulo calculation
+    total_minutes = int(dt.timestamp() // 60)
+    
+    # Check if already on boundary
+    remainder = total_minutes % tf_min
+    if remainder == 0:
+        return dt
+    
+    # Calculate minutes to add to reach next boundary
+    minutes_to_add = tf_min - remainder
+    
+    return dt + timedelta(minutes=minutes_to_add)
 

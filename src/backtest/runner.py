@@ -54,8 +54,15 @@ from .artifacts.artifact_standards import (
     ResultsSummary,
     compute_results_summary,
     STANDARD_FILES,
+    RunManifest,
 )
-from .artifacts.hashes import compute_trades_hash, compute_equity_hash, compute_run_hash
+from .artifacts.hashes import (
+    compute_trades_hash,
+    compute_equity_hash,
+    compute_run_hash,
+    InputHashComponents,
+)
+from .artifacts.parquet_writer import write_parquet
 from .gates.indicator_requirements_gate import (
     validate_indicator_requirements,
     extract_available_keys_from_feature_frames,
@@ -104,233 +111,13 @@ class IdeaCardBacktestResult:
         self.metrics = metrics
 
 
-def create_default_engine_factory():
-    """
-    Create a default engine factory that bridges IdeaCard to BacktestEngine.
-    
-    TEMP: This factory exists until engine natively accepts IdeaCard.
-    Single caller: run_backtest_with_gates() in this module.
-    
-    Returns:
-        Factory function that takes (idea_card, runner_config) and returns engine
-    """
-    from .system_config import SystemConfig, RiskProfileConfig, StrategyInstanceConfig, StrategyInstanceInputs
-    from .engine import BacktestEngine
-    from .types import WindowConfig
-    
-    def factory(idea_card: IdeaCard, runner_config: "RunnerConfig") -> "IdeaCardEngineWrapper":
-        """
-        Create an engine wrapper for the given IdeaCard.
-        
-        Args:
-            idea_card: The IdeaCard to execute
-            runner_config: Runner configuration with window dates
-            
-        Returns:
-            Engine wrapper with run() method
-        """
-        # Get first symbol
-        symbol = idea_card.symbol_universe[0] if idea_card.symbol_universe else "BTCUSDT"
-        
-        # Extract capital/account params from IdeaCard (REQUIRED - no defaults)
-        if idea_card.account is None:
-            raise ValueError(
-                f"IdeaCard '{idea_card.id}' is missing account section. "
-                "account.starting_equity_usdt and account.max_leverage are required."
-            )
-        
-        initial_equity = idea_card.account.starting_equity_usdt
-        max_leverage = idea_card.account.max_leverage
-        
-        # Extract fee model from IdeaCard if present
-        taker_fee_rate = 0.0006  # Bybit typical default
-        if idea_card.account.fee_model:
-            taker_fee_rate = idea_card.account.fee_model.taker_rate
-        
-        # Extract min trade notional from IdeaCard if present
-        min_trade_usdt = 1.0
-        if idea_card.account.min_trade_notional_usdt is not None:
-            min_trade_usdt = idea_card.account.min_trade_notional_usdt
-        
-        # Extract risk params from IdeaCard risk_model
-        risk_per_trade_pct = 1.0
-        if idea_card.risk_model:
-            if idea_card.risk_model.sizing.model.value == "percent_equity":
-                risk_per_trade_pct = idea_card.risk_model.sizing.value
-            # Override max_leverage from risk_model.sizing if different
-            if idea_card.risk_model.sizing.max_leverage:
-                max_leverage = idea_card.risk_model.sizing.max_leverage
-        
-        # Build minimal SystemConfig for engine
-        # TEMP: This adapter will be deleted when engine accepts IdeaCard directly
-        risk_profile = RiskProfileConfig(
-            initial_equity=initial_equity,  # From IdeaCard.account (REQUIRED)
-            max_leverage=max_leverage,
-            risk_per_trade_pct=risk_per_trade_pct,
-            taker_fee_rate=taker_fee_rate,
-            min_trade_usdt=min_trade_usdt,
-        )
-        
-        # Extract feature specs from IdeaCard for engine
-        feature_specs_by_role = {}
-        for role, tf_config in idea_card.tf_configs.items():
-            feature_specs_by_role[role] = list(tf_config.feature_specs)
-        
-        # Auto-detect if crossover operators require history
-        # Check all conditions for cross_above/cross_below operators
-        requires_history = False
-        for rule in idea_card.signal_rules.entry_rules:
-            for cond in rule.conditions:
-                if cond.operator.value in ("cross_above", "cross_below"):
-                    requires_history = True
-                    break
-        for rule in idea_card.signal_rules.exit_rules:
-            for cond in rule.conditions:
-                if cond.operator.value in ("cross_above", "cross_below"):
-                    requires_history = True
-                    break
-        
-        # Build params with history config if crossovers are used
-        strategy_params = {}
-        if requires_history:
-            strategy_params["history"] = {
-                "bars_exec_count": 2,
-                "features_exec_count": 2,
-                "features_htf_count": 2,
-                "features_mtf_count": 2,
-            }
-        
-        # Create strategy instance
-        strategy_instance = StrategyInstanceConfig(
-            strategy_instance_id="idea_card_strategy",
-            strategy_id=idea_card.id,
-            strategy_version=idea_card.version,
-            inputs=StrategyInstanceInputs(symbol=symbol, tf=idea_card.exec_tf),
-            params=strategy_params,
-        )
-        
-        # Create SystemConfig
-        system_config = SystemConfig(
-            system_id=idea_card.id,
-            symbol=symbol,
-            tf=idea_card.exec_tf,
-            strategies=[strategy_instance],
-            primary_strategy_instance_id="idea_card_strategy",
-            windows={
-                "run": {
-                    # Strip timezone for engine compatibility (DuckDB stores naive UTC)
-                    "start": runner_config.window_start.replace(tzinfo=None).isoformat() if runner_config.window_start.tzinfo else runner_config.window_start.isoformat(),
-                    "end": runner_config.window_end.replace(tzinfo=None).isoformat() if runner_config.window_end.tzinfo else runner_config.window_end.isoformat(),
-                }
-            },
-            risk_profile=risk_profile,
-            risk_mode="none",
-            feature_specs_by_role=feature_specs_by_role,
-        )
-        
-        # Build tf_mapping from IdeaCard
-        # This enables multi-TF mode when HTF/MTF are defined
-        tf_mapping = {
-            "ltf": idea_card.exec_tf,
-            "mtf": idea_card.mtf or idea_card.exec_tf,  # Fallback to exec if MTF not defined
-            "htf": idea_card.htf or idea_card.exec_tf,  # Fallback to exec if HTF not defined
-        }
-        
-        # Create engine with tf_mapping to enable multi-TF mode
-        engine = BacktestEngine(
-            config=system_config,
-            window_name="run",
-            tf_mapping=tf_mapping,
-        )
-        
-        # Return wrapper with signal evaluator
-        return IdeaCardEngineWrapper(engine, idea_card)
-    
-    return factory
-
-
-class IdeaCardEngineWrapper:
-    """
-    Wrapper that runs BacktestEngine with IdeaCard signal evaluation.
-    
-    TEMP: This wrapper bridges IdeaCard signal rules to the engine's strategy interface.
-    Will be deleted when engine natively supports IdeaCard.
-    """
-    
-    def __init__(self, engine: Any, idea_card: IdeaCard):
-        self.engine = engine
-        self.idea_card = idea_card
-        self.evaluator = IdeaCardSignalEvaluator(idea_card)
-    
-    def run(self) -> IdeaCardBacktestResult:
-        """
-        Run the backtest using IdeaCard signal evaluation.
-        
-        Returns:
-            IdeaCardBacktestResult with trades and equity curve
-        """
-        from ..core.risk_manager import Signal
-        
-        def idea_card_strategy(snapshot, params) -> Optional[Signal]:
-            """Strategy function that uses IdeaCard signal evaluator."""
-            # Check if we have a position
-            has_position = snapshot.exchange_state.has_position
-            position_side = snapshot.exchange_state.position_side
-            
-            # Evaluate signal rules
-            result = self.evaluator.evaluate(snapshot, has_position, position_side)
-            
-            # Convert to Signal
-            if result.decision == SignalDecision.NO_ACTION:
-                return None
-            elif result.decision == SignalDecision.ENTRY_LONG:
-                return Signal(
-                    symbol=self.idea_card.symbol_universe[0],
-                    direction="LONG",
-                    size_usd=0.0,  # Engine will compute from risk_profile
-                    strategy=self.idea_card.id,
-                    confidence=1.0,
-                    metadata={
-                        "stop_loss": result.stop_loss_price,
-                        "take_profit": result.take_profit_price,
-                    }
-                )
-            elif result.decision == SignalDecision.ENTRY_SHORT:
-                return Signal(
-                    symbol=self.idea_card.symbol_universe[0],
-                    direction="SHORT",
-                    size_usd=0.0,  # Engine will compute from risk_profile
-                    strategy=self.idea_card.id,
-                    confidence=1.0,
-                    metadata={
-                        "stop_loss": result.stop_loss_price,
-                        "take_profit": result.take_profit_price,
-                    }
-                )
-            elif result.decision == SignalDecision.EXIT:
-                return Signal(
-                    symbol=self.idea_card.symbol_universe[0],
-                    direction="FLAT",
-                    size_usd=0.0,
-                    strategy=self.idea_card.id,
-                    confidence=1.0,
-                )
-            
-            return None
-        
-        # Run the engine
-        backtest_result = self.engine.run(idea_card_strategy)
-        
-        # Compute IdeaCard hash
-        idea_card_hash = compute_idea_card_hash(self.idea_card)
-        
-        return IdeaCardBacktestResult(
-            trades=backtest_result.trades,
-            equity_curve=backtest_result.equity_curve,
-            final_equity=backtest_result.metrics.final_equity,
-            idea_card_hash=idea_card_hash,
-            metrics=backtest_result.metrics,
-        )
+# =============================================================================
+# DELETED: create_default_engine_factory and IdeaCardEngineWrapper
+# =============================================================================
+# P1.2 Refactor: These adapter classes have been deleted.
+# Use engine.create_engine_from_idea_card() and engine.run_engine_with_idea_card()
+# directly from src.backtest.engine module.
+# =============================================================================
 
 
 @dataclass
@@ -339,25 +126,28 @@ class RunnerConfig:
     # IdeaCard
     idea_card_id: str = ""
     idea_card: Optional[IdeaCard] = None
-    
+
     # Window
     window_start: Optional[datetime] = None
     window_end: Optional[datetime] = None
     window_name: Optional[str] = None  # Alternative to explicit dates
-    
+
     # Paths
     base_output_dir: Path = field(default_factory=lambda: Path("backtests"))
     idea_cards_dir: Optional[Path] = None
-    
+
     # Gates
     skip_preflight: bool = False  # For testing only
     skip_artifact_validation: bool = False  # For testing only
-    
+
     # Data loader
     data_loader: Optional[DataLoader] = None
-    
+
     # Auto-sync
     auto_sync_missing_data: bool = False
+
+    # Snapshot emission
+    emit_snapshots: bool = False
     
     def load_idea_card(self) -> IdeaCard:
         """Load the IdeaCard if not already loaded."""
@@ -437,15 +227,61 @@ def run_backtest_with_gates(
             raise ValueError("IdeaCard has no symbols in symbol_universe")
         symbol = idea_card.symbol_universe[0]
         
-        # Setup artifact path (run_id is auto-generated if empty)
+        # Compute idea_card_hash for deterministic run folder naming
+        idea_card_hash = compute_idea_card_hash(idea_card)
+        
+        # Collect all timeframes from IdeaCard
+        tf_ctx = [idea_card.exec_tf]
+        if idea_card.htf:
+            tf_ctx.append(idea_card.htf)
+        if idea_card.mtf:
+            tf_ctx.append(idea_card.mtf)
+        tf_ctx = sorted(set(tf_ctx))  # Dedupe and sort
+        
+        # Determine data source ID based on env (for data provenance)
+        data_source_id = "duckdb_live"  # Default; would be set from config.data_env if available
+        
+        # Build input hash components (ALL factors affecting results)
+        input_components = InputHashComponents(
+            idea_card_hash=idea_card_hash,
+            symbols=idea_card.symbol_universe,
+            tf_exec=idea_card.exec_tf,
+            tf_ctx=tf_ctx,
+            window_start=config.window_start.strftime("%Y-%m-%d"),
+            window_end=config.window_end.strftime("%Y-%m-%d"),
+            # Execution model versions
+            fee_model_version="1.0.0",
+            simulator_version="1.0.0",
+            engine_version=PIPELINE_VERSION,
+            fill_policy_version="1.0.0",
+            # Data provenance (REQUIRED for determinism)
+            data_source_id=data_source_id,
+            data_version=None,  # Could be DB version/timestamp if available
+            candle_policy="closed_only",  # Backtest uses closed candles only
+            # Randomness
+            seed=None,  # No randomness currently
+        )
+        
+        # Compute hashes
+        full_hash = input_components.compute_full_hash()
+        short_hash = input_components.compute_short_hash()  # Default 8 chars
+        short_hash_length = len(short_hash)
+        
+        # Compute universe_id for folder path (avoids symbol redundancy)
+        universe_id = input_components.universe_id
+        
+        # Setup artifact path (run_id = 8-char input hash)
         artifact_config = ArtifactPathConfig(
             base_dir=config.base_output_dir,
+            category="_validation",  # Current mode: engine validation
             idea_card_id=idea_card.id,
-            symbol=symbol,
+            universe_id=universe_id,  # Symbol or uni_<hash> for multi-symbol
             tf_exec=idea_card.exec_tf,
             window_start=config.window_start,
             window_end=config.window_end,
-            run_id=run_id,  # Empty = auto-generate sequential number
+            run_id=short_hash,  # 8-char deterministic hash
+            idea_card_hash=idea_card_hash,
+            short_hash_length=short_hash_length,
         )
         # Capture the generated run_id
         run_id = artifact_config.run_id
@@ -458,6 +294,47 @@ def run_backtest_with_gates(
         # Create output folder
         artifact_path = artifact_config.create_folder()
         result.artifact_path = artifact_path
+        
+        # Create and write RunManifest (MANDATORY for every run)
+        manifest = RunManifest(
+            # Hash identity
+            full_hash=full_hash,
+            short_hash=short_hash,
+            short_hash_length=short_hash_length,
+            hash_algorithm="sha256",
+            # Strategy config
+            idea_card_id=idea_card.id,
+            idea_card_hash=idea_card_hash,
+            # Symbol universe
+            symbols=idea_card.symbol_universe,
+            universe_id=universe_id,
+            # Timeframes
+            tf_exec=idea_card.exec_tf,
+            tf_ctx=tf_ctx,
+            # Window
+            window_start=config.window_start.strftime("%Y-%m-%d"),
+            window_end=config.window_end.strftime("%Y-%m-%d"),
+            # Execution model versions
+            fee_model_version="1.0.0",
+            simulator_version="1.0.0",
+            engine_version=PIPELINE_VERSION,
+            fill_policy_version="1.0.0",
+            # Data provenance
+            data_source_id=data_source_id,
+            data_version=None,
+            candle_policy="closed_only",
+            # Randomness
+            seed=None,
+            # Category & semantics
+            category="_validation",
+            is_promotable=False,
+            allows_overwrite=True,
+            attempt_id=None,  # Not used for _validation
+        )
+        manifest.write_json(artifact_path / "run_manifest.json")
+        
+        # Create logs directory
+        (artifact_path / "logs").mkdir(exist_ok=True)
         
         # =====================================================================
         # GATE 1: Data Preflight
@@ -491,6 +368,16 @@ def run_backtest_with_gates(
                 result.gate_failed = "preflight"
                 result.error_message = "Data preflight gate failed - see preflight_report.json for details"
                 raise GateFailure(result.error_message)
+            
+            # Update RunManifest with warmup/delay audit data (after preflight passes)
+            # RENAMED: computed_warmup_by_role → computed_lookback_bars_by_role (breaking change)
+            if preflight_report.computed_warmup_requirements:
+                manifest.computed_lookback_bars_by_role = preflight_report.computed_warmup_requirements.warmup_by_role
+                manifest.computed_delay_bars_by_role = preflight_report.computed_warmup_requirements.delay_by_role
+            if preflight_report.auto_sync_result and preflight_report.auto_sync_result.tool_calls:
+                manifest.warmup_tool_calls = [tc.to_dict() for tc in preflight_report.auto_sync_result.tool_calls]
+            # Rewrite manifest with warmup data
+            manifest.write_json(artifact_path / "run_manifest.json")
         
         # =====================================================================
         # GATE 2: Indicator Requirements Gate
@@ -541,16 +428,54 @@ def run_backtest_with_gates(
             print("\n[INDICATOR GATE] Skipped - no required_indicators declared")
         
         # =====================================================================
+        # EXTRACT PREFLIGHT WARMUP + DELAY (SOURCE OF TRUTH)
+        # =====================================================================
+        # Runner MUST NOT compute warmup/delay - it consumes Preflight output only
+        preflight_warmup_by_role: Optional[Dict[str, int]] = None
+        preflight_delay_by_role: Optional[Dict[str, int]] = None
+        if result.preflight_report and result.preflight_report.computed_warmup_requirements:
+            preflight_warmup_by_role = result.preflight_report.computed_warmup_requirements.warmup_by_role
+            preflight_delay_by_role = result.preflight_report.computed_warmup_requirements.delay_by_role
+            print(f"[WARMUP] Using Preflight warmup: {preflight_warmup_by_role}")
+            if preflight_delay_by_role and any(v > 0 for v in preflight_delay_by_role.values()):
+                print(f"[DELAY] Using Preflight delay: {preflight_delay_by_role}")
+        else:
+            # Preflight skipped or no warmup computed - this is an error in the new flow
+            if not config.skip_preflight:
+                raise ValueError(
+                    "MISSING_PREFLIGHT_WARMUP: Preflight passed but no computed_warmup_requirements found. "
+                    "This indicates a bug in the Preflight gate."
+                )
+            # For skip_preflight mode (testing only), compute warmup directly
+            # This is NOT the production path - only for testing without preflight
+            print("[WARN] Preflight skipped - computing warmup directly (testing mode only)")
+            warmup_reqs = compute_warmup_requirements(idea_card)
+            preflight_warmup_by_role = warmup_reqs.warmup_by_role
+            preflight_delay_by_role = warmup_reqs.delay_by_role
+        
+        # =====================================================================
         # RUN BACKTEST
         # =====================================================================
         print("\n[RUN] Running Backtest...")
         
-        # Use provided factory or default
-        actual_factory = engine_factory if engine_factory else create_default_engine_factory()
+        # Import engine factory functions (P1.2 Refactor)
+        from .engine import create_engine_from_idea_card, run_engine_with_idea_card
         
-        # Create and run engine
-        engine = actual_factory(idea_card, config)
-        engine_result = engine.run()
+        # Create engine directly from IdeaCard (no adapter layer)
+        if engine_factory is not None:
+            # Custom factory provided (for testing/DI) - use legacy path
+            engine = engine_factory(idea_card, config)
+            engine_result = engine.run()
+        else:
+            # Standard path: use new IdeaCard-native engine factory
+            engine = create_engine_from_idea_card(
+                idea_card=idea_card,
+                window_start=config.window_start,
+                window_end=config.window_end,
+                warmup_by_role=preflight_warmup_by_role,
+                delay_by_role=preflight_delay_by_role,
+            )
+            engine_result = run_engine_with_idea_card(engine, idea_card)
         
         # Extract trades and equity
         trades: List[Dict[str, Any]] = []
@@ -566,18 +491,41 @@ def run_backtest_with_gates(
         else:
             idea_card_hash = compute_idea_card_hash(idea_card)
         
-        # Write trades.csv (use correct column names matching Trade.to_dict())
+        # Write trades.parquet (Phase 3.2: Parquet-only)
         trades_df = pd.DataFrame(trades) if trades else pd.DataFrame(columns=[
             "entry_time", "exit_time", "side", "entry_price", "exit_price",
             "entry_size_usdt", "net_pnl", "stop_loss", "take_profit", "exit_reason",
         ])
-        trades_df.to_csv(artifact_path / STANDARD_FILES["trades"], index=False)
+        write_parquet(trades_df, artifact_path / "trades.parquet")
         
-        # Write equity.csv
+        # Write equity.parquet (Phase 3.2: Parquet-only, Phase 6: add ts_ms)
         equity_df = pd.DataFrame(equity_curve) if equity_curve else pd.DataFrame(columns=[
             "timestamp", "equity",
         ])
-        equity_df.to_csv(artifact_path / STANDARD_FILES["equity"], index=False)
+        
+        # Phase 6: Add ts_ms column (epoch milliseconds) for smoke test assertions
+        if not equity_df.empty and "timestamp" in equity_df.columns:
+            # Convert timestamp to epoch-ms
+            equity_df["ts_ms"] = pd.to_datetime(equity_df["timestamp"]).astype("int64") // 10**6
+        else:
+            equity_df["ts_ms"] = pd.Series(dtype="int64")
+        
+        write_parquet(equity_df, artifact_path / "equity.parquet")
+        
+        # Phase 6: Extract eval_start_ts_ms from engine result for manifest
+        eval_start_ts_ms = None
+        if hasattr(engine_result, 'metrics') and engine_result.metrics:
+            # Try to get simulation_start from metrics
+            if hasattr(engine_result.metrics, 'simulation_start'):
+                sim_start = engine_result.metrics.simulation_start
+                if sim_start is not None:
+                    if hasattr(sim_start, 'timestamp'):
+                        eval_start_ts_ms = int(sim_start.timestamp() * 1000)
+                    elif isinstance(sim_start, (int, float)):
+                        eval_start_ts_ms = int(sim_start)
+        # Fallback: use first equity timestamp if available
+        if eval_start_ts_ms is None and not equity_df.empty and "ts_ms" in equity_df.columns:
+            eval_start_ts_ms = int(equity_df["ts_ms"].iloc[0])
         
         # Compute and write results summary
         run_duration = time.time() - run_start_time
@@ -604,6 +552,9 @@ def run_backtest_with_gates(
             idea_hash=idea_card_hash,
             pipeline_version=PIPELINE_VERSION,
             resolved_idea_path=resolved_idea_path,
+            # Determinism hashes (Phase 3)
+            trades_hash=trades_hash,
+            equity_hash=equity_hash,
             run_hash=run_hash,
             # Pass pre-computed metrics for comprehensive analytics
             metrics=engine_result.metrics,
@@ -654,6 +605,13 @@ def run_backtest_with_gates(
         pipeline_sig.write_json(sig_path)
         
         # =====================================================================
+        # Phase 6: Update RunManifest with eval_start_ts_ms (engine truth)
+        # =====================================================================
+        manifest.eval_start_ts_ms = eval_start_ts_ms
+        manifest.equity_timestamp_column = "ts_ms"
+        manifest.write_json(artifact_path / "run_manifest.json")
+        
+        # =====================================================================
         # GATE 2: Artifact Validation
         # =====================================================================
         if not config.skip_artifact_validation:
@@ -672,13 +630,82 @@ def run_backtest_with_gates(
                 raise GateFailure(result.error_message)
         
         # =====================================================================
+        # EMIT SNAPSHOTS (if requested)
+        # =====================================================================
+        # Emit lossless snapshot artifacts for verification suite
+        if config.emit_snapshots:
+            try:
+                from .snapshot_artifacts import emit_snapshot_artifacts
+
+                # Collect DataFrames and specs from the engine
+                exec_df = None
+                htf_df = None
+                mtf_df = None
+                exec_specs = None
+                htf_specs = None
+                mtf_specs = None
+
+                # Get DataFrames from engine
+                # The engine is actually an IdeaCardEngineWrapper, so access the real engine
+                real_engine = getattr(engine, 'engine', engine)
+
+                # For single-TF mode, use _prepared_frame.full_df (includes computed indicators)
+                # For multi-TF mode, use _ltf_df, _htf_df, etc. (these include indicators)
+                if hasattr(real_engine, '_prepared_frame') and real_engine._prepared_frame is not None:
+                    # Use full_df which includes warmup data and computed indicators
+                    exec_df = real_engine._prepared_frame.full_df
+                elif hasattr(real_engine, '_ltf_df') and real_engine._ltf_df is not None:
+                    exec_df = real_engine._ltf_df
+
+                if hasattr(real_engine, '_htf_df') and real_engine._htf_df is not None:
+                    htf_df = real_engine._htf_df
+
+                if hasattr(real_engine, '_mtf_df') and real_engine._mtf_df is not None:
+                    mtf_df = real_engine._mtf_df
+
+                # Get feature specs from the engine's config
+                # The real engine has the SystemConfig with feature_specs_by_role
+                if hasattr(real_engine, 'config') and hasattr(real_engine.config, 'feature_specs_by_role'):
+                    engine_config = real_engine.config
+                    exec_specs = engine_config.feature_specs_by_role.get('exec', [])
+                    htf_specs = engine_config.feature_specs_by_role.get('htf', [])
+                    mtf_specs = engine_config.feature_specs_by_role.get('mtf', [])
+
+
+                # Emit snapshots
+                snapshots_dir = emit_snapshot_artifacts(
+                    run_dir=artifact_path,
+                    idea_card_id=idea_card.id,
+                    symbol=symbol,
+                    window_start=config.window_start,
+                    window_end=config.window_end,
+                    exec_tf=idea_card.exec_tf,
+                    htf=idea_card.htf,
+                    mtf=idea_card.mtf,
+                    exec_df=exec_df,
+                    htf_df=htf_df,
+                    mtf_df=mtf_df,
+                    exec_feature_specs=exec_specs,
+                    htf_feature_specs=htf_specs,
+                    mtf_feature_specs=mtf_specs,
+                )
+
+                print(f"\n[SNAPSHOTS] Emitted to {snapshots_dir}")
+
+            except Exception as e:
+                import traceback
+                print(f"\n[SNAPSHOTS] Failed to emit snapshots: {e}")
+                print(f"[SNAPSHOTS] Traceback: {traceback.format_exc()}")
+                # Don't fail the run for snapshot emission errors
+
+        # =====================================================================
         # SUCCESS
         # =====================================================================
         result.success = True
-        
+
         # Print final summary
         summary.print_summary()
-        
+
         return result
         
     except GateFailure as e:

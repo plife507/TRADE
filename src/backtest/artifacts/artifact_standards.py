@@ -4,19 +4,27 @@ Artifact Naming + Export Standards.
 Defines the canonical folder/file naming conventions for backtest artifacts.
 All backtest runs MUST produce artifacts in this format.
 
-Folder structure:
+Folder structure (hash-based, deterministic):
     backtests/
-    └── {idea_card_id}/
-        └── {symbol}/
-            └── {tf_exec}/
-                └── {window_start}_{window_end}_{run_id}/
-                    ├── result.json
-                    ├── trades.csv
-                    ├── equity.csv
-                    ├── events.csv (optional)
-                    └── preflight_report.json
+    └── {category}/                    # _validation or strategies
+        └── {idea_card_id}/
+            └── {symbol}/
+                └── {8-char-input-hash}/
+                    ├── run_manifest.json      # Full hash + all inputs
+                    ├── result.json            # Final metrics
+                    ├── trades.parquet         # Trade log
+                    ├── equity.parquet         # Equity curve
+                    ├── pipeline_signature.json
+                    └── logs/                  # Run logs
 
-File naming is fixed and deterministic.
+Categories:
+- _validation: Engine validation and test runs (non-promotable)
+- strategies: Research/production backtests (promotable)
+
+Hash determinism:
+- Same inputs = same folder = same results
+- Full hash stored in run_manifest.json
+- Folder name uses 8-char short hash
 """
 
 from dataclasses import dataclass, field
@@ -36,26 +44,39 @@ def _utcnow() -> datetime:
 # =============================================================================
 
 STANDARD_FILES = {
+    # Core manifest (REQUIRED for every run)
+    "run_manifest": "run_manifest.json",
+    # JSON artifacts
     "result": "result.json",
-    "trades": "trades.csv",
-    "equity": "equity.csv",
-    "events": "events.csv",
     "preflight": "preflight_report.json",
-    "account_curve": "account_curve.csv",
     "pipeline_signature": "pipeline_signature.json",
+    "events": "events.jsonl",  # Event log (JSON Lines format)
+    # Phase 3.2: Parquet is primary format for tabular artifacts
+    "trades": "trades.parquet",
+    "equity": "equity.parquet",
+    "account_curve": "account_curve.parquet",
+    # Logs directory
+    "logs_dir": "logs",
+    # Legacy CSV aliases (for backward-compat reading of old runs)
+    "trades_csv": "trades.csv",
+    "equity_csv": "equity.csv",
+    "account_curve_csv": "account_curve.csv",
 }
 
-# Required files that MUST exist after a successful run
+# Required files that MUST exist after a successful run (Phase 3.2: Parquet)
 REQUIRED_FILES = {
     "result.json", 
-    "trades.csv", 
-    "equity.csv", 
-    "preflight_report.json",
+    "trades.parquet",  # Phase 3.2: Changed from .csv
+    "equity.parquet",  # Phase 3.2: Changed from .csv
     "pipeline_signature.json",  # Gate D.1 requirement
 }
 
-# Optional files
-OPTIONAL_FILES = {"events.csv", "account_curve.csv"}
+# Optional files (may not exist depending on run configuration)
+OPTIONAL_FILES = {
+    "events.jsonl", 
+    "account_curve.parquet",
+    "preflight_report.json",  # Optional when CLI runs its own preflight
+}
 
 
 # =============================================================================
@@ -78,6 +99,7 @@ REQUIRED_TRADES_COLUMNS = {
 REQUIRED_EQUITY_COLUMNS = {
     "timestamp",
     "equity",
+    "ts_ms",  # Phase 6: epoch-ms for smoke test assertions
 }
 
 REQUIRED_RESULT_FIELDS = {
@@ -96,29 +118,39 @@ REQUIRED_RESULT_FIELDS = {
 # Artifact Path Builder
 # =============================================================================
 
-def _get_next_run_number(base_dir: Path, idea_card_id: str, symbol: str) -> int:
-    """
-    Get the next sequential run number for an idea_card/symbol.
-    
-    Scans existing run folders and returns max + 1.
-    """
-    parent_dir = base_dir / idea_card_id / symbol
-    if not parent_dir.exists():
-        return 1
-    
-    max_run = 0
-    for folder in parent_dir.iterdir():
-        if folder.is_dir():
-            # Try to parse run number from folder name (e.g., "run-001")
-            name = folder.name
-            if name.startswith("run-"):
-                try:
-                    run_num = int(name[4:])
-                    max_run = max(max_run, run_num)
-                except ValueError:
-                    pass
-    
-    return max_run + 1
+# =============================================================================
+# Run Categories & Overwrite Semantics
+# =============================================================================
+#
+# CATEGORY SEMANTICS:
+#
+# _validation/
+#   - Purpose: Engine plumbing, math verification, audit tests
+#   - Overwrite: ALLOWED (deterministic overwrite)
+#   - Same input hash → same folder → previous artifacts replaced
+#   - Promotable: NO (never eligible for production)
+#
+# strategies/
+#   - Purpose: Research/production strategy backtests
+#   - Overwrite: NOT ALLOWED (append-only)
+#   - Same input hash → same folder → NEW attempt subfolder created
+#   - Structure: {hash}/attempts/{timestamp}/
+#   - Promotable: YES (eligible for promotion pipeline)
+#
+# =============================================================================
+
+RUN_CATEGORIES = {"_validation", "strategies"}
+
+# Category-specific behavior
+CATEGORY_OVERWRITE_ALLOWED = {
+    "_validation": True,   # Deterministic overwrite OK
+    "strategies": False,   # Append-only, preserve history
+}
+
+CATEGORY_PROMOTABLE = {
+    "_validation": False,  # Never promotable
+    "strategies": True,    # Can be promoted to production
+}
 
 
 @dataclass
@@ -126,24 +158,74 @@ class ArtifactPathConfig:
     """
     Configuration for building artifact paths.
     
-    Folder structure: {base_dir}/{idea_card_id}/{symbol}/run-{N}/
+    FOLDER STRUCTURE:
+        {base_dir}/{category}/{idea_card_id}/{universe_id}/{run_hash}/
+        
+        For strategies (append-only):
+        {base_dir}/strategies/{idea_card_id}/{universe_id}/{run_hash}/attempts/{timestamp}/
     
-    Window dates and timeframe are stored in result.json, not folder names.
+    CATEGORIES:
+    - _validation: Engine validation and test runs
+      - Overwrite: ALLOWED (same hash = same folder, replaces artifacts)
+      - Promotable: NO
+      
+    - strategies: Research/production backtests
+      - Overwrite: NOT ALLOWED (append-only, creates attempts subfolder)
+      - Promotable: YES
+    
+    UNIVERSE_ID:
+    - Single symbol: symbol name (e.g., "BTCUSDT")
+    - Multiple symbols: hash of sorted list (e.g., "uni_a1b2c3d4")
+    
+    This resolves symbol redundancy between folder paths, IdeaCard IDs, and manifests.
+    
+    RUN_HASH:
+    - Default: 8-char short hash
+    - Collision recovery: 12-char extended hash
+    
+    Window dates and timeframe are stored in run_manifest.json, not folder names.
     """
     base_dir: Path = field(default_factory=lambda: Path("backtests"))
+    category: str = "_validation"  # "_validation" or "strategies"
     idea_card_id: str = ""
-    symbol: str = ""
-    tf_exec: str = ""  # Stored in result.json, not in path
-    window_start: Optional[datetime] = None  # Stored in result.json
-    window_end: Optional[datetime] = None    # Stored in result.json
-    run_id: str = ""
+    universe_id: str = ""  # Symbol or uni_<hash> for multi-symbol
+    tf_exec: str = ""  # Stored in manifest, not in path
+    window_start: Optional[datetime] = None  # Stored in manifest
+    window_end: Optional[datetime] = None    # Stored in manifest
+    run_id: str = ""  # 8-char (or 12-char) input hash
+    idea_card_hash: str = ""  # Required for hash computation
+    short_hash_length: int = 8  # Default 8, use 12 for collision recovery
+    attempt_id: Optional[str] = None  # Timestamp for strategies category
     
     def __post_init__(self):
-        """Generate run_id if not provided."""
-        if not self.run_id and self.idea_card_id and self.symbol:
-            # Sequential run number: run-001, run-002, etc.
-            run_num = _get_next_run_number(self.base_dir, self.idea_card_id, self.symbol)
-            self.run_id = f"run-{run_num:03d}"
+        """Generate run_id (input hash) if not provided."""
+        # Validate category
+        if self.category not in RUN_CATEGORIES:
+            raise ValueError(f"Invalid category: {self.category}. Must be one of {RUN_CATEGORIES}")
+        
+        # Generate hash-based run_id if not provided
+        if not self.run_id and self.idea_card_hash and self.window_start and self.window_end:
+            from .hashes import compute_input_hash
+            self.run_id = compute_input_hash(
+                idea_card_hash=self.idea_card_hash,
+                window_start=self.window_start.strftime("%Y-%m-%d"),
+                window_end=self.window_end.strftime("%Y-%m-%d"),
+                short_hash_length=self.short_hash_length,
+            )
+        
+        # For strategies category, generate attempt_id if not provided
+        if self.category == "strategies" and not self.attempt_id:
+            self.attempt_id = _utcnow().strftime("%Y%m%d_%H%M%S")
+    
+    @property
+    def allows_overwrite(self) -> bool:
+        """Check if this category allows deterministic overwrite."""
+        return CATEGORY_OVERWRITE_ALLOWED.get(self.category, False)
+    
+    @property
+    def is_promotable(self) -> bool:
+        """Check if runs in this category are eligible for promotion."""
+        return CATEGORY_PROMOTABLE.get(self.category, False)
     
     @property
     def window_str(self) -> str:
@@ -159,14 +241,29 @@ class ArtifactPathConfig:
         """
         Get the full path to the run folder.
         
-        Structure: {base_dir}/{idea_card_id}/{symbol}/{run_id}/
+        _validation structure:
+            {base_dir}/_validation/{idea_card_id}/{universe_id}/{run_id}/
+            
+        strategies structure (append-only):
+            {base_dir}/strategies/{idea_card_id}/{universe_id}/{run_id}/attempts/{attempt_id}/
+        
+        Example: 
+            backtests/_validation/test__ema_atr/BTCUSDT/a1b2c3d4/
+            backtests/strategies/momentum_v3/uni_b2c3d4e5/x9y8z7w6/attempts/20251217_113000/
         """
-        return (
+        base_path = (
             self.base_dir
+            / self.category
             / self.idea_card_id
-            / self.symbol
+            / self.universe_id
             / self.run_id
         )
+        
+        # Strategies use append-only subfolder structure
+        if self.category == "strategies" and self.attempt_id:
+            return base_path / "attempts" / self.attempt_id
+        
+        return base_path
     
     def get_file_path(self, file_key: str) -> Path:
         """Get path to a standard file."""
@@ -183,14 +280,404 @@ class ArtifactPathConfig:
         """Convert to dict for serialization."""
         return {
             "base_dir": str(self.base_dir),
+            "category": self.category,
             "idea_card_id": self.idea_card_id,
-            "symbol": self.symbol,
+            "universe_id": self.universe_id,
             "tf_exec": self.tf_exec,
             "window_start": self.window_start.isoformat() if self.window_start else None,
             "window_end": self.window_end.isoformat() if self.window_end else None,
             "run_id": self.run_id,
+            "short_hash_length": self.short_hash_length,
+            "attempt_id": self.attempt_id,
+            "allows_overwrite": self.allows_overwrite,
+            "is_promotable": self.is_promotable,
             "run_folder": str(self.run_folder),
         }
+
+
+# =============================================================================
+# Run Manifest (Content-Addressed Run Identity)
+# =============================================================================
+#
+# MANIFEST RULES:
+# 1. Every run folder MUST contain a run_manifest.json
+# 2. Manifest stores FULL hash (64 chars) and short hash (8 or 12 chars)
+# 3. Short hash derivation method is explicit (not assumed)
+# 4. On load: verify folder name == short_hash AND full_hash.startswith(short_hash)
+# 5. On collision: fail hard, require extended short hash (12 chars)
+#
+# DISCOVERY RULES:
+# 1. Tooling MUST NOT assume sequential or numeric run IDs
+# 2. All discovery MUST be hash-driven or manifest-driven
+# 3. Folder listing finds hash folders, then validates via manifest
+#
+# =============================================================================
+
+@dataclass
+class RunManifest:
+    """
+    Mandatory manifest for every backtest run.
+    
+    GUARANTEES:
+    - Full input hash for determinism verification
+    - All hashed inputs explicitly listed (no implicit defaults)
+    - Hash derivation method documented for safety
+    - Version info for reproducibility
+    - Timestamp for audit trail
+    
+    VERIFICATION (on load):
+    - folder_name == short_hash
+    - full_hash.startswith(short_hash)
+    - short_hash_length matches actual short_hash length
+    """
+    # =========================================================================
+    # REQUIRED FIELDS (no defaults) - must come first in dataclass
+    # =========================================================================
+    
+    # Hash Identity
+    full_hash: str            # Full 64-char SHA256 hash of all inputs
+    short_hash: str           # First N chars (folder name)
+    short_hash_length: int    # 8 (default) or 12 (collision recovery)
+    
+    # Strategy Config
+    idea_card_id: str
+    idea_card_hash: str
+    
+    # Symbol Universe
+    symbols: List[str]        # Canonical: sorted, uppercase
+    
+    # Timeframes
+    tf_exec: str              # Execution timeframe ({value}{unit} format)
+    tf_ctx: List[str]         # All context timeframes (sorted)
+    
+    # Window
+    window_start: str         # YYYY-MM-DD
+    window_end: str           # YYYY-MM-DD
+    
+    # =========================================================================
+    # OPTIONAL FIELDS (with defaults) - must come after required fields
+    # =========================================================================
+    
+    # Hash algorithm
+    hash_algorithm: str = "sha256"
+    
+    # Symbol universe ID
+    universe_id: str = ""     # Single symbol or uni_<hash>
+    
+    # Execution Model Versions
+    fee_model_version: str = "1.0.0"
+    simulator_version: str = "1.0.0"
+    engine_version: str = "1.0.0"
+    fill_policy_version: str = "1.0.0"
+    
+    # Data Provenance
+    data_source_id: str = "duckdb_live"   # e.g., "duckdb_live", "duckdb_demo", vendor
+    data_version: Optional[str] = None     # Snapshot/version reference if available
+    candle_policy: str = "closed_only"     # "closed_only" (no partial candles)
+    
+    # Randomness
+    seed: Optional[int] = None
+    
+    # Category & Overwrite Semantics
+    category: str = "_validation"     # "_validation" or "strategies"
+    is_promotable: bool = False       # _validation = never promotable
+    allows_overwrite: bool = True     # _validation = overwrite, strategies = append
+    attempt_id: Optional[str] = None  # For strategies: timestamp of this attempt
+    
+    # Warmup/Delay (audit-only - SOURCE OF TRUTH is SystemConfig, not manifest)
+    # These fields are for reproducibility audit trail only
+    # RENAMED: computed_warmup_by_role → computed_lookback_bars_by_role (breaking change)
+    computed_lookback_bars_by_role: Optional[Dict[str, int]] = None  # lookback (warmup) from Preflight
+    computed_delay_bars_by_role: Optional[Dict[str, int]] = None  # delay from Preflight
+    warmup_tool_calls: Optional[List[Dict[str, Any]]] = None  # Tool calls made during auto-backfill
+    
+    # Phase 6: Engine-truth evaluation start (epoch-ms)
+    eval_start_ts_ms: Optional[int] = None  # simulation_start_ts from engine result
+    equity_timestamp_column: str = "ts_ms"  # Column name for equity timestamp (standardized)
+    
+    # Audit Trail
+    created_at_utc: str = ""          # ISO8601 timestamp
+    
+    def __post_init__(self):
+        """Set defaults and enforce invariants."""
+        if not self.created_at_utc:
+            self.created_at_utc = _utcnow().isoformat()
+        
+        # Enforce category-specific semantics
+        if self.category == "_validation":
+            self.is_promotable = False
+            self.allows_overwrite = True
+        elif self.category == "strategies":
+            self.is_promotable = True
+            self.allows_overwrite = False
+        
+        # Compute universe_id if not provided
+        if not self.universe_id and self.symbols:
+            from .hashes import compute_universe_id
+            self.universe_id = compute_universe_id(self.symbols)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict for JSON serialization."""
+        result = {
+            # Hash identity
+            "full_hash": self.full_hash,
+            "short_hash": self.short_hash,
+            "short_hash_length": self.short_hash_length,
+            "hash_algorithm": self.hash_algorithm,
+            
+            # Strategy config
+            "idea_card_id": self.idea_card_id,
+            "idea_card_hash": self.idea_card_hash,
+            
+            # Symbol universe
+            "symbols": self.symbols,
+            "universe_id": self.universe_id,
+            
+            # Timeframes
+            "tf_exec": self.tf_exec,
+            "tf_ctx": self.tf_ctx,
+            
+            # Window
+            "window_start": self.window_start,
+            "window_end": self.window_end,
+            
+            # Execution model versions
+            "fee_model_version": self.fee_model_version,
+            "simulator_version": self.simulator_version,
+            "engine_version": self.engine_version,
+            "fill_policy_version": self.fill_policy_version,
+            
+            # Data provenance
+            "data_source_id": self.data_source_id,
+            "data_version": self.data_version,
+            "candle_policy": self.candle_policy,
+            
+            # Randomness
+            "seed": self.seed,
+            
+            # Category & semantics
+            "category": self.category,
+            "is_promotable": self.is_promotable,
+            "allows_overwrite": self.allows_overwrite,
+            "attempt_id": self.attempt_id,
+            
+            # Audit trail
+            "created_at_utc": self.created_at_utc,
+        }
+        
+        # Warmup/delay audit trail (optional - only present if Preflight ran)
+        # RENAMED: computed_warmup_by_role → computed_lookback_bars_by_role (breaking change)
+        if self.computed_lookback_bars_by_role is not None:
+            result["computed_lookback_bars_by_role"] = self.computed_lookback_bars_by_role
+        if self.computed_delay_bars_by_role is not None:
+            result["computed_delay_bars_by_role"] = self.computed_delay_bars_by_role
+        if self.warmup_tool_calls is not None:
+            result["warmup_tool_calls"] = self.warmup_tool_calls
+        
+        # Phase 6: Engine-truth evaluation start
+        if self.eval_start_ts_ms is not None:
+            result["eval_start_ts_ms"] = self.eval_start_ts_ms
+        result["equity_timestamp_column"] = self.equity_timestamp_column
+        
+        return result
+    
+    def write_json(self, path: Path) -> None:
+        """Write manifest to JSON file."""
+        path.write_text(json.dumps(self.to_dict(), indent=2))
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RunManifest":
+        """Load manifest from dict."""
+        return cls(
+            # Hash identity
+            full_hash=data["full_hash"],
+            short_hash=data["short_hash"],
+            short_hash_length=data.get("short_hash_length", 8),
+            hash_algorithm=data.get("hash_algorithm", "sha256"),
+            
+            # Strategy config
+            idea_card_id=data["idea_card_id"],
+            idea_card_hash=data["idea_card_hash"],
+            
+            # Symbol universe
+            symbols=data["symbols"],
+            universe_id=data.get("universe_id", ""),
+            
+            # Timeframes
+            tf_exec=data["tf_exec"],
+            tf_ctx=data["tf_ctx"],
+            
+            # Window
+            window_start=data["window_start"],
+            window_end=data["window_end"],
+            
+            # Execution model versions
+            fee_model_version=data.get("fee_model_version", "1.0.0"),
+            simulator_version=data.get("simulator_version", "1.0.0"),
+            engine_version=data.get("engine_version", "1.0.0"),
+            fill_policy_version=data.get("fill_policy_version", "1.0.0"),
+            
+            # Data provenance
+            data_source_id=data.get("data_source_id", "duckdb_live"),
+            data_version=data.get("data_version"),
+            candle_policy=data.get("candle_policy", "closed_only"),
+            
+            # Randomness
+            seed=data.get("seed"),
+            
+            # Category & semantics
+            category=data.get("category", "_validation"),
+            is_promotable=data.get("is_promotable", False),
+            allows_overwrite=data.get("allows_overwrite", True),
+            attempt_id=data.get("attempt_id"),
+            
+            # Warmup/delay audit trail
+            # RENAMED: computed_warmup_by_role → computed_lookback_bars_by_role (breaking change)
+            computed_lookback_bars_by_role=data.get("computed_lookback_bars_by_role"),
+            computed_delay_bars_by_role=data.get("computed_delay_bars_by_role"),
+            warmup_tool_calls=data.get("warmup_tool_calls"),
+            
+            # Phase 6: Engine-truth evaluation start
+            eval_start_ts_ms=data.get("eval_start_ts_ms"),
+            equity_timestamp_column=data.get("equity_timestamp_column", "ts_ms"),
+            
+            # Audit trail
+            created_at_utc=data.get("created_at_utc", ""),
+        )
+    
+    @classmethod
+    def load_json(cls, path: Path) -> "RunManifest":
+        """Load manifest from JSON file."""
+        data = json.loads(path.read_text())
+        return cls.from_dict(data)
+    
+    def verify_folder_hash(self, folder_name: str) -> tuple[bool, str]:
+        """
+        Verify that folder name matches the short hash.
+        
+        VERIFICATION RULES:
+        1. folder_name == short_hash
+        2. full_hash.startswith(short_hash)
+        3. len(short_hash) == short_hash_length
+        
+        Args:
+            folder_name: The folder name (should be N-char hash)
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        errors = []
+        
+        # Rule 1: folder name == short_hash
+        if folder_name != self.short_hash:
+            errors.append(
+                f"Folder name '{folder_name}' does not match "
+                f"manifest short_hash '{self.short_hash}'"
+            )
+        
+        # Rule 2: full_hash starts with short_hash
+        if not self.full_hash.startswith(self.short_hash):
+            errors.append(
+                f"full_hash '{self.full_hash[:16]}...' does not start with "
+                f"short_hash '{self.short_hash}' - POSSIBLE COLLISION"
+            )
+        
+        # Rule 3: short_hash length matches declared length
+        if len(self.short_hash) != self.short_hash_length:
+            errors.append(
+                f"short_hash length {len(self.short_hash)} does not match "
+                f"declared short_hash_length {self.short_hash_length}"
+            )
+        
+        if errors:
+            return False, "; ".join(errors)
+        return True, ""
+    
+    def verify_hash_integrity(self) -> tuple[bool, str]:
+        """
+        Verify internal hash consistency.
+        
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        errors = []
+        
+        # Verify full_hash is 64 chars (SHA256)
+        if len(self.full_hash) != 64:
+            errors.append(f"full_hash should be 64 chars, got {len(self.full_hash)}")
+        
+        # Verify full_hash starts with short_hash
+        if not self.full_hash.startswith(self.short_hash):
+            errors.append("full_hash does not start with short_hash - COLLISION DETECTED")
+        
+        # Verify short_hash_length
+        if len(self.short_hash) != self.short_hash_length:
+            errors.append(
+                f"short_hash length mismatch: {len(self.short_hash)} vs {self.short_hash_length}"
+            )
+        
+        # Verify hash algorithm
+        if self.hash_algorithm != "sha256":
+            errors.append(f"Unsupported hash algorithm: {self.hash_algorithm}")
+        
+        if errors:
+            return False, "; ".join(errors)
+        return True, ""
+
+
+@dataclass
+class ManifestVerificationResult:
+    """Result of manifest verification."""
+    is_valid: bool
+    folder_matches: bool
+    hash_integrity: bool
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+
+def verify_run_folder(run_folder: Path) -> tuple[bool, str]:
+    """
+    Verify a run folder's manifest matches its folder name and internal consistency.
+    
+    VERIFICATION STEPS:
+    1. run_manifest.json exists
+    2. Manifest loads without error
+    3. Folder name == manifest.short_hash
+    4. manifest.full_hash.startswith(manifest.short_hash)
+    5. len(manifest.short_hash) == manifest.short_hash_length
+    
+    On collision detection: FAIL HARD with clear error message.
+    
+    Args:
+        run_folder: Path to the run folder
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    manifest_path = run_folder / "run_manifest.json"
+    
+    # Step 1: Check manifest exists
+    if not manifest_path.exists():
+        return False, f"Missing run_manifest.json in {run_folder}"
+    
+    # Step 2: Load manifest
+    try:
+        manifest = RunManifest.load_json(manifest_path)
+    except Exception as e:
+        return False, f"Failed to load manifest: {e}"
+    
+    # Step 3: Verify hash integrity (internal consistency)
+    integrity_ok, integrity_error = manifest.verify_hash_integrity()
+    if not integrity_ok:
+        return False, f"Hash integrity check failed: {integrity_error}"
+    
+    # Step 4: Verify folder name matches manifest
+    folder_name = run_folder.name
+    folder_ok, folder_error = manifest.verify_folder_hash(folder_name)
+    if not folder_ok:
+        return False, f"Folder verification failed: {folder_error}"
+    
+    return True, ""
 
 
 # =============================================================================
@@ -207,6 +694,9 @@ class ArtifactValidationResult:
     column_errors: Dict[str, List[str]] = field(default_factory=dict)
     result_field_errors: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    # Phase 2: Pipeline signature validation
+    pipeline_signature_valid: Optional[bool] = None
+    pipeline_signature_errors: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for serialization."""
@@ -218,6 +708,8 @@ class ArtifactValidationResult:
             "column_errors": self.column_errors,
             "result_field_errors": self.result_field_errors,
             "errors": self.errors,
+            "pipeline_signature_valid": self.pipeline_signature_valid,
+            "pipeline_signature_errors": self.pipeline_signature_errors,
         }
     
     def print_summary(self) -> None:
@@ -242,6 +734,13 @@ class ArtifactValidationResult:
         if self.errors:
             for err in self.errors:
                 print(f"   [ERR] {err}")
+        
+        # Phase 2: Pipeline signature validation status (HARD FAIL if invalid)
+        if self.pipeline_signature_valid is not None:
+            sig_icon = "[OK]" if self.pipeline_signature_valid else "[ERR]"
+            print(f"   {sig_icon} Pipeline Signature: {'VALID' if self.pipeline_signature_valid else 'INVALID (HARD FAIL)'}")
+            for err in self.pipeline_signature_errors:
+                print(f"      - {err}")
         
         print()
 
@@ -279,38 +778,40 @@ def validate_artifacts(run_folder: Path) -> ArtifactValidationResult:
         result.passed = False
         result.errors.append(f"Missing required files: {', '.join(sorted(result.files_missing))}")
     
-    # Validate trades.csv columns
-    trades_path = run_folder / "trades.csv"
+    # Validate trades.parquet columns (Phase 3.2: Parquet primary)
+    trades_path = run_folder / "trades.parquet"
     if trades_path.exists():
         try:
             import pandas as pd
-            df = pd.read_csv(trades_path, nrows=0)  # Just read headers
-            actual_cols = set(df.columns)
+            import pyarrow.parquet as pq
+            # Read schema only (efficient)
+            schema = pq.read_schema(trades_path)
+            actual_cols = set(schema.names)
             missing_cols = REQUIRED_TRADES_COLUMNS - actual_cols
             if missing_cols:
-                result.column_errors["trades.csv"] = [
+                result.column_errors["trades.parquet"] = [
                     f"Missing required columns: {', '.join(sorted(missing_cols))}"
                 ]
                 result.passed = False
         except Exception as e:
-            result.column_errors["trades.csv"] = [f"Failed to read: {str(e)}"]
+            result.column_errors["trades.parquet"] = [f"Failed to read: {str(e)}"]
             result.passed = False
     
-    # Validate equity.csv columns
-    equity_path = run_folder / "equity.csv"
+    # Validate equity.parquet columns (Phase 3.2: Parquet primary)
+    equity_path = run_folder / "equity.parquet"
     if equity_path.exists():
         try:
-            import pandas as pd
-            df = pd.read_csv(equity_path, nrows=0)
-            actual_cols = set(df.columns)
+            import pyarrow.parquet as pq
+            schema = pq.read_schema(equity_path)
+            actual_cols = set(schema.names)
             missing_cols = REQUIRED_EQUITY_COLUMNS - actual_cols
             if missing_cols:
-                result.column_errors["equity.csv"] = [
+                result.column_errors["equity.parquet"] = [
                     f"Missing required columns: {', '.join(sorted(missing_cols))}"
                 ]
                 result.passed = False
         except Exception as e:
-            result.column_errors["equity.csv"] = [f"Failed to read: {str(e)}"]
+            result.column_errors["equity.parquet"] = [f"Failed to read: {str(e)}"]
             result.passed = False
     
     # Validate result.json fields
@@ -330,6 +831,30 @@ def validate_artifacts(run_folder: Path) -> ArtifactValidationResult:
             result.result_field_errors.append(f"Failed to read: {str(e)}")
             result.passed = False
     
+    # Validate pipeline_signature.json (Phase 2: Production pipeline verification)
+    # HARD FAILURE: Any pipeline signature variance fails validation
+    # This enables future drift detection by ensuring consistent pipeline execution
+    signature_path = run_folder / "pipeline_signature.json"
+    if signature_path.exists():
+        try:
+            from .pipeline_signature import PipelineSignature
+            with open(signature_path, "r", encoding="utf-8") as f:
+                sig_data = json.load(f)
+            
+            # Create PipelineSignature from dict and validate
+            sig = PipelineSignature(**sig_data)
+            sig_errors = sig.validate()
+            if sig_errors:
+                result.pipeline_signature_valid = False
+                result.pipeline_signature_errors = sig_errors
+                result.passed = False  # HARD FAIL - pipeline must be valid
+            else:
+                result.pipeline_signature_valid = True
+        except Exception as e:
+            result.pipeline_signature_valid = False
+            result.pipeline_signature_errors = [f"Failed to validate: {str(e)}"]
+            result.passed = False  # HARD FAIL - must be able to validate
+    
     return result
 
 
@@ -344,8 +869,8 @@ def validate_artifact_path_config(config: ArtifactPathConfig) -> List[str]:
     
     if not config.idea_card_id:
         errors.append("idea_card_id is required")
-    if not config.symbol:
-        errors.append("symbol is required")
+    if not config.universe_id:
+        errors.append("universe_id is required")
     if not config.tf_exec:
         errors.append("tf_exec is required")
     if not config.window_start:
@@ -424,7 +949,11 @@ class ResultsSummary:
     idea_hash: str = ""
     pipeline_version: str = ""
     resolved_idea_path: str = ""
-    run_hash: str = ""
+    
+    # Determinism hashes (Phase 3 - hash-based verification)
+    trades_hash: str = ""     # SHA256 hash of trades.parquet content
+    equity_hash: str = ""     # SHA256 hash of equity.parquet content
+    run_hash: str = ""        # Combined hash (trades + equity + idea_card)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for serialization."""
@@ -483,6 +1012,9 @@ class ResultsSummary:
             "idea_hash": self.idea_hash,
             "pipeline_version": self.pipeline_version,
             "resolved_idea_path": self.resolved_idea_path,
+            # Determinism hashes (Phase 3)
+            "trades_hash": self.trades_hash,
+            "equity_hash": self.equity_hash,
             "run_hash": self.run_hash,
         }
     
@@ -557,6 +1089,9 @@ def compute_results_summary(
     idea_hash: str = "",
     pipeline_version: str = "",
     resolved_idea_path: str = "",
+    # Determinism hashes (Phase 3)
+    trades_hash: str = "",
+    equity_hash: str = "",
     run_hash: str = "",
     # Optional pre-computed metrics from BacktestMetrics
     metrics: Optional[Any] = None,  # BacktestMetrics type hint avoided for circular import
@@ -578,6 +1113,8 @@ def compute_results_summary(
         idea_hash: IdeaCard hash for determinism tracking
         pipeline_version: Pipeline version string
         resolved_idea_path: Path where IdeaCard was loaded from
+        trades_hash: SHA256 hash of trades output
+        equity_hash: SHA256 hash of equity curve output
         run_hash: Combined hash of trades + equity for determinism
         metrics: Pre-computed BacktestMetrics object (if provided, uses these values)
         
@@ -596,6 +1133,8 @@ def compute_results_summary(
         idea_hash=idea_hash,
         pipeline_version=pipeline_version,
         resolved_idea_path=resolved_idea_path,
+        trades_hash=trades_hash,
+        equity_hash=equity_hash,
         run_hash=run_hash,
     )
     

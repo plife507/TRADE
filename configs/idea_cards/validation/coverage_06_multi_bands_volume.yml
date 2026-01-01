@@ -1,0 +1,130 @@
+id: coverage_06_multi_bands_volume
+version: 1.0.0
+name: Coverage - Multi Bands/Volume
+description: Tests multi-output bands (BBANDS, KC, DONCHIAN, SQUEEZE) and volume (KVO)
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- SOLUSDT
+tf_configs:
+  exec:
+    tf: 1h
+    role: exec
+    warmup_bars: 150
+    feature_specs:
+    - indicator_type: bbands
+      output_key: bb
+      params:
+        length: 20
+        std: 2.0
+      input_source: close
+    - indicator_type: kc
+      output_key: kc
+      params:
+        length: 20
+        scalar: 1.5
+      input_source: close
+    - indicator_type: donchian
+      output_key: dc
+      params:
+        lower_length: 20
+        upper_length: 20
+      input_source: close
+    - indicator_type: squeeze
+      output_key: squeeze
+      params:
+        bb_length: 20
+        bb_std: 2.0
+        kc_length: 20
+        kc_scalar: 1.5
+      input_source: close
+    - indicator_type: kvo
+      output_key: kvo
+      params:
+        fast: 34
+        slow: 55
+        signal: 13
+      input_source: close
+    required_indicators:
+    - bb_bandwidth
+    - bb_lower
+    - bb_middle
+    - bb_percent_b
+    - bb_upper
+    - dc_lower
+    - dc_middle
+    - dc_upper
+    - kc_basis
+    - kc_lower
+    - kc_upper
+    - kvo_kvo
+    - kvo_signal
+    - squeeze_no_sqz
+    - squeeze_off
+    - squeeze_on
+    - squeeze_sqz
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: bb_percent_b
+      operator: lt
+      value: 0.2
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: kvo_kvo
+      operator: cross_above
+      value: kvo_signal
+      is_indicator_comparison: true
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: bb_percent_b
+      operator: gt
+      value: 0.8
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: kvo_kvo
+      operator: cross_below
+      value: kvo_signal
+      is_indicator_comparison: true
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: bb_percent_b
+      operator: gt
+      value: 0.9
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: bb_percent_b
+      operator: lt
+      value: 0.1
+      is_indicator_comparison: false
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 3.0

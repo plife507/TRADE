@@ -1,0 +1,157 @@
+id: stress02__6month_multi_tf
+version: 1.0.0
+name: Stress Test - 6 Month Multi-TF
+description: Tests long duration with full MTF stack for memory and alignment
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 5.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- BTCUSDT
+tf_configs:
+  exec:
+    tf: 15m
+    role: exec
+    warmup_bars: 100
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_fast
+      params:
+        length: 21
+      input_source: close
+    - indicator_type: rsi
+      output_key: rsi_14
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: atr
+      output_key: atr_14
+      params:
+        length: 14
+      input_source: close
+    required_indicators:
+    - atr_14
+    - ema_fast
+    - rsi_14
+  mtf:
+    tf: 1h
+    role: mtf
+    warmup_bars: 100
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_mtf
+      params:
+        length: 21
+      input_source: close
+    - indicator_type: rsi
+      output_key: rsi_mtf
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: atr
+      output_key: atr_mtf
+      params:
+        length: 14
+      input_source: close
+    required_indicators:
+    - atr_mtf
+    - ema_mtf
+    - rsi_mtf
+  htf:
+    tf: 4h
+    role: htf
+    warmup_bars: 200
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_trend
+      params:
+        length: 50
+      input_source: close
+    - indicator_type: rsi
+      output_key: rsi_htf
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: atr
+      output_key: atr_htf
+      params:
+        length: 14
+      input_source: close
+    required_indicators:
+    - atr_htf
+    - ema_trend
+    - rsi_htf
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: htf
+      indicator_key: close
+      operator: gt
+      value: ema_trend
+      is_indicator_comparison: true
+    - tf: mtf
+      indicator_key: rsi_mtf
+      operator: gte
+      value: 50
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 40
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: htf
+      indicator_key: close
+      operator: lt
+      value: ema_trend
+      is_indicator_comparison: true
+    - tf: mtf
+      indicator_key: rsi_mtf
+      operator: lte
+      value: 50
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 60
+      is_indicator_comparison: false
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 70
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 30
+      is_indicator_comparison: false
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 2.0
+    atr_key: atr_14
+  take_profit:
+    type: rr_ratio
+    value: 2.5
+  sizing:
+    model: percent_equity
+    value: 1.5
+    max_leverage: 5.0

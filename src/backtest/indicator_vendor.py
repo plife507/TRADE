@@ -23,10 +23,123 @@ Backend Abstraction:
 
 from __future__ import annotations
 import pandas as pd
-from typing import Dict, Tuple, Union, Any, Optional, List
+from dataclasses import dataclass, field
+from typing import Dict, Tuple, Union, Any, Optional, List, Set
 
 # Backend import - ONLY place pandas_ta is imported
 import pandas_ta as ta
+
+
+# =============================================================================
+# Structured Canonicalization Result (Single Source of Truth)
+# =============================================================================
+
+@dataclass
+class CanonicalizeResult:
+    """
+    Structured result from canonicalizing pandas_ta multi-output columns.
+    
+    This is the single source of truth for output key mapping, used by:
+    - Vendor multi-output normalization
+    - Toolkit contract audit
+    - Snapshot parity audit
+    """
+    indicator_type: str
+    raw_columns: List[str]
+    raw_to_canonical: Dict[str, str]
+    canonical_columns: List[str]
+    declared_columns: List[str]
+    extras_dropped: List[str] = field(default_factory=list)
+    missing_declared: List[str] = field(default_factory=list)
+    collisions: Dict[str, List[str]] = field(default_factory=dict)  # canonical_key -> [raw_cols]
+    
+    @property
+    def has_collisions(self) -> bool:
+        return len(self.collisions) > 0
+    
+    @property
+    def has_missing(self) -> bool:
+        return len(self.missing_declared) > 0
+    
+    @property
+    def is_valid(self) -> bool:
+        """Valid if no collisions and no missing declared outputs."""
+        return not self.has_collisions and not self.has_missing
+
+
+def canonicalize_indicator_outputs(
+    indicator_type: str,
+    raw_columns: List[str],
+) -> CanonicalizeResult:
+    """
+    Canonicalize pandas_ta raw column names to registry-declared output keys.
+    
+    This is the SINGLE canonicalization implementation used everywhere:
+    - Vendor multi-output normalization
+    - Toolkit contract audit
+    - Snapshot parity audit
+    
+    Args:
+        indicator_type: Name of the indicator (e.g., 'macd', 'adx', 'bbands')
+        raw_columns: List of raw pandas_ta column names
+        
+    Returns:
+        CanonicalizeResult with all structured data for contract validation
+        
+    Error codes raised:
+        CANONICAL_COLLISION: Multiple raw columns map to the same canonical key
+        MISSING_DECLARED_OUTPUTS: Registry-declared outputs not produced
+    """
+    from .indicator_registry import get_registry
+    registry = get_registry()
+    
+    # Get registry-declared outputs
+    if registry.is_multi_output(indicator_type):
+        declared_columns = list(registry.get_output_suffixes(indicator_type))
+    else:
+        # Single-output indicators don't have explicit output keys
+        declared_columns = []
+    
+    # Map raw columns to canonical keys
+    raw_to_canonical: Dict[str, str] = {}
+    canonical_to_raw: Dict[str, List[str]] = {}
+    
+    for raw_col in raw_columns:
+        canonical_key = _extract_column_key(raw_col, indicator_type)
+        raw_to_canonical[raw_col] = canonical_key
+        
+        if canonical_key not in canonical_to_raw:
+            canonical_to_raw[canonical_key] = []
+        canonical_to_raw[canonical_key].append(raw_col)
+    
+    # Detect collisions (multiple raw columns → same canonical key)
+    collisions = {
+        canonical_key: raw_cols
+        for canonical_key, raw_cols in canonical_to_raw.items()
+        if len(raw_cols) > 1
+    }
+    
+    # Get produced canonical columns
+    canonical_columns = list(raw_to_canonical.values())
+    canonical_set = set(canonical_columns)
+    declared_set = set(declared_columns)
+    
+    # Detect extras (produced but not declared)
+    extras_dropped = [k for k in canonical_columns if k not in declared_set]
+    
+    # Detect missing (declared but not produced)
+    missing_declared = [k for k in declared_columns if k not in canonical_set]
+    
+    return CanonicalizeResult(
+        indicator_type=indicator_type,
+        raw_columns=list(raw_columns),
+        raw_to_canonical=raw_to_canonical,
+        canonical_columns=canonical_columns,
+        declared_columns=declared_columns,
+        extras_dropped=extras_dropped,
+        missing_declared=missing_declared,
+        collisions=collisions,
+    )
 
 
 # =============================================================================
@@ -43,11 +156,10 @@ def compute_indicator(
     **kwargs
 ) -> Union[pd.Series, Dict[str, pd.Series]]:
     """
-    Dynamic wrapper for supported indicators.
+    Dynamic wrapper for supported indicators (FAIL LOUD on unsupported).
     
-    Uses IndicatorRegistry to determine input requirements (not hardcoded sets).
-    For supported indicators, validates params and uses registry-defined inputs.
-    For unsupported indicators, falls back to heuristic detection.
+    Uses IndicatorRegistry to determine input requirements. Only indicators
+    explicitly declared in the registry are allowed - no heuristic fallbacks.
     
     Args:
         indicator_name: Name of the indicator (e.g., 'ema', 'macd', 'adx')
@@ -61,6 +173,9 @@ def compute_indicator(
     Returns:
         pd.Series for single-output indicators
         Dict[str, pd.Series] for multi-output indicators (column names normalized)
+        
+    Raises:
+        ValueError: If indicator_name is not in IndicatorRegistry (UNSUPPORTED_INDICATOR_TYPE)
         
     Example:
         # Single-output
@@ -79,68 +194,60 @@ def compute_indicator(
     if indicator_fn is None:
         raise ValueError(f"Unknown indicator: {indicator_name}. Check pandas_ta documentation.")
     
-    # Try to use registry for input requirements (preferred path)
+    # Get registry for input requirements (FAIL LOUD - no fallback)
     from .indicator_registry import get_registry
     registry = get_registry()
     
-    # Determine input requirements
-    if registry.is_supported(indicator_name):
-        # Use registry-defined inputs
-        info = registry.get_indicator_info(indicator_name)
-        input_series = info.input_series
-        needs_hlc = info.requires_hlc
-        needs_volume = info.requires_volume
-    else:
-        # Fallback for unsupported indicators (legacy heuristic)
-        needs_hlc = indicator_name in {
-            'atr', 'true_range', 'natr', 'adx', 'aroon', 'chop', 'cksp', 'dm',
-            'kc', 'donchian', 'accbands', 'massi', 'aberration', 'hwc', 'thermo',
-            'stoch', 'kdj', 'uo', 'willr', 'eri', 'psar', 'supertrend', 'vortex',
-            'squeeze', 'squeeze_pro', 'kvo', 'eom', 'mfi', 'pmax', 'ttm_trend',
-            'ad', 'adosc', 'cmf', 'efi', 'aobv', 'obv', 'pvt', 'pvol', 'pvr',
-            'vp', 'vfi', 'nvi', 'pvi', 'ha', 'cdl_doji', 'cdl_inside', 'cdl_pattern', 'cdl_z',
-            'hilo', 'hl2', 'hlc3', 'ohlc4', 'midpoint', 'midprice', 'wcp',
-            'ichimoku', 'vwap', 'vwma', 'pvo'
-        }
-        needs_volume = indicator_name in {
-            'ad', 'adosc', 'aobv', 'cmf', 'efi', 'kvo', 'mfi', 'nvi', 'obv',
-            'pvi', 'pvol', 'pvr', 'pvt', 'vfi', 'vp', 'vwap', 'vwma', 'pvo', 'vwmacd'
-        }
+    # Determine input requirements - FAIL LOUD if not in registry
+    if not registry.is_supported(indicator_name):
+        supported = registry.list_indicators()
+        raise ValueError(
+            f"UNSUPPORTED_INDICATOR_TYPE: '{indicator_name}' is not in IndicatorRegistry. "
+            f"Supported: {supported}. "
+            f"Run 'backtest indicators --print-keys' for available indicators."
+        )
     
-    try:
-        if needs_hlc and high is not None and low is not None and close is not None:
-            if needs_volume and volume is not None:
-                result = indicator_fn(high, low, close, volume, **kwargs)
-            else:
-                result = indicator_fn(high, low, close, **kwargs)
-        elif close is not None:
-            if needs_volume and volume is not None:
-                result = indicator_fn(close, volume, **kwargs)
-            else:
-                result = indicator_fn(close, **kwargs)
-        else:
-            raise ValueError(f"Indicator {indicator_name} requires at least 'close' price series")
-    except TypeError as e:
-        # Try alternative parameter orderings for indicators with different signatures
-        error_msg = str(e).lower()
-        try:
-            # Some indicators expect (high, low, close) but weren't in our needs_hlc list
-            if high is not None and low is not None and close is not None:
-                if 'high' in error_msg or 'low' in error_msg or 'missing' in error_msg:
-                    if needs_volume and volume is not None:
-                        result = indicator_fn(high, low, close, volume, **kwargs)
-                    else:
-                        result = indicator_fn(high, low, close, **kwargs)
-                else:
-                    raise
-            else:
-                raise
-        except TypeError:
-            # Last resort - try with just close
-            try:
-                result = indicator_fn(close, **kwargs)
-            except Exception:
-                raise ValueError(f"Failed to compute indicator {indicator_name}: {e}")
+    # Use registry-defined inputs (only path - no fallback)
+    info = registry.get_indicator_info(indicator_name)
+    required_inputs = info.input_series
+    
+    # Build positional args based on what the registry says the indicator needs
+    # The order matters for pandas_ta: high, low, close, open, volume (standard order)
+    positional_args = []
+    
+    if "high" in required_inputs:
+        if high is None:
+            raise ValueError(f"Indicator '{indicator_name}' requires 'high' price series")
+        positional_args.append(high)
+    
+    if "low" in required_inputs:
+        if low is None:
+            raise ValueError(f"Indicator '{indicator_name}' requires 'low' price series")
+        positional_args.append(low)
+    
+    if "close" in required_inputs:
+        if close is None:
+            raise ValueError(f"Indicator '{indicator_name}' requires 'close' price series")
+        positional_args.append(close)
+    
+    if "open" in required_inputs:
+        if open_ is None:
+            raise ValueError(f"Indicator '{indicator_name}' requires 'open' price series")
+        positional_args.append(open_)
+    
+    if "volume" in required_inputs:
+        if volume is None:
+            raise ValueError(f"Indicator '{indicator_name}' requires 'volume' series")
+        positional_args.append(volume)
+    
+    # If no required inputs specified (close-only indicators), use close
+    if not positional_args:
+        if close is None:
+            raise ValueError(f"Indicator '{indicator_name}' requires at least 'close' price series")
+        positional_args.append(close)
+    
+    # Compute indicator
+    result = indicator_fn(*positional_args, **kwargs)
     
     if result is None:
         # Return empty Series with correct index
@@ -160,24 +267,47 @@ def compute_indicator(
 
 def _normalize_multi_output(df: pd.DataFrame, indicator_name: str) -> Dict[str, pd.Series]:
     """
-    Normalize multi-output DataFrame column names to simple keys.
+    Normalize multi-output DataFrame column names to registry-declared keys.
+    
+    Enforces the contract:
+    - FAIL LOUD on canonical collisions
+    - FAIL LOUD on missing declared outputs
+    - DROP extras (not returned, but they were computed)
     
     pandas_ta returns columns like 'MACD_12_26_9', 'MACDh_12_26_9', 'MACDs_12_26_9'.
     We normalize these to 'macd', 'histogram', 'signal' for consistent access.
     """
-    result = {}
+    # Use the structured canonicalizer
+    canon_result = canonicalize_indicator_outputs(indicator_name, list(df.columns))
     
-    for col in df.columns:
-        # Normalize column name to lowercase and extract meaningful suffix
-        col_lower = col.lower()
-        
-        # Extract the meaningful part of the column name
-        # Common patterns: MACD_12_26_9 -> macd, MACDh_12_26_9 -> histogram
-        # ADX_14 -> adx, DMP_14 -> dmp, DMN_14 -> dmn
-        # BBL_20_2.0 -> lower, BBM_20_2.0 -> mid, BBU_20_2.0 -> upper
-        
-        key = _extract_column_key(col, indicator_name)
-        result[key] = df[col]
+    # FAIL LOUD on collisions
+    if canon_result.has_collisions:
+        collision_details = "; ".join(
+            f"{canonical_key} <- {raw_cols}"
+            for canonical_key, raw_cols in canon_result.collisions.items()
+        )
+        raise ValueError(
+            f"CANONICAL_COLLISION: Indicator '{indicator_name}' has multiple raw columns "
+            f"mapping to the same canonical key. Collisions: {collision_details}"
+        )
+    
+    # FAIL LOUD on missing declared outputs
+    if canon_result.has_missing:
+        raise ValueError(
+            f"MISSING_DECLARED_OUTPUTS: Indicator '{indicator_name}' did not produce "
+            f"registry-declared outputs: {canon_result.missing_declared}. "
+            f"Produced: {canon_result.canonical_columns}, "
+            f"Declared: {canon_result.declared_columns}"
+        )
+    
+    # Build result with only declared outputs (drop extras)
+    result = {}
+    declared_set = set(canon_result.declared_columns)
+    
+    for raw_col, canonical_key in canon_result.raw_to_canonical.items():
+        if canonical_key in declared_set:
+            result[canonical_key] = df[raw_col]
+        # else: extra output, dropped (not in declared_set)
     
     return result
 
@@ -204,7 +334,7 @@ def _extract_column_key(col_name: str, indicator_name: str) -> str:
         'macds': 'signal',
         # Bollinger Bands
         'bbl': 'lower',
-        'bbm': 'mid',
+        'bbm': 'middle',
         'bbu': 'upper',
         'bbb': 'bandwidth',
         'bbp': 'percent_b',
@@ -213,22 +343,27 @@ def _extract_column_key(col_name: str, indicator_name: str) -> str:
         'stochd': 'd',
         'stochrsik': 'k',
         'stochrsid': 'd',
-        # Keltner Channel
+        # Keltner Channel (kcle/kcbe/kcue for EMA variant)
         'kcl': 'lower',
+        'kcle': 'lower',
         'kcb': 'basis',
+        'kcbe': 'basis',
         'kcu': 'upper',
+        'kcue': 'upper',
         # Donchian
         'dcl': 'lower',
-        'dcm': 'mid',
+        'dcm': 'middle',
         'dcu': 'upper',
         # ADX
         'adx': 'adx',
+        'adxr': 'adxr',
         'dmp': 'dmp',
         'dmn': 'dmn',
         # Aroon
         'aroonu': 'up',
         'aroond': 'down',
         'aroono': 'osc',
+        'aroonosc': 'osc',
         # Vortex
         'vtxp': 'vip',
         'vtxm': 'vim',
@@ -255,10 +390,10 @@ def _extract_column_key(col_name: str, indicator_name: str) -> str:
         # KVO
         'kvo': 'kvo',
         'kvos': 'signal',
-        # Squeeze
-        'sqz': 'sqz',
-        'sqz_on': 'sqz_on',
-        'sqz_off': 'sqz_off',
+        # Squeeze (multiple outputs: sqz value, on/off indicators)
+        # Columns: SQZ_ON, SQZ_OFF, SQZ_NO, SQZ_20_2.0_20_1.5 (main value)
+        'sqz_on': 'on',
+        'sqz_off': 'off',
         'sqz_no': 'no_sqz',
         # Heikin-Ashi
         'ha_open': 'open',
@@ -464,7 +599,7 @@ def bbands(
         Dict with keys: 'upper', 'middle', 'lower', 'bandwidth', 'percent_b'
     """
     result = ta.bbands(close, length=length, std=std)
-    
+
     if result is None or result.empty:
         empty = pd.Series(index=close.index, dtype=float)
         return {
@@ -474,19 +609,20 @@ def bbands(
             "bandwidth": empty.copy(),
             "percent_b": empty.copy(),
         }
-    
-    # pandas_ta returns columns like BBL_20_2.0, BBM_20_2.0, BBU_20_2.0, BBB_20_2.0, BBP_20_2.0
-    std_str = f"{std:.1f}" if std == int(std) else str(std)
-    lower_col = f"BBL_{length}_{std_str}"
-    mid_col = f"BBM_{length}_{std_str}"
-    upper_col = f"BBU_{length}_{std_str}"
-    bw_col = f"BBB_{length}_{std_str}"
-    pct_col = f"BBP_{length}_{std_str}"
+
+    # pandas_ta returns columns like BBL_20_2.0_2.0 (length_lower_std_upper_std)
+    # Format: BB{L/M/U/B/P}_{length}_{lower_std}_{upper_std}
+    std_str = f"{std}"
+    lower_col = f"BBL_{length}_{std_str}_{std_str}"
+    middle_col = f"BBM_{length}_{std_str}_{std_str}"
+    upper_col = f"BBU_{length}_{std_str}_{std_str}"
+    bw_col = f"BBB_{length}_{std_str}_{std_str}"
+    pct_col = f"BBP_{length}_{std_str}_{std_str}"
     
     empty = pd.Series(index=close.index, dtype=float)
     return {
         "upper": result[upper_col] if upper_col in result.columns else empty.copy(),
-        "middle": result[mid_col] if mid_col in result.columns else empty.copy(),
+        "middle": result[middle_col] if middle_col in result.columns else empty.copy(),
         "lower": result[lower_col] if lower_col in result.columns else empty.copy(),
         "bandwidth": result[bw_col] if bw_col in result.columns else empty.copy(),
         "percent_b": result[pct_col] if pct_col in result.columns else empty.copy(),
@@ -574,61 +710,12 @@ def stochrsi(
 
 
 # =============================================================================
-# Warmup Calculation Helpers
+# Warmup Calculation
 # =============================================================================
-
-def get_ema_warmup(length: int, stabilization_factor: int = 3) -> int:
-    """
-    Calculate warmup bars for EMA.
-    
-    EMA theoretically needs only length-1 bars, but for stabilization
-    we use a multiplier (default 3x).
-    
-    Args:
-        length: EMA period
-        stabilization_factor: Multiplier for stabilization (default: 3)
-        
-    Returns:
-        Warmup bars needed
-    """
-    return length * stabilization_factor
-
-
-def get_sma_warmup(length: int) -> int:
-    """Calculate warmup bars for SMA (exactly length)."""
-    return length
-
-
-def get_rsi_warmup(length: int) -> int:
-    """Calculate warmup bars for RSI (length + 1 for first delta)."""
-    return length + 1
-
-
-def get_atr_warmup(length: int) -> int:
-    """Calculate warmup bars for ATR (length + 1 for previous close)."""
-    return length + 1
-
-
-def get_macd_warmup(fast: int, slow: int, signal: int) -> int:
-    """
-    Calculate warmup bars for MACD.
-    
-    MACD needs slow period for the slow EMA, plus signal period for
-    signal line smoothing, with EMA stabilization factor.
-    """
-    return slow * 3 + signal
-
-
-def get_bbands_warmup(length: int) -> int:
-    """Calculate warmup bars for Bollinger Bands (same as SMA)."""
-    return length
-
-
-def get_stoch_warmup(k: int, d: int, smooth_k: int) -> int:
-    """Calculate warmup bars for Stochastic."""
-    return k + smooth_k + d
-
-
-def get_stochrsi_warmup(length: int, rsi_length: int, k: int, d: int) -> int:
-    """Calculate warmup bars for StochRSI."""
-    return rsi_length + length + max(k, d)
+# CANONICAL SOURCE: Warmup bars are computed via IndicatorRegistry.get_warmup_bars()
+# in src/backtest/indicator_registry.py. Use FeatureSpec.warmup_bars property
+# or registry.get_warmup_bars(indicator_type, params) for warmup calculations.
+#
+# Dead code removed: get_ema_warmup, get_sma_warmup, get_rsi_warmup, get_atr_warmup,
+# get_macd_warmup, get_bbands_warmup, get_stoch_warmup, get_stochrsi_warmup
+# These were shadowing the registry implementations and never called.

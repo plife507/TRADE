@@ -1,0 +1,96 @@
+id: test__mmr_config
+version: 1.0.0
+name: MMR Configuration Test
+description: |
+  Validates that account.maintenance_margin_rate flows from IdeaCard to engine.
+  Uses explicit 1% MMR (0.01) - higher than default 0.5% (0.005).
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 10.0  # 10x leverage with 1% MMR
+  margin_mode: isolated_usdt
+  slippage_bps: 5.0
+  min_trade_notional_usdt: 10.0
+  maintenance_margin_rate: 0.01  # 1% MMR (higher than default 0.5%)
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+tf_configs:
+  exec:
+    tf: 1h
+    role: exec
+    warmup_bars: 50
+    feature_specs:
+      - indicator_type: ema
+        output_key: ema_fast
+        params:
+          length: 9
+        input_source: close
+      - indicator_type: ema
+        output_key: ema_slow
+        params:
+          length: 21
+        input_source: close
+      - indicator_type: atr
+        output_key: atr
+        params:
+          length: 14
+        input_source: close
+    required_indicators:
+      - ema_fast
+      - ema_slow
+      - atr
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: ema_fast
+          operator: gt
+          value: ema_slow
+          is_indicator_comparison: true
+    - direction: short
+      conditions:
+        - tf: exec
+          indicator_key: ema_fast
+          operator: lt
+          value: ema_slow
+          is_indicator_comparison: true
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: ema_fast
+          operator: lt
+          value: ema_slow
+          is_indicator_comparison: true
+    - direction: short
+      conditions:
+        - tf: exec
+          indicator_key: ema_fast
+          operator: gt
+          value: ema_slow
+          is_indicator_comparison: true
+
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 2.0
+    atr_key: atr
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 5.0
+    max_leverage: 10.0

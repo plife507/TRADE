@@ -703,6 +703,7 @@ Examples:
     # backtest run
     run_parser = backtest_subparsers.add_parser("run", help="Run an IdeaCard backtest")
     run_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier (e.g., SOLUSDT_15m_ema_crossover)")
+    run_parser.add_argument("--dir", dest="idea_cards_dir", help="Override IdeaCard directory")
     run_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment (default: live)")
     run_parser.add_argument("--symbol", help="Override symbol (default: from IdeaCard)")
     run_parser.add_argument("--start", help="Window start (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
@@ -712,6 +713,11 @@ Examples:
     run_parser.add_argument("--no-strict", action="store_false", dest="strict", help="Disable strict indicator checks")
     run_parser.add_argument("--artifacts-dir", help="Override artifacts directory")
     run_parser.add_argument("--no-artifacts", action="store_true", help="Skip writing artifacts")
+    run_parser.add_argument("--emit-snapshots", action="store_true", help="Emit snapshot artifacts (OHLCV + computed indicators)")
+    run_parser.add_argument("--fix-gaps", action="store_true", default=True, help="Auto-fetch missing data (default: True)")
+    run_parser.add_argument("--no-fix-gaps", action="store_false", dest="fix_gaps", help="Disable auto-fetch of missing data")
+    run_parser.add_argument("--validate", action="store_true", default=True, help="Validate artifacts after run (default: True)")
+    run_parser.add_argument("--no-validate", action="store_false", dest="validate", help="Skip artifact validation (faster, less safe)")
     run_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
     
     # backtest preflight
@@ -726,14 +732,26 @@ Examples:
     
     # backtest indicators (NEW - indicator key discovery)
     indicators_parser = backtest_subparsers.add_parser("indicators", help="Discover indicator keys for an IdeaCard")
-    indicators_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
+    indicators_parser.add_argument("--idea-card", help="IdeaCard identifier (required unless --audit-math-from-snapshots)")
     indicators_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     indicators_parser.add_argument("--symbol", help="Override symbol")
     indicators_parser.add_argument("--print-keys", action="store_true", default=True, help="Print all indicator keys")
     indicators_parser.add_argument("--compute", action="store_true", help="Actually compute indicators (requires --start/--end)")
     indicators_parser.add_argument("--start", help="Window start (for --compute)")
     indicators_parser.add_argument("--end", help="Window end (for --compute)")
+    indicators_parser.add_argument("--audit-math-from-snapshots", action="store_true", help="Audit math parity using snapshot artifacts")
+    indicators_parser.add_argument("--run-dir", help="Run directory for --audit-math-from-snapshots")
     indicators_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+
+    # Make idea-card required unless audit mode
+    def validate_indicators_args(args):
+        if not args.audit_math_from_snapshots and not args.idea_card:
+            indicators_parser.error("--idea-card is required unless --audit-math-from-snapshots is used")
+        if args.audit_math_from_snapshots and not args.run_dir:
+            indicators_parser.error("--run-dir is required when using --audit-math-from-snapshots")
+
+    # Store validator for later use
+    indicators_parser._validate = validate_indicators_args
     
     # backtest data-fix
     datafix_parser = backtest_subparsers.add_parser("data-fix", help="Fix data for an IdeaCard")
@@ -753,20 +771,121 @@ Examples:
     
     # backtest idea-card-normalize (NEW - build-time validation)
     normalize_parser = backtest_subparsers.add_parser(
-        "idea-card-normalize", 
+        "idea-card-normalize",
         help="Validate and normalize an IdeaCard YAML (build-time)"
     )
     normalize_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
     normalize_parser.add_argument("--dir", dest="idea_cards_dir", help="Override IdeaCards directory")
     normalize_parser.add_argument("--write", action="store_true", help="Write normalized YAML in-place")
     normalize_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+
+    # backtest idea-card-normalize-batch (NEW - batch normalization)
+    batch_normalize_parser = backtest_subparsers.add_parser(
+        "idea-card-normalize-batch",
+        help="Batch validate and normalize all IdeaCards in a directory"
+    )
+    batch_normalize_parser.add_argument("--dir", dest="idea_cards_dir", required=True, help="Directory containing IdeaCard YAML files")
+    batch_normalize_parser.add_argument("--write", action="store_true", help="Write normalized YAML in-place")
+    batch_normalize_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+
+    # backtest verify-suite (NEW - global verification suite)
+    verify_suite_parser = backtest_subparsers.add_parser(
+        "verify-suite",
+        help="Run global indicator & strategy verification suite or artifact parity check"
+    )
+    # Standard verification mode (IdeaCard directory)
+    verify_suite_parser.add_argument("--dir", dest="idea_cards_dir", help="Directory containing verification IdeaCard YAML files")
+    verify_suite_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
+    verify_suite_parser.add_argument("--start", help="Fixed window start (YYYY-MM-DD)")
+    verify_suite_parser.add_argument("--end", help="Fixed window end (YYYY-MM-DD)")
+    verify_suite_parser.add_argument("--strict", action="store_true", default=True, help="Strict indicator access")
+    verify_suite_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    verify_suite_parser.add_argument("--skip-toolkit-audit", action="store_true", help="Skip Gate 1 toolkit contract audit")
+    # Phase 3.1: CSV vs Parquet parity verification mode
+    verify_suite_parser.add_argument("--compare-csv-parquet", action="store_true", help="Verify CSV vs Parquet artifact parity")
+    verify_suite_parser.add_argument("--idea-card", dest="parity_idea_card", help="IdeaCard ID for parity check")
+    verify_suite_parser.add_argument("--symbol", dest="parity_symbol", help="Symbol for parity check")
+    verify_suite_parser.add_argument("--run", dest="parity_run", help="Run ID (e.g., run-001 or 'latest')")
     
     # backtest audit-toolkit (NEW - indicator registry audit)
     audit_parser = backtest_subparsers.add_parser(
         "audit-toolkit",
-        help="Audit indicator registry for consistency"
+        help="Run toolkit contract audit over all registry indicators"
     )
     audit_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    audit_parser.add_argument("--sample-bars", type=int, default=2000, help="Number of synthetic OHLCV bars (default: 2000)")
+    audit_parser.add_argument("--seed", type=int, default=1337, help="Random seed for synthetic data (default: 1337)")
+    audit_parser.add_argument("--fail-on-extras", action="store_true", help="Treat extras as failures")
+    audit_parser.add_argument("--strict", action="store_true", default=True, help="Fail on any contract breach")
+    
+    # backtest metadata-smoke (Indicator Metadata v1 smoke test)
+    metadata_parser = backtest_subparsers.add_parser(
+        "metadata-smoke",
+        help="Run Indicator Metadata v1 smoke test (validates metadata capture and export)"
+    )
+    metadata_parser.add_argument("--symbol", default="BTCUSDT", help="Symbol for synthetic data (default: BTCUSDT)")
+    metadata_parser.add_argument("--tf", default="15m", help="Timeframe (default: 15m)")
+    metadata_parser.add_argument("--sample-bars", type=int, default=2000, help="Number of synthetic bars (default: 2000)")
+    metadata_parser.add_argument("--seed", type=int, default=1337, help="Random seed for reproducibility (default: 1337)")
+    metadata_parser.add_argument("--export", dest="export_path", default="artifacts/indicator_metadata.jsonl", help="Export path (default: artifacts/indicator_metadata.jsonl)")
+    metadata_parser.add_argument("--format", dest="export_format", choices=["jsonl", "json", "csv"], default="jsonl", help="Export format (default: jsonl)")
+    
+    # backtest math-parity (contract audit + in-memory math parity)
+    math_parity_parser = backtest_subparsers.add_parser(
+        "math-parity",
+        help="Validate indicator math parity (contract + in-memory comparison)"
+    )
+    math_parity_parser.add_argument("--idea-card", required=True, help="Path to IdeaCard YAML for parity audit")
+    math_parity_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
+    math_parity_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
+    math_parity_parser.add_argument("--output-dir", help="Output directory for diff reports (optional)")
+    math_parity_parser.add_argument("--contract-sample-bars", type=int, default=2000, help="Synthetic bars for contract audit (default: 2000)")
+    math_parity_parser.add_argument("--contract-seed", type=int, default=1337, help="Random seed for contract audit (default: 1337)")
+    math_parity_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
+    # backtest audit-snapshot-plumbing (Phase 4 snapshot plumbing parity)
+    plumbing_parser = backtest_subparsers.add_parser(
+        "audit-snapshot-plumbing",
+        help="Run Phase 4 snapshot plumbing parity audit"
+    )
+    plumbing_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier or path")
+    plumbing_parser.add_argument("--symbol", help="Override symbol (optional, inferred from IdeaCard)")
+    plumbing_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
+    plumbing_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
+    plumbing_parser.add_argument("--max-samples", type=int, default=2000, help="Max exec samples (default: 2000)")
+    plumbing_parser.add_argument("--tolerance", type=float, default=1e-12, help="Tolerance for float comparison (default: 1e-12)")
+    plumbing_parser.add_argument("--strict", action="store_true", default=True, help="Stop at first mismatch (default: True)")
+    plumbing_parser.add_argument("--no-strict", action="store_false", dest="strict", help="Continue after mismatches")
+    plumbing_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+    
+    # backtest verify-determinism (Phase 3 - hash-based determinism verification)
+    determinism_parser = backtest_subparsers.add_parser(
+        "verify-determinism",
+        help="Verify backtest determinism by comparing run hashes"
+    )
+    determinism_parser.add_argument("--run-a", required=False, help="Path to first run's artifact folder")
+    determinism_parser.add_argument("--run-b", required=False, help="Path to second run's artifact folder (for compare mode)")
+    determinism_parser.add_argument("--re-run", action="store_true", help="Re-run the IdeaCard and compare to existing run")
+    determinism_parser.add_argument("--fix-gaps", action="store_true", default=False, help="Allow data sync during re-run")
+    determinism_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    
+    # backtest metrics-audit
+    metrics_audit_parser = backtest_subparsers.add_parser(
+        "metrics-audit",
+        help="Validate financial metrics calculation (drawdown, Calmar, TF handling)"
+    )
+    metrics_audit_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+
+    # backtest audit-rollup (1m rollup parity audit)
+    rollup_parser = backtest_subparsers.add_parser(
+        "audit-rollup",
+        help="Run 1m rollup parity audit (ExecRollupBucket + snapshot accessors)"
+    )
+    rollup_parser.add_argument("--intervals", type=int, default=10, help="Number of exec intervals to test (default: 10)")
+    rollup_parser.add_argument("--quotes", type=int, default=15, help="Quotes per interval (default: 15)")
+    rollup_parser.add_argument("--seed", type=int, default=1337, help="Random seed (default: 1337)")
+    rollup_parser.add_argument("--tolerance", type=float, default=1e-10, help="Tolerance (default: 1e-10)")
+    rollup_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
     
     return parser.parse_args()
 
@@ -799,7 +918,8 @@ def handle_backtest_run(args) -> int:
     start = _parse_datetime(args.start) if args.start else None
     end = _parse_datetime(args.end) if args.end else None
     artifacts_dir = Path(args.artifacts_dir) if args.artifacts_dir else None
-    
+    idea_cards_dir = Path(args.idea_cards_dir) if args.idea_cards_dir else None
+
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]BACKTEST RUN[/]\n"
@@ -807,7 +927,7 @@ def handle_backtest_run(args) -> int:
             f"DataEnv: {args.data_env} | Smoke: {args.smoke} | Strict: {args.strict}",
             border_style="cyan"
         ))
-    
+
     result = backtest_run_idea_card_tool(
         idea_card_id=args.idea_card,
         env=args.data_env,
@@ -818,6 +938,10 @@ def handle_backtest_run(args) -> int:
         strict=args.strict,
         write_artifacts=not args.no_artifacts,
         artifacts_dir=artifacts_dir,
+        idea_cards_dir=idea_cards_dir,
+        emit_snapshots=args.emit_snapshots,
+        fix_gaps=args.fix_gaps,
+        validate_artifacts_after=args.validate,
     )
     
     # JSON output mode
@@ -861,36 +985,18 @@ def handle_backtest_preflight(args) -> int:
             border_style="cyan"
         ))
     
+    # Pass fix_gaps to the tool - it handles auto-sync internally
+    if args.fix_gaps and not args.json_output:
+        console.print("[dim]Auto-sync enabled: will fetch missing data if needed[/]")
+    
     result = backtest_preflight_idea_card_tool(
         idea_card_id=args.idea_card,
         env=args.data_env,
         symbol=args.symbol,
         start=start,
         end=end,
+        fix_gaps=args.fix_gaps,
     )
-    
-    # Auto-fix gaps if requested
-    if args.fix_gaps and not result.success and result.data and result.data.get("coverage_issue"):
-        if not args.json_output:
-            console.print("\n[yellow]Attempting to fix data gaps...[/]")
-        fix_result = backtest_data_fix_tool(
-            idea_card_id=args.idea_card,
-            env=args.data_env,
-            symbol=args.symbol,
-            sync_to_now=True,
-            fill_gaps=True,
-        )
-        if fix_result.success:
-            if not args.json_output:
-                console.print("[green]Data fix completed, re-running preflight...[/]")
-            # Re-run preflight
-            result = backtest_preflight_idea_card_tool(
-                idea_card_id=args.idea_card,
-                env=args.data_env,
-                symbol=args.symbol,
-                start=start,
-                end=end,
-            )
     
     # JSON output mode
     if args.json_output:
@@ -922,19 +1028,77 @@ def handle_backtest_preflight(args) -> int:
 def handle_backtest_indicators(args) -> int:
     """Handle `backtest indicators` subcommand."""
     import json
+    from pathlib import Path
+
+    # Validate arguments
+    if hasattr(args, '_validate'):
+        args._validate(args)
+
+    # Handle audit mode
+    if args.audit_math_from_snapshots:
+        from src.tools.backtest_cli_wrapper import backtest_audit_math_from_snapshots_tool
+
+        if not args.run_dir:
+            console.print("[red]Error: --run-dir is required for --audit-math-from-snapshots[/]")
+            return 1
+
+        run_dir = Path(args.run_dir)
+
+        if not args.json_output:
+            console.print(Panel(
+                f"[bold cyan]INDICATOR MATH AUDIT[/]\n"
+                f"Run Dir: {args.run_dir}",
+                border_style="cyan"
+            ))
+
+        result = backtest_audit_math_from_snapshots_tool(run_dir=run_dir)
+
+        # JSON output mode
+        if args.json_output:
+            output = {
+                "status": "pass" if result.success else "fail",
+                "message": result.message if result.success else result.error,
+                "data": result.data,
+            }
+            print(json.dumps(output, indent=2, default=str))
+            return 0 if result.success else 1
+
+        if result.success:
+            console.print(f"\n[bold green]OK {result.message}[/]")
+            if result.data:
+                summary = result.data.get("summary", {})
+                console.print(f"\n[dim]Overall: {summary.get('passed_columns', 0)}/{summary.get('total_columns', 0)} columns passed[/]")
+                console.print(f"[dim]Max diff: {summary.get('max_abs_diff', 0):.2e}[/]")
+                console.print(f"[dim]Mean diff: {summary.get('mean_abs_diff', 0):.2e}[/]")
+
+                # Show per-column results
+                if result.data.get("column_results"):
+                    console.print(f"\n[bold]Column Results:[/]")
+                    for col_result in result.data["column_results"]:
+                        status = "[green]PASS[/]" if col_result["passed"] else "[red]FAIL[/]"
+                        console.print(f"  {col_result['column']}: {status} "
+                                    f"(max_diff={col_result['max_abs_diff']:.2e}, "
+                                    f"mean_diff={col_result['mean_abs_diff']:.2e})")
+        else:
+            console.print(f"\n[bold red]FAIL {result.error}[/]")
+            if result.data and result.data.get("error_details"):
+                console.print(result.data["error_details"])
+        return 0 if result.success else 1
+
+    # Original indicator discovery mode
     from src.tools.backtest_cli_wrapper import backtest_indicators_tool
-    
+
     # Parse dates
     start = _parse_datetime(args.start) if args.start else None
     end = _parse_datetime(args.end) if args.end else None
-    
+
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]BACKTEST INDICATORS[/]\n"
             f"IdeaCard: {args.idea_card} | DataEnv: {args.data_env}",
             border_style="cyan"
         ))
-    
+
     result = backtest_indicators_tool(
         idea_card_id=args.idea_card,
         data_env=args.data_env,
@@ -943,7 +1107,7 @@ def handle_backtest_indicators(args) -> int:
         end=end,
         compute_values=args.compute,
     )
-    
+
     # JSON output mode
     if args.json_output:
         output = {
@@ -953,7 +1117,7 @@ def handle_backtest_indicators(args) -> int:
         }
         print(json.dumps(output, indent=2, default=str))
         return 0 if result.success else 1
-    
+
     if result.success and result.data:
         data = result.data
         console.print(f"\n[bold]Indicator Key Discovery[/]")
@@ -964,15 +1128,15 @@ def handle_backtest_indicators(args) -> int:
             console.print(f"HTF: {data.get('htf')}")
         if data.get('mtf'):
             console.print(f"MTF: {data.get('mtf')}")
-        
+
         console.print(f"\n[bold]Declared Keys (from FeatureSpec output_key):[/]")
         for role, keys in data.get("declared_keys_by_role", {}).items():
             console.print(f"  {role}: {keys}")
-        
+
         console.print(f"\n[bold]Expanded Keys (actual column names, including multi-output):[/]")
         for role, keys in data.get("expanded_keys_by_role", {}).items():
             console.print(f"  {role}: {keys}")
-        
+
         if data.get("computed_info"):
             console.print(f"\n[bold]Computed Info:[/]")
             for role, info in data["computed_info"].items():
@@ -983,7 +1147,7 @@ def handle_backtest_indicators(args) -> int:
                     console.print(f"    Data rows: {info.get('data_rows')}")
                     console.print(f"    First valid bar: {info.get('first_valid_bar')}")
                     console.print(f"    Computed columns: {info.get('computed_columns')}")
-        
+
         console.print(f"\n[bold green]OK {result.message}[/]")
         return 0
     else:
@@ -1139,22 +1303,22 @@ def handle_backtest_normalize(args) -> int:
     import json
     from pathlib import Path
     from src.tools.backtest_cli_wrapper import backtest_idea_card_normalize_tool
-    
+
     idea_cards_dir = Path(args.idea_cards_dir) if args.idea_cards_dir else None
-    
+
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]IDEACARD NORMALIZE[/]\n"
             f"IdeaCard: {args.idea_card} | Write: {args.write}",
             border_style="cyan"
         ))
-    
+
     result = backtest_idea_card_normalize_tool(
         idea_card_id=args.idea_card,
         idea_cards_dir=idea_cards_dir,
         write_in_place=args.write,
     )
-    
+
     # JSON output mode
     if args.json_output:
         output = {
@@ -1164,7 +1328,7 @@ def handle_backtest_normalize(args) -> int:
         }
         print(json.dumps(output, indent=2, default=str))
         return 0 if result.success else 1
-    
+
     if result.success:
         console.print(f"\n[bold green]OK {result.message}[/]")
         if result.data:
@@ -1181,19 +1345,403 @@ def handle_backtest_normalize(args) -> int:
         return 1
 
 
+def _handle_parity_verification(args, verify_artifact_parity_tool) -> int:
+    """Handle CSV ↔ Parquet artifact parity verification (Phase 3.1)."""
+    import json
+    
+    # Validate required args
+    if not getattr(args, 'parity_idea_card', None):
+        console.print("[red]Error: --idea-card is required for parity verification[/]")
+        return 1
+    if not getattr(args, 'parity_symbol', None):
+        console.print("[red]Error: --symbol is required for parity verification[/]")
+        return 1
+    
+    idea_card_id = args.parity_idea_card
+    symbol = args.parity_symbol.upper()
+    run_id = getattr(args, 'parity_run', None)
+    if run_id and run_id.lower() == 'latest':
+        run_id = None  # None means latest
+    
+    if not getattr(args, 'json_output', False):
+        console.print(Panel(
+            f"[bold cyan]CSV ↔ PARQUET PARITY VERIFICATION[/]\n"
+            f"IdeaCard: {idea_card_id}\n"
+            f"Symbol: {symbol}\n"
+            f"Run: {run_id or 'latest'}",
+            border_style="cyan"
+        ))
+    
+    result = verify_artifact_parity_tool(
+        idea_card_id=idea_card_id,
+        symbol=symbol,
+        run_id=run_id,
+    )
+    
+    # JSON output mode
+    if getattr(args, 'json_output', False):
+        output = {
+            "command": "verify-suite",
+            "mode": "compare-csv-parquet",
+            "success": result.success,
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2))
+        return 0 if result.success else 1
+    
+    # Human-readable output
+    if result.success:
+        console.print(f"\n[bold green]✓ PARITY PASSED[/] {result.message}")
+        if result.data:
+            for ar in result.data.get("artifact_results", []):
+                icon = "✓" if ar.get("passed") else "✗"
+                console.print(f"  {icon} {ar.get('artifact_name')}: {'PASS' if ar.get('passed') else 'FAIL'}")
+        return 0
+    else:
+        console.print(f"\n[bold red]✗ PARITY FAILED[/] {result.error}")
+        if result.data:
+            for ar in result.data.get("artifact_results", []):
+                icon = "✓" if ar.get("passed") else "✗"
+                status = "PASS" if ar.get("passed") else "FAIL"
+                console.print(f"  {icon} {ar.get('artifact_name')}: {status}")
+                for err in ar.get("errors", []):
+                    console.print(f"      - {err}")
+        return 1
+
+
+def handle_backtest_verify_suite(args) -> int:
+    """Handle `backtest verify-suite` subcommand - global verification suite or parity check."""
+    import json
+    from pathlib import Path
+    from src.tools.backtest_cli_wrapper import (
+        backtest_idea_card_normalize_batch_tool,
+        backtest_run_idea_card_tool,
+        backtest_audit_math_from_snapshots_tool,
+        backtest_audit_toolkit_tool,
+        verify_artifact_parity_tool,
+    )
+
+    # =====================================================================
+    # Phase 3.1: CSV ↔ Parquet Parity Verification Mode
+    # =====================================================================
+    if getattr(args, 'compare_csv_parquet', False):
+        return _handle_parity_verification(args, verify_artifact_parity_tool)
+    
+    # =====================================================================
+    # Standard Verification Suite Mode
+    # =====================================================================
+    if not args.idea_cards_dir:
+        console.print("[red]Error: --dir is required for verification suite mode[/]")
+        console.print("[dim]Use --compare-csv-parquet for artifact parity mode[/]")
+        return 1
+    
+    if not args.start or not args.end:
+        console.print("[red]Error: --start and --end are required for verification suite mode[/]")
+        return 1
+
+    idea_cards_dir = Path(args.idea_cards_dir)
+    start = _parse_datetime(args.start)
+    end = _parse_datetime(args.end)
+    skip_toolkit_audit = getattr(args, 'skip_toolkit_audit', False)
+
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]GLOBAL VERIFICATION SUITE[/]\n"
+            f"Directory: {args.idea_cards_dir}\n"
+            f"Window: {args.start} -> {args.end}\n"
+            f"DataEnv: {args.data_env} | Strict: {args.strict}\n"
+            f"Toolkit Audit: {'SKIPPED' if skip_toolkit_audit else 'ENABLED (Gate 1)'}",
+            border_style="cyan"
+        ))
+
+    suite_results = {
+        "suite_config": {
+            "idea_cards_dir": str(idea_cards_dir),
+            "data_env": args.data_env,
+            "window_start": args.start,
+            "window_end": args.end,
+            "strict": args.strict,
+            "skip_toolkit_audit": skip_toolkit_audit,
+        },
+        "phases": {},
+        "summary": {},
+    }
+
+    # =====================================================================
+    # PHASE 0 (Gate 1): Toolkit Contract Audit (unless skipped)
+    # =====================================================================
+    if not skip_toolkit_audit:
+        console.print("\n[bold]Phase 0 (Gate 1): Toolkit Contract Audit[/]")
+        
+        toolkit_result = backtest_audit_toolkit_tool(
+            sample_bars=2000,
+            seed=1337,
+            fail_on_extras=False,
+            strict=True,
+        )
+        
+        suite_results["phases"]["toolkit_audit"] = {
+            "success": toolkit_result.success,
+            "message": toolkit_result.message if toolkit_result.success else toolkit_result.error,
+            "data": toolkit_result.data,
+        }
+        
+        if not toolkit_result.success:
+            console.print(f"[red]FAIL Toolkit audit failed: {toolkit_result.error}[/]")
+            if args.json_output:
+                suite_results["summary"] = {"overall_success": False, "failure_phase": "toolkit_audit"}
+                print(json.dumps(suite_results, indent=2, default=str))
+            return 1
+        
+        console.print(f"[green]PASS Toolkit audit: {toolkit_result.message}[/]")
+    else:
+        console.print("\n[dim]Phase 0 (Gate 1): Toolkit Contract Audit - SKIPPED[/]")
+        suite_results["phases"]["toolkit_audit"] = {"skipped": True}
+
+    # =====================================================================
+    # PHASE 1: Batch normalize all cards
+    # =====================================================================
+    console.print("\n[bold]Phase 1: Batch Normalization[/]")
+
+    normalize_result = backtest_idea_card_normalize_batch_tool(
+        idea_cards_dir=idea_cards_dir,
+        write_in_place=True,  # Always write for verification
+    )
+
+    suite_results["phases"]["normalization"] = {
+        "success": normalize_result.success,
+        "message": normalize_result.message if normalize_result.success else normalize_result.error,
+        "data": normalize_result.data,
+    }
+
+    if not normalize_result.success:
+        console.print(f"[red]FAIL Normalization failed: {normalize_result.error}[/]")
+        if args.json_output:
+            suite_results["summary"] = {"overall_success": False, "failure_phase": "normalization"}
+            print(json.dumps(suite_results, indent=2, default=str))
+        return 1
+
+    console.print(f"[green]PASS Normalization successful: {normalize_result.data['summary']['passed']}/{normalize_result.data['summary']['total_cards']} cards[/]")
+
+    # =====================================================================
+    # PHASE 2: Run backtests with snapshot emission
+    # =====================================================================
+    console.print("\n[bold]Phase 2: Backtest Runs with Snapshots[/]")
+
+    backtest_results = []
+    failed_backtests = []
+
+    idea_card_ids = normalize_result.data["results"]
+    for card_result in idea_card_ids:
+        if not card_result["success"]:
+            continue  # Skip cards that failed normalization
+
+        idea_card_id = card_result["idea_card_id"]
+        console.print(f"  Running {idea_card_id}...")
+
+        run_result = backtest_run_idea_card_tool(
+            idea_card_id=idea_card_id,
+            env=args.data_env,
+            start=start,
+            end=end,
+            smoke=False,
+            strict=args.strict,
+            write_artifacts=False,  # Skip regular artifacts to avoid noise
+            idea_cards_dir=idea_cards_dir,
+            emit_snapshots=True,  # Always emit snapshots for verification
+        )
+
+        backtest_result = {
+            "idea_card_id": idea_card_id,
+            "success": run_result.success,
+            "message": run_result.message if run_result.success else run_result.error,
+            "run_dir": run_result.data.get("artifact_dir") if run_result.data else None,
+        }
+
+        if run_result.success:
+            console.print(f"    [green]PASS {idea_card_id}: {run_result.message}[/]")
+        else:
+            console.print(f"    [red]FAIL {idea_card_id}: {run_result.error}[/]")
+            failed_backtests.append(idea_card_id)
+
+        backtest_results.append(backtest_result)
+
+    suite_results["phases"]["backtests"] = {
+        "results": backtest_results,
+        "total_cards": len(backtest_results),
+        "successful_runs": len(backtest_results) - len(failed_backtests),
+        "failed_runs": len(failed_backtests),
+    }
+
+    if failed_backtests:
+        console.print(f"[red]FAIL Backtests failed: {len(failed_backtests)}/{len(backtest_results)} cards[/]")
+        if args.json_output:
+            suite_results["summary"] = {"overall_success": False, "failure_phase": "backtests"}
+            print(json.dumps(suite_results, indent=2, default=str))
+        return 1
+
+        console.print(f"[green]PASS Backtests successful: {len(backtest_results)}/{len(backtest_results)} cards[/]")
+
+    # =====================================================================
+    # PHASE 3: Math parity audits
+    # =====================================================================
+    console.print("\n[bold]Phase 3: Math Parity Audits[/]")
+
+    audit_results = []
+    failed_audits = []
+
+    for backtest_result in backtest_results:
+        idea_card_id = backtest_result["idea_card_id"]
+        run_dir = backtest_result["run_dir"]
+
+        if not run_dir:
+            console.print(f"  [red]FAIL {idea_card_id}: No run directory[/]")
+            failed_audits.append(idea_card_id)
+            continue
+
+        console.print(f"  Auditing {idea_card_id}...")
+
+        audit_result = backtest_audit_math_from_snapshots_tool(run_dir=Path(run_dir))
+
+        audit_summary = {
+            "idea_card_id": idea_card_id,
+            "success": audit_result.success,
+            "message": audit_result.message if audit_result.success else audit_result.error,
+            "run_dir": run_dir,
+        }
+
+        if audit_result.success and audit_result.data:
+            summary = audit_result.data.get("summary", {})
+            audit_summary.update({
+                "total_columns": summary.get("total_columns", 0),
+                "passed_columns": summary.get("passed_columns", 0),
+                "failed_columns": summary.get("failed_columns", 0),
+                "max_abs_diff": summary.get("max_abs_diff", 0),
+                "mean_abs_diff": summary.get("mean_abs_diff", 0),
+            })
+
+            if audit_result.success:
+                console.print(f"    [green]PASS {idea_card_id}: {summary.get('passed_columns', 0)}/{summary.get('total_columns', 0)} columns passed[/]")
+            else:
+                console.print(f"    [red]FAIL {idea_card_id}: {summary.get('failed_columns', 0)}/{summary.get('total_columns', 0)} columns failed[/]")
+                failed_audits.append(idea_card_id)
+        else:
+            console.print(f"    [red]FAIL {idea_card_id}: {audit_result.error}[/]")
+            failed_audits.append(idea_card_id)
+
+        audit_results.append(audit_summary)
+
+    suite_results["phases"]["audits"] = {
+        "results": audit_results,
+        "total_cards": len(audit_results),
+        "successful_audits": len(audit_results) - len(failed_audits),
+        "failed_audits": len(failed_audits),
+    }
+
+    # =====================================================================
+    # FINAL SUMMARY
+    # =====================================================================
+    overall_success = len(failed_audits) == 0
+
+    suite_results["summary"] = {
+        "overall_success": overall_success,
+        "total_cards": len(backtest_results),
+        "normalization_passed": suite_results["phases"]["normalization"]["success"],
+        "backtests_passed": len(failed_backtests) == 0,
+        "audits_passed": len(failed_audits) == 0,
+        "failed_cards": failed_audits,
+    }
+
+    if not args.json_output:
+        console.print(f"\n[bold]Suite Summary:[/]")
+        console.print(f"  Total cards: {len(backtest_results)}")
+        console.print(f"  Normalization: {'PASS' if suite_results['summary']['normalization_passed'] else 'FAIL'}")
+        console.print(f"  Backtests: {'PASS' if suite_results['summary']['backtests_passed'] else 'FAIL'} ({len(backtest_results) - len(failed_backtests)}/{len(backtest_results)})")
+        console.print(f"  Audits: {'PASS' if suite_results['summary']['audits_passed'] else 'FAIL'} ({len(audit_results) - len(failed_audits)}/{len(audit_results)})")
+
+        if overall_success:
+            console.print(f"\n[bold green]GLOBAL VERIFICATION SUITE PASSED![/]")
+            console.print("All indicators compute correctly and match pandas_ta exactly.")
+        else:
+            console.print(f"\n[bold red]GLOBAL VERIFICATION SUITE FAILED[/]")
+            if failed_audits:
+                console.print(f"Failed cards: {', '.join(failed_audits)}")
+    else:
+        print(json.dumps(suite_results, indent=2, default=str))
+
+    return 0 if overall_success else 1
+
+
+def handle_backtest_normalize_batch(args) -> int:
+    """Handle `backtest idea-card-normalize-batch` subcommand."""
+    import json
+    from pathlib import Path
+    from src.tools.backtest_cli_wrapper import backtest_idea_card_normalize_batch_tool
+
+    idea_cards_dir = Path(args.idea_cards_dir)
+
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]IDEACARD NORMALIZE BATCH[/]\n"
+            f"Directory: {args.idea_cards_dir} | Write: {args.write}",
+            border_style="cyan"
+        ))
+
+    result = backtest_idea_card_normalize_batch_tool(
+        idea_cards_dir=idea_cards_dir,
+        write_in_place=args.write,
+    )
+
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+
+    if result.success:
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        if result.data:
+            summary = result.data.get("summary", {})
+            console.print(f"\n[dim]Processed: {summary.get('total_cards', 0)} cards[/]")
+            console.print(f"[dim]Passed: {summary.get('passed', 0)}[/]")
+            console.print(f"[dim]Failed: {summary.get('failed', 0)}[/]")
+            if summary.get("failed", 0) > 0:
+                console.print(f"\n[yellow]Failed cards:[/]")
+                for card_result in result.data.get("results", []):
+                    if not card_result.get("success"):
+                        console.print(f"  [red]• {card_result.get('idea_card_id')}: {card_result.get('error', 'Unknown error')}[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        if result.data and result.data.get("error_details"):
+            console.print(result.data["error_details"])
+        return 1
+
+
 def handle_backtest_audit_toolkit(args) -> int:
-    """Handle `backtest audit-toolkit` subcommand."""
+    """Handle `backtest audit-toolkit` subcommand - Gate 1 toolkit contract audit."""
     import json
     from src.tools.backtest_cli_wrapper import backtest_audit_toolkit_tool
     
     if not args.json_output:
         console.print(Panel(
-            "[bold cyan]INDICATOR TOOLKIT AUDIT[/]\n"
-            "Checking indicator registry consistency...",
+            f"[bold cyan]TOOLKIT CONTRACT AUDIT (Gate 1)[/]\n"
+            f"Sample: {args.sample_bars} bars | Seed: {args.seed}\n"
+            f"Strict: {args.strict} | Fail on extras: {args.fail_on_extras}",
             border_style="cyan"
         ))
     
-    result = backtest_audit_toolkit_tool()
+    result = backtest_audit_toolkit_tool(
+        sample_bars=args.sample_bars,
+        seed=args.seed,
+        fail_on_extras=args.fail_on_extras,
+        strict=args.strict,
+    )
     
     # JSON output mode
     if args.json_output:
@@ -1206,19 +1754,549 @@ def handle_backtest_audit_toolkit(args) -> int:
         return 0 if result.success else 1
     
     if result.success:
-        console.print(f"\n[bold green]OK {result.message}[/]")
+        console.print(f"\n[bold green]PASS {result.message}[/]")
         if result.data:
-            console.print(f"[dim]Supported indicators: {len(result.data.get('supported_indicators', []))}[/]")
-            console.print(f"[dim]Single-output: {result.data.get('single_output_count', 0)}[/]")
-            console.print(f"[dim]Multi-output: {result.data.get('multi_output_count', 0)}[/]")
+            console.print(f"[dim]Total indicators: {result.data.get('total_indicators', 0)}[/]")
+            console.print(f"[dim]Passed: {result.data.get('passed_indicators', 0)}[/]")
+            console.print(f"[dim]With extras dropped: {result.data.get('indicators_with_extras', 0)}[/]")
         return 0
     else:
         console.print(f"\n[bold red]FAIL {result.error}[/]")
-        if result.data and result.data.get("issues"):
-            console.print("\n[bold]Issues Found:[/]")
-            for issue in result.data["issues"]:
-                console.print(f"  [red]• [{issue['type']}] {issue['indicator']}: {issue['message']}[/]")
+        if result.data and result.data.get("indicator_results"):
+            console.print("\n[bold]Failed Indicators:[/]")
+            for r in result.data["indicator_results"]:
+                if not r["passed"]:
+                    console.print(f"  [red]- {r['indicator_type']}: missing={r['missing_outputs']}, collisions={r['collisions']}, error={r['error_message']}[/]")
         return 1
+
+
+def handle_backtest_math_parity(args) -> int:
+    """Handle `backtest math-parity` subcommand - indicator math parity audit."""
+    import json
+    from src.tools.backtest_cli_wrapper import backtest_math_parity_tool
+    
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]MATH PARITY AUDIT[/]\n"
+            f"IdeaCard: {args.idea_card}\n"
+            f"Window: {args.start} -> {args.end}\n"
+            f"Contract audit: {args.contract_sample_bars} bars, seed={args.contract_seed}",
+            border_style="cyan"
+        ))
+    
+    result = backtest_math_parity_tool(
+        idea_card=args.idea_card,
+        start_date=args.start,
+        end_date=args.end,
+        output_dir=args.output_dir,
+        contract_sample_bars=args.contract_sample_bars,
+        contract_seed=args.contract_seed,
+    )
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    if result.success:
+        console.print(f"\n[bold green]PASS {result.message}[/]")
+        if result.data:
+            contract_data = result.data.get("contract_audit", {})
+            parity_data = result.data.get("parity_audit", {})
+            console.print(f"[dim]Contract: {contract_data.get('passed', 0)}/{contract_data.get('total', 0)} indicators[/]")
+            if parity_data and parity_data.get("summary"):
+                summary = parity_data["summary"]
+                console.print(f"[dim]Parity: {summary.get('passed_columns', 0)}/{summary.get('total_columns', 0)} columns[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        if result.data:
+            contract_data = result.data.get("contract_audit", {})
+            parity_data = result.data.get("parity_audit", {})
+            if contract_data:
+                console.print(f"[dim]Contract: {contract_data.get('passed', 0)}/{contract_data.get('total', 0)}[/]")
+            if parity_data and parity_data.get("summary"):
+                summary = parity_data["summary"]
+                console.print(f"[dim]Parity: {summary.get('passed_columns', 0)}/{summary.get('total_columns', 0)}, max_diff={summary.get('max_abs_diff', 0):.2e}[/]")
+        return 1
+
+
+def handle_backtest_metadata_smoke(args) -> int:
+    """Handle `backtest metadata-smoke` subcommand - Indicator Metadata v1 smoke test."""
+    from src.cli.smoke_tests import run_metadata_smoke
+    
+    return run_metadata_smoke(
+        symbol=args.symbol,
+        tf=args.tf,
+        sample_bars=args.sample_bars,
+        seed=args.seed,
+        export_path=args.export_path,
+        export_format=args.export_format,
+    )
+
+
+def handle_backtest_audit_snapshot_plumbing(args) -> int:
+    """Handle `backtest audit-snapshot-plumbing` subcommand - Phase 4 plumbing parity."""
+    import json
+    from src.tools.backtest_cli_wrapper import backtest_audit_snapshot_plumbing_tool
+    
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]PHASE 4: SNAPSHOT PLUMBING PARITY AUDIT[/]\n"
+            f"IdeaCard: {args.idea_card}\n"
+            f"Window: {args.start} -> {args.end}\n"
+            f"Max samples: {args.max_samples} | Tolerance: {args.tolerance:.0e} | Strict: {args.strict}",
+            border_style="cyan"
+        ))
+    
+    result = backtest_audit_snapshot_plumbing_tool(
+        idea_card_id=args.idea_card,
+        start_date=args.start,
+        end_date=args.end,
+        symbol=args.symbol,
+        max_samples=args.max_samples,
+        tolerance=args.tolerance,
+        strict=args.strict,
+    )
+    
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+    
+    if result.success:
+        console.print(f"\n[bold green]✓ PASS[/] {result.message}")
+        if result.data:
+            console.print(f"[dim]  Samples: {result.data.get('total_samples', 0)}[/]")
+            console.print(f"[dim]  Comparisons: {result.data.get('total_comparisons', 0)}[/]")
+            console.print(f"[dim]  Max samples reached: {result.data.get('max_samples_reached', False)}[/]")
+            console.print(f"[dim]  Runtime: {result.data.get('runtime_seconds', 0):.1f}s[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]✗ FAIL[/] {result.error}")
+        if result.data and result.data.get("first_mismatch"):
+            mismatch = result.data["first_mismatch"]
+            console.print(f"\n[bold]First mismatch:[/]")
+            console.print(f"  ts_close: {mismatch.get('ts_close')}")
+            console.print(f"  tf_role: {mismatch.get('tf_role')}")
+            console.print(f"  key: {mismatch.get('key')}")
+            console.print(f"  offset: {mismatch.get('offset')}")
+            console.print(f"  observed: {mismatch.get('observed')}")
+            console.print(f"  expected: {mismatch.get('expected')}")
+            console.print(f"  abs_diff: {mismatch.get('abs_diff')}")
+            console.print(f"  tolerance: {mismatch.get('tolerance')}")
+            console.print(f"  exec_idx: {mismatch.get('exec_idx')}")
+            console.print(f"  htf_idx: {mismatch.get('htf_idx')}")
+            console.print(f"  target_idx: {mismatch.get('target_idx')}")
+        return 1
+
+
+def handle_backtest_audit_rollup(args) -> int:
+    """Handle `backtest audit-rollup` subcommand - 1m rollup parity audit."""
+    import json
+    from src.tools.backtest_cli_wrapper import backtest_audit_rollup_parity_tool
+
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]ROLLUP PARITY AUDIT (1m Price Feed)[/]\n"
+            f"Intervals: {args.intervals} | Quotes/interval: {args.quotes}\n"
+            f"Seed: {args.seed} | Tolerance: {args.tolerance:.0e}",
+            border_style="cyan"
+        ))
+
+    result = backtest_audit_rollup_parity_tool(
+        n_intervals=args.intervals,
+        quotes_per_interval=args.quotes,
+        seed=args.seed,
+        tolerance=args.tolerance,
+    )
+
+    # JSON output mode
+    if args.json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+
+    if result.success:
+        console.print(f"\nPASS {result.message}")
+        if result.data:
+            console.print(f"  Total intervals: {result.data.get('total_intervals', 0)}")
+            console.print(f"  Total comparisons: {result.data.get('total_comparisons', 0)}")
+            console.print(f"  Bucket tests: {'PASS' if result.data.get('bucket_tests_passed') else 'FAIL'}")
+            console.print(f"  Accessor tests: {'PASS' if result.data.get('accessor_tests_passed') else 'FAIL'}")
+        return 0
+    else:
+        console.print(f"\nFAIL {result.error}")
+        if result.data:
+            console.print(f"  Failed intervals: {result.data.get('failed_intervals', 0)}")
+            console.print(f"  Failed comparisons: {result.data.get('failed_comparisons', 0)}")
+        return 1
+
+
+def handle_backtest_verify_determinism(args) -> int:
+    """Handle `backtest verify-determinism` subcommand - Phase 3 hash-based verification."""
+    import json
+    from pathlib import Path
+    from src.backtest.artifacts.determinism import compare_runs, verify_determinism_rerun
+    
+    if not args.json_output:
+        console.print(Panel(
+            "[bold cyan]DETERMINISM VERIFICATION[/]\n"
+            "Compares backtest run hashes to verify determinism.",
+            title="Backtest Audit",
+            border_style="cyan"
+        ))
+    
+    # Validate arguments
+    if args.re_run:
+        # Re-run mode: need --run-a
+        if not args.run_a:
+            console.print("[red]Error: --re-run requires --run-a (path to existing run)[/]")
+            return 1
+        
+        run_path = Path(args.run_a)
+        if not run_path.exists():
+            console.print(f"[red]Error: Run path does not exist: {run_path}[/]")
+            return 1
+        
+        if not args.json_output:
+            console.print(f"[cyan]Re-running IdeaCard from: {run_path}[/]")
+        
+        result = verify_determinism_rerun(
+            run_path=run_path,
+            fix_gaps=args.fix_gaps,
+        )
+    else:
+        # Compare mode: need both --run-a and --run-b
+        if not args.run_a or not args.run_b:
+            console.print("[red]Error: Compare mode requires both --run-a and --run-b[/]")
+            return 1
+        
+        run_a = Path(args.run_a)
+        run_b = Path(args.run_b)
+        
+        if not run_a.exists():
+            console.print(f"[red]Error: Run A path does not exist: {run_a}[/]")
+            return 1
+        if not run_b.exists():
+            console.print(f"[red]Error: Run B path does not exist: {run_b}[/]")
+            return 1
+        
+        if not args.json_output:
+            console.print(f"[cyan]Comparing runs:[/]")
+            console.print(f"  A: {run_a}")
+            console.print(f"  B: {run_b}")
+        
+        result = compare_runs(run_a, run_b)
+    
+    # Output results
+    if args.json_output:
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0 if result.passed else 1
+    
+    result.print_report()
+    return 0 if result.passed else 1
+
+
+def handle_backtest_metrics_audit(args) -> int:
+    """
+    Handle `backtest metrics-audit` subcommand.
+    
+    Runs embedded test scenarios to validate financial metrics calculations:
+    - Drawdown: max_dd_abs and max_dd_pct tracked independently
+    - Calmar: uses CAGR, not arithmetic return
+    - TF: unknown timeframes raise errors in strict mode
+    - Edge cases: proper handling of zero/inf scenarios
+    
+    This is CLI validation - no pytest files per project rules.
+    """
+    import json
+    from src.backtest.metrics import (
+        _compute_drawdown_metrics,
+        _compute_cagr,
+        _compute_calmar,
+        get_bars_per_year,
+        normalize_tf_string,
+    )
+    from src.backtest.types import EquityPoint
+    from datetime import datetime
+    
+    results = []
+    all_passed = True
+    
+    if not args.json_output:
+        console.print(Panel(
+            "[bold cyan]METRICS AUDIT[/]\n"
+            "Validating financial metrics calculations",
+            title="Backtest Metrics",
+            border_style="cyan"
+        ))
+    
+    # =========================================================================
+    # TEST 1: Drawdown Independent Maxima
+    # =========================================================================
+    test_name = "Drawdown Independent Maxima"
+    try:
+        # Scenario: Peak 10 → equity 1 (dd_pct=0.90), then Peak 1000 → equity 900 (dd_abs=100)
+        # max_dd_abs should be 100, max_dd_pct should be 0.90 (tracked independently)
+        equity_curve = [
+            EquityPoint(timestamp=datetime(2024, 1, 1, 0, 0), equity=10.0),
+            EquityPoint(timestamp=datetime(2024, 1, 1, 1, 0), equity=1.0),   # dd_pct=0.90
+            EquityPoint(timestamp=datetime(2024, 1, 1, 2, 0), equity=1000.0),
+            EquityPoint(timestamp=datetime(2024, 1, 1, 3, 0), equity=900.0),  # dd_abs=100
+        ]
+        
+        max_dd_abs, max_dd_pct, _ = _compute_drawdown_metrics(equity_curve)
+        
+        # Assertions
+        abs_correct = abs(max_dd_abs - 100.0) < 0.01
+        pct_correct = abs(max_dd_pct - 0.90) < 0.01  # Now decimal, not percentage
+        
+        passed = abs_correct and pct_correct
+        detail = f"max_dd_abs={max_dd_abs:.2f} (expected 100), max_dd_pct={max_dd_pct:.4f} (expected 0.90)"
+        
+        results.append({
+            "test": test_name,
+            "passed": passed,
+            "detail": detail,
+        })
+        if not passed:
+            all_passed = False
+        
+        if not args.json_output:
+            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
+            console.print(f"  {status} {test_name}")
+            console.print(f"       {detail}")
+    
+    except Exception as e:
+        results.append({"test": test_name, "passed": False, "detail": str(e)})
+        all_passed = False
+        if not args.json_output:
+            console.print(f"  [red]FAIL[/] {test_name}: {e}")
+    
+    # =========================================================================
+    # TEST 2: CAGR Calculation
+    # =========================================================================
+    test_name = "CAGR Geometric Formula"
+    try:
+        # E0=10000, E1=12100 over exactly 1 year (365 daily bars)
+        # CAGR = (12100/10000)^(1/1) - 1 = 0.21 (21%)
+        cagr = _compute_cagr(
+            initial_equity=10000.0,
+            final_equity=12100.0,
+            total_bars=365,
+            bars_per_year=365,
+        )
+        
+        expected_cagr = 0.21
+        passed = abs(cagr - expected_cagr) < 0.01
+        detail = f"CAGR={cagr:.4f} (expected {expected_cagr})"
+        
+        results.append({
+            "test": test_name,
+            "passed": passed,
+            "detail": detail,
+        })
+        if not passed:
+            all_passed = False
+        
+        if not args.json_output:
+            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
+            console.print(f"  {status} {test_name}")
+            console.print(f"       {detail}")
+    
+    except Exception as e:
+        results.append({"test": test_name, "passed": False, "detail": str(e)})
+        all_passed = False
+        if not args.json_output:
+            console.print(f"  [red]FAIL[/] {test_name}: {e}")
+    
+    # =========================================================================
+    # TEST 3: Calmar Uses CAGR
+    # =========================================================================
+    test_name = "Calmar Uses CAGR"
+    try:
+        # Same as above: CAGR=0.21, max_dd=0.10 (decimal) → Calmar=2.1
+        calmar = _compute_calmar(
+            initial_equity=10000.0,
+            final_equity=12100.0,
+            max_dd_pct_decimal=0.10,
+            total_bars=365,
+            tf="1d",
+            strict_tf=True,
+        )
+        
+        expected_calmar = 2.1
+        passed = abs(calmar - expected_calmar) < 0.1
+        detail = f"Calmar={calmar:.2f} (expected ~{expected_calmar})"
+        
+        results.append({
+            "test": test_name,
+            "passed": passed,
+            "detail": detail,
+        })
+        if not passed:
+            all_passed = False
+        
+        if not args.json_output:
+            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
+            console.print(f"  {status} {test_name}")
+            console.print(f"       {detail}")
+    
+    except Exception as e:
+        results.append({"test": test_name, "passed": False, "detail": str(e)})
+        all_passed = False
+        if not args.json_output:
+            console.print(f"  [red]FAIL[/] {test_name}: {e}")
+    
+    # =========================================================================
+    # TEST 4: TF Strict Mode
+    # =========================================================================
+    test_name = "TF Strict Mode (Unknown TF Raises)"
+    try:
+        try:
+            _ = get_bars_per_year("unknown_tf", strict=True)
+            passed = False
+            detail = "Expected ValueError for unknown TF, but none raised"
+        except ValueError as e:
+            passed = True
+            detail = f"Correctly raised ValueError: {str(e)[:60]}..."
+        
+        results.append({
+            "test": test_name,
+            "passed": passed,
+            "detail": detail,
+        })
+        if not passed:
+            all_passed = False
+        
+        if not args.json_output:
+            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
+            console.print(f"  {status} {test_name}")
+            console.print(f"       {detail}")
+    
+    except Exception as e:
+        results.append({"test": test_name, "passed": False, "detail": str(e)})
+        all_passed = False
+        if not args.json_output:
+            console.print(f"  [red]FAIL[/] {test_name}: {e}")
+    
+    # =========================================================================
+    # TEST 5: TF Normalization
+    # =========================================================================
+    test_name = "TF Normalization (Bybit formats)"
+    try:
+        # Test Bybit numeric formats
+        test_cases = [
+            ("60", "1h"),
+            ("240", "4h"),
+            ("D", "1d"),
+            ("1h", "1h"),  # Already normalized
+        ]
+        
+        all_correct = True
+        details = []
+        for input_tf, expected in test_cases:
+            normalized = normalize_tf_string(input_tf)
+            if normalized != expected:
+                all_correct = False
+                details.append(f"{input_tf}->{normalized} (expected {expected})")
+            else:
+                details.append(f"{input_tf}->{normalized} OK")
+        
+        passed = all_correct
+        detail = ", ".join(details)
+        
+        results.append({
+            "test": test_name,
+            "passed": passed,
+            "detail": detail,
+        })
+        if not passed:
+            all_passed = False
+        
+        if not args.json_output:
+            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
+            console.print(f"  {status} {test_name}")
+            console.print(f"       {detail}")
+    
+    except Exception as e:
+        results.append({"test": test_name, "passed": False, "detail": str(e)})
+        all_passed = False
+        if not args.json_output:
+            console.print(f"  [red]FAIL[/] {test_name}: {e}")
+    
+    # =========================================================================
+    # TEST 6: Edge Case - Zero Max DD (Calmar capped)
+    # =========================================================================
+    test_name = "Edge Case: Zero Max DD (Calmar capped)"
+    try:
+        calmar = _compute_calmar(
+            initial_equity=10000.0,
+            final_equity=12100.0,
+            max_dd_pct_decimal=0.0,  # No drawdown
+            total_bars=365,
+            tf="1d",
+            strict_tf=True,
+        )
+        
+        passed = calmar == 100.0  # Should be capped at 100
+        detail = f"Calmar={calmar} (expected 100.0 when no DD)"
+        
+        results.append({
+            "test": test_name,
+            "passed": passed,
+            "detail": detail,
+        })
+        if not passed:
+            all_passed = False
+        
+        if not args.json_output:
+            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
+            console.print(f"  {status} {test_name}")
+            console.print(f"       {detail}")
+    
+    except Exception as e:
+        results.append({"test": test_name, "passed": False, "detail": str(e)})
+        all_passed = False
+        if not args.json_output:
+            console.print(f"  [red]FAIL[/] {test_name}: {e}")
+    
+    # =========================================================================
+    # SUMMARY
+    # =========================================================================
+    passed_count = sum(1 for r in results if r["passed"])
+    total_count = len(results)
+    
+    if args.json_output:
+        output = {
+            "passed": all_passed,
+            "summary": f"{passed_count}/{total_count} tests passed",
+            "tests": results,
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        console.print(f"\n[bold]Summary: {passed_count}/{total_count} tests passed[/]")
+        if all_passed:
+            console.print("[bold green]OK All metrics audit tests PASSED[/]")
+        else:
+            console.print("[bold red]FAIL Some metrics audit tests FAILED[/]")
+    
+    return 0 if all_passed else 1
 
 
 def main():
@@ -1248,10 +2326,26 @@ def main():
             sys.exit(handle_backtest_list(args))
         elif args.backtest_command == "idea-card-normalize":
             sys.exit(handle_backtest_normalize(args))
+        elif args.backtest_command == "idea-card-normalize-batch":
+            sys.exit(handle_backtest_normalize_batch(args))
+        elif args.backtest_command == "verify-suite":
+            sys.exit(handle_backtest_verify_suite(args))
         elif args.backtest_command == "audit-toolkit":
             sys.exit(handle_backtest_audit_toolkit(args))
+        elif args.backtest_command == "metadata-smoke":
+            sys.exit(handle_backtest_metadata_smoke(args))
+        elif args.backtest_command == "math-parity":
+            sys.exit(handle_backtest_math_parity(args))
+        elif args.backtest_command == "audit-snapshot-plumbing":
+            sys.exit(handle_backtest_audit_snapshot_plumbing(args))
+        elif args.backtest_command == "verify-determinism":
+            sys.exit(handle_backtest_verify_determinism(args))
+        elif args.backtest_command == "metrics-audit":
+            sys.exit(handle_backtest_metrics_audit(args))
+        elif args.backtest_command == "audit-rollup":
+            sys.exit(handle_backtest_audit_rollup(args))
         else:
-            console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|idea-card-normalize|audit-toolkit} --help[/]")
+            console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|idea-card-normalize|idea-card-normalize-batch|verify-suite|audit-toolkit|metadata-smoke|math-parity|audit-snapshot-plumbing|verify-determinism|metrics-audit|audit-rollup} --help[/]")
             sys.exit(1)
     
     # ===== SMOKE TEST MODE =====

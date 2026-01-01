@@ -1,0 +1,55 @@
+# Smoke Tests Workflow
+# Runs smoke tests on push to main and on pull requests
+# Uses demo data environment - no real API calls for trading
+
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  # Force demo mode for all trading operations
+  BYBIT_USE_DEMO: "true"
+  TRADING_MODE: "paper"
+  # Data API keys (required for data smoke tests)
+  # These should be set as repository secrets
+  BYBIT_LIVE_DATA_API_KEY: ${{ secrets.BYBIT_LIVE_DATA_API_KEY }}
+  BYBIT_LIVE_DATA_API_SECRET: ${{ secrets.BYBIT_LIVE_DATA_API_SECRET }}
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run data smoke tests
+        run: |
+          python trade_cli.py --smoke data
+        env:
+          # Ensure we use live data API (not demo) for data fetching
+          BYBIT_USE_DEMO: "false"
+      
+      - name: Run Phase 6 backtest smoke tests
+        run: |
+          python trade_cli.py --smoke full
+        env:
+          TRADE_SMOKE_INCLUDE_BACKTEST: "1"
+          # Demo mode for any trading operations
+          BYBIT_USE_DEMO: "true"
+

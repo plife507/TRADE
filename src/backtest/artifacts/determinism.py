@@ -1,0 +1,267 @@
+"""
+Determinism verification for backtest runs.
+
+Phase 3: Hash-based determinism verification.
+
+This module provides:
+- Compare two backtest runs for hash equality
+- Re-run verification (execute same IdeaCard, compare outputs)
+- Detailed diff reporting on hash mismatches
+
+USAGE:
+    # Compare two existing runs
+    result = compare_runs(run_a_path, run_b_path)
+    
+    # Verify determinism by re-running
+    result = verify_determinism_rerun(run_path)
+"""
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+
+from .artifact_standards import (
+    STANDARD_FILES,
+    ResultsSummary,
+)
+
+
+@dataclass
+class HashComparison:
+    """Result of comparing hashes between two runs."""
+    field_name: str
+    run_a_value: str
+    run_b_value: str
+    matches: bool
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "field": self.field_name,
+            "run_a": self.run_a_value,
+            "run_b": self.run_b_value,
+            "matches": self.matches,
+        }
+
+
+@dataclass
+class DeterminismResult:
+    """Result of determinism verification."""
+    passed: bool
+    run_a_path: str
+    run_b_path: str
+    hash_comparisons: List[HashComparison] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    
+    # Metadata
+    run_a_idea_card_id: str = ""
+    run_b_idea_card_id: str = ""
+    mode: str = "compare"  # "compare" or "rerun"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "passed": self.passed,
+            "mode": self.mode,
+            "run_a_path": self.run_a_path,
+            "run_b_path": self.run_b_path,
+            "run_a_idea_card_id": self.run_a_idea_card_id,
+            "run_b_idea_card_id": self.run_b_idea_card_id,
+            "hash_comparisons": [c.to_dict() for c in self.hash_comparisons],
+            "errors": self.errors,
+            "warnings": self.warnings,
+        }
+    
+    def print_report(self) -> None:
+        """Print human-readable report."""
+        status = "[PASSED]" if self.passed else "[FAILED]"
+        print(f"\n{'='*60}")
+        print(f"  DETERMINISM VERIFICATION: {status}")
+        print(f"{'='*60}")
+        print(f"  Mode: {self.mode}")
+        print(f"  Run A: {self.run_a_path}")
+        print(f"  Run B: {self.run_b_path}")
+        
+        if self.run_a_idea_card_id:
+            print(f"  IdeaCard A: {self.run_a_idea_card_id}")
+        if self.run_b_idea_card_id:
+            print(f"  IdeaCard B: {self.run_b_idea_card_id}")
+        
+        print(f"\n  Hash Comparisons:")
+        for comp in self.hash_comparisons:
+            icon = "[OK]" if comp.matches else "[MISMATCH]"
+            print(f"    {icon} {comp.field_name}:")
+            print(f"       A: {comp.run_a_value}")
+            print(f"       B: {comp.run_b_value}")
+        
+        if self.errors:
+            print(f"\n  Errors:")
+            for err in self.errors:
+                print(f"    [!] {err}")
+        
+        if self.warnings:
+            print(f"\n  Warnings:")
+            for warn in self.warnings:
+                print(f"    [WARN] {warn}")
+        
+        print(f"{'='*60}\n")
+
+
+def load_result_json(run_path: Path) -> Optional[Dict[str, Any]]:
+    """Load result.json from a run path."""
+    result_file = run_path / STANDARD_FILES["result"]
+    if not result_file.exists():
+        return None
+    with open(result_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def compare_runs(
+    run_a_path: Path,
+    run_b_path: Path,
+) -> DeterminismResult:
+    """
+    Compare two backtest runs for determinism.
+    
+    Args:
+        run_a_path: Path to first run's artifact folder
+        run_b_path: Path to second run's artifact folder
+        
+    Returns:
+        DeterminismResult with comparison details
+    """
+    result = DeterminismResult(
+        passed=True,
+        run_a_path=str(run_a_path),
+        run_b_path=str(run_b_path),
+        mode="compare",
+    )
+    
+    # Load result.json from both runs
+    result_a = load_result_json(run_a_path)
+    result_b = load_result_json(run_b_path)
+    
+    if result_a is None:
+        result.passed = False
+        result.errors.append(f"Cannot load result.json from run A: {run_a_path}")
+        return result
+    
+    if result_b is None:
+        result.passed = False
+        result.errors.append(f"Cannot load result.json from run B: {run_b_path}")
+        return result
+    
+    # Extract IdeaCard IDs
+    result.run_a_idea_card_id = result_a.get("idea_card_id", "")
+    result.run_b_idea_card_id = result_b.get("idea_card_id", "")
+    
+    # Warn if different IdeaCards
+    if result.run_a_idea_card_id != result.run_b_idea_card_id:
+        result.warnings.append(
+            f"Comparing different IdeaCards: {result.run_a_idea_card_id} vs {result.run_b_idea_card_id}"
+        )
+    
+    # Compare hashes
+    hash_fields = ["trades_hash", "equity_hash", "run_hash", "idea_hash"]
+    
+    for field_name in hash_fields:
+        val_a = result_a.get(field_name, "")
+        val_b = result_b.get(field_name, "")
+        
+        matches = val_a == val_b
+        
+        comparison = HashComparison(
+            field_name=field_name,
+            run_a_value=val_a,
+            run_b_value=val_b,
+            matches=matches,
+        )
+        result.hash_comparisons.append(comparison)
+        
+        # Output hashes must match for determinism
+        if field_name in ["trades_hash", "equity_hash", "run_hash"] and not matches:
+            result.passed = False
+            result.errors.append(f"Hash mismatch for {field_name}")
+    
+    return result
+
+
+def verify_determinism_rerun(
+    run_path: Path,
+    fix_gaps: bool = False,
+) -> DeterminismResult:
+    """
+    Verify determinism by re-running the same IdeaCard and comparing outputs.
+    
+    Args:
+        run_path: Path to existing run's artifact folder
+        fix_gaps: Whether to allow data sync during re-run
+        
+    Returns:
+        DeterminismResult with comparison details
+    """
+    result = DeterminismResult(
+        passed=True,
+        run_a_path=str(run_path),
+        run_b_path="",  # Will be set after re-run
+        mode="rerun",
+    )
+    
+    # Load manifest from existing run to get IdeaCard and window
+    manifest_file = run_path / STANDARD_FILES["manifest"]
+    if not manifest_file.exists():
+        result.passed = False
+        result.errors.append(f"Cannot load run_manifest.json from: {run_path}")
+        return result
+    
+    with open(manifest_file, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    
+    idea_card_id = manifest.get("idea_card_id", "")
+    window_start = manifest.get("window_start", "")
+    window_end = manifest.get("window_end", "")
+    
+    if not idea_card_id:
+        result.passed = False
+        result.errors.append("Manifest missing idea_card_id")
+        return result
+    
+    result.run_a_idea_card_id = idea_card_id
+    
+    # Import here to avoid circular imports
+    from src.tools.backtest_cli_wrapper import backtest_run_idea_card_tool
+    
+    # Re-run the IdeaCard with the same window
+    rerun_result = backtest_run_idea_card_tool(
+        idea_card_id=idea_card_id,
+        window_start=window_start,
+        window_end=window_end,
+        fix_gaps=fix_gaps,
+    )
+    
+    if not rerun_result.success:
+        result.passed = False
+        result.errors.append(f"Re-run failed: {rerun_result.message}")
+        return result
+    
+    # Get the new run path from the result
+    if not rerun_result.data or "artifact_path" not in rerun_result.data:
+        result.passed = False
+        result.errors.append("Re-run did not return artifact_path")
+        return result
+    
+    rerun_path = Path(rerun_result.data["artifact_path"])
+    result.run_b_path = str(rerun_path)
+    result.run_b_idea_card_id = idea_card_id
+    
+    # Now compare the two runs
+    comparison = compare_runs(run_path, rerun_path)
+    
+    # Merge results
+    result.hash_comparisons = comparison.hash_comparisons
+    result.errors.extend(comparison.errors)
+    result.warnings.extend(comparison.warnings)
+    result.passed = comparison.passed
+    
+    return result
+

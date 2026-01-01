@@ -1,0 +1,125 @@
+id: stress03__uncommon_indicators
+version: 1.0.0
+name: Stress Test - Uncommon Indicators
+description: Tests rarely-used multi-output indicators (Fisher, Vortex, TSI, Squeeze)
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- ETHUSDT
+tf_configs:
+  exec:
+    tf: 1h
+    role: exec
+    warmup_bars: 200
+    feature_specs:
+    - indicator_type: fisher
+      output_key: fisher
+      params:
+        length: 9
+      input_source: close
+    - indicator_type: vortex
+      output_key: vortex
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: tsi
+      output_key: tsi
+      params:
+        slow: 25
+        fast: 13
+        signal: 13
+      input_source: close
+    - indicator_type: squeeze
+      output_key: squeeze
+      params:
+        bb_length: 20
+        bb_std: 2.0
+        kc_length: 20
+        kc_scalar: 1.5
+      input_source: close
+    required_indicators:
+    - fisher_fisher
+    - fisher_signal
+    - squeeze_no_sqz
+    - squeeze_off
+    - squeeze_on
+    - squeeze_sqz
+    - tsi_signal
+    - tsi_tsi
+    - vortex_vim
+    - vortex_vip
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: fisher_fisher
+      operator: cross_above
+      value: fisher_signal
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: vortex_vip
+      operator: gt
+      value: vortex_vim
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: tsi_tsi
+      operator: gt
+      value: 0
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: fisher_fisher
+      operator: cross_below
+      value: fisher_signal
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: vortex_vim
+      operator: gt
+      value: vortex_vip
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: tsi_tsi
+      operator: lt
+      value: 0
+      is_indicator_comparison: false
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: squeeze_off
+      operator: eq
+      value: 1
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: squeeze_off
+      operator: eq
+      value: 1
+      is_indicator_comparison: false
+risk_model:
+  stop_loss:
+    type: percent
+    value: 3.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 3.0

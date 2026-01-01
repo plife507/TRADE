@@ -205,13 +205,12 @@ def backtest_preflight_check_tool(
         
         # Compute load window with warmup and buffers from FeatureSpecs
         specs_by_role = config.feature_specs_by_role if hasattr(config, 'feature_specs_by_role') else {}
-        max_warmup = get_max_warmup_from_specs_by_role(specs_by_role, config.warmup_multiplier)
+        max_warmup = get_max_warmup_from_specs_by_role(specs_by_role)
         load_window = compute_simple_load_window(
             test_start=window.start,
             test_end=window.end,
             tf=config.tf,
             max_lookback=max_warmup,
-            warmup_multiplier=1,  # Already applied in get_max_warmup_from_specs_by_role
         )
         
         logger.info(

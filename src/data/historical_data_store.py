@@ -516,10 +516,14 @@ class HistoricalDataStore:
         start: datetime,
         end: datetime,
         timeframes: List[str] = None,
+        progress_callback: Callable = None,
+        show_spinner: bool = True,
     ) -> Dict[str, int]:
-        """Sync a specific date range."""
+        """Sync a specific date range with progress logging."""
         from . import historical_sync
-        return historical_sync.sync_range(self, symbols, start, end, timeframes)
+        return historical_sync.sync_range(
+            self, symbols, start, end, timeframes, progress_callback, show_spinner
+        )
     
     def sync_forward(
         self,

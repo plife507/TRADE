@@ -32,7 +32,6 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Tuple
 
 from .types import WindowConfig
-from .indicators import DEFAULT_WARMUP_MULTIPLIER
 from .window_presets import get_window_preset, has_preset
 
 
@@ -489,13 +488,25 @@ class SystemConfig:
     
     # Data build settings
     data_build: DataBuildConfig = field(default_factory=DataBuildConfig)
+
+    # IdeaCard-declared warmup bars per TF role (exec/htf/mtf)
+    # This is the CANONICAL warmup source - engine MUST use this, not recompute
+    # MUST NOT be empty - engine will fail loud if missing (no fallback path)
+    warmup_bars_by_role: Dict[str, int] = field(default_factory=dict)
     
-    # Warm-up configuration
-    warmup_multiplier: int = DEFAULT_WARMUP_MULTIPLIER
+    # IdeaCard-declared delay bars per TF role (exec/htf/mtf)
+    # Delay = bars to skip at evaluation start (no-lookahead guarantee)
+    # Engine MUST fail loud if this is missing when IdeaCard declares market_structure
+    delay_bars_by_role: Dict[str, int] = field(default_factory=dict)
     
     # IdeaCard feature specs by role (exec/htf/mtf)
     # Required for indicator computation - no legacy params support
     feature_specs_by_role: Dict[str, List[Any]] = field(default_factory=dict)
+
+    # IdeaCard required indicators by role (exec/htf/mtf)
+    # Used by find_first_valid_bar to avoid requiring mutually exclusive outputs
+    # (e.g., PSAR long/short or SuperTrend long/short)
+    required_indicators_by_role: Dict[str, List[str]] = field(default_factory=dict)
     
     # Computed after load (not from YAML)
     _system_uid: str = field(default="", repr=False)
@@ -552,7 +563,8 @@ class SystemConfig:
             "risk_profile": self.risk_profile.to_dict(),
             "risk_mode": self.risk_mode,
             "data_build": self.data_build.to_dict(),
-            "warmup_multiplier": self.warmup_multiplier,
+            "warmup_bars_by_role": self.warmup_bars_by_role,
+            "delay_bars_by_role": self.delay_bars_by_role,
         }
     
     def config_fingerprint(self) -> str:
@@ -748,6 +760,11 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     """
     Load a system configuration from YAML.
     
+    DEPRECATED: YAML SystemConfig is deprecated. Use IdeaCard for backtesting.
+    
+    This function exists for legacy compatibility. New backtests should use:
+        python trade_cli.py backtest run --idea-card <card_id> --start <date> --end <date>
+    
     Args:
         system_id: System identifier (filename without .yml)
         window_name: Optional window to validate exists
@@ -759,6 +776,15 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
         FileNotFoundError: If config file not found
         ValueError: If config is invalid
     """
+    import warnings
+    warnings.warn(
+        f"YAML SystemConfig '{system_id}' is deprecated. "
+        "Migrate to IdeaCard YAML format at configs/idea_cards/. "
+        "See docs/strategy_factory/STRATEGY_FACTORY.md for migration guide.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
     config_path = CONFIGS_DIR / f"{system_id}.yml"
     
     if not config_path.exists():
@@ -829,11 +855,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
         period=data_build_raw.get("period", "3M"),
         tfs=data_build_raw.get("tfs", ["1h"]),
     )
-    
-    # Parse warm-up config
-    warmup_raw = raw.get("warmup", {})
-    warmup_multiplier = int(warmup_raw.get("bars_multiplier", DEFAULT_WARMUP_MULTIPLIER))
-    
+
     # Parse strategies list
     strategies_raw = raw.get("strategies", [])
     strategies = [_parse_strategy_instance(s) for s in strategies_raw]
@@ -843,6 +865,9 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     exec_tf_raw = raw.get("exec_tf")
     exec_tf = str(exec_tf_raw) if exec_tf_raw else None
     
+    # NOTE: warmup_bars_by_role is NOT populated from YAML.
+    # Engine will fail loud with MISSING_WARMUP_CONFIG if you try to run a backtest.
+    # This is intentional - YAML SystemConfig is deprecated, use IdeaCard instead.
     config = SystemConfig(
         system_id=raw.get("system_id", system_id),
         symbol=raw.get("symbol", ""),
@@ -854,7 +879,8 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
         risk_profile=risk_profile,
         risk_mode=raw.get("risk_mode", "none"),
         data_build=data_build,
-        warmup_multiplier=warmup_multiplier,
+        # warmup_bars_by_role deliberately NOT set - engine will fail loud
+        # delay_bars_by_role deliberately NOT set - engine will fail loud
     )
     
     # Validate basic structure

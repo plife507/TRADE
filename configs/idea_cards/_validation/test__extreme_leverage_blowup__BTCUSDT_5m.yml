@@ -1,0 +1,84 @@
+id: test__extreme_leverage_blowup__BTCUSDT_5m
+version: 1.0.0
+name: Extreme Leverage Blowup Test - BTCUSDT 5m
+description: 'Copy of test__phase6_warmup_matrix with EXTREME leverage (100x) and
+  aggressive sizing (50% equity) to force rapid account blowup. RSI < 30 / > 70 strategy
+  generates frequent trades.
+
+  '
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 100.0  # 100x leverage = 1% IMR
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 5.0  # Higher slippage for realism
+symbol_universe:
+- BTCUSDT
+tf_configs:
+  exec:
+    tf: 5m
+    role: exec
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 50
+      delay_bars: 0
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_fast
+      params:
+        length: 12
+      input_source: close
+    - indicator_type: rsi
+      output_key: rsi_14
+      params:
+        length: 14
+      input_source: close
+    required_indicators:
+    - ema_fast
+    - rsi_14
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 30
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 70
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 70
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 30
+risk_model:
+  stop_loss:
+    type: percent
+    value: 50.0  # Extremely wide stop (won't hit before liquidation with 100x)
+  take_profit:
+    type: rr_ratio
+    value: 10.0  # Extremely high target (never hits)
+  sizing:
+    model: percent_equity
+    value: 50.0  # 50% of equity with 100x = 5000% notional (MASSIVE)
+    max_leverage: 100.0
+

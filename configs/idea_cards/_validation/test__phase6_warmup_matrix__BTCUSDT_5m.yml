@@ -1,0 +1,83 @@
+id: test__phase6_warmup_matrix__BTCUSDT_5m
+version: 1.0.0
+name: Phase 6 Warmup Matrix Test - BTCUSDT 5m
+description: 'Phase 6 smoke test IdeaCard for warmup matrix validation. Uses trivial
+  indicators (short EMA/RSI) to ensure computed_warmup_requirements.warmup_by_role.exec
+  == 100. delay_bars=0 to isolate warmup testing from delay logic.
+
+  '
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- BTCUSDT
+tf_configs:
+  exec:
+    tf: 5m
+    role: exec
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 50
+      delay_bars: 0
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_fast
+      params:
+        length: 12
+      input_source: close
+    - indicator_type: rsi
+      output_key: rsi_14
+      params:
+        length: 14
+      input_source: close
+    required_indicators:
+    - ema_fast
+    - rsi_14
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 30
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 70
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 70
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 30
+risk_model:
+  stop_loss:
+    type: percent
+    value: 1.5
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 2.0

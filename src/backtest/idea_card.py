@@ -110,7 +110,8 @@ class AccountConfig:
     min_trade_notional_usdt: Optional[float] = None
     max_notional_usdt: Optional[float] = None
     max_margin_usdt: Optional[float] = None
-    
+    maintenance_margin_rate: Optional[float] = None  # e.g., 0.005 = 0.5% (Bybit lowest tier)
+
     def __post_init__(self):
         """Validate account config."""
         if self.starting_equity_usdt <= 0:
@@ -132,6 +133,12 @@ class AccountConfig:
             raise ValueError(
                 f"min_trade_notional_usdt cannot be negative. Got: {self.min_trade_notional_usdt}"
             )
+        if self.maintenance_margin_rate is not None:
+            if self.maintenance_margin_rate <= 0 or self.maintenance_margin_rate >= 1:
+                raise ValueError(
+                    f"maintenance_margin_rate must be between 0 and 1 (e.g., 0.005 = 0.5%). "
+                    f"Got: {self.maintenance_margin_rate}"
+                )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for serialization."""
@@ -150,6 +157,8 @@ class AccountConfig:
             result["max_notional_usdt"] = self.max_notional_usdt
         if self.max_margin_usdt is not None:
             result["max_margin_usdt"] = self.max_margin_usdt
+        if self.maintenance_margin_rate is not None:
+            result["maintenance_margin_rate"] = self.maintenance_margin_rate
         return result
     
     @classmethod
@@ -186,6 +195,7 @@ class AccountConfig:
             min_trade_notional_usdt=float(d["min_trade_notional_usdt"]) if "min_trade_notional_usdt" in d else None,
             max_notional_usdt=float(d["max_notional_usdt"]) if "max_notional_usdt" in d else None,
             max_margin_usdt=float(d["max_margin_usdt"]) if "max_margin_usdt" in d else None,
+            maintenance_margin_rate=float(d["maintenance_margin_rate"]) if "maintenance_margin_rate" in d else None,
         )
 
 
@@ -632,6 +642,51 @@ class SignalRules:
 
 
 # =============================================================================
+# Market Structure Configuration
+# =============================================================================
+
+@dataclass(frozen=True)
+class MarketStructureConfig:
+    """
+    Market structure configuration for a TF role.
+    
+    Defines data requirements beyond indicator warmup:
+    - lookback_bars: Additional bars for market structure analysis (swing highs/lows, etc.)
+    - delay_bars: Bars to skip at evaluation start (no-lookahead guarantee)
+    
+    Semantics:
+    - lookback_bars: Used for data fetch range (data_start = window_start - lookback)
+    - delay_bars: Used for evaluation offset (eval_start = aligned_start + delay)
+    
+    Engine MUST NOT apply lookback to evaluation start (only delay applies).
+    """
+    lookback_bars: int = 0
+    delay_bars: int = 0
+    
+    def __post_init__(self):
+        """Validate market structure config."""
+        if self.lookback_bars < 0:
+            raise ValueError(f"lookback_bars cannot be negative. Got: {self.lookback_bars}")
+        if self.delay_bars < 0:
+            raise ValueError(f"delay_bars cannot be negative. Got: {self.delay_bars}")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict for serialization."""
+        return {
+            "lookback_bars": self.lookback_bars,
+            "delay_bars": self.delay_bars,
+        }
+    
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "MarketStructureConfig":
+        """Create from dict."""
+        return cls(
+            lookback_bars=int(d.get("lookback_bars", 0)),
+            delay_bars=int(d.get("delay_bars", 0)),
+        )
+
+
+# =============================================================================
 # Timeframe Configuration
 # =============================================================================
 
@@ -647,12 +702,16 @@ class TFConfig:
         warmup_bars: Minimum warmup bars for this TF
         required_indicators: List of indicator keys that must exist after feature computation.
             Used by the Indicator Requirements Gate to validate before simulation.
+        market_structure: Optional market structure config with lookback_bars and delay_bars.
+            lookback_bars: Additional data fetch range for structure analysis.
+            delay_bars: Evaluation offset (no-lookahead guarantee).
     """
     tf: str
     role: str  # "exec", "htf", "mtf"
     feature_specs: tuple  # Tuple[FeatureSpec, ...]
     warmup_bars: int = 0
     required_indicators: tuple = field(default_factory=tuple)  # Tuple[str, ...]
+    market_structure: Optional[MarketStructureConfig] = None
     
     def __post_init__(self):
         """Validate config."""
@@ -695,6 +754,8 @@ class TFConfig:
         }
         if self.required_indicators:
             result["required_indicators"] = list(self.required_indicators)
+        if self.market_structure:
+            result["market_structure"] = self.market_structure.to_dict()
         return result
     
     @classmethod
@@ -702,12 +763,19 @@ class TFConfig:
         """Create from dict."""
         specs = tuple(FeatureSpec.from_dict(s) for s in d.get("feature_specs", []))
         required = tuple(d.get("required_indicators", []))
+        
+        # Parse market_structure if present
+        market_structure = None
+        if "market_structure" in d and d["market_structure"]:
+            market_structure = MarketStructureConfig.from_dict(d["market_structure"])
+        
         return cls(
             tf=d["tf"],
             role=d["role"],
             feature_specs=specs,
             warmup_bars=d.get("warmup_bars", 0),
             required_indicators=required,
+            market_structure=market_structure,
         )
 
 
@@ -953,8 +1021,10 @@ def load_idea_card(idea_card_id: str, base_dir: Optional[Path] = None) -> IdeaCa
     """
     Load an IdeaCard from YAML file.
     
+    Searches in base_dir and subdirectories (_validation/, strategies/).
+    
     Args:
-        idea_card_id: Identifier (filename without .yml)
+        idea_card_id: Identifier (filename without .yml, or with subdir prefix)
         base_dir: Optional base directory (defaults to IDEA_CARDS_DIR)
         
     Returns:
@@ -966,12 +1036,25 @@ def load_idea_card(idea_card_id: str, base_dir: Optional[Path] = None) -> IdeaCa
     """
     search_dir = base_dir or IDEA_CARDS_DIR
     
-    # Try .yml first, then .yaml
-    for ext in (".yml", ".yaml"):
-        path = search_dir / f"{idea_card_id}{ext}"
-        if path.exists():
+    # Search locations: root, _validation/, strategies/
+    search_paths = [
+        search_dir,
+        search_dir / "_validation",
+        search_dir / "strategies",
+    ]
+    
+    # Try each location
+    path = None
+    for search_path in search_paths:
+        for ext in (".yml", ".yaml"):
+            candidate = search_path / f"{idea_card_id}{ext}"
+            if candidate.exists():
+                path = candidate
+                break
+        if path:
             break
-    else:
+    
+    if not path:
         available = list_idea_cards(search_dir)
         raise FileNotFoundError(
             f"IdeaCard '{idea_card_id}' not found in {search_dir}. "
@@ -991,6 +1074,8 @@ def list_idea_cards(base_dir: Optional[Path] = None) -> List[str]:
     """
     List all available IdeaCard files.
     
+    Searches in base_dir and subdirectories (_validation/, strategies/).
+    
     Args:
         base_dir: Optional base directory (defaults to IDEA_CARDS_DIR)
         
@@ -1002,9 +1087,22 @@ def list_idea_cards(base_dir: Optional[Path] = None) -> List[str]:
     if not search_dir.exists():
         return []
     
+    # Search locations: root, _validation/, strategies/
+    search_paths = [
+        search_dir,
+        search_dir / "_validation",
+        search_dir / "strategies",
+    ]
+    
     cards = set()
-    for ext in ("*.yml", "*.yaml"):
-        for path in search_dir.glob(ext):
-            cards.add(path.stem)
+    for search_path in search_paths:
+        if not search_path.exists():
+            continue
+        for ext in ("*.yml", "*.yaml"):
+            for path in search_path.glob(ext):
+                # Skip template files (start with _ but not test__)
+                if path.stem.startswith("_") and not path.stem.startswith("test__"):
+                    continue
+                cards.add(path.stem)
     
     return sorted(cards)

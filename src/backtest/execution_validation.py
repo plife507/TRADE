@@ -24,7 +24,21 @@ from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .idea_card import IdeaCard, Condition, EntryRule, ExitRule, TFConfig
 
-from .features.feature_spec import IndicatorType
+# Note: IndicatorType enum removed in Registry Consolidation Phase 2
+# All indicator type handling is now via string + registry validation
+
+
+# =============================================================================
+# Validation Constants
+# =============================================================================
+
+# Maximum allowed warmup bars per TF (prevents accidental years of data requests)
+MAX_WARMUP_BARS = 1000
+
+# Earliest available Bybit data (linear perpetuals launched late 2018)
+# This prevents requests for data that doesn't exist
+EARLIEST_BYBIT_DATE_YEAR = 2018
+EARLIEST_BYBIT_DATE_MONTH = 11  # November 2018
 
 
 # =============================================================================
@@ -180,6 +194,19 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
                 severity=ValidationSeverity.ERROR,
                 code="INVALID_MAX_LEVERAGE",
                 message=f"account.max_leverage must be positive. Got: {idea_card.account.max_leverage}",
+            ))
+    
+    # Warmup bars validation (P2.2: prevent excessive data requests)
+    for role, tf_config in idea_card.tf_configs.items():
+        warmup = tf_config.effective_warmup_bars
+        if warmup > MAX_WARMUP_BARS:
+            issues.append(ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                code="WARMUP_TOO_LARGE",
+                message=(
+                    f"tf_configs.{role}.warmup_bars ({warmup}) exceeds maximum ({MAX_WARMUP_BARS}). "
+                    f"Reduce warmup_bars or adjust indicator lookback periods."
+                ),
             ))
     
     # Signal rules must exist for execution
@@ -398,12 +425,29 @@ def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResu
 
 @dataclass
 class WarmupRequirements:
-    """Warmup requirements for an IdeaCard."""
-    # Per-TF warmup bars
+    """
+    Warmup requirements for an IdeaCard.
+    
+    Contains two distinct concepts:
+    - warmup/lookback: Bars needed for data fetch and indicator computation
+    - delay: Bars to skip at evaluation start (no-lookahead guarantee)
+    
+    Semantics:
+    - warmup_by_role (lookback): data_start = window_start - lookback * tf_duration
+    - delay_by_role: eval_start = aligned_start + delay * tf_duration
+    
+    Engine uses lookback for data loading, delay for evaluation offset.
+    Engine MUST NOT apply lookback again to evaluation start.
+    """
+    # Per-TF warmup/lookback bars (for data fetch)
     warmup_by_role: Dict[str, int] = field(default_factory=dict)
+    
+    # Per-TF delay bars (for evaluation offset)
+    delay_by_role: Dict[str, int] = field(default_factory=dict)
     
     # Maximum across all TFs
     max_warmup_bars: int = 0
+    max_delay_bars: int = 0
     
     # Source breakdown
     feature_warmup: Dict[str, int] = field(default_factory=dict)  # role -> max feature warmup
@@ -412,7 +456,9 @@ class WarmupRequirements:
     def to_dict(self) -> Dict:
         return {
             "warmup_by_role": self.warmup_by_role,
+            "delay_by_role": self.delay_by_role,
             "max_warmup_bars": self.max_warmup_bars,
+            "max_delay_bars": self.max_delay_bars,
             "feature_warmup": self.feature_warmup,
             "bars_history_required": self.bars_history_required,
         }
@@ -424,13 +470,16 @@ def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
     
     Gate 8.2: Warmup = max(feature_warmups[tf], rule_lookback_bars[tf], bars_window_required[tf])
     
+    Additionally computes delay_by_role from market_structure.delay_bars per TF role.
+    
     Args:
         idea_card: IdeaCard to analyze
         
     Returns:
-        WarmupRequirements with per-TF and overall warmup
+        WarmupRequirements with per-TF warmup and delay
     """
     warmup_by_role: Dict[str, int] = {}
+    delay_by_role: Dict[str, int] = {}
     feature_warmup: Dict[str, int] = {}
     
     for role, tf_config in idea_card.tf_configs.items():
@@ -441,21 +490,36 @@ def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
         
         feature_warmup[role] = max_feature_warmup
         
-        # Combine with explicit warmup_bars and bars_history_required
+        # Get market_structure lookback and delay (if present)
+        structure_lookback = 0
+        structure_delay = 0
+        if tf_config.market_structure is not None:
+            structure_lookback = tf_config.market_structure.lookback_bars
+            structure_delay = tf_config.market_structure.delay_bars
+        
+        # Combine for effective lookback (warmup)
+        # lookback = max(max_feature_warmup, tf_config.warmup_bars, idea_card.bars_history_required, structure_lookback)
         effective_warmup = max(
             max_feature_warmup,
             tf_config.warmup_bars,
             idea_card.bars_history_required,
+            structure_lookback,
         )
         
         warmup_by_role[role] = effective_warmup
+        
+        # Delay is from market_structure only (not combined with other sources)
+        delay_by_role[role] = max(structure_delay, 0)
     
     # Overall max
     max_warmup = max(warmup_by_role.values()) if warmup_by_role else 0
+    max_delay = max(delay_by_role.values()) if delay_by_role else 0
     
     return WarmupRequirements(
         warmup_by_role=warmup_by_role,
+        delay_by_role=delay_by_role,
         max_warmup_bars=max_warmup,
+        max_delay_bars=max_delay,
         feature_warmup=feature_warmup,
         bars_history_required=idea_card.bars_history_required,
     )
@@ -572,168 +636,12 @@ def validate_idea_card_full(idea_card: "IdeaCard") -> IdeaCardValidationResult:
 
 
 # =============================================================================
-# Gate 8.3: IdeaCard → SystemConfig Adapter
+# Gate 8.3: IdeaCard → SystemConfig Adapter (DELETED - P1.2 Refactor)
 # =============================================================================
-# TEMP ADAPTER — DELETE WHEN:
-# - Engine natively accepts IdeaCard (no SystemConfig dependency)
-# - All callers use IdeaCard directly
-# - Deletion criteria met: only runner.py calls this adapter
+# IdeaCardSystemConfig and adapt_idea_card_to_system_config have been deleted.
+# Engine now accepts IdeaCard directly via create_engine_from_idea_card().
+# See: src/backtest/engine.py
 # =============================================================================
-
-@dataclass
-class IdeaCardSystemConfig:
-    """
-    SystemConfig-compatible configuration derived from IdeaCard.
-    
-    Gate 8.3: Provides the bridge between IdeaCard and engine execution.
-    
-    This is a minimal adapter that extracts execution-relevant fields
-    from an IdeaCard for the backtest engine.
-    
-    TEMP: This adapter exists only until engine.py natively accepts IdeaCard.
-    Single caller: runner.py (enforced by Gate F test).
-    """
-    # From IdeaCard identity
-    system_id: str
-    idea_card_hash: str
-    
-    # Primary execution params
-    symbol: str
-    exec_tf: str
-    htf: Optional[str] = None
-    mtf: Optional[str] = None
-    
-    # Warmup requirements
-    warmup_bars: int = 0
-    warmup_by_role: Dict[str, int] = field(default_factory=dict)
-    
-    # Risk/account parameters (from IdeaCard.account - REQUIRED, no defaults)
-    initial_equity: float = 0.0  # Will be set from IdeaCard.account.starting_equity_usdt
-    max_leverage: float = 1.0
-    sizing_model: str = "percent_equity"
-    sizing_value: float = 1.0
-    
-    # Feature keys per TF
-    feature_keys_by_role: Dict[str, List[str]] = field(default_factory=dict)
-    
-    # Feature specs per TF (for indicator computation)
-    feature_specs_by_role: Dict[str, List["FeatureSpec"]] = field(default_factory=dict)
-    
-    # Validation result
-    validation: Optional[IdeaCardValidationResult] = None
-    
-    def to_dict(self) -> Dict:
-        return {
-            "system_id": self.system_id,
-            "idea_card_hash": self.idea_card_hash,
-            "symbol": self.symbol,
-            "exec_tf": self.exec_tf,
-            "htf": self.htf,
-            "mtf": self.mtf,
-            "warmup_bars": self.warmup_bars,
-            "warmup_by_role": self.warmup_by_role,
-            "initial_equity": self.initial_equity,
-            "max_leverage": self.max_leverage,
-            "sizing_model": self.sizing_model,
-            "sizing_value": self.sizing_value,
-            "feature_keys_by_role": self.feature_keys_by_role,
-            "validation": self.validation.to_dict() if self.validation else None,
-        }
-
-
-def adapt_idea_card_to_system_config(
-    idea_card: "IdeaCard",
-    symbol: Optional[str] = None,
-    initial_equity_override: Optional[float] = None,
-) -> IdeaCardSystemConfig:
-    """
-    Convert IdeaCard to IdeaCardSystemConfig for engine execution.
-    
-    Gate 8.3: IdeaCardAdapter → SystemConfig
-    
-    Capital/account config comes from IdeaCard.account section (required).
-    initial_equity_override can be used to override the IdeaCard value.
-    
-    Args:
-        idea_card: Source IdeaCard
-        symbol: Override symbol (default: first in symbol_universe)
-        initial_equity_override: Override starting equity (default: from IdeaCard.account)
-        
-    Returns:
-        IdeaCardSystemConfig ready for engine wiring
-        
-    Raises:
-        ValueError: If IdeaCard validation fails or account section is missing
-    """
-    # Validate first
-    validation = validate_idea_card_full(idea_card)
-    if not validation.is_valid:
-        errors = [i.message for i in validation.errors]
-        raise ValueError(f"IdeaCard validation failed: {'; '.join(errors)}")
-    
-    # Validate account config is present (required - no defaults)
-    if idea_card.account is None:
-        raise ValueError(
-            f"IdeaCard '{idea_card.id}' is missing account section. "
-            "account.starting_equity_usdt and account.max_leverage are required."
-        )
-    
-    # Resolve initial equity (IdeaCard is source of truth, can be overridden)
-    initial_equity = (
-        initial_equity_override 
-        if initial_equity_override is not None 
-        else idea_card.account.starting_equity_usdt
-    )
-    
-    # Resolve symbol
-    if symbol is None:
-        if not idea_card.symbol_universe:
-            raise ValueError("IdeaCard has no symbols in symbol_universe")
-        symbol = idea_card.symbol_universe[0]
-    
-    # Compute warmup
-    warmup_req = compute_warmup_requirements(idea_card)
-    
-    # Extract feature keys
-    declared = get_declared_features_by_role(idea_card)
-    feature_keys_by_role = {role: sorted(keys) for role, keys in declared.items()}
-    
-    # Extract feature specs by role (for indicator computation)
-    feature_specs_by_role = {}
-    for role, tf_config in idea_card.tf_configs.items():
-        feature_specs_by_role[role] = list(tf_config.feature_specs)
-    
-    # Extract max_leverage from account config (primary source)
-    max_leverage = idea_card.account.max_leverage
-    
-    # Extract sizing from risk model
-    sizing_model = "percent_equity"
-    sizing_value = 1.0
-    
-    if idea_card.risk_model:
-        sizing_model = idea_card.risk_model.sizing.model.value
-        sizing_value = idea_card.risk_model.sizing.value
-        # risk_model.sizing.max_leverage can override if different
-        if idea_card.risk_model.sizing.max_leverage:
-            max_leverage = idea_card.risk_model.sizing.max_leverage
-    
-    return IdeaCardSystemConfig(
-        system_id=idea_card.id,
-        idea_card_hash=validation.hash or "",
-        symbol=symbol,
-        exec_tf=idea_card.exec_tf,
-        htf=idea_card.htf,
-        mtf=idea_card.mtf,
-        warmup_bars=warmup_req.max_warmup_bars,
-        warmup_by_role=warmup_req.warmup_by_role,
-        initial_equity=initial_equity,
-        max_leverage=max_leverage,
-        sizing_model=sizing_model,
-        sizing_value=sizing_value,
-        feature_keys_by_role=feature_keys_by_role,
-        feature_specs_by_role=feature_specs_by_role,
-        validation=validation,
-    )
 
 
 # =============================================================================
@@ -877,67 +785,36 @@ class IdeaCardSignalEvaluator:
         self,
         indicator_key: str,
         tf_role: str,
-        snapshot,  # RuntimeSnapshot or RuntimeSnapshotView
+        snapshot,  # RuntimeSnapshotView only (legacy RuntimeSnapshot not supported)
         offset: int = 0,
     ) -> Optional[float]:
         """
         Get feature value from snapshot for given indicator and TF role.
         
-        Supports both RuntimeSnapshot (dataclass) and RuntimeSnapshotView (lightweight view).
+        REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
+        Uses unified get_feature() API for O(1) array access.
         
         Args:
             indicator_key: Indicator key (e.g., "ema_20", "close")
             tf_role: TF role ("exec", "htf", "mtf")
-            snapshot: Runtime snapshot
+            snapshot: RuntimeSnapshotView instance
             offset: Bar offset (0 = current, 1 = previous)
             
         Returns:
             Feature value or None if not available
+            
+        Raises:
+            TypeError: If snapshot does not implement SnapshotView contract
         """
-        # Get the appropriate feature snapshot and history
-        if tf_role == "exec" or tf_role == "ltf":
-            feature_snapshot = snapshot.features_exec
-            history = getattr(snapshot, 'history_features_exec', ())
-        elif tf_role == "htf":
-            feature_snapshot = snapshot.features_htf
-            history = getattr(snapshot, 'history_features_htf', ())
-        elif tf_role == "mtf":
-            feature_snapshot = snapshot.features_mtf
-            history = getattr(snapshot, 'history_features_mtf', ())
-        else:
-            return None
+        # Require RuntimeSnapshotView — fail fast if legacy snapshot passed
+        if not hasattr(snapshot, 'get_feature'):
+            raise TypeError(
+                f"IdeaCardSignalEvaluator requires RuntimeSnapshotView (with get_feature method). "
+                f"Got {type(snapshot).__name__}. Legacy RuntimeSnapshot is not supported."
+            )
         
-        # Handle OHLCV access (special keys)
-        if indicator_key in ("open", "high", "low", "close", "volume"):
-            if offset == 0:
-                # Current bar
-                bar = feature_snapshot.bar if feature_snapshot else None
-                if bar is None:
-                    return None
-                return getattr(bar, indicator_key, None)
-            else:
-                # Get from history (history is oldest-first, so [-offset] gets offset bars back)
-                if history and offset <= len(history):
-                    hist_snapshot = history[-offset]
-                    bar = hist_snapshot.bar if hist_snapshot else None
-                    if bar is None:
-                        return None
-                    return getattr(bar, indicator_key, None)
-                return None
-        
-        # Handle indicator access
-        if offset == 0:
-            # Current value
-            if feature_snapshot and feature_snapshot.ready:
-                return feature_snapshot.features.get(indicator_key)
-            return None
-        else:
-            # Get from history (history is oldest-first, so [-offset] gets offset bars back)
-            if history and offset <= len(history):
-                hist_snapshot = history[-offset]
-                if hist_snapshot and hist_snapshot.ready:
-                    return hist_snapshot.features.get(indicator_key)
-            return None
+        # Use unified API for O(1) array access
+        return snapshot.get_feature(indicator_key, tf_role, offset)
     
     def _evaluate_conditions(
         self,

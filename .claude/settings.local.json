@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(git -C \"c:/CODE/AI/TRADE\" log --oneline)",
+      "Bash(powershell -Command \"\\(Get-Content ''c:\\\\CODE\\\\AI\\\\TRADE\\\\src\\\\backtest\\\\engine.py'' | Measure-Object -Line\\).Lines\")",
+      "Bash(powershell -Command \"\\(Get-Content ''c:\\\\CODE\\\\AI\\\\TRADE\\\\src\\\\backtest\\\\engine_data_prep.py'' | Measure-Object -Line\\).Lines\")",
+      "Bash(python:*)",
+      "Bash(set TRADE_SMOKE_INCLUDE_BACKTEST=1)"
+    ]
+  }
+}

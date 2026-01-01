@@ -3,41 +3,84 @@ Backtest engine.
 
 Main orchestrator for deterministic backtesting:
 1. Load candles from DuckDB (multi-TF support)
-2. Compute indicators per TF DataFrame
-3. Run bar-by-bar simulation with risk-based sizing
-4. Generate structured BacktestResult with metrics
-5. Write artifacts (trades.csv, equity.csv, result.json)
+2. Compute indicators per TF DataFrame (vectorized, outside hot loop)
+3. Build FeedStores for O(1) array access in hot loop
+4. Run bar-by-bar simulation with RuntimeSnapshotView (no pandas in loop)
+5. Generate structured BacktestResult with metrics
+6. Write artifacts (trades.csv, equity.csv, result.json)
+
+ARCHITECTURE (Array-Backed Hot Loop):
+- FeedStore: Precomputed numpy arrays for OHLCV + indicators
+- RuntimeSnapshotView: O(1) array-backed snapshot (no materialization)
+- No pandas ops in hot loop (no df.iloc, no row scanning)
+- All feature access via get_feature(tf_role, indicator_key, offset)
+
+LEGACY REMOVED:
+- RuntimeSnapshot (materialized dataclass) is NOT supported
+- SnapshotBuilder is NOT used — deleted from hot loop
+- Legacy feature access via FeatureSnapshot.features dict is NOT supported
+
+MODULAR STRUCTURE (Phase 1 Refactor):
+- engine_data_prep.py: Data loading and preparation
+- engine.py: Main orchestrator (this file)
 
 Usage:
     from src.backtest import BacktestEngine, load_system_config
-    
+
     config = load_system_config("SOLUSDT_5m_ema_rsi_atr_pure", "hygiene")
     engine = BacktestEngine(config, "hygiene")
     result = engine.run(strategy)
-    
-Phase 1: Uses canonical Bar (ts_open/ts_close) for proper timing semantics.
-- ts_open: when bar starts, fills occur
-- ts_close: when bar ends, strategy evaluates, MTM updates
-
-Phase 3: Multi-TF support with data-driven close detection.
-- HTF/MTF/LTF feature caching
-- Data-driven close detection via close_ts maps
-- Readiness gate blocks trading until all TF caches are ready
-
-Phase 4: Unified mark price handling.
-- Exchange computes mark_price exactly once per step via PriceModel
-- StepResult includes ts_close, mark_price, mark_price_source
-- SnapshotBuilder gets mark_price from exchange (no PriceModel calls)
-- All MTM/liquidation uses the same mark_price
 """
 
 import json
 import pandas as pd
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Callable, List, Dict, Any, Set
 import uuid
+
+# Import dataclasses from engine_data_prep module
+from .engine_data_prep import (
+    PreparedFrame,
+    MultiTFPreparedFrames,
+    prepare_backtest_frame_impl,
+    prepare_multi_tf_frames_impl,
+    load_data_impl,
+    load_1m_data_impl,
+    timeframe_to_timedelta,
+    get_tf_features_at_close_impl,
+)
+
+# Import from engine_feed_builder module
+from .engine_feed_builder import build_feed_stores_impl, build_quote_feed_impl, get_quote_at_exec_close
+
+# Import from engine_snapshot module
+from .engine_snapshot import (
+    build_snapshot_view_impl,
+    update_htf_mtf_indices_impl,
+    refresh_tf_caches_impl,
+)
+
+# Import from engine_history module
+from .engine_history import HistoryManager, parse_history_config_impl
+
+# Import from engine_stops module
+from .engine_stops import (
+    StopCheckResult,
+    check_all_stop_conditions,
+    handle_terminal_stop,
+)
+
+# Import from engine_artifacts module
+from .engine_artifacts import calculate_drawdowns_impl, write_artifacts_impl
+
+# Import factory functions from engine_factory module
+# These are re-exported for backward compatibility
+from .engine_factory import (
+    run_backtest,
+    create_engine_from_idea_card,
+    run_engine_with_idea_card,
+)
 
 from .types import (
     Trade,
@@ -58,9 +101,13 @@ from .runtime.types import (
     DEFAULT_HISTORY_CONFIG,
     create_not_ready_feature_snapshot,
 )
-from .runtime.timeframe import tf_duration, tf_minutes, validate_tf_mapping
-from .runtime.snapshot_builder import SnapshotBuilder, build_exchange_state_from_exchange
-from .runtime.cache import TimeframeCache, build_close_ts_map_from_df
+from .runtime.timeframe import tf_duration, tf_minutes, validate_tf_mapping, ceil_to_tf_close
+# DELETED: SnapshotBuilder import - Legacy RuntimeSnapshot builder removed.
+# All snapshot building now uses RuntimeSnapshotView directly.
+from .runtime.cache import TimeframeCache
+from .runtime.feed_store import FeedStore, MultiTFFeedStore
+from .runtime.snapshot_view import RuntimeSnapshotView
+from .runtime.rollup_bucket import ExecRollupBucket, create_empty_rollup_dict
 from .system_config import (
     SystemConfig,
     load_system_config,
@@ -80,74 +127,10 @@ from .sim import SimulatedExchange, ExecutionConfig, StepResult
 from .simulated_risk_manager import SimulatedRiskManager
 from .risk_policy import RiskPolicy, create_risk_policy, RiskDecision
 from .metrics import compute_backtest_metrics
-from .proof_metrics import compute_proof_metrics
 
 from ..core.risk_manager import Signal
 from ..data.historical_data_store import get_historical_store, TF_MINUTES
 from ..utils.logger import get_logger
-
-
-# Dataclass to hold prepared frame metadata
-@dataclass
-class PreparedFrame:
-    """Result of prepare_backtest_frame with metadata."""
-    df: pd.DataFrame  # DataFrame ready for simulation (trimmed to sim_start)
-    full_df: pd.DataFrame  # Full DataFrame with indicators (includes warm-up data)
-    warmup_bars: int
-    warmup_multiplier: int
-    max_indicator_lookback: int
-    requested_start: datetime
-    requested_end: datetime
-    loaded_start: datetime
-    loaded_end: datetime
-    simulation_start: datetime
-    sim_start_index: int  # Index in full_df where simulation starts
-
-
-@dataclass
-class MultiTFPreparedFrames:
-    """
-    Multi-timeframe prepared frames with close_ts maps for data-driven caching.
-    
-    Phase 3: Supports HTF/MTF/LTF data loading and indicator precomputation.
-    """
-    # TF mapping (htf, mtf, ltf -> tf string)
-    tf_mapping: Dict[str, str]
-    
-    # DataFrames with indicators per TF (key = tf string, e.g., "4h", "1h", "5m")
-    frames: Dict[str, pd.DataFrame] = field(default_factory=dict)
-    
-    # Close timestamp sets per TF (for data-driven close detection)
-    close_ts_maps: Dict[str, Set[datetime]] = field(default_factory=dict)
-    
-    # LTF is the primary (simulation stepping)
-    ltf_frame: Optional[pd.DataFrame] = None
-    ltf_sim_start_index: int = 0
-    
-    # Warmup metadata
-    warmup_bars: int = 0
-    warmup_multiplier: int = 5
-    max_indicator_lookback: int = 0
-    
-    # Window metadata
-    requested_start: Optional[datetime] = None
-    requested_end: Optional[datetime] = None
-    simulation_start: Optional[datetime] = None
-    
-    def get_htf_close_ts(self) -> Set[datetime]:
-        """Get HTF close timestamps for cache detection."""
-        htf_tf = self.tf_mapping.get("htf", "")
-        return self.close_ts_maps.get(htf_tf, set())
-    
-    def get_mtf_close_ts(self) -> Set[datetime]:
-        """Get MTF close timestamps for cache detection."""
-        mtf_tf = self.tf_mapping.get("mtf", "")
-        return self.close_ts_maps.get(mtf_tf, set())
-    
-    def get_ltf_close_ts(self) -> Set[datetime]:
-        """Get LTF close timestamps for cache detection."""
-        ltf_tf = self.tf_mapping.get("ltf", "")
-        return self.close_ts_maps.get(ltf_tf, set())
 
 
 class BacktestEngine:
@@ -175,6 +158,7 @@ class BacktestEngine:
         window_name: str = "hygiene",
         run_dir: Optional[Path] = None,
         tf_mapping: Optional[Dict[str, str]] = None,
+        on_snapshot: Optional[Callable[["RuntimeSnapshotView", int, int, int], None]] = None,
     ):
         """
         Initialize backtest engine.
@@ -185,6 +169,9 @@ class BacktestEngine:
             run_dir: Optional directory for writing artifacts
             tf_mapping: Optional dict mapping htf/mtf/ltf to timeframe strings.
                         If None, single-TF mode (all roles = config.tf).
+            on_snapshot: Optional callback invoked after snapshot build, before strategy.
+                        Signature: (snapshot, exec_idx, htf_idx, mtf_idx) -> None
+                        Used for Phase 4 plumbing parity audit.
         """
         self.config = config
         self.window_name = window_name
@@ -215,10 +202,9 @@ class BacktestEngine:
         # Create simulated risk manager for sizing
         self.risk_manager = SimulatedRiskManager(config.risk_profile)
         
-        # Execution config from params
+        # Execution config from params (slippage only; fees come from risk_profile)
         params = config.params
         self.execution_config = ExecutionConfig(
-            taker_fee_bps=params.get("taker_fee_bps", 6.0),
             slippage_bps=params.get("slippage_bps", 5.0),
         )
         
@@ -241,22 +227,13 @@ class BacktestEngine:
             self._tf_mapping = tf_mapping
             self._multi_tf_mode = tf_mapping["htf"] != tf_mapping["ltf"] or tf_mapping["mtf"] != tf_mapping["ltf"]
         
-        # Phase 1: History management
+        # Phase 1: History management (delegated to HistoryManager)
         # Parse history config from system config (if present)
-        self._history_config = self._parse_history_config(config)
+        self._history_config = parse_history_config_impl(config)
+        self._history_manager = HistoryManager(self._history_config)
         
-        # Rolling history windows (mutable lists, converted to tuples for snapshot)
-        self._history_bars_exec: List[CanonicalBar] = []
-        self._history_features_exec: List[FeatureSnapshot] = []
-        self._history_features_htf: List[FeatureSnapshot] = []
-        self._history_features_mtf: List[FeatureSnapshot] = []
-        
-        # Phase 2/3: SnapshotBuilder for RuntimeSnapshot construction
-        self._snapshot_builder = SnapshotBuilder(
-            symbol=config.symbol,
-            tf_mapping=self._tf_mapping,
-            history_config=self._history_config,
-        )
+        # DELETED: SnapshotBuilder - Legacy RuntimeSnapshot builder removed.
+        # All snapshot building now uses _build_snapshot_view() for RuntimeSnapshotView.
         
         # Phase 3: TimeframeCache for HTF/MTF carry-forward
         self._tf_cache = TimeframeCache()
@@ -270,37 +247,31 @@ class BacktestEngine:
         self._warmup_complete = False
         self._first_ready_bar_index: Optional[int] = None
         
+        # Array-backed hot loop: FeedStores for O(1) array access
+        self._multi_tf_feed_store: Optional[MultiTFFeedStore] = None
+        self._exec_feed: Optional[FeedStore] = None
+        self._htf_feed: Optional[FeedStore] = None
+        self._mtf_feed: Optional[FeedStore] = None
+
+        # Phase 3: 1m Quote Feed + Rollup Bucket
+        self._quote_feed: Optional[FeedStore] = None
+        self._rollup_bucket: ExecRollupBucket = ExecRollupBucket()
+        self._current_rollups: Dict[str, float] = create_empty_rollup_dict()
+        self._last_1m_idx: int = -1  # Track last processed 1m bar index
+
+        # Track HTF/MTF forward-fill indices for RuntimeSnapshotView
+        self._current_htf_idx: int = 0
+        self._current_mtf_idx: int = 0
+        
+        # Phase 4: Optional snapshot callback for plumbing parity audit
+        # Invoked after snapshot build, before strategy evaluation
+        self._on_snapshot = on_snapshot
+        
         tf_mode_str = "multi-TF" if self._multi_tf_mode else "single-TF"
         self.logger.info(
             f"BacktestEngine initialized: {config.system_id} / {window_name} / "
             f"risk_mode={config.risk_mode} / initial_equity={config.risk_profile.initial_equity} / "
             f"mode={tf_mode_str} / tf_mapping={self._tf_mapping}"
-        )
-    
-    def _parse_history_config(self, config: SystemConfig) -> HistoryConfig:
-        """
-        Parse HistoryConfig from system config.
-        
-        Looks for optional 'history' section in params or config.
-        
-        Args:
-            config: System configuration
-            
-        Returns:
-            HistoryConfig (default if not specified)
-        """
-        # Check params for history config
-        params = config.params
-        history_raw = params.get("history", {})
-        
-        if not history_raw:
-            return DEFAULT_HISTORY_CONFIG
-        
-        return HistoryConfig(
-            bars_exec_count=int(history_raw.get("bars_exec_count", 0)),
-            features_exec_count=int(history_raw.get("features_exec_count", 0)),
-            features_htf_count=int(history_raw.get("features_htf_count", 0)),
-            features_mtf_count=int(history_raw.get("features_mtf_count", 0)),
         )
     
     def _update_history(
@@ -314,10 +285,9 @@ class BacktestEngine:
     ) -> None:
         """
         Update rolling history windows.
-        
-        Called after each bar close, before snapshot build.
-        Maintains bounded windows per HistoryConfig.
-        
+
+        Delegates to HistoryManager.update().
+
         Args:
             bar: Current exec-TF bar
             features_exec: Current exec-TF features
@@ -326,88 +296,52 @@ class BacktestEngine:
             features_htf: Current HTF features (if updated)
             features_mtf: Current MTF features (if updated)
         """
-        config = self._history_config
-        
-        # Update exec bar history
-        if config.bars_exec_count > 0:
-            self._history_bars_exec.append(bar)
-            # Trim to max size (keep most recent)
-            if len(self._history_bars_exec) > config.bars_exec_count:
-                self._history_bars_exec = self._history_bars_exec[-config.bars_exec_count:]
-        
-        # Update exec feature history
-        if config.features_exec_count > 0 and features_exec.ready:
-            self._history_features_exec.append(features_exec)
-            if len(self._history_features_exec) > config.features_exec_count:
-                self._history_features_exec = self._history_features_exec[-config.features_exec_count:]
-        
-        # Update HTF feature history (only on HTF close)
-        if config.features_htf_count > 0 and htf_updated and features_htf and features_htf.ready:
-            self._history_features_htf.append(features_htf)
-            if len(self._history_features_htf) > config.features_htf_count:
-                self._history_features_htf = self._history_features_htf[-config.features_htf_count:]
-        
-        # Update MTF feature history (only on MTF close)
-        if config.features_mtf_count > 0 and mtf_updated and features_mtf and features_mtf.ready:
-            self._history_features_mtf.append(features_mtf)
-            if len(self._history_features_mtf) > config.features_mtf_count:
-                self._history_features_mtf = self._history_features_mtf[-config.features_mtf_count:]
-    
+        self._history_manager.update(
+            bar=bar,
+            features_exec=features_exec,
+            htf_updated=htf_updated,
+            mtf_updated=mtf_updated,
+            features_htf=features_htf,
+            features_mtf=features_mtf,
+        )
+
     def _is_history_ready(self) -> bool:
         """
         Check if required history windows are filled.
-        
+
+        Delegates to HistoryManager.is_ready().
+
         Returns:
             True if all configured history windows are at required depth,
             or if no history is configured.
         """
-        config = self._history_config
-        
-        if not config.requires_history:
-            return True
-        
-        # Check each configured window
-        if config.bars_exec_count > 0:
-            if len(self._history_bars_exec) < config.bars_exec_count:
-                return False
-        
-        if config.features_exec_count > 0:
-            if len(self._history_features_exec) < config.features_exec_count:
-                return False
-        
-        if config.features_htf_count > 0:
-            if len(self._history_features_htf) < config.features_htf_count:
-                return False
-        
-        if config.features_mtf_count > 0:
-            if len(self._history_features_mtf) < config.features_mtf_count:
-                return False
-        
-        return True
-    
+        return self._history_manager.is_ready()
+
     def _get_history_tuples(self) -> tuple:
         """
         Get immutable history tuples for snapshot.
-        
+
+        Delegates to HistoryManager.get_tuples().
+
         Returns:
             Tuple of (bars_exec, features_exec, features_htf, features_mtf)
         """
-        return (
-            tuple(self._history_bars_exec),
-            tuple(self._history_features_exec),
-            tuple(self._history_features_htf),
-            tuple(self._history_features_mtf),
-        )
+        return self._history_manager.get_tuples()
     
     def _timeframe_to_timedelta(self, tf: str) -> timedelta:
-        """Convert timeframe string to timedelta."""
-        tf_minutes = TF_MINUTES.get(tf.lower(), 60)  # Default to 1h
-        return timedelta(minutes=tf_minutes)
+        """
+        Convert timeframe string to timedelta.
+
+        Raises ValueError on unknown timeframe (fail-fast, no silent defaults).
+
+        Delegates to engine_data_prep.timeframe_to_timedelta().
+        """
+        return timeframe_to_timedelta(tf)
     
     def prepare_backtest_frame(self) -> PreparedFrame:
         """
         Prepare the backtest DataFrame with proper warm-up.
-        
+
         This method:
         1. Validates symbol and mode locks (fail fast before data fetch)
         2. Computes warmup_bars based on strategy params and multiplier
@@ -417,395 +351,241 @@ class BacktestEngine:
         6. Finds the first bar where all required indicators are valid
         7. Sets simulation start to max(first_valid_bar, window_start)
         8. Returns PreparedFrame with all metadata
-        
+
+        Delegates to engine_data_prep.prepare_backtest_frame_impl().
+
         Returns:
             PreparedFrame with DataFrame and metadata
-            
+
         Raises:
             ValueError: If not enough data for warm-up + window, or invalid config
         """
-        # =====================================================================
-        # Mode Lock Validations (BEFORE data fetch)
-        # Fail fast without downloading data for invalid configs.
-        # =====================================================================
-        if self.config.symbol:
-            validate_usdt_pair(self.config.symbol)
-        validate_margin_mode_isolated(self.config.risk_profile.margin_mode)
-        validate_quote_ccy_and_instrument_type(
-            self.config.risk_profile.quote_ccy,
-            self.config.risk_profile.instrument_type,
+        prepared = prepare_backtest_frame_impl(
+            config=self.config,
+            window=self.window,
+            logger=self.logger,
         )
-        
-        store = get_historical_store(env=self.config.data_build.env)
-        
-        # Compute warm-up parameters from FeatureSpecs (IdeaCard-driven)
-        warmup_multiplier = self.config.warmup_multiplier
-        exec_specs = self.config.feature_specs_by_role.get('exec', []) if hasattr(self.config, 'feature_specs_by_role') else []
-        warmup_bars = get_warmup_from_specs(exec_specs, warmup_multiplier)
-        
-        # max_lookback is the raw max warmup from specs (without multiplier)
-        max_lookback = get_warmup_from_specs(exec_specs, warmup_multiplier=1) if exec_specs else 0
-        
-        # Convert warmup_bars to time span
-        tf_delta = self._timeframe_to_timedelta(self.config.tf)
-        warmup_span = tf_delta * warmup_bars
-        
-        # Requested window from config
-        requested_start = self.window.start
-        requested_end = self.window.end
-        
-        # Extended query range (pull data before window for warm-up)
-        extended_start = requested_start - warmup_span
-        
-        self.logger.info(
-            f"Loading data: {self.config.symbol} {self.config.tf} "
-            f"from {extended_start} to {requested_end} "
-            f"(warm-up: {warmup_bars} bars = {warmup_span})"
-        )
-        
-        # Load extended data
-        df = store.get_ohlcv(
-            symbol=self.config.symbol,
-            tf=self.config.tf,
-            start=extended_start,
-            end=requested_end,
-        )
-        
-        # Validate data exists
-        if df.empty:
-            raise ValueError(
-                f"No data found for {self.config.symbol} {self.config.tf} "
-                f"from {extended_start} to {requested_end}. "
-                f"Run data sync first: sync_symbols(['{self.config.symbol}'], "
-                f"period='{self.config.data_build.period}')"
-            )
-        
-        # Ensure sorted by timestamp
-        df = df.sort_values("timestamp").reset_index(drop=True)
-        
-        # Track actual loaded range (may be clamped to dataset boundaries)
-        loaded_start = df["timestamp"].iloc[0]
-        loaded_end = df["timestamp"].iloc[-1]
-        
-        self.logger.info(
-            f"Loaded {len(df)} bars: {loaded_start} to {loaded_end}"
-        )
-        
-        # Apply indicators from IdeaCard FeatureSpecs (ONLY supported path)
-        # No legacy params-based indicators - IdeaCard is the single source of truth
-        if hasattr(self.config, 'feature_specs_by_role') and self.config.feature_specs_by_role:
-            exec_specs = self.config.feature_specs_by_role.get('exec', [])
-            if exec_specs:
-                df = apply_feature_spec_indicators(df, exec_specs)
-        else:
-            raise ValueError(
-                "No feature_specs_by_role in config. "
-                "IdeaCard with declared FeatureSpecs is required. "
-                "Legacy params-based indicators are not supported."
-            )
-        
-        # Find first bar where all required indicators are valid
-        # Use IdeaCard specs to get required columns
-        if hasattr(self.config, 'feature_specs_by_role') and self.config.feature_specs_by_role:
-            exec_specs = self.config.feature_specs_by_role.get('exec', [])
-            required_cols = get_required_indicator_columns_from_specs(exec_specs)
-        else:
-            required_cols = []  # Will fail validation
-        
-        first_valid_idx = find_first_valid_bar(df, required_cols)
-        
-        if first_valid_idx < 0:
-            raise ValueError(
-                f"No valid bars found for {self.config.symbol} {self.config.tf}. "
-                f"All indicator columns have NaN values. Check data quality."
-            )
-        
-        first_valid_ts = df.iloc[first_valid_idx]["timestamp"]
-        
-        # Simulation starts at max(first_valid_bar, requested_start)
-        # We never start before the requested window, even if indicators are valid earlier
-        if first_valid_ts >= requested_start:
-            sim_start_ts = first_valid_ts
-            sim_start_idx = first_valid_idx
-        else:
-            # Find the first bar >= requested_start
-            mask = df["timestamp"] >= requested_start
-            if not mask.any():
-                raise ValueError(
-                    f"No data found at or after requested window start {requested_start}. "
-                    f"Loaded data ends at {loaded_end}."
-                )
-            sim_start_idx = mask.idxmax()
-            sim_start_ts = df.iloc[sim_start_idx]["timestamp"]
-        
-        # Validate we have enough data for simulation
-        if sim_start_ts > requested_end:
-            raise ValueError(
-                f"Not enough history for {self.config.symbol} {self.config.tf} "
-                f"to satisfy warm-up + window. Simulation would start at {sim_start_ts}, "
-                f"but requested window ends at {requested_end}. "
-                f"Adjust warmup_multiplier (current: {warmup_multiplier}) or window dates."
-            )
-        
-        # Check we have at least some bars for simulation
-        sim_bars = len(df) - sim_start_idx
-        if sim_bars < 10:
-            raise ValueError(
-                f"Insufficient simulation bars: got {sim_bars} bars after warm-up, "
-                f"need at least 10 trading bars."
-            )
-        
-        self.logger.info(
-            f"Simulation start: {sim_start_ts} (bar {sim_start_idx}), "
-            f"{sim_bars} bars available for trading"
-        )
-        
-        # Create PreparedFrame
-        prepared = PreparedFrame(
-            df=df,  # Full DF with indicators, engine will handle sim_start_idx
-            full_df=df,
-            warmup_bars=warmup_bars,
-            warmup_multiplier=warmup_multiplier,
-            max_indicator_lookback=max_lookback,
-            requested_start=requested_start,
-            requested_end=requested_end,
-            loaded_start=loaded_start,
-            loaded_end=loaded_end,
-            simulation_start=sim_start_ts,
-            sim_start_index=sim_start_idx,
-        )
-        
+
         self._prepared_frame = prepared
-        self._data = df
-        
+        self._data = prepared.df
+
         return prepared
     
     def load_data(self) -> pd.DataFrame:
         """
         Load and validate candle data from DuckDB.
-        
-        Delegates to prepare_backtest_frame() which handles warm-up properly.
-        
+
+        Delegates to engine_data_prep.load_data_impl() which handles warm-up properly.
+
         Returns:
             DataFrame with OHLCV data and indicators
-            
+
         Raises:
             ValueError: If data is empty, has gaps, or is invalid
         """
-        prepared = self.prepare_backtest_frame()
-        return prepared.df
+        return load_data_impl(
+            config=self.config,
+            window=self.window,
+            logger=self.logger,
+        )
     
     def prepare_multi_tf_frames(self) -> MultiTFPreparedFrames:
         """
         Prepare multi-TF DataFrames with indicators and close_ts maps.
-        
+
         Phase 3: Loads data for HTF, MTF, and LTF timeframes, applies
         indicators to each, and builds close_ts maps for data-driven
         cache detection.
-        
+
+        Delegates to engine_data_prep.prepare_multi_tf_frames_impl().
+
         Returns:
             MultiTFPreparedFrames with all TF data and metadata
-            
+
         Raises:
             ValueError: If data is missing or invalid
         """
-        store = get_historical_store(env=self.config.data_build.env)
-        
-        # Compute warm-up parameters from FeatureSpecs (IdeaCard-driven)
-        ltf_tf = self._tf_mapping["ltf"]
-        htf_tf = self._tf_mapping["htf"]
-        warmup_multiplier = self.config.warmup_multiplier
-        
-        # Get warmup for each TF role
-        specs_by_role = self.config.feature_specs_by_role if hasattr(self.config, 'feature_specs_by_role') else {}
-        exec_specs = specs_by_role.get('exec', [])
-        htf_specs = specs_by_role.get('htf', [])
-        
-        warmup_bars = get_warmup_from_specs(exec_specs, warmup_multiplier)
-        htf_warmup_bars = get_warmup_from_specs(htf_specs, warmup_multiplier)
-        
-        # max_lookback is the raw max warmup from specs (without multiplier)
-        max_lookback = get_warmup_from_specs(exec_specs, warmup_multiplier=1) if exec_specs else 0
-        
-        # Convert warmup_bars to time span (based on LTF)
-        ltf_delta = tf_duration(ltf_tf)
-        warmup_span = ltf_delta * warmup_bars
-        
-        # Requested window from config
-        requested_start = self.window.start
-        requested_end = self.window.end
-        
-        # Extended query range (pull data before window for warm-up)
-        extended_start = requested_start - warmup_span
-        
-        # Add extra buffer for HTF warm-up (HTF needs more history)
-        htf_delta = tf_duration(htf_tf)
-        htf_warmup_span = htf_delta * htf_warmup_bars
-        
-        # Use the larger warm-up span
-        data_start = min(extended_start, requested_start - htf_warmup_span)
-        
-        self.logger.info(
-            f"Loading multi-TF data: {self.config.symbol} "
-            f"HTF={htf_tf}, MTF={self._tf_mapping['mtf']}, LTF={ltf_tf} "
-            f"from {data_start} to {requested_end} "
-            f"(warmup: {warmup_bars} LTF bars)"
+        result = prepare_multi_tf_frames_impl(
+            config=self.config,
+            window=self.window,
+            tf_mapping=self._tf_mapping,
+            multi_tf_mode=self._multi_tf_mode,
+            logger=self.logger,
         )
-        
-        # Load data for each unique TF
-        unique_tfs = set(self._tf_mapping.values())
-        frames: Dict[str, pd.DataFrame] = {}
-        close_ts_maps: Dict[str, Set[datetime]] = {}
-        
-        for tf in unique_tfs:
-            df = store.get_ohlcv(
-                symbol=self.config.symbol,
-                tf=tf,
-                start=data_start,
-                end=requested_end,
-            )
-            
-            if df.empty:
-                raise ValueError(
-                    f"No data found for {self.config.symbol} {tf} "
-                    f"from {data_start} to {requested_end}. "
-                    f"Run data sync first."
-                )
-            
-            # Ensure sorted by timestamp
-            df = df.sort_values("timestamp").reset_index(drop=True)
-            
-            # Apply indicators from IdeaCard FeatureSpecs for this TF
-            # Map TF back to role (htf/mtf/exec) to get correct specs
-            tf_role = None
-            for role, role_tf in self._tf_mapping.items():
-                if role_tf == tf:
-                    tf_role = role
-                    break
-            
-            if hasattr(self.config, 'feature_specs_by_role') and self.config.feature_specs_by_role:
-                # Try role-specific specs first, fallback to exec
-                specs = self.config.feature_specs_by_role.get(tf_role) or \
-                        self.config.feature_specs_by_role.get('exec', [])
-                if specs:
-                    df = apply_feature_spec_indicators(df, specs)
-            else:
-                raise ValueError(
-                    f"No feature_specs_by_role in config for TF {tf}. "
-                    "IdeaCard with declared FeatureSpecs is required."
-                )
-            
-            # Add ts_close column for close detection
-            tf_delta = tf_duration(tf)
-            df["ts_close"] = df["timestamp"] + tf_delta
-            
-            # Build close_ts map from this TF's data
-            close_ts_maps[tf] = build_close_ts_map_from_df(df, ts_close_column="ts_close")
-            
-            frames[tf] = df
-            
-            self.logger.debug(
-                f"Loaded {len(df)} bars for {tf}, "
-                f"{len(close_ts_maps[tf])} close timestamps"
-            )
-        
-        # Get the LTF frame for simulation stepping
-        ltf_frame = frames[ltf_tf]
-        
-        # Find first valid bar in LTF where all indicators are ready
-        # Use IdeaCard specs to get required columns
-        if hasattr(self.config, 'feature_specs_by_role') and self.config.feature_specs_by_role:
-            exec_specs = self.config.feature_specs_by_role.get('exec', [])
-            required_cols = get_required_indicator_columns_from_specs(exec_specs)
-        else:
-            required_cols = []  # Will fail validation
-        
-        first_valid_idx = find_first_valid_bar(ltf_frame, required_cols)
-        
-        if first_valid_idx < 0:
-            raise ValueError(
-                f"No valid bars found for {self.config.symbol} {ltf_tf}. "
-                f"All indicator columns have NaN values."
-            )
-        
-        first_valid_ts = ltf_frame.iloc[first_valid_idx]["timestamp"]
-        
-        # Simulation starts at max(first_valid_bar, requested_start)
-        if first_valid_ts >= requested_start:
-            sim_start_ts = first_valid_ts
-            sim_start_idx = first_valid_idx
-        else:
-            mask = ltf_frame["timestamp"] >= requested_start
-            if not mask.any():
-                raise ValueError(
-                    f"No data found at or after requested window start {requested_start}."
-                )
-            sim_start_idx = mask.idxmax()
-            sim_start_ts = ltf_frame.iloc[sim_start_idx]["timestamp"]
-        
-        # Validate enough data for simulation
-        sim_bars = len(ltf_frame) - sim_start_idx
-        if sim_bars < 10:
-            raise ValueError(
-                f"Insufficient simulation bars: got {sim_bars} bars after warm-up."
-            )
-        
-        self.logger.info(
-            f"Multi-TF simulation start: {sim_start_ts} (bar {sim_start_idx}), "
-            f"{sim_bars} LTF bars available"
-        )
-        
+
         # Configure TimeframeCache with close_ts maps
-        htf_close_ts = close_ts_maps.get(htf_tf, set())
-        mtf_close_ts = close_ts_maps.get(self._tf_mapping["mtf"], set())
-        
+        htf_tf = self._tf_mapping["htf"]
+        htf_close_ts = result.close_ts_maps.get(htf_tf, set())
+        mtf_close_ts = result.close_ts_maps.get(self._tf_mapping["mtf"], set())
+
         self._tf_cache.set_close_ts_maps(
             htf_close_ts=htf_close_ts,
             mtf_close_ts=mtf_close_ts,
             htf_tf=htf_tf,
             mtf_tf=self._tf_mapping["mtf"],
         )
-        
+
         # Store TF DataFrames for feature lookup
-        self._htf_df = frames.get(htf_tf)
-        self._mtf_df = frames.get(self._tf_mapping["mtf"])
-        self._ltf_df = ltf_frame
-        
-        # Create and store result
-        result = MultiTFPreparedFrames(
-            tf_mapping=dict(self._tf_mapping),
-            frames=frames,
-            close_ts_maps=close_ts_maps,
-            ltf_frame=ltf_frame,
-            ltf_sim_start_index=sim_start_idx,
-            warmup_bars=warmup_bars,
-            warmup_multiplier=warmup_multiplier,
-            max_indicator_lookback=max_lookback,
-            requested_start=requested_start,
-            requested_end=requested_end,
-            simulation_start=sim_start_ts,
-        )
-        
+        self._htf_df = result.frames.get(htf_tf)
+        self._mtf_df = result.frames.get(self._tf_mapping["mtf"])
+        self._ltf_df = result.ltf_frame
+
         self._mtf_frames = result
-        
+
         # Also set _prepared_frame for backward compatibility
+        ltf_frame = result.ltf_frame
         self._prepared_frame = PreparedFrame(
             df=ltf_frame,
             full_df=ltf_frame,
-            warmup_bars=warmup_bars,
-            warmup_multiplier=warmup_multiplier,
-            max_indicator_lookback=max_lookback,
-            requested_start=requested_start,
-            requested_end=requested_end,
+            warmup_bars=result.warmup_bars,
+            max_indicator_lookback=result.max_indicator_lookback,
+            requested_start=result.requested_start,
+            requested_end=result.requested_end,
             loaded_start=ltf_frame["timestamp"].iloc[0],
             loaded_end=ltf_frame["timestamp"].iloc[-1],
-            simulation_start=sim_start_ts,
-            sim_start_index=sim_start_idx,
+            simulation_start=result.simulation_start,
+            sim_start_index=result.ltf_sim_start_index,
         )
         self._data = ltf_frame
-        
+
         return result
     
+    def _build_feed_stores(self) -> MultiTFFeedStore:
+        """
+        Build FeedStores from prepared frames for array-backed hot loop.
+
+        Must be called after prepare_multi_tf_frames() or prepare_backtest_frame().
+        Creates FeedStore instances with precomputed arrays for O(1) access.
+
+        Phase 3: Also builds 1m quote feed for px.last/px.mark.
+
+        Delegates to engine_feed_builder.build_feed_stores_impl().
+
+        Returns:
+            MultiTFFeedStore with exec/htf/mtf feeds
+        """
+        result = build_feed_stores_impl(
+            config=self.config,
+            tf_mapping=self._tf_mapping,
+            multi_tf_mode=self._multi_tf_mode,
+            mtf_frames=self._mtf_frames,
+            prepared_frame=self._prepared_frame,
+            data=self._data,
+            logger=self.logger,
+        )
+
+        self._multi_tf_feed_store, self._exec_feed, self._htf_feed, self._mtf_feed = result
+
+        # Phase 3: Build 1m quote feed for px.last/px.mark
+        self._build_quote_feed()
+
+        return self._multi_tf_feed_store
+
+    def _build_quote_feed(self) -> None:
+        """
+        Build 1m quote FeedStore for px.last/px.mark price proxy.
+
+        Loads 1m data from DuckDB and builds a FeedStore for O(1) quote access.
+        The quote feed provides last-trade proxy and mark price for each 1m bar.
+
+        Phase 3: Called from _build_feed_stores() after exec/htf/mtf feeds are built.
+        """
+        if self._prepared_frame is None:
+            self.logger.warning("Cannot build quote feed: no prepared frame")
+            return
+
+        # Compute 1m warmup: convert exec warmup to 1m bars
+        # For a 15m exec TF, 1 warmup bar = 15 1m bars
+        exec_tf_minutes = TF_MINUTES.get(self.config.tf.lower(), 15)
+        warmup_bars_exec = self._prepared_frame.warmup_bars
+        warmup_bars_1m = warmup_bars_exec * exec_tf_minutes
+
+        try:
+            # Load 1m data
+            df_1m = load_1m_data_impl(
+                symbol=self.config.symbol,
+                window_start=self._prepared_frame.requested_start,
+                window_end=self._prepared_frame.requested_end,
+                warmup_bars_1m=warmup_bars_1m,
+                data_env=self.config.data_build.env,
+                logger=self.logger,
+            )
+
+            # Build quote FeedStore
+            self._quote_feed = build_quote_feed_impl(
+                df_1m=df_1m,
+                symbol=self.config.symbol,
+                logger=self.logger,
+            )
+
+            # Reset rollup bucket for fresh run
+            self._rollup_bucket.reset()
+            self._current_rollups = create_empty_rollup_dict()
+            self._last_1m_idx = -1
+
+            self.logger.info(
+                f"Quote feed ready: {self._quote_feed.length} 1m bars"
+            )
+
+        except ValueError as e:
+            # 1m data not available - warn but continue (preflight should have caught this)
+            self.logger.warning(f"Quote feed unavailable: {e}")
+
+    def _accumulate_1m_quotes(self, exec_ts_close: datetime) -> None:
+        """
+        Accumulate 1m quotes between previous exec close and current exec close.
+
+        Scans 1m bars from last processed index to current exec close and
+        accumulates their data into the rollup bucket. Called at each exec bar.
+
+        Phase 3: Provides px.rollup.* values for zone interaction detection.
+
+        Args:
+            exec_ts_close: Current exec bar's ts_close
+        """
+        if self._quote_feed is None:
+            return
+
+        # Find the last 1m bar closed at or before exec_ts_close
+        end_1m_idx = self._quote_feed.get_last_closed_idx_at_or_before(exec_ts_close)
+        if end_1m_idx is None:
+            return
+
+        # Process all 1m bars from last_1m_idx + 1 to end_1m_idx (inclusive)
+        start_1m_idx = self._last_1m_idx + 1
+        if start_1m_idx > end_1m_idx:
+            # No new 1m bars to process
+            return
+
+        # Accumulate each 1m bar
+        for idx in range(start_1m_idx, end_1m_idx + 1):
+            quote = get_quote_at_exec_close(
+                quote_feed=self._quote_feed,
+                exec_ts_close=self._quote_feed.get_ts_close_datetime(idx),
+            )
+            if quote is not None:
+                self._rollup_bucket.accumulate(quote)
+
+        # Update last processed index
+        self._last_1m_idx = end_1m_idx
+
+    def _freeze_rollups(self) -> Dict[str, float]:
+        """
+        Freeze rollup bucket at exec close and reset for next interval.
+
+        Returns the rollup values accumulated since last exec close,
+        then resets the bucket for the next exec interval.
+
+        Phase 3: Called at each exec bar close before snapshot creation.
+
+        Returns:
+            Dict with px.rollup.* keys and their values
+        """
+        rollups = self._rollup_bucket.freeze()
+        self._current_rollups = rollups
+        self._rollup_bucket.reset()
+        return rollups
+
     def _get_tf_features_at_close(
         self,
         tf: str,
@@ -814,102 +594,27 @@ class BacktestEngine:
     ) -> FeatureSnapshot:
         """
         Get FeatureSnapshot for a TF at a specific close timestamp.
-        
+
         Looks up the bar in the TF DataFrame that closed at ts_close
         and extracts its indicator features.
-        
+
+        Delegates to engine_data_prep.get_tf_features_at_close_impl().
+
         Args:
             tf: Timeframe string
             ts_close: Close timestamp to look up
             bar: Current bar (for fallback if not found)
-            
+
         Returns:
             FeatureSnapshot with indicator values
         """
-        # Get the DataFrame for this TF
-        df = self._mtf_frames.frames.get(tf) if self._mtf_frames else None
-        
-        if df is None or "ts_close" not in df.columns:
-            return create_not_ready_feature_snapshot(
-                tf=tf,
-                ts_close=ts_close,
-                bar=bar,
-                reason=f"No data for {tf}",
-            )
-        
-        # Find the row with this ts_close
-        mask = df["ts_close"] == ts_close
-        if not mask.any():
-            return create_not_ready_feature_snapshot(
-                tf=tf,
-                ts_close=ts_close,
-                bar=bar,
-                reason=f"No bar at {ts_close} for {tf}",
-            )
-        
-        row = df[mask].iloc[-1]  # Take last matching row
-        
-        # Extract ALL numeric features (not hardcoded list)
-        features = {}
-        ohlcv_cols = {"timestamp", "open", "high", "low", "close", "volume", "ts_close"}
-        for col in row.index:
-            if col not in ohlcv_cols and pd.notna(row[col]):
-                try:
-                    features[col] = float(row[col])
-                except (ValueError, TypeError):
-                    pass
-        
-        # Check if required indicators are valid (not NaN)
-        if hasattr(self.config, 'feature_specs_by_role') and self.config.feature_specs_by_role:
-            # Get specs for this TF's role
-            tf_role = None
-            for role, role_tf in self._tf_mapping.items():
-                if role_tf == tf:
-                    tf_role = role
-                    break
-            specs = self.config.feature_specs_by_role.get(tf_role) or \
-                    self.config.feature_specs_by_role.get('exec', [])
-            required_cols = get_required_indicator_columns_from_specs(specs)
-        else:
-            required_cols = []
-        
-        all_valid = all(col in features for col in required_cols)
-        
-        # Create the Bar for this TF
-        tf_delta = tf_duration(tf)
-        ts_open = row["timestamp"]
-        if hasattr(ts_open, "to_pydatetime"):
-            ts_open = ts_open.to_pydatetime()
-        tf_ts_close = row["ts_close"]
-        if hasattr(tf_ts_close, "to_pydatetime"):
-            tf_ts_close = tf_ts_close.to_pydatetime()
-        
-        tf_bar = CanonicalBar(
-            symbol=self.config.symbol,
+        return get_tf_features_at_close_impl(
             tf=tf,
-            ts_open=ts_open,
-            ts_close=tf_ts_close,
-            open=row["open"],
-            high=row["high"],
-            low=row["low"],
-            close=row["close"],
-            volume=row["volume"],
-        )
-        
-        if not all_valid:
-            return create_not_ready_feature_snapshot(
-                tf=tf,
-                ts_close=tf_ts_close,
-                bar=tf_bar,
-                reason=f"Indicators warming up for {tf}",
-            )
-        
-        return FeatureSnapshot(
-            tf=tf,
-            ts_close=tf_ts_close,
-            bar=tf_bar,
-            features=features,
-            ready=True,
+            ts_close=ts_close,
+            bar=bar,
+            mtf_frames=self._mtf_frames,
+            tf_mapping=self._tf_mapping,
+            config=self.config,
         )
     
     def run(
@@ -948,6 +653,12 @@ class BacktestEngine:
         df = prepared.df
         sim_start_idx = prepared.sim_start_index
         
+        # Array-backed hot loop: Build FeedStores for O(1) access
+        self._build_feed_stores()
+        exec_feed = self._exec_feed
+        num_bars = exec_feed.length
+        tf_delta = tf_duration(self.config.tf)
+        
         # Get resolved risk profile values
         risk_profile = self.config.risk_profile
         initial_equity = risk_profile.initial_equity
@@ -983,25 +694,23 @@ class BacktestEngine:
         stop_bar_index: Optional[int] = None
         stop_details: Optional[Dict[str, Any]] = None
         
-        for i in range(len(df)):
-            row = df.iloc[i]
+        for i in range(num_bars):
+            # Array-backed hot loop: O(1) access to bar data
+            # Get timestamps from FeedStore (no pandas)
+            ts_open = exec_feed.get_ts_open_datetime(i)
+            ts_close = exec_feed.get_ts_close_datetime(i)
             
-            # Compute ts_open and ts_close for canonical Bar
-            ts_open = row["timestamp"]  # DB stores ts_open
-            tf_delta = tf_duration(self.config.tf)
-            ts_close = ts_open + tf_delta
-            
-            # Create canonical Bar with explicit ts_open/ts_close
+            # Create canonical Bar with O(1) array access
             bar = CanonicalBar(
                 symbol=self.config.symbol,
                 tf=self.config.tf,
                 ts_open=ts_open,
                 ts_close=ts_close,
-                open=row["open"],
-                high=row["high"],
-                low=row["low"],
-                close=row["close"],
-                volume=row["volume"],
+                open=float(exec_feed.open[i]),
+                high=float(exec_feed.high[i]),
+                low=float(exec_feed.low[i]),
+                close=float(exec_feed.close[i]),
+                volume=float(exec_feed.volume[i]),
             )
             
             # Phase 4: Set bar context for artifact tracking
@@ -1019,22 +728,18 @@ class BacktestEngine:
             
             # Skip bars before simulation start (warm-up period)
             if i < sim_start_idx:
-                # Phase 3: Update caches during warmup (to populate HTF/MTF)
+                # Phase 3: Update HTF/MTF indices during warmup (for forward-fill)
                 htf_updated_warmup = False
                 mtf_updated_warmup = False
                 if self._multi_tf_mode:
-                    htf_updated_warmup, mtf_updated_warmup = self._refresh_tf_caches(bar.ts_close, bar)
+                    htf_updated_warmup, mtf_updated_warmup = self._update_htf_mtf_indices(bar.ts_close)
                 
-                # Phase 5: Also update history during warmup (for crossover detection)
-                # Extract features from row for history
+                # Array-backed: Extract features from FeedStore (O(1) access)
                 warmup_features = {}
-                ohlcv_cols = {"timestamp", "open", "high", "low", "close", "volume"}
-                for col in row.index:
-                    if col not in ohlcv_cols and pd.notna(row[col]):
-                        try:
-                            warmup_features[col] = float(row[col])
-                        except (ValueError, TypeError):
-                            pass
+                for key in exec_feed.indicators.keys():
+                    val = exec_feed.indicators[key][i]
+                    if not pd.isna(val):
+                        warmup_features[key] = float(val)
                 
                 warmup_features_exec = FeatureSnapshot(
                     tf=self.config.tf,
@@ -1056,23 +761,18 @@ class BacktestEngine:
                 prev_bar = bar
                 continue
             
-            # Phase 3: Refresh TF caches at current bar close
+            # Phase 3: Update HTF/MTF indices at current bar close (O(1) lookup)
             htf_updated = False
             mtf_updated = False
             if self._multi_tf_mode:
-                htf_updated, mtf_updated = self._refresh_tf_caches(bar.ts_close, bar)
+                htf_updated, mtf_updated = self._update_htf_mtf_indices(bar.ts_close)
             
-            # Phase 1: Update history windows (before snapshot build)
-            # Extract ALL numeric features from row (not hardcoded columns)
-            # This supports both legacy (ema_fast, etc.) and IdeaCard (ema_20, atr_14, etc.)
+            # Array-backed: Extract features from FeedStore (O(1) access)
             features_for_history = {}
-            ohlcv_cols = {"timestamp", "open", "high", "low", "close", "volume"}
-            for col in row.index:
-                if col not in ohlcv_cols and pd.notna(row[col]):
-                    try:
-                        features_for_history[col] = float(row[col])
-                    except (ValueError, TypeError):
-                        pass  # Skip non-numeric columns
+            for key in exec_feed.indicators.keys():
+                val = exec_feed.indicators[key][i]
+                if not pd.isna(val):
+                    features_for_history[key] = float(val)
             
             current_features_exec = FeatureSnapshot(
                 tf=self.config.tf,
@@ -1085,76 +785,42 @@ class BacktestEngine:
             # NOTE: _update_history is called AFTER strategy evaluation (at end of loop)
             # to ensure crossover detection can access PREVIOUS bar's features correctly.
             # See: history_features_exec[-1] should be bar N-1 when evaluating bar N.
-            
-            # ========== STOP CHECKS WITH PRECEDENCE (after warmup only) ==========
-            # Stop precedence (highest to lowest priority):
-            # 1. LIQUIDATED - equity <= maintenance margin (terminal)
-            # 2. EQUITY_FLOOR_HIT - equity <= stop_equity_usdt (terminal)
-            # 3. STRATEGY_STARVED - can't meet entry gate (non-terminal, continues)
-            
+
+            # ========== STOP CHECKS (delegated to engine_stops module) ==========
             # Phase 1: only close-as-mark supported (explicit/configurable)
             if risk_profile.mark_price_source != "close":
                 raise ValueError(
                     f"Unsupported mark_price_source='{risk_profile.mark_price_source}'. "
                     "Phase 1 supports 'close' only."
                 )
-            
-            terminal_stop = False
-            
-            # 1. LIQUIDATED - equity <= maintenance margin (with position)
-            if self._exchange.is_liquidatable:
-                stop_classification = StopReason.LIQUIDATED
-                stop_reason_detail = (
-                    f"Liquidation: equity ${self._exchange.equity_usdt:.2f} "
-                    f"<= maintenance margin ${self._exchange.maintenance_margin:.2f}"
+
+            stop_result = check_all_stop_conditions(
+                exchange=self._exchange,
+                risk_profile=risk_profile,
+                bar_ts_close=bar.ts_close,
+                bar_index=i,
+                logger=self.logger,
+            )
+
+            if stop_result.terminal_stop:
+                # Capture stop metadata before handling
+                stop_classification = stop_result.classification
+                stop_reason_detail = stop_result.reason_detail
+                stop_reason = stop_result.legacy_reason
+
+                # Handle terminal stop (cancel orders, close position)
+                handle_terminal_stop(
+                    exchange=self._exchange,
+                    bar_close_price=bar.close,
+                    bar_ts_close=bar.ts_close,
+                    stop_reason=stop_reason,
                 )
-                stop_reason = "liquidated"  # Legacy
-                terminal_stop = True
-            
-            # 2. EQUITY_FLOOR_HIT - equity <= stop_equity_usdt (configurable threshold)
-            elif self._exchange.equity_usdt <= risk_profile.stop_equity_usdt:
-                stop_classification = StopReason.EQUITY_FLOOR_HIT
-                stop_reason_detail = (
-                    f"Equity floor hit: equity ${self._exchange.equity_usdt:.2f} "
-                    f"<= threshold ${risk_profile.stop_equity_usdt:.2f}"
-                )
-                stop_reason = "account_blown"  # Legacy compat
-                terminal_stop = True
-            
-            # 3. STRATEGY_STARVED - can't meet entry gate for min_trade_usdt (non-terminal)
-            elif not self._exchange.entries_disabled:
-                # Check preemptive starvation: can we open a min_trade_usdt position?
-                required_for_min = self._exchange.compute_required_for_entry(risk_profile.min_trade_usdt)
-                if self._exchange.available_balance_usdt < required_for_min:
-                    # Set starvation on exchange (use ts_close as evaluation time)
-                    self._exchange.set_starvation(bar.ts_close, i, "INSUFFICIENT_ENTRY_GATE")
-                    # Cancel any pending entry order
-                    self._exchange.cancel_pending_order()
-                    self.logger.info(
-                        f"Strategy starved at bar {i}: available=${self._exchange.available_balance_usdt:.2f} "
-                        f"< required=${required_for_min:.2f} for min_trade_usdt=${risk_profile.min_trade_usdt}"
-                    )
-            
-            # Handle terminal stops (halt immediately)
-            if terminal_stop:
-                # Cancel any pending entry order
-                self._exchange.cancel_pending_order()
-                
-                # Force close any open position at current bar close
-                # Use ts_close as stop time (bar close)
-                if self._exchange.position is not None:
-                    self._exchange.force_close_position(
-                        bar.close,
-                        bar.ts_close,  # Use ts_close for exit time
-                        reason=stop_reason,
-                    )
-                
+
                 # Capture stop metadata (full exchange snapshot)
-                # Use ts_close as stop timestamp (strategy evaluation time)
                 stop_ts = bar.ts_close
                 stop_bar_index = i
                 stop_details = self._exchange.get_state()
-                
+
                 # Record final equity and account curve points at ts_close
                 self._equity_curve.append(EquityPoint(
                     timestamp=bar.ts_close,
@@ -1170,7 +836,7 @@ class BacktestEngine:
                     has_position=self._exchange.position is not None,
                     entries_disabled=self._exchange.entries_disabled,
                 ))
-                
+
                 self.logger.warning(
                     f"Terminal stop: {stop_classification.value} at bar {i}, "
                     f"equity=${self._exchange.equity_usdt:.2f}, "
@@ -1178,10 +844,20 @@ class BacktestEngine:
                 )
                 break
             # ========== END STOP CHECKS ==========
+
+            # Phase 3: Accumulate 1m quotes and freeze rollups at exec close
+            # This must happen BEFORE snapshot creation so rollups are available
+            self._accumulate_1m_quotes(bar.ts_close)
+            rollups = self._freeze_rollups()
+
+            # Array-backed hot loop: Build RuntimeSnapshotView (O(1) creation)
+            # No DataFrame access, no materialized feature dicts
+            snapshot = self._build_snapshot_view(i, step_result, rollups=rollups)
             
-            # Build RuntimeSnapshot for strategy (Phase 2/3/4)
-            # Phase 4: Use mark_price from StepResult (computed once by exchange)
-            snapshot = self._build_snapshot(row, bar, i, step_result)
+            # Phase 4: Invoke snapshot callback if present (audit-only, no side effects)
+            # Callback is invoked AFTER snapshot built, BEFORE strategy called
+            if self._on_snapshot is not None:
+                self._on_snapshot(snapshot, i, self._current_htf_idx, self._current_mtf_idx)
             
             # Phase 4: Update exchange with snapshot readiness for artifact tracking
             self._exchange.set_bar_context(i, snapshot_ready=snapshot.ready)
@@ -1221,8 +897,10 @@ class BacktestEngine:
                 f"Lookahead violation: snapshot.ts_close ({snapshot.ts_close}) != "
                 f"bar.ts_close ({bar.ts_close})"
             )
-            assert snapshot.features_exec.ts_close == bar.ts_close, (
-                f"Lookahead violation: features_exec.ts_close ({snapshot.features_exec.ts_close}) != "
+            # RuntimeSnapshotView has exec_ctx with ts_close property
+            exec_ts_close = snapshot.exec_ctx.ts_close if hasattr(snapshot, 'exec_ctx') else snapshot.features_exec.ts_close
+            assert exec_ts_close == bar.ts_close, (
+                f"Lookahead violation: exec ts_close ({exec_ts_close}) != "
                 f"bar.ts_close ({bar.ts_close})"
             )
             # ========== END LOOKAHEAD GUARD ==========
@@ -1267,10 +945,11 @@ class BacktestEngine:
         
         # Close any remaining position at end (if not already stopped early)
         if stop_classification is None and self._exchange.position is not None:
-            last_row = df.iloc[-1]
+            # Array-backed: use exec_feed for O(1) access
+            last_idx = exec_feed.length - 1
             self._exchange.force_close_position(
-                last_row["close"],
-                last_row["timestamp"],
+                float(exec_feed.close[last_idx]),
+                exec_feed.get_ts_open_datetime(last_idx),  # Use ts_open for fill time
             )
         
         # Capture end-of-data snapshot if not already captured from terminal stop
@@ -1282,27 +961,86 @@ class BacktestEngine:
         
         # Count bars in position for time-in-market metric
         bars_in_position = sum(1 for a in self._account_curve if a.has_position)
-        
-        # Compute structured metrics (legacy)
+
+        # Compute margin stress metrics from account curve
+        min_margin_ratio = 1.0
+        margin_calls = 0
+        closest_liquidation_pct = 100.0
+
+        for a in self._account_curve:
+            # Margin ratio: equity / used_margin (lower = more stressed)
+            if a.used_margin_usdt > 0:
+                ratio = a.equity_usdt / a.used_margin_usdt
+                if ratio < min_margin_ratio:
+                    min_margin_ratio = ratio
+
+            # Margin call: free_margin < 0
+            if a.free_margin_usdt < 0:
+                margin_calls += 1
+
+            # Liquidation proximity: (equity - MM) / equity * 100
+            if a.equity_usdt > 0 and a.maintenance_margin_usdt > 0:
+                buffer_pct = (a.equity_usdt - a.maintenance_margin_usdt) / a.equity_usdt * 100
+                if buffer_pct < closest_liquidation_pct:
+                    closest_liquidation_pct = buffer_pct
+
+        # Compute leverage/exposure metrics from account curve
+        # Leverage = position_value / equity = (used_margin / IMR) / equity
+        imr = risk_profile.initial_margin_rate
+        leverage_values = []
+        max_gross_exposure_pct = 0.0
+
+        for a in self._account_curve:
+            if a.has_position and a.used_margin_usdt > 0 and a.equity_usdt > 0 and imr > 0:
+                # position_value = used_margin / IMR
+                position_value = a.used_margin_usdt / imr
+                leverage = position_value / a.equity_usdt
+                leverage_values.append(leverage)
+                exposure_pct = (position_value / a.equity_usdt) * 100
+                if exposure_pct > max_gross_exposure_pct:
+                    max_gross_exposure_pct = exposure_pct
+
+        avg_leverage_used = sum(leverage_values) / len(leverage_values) if leverage_values else 0.0
+
+        # Compute average MAE/MFE from trades
+        trades = self._exchange.trades
+        if trades:
+            mae_avg_pct = sum(t.mae_pct for t in trades) / len(trades)
+            mfe_avg_pct = sum(t.mfe_pct for t in trades) / len(trades)
+        else:
+            mae_avg_pct = 0.0
+            mfe_avg_pct = 0.0
+
+        # Capture first/last price for benchmark comparison
+        exec_feed = self._exec_feed
+        sim_start_idx = self._prepared_frame.sim_start_index
+        first_price = float(exec_feed.close[sim_start_idx])
+        last_price = float(exec_feed.close[exec_feed.length - 1])
+
+        # Compute backtest metrics
         metrics = compute_backtest_metrics(
             equity_curve=self._equity_curve,
             trades=self._exchange.trades,
             tf=self.config.tf,
             initial_equity=initial_equity,
             bars_in_position=bars_in_position,
-        )
-        
-        # Compute proof-grade metrics (v2)
-        metrics_v2 = compute_proof_metrics(
-            account_curve=self._account_curve,
-            equity_curve=self._equity_curve,
-            trades=self._exchange.trades,
-            tf=self.config.tf,
-            initial_equity=initial_equity,
+            # Entry friction from exchange
             entry_attempts=self._exchange.entry_attempts_count,
             entry_rejections=self._exchange.entry_rejections_count,
-            first_starved_ts=self._exchange.first_starved_ts,
-            first_starved_bar_index=self._exchange.first_starved_bar_index,
+            # Margin stress from account curve
+            min_margin_ratio=min_margin_ratio,
+            margin_calls=margin_calls,
+            # Liquidation proximity from account curve
+            closest_liquidation_pct=closest_liquidation_pct,
+            # Benchmark comparison
+            first_price=first_price,
+            last_price=last_price,
+            # Leverage/exposure metrics
+            avg_leverage_used=avg_leverage_used,
+            max_gross_exposure_pct=max_gross_exposure_pct,
+            # Trade quality (MAE/MFE from trade-level tracking)
+            mae_avg_pct=mae_avg_pct,
+            mfe_avg_pct=mfe_avg_pct,
         )
         
         finished_at = datetime.now()
@@ -1355,13 +1093,11 @@ class BacktestEngine:
             risk_mode=self.config.risk_mode,
             data_env=self.config.data_build.env,
             metrics=metrics,
-            metrics_v2=metrics_v2,
             risk_initial_equity_used=risk_profile.initial_equity,
             risk_per_trade_pct_used=risk_profile.risk_per_trade_pct,
             risk_max_leverage_used=risk_profile.max_leverage,
             # Warm-up and window metadata
             warmup_bars=prepared.warmup_bars,
-            warmup_multiplier=prepared.warmup_multiplier,
             max_indicator_lookback=prepared.max_indicator_lookback,
             data_window_requested_start=prepared.requested_start.isoformat(),
             data_window_requested_end=prepared.requested_end.isoformat(),
@@ -1416,138 +1152,111 @@ class BacktestEngine:
     def _refresh_tf_caches(self, ts_close: datetime, bar: CanonicalBar) -> tuple:
         """
         Refresh HTF/MTF caches at current bar close.
-        
+
         Phase 3: Uses TimeframeCache.refresh_step() with factory functions
         that build FeatureSnapshots from the precomputed TF DataFrames.
-        
+
         Updates are deterministic: HTF first, then MTF.
-        
+
+        Delegates to engine_snapshot.refresh_tf_caches_impl().
+
         Args:
             ts_close: Current LTF close timestamp
             bar: Current LTF bar (for fallback)
-            
+
         Returns:
             Tuple of (htf_updated, mtf_updated) booleans
         """
-        htf_tf = self._tf_mapping["htf"]
-        mtf_tf = self._tf_mapping["mtf"]
-        
-        # Factory function for HTF snapshot
-        def htf_factory() -> FeatureSnapshot:
-            return self._get_tf_features_at_close(htf_tf, ts_close, bar)
-        
-        # Factory function for MTF snapshot
-        def mtf_factory() -> FeatureSnapshot:
-            return self._get_tf_features_at_close(mtf_tf, ts_close, bar)
-        
-        return self._tf_cache.refresh_step(ts_close, htf_factory, mtf_factory)
+        def get_tf_features(tf: str, ts: datetime) -> FeatureSnapshot:
+            return self._get_tf_features_at_close(tf, ts, bar)
+
+        return refresh_tf_caches_impl(
+            ts_close=ts_close,
+            tf_mapping=self._tf_mapping,
+            tf_cache=self._tf_cache,
+            get_tf_features_func=get_tf_features,
+        )
     
-    def _build_snapshot(
-        self,
-        row: pd.Series,
-        bar: CanonicalBar,
-        bar_index: int,
-        step_result: Optional["StepResult"] = None,
-    ) -> RuntimeSnapshot:
+    def _update_htf_mtf_indices(self, exec_ts_close: datetime) -> tuple:
         """
-        Build a RuntimeSnapshot from current bar data.
-        
-        Phase 1: Includes history for crossover detection and structure SL.
-        Phase 2: Uses SnapshotBuilder with single-TF mode (all TFs = LTF).
-        Phase 3: Uses TimeframeCache for HTF/MTF carry-forward in multi-TF mode.
-        Phase 4: Uses mark_price from StepResult (computed once by exchange).
-        
+        Update HTF/MTF forward-fill indices for RuntimeSnapshotView.
+
+        Uses O(1) ts_close_ms_to_idx mapping from FeedStore.
+        Called at each exec bar close to update forward-filled indices.
+
+        Delegates to engine_snapshot.update_htf_mtf_indices_impl().
+
         Args:
-            row: DataFrame row with indicator values
-            bar: Current canonical bar
-            bar_index: Index of current bar
-            step_result: Optional StepResult from exchange (Phase 4)
+            exec_ts_close: Current exec bar's ts_close
+
+        Returns:
+            Tuple of (htf_updated, mtf_updated) booleans
         """
-        exchange = self._exchange
-        
-        # Extract ALL numeric features (not hardcoded list)
-        features = {}
-        ohlcv_cols = {"timestamp", "open", "high", "low", "close", "volume", "ts_close"}
-        for col in row.index:
-            if col not in ohlcv_cols and pd.notna(row[col]):
-                try:
-                    features[col] = float(row[col])
-                except (ValueError, TypeError):
-                    pass
-        
-        # Build ExchangeState from exchange
-        exchange_state = build_exchange_state_from_exchange(exchange)
-        
-        # Build exec-TF FeatureSnapshot
-        features_exec = FeatureSnapshot(
-            tf=self.config.tf,
-            ts_close=bar.ts_close,
-            bar=bar,
-            features=features,
-            ready=True,
+        htf_updated, mtf_updated, new_htf_idx, new_mtf_idx = update_htf_mtf_indices_impl(
+            exec_ts_close=exec_ts_close,
+            htf_feed=self._htf_feed,
+            mtf_feed=self._mtf_feed,
+            exec_feed=self._exec_feed,
+            current_htf_idx=self._current_htf_idx,
+            current_mtf_idx=self._current_mtf_idx,
         )
-        
-        # Phase 4: Use mark_price from StepResult (computed once by exchange)
-        # This ensures SnapshotBuilder never calls PriceModel
-        if step_result is not None and step_result.mark_price is not None:
-            mark_price = step_result.mark_price
-            mark_price_source = step_result.mark_price_source
-        else:
-            # Fallback for backward compatibility (shouldn't happen in normal flow)
-            mark_price = bar.close
-            mark_price_source = self.config.risk_profile.mark_price_source
-        
-        # Phase 1: Get history tuples (immutable)
-        history_bars_exec, history_features_exec, history_features_htf, history_features_mtf = self._get_history_tuples()
-        history_ready = self._is_history_ready()
-        
-        # Phase 3: Multi-TF mode - use cached HTF/MTF features
-        if self._multi_tf_mode:
-            features_htf = self._tf_cache.get_htf()
-            features_mtf = self._tf_cache.get_mtf()
-            
-            # Use SnapshotBuilder with cached features (may be None if not yet ready)
-            return self._snapshot_builder.build_with_defaults(
-                ts_close=bar.ts_close,
-                bar_ltf=bar,
-                mark_price=mark_price,
-                mark_price_source=mark_price_source,
-                exchange_state=exchange_state,
-                features_ltf=features_exec,
-                features_htf=features_htf,
-                features_mtf=features_mtf,
-                history_bars_exec=history_bars_exec,
-                history_features_exec=history_features_exec,
-                history_features_htf=history_features_htf,
-                history_features_mtf=history_features_mtf,
-                history_ready=history_ready,
-            )
-        
-        # Single-TF mode: use exec features for all TFs
-        return self._snapshot_builder.build_with_defaults(
-            ts_close=bar.ts_close,
-            bar_ltf=bar,
-            mark_price=mark_price,
-            mark_price_source=mark_price_source,
-            exchange_state=exchange_state,
-            features_ltf=features_exec,
-            features_htf=features_exec,
-            features_mtf=features_exec,
-            history_bars_exec=history_bars_exec,
-            history_features_exec=history_features_exec,
-            history_features_htf=history_features_htf,
-            history_features_mtf=history_features_mtf,
-            history_ready=history_ready,
+
+        self._current_htf_idx = new_htf_idx
+        self._current_mtf_idx = new_mtf_idx
+
+        return htf_updated, mtf_updated
+    
+    def _build_snapshot_view(
+        self,
+        exec_idx: int,
+        step_result: Optional["StepResult"] = None,
+        rollups: Optional[Dict[str, float]] = None,
+    ) -> RuntimeSnapshotView:
+        """
+        Build RuntimeSnapshotView for array-backed hot loop.
+
+        O(1) snapshot creation - just sets indices, no data copying.
+
+        Delegates to engine_snapshot.build_snapshot_view_impl().
+
+        Args:
+            exec_idx: Current exec bar index
+            step_result: Optional StepResult from exchange (for mark_price)
+            rollups: Optional px.rollup.* values from 1m accumulation
+
+        Returns:
+            RuntimeSnapshotView ready for strategy evaluation
+        """
+        return build_snapshot_view_impl(
+            exec_idx=exec_idx,
+            multi_tf_feed_store=self._multi_tf_feed_store,
+            exec_feed=self._exec_feed,
+            htf_feed=self._htf_feed,
+            mtf_feed=self._mtf_feed,
+            exchange=self._exchange,
+            multi_tf_mode=self._multi_tf_mode,
+            current_htf_idx=self._current_htf_idx,
+            current_mtf_idx=self._current_mtf_idx,
+            history_config=self._history_config,
+            is_history_ready=self._is_history_ready(),
+            risk_profile=self.config.risk_profile,
+            step_result=step_result,
+            rollups=rollups,
         )
     
+    # DELETED: _build_snapshot() - Legacy RuntimeSnapshot builder removed.
+    # All snapshot building now uses _build_snapshot_view() for RuntimeSnapshotView.
     
     def _process_signal(
         self,
         signal: Signal,
         bar: CanonicalBar,
-        snapshot: RuntimeSnapshot,
+        snapshot: "RuntimeSnapshotView",
     ) -> None:
-        """Process a strategy signal through risk sizing and submit order."""
+        """Process a strategy signal through risk sizing and submit order.
+        
+        REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
+        """
         exchange = self._exchange
         
         # Handle FLAT signal (close position)
@@ -1603,150 +1312,20 @@ class BacktestEngine:
         )
     
     def _calculate_drawdowns(self) -> None:
-        """Calculate drawdown values for equity curve."""
-        if not self._equity_curve:
-            return
-        
-        peak = self._equity_curve[0].equity
-        
-        for point in self._equity_curve:
-            if point.equity > peak:
-                peak = point.equity
-            
-            point.drawdown = peak - point.equity
-            point.drawdown_pct = (point.drawdown / peak * 100) if peak > 0 else 0.0
-    
+        """Calculate drawdown values for equity curve.
+
+        Delegates to engine_artifacts.calculate_drawdowns_impl().
+        """
+        calculate_drawdowns_impl(self._equity_curve)
+
     def _write_artifacts(self, result: BacktestResult) -> None:
-        """Write run artifacts to run_dir."""
-        if not self.run_dir:
-            return
-        
-        self.run_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Write trades.csv (Phase 4: includes bar indices, exit trigger, readiness)
-        trades_path = self.run_dir / "trades.csv"
-        if result.trades:
-            trades_df = pd.DataFrame([
-                {
-                    "trade_id": t.trade_id,
-                    "symbol": t.symbol,
-                    "side": t.side.upper(),
-                    "entry_time": t.entry_time.isoformat(),
-                    "exit_time": t.exit_time.isoformat() if t.exit_time else "",
-                    "entry_price": t.entry_price,
-                    "exit_price": t.exit_price or 0,
-                    "qty": t.entry_size,
-                    "pnl": t.net_pnl,
-                    "pnl_pct": t.pnl_pct,
-                    # Phase 4: Bar indices
-                    "entry_bar_index": t.entry_bar_index,
-                    "exit_bar_index": t.exit_bar_index,
-                    "duration_bars": t.duration_bars,
-                    # Phase 4: Exit trigger classification
-                    "exit_reason": t.exit_reason or "",
-                    "exit_price_source": t.exit_price_source or "",
-                    # Phase 4: Snapshot readiness at entry/exit
-                    "entry_ready": t.entry_ready,
-                    "exit_ready": t.exit_ready if t.exit_ready is not None else "",
-                    # Risk levels
-                    "stop_loss": t.stop_loss or "",
-                    "take_profit": t.take_profit or "",
-                }
-                for t in result.trades
-            ])
-            trades_df.to_csv(trades_path, index=False)
-        else:
-            # Write empty file with headers
-            pd.DataFrame(columns=[
-                "trade_id", "symbol", "side", "entry_time", "exit_time",
-                "entry_price", "exit_price", "qty", "pnl", "pnl_pct",
-                # Phase 4 fields
-                "entry_bar_index", "exit_bar_index", "duration_bars",
-                "exit_reason", "exit_price_source",
-                "entry_ready", "exit_ready",
-                "stop_loss", "take_profit"
-            ]).to_csv(trades_path, index=False)
-        
-        # Write equity.csv
-        equity_path = self.run_dir / "equity.csv"
-        equity_df = pd.DataFrame([
-            {
-                "ts": e.timestamp.isoformat(),
-                "equity": e.equity,
-                "drawdown_abs": e.drawdown,
-                "drawdown_pct": e.drawdown_pct,
-            }
-            for e in result.equity_curve
-        ])
-        equity_df.to_csv(equity_path, index=False)
-        
-        # Write account_curve.csv (proof-grade margin state per bar)
-        account_curve_path = self.run_dir / "account_curve.csv"
-        if result.account_curve:
-            account_df = pd.DataFrame([
-                {
-                    "ts": a.timestamp.isoformat(),
-                    "equity_usdt": a.equity_usdt,
-                    "used_margin_usdt": a.used_margin_usdt,
-                    "free_margin_usdt": a.free_margin_usdt,
-                    "available_balance_usdt": a.available_balance_usdt,
-                    "maintenance_margin_usdt": a.maintenance_margin_usdt,
-                    "has_position": a.has_position,
-                    "entries_disabled": a.entries_disabled,
-                }
-                for a in result.account_curve
-            ])
-            account_df.to_csv(account_curve_path, index=False)
-        else:
-            pd.DataFrame(columns=[
-                "ts", "equity_usdt", "used_margin_usdt", "free_margin_usdt",
-                "available_balance_usdt", "maintenance_margin_usdt",
-                "has_position", "entries_disabled"
-            ]).to_csv(account_curve_path, index=False)
-        
-        # Compute artifact hashes for reproducibility
-        import hashlib
-        artifact_hashes = {}
-        for path_name, path in [
-            ("trades.csv", trades_path),
-            ("equity.csv", equity_path),
-            ("account_curve.csv", account_curve_path),
-        ]:
-            if path.exists():
-                with open(path, "rb") as f:
-                    artifact_hashes[path_name] = hashlib.sha256(f.read()).hexdigest()
-        
-        # Build result dict with artifact hashes
-        result_dict = result.to_dict()
-        result_dict["artifact_hashes"] = artifact_hashes
-        result_dict["account_curve_path"] = "account_curve.csv"
-        
-        # Write result.json
-        result_path = self.run_dir / "result.json"
-        with open(result_path, "w") as f:
-            json.dump(result_dict, f, indent=2)
-        
-        self.logger.info(f"Artifacts written to {self.run_dir}")
+        """Write run artifacts to run_dir.
+
+        Delegates to engine_artifacts.write_artifacts_impl().
+        """
+        if self.run_dir:
+            write_artifacts_impl(result, self.run_dir, self.logger)
 
 
-def run_backtest(
-    system_id: str,
-    window_name: str,
-    strategy: Callable[[RuntimeSnapshot, Dict[str, Any]], Optional[Signal]],
-    run_dir: Optional[Path] = None,
-) -> BacktestResult:
-    """
-    Convenience function to run a backtest.
-    
-    Args:
-        system_id: System configuration ID
-        window_name: Window to use ("hygiene" or "test")
-        strategy: Strategy function
-        run_dir: Optional directory for artifacts
-        
-    Returns:
-        BacktestResult
-    """
-    config = load_system_config(system_id, window_name)
-    engine = BacktestEngine(config, window_name, run_dir)
-    return engine.run(strategy)
+# NOTE: Factory functions (run_backtest, create_engine_from_idea_card, run_engine_with_idea_card)
+# are now in engine_factory.py and imported at the top of this module for backward compatibility.

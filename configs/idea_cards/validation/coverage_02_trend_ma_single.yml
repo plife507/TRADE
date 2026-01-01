@@ -1,0 +1,119 @@
+id: coverage_02_trend_ma_single
+version: 1.0.0
+name: Coverage - Single MA/Trend
+description: Tests all single-output MA indicators (EMA, SMA, KAMA, ALMA, WMA, DEMA,
+  TEMA, TRIMA, ZLMA, LINREG)
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- ETHUSDT
+tf_configs:
+  exec:
+    tf: 1h
+    role: exec
+    warmup_bars: 150
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_21
+      params:
+        length: 21
+      input_source: close
+    - indicator_type: sma
+      output_key: sma_20
+      params:
+        length: 20
+      input_source: close
+    - indicator_type: kama
+      output_key: kama_20
+      params:
+        length: 20
+      input_source: close
+    - indicator_type: alma
+      output_key: alma_20
+      params:
+        length: 20
+        sigma: 6.0
+        offset: 0.85
+      input_source: close
+    - indicator_type: wma
+      output_key: wma_20
+      params:
+        length: 20
+      input_source: close
+    - indicator_type: dema
+      output_key: dema_21
+      params:
+        length: 21
+      input_source: close
+    - indicator_type: tema
+      output_key: tema_21
+      params:
+        length: 21
+      input_source: close
+    - indicator_type: trima
+      output_key: trima_20
+      params:
+        length: 20
+      input_source: close
+    - indicator_type: zlma
+      output_key: zlma_21
+      params:
+        length: 21
+      input_source: close
+    - indicator_type: linreg
+      output_key: linreg_20
+      params:
+        length: 20
+      input_source: close
+    required_indicators:
+    - alma_20
+    - dema_21
+    - ema_21
+    - kama_20
+    - linreg_20
+    - sma_20
+    - tema_21
+    - trima_20
+    - wma_20
+    - zlma_21
+position_policy:
+  mode: long_only
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: ema_21
+      operator: cross_above
+      value: sma_20
+      is_indicator_comparison: true
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: ema_21
+      operator: cross_below
+      value: sma_20
+      is_indicator_comparison: true
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 3.0

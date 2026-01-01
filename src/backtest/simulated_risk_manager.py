@@ -7,15 +7,19 @@ This is NOT connected to any exchange - purely for testing.
 Sizing models:
 - percent_equity: Risk-based sizing using stop distance when available,
   capped by max leverage.
+
+REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from ..core.risk_manager import Signal
 from .system_config import RiskProfileConfig
 from .types import Trade
-from .runtime.types import RuntimeSnapshot
+
+if TYPE_CHECKING:
+    from .runtime.snapshot_view import RuntimeSnapshotView
 
 
 @dataclass
@@ -32,6 +36,8 @@ class SimulatedRiskManager:
     
     Does NOT connect to any exchange. Tracks equity internally
     and computes position sizes based on the risk profile.
+    
+    REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
     
     Sizing model (percent_equity):
     1. Compute risk dollars: risk$ = equity * (risk_per_trade_pct / 100)
@@ -63,19 +69,29 @@ class SimulatedRiskManager:
     
     def size_order(
         self,
-        snapshot: RuntimeSnapshot,
+        snapshot: "RuntimeSnapshotView",
         signal: Signal,
     ) -> SizingResult:
         """
         Compute position size for a signal.
         
         Args:
-            snapshot: Current market snapshot (RuntimeSnapshot)
+            snapshot: Current market snapshot (RuntimeSnapshotView ONLY)
             signal: Trading signal with entry price in metadata
             
         Returns:
             SizingResult with computed size and method used
+            
+        Raises:
+            TypeError: If snapshot is not RuntimeSnapshotView
         """
+        # Require RuntimeSnapshotView — fail fast if legacy snapshot passed
+        if not hasattr(snapshot, 'close'):
+            raise TypeError(
+                f"SimulatedRiskManager requires RuntimeSnapshotView (with .close property). "
+                f"Got {type(snapshot).__name__}. Legacy RuntimeSnapshot is not supported."
+            )
+        
         if self._profile.sizing_model == "percent_equity":
             return self._size_percent_equity(snapshot, signal)
         elif self._profile.sizing_model == "fixed_notional":
@@ -86,7 +102,7 @@ class SimulatedRiskManager:
     
     def _size_percent_equity(
         self,
-        snapshot: RuntimeSnapshot,
+        snapshot: "RuntimeSnapshotView",
         signal: Signal,
     ) -> SizingResult:
         """
@@ -104,11 +120,11 @@ class SimulatedRiskManager:
         # Risk dollars
         risk_dollars = equity * (risk_pct / 100.0)
         
+        # Get entry price from RuntimeSnapshotView.close (O(1) array access)
+        entry_price = snapshot.close
+        
         # Try to get stop distance from signal metadata
         stop_loss = None
-        # Get close price from RuntimeSnapshot
-        entry_price = snapshot.bar_ltf.close
-        
         if signal.metadata:
             stop_loss = signal.metadata.get("stop_loss")
             entry_price = signal.metadata.get("entry_price", entry_price)

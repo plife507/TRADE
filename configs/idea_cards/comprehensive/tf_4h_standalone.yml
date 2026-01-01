@@ -1,0 +1,142 @@
+id: tf_4h_standalone
+version: 1.0.0
+name: 4h Timeframe Standalone Test
+description: Tests 4h timeframe with trend + band indicators standalone
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- BTCUSDT
+tf_configs:
+  exec:
+    tf: 4h
+    role: exec
+    warmup_bars: 100
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_20
+      params:
+        length: 20
+      input_source: close
+    - indicator_type: ema
+      output_key: ema_50
+      params:
+        length: 50
+      input_source: close
+    - indicator_type: rsi
+      output_key: rsi_14
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: atr
+      output_key: atr_14
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: adx
+      output_key: adx
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: kc
+      output_key: kc
+      params:
+        length: 20
+        scalar: 1.5
+      input_source: close
+    - indicator_type: stoch
+      output_key: stoch
+      params:
+        k: 14
+        d: 3
+        smooth_k: 3
+      input_source: close
+    required_indicators:
+    - ema_20
+    - ema_50
+    - rsi_14
+    - atr_14
+    - adx_adx
+    - adx_adxr
+    - adx_dmn
+    - adx_dmp
+    - kc_basis
+    - kc_lower
+    - kc_upper
+    - stoch_k
+    - stoch_d
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: close
+      operator: gt
+      value: ema_50
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: adx_adx
+      operator: gt
+      value: 20
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: stoch_k
+      operator: lt
+      value: 30
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: close
+      operator: lt
+      value: ema_50
+      is_indicator_comparison: true
+    - tf: exec
+      indicator_key: adx_adx
+      operator: gt
+      value: 20
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: stoch_k
+      operator: gt
+      value: 70
+      is_indicator_comparison: false
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: stoch_k
+      operator: gt
+      value: 80
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: stoch_k
+      operator: lt
+      value: 20
+      is_indicator_comparison: false
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 2.5
+    atr_key: atr_14
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 3.0

@@ -101,9 +101,11 @@ def sync_range(
     start: datetime,
     end: datetime,
     timeframes: List[str] = None,
+    progress_callback: Callable = None,
+    show_spinner: bool = True,
 ) -> Dict[str, int]:
-    """Sync a specific date range."""
-    TIMEFRAMES, _, _, _ = _get_constants()
+    """Sync a specific date range with progress logging."""
+    TIMEFRAMES, _, ActivityEmoji, ActivitySpinner = _get_constants()
     
     if isinstance(symbols, str):
         symbols = [symbols]
@@ -111,17 +113,49 @@ def sync_range(
     symbols = [s.upper() for s in symbols]
     timeframes = timeframes or list(TIMEFRAMES.keys())
     results = {}
+    total_synced = 0
+    
+    store.logger.info(f"Syncing {len(symbols)} symbol(s) x {len(timeframes)} TF(s): {start.date()} to {end.date()}")
     
     for symbol in symbols:
         for tf in timeframes:
             key = f"{symbol}_{tf}"
+            
+            spinner = None
+            if show_spinner and not progress_callback:
+                spinner = ActivitySpinner(f"Fetching {symbol} {tf} ({start.date()} to {end.date()})", ActivityEmoji.CANDLE)
+                spinner.start()
+            
             try:
                 count = _sync_symbol_timeframe(store, symbol, tf, start, end)
                 results[key] = count
+                total_synced += max(0, count)
+                
+                if spinner:
+                    spinner.stop(f"{symbol} {tf}: {count:,} candles {ActivityEmoji.SPARKLE}")
+                elif progress_callback:
+                    emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
+                    progress_callback(symbol, tf, f"{emoji} done ({count:,} candles)")
+                else:
+                    # Log progress even without spinner/callback
+                    store.logger.info(f"  {symbol} {tf}: {count:,} candles synced")
+                    
+            except KeyboardInterrupt:
+                store._cancelled = True
+                store.logger.info("Sync interrupted by user")
+                if spinner:
+                    spinner.stop(f"{symbol} {tf}: cancelled", success=False)
+                break
             except Exception as e:
                 store.logger.error(f"Failed to sync {key}: {e}")
                 results[key] = -1
+                if spinner:
+                    spinner.stop(f"{symbol} {tf}: error", success=False)
+        
+        if store._cancelled:
+            break
     
+    store.logger.info(f"Sync complete: {total_synced:,} total candles")
     return results
 
 

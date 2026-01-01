@@ -5,7 +5,7 @@ Provides all shared types, enums, events, and snapshots:
 - Order, Fill, Position: Trade lifecycle types
 - Bar: Re-exported from runtime.types (canonical Bar with ts_open/ts_close)
 - FundingEvent, LiquidationEvent: Exchange events
-- PriceSnapshot, ExchangeState, StepResult: State snapshots
+- PriceSnapshot, SimulatorExchangeState, StepResult: State snapshots
 
 Type design principles:
 - Immutable where possible (frozen dataclasses)
@@ -63,24 +63,8 @@ class FillReason(str, Enum):
     FORCE_CLOSE = "force_close"
 
 
-class StopReason(str, Enum):
-    """
-    Stop reason taxonomy for backtest termination.
-    
-    Terminal stops (halt immediately):
-    - LIQUIDATED: equity <= maintenance margin
-    - EQUITY_FLOOR_HIT: equity <= stop_equity_usdt threshold
-    
-    Non-terminal stops (continue with restrictions):
-    - STRATEGY_STARVED: can't open new trades, existing position can run
-    """
-    LIQUIDATED = "liquidated"
-    EQUITY_FLOOR_HIT = "equity_floor_hit"
-    STRATEGY_STARVED = "strategy_starved"
-    
-    def is_terminal(self) -> bool:
-        """Return True if this stop reason halts the backtest immediately."""
-        return self in (StopReason.LIQUIDATED, StopReason.EQUITY_FLOOR_HIT)
+# StopReason imported from canonical location (no duplication)
+from ..types import StopReason
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -158,7 +142,10 @@ class Position:
     # Phase 4: Bar tracking and readiness
     entry_bar_index: Optional[int] = None
     entry_ready: bool = True
-    
+    # MAE/MFE tracking: min/max price during position lifetime
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
+
     def unrealized_pnl(self, mark_price: float) -> float:
         """Calculate unrealized PnL at given mark price."""
         if self.side == OrderSide.LONG:
@@ -181,6 +168,9 @@ class Position:
             # Phase 4
             "entry_bar_index": self.entry_bar_index,
             "entry_ready": self.entry_ready,
+            # MAE/MFE tracking
+            "min_price": self.min_price,
+            "max_price": self.max_price,
         }
 
 
@@ -498,11 +488,13 @@ class StepResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
-class ExchangeState:
+class SimulatorExchangeState:
     """
-    Complete exchange state snapshot.
+    Complete simulator exchange state snapshot.
     
     Used for debugging and reproducibility.
+    This is the internal state of SimulatedExchange - for strategy-facing
+    state, use runtime.types.ExchangeState instead.
     """
     symbol: str
     timestamp: Optional[datetime]
@@ -556,21 +548,18 @@ class ExchangeState:
 class ExecutionConfig:
     """
     Execution parameters for simulation.
-    
-    Controls slippage application. Fee rate comes from RiskProfileConfig.
+
+    Controls slippage application only. Fee rates come from RiskProfileConfig.
+
+    Fee Model:
+    - taker_fee_rate: Sourced from RiskProfileConfig.taker_fee_rate
+    - maker_fee_bps: Available in engine.config.params (future limit order support)
+    - All fills use RiskProfileConfig for fee calculation
     """
     slippage_bps: float = 5.0  # 0.05% default
-    
-    # Legacy: kept for backward compatibility but not used directly
-    taker_fee_bps: float = 6.0
-    
+
     @property
     def slippage_rate(self) -> float:
         """Slippage as decimal (e.g., 0.0005 for 5 bps)."""
         return self.slippage_bps / 10000.0
-    
-    @property
-    def taker_fee_rate(self) -> float:
-        """Legacy: taker fee as decimal."""
-        return self.taker_fee_bps / 10000.0
 

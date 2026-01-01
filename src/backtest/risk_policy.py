@@ -115,28 +115,53 @@ class NoneRiskPolicy(RiskPolicy):
 class RulesRiskPolicy(RiskPolicy):
     """
     Rule-based risk policy using RiskManager.
-    
+
     Wraps the core RiskManager for production-faithful backtesting.
-    Daily-loss enforcement is disabled for determinism.
+
+    NOTE: Daily loss limit is set to infinity by default for determinism.
+    This is intentional - backtests should not halt mid-run due to
+    cumulative losses, as this would make results non-reproducible
+    across different starting points. Live trading enforces real
+    daily limits via the live RiskManager.
     """
-    
-    def __init__(self, risk_profile: RiskProfileConfig):
+
+    def __init__(
+        self,
+        risk_profile: RiskProfileConfig,
+        enforce_daily_loss: bool = False,
+    ):
         """
         Initialize with risk profile.
-        
+
         Creates a RiskManager configured for backtesting:
         - Global risk disabled (no WebSocket dependency)
         - Uses risk profile values for limits
-        
+        - Daily loss disabled by default for determinism
+
         Args:
             risk_profile: Risk profile from system config
+            enforce_daily_loss: If True, use risk_profile.max_daily_loss_usdt.
+                               If False (default), daily loss is infinite.
         """
         self._risk_profile = risk_profile
-        
+        self._enforce_daily_loss = enforce_daily_loss
+
         # Derive limits from the new canonical fields
         # max_position_size_usdt: use initial_equity * max_leverage as upper bound
         max_position = risk_profile.initial_equity * risk_profile.max_leverage
-        
+
+        # Determine daily loss limit
+        if enforce_daily_loss:
+            # Use max_daily_loss_usdt if available, otherwise default to 10% of equity
+            daily_loss_usdt = getattr(
+                risk_profile, 'max_daily_loss_usdt',
+                risk_profile.initial_equity * 0.10,  # 10% default
+            )
+            daily_loss_pct = 100.0  # Use the USDT limit, not percent
+        else:
+            daily_loss_usdt = float('inf')
+            daily_loss_pct = 100.0
+
         # Create a RiskConfig from the profile
         self._risk_config = RiskConfig(
             max_leverage=risk_profile.max_leverage,
@@ -144,9 +169,8 @@ class RulesRiskPolicy(RiskPolicy):
             max_total_exposure_usdt=max_position,
             min_balance_usdt=risk_profile.initial_equity * 0.1,  # 10% floor
             max_risk_per_trade_percent=risk_profile.risk_per_trade_pct,
-            # Disable daily loss tracking for determinism
-            max_daily_loss_usdt=float('inf'),
-            max_daily_loss_percent=100.0,
+            max_daily_loss_usdt=daily_loss_usdt,
+            max_daily_loss_percent=daily_loss_pct,
         )
         
         # Create RiskManager with global risk disabled
@@ -199,17 +223,20 @@ class RulesRiskPolicy(RiskPolicy):
 def create_risk_policy(
     risk_mode: str,
     risk_profile: RiskProfileConfig = None,
+    enforce_daily_loss: bool = False,
 ) -> RiskPolicy:
     """
     Factory function to create the appropriate risk policy.
-    
+
     Args:
         risk_mode: "none" or "rules"
         risk_profile: Risk profile from system config
-        
+        enforce_daily_loss: If True and risk_mode="rules", use daily loss limit.
+                           Default False for deterministic backtests.
+
     Returns:
         Appropriate RiskPolicy instance
-        
+
     Raises:
         ValueError: If risk_mode is invalid
     """
@@ -218,7 +245,7 @@ def create_risk_policy(
     elif risk_mode == "rules":
         if risk_profile is None:
             risk_profile = RiskProfileConfig()
-        return RulesRiskPolicy(risk_profile)
+        return RulesRiskPolicy(risk_profile, enforce_daily_loss=enforce_daily_loss)
     else:
         raise ValueError(
             f"Invalid risk_mode: '{risk_mode}'. Must be 'none' or 'rules'."

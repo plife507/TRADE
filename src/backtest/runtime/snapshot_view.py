@@ -1,7 +1,7 @@
 """
-View-based RuntimeSnapshot for hot-loop performance.
+RuntimeSnapshotView — Array-backed snapshot for hot-loop performance.
 
-RuntimeSnapshotView is a lightweight read-only view over cached data:
+RuntimeSnapshotView is the ONLY snapshot implementation:
 - Holds references to FeedStores (not copies)
 - Stores current exec index + HTF/MTF context indices
 - Provides accessor methods for data (no deep copies)
@@ -13,13 +13,23 @@ PERFORMANCE CONTRACT:
 - No large object allocation
 - History access via index offset (deque for rolling windows)
 
-This replaces the materialized RuntimeSnapshot for hot-loop usage.
+SNAPSHOT VIEW CONTRACT:
+- ts_close: Current exec bar close timestamp (datetime)
+- close: Current exec bar close price (float)
+- get_feature(indicator_key, tf_role, offset): Unified feature lookup
+- has_feature(indicator_key, tf_role): Check feature availability
+- exec_ctx, htf_ctx, mtf_ctx: TF contexts for direct access
+
+LEGACY REMOVED:
+- RuntimeSnapshot (materialized dataclass) is NOT supported
+- SnapshotBuilder is NOT used
+- Legacy aliases (bar_ltf, features_exec, etc.) removed
+- exchange_state shim removed
 """
 
-from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional, Any, Deque
+from typing import Dict, Optional, Any
 
 import numpy as np
 
@@ -132,22 +142,18 @@ class RuntimeSnapshotView:
         exchange: Reference to exchange (for state queries)
         mark_price: Current mark price
         mark_price_source: Mark price source
-        
-        # History deques (bounded, O(1) append)
-        history_exec_indices: Previous exec indices for history access
-        
+
         # Readiness
         ready: Whether snapshot is ready for strategy
         history_ready: Whether history windows are filled
     """
-    
+
     __slots__ = (
         'symbol', 'exec_tf', 'ts_close', 'exec_idx',
         'exec_ctx', 'htf_ctx', 'mtf_ctx',
         'exchange', 'mark_price', 'mark_price_source',
         'tf_mapping', 'history_config',
-        '_history_exec_indices', '_history_htf_indices', '_history_mtf_indices',
-        'history_ready', '_feeds',
+        'history_ready', '_feeds', '_rollups',
     )
     
     def __init__(
@@ -160,14 +166,12 @@ class RuntimeSnapshotView:
         mark_price: float,
         mark_price_source: str,
         history_config: Optional[HistoryConfig] = None,
-        history_exec_indices: Optional[Deque[int]] = None,
-        history_htf_indices: Optional[Deque[int]] = None,
-        history_mtf_indices: Optional[Deque[int]] = None,
         history_ready: bool = True,
+        rollups: Optional[Dict[str, float]] = None,
     ):
         """
         Initialize snapshot view.
-        
+
         Args:
             feeds: MultiTFFeedStore with all precomputed data
             exec_idx: Current exec bar index
@@ -177,10 +181,8 @@ class RuntimeSnapshotView:
             mark_price: Current mark price
             mark_price_source: Mark price source
             history_config: History configuration
-            history_exec_indices: Deque of previous exec indices
-            history_htf_indices: Deque of previous HTF closed indices
-            history_mtf_indices: Deque of previous MTF closed indices
             history_ready: Whether history windows are filled
+            rollups: Optional px.rollup.* values from 1m accumulation
         """
         self._feeds = feeds
         self.symbol = feeds.exec_feed.symbol
@@ -221,12 +223,12 @@ class RuntimeSnapshotView:
         self.exchange = exchange
         self.mark_price = mark_price
         self.mark_price_source = mark_price_source
-        
+
         self.history_config = history_config or DEFAULT_HISTORY_CONFIG
-        self._history_exec_indices = history_exec_indices or deque(maxlen=100)
-        self._history_htf_indices = history_htf_indices or deque(maxlen=20)
-        self._history_mtf_indices = history_mtf_indices or deque(maxlen=20)
         self.history_ready = history_ready
+
+        # Phase 3: 1m rollups (px.rollup.*)
+        self._rollups = rollups or {}
     
     # =========================================================================
     # Readiness
@@ -357,26 +359,17 @@ class RuntimeSnapshotView:
         return self._get_prev_indicator(name, lookback)
     
     def _get_prev_indicator(self, name: str, lookback: int) -> Optional[float]:
-        """Internal: get previous indicator via index offset."""
+        """Internal: get previous indicator via direct index offset."""
         if lookback < 1:
             raise ValueError("lookback must be >= 1")
-        
-        # Try history indices first
-        if len(self._history_exec_indices) >= lookback:
-            hist_idx = self._history_exec_indices[-lookback]
-            if name in self._feeds.exec_feed.indicators:
-                val = self._feeds.exec_feed.indicators[name][hist_idx]
-                if not np.isnan(val):
-                    return float(val)
-        
-        # Fallback: direct index offset (if within bounds)
+
         prev_idx = self.exec_idx - lookback
         if prev_idx >= 0:
             if name in self._feeds.exec_feed.indicators:
                 val = self._feeds.exec_feed.indicators[name][prev_idx]
                 if not np.isnan(val):
                     return float(val)
-        
+
         return None
     
     def bars_exec_low(self, n: int) -> Optional[float]:
@@ -483,6 +476,101 @@ class RuntimeSnapshotView:
         return list(self._feeds.mtf_feed.indicators.keys())
     
     # =========================================================================
+    # Unified Feature Lookup API (for IdeaCardSignalEvaluator)
+    # =========================================================================
+    
+    def get_feature(
+        self,
+        indicator_key: str,
+        tf_role: str = "exec",
+        offset: int = 0,
+    ) -> Optional[float]:
+        """
+        Unified feature lookup API for strategy evaluation.
+        
+        Supports both OHLCV and indicator keys across all TF roles.
+        Used by IdeaCardSignalEvaluator for condition evaluation.
+        
+        Args:
+            indicator_key: Key to look up (e.g., "close", "ema_20", "rsi")
+            tf_role: TF role ("exec", "htf", "mtf")
+            offset: Bar offset (0 = current, 1 = previous, etc.)
+            
+        Returns:
+            Feature value or None if not available
+        """
+        # Get the appropriate context
+        if tf_role in ("exec", "ltf"):
+            ctx = self.exec_ctx
+            feed = self._feeds.exec_feed
+        elif tf_role == "htf":
+            ctx = self.htf_ctx
+            feed = self._feeds.htf_feed
+        elif tf_role == "mtf":
+            ctx = self.mtf_ctx
+            feed = self._feeds.mtf_feed
+        else:
+            return None
+        
+        if feed is None:
+            return None
+        
+        # Compute target index
+        target_idx = ctx.current_idx - offset
+        if target_idx < 0 or target_idx >= feed.length:
+            return None
+        
+        # Handle OHLCV keys
+        if indicator_key == "open":
+            return float(feed.open[target_idx])
+        elif indicator_key == "high":
+            return float(feed.high[target_idx])
+        elif indicator_key == "low":
+            return float(feed.low[target_idx])
+        elif indicator_key == "close":
+            return float(feed.close[target_idx])
+        elif indicator_key == "volume":
+            return float(feed.volume[target_idx])
+        
+        # Handle indicator keys
+        if indicator_key not in feed.indicators:
+            return None
+        val = feed.indicators[indicator_key][target_idx]
+        if np.isnan(val):
+            return None
+        return float(val)
+    
+    def has_feature(self, indicator_key: str, tf_role: str = "exec") -> bool:
+        """
+        Check if a feature is declared for a TF role.
+        
+        Args:
+            indicator_key: Key to check
+            tf_role: TF role ("exec", "htf", "mtf")
+            
+        Returns:
+            True if feature is available
+        """
+        # OHLCV is always available
+        if indicator_key in ("open", "high", "low", "close", "volume"):
+            return True
+        
+        # Get the appropriate feed
+        if tf_role in ("exec", "ltf"):
+            feed = self._feeds.exec_feed
+        elif tf_role == "htf":
+            feed = self._feeds.htf_feed
+        elif tf_role == "mtf":
+            feed = self._feeds.mtf_feed
+        else:
+            return False
+        
+        if feed is None:
+            return False
+        
+        return indicator_key in feed.indicators
+    
+    # =========================================================================
     # Staleness (for MTF forward-fill validation)
     # =========================================================================
     
@@ -548,45 +636,75 @@ class RuntimeSnapshotView:
     def entries_disabled(self) -> bool:
         """Whether new entries are blocked."""
         return self.exchange.entries_disabled
-    
+
     # =========================================================================
-    # Backward Compatibility Aliases
+    # 1m Rollup Accessors (Phase 3: px.rollup.*)
     # =========================================================================
-    
+
     @property
-    def ltf_tf(self) -> str:
-        """Alias for exec_tf."""
-        return self.exec_tf
-    
+    def rollup_min_1m(self) -> float:
+        """Minimum 1m low since last exec close."""
+        return self._rollups.get("px.rollup.min_1m", float('inf'))
+
     @property
-    def bar_ltf(self):
-        """Alias for bar_exec (returns self for accessor access)."""
-        return self.exec_ctx
-    
+    def rollup_max_1m(self) -> float:
+        """Maximum 1m high since last exec close."""
+        return self._rollups.get("px.rollup.max_1m", float('-inf'))
+
     @property
-    def bar_exec(self):
-        """Current exec bar context."""
-        return self.exec_ctx
-    
+    def rollup_bars_1m(self) -> int:
+        """Count of 1m bars since last exec close."""
+        return int(self._rollups.get("px.rollup.bars_1m", 0))
+
     @property
-    def features_exec(self):
-        """Current exec features context."""
-        return self.exec_ctx
-    
+    def rollup_open_1m(self) -> float:
+        """First 1m open since last exec close."""
+        return self._rollups.get("px.rollup.open_1m", 0.0)
+
     @property
-    def features_ltf(self):
-        """Alias for features_exec."""
-        return self.exec_ctx
-    
+    def rollup_close_1m(self) -> float:
+        """Last 1m close since last exec close."""
+        return self._rollups.get("px.rollup.close_1m", 0.0)
+
     @property
-    def features_htf(self):
-        """HTF features context."""
-        return self.htf_ctx
-    
+    def rollup_volume_1m(self) -> float:
+        """Sum of 1m volume since last exec close."""
+        return self._rollups.get("px.rollup.volume_1m", 0.0)
+
     @property
-    def features_mtf(self):
-        """MTF features context."""
-        return self.mtf_ctx
+    def rollup_price_range_1m(self) -> float:
+        """Price range (max - min) of 1m bars since last exec close."""
+        if self.rollup_bars_1m == 0:
+            return 0.0
+        return self.rollup_max_1m - self.rollup_min_1m
+
+    def get_rollup(self, key: str) -> Optional[float]:
+        """
+        Get rollup value by key.
+
+        Args:
+            key: Rollup key (e.g., "px.rollup.min_1m", "px.rollup.max_1m")
+
+        Returns:
+            Rollup value or None if key not found
+        """
+        return self._rollups.get(key)
+
+    @property
+    def has_rollups(self) -> bool:
+        """Check if rollups are available for this snapshot."""
+        return bool(self._rollups) and self.rollup_bars_1m > 0
+
+    @property
+    def rollups(self) -> Dict[str, float]:
+        """Get all rollup values as a dict."""
+        return dict(self._rollups)
+
+    # =========================================================================
+    # DELETED: Backward Compatibility Aliases
+    # =========================================================================
+    # Legacy aliases (bar_ltf, features_exec, etc.) removed.
+    # Use direct accessors: exec_ctx, htf_ctx, mtf_ctx, or get_feature().
     
     # =========================================================================
     # Serialization (for debugging only, not in hot loop)
@@ -619,4 +737,7 @@ class RuntimeSnapshotView:
             "mtf_is_stale": self.mtf_is_stale,
             "htf_ctx_ts_close": self.htf_ctx_ts_close.isoformat(),
             "mtf_ctx_ts_close": self.mtf_ctx_ts_close.isoformat(),
+            # 1m Rollups (Phase 3)
+            "rollups": self.rollups,
+            "has_rollups": self.has_rollups,
         }

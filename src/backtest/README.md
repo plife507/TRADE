@@ -104,7 +104,7 @@ The engine hot-loop (`engine.py`) has strict performance requirements:
 - **Available from pandas_ta**: 189 indicators total
 - **Reference**: See `reference/pandas_ta/INDICATORS_REFERENCE.md` for complete list
 
-To add new indicators, implement wrapper functions in `indicator_vendor.py` and register them in `IndicatorType` enum.
+To add new indicators, add an entry to the `SUPPORTED_INDICATORS` dict in `indicator_registry.py`.
 
 ## CLI Usage
 

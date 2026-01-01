@@ -1,0 +1,68 @@
+id: stress10__BROKEN_invalid_symbol
+version: 1.0.0
+name: BROKEN - Invalid Symbol
+description: Intentionally broken - uses BTCUSD instead of BTCUSDT
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- BTCUSD
+tf_configs:
+  exec:
+    tf: 15m
+    role: exec
+    warmup_bars: 100
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_21
+      params:
+        length: 21
+      input_source: close
+    - indicator_type: rsi
+      output_key: rsi_14
+      params:
+        length: 14
+      input_source: close
+    required_indicators:
+    - ema_21
+    - rsi_14
+position_policy:
+  mode: long_only
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: lt
+      value: 30
+      is_indicator_comparison: false
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: rsi_14
+      operator: gt
+      value: 70
+      is_indicator_comparison: false
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 3.0

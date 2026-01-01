@@ -1,0 +1,123 @@
+id: volume_all_indicators
+version: 1.0.0
+name: All Volume Indicators Test
+description: Tests all volume-based indicators (OBV, MFI, CMF, KVO)
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+symbol_universe:
+- BTCUSDT
+tf_configs:
+  exec:
+    tf: 1h
+    role: exec
+    warmup_bars: 150
+    feature_specs:
+    - indicator_type: obv
+      output_key: obv
+      params: {}
+      input_source: close
+    - indicator_type: mfi
+      output_key: mfi_14
+      params:
+        length: 14
+      input_source: close
+    - indicator_type: cmf
+      output_key: cmf_20
+      params:
+        length: 20
+      input_source: close
+    - indicator_type: kvo
+      output_key: kvo
+      params:
+        fast: 34
+        slow: 55
+        signal: 13
+      input_source: close
+    # EMA for trend filter
+    - indicator_type: ema
+      output_key: ema_21
+      params:
+        length: 21
+      input_source: close
+    required_indicators:
+    - obv
+    - mfi_14
+    - cmf_20
+    - kvo_kvo
+    - kvo_signal
+    - ema_21
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+  allow_scale_in: false
+  allow_scale_out: false
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: mfi_14
+      operator: lt
+      value: 30
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: cmf_20
+      operator: gt
+      value: 0
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: kvo_kvo
+      operator: gt
+      value: kvo_signal
+      is_indicator_comparison: true
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: mfi_14
+      operator: gt
+      value: 70
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: cmf_20
+      operator: lt
+      value: 0
+      is_indicator_comparison: false
+    - tf: exec
+      indicator_key: kvo_kvo
+      operator: lt
+      value: kvo_signal
+      is_indicator_comparison: true
+  exit_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: mfi_14
+      operator: gt
+      value: 80
+      is_indicator_comparison: false
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: mfi_14
+      operator: lt
+      value: 20
+      is_indicator_comparison: false
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.5
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 3.0

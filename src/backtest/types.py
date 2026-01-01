@@ -91,7 +91,11 @@ class Trade:
     # Phase 4: Snapshot readiness state at entry/exit
     entry_ready: bool = True
     exit_ready: Optional[bool] = None
-    
+
+    # MAE/MFE: Maximum Adverse/Favorable Excursion during trade
+    mae_pct: float = 0.0  # Max adverse move as % of entry price
+    mfe_pct: float = 0.0  # Max favorable move as % of entry price
+
     @property
     def is_closed(self) -> bool:
         return self.exit_time is not None
@@ -140,6 +144,9 @@ class Trade:
             "exit_price_source": self.exit_price_source,
             "entry_ready": self.entry_ready,
             "exit_ready": self.exit_ready,
+            # MAE/MFE
+            "mae_pct": self.mae_pct,
+            "mfe_pct": self.mfe_pct,
         }
 
 
@@ -215,7 +222,9 @@ class BacktestMetrics:
     final_equity: float = 0.0
     net_profit: float = 0.0
     net_return_pct: float = 0.0
-    
+    benchmark_return_pct: float = 0.0  # Buy-and-hold return over same period
+    alpha_pct: float = 0.0             # Strategy return - benchmark return
+
     # Drawdown metrics
     max_drawdown_abs: float = 0.0
     max_drawdown_pct: float = 0.0
@@ -245,11 +254,14 @@ class BacktestMetrics:
     largest_win_usdt: float = 0.0
     largest_loss_usdt: float = 0.0
     avg_trade_duration_bars: float = 0.0
+    avg_winning_trade_duration_bars: float = 0.0  # Duration breakdown: winners
+    avg_losing_trade_duration_bars: float = 0.0   # Duration breakdown: losers
     max_consecutive_wins: int = 0
     max_consecutive_losses: int = 0
     expectancy_usdt: float = 0.0
     payoff_ratio: float = 0.0
     recovery_factor: float = 0.0
+    omega_ratio: float = 0.0  # Probability-weighted gain/loss ratio (threshold=0)
     
     # Long/short breakdown
     long_trades: int = 0
@@ -264,6 +276,43 @@ class BacktestMetrics:
     bars_in_position: int = 0
     time_in_market_pct: float = 0.0
     
+    # Funding metrics (separate from trading fees)
+    total_funding_paid_usdt: float = 0.0      # Total funding paid out (longs in positive funding)
+    total_funding_received_usdt: float = 0.0  # Total funding received (shorts in positive funding)
+    net_funding_usdt: float = 0.0             # received - paid
+
+    # Extended drawdown
+    ulcer_index: float = 0.0  # Pain-adjusted drawdown measure
+
+    # Profit factor mode (handles infinity edge cases)
+    profit_factor_mode: str = "finite"  # "finite", "infinite", or "undefined"
+
+    # Entry friction (leveraged trading specific)
+    entry_attempts: int = 0           # Total entry signal attempts
+    entry_rejections: int = 0         # Entries rejected (margin, size, etc.)
+    entry_rejection_rate: float = 0.0  # rejections / attempts
+
+    # Margin stress (leveraged trading specific)
+    min_margin_ratio: float = 1.0     # Lowest margin ratio during backtest
+    margin_calls: int = 0             # Number of margin warning events
+
+    # Liquidation proximity (leveraged trading specific)
+    closest_liquidation_pct: float = 100.0  # Closest approach to liquidation (100 = never close)
+
+    # Tail risk metrics (critical for leveraged trading)
+    skewness: float = 0.0           # Return distribution asymmetry (negative = blowup risk)
+    kurtosis: float = 0.0           # Fat tails measure (>3 = fatter than normal)
+    var_95_pct: float = 0.0         # 95% Value at Risk (worst 5% daily loss)
+    cvar_95_pct: float = 0.0        # Expected Shortfall (avg loss beyond VaR)
+
+    # Leverage metrics
+    avg_leverage_used: float = 0.0  # Average actual leverage during backtest
+    max_gross_exposure_pct: float = 0.0  # Peak position_value / equity * 100
+
+    # Trade quality (MAE/MFE - how trades behave before close)
+    mae_avg_pct: float = 0.0        # Avg Maximum Adverse Excursion (worst drawdown per trade)
+    mfe_avg_pct: float = 0.0        # Avg Maximum Favorable Excursion (best profit per trade)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for JSON serialization."""
         return {
@@ -272,6 +321,8 @@ class BacktestMetrics:
             "final_equity": self.final_equity,
             "net_profit": self.net_profit,
             "net_return_pct": self.net_return_pct,
+            "benchmark_return_pct": self.benchmark_return_pct,
+            "alpha_pct": self.alpha_pct,
             # Drawdown
             "max_drawdown_abs": self.max_drawdown_abs,
             "max_drawdown_pct": self.max_drawdown_pct,
@@ -297,11 +348,14 @@ class BacktestMetrics:
             "largest_win_usdt": self.largest_win_usdt,
             "largest_loss_usdt": self.largest_loss_usdt,
             "avg_trade_duration_bars": self.avg_trade_duration_bars,
+            "avg_winning_trade_duration_bars": self.avg_winning_trade_duration_bars,
+            "avg_losing_trade_duration_bars": self.avg_losing_trade_duration_bars,
             "max_consecutive_wins": self.max_consecutive_wins,
             "max_consecutive_losses": self.max_consecutive_losses,
             "expectancy_usdt": self.expectancy_usdt,
             "payoff_ratio": self.payoff_ratio,
             "recovery_factor": self.recovery_factor,
+            "omega_ratio": self.omega_ratio,
             # Long/short breakdown
             "long_trades": self.long_trades,
             "short_trades": self.short_trades,
@@ -313,6 +367,34 @@ class BacktestMetrics:
             "total_bars": self.total_bars,
             "bars_in_position": self.bars_in_position,
             "time_in_market_pct": self.time_in_market_pct,
+            # Funding metrics
+            "total_funding_paid_usdt": self.total_funding_paid_usdt,
+            "total_funding_received_usdt": self.total_funding_received_usdt,
+            "net_funding_usdt": self.net_funding_usdt,
+            # Extended drawdown
+            "ulcer_index": self.ulcer_index,
+            # Profit factor mode
+            "profit_factor_mode": self.profit_factor_mode,
+            # Entry friction
+            "entry_attempts": self.entry_attempts,
+            "entry_rejections": self.entry_rejections,
+            "entry_rejection_rate": self.entry_rejection_rate,
+            # Margin stress
+            "min_margin_ratio": self.min_margin_ratio,
+            "margin_calls": self.margin_calls,
+            # Liquidation proximity
+            "closest_liquidation_pct": self.closest_liquidation_pct,
+            # Tail risk
+            "skewness": self.skewness,
+            "kurtosis": self.kurtosis,
+            "var_95_pct": self.var_95_pct,
+            "cvar_95_pct": self.cvar_95_pct,
+            # Leverage
+            "avg_leverage_used": self.avg_leverage_used,
+            "max_gross_exposure_pct": self.max_gross_exposure_pct,
+            # Trade quality
+            "mae_avg_pct": self.mae_avg_pct,
+            "mfe_avg_pct": self.mfe_avg_pct,
         }
 
 
@@ -423,9 +505,8 @@ class BacktestResult:
     risk_mode: str = "none"
     data_env: str = "backtest"
     
-    # Structured metrics (legacy + proof-grade)
+    # Structured metrics
     metrics: BacktestMetrics = field(default_factory=BacktestMetrics)
-    metrics_v2: Optional[Any] = None  # BacktestMetricsV2 (imported at runtime to avoid circular)
     
     # Resolved risk profile fields used for this run
     risk_initial_equity_used: float = 0.0
@@ -434,7 +515,6 @@ class BacktestResult:
     
     # Warm-up and window metadata (for debugging and reproducibility)
     warmup_bars: int = 0
-    warmup_multiplier: int = 5
     max_indicator_lookback: int = 0
     data_window_requested_start: str = ""  # ISO string from YAML/preset
     data_window_requested_end: str = ""
@@ -517,16 +597,14 @@ class BacktestResult:
             # Context
             "risk_mode": self.risk_mode,
             "data_env": self.data_env,
-            # Metrics
+            # Metrics (consolidated)
             "metrics": self.metrics.to_dict(),
-            "metrics_v2": self.metrics_v2.to_dict() if self.metrics_v2 else None,
             # Resolved risk
             "risk_initial_equity_used": self.risk_initial_equity_used,
             "risk_per_trade_pct_used": self.risk_per_trade_pct_used,
             "risk_max_leverage_used": self.risk_max_leverage_used,
             # Warm-up and window metadata
             "warmup_bars": self.warmup_bars,
-            "warmup_multiplier": self.warmup_multiplier,
             "max_indicator_lookback": self.max_indicator_lookback,
             "data_window_requested_start": self.data_window_requested_start,
             "data_window_requested_end": self.data_window_requested_end,

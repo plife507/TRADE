@@ -21,10 +21,6 @@ from typing import Dict, Optional, List
 from .timeframe import tf_duration, tf_minutes
 
 
-# Default warmup multiplier for EMA stabilization
-# Recommended: 4N (preferred), minimum 3N for EMA(N)
-DEFAULT_WARMUP_MULTIPLIER = 4
-
 # Default safety buffer in number of closes per TF
 DEFAULT_HTF_SAFETY_CLOSES = 10
 DEFAULT_MTF_SAFETY_CLOSES = 20
@@ -38,15 +34,11 @@ FUNDING_INTERVAL_HOURS = 8  # Bybit funding every 8 hours
 @dataclass
 class WarmupConfig:
     """Configuration for warmup and buffer calculations."""
-    
-    # Warmup multiplier for indicator stabilization
-    # warmup_bars = max_lookback * warmup_multiplier
-    warmup_multiplier: int = DEFAULT_WARMUP_MULTIPLIER
-    
+
     # Safety buffer: extra closed candles per TF
     htf_safety_closes: int = DEFAULT_HTF_SAFETY_CLOSES
     mtf_safety_closes: int = DEFAULT_MTF_SAFETY_CLOSES
-    
+
     # Tail buffer
     tail_ltf_bars: int = DEFAULT_TAIL_LTF_BARS
     tail_funding_intervals: int = DEFAULT_TAIL_FUNDING_INTERVALS
@@ -88,29 +80,22 @@ class LoadWindow:
         }
 
 
-def compute_warmup_bars(
-    max_lookback: int,
-    warmup_multiplier: int = DEFAULT_WARMUP_MULTIPLIER,
-) -> int:
+def compute_warmup_bars(max_lookback: int) -> int:
     """
     Compute warmup bars from max indicator lookback.
-    
-    Formula: warmup_bars = max_lookback * warmup_multiplier
-    
-    Recommended heuristic for EMA(N):
-    - warmup_bars = 4N (preferred)
-    - minimum 3N for stability
-    
+
+    Warmup is now computed directly in FeatureSpec.warmup_bars based on
+    indicator type, so this function just returns the lookback as-is.
+
     Args:
         max_lookback: Maximum indicator lookback in bars
-        warmup_multiplier: Multiplier for stabilization
-        
+
     Returns:
         Number of warmup bars needed
     """
     if max_lookback <= 0:
         return 0
-    return max_lookback * warmup_multiplier
+    return max_lookback
 
 
 def compute_warmup_span(
@@ -134,15 +119,15 @@ def compute_warmup_span(
     config = warmup_config or WarmupConfig()
     
     max_span = timedelta(0)
-    
+
     for role, tf in tf_mapping.items():
         lookback = indicator_lookbacks.get(tf, 0)
-        warmup_bars = compute_warmup_bars(lookback, config.warmup_multiplier)
+        warmup_bars = compute_warmup_bars(lookback)
         span = warmup_bars * tf_duration(tf)
-        
+
         if span > max_span:
             max_span = span
-    
+
     return max_span
 
 
@@ -256,29 +241,26 @@ def compute_simple_load_window(
     test_end: datetime,
     tf: str,
     max_lookback: int,
-    warmup_multiplier: int = DEFAULT_WARMUP_MULTIPLIER,
 ) -> LoadWindow:
     """
     Compute load window for single-TF backtest (simplified API).
-    
+
     Args:
         test_start: Test window start
         test_end: Test window end
         tf: Single timeframe string
         max_lookback: Maximum indicator lookback in bars
-        warmup_multiplier: Warmup multiplier
-        
+
     Returns:
         LoadWindow with computed boundaries
     """
     tf_mapping = {"htf": tf, "mtf": tf, "ltf": tf}
     indicator_lookbacks = {tf: max_lookback}
     config = WarmupConfig(
-        warmup_multiplier=warmup_multiplier,
         htf_safety_closes=0,  # No HTF/MTF safety for single TF
         mtf_safety_closes=0,
     )
-    
+
     return compute_load_window(
         test_start=test_start,
         test_end=test_end,
@@ -287,3 +269,128 @@ def compute_simple_load_window(
         warmup_config=config,
     )
 
+
+# =============================================================================
+# Simple API for Preflight-computed warmup
+# =============================================================================
+# The functions above work with indicator lookbacks to compute warmup.
+# The functions below work with pre-computed warmup_bars_by_role from Preflight.
+
+@dataclass
+class DataWindow:
+    """Simple data window computed from Preflight warmup requirements."""
+    
+    # Requested test window
+    test_start: datetime
+    test_end: datetime
+    
+    # Computed data window (extended for warmup)
+    data_start: datetime
+    data_end: datetime
+    
+    # Component spans (for debugging)
+    warmup_span: timedelta
+    htf_warmup_span: Optional[timedelta] = None
+    
+    def to_dict(self) -> dict:
+        """Convert to dict for serialization."""
+        result = {
+            "test_start": self.test_start.isoformat(),
+            "test_end": self.test_end.isoformat(),
+            "data_start": self.data_start.isoformat(),
+            "data_end": self.data_end.isoformat(),
+            "warmup_span_seconds": self.warmup_span.total_seconds(),
+        }
+        if self.htf_warmup_span:
+            result["htf_warmup_span_seconds"] = self.htf_warmup_span.total_seconds()
+        return result
+
+
+def compute_data_window(
+    window_start: datetime,
+    window_end: datetime,
+    warmup_bars_by_role: Dict[str, int],
+    tf_by_role: Dict[str, str],
+    safety_buffer_bars: int = 0,
+) -> DataWindow:
+    """
+    Compute data window from Preflight-computed warmup requirements.
+    
+    This is the canonical function for computing data fetch boundaries.
+    Both Preflight and Engine should use this for consistency.
+    
+    Formula:
+        data_start = min(
+            window_start - (exec_warmup_bars + safety_buffer) * exec_tf_duration,
+            window_start - (htf_warmup_bars + safety_buffer) * htf_tf_duration,  # if HTF exists
+        )
+        data_end = window_end
+    
+    Args:
+        window_start: Test window start (evaluation start)
+        window_end: Test window end
+        warmup_bars_by_role: Dict with role -> warmup bars (from Preflight)
+        tf_by_role: Dict with role -> timeframe string
+        safety_buffer_bars: Extra bars buffer (default 0)
+        
+    Returns:
+        DataWindow with computed boundaries
+    """
+    # Compute exec TF warmup span
+    exec_tf = tf_by_role.get('exec') or tf_by_role.get('ltf')
+    if not exec_tf:
+        raise ValueError("tf_by_role must contain 'exec' or 'ltf' key")
+    
+    exec_warmup_bars = warmup_bars_by_role.get('exec', 0)
+    exec_tf_delta = tf_duration(exec_tf)
+    exec_warmup_span = exec_tf_delta * (exec_warmup_bars + safety_buffer_bars)
+    exec_data_start = window_start - exec_warmup_span
+    
+    # Compute HTF warmup span if present
+    htf_warmup_span = None
+    htf_data_start = exec_data_start
+    
+    htf_tf = tf_by_role.get('htf')
+    if htf_tf and htf_tf != exec_tf:
+        htf_warmup_bars = warmup_bars_by_role.get('htf', 0)
+        if htf_warmup_bars > 0:
+            htf_tf_delta = tf_duration(htf_tf)
+            htf_warmup_span = htf_tf_delta * (htf_warmup_bars + safety_buffer_bars)
+            htf_data_start = window_start - htf_warmup_span
+    
+    # Use the earlier start (larger warmup wins)
+    data_start = min(exec_data_start, htf_data_start)
+    
+    return DataWindow(
+        test_start=window_start,
+        test_end=window_end,
+        data_start=data_start,
+        data_end=window_end,
+        warmup_span=exec_warmup_span,
+        htf_warmup_span=htf_warmup_span,
+    )
+
+
+def compute_warmup_start_simple(
+    window_start: datetime,
+    warmup_bars: int,
+    tf: str,
+    safety_buffer_bars: int = 0,
+) -> datetime:
+    """
+    Compute the data start timestamp for a single TF.
+    
+    This is a convenience function for single-TF cases.
+    
+    Args:
+        window_start: Test window start
+        warmup_bars: Number of warmup bars
+        tf: Timeframe string
+        safety_buffer_bars: Extra bars buffer
+        
+    Returns:
+        Data start timestamp
+    """
+    tf_delta = tf_duration(tf)
+    warmup_span = tf_delta * (warmup_bars + safety_buffer_bars)
+    return window_start - warmup_span

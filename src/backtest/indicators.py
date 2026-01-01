@@ -14,74 +14,62 @@ if TYPE_CHECKING:
     from .features.feature_spec import FeatureSpec
 
 from . import indicator_vendor as vendor
-from .features.feature_spec import MULTI_OUTPUT_KEYS, IndicatorType
+from .indicator_registry import get_registry
 
-
-# Default warm-up multiplier for indicator stabilization
-# Extra bars = max_lookback_bars * warmup_multiplier
-DEFAULT_WARMUP_MULTIPLIER = 5
 
 # NOTE: No default indicator columns — all indicators must be explicitly requested
 # via FeatureSpec or IdeaCard. Indicators are declared explicitly, never inferred.
 
 
-def get_warmup_from_specs(specs: List["FeatureSpec"], warmup_multiplier: int = None) -> int:
+def get_warmup_from_specs(specs: List["FeatureSpec"]) -> int:
     """
     Compute warmup bars from FeatureSpecs.
-    
+
     This is the canonical way to compute warmup for IdeaCard-based backtests.
     Uses each spec's warmup_bars property which computes proper warmup per indicator type.
-    
+
     Args:
         specs: List of FeatureSpec objects
-        warmup_multiplier: Optional multiplier (default: 1, no multiplier)
-        
+
     Returns:
         Maximum warmup bars needed across all specs
     """
     if not specs:
         return 0
-    
-    multiplier = warmup_multiplier if warmup_multiplier is not None else 1
-    max_warmup = max(spec.warmup_bars for spec in specs)
-    return max_warmup * multiplier
+    return max(spec.warmup_bars for spec in specs)
 
 
 def get_warmup_from_specs_by_role(
     specs_by_role: Dict[str, List["FeatureSpec"]],
-    warmup_multiplier: int = None,
 ) -> Dict[str, int]:
     """
     Compute warmup bars for each TF role from feature specs.
-    
+
     Args:
         specs_by_role: Dict mapping role -> list of FeatureSpecs
-        warmup_multiplier: Optional multiplier (default: 1)
-        
+
     Returns:
         Dict mapping role -> warmup bars
     """
     result = {}
     for role, specs in specs_by_role.items():
-        result[role] = get_warmup_from_specs(specs, warmup_multiplier)
+        result[role] = get_warmup_from_specs(specs)
     return result
 
 
 def get_max_warmup_from_specs_by_role(
     specs_by_role: Dict[str, List["FeatureSpec"]],
-    warmup_multiplier: int = None,
 ) -> int:
     """
     Get the maximum warmup bars across all TF roles.
-    
+
     Args:
         specs_by_role: Dict mapping role -> list of FeatureSpecs
-        warmup_multiplier: Optional multiplier (default: 1)
-        
+
     Returns:
         Maximum warmup bars across all roles
     """
-    warmups = get_warmup_from_specs_by_role(specs_by_role, warmup_multiplier)
+    warmups = get_warmup_from_specs_by_role(specs_by_role)
     return max(warmups.values()) if warmups else 0
 
 
@@ -109,10 +97,34 @@ def apply_feature_spec_indicators(
         output_key = spec.output_key
         params = spec.params
         
-        # Get input source (defaults to 'close')
-        input_col = spec.input_source if hasattr(spec, 'input_source') else 'close'
+        # Get input source - FAIL LOUD if not declared
+        if not hasattr(spec, 'input_source') or spec.input_source is None:
+            raise ValueError(
+                f"MISSING_INPUT_SOURCE: Indicator '{output_key}' has no input_source. "
+                "All FeatureSpecs MUST declare input_source explicitly."
+            )
+        
+        # Convert enum to string value
+        input_source = spec.input_source
+        if hasattr(input_source, 'value'):
+            input_col = input_source.value  # Enum -> string
+        else:
+            input_col = str(input_source).lower()
+        
+        # Handle synthetic sources (hlc3, ohlc4) - compute on demand
+        if input_col == 'hlc3':
+            if 'hlc3' not in df.columns:
+                df['hlc3'] = (df['high'] + df['low'] + df['close']) / 3
+        elif input_col == 'ohlc4':
+            if 'ohlc4' not in df.columns:
+                df['ohlc4'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
+        
+        # FAIL LOUD if column doesn't exist
         if input_col not in df.columns:
-            input_col = 'close'
+            raise ValueError(
+                f"INVALID_INPUT_SOURCE: Indicator '{output_key}' requests input_source='{input_col}' "
+                f"but column not found. Available: {list(df.columns)}"
+            )
         
         # Apply indicator based on type
         if ind_type == "ema":
@@ -137,8 +149,8 @@ def apply_feature_spec_indicators(
             signal_param = params.get("signal", 9)
             macd_result = vendor.macd(df[input_col], fast=fast, slow=slow, signal=signal_param)
             if macd_result is not None:
-                # Get output names from MULTI_OUTPUT_KEYS
-                output_names = MULTI_OUTPUT_KEYS.get(IndicatorType.MACD, ("macd", "signal", "histogram"))
+                # Get output names from registry
+                output_names = get_registry().get_output_suffixes("macd")
                 if isinstance(macd_result, dict):
                     for name in output_names:
                         df[f"{output_key}_{name}"] = macd_result.get(name, pd.Series(index=df.index))
@@ -152,8 +164,8 @@ def apply_feature_spec_indicators(
             std = params.get("std", 2.0)
             bb_result = vendor.bbands(df[input_col], length=length, std=std)
             if bb_result is not None:
-                # Get output names from MULTI_OUTPUT_KEYS
-                output_names = MULTI_OUTPUT_KEYS.get(IndicatorType.BBANDS, ("lower", "middle", "upper", "bandwidth", "percent_b"))
+                # Get output names from registry
+                output_names = get_registry().get_output_suffixes("bbands")
                 if isinstance(bb_result, dict):
                     for name in output_names:
                         df[f"{output_key}_{name}"] = bb_result.get(name, pd.Series(index=df.index))
@@ -168,8 +180,8 @@ def apply_feature_spec_indicators(
             smooth_k = params.get("smooth_k", 3)
             stoch_result = vendor.stoch(df["high"], df["low"], df["close"], k=k_param, d=d_param, smooth_k=smooth_k)
             if stoch_result is not None:
-                # Get output names from MULTI_OUTPUT_KEYS
-                output_names = MULTI_OUTPUT_KEYS.get(IndicatorType.STOCH, ("k", "d"))
+                # Get output names from registry
+                output_names = get_registry().get_output_suffixes("stoch")
                 if isinstance(stoch_result, dict):
                     for name in output_names:
                         df[f"{output_key}_{name}"] = stoch_result.get(name, pd.Series(index=df.index))
@@ -185,8 +197,8 @@ def apply_feature_spec_indicators(
             d_param = params.get("d", 3)
             stochrsi_result = vendor.stochrsi(df[input_col], length=length, rsi_length=rsi_length, k=k_param, d=d_param)
             if stochrsi_result is not None:
-                # Get output names from MULTI_OUTPUT_KEYS
-                output_names = MULTI_OUTPUT_KEYS.get(IndicatorType.STOCHRSI, ("k", "d"))
+                # Get output names from registry
+                output_names = get_registry().get_output_suffixes("stochrsi")
                 if isinstance(stochrsi_result, dict):
                     for name in output_names:
                         df[f"{output_key}_{name}"] = stochrsi_result.get(name, pd.Series(index=df.index))
@@ -195,7 +207,34 @@ def apply_feature_spec_indicators(
                         if i < len(stochrsi_result.columns):
                             df[f"{output_key}_{name}"] = stochrsi_result.iloc[:, i]
         
-        # Add more indicator types as needed
+        else:
+            # Generic fallback for any indicator supported by the registry
+            # Uses compute_indicator() which handles all registered indicator types
+            # Pass input_col as the primary input (close parameter) for single-input indicators
+            try:
+                result = vendor.compute_indicator(
+                    ind_type,
+                    close=df[input_col],  # Use input_col, not always "close"
+                    high=df["high"],
+                    low=df["low"],
+                    open_=df["open"],
+                    volume=df.get("volume"),
+                    **params
+                )
+                
+                if isinstance(result, dict):
+                    # Multi-output: add each output as separate column
+                    for name, series in result.items():
+                        df[f"{output_key}_{name}"] = series
+                elif isinstance(result, pd.Series):
+                    # Single-output: add directly
+                    df[output_key] = result
+            except Exception as e:
+                # FAIL LOUD - indicator computation failures must be surfaced
+                raise ValueError(
+                    f"INDICATOR_COMPUTATION_FAILED: {ind_type} (output_key={output_key}) failed: {e}. "
+                    f"Check params={params} and input_source={input_col}."
+                ) from e
     
     return df
 
@@ -229,28 +268,57 @@ def get_required_indicator_columns_from_specs(feature_specs: List) -> List[str]:
 def find_first_valid_bar(df: pd.DataFrame, indicator_columns: List[str]) -> int:
     """
     Find the first bar index where all specified indicators are non-NaN.
-    
+
+    For mutually exclusive indicator outputs (e.g., SuperTrend's long/short or PSAR's
+    long/short), only ONE of the group needs to be valid at each bar, not ALL.
+    This is because by design, these indicators produce a value in only one output
+    at a time (e.g., uptrend = long has value, short is NaN).
+
     Args:
         df: DataFrame with indicator columns
         indicator_columns: List of column names that must be valid
-        
+
     Returns:
         Index of first valid bar, or -1 if none found
     """
     if not indicator_columns:
         return 0  # No indicators required, start immediately
-    
+
     # Filter to columns that exist in DataFrame
     existing_cols = [c for c in indicator_columns if c in df.columns]
-    
+
     if not existing_cols:
         return 0  # No indicator columns present, start immediately
-    
-    # Find first row where all required indicators are non-NaN
-    valid_mask = df[existing_cols].notna().all(axis=1)
+
+    # Get mutually exclusive groups from the registry
+    registry = get_registry()
+    exclusive_groups = registry.get_mutually_exclusive_groups(existing_cols)
+
+    # Build set of columns that are in exclusive groups
+    cols_in_exclusive_groups = set()
+    for group in exclusive_groups:
+        cols_in_exclusive_groups.update(group)
+
+    # Split columns into regular (must all be valid) and exclusive groups
+    regular_cols = [c for c in existing_cols if c not in cols_in_exclusive_groups]
+
+    # Start with all True mask (all bars potentially valid)
+    valid_mask = pd.Series(True, index=df.index)
+
+    # For regular columns: ALL must be non-NaN
+    if regular_cols:
+        valid_mask &= df[regular_cols].notna().all(axis=1)
+
+    # For each exclusive group: AT LEAST ONE must be non-NaN
+    for group in exclusive_groups:
+        group_cols = [c for c in group if c in df.columns]
+        if group_cols:
+            # any() across columns - at least one must be valid
+            valid_mask &= df[group_cols].notna().any(axis=1)
+
     valid_indices = valid_mask[valid_mask].index.tolist()
-    
+
     if not valid_indices:
         return -1  # No valid bars found
-    
+
     return valid_indices[0]

@@ -1,0 +1,92 @@
+# Test 12: PEPE with SMA cross + RSI momentum
+id: test12__PEPEUSDT_momentum_sma
+version: 1.0.0
+name: PEPE SMA Cross + RSI
+description: SMA crossover with RSI momentum filter
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 15.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 5.0
+
+symbol_universe:
+  - PEPEUSDT
+
+tf_configs:
+  exec:
+    tf: 5m
+    role: exec
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 50
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: sma
+        output_key: sma_10
+        params:
+          length: 10
+        input_source: close
+      - indicator_type: sma
+        output_key: sma_30
+        params:
+          length: 30
+        input_source: close
+      - indicator_type: rsi
+        output_key: rsi_6
+        params:
+          length: 6
+        input_source: close
+    required_indicators:
+      - sma_10
+      - sma_30
+      - rsi_6
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_6
+          operator: lt
+          value: 35
+    - direction: short
+      conditions:
+        - tf: exec
+          indicator_key: rsi_6
+          operator: gt
+          value: 65
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_6
+          operator: gt
+          value: 65
+    - direction: short
+      conditions:
+        - tf: exec
+          indicator_key: rsi_6
+          operator: lt
+          value: 35
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 0.8
+  take_profit:
+    type: rr_ratio
+    value: 3.0
+  sizing:
+    model: percent_equity
+    value: 3.0
+    max_leverage: 15.0

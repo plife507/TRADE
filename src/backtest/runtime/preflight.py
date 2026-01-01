@@ -19,11 +19,15 @@ TOOL DISCIPLINE (MANDATORY):
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from math import ceil
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from typing import Dict, List, Optional, Tuple, Any, Callable, TYPE_CHECKING
 import json
 import pandas as pd
 import numpy as np
+
+if TYPE_CHECKING:
+    from ..execution_validation import WarmupRequirements
 
 
 def _utcnow() -> datetime:
@@ -109,6 +113,17 @@ class GapInfo:
         }
 
 
+def _datetime_to_epoch_ms(dt: Optional[datetime]) -> Optional[int]:
+    """Convert datetime to epoch milliseconds."""
+    if dt is None:
+        return None
+    # Handle both aware and naive datetimes
+    if dt.tzinfo is not None:
+        return int(dt.timestamp() * 1000)
+    # Assume naive datetime is UTC
+    return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
 @dataclass
 class TFPreflightResult:
     """Preflight result for a single (symbol, tf) pair."""
@@ -153,11 +168,18 @@ class TFPreflightResult:
                 "min_ts": self.min_ts.isoformat() if self.min_ts else None,
                 "max_ts": self.max_ts.isoformat() if self.max_ts else None,
                 "bar_count": self.bar_count,
+                # Phase 6: Add epoch-ms fields for smoke test assertions
+                "db_start_ts_ms": _datetime_to_epoch_ms(self.min_ts),
+                "db_end_ts_ms": _datetime_to_epoch_ms(self.max_ts),
+                "ok": self.covers_range,
             },
             "required_range": {
                 "start": self.required_start.isoformat() if self.required_start else None,
                 "end": self.required_end.isoformat() if self.required_end else None,
                 "warmup_bars": self.warmup_bars,
+                # Phase 6: Add epoch-ms fields for smoke test assertions
+                "start_ts_ms": _datetime_to_epoch_ms(self.required_start),
+                "end_ts_ms": _datetime_to_epoch_ms(self.required_end),
             },
             "validation": {
                 "data_exists": self.data_exists,
@@ -188,6 +210,15 @@ class PreflightReport:
     tf_results: Dict[str, TFPreflightResult]  # key: "symbol:tf"
     run_timestamp: datetime = field(default_factory=_utcnow)
     auto_sync_result: Optional[AutoSyncResult] = None
+    # Computed warmup requirements (source of truth from IdeaCard indicators)
+    computed_warmup_requirements: Optional["WarmupRequirements"] = None
+    # Phase 6: Error classification for structured smoke test assertions
+    error_code: Optional[str] = None  # e.g., "INSUFFICIENT_COVERAGE", "HISTORY_UNAVAILABLE", "MISSING_1M_COVERAGE"
+    error_details: Optional[Dict[str, Any]] = None
+    # 1m Price Feed: Mandatory 1m coverage fields
+    has_1m_coverage: bool = False
+    exec_to_1m_mapping_feasible: bool = False
+    required_1m_bars: int = 0
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for serialization."""
@@ -203,7 +234,44 @@ class PreflightReport:
         }
         if self.auto_sync_result:
             result["auto_sync"] = self.auto_sync_result.to_dict()
+        if self.computed_warmup_requirements:
+            result["computed_warmup_requirements"] = self.computed_warmup_requirements.to_dict()
+        
+        # Phase 6: Add top-level fields for smoke test assertions
+        # Extract exec role required_range and coverage from tf_results
+        exec_result = self._get_exec_result()
+        if exec_result:
+            result["required_range"] = {
+                "start_ts_ms": _datetime_to_epoch_ms(exec_result.required_start),
+                "end_ts_ms": _datetime_to_epoch_ms(exec_result.required_end),
+            }
+            result["coverage"] = {
+                "db_start_ts_ms": _datetime_to_epoch_ms(exec_result.min_ts),
+                "db_end_ts_ms": _datetime_to_epoch_ms(exec_result.max_ts),
+                "ok": exec_result.covers_range,
+            }
+        
+        # Phase 6: Error classification
+        if self.error_code:
+            result["error_code"] = self.error_code
+        if self.error_details:
+            result["error_details"] = self.error_details
+
+        # 1m Price Feed: Add 1m coverage fields
+        result["price_feed_1m"] = {
+            "has_1m_coverage": self.has_1m_coverage,
+            "exec_to_1m_mapping_feasible": self.exec_to_1m_mapping_feasible,
+            "required_1m_bars": self.required_1m_bars,
+        }
+
         return result
+    
+    def _get_exec_result(self) -> Optional[TFPreflightResult]:
+        """Get the exec role TFPreflightResult (first result if only one symbol)."""
+        for key, tf_result in self.tf_results.items():
+            # Return first result (typically exec TF for single-symbol runs)
+            return tf_result
+        return None
     
     def write_json(self, path: Path) -> None:
         """Write report to JSON file."""
@@ -218,7 +286,14 @@ class PreflightReport:
         print(f"   IdeaCard: {self.idea_card_id}")
         print(f"   Window: {self.window_start.date()} -> {self.window_end.date()}")
         print()
-        
+
+        # 1m Price Feed status
+        pf_icon = "[OK]" if self.has_1m_coverage else "[FAIL]"
+        print(f"   {pf_icon} 1m coverage: {'OK' if self.has_1m_coverage else 'MISSING'} ({self.required_1m_bars} bars required)")
+        map_icon = "[OK]" if self.exec_to_1m_mapping_feasible else "[FAIL]"
+        print(f"   {map_icon} exec→1m mapping: {'OK' if self.exec_to_1m_mapping_feasible else 'FAILED'}")
+        print()
+
         for key, result in self.tf_results.items():
             tf_icon = "[OK]" if result.status == PreflightStatus.PASSED else "[FAIL]"
             print(f"   {tf_icon} {result.symbol} {result.tf}:")
@@ -257,9 +332,28 @@ def calculate_warmup_start(
     warmup_bars: int,
     tf_minutes: int,
 ) -> datetime:
-    """Calculate the start timestamp including warmup buffer."""
-    warmup_minutes = warmup_bars * tf_minutes
-    return window_start - timedelta(minutes=warmup_minutes)
+    """
+    Calculate the start timestamp including warmup buffer.
+    
+    Note: This is a legacy wrapper. New code should use
+    compute_warmup_start_simple() from windowing.py.
+    """
+    from .windowing import compute_warmup_start_simple
+    # Convert tf_minutes to tf string for the canonical function
+    # Common cases: 1, 5, 15, 60, 240, 1440
+    if tf_minutes < 60:
+        tf = f"{tf_minutes}m"
+    elif tf_minutes < 1440:
+        hours = tf_minutes // 60
+        tf = f"{hours}h"
+    elif tf_minutes == 1440:
+        tf = "1d"
+    elif tf_minutes == 10080:
+        tf = "1w"
+    else:
+        # Fallback: treat as minutes
+        tf = f"{tf_minutes}m"
+    return compute_warmup_start_simple(window_start, warmup_bars, tf)
 
 
 def validate_tf_data(
@@ -623,6 +717,117 @@ def _validate_all_pairs(
     return tf_results, failed_pairs
 
 
+def _compute_safety_buffer(warmup_bars: int) -> int:
+    """
+    Compute safety buffer for warmup data fetch.
+
+    Formula: max(10, ceil(warmup_bars * 0.05))
+
+    This ensures we fetch a bit more data than strictly required,
+    providing margin for edge cases without excessive over-fetching.
+    """
+    return max(10, ceil(warmup_bars * 0.05))
+
+
+def _validate_exec_to_1m_mapping(
+    exec_tf: str,
+    window_start: datetime,
+    window_end: datetime,
+    df_1m: Optional[pd.DataFrame],
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate that exec TF close times can be mapped to 1m bars.
+
+    For each exec TF close time in the backtest window, verify that a 1m bar
+    exists at-or-before that close time (for use as quote/ticker proxy).
+
+    Mapping rule: exec_close_ts → floor(exec_close_ts / 60000) * 60000
+    (i.e., round down to nearest 1m bar close)
+
+    Args:
+        exec_tf: Execution timeframe (e.g., "15m", "5m")
+        window_start: Backtest window start
+        window_end: Backtest window end
+        df_1m: DataFrame with 1m bars (must have 'timestamp' column)
+
+    Returns:
+        Tuple of (mapping_ok, error_message)
+    """
+    if df_1m is None or df_1m.empty:
+        return False, "No 1m data available for exec→1m mapping"
+
+    if "timestamp" not in df_1m.columns:
+        return False, "1m data missing 'timestamp' column"
+
+    exec_minutes = parse_tf_to_minutes(exec_tf)
+
+    # Get 1m timestamps as epoch ms for fast lookup
+    df_1m_sorted = df_1m.sort_values("timestamp")
+    ts_1m_array = df_1m_sorted["timestamp"].values
+
+    # Convert to epoch ms for comparison
+    # Handle both datetime objects and numpy datetime64
+    if len(ts_1m_array) == 0:
+        return False, "Empty 1m data array"
+
+    # Convert to pandas Timestamp for reliable epoch ms conversion
+    ts_1m_epoch_ms = np.array([
+        int(pd.Timestamp(ts).timestamp() * 1000) for ts in ts_1m_array
+    ])
+
+    # Build set of available 1m close times (for O(1) lookup)
+    available_1m_set = set(ts_1m_epoch_ms)
+
+    # Calculate exec bar close times in the backtest window
+    # Start from first exec close at-or-after window_start
+    # Normalize to naive UTC for calculation
+    ws = window_start.replace(tzinfo=None) if window_start.tzinfo else window_start
+    we = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
+
+    ws_epoch_ms = int(ws.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    we_epoch_ms = int(we.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    exec_ms = exec_minutes * 60 * 1000
+
+    # Align to first exec close at-or-after window_start
+    first_exec_close_ms = ((ws_epoch_ms // exec_ms) + 1) * exec_ms
+
+    # Check each exec close time has a corresponding 1m bar
+    missing_mappings = []
+    current_exec_ms = first_exec_close_ms
+
+    while current_exec_ms <= we_epoch_ms:
+        # Mapping rule: exec close → floor to nearest 1m
+        mapped_1m_ms = (current_exec_ms // 60000) * 60000
+
+        if mapped_1m_ms not in available_1m_set:
+            # Check if there's a 1m bar just before (within 1m window)
+            # This handles edge case where exec close aligns exactly with 1m close
+            found_nearby = False
+            for offset_ms in [0, -60000]:  # Check exact match and 1 bar before
+                if (mapped_1m_ms + offset_ms) in available_1m_set:
+                    found_nearby = True
+                    break
+
+            if not found_nearby:
+                missing_ts = datetime.fromtimestamp(current_exec_ms / 1000, tz=timezone.utc)
+                missing_mappings.append(missing_ts)
+
+                # Stop after finding first few missing (avoid huge list)
+                if len(missing_mappings) >= 5:
+                    break
+
+        current_exec_ms += exec_ms
+
+    if missing_mappings:
+        first_missing = missing_mappings[0].strftime("%Y-%m-%d %H:%M")
+        return False, (
+            f"Missing 1m bars for {len(missing_mappings)}+ exec TF close times. "
+            f"First missing: {first_missing} (exec TF={exec_tf})"
+        )
+
+    return True, None
+
+
 def run_preflight_gate(
     idea_card: "IdeaCard",
     data_loader: "DataLoader",
@@ -634,6 +839,12 @@ def run_preflight_gate(
 ) -> PreflightReport:
     """
     Run the data preflight gate for an IdeaCard.
+    
+    WARMUP COMPUTATION (SINGLE SOURCE OF TRUTH):
+    - Calls compute_warmup_requirements(idea_card) EXACTLY ONCE at the start
+    - Stores result in PreflightReport.computed_warmup_requirements
+    - All downstream warmup usage (coverage check, backfill) uses this computed value
+    - Runner and Engine MUST NOT recompute warmup - they consume this output
     
     TOOL DISCIPLINE (MANDATORY):
     - When auto_sync_missing=True, preflight MUST call data tools to fix issues
@@ -650,15 +861,89 @@ def run_preflight_gate(
         auto_sync_config: Configuration for auto-sync (optional, uses defaults)
         
     Returns:
-        PreflightReport with all validation results and auto_sync info
+        PreflightReport with all validation results, auto_sync info, and computed_warmup_requirements
     """
-    # Collect all (symbol, tf) pairs from the IdeaCard
-    pairs_to_check: List[Tuple[str, str, int]] = []  # (symbol, tf, warmup_bars)
+    from ..execution_validation import (
+        compute_warmup_requirements,
+        EARLIEST_BYBIT_DATE_YEAR,
+        EARLIEST_BYBIT_DATE_MONTH,
+    )
     
+    # ==========================================================================
+    # STEP 0: Validate window dates (P2.2: prevent impossible data requests)
+    # ==========================================================================
+    earliest_date = datetime(EARLIEST_BYBIT_DATE_YEAR, EARLIEST_BYBIT_DATE_MONTH, 1)
+    if window_start < earliest_date:
+        raise ValueError(
+            f"Window start ({window_start.date()}) is before earliest available Bybit data "
+            f"({earliest_date.date()}). Adjust window_start to a later date."
+        )
+    if window_end <= window_start:
+        raise ValueError(
+            f"Window end ({window_end.date()}) must be after window start ({window_start.date()})."
+        )
+    
+    # ==========================================================================
+    # STEP 1: Compute warmup requirements ONCE from IdeaCard (SOURCE OF TRUTH)
+    # ==========================================================================
+    
+    warmup_requirements = compute_warmup_requirements(idea_card)
+    
+    # Validate that warmup doesn't push data start before earliest available data
+    for role, tf_config in idea_card.tf_configs.items():
+        warmup = warmup_requirements.warmup_by_role.get(role, 0)
+        safety = _compute_safety_buffer(warmup)
+        total_warmup = warmup + safety
+        tf_minutes = parse_tf_to_minutes(tf_config.tf)
+        data_start = window_start - timedelta(minutes=total_warmup * tf_minutes)
+        if data_start < earliest_date:
+            raise ValueError(
+                f"Warmup for {role} TF ({total_warmup} bars of {tf_config.tf}) would require data "
+                f"starting {data_start.date()}, which is before earliest available Bybit data "
+                f"({earliest_date.date()}). Reduce warmup_bars or use a later window_start."
+            )
+    
+    # ==========================================================================
+    # STEP 2: Collect all (symbol, tf) pairs with computed warmup
+    # ==========================================================================
+    pairs_to_check: List[Tuple[str, str, int]] = []  # (symbol, tf, warmup_bars)
+
     for symbol in idea_card.symbol_universe:
         for role, tf_config in idea_card.tf_configs.items():
-            warmup = tf_config.effective_warmup_bars
-            pairs_to_check.append((symbol, tf_config.tf, warmup))
+            # Use computed warmup from WarmupRequirements (not tf_config.effective_warmup_bars)
+            warmup = warmup_requirements.warmup_by_role.get(role, 0)
+            # Add safety buffer
+            safety_buffer = _compute_safety_buffer(warmup)
+            warmup_with_buffer = warmup + safety_buffer
+            pairs_to_check.append((symbol, tf_config.tf, warmup_with_buffer))
+
+    # ==========================================================================
+    # STEP 2.5: Add mandatory 1m coverage check for all symbols
+    # ==========================================================================
+    # 1m is required as a quote/ticker proxy for simulator. Coverage must exist
+    # for the full backtest window including max warmup across all roles.
+    # The 1m warmup is calculated as: max warmup bars across all roles, converted to 1m.
+
+    # Check if 1m is already declared (skip if already in pairs)
+    declared_tfs = {tf_config.tf.lower() for tf_config in idea_card.tf_configs.values()}
+
+    if "1m" not in declared_tfs:
+        # Calculate 1m warmup: max warmup across all roles, converted to 1m bars
+        max_warmup_minutes = 0
+        for role, tf_config in idea_card.tf_configs.items():
+            role_warmup = warmup_requirements.warmup_by_role.get(role, 0)
+            tf_minutes = parse_tf_to_minutes(tf_config.tf)
+            warmup_minutes = role_warmup * tf_minutes
+            max_warmup_minutes = max(max_warmup_minutes, warmup_minutes)
+
+        # Convert to 1m bars
+        warmup_1m_bars = max_warmup_minutes  # 1m = 1 minute per bar
+        safety_buffer_1m = _compute_safety_buffer(warmup_1m_bars)
+        warmup_1m_with_buffer = warmup_1m_bars + safety_buffer_1m
+
+        # Add 1m to pairs for each symbol
+        for symbol in idea_card.symbol_universe:
+            pairs_to_check.append((symbol, "1m", warmup_1m_with_buffer))
     
     # First validation pass
     tf_results, failed_pairs = _validate_all_pairs(
@@ -714,13 +999,144 @@ def run_preflight_gate(
             if not failed_pairs:
                 break
     
+    # ==========================================================================
+    # STEP 3: Determine 1m coverage status and exec→1m mapping feasibility
+    # ==========================================================================
+    # Check if 1m data exists for all symbols and covers required range
+    has_1m_coverage = True
+    required_1m_bars = 0
+
+    for symbol in idea_card.symbol_universe:
+        key_1m = f"{symbol}:1m"
+        if key_1m in tf_results:
+            result_1m = tf_results[key_1m]
+            required_1m_bars = max(required_1m_bars, result_1m.warmup_bars + result_1m.bar_count)
+            if result_1m.status == PreflightStatus.FAILED:
+                has_1m_coverage = False
+        else:
+            # 1m not in results means it wasn't checked (shouldn't happen now)
+            has_1m_coverage = False
+
+    # Validate exec→1m mapping feasibility
+    exec_to_1m_mapping_feasible = True
+    mapping_error: Optional[str] = None
+
+    if has_1m_coverage:
+        # Get exec TF from IdeaCard
+        exec_tf = idea_card.tf_configs.get("exec")
+        if exec_tf:
+            # Load 1m data for mapping validation
+            for symbol in idea_card.symbol_universe:
+                key_1m = f"{symbol}:1m"
+                result_1m = tf_results.get(key_1m)
+                if result_1m and result_1m.data_exists:
+                    # Need to re-load 1m data for mapping check
+                    try:
+                        tf_minutes = parse_tf_to_minutes("1m")
+                        effective_start_1m = calculate_warmup_start(
+                            window_start, result_1m.warmup_bars, tf_minutes
+                        )
+                        df_1m = data_loader(symbol, "1m", effective_start_1m, window_end)
+                        mapping_ok, err = _validate_exec_to_1m_mapping(
+                            exec_tf=exec_tf.tf,
+                            window_start=window_start,
+                            window_end=window_end,
+                            df_1m=df_1m,
+                        )
+                        if not mapping_ok:
+                            exec_to_1m_mapping_feasible = False
+                            mapping_error = err
+                            break
+                    except Exception as e:
+                        exec_to_1m_mapping_feasible = False
+                        mapping_error = f"Failed to validate exec→1m mapping: {str(e)}"
+                        break
+                else:
+                    exec_to_1m_mapping_feasible = False
+                    mapping_error = f"1m data not available for {symbol}"
+                    break
+
     # Determine overall status
     overall_passed = all(
-        r.status != PreflightStatus.FAILED 
+        r.status != PreflightStatus.FAILED
         for r in tf_results.values()
     )
-    
-    # Build report
+
+    # 1m coverage and mapping are now hard requirements
+    if not has_1m_coverage or not exec_to_1m_mapping_feasible:
+        overall_passed = False
+
+    # Phase 6: Classify error for structured smoke test assertions
+    error_code: Optional[str] = None
+    error_details: Optional[Dict[str, Any]] = None
+
+    if not overall_passed:
+        # Check 1m-specific failures first (highest priority)
+        if not has_1m_coverage:
+            error_code = "MISSING_1M_COVERAGE"
+            # Find the failing 1m result
+            for symbol in idea_card.symbol_universe:
+                key_1m = f"{symbol}:1m"
+                result_1m = tf_results.get(key_1m)
+                if result_1m and result_1m.status == PreflightStatus.FAILED:
+                    error_details = {
+                        "symbol": symbol,
+                        "tf": "1m",
+                        "reason": "missing_1m_data",
+                        "required_start_ts_ms": _datetime_to_epoch_ms(result_1m.required_start),
+                        "required_end_ts_ms": _datetime_to_epoch_ms(result_1m.required_end),
+                        "db_start_ts_ms": _datetime_to_epoch_ms(result_1m.min_ts),
+                        "db_end_ts_ms": _datetime_to_epoch_ms(result_1m.max_ts),
+                        "fix_command": (
+                            f"python trade_cli.py data sync-range --symbol {symbol} --tf 1m "
+                            f"--start {result_1m.required_start.strftime('%Y-%m-%d') if result_1m.required_start else 'N/A'} "
+                            f"--end {result_1m.required_end.strftime('%Y-%m-%d') if result_1m.required_end else 'N/A'}"
+                        ),
+                    }
+                    break
+        elif not exec_to_1m_mapping_feasible:
+            error_code = "EXEC_1M_MAPPING_FAILED"
+            error_details = {
+                "reason": mapping_error or "Unknown mapping error",
+                "exec_tf": exec_tf.tf if exec_tf else "unknown",
+            }
+        else:
+            # Analyze other failures
+            for key, tf_result in tf_results.items():
+                if tf_result.status == PreflightStatus.FAILED:
+                    if not tf_result.data_exists:
+                        # No data at all for this symbol/tf
+                        error_code = "HISTORY_UNAVAILABLE"
+                        error_details = {
+                            "symbol": tf_result.symbol,
+                            "tf": tf_result.tf,
+                            "reason": "no_data_exists",
+                        }
+                        break
+                    elif not tf_result.covers_range:
+                        # Data exists but doesn't cover required range
+                        error_code = "INSUFFICIENT_COVERAGE"
+                        error_details = {
+                            "symbol": tf_result.symbol,
+                            "tf": tf_result.tf,
+                            "reason": "coverage_gap",
+                            "required_start_ts_ms": _datetime_to_epoch_ms(tf_result.required_start),
+                            "required_end_ts_ms": _datetime_to_epoch_ms(tf_result.required_end),
+                            "db_start_ts_ms": _datetime_to_epoch_ms(tf_result.min_ts),
+                            "db_end_ts_ms": _datetime_to_epoch_ms(tf_result.max_ts),
+                        }
+                        break
+                    else:
+                        # Other validation failure (gaps, alignment, etc.)
+                        error_code = "DATA_QUALITY_ISSUE"
+                        error_details = {
+                            "symbol": tf_result.symbol,
+                            "tf": tf_result.tf,
+                            "errors": tf_result.errors,
+                        }
+                        break
+
+    # Build report with computed warmup requirements (SOURCE OF TRUTH for downstream)
     report = PreflightReport(
         idea_card_id=idea_card.id,
         window_start=window_start,
@@ -728,6 +1144,13 @@ def run_preflight_gate(
         overall_status=PreflightStatus.PASSED if overall_passed else PreflightStatus.FAILED,
         tf_results=tf_results,
         auto_sync_result=auto_sync_result,
+        computed_warmup_requirements=warmup_requirements,  # Pass to Runner/Engine
+        error_code=error_code,
+        error_details=error_details,
+        # 1m Price Feed fields
+        has_1m_coverage=has_1m_coverage,
+        exec_to_1m_mapping_feasible=exec_to_1m_mapping_feasible,
+        required_1m_bars=required_1m_bars,
     )
     
     return report

@@ -12,19 +12,23 @@ TRADE is a **modular, production-ready** Bybit futures trading bot with complete
 
 ## Current Objective (Backtest Engine Roadmap)
 
-We are building the backtesting + strategy factory stack in **phases**. The canonical roadmap lives in `docs/project/PROJECT_OVERVIEW.md` under **“Project Roadmap – TRADE Backtest Engine & Strategy Factory”**.
+We are building the backtesting + strategy factory stack in **phases**. The canonical roadmap lives in `docs/project/PROJECT_OVERVIEW.md` under **"Project Roadmap – TRADE Backtest Engine & Strategy Factory"**.
 
-### In-scope right now (Phase 1 → Phase 2)
+### Recent Completions (December 2024)
 
-- **Phase 1**: Implement a boring, deterministic core backtest engine for a **single system** (one symbol, one timeframe, one strategy family) with outputs:
-  - metrics, trades list, equity curve
-  - runs for `hygiene` and `test` windows via config only
-- **Phase 2**: Expose backtesting via the tools layer + CLI integration (CLI calls tools; no engine logic in CLI).
+- ✅ **Phase 5-7**: IdeaCard to Engine integration complete
+  - Preflight gate with auto-sync
+  - Data-fix with bounded enforcement
+  - Delay bars requirements (market_structure.delay_bars)
+  - **Phase 6 CLI Smoke Tests** validated (4/4 tests pass)
+  - Artifact standards: ts_ms, eval_start_ts_ms, structured exports
+  
+**See**: `docs/session_reviews/2024-12-17_phase6_cli_smoke_tests.md`
 
 ### Explicitly off-limits until later phases
 
 - Forecasting models / ML, composite strategies, strategy selection policies
-- “Factory” orchestration beyond “run this system” (no automated promotions yet)
+- "Factory" orchestration beyond "run this system" (no automated promotions yet)
 - Demo/live automation for backtested strategies
 
 ### Intended module placement (high-level)
@@ -42,6 +46,11 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 python trade_cli.py                     # Run interactive CLI
 python trade_cli.py --smoke full        # Full smoke test (data + trading)
 python trade_cli.py --smoke data_extensive  # Extensive data test (clean DB, gaps, sync)
+python trade_cli.py backtest metadata-smoke  # Indicator Metadata v1 smoke test
+
+# Phase 6 backtest smoke (opt-in)
+$env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
+
 pip install -r requirements.txt         # Dependencies
 ```
 
@@ -157,6 +166,14 @@ TRADE/
 - Simulator MUST NOT compute indicators unless declared in FeatureSpec/Idea Card.
 - `TFContext.get_indicator_strict()` raises `KeyError` for undeclared indicators.
 - Strategies MUST NOT assume any indicator exists by default.
+
+**Indicator Metadata System v1**
+- All indicators MUST have provenance metadata captured at computation time.
+- Metadata stored in-memory only (no DB persistence).
+- `feature_spec_id`: Stable hash identifying indicator computation (type, params, input_source).
+- Multi-output indicators: SAME `feature_spec_id` for all outputs; `indicator_key` distinguishes outputs.
+- Export available via `backtest metadata-smoke` CLI command.
+- See: `docs/todos/INDICATOR_METADATA_SYSTEM_PHASES.md`
 
 **Snapshot Architecture**
 - `RuntimeSnapshotView` is a read-only view over cached data—MUST NOT deep copy.
@@ -373,6 +390,7 @@ See **Critical Rules → Safety & API Discipline** for the requirement to check 
 | Data Extensive | `--smoke data_extensive` | DATA | Clean DB, build sparse history, fill gaps, sync |
 | Orders | `--smoke orders` | LIVE (DEMO) | All order types: market, limit, stop, TP/SL, trailing |
 | Live Check | `--smoke live_check` | LIVE (LIVE) | Opt-in connectivity test (requires LIVE keys) |
+| Metadata | `backtest metadata-smoke` | SIMULATOR | Indicator Metadata v1 validation (synthetic data, no DB) |
 
 **Note**: ALL validation runs through CLI commands. No pytest files exist in this codebase.
 
@@ -396,6 +414,8 @@ The `data_extensive` test:
 | Environment variables | `env.example` |
 | Data architecture | `docs/architecture/DATA_ARCHITECTURE.md` |
 | Simulated exchange | `docs/architecture/SIMULATED_EXCHANGE.md` |
+| Artifact storage format | `docs/architecture/ARTIFACT_STORAGE_FORMAT.md` |
+| IdeaCard → Engine flow | `docs/architecture/IDEACARD_ENGINE_FLOW.md` |
 | Project rules | `docs/project/PROJECT_RULES.md` |
 | Project overview | `docs/project/PROJECT_OVERVIEW.md` |
 
@@ -405,5 +425,12 @@ The `data_extensive` test:
 |----------|--------|-------|
 | `docs/todos/archived/SNAPSHOT_HISTORY_MTF_ALIGNMENT_PHASES.md` | ✅ Complete (archived) | Snapshot, MTF, FeatureSpec |
 | `docs/todos/archived/SIMULATED_EXCHANGE_MODE_LOCKS_PHASES.md` | ✅ Complete (archived) | USDT-only, isolated margin |
-| `docs/todos/BACKTEST_ANALYTICS_PHASES.md` | Phases 1-3 ✅, 4-6 pending | Analytics metrics |
-| `docs/todos/THREE_YEAR_MTF_TRIO_BACKTESTS.md` | ✅ Complete | Three-year MTF backtests |
+| `docs/todos/archived/CLI_FIRST_BACKTEST_DATA_INDICATORS_PHASES.md` | ✅ Complete (archived Dec 2025) | CLI-first validation |
+| `docs/todos/archived/CLI_ONLY_VALIDATION_MIGRATION.md` | ✅ Complete (archived Dec 2025) | Pytest to CLI migration |
+| `docs/todos/archived/INDICATOR_REGISTRY_YAML_BUILDER_PHASES.md` | ✅ Complete (archived Dec 2025) | Indicator registry |
+| `docs/todos/archived/INDICATOR_METADATA_SYSTEM_PHASES.md` | ✅ Complete (archived Dec 2025) | Metadata tracking |
+| `docs/todos/archived/THREE_YEAR_MTF_TRIO_BACKTESTS.md` | ✅ Complete (archived Dec 2025) | Three-year MTF backtests |
+| `docs/todos/archived/MTF_HISTORY_WARMUP_BUG_FIX.md` | ✅ Complete (archived Dec 2025) | MTF warmup bug fix |
+| `docs/todos/archived/2025-12-31/PRICE_FEED_1M_PREFLIGHT_PHASES.md` | ✅ Complete (archived Dec 2025) | 1m price feed + rollups |
+| `docs/todos/BACKTEST_ANALYTICS_PHASES.md` | Phases 1-3 ✅, 4-6 📋 pending | Analytics metrics |
+| `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md` | Phases 1-4 ✅, Phase 5 📋 READY | Hot loop + Market Structure |

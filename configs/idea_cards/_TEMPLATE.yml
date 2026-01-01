@@ -182,14 +182,14 @@ risk_model:
 #
 # Multi-output (MUST use expanded keys in signal_rules):
 #   - macd → {output_key}_macd, {output_key}_signal, {output_key}_histogram
-#   - bbands → {output_key}_lower, {output_key}_mid, {output_key}_upper,
+#   - bbands → {output_key}_lower, {output_key}_middle, {output_key}_upper,
 #              {output_key}_bandwidth, {output_key}_percent_b
 #   - stoch → {output_key}_k, {output_key}_d
 #   - stochrsi → {output_key}_k, {output_key}_d
 #   - adx → {output_key}_adx, {output_key}_dmp, {output_key}_dmn
 #   - aroon → {output_key}_up, {output_key}_down, {output_key}_osc
 #   - kc → {output_key}_lower, {output_key}_basis, {output_key}_upper
-#   - donchian → {output_key}_lower, {output_key}_mid, {output_key}_upper
+#   - donchian → {output_key}_lower, {output_key}_middle, {output_key}_upper
 #   - supertrend → {output_key}_trend, {output_key}_direction,
 #                  {output_key}_long, {output_key}_short
 #   - psar → {output_key}_long, {output_key}_short, {output_key}_af,

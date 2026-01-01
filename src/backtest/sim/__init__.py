@@ -49,7 +49,7 @@ from .types import (
     LedgerState,
     LedgerUpdate,
     StepResult,
-    ExchangeState,
+    SimulatorExchangeState,
     # Config
     ExecutionConfig,
 )
@@ -81,7 +81,7 @@ __all__ = [
     "LedgerState",
     "LedgerUpdate",
     "StepResult",
-    "ExchangeState",
+    "SimulatorExchangeState",
     # Config
     "ExecutionConfig",
     # Adapters

@@ -36,7 +36,7 @@ from .types import (
     FillReason,
     FundingEvent,
     StepResult,
-    ExchangeState,
+    SimulatorExchangeState,
     StopReason,
     ExecutionConfig,
     FundingResult,
@@ -367,7 +367,15 @@ class SimulatedExchange:
                 trade = self._close_position(exit_price, ts_open, exit_reason.value, exit_price_source)
                 if trade:
                     closed_trades.append(trade)
-        
+
+        # 5b. Track min/max price for MAE/MFE (if position still open)
+        if self.position:
+            pos = self.position
+            if pos.min_price is None or bar.low < pos.min_price:
+                pos.min_price = bar.low
+            if pos.max_price is None or bar.high > pos.max_price:
+                pos.max_price = bar.high
+
         # 6. Update balances at bar close using the single mark_price
         self._ledger.update_for_mark_price(self.position, mark_price)
         
@@ -485,7 +493,20 @@ class SimulatedExchange:
         realized_pnl = self._execution.calculate_realized_pnl(pos, fill.price)
         self._ledger.apply_exit(realized_pnl, fill.fee)
         self.total_fees_paid += fill.fee
-        
+
+        # Compute MAE/MFE from tracked min/max prices
+        mae_pct = 0.0
+        mfe_pct = 0.0
+        if pos.entry_price > 0 and pos.min_price is not None and pos.max_price is not None:
+            if pos.side == OrderSide.LONG:
+                # Long: adverse = price drops, favorable = price rises
+                mae_pct = (pos.entry_price - pos.min_price) / pos.entry_price * 100
+                mfe_pct = (pos.max_price - pos.entry_price) / pos.entry_price * 100
+            else:
+                # Short: adverse = price rises, favorable = price drops
+                mae_pct = (pos.max_price - pos.entry_price) / pos.entry_price * 100
+                mfe_pct = (pos.entry_price - pos.min_price) / pos.entry_price * 100
+
         # Create trade record with Phase 4 fields
         from ..types import Trade
         trade = Trade(
@@ -510,8 +531,11 @@ class SimulatedExchange:
             exit_price_source=exit_price_source,
             entry_ready=pos.entry_ready,
             exit_ready=self._current_snapshot_ready,
+            # MAE/MFE
+            mae_pct=round(mae_pct, 4),
+            mfe_pct=round(mfe_pct, 4),
         )
-        
+
         self.trades.append(trade)
         self.position = None
         return trade

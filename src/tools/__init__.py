@@ -192,6 +192,7 @@ from .backtest_cli_wrapper import (
     backtest_data_fix_tool,
     backtest_list_idea_cards_tool,
     backtest_indicators_tool,
+    verify_artifact_parity_tool,
 )
 
 __all__ = [
@@ -320,4 +321,5 @@ __all__ = [
     "backtest_data_fix_tool",
     "backtest_list_idea_cards_tool",
     "backtest_indicators_tool",
+    "verify_artifact_parity_tool",
 ]

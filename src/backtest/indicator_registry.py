@@ -39,8 +39,150 @@ Agent Rule:
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Any
+from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Any
 from functools import lru_cache
+
+
+# =============================================================================
+# Warmup Formula Functions
+# =============================================================================
+# These functions calculate the minimum bars needed for an indicator to produce
+# valid values. They are stored in SUPPORTED_INDICATORS and looked up by the
+# registry.
+
+def _warmup_length(p: Dict[str, Any]) -> int:
+    """Default warmup: just the length parameter."""
+    return p.get("length", 0)
+
+
+def _warmup_ema(p: Dict[str, Any]) -> int:
+    """EMA needs 3x length for stabilization."""
+    return p.get("length", 20) * 3
+
+
+def _warmup_sma(p: Dict[str, Any]) -> int:
+    """SMA needs exactly length bars."""
+    return p.get("length", 20)
+
+
+def _warmup_rsi(p: Dict[str, Any]) -> int:
+    """RSI needs length + 1 for first delta."""
+    return p.get("length", 14) + 1
+
+
+def _warmup_atr(p: Dict[str, Any]) -> int:
+    """ATR needs length + 1 for previous close."""
+    return p.get("length", 14) + 1
+
+
+def _warmup_macd(p: Dict[str, Any]) -> int:
+    """MACD needs 3x slow + signal for EMA stabilization."""
+    slow = p.get("slow", 26)
+    signal = p.get("signal", 9)
+    return slow * 3 + signal
+
+
+def _warmup_bbands(p: Dict[str, Any]) -> int:
+    """Bollinger Bands needs same as SMA."""
+    return p.get("length", 20)
+
+
+def _warmup_stoch(p: Dict[str, Any]) -> int:
+    """Stochastic needs k + smooth_k + d."""
+    k = p.get("k", 14)
+    d = p.get("d", 3)
+    smooth_k = p.get("smooth_k", 3)
+    return k + smooth_k + d
+
+
+def _warmup_stochrsi(p: Dict[str, Any]) -> int:
+    """StochRSI needs rsi_length + length + max(k, d)."""
+    length = p.get("length", 14)
+    rsi_length = p.get("rsi_length", 14)
+    k = p.get("k", 3)
+    d = p.get("d", 3)
+    return rsi_length + length + max(k, d)
+
+
+def _warmup_adx(p: Dict[str, Any]) -> int:
+    """ADX needs 2x length for smoothing."""
+    return p.get("length", 14) * 2
+
+
+def _warmup_supertrend(p: Dict[str, Any]) -> int:
+    """Supertrend needs ATR warmup."""
+    return p.get("length", 10) + 1
+
+
+def _warmup_psar(p: Dict[str, Any]) -> int:
+    """PSAR needs minimal warmup (2 bars for trend detection)."""
+    return 2
+
+
+def _warmup_squeeze(p: Dict[str, Any]) -> int:
+    """Squeeze needs max of BB and KC lengths."""
+    bb_length = p.get("bb_length", 20)
+    kc_length = p.get("kc_length", 20)
+    return max(bb_length, kc_length)
+
+
+def _warmup_kc(p: Dict[str, Any]) -> int:
+    """Keltner Channel needs EMA + ATR warmup."""
+    length = p.get("length", 20)
+    return length * 3 + 1  # EMA stabilization + ATR
+
+
+def _warmup_donchian(p: Dict[str, Any]) -> int:
+    """Donchian Channel needs max of lower/upper lengths."""
+    lower = p.get("lower_length", 20)
+    upper = p.get("upper_length", 20)
+    return max(lower, upper)
+
+
+def _warmup_aroon(p: Dict[str, Any]) -> int:
+    """Aroon needs length + 1."""
+    return p.get("length", 25) + 1
+
+
+def _warmup_fisher(p: Dict[str, Any]) -> int:
+    """Fisher Transform needs length."""
+    return p.get("length", 9)
+
+
+def _warmup_tsi(p: Dict[str, Any]) -> int:
+    """TSI needs fast + slow + signal for double smoothing."""
+    fast = p.get("fast", 13)
+    slow = p.get("slow", 25)
+    signal = p.get("signal", 13)
+    return fast + slow + signal
+
+
+def _warmup_kvo(p: Dict[str, Any]) -> int:
+    """KVO needs fast + slow + signal."""
+    fast = p.get("fast", 34)
+    slow = p.get("slow", 55)
+    signal = p.get("signal", 13)
+    return fast + slow + signal
+
+
+def _warmup_uo(p: Dict[str, Any]) -> int:
+    """Ultimate Oscillator needs max of all periods."""
+    fast = p.get("fast", 7)
+    medium = p.get("medium", 14)
+    slow = p.get("slow", 28)
+    return max(fast, medium, slow)
+
+
+def _warmup_ppo(p: Dict[str, Any]) -> int:
+    """PPO needs same as MACD (EMA-based)."""
+    slow = p.get("slow", 26)
+    signal = p.get("signal", 9)
+    return slow * 3 + signal
+
+
+def _warmup_minimal(p: Dict[str, Any]) -> int:
+    """Minimal warmup for cumulative/instant indicators (OBV, OHLC4)."""
+    return 1
 
 
 # =============================================================================
@@ -59,133 +201,159 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_ema,
     },
     "sma": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_sma,
     },
     "rsi": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_rsi,
     },
     "atr": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_atr,
     },
     "cci": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "willr": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "roc": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "mom": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "kama": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_ema,  # Adaptive MA, use EMA warmup
     },
     "alma": {
         "inputs": {"close"},
         "params": {"length", "sigma", "offset"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "wma": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "dema": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_ema,  # Double EMA
     },
     "tema": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_ema,  # Triple EMA
     },
     "trima": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_sma,
     },
     "zlma": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_ema,  # Zero-lag uses EMA
     },
     "natr": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_atr,  # Normalized ATR
     },
     "mfi": {
         "inputs": {"high", "low", "close", "volume"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "obv": {
         "inputs": {"close", "volume"},
         "params": set(),
         "multi_output": False,
+        "warmup_formula": _warmup_minimal,
     },
     "cmf": {
         "inputs": {"high", "low", "close", "volume"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "cmo": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "linreg": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "midprice": {
         "inputs": {"high", "low"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_length,
     },
     "ohlc4": {
         "inputs": {"open", "high", "low", "close"},
         "params": set(),
         "multi_output": False,
+        "warmup_formula": _warmup_minimal,
     },
     "trix": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
+        "warmup_formula": _warmup_ema,  # Triple EMA-based
     },
     "uo": {
         "inputs": {"high", "low", "close"},
         "params": {"fast", "medium", "slow"},
         "multi_output": False,
+        "warmup_formula": _warmup_uo,
     },
     "ppo": {
         "inputs": {"close"},
         "params": {"fast", "slow", "signal"},
         "multi_output": False,
+        "warmup_formula": _warmup_ppo,
     },
-    
+
     # -------------------------------------------------------------------------
     # Multi-Output Indicators
     # -------------------------------------------------------------------------
@@ -195,13 +363,15 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("macd", "signal", "histogram"),
         "primary_output": "macd",
+        "warmup_formula": _warmup_macd,
     },
     "bbands": {
         "inputs": {"close"},
         "params": {"length", "std"},
         "multi_output": True,
-        "output_keys": ("lower", "mid", "upper", "bandwidth", "percent_b"),
-        "primary_output": "mid",
+        "output_keys": ("lower", "middle", "upper", "bandwidth", "percent_b"),
+        "primary_output": "middle",
+        "warmup_formula": _warmup_bbands,
     },
     "stoch": {
         "inputs": {"high", "low", "close"},
@@ -209,6 +379,7 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("k", "d"),
         "primary_output": "k",
+        "warmup_formula": _warmup_stoch,
     },
     "stochrsi": {
         "inputs": {"close"},
@@ -216,13 +387,15 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("k", "d"),
         "primary_output": "k",
+        "warmup_formula": _warmup_stochrsi,
     },
     "adx": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": True,
-        "output_keys": ("adx", "dmp", "dmn"),
+        "output_keys": ("adx", "dmp", "dmn", "adxr"),
         "primary_output": "adx",
+        "warmup_formula": _warmup_adx,
     },
     "aroon": {
         "inputs": {"high", "low"},
@@ -230,6 +403,7 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("up", "down", "osc"),
         "primary_output": "osc",
+        "warmup_formula": _warmup_aroon,
     },
     "kc": {
         "inputs": {"high", "low", "close"},
@@ -237,13 +411,15 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("lower", "basis", "upper"),
         "primary_output": "basis",
+        "warmup_formula": _warmup_kc,
     },
     "donchian": {
         "inputs": {"high", "low"},
         "params": {"lower_length", "upper_length"},
         "multi_output": True,
-        "output_keys": ("lower", "mid", "upper"),
-        "primary_output": "mid",
+        "output_keys": ("lower", "middle", "upper"),
+        "primary_output": "middle",
+        "warmup_formula": _warmup_donchian,
     },
     "supertrend": {
         "inputs": {"high", "low", "close"},
@@ -251,6 +427,10 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("trend", "direction", "long", "short"),
         "primary_output": "trend",
+        "warmup_formula": _warmup_supertrend,
+        # long/short are mutually exclusive - only one is valid at a time
+        # (long when uptrend, short when downtrend)
+        "mutually_exclusive_outputs": (("long", "short"),),
     },
     "psar": {
         "inputs": {"high", "low", "close"},
@@ -258,13 +438,18 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("long", "short", "af", "reversal"),
         "primary_output": "long",
+        "warmup_formula": _warmup_psar,
+        # long/short are mutually exclusive - only one is valid at a time
+        # (long when SAR is below price, short when SAR is above price)
+        "mutually_exclusive_outputs": (("long", "short"),),
     },
     "squeeze": {
         "inputs": {"high", "low", "close"},
         "params": {"bb_length", "bb_std", "kc_length", "kc_scalar"},
         "multi_output": True,
-        "output_keys": ("sqz", "sqz_on", "sqz_off", "no_sqz"),
+        "output_keys": ("sqz", "on", "off", "no_sqz"),
         "primary_output": "sqz",
+        "warmup_formula": _warmup_squeeze,
     },
     "vortex": {
         "inputs": {"high", "low", "close"},
@@ -272,6 +457,7 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("vip", "vim"),
         "primary_output": "vip",
+        "warmup_formula": _warmup_length,
     },
     "dm": {
         "inputs": {"high", "low"},
@@ -279,6 +465,7 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("dmp", "dmn"),
         "primary_output": "dmp",
+        "warmup_formula": _warmup_length,
     },
     "fisher": {
         "inputs": {"high", "low"},
@@ -286,6 +473,7 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("fisher", "signal"),
         "primary_output": "fisher",
+        "warmup_formula": _warmup_fisher,
     },
     "tsi": {
         "inputs": {"close"},
@@ -293,6 +481,7 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("tsi", "signal"),
         "primary_output": "tsi",
+        "warmup_formula": _warmup_tsi,
     },
     "kvo": {
         "inputs": {"high", "low", "close", "volume"},
@@ -300,6 +489,7 @@ SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
         "multi_output": True,
         "output_keys": ("kvo", "signal"),
         "primary_output": "kvo",
+        "warmup_formula": _warmup_kvo,
     },
 }
 
@@ -312,6 +502,32 @@ COMMON_PARAMS = {
 
 
 # =============================================================================
+# Indicator Entry Schema
+# =============================================================================
+# Each indicator in SUPPORTED_INDICATORS may have the following fields:
+#
+# Required:
+#   - inputs: Set[str]          - Required input series (close, high, low, volume, etc.)
+#   - params: Set[str]          - Accepted keyword parameters
+#   - multi_output: bool        - Whether indicator produces multiple outputs
+#
+# Optional (for multi-output):
+#   - output_keys: Tuple[str]   - Output suffix names (required if multi_output=True)
+#   - primary_output: str       - Default output suffix for references
+#
+# Optional (Phase 0 additions):
+#   - warmup_formula: Callable[[Dict], int]  - Function to calculate warmup bars from params
+#                                               Default: _warmup_length
+#   - sparse: bool              - Whether outputs are sparse (need forward-fill)
+#                                 Default: False
+#   - compute_fn: Optional[str] - Custom compute function name for non-pandas_ta indicators
+#                                 Default: None (uses pandas_ta)
+#
+# NOTE: Current indicators all use pandas_ta and are not sparse.
+# The sparse and compute_fn fields enable future market structure indicators.
+
+
+# =============================================================================
 # Data Structures
 # =============================================================================
 
@@ -319,7 +535,7 @@ COMMON_PARAMS = {
 class IndicatorInfo:
     """
     Metadata about a supported indicator.
-    
+
     Attributes:
         name: Indicator function name (e.g., "ema", "macd")
         input_series: Set of required input series names
@@ -327,6 +543,12 @@ class IndicatorInfo:
         is_multi_output: Whether this indicator returns multiple outputs
         output_keys: For multi-output, the canonical output suffixes
         primary_output: For multi-output, the default/primary output suffix
+        warmup_formula: Function to calculate warmup bars from params dict
+        sparse: Whether outputs are sparse and need forward-fill
+        compute_fn: Custom compute function name (None = use pandas_ta)
+        mutually_exclusive_outputs: Groups of outputs where only one can be valid
+            at a time. E.g., SuperTrend's (("long", "short"),) means st_long and
+            st_short are mutually exclusive - when one has a value, the other is NaN.
     """
     name: str
     input_series: FrozenSet[str] = field(default_factory=frozenset)
@@ -334,16 +556,37 @@ class IndicatorInfo:
     is_multi_output: bool = False
     output_keys: Tuple[str, ...] = field(default_factory=tuple)
     primary_output: Optional[str] = None
-    
+    # Phase 0 additions for registry consolidation
+    warmup_formula: Optional[Callable[[Dict[str, Any]], int]] = None
+    sparse: bool = False
+    compute_fn: Optional[str] = None
+    # Mutually exclusive output groups - tuple of tuples of suffix names
+    # E.g., (("long", "short"),) means long and short are mutually exclusive
+    mutually_exclusive_outputs: Tuple[Tuple[str, ...], ...] = field(default_factory=tuple)
+
     @property
     def requires_hlc(self) -> bool:
         """Check if indicator requires high/low/close."""
         return {"high", "low", "close"}.issubset(self.input_series)
-    
+
     @property
     def requires_volume(self) -> bool:
         """Check if indicator requires volume."""
         return "volume" in self.input_series
+
+    def is_output_in_exclusive_group(self, suffix: str) -> bool:
+        """Check if an output suffix is part of a mutually exclusive group."""
+        for group in self.mutually_exclusive_outputs:
+            if suffix in group:
+                return True
+        return False
+
+    def get_exclusive_group_for_output(self, suffix: str) -> Optional[Tuple[str, ...]]:
+        """Get the mutually exclusive group containing this output suffix."""
+        for group in self.mutually_exclusive_outputs:
+            if suffix in group:
+                return group
+        return None
 
 
 # =============================================================================
@@ -389,8 +632,13 @@ class IndicatorRegistry:
             # Build accepted params (indicator-specific + common)
             accepted_params = set(spec.get("params", set()))
             accepted_params.update(COMMON_PARAMS)
-            
-            # Build IndicatorInfo
+
+            # Build IndicatorInfo with all fields including Phase 0 additions
+            # Convert mutually_exclusive_outputs to tuple of tuples
+            exclusive_outputs = spec.get("mutually_exclusive_outputs", ())
+            if exclusive_outputs:
+                exclusive_outputs = tuple(tuple(g) for g in exclusive_outputs)
+
             info = IndicatorInfo(
                 name=name,
                 input_series=frozenset(spec.get("inputs", set())),
@@ -398,6 +646,12 @@ class IndicatorRegistry:
                 is_multi_output=spec.get("multi_output", False),
                 output_keys=tuple(spec.get("output_keys", ())),
                 primary_output=spec.get("primary_output"),
+                # Phase 0 additions
+                warmup_formula=spec.get("warmup_formula", _warmup_length),
+                sparse=spec.get("sparse", False),
+                compute_fn=spec.get("compute_fn"),
+                # Mutually exclusive outputs (e.g., SuperTrend long/short)
+                mutually_exclusive_outputs=exclusive_outputs,
             )
             self._indicators[name] = info
     
@@ -530,15 +784,138 @@ class IndicatorRegistry:
     def get_input_series(self, name: str) -> Set[str]:
         """
         Get the set of input series names an indicator needs.
-        
+
         Args:
             name: Indicator name
-            
+
         Returns:
             Set of series names: {"close"}, {"high", "low", "close"}, etc.
         """
         info = self.get_indicator_info(name)
         return set(info.input_series)
+
+    # =========================================================================
+    # Phase 0 Additions: Warmup and Sparse Support
+    # =========================================================================
+
+    def get_warmup_bars(self, indicator_type: str, params: Dict[str, Any]) -> int:
+        """
+        Calculate warmup bars needed for an indicator with given params.
+
+        This is the CANONICAL API for warmup calculation. Uses the warmup_formula
+        stored in the registry to compute the minimum bars needed.
+
+        Args:
+            indicator_type: Indicator type name (e.g., "ema", "macd")
+            params: Dict of parameter values (e.g., {"length": 20})
+
+        Returns:
+            Number of warmup bars needed
+
+        Raises:
+            ValueError: If indicator not supported
+        """
+        info = self.get_indicator_info(indicator_type)
+        if info.warmup_formula:
+            return info.warmup_formula(params)
+        # Fallback: use length param if no formula defined
+        return params.get("length", 0)
+
+    def is_sparse(self, name: str) -> bool:
+        """
+        Check if indicator outputs are sparse (need forward-fill).
+
+        Sparse indicators produce values only at certain bars (e.g., swing
+        detection produces values only when a swing is confirmed). Between
+        output bars, the values need to be forward-filled.
+
+        Args:
+            name: Indicator name
+
+        Returns:
+            True if indicator outputs are sparse
+        """
+        try:
+            info = self.get_indicator_info(name)
+            return info.sparse
+        except ValueError:
+            return False
+
+    def get_compute_fn(self, name: str) -> Optional[str]:
+        """
+        Get the custom compute function name for an indicator.
+
+        For pandas_ta indicators, returns None.
+        For custom indicators (e.g., market structure), returns the function name.
+
+        Args:
+            name: Indicator name
+
+        Returns:
+            Function name string, or None for pandas_ta indicators
+        """
+        try:
+            info = self.get_indicator_info(name)
+            return info.compute_fn
+        except ValueError:
+            return None
+
+    def get_mutually_exclusive_groups(
+        self, column_names: List[str]
+    ) -> List[Set[str]]:
+        """
+        Identify mutually exclusive column groups from a list of column names.
+
+        For indicators like SuperTrend (st_long, st_short) or PSAR (psar_long, psar_short),
+        the long/short outputs are mutually exclusive - only one has a value at any bar.
+        This method finds such groups in a list of column names.
+
+        Args:
+            column_names: List of indicator column names (e.g., ["st_long", "st_short", "ema_21"])
+
+        Returns:
+            List of sets, where each set contains column names that are mutually exclusive.
+            E.g., [{"st_long", "st_short"}, {"psar_long", "psar_short"}]
+        """
+        groups: List[Set[str]] = []
+        processed: Set[str] = set()
+
+        for col in column_names:
+            if col in processed:
+                continue
+
+            # Try to match column to an indicator with mutually exclusive outputs
+            # Column format is usually: {output_key}_{suffix} for multi-output
+            for indicator_name, info in self._indicators.items():
+                if not info.mutually_exclusive_outputs:
+                    continue
+
+                # Check each exclusive group in this indicator
+                for exclusive_group in info.mutually_exclusive_outputs:
+                    # Try to find the base output_key by matching suffixes
+                    # E.g., if col="st_long" and suffix="long", base="st"
+                    for suffix in exclusive_group:
+                        if col.endswith(f"_{suffix}"):
+                            base_key = col[: -(len(suffix) + 1)]  # Remove _suffix
+
+                            # Build the full set of exclusive columns with this base
+                            exclusive_cols = set()
+                            for s in exclusive_group:
+                                full_col = f"{base_key}_{s}"
+                                if full_col in column_names:
+                                    exclusive_cols.add(full_col)
+
+                            # Only add if we found more than one column
+                            if len(exclusive_cols) > 1:
+                                groups.append(exclusive_cols)
+                                processed.update(exclusive_cols)
+                            break
+                    if col in processed:
+                        break
+                if col in processed:
+                    break
+
+        return groups
 
 
 # =============================================================================
@@ -591,13 +968,28 @@ def validate_indicator_params(indicator_type: str, params: Dict[str, Any]) -> No
 def get_expanded_keys(indicator_type: str, output_key: str) -> List[str]:
     """
     Get the expanded output keys for an indicator (canonical API).
-    
+
     Args:
         indicator_type: Indicator type name (e.g., "macd")
         output_key: The base output_key from FeatureSpec
-        
+
     Returns:
         List of all output keys this indicator will produce
     """
     registry = get_registry()
     return registry.get_expanded_keys(indicator_type, output_key)
+
+
+def get_warmup_bars(indicator_type: str, params: Dict[str, Any]) -> int:
+    """
+    Calculate warmup bars needed for an indicator with given params.
+
+    Args:
+        indicator_type: Indicator type name (e.g., "ema", "macd")
+        params: Dict of parameter values (e.g., {"length": 20})
+
+    Returns:
+        Number of warmup bars needed
+    """
+    registry = get_registry()
+    return registry.get_warmup_bars(indicator_type, params)

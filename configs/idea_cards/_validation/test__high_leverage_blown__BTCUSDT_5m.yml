@@ -1,0 +1,74 @@
+id: test__high_leverage_blown__BTCUSDT_5m
+version: 1.0.0
+name: High Leverage Blown Account Test - BTCUSDT 5m
+description: 'Test scenario to validate blown account detection with high leverage
+  (10x), large position sizing (10% equity), and tight stop loss (0.5%). Designed
+  to trigger liquidation or equity floor hit for testing stop classification.
+
+  '
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 10.0  # 10x leverage (10% IMR)
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 5.0  # Higher slippage for aggressive scenario
+symbol_universe:
+- BTCUSDT
+tf_configs:
+  exec:
+    tf: 5m
+    role: exec
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 50
+      delay_bars: 0
+    feature_specs:
+    - indicator_type: ema
+      output_key: ema_fast
+      params:
+        length: 5
+      input_source: close
+    - indicator_type: ema
+      output_key: ema_slow
+      params:
+        length: 10
+      input_source: close
+    required_indicators:
+    - ema_fast
+    - ema_slow
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+signal_rules:
+  entry_rules:
+  - direction: long
+    conditions:
+    - tf: exec
+      indicator_key: ema_fast
+      operator: gt
+      ref_key: ema_slow
+      value: 0  # EMA fast > slow
+  - direction: short
+    conditions:
+    - tf: exec
+      indicator_key: ema_fast
+      operator: lt
+      ref_key: ema_slow
+      value: 0  # EMA fast < slow
+  exit_rules: []  # No exits - rely on stop loss and flips
+risk_model:
+  stop_loss:
+    type: percent
+    value: 0.3  # Extremely tight stop (0.3% with 10x leverage = 3% of equity per trade)
+  take_profit:
+    type: rr_ratio
+    value: 1.5  # Lower target for faster trading
+  sizing:
+    model: percent_equity
+    value: 20.0  # 20% of equity per trade (extremely aggressive)
+    max_leverage: 10.0
+
