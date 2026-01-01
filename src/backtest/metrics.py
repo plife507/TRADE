@@ -25,7 +25,7 @@ import math
 import warnings
 from typing import List, Tuple, Optional
 
-from .types import Trade, EquityPoint, BacktestMetrics
+from .types import Trade, EquityPoint, BacktestMetrics, TimeBasedReturns
 
 
 # =============================================================================
@@ -911,3 +911,124 @@ def _compute_omega(
         return 100.0 if gains > 0 else 0.0
 
     return gains / losses
+
+
+# =============================================================================
+# Time-Based Returns (Phase 4)
+# =============================================================================
+
+def compute_time_based_returns(
+    equity_curve: List[EquityPoint],
+) -> TimeBasedReturns:
+    """
+    Compute daily, weekly, and monthly returns from equity curve.
+
+    Phase 4 of Backtest Analytics: Aggregates per-bar equity into
+    calendar period returns for charting and analysis.
+
+    Aggregation method:
+    - For each period, compute: (last_equity / first_equity - 1) * 100
+    - This gives the total return over that period as a percentage
+
+    Args:
+        equity_curve: List of EquityPoint objects with timestamp and equity
+
+    Returns:
+        TimeBasedReturns with daily/weekly/monthly series and extremes
+    """
+    if not equity_curve or len(equity_curve) < 2:
+        return TimeBasedReturns()
+
+    # Aggregate returns by period
+    daily = _aggregate_returns_by_period(equity_curve, "day")
+    weekly = _aggregate_returns_by_period(equity_curve, "week")
+    monthly = _aggregate_returns_by_period(equity_curve, "month")
+
+    # Find best/worst for each period type
+    best_day, worst_day = _find_extremes(daily)
+    best_week, worst_week = _find_extremes(weekly)
+    best_month, worst_month = _find_extremes(monthly)
+
+    return TimeBasedReturns(
+        daily_returns=daily,
+        weekly_returns=weekly,
+        monthly_returns=monthly,
+        best_day=best_day,
+        worst_day=worst_day,
+        best_week=best_week,
+        worst_week=worst_week,
+        best_month=best_month,
+        worst_month=worst_month,
+    )
+
+
+def _aggregate_returns_by_period(
+    equity_curve: List[EquityPoint],
+    period_type: str,
+) -> dict:
+    """
+    Aggregate equity points into period returns.
+
+    Args:
+        equity_curve: List of EquityPoint objects
+        period_type: "day", "week", or "month"
+
+    Returns:
+        Dict mapping period key to return percentage
+    """
+    from collections import defaultdict
+
+    # Group equity points by period
+    period_groups: dict = defaultdict(list)
+
+    for point in equity_curve:
+        ts = point.timestamp
+        if period_type == "day":
+            key = ts.strftime("%Y-%m-%d")
+        elif period_type == "week":
+            # ISO week format: 2025-W01
+            key = f"{ts.isocalendar()[0]}-W{ts.isocalendar()[1]:02d}"
+        elif period_type == "month":
+            key = ts.strftime("%Y-%m")
+        else:
+            raise ValueError(f"Unknown period_type: {period_type}")
+
+        period_groups[key].append(point.equity)
+
+    # Compute return for each period
+    returns = {}
+    for key, equities in period_groups.items():
+        if len(equities) >= 1:
+            first_equity = equities[0]
+            last_equity = equities[-1]
+            if first_equity > 0:
+                ret_pct = ((last_equity / first_equity) - 1) * 100
+                returns[key] = round(ret_pct, 4)
+            else:
+                returns[key] = 0.0
+
+    return returns
+
+
+def _find_extremes(
+    period_returns: dict,
+) -> Tuple[Optional[tuple], Optional[tuple]]:
+    """
+    Find best and worst periods from return dict.
+
+    Args:
+        period_returns: Dict mapping period key to return percentage
+
+    Returns:
+        Tuple of (best, worst) where each is (period_key, return_pct) or None
+    """
+    if not period_returns:
+        return None, None
+
+    best_key = max(period_returns, key=period_returns.get)
+    worst_key = min(period_returns, key=period_returns.get)
+
+    best = (best_key, period_returns[best_key])
+    worst = (worst_key, period_returns[worst_key])
+
+    return best, worst

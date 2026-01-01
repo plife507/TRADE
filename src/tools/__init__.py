@@ -192,7 +192,14 @@ from .backtest_cli_wrapper import (
     backtest_data_fix_tool,
     backtest_list_idea_cards_tool,
     backtest_indicators_tool,
+    backtest_idea_card_normalize_tool,
     verify_artifact_parity_tool,
+    # Audit tools
+    backtest_audit_toolkit_tool,
+    backtest_audit_in_memory_parity_tool,
+    backtest_math_parity_tool,
+    backtest_audit_snapshot_plumbing_tool,
+    backtest_audit_rollup_parity_tool,
 )
 
 __all__ = [
@@ -321,5 +328,12 @@ __all__ = [
     "backtest_data_fix_tool",
     "backtest_list_idea_cards_tool",
     "backtest_indicators_tool",
+    "backtest_idea_card_normalize_tool",
     "verify_artifact_parity_tool",
+    # Audit tools
+    "backtest_audit_toolkit_tool",
+    "backtest_audit_in_memory_parity_tool",
+    "backtest_math_parity_tool",
+    "backtest_audit_snapshot_plumbing_tool",
+    "backtest_audit_rollup_parity_tool",
 ]

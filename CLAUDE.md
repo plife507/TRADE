@@ -14,16 +14,18 @@ TRADE is a **modular, production-ready** Bybit futures trading bot with complete
 
 We are building the backtesting + strategy factory stack in **phases**. The canonical roadmap lives in `docs/project/PROJECT_OVERVIEW.md` under **"Project Roadmap – TRADE Backtest Engine & Strategy Factory"**.
 
-### Recent Completions (December 2024)
+### Current State (January 2026)
 
-- ✅ **Phase 5-7**: IdeaCard to Engine integration complete
-  - Preflight gate with auto-sync
-  - Data-fix with bounded enforcement
-  - Delay bars requirements (market_structure.delay_bars)
-  - **Phase 6 CLI Smoke Tests** validated (4/4 tests pass)
-  - Artifact standards: ts_ms, eval_start_ts_ms, structured exports
-  
-**See**: `docs/session_reviews/2024-12-17_phase6_cli_smoke_tests.md`
+**Engine Complete**:
+- 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
+- 42 indicators in string-based registry (single source of truth)
+- IdeaCard-first CLI with full menu coverage
+- 21 validation IdeaCards in `configs/idea_cards/_validation/`
+
+**Next Up**: Market Structure Features (Phase 5)
+- Swing/pivot/trend detection
+- Registry consolidation Phase 3
+- See: `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md`
 
 ### Explicitly off-limits until later phases
 
@@ -405,6 +407,77 @@ The `data_extensive` test:
 
 **WARNING**: `delete_all_data_tool` permanently deletes all historical data.
 
+## Proactive Validation During Refactoring
+
+**MANDATORY**: Use the `validate` agent proactively during refactoring to catch breaking changes early.
+
+### Two-Agent Validation System
+
+| Agent | Model | Role | Can Modify |
+|-------|-------|------|------------|
+| `validate` | Sonnet | Runs tests, reports results | Nothing (read-only) |
+| `validate-updater` | Opus | Updates validation system | IdeaCards, validate.md, CLAUDE.md |
+
+**Flow**:
+1. `validate` runs tests, reports failures/coverage gaps
+2. If validation system needs updating → invoke `validate-updater`
+3. `validate-updater` adds IdeaCards, updates expectations, fixes coverage
+
+**When to invoke `validate-updater`**:
+- New indicator added to registry
+- Indicator params/output_keys changed
+- New engine feature needs test coverage
+- Test expectations changed
+- Coverage gap identified
+
+### When to Invoke Validation
+
+| After Changing... | Invoke Validation With |
+|-------------------|------------------------|
+| `indicator_registry.py` | "Run audit-toolkit and normalize-batch" |
+| `src/backtest/engine*.py` | "Run normalize-batch, then one backtest run" |
+| `src/backtest/sim/*.py` | "Run audit-rollup" |
+| `src/backtest/metrics.py` | "Run metrics-audit" |
+| `configs/idea_cards/*.yml` | "Run normalize on that card" |
+| `src/cli/*.py` | "Quick validate - syntax check" |
+| Any backtest code | "Run TIER 1-2 validation" |
+
+### Validation IdeaCards
+
+All validation IdeaCards are in `configs/idea_cards/_validation/` with naming convention `V_XX_category_description.yml`:
+
+| Range | Category | Count |
+|-------|----------|-------|
+| V_01-V_09 | Single-TF | 3 cards |
+| V_11-V_19 | MTF | 3 cards |
+| V_21-V_29 | Warmup | 2 cards |
+| V_31-V_39 | Coverage (42 indicators) | 7 cards |
+| V_41-V_49 | Math Parity | 2 cards |
+| V_51-V_59 | 1m Drift | 1 card |
+| V_E01-V_E99 | Error cases | 3 cards |
+
+**Total**: 21 IdeaCards covering all 42 indicators
+
+### Validation Tiers
+
+```
+TIER 0: Quick Check (<10 sec) - For tight refactoring loops
+TIER 1: IdeaCard Normalization - ALWAYS FIRST (validates configs against engine)
+TIER 2: Unit Audits - audit-toolkit, audit-rollup, metrics-audit, metadata-smoke
+TIER 3: Error Case Validation - Verify broken cards fail correctly
+TIER 4+: Integration Tests (DB required)
+```
+
+### Key Principle
+
+**IdeaCard normalization is the critical gate.** It validates that:
+- Indicator keys match the registry
+- Params are valid for each indicator type
+- Signal rules reference declared features
+- Schema is correct
+
+As the engine evolves, normalization ensures IdeaCards stay in sync. When agents generate IdeaCards, they MUST run normalization for validation feedback.
+
 ## External References
 
 | Topic | File |
@@ -421,16 +494,21 @@ The `data_extensive` test:
 
 ### TODO Phase Documents (Canonical Work Tracking)
 
-| Document | Status | Scope |
-|----------|--------|-------|
-| `docs/todos/archived/SNAPSHOT_HISTORY_MTF_ALIGNMENT_PHASES.md` | ✅ Complete (archived) | Snapshot, MTF, FeatureSpec |
-| `docs/todos/archived/SIMULATED_EXCHANGE_MODE_LOCKS_PHASES.md` | ✅ Complete (archived) | USDT-only, isolated margin |
-| `docs/todos/archived/CLI_FIRST_BACKTEST_DATA_INDICATORS_PHASES.md` | ✅ Complete (archived Dec 2025) | CLI-first validation |
-| `docs/todos/archived/CLI_ONLY_VALIDATION_MIGRATION.md` | ✅ Complete (archived Dec 2025) | Pytest to CLI migration |
-| `docs/todos/archived/INDICATOR_REGISTRY_YAML_BUILDER_PHASES.md` | ✅ Complete (archived Dec 2025) | Indicator registry |
-| `docs/todos/archived/INDICATOR_METADATA_SYSTEM_PHASES.md` | ✅ Complete (archived Dec 2025) | Metadata tracking |
-| `docs/todos/archived/THREE_YEAR_MTF_TRIO_BACKTESTS.md` | ✅ Complete (archived Dec 2025) | Three-year MTF backtests |
-| `docs/todos/archived/MTF_HISTORY_WARMUP_BUG_FIX.md` | ✅ Complete (archived Dec 2025) | MTF warmup bug fix |
-| `docs/todos/archived/2025-12-31/PRICE_FEED_1M_PREFLIGHT_PHASES.md` | ✅ Complete (archived Dec 2025) | 1m price feed + rollups |
-| `docs/todos/BACKTEST_ANALYTICS_PHASES.md` | Phases 1-3 ✅, 4-6 📋 pending | Analytics metrics |
-| `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md` | Phases 1-4 ✅, Phase 5 📋 READY | Hot loop + Market Structure |
+**Active:**
+
+| Document | Status | Next Step |
+|----------|--------|-----------|
+| `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md` | Phases 1-4 ✅, Phase 5 📋 READY | Market Structure Features |
+| `docs/todos/REGISTRY_CONSOLIDATION_PHASES.md` | Phases 0-2 ✅, Phase 3 📋 READY | Add structure indicators |
+| `docs/todos/BACKTEST_ANALYTICS_PHASES.md` | Phases 1-4 ✅, 5-6 📋 pending | Benchmark comparison (future) |
+
+**Recently Archived (January 2026):**
+
+| Document | Scope |
+|----------|-------|
+| `docs/todos/archived/2026-01-01/LEGACY_CLEANUP_PHASES.md` | Removed dual metrics, warmup_multiplier |
+| `docs/todos/archived/2026-01-01/METRICS_ENHANCEMENT_PHASES.md` | 62-field BacktestMetrics |
+| `docs/todos/archived/2026-01-01/IDEACARD_VALUE_FLOW_FIX_PHASES.md` | Fixed slippage_bps, MMR flow |
+| `docs/todos/archived/2026-01-01/CLI_MENU_TOOLS_ALIGNMENT_PHASES.md` | IdeaCard menus, tools refactor |
+
+**Full archive index**: `docs/todos/INDEX.md`

@@ -51,6 +51,7 @@ STANDARD_FILES = {
     "preflight": "preflight_report.json",
     "pipeline_signature": "pipeline_signature.json",
     "events": "events.jsonl",  # Event log (JSON Lines format)
+    "returns": "returns.json",  # Phase 4: Time-based analytics
     # Phase 3.2: Parquet is primary format for tabular artifacts
     "trades": "trades.parquet",
     "equity": "equity.parquet",
@@ -73,9 +74,10 @@ REQUIRED_FILES = {
 
 # Optional files (may not exist depending on run configuration)
 OPTIONAL_FILES = {
-    "events.jsonl", 
+    "events.jsonl",
     "account_curve.parquet",
     "preflight_report.json",  # Optional when CLI runs its own preflight
+    "returns.json",  # Phase 4: Time-based analytics (may not exist for short backtests)
 }
 
 

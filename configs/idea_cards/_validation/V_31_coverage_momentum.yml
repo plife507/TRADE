@@ -1,0 +1,104 @@
+# V_31: Coverage - Momentum indicators
+# Purpose: Validate momentum oscillators not covered elsewhere
+# Indicators: roc, mom, cmo, uo, ppo, trix (6 indicators)
+id: V_31_coverage_momentum
+version: 1.0.0
+name: Coverage - Momentum Indicators
+description: Validates roc, mom, cmo, uo, ppo, trix indicators
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+tf_configs:
+  exec:
+    tf: 15m
+    role: exec
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 50
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: roc
+        output_key: roc_10
+        params:
+          length: 10
+        input_source: close
+      - indicator_type: mom
+        output_key: mom_10
+        params:
+          length: 10
+        input_source: close
+      - indicator_type: cmo
+        output_key: cmo_14
+        params:
+          length: 14
+        input_source: close
+      - indicator_type: uo
+        output_key: uo
+        params:
+          fast: 7
+          medium: 14
+          slow: 28
+        input_source: close
+      - indicator_type: ppo
+        output_key: ppo
+        params:
+          fast: 12
+          slow: 26
+          signal: 9
+        input_source: close
+      - indicator_type: trix
+        output_key: trix_14
+        params:
+          length: 14
+        input_source: close
+    required_indicators:
+      - roc_10
+      - mom_10
+      - cmo_14
+      - uo
+      - ppo
+      - trix_14
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: cmo_14
+          operator: lt
+          value: -50
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: cmo_14
+          operator: gt
+          value: 50
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 2.0
+    max_leverage: 2.0

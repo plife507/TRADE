@@ -1,0 +1,95 @@
+# V_01: Single-TF validation at 5m with RSI + EMA
+# Purpose: Validate single timeframe operation (exec only, no MTF/HTF)
+# Timeframe: 5m execution
+# Indicators: RSI(14), EMA(9), EMA(21)
+id: V_01_single_5m_rsi_ema
+version: 1.0.0
+name: Single-TF 5m RSI+EMA Validation
+description: Validates single timeframe execution with RSI momentum and EMA crossover
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+tf_configs:
+  exec:
+    tf: 5m
+    role: exec
+    warmup_bars: 50
+    market_structure:
+      lookback_bars: 30
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: rsi
+        output_key: rsi_14
+        params:
+          length: 14
+        input_source: close
+      - indicator_type: ema
+        output_key: ema_9
+        params:
+          length: 9
+        input_source: close
+      - indicator_type: ema
+        output_key: ema_21
+        params:
+          length: 21
+        input_source: close
+    required_indicators:
+      - rsi_14
+      - ema_9
+      - ema_21
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: lt
+          value: 30
+    - direction: short
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: gt
+          value: 70
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: gt
+          value: 70
+    - direction: short
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: lt
+          value: 30
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 1.5
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 2.0
+    max_leverage: 3.0

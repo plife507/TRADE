@@ -150,7 +150,9 @@ def data_menu(cli: "TradeCLI"):
         BillArtWrapper.print_menu_bottom()
         
         choice = get_choice(valid_range=range(1, 25))
-        
+        if choice is BACK:
+            break  # Go back to main menu
+
         if choice == 1:
             # Database Stats
             result = run_tool_action("data.stats", get_database_stats_tool, env=data_env)

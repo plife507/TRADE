@@ -1,21 +1,21 @@
 # Backtest Analytics Implementation
 
-**Status**: Phases 1-3 ✅ COMPLETE; Phases 4-6 📋 PENDING (Future Work)  
-**Created**: 2025-12-14  
-**Updated**: 2025-12-17 (governance cleanup)  
+**Status**: Phases 1-4 ✅ COMPLETE; Phases 5-6 📋 PENDING (Future Work)  
+**Created**: 2025-12-14
+**Updated**: 2026-01-01 (Phase 4 complete)
 **Goal**: Comprehensive backtest analytics with all industry-standard metrics
 
 ## Current State
 
-**Completed (Phases 1-3)**:
+**Completed (Phases 1-4)**:
 - All core analytics implemented and persisted to `result.json`
 - Risk-adjusted metrics: Sharpe, Sortino, Calmar, Recovery Factor
 - Detailed trade statistics: win/loss sizes, durations, consecutive runs, expectancy, payoff ratio
 - Long/short breakdown, time in market, total fees
 - Basic CLI display
+- **Phase 4**: Time-based analytics (daily/weekly/monthly returns in `returns.json`)
 
-**Pending (Phases 4-6)** — Future enhancements, not blocking:
-- Time-based analytics (daily/weekly/monthly returns)
+**Pending (Phases 5-6)** — Future enhancements, not blocking:
 - Benchmark comparison (buy-and-hold, alpha, beta)
 - Enhanced CLI display (color-coded, compare runs)
 
@@ -67,17 +67,26 @@
 
 ---
 
-## Phase 4: Time-Based Analytics [ ] (Future)
+## Phase 4: Time-Based Analytics ✅
 
 **Goal**: Returns broken down by time period
 
-- [ ] 4.1 Daily returns series
-- [ ] 4.2 Weekly returns series
-- [ ] 4.3 Monthly returns series
-- [ ] 4.4 Best/worst day/week/month
-- [ ] 4.5 Output to separate `returns.json` artifact
+- [x] 4.1 Daily returns series
+- [x] 4.2 Weekly returns series
+- [x] 4.3 Monthly returns series
+- [x] 4.4 Best/worst day/week/month
+- [x] 4.5 Output to separate `returns.json` artifact
 
-**Acceptance**: Time-based returns available for charting
+**Acceptance**: Time-based returns available for charting ✅
+
+**Implementation Notes (Jan 2026)**:
+- Added `TimeBasedReturns` dataclass to `src/backtest/types.py`
+- Added `compute_time_based_returns()` to `src/backtest/metrics.py`
+- Artifact writer (`engine_artifacts.py`) outputs `returns.json` with:
+  - `daily_returns`: Dict of date → return %
+  - `weekly_returns`: Dict of ISO week → return %
+  - `monthly_returns`: Dict of YYYY-MM → return %
+  - `best_day`, `worst_day`, `best_week`, `worst_week`, `best_month`, `worst_month`
 
 ---
 

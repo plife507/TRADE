@@ -1,0 +1,124 @@
+# V_12: MTF validation with BBands at 15m/1h/4h
+# Purpose: Validate multi-timeframe with multi-output indicator (BBands)
+# Timeframes: 15m exec, 1h mtf, 4h htf
+# Indicators: BBands+RSI on exec, EMA on mtf/htf
+id: V_12_mtf_15m_1h_4h_bbands
+version: 1.0.0
+name: MTF 15m/1h/4h BBands Validation
+description: Validates 3-TF with multi-output BBands on execution frame
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - SOLUSDT
+
+tf_configs:
+  exec:
+    tf: 15m
+    role: exec
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 50
+      delay_bars: 4
+    feature_specs:
+      - indicator_type: bbands
+        output_key: bb
+        params:
+          length: 20
+          std: 2.0
+        input_source: close
+      - indicator_type: rsi
+        output_key: rsi_14
+        params:
+          length: 14
+        input_source: close
+      - indicator_type: sma
+        output_key: volume_sma_20
+        params:
+          length: 20
+        input_source: volume
+    required_indicators:
+      - bb_bandwidth
+      - bb_lower
+      - bb_middle
+      - bb_percent_b
+      - bb_upper
+      - rsi_14
+      - volume_sma_20
+  mtf:
+    tf: 1h
+    role: mtf
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 30
+      delay_bars: 2
+    feature_specs:
+      - indicator_type: ema
+        output_key: ema_50
+        params:
+          length: 50
+        input_source: close
+      - indicator_type: rsi
+        output_key: rsi_14
+        params:
+          length: 14
+        input_source: close
+    required_indicators:
+      - ema_50
+      - rsi_14
+  htf:
+    tf: 4h
+    role: htf
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 20
+      delay_bars: 1
+    feature_specs:
+      - indicator_type: ema
+        output_key: ema_100
+        params:
+          length: 100
+        input_source: close
+    required_indicators:
+      - ema_100
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: lt
+          value: 35
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: gt
+          value: 65
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 2.5
+    max_leverage: 2.0

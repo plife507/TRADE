@@ -1,0 +1,85 @@
+# V_36: Coverage - Band/Channel indicators
+# Purpose: Validate band and channel indicators
+# Indicators: donchian, squeeze (2 indicators)
+id: V_36_coverage_bands
+version: 1.0.0
+name: Coverage - Band Indicators
+description: Validates donchian, squeeze indicators
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - SOLUSDT
+
+tf_configs:
+  exec:
+    tf: 15m
+    role: exec
+    warmup_bars: 100
+    market_structure:
+      lookback_bars: 50
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: donchian
+        output_key: donchian
+        params:
+          lower_length: 20
+          upper_length: 20
+        input_source: close
+      - indicator_type: squeeze
+        output_key: squeeze
+        params:
+          bb_length: 20
+          bb_std: 2.0
+          kc_length: 20
+          kc_scalar: 1.5
+        input_source: close
+    required_indicators:
+      - donchian_lower
+      - donchian_middle
+      - donchian_upper
+      - squeeze_sqz
+      - squeeze_on
+      - squeeze_off
+      - squeeze_no_sqz
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: squeeze_sqz
+          operator: gt
+          value: 0
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: squeeze_sqz
+          operator: lt
+          value: 0
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 2.0
+    max_leverage: 2.0

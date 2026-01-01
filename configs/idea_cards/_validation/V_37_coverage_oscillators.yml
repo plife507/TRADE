@@ -1,0 +1,80 @@
+# V_37: Coverage - Oscillator indicators
+# Purpose: Validate oscillator indicators not covered elsewhere
+# Indicators: fisher, tsi (2 indicators)
+id: V_37_coverage_oscillators
+version: 1.0.0
+name: Coverage - Oscillator Indicators
+description: Validates fisher, tsi indicators
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+tf_configs:
+  exec:
+    tf: 15m
+    role: exec
+    warmup_bars: 150
+    market_structure:
+      lookback_bars: 50
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: fisher
+        output_key: fisher
+        params:
+          length: 9
+        input_source: close
+      - indicator_type: tsi
+        output_key: tsi
+        params:
+          fast: 13
+          slow: 25
+          signal: 13
+        input_source: close
+    required_indicators:
+      - fisher_fisher
+      - fisher_signal
+      - tsi_tsi
+      - tsi_signal
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: tsi_tsi
+          operator: lt
+          value: -25
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: tsi_tsi
+          operator: gt
+          value: 25
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 2.0
+    max_leverage: 2.0

@@ -32,13 +32,6 @@ from ..tools import (
     sync_funding_tool,
     sync_open_interest_tool,
     get_symbol_summary_tool,
-    # Backtest tools (legacy SystemConfig-based)
-    backtest_list_systems_tool,
-    backtest_get_system_tool,
-    backtest_run_tool,
-    backtest_prepare_data_tool,
-    backtest_verify_data_tool,
-    backtest_list_strategies_tool,
     # Backtest CLI wrapper tools (IdeaCard-based, golden path)
     backtest_preflight_idea_card_tool,
     backtest_run_idea_card_tool,
@@ -1703,25 +1696,21 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     return failures
 
 
-def run_backtest_smoke(system_id: str = None, fresh_db: bool = False, idea_card_id: str = None) -> int:
+def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
     """
-    Run the backtest smoke test.
-    
-    GOLDEN PATH: Uses IdeaCard-based wrapper when available.
-    Falls back to legacy SystemConfig-based approach if no IdeaCards found.
-    
+    Run the backtest smoke test using IdeaCard-based workflow.
+
     Tests the backtest engine end-to-end:
-    1. List available IdeaCards (or systems for legacy)
+    1. List available IdeaCards
     2. Run preflight check (env/symbol/tf/coverage diagnostics)
     3. Optionally prepare data (with fresh_db option)
     4. Run backtest with --smoke mode
     5. Validate output diagnostics and artifacts
-    
+
     Args:
-        system_id: System to test (legacy, defaults to env var BACKTEST_SMOKE_SYSTEM)
         fresh_db: Whether to wipe DB and rebuild data
-        idea_card_id: IdeaCard to test (preferred over system_id)
-        
+        idea_card_id: IdeaCard to test (defaults to env var BACKTEST_SMOKE_IDEA_CARD)
+
     Returns:
         Number of failures
     """
@@ -1767,380 +1756,11 @@ def run_backtest_smoke(system_id: str = None, fresh_db: bool = False, idea_card_
     if idea_card_id:
         console.print(f"\n  [bold]Using IdeaCard: {idea_card_id}[/]")
         return _run_backtest_smoke_idea_card(idea_card_id, fresh_db)
-    
-    # =============================
-    # LEGACY PATH: Fall back to SystemConfig
-    # =============================
-    console.print(f"\n[yellow]No IdeaCards found, falling back to legacy SystemConfig path[/]")
-    
-    # Step 1b: List available systems (legacy)
-    console.print(f"\n[bold cyan]Step 1b: List Available Systems (Legacy)[/]")
-    result = backtest_list_systems_tool()
-    if result.success and result.data:
-        systems = result.data.get("systems", [])
-        console.print(f"  [green]OK[/] Found {len(systems)} systems")
-        for sys in systems[:5]:  # Show first 5
-            if "error" not in sys:
-                console.print(f"    • {sys.get('system_id')} ({sys.get('symbol')} {sys.get('tf')})")
-    else:
-        console.print(f"  [red]FAIL[/] {result.error or 'No systems found'}")
-        failures += 1
-        return failures  # Can't continue without systems
-    
-    # Determine which system to test
-    if system_id is None:
-        system_id = os.environ.get("BACKTEST_SMOKE_SYSTEM")
-    
-    if system_id is None and systems:
-        # Use first available system with no error
-        for sys in systems:
-            if "error" not in sys:
-                system_id = sys.get("system_id")
-                break
-    
-    if system_id is None:
-        console.print(f"  [red]FAIL[/] No valid system found to test")
-        return failures + 1
-    
-    console.print(f"\n  [dim]Testing system: {system_id}[/]")
-    
-    # Variables for lineage display
-    system_uid = None
-    strategy_id = None
-    strategy_version = None
-    risk_profile = {}
 
-    # Step 2: Load system config
-    console.print(f"\n[bold cyan]Step 2: Load System Configuration[/]")
-    result = backtest_get_system_tool(system_id)
-    if result.success and result.data:
-        data = result.data
-        system_uid = data.get('system_uid', 'N/A')
-        strategy_id = data.get('strategy_id')
-        strategy_version = data.get('strategy_version', '1')
-        risk_profile = data.get('risk_profile', {})
-        
-        console.print(f"  [green]OK[/] Loaded: {data.get('symbol')} {data.get('tf')}")
-        console.print(f"      System UID: [dim]{system_uid}[/]")
-        console.print(f"      Strategy: {strategy_id} v{strategy_version}")
-        console.print(f"      Risk Mode: {data.get('risk_mode')}")
-        console.print(f"      Risk Profile: initial_equity={risk_profile.get('initial_equity')}, "
-                     f"risk_per_trade={risk_profile.get('risk_per_trade_pct')}%")
-    else:
-        console.print(f"  [red]FAIL[/] {result.error}")
-        failures += 1
-        return failures  # Can't continue
-
-    # Step 3: List and validate strategies
-    console.print(f"\n[bold cyan]Step 3: List & Validate Strategies[/]")
-    result = backtest_list_strategies_tool()
-    if result.success and result.data:
-        strategies = result.data.get("strategies", [])
-        strategy_ids = [s.get("strategy_id") if isinstance(s, dict) else s for s in strategies]
-        console.print(f"  [green]OK[/] Found {len(strategies)} registered strategies")
-        
-        # Validate that the system's strategy exists in registry
-        if strategy_id and strategy_id in strategy_ids:
-            console.print(f"  [green]OK[/] Strategy '{strategy_id}' is registered")
-        elif strategy_id:
-            console.print(f"  [red]FAIL[/] Strategy '{strategy_id}' NOT found in registry!")
-            console.print(f"      Available: {strategy_ids}")
-            failures += 1
-            return failures  # Can't continue without valid strategy
-    else:
-        console.print(f"  [red]FAIL[/] {result.error}")
-        failures += 1
-    
-    # Step 4: Prepare data (optional fresh DB)
-    if fresh_db:
-        console.print(f"\n[bold cyan]Step 4: Prepare Data (Fresh DB)[/]")
-        console.print(f"  [dim]Wiping database and rebuilding data...[/]")
-    else:
-        console.print(f"\n[bold cyan]Step 4: Prepare Data[/]")
-        console.print(f"  [dim]Syncing data without DB wipe...[/]")
-    
-    result = backtest_prepare_data_tool(system_id, fresh_db=fresh_db)
-    if result.success:
-        console.print(f"  [green]OK[/] {result.message}")
-        if result.data:
-            console.print(f"      Symbol: {result.data.get('symbol')}")
-            console.print(f"      Period: {result.data.get('period')}")
-            console.print(f"      TFs: {result.data.get('tfs')}")
-    else:
-        console.print(f"  [red]FAIL[/] {result.error}")
-        failures += 1
-        # Try to continue - data might already exist
-    
-    # Step 5: Verify data quality
-    console.print(f"\n[bold cyan]Step 5: Verify Data Quality[/]")
-    
-    for window_name in ["hygiene", "test"]:
-        result = backtest_verify_data_tool(system_id, window_name, heal_gaps=True)
-        if result.success and result.data:
-            passed = result.data.get("verification_passed", False)
-            bar_count = result.data.get("bar_count", 0)
-            gaps = result.data.get("gaps_found", 0)
-            
-            status = "OK" if passed else "WARN"
-            color = "green" if passed else "yellow"
-            console.print(f"  [{color}]{status}[/{color}] {window_name}: {bar_count} bars, {gaps} gaps")
-        else:
-            console.print(f"  [red]FAIL[/] {window_name}: {result.error}")
-            failures += 1
-    
-    # Step 6: Run backtest - Hygiene window WITH ARTIFACTS
-    console.print(f"\n[bold cyan]Step 6: Run Backtest (Hygiene Window) - WITH ARTIFACTS[/]")
-    result = backtest_run_tool(system_id, "hygiene", write_artifacts=True)
-    artifact_dir = None
-    if result.success and result.data:
-        data = result.data
-        metrics = data.get("metrics", {})
-        artifact_dir = data.get("artifact_dir")
-        
-        console.print(f"  [green]OK[/] {result.message}")
-        console.print(f"      Trades: {metrics.get('total_trades', 0)}")
-        console.print(f"      Win Rate: {metrics.get('win_rate', 0):.1f}%")
-        console.print(f"      Net Return: {metrics.get('net_return_pct', 0):.2f}%")
-        console.print(f"      Max DD: {metrics.get('max_drawdown_pct', 0):.1f}%")
-        console.print(f"      Sharpe: {metrics.get('sharpe', 0):.2f}")
-        console.print(f"      Artifact dir: {artifact_dir}")
-    else:
-        console.print(f"  [red]FAIL[/] {result.error}")
-        failures += 1
-    
-    # Step 7: Validate BacktestMetrics contract and artifacts
-    console.print(f"\n[bold cyan]Step 7: Validate BacktestMetrics Contract & Artifacts[/]")
-    
-    if artifact_dir:
-        artifact_path = Path(artifact_dir)
-        
-        # 7.1: Check result.json exists and has valid metrics
-        result_json_path = artifact_path / "result.json"
-        if result_json_path.exists():
-            console.print(f"  [green]OK[/] result.json exists")
-            try:
-                with open(result_json_path) as f:
-                    result_data = json.load(f)
-                
-                metrics = result_data.get("metrics", {})
-                
-                # Check required fields are present and finite
-                required_metrics = [
-                    "initial_equity", "final_equity", "net_profit", "net_return_pct",
-                    "max_drawdown_abs", "max_drawdown_pct", "max_drawdown_duration_bars",
-                    "total_trades", "win_rate", "avg_trade_return_pct", "profit_factor", "sharpe"
-                ]
-                
-                all_present = True
-                all_finite = True
-                for field in required_metrics:
-                    if field not in metrics:
-                        console.print(f"  [red]FAIL[/] Missing metric field: {field}")
-                        all_present = False
-                        failures += 1
-                    else:
-                        val = metrics[field]
-                        if not isinstance(val, (int, float)) or (isinstance(val, float) and not math.isfinite(val)):
-                            console.print(f"  [red]FAIL[/] Metric '{field}' not finite: {val}")
-                            all_finite = False
-                            failures += 1
-                
-                if all_present and all_finite:
-                    console.print(f"  [green]OK[/] All BacktestMetrics fields present and finite")
-                
-                # Check resolved risk fields
-                risk_initial = result_data.get("risk_initial_equity_used", 0)
-                risk_pct = result_data.get("risk_per_trade_pct_used", 0)
-                risk_lev = result_data.get("risk_max_leverage_used", 0)
-                
-                # Compare to YAML defaults
-                yaml_equity = risk_profile.get("initial_equity", 1000.0)
-                yaml_pct = risk_profile.get("risk_per_trade_pct", 1.0)
-                yaml_lev = risk_profile.get("max_leverage", 2.0)
-                
-                if abs(risk_initial - yaml_equity) < 0.01:
-                    console.print(f"  [green]OK[/] risk_initial_equity_used matches YAML ({risk_initial})")
-                else:
-                    console.print(f"  [yellow]WARN[/] risk_initial_equity_used={risk_initial} differs from YAML={yaml_equity}")
-                
-                if abs(risk_pct - yaml_pct) < 0.01:
-                    console.print(f"  [green]OK[/] risk_per_trade_pct_used matches YAML ({risk_pct})")
-                else:
-                    console.print(f"  [yellow]WARN[/] risk_per_trade_pct_used={risk_pct} differs from YAML={yaml_pct}")
-                    
-            except Exception as e:
-                console.print(f"  [red]FAIL[/] Error reading result.json: {e}")
-                failures += 1
-        else:
-            console.print(f"  [red]FAIL[/] result.json not found at {result_json_path}")
-            failures += 1
-        
-        # 7.2: Check trades.csv
-        trades_csv_path = artifact_path / "trades.csv"
-        if trades_csv_path.exists():
-            console.print(f"  [green]OK[/] trades.csv exists")
-            try:
-                trades_df = pd.read_csv(trades_csv_path)
-                if len(trades_df) > 0:
-                    console.print(f"  [green]OK[/] trades.csv has {len(trades_df)} rows")
-                else:
-                    console.print(f"  [yellow]WARN[/] trades.csv is empty (no trades)")
-            except Exception as e:
-                console.print(f"  [red]FAIL[/] Error reading trades.csv: {e}")
-                failures += 1
-        else:
-            console.print(f"  [red]FAIL[/] trades.csv not found at {trades_csv_path}")
-            failures += 1
-        
-        # 7.3: Check equity.csv
-        equity_csv_path = artifact_path / "equity.csv"
-        if equity_csv_path.exists():
-            console.print(f"  [green]OK[/] equity.csv exists")
-            try:
-                equity_df = pd.read_csv(equity_csv_path)
-                if len(equity_df) > 1:
-                    console.print(f"  [green]OK[/] equity.csv has {len(equity_df)} rows")
-                    
-                    # Check equity > 0
-                    if (equity_df["equity"] > 0).all():
-                        console.print(f"  [green]OK[/] All equity values > 0")
-                    else:
-                        console.print(f"  [red]FAIL[/] Some equity values <= 0")
-                        failures += 1
-                    
-                    # Check drawdown columns are numeric
-                    if "drawdown_abs" in equity_df.columns and "drawdown_pct" in equity_df.columns:
-                        if pd.api.types.is_numeric_dtype(equity_df["drawdown_abs"]):
-                            console.print(f"  [green]OK[/] drawdown_abs is numeric")
-                        else:
-                            console.print(f"  [red]FAIL[/] drawdown_abs is not numeric")
-                            failures += 1
-                        if pd.api.types.is_numeric_dtype(equity_df["drawdown_pct"]):
-                            console.print(f"  [green]OK[/] drawdown_pct is numeric")
-                        else:
-                            console.print(f"  [red]FAIL[/] drawdown_pct is not numeric")
-                            failures += 1
-                    else:
-                        console.print(f"  [red]FAIL[/] Missing drawdown columns")
-                        failures += 1
-                else:
-                    console.print(f"  [red]FAIL[/] equity.csv has only {len(equity_df)} rows")
-                    failures += 1
-            except Exception as e:
-                console.print(f"  [red]FAIL[/] Error reading equity.csv: {e}")
-                failures += 1
-        else:
-            console.print(f"  [red]FAIL[/] equity.csv not found at {equity_csv_path}")
-            failures += 1
-        
-        # 7.4: Validate warm-up metadata (new contract)
-        console.print(f"\n[bold cyan]Step 7.4: Validate Warm-up Metadata[/]")
-        if result_json_path.exists():
-            try:
-                with open(result_json_path) as f:
-                    result_data = json.load(f)
-                
-                # Check warmup_bars > 0
-                warmup_bars = result_data.get("warmup_bars", 0)
-                if warmup_bars > 0:
-                    console.print(f"  [green]OK[/] warmup_bars = {warmup_bars}")
-                else:
-                    console.print(f"  [red]FAIL[/] warmup_bars should be > 0, got {warmup_bars}")
-                    failures += 1
-
-                # Check max_indicator_lookback > 0
-                max_lookback = result_data.get("max_indicator_lookback", 0)
-                if max_lookback > 0:
-                    console.print(f"  [green]OK[/] max_indicator_lookback = {max_lookback}")
-                else:
-                    console.print(f"  [yellow]WARN[/] max_indicator_lookback = {max_lookback} (may be 0 if no indicators)")
-                
-                # Check window timestamps are populated
-                req_start = result_data.get("data_window_requested_start", "")
-                req_end = result_data.get("data_window_requested_end", "")
-                load_start = result_data.get("data_window_loaded_start", "")
-                load_end = result_data.get("data_window_loaded_end", "")
-                sim_start = result_data.get("simulation_start_ts", "")
-                
-                if req_start and req_end:
-                    console.print(f"  [green]OK[/] Requested window: {req_start[:10]} to {req_end[:10]}")
-                else:
-                    console.print(f"  [red]FAIL[/] Missing data_window_requested_start/end")
-                    failures += 1
-                
-                if load_start and load_end:
-                    console.print(f"  [green]OK[/] Loaded window: {load_start[:10]} to {load_end[:10]}")
-                    
-                    # Verify loaded_start <= requested_start (warm-up extends backward)
-                    if load_start <= req_start:
-                        console.print(f"  [green]OK[/] loaded_start <= requested_start (warm-up applied)")
-                    else:
-                        console.print(f"  [yellow]WARN[/] loaded_start > requested_start (data may be limited)")
-                else:
-                    console.print(f"  [red]FAIL[/] Missing data_window_loaded_start/end")
-                    failures += 1
-                
-                if sim_start:
-                    console.print(f"  [green]OK[/] simulation_start_ts: {sim_start[:10]}")
-                    
-                    # Verify simulation starts at or after requested start
-                    if sim_start >= req_start:
-                        console.print(f"  [green]OK[/] simulation starts at/after requested window start")
-                    else:
-                        console.print(f"  [red]FAIL[/] simulation starts before requested window")
-                        failures += 1
-                else:
-                    console.print(f"  [red]FAIL[/] Missing simulation_start_ts")
-                    failures += 1
-                
-                # Verify equity curve starts at simulation start
-                if equity_csv_path.exists():
-                    equity_df = pd.read_csv(equity_csv_path)
-                    if len(equity_df) > 0 and "ts" in equity_df.columns:
-                        first_equity_ts = equity_df["ts"].iloc[0]
-                        if sim_start and first_equity_ts >= req_start:
-                            console.print(f"  [green]OK[/] First equity point at/after requested start")
-                        else:
-                            console.print(f"  [yellow]WARN[/] First equity point: {first_equity_ts[:10]}")
-                
-            except Exception as e:
-                console.print(f"  [red]FAIL[/] Error validating warm-up metadata: {e}")
-                failures += 1
-    else:
-        console.print(f"  [yellow]WARN[/] No artifact_dir returned, skipping artifact validation")
-    
-    # Step 8: Run backtest - Test window (no artifacts needed)
-    console.print(f"\n[bold cyan]Step 8: Run Backtest (Test Window)[/]")
-    result = backtest_run_tool(system_id, "test", write_artifacts=False)
-    if result.success and result.data:
-        metrics = result.data.get("metrics", {})
-        console.print(f"  [green]OK[/] {result.message}")
-        console.print(f"      Trades: {metrics.get('total_trades', 0)}")
-        console.print(f"      Net Return: {metrics.get('net_return_pct', 0):.2f}%")
-        console.print(f"      Max DD: {metrics.get('max_drawdown_pct', 0):.1f}%")
-    else:
-        console.print(f"  [red]FAIL[/] {result.error}")
-        failures += 1
-    
-    # Summary
-    console.print(f"\n[bold magenta]{'='*60}[/]")
-    console.print(f"[bold magenta]BACKTEST SMOKE TEST COMPLETE[/]")
-    console.print(f"[bold magenta]{'='*60}[/]")
-    
-    console.print(f"\n[bold]Test Summary:[/]")
-    console.print(f"  System ID: {system_id}")
-    console.print(f"  System UID: [dim]{system_uid or 'N/A'}[/]")
-    console.print(f"  Strategy: {strategy_id or 'N/A'} v{strategy_version or '?'}")
-    console.print(f"  Fresh DB: {fresh_db}")
-    console.print(f"  Artifact Validation: {'Done' if artifact_dir else 'Skipped'}")
-    console.print(f"  Failures: {failures}")
-    
-    if failures == 0:
-        console.print(f"\n[bold green]OK BACKTEST ENGINE VERIFIED[/]")
-    else:
-        console.print(f"\n[bold red]FAIL {failures} TEST(S) FAILED[/]")
-    
-    return failures
+    # No IdeaCards found - fail (forward-only, no legacy fallback)
+    console.print(f"\n[bold red]FAIL[/] No IdeaCards found in configs/idea_cards/")
+    console.print(f"[dim]Create an IdeaCard YAML file or set BACKTEST_SMOKE_IDEA_CARD env var[/]")
+    return 1
 
 
 # =============================================================================
@@ -2539,15 +2159,14 @@ def run_backtest_smoke_mixed_idea_cards() -> int:
     
     failures = 0
     
-    # Select a diverse mix of idea cards
+    # Select a diverse mix of idea cards using V_XX naming convention
     idea_cards_to_test = [
-        # Single-TF, simple indicators
-        "test__phase6_warmup_matrix__BTCUSDT_5m",
-        # Multi-TF, complex indicators
-        "test__phase6_mtf_alignment__BTCUSDT_5m_1h_4h",
-        # Validation cards (if available)
-        "scalp_5m_momentum",
-        "intraday_15m_multi",
+        # Single-TF tests
+        "V_01_single_5m_rsi_ema",
+        "V_02_single_15m_bbands",
+        # Multi-TF tests
+        "V_11_mtf_5m_15m_1h_momentum",
+        "V_13_mtf_5m_1h_4h_alignment",
     ]
     
     # Filter to only existing cards

@@ -1068,6 +1068,192 @@ class ToolRegistry:
             parameters={},
             required=[],
         )
+
+        # =====================================================================
+        # BACKTEST TOOLS - IdeaCard-based (Golden Path)
+        # =====================================================================
+        from . import (
+            backtest_preflight_idea_card_tool,
+            backtest_run_idea_card_tool,
+            backtest_data_fix_tool,
+            backtest_list_idea_cards_tool,
+            backtest_indicators_tool,
+            backtest_idea_card_normalize_tool,
+        )
+
+        self._register(
+            name="backtest_list_idea_cards",
+            function=backtest_list_idea_cards_tool,
+            description="List all available IdeaCards for backtesting",
+            category="backtest.ideacard",
+            parameters={
+                "idea_cards_dir": {"type": "string", "description": "Override IdeaCard directory", "optional": True},
+            },
+            required=[],
+        )
+
+        self._register(
+            name="backtest_preflight",
+            function=backtest_preflight_idea_card_tool,
+            description="Run preflight check for an IdeaCard backtest (data coverage, warmup)",
+            category="backtest.ideacard",
+            parameters={
+                "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+                "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
+                "symbol": {"type": "string", "description": "Override symbol", "optional": True},
+                "start": {"type": "string", "description": "Window start datetime", "optional": True},
+                "end": {"type": "string", "description": "Window end datetime", "optional": True},
+                "fix_gaps": {"type": "boolean", "description": "Auto-fetch missing data", "default": False},
+            },
+            required=["idea_card_id"],
+        )
+
+        self._register(
+            name="backtest_run_idea_card",
+            function=backtest_run_idea_card_tool,
+            description="Run a backtest for an IdeaCard (Golden Path)",
+            category="backtest.ideacard",
+            parameters={
+                "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+                "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
+                "symbol": {"type": "string", "description": "Override symbol", "optional": True},
+                "start": {"type": "string", "description": "Window start datetime", "optional": True},
+                "end": {"type": "string", "description": "Window end datetime", "optional": True},
+                "smoke": {"type": "boolean", "description": "Run in smoke mode (small window)", "default": False},
+                "fix_gaps": {"type": "boolean", "description": "Auto-fetch missing data", "default": True},
+            },
+            required=["idea_card_id"],
+        )
+
+        self._register(
+            name="backtest_data_fix",
+            function=backtest_data_fix_tool,
+            description="Fix data for an IdeaCard backtest (sync/heal)",
+            category="backtest.ideacard",
+            parameters={
+                "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+                "env": {"type": "string", "description": "Data environment", "default": "live"},
+                "symbol": {"type": "string", "description": "Override symbol", "optional": True},
+                "start": {"type": "string", "description": "Sync from this date", "optional": True},
+                "end": {"type": "string", "description": "Sync to this date", "optional": True},
+                "max_lookback_days": {"type": "integer", "description": "Max lookback days", "default": 7},
+                "sync_to_now": {"type": "boolean", "description": "Sync to current time", "default": False},
+                "fill_gaps": {"type": "boolean", "description": "Fill gaps after sync", "default": True},
+                "heal": {"type": "boolean", "description": "Run full heal", "default": False},
+            },
+            required=["idea_card_id"],
+        )
+
+        self._register(
+            name="backtest_indicators",
+            function=backtest_indicators_tool,
+            description="Discover indicator keys for an IdeaCard",
+            category="backtest.ideacard",
+            parameters={
+                "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+                "data_env": {"type": "string", "description": "Data environment", "default": "live"},
+                "symbol": {"type": "string", "description": "Override symbol", "optional": True},
+                "compute_values": {"type": "boolean", "description": "Compute actual values", "default": False},
+            },
+            required=["idea_card_id"],
+        )
+
+        self._register(
+            name="backtest_normalize_idea_card",
+            function=backtest_idea_card_normalize_tool,
+            description="Normalize and validate an IdeaCard YAML",
+            category="backtest.ideacard",
+            parameters={
+                "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+                "idea_cards_dir": {"type": "string", "description": "Override directory", "optional": True},
+                "write_in_place": {"type": "boolean", "description": "Write normalized YAML", "default": False},
+            },
+            required=["idea_card_id"],
+        )
+
+        # =====================================================================
+        # BACKTEST TOOLS - Audits & Verification
+        # =====================================================================
+        from . import (
+            backtest_audit_toolkit_tool,
+            backtest_audit_rollup_parity_tool,
+            backtest_math_parity_tool,
+            backtest_audit_snapshot_plumbing_tool,
+            verify_artifact_parity_tool,
+        )
+
+        self._register(
+            name="backtest_audit_toolkit",
+            function=backtest_audit_toolkit_tool,
+            description="Run toolkit contract audit (validates all 42 indicators)",
+            category="backtest.audit",
+            parameters={
+                "sample_bars": {"type": "integer", "description": "Synthetic OHLCV bars", "default": 2000},
+                "seed": {"type": "integer", "description": "Random seed", "default": 1337},
+                "fail_on_extras": {"type": "boolean", "description": "Fail if extras found", "default": False},
+                "strict": {"type": "boolean", "description": "Fail on any breach", "default": True},
+            },
+            required=[],
+        )
+
+        self._register(
+            name="backtest_audit_rollup",
+            function=backtest_audit_rollup_parity_tool,
+            description="Run rollup parity audit (validates 1m price feed accumulation)",
+            category="backtest.audit",
+            parameters={
+                "n_intervals": {"type": "integer", "description": "Number of intervals", "default": 10},
+                "quotes_per_interval": {"type": "integer", "description": "Quotes per interval", "default": 15},
+                "seed": {"type": "integer", "description": "Random seed", "default": 1337},
+                "tolerance": {"type": "number", "description": "Float tolerance", "default": 1e-10},
+            },
+            required=[],
+        )
+
+        self._register(
+            name="backtest_audit_math_parity",
+            function=backtest_math_parity_tool,
+            description="Run math parity audit (contract + in-memory parity)",
+            category="backtest.audit",
+            parameters={
+                "idea_card": {"type": "string", "description": "Path to IdeaCard YAML"},
+                "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+                "output_dir": {"type": "string", "description": "Output directory for diffs", "optional": True},
+            },
+            required=["idea_card", "start_date", "end_date"],
+        )
+
+        self._register(
+            name="backtest_audit_snapshot_plumbing",
+            function=backtest_audit_snapshot_plumbing_tool,
+            description="Run snapshot plumbing parity audit (validates data flow)",
+            category="backtest.audit",
+            parameters={
+                "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+                "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+                "symbol": {"type": "string", "description": "Override symbol", "optional": True},
+                "max_samples": {"type": "integer", "description": "Max samples", "default": 2000},
+                "tolerance": {"type": "number", "description": "Float tolerance", "default": 1e-12},
+            },
+            required=["idea_card_id", "start_date", "end_date"],
+        )
+
+        self._register(
+            name="backtest_verify_artifacts",
+            function=verify_artifact_parity_tool,
+            description="Verify backtest artifact integrity",
+            category="backtest.audit",
+            parameters={
+                "idea_card_id": {"type": "string", "description": "IdeaCard ID", "optional": True},
+                "symbol": {"type": "string", "description": "Trading symbol", "optional": True},
+                "run_id": {"type": "string", "description": "Specific run ID", "optional": True},
+                "base_dir": {"type": "string", "description": "Base backtests directory", "optional": True},
+                "run_dir": {"type": "string", "description": "Direct path to run directory", "optional": True},
+            },
+            required=[],
+        )
     
     def _register(
         self,

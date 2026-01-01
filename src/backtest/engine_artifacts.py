@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 from .artifacts.parquet_writer import write_parquet
+from .metrics import compute_time_based_returns
 
 if TYPE_CHECKING:
     from .types import BacktestResult, EquityPoint
@@ -146,6 +147,14 @@ def write_artifacts_impl(
             "has_position", "entries_disabled"
         ])
     write_parquet(account_df, account_curve_path)
+
+    # Write returns.json (Phase 4: Time-based analytics)
+    # Compute daily/weekly/monthly returns from equity curve
+    if result.equity_curve:
+        time_based_returns = compute_time_based_returns(result.equity_curve)
+        returns_path = run_dir / "returns.json"
+        with open(returns_path, "w") as f:
+            json.dump(time_based_returns.to_dict(), f, indent=2)
 
     # Compute artifact hashes for reproducibility (Parquet files)
     artifact_hashes = {}

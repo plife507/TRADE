@@ -1,0 +1,107 @@
+# V_22: Warmup validation with mixed warmup across MTF
+# Purpose: Validate warmup calculation with different warmup_bars per TF
+# Timeframes: 5m exec (50 bars), 1h mtf (30 bars), 4h htf (20 bars)
+# Tests: Total warmup aligned to slowest TF requirement
+id: V_22_warmup_mtf_mixed
+version: 1.0.0
+name: Warmup Validation MTF Mixed
+description: Validates warmup calculation with different warmup_bars per timeframe
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - ETHUSDT
+
+tf_configs:
+  exec:
+    tf: 5m
+    role: exec
+    warmup_bars: 50
+    market_structure:
+      lookback_bars: 30
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: ema
+        output_key: ema_20
+        params:
+          length: 20
+        input_source: close
+      - indicator_type: rsi
+        output_key: rsi_14
+        params:
+          length: 14
+        input_source: close
+    required_indicators:
+      - ema_20
+      - rsi_14
+  mtf:
+    tf: 1h
+    role: mtf
+    warmup_bars: 30
+    market_structure:
+      lookback_bars: 20
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: ema
+        output_key: ema_50
+        params:
+          length: 50
+        input_source: close
+    required_indicators:
+      - ema_50
+  htf:
+    tf: 4h
+    role: htf
+    warmup_bars: 20
+    market_structure:
+      lookback_bars: 15
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: ema
+        output_key: ema_100
+        params:
+          length: 100
+        input_source: close
+    required_indicators:
+      - ema_100
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: lt
+          value: 35
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: gt
+          value: 65
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 1.5
+    max_leverage: 2.0

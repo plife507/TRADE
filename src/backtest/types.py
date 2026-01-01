@@ -635,3 +635,41 @@ class BacktestResult:
             "entry_attempts_count": self.entry_attempts_count,
             "entry_rejections_count": self.entry_rejections_count,
         }
+
+
+@dataclass
+class TimeBasedReturns:
+    """
+    Time-based return analytics for charting and analysis.
+
+    Phase 4 of Backtest Analytics: Provides daily, weekly, and monthly
+    return series for performance visualization and period analysis.
+
+    Return values are percentages (e.g., 5.2 = 5.2% return).
+    """
+    # Period returns: {period_key: return_pct}
+    daily_returns: Dict[str, float] = field(default_factory=dict)    # "2025-01-15" -> 1.5
+    weekly_returns: Dict[str, float] = field(default_factory=dict)   # "2025-W03" -> 3.2
+    monthly_returns: Dict[str, float] = field(default_factory=dict)  # "2025-01" -> 8.7
+
+    # Best/worst periods: (period_key, return_pct) or None
+    best_day: Optional[tuple] = None      # ("2025-01-15", 5.2)
+    worst_day: Optional[tuple] = None     # ("2025-01-20", -3.1)
+    best_week: Optional[tuple] = None     # ("2025-W03", 8.5)
+    worst_week: Optional[tuple] = None    # ("2025-W05", -4.2)
+    best_month: Optional[tuple] = None    # ("2025-01", 12.3)
+    worst_month: Optional[tuple] = None   # ("2025-02", -6.1)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict for JSON serialization."""
+        return {
+            "daily_returns": self.daily_returns,
+            "weekly_returns": self.weekly_returns,
+            "monthly_returns": self.monthly_returns,
+            "best_day": list(self.best_day) if self.best_day else None,
+            "worst_day": list(self.worst_day) if self.worst_day else None,
+            "best_week": list(self.best_week) if self.best_week else None,
+            "worst_week": list(self.worst_week) if self.worst_week else None,
+            "best_month": list(self.best_month) if self.best_month else None,
+            "worst_month": list(self.worst_month) if self.worst_month else None,
+        }

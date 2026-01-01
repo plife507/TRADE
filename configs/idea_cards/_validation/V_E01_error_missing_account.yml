@@ -1,0 +1,63 @@
+# V_E01: Error case - Missing account section
+# Purpose: Validate fail-loud behavior for missing required section
+# Expected: Fails with "account section is required"
+# Test: Run preflight and verify it fails with correct error
+id: V_E01_error_missing_account
+version: 1.0.0
+name: ERROR - Missing Account Section
+description: INTENTIONALLY BROKEN - Should fail with "account section is required"
+
+# INTENTIONALLY MISSING: account section
+
+symbol_universe:
+  - WIFUSDT
+
+tf_configs:
+  exec:
+    tf: 15m
+    role: exec
+    warmup_bars: 50
+    market_structure:
+      lookback_bars: 25
+      delay_bars: 0
+    feature_specs:
+      - indicator_type: rsi
+        output_key: rsi_14
+        params:
+          length: 14
+        input_source: close
+    required_indicators:
+      - rsi_14
+
+position_policy:
+  mode: long_short
+  max_positions_per_symbol: 1
+  allow_flip: true
+
+signal_rules:
+  entry_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: lt
+          value: 30
+  exit_rules:
+    - direction: long
+      conditions:
+        - tf: exec
+          indicator_key: rsi_14
+          operator: gt
+          value: 70
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 2.0
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 3.0
+    max_leverage: 5.0
