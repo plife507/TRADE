@@ -27,6 +27,7 @@ from ..utils.logger import get_logger
 if TYPE_CHECKING:
     from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
     from .system_config import SystemConfig
+    from .idea_card import IdeaCard
 
 
 class FeedStoreBuilderResult:
@@ -161,6 +162,86 @@ def build_feed_stores_impl(
     )
 
     return multi_tf_feed_store, exec_feed, htf_feed, mtf_feed
+
+
+# =============================================================================
+# Stage 3: Market Structure Building
+# =============================================================================
+
+
+def build_structures_into_feed(
+    exec_feed: FeedStore,
+    idea_card: "IdeaCard",
+    logger=None,
+) -> None:
+    """
+    Build market structures and wire them into exec FeedStore.
+
+    Stage 3: All structure blocks are exec-only.
+
+    This function:
+    1. Extracts market_structure_blocks from IdeaCard
+    2. Builds OHLCV dict from exec_feed arrays
+    3. Calls StructureBuilder.build() to compute structures
+    4. Wires stores and key_map into exec_feed.structures / structure_key_map
+
+    Args:
+        exec_feed: The exec FeedStore to wire structures into
+        idea_card: IdeaCard with market_structure_blocks
+        logger: Optional logger instance
+
+    Note:
+        Modifies exec_feed in-place by populating:
+        - exec_feed.structures: Dict[block_id, StructureStore]
+        - exec_feed.structure_key_map: Dict[block_key, block_id]
+    """
+    if logger is None:
+        logger = get_logger()
+
+    structure_specs = list(idea_card.market_structure_blocks)
+    if not structure_specs:
+        logger.debug("No market_structure_blocks in IdeaCard, skipping structure build")
+        return
+
+    # Import here to avoid circular imports
+    from .market_structure import StructureBuilder
+
+    # Build OHLCV dict from exec_feed arrays
+    ohlcv = {
+        "open": exec_feed.open,
+        "high": exec_feed.high,
+        "low": exec_feed.low,
+        "close": exec_feed.close,
+        "volume": exec_feed.volume,
+    }
+
+    # Build structures
+    builder = StructureBuilder(stage=3)
+
+    try:
+        stores = builder.build(ohlcv, structure_specs)
+        key_map = builder.build_key_map(stores)
+
+        # Wire into exec_feed
+        exec_feed.structures = stores
+        exec_feed.structure_key_map = key_map
+
+        logger.info(
+            f"Built market structures: {len(stores)} blocks, "
+            f"keys={list(key_map.keys())}"
+        )
+
+        # Build and log manifest
+        manifest = builder.build_manifest(structure_specs, stores)
+        for entry in manifest:
+            logger.debug(
+                f"  Structure block: key={entry.block_key}, type={entry.type}, "
+                f"fields={entry.output_fields}"
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to build market structures: {e}")
+        raise
 
 
 # =============================================================================

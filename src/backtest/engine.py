@@ -52,7 +52,12 @@ from .engine_data_prep import (
 )
 
 # Import from engine_feed_builder module
-from .engine_feed_builder import build_feed_stores_impl, build_quote_feed_impl, get_quote_at_exec_close
+from .engine_feed_builder import (
+    build_feed_stores_impl,
+    build_quote_feed_impl,
+    get_quote_at_exec_close,
+    build_structures_into_feed,
+)
 
 # Import from engine_snapshot module
 from .engine_snapshot import (
@@ -476,10 +481,35 @@ class BacktestEngine:
 
         self._multi_tf_feed_store, self._exec_feed, self._htf_feed, self._mtf_feed = result
 
+        # Stage 3: Build market structures into exec feed
+        self._build_structures()
+
         # Phase 3: Build 1m quote feed for px.last/px.mark
         self._build_quote_feed()
 
         return self._multi_tf_feed_store
+
+    def _build_structures(self) -> None:
+        """
+        Build market structures into exec FeedStore.
+
+        Stage 3: Exec-only structure blocks from IdeaCard are computed and
+        wired into exec_feed.structures and exec_feed.structure_key_map.
+
+        Called from _build_feed_stores() after exec/htf/mtf feeds are built.
+        """
+        if self._idea_card is None:
+            return
+
+        if self._exec_feed is None:
+            self.logger.warning("Cannot build structures: no exec feed")
+            return
+
+        build_structures_into_feed(
+            exec_feed=self._exec_feed,
+            idea_card=self._idea_card,
+            logger=self.logger,
+        )
 
     def _build_quote_feed(self) -> None:
         """

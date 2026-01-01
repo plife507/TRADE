@@ -829,7 +829,23 @@ Examples:
     metadata_parser.add_argument("--seed", type=int, default=1337, help="Random seed for reproducibility (default: 1337)")
     metadata_parser.add_argument("--export", dest="export_path", default="artifacts/indicator_metadata.jsonl", help="Export path (default: artifacts/indicator_metadata.jsonl)")
     metadata_parser.add_argument("--format", dest="export_format", choices=["jsonl", "json", "csv"], default="jsonl", help="Export format (default: jsonl)")
-    
+
+    # backtest mark-price-smoke (Mark Price Engine smoke test)
+    mark_price_parser = backtest_subparsers.add_parser(
+        "mark-price-smoke",
+        help="Run Mark Price Engine smoke test (validates MarkPriceEngine and snapshot.get())"
+    )
+    mark_price_parser.add_argument("--sample-bars", type=int, default=500, help="Number of synthetic bars (default: 500)")
+    mark_price_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
+
+    # backtest structure-smoke (Market Structure smoke test)
+    structure_parser = backtest_subparsers.add_parser(
+        "structure-smoke",
+        help="Run Market Structure smoke test (validates SwingDetector and TrendClassifier)"
+    )
+    structure_parser.add_argument("--sample-bars", type=int, default=500, help="Number of synthetic bars (default: 500)")
+    structure_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
+
     # backtest math-parity (contract audit + in-memory math parity)
     math_parity_parser = backtest_subparsers.add_parser(
         "math-parity",
@@ -1829,7 +1845,7 @@ def handle_backtest_math_parity(args) -> int:
 def handle_backtest_metadata_smoke(args) -> int:
     """Handle `backtest metadata-smoke` subcommand - Indicator Metadata v1 smoke test."""
     from src.cli.smoke_tests import run_metadata_smoke
-    
+
     return run_metadata_smoke(
         symbol=args.symbol,
         tf=args.tf,
@@ -1837,6 +1853,26 @@ def handle_backtest_metadata_smoke(args) -> int:
         seed=args.seed,
         export_path=args.export_path,
         export_format=args.export_format,
+    )
+
+
+def handle_backtest_mark_price_smoke(args) -> int:
+    """Handle `backtest mark-price-smoke` subcommand - Mark Price Engine smoke test."""
+    from src.cli.smoke_tests import run_mark_price_smoke
+
+    return run_mark_price_smoke(
+        sample_bars=args.sample_bars,
+        seed=args.seed,
+    )
+
+
+def handle_backtest_structure_smoke(args) -> int:
+    """Handle `backtest structure-smoke` subcommand - Market Structure smoke test."""
+    from src.cli.smoke_tests import run_structure_smoke
+
+    return run_structure_smoke(
+        sample_bars=args.sample_bars,
+        seed=args.seed,
     )
 
 
@@ -2334,6 +2370,10 @@ def main():
             sys.exit(handle_backtest_audit_toolkit(args))
         elif args.backtest_command == "metadata-smoke":
             sys.exit(handle_backtest_metadata_smoke(args))
+        elif args.backtest_command == "mark-price-smoke":
+            sys.exit(handle_backtest_mark_price_smoke(args))
+        elif args.backtest_command == "structure-smoke":
+            sys.exit(handle_backtest_structure_smoke(args))
         elif args.backtest_command == "math-parity":
             sys.exit(handle_backtest_math_parity(args))
         elif args.backtest_command == "audit-snapshot-plumbing":
@@ -2345,7 +2385,7 @@ def main():
         elif args.backtest_command == "audit-rollup":
             sys.exit(handle_backtest_audit_rollup(args))
         else:
-            console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|idea-card-normalize|idea-card-normalize-batch|verify-suite|audit-toolkit|metadata-smoke|math-parity|audit-snapshot-plumbing|verify-determinism|metrics-audit|audit-rollup} --help[/]")
+            console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|idea-card-normalize|idea-card-normalize-batch|verify-suite|audit-toolkit|metadata-smoke|mark-price-smoke|structure-smoke|math-parity|audit-snapshot-plumbing|verify-determinism|metrics-audit|audit-rollup} --help[/]")
             sys.exit(1)
     
     # ===== SMOKE TEST MODE =====

@@ -701,10 +701,207 @@ class RuntimeSnapshotView:
         return dict(self._rollups)
 
     # =========================================================================
+    # Canonical Path Resolver (DSL Interface)
+    # =========================================================================
+    #
+    # Uses dispatch table pattern for scalability as namespaces grow.
+    # Each namespace has a dedicated resolver method.
+    #
+    # =========================================================================
+
+    # Namespace dispatch table (populated in get())
+    # Maps namespace -> resolver method name
+    _NAMESPACE_RESOLVERS = {
+        "price": "_resolve_price_path",
+        "indicator": "_resolve_indicator_path",
+        "structure": "_resolve_structure_path",
+    }
+
+    def get(self, path: str) -> Optional[float]:
+        """
+        Canonical path resolver for DSL and strategy access.
+
+        This is the ONLY supported access method for strategies/DSL.
+        Snapshot attributes are internal/legacy.
+
+        Supported namespaces:
+        - "price.*" -> price data (mark, last)
+        - "indicator.*" -> indicator values
+        - "structure.*" -> market structure features
+
+        Args:
+            path: Dot-separated path (e.g., "price.mark.close")
+
+        Returns:
+            Value at path, or None if not available
+
+        Raises:
+            ValueError: If path is unknown (forward-only, no silent failures)
+        """
+        parts = path.split(".")
+        namespace = parts[0]
+
+        # Dispatch to namespace resolver
+        resolver_name = self._NAMESPACE_RESOLVERS.get(namespace)
+        if resolver_name is None:
+            supported = sorted(self._NAMESPACE_RESOLVERS.keys())
+            raise ValueError(
+                f"Unknown path namespace: '{path}'. "
+                f"Supported: {', '.join(f'{ns}.*' for ns in supported)}"
+            )
+
+        resolver = getattr(self, resolver_name)
+        return resolver(parts[1:], path)
+
+    def _resolve_indicator_path(self, parts: list, full_path: str) -> Optional[float]:
+        """
+        Resolve indicator.* paths.
+
+        Supports:
+        - indicator.<key> -> exec TF indicator
+        - indicator.<key>.<tf_role> -> specific TF indicator
+
+        Args:
+            parts: Path parts after "indicator." (e.g., ["rsi_14"] or ["rsi_14", "htf"])
+            full_path: Full original path for error messages
+
+        Returns:
+            Indicator value or None if NaN/unavailable
+        """
+        if len(parts) < 1:
+            raise ValueError(f"Invalid indicator path: '{full_path}' (missing key)")
+        indicator_key = parts[0]
+        tf_role = parts[1] if len(parts) > 1 else "exec"
+        return self.get_feature(indicator_key, tf_role)
+
+    def _resolve_price_path(self, parts: list, full_path: str) -> Optional[float]:
+        """
+        Resolve price.* paths.
+
+        Stage 1: only price.mark.close
+        Stage 6: extends to price.mark.high, price.mark.low
+
+        Args:
+            parts: Path parts after "price." (e.g., ["mark", "close"])
+            full_path: Full original path for error messages
+        """
+        if len(parts) < 2:
+            raise ValueError(
+                f"Invalid price path: '{full_path}' "
+                f"(expected price.mark.close)"
+            )
+
+        price_type = parts[0]  # "mark" or "last"
+        field = parts[1]  # "close", "high", "low"
+
+        if price_type == "mark":
+            if field == "close":
+                return self.mark_price
+            elif field in ("high", "low"):
+                raise ValueError(
+                    f"price.mark.{field} not available in Stage 1. "
+                    f"Only price.mark.close is implemented."
+                )
+            else:
+                raise ValueError(
+                    f"Unknown price.mark field: '{field}'. "
+                    f"Supported: close"
+                )
+
+        elif price_type == "last":
+            raise ValueError(
+                "price.last.* is reserved but not implemented. "
+                "Use price.mark.close"
+            )
+
+        else:
+            raise ValueError(
+                f"Unknown price type: '{price_type}'. "
+                f"Supported: mark"
+            )
+
+    def _resolve_structure_path(self, parts: list, full_path: str) -> Optional[float]:
+        """
+        Resolve structure.* paths.
+
+        Stage 2 supports:
+        - structure.<block_key>.<field>
+
+        Stage 5+ will add:
+        - structure.<block_key>.zones.<zone_key>.<field>
+
+        Args:
+            parts: Path parts after "structure." (e.g., ["ms_5m", "swing_high_level"])
+            full_path: Full original path for error messages
+
+        Returns:
+            Field value at current bar index
+
+        Raises:
+            ValueError: If path is invalid or field is not in allowlist
+        """
+        if len(parts) < 2:
+            raise ValueError(
+                f"Invalid structure path: '{full_path}' "
+                f"(expected structure.<block_key>.<field>)"
+            )
+
+        block_key = parts[0]
+        field_or_zones = parts[1]
+
+        # Check for zones namespace (Stage 5+)
+        if field_or_zones == "zones":
+            raise ValueError(
+                f"Zones not implemented (Stage 5+): '{full_path}'. "
+                f"Use structure.<block_key>.<field> only."
+            )
+
+        # Stage 2: structure.<block_key>.<field>
+        field_name = field_or_zones
+
+        # Validate structure exists
+        if not self.exec_ctx.feed.has_structure(block_key):
+            available = list(self.exec_ctx.feed.structure_key_map.keys())
+            raise ValueError(
+                f"Unknown structure block_key '{block_key}'. "
+                f"Available: {available}"
+            )
+
+        # Validate field is in public allowlist
+        available_fields = self.exec_ctx.feed.get_structure_fields(block_key)
+        if field_name not in available_fields:
+            raise ValueError(
+                f"Unknown structure field '{field_name}' for block '{block_key}'. "
+                f"Valid fields: {available_fields}"
+            )
+
+        # Get field value at current exec bar index
+        return self.exec_ctx.feed.get_structure_field(
+            block_key, field_name, self.exec_idx
+        )
+
+    def has_path(self, path: str) -> bool:
+        """
+        Check if a path is available.
+
+        Args:
+            path: Dot-separated path
+
+        Returns:
+            True if path can be resolved
+        """
+        try:
+            value = self.get(path)
+            return value is not None
+        except ValueError:
+            return False
+
+    # =========================================================================
     # DELETED: Backward Compatibility Aliases
     # =========================================================================
     # Legacy aliases (bar_ltf, features_exec, etc.) removed.
     # Use direct accessors: exec_ctx, htf_ctx, mtf_ctx, or get_feature().
+    # New code must use snapshot.get(path) exclusively.
     
     # =========================================================================
     # Serialization (for debugging only, not in hot loop)

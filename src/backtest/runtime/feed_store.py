@@ -31,6 +31,7 @@ import pandas as pd
 if TYPE_CHECKING:
     from ..features.feature_frame_builder import FeatureArrays
     from .indicator_metadata import IndicatorMetadata
+    from ..market_structure.builder import StructureStore
 
 
 @dataclass
@@ -83,7 +84,14 @@ class FeedStore:
     
     # Indicator metadata (in-memory provenance tracking)
     indicator_metadata: Dict[str, "IndicatorMetadata"] = field(default_factory=dict)
-    
+
+    # Structure stores (keyed by block_id)
+    # Populated by StructureBuilder; provides structure.* namespace
+    structures: Dict[str, "StructureStore"] = field(default_factory=dict)
+
+    # Structure key map (block_key -> block_id) for resolution
+    structure_key_map: Dict[str, str] = field(default_factory=dict)
+
     # Close ts set for cache detection
     close_ts_set: Set[datetime] = field(default_factory=set)
     
@@ -218,6 +226,58 @@ class FeedStore:
         if isinstance(ts, np.datetime64):
             return int(pd.Timestamp(ts).timestamp() * 1000)
         return int(ts.timestamp() * 1000)
+
+    def get_structure_field(
+        self,
+        block_key: str,
+        field_name: str,
+        bar_idx: int,
+    ) -> Optional[float]:
+        """
+        Get structure field value at specific bar index.
+
+        Args:
+            block_key: User-facing block key (e.g., "ms_5m")
+            field_name: Public field name (e.g., "swing_high_level")
+            bar_idx: Bar index to retrieve
+
+        Returns:
+            Field value or None if not available
+
+        Raises:
+            ValueError: If block_key or field_name is unknown
+        """
+        # Resolve block_key to block_id
+        block_id = self.structure_key_map.get(block_key)
+        if block_id is None:
+            raise ValueError(
+                f"Unknown structure block_key '{block_key}'. "
+                f"Available: {list(self.structure_key_map.keys())}"
+            )
+
+        # Get store
+        store = self.structures.get(block_id)
+        if store is None:
+            raise ValueError(
+                f"Structure store not found for block_id '{block_id}'"
+            )
+
+        # Get field value
+        return store.get_field(field_name, bar_idx)
+
+    def has_structure(self, block_key: str) -> bool:
+        """Check if a structure block exists."""
+        return block_key in self.structure_key_map
+
+    def get_structure_fields(self, block_key: str) -> List[str]:
+        """Get list of available fields for a structure block."""
+        block_id = self.structure_key_map.get(block_key)
+        if block_id is None:
+            return []
+        store = self.structures.get(block_id)
+        if store is None:
+            return []
+        return list(store.fields.keys())
     
     @classmethod
     def from_dataframe(

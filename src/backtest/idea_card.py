@@ -20,10 +20,13 @@ validated specification that the backtest engine can consume directly.
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import yaml
 
 from .features.feature_spec import FeatureSpec, FeatureSpecSet
+
+if TYPE_CHECKING:
+    from .market_structure.spec import StructureSpec
 
 
 # =============================================================================
@@ -829,10 +832,14 @@ class IdeaCard:
     
     # Signal rules
     signal_rules: Optional[SignalRules] = None
-    
+
     # Risk model
     risk_model: Optional[RiskModel] = None
-    
+
+    # Market structure blocks (Stage 3+)
+    # List of StructureSpec definitions parsed from YAML
+    market_structure_blocks: tuple = field(default_factory=tuple)  # Tuple["StructureSpec", ...]
+
     def __post_init__(self):
         """Validate the IdeaCard."""
         errors = self.validate()
@@ -963,6 +970,10 @@ class IdeaCard:
         }
         if self.account:
             result["account"] = self.account.to_dict()
+        if self.market_structure_blocks:
+            result["market_structure_blocks"] = [
+                spec.to_dict() for spec in self.market_structure_blocks
+            ]
         return result
     
     @classmethod
@@ -975,24 +986,33 @@ class IdeaCard:
         else:
             # This will trigger validation error in IdeaCard.__post_init__
             account = None
-        
+
         # Parse TF configs
         tf_configs = {}
         for role, cfg_dict in d.get("tf_configs", {}).items():
             tf_configs[role] = TFConfig.from_dict(cfg_dict)
-        
+
         # Parse position policy
         pp_dict = d.get("position_policy", {})
         position_policy = PositionPolicy.from_dict(pp_dict) if pp_dict else PositionPolicy()
-        
+
         # Parse signal rules
         sr_dict = d.get("signal_rules")
         signal_rules = SignalRules.from_dict(sr_dict) if sr_dict else None
-        
+
         # Parse risk model
         rm_dict = d.get("risk_model")
         risk_model = RiskModel.from_dict(rm_dict) if rm_dict else None
-        
+
+        # Parse market structure blocks (Stage 3+)
+        market_structure_blocks = ()
+        ms_blocks_raw = d.get("market_structure_blocks", [])
+        if ms_blocks_raw:
+            from .market_structure.spec import StructureSpec
+            market_structure_blocks = tuple(
+                StructureSpec.from_dict(block) for block in ms_blocks_raw
+            )
+
         return cls(
             id=d.get("id", ""),  # Empty string triggers validation error
             version=d.get("version", ""),  # Empty string triggers validation error
@@ -1005,6 +1025,7 @@ class IdeaCard:
             position_policy=position_policy,
             signal_rules=signal_rules,
             risk_model=risk_model,
+            market_structure_blocks=market_structure_blocks,
         )
 
 

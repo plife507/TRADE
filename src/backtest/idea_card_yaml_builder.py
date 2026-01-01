@@ -43,6 +43,14 @@ class ValidationErrorCode(str, Enum):
     UNDECLARED_FEATURE = "UNDECLARED_FEATURE"
     UNKNOWN_TF_ROLE = "UNKNOWN_TF_ROLE"
     MISSING_REQUIRED_FIELD = "MISSING_REQUIRED_FIELD"
+    # Stage 3: Market structure validation
+    UNSUPPORTED_STRUCTURE_TYPE = "UNSUPPORTED_STRUCTURE_TYPE"
+    INVALID_STRUCTURE_PARAM = "INVALID_STRUCTURE_PARAM"
+    STRUCTURE_EXEC_ONLY = "STRUCTURE_EXEC_ONLY"
+    STRUCTURE_ZONES_NOT_SUPPORTED = "STRUCTURE_ZONES_NOT_SUPPORTED"
+    UNDECLARED_STRUCTURE = "UNDECLARED_STRUCTURE"
+    DUPLICATE_STRUCTURE_KEY = "DUPLICATE_STRUCTURE_KEY"
+    INVALID_ENUM_TOKEN = "INVALID_ENUM_TOKEN"
 
 
 @dataclass
@@ -301,43 +309,47 @@ def validate_signal_rules(
         for j, cond in enumerate(rule.get("conditions", [])):
             location = f"signal_rules.entry_rules[{i}].conditions[{j}]"
             role = cond.get("tf", "exec")
-            
+
             # Check indicator_key
             indicator_key = cond.get("indicator_key", "")
-            if indicator_key:
+            # Stage 3: Skip structure references (validated separately)
+            if indicator_key and not indicator_key.startswith("structure."):
                 error = validate_feature_reference(
                     indicator_key, role, f"{location}.indicator_key", all_mappings
                 )
                 if error:
                     errors.append(error)
-            
+
             # Check value if it's an indicator comparison
             if cond.get("is_indicator_comparison", False):
                 value = cond.get("value", "")
-                if isinstance(value, str) and value:
+                # Stage 3: Skip structure references (validated separately)
+                if isinstance(value, str) and value and not value.startswith("structure."):
                     error = validate_feature_reference(
                         value, role, f"{location}.value", all_mappings
                     )
                     if error:
                         errors.append(error)
-    
+
     # Exit rules
     for i, rule in enumerate(signal_rules.get("exit_rules", [])):
         for j, cond in enumerate(rule.get("conditions", [])):
             location = f"signal_rules.exit_rules[{i}].conditions[{j}]"
             role = cond.get("tf", "exec")
-            
+
             indicator_key = cond.get("indicator_key", "")
-            if indicator_key:
+            # Stage 3: Skip structure references (validated separately)
+            if indicator_key and not indicator_key.startswith("structure."):
                 error = validate_feature_reference(
                     indicator_key, role, f"{location}.indicator_key", all_mappings
                 )
                 if error:
                     errors.append(error)
-            
+
             if cond.get("is_indicator_comparison", False):
                 value = cond.get("value", "")
-                if isinstance(value, str) and value:
+                # Stage 3: Skip structure references (validated separately)
+                if isinstance(value, str) and value and not value.startswith("structure."):
                     error = validate_feature_reference(
                         value, role, f"{location}.value", all_mappings
                     )
@@ -388,41 +400,362 @@ def validate_risk_model_refs(
 
 
 # =============================================================================
+# Structure Block Validation (Stage 3)
+# =============================================================================
+
+# Required params per structure type
+STRUCTURE_REQUIRED_PARAMS = {
+    "swing": ["left", "right"],
+    "trend": [],  # TREND derives from SWING, no params required
+}
+
+# Valid structure types
+VALID_STRUCTURE_TYPES = {"swing", "trend"}
+
+# Public output fields per structure type (for reference validation)
+STRUCTURE_PUBLIC_FIELDS = {
+    "swing": {"swing_high_level", "swing_high_idx", "swing_low_level", "swing_low_idx", "swing_recency_bars"},
+    "trend": {"trend_state", "parent_version"},
+}
+
+# =============================================================================
+# Enum Token Maps (Stage 3.3)
+# =============================================================================
+
+# Import structure enums from source of truth
+from src.backtest.market_structure.types import TrendState, ZoneState
+from enum import Enum as EnumType
+from typing import Union, Type
+
+# Map field names to their enum classes
+# Only enum fields should be listed here
+# Keep namespace-specific: structure enums only
+STRUCTURE_ENUM_FIELDS: Dict[str, Type[EnumType]] = {
+    "trend_state": TrendState,
+    # Future: "zone_state": ZoneState,
+}
+
+
+def normalize_enum_token(
+    field_name: str,
+    value: Union[str, int],
+) -> int:
+    """
+    Normalize enum token to int value.
+
+    Strict canonical tokens only - no numeric literals allowed for enum fields.
+    Tokens are derived from enum class member names (case-insensitive).
+
+    Args:
+        field_name: The structure field name (e.g., "trend_state")
+        value: String token (canonical enum member name)
+
+    Returns:
+        Int value if valid
+
+    Raises:
+        ValueError: If token is unknown or numeric literal used
+        KeyError: If field is not an enum field
+    """
+    if field_name not in STRUCTURE_ENUM_FIELDS:
+        raise KeyError(f"Field '{field_name}' is not a registered enum field")
+
+    enum_class = STRUCTURE_ENUM_FIELDS[field_name]
+    allowed = sorted(m.name for m in enum_class)
+
+    # Reject numeric literals - require canonical tokens only
+    if isinstance(value, int):
+        raise ValueError(
+            f"Enum field '{field_name}' requires canonical token, not numeric literal '{value}'. "
+            f"Use one of: {', '.join(allowed)}"
+        )
+
+    if isinstance(value, str):
+        # Uppercase for comparison (case-insensitive)
+        token = value.upper()
+        # Check membership against enum member names
+        for member in enum_class:
+            if member.name == token:
+                return member.value
+        # Unknown token
+        raise ValueError(
+            f"Unknown enum token '{value}' for field '{field_name}'. "
+            f"Allowed tokens: {', '.join(allowed)}"
+        )
+
+    raise ValueError(
+        f"Invalid value type for enum field '{field_name}': {type(value).__name__}. "
+        f"Use one of: {', '.join(allowed)}"
+    )
+
+
+def validate_structure_blocks(
+    idea_card_dict: Dict[str, Any],
+) -> Tuple[List[ValidationError], Dict[str, Set[str]]]:
+    """
+    Validate market_structure_blocks in IdeaCard YAML.
+
+    Stage 3 validation:
+    - tf_role must be "exec" only
+    - No zones allowed (Stage 5+)
+    - Valid structure types (swing, trend)
+    - Required params per type
+
+    Args:
+        idea_card_dict: The raw IdeaCard dict from YAML
+
+    Returns:
+        Tuple of (errors, structure_fields_by_key)
+        structure_fields_by_key maps block_key -> set of valid field names
+    """
+    errors: List[ValidationError] = []
+    structure_fields: Dict[str, Set[str]] = {}
+
+    blocks = idea_card_dict.get("market_structure_blocks", [])
+    if not blocks:
+        return errors, structure_fields
+
+    seen_keys = set()
+
+    for i, block in enumerate(blocks):
+        location = f"market_structure_blocks[{i}]"
+
+        # Validate key exists and is unique
+        key = block.get("key")
+        if not key:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                message="Structure block missing 'key' field.",
+                location=location,
+            ))
+            continue
+
+        if key in seen_keys:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.DUPLICATE_STRUCTURE_KEY,
+                message=(
+                    f"Duplicate structure block key: '{key}'. "
+                    f"Each market_structure_block must have a unique key. "
+                    f"Tip: Use TF suffix for clarity (e.g., 'swing_15m', 'trend_15m')."
+                ),
+                location=f"{location}.key",
+            ))
+        seen_keys.add(key)
+
+        # Validate type
+        struct_type = block.get("type")
+        if not struct_type:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                message="Structure block missing 'type' field.",
+                location=location,
+            ))
+            continue
+
+        # Check for legacy key
+        if block.get("structure_type"):
+            errors.append(ValidationError(
+                code=ValidationErrorCode.INVALID_STRUCTURE_PARAM,
+                message="Use 'type', not 'structure_type'. Legacy key not supported.",
+                location=f"{location}.structure_type",
+            ))
+
+        if struct_type not in VALID_STRUCTURE_TYPES:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.UNSUPPORTED_STRUCTURE_TYPE,
+                message=f"Unknown structure type '{struct_type}'.",
+                location=f"{location}.type",
+                suggestions=sorted(VALID_STRUCTURE_TYPES),
+            ))
+            continue
+
+        # Stage 3: tf_role must be "exec" only
+        tf_role = block.get("tf_role", "exec")
+        if tf_role != "exec":
+            errors.append(ValidationError(
+                code=ValidationErrorCode.STRUCTURE_EXEC_ONLY,
+                message=(
+                    f"Stage 3 supports exec-only market structure blocks. "
+                    f"tf_role='{tf_role}' is not supported until Stage 4."
+                ),
+                location=f"{location}.tf_role",
+            ))
+
+        # Stage 3: No zones
+        if block.get("zones"):
+            errors.append(ValidationError(
+                code=ValidationErrorCode.STRUCTURE_ZONES_NOT_SUPPORTED,
+                message=(
+                    "Zones in market_structure_blocks are not supported until Stage 5+. "
+                    "Remove the 'zones' key from your structure block."
+                ),
+                location=f"{location}.zones",
+            ))
+
+        # Validate required params
+        params = block.get("params", {})
+        required = STRUCTURE_REQUIRED_PARAMS.get(struct_type, [])
+        for param in required:
+            if param not in params:
+                errors.append(ValidationError(
+                    code=ValidationErrorCode.INVALID_STRUCTURE_PARAM,
+                    message=f"Structure type '{struct_type}' requires param '{param}'.",
+                    location=f"{location}.params",
+                ))
+
+        # Track valid fields for this block
+        if struct_type in STRUCTURE_PUBLIC_FIELDS:
+            structure_fields[key] = STRUCTURE_PUBLIC_FIELDS[struct_type]
+
+    return errors, structure_fields
+
+
+def validate_structure_references(
+    idea_card_dict: Dict[str, Any],
+    structure_fields: Dict[str, Set[str]],
+) -> List[ValidationError]:
+    """
+    Validate structure references in signal_rules.
+
+    Checks conditions that reference structure.<block_key>.<field>.
+    Stage 3.3: Also normalizes enum tokens (e.g., "BULL" -> 1 for trend_state).
+
+    Args:
+        idea_card_dict: The raw IdeaCard dict (modified in-place for normalization)
+        structure_fields: Dict from validate_structure_blocks()
+
+    Returns:
+        List of ValidationErrors
+    """
+    errors: List[ValidationError] = []
+
+    # For now, structure references in signal rules use the indicator_key field
+    # with format "structure.<block_key>.<field>" parsed at runtime.
+    # Validation here ensures referenced blocks/fields exist.
+
+    signal_rules = idea_card_dict.get("signal_rules", {})
+
+    for rule_type in ["entry_rules", "exit_rules"]:
+        for i, rule in enumerate(signal_rules.get(rule_type, [])):
+            for j, cond in enumerate(rule.get("conditions", [])):
+                indicator_key = cond.get("indicator_key", "")
+                location = f"signal_rules.{rule_type}[{i}].conditions[{j}].indicator_key"
+                value_location = f"signal_rules.{rule_type}[{i}].conditions[{j}].value"
+
+                # Check if this is a structure reference
+                if indicator_key.startswith("structure."):
+                    parts = indicator_key.split(".")
+                    if len(parts) < 3:
+                        errors.append(ValidationError(
+                            code=ValidationErrorCode.UNDECLARED_STRUCTURE,
+                            message=f"Invalid structure reference: '{indicator_key}'. Expected format: structure.<block_key>.<field>",
+                            location=location,
+                        ))
+                        continue
+
+                    block_key = parts[1]
+                    field_name = parts[2]
+
+                    # Check block exists
+                    if block_key not in structure_fields:
+                        errors.append(ValidationError(
+                            code=ValidationErrorCode.UNDECLARED_STRUCTURE,
+                            message=f"Structure block '{block_key}' referenced but not declared in market_structure_blocks.",
+                            location=location,
+                            suggestions=sorted(structure_fields.keys()) if structure_fields else None,
+                        ))
+                        continue
+
+                    # Check field exists
+                    valid_fields = structure_fields[block_key]
+                    if field_name not in valid_fields:
+                        errors.append(ValidationError(
+                            code=ValidationErrorCode.UNDECLARED_STRUCTURE,
+                            message=f"Structure field '{field_name}' not valid for block '{block_key}'.",
+                            location=location,
+                            suggestions=sorted(valid_fields),
+                        ))
+                        continue
+
+                    # Stage 3.3: Validate and normalize enum tokens
+                    # Strict canonical tokens only - no numeric literals for enum fields
+                    value = cond.get("value")
+
+                    if field_name in STRUCTURE_ENUM_FIELDS:
+                        # Enum field - require canonical token, reject numeric
+                        try:
+                            normalized = normalize_enum_token(field_name, value)
+                            cond["value"] = normalized
+                        except ValueError as e:
+                            # Unknown token or numeric literal
+                            enum_class = STRUCTURE_ENUM_FIELDS[field_name]
+                            allowed = sorted(m.name for m in enum_class)
+                            errors.append(ValidationError(
+                                code=ValidationErrorCode.INVALID_ENUM_TOKEN,
+                                message=str(e),
+                                location=value_location,
+                                suggestions=allowed,
+                            ))
+                    elif isinstance(value, str):
+                        # String value on non-enum field
+                        errors.append(ValidationError(
+                            code=ValidationErrorCode.INVALID_ENUM_TOKEN,
+                            message=(
+                                f"Field '{field_name}' is not an enum field. "
+                                f"Use numeric value instead of '{value}'."
+                            ),
+                            location=value_location,
+                        ))
+
+    return errors
+
+
+# =============================================================================
 # Main Entry Points
 # =============================================================================
 
 def validate_idea_card_yaml(idea_card_dict: Dict[str, Any]) -> ValidationResult:
     """
     Validate an IdeaCard YAML dict at build time.
-    
+
     This is the main validation entry point. It:
     1. Validates all indicator_types are supported
     2. Validates all params are accepted
     3. Validates all signal_rules/risk_model references use expanded keys
-    
+    4. Validates market_structure_blocks (Stage 3)
+
     Args:
         idea_card_dict: The raw IdeaCard dict from YAML
-        
+
     Returns:
         ValidationResult with is_valid and list of errors
     """
     registry = get_registry()
     all_errors: List[ValidationError] = []
-    
+
     # Build scope mappings (also validates indicator types and params)
     all_mappings, mapping_errors = build_all_scope_mappings(idea_card_dict, registry)
     all_errors.extend(mapping_errors)
-    
-    # Validate signal rules references
+
+    # Validate market structure blocks (Stage 3)
+    structure_errors, structure_fields = validate_structure_blocks(idea_card_dict)
+    all_errors.extend(structure_errors)
+
+    # Validate signal rules references (indicators)
     signal_errors = validate_signal_rules(idea_card_dict, all_mappings)
     all_errors.extend(signal_errors)
-    
+
+    # Validate structure references in signal rules
+    if structure_fields:
+        structure_ref_errors = validate_structure_references(idea_card_dict, structure_fields)
+        all_errors.extend(structure_ref_errors)
+
     # Validate risk model references
     risk_errors = validate_risk_model_refs(idea_card_dict, all_mappings)
     all_errors.extend(risk_errors)
-    
+
     is_valid = len(all_errors) == 0
-    
+
     return ValidationResult(
         is_valid=is_valid,
         errors=all_errors,

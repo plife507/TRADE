@@ -464,57 +464,117 @@ class WarmupRequirements:
         }
 
 
+def _compute_structure_warmup(idea_card: "IdeaCard") -> int:
+    """
+    Compute warmup needed for market structure blocks.
+
+    SWING: needs left + right bars for pivot confirmation.
+    TREND: needs multiple swings to form a trend pattern.
+           Uses conservative heuristic: (left + right) * 5
+           This allows ~4 swing points to form before trend is valid.
+
+    Note: TREND warmup is computed independently even if a SWING block
+    is declared, to ensure sufficient warmup regardless of block order.
+
+    Args:
+        idea_card: IdeaCard with market_structure_blocks
+
+    Returns:
+        Maximum warmup bars needed for structure computation
+    """
+    max_structure_warmup = 0
+
+    # First pass: find SWING params for TREND warmup computation
+    swing_left = 5  # default
+    swing_right = 5  # default
+    for spec in idea_card.market_structure_blocks:
+        if spec.tf_role != "exec":
+            continue
+        if spec.type.value == "swing":
+            swing_left = spec.params.get("left", 5)
+            swing_right = spec.params.get("right", 5)
+            break  # Use first SWING block's params
+
+    for spec in idea_card.market_structure_blocks:
+        # tf_role must be "exec" in Stage 3, so all blocks contribute to exec warmup
+        if spec.tf_role != "exec":
+            continue
+
+        struct_warmup = 0
+        if spec.type.value == "swing":
+            # SWING needs left + right bars
+            left = spec.params.get("left", 5)
+            right = spec.params.get("right", 5)
+            struct_warmup = left + right
+        elif spec.type.value == "trend":
+            # TREND needs multiple swings to form pattern.
+            # Conservative heuristic: (left + right) * 5
+            # Rationale: ~4 swing points needed for HH/HL or LL/LH classification,
+            # plus buffer for confirmation. Not a guarantee, but prevents
+            # premature empty trend_state in early bars.
+            struct_warmup = (swing_left + swing_right) * 5
+
+        max_structure_warmup = max(max_structure_warmup, struct_warmup)
+
+    return max_structure_warmup
+
+
 def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
     """
     Compute canonical warmup requirements for an IdeaCard.
-    
-    Gate 8.2: Warmup = max(feature_warmups[tf], rule_lookback_bars[tf], bars_window_required[tf])
-    
+
+    Gate 8.2: Warmup = max(feature_warmups[tf], rule_lookback_bars[tf], bars_window_required[tf], structure_warmup)
+
     Additionally computes delay_by_role from market_structure.delay_bars per TF role.
-    
+
     Args:
         idea_card: IdeaCard to analyze
-        
+
     Returns:
         WarmupRequirements with per-TF warmup and delay
     """
     warmup_by_role: Dict[str, int] = {}
     delay_by_role: Dict[str, int] = {}
     feature_warmup: Dict[str, int] = {}
-    
+
+    # Compute structure warmup (Stage 3: all blocks are exec-only)
+    structure_warmup = _compute_structure_warmup(idea_card)
+
     for role, tf_config in idea_card.tf_configs.items():
         # Get max warmup from feature specs
         max_feature_warmup = 0
         for spec in tf_config.feature_specs:
             max_feature_warmup = max(max_feature_warmup, spec.warmup_bars)
-        
+
         feature_warmup[role] = max_feature_warmup
-        
+
         # Get market_structure lookback and delay (if present)
         structure_lookback = 0
         structure_delay = 0
         if tf_config.market_structure is not None:
             structure_lookback = tf_config.market_structure.lookback_bars
             structure_delay = tf_config.market_structure.delay_bars
-        
+
         # Combine for effective lookback (warmup)
-        # lookback = max(max_feature_warmup, tf_config.warmup_bars, idea_card.bars_history_required, structure_lookback)
+        # Include structure_warmup for exec role (Stage 3: all structure blocks are exec)
+        role_structure_warmup = structure_warmup if role == "exec" else 0
         effective_warmup = max(
             max_feature_warmup,
             tf_config.warmup_bars,
             idea_card.bars_history_required,
             structure_lookback,
+            role_structure_warmup,
         )
-        
+
         warmup_by_role[role] = effective_warmup
-        
+
         # Delay is from market_structure only (not combined with other sources)
         delay_by_role[role] = max(structure_delay, 0)
-    
+
     # Overall max
     max_warmup = max(warmup_by_role.values()) if warmup_by_role else 0
     max_delay = max(delay_by_role.values()) if delay_by_role else 0
-    
+
     return WarmupRequirements(
         warmup_by_role=warmup_by_role,
         delay_by_role=delay_by_role,
@@ -790,19 +850,23 @@ class IdeaCardSignalEvaluator:
     ) -> Optional[float]:
         """
         Get feature value from snapshot for given indicator and TF role.
-        
+
         REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
         Uses unified get_feature() API for O(1) array access.
-        
+
+        Stage 3: Also supports structure paths (structure.<block_key>.<field>).
+        Structure paths are exec-only and use snapshot.get() for resolution.
+
         Args:
-            indicator_key: Indicator key (e.g., "ema_20", "close")
+            indicator_key: Indicator key (e.g., "ema_20", "close") or
+                           structure path (e.g., "structure.ms_5m.swing_high_level")
             tf_role: TF role ("exec", "htf", "mtf")
             snapshot: RuntimeSnapshotView instance
             offset: Bar offset (0 = current, 1 = previous)
-            
+
         Returns:
             Feature value or None if not available
-            
+
         Raises:
             TypeError: If snapshot does not implement SnapshotView contract
         """
@@ -812,7 +876,28 @@ class IdeaCardSignalEvaluator:
                 f"IdeaCardSignalEvaluator requires RuntimeSnapshotView (with get_feature method). "
                 f"Got {type(snapshot).__name__}. Legacy RuntimeSnapshot is not supported."
             )
-        
+
+        # Stage 3: Handle structure paths (structure.<block_key>.<field>)
+        # Structures are exec-only, offset not yet supported for structures
+        if indicator_key.startswith("structure."):
+            if not hasattr(snapshot, 'get'):
+                raise TypeError(
+                    f"Structure access requires RuntimeSnapshotView with get() method. "
+                    f"Got {type(snapshot).__name__}."
+                )
+            # Structure access is exec-only in Stage 3
+            if tf_role != "exec":
+                raise ValueError(
+                    f"Structure access is exec-only in Stage 3. "
+                    f"Cannot access structure with tf_role='{tf_role}'."
+                )
+            # Offset not supported for structures in Stage 3
+            if offset != 0:
+                # Silently use current value - crossover detection on structures
+                # would require structure history, which is Stage 4+
+                pass
+            return snapshot.get(indicator_key)
+
         # Use unified API for O(1) array access
         return snapshot.get_feature(indicator_key, tf_role, offset)
     
