@@ -44,6 +44,10 @@ from .structure import (
     run_structure_smoke,
 )
 
+from .rules import (
+    run_rules_smoke,
+)
+
 __all__ = [
     # Core entry points
     "run_smoke_suite",
@@ -65,4 +69,6 @@ __all__ = [
     "run_mark_price_smoke",
     # Structure tests
     "run_structure_smoke",
+    # Rule evaluation tests
+    "run_rules_smoke",
 ]

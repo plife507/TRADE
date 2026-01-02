@@ -485,7 +485,7 @@ class RuleOperator(str, Enum):
 class Condition:
     """
     A single condition in a signal rule.
-    
+
     Attributes:
         indicator_key: Key of the indicator to check (e.g., "ema_fast", "rsi_14")
         operator: Comparison operator (gt, lt, cross_above, etc.)
@@ -493,6 +493,9 @@ class Condition:
         is_indicator_comparison: If True, value is another indicator key
         tf: Timeframe context for the indicator ("exec", "htf", "mtf")
         prev_offset: Bar offset for previous value (used in cross_above/cross_below)
+        lhs_ref: Compiled LHS reference (Stage 4b - optional, populated during normalization)
+        rhs_ref: Compiled RHS reference (Stage 4b - optional, populated during normalization)
+        tolerance: For approx_eq operator, the tolerance value
     """
     indicator_key: str
     operator: RuleOperator
@@ -500,10 +503,14 @@ class Condition:
     is_indicator_comparison: bool = False
     tf: str = "exec"  # "exec", "htf", or "mtf"
     prev_offset: int = 1  # For crossover detection
-    
+    # Stage 4b: Compiled references for O(1) hot-loop evaluation
+    lhs_ref: Optional[Any] = None  # CompiledRef (typed as Any to avoid circular import)
+    rhs_ref: Optional[Any] = None  # CompiledRef (typed as Any to avoid circular import)
+    tolerance: Optional[float] = None  # For approx_eq operator
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for serialization."""
-        return {
+        d = {
             "indicator_key": self.indicator_key,
             "operator": self.operator.value,
             "value": self.value,
@@ -511,7 +518,10 @@ class Condition:
             "tf": self.tf,
             "prev_offset": self.prev_offset,
         }
-    
+        if self.tolerance is not None:
+            d["tolerance"] = self.tolerance
+        return d
+
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Condition":
         """Create from dict."""
@@ -522,7 +532,12 @@ class Condition:
             is_indicator_comparison=d.get("is_indicator_comparison", False),
             tf=d.get("tf", "exec"),
             prev_offset=d.get("prev_offset", 1),
+            tolerance=d.get("tolerance"),
         )
+
+    def has_compiled_refs(self) -> bool:
+        """Check if this condition has compiled references."""
+        return self.lhs_ref is not None and self.rhs_ref is not None
 
 
 @dataclass(frozen=True)

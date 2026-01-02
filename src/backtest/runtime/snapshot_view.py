@@ -824,11 +824,9 @@ class RuntimeSnapshotView:
         """
         Resolve structure.* paths.
 
-        Stage 2 supports:
+        Supports:
         - structure.<block_key>.<field>
-
-        Stage 5+ will add:
-        - structure.<block_key>.zones.<zone_key>.<field>
+        - structure.<block_key>.zones.<zone_key>.<field>  (Stage 5+)
 
         Args:
             parts: Path parts after "structure." (e.g., ["ms_5m", "swing_high_level"])
@@ -849,16 +847,6 @@ class RuntimeSnapshotView:
         block_key = parts[0]
         field_or_zones = parts[1]
 
-        # Check for zones namespace (Stage 5+)
-        if field_or_zones == "zones":
-            raise ValueError(
-                f"Zones not implemented (Stage 5+): '{full_path}'. "
-                f"Use structure.<block_key>.<field> only."
-            )
-
-        # Stage 2: structure.<block_key>.<field>
-        field_name = field_or_zones
-
         # Validate structure exists
         if not self.exec_ctx.feed.has_structure(block_key):
             available = list(self.exec_ctx.feed.structure_key_map.keys())
@@ -866,6 +854,25 @@ class RuntimeSnapshotView:
                 f"Unknown structure block_key '{block_key}'. "
                 f"Available: {available}"
             )
+
+        # Check for zones namespace (Stage 5+)
+        if field_or_zones == "zones":
+            # structure.<block_key>.zones.<zone_key>.<field>
+            if len(parts) < 4:
+                raise ValueError(
+                    f"Invalid zone path: '{full_path}' "
+                    f"(expected structure.<block_key>.zones.<zone_key>.<field>)"
+                )
+            zone_key = parts[2]
+            zone_field = parts[3]
+
+            # Resolve zone field via FeedStore
+            return self.exec_ctx.feed.get_zone_field(
+                block_key, zone_key, zone_field, self.exec_idx
+            )
+
+        # structure.<block_key>.<field>
+        field_name = field_or_zones
 
         # Validate field is in public allowlist
         available_fields = self.exec_ctx.feed.get_structure_fields(block_key)

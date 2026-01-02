@@ -277,13 +277,17 @@ def run_engine_with_idea_card(
         SignalDecision,
         compute_idea_card_hash,
     )
+    from .idea_card_yaml_builder import compile_idea_card
     from ..core.risk_manager import Signal
 
     # Import here to avoid circular import
     IdeaCardBacktestResult = _get_idea_card_result_class()
 
-    # Create signal evaluator
-    evaluator = IdeaCardSignalEvaluator(idea_card)
+    # Stage 4b: Compile condition refs for O(1) hot-loop evaluation
+    compiled_idea_card = compile_idea_card(idea_card)
+
+    # Create signal evaluator with compiled IdeaCard
+    evaluator = IdeaCardSignalEvaluator(compiled_idea_card)
 
     def idea_card_strategy(snapshot, params) -> Optional[Signal]:
         """Strategy function that uses IdeaCard signal evaluator."""

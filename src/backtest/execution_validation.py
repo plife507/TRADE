@@ -908,22 +908,31 @@ class IdeaCardSignalEvaluator:
     ) -> bool:
         """
         Evaluate all conditions (AND logic).
-        
+
+        Stage 4b: Uses compiled refs for O(1) evaluation when available.
+        Falls back to legacy path-based evaluation if refs not compiled.
+
         Args:
             conditions: Tuple of Condition objects
             snapshot: Runtime snapshot
-            
+
         Returns:
             True if all conditions are met
         """
         from .idea_card import RuleOperator
-        
+
         for cond in conditions:
-            # Get current value
+            # Stage 4b: Use compiled refs if available
+            if cond.has_compiled_refs():
+                if not self._evaluate_condition_compiled(cond, snapshot):
+                    return False
+                continue
+
+            # Legacy path: Get current value via string parsing
             current_val = self._get_feature_value(cond.indicator_key, cond.tf, snapshot, offset=0)
             if current_val is None:
                 return False  # Can't evaluate if value not available
-            
+
             # Get comparison value
             if cond.is_indicator_comparison:
                 compare_val = self._get_feature_value(str(cond.value), cond.tf, snapshot, offset=0)
@@ -931,7 +940,7 @@ class IdeaCardSignalEvaluator:
                     return False
             else:
                 compare_val = float(cond.value)
-            
+
             # Evaluate based on operator
             if cond.operator == RuleOperator.GT:
                 if not (current_val > compare_val):
@@ -955,7 +964,7 @@ class IdeaCardSignalEvaluator:
                     prev_compare = self._get_feature_value(str(cond.value), cond.tf, snapshot, offset=cond.prev_offset)
                 else:
                     prev_compare = compare_val
-                
+
                 if prev_val is None or prev_compare is None:
                     return False
                 if not (current_val > compare_val and prev_val <= prev_compare):
@@ -967,15 +976,57 @@ class IdeaCardSignalEvaluator:
                     prev_compare = self._get_feature_value(str(cond.value), cond.tf, snapshot, offset=cond.prev_offset)
                 else:
                     prev_compare = compare_val
-                
+
                 if prev_val is None or prev_compare is None:
                     return False
                 if not (current_val < compare_val and prev_val >= prev_compare):
                     return False
             else:
                 return False  # Unknown operator
-        
+
         return True
+
+    def _evaluate_condition_compiled(
+        self,
+        cond: "Condition",
+        snapshot: "SnapshotView",
+    ) -> bool:
+        """
+        Evaluate a single condition using compiled refs (Stage 4c).
+
+        Stage 4c: Compiled-only evaluation. No legacy fallback.
+        Unsupported operators are rejected at compile time.
+
+        Args:
+            cond: Condition with compiled lhs_ref and rhs_ref
+            snapshot: Runtime snapshot
+
+        Returns:
+            True if condition is met
+        """
+        from .rules.eval import evaluate_condition
+        from .rules.registry import get_canonical_operator, is_operator_supported
+
+        op_str = cond.operator.value
+        canonical_op = get_canonical_operator(op_str)
+
+        # Stage 4c: This should never happen if compilation was done correctly
+        # Unsupported operators are rejected at compile time
+        if canonical_op is None or not is_operator_supported(op_str):
+            # Log error but return False (never raise in hot loop)
+            # This is a bug - operator should have been rejected at compile time
+            return False
+
+        # Evaluate using compiled refs
+        result = evaluate_condition(
+            lhs_ref=cond.lhs_ref,
+            operator=canonical_op,
+            rhs_ref=cond.rhs_ref,
+            snapshot=snapshot,
+            tolerance=cond.tolerance,
+        )
+
+        return result.ok
     
     def _compute_sl_tp(
         self,

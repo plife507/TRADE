@@ -879,6 +879,287 @@ def format_validation_errors(errors: List[ValidationError]) -> str:
     lines.append("\n" + "=" * 60)
     lines.append("FIX: Correct the errors above and re-run normalization.")
     lines.append("=" * 60)
-    
+
     return "\n".join(lines)
+
+
+# =============================================================================
+# Stage 4c: Condition Compilation with Strict Validation
+# =============================================================================
+# Compiles condition references at normalization time for O(1) hot-loop evaluation.
+# All validation happens here - unsupported constructs never reach hot loop.
+
+
+class ConditionCompileError(ValueError):
+    """
+    Error during condition compilation with actionable message.
+
+    Stage 4c: All unsupported operators/constructs must fail at compile time.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        operator: Optional[str] = None,
+        lhs: Optional[str] = None,
+        rhs: Optional[str] = None,
+    ):
+        self.operator = operator
+        self.lhs = lhs
+        self.rhs = rhs
+        full_msg = f"Condition compile error: {message}"
+        if operator:
+            full_msg += f"\n  Operator: {operator}"
+        if lhs:
+            full_msg += f"\n  LHS: {lhs}"
+        if rhs:
+            full_msg += f"\n  RHS: {rhs}"
+        super().__init__(full_msg)
+
+
+def _validate_condition_operator(condition: "Condition") -> None:
+    """
+    Validate operator at compile time using registry.
+
+    Stage 4c: Unsupported operators fail here, never reach hot loop.
+
+    Args:
+        condition: The condition to validate
+
+    Raises:
+        ConditionCompileError: If operator is unsupported or invalid
+    """
+    from .rules.registry import validate_operator, get_operator_spec
+    import math
+
+    op_str = condition.operator.value
+
+    # Check operator is supported
+    error = validate_operator(op_str)
+    if error:
+        raise ConditionCompileError(
+            error,
+            operator=op_str,
+            lhs=condition.indicator_key,
+            rhs=str(condition.value),
+        )
+
+    spec = get_operator_spec(op_str)
+
+    # Validate tolerance for approx_eq
+    if spec.needs_tolerance:
+        if condition.tolerance is None:
+            raise ConditionCompileError(
+                f"Operator '{op_str}' requires 'tolerance' parameter",
+                operator=op_str,
+                lhs=condition.indicator_key,
+                rhs=str(condition.value),
+            )
+        if not isinstance(condition.tolerance, (int, float)):
+            raise ConditionCompileError(
+                f"Tolerance must be a number, got {type(condition.tolerance).__name__}",
+                operator=op_str,
+            )
+        if math.isnan(condition.tolerance) or math.isinf(condition.tolerance):
+            raise ConditionCompileError(
+                f"Tolerance must be finite, got {condition.tolerance}",
+                operator=op_str,
+            )
+        if condition.tolerance <= 0:
+            raise ConditionCompileError(
+                f"Tolerance must be > 0, got {condition.tolerance}",
+                operator=op_str,
+            )
+
+    # Validate eq operator rejects float literals
+    if op_str == "eq" and not condition.is_indicator_comparison:
+        if isinstance(condition.value, float):
+            raise ConditionCompileError(
+                "Operator 'eq' does not allow float literals. "
+                "Use 'approx_eq' with tolerance for float comparison.",
+                operator=op_str,
+                lhs=condition.indicator_key,
+                rhs=str(condition.value),
+            )
+
+
+def compile_condition(
+    condition: "Condition",
+    available_indicators: Optional[Dict[str, List[str]]] = None,
+    available_structures: Optional[List[str]] = None,
+) -> "Condition":
+    """
+    Compile a Condition's references for O(1) hot-loop evaluation.
+
+    Stage 4c: All validation happens here. Unsupported operators/constructs
+    fail at compile time with actionable error messages.
+
+    Takes an existing Condition and returns a new one with compiled lhs_ref
+    and rhs_ref fields populated.
+
+    Args:
+        condition: The Condition to compile
+        available_indicators: Dict of tf_role -> list of indicator keys
+        available_structures: List of structure block keys
+
+    Returns:
+        New Condition with compiled refs
+
+    Raises:
+        ConditionCompileError: If operator is unsupported
+        ValueError: If reference path is invalid
+    """
+    from .rules.compile import compile_ref
+
+    # Stage 4c: Validate operator first (fail fast for unsupported operators)
+    _validate_condition_operator(condition)
+
+    # Build LHS path from indicator_key and tf
+    indicator_key = condition.indicator_key
+    tf = condition.tf
+
+    if indicator_key.startswith("structure."):
+        lhs_path = indicator_key
+    elif indicator_key.startswith("price."):
+        lhs_path = indicator_key
+    else:
+        # Build indicator path with namespace
+        lhs_path = f"indicator.{indicator_key}"
+        if tf != "exec":
+            lhs_path = f"indicator.{indicator_key}.{tf}"
+
+    # Compile LHS
+    lhs_ref = compile_ref(
+        lhs_path,
+        available_indicators=available_indicators,
+        available_structures=available_structures,
+    )
+
+    # Compile RHS (value - can be literal or indicator path)
+    if condition.is_indicator_comparison:
+        # Value is another indicator path - also need to build full path
+        value_str = str(condition.value)
+        if value_str.startswith("structure.") or value_str.startswith("price."):
+            rhs_path = value_str
+        else:
+            rhs_path = f"indicator.{value_str}"
+            if tf != "exec":
+                rhs_path = f"indicator.{value_str}.{tf}"
+        rhs_ref = compile_ref(
+            rhs_path,
+            available_indicators=available_indicators,
+            available_structures=available_structures,
+        )
+    else:
+        # Value is a literal
+        rhs_ref = compile_ref(condition.value)
+
+    # Create new Condition with compiled refs
+    from .idea_card import Condition as ConditionClass
+
+    return ConditionClass(
+        indicator_key=condition.indicator_key,
+        operator=condition.operator,
+        value=condition.value,
+        is_indicator_comparison=condition.is_indicator_comparison,
+        tf=condition.tf,
+        prev_offset=condition.prev_offset,
+        lhs_ref=lhs_ref,
+        rhs_ref=rhs_ref,
+        tolerance=condition.tolerance,
+    )
+
+
+def compile_signal_rules(
+    signal_rules: "SignalRules",
+    available_indicators: Optional[Dict[str, List[str]]] = None,
+    available_structures: Optional[List[str]] = None,
+) -> "SignalRules":
+    """
+    Compile all conditions in SignalRules.
+
+    Args:
+        signal_rules: SignalRules to compile
+        available_indicators: Dict of tf_role -> list of indicator keys
+        available_structures: List of structure block keys
+
+    Returns:
+        New SignalRules with all conditions compiled
+    """
+    from .idea_card import SignalRules, EntryRule, ExitRule
+
+    # Compile entry rules
+    compiled_entry_rules = []
+    for rule in signal_rules.entry_rules:
+        compiled_conditions = tuple(
+            compile_condition(cond, available_indicators, available_structures)
+            for cond in rule.conditions
+        )
+        compiled_entry_rules.append(
+            EntryRule(direction=rule.direction, conditions=compiled_conditions)
+        )
+
+    # Compile exit rules
+    compiled_exit_rules = []
+    for rule in signal_rules.exit_rules:
+        compiled_conditions = tuple(
+            compile_condition(cond, available_indicators, available_structures)
+            for cond in rule.conditions
+        )
+        compiled_exit_rules.append(
+            ExitRule(direction=rule.direction, conditions=compiled_conditions)
+        )
+
+    return SignalRules(
+        entry_rules=tuple(compiled_entry_rules),
+        exit_rules=tuple(compiled_exit_rules),
+    )
+
+
+def compile_idea_card(
+    idea_card: "IdeaCard",
+) -> "IdeaCard":
+    """
+    Compile all conditions in an IdeaCard for O(1) hot-loop evaluation.
+
+    This is a post-processing step that takes a validated IdeaCard and returns
+    a new one with all condition references compiled.
+
+    Args:
+        idea_card: The validated IdeaCard to compile
+
+    Returns:
+        New IdeaCard with compiled condition refs
+
+    Note:
+        This should be called AFTER validation passes, before engine startup.
+        Compiled refs enable O(1) value resolution in the hot loop.
+    """
+    if idea_card.signal_rules is None:
+        return idea_card  # Nothing to compile
+
+    # Build context for compilation - Dict[tf_role, List[indicator_keys]]
+    available_indicators: Dict[str, List[str]] = {}
+    for role, tf_config in idea_card.tf_configs.items():
+        keys = [spec.output_key for spec in tf_config.feature_specs]
+        # Add OHLCV which is always available
+        keys.extend(["open", "high", "low", "close", "volume"])
+        available_indicators[role] = keys
+
+    # Build structure keys
+    available_structures: List[str] = []
+    if idea_card.market_structure_blocks:
+        available_structures = [block.key for block in idea_card.market_structure_blocks]
+
+    # Compile signal rules
+    compiled_rules = compile_signal_rules(
+        idea_card.signal_rules,
+        available_indicators,
+        available_structures,
+    )
+
+    # Create new IdeaCard with compiled rules
+    # Since IdeaCard is frozen, we need to create a new instance
+    from dataclasses import replace
+    return replace(idea_card, signal_rules=compiled_rules)
 

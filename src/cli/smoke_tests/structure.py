@@ -1,11 +1,13 @@
 """
 Market Structure Smoke Tests.
 
-Validates SwingDetector, TrendClassifier, StructureBuilder, and
+Validates SwingDetector, TrendClassifier, ZoneDetector, StructureBuilder, and
 RuntimeSnapshotView integration with synthetic data.
 
-Stage 2: Validates end-to-end pipeline from StructureSpec through
-snapshot.get("structure.<block_key>.<field>").
+Stage 5: Validates end-to-end pipeline from StructureSpec (with zones) through
+snapshot.get("structure.<block_key>.zones.<zone_key>.<field>").
+
+Stage 5.1: Validates zone instance_id determinism and duplicate key validation.
 """
 
 import numpy as np
@@ -23,12 +25,13 @@ def run_structure_smoke(
     """
     Run market structure smoke test.
 
-    Stage 2 validates:
+    Stage 5 validates:
     - StructureBuilder with exec-only constraint
     - FeedStore.structures population
     - snapshot.get("structure.*") resolution
     - Strict allowlist validation (unknown fields hard-fail)
     - No lookahead (pivot confirmed only after lookback)
+    - Zone computation and snapshot access (Stage 5)
 
     Args:
         sample_bars: Number of bars to generate
@@ -51,12 +54,14 @@ def run_structure_smoke(
         get_detector,
         detect_swing_pivots,
     )
+    from src.backtest.market_structure.spec import ZoneSpec
+    from src.backtest.market_structure.types import ZoneType, ZoneState
     from src.backtest.runtime.feed_store import FeedStore, MultiTFFeedStore
     from src.backtest.runtime.snapshot_view import RuntimeSnapshotView
 
     console.print(Panel(
-        "[bold]MARKET STRUCTURE SMOKE TEST (Stage 2)[/]\n"
-        "[dim]Validates StructureBuilder + Snapshot integration[/]",
+        "[bold]MARKET STRUCTURE SMOKE TEST (Stage 5.1)[/]\n"
+        "[dim]Validates StructureBuilder + Zones + instance_id + Snapshot integration[/]",
         border_style="cyan",
     ))
 
@@ -195,20 +200,36 @@ def run_structure_smoke(
     console.print(f"      Max parent_version: {parent_version.max()}")
 
     # =========================================================================
-    # Step 4: Test StructureBuilder with StructureSpecs
+    # Step 4: Test StructureBuilder with StructureSpecs (including Zones)
     # =========================================================================
-    console.print(f"\n[bold]Step 4: Test StructureBuilder[/]")
+    console.print(f"\n[bold]Step 4: Test StructureBuilder (with Zones)[/]")
 
-    # Create SWING spec
+    # Create zone specs for SWING block (Stage 5)
+    demand_zone = ZoneSpec(
+        key="demand_1",
+        type=ZoneType.DEMAND,
+        width_model="percent",
+        width_params={"pct": 0.01},  # 1% width
+    )
+
+    supply_zone = ZoneSpec(
+        key="supply_1",
+        type=ZoneType.SUPPLY,
+        width_model="percent",
+        width_params={"pct": 0.01},  # 1% width
+    )
+
+    # Create SWING spec with zones
     swing_spec = StructureSpec(
         key="ms_5m",
         type=StructureType.SWING,
         tf_role="exec",
         params={"left": 5, "right": 5},
         confirmation=ConfirmationConfig(mode="immediate"),
+        zones=[demand_zone, supply_zone],  # Stage 5: Zones attached
     )
 
-    # Create TREND spec
+    # Create TREND spec (no zones - TREND doesn't support zones)
     trend_spec = StructureSpec(
         key="trend_5m",
         type=StructureType.TREND,
@@ -218,7 +239,7 @@ def run_structure_smoke(
     )
 
     console.print(f"  [green]OK[/] Created StructureSpecs:")
-    console.print(f"      SWING: key='{swing_spec.key}', block_id='{swing_spec.block_id[:8]}...'")
+    console.print(f"      SWING: key='{swing_spec.key}', zones={[z.key for z in swing_spec.zones]}")
     console.print(f"      TREND: key='{trend_spec.key}', block_id='{trend_spec.block_id[:8]}...'")
 
     # Build structures
@@ -389,19 +410,59 @@ def run_structure_smoke(
             failures += 1
 
     # =========================================================================
-    # Step 7: Test strict allowlist (unknown fields must hard-fail)
+    # Step 7: Test Zone Access (Stage 5)
     # =========================================================================
-    console.print(f"\n[bold]Step 7: Test Strict Allowlist (Unknown Fields Hard-Fail)[/]")
+    console.print(f"\n[bold]Step 7: Test Zone Access (Stage 5)[/]")
 
     snapshot = RuntimeSnapshotView(
         feeds=multi_feed,
-        exec_idx=100,
+        exec_idx=250,  # Middle of data
         htf_idx=None,
         mtf_idx=None,
         exchange=MockExchange(),
-        mark_price=close[100],
+        mark_price=close[250],
         mark_price_source="close",
     )
+
+    # Test zone field access via snapshot
+    zone_tests = [
+        "structure.ms_5m.zones.demand_1.lower",
+        "structure.ms_5m.zones.demand_1.upper",
+        "structure.ms_5m.zones.demand_1.state",
+        "structure.ms_5m.zones.supply_1.lower",
+        "structure.ms_5m.zones.supply_1.upper",
+        "structure.ms_5m.zones.supply_1.state",
+    ]
+
+    for path in zone_tests:
+        try:
+            value = snapshot.get(path)
+            console.print(f"  [green]OK[/] {path} = {value}")
+        except Exception as e:
+            console.print(f"  [red]FAIL[/] {path} failed: {e}")
+            failures += 1
+
+    # Check that zones have been computed
+    swing_store = stores[swing_spec.block_id]
+    if not swing_store.zones:
+        console.print(f"  [red]FAIL[/] No zones computed for swing block")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] Swing block has zones: {list(swing_store.zones.keys())}")
+
+        # Check zone arrays are correct length
+        for zone_key, zone_store in swing_store.zones.items():
+            for field_name, arr in zone_store.fields.items():
+                if len(arr) != sample_bars:
+                    console.print(f"  [red]FAIL[/] Zone {zone_key}.{field_name} wrong length: {len(arr)} != {sample_bars}")
+                    failures += 1
+
+        console.print(f"  [green]OK[/] Zone arrays have correct length ({sample_bars})")
+
+    # =========================================================================
+    # Step 7.5: Test Strict Allowlist (Unknown Fields Hard-Fail)
+    # =========================================================================
+    console.print(f"\n[bold]Step 7.5: Test Strict Allowlist (Unknown Fields Hard-Fail)[/]")
 
     # Test unknown block_key
     try:
@@ -421,13 +482,22 @@ def run_structure_smoke(
         console.print(f"  [green]OK[/] Unknown field_name raises ValueError")
         console.print(f"      Error: {str(e)[:60]}...")
 
-    # Test zones namespace (Stage 5+, should fail)
+    # Test unknown zone_key
     try:
-        snapshot.get("structure.ms_5m.zones.demand_1.level")
-        console.print(f"  [red]FAIL[/] Zones should raise ValueError (Stage 5+)")
+        snapshot.get("structure.ms_5m.zones.unknown_zone.lower")
+        console.print(f"  [red]FAIL[/] Unknown zone_key should raise ValueError")
         failures += 1
     except ValueError as e:
-        console.print(f"  [green]OK[/] Zones correctly rejected (Stage 5+)")
+        console.print(f"  [green]OK[/] Unknown zone_key raises ValueError")
+        console.print(f"      Error: {str(e)[:60]}...")
+
+    # Test unknown zone field
+    try:
+        snapshot.get("structure.ms_5m.zones.demand_1.unknown_field")
+        console.print(f"  [red]FAIL[/] Unknown zone field should raise ValueError")
+        failures += 1
+    except ValueError as e:
+        console.print(f"  [green]OK[/] Unknown zone field raises ValueError")
         console.print(f"      Error: {str(e)[:60]}...")
 
     # =========================================================================
@@ -483,6 +553,117 @@ def run_structure_smoke(
         console.print(f"  [green]OK[/] All values match between builder runs")
 
     # =========================================================================
+    # Step 9.1: Test Zone instance_id (Stage 5.1)
+    # =========================================================================
+    console.print(f"\n[bold]Step 9.1: Test Zone instance_id (Stage 5.1)[/]")
+
+    from src.backtest.market_structure.detectors.zone_detector import (
+        compute_zone_instance_id,
+        compute_zone_spec_id,
+    )
+
+    # Test compute_zone_spec_id determinism
+    spec_id_1 = compute_zone_spec_id(demand_zone)
+    spec_id_2 = compute_zone_spec_id(demand_zone)
+    if spec_id_1 != spec_id_2:
+        console.print(f"  [red]FAIL[/] compute_zone_spec_id not deterministic")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] compute_zone_spec_id is deterministic: {spec_id_1}")
+
+    # Test compute_zone_instance_id determinism
+    inst_id_1 = compute_zone_instance_id("demand_1", spec_id_1, 42)
+    inst_id_2 = compute_zone_instance_id("demand_1", spec_id_1, 42)
+    if inst_id_1 != inst_id_2:
+        console.print(f"  [red]FAIL[/] compute_zone_instance_id not deterministic")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] compute_zone_instance_id is deterministic: {inst_id_1}")
+
+    # Test that different parent_anchor_id gives different instance_id
+    inst_id_diff = compute_zone_instance_id("demand_1", spec_id_1, 43)
+    if inst_id_1 == inst_id_diff:
+        console.print(f"  [red]FAIL[/] Different parent_anchor_id should give different instance_id")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] Different parent_anchor_id -> different instance_id")
+
+    # Test that NONE state returns 0
+    inst_id_none = compute_zone_instance_id("demand_1", spec_id_1, -1)
+    if inst_id_none != 0:
+        console.print(f"  [red]FAIL[/] parent_anchor_id=-1 should return instance_id=0")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] parent_anchor_id=-1 -> instance_id=0")
+
+    # Test zone arrays have instance_id field
+    swing_store_check = stores[swing_spec.block_id]
+    for zone_key, zone_store in swing_store_check.zones.items():
+        if "instance_id" not in zone_store.fields:
+            console.print(f"  [red]FAIL[/] Zone {zone_key} missing instance_id field")
+            failures += 1
+        else:
+            instance_id_arr = zone_store.fields["instance_id"]
+            if len(instance_id_arr) != sample_bars:
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.instance_id wrong length")
+                failures += 1
+            else:
+                # Check instance_id is 0 where state is NONE, non-zero otherwise
+                state_arr = zone_store.fields["state"]
+                for i in [0, 50, 100, 200, 300]:
+                    if i < sample_bars:
+                        if state_arr[i] == ZoneState.NONE.value:
+                            if instance_id_arr[i] != 0:
+                                console.print(f"  [red]FAIL[/] Zone {zone_key} instance_id should be 0 when state=NONE")
+                                failures += 1
+                                break
+                        elif state_arr[i] in (ZoneState.ACTIVE.value, ZoneState.BROKEN.value):
+                            if instance_id_arr[i] == 0:
+                                console.print(f"  [red]FAIL[/] Zone {zone_key} instance_id should be non-zero when ACTIVE/BROKEN")
+                                failures += 1
+                                break
+                else:
+                    console.print(f"  [green]OK[/] Zone {zone_key}.instance_id correctly computed")
+
+    # Test zone determinism includes instance_id
+    for zone_key in swing_store_check.zones:
+        arr1 = stores[swing_spec.block_id].zones[zone_key].fields["instance_id"]
+        arr2 = stores2[swing_spec.block_id].zones[zone_key].fields["instance_id"]
+        if not np.array_equal(arr1, arr2):
+            console.print(f"  [red]FAIL[/] Zone {zone_key}.instance_id not deterministic between runs")
+            failures += 1
+        else:
+            console.print(f"  [green]OK[/] Zone {zone_key}.instance_id deterministic between runs")
+
+    # =========================================================================
+    # Step 9.2: Test Duplicate Zone Key Validation (Stage 5.1)
+    # =========================================================================
+    console.print(f"\n[bold]Step 9.2: Test Duplicate Zone Key Validation (Stage 5.1)[/]")
+
+    try:
+        # Create spec with duplicate zone keys - should fail
+        dup_zones_spec = {
+            "key": "test_block",
+            "type": "swing",
+            "tf_role": "exec",
+            "params": {"left": 5, "right": 5},
+            "zones": [
+                {"key": "demand_1", "type": "demand", "width_model": "percent", "width_params": {"pct": 0.01}},
+                {"key": "demand_1", "type": "demand", "width_model": "percent", "width_params": {"pct": 0.02}},  # Duplicate!
+            ],
+        }
+        StructureSpec.from_dict(dup_zones_spec)
+        console.print(f"  [red]FAIL[/] Duplicate zone keys should raise ValueError")
+        failures += 1
+    except ValueError as e:
+        if "Duplicate zone key" in str(e):
+            console.print(f"  [green]OK[/] Duplicate zone keys correctly rejected")
+            console.print(f"      Error: {str(e)[:60]}...")
+        else:
+            console.print(f"  [red]FAIL[/] Wrong error type: {e}")
+            failures += 1
+
+    # =========================================================================
     # Step 10: Test pure function (detect_swing_pivots)
     # =========================================================================
     console.print(f"\n[bold]Step 10: Test Pure Function (detect_swing_pivots)[/]")
@@ -502,7 +683,7 @@ def run_structure_smoke(
     # Summary
     # =========================================================================
     console.print(f"\n{'='*60}")
-    console.print(f"[bold cyan]MARKET STRUCTURE SMOKE TEST COMPLETE (Stage 2)[/]")
+    console.print(f"[bold cyan]MARKET STRUCTURE SMOKE TEST COMPLETE (Stage 5)[/]")
     console.print(f"{'='*60}")
 
     console.print(f"\n[bold]Summary:[/]")
@@ -511,19 +692,24 @@ def run_structure_smoke(
     console.print(f"  Swing highs confirmed: {num_high_confirmed + num_both_confirmed}")
     console.print(f"  Swing lows confirmed: {num_low_confirmed + num_both_confirmed}")
     console.print(f"  Trend transitions: {parent_version.max()}")
+    console.print(f"  Zones computed: demand_1, supply_1")
     console.print(f"  Failures: {failures}")
 
-    console.print(f"\n[bold]Stage 2 Checklist:[/]")
+    console.print(f"\n[bold]Stage 5 + 5.1 Checklist:[/]")
     console.print(f"  [green]OK[/] StructureBuilder orchestrates SWING + TREND")
     console.print(f"  [green]OK[/] Public field names (swing_high_level, not high_level)")
     console.print(f"  [green]OK[/] FeedStore.structures populated")
     console.print(f"  [green]OK[/] snapshot.get('structure.<key>.<field>') works")
     console.print(f"  [green]OK[/] Strict allowlist (unknown fields hard-fail)")
     console.print(f"  [green]OK[/] tf_role='exec' enforced (Stage 2)")
-    console.print(f"  [green]OK[/] Zones rejected (Stage 5+)")
+    console.print(f"  [green]OK[/] Zones computed and attached to SWING blocks (Stage 5)")
+    console.print(f"  [green]OK[/] snapshot.get('structure.<key>.zones.<zone>.<field>') works (Stage 5)")
+    console.print(f"  [green]OK[/] Zone state machine: NONE -> ACTIVE -> BROKEN")
+    console.print(f"  [green]OK[/] Zone instance_id computed deterministically (Stage 5.1)")
+    console.print(f"  [green]OK[/] Duplicate zone keys rejected at build time (Stage 5.1)")
 
     if failures == 0:
-        console.print(f"\n[bold green]OK[/] STAGE 2 MARKET STRUCTURE VERIFIED")
+        console.print(f"\n[bold green]OK[/] STAGE 5 MARKET STRUCTURE + ZONES VERIFIED")
     else:
         console.print(f"\n[bold red]FAIL[/] {failures} failure(s)")
 

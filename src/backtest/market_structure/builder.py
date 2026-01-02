@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
-from src.backtest.market_structure.spec import StructureSpec
+from src.backtest.market_structure.spec import StructureSpec, ZoneSpec
 from src.backtest.market_structure.types import (
     StructureType,
     TrendState,
@@ -74,6 +74,36 @@ class StructureManifestEntry:
 
 
 @dataclass
+class ZoneStore:
+    """
+    Storage container for a single zone's outputs.
+
+    Contains:
+    - zone_key: User-facing zone name (e.g., "demand_1")
+    - zone_type: DEMAND or SUPPLY
+    - fields: Dict mapping field names to numpy arrays
+    """
+    zone_key: str
+    zone_type: str
+    fields: Dict[str, np.ndarray] = field(default_factory=dict)
+
+    def get_field(self, field_name: str, bar_idx: int) -> Optional[float]:
+        """Get zone field value at specific bar index."""
+        if field_name not in self.fields:
+            raise ValueError(
+                f"Unknown field '{field_name}' for zone '{self.zone_key}'. "
+                f"Valid fields: {list(self.fields.keys())}"
+            )
+        arr = self.fields[field_name]
+        if bar_idx < 0 or bar_idx >= len(arr):
+            return None
+        val = arr[bar_idx]
+        if np.isnan(val) if isinstance(val, float) else False:
+            return None
+        return float(val) if isinstance(val, (np.floating, float)) else int(val)
+
+
+@dataclass
 class StructureStore:
     """
     Storage container for a single structure block's outputs.
@@ -83,11 +113,13 @@ class StructureStore:
     - block_key: User-facing name (e.g., "ms_5m")
     - structure_type: SWING or TREND
     - fields: Dict mapping public field names to numpy arrays
+    - zones: Dict mapping zone_key to ZoneStore (Stage 5+)
     """
     block_id: str
     block_key: str
     structure_type: StructureType
     fields: Dict[str, np.ndarray] = field(default_factory=dict)
+    zones: Dict[str, ZoneStore] = field(default_factory=dict)
 
     def get_field(self, field_name: str, bar_idx: int) -> Optional[float]:
         """
@@ -115,6 +147,40 @@ class StructureStore:
         if np.isnan(val) if isinstance(val, float) else False:
             return None
         return float(val) if isinstance(val, (np.floating, float)) else int(val)
+
+    def get_zone_field(
+        self, zone_key: str, field_name: str, bar_idx: int
+    ) -> Optional[float]:
+        """
+        Get zone field value at specific bar index.
+
+        Args:
+            zone_key: Zone key (e.g., "demand_1")
+            field_name: Field name (e.g., "lower", "state")
+            bar_idx: Bar index to retrieve
+
+        Returns:
+            Field value or None if not available
+
+        Raises:
+            ValueError: If zone_key or field_name is unknown
+        """
+        if zone_key not in self.zones:
+            raise ValueError(
+                f"Unknown zone '{zone_key}' for structure block '{self.block_key}'. "
+                f"Available zones: {list(self.zones.keys())}"
+            )
+        return self.zones[zone_key].get_field(field_name, bar_idx)
+
+    def has_zone(self, zone_key: str) -> bool:
+        """Check if zone exists."""
+        return zone_key in self.zones
+
+    def get_zone_fields(self, zone_key: str) -> List[str]:
+        """Get available fields for a zone."""
+        if zone_key not in self.zones:
+            return []
+        return list(self.zones[zone_key].fields.keys())
 
 
 class StructureBuilder:
@@ -205,6 +271,47 @@ class StructureBuilder:
 
         return public_outputs
 
+    def _build_zones(
+        self,
+        store: StructureStore,
+        swing_outputs: Dict[str, np.ndarray],
+        close_prices: np.ndarray,
+        zone_specs: List["ZoneSpec"],
+    ) -> None:
+        """
+        Build zone outputs and attach to structure store.
+
+        Stage 5: Zones are children of SWING blocks only.
+
+        Args:
+            store: Parent StructureStore to attach zones to
+            swing_outputs: Internal swing detector outputs
+            close_prices: Close prices for zone break detection
+            zone_specs: List of ZoneSpec from parent structure block
+        """
+        from src.backtest.market_structure.detectors import ZoneDetector
+
+        zone_detector = ZoneDetector()
+
+        for zone_spec in zone_specs:
+            # Compute zone arrays
+            zone_outputs = zone_detector.build_batch(
+                swing_outputs=swing_outputs,
+                close_prices=close_prices,
+                zone_spec=zone_spec,
+                atr=None,  # TODO: Pass ATR if width_model='atr_mult'
+            )
+
+            # Create zone store
+            zone_store = ZoneStore(
+                zone_key=zone_spec.key,
+                zone_type=zone_spec.type.value,
+                fields=zone_outputs,
+            )
+
+            # Attach to parent structure store
+            store.zones[zone_spec.key] = zone_store
+
     def build(
         self,
         ohlcv: Dict[str, np.ndarray],
@@ -269,6 +376,16 @@ class StructureBuilder:
                 structure_type=spec.type,
                 fields=public_outputs,
             )
+
+            # Stage 5: Compute zones if defined (SWING only)
+            if spec.type == StructureType.SWING and spec.zones:
+                self._build_zones(
+                    store=store,
+                    swing_outputs=internal_outputs,
+                    close_prices=ohlcv["close"],
+                    zone_specs=spec.zones,
+                )
+
             stores[spec.block_id] = store
 
         return stores

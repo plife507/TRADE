@@ -1,8 +1,8 @@
 # Market Structure Integration - Staged Implementation Plan
 
-**Status**: Stage 0-3 ✅ COMPLETE, Stage 4 📋 READY
+**Status**: Stage 0-5.1 ✅ COMPLETE, Stage 6 📋 READY
 **Created**: 2026-01-01
-**Updated**: 2026-01-01 (v7 - Stage 3 complete)
+**Updated**: 2026-01-01 (v10 - Stage 5 + 5.1 complete with zone hardening)
 **Goal**: Build a modular Market Structure Engine enabling logic-based strategies combining structure detection, indicators, and implicit MARK price.
 
 ---
@@ -538,49 +538,144 @@ class TrendState(int, Enum):
 
 ---
 
-### Stage 4: Rule Evaluation MVP
+### Stage 4: Rule Evaluation MVP ✅ COMPLETE
 
-**Goal**: Evaluate conditions with minimal operators.
+**Goal**: Evaluate conditions with minimal operators + fix identity contract.
 
 **Deliverables:**
-- [ ] 4.1 Implement reference resolver (`price.mark.*`, `indicator.*`, `structure.*`)
-- [ ] 4.2 Implement operators: `gt`, `lt`, `ge`, `le`, `eq`, `approx_eq`
-- [ ] 4.3 Add NaN/missing handling (→ false + reason code)
-- [ ] 4.4 Wire into signal evaluation
+- [x] 4.0 Fix identity contract (`spec_id` excludes zones, add `zone_spec_id`)
+- [x] 4.1 Implement compiled reference resolver (`price.mark.*`, `indicator.*`, `structure.*`)
+- [x] 4.2 Implement operators: `gt`, `lt`, `ge`, `le`, `eq`, `approx_eq`
+- [x] 4.3 Add NaN/missing handling (-> false + reason code)
+- [x] 4.4 ReasonCode enum with R_OK, R_MISSING_*, R_TYPE_MISMATCH, etc.
+- [x] 4.5 CLI audit command for rule evaluation smoke test
+- [x] 4.6 Wire into IdeaCard normalization (`compile_condition()`, `compile_idea_card()`)
+- [x] 4.7 Wire into signal evaluation in engine hot loop (`_evaluate_condition_compiled()`)
 
-**Modules:**
-- `src/backtest/runtime/rule_eval.py` (new)
-- `src/backtest/execution_validation.py` (modify)
+**Modules (Implemented):**
+- `src/backtest/rules/__init__.py` (new: module entry)
+- `src/backtest/rules/types.py` (new: ReasonCode, ValueType, EvalResult, RefValue)
+- `src/backtest/rules/compile.py` (new: CompiledRef, compile_ref, validate_ref_path)
+- `src/backtest/rules/eval.py` (new: operator implementations)
+- `src/backtest/market_structure/spec.py` (modified: fixed compute_spec_id, added zone helpers)
+- `src/backtest/idea_card.py` (modified: Condition with lhs_ref, rhs_ref, tolerance)
+- `src/backtest/idea_card_yaml_builder.py` (modified: compile_condition, compile_idea_card)
+- `src/backtest/engine_factory.py` (modified: calls compile_idea_card before evaluator)
+- `src/backtest/execution_validation.py` (modified: _evaluate_condition_compiled)
+- `src/cli/smoke_tests/rules.py` (modified: Stage 4b end-to-end test)
+- `src/cli/menus/backtest_audits_menu.py` (modified: added rules/structure audit options)
 
-**Acceptance:**
-- `price.mark.close lt structure.ms_5m.high_level` evaluates correctly
-- `eq` works for int/bool/enum
-- `approx_eq` requires tolerance (hard-fail if missing)
-- NaN → false + `R_MISSING_VALUE`
+**Acceptance Verified:**
+- Identity: `spec_id` excludes zones, `zone_spec_id` separate ✅
+- Identity: `block_id = hash(spec_id, key, tf_role)` ✅
+- Identity: `zone_block_id = hash(block_id, zone_spec_id)` ✅
+- Compiled refs: path validation at compile time ✅
+- Compiled refs: literals (int, float, bool) supported ✅
+- Operators: `gt`, `lt`, `ge`, `le` work with numerics ✅
+- Operators: `eq` works for int/bool/enum, rejects floats (R_FLOAT_EQUALITY) ✅
+- Operators: `approx_eq` requires tolerance (R_INVALID_TOLERANCE if missing) ✅
+- Missing: None/NaN returns R_MISSING_LHS or R_MISSING_RHS ✅
+- Type mismatch: returns R_TYPE_MISMATCH ✅
+- Deterministic: same input -> same output ✅
+- CLI: `backtest_audits_menu` option 6 runs rule smoke test ✅
+- Stage 4b: IdeaCard compile_condition() produces refs ✅
+- Stage 4b: Engine uses compiled refs in hot loop ✅
 
 ---
 
-### Stage 5: Zones (Parent-Scoped)
+### Stage 5: Zones (Parent-Scoped) ✅ COMPLETE
 
 **Goal**: Compute zone bounds as children of structure blocks.
 
 **Deliverables:**
-- [ ] 5.1 Implement `ZoneBuilder` computing bounds from parent levels
-- [ ] 5.2 Add zone outputs nested under parent in FeedStore
-- [ ] 5.3 Implement zone reset on parent advance
-- [ ] 5.4 Add `snapshot.get("structure.<key>.zones.<zone>.<field>")` accessors
-- [ ] 5.5 Hard-fail standalone `zone.*` references
+- [x] 5.1 Implement `ZoneDetector` computing bounds from parent swing levels
+- [x] 5.2 Add zone outputs nested under parent in FeedStore (`ZoneStore`)
+- [x] 5.3 Implement zone state machine (NONE → ACTIVE → BROKEN on close break)
+- [x] 5.4 Add `snapshot.get("structure.<key>.zones.<zone>.<field>")` accessors
+- [x] 5.5 Hard-fail unknown zone/field references with actionable error
 
-**Modules:**
-- `src/backtest/market_structure/zone_builder.py` (new)
-- `src/backtest/runtime/feed_store.py` (modify)
-- `src/backtest/runtime/snapshot.py` (modify)
+**Modules (Implemented):**
+- `src/backtest/market_structure/detectors/zone_detector.py` (new: ZoneDetector, width models)
+- `src/backtest/market_structure/builder.py` (modified: ZoneStore, _build_zones())
+- `src/backtest/market_structure/spec.py` (modified: zone parsing for SWING blocks)
+- `src/backtest/runtime/feed_store.py` (modified: get_zone_field(), has_zone())
+- `src/backtest/runtime/snapshot_view.py` (modified: zone path resolution)
+- `src/backtest/rules/compile.py` (modified: zone path validation)
+- `src/cli/smoke_tests/structure.py` (modified: Stage 5 zone tests)
 
-**Acceptance:**
-- Zones computed from parent swing levels
-- Zones reset when parent anchor changes
-- `structure.ms_5m.zones.demand_1.lower` works
-- `zone.demand_1.lower` hard-fails
+**Zone Architecture:**
+- Zones are children of SWING blocks only (not TREND)
+- Demand zones: below swing lows (upper=swing_low, lower=swing_low-width)
+- Supply zones: above swing highs (lower=swing_high, upper=swing_high+width)
+- State machine: NONE → ACTIVE (on swing confirm) → BROKEN (close breaks zone)
+- parent_anchor_id: Links zone to parent swing index
+
+**Width Models:**
+- `percent`: width = anchor_level × pct (e.g., 1%)
+- `fixed`: width = fixed value
+- `atr_mult`: width = ATR × mult (requires ATR indicator)
+
+**Zone Outputs:**
+| Output | Dtype | Description |
+|--------|-------|-------------|
+| `lower` | float64 | Lower bound |
+| `upper` | float64 | Upper bound |
+| `state` | int8 | 0=NONE, 1=ACTIVE, 2=BROKEN |
+| `recency` | int16 | Bars since zone established |
+| `parent_anchor_id` | int32 | Links to parent swing index |
+| `instance_id` | int64 | Deterministic identity hash (Stage 5.1) |
+
+**Acceptance Verified:**
+- Zones computed from parent swing levels ✅
+- Zone state machine: NONE → ACTIVE → BROKEN ✅
+- `structure.ms_5m.zones.demand_1.lower` works ✅
+- Unknown zone/field raises ValueError with available options ✅
+- CLI: `backtest structure-smoke` passes with 0 failures ✅
+
+---
+
+### Stage 5.1: Zone Hardening ✅ COMPLETE
+
+**Goal**: Add deterministic zone identity tracking and compile-time validation.
+
+**Deliverables:**
+- [x] 5.1.1 Add `instance_id` to ZONE_OUTPUTS (int64)
+- [x] 5.1.2 Implement `compute_zone_spec_id()` - stable hash of zone configuration
+- [x] 5.1.3 Implement `compute_zone_instance_id()` - hash of (zone_key, zone_spec_id, parent_anchor_id)
+- [x] 5.1.4 Update ZoneDetector.build_batch() to compute instance_id per bar
+- [x] 5.1.5 Add duplicate zone key validation in StructureSpec.from_dict()
+- [x] 5.1.6 Document slot selection policy in zone_detector.py docstring
+- [x] 5.1.7 Bump STRUCTURE_SCHEMA_VERSION to "1.1.0"
+- [x] 5.1.8 Add Stage 5.1 smoke tests (determinism, duplicate key rejection)
+
+**Modules (Modified):**
+- `src/backtest/market_structure/types.py` - Added instance_id to ZONE_OUTPUTS, schema 1.1.0
+- `src/backtest/market_structure/detectors/zone_detector.py` - compute_zone_spec_id(), compute_zone_instance_id()
+- `src/backtest/market_structure/spec.py` - Duplicate zone key validation
+- `src/cli/smoke_tests/structure.py` - Stage 5.1 tests
+
+**Zone instance_id Contract:**
+- `instance_id` = deterministic hash of (zone_key, zone_spec_id, parent_anchor_id)
+- Stable for caching/artifacts when same swing occupies slot
+- Changes when slot occupant changes (different parent_anchor_id)
+- 0 when slot is NONE (no occupant)
+
+**Slot Selection Policy:**
+- Zone slots (demand_1, supply_1) are "top N zones by deterministic ranking"
+- Ranking: newest confirmed swing zone that is ACTIVE at current bar
+- BROKEN zones excluded from slot ranking (historical only)
+- When newest ACTIVE zone breaks, slot shifts to next newest ACTIVE
+- If no ACTIVE candidates exist, slot is NONE
+
+**Acceptance Verified:**
+- compute_zone_spec_id is deterministic ✅
+- compute_zone_instance_id is deterministic ✅
+- Different parent_anchor_id → different instance_id ✅
+- parent_anchor_id=-1 → instance_id=0 ✅
+- Zone arrays include instance_id field ✅
+- instance_id correctly computed for ACTIVE/BROKEN states ✅
+- Zone instance_id deterministic between runs ✅
+- Duplicate zone keys correctly rejected ✅
 
 ---
 
@@ -682,7 +777,8 @@ class TrendState(int, Enum):
 | 2 | Swing detection seeded | `backtest audit-structure-registry` | Schema mismatch |
 | 3 | Normalization round-trip | `backtest idea-card-normalize` | Unknown type |
 | 4 | Condition truth table | `backtest run --dry-run` | Wrong result |
-| 5 | Zone bounds + reset | `backtest audit-zones` | Bounds mismatch |
+| 5 | Zone state + instance_id | `backtest structure-smoke` | State mismatch ✅ |
+| 5.1 | instance_id determinism | `backtest structure-smoke` | Hash mismatch ✅ |
 | 6 | Interaction no-lookahead | `backtest audit-interaction` | Future data |
 | 7 | State determinism | `backtest run --seed 42` | State drift |
 
@@ -692,7 +788,7 @@ class TrendState(int, Enum):
 |----|---------|-------|--------|
 | V_61_structure_swing | Swing + Trend detection with UP/DOWN tokens | 2-3 | ✅ Complete |
 | V_62_trend_class | HH/HL/LL/LH | 2 | 📋 Planned |
-| V_63_zones_nested | Parent-scoped zones | 5 | 📋 Planned |
+| V_63_zones_nested | Parent-scoped zones | 5 | ✅ Validated via smoke test |
 | V_64_zone_interaction | Interaction metrics | 6 | 📋 Planned |
 | V_65_state_tracking | Signal/Action/Gate | 7 | 📋 Planned |
 
@@ -735,7 +831,8 @@ class TrendState(int, Enum):
 | 0 | `types.py`, `spec.py`, `registry.py` |
 | 1 | `prices/mark_engine.py`, `prices/providers/sim_mark.py` |
 | 2 | `detectors/swing.py`, `detectors/trend.py`, `builder.py` |
-| 5 | `zone_builder.py` |
+| 5 | `detectors/zone_detector.py`, `builder.py` (ZoneStore), `spec.py` (zone parsing) |
+| 5.1 | `types.py` (instance_id), `detectors/zone_detector.py` (compute_zone_*_id) |
 | 6 | `zone_interaction.py` |
 | 7 | `runtime/signal_state.py`, `runtime/action_state.py`, `runtime/gate_state.py`, `runtime/block_state.py` |
 | 8 | `prices/providers/exchange_mark.py`, `runtime/streaming/` |
@@ -743,6 +840,39 @@ class TrendState(int, Enum):
 ---
 
 ## 10. Changelog
+
+### v10 (Stage 5 + 5.1 Complete)
+
+| Change | Reason |
+|--------|--------|
+| **Stage 5 complete** | ZoneDetector with state machine (NONE → ACTIVE → BROKEN) |
+| **Stage 5.1 complete** | Zone hardening with instance_id and duplicate key validation |
+| **ZoneDetector** | Computes demand/supply zones from swing high/low points |
+| **Width models** | percent, fixed, atr_mult for zone width computation |
+| **Zone state machine** | Closed-candle only break detection (no wicks) |
+| **instance_id** | Deterministic hash for artifact tracking and caching |
+| **Slot selection policy** | Documented: newest ACTIVE zone occupies slot |
+| **Duplicate key validation** | Reject duplicate zone keys at parse time |
+| **STRUCTURE_SCHEMA_VERSION** | Bumped to `1.1.0` for instance_id addition |
+| **Smoke tests** | Stage 5.1 tests for determinism and validation |
+
+### v9 (Stage 4 Complete)
+
+| Change | Reason |
+|--------|--------|
+| **Stage 4 complete** | Rule Evaluation MVP with compiled refs and operators |
+| **Compiled refs** | O(1) path resolution via CompiledRef |
+| **Operator registry** | Single source of truth for operator semantics |
+| **Crossover banned** | cross_above/cross_below rejected at compile time |
+| **RULE_EVAL_SCHEMA_VERSION** | Added for artifact safety |
+
+### v8 (Stage 4 Foundation)
+
+| Change | Reason |
+|--------|--------|
+| **Identity fix** | spec_id excludes zones; zone_spec_id separate |
+| **Condition compilation** | lhs_ref, rhs_ref, tolerance fields added |
+| **ReasonCode enum** | Machine-readable evaluation outcomes |
 
 ### v7 (Stage 3 Complete)
 

@@ -278,7 +278,69 @@ class FeedStore:
         if store is None:
             return []
         return list(store.fields.keys())
-    
+
+    def get_zone_field(
+        self,
+        block_key: str,
+        zone_key: str,
+        field_name: str,
+        bar_idx: int,
+    ) -> Optional[float]:
+        """
+        Get zone field value at specific bar index.
+
+        Stage 5: Zones are children of structure blocks.
+
+        Args:
+            block_key: Parent structure block key (e.g., "ms_5m")
+            zone_key: Zone key (e.g., "demand_1")
+            field_name: Field name (e.g., "lower", "state")
+            bar_idx: Bar index to retrieve
+
+        Returns:
+            Field value or None if not available
+
+        Raises:
+            ValueError: If block_key, zone_key, or field_name is unknown
+        """
+        # Resolve block_key to block_id
+        block_id = self.structure_key_map.get(block_key)
+        if block_id is None:
+            raise ValueError(
+                f"Unknown structure block_key '{block_key}'. "
+                f"Available: {list(self.structure_key_map.keys())}"
+            )
+
+        # Get store
+        store = self.structures.get(block_id)
+        if store is None:
+            raise ValueError(
+                f"Structure store not found for block_id '{block_id}'"
+            )
+
+        # Delegate to store's zone field accessor
+        return store.get_zone_field(zone_key, field_name, bar_idx)
+
+    def has_zone(self, block_key: str, zone_key: str) -> bool:
+        """Check if a zone exists under a structure block."""
+        block_id = self.structure_key_map.get(block_key)
+        if block_id is None:
+            return False
+        store = self.structures.get(block_id)
+        if store is None:
+            return False
+        return store.has_zone(zone_key)
+
+    def get_zone_fields(self, block_key: str, zone_key: str) -> List[str]:
+        """Get available fields for a zone."""
+        block_id = self.structure_key_map.get(block_key)
+        if block_id is None:
+            return []
+        store = self.structures.get(block_id)
+        if store is None:
+            return []
+        return store.get_zone_fields(zone_key)
+
     @classmethod
     def from_dataframe(
         cls,

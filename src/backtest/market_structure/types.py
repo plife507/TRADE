@@ -27,7 +27,7 @@ from typing import Dict, List, Tuple
 # - MAJOR: Breaking changes (never in practice - additive-only policy)
 # - MINOR: New fields added
 # - PATCH: Documentation or internal changes
-STRUCTURE_SCHEMA_VERSION = "1.0.0"
+STRUCTURE_SCHEMA_VERSION = "1.1.0"  # 1.1.0: Added zone instance_id (Stage 5.1)
 
 
 class StructureType(str, Enum):
@@ -174,13 +174,14 @@ STRUCTURE_REQUIRED_PARAMS: Dict[StructureType, List[str]] = {
 
 
 # =============================================================================
-# ZONE OUTPUT SCHEMAS (Stage 5+)
+# ZONE OUTPUT SCHEMAS (Stage 5.1+)
 # =============================================================================
 
 ZONE_OUTPUTS: Tuple[str, ...] = (
-    "lower",            # float32: Lower bound
-    "upper",            # float32: Upper bound
+    "lower",            # float64: Lower bound
+    "upper",            # float64: Upper bound
     "state",            # int8: 0=none, 1=active, 2=broken
     "recency",          # int16: Bars since zone established
-    "parent_anchor_id", # int32: Links to parent structure version
+    "parent_anchor_id", # int32: Links to parent swing index
+    "instance_id",      # int64: Deterministic hash(zone_key, zone_spec_id, parent_anchor_id)
 )

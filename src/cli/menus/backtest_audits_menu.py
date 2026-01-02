@@ -73,9 +73,15 @@ def backtest_audits_menu(cli: "TradeCLI"):
         menu.add_row("5", "Artifact Parity", "Verify run artifacts integrity")
         menu.add_row("", "", "")
 
+        # Stage 4: Rule evaluation
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.BOT} Stage 4: Rules ---[/]", "")
+        menu.add_row("6", "Rule Evaluation", "Validate compiled resolver + operator semantics")
+        menu.add_row("7", "Structure Smoke", "Validate swing/trend detection + snapshot access")
+        menu.add_row("", "", "")
+
         # Batch
         menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.TRADE} Batch ---[/]", "")
-        menu.add_row("6", f"[bold {CLIColors.NEON_CYAN}]Run All Quick Audits[/]", f"[{CLIColors.NEON_CYAN}]Toolkit + Rollup (no data needed)[/]")
+        menu.add_row("8", f"[bold {CLIColors.NEON_CYAN}]Run All Quick Audits[/]", f"[{CLIColors.NEON_CYAN}]Toolkit + Rollup + Rules + Structure[/]")
         menu.add_row("", "", "")
 
         # Navigation
@@ -100,6 +106,10 @@ def backtest_audits_menu(cli: "TradeCLI"):
         elif choice == 5:
             _run_artifact_parity_check()
         elif choice == 6:
+            _run_rules_smoke()
+        elif choice == 7:
+            _run_structure_smoke()
+        elif choice == 8:
             _run_all_quick_audits()
         elif choice == 9:
             return
@@ -259,6 +269,48 @@ def _run_snapshot_plumbing_audit(cli: "TradeCLI"):
     Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
 
 
+def _run_rules_smoke():
+    """Run rule evaluation smoke test (Stage 4)."""
+    from rich.prompt import Prompt
+    from src.cli.smoke_tests import run_rules_smoke
+
+    console.print()
+    console.print(f"[{CLIColors.NEON_CYAN}]Rule Evaluation Smoke Test (Stage 4)[/]")
+    console.print(f"[{CLIColors.DIM_TEXT}]Validates compiled resolver + operator semantics[/]")
+    console.print()
+
+    failures = run_rules_smoke()
+
+    if failures == 0:
+        console.print(f"\n[{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} Rule evaluation smoke PASSED[/]")
+    else:
+        console.print(f"\n[{CLIColors.NEON_RED}]{CLIIcons.ERROR} Rule evaluation smoke FAILED: {failures} failure(s)[/]")
+
+    console.print()
+    Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
+
+
+def _run_structure_smoke():
+    """Run market structure smoke test (Stage 2)."""
+    from rich.prompt import Prompt
+    from src.cli.smoke_tests import run_structure_smoke
+
+    console.print()
+    console.print(f"[{CLIColors.NEON_CYAN}]Market Structure Smoke Test (Stage 2)[/]")
+    console.print(f"[{CLIColors.DIM_TEXT}]Validates swing/trend detection + snapshot.get() access[/]")
+    console.print()
+
+    failures = run_structure_smoke()
+
+    if failures == 0:
+        console.print(f"\n[{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} Structure smoke PASSED[/]")
+    else:
+        console.print(f"\n[{CLIColors.NEON_RED}]{CLIIcons.ERROR} Structure smoke FAILED: {failures} failure(s)[/]")
+
+    console.print()
+    Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
+
+
 def _run_artifact_parity_check():
     """Run artifact parity verification."""
     from pathlib import Path
@@ -295,15 +347,18 @@ def _run_artifact_parity_check():
 
 def _run_all_quick_audits():
     """Run all quick audits (no IdeaCard/data needed)."""
+    from src.cli.smoke_tests import run_rules_smoke, run_structure_smoke
+
     console.print()
     console.print(f"[bold {CLIColors.NEON_CYAN}]Running All Quick Audits[/]")
     console.print(f"[{CLIColors.DIM_TEXT}]These audits use synthetic data and don't require an IdeaCard[/]")
     console.print()
 
     all_passed = True
+    total_failures = 0
 
     # Toolkit audit
-    console.print(f"[{CLIColors.NEON_CYAN}]1/2 Toolkit Contract Audit...[/]")
+    console.print(f"[{CLIColors.NEON_CYAN}]1/4 Toolkit Contract Audit...[/]")
     toolkit_result = backtest_audit_toolkit_tool()
     if toolkit_result.success:
         console.print(f"    [{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} PASSED[/]")
@@ -312,7 +367,7 @@ def _run_all_quick_audits():
         all_passed = False
 
     # Rollup audit
-    console.print(f"[{CLIColors.NEON_CYAN}]2/2 Rollup Parity Audit...[/]")
+    console.print(f"[{CLIColors.NEON_CYAN}]2/4 Rollup Parity Audit...[/]")
     rollup_result = backtest_audit_rollup_parity_tool()
     if rollup_result.success:
         console.print(f"    [{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} PASSED[/]")
@@ -320,12 +375,32 @@ def _run_all_quick_audits():
         console.print(f"    [{CLIColors.NEON_RED}]{CLIIcons.ERROR} FAILED: {rollup_result.error}[/]")
         all_passed = False
 
+    # Rules smoke (Stage 4)
+    console.print(f"[{CLIColors.NEON_CYAN}]3/4 Rule Evaluation Smoke (Stage 4)...[/]")
+    rules_failures = run_rules_smoke()
+    total_failures += rules_failures
+    if rules_failures == 0:
+        console.print(f"    [{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} PASSED[/]")
+    else:
+        console.print(f"    [{CLIColors.NEON_RED}]{CLIIcons.ERROR} FAILED: {rules_failures} failure(s)[/]")
+        all_passed = False
+
+    # Structure smoke (Stage 2)
+    console.print(f"[{CLIColors.NEON_CYAN}]4/4 Market Structure Smoke (Stage 2)...[/]")
+    structure_failures = run_structure_smoke()
+    total_failures += structure_failures
+    if structure_failures == 0:
+        console.print(f"    [{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} PASSED[/]")
+    else:
+        console.print(f"    [{CLIColors.NEON_RED}]{CLIIcons.ERROR} FAILED: {structure_failures} failure(s)[/]")
+        all_passed = False
+
     # Summary
     console.print()
     if all_passed:
         console.print(f"[bold {CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} All quick audits PASSED[/]")
     else:
-        console.print(f"[bold {CLIColors.NEON_RED}]{CLIIcons.ERROR} Some audits FAILED[/]")
+        console.print(f"[bold {CLIColors.NEON_RED}]{CLIIcons.ERROR} Some audits FAILED ({total_failures} total failures)[/]")
 
     console.print()
     Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")

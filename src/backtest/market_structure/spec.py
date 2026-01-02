@@ -247,23 +247,17 @@ class StructureSpec:
         """
         Create from dict (YAML parsing).
 
-        Stage 3: Hard-fail on:
+        Stage 5: Zones are now supported for SWING blocks only.
+
+        Hard-fail on:
         - 'structure_type' key (legacy, use 'type')
-        - zones (Stage 5+)
-        - unknown keys
+        - zones on non-SWING blocks
         """
         # Hard-fail on legacy key
         if "structure_type" in d:
             raise ValueError(
                 "IdeaCard uses 'type', not 'structure_type' for market_structure_blocks. "
                 "Replace 'structure_type' with 'type' in your YAML."
-            )
-
-        # Stage 3: Zones are not supported
-        if d.get("zones"):
-            raise ValueError(
-                "Zones in market_structure_blocks are not supported until Stage 5+. "
-                "Remove the 'zones' key from your structure block."
             )
 
         # Validate required fields
@@ -295,13 +289,41 @@ class StructureSpec:
         # Parse tf_role (default to exec)
         tf_role = d.get("tf_role", "exec")
 
+        # Parse zones (Stage 5+, SWING blocks only)
+        zones: List[ZoneSpec] = []
+        zones_raw = d.get("zones", [])
+        if zones_raw:
+            # Validate zones are only on SWING blocks
+            if struct_type != StructureType.SWING:
+                raise ValueError(
+                    f"Zones are only supported for SWING structure blocks, "
+                    f"not '{struct_type.value}'. "
+                    f"Remove 'zones' from block '{d.get('key', '?')}'."
+                )
+            for zone_dict in zones_raw:
+                zones.append(ZoneSpec.from_dict(zone_dict))
+
+            # Stage 5.1: Validate no duplicate zone keys within block
+            zone_keys = [z.key for z in zones]
+            seen = set()
+            duplicates = []
+            for zk in zone_keys:
+                if zk in seen:
+                    duplicates.append(zk)
+                seen.add(zk)
+            if duplicates:
+                raise ValueError(
+                    f"Duplicate zone key(s) in structure block '{d.get('key', '?')}': "
+                    f"{duplicates}. Zone keys must be unique within a block."
+                )
+
         return cls(
             key=d["key"],
             type=struct_type,
             tf_role=tf_role,
             params=params,
             confirmation=confirmation,
-            zones=[],  # Stage 3: No zones
+            zones=zones,
         )
 
 
@@ -309,12 +331,14 @@ def compute_spec_id(
     structure_type: str,
     params: Dict[str, Any],
     confirmation: Dict[str, Any],
-    zones: List[Dict[str, Any]],
 ) -> str:
     """
     Compute spec_id from raw dict data (for parsing).
 
     Same algorithm as StructureSpec.spec_id but works with dicts.
+
+    IMPORTANT: spec_id EXCLUDES zones. Zones have separate zone_spec_id.
+    This allows structure engine to stabilize while zones iterate.
     """
     canonical = {
         "type": structure_type,
@@ -323,6 +347,21 @@ def compute_spec_id(
             "mode": confirmation.get("mode", "immediate"),
             "bars": confirmation.get("bars", 0),
         },
+    }
+    json_str = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(json_str.encode()).hexdigest()[:12]
+
+
+def compute_zone_spec_id(zones: List[Dict[str, Any]]) -> str:
+    """
+    Compute zone_spec_id from raw dict data (for parsing).
+
+    Same algorithm as StructureSpec.zone_spec_id but works with dicts.
+    Returns empty string if no zones.
+    """
+    if not zones:
+        return ""
+    canonical = {
         "zones": sorted(
             [
                 {
@@ -335,6 +374,38 @@ def compute_spec_id(
             ],
             key=lambda x: x["key"],
         ),
+    }
+    json_str = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(json_str.encode()).hexdigest()[:12]
+
+
+def compute_block_id(spec_id: str, key: str, tf_role: str) -> str:
+    """
+    Compute block_id from spec_id + key + tf_role.
+
+    Same algorithm as StructureSpec.block_id but works with primitives.
+    """
+    canonical = {
+        "spec_id": spec_id,
+        "key": key,
+        "tf_role": tf_role,
+    }
+    json_str = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(json_str.encode()).hexdigest()[:12]
+
+
+def compute_zone_block_id(block_id: str, zone_spec_id: str) -> str:
+    """
+    Compute zone_block_id from block_id + zone_spec_id.
+
+    Same algorithm as StructureSpec.zone_block_id but works with primitives.
+    Returns block_id if zone_spec_id is empty.
+    """
+    if not zone_spec_id:
+        return block_id
+    canonical = {
+        "block_id": block_id,
+        "zone_spec_id": zone_spec_id,
     }
     json_str = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(json_str.encode()).hexdigest()[:12]
