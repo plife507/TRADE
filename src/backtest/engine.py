@@ -33,6 +33,7 @@ Usage:
 """
 
 import json
+import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -113,6 +114,7 @@ from .runtime.cache import TimeframeCache
 from .runtime.feed_store import FeedStore, MultiTFFeedStore
 from .runtime.snapshot_view import RuntimeSnapshotView
 from .runtime.rollup_bucket import ExecRollupBucket, create_empty_rollup_dict
+from .runtime.state_tracker import StateTracker, create_state_tracker
 from .system_config import (
     SystemConfig,
     load_system_config,
@@ -164,10 +166,11 @@ class BacktestEngine:
         run_dir: Optional[Path] = None,
         tf_mapping: Optional[Dict[str, str]] = None,
         on_snapshot: Optional[Callable[["RuntimeSnapshotView", int, int, int], None]] = None,
+        record_state_tracking: bool = False,
     ):
         """
         Initialize backtest engine.
-        
+
         Args:
             config: System configuration (with resolved risk profile)
             window_name: Window to use ("hygiene" or "test")
@@ -177,6 +180,9 @@ class BacktestEngine:
             on_snapshot: Optional callback invoked after snapshot build, before strategy.
                         Signature: (snapshot, exec_idx, htf_idx, mtf_idx) -> None
                         Used for Phase 4 plumbing parity audit.
+            record_state_tracking: Optional flag to enable Stage 7 state tracking.
+                        When True, records signal/action/gate state per bar.
+                        Record-only: does not affect trade outcomes.
         """
         self.config = config
         self.window_name = window_name
@@ -271,7 +277,19 @@ class BacktestEngine:
         # Phase 4: Optional snapshot callback for plumbing parity audit
         # Invoked after snapshot build, before strategy evaluation
         self._on_snapshot = on_snapshot
-        
+
+        # Stage 7: Optional state tracking (record-only)
+        # When enabled, tracks signal/action/gate state per bar
+        self._record_state_tracking = record_state_tracking
+        self._state_tracker: Optional[StateTracker] = None
+        if record_state_tracking:
+            self._state_tracker = create_state_tracker(
+                warmup_bars=0,  # Will be set after prepare_backtest_frame
+                max_positions=1,  # Single position per symbol
+                max_drawdown_pct=config.risk_profile.max_drawdown_pct if hasattr(config.risk_profile, 'max_drawdown_pct') else 100.0,
+                cooldown_bars=0,
+            )
+
         tf_mode_str = "multi-TF" if self._multi_tf_mode else "single-TF"
         self.logger.info(
             f"BacktestEngine initialized: {config.system_id} / {window_name} / "
@@ -742,7 +760,18 @@ class BacktestEngine:
                 close=float(exec_feed.close[i]),
                 volume=float(exec_feed.volume[i]),
             )
-            
+
+            # Stage 7: State tracking - bar start (record-only)
+            if self._state_tracker:
+                self._state_tracker.on_bar_start(i)
+                # Record warmup/history gate state
+                warmup_ok = i >= sim_start_idx
+                self._state_tracker.on_warmup_check(warmup_ok, sim_start_idx)
+                self._state_tracker.on_history_check(
+                    self._is_history_ready(),
+                    len(self._history_manager._bars_exec) if hasattr(self._history_manager, '_bars_exec') else 0,
+                )
+
             # Phase 4: Set bar context for artifact tracking
             # Note: snapshot_ready starts as True, will be updated after snapshot build
             self._exchange.set_bar_context(i, snapshot_ready=True)
@@ -752,7 +781,14 @@ class BacktestEngine:
             # Phase 4: process_bar returns StepResult with unified mark_price
             step_result = self._exchange.process_bar(bar, prev_bar)
             closed_trades = self._exchange.last_closed_trades  # Phase 4 backward compat
-            
+
+            # Stage 7: Record fills/rejections from step_result (record-only)
+            if self._state_tracker and step_result:
+                for _fill in step_result.fills:
+                    self._state_tracker.on_order_filled()
+                for _rejection in step_result.rejections:
+                    self._state_tracker.on_order_rejected(_rejection.reason)
+
             # Sync risk manager equity with exchange
             self.risk_manager.sync_equity(self._exchange.equity)
             
@@ -768,7 +804,7 @@ class BacktestEngine:
                 warmup_features = {}
                 for key in exec_feed.indicators.keys():
                     val = exec_feed.indicators[key][i]
-                    if not pd.isna(val):
+                    if not np.isnan(val):
                         warmup_features[key] = float(val)
                 
                 warmup_features_exec = FeatureSnapshot(
@@ -801,7 +837,7 @@ class BacktestEngine:
             features_for_history = {}
             for key in exec_feed.indicators.keys():
                 val = exec_feed.indicators[key][i]
-                if not pd.isna(val):
+                if not np.isnan(val):
                     features_for_history[key] = float(val)
             
             current_features_exec = FeatureSnapshot(
@@ -939,7 +975,20 @@ class BacktestEngine:
             signal = None
             if not self._exchange.entries_disabled or self._exchange.position is not None:
                 signal = strategy(snapshot, self.config.params)
-            
+
+            # Stage 7: State tracking - record signal (record-only)
+            if self._state_tracker:
+                signal_direction = 0
+                if signal is not None:
+                    if signal.direction == "LONG":
+                        signal_direction = 1
+                    elif signal.direction == "SHORT":
+                        signal_direction = -1
+                self._state_tracker.on_signal_evaluated(signal_direction)
+                # Record position state for gate context
+                position_count = 1 if self._exchange.position is not None else 0
+                self._state_tracker.on_position_check(position_count)
+
             # Process signal (use bar for order submission)
             if signal is not None:
                 self._process_signal(signal, bar, snapshot)
@@ -970,7 +1019,11 @@ class BacktestEngine:
                 features_htf=self._tf_cache.get_htf() if self._multi_tf_mode else None,
                 features_mtf=self._tf_cache.get_mtf() if self._multi_tf_mode else None,
             )
-            
+
+            # Stage 7: State tracking - bar end (record-only)
+            if self._state_tracker:
+                self._state_tracker.on_bar_end()
+
             prev_bar = bar
         
         # Close any remaining position at end (if not already stopped early)
@@ -1321,7 +1374,11 @@ class BacktestEngine:
         # Use SimulatedRiskManager for sizing
         sizing_result = self.risk_manager.size_order(snapshot, signal)
         size_usdt = sizing_result.size_usdt
-        
+
+        # Stage 7: Record sizing (record-only)
+        if self._state_tracker:
+            self._state_tracker.on_sizing_computed(size_usdt)
+
         # Minimum size check (use configured min_trade_usdt)
         min_trade = self.config.risk_profile.min_trade_usdt
         if size_usdt < min_trade:
@@ -1340,6 +1397,10 @@ class BacktestEngine:
             take_profit=take_profit,
             timestamp=bar.ts_close,
         )
+
+        # Stage 7: Record order submission (record-only)
+        if self._state_tracker:
+            self._state_tracker.on_order_submitted()
     
     def _calculate_drawdowns(self) -> None:
         """Calculate drawdown values for equity curve.
@@ -1355,6 +1416,32 @@ class BacktestEngine:
         """
         if self.run_dir:
             write_artifacts_impl(result, self.run_dir, self.logger)
+
+    def get_state_tracker(self) -> Optional[StateTracker]:
+        """
+        Get the state tracker if state tracking is enabled.
+
+        Stage 7: Returns the StateTracker instance if record_state_tracking=True
+        was passed to __init__. Returns None otherwise.
+
+        Returns:
+            StateTracker or None
+        """
+        return self._state_tracker
+
+    def get_state_tracking_stats(self) -> Dict[str, Any]:
+        """
+        Get state tracking summary statistics.
+
+        Stage 7: Returns aggregated stats from block history.
+        Returns empty dict if state tracking is disabled.
+
+        Returns:
+            Dict with signal/action/gate statistics
+        """
+        if self._state_tracker is None:
+            return {}
+        return self._state_tracker.summary_stats()
 
 
 # NOTE: Factory functions (run_backtest, create_engine_from_idea_card, run_engine_with_idea_card)

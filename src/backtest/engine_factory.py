@@ -255,6 +255,52 @@ def create_engine_from_idea_card(
     return engine
 
 
+def _verify_all_conditions_compiled(idea_card: "IdeaCard") -> None:
+    """
+    Verify all conditions in IdeaCard have compiled references.
+
+    Fix 3.1 (P1-03): Makes compilation mandatory at engine init.
+    This ensures no uncompiled conditions reach the hot loop.
+
+    Args:
+        idea_card: The compiled IdeaCard to verify
+
+    Raises:
+        RuntimeError: If any condition is missing compiled refs
+    """
+    if idea_card.signal_rules is None:
+        return  # Nothing to verify
+
+    uncompiled = []
+
+    # Check entry rules
+    for i, rule in enumerate(idea_card.signal_rules.entry_rules):
+        for j, cond in enumerate(rule.conditions):
+            if not cond.has_compiled_refs():
+                uncompiled.append(
+                    f"entry_rules[{i}].conditions[{j}]: "
+                    f"{cond.indicator_key} {cond.operator.value} {cond.value}"
+                )
+
+    # Check exit rules
+    for i, rule in enumerate(idea_card.signal_rules.exit_rules):
+        for j, cond in enumerate(rule.conditions):
+            if not cond.has_compiled_refs():
+                uncompiled.append(
+                    f"exit_rules[{i}].conditions[{j}]: "
+                    f"{cond.indicator_key} {cond.operator.value} {cond.value}"
+                )
+
+    if uncompiled:
+        raise RuntimeError(
+            f"Conditions must be compiled before execution. "
+            f"Found {len(uncompiled)} uncompiled condition(s):\n  - "
+            + "\n  - ".join(uncompiled[:5])
+            + (f"\n  ... and {len(uncompiled) - 5} more" if len(uncompiled) > 5 else "")
+            + "\n\nFix: Ensure compile_idea_card() is called before run_engine_with_idea_card()."
+        )
+
+
 def run_engine_with_idea_card(
     engine: "BacktestEngine",
     idea_card: "IdeaCard",
@@ -285,6 +331,9 @@ def run_engine_with_idea_card(
 
     # Stage 4b: Compile condition refs for O(1) hot-loop evaluation
     compiled_idea_card = compile_idea_card(idea_card)
+
+    # Fix 3.1 (P1-03): Verify all conditions are compiled before execution
+    _verify_all_conditions_compiled(compiled_idea_card)
 
     # Create signal evaluator with compiled IdeaCard
     evaluator = IdeaCardSignalEvaluator(compiled_idea_card)

@@ -34,6 +34,29 @@ from typing import Dict, List, Optional, Any, Set
 import json
 
 
+class VersionMismatchError(Exception):
+    """
+    Raised when loading artifacts with incompatible schema versions.
+
+    Provides actionable error messages with:
+    - Expected vs actual version
+    - Migration guidance if available
+    """
+    def __init__(self, expected: str, actual: str, artifact_type: str = "manifest"):
+        self.expected = expected
+        self.actual = actual
+        self.artifact_type = artifact_type
+        super().__init__(
+            f"VERSION_MISMATCH: {artifact_type} version '{actual}' is incompatible with "
+            f"current version '{expected}'. "
+            f"Re-run the backtest to regenerate artifacts with the current schema."
+        )
+
+
+# Current manifest schema version - increment when RunManifest structure changes
+MANIFEST_SCHEMA_VERSION = "1.0.0"
+
+
 def _utcnow() -> datetime:
     """Get current UTC time as timezone-aware datetime."""
     return datetime.now(timezone.utc)
@@ -399,6 +422,9 @@ class RunManifest:
     
     # Audit Trail
     created_at_utc: str = ""          # ISO8601 timestamp
+
+    # Schema version for compatibility checking
+    schema_version: str = MANIFEST_SCHEMA_VERSION
     
     def __post_init__(self):
         """Set defaults and enforce invariants."""
@@ -465,6 +491,9 @@ class RunManifest:
             
             # Audit trail
             "created_at_utc": self.created_at_utc,
+
+            # Schema version
+            "schema_version": self.schema_version,
         }
         
         # Warmup/delay audit trail (optional - only present if Preflight ran)
@@ -489,7 +518,25 @@ class RunManifest:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RunManifest":
-        """Load manifest from dict."""
+        """
+        Load manifest from dict with version compatibility check.
+
+        Raises:
+            VersionMismatchError: If schema_version is incompatible with current version.
+        """
+        # Version compatibility check (fail-loud)
+        stored_version = data.get("schema_version", "0.0.0")  # Pre-versioned manifests default to 0.0.0
+        if stored_version != MANIFEST_SCHEMA_VERSION:
+            # Check major version compatibility (major.minor.patch)
+            stored_major = stored_version.split(".")[0] if stored_version else "0"
+            current_major = MANIFEST_SCHEMA_VERSION.split(".")[0]
+            if stored_major != current_major:
+                raise VersionMismatchError(
+                    expected=MANIFEST_SCHEMA_VERSION,
+                    actual=stored_version,
+                    artifact_type="RunManifest",
+                )
+
         return cls(
             # Hash identity
             full_hash=data["full_hash"],
@@ -545,6 +592,9 @@ class RunManifest:
             
             # Audit trail
             created_at_utc=data.get("created_at_utc", ""),
+
+            # Schema version (use current if not present - backward compat)
+            schema_version=data.get("schema_version", MANIFEST_SCHEMA_VERSION),
         )
     
     @classmethod
