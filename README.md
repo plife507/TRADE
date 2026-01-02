@@ -6,15 +6,21 @@ A modular, production-ready Bybit futures trading bot with complete UTA support,
 
 ## Current Status (January 2026)
 
-**Backtest Engine Complete**:
+**Backtest Engine Production-Ready**:
 - 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
 - 42 indicators in string-based registry (single source of truth)
 - IdeaCard YAML-based strategy specification
-- 21 validation IdeaCards for comprehensive testing
+- 24 validation IdeaCards for comprehensive testing
 
-**In Progress**: Market Structure Features (Phase 5)
-- Swing/pivot/trend detection
-- Rule evaluation engine
+**Market Structure Complete** (Stages 0-7):
+- Swing/pivot detection with trend classification
+- Supply/demand zone identification
+- Zone interaction tracking (tested, broken, absorbed)
+- State tracking for actions, blocks, gates, and signals
+
+**Quality Status**:
+- Audit swarm completed: 12/16 P1 fixes applied
+- 33 open bugs tracked (4 P1, 19 P2, 10 P3)
 
 See `docs/project/PROJECT_OVERVIEW.md` for the full roadmap.
 
@@ -61,7 +67,7 @@ TRADE/
 | Domain | Capabilities |
 |--------|-------------|
 | **Live Trading** | Market/Limit/Stop orders, TP/SL, trailing stops, batch operations |
-| **Backtest** | Simulated exchange, multi-timeframe, 42 indicators, 62 metrics |
+| **Backtest** | Simulated exchange, multi-timeframe, 42 indicators, 62 metrics, market structure |
 | **Data** | DuckDB storage, OHLCV/funding/OI sync, gap filling |
 | **Safety** | Demo mode default, panic button, risk limits, mode validation |
 

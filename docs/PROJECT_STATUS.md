@@ -2,7 +2,7 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** What runs today, what is stubbed, top risks, next steps
-**LAST UPDATED:** January 1, 2026 (Metrics Consolidation + IdeaCard Value Flow complete)
+**LAST UPDATED:** January 1, 2026 (Market Structure Stages 0-7 complete, audit tracking active)
 
 ---
 
@@ -12,48 +12,59 @@
 |-----------|--------|-------|
 | CLI | ✅ Production | All menus functional |
 | Data Layer | ✅ Production | DuckDB, sync, heal working |
-| Backtest Engine | ✅ Production | Modular architecture (8 modules), single-symbol, MTF, delay_bars support |
+| Backtest Engine | ✅ Production | Modular architecture (8 modules), Stages 0-7 complete |
+| Market Structure | ✅ Production | Swing, Trend, Zones, Zone Interaction, State Tracking |
 | MTF Support | ✅ Production | exec/htf/mtf with delay_bars |
 | Simulated Exchange | ✅ Production | Bybit-aligned accounting |
 | Preflight + Data-Fix | ✅ Production | Phase 6 CLI smoke tests validated + **mandatory 1m coverage** |
 | 1m Price Feed | ✅ Production | QuoteState, ExecRollupBucket, px.rollup.* accessors |
 | Artifact Standards | ✅ Production | ts_ms, eval_start_ts_ms, structured exports |
-| Backtest Metrics | ✅ Production | **59 unified fields**: equity, drawdown, trade stats, risk-adjusted ratios, tail risk (skewness, kurtosis, VaR, CVaR), leverage metrics, MAE/MFE tracking |
+| Backtest Metrics | ✅ Production | **62 unified fields**: equity, drawdown, trade stats, risk-adjusted ratios, tail risk (skewness, kurtosis, VaR, CVaR), leverage metrics, MAE/MFE, benchmark alpha |
 | IdeaCard Value Flow | ✅ Production | Fail-loud validation, explicit declarations, all phases complete |
 | Live Trading | ⚠️ Functional | Demo API tested, live not validated |
-| Indicator System | ✅ Production | P0 input-source bug fixed (2025-12-17) |
+| Indicator System | ✅ Production | 42 indicators in registry, string-based types |
+| Validation Suite | ✅ Production | 24 validation IdeaCards |
 | Strategy Factory | ⚠️ Partial | IdeaCards work, promotion manual |
 | Agent Module | ❌ Planned | Not started |
 
 ---
 
-## Recent Completions (December 2025 - January 2026)
+## Recent Completions (January 2026)
 
 | Phase | Status | Date | Key Features |
 |-------|--------|------|--------------|
-| Metrics Consolidation | ✅ Complete | Jan 1 | v1/v2 terminology removed, single unified BacktestMetrics with 59 fields |
-| High-Value Quant Metrics | ✅ Complete | Jan 1 | Tail risk (skewness, kurtosis, VaR 95%, CVaR/Expected Shortfall), leverage tracking (avg_leverage_used, max_gross_exposure_pct), MAE/MFE per trade |
-| IdeaCard Value Flow | ✅ Complete | Jan 1 | Fail-loud validation, explicit declarations, all phases complete |
+| Market Structure Stages 0-7 | ✅ Complete | Jan 1 | Swing, Trend, Zones, Zone Interaction, State Tracking |
+| State Tracking (Stage 7) | ✅ Complete | Jan 1 | SignalState, ActionState, GateState, BlockState machines |
+| Zone Interaction (Stage 6) | ✅ Complete | Jan 1 | touched, inside, time_in_zone metrics |
+| Zone Hardening (Stage 5.1) | ✅ Complete | Jan 1 | instance_id, duplicate key validation |
+| Zones (Stage 5) | ✅ Complete | Jan 1 | Parent-scoped zones, demand/supply, state machine |
+| Rule Evaluation (Stage 4) | ✅ Complete | Jan 1 | Compiled refs, 6 operators, ReasonCode enum |
+| IdeaCard Integration (Stage 3) | ✅ Complete | Jan 1 | market_structure_blocks, enum tokens, preflight |
+| Structure MVP (Stage 2) | ✅ Complete | Jan 1 | SwingDetector, TrendClassifier |
+| MarkPriceEngine (Stage 1) | ✅ Complete | Jan 1 | price.mark.* implicit, SimMarkProvider |
+| Schema Lock (Stage 0) | ✅ Complete | Jan 1 | StructureType, ZoneType enums, registry |
+| Audit Swarm | ✅ Complete | Jan 1 | 12/16 P1 fixes applied, 33 open bugs tracked |
+| Metrics Consolidation | ✅ Complete | Jan 1 | 62 unified BacktestMetrics fields |
+| IdeaCard Value Flow | ✅ Complete | Jan 1 | Fail-loud validation, explicit declarations |
 | Legacy Cleanup | ✅ Complete | Jan 1 | ExecutionConfig simplified, dead code removed |
-| Price Feed (1m) + Preflight | ✅ Complete | Dec 31 | Mandatory 1m coverage, QuoteState, ExecRollupBucket, px.rollup.* accessors, Market Structure unblocked |
-| Engine Modular Refactor | ✅ Complete | Dec 30 | Split engine.py into 8 modules (2,236 → 1,154 lines), all tests pass, ready for Phase 5 |
-| Backtester Fixes Phase 1 | ✅ Complete | Dec 30 | 6 fixes: HTF O(n)→O(log n), TF defaults raise errors, warmup mandatory, feature metadata required, daily loss explicit |
-| Post-Backtest Audit Gates | ✅ Complete | Dec 18 | Auto-sync (--fix-gaps), artifact validation, determinism verification, smoke test integration |
-| Backtest Financial Metrics | ✅ Complete | Dec 18 | Fixed Max DD%, proper CAGR/Calmar, TF strictness, funding metrics, metrics-audit CLI |
-| Production Pipeline Validation | ✅ Complete | Dec 18 | End-to-end validation with 5 IdeaCards, all 6 gates passed |
-| Phase 7: Delay Bars | ✅ Complete | Dec 17 | market_structure.delay_bars, eval_start_ts_role, CLI smoke validated |
-| Phase 6: CLI Smoke Tests | ✅ Complete | Dec 17 | PreflightReport JSON, data-fix bounded enforcement, artifact standards |
-| Phase 5: Preflight + Backfill | ✅ Complete | Dec 17 | Auto-sync, warmup computation, RunManifest audit trail |
-| Indicator Metadata v1 | ✅ Complete | Dec 17 | feature_spec_id, provenance tracking, metadata export |
-| MTF Warmup Bug Fix | ✅ Complete | Dec 17 | HTF/MTF warmup synchronization, no silent data insufficiency |
+
+### December 2025 Completions
+
+| Phase | Status | Date | Key Features |
+|-------|--------|------|--------------|
+| Price Feed (1m) + Preflight | ✅ Complete | Dec 31 | Mandatory 1m coverage, QuoteState, ExecRollupBucket |
+| Engine Modular Refactor | ✅ Complete | Dec 30 | Split engine.py into 8 modules (2,236 → 1,154 lines) |
+| Backtester Fixes Phase 1 | ✅ Complete | Dec 30 | 6 fixes: HTF O(n)→O(log n), TF defaults raise errors |
+| Post-Backtest Audit Gates | ✅ Complete | Dec 18 | Auto-sync (--fix-gaps), artifact validation |
+| Backtest Financial Metrics | ✅ Complete | Dec 18 | Fixed Max DD%, proper CAGR/Calmar |
 
 **See**: `docs/session_reviews/` for detailed implementation notes
 
 ---
 
-## BacktestMetrics System (59 Unified Fields)
+## BacktestMetrics System (62 Unified Fields)
 
-The backtest engine now outputs a comprehensive, production-ready metrics suite with **59 fields** covering all aspects of strategy performance. All v1/v2 terminology has been removed - there is now a single unified `BacktestMetrics` class.
+The backtest engine now outputs a comprehensive, production-ready metrics suite with **62 fields** covering all aspects of strategy performance. All v1/v2 terminology has been removed - there is now a single unified `BacktestMetrics` class.
 
 ### Metrics Categories
 
@@ -143,8 +154,7 @@ python trade_cli.py backtest metadata-smoke
 
 | Component | Status | What's Missing |
 |-----------|--------|----------------|
-| Phase 5 (Market Structure) | 📋 Ready | **UNBLOCKED** - Price Feed complete, ready to implement |
-| Registry Consolidation (Phase 3) | 📋 Ready | Remove hardcoded indicator enums (prereq for MS) |
+| Streaming (Stage 8) | 📋 Future | Demo/Live websocket, real-time tick aggregation |
 | Promotion automation | 📋 Stubbed | Manual process only |
 | Drift detection (Phase 5 Audit) | 📋 Future | Baseline storage system |
 | Live trading validation | 📋 Incomplete | Demo tested, live untested |
@@ -169,24 +179,40 @@ python trade_cli.py backtest metadata-smoke
 
 ---
 
+## Open Bugs (From Audit Swarm)
+
+| Priority | Total | Fixed | Open | Notes |
+|----------|-------|-------|------|-------|
+| P0 | 0 | 0 | 0 | No critical blockers |
+| P1 | 16 | 12 | 4 | Deferred (low impact) |
+| P2 | 20 | 1 | 19 | Enhancement/polish |
+| P3 | 10 | 0 | 10 | Polish items |
+
+**Total Open**: 33 bugs
+
+**P1 Open (Deferred)**:
+- P1-09: O(n) operations in bars_exec_high/low (performance)
+- P1-12: TREND assumes single SWING block (low impact)
+- P1-13: Dual close detection mechanism (low impact, tested)
+- P1-15: Schema drift detection missing (future)
+
+**See**: `docs/todos/AUDIT_OPEN_BUGS.md` for full catalog
+
+---
+
 ## Recently Resolved Issues
 
 | Issue | Status | Date | Document |
 |-------|--------|------|----------|
-| Metrics v1/v2 consolidation | ✅ COMPLETE | 2026-01-01 | Single unified BacktestMetrics with 59 fields |
+| Market Structure Stages 0-7 | ✅ COMPLETE | 2026-01-01 | docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md |
+| Audit Swarm P1 fixes (12/16) | ✅ COMPLETE | 2026-01-01 | docs/audits/2026-01-01/FIX_PLAN.md |
+| Metrics v1/v2 consolidation | ✅ COMPLETE | 2026-01-01 | Single unified BacktestMetrics with 62 fields |
 | High-value quant metrics missing | ✅ FIXED | 2026-01-01 | Added tail risk, leverage, MAE/MFE tracking |
-| IdeaCard value flow validation | ✅ COMPLETE | 2026-01-01 | docs/todos/IDEACARD_VALUE_FLOW_FIX_PHASES.md |
+| IdeaCard value flow validation | ✅ COMPLETE | 2026-01-01 | docs/todos/archived/2026-01-01/IDEACARD_VALUE_FLOW_FIX_PHASES.md |
 | Legacy execution config remnants | ✅ CLEANED | 2026-01-01 | ExecutionConfig simplified, dead code removed |
 | Price Feed (1m) + Preflight | ✅ COMPLETE | 2025-12-31 | docs/todos/archived/2025-12-31/PRICE_FEED_1M_PREFLIGHT_PHASES.md |
 | Engine modular refactor | ✅ COMPLETE | 2025-12-30 | docs/todos/archived/2025-12-30/ENGINE_MODULAR_REFACTOR_PHASES.md |
 | Backtester fixes (6 issues) | ✅ COMPLETE | 2025-12-30 | docs/todos/archived/2025-12-30/BACKTESTER_FIXES_PHASE1.md |
-| Max Drawdown % bug (tied maxima) | ✅ FIXED | 2025-12-18 | archived/2025-12-18/BACKTEST_FINANCIAL_METRICS_MTM_EQUITY_PHASES.md |
-| Calmar ratio (arithmetic vs geometric) | ✅ FIXED | 2025-12-18 | archived/2025-12-18/BACKTEST_FINANCIAL_METRICS_MTM_EQUITY_PHASES.md |
-| TF annualization silent defaults | ✅ FIXED | 2025-12-18 | archived/2025-12-18/BACKTEST_FINANCIAL_METRICS_MTM_EQUITY_PHASES.md |
-| Refactor cleanup (legacy paths) | ✅ COMPLETE | 2025-12-18 | docs/todos/REFACTOR_BEFORE_ADVANCING.md |
-| Backtest smoke test function conflict | ✅ FIXED | 2025-12-18 | Function name conflict resolved, Unicode encoding fixed |
-| Input-source routing (volume/open/high/low) | ✅ FIXED | 2025-12-17 | docs/todos/P0_INPUT_SOURCE_ROUTING_FIX.md |
-| Preflight/Engine warmup mismatch | ✅ FIXED | 2025-12-17 | docs/todos/WARMUP_SYNC_FIX.md |
 
 **No Current P0 Blockers** - All critical issues resolved
 
@@ -194,63 +220,57 @@ python trade_cli.py backtest metadata-smoke
 
 ## Next Steps (Canonical Roadmap)
 
-**Current Status:** Backtest pipeline validated and production-ready ✅
-**Price Feed (1m) + Preflight:** ✅ Complete (2025-12-31) - 1m quote stream, rollups, mandatory preflight
-**Engine Modular Refactor:** ✅ Complete (2025-12-30) - engine.py reduced from 2,236 to 1,154 lines across 8 modules
-**Backtester Fixes Phase 1:** ✅ Complete (2025-12-30) - 6 critical fixes applied, all tests passing
+**Current Status:** Backtest Engine and Market Structure complete ✅
+**Market Structure Stages 0-7:** ✅ Complete (2026-01-01) - Swing, Trend, Zones, Zone Interaction, State Tracking
+**Audit Swarm:** ✅ Complete (2026-01-01) - 12/16 P1 fixes applied, 33 open bugs tracked
 
-### 🔜 NEXT: Market Structure Features (Phase 5)
+### 🔜 NEXT: Bug Remediation + Future Features
 
-**Canonical Document:** `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md`
-**Status:** Phases 1-4 ✅ Complete, Phase 5 📋 **UNBLOCKED AND READY**
-**Prerequisites (all complete):**
-- ✅ Price Feed (1m) + Preflight phase complete (2025-12-31)
-- ✅ Engine Modular Refactor complete (2025-12-30)
-- ✅ Backtester Fixes complete (2025-12-30)
+**Active Tracking Document:** `docs/todos/AUDIT_OPEN_BUGS.md`
+**Status:** P0=0, P1=4 open (deferred), P2=19 open, P3=10 open
 
-**Available Resources:**
-- `px.rollup.*` accessors: `rollup_min_1m`, `rollup_max_1m`, `rollup_bars_1m`, etc.
-- `QuoteState`: Last trade proxy (`px.last.*`)
-- Mandatory 1m coverage enforced by preflight
+### Priority 1: Bug Remediation (Optional)
 
-**Recommended Prerequisite:** Registry Consolidation (`docs/todos/REGISTRY_CONSOLIDATION_PHASES.md`) - Remove hardcoded indicator enums before adding market structure indicators.
+| Bug | Effort | Impact |
+|-----|--------|--------|
+| P1-09: O(n) snapshot ops | 2h | Hot loop performance |
+| P1-15: Schema drift detection | 4h | Future-proofing |
+| P2-xx: Various polish items | ~8h total | Code quality |
 
-| Task | Effort | Status |
-|------|--------|--------|
-| Registry Consolidation (Phase 3) | 4h | 📋 Ready (recommended first) |
-| Market Structure enhancements | 16h | 📋 Ready |
-| Additional performance optimizations | 8h | Pending |
+### Priority 2: Future Features (Stage 8+)
+
+| Feature | Effort | Status |
+|---------|--------|--------|
+| Streaming (Stage 8) | 16h+ | 📋 Future - Demo/Live websocket integration |
+| Backtest Analytics (Phases 5-6) | 8h | 📋 Pending - Benchmark comparison, enhanced CLI |
+| BOS/CHoCH Detection | 8h | 📋 Future - Break of Structure / Change of Character |
+| Advanced Operators | 4h | 📋 Future - crosses_up, crosses_down, within_bps |
 
 ---
 
 ## Consolidated Next Actions (All Active TODOs)
 
-### Immediate Next (Priority 1) - ALL UNBLOCKED
+### Bug Tracking (Active)
 
-**📋 Registry Consolidation (Recommended First)**
-- **Document**: `docs/todos/REGISTRY_CONSOLIDATION_PHASES.md`
-- **Status**: Phases 0-2 ✅, Phase 3 📋 READY
-- **Effort**: ~4 hours
-- **Purpose**: Remove hardcoded indicator enums before adding market structure indicators
-
-**📋 Market Structure Features (Phase 5)**
-- **Document**: `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md`
-- **Status**: Phases 1-4 ✅, Phase 5 📋 **UNBLOCKED**
-- **Effort**: ~16-24 hours
-- **Prerequisites**: ✅ All complete (Price Feed, Engine Refactor, Backtester Fixes)
-
-**📋 Market Structure Integration Review**
-- **Document**: `docs/todos/MARKET_STRUCTURE_INTEGRATION_REVIEW.md`
-- **Status**: 📋 READY FOR REVIEW
-- **Purpose**: Code review to identify edge cases before Phase 5 implementation
+**📋 Audit Open Bugs**
+- **Document**: `docs/todos/AUDIT_OPEN_BUGS.md`
+- **Status**: P1: 4 open, P2: 19 open, P3: 10 open (33 total)
+- **Source**: Agentic Audit Swarm (2026-01-01)
+- **Note**: All P0 resolved, remaining are deferred/polish
 
 ### Future Enhancements (Priority 2 - Not Blocking)
 
-**📋 Backtest Analytics (Phases 4-6)**
+**📋 Backtest Analytics (Phases 5-6)**
 - **Document**: `docs/todos/BACKTEST_ANALYTICS_PHASES.md`
-- **Status**: Phases 1-3 ✅ Complete, Phases 4-6 📋 PENDING
-- **Scope**: Time-based analytics, benchmark comparison, enhanced CLI display
+- **Status**: Phases 1-4 ✅ Complete, Phases 5-6 📋 PENDING
+- **Scope**: Benchmark comparison, enhanced CLI display
 - **Note**: Future enhancement, not blocking any other work
+
+**📋 Streaming (Stage 8)**
+- **Document**: `docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md` (Section 6, Stage 8)
+- **Status**: 📋 FUTURE (separate track)
+- **Scope**: Demo/Live websocket, real-time tick aggregation
+- **Note**: Not required for backtest pipeline
 
 ### Ongoing Work (Priority 3)
 
@@ -270,7 +290,7 @@ python trade_cli.py backtest metadata-smoke
 
 - [x] All smoke tests pass (`--smoke full`)
 - [x] Phase 6 backtest smoke tests pass (6/6 tests with determinism)
-- [x] Toolkit contract audit passes (42/42)
+- [x] Toolkit contract audit passes (42/42 indicators)
 - [x] Math parity audit passes (P0 input-source fixed 2025-12-17)
 - [x] Financial metrics audit passes (`backtest metrics-audit` 6/6)
 - [x] Snapshot plumbing audit passes
@@ -285,6 +305,9 @@ python trade_cli.py backtest metadata-smoke
 - [x] Price Feed (1m) + Preflight complete ✅ (2025-12-31)
 - [x] Metrics consolidation complete ✅ (2026-01-01)
 - [x] IdeaCard value flow complete ✅ (2026-01-01)
+- [x] Market Structure Stages 0-7 complete ✅ (2026-01-01)
+- [x] Audit Swarm P1 fixes (12/16) complete ✅ (2026-01-01)
+- [x] 24 validation IdeaCards pass normalization ✅
 
 ---
 

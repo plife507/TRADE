@@ -10,7 +10,8 @@
 
 | Domain | Path | Maturity | Status |
 |--------|------|----------|--------|
-| Backtesting | `src/backtest/` | Production | ✅ Ready (Phase 5 pending) |
+| Backtesting | `src/backtest/` | Production | ✅ Ready |
+| Market Structure | `src/backtest/market_structure/` | Production | ✅ Stages 0-7 Complete |
 | CLI | `src/cli/` | Production | ✅ Stable |
 | Trade Execution | `src/core/` + `src/exchanges/` | Functional | Maintenance |
 | Data | `src/data/` | Production | ✅ Stable |
@@ -572,7 +573,11 @@ snapshot.mtf_rsi  # MTF indicator (constant until next MTF close)
 |----------|---------|
 | **ARCH_INDICATOR_WARMUP.md** | Indicator warmup computation, variable requirements, adding new indicators |
 | **ARCH_DELAY_BARS.md** | Delay bars functionality, market structure configuration, evaluation start offset |
-| **MARKET_STRUCTURE_INTEGRATION_PROPOSAL.md** | Market structure feature proposal (historical) |
+| **IDEACARD_ENGINE_FLOW.md** | IdeaCard to engine field mappings |
+
+**Archived:**
+- `archived/MARKET_STRUCTURE_INTEGRATION_PROPOSAL.md` - Historical proposal; superseded by implementation (Stages 0-7 complete in `docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md`)
+- `archived/INTRADAY_ADAPTIVE_SYSTEM_REVIEW.md` - Future design review; work not yet started
 
 **See Also:**
 - `docs/session_reviews/` - Detailed implementation reviews (historical reference)
