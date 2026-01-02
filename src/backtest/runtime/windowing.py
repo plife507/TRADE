@@ -219,7 +219,7 @@ def compute_load_window(
     warmup_bars_by_tf = {}
     max_lookback = 0
     for tf, lookback in indicator_lookbacks.items():
-        warmup_bars_by_tf[tf] = compute_warmup_bars(lookback, config.warmup_multiplier)
+        warmup_bars_by_tf[tf] = compute_warmup_bars(lookback)
         if lookback > max_lookback:
             max_lookback = lookback
     

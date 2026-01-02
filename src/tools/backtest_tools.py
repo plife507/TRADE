@@ -478,7 +478,7 @@ def backtest_run_tool(
                 risk_profile=resolved_risk,
                 risk_mode=config.risk_mode,
                 data_build=config.data_build,
-                warmup_multiplier=config.warmup_multiplier,
+                warmup_bars_by_role=config.warmup_bars_by_role,
             )
             logger.info(f"Applied risk overrides: {risk_overrides}")
         
