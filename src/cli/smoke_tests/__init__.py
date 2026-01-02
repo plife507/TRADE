@@ -42,6 +42,8 @@ from .prices import (
 
 from .structure import (
     run_structure_smoke,
+    run_state_tracking_smoke,
+    run_state_tracking_parity_smoke,
 )
 
 from .rules import (
@@ -69,6 +71,9 @@ __all__ = [
     "run_mark_price_smoke",
     # Structure tests
     "run_structure_smoke",
+    # State tracking tests
+    "run_state_tracking_smoke",
+    "run_state_tracking_parity_smoke",
     # Rule evaluation tests
     "run_rules_smoke",
 ]

@@ -86,7 +86,8 @@ class GateFailure(Exception):
 # =============================================================================
 # Pipeline Version (for artifact tracking)
 # =============================================================================
-PIPELINE_VERSION = "1.0.0"
+# Import from canonical source - single source of truth
+from .artifacts.pipeline_signature import PIPELINE_VERSION
 
 
 # =============================================================================

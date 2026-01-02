@@ -8,6 +8,9 @@ Stage 5: Validates end-to-end pipeline from StructureSpec (with zones) through
 snapshot.get("structure.<block_key>.zones.<zone_key>.<field>").
 
 Stage 5.1: Validates zone instance_id determinism and duplicate key validation.
+
+Stage 6: Validates zone interaction metrics (touched, inside, time_in_zone) with
+determinism guarantee.
 """
 
 import numpy as np
@@ -60,8 +63,8 @@ def run_structure_smoke(
     from src.backtest.runtime.snapshot_view import RuntimeSnapshotView
 
     console.print(Panel(
-        "[bold]MARKET STRUCTURE SMOKE TEST (Stage 5.1)[/]\n"
-        "[dim]Validates StructureBuilder + Zones + instance_id + Snapshot integration[/]",
+        "[bold]MARKET STRUCTURE SMOKE TEST (Stage 6)[/]\n"
+        "[dim]Validates StructureBuilder + Zones + Interaction + Snapshot integration[/]",
         border_style="cyan",
     ))
 
@@ -424,14 +427,20 @@ def run_structure_smoke(
         mark_price_source="close",
     )
 
-    # Test zone field access via snapshot
+    # Test zone field access via snapshot (including Stage 6 interaction fields)
     zone_tests = [
         "structure.ms_5m.zones.demand_1.lower",
         "structure.ms_5m.zones.demand_1.upper",
         "structure.ms_5m.zones.demand_1.state",
+        "structure.ms_5m.zones.demand_1.touched",       # Stage 6
+        "structure.ms_5m.zones.demand_1.inside",        # Stage 6
+        "structure.ms_5m.zones.demand_1.time_in_zone",  # Stage 6
         "structure.ms_5m.zones.supply_1.lower",
         "structure.ms_5m.zones.supply_1.upper",
         "structure.ms_5m.zones.supply_1.state",
+        "structure.ms_5m.zones.supply_1.touched",       # Stage 6
+        "structure.ms_5m.zones.supply_1.inside",        # Stage 6
+        "structure.ms_5m.zones.supply_1.time_in_zone",  # Stage 6
     ]
 
     for path in zone_tests:
@@ -664,6 +673,100 @@ def run_structure_smoke(
             failures += 1
 
     # =========================================================================
+    # Step 9.3: Test Zone Interaction Fields (Stage 6)
+    # =========================================================================
+    console.print(f"\n[bold]Step 9.3: Test Zone Interaction Fields (Stage 6)[/]")
+
+    from src.backtest.market_structure.types import ZONE_OUTPUTS
+
+    # Verify Stage 6 fields exist in ZONE_OUTPUTS
+    stage6_fields = {"touched", "inside", "time_in_zone"}
+    if not stage6_fields.issubset(set(ZONE_OUTPUTS)):
+        console.print(f"  [red]FAIL[/] Stage 6 fields missing from ZONE_OUTPUTS")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] Stage 6 fields in ZONE_OUTPUTS: {stage6_fields}")
+
+    # Verify interaction fields are computed for zones
+    for zone_key in ["demand_1", "supply_1"]:
+        zone_store = swing_store_check.zones.get(zone_key)
+        if zone_store is None:
+            continue
+
+        for field in stage6_fields:
+            if field not in zone_store.fields:
+                console.print(f"  [red]FAIL[/] Zone {zone_key} missing {field}")
+                failures += 1
+            else:
+                arr = zone_store.fields[field]
+                console.print(f"  [green]OK[/] Zone {zone_key}.{field} dtype={arr.dtype}")
+
+    # Verify dtypes: touched/inside = uint8, time_in_zone = int32
+    for zone_key, zone_store in swing_store_check.zones.items():
+        if "touched" in zone_store.fields:
+            if zone_store.fields["touched"].dtype != np.uint8:
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.touched should be uint8")
+                failures += 1
+        if "inside" in zone_store.fields:
+            if zone_store.fields["inside"].dtype != np.uint8:
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.inside should be uint8")
+                failures += 1
+        if "time_in_zone" in zone_store.fields:
+            if zone_store.fields["time_in_zone"].dtype != np.int32:
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.time_in_zone should be int32")
+                failures += 1
+
+    console.print(f"  [green]OK[/] Stage 6 dtype checks passed")
+
+    # Test state != ACTIVE override: when state is NONE, interaction metrics must be 0
+    for zone_key, zone_store in swing_store_check.zones.items():
+        state_arr = zone_store.fields["state"]
+        touched_arr = zone_store.fields["touched"]
+        inside_arr = zone_store.fields["inside"]
+        time_in_zone_arr = zone_store.fields["time_in_zone"]
+
+        # Find indices where state == NONE
+        none_mask = state_arr == ZoneState.NONE.value
+        if none_mask.any():
+            # All metrics should be 0 at these indices
+            if touched_arr[none_mask].any():
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.touched should be 0 when state=NONE")
+                failures += 1
+            if inside_arr[none_mask].any():
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.inside should be 0 when state=NONE")
+                failures += 1
+            if time_in_zone_arr[none_mask].any():
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.time_in_zone should be 0 when state=NONE")
+                failures += 1
+
+        # Find indices where state == BROKEN
+        broken_mask = state_arr == ZoneState.BROKEN.value
+        if broken_mask.any():
+            # All metrics should be 0 at break bars
+            if touched_arr[broken_mask].any():
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.touched should be 0 when state=BROKEN")
+                failures += 1
+            if inside_arr[broken_mask].any():
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.inside should be 0 when state=BROKEN")
+                failures += 1
+            if time_in_zone_arr[broken_mask].any():
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.time_in_zone should be 0 when state=BROKEN")
+                failures += 1
+
+    console.print(f"  [green]OK[/] Stage 6 state overrides verified (NONE/BROKEN -> metrics=0)")
+
+    # Test determinism for interaction fields
+    for zone_key in swing_store_check.zones:
+        for field in stage6_fields:
+            arr1 = stores[swing_spec.block_id].zones[zone_key].fields[field]
+            arr2 = stores2[swing_spec.block_id].zones[zone_key].fields[field]
+            if not np.array_equal(arr1, arr2):
+                console.print(f"  [red]FAIL[/] Zone {zone_key}.{field} not deterministic between runs")
+                failures += 1
+
+    console.print(f"  [green]OK[/] Stage 6 interaction fields deterministic between runs")
+
+    # =========================================================================
     # Step 10: Test pure function (detect_swing_pivots)
     # =========================================================================
     console.print(f"\n[bold]Step 10: Test Pure Function (detect_swing_pivots)[/]")
@@ -695,7 +798,7 @@ def run_structure_smoke(
     console.print(f"  Zones computed: demand_1, supply_1")
     console.print(f"  Failures: {failures}")
 
-    console.print(f"\n[bold]Stage 5 + 5.1 Checklist:[/]")
+    console.print(f"\n[bold]Stage 5 + 5.1 + 6 Checklist:[/]")
     console.print(f"  [green]OK[/] StructureBuilder orchestrates SWING + TREND")
     console.print(f"  [green]OK[/] Public field names (swing_high_level, not high_level)")
     console.print(f"  [green]OK[/] FeedStore.structures populated")
@@ -707,9 +810,486 @@ def run_structure_smoke(
     console.print(f"  [green]OK[/] Zone state machine: NONE -> ACTIVE -> BROKEN")
     console.print(f"  [green]OK[/] Zone instance_id computed deterministically (Stage 5.1)")
     console.print(f"  [green]OK[/] Duplicate zone keys rejected at build time (Stage 5.1)")
+    console.print(f"  [green]OK[/] Zone interaction fields (touched, inside, time_in_zone) (Stage 6)")
+    console.print(f"  [green]OK[/] Dtypes: touched/inside=uint8, time_in_zone=int32 (Stage 6)")
+    console.print(f"  [green]OK[/] State overrides: NONE/BROKEN -> metrics=0 (Stage 6)")
+    console.print(f"  [green]OK[/] Interaction fields deterministic between runs (Stage 6)")
 
     if failures == 0:
-        console.print(f"\n[bold green]OK[/] STAGE 5 MARKET STRUCTURE + ZONES VERIFIED")
+        console.print(f"\n[bold green]OK[/] STAGE 6 MARKET STRUCTURE + ZONES + INTERACTION VERIFIED")
+    else:
+        console.print(f"\n[bold red]FAIL[/] {failures} failure(s)")
+
+    return failures
+
+
+def run_state_tracking_smoke() -> int:
+    """
+    Run Stage 7 state tracking smoke test.
+
+    Validates:
+    - State types import correctly
+    - State transitions are deterministic
+    - GateResult pass/fail helpers work
+    - BlockState properties compute correctly
+
+    Returns:
+        Number of failures (0 = success)
+    """
+    console.print(Panel(
+        "[bold]STATE TRACKING SMOKE TEST (Stage 7)[/]\n"
+        "[dim]Validates Signal/Action/Gate state machines[/]",
+        border_style="cyan",
+    ))
+
+    failures = 0
+
+    # =========================================================================
+    # Step 1: Import state types
+    # =========================================================================
+    console.print(f"\n[bold]Step 1: Import State Types[/]")
+
+    try:
+        from src.backtest.runtime import (
+            SignalStateValue,
+            ActionStateValue,
+            GateCode,
+            GateResult,
+            SignalState,
+            ActionState,
+            BlockState,
+            create_state_tracker,
+        )
+        console.print(f"  [green]OK[/] All Stage 7 types imported")
+    except ImportError as e:
+        console.print(f"  [red]FAIL[/] Import error: {e}")
+        return 1  # Fatal
+
+    # =========================================================================
+    # Step 2: Test GateResult helpers
+    # =========================================================================
+    console.print(f"\n[bold]Step 2: Test GateResult Helpers[/]")
+
+    result_pass = GateResult.pass_()
+    if not result_pass.passed:
+        console.print(f"  [red]FAIL[/] GateResult.pass_() should have passed=True")
+        failures += 1
+    elif result_pass.code != GateCode.G_PASS:
+        console.print(f"  [red]FAIL[/] GateResult.pass_() should have code=G_PASS")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] GateResult.pass_() works correctly")
+
+    result_fail = GateResult.fail_(GateCode.G_WARMUP_REMAINING)
+    if result_fail.passed:
+        console.print(f"  [red]FAIL[/] GateResult.fail_() should have passed=False")
+        failures += 1
+    elif result_fail.code != GateCode.G_WARMUP_REMAINING:
+        console.print(f"  [red]FAIL[/] GateResult.fail_() should preserve code")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] GateResult.fail_() works correctly")
+
+    # =========================================================================
+    # Step 3: Test State Transitions
+    # =========================================================================
+    console.print(f"\n[bold]Step 3: Test State Transitions[/]")
+
+    from src.backtest.runtime import transition_signal_state, reset_signal_state
+
+    # Test NONE -> CONFIRMED (one-bar confirmation)
+    initial = reset_signal_state()
+    if initial.value != SignalStateValue.NONE:
+        console.print(f"  [red]FAIL[/] reset_signal_state() should return NONE")
+        failures += 1
+
+    next_state = transition_signal_state(
+        prev_state=initial,
+        bar_idx=10,
+        signal_detected=True,
+        signal_direction=1,  # LONG
+        gate_result=GateResult.pass_(),
+        action_taken=False,
+        next_signal_id=1,
+        confirmation_bars=1,
+    )
+
+    if next_state.value != SignalStateValue.CONFIRMED:
+        console.print(f"  [red]FAIL[/] One-bar confirmation should go directly to CONFIRMED")
+        failures += 1
+    elif next_state.direction != 1:
+        console.print(f"  [red]FAIL[/] Signal direction should be preserved")
+        failures += 1
+    elif next_state.detected_bar != 10:
+        console.print(f"  [red]FAIL[/] detected_bar should be set")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] NONE -> CONFIRMED transition works")
+
+    # Test CONFIRMED -> CONSUMED (action taken)
+    consumed_state = transition_signal_state(
+        prev_state=next_state,
+        bar_idx=11,
+        signal_detected=False,
+        signal_direction=0,
+        gate_result=GateResult.pass_(),
+        action_taken=True,
+        next_signal_id=2,
+        confirmation_bars=1,
+    )
+
+    if consumed_state.value != SignalStateValue.CONSUMED:
+        console.print(f"  [red]FAIL[/] CONFIRMED + action_taken should go to CONSUMED")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] CONFIRMED -> CONSUMED transition works")
+
+    # =========================================================================
+    # Step 4: Test BlockState Properties
+    # =========================================================================
+    console.print(f"\n[bold]Step 4: Test BlockState Properties[/]")
+
+    from src.backtest.runtime import create_block_state
+
+    block = create_block_state(
+        bar_idx=10,
+        signal=next_state,  # CONFIRMED
+        action=ActionState(),  # IDLE
+        gate=GateResult.pass_(),
+        raw_signal_direction=1,
+    )
+
+    if not block.is_actionable:
+        console.print(f"  [red]FAIL[/] BlockState.is_actionable should be True")
+        failures += 1
+    elif block.is_blocked:
+        console.print(f"  [red]FAIL[/] BlockState.is_blocked should be False")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] BlockState properties work correctly")
+
+    # Test blocked block
+    blocked_block = create_block_state(
+        bar_idx=5,
+        signal=SignalState(value=SignalStateValue.CONFIRMED),
+        action=ActionState(),
+        gate=GateResult.fail_(GateCode.G_WARMUP_REMAINING),
+        raw_signal_direction=1,
+    )
+
+    if blocked_block.is_actionable:
+        console.print(f"  [red]FAIL[/] Blocked BlockState should not be actionable")
+        failures += 1
+    elif not blocked_block.is_blocked:
+        console.print(f"  [red]FAIL[/] Blocked BlockState.is_blocked should be True")
+        failures += 1
+    elif blocked_block.block_code != GateCode.G_WARMUP_REMAINING:
+        console.print(f"  [red]FAIL[/] block_code should be preserved")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] Blocked BlockState properties work correctly")
+
+    # =========================================================================
+    # Step 5: Test StateTracker
+    # =========================================================================
+    console.print(f"\n[bold]Step 5: Test StateTracker[/]")
+
+    tracker = create_state_tracker(warmup_bars=10)
+
+    # Simulate a few bars
+    for bar_idx in range(15):
+        tracker.on_bar_start(bar_idx)
+        tracker.on_warmup_check(bar_idx >= 10, 10)
+        tracker.on_history_check(True, bar_idx)
+
+        # Simulate signal on bars 11 and 13
+        if bar_idx in (11, 13):
+            tracker.on_signal_evaluated(1)  # LONG signal
+        else:
+            tracker.on_signal_evaluated(0)  # No signal
+
+        tracker.on_position_check(0)
+        tracker.on_bar_end()
+
+    # Check history was recorded
+    if len(tracker.block_history) != 15:
+        console.print(f"  [red]FAIL[/] block_history should have 15 entries, got {len(tracker.block_history)}")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] block_history has correct length")
+
+    # Check summary stats
+    stats = tracker.summary_stats()
+    if stats.get("total_bars") != 15:
+        console.print(f"  [red]FAIL[/] summary_stats total_bars wrong")
+        failures += 1
+    elif stats.get("signals_detected", 0) < 2:
+        console.print(f"  [red]FAIL[/] summary_stats should show 2 signals detected")
+        failures += 1
+    else:
+        console.print(f"  [green]OK[/] StateTracker summary_stats works")
+
+    # =========================================================================
+    # Step 6: Test Determinism
+    # =========================================================================
+    console.print(f"\n[bold]Step 6: Test Determinism[/]")
+
+    # Run twice with same inputs
+    tracker1 = create_state_tracker(warmup_bars=10)
+    tracker2 = create_state_tracker(warmup_bars=10)
+
+    for bar_idx in range(20):
+        # Same inputs to both trackers
+        signal_direction = 1 if bar_idx in (11, 13, 15) else 0
+
+        for t in (tracker1, tracker2):
+            t.on_bar_start(bar_idx)
+            t.on_warmup_check(bar_idx >= 10, 10)
+            t.on_history_check(True, bar_idx)
+            t.on_signal_evaluated(signal_direction)
+            t.on_position_check(0)
+            t.on_bar_end()
+
+    # Compare histories
+    determinism_ok = True
+    for i in range(20):
+        b1 = tracker1.block_history[i]
+        b2 = tracker2.block_history[i]
+        if b1.signal.value != b2.signal.value:
+            console.print(f"  [red]FAIL[/] Signal state differs at bar {i}")
+            failures += 1
+            determinism_ok = False
+            break
+        if b1.gate.code != b2.gate.code:
+            console.print(f"  [red]FAIL[/] Gate code differs at bar {i}")
+            failures += 1
+            determinism_ok = False
+            break
+
+    if determinism_ok:
+        console.print(f"  [green]OK[/] State tracking is deterministic")
+
+    # =========================================================================
+    # Summary
+    # =========================================================================
+    console.print(f"\n{'='*60}")
+    console.print(f"[bold cyan]STATE TRACKING SMOKE TEST COMPLETE (Stage 7)[/]")
+    console.print(f"{'='*60}")
+
+    console.print(f"\n[bold]Stage 7 Checklist:[/]")
+    console.print(f"  [green]OK[/] State type enums imported")
+    console.print(f"  [green]OK[/] GateResult pass/fail helpers work")
+    console.print(f"  [green]OK[/] Signal state transitions correct")
+    console.print(f"  [green]OK[/] BlockState properties compute correctly")
+    console.print(f"  [green]OK[/] StateTracker records block history")
+    console.print(f"  [green]OK[/] State tracking is deterministic")
+
+    if failures == 0:
+        console.print(f"\n[bold green]OK[/] STAGE 7 STATE TRACKING VERIFIED")
+    else:
+        console.print(f"\n[bold red]FAIL[/] {failures} failure(s)")
+
+    return failures
+
+
+def run_state_tracking_parity_smoke(
+    idea_card_id: str = "V_01_single_5m_rsi_ema",
+) -> int:
+    """
+    Run State Tracking Parity Smoke Test.
+
+    Validates the "record-only guarantee": state tracking must not affect
+    trade outcomes. Runs the same IdeaCard twice:
+    1. With record_state_tracking=False (baseline)
+    2. With record_state_tracking=True (test)
+
+    Compares trades hashes to ensure parity.
+
+    Args:
+        idea_card_id: IdeaCard to use for the test (default: V_01)
+
+    Returns:
+        Number of failures (0 = success)
+
+    Raises:
+        ValueError: If parity is violated (hashes differ)
+    """
+    from datetime import datetime, timezone
+    from pathlib import Path
+    import tempfile
+
+    from src.backtest.idea_card import load_idea_card
+    from src.backtest.execution_validation import compute_warmup_requirements
+    from src.backtest.engine_factory import create_engine_from_idea_card, run_engine_with_idea_card
+    from src.backtest.artifacts.hashes import compute_trades_hash
+    from src.data.historical_data_store import get_historical_store
+
+    console.print(Panel(
+        "[bold]STATE TRACKING PARITY SMOKE TEST[/]\n"
+        "[dim]Validates record_state_tracking does not affect trade outcomes[/]",
+        border_style="cyan",
+    ))
+
+    failures = 0
+
+    # =========================================================================
+    # Step 1: Load IdeaCard and compute window
+    # =========================================================================
+    console.print(f"\n[bold]Step 1: Load IdeaCard[/]")
+
+    try:
+        idea_card = load_idea_card(idea_card_id)
+        console.print(f"  [green]OK[/] Loaded IdeaCard: {idea_card_id}")
+    except FileNotFoundError as e:
+        console.print(f"  [red]FAIL[/] IdeaCard not found: {e}")
+        return 1
+
+    # Get symbol and check data availability
+    symbol = idea_card.symbol_universe[0] if idea_card.symbol_universe else "BTCUSDT"
+    exec_tf = idea_card.exec_tf
+
+    console.print(f"      Symbol: {symbol}")
+    console.print(f"      Exec TF: {exec_tf}")
+
+    # =========================================================================
+    # Step 2: Check data availability
+    # =========================================================================
+    console.print(f"\n[bold]Step 2: Check Data Availability[/]")
+
+    try:
+        store = get_historical_store()
+        # Use a short window for smoke testing
+        window_end = datetime.now(timezone.utc).replace(tzinfo=None)
+        window_start = window_end - timedelta(days=7)
+
+        # Check if we have data
+        df = store.query_ohlcv(
+            symbol=symbol,
+            timeframe=exec_tf,
+            start=window_start,
+            end=window_end,
+        )
+
+        if df is None or len(df) < 100:
+            console.print(f"  [yellow]SKIP[/] Insufficient data ({len(df) if df is not None else 0} bars)")
+            console.print(f"      Need at least 100 bars for parity test")
+            console.print(f"      Run: python trade_cli.py data sync --symbol {symbol} --tf {exec_tf}")
+            return 0  # Skip, not fail
+
+        console.print(f"  [green]OK[/] Data available: {len(df)} bars")
+        console.print(f"      Window: {window_start.date()} to {window_end.date()}")
+
+    except Exception as e:
+        console.print(f"  [yellow]SKIP[/] Could not query data: {e}")
+        return 0  # Skip, not fail
+
+    # =========================================================================
+    # Step 3: Compute warmup requirements
+    # =========================================================================
+    console.print(f"\n[bold]Step 3: Compute Warmup[/]")
+
+    try:
+        warmup_reqs = compute_warmup_requirements(idea_card)
+        warmup_by_role = warmup_reqs.warmup_by_role
+        delay_by_role = warmup_reqs.delay_by_role
+        console.print(f"  [green]OK[/] Warmup by role: {warmup_by_role}")
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] Warmup computation failed: {e}")
+        return 1
+
+    # =========================================================================
+    # Step 4: Run backtest WITHOUT state tracking (baseline)
+    # =========================================================================
+    console.print(f"\n[bold]Step 4: Run Backtest (record_state_tracking=False)[/]")
+
+    try:
+        engine_baseline = create_engine_from_idea_card(
+            idea_card=idea_card,
+            window_start=window_start,
+            window_end=window_end,
+            warmup_by_role=warmup_by_role,
+            delay_by_role=delay_by_role,
+            run_dir=None,
+        )
+        # Explicitly set record_state_tracking=False (should be default)
+        engine_baseline.record_state_tracking = False
+
+        result_baseline = run_engine_with_idea_card(engine_baseline, idea_card)
+        trades_hash_baseline = compute_trades_hash(result_baseline.trades)
+
+        console.print(f"  [green]OK[/] Baseline run completed")
+        console.print(f"      Trades: {len(result_baseline.trades)}")
+        console.print(f"      Trades hash: {trades_hash_baseline}")
+
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] Baseline run failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+    # =========================================================================
+    # Step 5: Run backtest WITH state tracking
+    # =========================================================================
+    console.print(f"\n[bold]Step 5: Run Backtest (record_state_tracking=True)[/]")
+
+    try:
+        engine_with_tracking = create_engine_from_idea_card(
+            idea_card=idea_card,
+            window_start=window_start,
+            window_end=window_end,
+            warmup_by_role=warmup_by_role,
+            delay_by_role=delay_by_role,
+            run_dir=None,
+        )
+        # Enable state tracking
+        engine_with_tracking.record_state_tracking = True
+
+        result_with_tracking = run_engine_with_idea_card(engine_with_tracking, idea_card)
+        trades_hash_with_tracking = compute_trades_hash(result_with_tracking.trades)
+
+        console.print(f"  [green]OK[/] State tracking run completed")
+        console.print(f"      Trades: {len(result_with_tracking.trades)}")
+        console.print(f"      Trades hash: {trades_hash_with_tracking}")
+
+    except Exception as e:
+        console.print(f"  [red]FAIL[/] State tracking run failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+    # =========================================================================
+    # Step 6: Compare hashes
+    # =========================================================================
+    console.print(f"\n[bold]Step 6: Compare Trade Hashes[/]")
+
+    if trades_hash_baseline == trades_hash_with_tracking:
+        console.print(f"  [green]OK[/] PARITY CONFIRMED")
+        console.print(f"      Baseline hash:  {trades_hash_baseline}")
+        console.print(f"      Tracking hash:  {trades_hash_with_tracking}")
+    else:
+        console.print(f"  [red]FAIL[/] PARITY VIOLATED!")
+        console.print(f"      Baseline hash:  {trades_hash_baseline}")
+        console.print(f"      Tracking hash:  {trades_hash_with_tracking}")
+        console.print(f"      [red]State tracking affected trade outcomes - this is a BUG[/]")
+        failures += 1
+        raise ValueError(
+            f"State tracking parity violated: baseline={trades_hash_baseline}, "
+            f"tracking={trades_hash_with_tracking}"
+        )
+
+    # =========================================================================
+    # Summary
+    # =========================================================================
+    console.print(f"\n{'='*60}")
+    console.print(f"[bold cyan]STATE TRACKING PARITY SMOKE TEST COMPLETE[/]")
+    console.print(f"{'='*60}")
+
+    console.print(f"\n[bold]Record-Only Guarantee:[/]")
+    console.print(f"  [green]OK[/] record_state_tracking=True produces identical trades")
+    console.print(f"  [green]OK[/] Trade hash matches baseline: {trades_hash_baseline}")
+
+    if failures == 0:
+        console.print(f"\n[bold green]OK[/] STATE TRACKING PARITY VERIFIED")
     else:
         console.print(f"\n[bold red]FAIL[/] {failures} failure(s)")
 

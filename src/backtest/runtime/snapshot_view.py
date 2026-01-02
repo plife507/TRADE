@@ -29,7 +29,7 @@ LEGACY REMOVED:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Callable, Dict, Optional, Any
 
 import numpy as np
 
@@ -154,6 +154,7 @@ class RuntimeSnapshotView:
         'exchange', 'mark_price', 'mark_price_source',
         'tf_mapping', 'history_config',
         'history_ready', '_feeds', '_rollups',
+        '_resolvers',
     )
     
     def __init__(
@@ -229,6 +230,9 @@ class RuntimeSnapshotView:
 
         # Phase 3: 1m rollups (px.rollup.*)
         self._rollups = rollups or {}
+
+        # Build namespace resolvers (instance variable for hot-path performance)
+        self._resolvers = self._build_resolvers()
     
     # =========================================================================
     # Readiness
@@ -709,13 +713,18 @@ class RuntimeSnapshotView:
     #
     # =========================================================================
 
-    # Namespace dispatch table (populated in get())
-    # Maps namespace -> resolver method name
-    _NAMESPACE_RESOLVERS = {
-        "price": "_resolve_price_path",
-        "indicator": "_resolve_indicator_path",
-        "structure": "_resolve_structure_path",
-    }
+    def _build_resolvers(self) -> Dict[str, Callable]:
+        """
+        Build namespace resolver dispatch table (instance variable).
+
+        Returns dict mapping namespace -> resolver method.
+        Called once in __init__ for hot-path performance.
+        """
+        return {
+            "price": self._resolve_price_path,
+            "indicator": self._resolve_indicator_path,
+            "structure": self._resolve_structure_path,
+        }
 
     def get(self, path: str) -> Optional[float]:
         """
@@ -741,16 +750,15 @@ class RuntimeSnapshotView:
         parts = path.split(".")
         namespace = parts[0]
 
-        # Dispatch to namespace resolver
-        resolver_name = self._NAMESPACE_RESOLVERS.get(namespace)
-        if resolver_name is None:
-            supported = sorted(self._NAMESPACE_RESOLVERS.keys())
+        # Dispatch to namespace resolver (instance lookup, no getattr)
+        resolver = self._resolvers.get(namespace)
+        if resolver is None:
+            supported = sorted(self._resolvers.keys())
             raise ValueError(
                 f"Unknown path namespace: '{path}'. "
                 f"Supported: {', '.join(f'{ns}.*' for ns in supported)}"
             )
 
-        resolver = getattr(self, resolver_name)
         return resolver(parts[1:], path)
 
     def _resolve_indicator_path(self, parts: list, full_path: str) -> Optional[float]:
@@ -778,8 +786,10 @@ class RuntimeSnapshotView:
         """
         Resolve price.* paths.
 
-        Stage 1: only price.mark.close
-        Stage 6: extends to price.mark.high, price.mark.low
+        Stage 6: price.mark.{close,high,low} supported.
+        - price.mark.close → mark_price (from exchange step)
+        - price.mark.high → exec-bar high (contract alias)
+        - price.mark.low → exec-bar low (contract alias)
 
         Args:
             parts: Path parts after "price." (e.g., ["mark", "close"])
@@ -797,15 +807,16 @@ class RuntimeSnapshotView:
         if price_type == "mark":
             if field == "close":
                 return self.mark_price
-            elif field in ("high", "low"):
-                raise ValueError(
-                    f"price.mark.{field} not available in Stage 1. "
-                    f"Only price.mark.close is implemented."
-                )
+            elif field == "high":
+                # Stage 6: price.mark.high = exec-bar high (contract alias)
+                return self.high
+            elif field == "low":
+                # Stage 6: price.mark.low = exec-bar low (contract alias)
+                return self.low
             else:
                 raise ValueError(
                     f"Unknown price.mark field: '{field}'. "
-                    f"Supported: close"
+                    f"Supported: close, high, low"
                 )
 
         elif price_type == "last":

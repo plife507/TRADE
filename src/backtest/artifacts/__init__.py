@@ -29,10 +29,12 @@ from .artifact_standards import (
     validate_artifact_path_config,
     ResultsSummary,
     compute_results_summary,
+    VersionMismatchError,
+    MANIFEST_SCHEMA_VERSION,
 )
 
 # Current artifact schema version
-ARTIFACT_VERSION = "0.1-dev"
+ARTIFACT_VERSION = "1.0.0"
 
 __all__ = [
     "ManifestWriter",
@@ -51,5 +53,8 @@ __all__ = [
     "validate_artifact_path_config",
     "ResultsSummary",
     "compute_results_summary",
+    # Version safety (Phase 1 fixes)
+    "VersionMismatchError",
+    "MANIFEST_SCHEMA_VERSION",
 ]
 

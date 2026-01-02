@@ -20,7 +20,7 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 - 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
 - 42 indicators in string-based registry (single source of truth)
 - IdeaCard-first CLI with full menu coverage
-- 21 validation IdeaCards in `configs/idea_cards/_validation/`
+- 24 validation IdeaCards in `configs/idea_cards/_validation/`
 
 **Next Up**: Market Structure Features (Phase 5)
 - Swing/pivot/trend detection
@@ -456,7 +456,7 @@ All validation IdeaCards are in `configs/idea_cards/_validation/` with naming co
 | V_51-V_59 | 1m Drift | 1 card |
 | V_E01-V_E99 | Error cases | 3 cards |
 
-**Total**: 21 IdeaCards covering all 42 indicators
+**Total**: 24 IdeaCards covering all 42 indicators
 
 ### Validation Tiers
 

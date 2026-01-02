@@ -481,6 +481,12 @@ class RuleOperator(str, Enum):
     CROSS_BELOW = "cross_below"   # Value crosses below threshold
 
 
+# Operators banned at parse time (Stage 4c hardening)
+# These require previous-bar state and are not supported in compiled evaluation.
+# Rewrite using derived indicator features or wait for future stage support.
+BANNED_OPERATORS = frozenset({"cross_above", "cross_below"})
+
+
 @dataclass(frozen=True)
 class Condition:
     """
@@ -524,10 +530,24 @@ class Condition:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Condition":
-        """Create from dict."""
+        """Create from dict.
+
+        Raises:
+            ValueError: If operator is banned (cross_above, cross_below)
+        """
+        # Fix 3.2 (P1-10): Reject banned operators at parse time
+        operator_str = d["operator"]
+        if operator_str in BANNED_OPERATORS:
+            raise ValueError(
+                f"Operator '{operator_str}' is not supported (Stage 4c). "
+                f"Rewrite using derived indicator features or threshold comparisons. "
+                f"Example: Instead of 'rsi cross_above 30', use 'rsi_crossed_30 eq 1' "
+                f"with a derived indicator. Indicator key: {d.get('indicator_key', '?')}"
+            )
+
         return cls(
             indicator_key=d["indicator_key"],
-            operator=RuleOperator(d["operator"]),
+            operator=RuleOperator(operator_str),
             value=d["value"],
             is_indicator_comparison=d.get("is_indicator_comparison", False),
             tf=d.get("tf", "exec"),

@@ -40,7 +40,7 @@ Output Arrays (per-bar, forward-filled):
 
 import hashlib
 import numpy as np
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from src.backtest.market_structure.types import (
     ZoneType,
@@ -118,6 +118,7 @@ class ZoneDetector:
         close_prices: np.ndarray,
         zone_spec: ZoneSpec,
         atr: np.ndarray | None = None,
+        warmup_bars: int = 0,
     ) -> Dict[str, np.ndarray]:
         """
         Compute zone arrays from swing outputs.
@@ -129,6 +130,7 @@ class ZoneDetector:
             close_prices: Close prices for break detection
             zone_spec: Zone specification with width model
             atr: ATR array if width_model='atr_mult'
+            warmup_bars: Number of warmup bars (zones skipped during warmup if ATR unavailable)
 
         Returns:
             Dict mapping ZONE_OUTPUTS keys to numpy arrays
@@ -178,8 +180,12 @@ class ZoneDetector:
                 if not np.isnan(bar_anchor_level):
                     # New zone from new swing point
                     width = self._compute_width(
-                        zone_spec, bar_anchor_level, atr, i
+                        zone_spec, bar_anchor_level, atr, i, warmup_bars
                     )
+
+                    # Skip zone creation if width is None (ATR unavailable during warmup)
+                    if width is None:
+                        continue
 
                     if is_demand:
                         current_lower = bar_anchor_level - width
@@ -234,8 +240,17 @@ class ZoneDetector:
         anchor_level: float,
         atr: np.ndarray | None,
         bar_idx: int,
-    ) -> float:
-        """Compute zone width based on width model."""
+        warmup_bars: int = 0,
+    ) -> Optional[float]:
+        """
+        Compute zone width based on width model.
+
+        Returns:
+            Zone width, or None if ATR unavailable during warmup.
+
+        Raises:
+            ValueError: If ATR unavailable after warmup period.
+        """
         model = zone_spec.width_model
         params = zone_spec.width_params
 
@@ -246,9 +261,15 @@ class ZoneDetector:
                     "Ensure ATR indicator is computed with matching atr_len."
                 )
             atr_val = atr[bar_idx] if bar_idx < len(atr) else np.nan
-            if np.isnan(atr_val):
-                # Fallback to 1% if ATR not available yet
-                return anchor_level * 0.01
+            if atr_val is None or np.isnan(atr_val):
+                if bar_idx < warmup_bars:
+                    # During warmup, skip zone creation
+                    return None
+                else:
+                    raise ValueError(
+                        f"ATR not available at bar {bar_idx} after warmup. "
+                        f"Ensure ATR indicator is computed before zone detection."
+                    )
             mult = params.get("mult", 1.0)
             return atr_val * mult
 
@@ -279,11 +300,6 @@ ZONE_OUTPUT_MAPPING: Dict[str, str] = {
 }
 
 # Public fields for allowlist validation
-ZONE_PUBLIC_FIELDS: Tuple[str, ...] = (
-    "lower",
-    "upper",
-    "state",
-    "recency",
-    "parent_anchor_id",
-    "instance_id",
-)
+# CANONICAL SOURCE: ZONE_OUTPUTS in types.py (single source of truth)
+# This alias exists for import convenience; do NOT add fields here directly
+ZONE_PUBLIC_FIELDS: Tuple[str, ...] = ZONE_OUTPUTS
