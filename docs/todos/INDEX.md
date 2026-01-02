@@ -2,7 +2,7 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** Index of active TODO phase documents for work tracking
-**LAST UPDATED:** January 1, 2026 (Market Structure Stages 0-5.1 complete)
+**LAST UPDATED:** January 1, 2026 (Market Structure Stages 0-7 complete, audit bugs tracked)
 
 ---
 
@@ -21,37 +21,44 @@ Per project rules:
 
 **BacktestMetrics System**: 62 comprehensive fields for leveraged futures trading
 **Indicator Registry**: 42 indicators, string-based types, single source of truth
+**Market Structure**: Stages 0-7 complete (swing, trend, zones, interaction, state tracking)
 **CLI**: IdeaCard-first workflow with full menu coverage
-**Validation**: All IdeaCards in `configs/idea_cards/_validation/` (21 cards)
+**Validation**: All IdeaCards in `configs/idea_cards/_validation/` (21+ cards)
 
 ---
 
 ## Active TODOs
 
-### Priority 1: Ready to Execute
+### Priority 1: Completed (Backtest Engine)
 
-| Document | Status | Scope | Next Step |
-|----------|--------|-------|-----------|
-| [Market Structure Phases](MARKET_STRUCTURE_PHASES.md) | Stages 0-5.1 ✅, Stage 6 📋 READY | Market structure engine | Zone interaction OR unified state tracking |
+| Document | Status | Scope |
+|----------|--------|-------|
+| [Market Structure Phases](MARKET_STRUCTURE_PHASES.md) | Stages 0-7 ✅ COMPLETE, Stage 8 (streaming) separate track | Market structure engine with state tracking |
 
-### Priority 2: Completed / Superseded
+### Priority 2: Bug Tracking
+
+| Document | Status | Scope |
+|----------|--------|-------|
+| [Audit Open Bugs](AUDIT_OPEN_BUGS.md) | ACTIVE (P1: 4 open, P2: 19 open, P3: 10 open) | Bug tracking from agentic audit swarm |
+
+### Priority 3: Completed / Superseded
 
 | Document | Status | Scope |
 |----------|--------|-------|
 | [Array-Backed Hot Loop](ARRAY_BACKED_HOT_LOOP_PHASES.md) | Phases 1-4 ✅, Phase 5 ✅ SUPERSEDED | Hot loop refactor + market structure (now in MARKET_STRUCTURE_PHASES.md) |
 | [Registry Consolidation](REGISTRY_CONSOLIDATION_PHASES.md) | Phases 0-2 ✅, Phase 3 ✅ SUPERSEDED | Indicator registry (structures use separate module) |
 
-### Priority 3: Future Enhancements (Not Blocking)
+### Priority 4: Future Enhancements (Not Blocking)
 
 | Document | Status | Scope |
 |----------|--------|-------|
-| [Backtest Analytics](BACKTEST_ANALYTICS_PHASES.md) | Phases 1-4 ✅, Phases 5-6 📋 pending | Benchmark comparison, enhanced CLI |
+| [Backtest Analytics](BACKTEST_ANALYTICS_PHASES.md) | Phases 1-4 ✅ COMPLETE, Phases 5-6 📋 pending | Benchmark comparison, enhanced CLI |
 
 ### Reference Documents (Not TODOs)
 
 | Document | Purpose |
 |----------|---------|
-| [Market Structure Integration Review](MARKET_STRUCTURE_INTEGRATION_REVIEW.md) | Code review prompts for Phase 5 prep |
+| [Market Structure Integration Review](MARKET_STRUCTURE_INTEGRATION_REVIEW.md) | Code review prompts for Phase 5 prep (historical) |
 | [Comprehensive Indicator Test Matrix](COMPREHENSIVE_INDICATOR_TEST_MATRIX.md) | Test coverage reference (42 indicators) |
 
 ---

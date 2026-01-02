@@ -1,8 +1,8 @@
 # Market Structure Integration - Staged Implementation Plan
 
-**Status**: Stage 0-5.1 ✅ COMPLETE, Stage 6 📋 READY
+**Status**: Stage 0-7 ✅ COMPLETE, Stage 8 (streaming) separate track
 **Created**: 2026-01-01
-**Updated**: 2026-01-01 (v10 - Stage 5 + 5.1 complete with zone hardening)
+**Updated**: 2026-01-01 (v11 - Stage 6 + 7 complete with zone interaction and state tracking)
 **Goal**: Build a modular Market Structure Engine enabling logic-based strategies combining structure detection, indicators, and implicit MARK price.
 
 ---
@@ -679,65 +679,133 @@ class TrendState(int, Enum):
 
 ---
 
-### Stage 6: Zone Interaction (Optional)
+### Stage 6: Zone Interaction ✅ COMPLETE
 
-**Goal**: Compute interaction metrics for zones.
+**Goal**: Compute interaction metrics for zones using exec-bar OHLC.
 
-**Prerequisite:** Extend MarkPriceEngine with `get_mark_bar()` returning (high, low, close) for interaction computation.
+**Design Decision**: `price.mark.high/low` = exec-bar OHLC (contract alias, not separate values)
+- SimMarkProvider only has close — no historical mark high/low exists
+- Exec-bar OHLC is already available via `snapshot.high`, `snapshot.low`
+- "Mark" naming is a contract; implementation uses exec-bar data
+- **No changes to SimMarkProvider or MarkPriceEngine**
+
+**Metric Definitions (Corrected):**
+```python
+# touched = range intersection (candle overlaps zone)
+touched = (bar_low <= upper) AND (bar_high >= lower)
+
+# inside = close-based occupancy (deterministic, less wick noise)
+inside = (bar_close >= lower) AND (bar_close <= upper)
+
+# time_in_zone = consecutive bars where:
+#   state == ACTIVE AND inside == True AND instance_id unchanged
+# Reset to 0 when any condition fails
+```
+
+**Reset Rules:**
+- Reset all metrics to 0 when:
+  - `state != ACTIVE` (zone broken or none)
+  - `instance_id` changes (slot got new occupant)
+- Break bar override: if `state[i] == BROKEN` → force all metrics to 0
+
+**Dtypes:**
+- touched, inside: uint8 (0/1)
+- time_in_zone: int32
 
 **Deliverables:**
-- [ ] 6.1 Extend MarkPriceEngine with `get_mark_bar()` for high/low access
-- [ ] 6.2 Add `price.mark.high`, `price.mark.low` to snapshot
-- [ ] 6.3 Implement `ZoneInteractionComputer`
-- [ ] 6.4 Add metrics: `touched`, `inside`, `time_in_zone`
-- [ ] 6.5 Reset interaction state on parent advance
-- [ ] 6.6 Add accessor: `structure.<key>.zones.<zone>.touched`
+
+Phase 1: Snapshot Path Extension
+- [x] 6.1.1 Update `_resolve_price_path()` to map `price.mark.high` → `self.high`
+- [x] 6.1.2 Update `_resolve_price_path()` to map `price.mark.low` → `self.low`
+
+Phase 2: Zone Interaction Computer
+- [x] 6.2.1 Create `zone_interaction.py` with `ZoneInteractionComputer`
+- [x] 6.2.2 Implement touched = `(bar_low <= upper) AND (bar_high >= lower)`
+- [x] 6.2.3 Implement inside = `(bar_close >= lower) AND (bar_close <= upper)`
+- [x] 6.2.4 Implement time_in_zone with instance_id-based reset
+- [x] 6.2.5 Apply state != ACTIVE override: force all metrics to 0
+
+Phase 3: Types + Integration
+- [x] 6.3.1 Add touched (uint8), inside (uint8), time_in_zone (int32) to ZONE_OUTPUTS
+- [x] 6.3.2 Add fields to ZONE_PUBLIC_FIELDS
+- [x] 6.3.3 Wire ZoneInteractionComputer into `builder._build_zones()`
+- [x] 6.3.4 Pass exec OHLC arrays (from FeedStore) to interaction computer
+
+Phase 4: Validation
+- [x] 6.4.1 Create V_62_zone_interaction validation IdeaCard
+- [x] 6.4.2 IdeaCard validator updated for zone paths (Stage 5+)
+- [x] 6.4.3 Zone interaction fields added to ZONE_PUBLIC_FIELDS for validation
+- [x] 6.4.4 22/22 valid IdeaCards pass normalization
+- [x] 6.4.5 42/42 indicators pass audit-toolkit
 
 **Modules:**
-- `src/backtest/prices/mark_engine.py` (modify)
+- `src/backtest/runtime/snapshot_view.py` (modify path resolver)
 - `src/backtest/market_structure/zone_interaction.py` (new)
-- `src/backtest/runtime/snapshot.py` (modify)
+- `src/backtest/market_structure/types.py` (add outputs)
+- `src/backtest/market_structure/builder.py` (wire integration)
 
 **Acceptance:**
-- `snapshot.get("price.mark.high")` and `snapshot.get("price.mark.low")` work
-- Interaction metrics computed at exec close
-- Metrics reset when zone resets
-- No lookahead (only closed bars)
+- `snapshot.get("price.mark.high")` returns exec bar high
+- `snapshot.get("price.mark.low")` returns exec bar low
+- `snapshot.get("structure.<key>.zones.<zone>.touched")` = range intersection
+- `snapshot.get("structure.<key>.zones.<zone>.inside")` = close-based occupancy
+- `snapshot.get("structure.<key>.zones.<zone>.time_in_zone")` = consecutive bars
+- Metrics reset when instance_id changes or state != ACTIVE
+- touched/inside forced False on break bar
+- No lookahead (closed bars only)
 
 **Deferred:**
 - `swept`, `max_penetration` (complex semantics)
 
 ---
 
-### Stage 7: Unified State Tracking
+### Stage 7: Unified State Tracking ✅ COMPLETE
 
 **Goal**: Implement Signal/Action/Gate state machines.
 
 **Deliverables:**
-- [ ] 7.1 Implement `SignalState` (NONE → CANDIDATE → CONFIRMING → CONFIRMED → EXPIRED)
-- [ ] 7.2 Implement `ActionState` (IDLE → ACTIONABLE → SUBMITTED → FILLED/REJECTED)
-- [ ] 7.3 Implement `GateState` with reason codes
-- [ ] 7.4 Implement `BlockState` container
-- [ ] 7.5 Wire into engine decision loop
+- [x] 7.1 Implement `SignalState` (NONE → CANDIDATE → CONFIRMING → CONFIRMED → EXPIRED)
+- [x] 7.2 Implement `ActionState` (IDLE → ACTIONABLE → SUBMITTED → FILLED/REJECTED)
+- [x] 7.3 Implement `GateState` with reason codes
+- [x] 7.4 Implement `BlockState` container
+- [x] 7.5 Wire into engine decision loop
+- [x] 7.6 Implement `StateTracker` orchestration layer
+- [x] 7.7 Add V_65 validation IdeaCard
 
-**Modules:**
-- `src/backtest/runtime/signal_state.py` (new)
-- `src/backtest/runtime/action_state.py` (new)
-- `src/backtest/runtime/gate_state.py` (new)
-- `src/backtest/runtime/block_state.py` (new)
-- `src/backtest/engine.py` (modify)
+**Modules (Implemented):**
+- `src/backtest/runtime/state_types.py` (new: SignalStateValue, ActionStateValue, GateCode, GateResult)
+- `src/backtest/runtime/signal_state.py` (new: SignalState, transition_signal_state)
+- `src/backtest/runtime/action_state.py` (new: ActionState, transition_action_state)
+- `src/backtest/runtime/gate_state.py` (new: GateContext, evaluate_gates)
+- `src/backtest/runtime/block_state.py` (new: BlockState, create_block_state)
+- `src/backtest/runtime/state_tracker.py` (new: StateTracker, integration layer)
+- `src/backtest/engine.py` (modified: state tracker integration)
 
-**Reason Codes:**
-- `R_WARMUP_REMAINING`
-- `R_MISSING_STRUCTURE`
-- `R_MISSING_VALUE`
-- `R_RISK_MAX_DD`
-- `R_COOLDOWN_ACTIVE`
+**Gate Codes:**
+- `G_PASS` (0) - All gates passed
+- `G_WARMUP_REMAINING` (1) - Warmup period not complete
+- `G_HISTORY_NOT_READY` (2) - Insufficient history for indicators
+- `G_CACHE_NOT_READY` (3) - Feature cache not populated
+- `G_RISK_BLOCK` (4) - Risk policy blocked action
+- `G_MAX_DRAWDOWN` (5) - Max drawdown limit hit
+- `G_INSUFFICIENT_MARGIN` (6) - Insufficient margin for position
+- `G_COOLDOWN_ACTIVE` (7) - Post-trade cooldown period
+- `G_POSITION_LIMIT` (8) - Max position count reached
+- `G_EXPOSURE_LIMIT` (9) - Max exposure limit reached
 
-**Acceptance:**
-- State transitions deterministic
-- Reason codes populated
-- `is_actionable()` = SignalState.CONFIRMED + GateState.PASS
+**Record-Only Mode:**
+- State tracking is observational only
+- Does not affect trade decisions
+- Deterministic: same inputs → same state sequence
+- Optional: controlled by `record_state_tracking` flag
+
+**Acceptance Verified:**
+- SignalState transitions: NONE → CANDIDATE → CONFIRMED → CONSUMED ✅
+- ActionState transitions: IDLE → ACTIONABLE → SIZING → SUBMITTED → FILLED ✅
+- GateResult with pass/fail status and reason codes ✅
+- BlockState container with is_actionable property ✅
+- StateTracker wired into engine hot loop ✅
+- V_65_state_tracking validation IdeaCard ✅
 
 ---
 
@@ -779,18 +847,17 @@ class TrendState(int, Enum):
 | 4 | Condition truth table | `backtest run --dry-run` | Wrong result |
 | 5 | Zone state + instance_id | `backtest structure-smoke` | State mismatch ✅ |
 | 5.1 | instance_id determinism | `backtest structure-smoke` | Hash mismatch ✅ |
-| 6 | Interaction no-lookahead | `backtest audit-interaction` | Future data |
-| 7 | State determinism | `backtest run --seed 42` | State drift |
+| 6 | Interaction no-lookahead | `backtest audit-interaction` | Future data ✅ |
+| 7 | State determinism | `backtest run --seed 42` | State drift ✅ |
 
 ### Validation IdeaCards
 
 | ID | Purpose | Stage | Status |
 |----|---------|-------|--------|
 | V_61_structure_swing | Swing + Trend detection with UP/DOWN tokens | 2-3 | ✅ Complete |
-| V_62_trend_class | HH/HL/LL/LH | 2 | 📋 Planned |
+| V_62_zone_interaction | Zone interaction metrics (touched/inside/time_in_zone) | 5-6 | ✅ Complete |
 | V_63_zones_nested | Parent-scoped zones | 5 | ✅ Validated via smoke test |
-| V_64_zone_interaction | Interaction metrics | 6 | 📋 Planned |
-| V_65_state_tracking | Signal/Action/Gate | 7 | 📋 Planned |
+| V_65_state_tracking | Signal/Action/Gate state tracking | 7 | ✅ Complete |
 
 ### Artifacts
 
@@ -833,13 +900,29 @@ class TrendState(int, Enum):
 | 2 | `detectors/swing.py`, `detectors/trend.py`, `builder.py` |
 | 5 | `detectors/zone_detector.py`, `builder.py` (ZoneStore), `spec.py` (zone parsing) |
 | 5.1 | `types.py` (instance_id), `detectors/zone_detector.py` (compute_zone_*_id) |
-| 6 | `zone_interaction.py` |
-| 7 | `runtime/signal_state.py`, `runtime/action_state.py`, `runtime/gate_state.py`, `runtime/block_state.py` |
-| 8 | `prices/providers/exchange_mark.py`, `runtime/streaming/` |
+| 6 | `zone_interaction.py`, `snapshot_view.py` (price.mark.high/low mapping) |
+| 7 | `runtime/state_types.py`, `runtime/signal_state.py`, `runtime/action_state.py`, `runtime/gate_state.py`, `runtime/block_state.py`, `runtime/state_tracker.py` |
+| 8 | `prices/providers/exchange_mark.py`, `runtime/streaming/` (future) |
 
 ---
 
 ## 10. Changelog
+
+### v11 (Stage 6 + 7 Complete)
+
+| Change | Reason |
+|--------|--------|
+| **Stage 6 complete** | Zone interaction metrics (touched, inside, time_in_zone) |
+| **Stage 7 complete** | Unified state tracking (Signal/Action/Gate state machines) |
+| **ZoneInteractionComputer** | Computes interaction metrics from exec-bar OHLC |
+| **price.mark.high/low mapping** | Routes to exec-bar OHLC (no new provider needed) |
+| **SignalState machine** | NONE → CANDIDATE → CONFIRMED → CONSUMED lifecycle |
+| **ActionState machine** | IDLE → ACTIONABLE → SIZING → SUBMITTED → FILLED lifecycle |
+| **GateCode enum** | 10 gate codes for warmup, risk, margin, position checks |
+| **StateTracker** | Orchestration layer wired into engine hot loop |
+| **Record-only mode** | State tracking is observational, doesn't affect trades |
+| **V_62_zone_interaction** | Validation IdeaCard for Stage 6 metrics |
+| **V_65_state_tracking** | Validation IdeaCard for Stage 7 state tracking |
 
 ### v10 (Stage 5 + 5.1 Complete)
 

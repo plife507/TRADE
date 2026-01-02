@@ -22,6 +22,11 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 - IdeaCard-first CLI with full menu coverage
 - 24 validation IdeaCards in `configs/idea_cards/_validation/`
 
+**Audit Swarm Complete (2026-01-01)**:
+- 12 P1 fixes implemented (critical blockers resolved)
+- 33 open bugs tracked: 4 P1, 19 P2, 10 P3
+- See: `docs/todos/AUDIT_OPEN_BUGS.md`
+
 **Next Up**: Market Structure Features (Phase 5)
 - Swing/pivot/trend detection
 - Registry consolidation Phase 3
@@ -498,6 +503,7 @@ As the engine evolves, normalization ensures IdeaCards stay in sync. When agents
 
 | Document | Status | Next Step |
 |----------|--------|-----------|
+| `docs/todos/AUDIT_OPEN_BUGS.md` | 33 bugs (4 P1, 19 P2, 10 P3) | Fix remaining P1 blockers |
 | `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md` | Phases 1-4 ✅, Phase 5 📋 READY | Market Structure Features |
 | `docs/todos/REGISTRY_CONSOLIDATION_PHASES.md` | Phases 0-2 ✅, Phase 3 📋 READY | Add structure indicators |
 | `docs/todos/BACKTEST_ANALYTICS_PHASES.md` | Phases 1-4 ✅, 5-6 📋 pending | Benchmark comparison (future) |
