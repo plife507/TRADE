@@ -29,37 +29,23 @@ Per project rules:
 
 ## Active TODOs
 
-### Priority 1: Completed (Backtest Engine)
-
-| Document | Status | Scope |
-|----------|--------|-------|
-| [Market Structure Phases](MARKET_STRUCTURE_PHASES.md) | Stages 0-7 ✅ COMPLETE, Stage 8 (streaming) separate track | Market structure engine with state tracking |
-
-### Priority 2: Bug Tracking
+### Priority 1: Bug Tracking
 
 | Document | Status | Scope |
 |----------|--------|-------|
 | [Audit Open Bugs](AUDIT_OPEN_BUGS.md) | ACTIVE (P1: 4 open, P2: 19 open, P3: 10 open) | Bug tracking from agentic audit swarm |
 
-### Priority 3: Completed / Superseded
-
-| Document | Status | Scope |
-|----------|--------|-------|
-| [Array-Backed Hot Loop](ARRAY_BACKED_HOT_LOOP_PHASES.md) | Phases 1-4 ✅, Phase 5 ✅ SUPERSEDED | Hot loop refactor + market structure (now in MARKET_STRUCTURE_PHASES.md) |
-| [Registry Consolidation](REGISTRY_CONSOLIDATION_PHASES.md) | Phases 0-2 ✅, Phase 3 ✅ SUPERSEDED | Indicator registry (structures use separate module) |
-
-### Priority 4: Future Enhancements (Not Blocking)
+### Priority 3: Future Enhancements (Not Blocking)
 
 | Document | Status | Scope |
 |----------|--------|-------|
 | [Backtest Analytics](BACKTEST_ANALYTICS_PHASES.md) | Phases 1-4 ✅ COMPLETE, Phases 5-6 📋 pending | Benchmark comparison, enhanced CLI |
 
-### Reference Documents (Not TODOs)
+### Reference Documents (Moved)
 
-| Document | Purpose |
-|----------|---------|
-| [Market Structure Integration Review](MARKET_STRUCTURE_INTEGRATION_REVIEW.md) | Code review prompts for Phase 5 prep (historical) |
-| [Comprehensive Indicator Test Matrix](COMPREHENSIVE_INDICATOR_TEST_MATRIX.md) | Test coverage reference (42 indicators) |
+| Document | Purpose | New Location |
+|----------|---------|--------------|
+| Comprehensive Indicator Test Matrix | Test coverage reference (42 indicators) | [docs/audits/](../audits/COMPREHENSIVE_INDICATOR_TEST_MATRIX.md) |
 
 ---
 
@@ -67,6 +53,10 @@ Per project rules:
 
 | Document | Completed | Scope |
 |----------|-----------|-------|
+| [Market Structure Phases](archived/2026-01-01/MARKET_STRUCTURE_PHASES.md) | 2026-01-01 | Stages 0-7 complete (swing, trend, zones, interaction, state tracking) |
+| [Market Structure Integration Review](archived/2026-01-01/MARKET_STRUCTURE_INTEGRATION_REVIEW.md) | 2026-01-01 | Pre-implementation code review prompt (historical) |
+| [Registry Consolidation](archived/2026-01/REGISTRY_CONSOLIDATION_PHASES.md) | 2026-01-01 | String-based indicator types, single registry source of truth |
+| [Array-Backed Hot Loop](archived/2026-01/ARRAY_BACKED_HOT_LOOP_PHASES.md) | 2026-01-01 | Hot loop refactor (Phases 1-4), market structure superseded |
 | [Legacy Cleanup](archived/2026-01-01/LEGACY_CLEANUP_PHASES.md) | 2026-01-01 | Removed dual metrics, warmup_multiplier, dead methods |
 | [Metrics Enhancement](archived/2026-01-01/METRICS_ENHANCEMENT_PHASES.md) | 2026-01-01 | 62-field BacktestMetrics (tail risk, leverage, MAE/MFE) |
 | [IdeaCard Value Flow Fix](archived/2026-01-01/IDEACARD_VALUE_FLOW_FIX_PHASES.md) | 2026-01-01 | Fixed slippage_bps, MMR, fail-loud validation |
