@@ -1,6 +1,6 @@
 # Registry Consolidation: String-Based Indicator Types
 
-**Status**: Phases 0-2 ✅ COMPLETE | Phase 3 📋 READY
+**Status**: Phases 0-2 ✅ COMPLETE | Phase 3 ✅ SUPERSEDED (market_structure module)
 **Created**: 2025-12-30
 **Updated**: 2025-12-31
 **Goal**: Consolidate dual indicator type systems into a single registry-driven architecture to enable extensible market structure features without hardcoding
@@ -258,75 +258,36 @@ SUPPORTED_INDICATORS = {
 
 ---
 
-## Phase 3: Add Market Structure Indicators
+## Phase 3: Add Market Structure Indicators (SUPERSEDED)
 
-**Goal**: Add swing, pivot, trend indicators to registry (Phase 5 enablement)
+**Status**: ✅ **SUPERSEDED** — Different architecture chosen
 
-**Estimated Changes**: ~100 lines in `indicator_registry.py`, new compute functions
+**Original Goal**: Add swing, pivot, trend indicators to indicator_registry.py
 
-### Checklist
+**Architectural Decision (2026-01-01)**:
+Market structure is implemented as a **separate module** (`src/backtest/market_structure/`)
+with its own registry (`STRUCTURE_REGISTRY`), rather than adding to the indicator registry.
 
-- [ ] 3.1 Add swing detection to registry
-  ```python
-  "swing": {
-      "inputs": {"high", "low", "close"},
-      "params": {"lookback", "confirmation"},
-      "multi_output": True,
-      "output_keys": ("high", "high_idx", "low", "low_idx"),
-      "warmup_formula": lambda p: p.get("lookback", 20) + p.get("confirmation", 3),
-      "sparse": True,
-      "compute_fn": "compute_swing",
-  },
-  ```
-  - File: `indicator_registry.py`
+**Rationale:**
+- Complex state machines (zones: NONE → ACTIVE → BROKEN)
+- Confirmation gates (pending → confirmed/failed)
+- Parent-child relationships (zones are children of swing blocks)
+- Different warmup semantics than indicators
+- Separate namespace in IdeaCard (`market_structure_blocks:` vs `features:`)
 
-- [ ] 3.2 Add pivot detection to registry
-  ```python
-  "pivot": {
-      "inputs": {"high", "low", "close"},
-      "params": {"left_bars", "right_bars"},
-      "multi_output": True,
-      "output_keys": ("high", "low", "type"),
-      "warmup_formula": lambda p: p.get("left_bars", 5) + p.get("right_bars", 5),
-      "sparse": True,
-      "compute_fn": "compute_pivot",
-  },
-  ```
-  - File: `indicator_registry.py`
+**See**: `docs/todos/MARKET_STRUCTURE_PHASES.md` for detailed implementation.
 
-- [ ] 3.3 Add trend classification to registry
-  ```python
-  "trend": {
-      "inputs": {"high", "low", "close"},
-      "params": {"ema_length", "atr_length"},
-      "multi_output": True,
-      "output_keys": ("direction", "strength", "regime"),
-      "warmup_formula": lambda p: max(p.get("ema_length", 20), p.get("atr_length", 14)) * 3,
-      "sparse": False,
-      "compute_fn": "compute_trend",
-  },
-  ```
-  - File: `indicator_registry.py`
+**Completed Implementation:**
+- ✅ `src/backtest/market_structure/` module with:
+  - `STRUCTURE_REGISTRY` for detector registration
+  - `SwingDetector`, `TrendDetector` batch computation
+  - `ZoneDetector` for demand/supply zones
+  - `StructureBuilder` orchestrating computation
+- ✅ Exposed via `snapshot.get("structure.<key>.<field>")`
+- ✅ Rule evaluation with compiled refs
 
-- [ ] 3.4 Create structure compute functions
-  - Implement `compute_swing()` in new `structure_vendor.py`
-  - Implement `compute_pivot()` in `structure_vendor.py`
-  - Implement `compute_trend()` in `structure_vendor.py`
-  - Files: `src/backtest/structure_vendor.py` (NEW)
-
-- [ ] 3.5 Add forward-fill support to `FeatureFrameBuilder`
-  ```python
-  if registry.is_sparse(indicator_type):
-      result = forward_fill_array(result)
-  ```
-  - File: `feature_frame_builder.py`
-
-- [ ] 3.6 Validate Phase 3
-  - Run all Phase 1 validation commands → ALL PASS
-  - Create test IdeaCard with structure features
-  - Verify: Structure features compute correctly
-
-**Acceptance**: Market structure indicators available via registry, Phase 5 unblocked
+**Note**: Indicators (42 types) and structures (swing, trend, zones) remain separate
+registries with different semantics. This is intentional, not technical debt
 
 ---
 

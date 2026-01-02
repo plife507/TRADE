@@ -1,6 +1,6 @@
 # Array-Backed Hot Loop Refactor
 
-**Status**: Phases 1-4 ✅ COMPLETE; Phase 5 📋 **UNBLOCKED AND READY** (Price Feed complete 2025-12-31)  
+**Status**: Phases 1-4 ✅ COMPLETE; Phase 5 ✅ SUPERSEDED (tracked in MARKET_STRUCTURE_PHASES.md)  
 **Created**: 2025-12-16  
 **Updated**: 2025-12-17 (governance cleanup)  
 **Goal**: Refactor BacktestEngine hot loop to use array-backed FeedStores + RuntimeSnapshotView (no pandas in loop), then migrate to Parquet artifacts, then add market structure features.
@@ -429,24 +429,31 @@ close=input_series  # ALWAYS use the retrieved input series
 
 ---
 
-## Phase 5 — Market Structure Features (READY)
+## Phase 5 — Market Structure Features (SUPERSEDED)
 
-**Status**: 📋 **UNBLOCKED AND READY** — All prerequisites complete (2025-12-31)
+**Status**: ✅ **SUPERSEDED** — Tracked in `MARKET_STRUCTURE_PHASES.md`
 **Goal**: Add market structure feature layer (swings, pivots, trends, regimes)
 
-**Planned Scope**:
-- Market structure computation outside hot loop
-- Structure features precomputed like indicators
-- Added to FeatureSpec/FeatureFrame pipeline
-- Exposed via RuntimeSnapshotView API
-- Zone interaction via `px.rollup.*` accessors (rollup_min_1m, rollup_max_1m, etc.)
+**Architectural Decision (2026-01-01)**:
+Market structure is implemented as a **separate module** (`src/backtest/market_structure/`)
+rather than adding to the indicator registry. This was the right choice given:
+- Complex state machines (zones: NONE → ACTIVE → BROKEN)
+- Confirmation gates (pending → confirmed/failed)
+- Parent-child relationships (zones are children of swing blocks)
+- Different warmup semantics than indicators
 
-**Prerequisites** ✅ ALL MET:
-- ✅ Input-source routing fix applied (2025-12-17)
-- ✅ Volume SMA parity passes (9/9 columns)
-- ✅ Math parity audit shows 0 failures (217,512 comparisons)
-- ✅ **Price Feed (1m) + Preflight** complete (2025-12-31)
-  - `px.rollup.*` accessors available for zone touch detection
-  - Mandatory 1m coverage enforced by preflight
-  - QuoteState dataclass for px.last/px.mark
+**See**: `docs/todos/MARKET_STRUCTURE_PHASES.md` for detailed implementation status.
+
+**Completed (Stages 0-5.1)**:
+- ✅ SwingDetector, TrendDetector with batch computation
+- ✅ StructureBuilder with own registry (STRUCTURE_REGISTRY)
+- ✅ ZoneDetector (demand/supply zones as SWING children)
+- ✅ Zone state machine + instance_id tracking
+- ✅ Exposed via RuntimeSnapshotView API (`structure.<key>.<field>`)
+- ✅ Rule evaluation MVP with compiled refs
+
+**Remaining (Stages 6-8 in MARKET_STRUCTURE_PHASES.md)**:
+- Stage 6: Zone interaction metrics (touched, inside, time_in_zone)
+- Stage 7: Unified state tracking (Signal/Action/Gate)
+- Stage 8: Demo/Live streaming
 

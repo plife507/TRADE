@@ -2,7 +2,7 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** Index of active TODO phase documents for work tracking
-**LAST UPDATED:** January 1, 2026
+**LAST UPDATED:** January 1, 2026 (Market Structure Stages 0-5.1 complete)
 
 ---
 
@@ -32,10 +32,16 @@ Per project rules:
 
 | Document | Status | Scope | Next Step |
 |----------|--------|-------|-----------|
-| [Array-Backed Hot Loop (Phase 5)](ARRAY_BACKED_HOT_LOOP_PHASES.md) | Phases 1-4 ✅, Phase 5 📋 READY | Market Structure Features | Add swing/pivot/trend indicators |
-| [Registry Consolidation (Phase 3)](REGISTRY_CONSOLIDATION_PHASES.md) | Phases 0-2 ✅, Phase 3 📋 READY | Add market structure to registry | Implement compute functions |
+| [Market Structure Phases](MARKET_STRUCTURE_PHASES.md) | Stages 0-5.1 ✅, Stage 6 📋 READY | Market structure engine | Zone interaction OR unified state tracking |
 
-### Priority 2: Future Enhancements (Not Blocking)
+### Priority 2: Completed / Superseded
+
+| Document | Status | Scope |
+|----------|--------|-------|
+| [Array-Backed Hot Loop](ARRAY_BACKED_HOT_LOOP_PHASES.md) | Phases 1-4 ✅, Phase 5 ✅ SUPERSEDED | Hot loop refactor + market structure (now in MARKET_STRUCTURE_PHASES.md) |
+| [Registry Consolidation](REGISTRY_CONSOLIDATION_PHASES.md) | Phases 0-2 ✅, Phase 3 ✅ SUPERSEDED | Indicator registry (structures use separate module) |
+
+### Priority 3: Future Enhancements (Not Blocking)
 
 | Document | Status | Scope |
 |----------|--------|-------|
