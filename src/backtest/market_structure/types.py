@@ -27,7 +27,7 @@ from typing import Dict, List, Tuple
 # - MAJOR: Breaking changes (never in practice - additive-only policy)
 # - MINOR: New fields added
 # - PATCH: Documentation or internal changes
-STRUCTURE_SCHEMA_VERSION = "1.1.0"  # 1.1.0: Added zone instance_id (Stage 5.1)
+STRUCTURE_SCHEMA_VERSION = "1.2.0"  # 1.2.0: Added zone interaction fields (Stage 6)
 
 
 class StructureType(str, Enum):
@@ -184,4 +184,8 @@ ZONE_OUTPUTS: Tuple[str, ...] = (
     "recency",          # int16: Bars since zone established
     "parent_anchor_id", # int32: Links to parent swing index
     "instance_id",      # int64: Deterministic hash(zone_key, zone_spec_id, parent_anchor_id)
+    # Stage 6: Zone interaction fields
+    "touched",          # uint8: 1 if bar range intersects zone (bar_low <= upper AND bar_high >= lower)
+    "inside",           # uint8: 1 if close within zone bounds (close >= lower AND close <= upper)
+    "time_in_zone",     # int32: Consecutive bars where state==ACTIVE AND inside==1 AND same instance
 )

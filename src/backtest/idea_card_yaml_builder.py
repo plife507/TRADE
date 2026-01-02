@@ -422,8 +422,9 @@ STRUCTURE_PUBLIC_FIELDS = {
 # Enum Token Maps (Stage 3.3)
 # =============================================================================
 
-# Import structure enums from source of truth
+# Import structure enums and zone fields from source of truth
 from src.backtest.market_structure.types import TrendState, ZoneState
+from src.backtest.market_structure.detectors import ZONE_PUBLIC_FIELDS
 from enum import Enum as EnumType
 from typing import Union, Type
 
@@ -432,7 +433,7 @@ from typing import Union, Type
 # Keep namespace-specific: structure enums only
 STRUCTURE_ENUM_FIELDS: Dict[str, Type[EnumType]] = {
     "trend_state": TrendState,
-    # Future: "zone_state": ZoneState,
+    "state": ZoneState,  # Stage 5+: Zone state field (NONE/ACTIVE/BROKEN)
 }
 
 
@@ -491,13 +492,13 @@ def normalize_enum_token(
 
 def validate_structure_blocks(
     idea_card_dict: Dict[str, Any],
-) -> Tuple[List[ValidationError], Dict[str, Set[str]]]:
+) -> Tuple[List[ValidationError], Dict[str, Set[str]], Dict[str, Set[str]]]:
     """
     Validate market_structure_blocks in IdeaCard YAML.
 
-    Stage 3 validation:
+    Stage 3+ validation:
     - tf_role must be "exec" only
-    - No zones allowed (Stage 5+)
+    - Zones allowed on SWING blocks (Stage 5+)
     - Valid structure types (swing, trend)
     - Required params per type
 
@@ -505,15 +506,17 @@ def validate_structure_blocks(
         idea_card_dict: The raw IdeaCard dict from YAML
 
     Returns:
-        Tuple of (errors, structure_fields_by_key)
-        structure_fields_by_key maps block_key -> set of valid field names
+        Tuple of (errors, structure_fields_by_key, zone_keys_by_block)
+        - structure_fields_by_key: maps block_key -> set of valid field names
+        - zone_keys_by_block: maps block_key -> set of zone keys (Stage 5+)
     """
     errors: List[ValidationError] = []
     structure_fields: Dict[str, Set[str]] = {}
+    zone_keys: Dict[str, Set[str]] = {}  # Stage 5+: block_key -> {zone_key, ...}
 
     blocks = idea_card_dict.get("market_structure_blocks", [])
     if not blocks:
-        return errors, structure_fields
+        return errors, structure_fields, zone_keys
 
     seen_keys = set()
 
@@ -581,16 +584,8 @@ def validate_structure_blocks(
                 location=f"{location}.tf_role",
             ))
 
-        # Stage 3: No zones
-        if block.get("zones"):
-            errors.append(ValidationError(
-                code=ValidationErrorCode.STRUCTURE_ZONES_NOT_SUPPORTED,
-                message=(
-                    "Zones in market_structure_blocks are not supported until Stage 5+. "
-                    "Remove the 'zones' key from your structure block."
-                ),
-                location=f"{location}.zones",
-            ))
+        # Stage 5+: Zones supported for SWING blocks only
+        # Zone validation now handled by StructureSpec.from_dict()
 
         # Validate required params
         params = block.get("params", {})
@@ -607,31 +602,40 @@ def validate_structure_blocks(
         if struct_type in STRUCTURE_PUBLIC_FIELDS:
             structure_fields[key] = STRUCTURE_PUBLIC_FIELDS[struct_type]
 
-    return errors, structure_fields
+        # Stage 5+: Track zone keys for this block
+        zones = block.get("zones", [])
+        if zones:
+            zone_keys[key] = {z.get("key") for z in zones if z.get("key")}
+
+    return errors, structure_fields, zone_keys
 
 
 def validate_structure_references(
     idea_card_dict: Dict[str, Any],
     structure_fields: Dict[str, Set[str]],
+    zone_keys: Dict[str, Set[str]] = None,
 ) -> List[ValidationError]:
     """
     Validate structure references in signal_rules.
 
     Checks conditions that reference structure.<block_key>.<field>.
     Stage 3.3: Also normalizes enum tokens (e.g., "BULL" -> 1 for trend_state).
+    Stage 5+: Handles zone paths: structure.<block_key>.zones.<zone_key>.<field>
 
     Args:
         idea_card_dict: The raw IdeaCard dict (modified in-place for normalization)
         structure_fields: Dict from validate_structure_blocks()
+        zone_keys: Dict from validate_structure_blocks() (Stage 5+)
 
     Returns:
         List of ValidationErrors
     """
     errors: List[ValidationError] = []
+    zone_keys = zone_keys or {}
 
-    # For now, structure references in signal rules use the indicator_key field
-    # with format "structure.<block_key>.<field>" parsed at runtime.
-    # Validation here ensures referenced blocks/fields exist.
+    # Structure references use the indicator_key field with formats:
+    # - structure.<block_key>.<field> (base structure)
+    # - structure.<block_key>.zones.<zone_key>.<field> (zones, Stage 5+)
 
     signal_rules = idea_card_dict.get("signal_rules", {})
 
@@ -648,13 +652,12 @@ def validate_structure_references(
                     if len(parts) < 3:
                         errors.append(ValidationError(
                             code=ValidationErrorCode.UNDECLARED_STRUCTURE,
-                            message=f"Invalid structure reference: '{indicator_key}'. Expected format: structure.<block_key>.<field>",
+                            message=f"Invalid structure reference: '{indicator_key}'. Expected format: structure.<block_key>.<field> or structure.<block_key>.zones.<zone_key>.<field>",
                             location=location,
                         ))
                         continue
 
                     block_key = parts[1]
-                    field_name = parts[2]
 
                     # Check block exists
                     if block_key not in structure_fields:
@@ -666,16 +669,46 @@ def validate_structure_references(
                         ))
                         continue
 
-                    # Check field exists
-                    valid_fields = structure_fields[block_key]
-                    if field_name not in valid_fields:
-                        errors.append(ValidationError(
-                            code=ValidationErrorCode.UNDECLARED_STRUCTURE,
-                            message=f"Structure field '{field_name}' not valid for block '{block_key}'.",
-                            location=location,
-                            suggestions=sorted(valid_fields),
-                        ))
-                        continue
+                    # Stage 5+: Check for zone path: structure.<block>.zones.<zone>.<field>
+                    if len(parts) >= 5 and parts[2] == "zones":
+                        zone_key = parts[3]
+                        field_name = parts[4]
+
+                        # Check zone exists for this block
+                        block_zones = zone_keys.get(block_key, set())
+                        if zone_key not in block_zones:
+                            errors.append(ValidationError(
+                                code=ValidationErrorCode.UNDECLARED_STRUCTURE,
+                                message=f"Zone '{zone_key}' not declared in structure block '{block_key}'.",
+                                location=location,
+                                suggestions=sorted(block_zones) if block_zones else None,
+                            ))
+                            continue
+
+                        # Check zone field exists
+                        valid_zone_fields = set(ZONE_PUBLIC_FIELDS)
+                        if field_name not in valid_zone_fields:
+                            errors.append(ValidationError(
+                                code=ValidationErrorCode.UNDECLARED_STRUCTURE,
+                                message=f"Zone field '{field_name}' not valid.",
+                                location=location,
+                                suggestions=sorted(valid_zone_fields),
+                            ))
+                            continue
+                    else:
+                        # Base structure path: structure.<block>.<field>
+                        field_name = parts[2]
+
+                        # Check field exists
+                        valid_fields = structure_fields[block_key]
+                        if field_name not in valid_fields:
+                            errors.append(ValidationError(
+                                code=ValidationErrorCode.UNDECLARED_STRUCTURE,
+                                message=f"Structure field '{field_name}' not valid for block '{block_key}'.",
+                                location=location,
+                                suggestions=sorted(valid_fields),
+                            ))
+                            continue
 
                     # Stage 3.3: Validate and normalize enum tokens
                     # Strict canonical tokens only - no numeric literals for enum fields
@@ -737,17 +770,19 @@ def validate_idea_card_yaml(idea_card_dict: Dict[str, Any]) -> ValidationResult:
     all_mappings, mapping_errors = build_all_scope_mappings(idea_card_dict, registry)
     all_errors.extend(mapping_errors)
 
-    # Validate market structure blocks (Stage 3)
-    structure_errors, structure_fields = validate_structure_blocks(idea_card_dict)
+    # Validate market structure blocks (Stage 3+)
+    structure_errors, structure_fields, zone_keys = validate_structure_blocks(idea_card_dict)
     all_errors.extend(structure_errors)
 
     # Validate signal rules references (indicators)
     signal_errors = validate_signal_rules(idea_card_dict, all_mappings)
     all_errors.extend(signal_errors)
 
-    # Validate structure references in signal rules
-    if structure_fields:
-        structure_ref_errors = validate_structure_references(idea_card_dict, structure_fields)
+    # Validate structure references in signal rules (Stage 3+, zones Stage 5+)
+    if structure_fields or zone_keys:
+        structure_ref_errors = validate_structure_references(
+            idea_card_dict, structure_fields, zone_keys
+        )
         all_errors.extend(structure_ref_errors)
 
     # Validate risk model references

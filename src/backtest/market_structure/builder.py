@@ -35,6 +35,7 @@ from src.backtest.market_structure.registry import (
     validate_structure_params,
     STRUCTURE_REGISTRY,
 )
+from src.backtest.market_structure.zone_interaction import ZoneInteractionComputer
 
 
 class Stage2ValidationError(ValueError):
@@ -275,32 +276,55 @@ class StructureBuilder:
         self,
         store: StructureStore,
         swing_outputs: Dict[str, np.ndarray],
-        close_prices: np.ndarray,
+        ohlcv: Dict[str, np.ndarray],
         zone_specs: List["ZoneSpec"],
     ) -> None:
         """
         Build zone outputs and attach to structure store.
 
         Stage 5: Zones are children of SWING blocks only.
+        Stage 6: Computes interaction metrics (touched, inside, time_in_zone).
+
+        ORDERING INVARIANT (locked):
+        1. ZoneDetector.build_batch() → state computed (NONE → ACTIVE → BROKEN)
+        2. ZoneInteractionComputer.build_batch() → metrics with state-based overrides
+        3. zone_outputs.update() → merged into single dict
+
+        This ordering ensures:
+        - State is fully resolved before interaction computation
+        - BROKEN bar override zeroes all metrics on same bar
+        - Deterministic: same inputs → identical arrays
 
         Args:
             store: Parent StructureStore to attach zones to
             swing_outputs: Internal swing detector outputs
-            close_prices: Close prices for zone break detection
+            ohlcv: Dict with 'high', 'low', 'close' arrays for interaction computation
             zone_specs: List of ZoneSpec from parent structure block
         """
         from src.backtest.market_structure.detectors import ZoneDetector
 
         zone_detector = ZoneDetector()
+        interaction_computer = ZoneInteractionComputer()
 
         for zone_spec in zone_specs:
-            # Compute zone arrays
+            # Compute zone arrays (lower, upper, state, recency, parent_anchor_id, instance_id)
             zone_outputs = zone_detector.build_batch(
                 swing_outputs=swing_outputs,
-                close_prices=close_prices,
+                close_prices=ohlcv["close"],
                 zone_spec=zone_spec,
                 atr=None,  # TODO: Pass ATR if width_model='atr_mult'
             )
+
+            # Stage 6: Compute interaction metrics
+            interaction_outputs = interaction_computer.build_batch(
+                zone_outputs=zone_outputs,
+                bar_high=ohlcv["high"],
+                bar_low=ohlcv["low"],
+                bar_close=ohlcv["close"],
+            )
+
+            # Merge interaction outputs into zone_outputs
+            zone_outputs.update(interaction_outputs)
 
             # Create zone store
             zone_store = ZoneStore(
@@ -378,11 +402,12 @@ class StructureBuilder:
             )
 
             # Stage 5: Compute zones if defined (SWING only)
+            # Stage 6: Zone interaction uses exec-bar OHLC
             if spec.type == StructureType.SWING and spec.zones:
                 self._build_zones(
                     store=store,
                     swing_outputs=internal_outputs,
-                    close_prices=ohlcv["close"],
+                    ohlcv=ohlcv,
                     zone_specs=spec.zones,
                 )
 

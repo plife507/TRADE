@@ -77,6 +77,19 @@ from .rollup_bucket import (
     ROLLUP_KEYS,
     create_empty_rollup_dict,
 )
+# Stage 7: State tracking (record-only)
+from .state_types import (
+    SignalStateValue,
+    ActionStateValue,
+    GateCode,
+    GateResult,
+    GATE_CODE_DESCRIPTIONS,
+)
+from .signal_state import SignalState, transition_signal_state, reset_signal_state
+from .action_state import ActionState, transition_action_state, reset_action_state
+from .gate_state import GateContext, evaluate_gates
+from .block_state import BlockState, create_block_state, reset_block_state
+from .state_tracker import StateTracker, StateTrackerConfig, create_state_tracker
 
 __all__ = [
     # Core types
@@ -124,5 +137,25 @@ __all__ = [
     "ExecRollupBucket",
     "ROLLUP_KEYS",
     "create_empty_rollup_dict",
+    # Stage 7: State tracking (record-only)
+    "SignalStateValue",
+    "ActionStateValue",
+    "GateCode",
+    "GateResult",
+    "GATE_CODE_DESCRIPTIONS",
+    "SignalState",
+    "transition_signal_state",
+    "reset_signal_state",
+    "ActionState",
+    "transition_action_state",
+    "reset_action_state",
+    "GateContext",
+    "evaluate_gates",
+    "BlockState",
+    "create_block_state",
+    "reset_block_state",
+    "StateTracker",
+    "StateTrackerConfig",
+    "create_state_tracker",
 ]
 
