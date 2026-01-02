@@ -59,12 +59,12 @@ c6134b6 fix(backtest): remove remaining warmup_multiplier references
 ## Priority Items for Next Session
 
 ### 1. P1 Open Issues (4 remaining - all deferred)
-| ID | Issue | Location |
-|----|-------|----------|
-| P1-09 | O(n) in bars_exec_high/low | snapshot_view.py |
-| P1-12 | TREND assumes single SWING | builder.py |
-| P1-13 | Dual close detection | TimeframeCache/FeedStore |
-| P1-15 | Schema drift detection | snapshot_view.py |
+| ID | Issue | Location | Review |
+|----|-------|----------|--------|
+| P1-09 | O(n) in bars_exec_high/low | snapshot_view.py | [Technical Review](audits/P1_09_BARS_EXEC_MINMAX_REVIEW.md) |
+| P1-12 | TREND assumes single SWING | builder.py | |
+| P1-13 | Dual close detection | TimeframeCache/FeedStore | |
+| P1-15 | Schema drift detection | snapshot_view.py | |
 
 ### 2. P2 Quick Wins
 - P2-04: Remove legacy SWING_OUTPUTS aliases
