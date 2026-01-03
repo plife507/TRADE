@@ -1,7 +1,7 @@
 # Active TODO
 
 **Last Updated**: 2026-01-03
-**Status**: Post-Refactor - Ready for New Work
+**Status**: Type Safety Fixed, Refactoring Plan Queued
 
 ---
 
@@ -28,14 +28,19 @@ git add -A
 git commit -m "feat: incremental state architecture, 72 bug fixes, validation complete"
 ```
 
-### 2. Deferred Structural Refactoring
+### 2. Mega-File Refactoring (QUEUED)
 
-| Task | Effort | Notes |
-|------|--------|-------|
-| Split BacktestEngine.run() (~500 LOC) | 4h | Too large for single method |
-| Refactor IdeaCard (1165 LOC) | 8h | Split into focused classes |
-| Split tool_registry.py (1200+ LOC) | 4h | Split by category |
-| Unify data preparation paths | 4h | Consolidate duplicate code |
+**See**: [MEGA_FILE_REFACTOR.md](MEGA_FILE_REFACTOR.md) for comprehensive 5-phase plan
+
+| Phase | Target | LOC | Split Into |
+|-------|--------|-----|------------|
+| 1 | datetime_utils.py | new | Consolidate datetime parsing |
+| 2 | data_tools.py | 2,205 | 4 focused modules |
+| 3 | tool_registry.py | 1,472 | 8 spec modules |
+| 4 | idea_card.py | 1,705 | 5 focused modules |
+| 5 | Final validation | - | All smoke tests |
+
+**Status**: Ready for execution after stress testing baseline established
 
 ### 3. Future Features
 
