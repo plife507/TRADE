@@ -8,9 +8,15 @@ A modular, production-ready Bybit futures trading bot with complete UTA support,
 
 **Backtest Engine Production-Ready**:
 - 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
-- 42 indicators in string-based registry (single source of truth)
+- 42 indicators in INDICATOR_REGISTRY (single source of truth)
+- 5 structures in STRUCTURE_REGISTRY (swing, fibonacci, zone, trend, rolling_window)
 - IdeaCard YAML-based strategy specification
-- 24 validation IdeaCards for comprehensive testing
+- 30 validation IdeaCards for comprehensive testing
+
+**Incremental State Architecture**:
+- O(1) hot loop access via MonotonicDeque/RingBuffer
+- STRUCTURE_REGISTRY parallel to INDICATOR_REGISTRY
+- Agent-composable IdeaCard blocks (variables, features, structures, rules)
 
 **Market Structure Complete** (Stages 0-7):
 - Swing/pivot detection with trend classification
@@ -19,8 +25,9 @@ A modular, production-ready Bybit futures trading bot with complete UTA support,
 - State tracking for actions, blocks, gates, and signals
 
 **Quality Status**:
-- Audit swarm completed: 12/16 P1 fixes applied
-- 33 open bugs tracked (4 P1, 19 P2, 10 P3)
+- 79 bugs fixed (72 in major refactor + 7 in cleanup)
+- 3 open bugs tracked (0 P1, 1 P2, 2 P3 - all acceptable patterns)
+- All validation tests passing
 
 See `docs/project/PROJECT_OVERVIEW.md` for the full roadmap.
 
@@ -51,6 +58,7 @@ TRADE/
 │   │   ├── engine.py      # Orchestrator
 │   │   ├── sim/           # Simulated exchange (pricing, execution, ledger)
 │   │   ├── runtime/       # Snapshot, FeedStore, TFContext
+│   │   ├── incremental/   # O(1) structure detection (STRUCTURE_REGISTRY)
 │   │   └── features/      # FeatureSpec, indicators
 │   ├── core/              # Live trading (exchange manager, risk, orders)
 │   ├── exchanges/         # Bybit API client
