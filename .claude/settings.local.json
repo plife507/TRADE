@@ -22,7 +22,15 @@
       "Bash(done)",
       "Bash(xargs:*)",
       "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\todos\\\\archived\\\\2026-01\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\todos\\\\archived\\\\2026-01\")",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git -C \"c:/CODE/AI/TRADE\" diff --stat)",
+      "Bash(dir:*)",
+      "Bash(2026-01-02)",
+      "Bash(Bug Remediation)",
+      "Bash(2026-01-03)",
+      "Bash(Market Structure)",
+      "Bash(git -C \"c:/CODE/AI/TRADE\" status --short)",
+      "Bash(git checkout:*)"
     ]
   }
 }

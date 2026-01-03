@@ -9,7 +9,7 @@ IMPORTANT: Symbols should ALWAYS be passed as explicit parameters.
 NO function should have a default symbol value.
 """
 
-from typing import Literal
+from typing import Literal, cast
 from pathlib import Path
 
 
@@ -49,7 +49,7 @@ def validate_trading_env(env: str) -> TradingEnv:
     normalized = env.lower().strip()
     if normalized not in TRADING_ENVS:
         raise ValueError(f"Invalid trading environment: '{env}'. Must be 'live' or 'demo'.")
-    return normalized  # type: ignore
+    return cast(TradingEnv, normalized)
 
 
 def get_trading_env_mapping() -> dict:
@@ -110,7 +110,7 @@ def validate_data_env(env: str) -> DataEnv:
     normalized = env.lower().strip()
     if normalized not in DATA_ENVS:
         raise ValueError(f"Invalid data environment: '{env}'. Must be 'live' or 'demo'.")
-    return normalized  # type: ignore
+    return cast(DataEnv, normalized)
 
 
 # ==================== DuckDB Path and Table Mapping ====================

@@ -22,7 +22,7 @@ See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from ..base import BarData, BaseIncrementalDetector
 from ..primitives import MonotonicDeque
@@ -125,10 +125,10 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
         """
         self.size: int = params["size"]
         self.field: str = params["field"]
-        self.mode: str = params["mode"]
+        self.mode: Literal["min", "max"] = params["mode"]
 
         # Internal monotonic deque for O(1) min/max
-        self._deque = MonotonicDeque(self.size, self.mode)  # type: ignore[arg-type]
+        self._deque = MonotonicDeque(self.size, self.mode)  
 
     def update(self, bar_idx: int, bar: BarData) -> None:
         """

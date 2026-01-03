@@ -128,7 +128,7 @@ class ActivitySpinner:
         self.message = message
 
 
-def print_activity(message: str, emoji: str = "💰", end: str = "\n"):
+def print_activity(message: str, emoji: str = "💰", end: str = "\n") -> None:
     """Print a message with activity emoji."""
     print(f"  {emoji} {message}", end=end, flush=True)
 

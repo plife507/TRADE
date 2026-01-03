@@ -523,6 +523,17 @@ As the engine evolves, normalization ensures IdeaCards stay in sync. When agents
 | Project rules | `docs/project/PROJECT_RULES.md` |
 | Project overview | `docs/project/PROJECT_OVERVIEW.md` |
 
+### Vendor References (Read-Only Truth)
+
+| Topic | Path |
+|-------|------|
+| Bybit V5 API docs | `reference/exchanges/bybit/docs/v5/` |
+| pybit SDK source | `reference/exchanges/pybit/` |
+| DuckDB docs | `reference/duckdb/` |
+| pandas-ta source | `reference/pandas_ta_repo/` |
+
+**Rule**: Check vendor references before guessing API params, indicator formulas, or DB syntax.
+
 ### Work Tracking
 
 | Document | Purpose |

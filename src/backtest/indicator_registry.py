@@ -22,7 +22,7 @@ Usage:
     # Check if indicator is supported
     if registry.is_supported("macd"):
         info = registry.get_indicator_info("macd")
-        print(info.accepted_params)
+        # info.accepted_params -> {"fast": int, "slow": int, "signal": int}
     
     # Get expanded keys for multi-output (CANONICAL API)
     keys = registry.get_expanded_keys("macd", "my_macd")
