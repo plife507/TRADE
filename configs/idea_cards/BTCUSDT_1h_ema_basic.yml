@@ -1,0 +1,76 @@
+# Minimal IdeaCard for smoke testing
+# Tests: basic EMA crossover strategy
+
+id: BTCUSDT_1h_ema_basic
+version: "1.0.0"
+name: "Basic EMA Crossover"
+description: "Simple EMA crossover for smoke testing"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+timeframes:
+  exec: "1h"
+
+tf_configs:
+  exec:
+    role: "exec"
+    warmup_bars: 50
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_fast"
+        params:
+          length: 20
+        input_source: "close"
+      - indicator_type: "ema"
+        output_key: "ema_slow"
+        params:
+          length: 50
+        input_source: "close"
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+signal_rules:
+  entry_rules:
+    - direction: "long"
+      conditions:
+        - tf: "exec"
+          indicator_key: "ema_fast"
+          operator: "gt"
+          value: "ema_slow"
+          is_indicator_comparison: true
+  exit_rules:
+    - direction: "long"
+      conditions:
+        - tf: "exec"
+          indicator_key: "ema_fast"
+          operator: "lt"
+          value: "ema_slow"
+          is_indicator_comparison: true
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 2.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 1.0
+    max_leverage: 3.0

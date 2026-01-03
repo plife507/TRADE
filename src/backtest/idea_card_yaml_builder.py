@@ -25,7 +25,7 @@ Agent Rule:
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Any, Tuple
+from typing import Any
 from enum import Enum
 
 from .indicator_registry import get_registry, IndicatorRegistry
@@ -58,10 +58,10 @@ class ValidationError:
     """A single validation error."""
     code: ValidationErrorCode
     message: str
-    location: Optional[str] = None
-    suggestions: Optional[List[str]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    location: str | None = None
+    suggestions: list[str] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         result = {
             "code": self.code.value,
             "message": self.message,
@@ -85,10 +85,10 @@ class ValidationError:
 class ValidationResult:
     """Result of IdeaCard YAML validation."""
     is_valid: bool
-    errors: List[ValidationError] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    errors: list[ValidationError] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "is_valid": self.is_valid,
             "errors": [e.to_dict() for e in self.errors],
@@ -104,22 +104,22 @@ class ValidationResult:
 class ScopeMappings:
     """
     Mappings for a single tf_config scope.
-    
+
     Attributes:
         role: The TF role ("exec", "htf", "mtf")
         declared_keys: All expanded output keys from feature_specs
         base_to_expanded: For multi-output specs, base_output_key -> [expanded_keys]
     """
     role: str
-    declared_keys: Set[str] = field(default_factory=set)
-    base_to_expanded: Dict[str, List[str]] = field(default_factory=dict)
+    declared_keys: set[str] = field(default_factory=set)
+    base_to_expanded: dict[str, list[str]] = field(default_factory=dict)
 
 
 def build_scope_mappings(
-    tf_config: Dict[str, Any],
+    tf_config: dict[str, Any],
     role: str,
     registry: IndicatorRegistry,
-) -> Tuple[ScopeMappings, List[ValidationError]]:
+) -> tuple[ScopeMappings, list[ValidationError]]:
     """
     Build scope mappings for a single tf_config.
     
@@ -132,7 +132,7 @@ def build_scope_mappings(
         Tuple of (ScopeMappings, list of ValidationErrors)
     """
     mappings = ScopeMappings(role=role)
-    errors: List[ValidationError] = []
+    errors: list[ValidationError] = []
     
     feature_specs = tf_config.get("feature_specs", [])
     
@@ -195,9 +195,9 @@ def build_scope_mappings(
 
 
 def build_all_scope_mappings(
-    idea_card_dict: Dict[str, Any],
+    idea_card_dict: dict[str, Any],
     registry: IndicatorRegistry,
-) -> Tuple[Dict[str, ScopeMappings], List[ValidationError]]:
+) -> tuple[dict[str, ScopeMappings], list[ValidationError]]:
     """
     Build scope mappings for all tf_configs.
     
@@ -208,8 +208,8 @@ def build_all_scope_mappings(
     Returns:
         Tuple of (dict of role -> ScopeMappings, list of ValidationErrors)
     """
-    all_mappings: Dict[str, ScopeMappings] = {}
-    all_errors: List[ValidationError] = []
+    all_mappings: dict[str, ScopeMappings] = {}
+    all_errors: list[ValidationError] = []
     
     tf_configs = idea_card_dict.get("tf_configs", {})
     
@@ -225,16 +225,17 @@ def build_all_scope_mappings(
 # Reference Validation
 # =============================================================================
 
-# OHLCV columns are always implicitly available
-OHLCV_COLUMNS = {"open", "high", "low", "close", "volume", "timestamp"}
+# OHLCV columns and builtin price features are always implicitly available
+# mark_price is a runtime builtin - accessible via snapshot_view.get_feature()
+OHLCV_COLUMNS = {"open", "high", "low", "close", "volume", "timestamp", "mark_price"}
 
 
 def validate_feature_reference(
     key: str,
     role: str,
     location: str,
-    all_mappings: Dict[str, ScopeMappings],
-) -> Optional[ValidationError]:
+    all_mappings: dict[str, ScopeMappings],
+) -> ValidationError | None:
     """
     Validate a single feature reference.
     
@@ -288,9 +289,9 @@ def validate_feature_reference(
 
 
 def validate_signal_rules(
-    idea_card_dict: Dict[str, Any],
-    all_mappings: Dict[str, ScopeMappings],
-) -> List[ValidationError]:
+    idea_card_dict: dict[str, Any],
+    all_mappings: dict[str, ScopeMappings],
+) -> list[ValidationError]:
     """
     Validate all feature references in signal_rules.
     
@@ -301,7 +302,7 @@ def validate_signal_rules(
     Returns:
         List of ValidationErrors
     """
-    errors: List[ValidationError] = []
+    errors: list[ValidationError] = []
     signal_rules = idea_card_dict.get("signal_rules", {})
     
     # Entry rules
@@ -360,9 +361,9 @@ def validate_signal_rules(
 
 
 def validate_risk_model_refs(
-    idea_card_dict: Dict[str, Any],
-    all_mappings: Dict[str, ScopeMappings],
-) -> List[ValidationError]:
+    idea_card_dict: dict[str, Any],
+    all_mappings: dict[str, ScopeMappings],
+) -> list[ValidationError]:
     """
     Validate feature references in risk_model (e.g., atr_key).
     
@@ -373,7 +374,7 @@ def validate_risk_model_refs(
     Returns:
         List of ValidationErrors
     """
-    errors: List[ValidationError] = []
+    errors: list[ValidationError] = []
     risk_model = idea_card_dict.get("risk_model", {})
     
     # Check stop_loss.atr_key
@@ -426,12 +427,11 @@ STRUCTURE_PUBLIC_FIELDS = {
 from src.backtest.market_structure.types import TrendState, ZoneState
 from src.backtest.market_structure.detectors import ZONE_PUBLIC_FIELDS
 from enum import Enum as EnumType
-from typing import Union, Type
 
 # Map field names to their enum classes
 # Only enum fields should be listed here
 # Keep namespace-specific: structure enums only
-STRUCTURE_ENUM_FIELDS: Dict[str, Type[EnumType]] = {
+STRUCTURE_ENUM_FIELDS: dict[str, type[EnumType]] = {
     "trend_state": TrendState,
     "state": ZoneState,  # Stage 5+: Zone state field (NONE/ACTIVE/BROKEN)
 }
@@ -439,7 +439,7 @@ STRUCTURE_ENUM_FIELDS: Dict[str, Type[EnumType]] = {
 
 def normalize_enum_token(
     field_name: str,
-    value: Union[str, int],
+    value: str | int,
 ) -> int:
     """
     Normalize enum token to int value.
@@ -491,8 +491,8 @@ def normalize_enum_token(
 
 
 def validate_structure_blocks(
-    idea_card_dict: Dict[str, Any],
-) -> Tuple[List[ValidationError], Dict[str, Set[str]], Dict[str, Set[str]]]:
+    idea_card_dict: dict[str, Any],
+) -> tuple[list[ValidationError], dict[str, set[str]], dict[str, set[str]]]:
     """
     Validate market_structure_blocks in IdeaCard YAML.
 
@@ -510,9 +510,9 @@ def validate_structure_blocks(
         - structure_fields_by_key: maps block_key -> set of valid field names
         - zone_keys_by_block: maps block_key -> set of zone keys (Stage 5+)
     """
-    errors: List[ValidationError] = []
-    structure_fields: Dict[str, Set[str]] = {}
-    zone_keys: Dict[str, Set[str]] = {}  # Stage 5+: block_key -> {zone_key, ...}
+    errors: list[ValidationError] = []
+    structure_fields: dict[str, set[str]] = {}
+    zone_keys: dict[str, set[str]] = {}  # Stage 5+: block_key -> {zone_key, ...}
 
     blocks = idea_card_dict.get("market_structure_blocks", [])
     if not blocks:
@@ -611,10 +611,10 @@ def validate_structure_blocks(
 
 
 def validate_structure_references(
-    idea_card_dict: Dict[str, Any],
-    structure_fields: Dict[str, Set[str]],
-    zone_keys: Dict[str, Set[str]] = None,
-) -> List[ValidationError]:
+    idea_card_dict: dict[str, Any],
+    structure_fields: dict[str, set[str]],
+    zone_keys: dict[str, set[str]] | None = None,
+) -> list[ValidationError]:
     """
     Validate structure references in signal_rules.
 
@@ -630,7 +630,7 @@ def validate_structure_references(
     Returns:
         List of ValidationErrors
     """
-    errors: List[ValidationError] = []
+    errors: list[ValidationError] = []
     zone_keys = zone_keys or {}
 
     # Structure references use the indicator_key field with formats:
@@ -747,7 +747,7 @@ def validate_structure_references(
 # Main Entry Points
 # =============================================================================
 
-def validate_idea_card_yaml(idea_card_dict: Dict[str, Any]) -> ValidationResult:
+def validate_idea_card_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
     """
     Validate an IdeaCard YAML dict at build time.
 
@@ -764,7 +764,7 @@ def validate_idea_card_yaml(idea_card_dict: Dict[str, Any]) -> ValidationResult:
         ValidationResult with is_valid and list of errors
     """
     registry = get_registry()
-    all_errors: List[ValidationError] = []
+    all_errors: list[ValidationError] = []
 
     # Build scope mappings (also validates indicator types and params)
     all_mappings, mapping_errors = build_all_scope_mappings(idea_card_dict, registry)
@@ -798,8 +798,8 @@ def validate_idea_card_yaml(idea_card_dict: Dict[str, Any]) -> ValidationResult:
 
 
 def generate_required_indicators(
-    idea_card_dict: Dict[str, Any],
-) -> Dict[str, List[str]]:
+    idea_card_dict: dict[str, Any],
+) -> dict[str, list[str]]:
     """
     Generate required_indicators for each TF role.
     
@@ -813,12 +813,12 @@ def generate_required_indicators(
         Dict of role -> list of required indicator keys
     """
     registry = get_registry()
-    result: Dict[str, List[str]] = {}
+    result: dict[str, list[str]] = {}
     
     tf_configs = idea_card_dict.get("tf_configs", {})
     
     for role, tf_config in tf_configs.items():
-        keys: List[str] = []
+        keys: list[str] = []
         feature_specs = tf_config.get("feature_specs", [])
         
         for spec in feature_specs:
@@ -836,9 +836,9 @@ def generate_required_indicators(
 
 
 def normalize_idea_card_yaml(
-    idea_card_dict: Dict[str, Any],
+    idea_card_dict: dict[str, Any],
     auto_generate_required: bool = True,
-) -> Tuple[Dict[str, Any], ValidationResult]:
+) -> tuple[dict[str, Any], ValidationResult]:
     """
     Normalize and validate an IdeaCard YAML dict.
     
@@ -881,7 +881,7 @@ def normalize_idea_card_yaml(
     return normalized, result
 
 
-def format_validation_errors(errors: List[ValidationError]) -> str:
+def format_validation_errors(errors: list[ValidationError]) -> str:
     """
     Format validation errors for display.
     
@@ -935,9 +935,9 @@ class ConditionCompileError(ValueError):
     def __init__(
         self,
         message: str,
-        operator: Optional[str] = None,
-        lhs: Optional[str] = None,
-        rhs: Optional[str] = None,
+        operator: str | None = None,
+        lhs: str | None = None,
+        rhs: str | None = None,
     ):
         self.operator = operator
         self.lhs = lhs
@@ -1020,8 +1020,8 @@ def _validate_condition_operator(condition: "Condition") -> None:
 
 def compile_condition(
     condition: "Condition",
-    available_indicators: Optional[Dict[str, List[str]]] = None,
-    available_structures: Optional[List[str]] = None,
+    available_indicators: dict[str, list[str]] | None = None,
+    available_structures: list[str] | None = None,
 ) -> "Condition":
     """
     Compile a Condition's references for O(1) hot-loop evaluation.
@@ -1107,8 +1107,8 @@ def compile_condition(
 
 def compile_signal_rules(
     signal_rules: "SignalRules",
-    available_indicators: Optional[Dict[str, List[str]]] = None,
-    available_structures: Optional[List[str]] = None,
+    available_indicators: dict[str, list[str]] | None = None,
+    available_structures: list[str] | None = None,
 ) -> "SignalRules":
     """
     Compile all conditions in SignalRules.
@@ -1173,8 +1173,8 @@ def compile_idea_card(
     if idea_card.signal_rules is None:
         return idea_card  # Nothing to compile
 
-    # Build context for compilation - Dict[tf_role, List[indicator_keys]]
-    available_indicators: Dict[str, List[str]] = {}
+    # Build context for compilation - dict[tf_role, list[indicator_keys]]
+    available_indicators: dict[str, list[str]] = {}
     for role, tf_config in idea_card.tf_configs.items():
         keys = [spec.output_key for spec in tf_config.feature_specs]
         # Add OHLCV which is always available
@@ -1182,7 +1182,7 @@ def compile_idea_card(
         available_indicators[role] = keys
 
     # Build structure keys
-    available_structures: List[str] = []
+    available_structures: list[str] = []
     if idea_card.market_structure_blocks:
         available_structures = [block.key for block in idea_card.market_structure_blocks]
 

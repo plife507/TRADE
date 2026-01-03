@@ -1,5 +1,5 @@
 # =============================================================================
-# IdeaCard Template - Standard Format v2.0
+# IdeaCard Template - Standard Format v3.0
 # =============================================================================
 # Copy this template and fill in your strategy details.
 # File naming: {SYMBOL}_{TF}_{strategy_name}.yml (e.g., SOLUSDT_5m_ema_crossover.yml)
@@ -40,14 +40,28 @@ symbol_universe:
   - SOLUSDT                               # Must end in "USDT"
 
 # -----------------------------------------------------------------------------
-# TIMEFRAME CONFIGS (Required: exec, Optional: htf, mtf)
-# Each TF needs: tf, role, warmup_bars, feature_specs
+# TIMEFRAMES HEADER (Required)
+# Declares which timeframes are used in this strategy.
+# Each role is validated against predefined groups:
+#   - ltf: 1m, 3m, 5m (low timeframe - high resolution)
+#   - mtf: 15m, 30m (medium timeframe)
+#   - htf: 1h, 4h, 1d (high timeframe - trend bias)
+#   - exec: Any valid TF (execution timeframe)
+# -----------------------------------------------------------------------------
+timeframes:
+  exec: "5m"                              # Required: execution timeframe
+  ltf: "5m"                               # Optional: low timeframe (1m, 3m, 5m)
+  mtf: "15m"                              # Optional: medium timeframe (15m, 30m)
+  htf: "4h"                               # Optional: high timeframe (1h, 4h, 1d)
+
+# -----------------------------------------------------------------------------
+# TIMEFRAME CONFIGS (Required: exec, Optional: htf, mtf, ltf)
+# tf is derived from timeframes header above. Only role and indicators needed.
 # -----------------------------------------------------------------------------
 tf_configs:
   # --- Execution Timeframe (Required) ---
   # This is where trades execute. All entry/exit signals evaluated here.
   exec:
-    tf: "5m"                              # Canonical: 1m, 5m, 15m, 1h, 4h, 1d
     role: "exec"
     warmup_bars: 200                      # Bars needed for indicator stabilization
     feature_specs:
@@ -74,7 +88,6 @@ tf_configs:
   # --- Higher Timeframe (Optional) ---
   # Used for trend bias/filter. Values forward-fill until next HTF close.
   htf:
-    tf: "4h"
     role: "htf"
     warmup_bars: 250                      # EMA200 needs 200+ bars warmup
     feature_specs:
@@ -89,7 +102,6 @@ tf_configs:
   # --- Medium Timeframe (Optional) ---
   # Used for momentum confirmation. Values forward-fill until next MTF close.
   mtf:
-    tf: "1h"
     role: "mtf"
     warmup_bars: 250
     feature_specs:
@@ -123,14 +135,14 @@ signal_rules:
         # --- Exec Trigger (when to enter) ---
         - tf: "exec"
           indicator_key: "ema_fast"
-          operator: "cross_above"         # cross_above, cross_below for crossovers
+          operator: "gt"                  # gt, gte, lt, lte, eq
           value: "ema_slow"               # Compare to another indicator
           is_indicator_comparison: true
 
         # --- HTF Filter (trend bias) ---
         - tf: "htf"
           indicator_key: "close"          # Use "close" for price comparison
-          operator: "gt"                  # gt, gte, lt, lte, eq
+          operator: "gt"
           value: "ema_trend"
           is_indicator_comparison: true
 
@@ -144,10 +156,10 @@ signal_rules:
   exit_rules:
     - direction: "long"
       conditions:
-        # Exit on opposite crossover
+        # Exit when fast EMA falls below slow
         - tf: "exec"
           indicator_key: "ema_fast"
-          operator: "cross_below"
+          operator: "lt"
           value: "ema_slow"
           is_indicator_comparison: true
 
@@ -212,11 +224,13 @@ risk_model:
 #
 # OPERATOR REFERENCE:
 #   Comparison: gt, gte, lt, lte, eq
-#   Crossover: cross_above, cross_below (requires history - auto-detected)
+#   NOTE: Crossover operators (cross_above, cross_below) are NOT supported.
+#         Use derived indicators or threshold comparisons instead.
 #
-# TF ROLES:
-#   exec - Entry/exit signals execute here (required)
-#   htf - Higher timeframe for trend bias (optional)
-#   mtf - Medium timeframe for momentum (optional)
+# TF ROLES AND GROUPS:
+#   exec - Entry/exit signals execute here (required) - any valid TF
+#   ltf  - Low timeframe for precision (optional) - 1m, 3m, 5m
+#   mtf  - Medium timeframe for momentum (optional) - 15m, 30m
+#   htf  - Higher timeframe for trend bias (optional) - 1h, 4h, 1d
 # =============================================================================
 

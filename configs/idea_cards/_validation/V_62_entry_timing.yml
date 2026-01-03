@@ -1,0 +1,113 @@
+# =============================================================================
+# V_62: Entry Timing with 1m Evaluation Loop
+# =============================================================================
+# Purpose: Verify entry timing works with MTF exec and 1m eval loop.
+# Tests: 15m execution timeframe with conditions that would use 1m eval
+# Expected: Normalizer passes - validates MTF structure for 1m eval refactor
+# Use Case: 15m trend filter with fine-grained entry timing
+# =============================================================================
+
+id: V_62_entry_timing
+version: "1.0.0"
+name: "Entry Timing MTF Pattern"
+description: "Validate 15m exec with 1m eval loop pattern"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+timeframes:
+  exec: "15m"
+  htf: "1h"
+
+tf_configs:
+  exec:
+    role: "exec"
+    warmup_bars: 50
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_fast"
+        params:
+          length: 9
+        input_source: "close"
+      - indicator_type: "ema"
+        output_key: "ema_slow"
+        params:
+          length: 21
+        input_source: "close"
+      - indicator_type: "atr"
+        output_key: "atr"
+        params:
+          length: 14
+        input_source: "close"
+
+  htf:
+    role: "htf"
+    warmup_bars: 200
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_trend"
+        params:
+          length: 200
+        input_source: "close"
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+signal_rules:
+  entry_rules:
+    - direction: "long"
+      conditions:
+        # HTF trend filter
+        - tf: "htf"
+          indicator_key: "close"
+          operator: "gt"
+          value: "ema_trend"
+          is_indicator_comparison: true
+        # Exec trend alignment
+        - tf: "exec"
+          indicator_key: "ema_fast"
+          operator: "gt"
+          value: "ema_slow"
+          is_indicator_comparison: true
+        # Mark price confirmation (1m eval would check this more frequently)
+        - tf: "exec"
+          indicator_key: "mark_price"
+          operator: "gt"
+          value: "ema_fast"
+          is_indicator_comparison: true
+
+  exit_rules:
+    - direction: "long"
+      conditions:
+        - tf: "exec"
+          indicator_key: "ema_fast"
+          operator: "lt"
+          value: "ema_slow"
+          is_indicator_comparison: true
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 2.0
+    atr_key: "atr"
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 1.0
+    max_leverage: 3.0

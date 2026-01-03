@@ -1,0 +1,92 @@
+# =============================================================================
+# V_61: Mark Price vs Indicator Comparison (Zone Touch Pattern)
+# =============================================================================
+# Purpose: Verify mark_price can be compared against indicator values.
+# Tests: mark_price as RHS in indicator comparison (common zone touch pattern)
+# Expected: Normalizer passes - mark_price valid in both LHS and RHS positions
+# Use Case: Entry when price touches support zone (mark_price < upper_band)
+# =============================================================================
+
+id: V_61_zone_touch
+version: "1.0.0"
+name: "Zone Touch Entry Pattern"
+description: "Validate mark_price comparison with bands (zone touch)"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+timeframes:
+  exec: "15m"
+
+tf_configs:
+  exec:
+    role: "exec"
+    warmup_bars: 50
+    feature_specs:
+      - indicator_type: "bbands"
+        output_key: "bb"
+        params:
+          length: 20
+          std: 2.0
+        input_source: "close"
+      - indicator_type: "rsi"
+        output_key: "rsi"
+        params:
+          length: 14
+        input_source: "close"
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+signal_rules:
+  entry_rules:
+    - direction: "long"
+      conditions:
+        # Zone touch: mark_price near lower band (oversold entry)
+        - tf: "exec"
+          indicator_key: "mark_price"
+          operator: "lt"
+          value: "bb_lower"
+          is_indicator_comparison: true
+        # RSI oversold confirmation
+        - tf: "exec"
+          indicator_key: "rsi"
+          operator: "lt"
+          value: 30
+          is_indicator_comparison: false
+
+  exit_rules:
+    - direction: "long"
+      conditions:
+        # Exit at middle band
+        - tf: "exec"
+          indicator_key: "mark_price"
+          operator: "gt"
+          value: "bb_middle"
+          is_indicator_comparison: true
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 2.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 1.0
+    max_leverage: 3.0

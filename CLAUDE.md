@@ -72,7 +72,7 @@ TRADE/
 │   │   ├── runtime/               # Snapshot, FeedStore, TFContext
 │   │   └── features/              # FeatureSpec, FeatureFrameBuilder
 │   ├── core/                      # DOMAIN: Live Trading (exchange-native semantics)
-│   │   ├── risk_manager.py        # Live risk checks (Signal.size_usd)
+│   │   ├── risk_manager.py        # Live risk checks (Signal.size_usdt)
 │   │   ├── position_manager.py    # Position tracking
 │   │   └── order_executor.py      # Order execution
 │   ├── exchanges/                 # DOMAIN: Live Trading (Bybit API)
@@ -90,6 +90,18 @@ TRADE/
 ├── CLAUDE.md                      # AI assistant guidance (this file)
 └── trade_cli.py                   # CLI entry point
 ```
+
+## Module Documentation
+
+Each major module has its own CLAUDE.md with domain rules and active TODOs:
+
+| Module | Path | Domain |
+|--------|------|--------|
+| Backtest | `src/backtest/CLAUDE.md` | Simulator, engine, market structure |
+| Core | `src/core/CLAUDE.md` | Live trading execution |
+| Data | `src/data/CLAUDE.md` | DuckDB, market data |
+| Tools | `src/tools/CLAUDE.md` | CLI/API surface |
+| Exchanges | `src/exchanges/CLAUDE.md` | Bybit API client |
 
 ## Critical Rules
 
@@ -152,12 +164,10 @@ TRADE/
 
 ### DOMAIN RULES — SIMULATOR / BACKTEST (`src/backtest/`)
 
-**Currency Model: USDT Only**
-- Simulator account and margin currency is **USDT**.
-- MUST NOT alias USD and USDT—they are semantically distinct.
-- Canonical sizing field in simulator signals is `size_usdt`.
-- MUST NOT use `size_usd` or `size` in simulator code—use `size_usdt`.
-- Example (SIMULATOR-ONLY): `Signal.size_usdt`, `Position.size_usdt`, `Trade.entry_size_usdt`.
+**Currency Model: USDT Only (Global Standard)**
+- **ALL sizing fields use `size_usdt` globally** — both simulator and live domains.
+- MUST NOT use `size_usd` or `size` anywhere — use `size_usdt`.
+- Example: `Signal.size_usdt`, `Position.size_usdt`, `Trade.entry_size_usdt`.
 
 **Symbol Validation: USDT Pairs Only (Current Iteration)**
 - Simulator MUST reject symbols not ending in "USDT" (e.g., `BTCUSD`, `BTCUSDC`) in the current iteration.
@@ -191,15 +201,13 @@ TRADE/
 
 ### DOMAIN RULES — LIVE TRADING / EXCHANGE (`src/core/`, `src/exchanges/`)
 
-**Currency Semantics: Exchange-Native**
-- Live trading uses exchange-native currency semantics.
-- `size_usd` in live trading represents **exchange-native notional**, not simulator accounting currency.
-- Variable names may use `size_usd` per existing patterns—this is NOT the same as simulator `size_usdt`.
-- Simulator refactors MUST NOT force renames in live trading code.
+**Currency Semantics: USDT Global Standard**
+- **ALL sizing fields use `size_usdt` globally** — unified across live and simulator domains.
+- MUST NOT use `size_usd` anywhere — use `size_usdt`.
+- Example: `Signal.size_usdt`, `Position.size_usdt`, `RiskConfig.max_position_size_usdt`.
 
 **Domain Isolation**
 - Simulator-only assumptions MUST NOT leak into live execution paths.
-- Example (LIVE-ONLY): `src/core/risk_manager.py` uses `Signal.size_usd`—do NOT rename to match simulator.
 
 **API Boundaries**
 - All trading operations MUST go through `src/tools/*` for proper orchestration.
@@ -237,6 +245,11 @@ TRADE/
 - Never include operational steps (linting, searching, reading) as todos
 - Reference external files instead of inlining code
 - As context fills: consolidate completed todos, drop verbose history
+
+**Agent Model Selection:**
+- **ALWAYS use `model="opus"` for coding agents** (Task tool with code implementation)
+- Use Opus for: refactoring, bug fixes, feature implementation, code review
+- Haiku acceptable only for: quick file searches, simple queries, read-only exploration
 
 ## Tool Layer (SHARED — Primary API)
 
@@ -412,6 +425,14 @@ The `data_extensive` test:
 
 **WARNING**: `delete_all_data_tool` permanently deletes all historical data.
 
+## Audit & Bug Tracking
+
+See `docs/audits/OPEN_BUGS.md` for:
+- Audit checklist (common bug patterns)
+- P0-P3 prioritized bugs with status
+
+See `docs/todos/TODO.md` for active work tracking.
+
 ## Proactive Validation During Refactoring
 
 **MANDATORY**: Use the `validate` agent proactively during refactoring to catch breaking changes early.
@@ -449,19 +470,15 @@ The `data_extensive` test:
 
 ### Validation IdeaCards
 
-All validation IdeaCards are in `configs/idea_cards/_validation/` with naming convention `V_XX_category_description.yml`:
+Location: `configs/idea_cards/_validation/`
 
-| Range | Category | Count |
-|-------|----------|-------|
-| V_01-V_09 | Single-TF | 3 cards |
-| V_11-V_19 | MTF | 3 cards |
-| V_21-V_29 | Warmup | 2 cards |
-| V_31-V_39 | Coverage (42 indicators) | 7 cards |
-| V_41-V_49 | Math Parity | 2 cards |
-| V_51-V_59 | 1m Drift | 1 card |
-| V_E01-V_E99 | Error cases | 3 cards |
+| Card | Purpose |
+|------|---------|
+| V_60_mark_price_basic.yml | mark_price accessible in conditions |
+| V_61_zone_touch.yml | mark_price vs indicator comparison (BBands) |
+| V_62_entry_timing.yml | MTF pattern (15m exec, 1h HTF) |
 
-**Total**: 24 IdeaCards covering all 42 indicators
+**Total**: 3 validation cards for 1m eval loop
 
 ### Validation Tiers
 
@@ -497,24 +514,10 @@ As the engine evolves, normalization ensures IdeaCards stay in sync. When agents
 | Project rules | `docs/project/PROJECT_RULES.md` |
 | Project overview | `docs/project/PROJECT_OVERVIEW.md` |
 
-### TODO Phase Documents (Canonical Work Tracking)
+### Work Tracking
 
-**Active:**
-
-| Document | Status | Next Step |
-|----------|--------|-----------|
-| `docs/todos/AUDIT_OPEN_BUGS.md` | 33 bugs (4 P1, 19 P2, 10 P3) | Fix remaining P1 blockers |
-| `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md` | Phases 1-4 ✅, Phase 5 📋 READY | Market Structure Features |
-| `docs/todos/REGISTRY_CONSOLIDATION_PHASES.md` | Phases 0-2 ✅, Phase 3 📋 READY | Add structure indicators |
-| `docs/todos/BACKTEST_ANALYTICS_PHASES.md` | Phases 1-4 ✅, 5-6 📋 pending | Benchmark comparison (future) |
-
-**Recently Archived (January 2026):**
-
-| Document | Scope |
-|----------|-------|
-| `docs/todos/archived/2026-01-01/LEGACY_CLEANUP_PHASES.md` | Removed dual metrics, warmup_multiplier |
-| `docs/todos/archived/2026-01-01/METRICS_ENHANCEMENT_PHASES.md` | 62-field BacktestMetrics |
-| `docs/todos/archived/2026-01-01/IDEACARD_VALUE_FLOW_FIX_PHASES.md` | Fixed slippage_bps, MMR flow |
-| `docs/todos/archived/2026-01-01/CLI_MENU_TOOLS_ALIGNMENT_PHASES.md` | IdeaCard menus, tools refactor |
-
-**Full archive index**: `docs/todos/INDEX.md`
+| Document | Purpose |
+|----------|---------|
+| `docs/todos/TODO.md` | Active work tracking |
+| `docs/audits/OPEN_BUGS.md` | Bug tracker with audit checklist |
+| `docs/todos/archived/` | Completed phase documents |
