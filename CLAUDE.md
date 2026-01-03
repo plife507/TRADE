@@ -19,6 +19,31 @@ This applies to ALL code changes in this repository.
 
 ---
 
+## PRIME DIRECTIVE: LF LINE ENDINGS ONLY
+
+**ALL files MUST use LF (`\n`) line endings. NEVER CRLF (`\r\n`).**
+
+When writing files with Python on Windows:
+```python
+# CORRECT - explicit LF
+open(file, 'w', newline='\n').write(content)
+
+# CORRECT - binary mode
+open(file, 'wb').write(content.encode('utf-8'))
+
+# WRONG - will write CRLF on Windows
+open(file, 'w').write(content)
+```
+
+If Edit tool fails with "file unexpectedly modified", run:
+```bash
+git ls-files --eol | grep "w/crlf"  # Find CRLF files
+```
+
+This is enforced by `.gitattributes` (`* text=auto`, `*.py eol=lf`).
+
+---
+
 ## Project Overview
 
 TRADE is a **modular, production-ready** Bybit futures trading bot with complete UTA support, comprehensive order types, position management, tool registry for orchestrator/bot integration, and risk controls.
