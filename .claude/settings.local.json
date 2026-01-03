@@ -30,7 +30,9 @@
       "Bash(2026-01-03)",
       "Bash(Market Structure)",
       "Bash(git -C \"c:/CODE/AI/TRADE\" status --short)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(for f in docs/todos/MEGA_FILE_REFACTOR.md src/tools/data_tools.py src/tools/data_tools_common.py src/tools/data_tools_query.py src/tools/data_tools_status.py src/tools/data_tools_sync.py)",
+      "Bash(do python -c \"open\\(''$f'', ''rb''\\).read\\(\\).replace\\(b''\\\\r\\\\n'', b''\\\\n''\\)\")"
     ]
   }
 }
