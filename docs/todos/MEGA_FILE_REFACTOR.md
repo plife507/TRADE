@@ -19,19 +19,19 @@
 **Goal**: Single source of truth for datetime parsing/validation
 
 ### 1.1 Create datetime_utils.py
-- [ ] Create `src/utils/datetime_utils.py`
-- [ ] Move `_normalize_datetime()` from `data_tools.py:31-82`
-- [ ] Move `_validate_time_range()` from `data_tools.py:84-112`
-- [ ] Move `_normalize_time_range_params()` from `data_tools.py:114-148`
-- [ ] Add `normalize_datetime_for_storage()` (from backtest_ideacard_tools pattern)
+- [x] Create `src/utils/datetime_utils.py`
+- [x] Move `_normalize_datetime()` from `data_tools.py:31-82`
+- [x] Move `_validate_time_range()` from `data_tools.py:84-112`
+- [x] Move `_normalize_time_range_params()` from `data_tools.py:114-148`
+- [x] Add `normalize_datetime_for_storage()` (from backtest_ideacard_tools pattern)
 
 ### 1.2 Update Consumers
-- [ ] Update `data_tools.py` to import from `datetime_utils`
+- [x] Update `data_tools.py` to import from `datetime_utils`
 - [ ] Update `backtest_ideacard_tools.py` to import from `datetime_utils`
-- [ ] Add backward-compat aliases in original locations
+- [x] Add backward-compat aliases in original locations
 
 ### 1.3 Validate Phase 1
-- [ ] `python -m py_compile src/utils/datetime_utils.py`
+- [x] `python -m py_compile src/utils/datetime_utils.py`
 - [ ] `python trade_cli.py --smoke data` passes
 
 ---

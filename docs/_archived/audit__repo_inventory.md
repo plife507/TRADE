@@ -217,7 +217,6 @@ src/
 | `api_keys.env` | API keys (gitignored) |
 | `requirements.txt` | Python dependencies |
 | `CLAUDE.md` | AI guidance + project rules |
-| `.cursor/rules/rules.mdc` | Cursor-specific rules |
 
 ---
 

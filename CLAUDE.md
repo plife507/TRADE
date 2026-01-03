@@ -4,11 +4,26 @@ Guidance for Claude when working with the TRADE trading bot.
 
 > **Code examples**: See `docs/guides/CODE_EXAMPLES.md` | **Env vars**: See `env.example`
 
+---
+
+## PRIME DIRECTIVE: ALL FORWARD, NO LEGACY
+
+**NO backward compatibility. NO legacy fallbacks. NO shims. EVER.**
+
+- Delete old code, don't wrap it
+- Update all callers, don't add aliases
+- Break changes are expected and welcomed
+- If something breaks, fix it forward
+
+This applies to ALL code changes in this repository.
+
+---
+
 ## Project Overview
 
 TRADE is a **modular, production-ready** Bybit futures trading bot with complete UTA support, comprehensive order types, position management, tool registry for orchestrator/bot integration, and risk controls.
 
-**Key Philosophy**: Safety first, modular always, tools as the API surface.
+**Key Philosophy**: Safety first, modular always, tools as the API surface, ALL FORWARD.
 
 ## Current Objective (Backtest Engine Roadmap)
 
@@ -249,7 +264,7 @@ Each major module has its own CLAUDE.md with domain rules and active TODOs:
 - Acceptance criteria per phase
 - Completed phases are FROZEN
 
-**In-Context Todo Lists (Cursor Agent):**
+**In-Context Todo Lists:**
 - Keep items short (<70 chars) - high-level goals only
 - Never include operational steps (linting, searching, reading) as todos
 - Reference external files instead of inlining code
