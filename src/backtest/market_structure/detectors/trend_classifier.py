@@ -4,8 +4,8 @@ Trend Classifier.
 Classifies market trend based on swing high/low patterns.
 
 Classification Logic:
-- BULLISH: Higher Highs (HH) + Higher Lows (HL)
-- BEARISH: Lower Lows (LL) + Lower Highs (LH)
+- UP: Higher Highs (HH) + Higher Lows (HL) - structural uptrend
+- DOWN: Lower Lows (LL) + Lower Highs (LH) - structural downtrend
 - UNKNOWN: Mixed pattern or insufficient data
 
 Requirements:
@@ -14,13 +14,13 @@ Requirements:
 - Forward-fills the last known trend state
 
 Output Arrays (per-bar, forward-filled):
-- trend_state: 0=unknown, 1=bullish, 2=bearish (TrendState enum)
+- trend_state: 0=UNKNOWN, 1=UP, 2=DOWN (TrendState enum)
 - recency: Bars since last trend state change (-1 if never classified)
 - parent_version: Version counter (increments on each trend state change)
 """
 
 import numpy as np
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from src.backtest.market_structure.registry import BaseDetector
 from src.backtest.market_structure.types import TREND_INTERNAL_OUTPUTS, TrendState
@@ -31,8 +31,8 @@ class TrendClassifier(BaseDetector):
     Trend classifier based on swing high/low patterns.
 
     Requires swing outputs as input. Classifies trend as:
-    - BULLISH: Last 2 swing highs ascending AND last 2 swing lows ascending
-    - BEARISH: Last 2 swing highs descending AND last 2 swing lows descending
+    - UP: Last 2 swing highs ascending AND last 2 swing lows ascending (structural uptrend)
+    - DOWN: Last 2 swing highs descending AND last 2 swing lows descending (structural downtrend)
     - UNKNOWN: Mixed pattern or insufficient history
 
     The classifier needs at least 2 confirmed highs and 2 confirmed lows
@@ -40,15 +40,15 @@ class TrendClassifier(BaseDetector):
     """
 
     @property
-    def output_keys(self) -> Tuple[str, ...]:
+    def output_keys(self) -> tuple[str, ...]:
         """Output key suffixes for trend classifier (internal names)."""
         return TREND_INTERNAL_OUTPUTS
 
     def build_batch(
         self,
-        swing_outputs: Dict[str, np.ndarray],
-        params: Dict[str, Any],
-    ) -> Dict[str, np.ndarray]:
+        swing_outputs: dict[str, np.ndarray],
+        params: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         """
         Classify trend based on swing high/low patterns.
 
@@ -166,7 +166,7 @@ def classify_single_swing_update(
     """
     Pure function to classify trend from two consecutive swing pairs.
 
-    Returns TrendState value (0=none, 1=bullish, 2=bearish).
+    Returns TrendState value (0=UNKNOWN, 1=UP, 2=DOWN).
 
     Args:
         prev_high: Previous swing high level

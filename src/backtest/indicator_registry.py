@@ -38,9 +38,10 @@ Agent Rule:
 """
 
 from __future__ import annotations
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Any
 from functools import lru_cache
+from typing import Any
 
 
 # =============================================================================
@@ -50,44 +51,44 @@ from functools import lru_cache
 # valid values. They are stored in SUPPORTED_INDICATORS and looked up by the
 # registry.
 
-def _warmup_length(p: Dict[str, Any]) -> int:
+def _warmup_length(p: dict[str, Any]) -> int:
     """Default warmup: just the length parameter."""
     return p.get("length", 0)
 
 
-def _warmup_ema(p: Dict[str, Any]) -> int:
+def _warmup_ema(p: dict[str, Any]) -> int:
     """EMA needs 3x length for stabilization."""
     return p.get("length", 20) * 3
 
 
-def _warmup_sma(p: Dict[str, Any]) -> int:
+def _warmup_sma(p: dict[str, Any]) -> int:
     """SMA needs exactly length bars."""
     return p.get("length", 20)
 
 
-def _warmup_rsi(p: Dict[str, Any]) -> int:
+def _warmup_rsi(p: dict[str, Any]) -> int:
     """RSI needs length + 1 for first delta."""
     return p.get("length", 14) + 1
 
 
-def _warmup_atr(p: Dict[str, Any]) -> int:
+def _warmup_atr(p: dict[str, Any]) -> int:
     """ATR needs length + 1 for previous close."""
     return p.get("length", 14) + 1
 
 
-def _warmup_macd(p: Dict[str, Any]) -> int:
+def _warmup_macd(p: dict[str, Any]) -> int:
     """MACD needs 3x slow + signal for EMA stabilization."""
     slow = p.get("slow", 26)
     signal = p.get("signal", 9)
     return slow * 3 + signal
 
 
-def _warmup_bbands(p: Dict[str, Any]) -> int:
+def _warmup_bbands(p: dict[str, Any]) -> int:
     """Bollinger Bands needs same as SMA."""
     return p.get("length", 20)
 
 
-def _warmup_stoch(p: Dict[str, Any]) -> int:
+def _warmup_stoch(p: dict[str, Any]) -> int:
     """Stochastic needs k + smooth_k + d."""
     k = p.get("k", 14)
     d = p.get("d", 3)
@@ -95,7 +96,7 @@ def _warmup_stoch(p: Dict[str, Any]) -> int:
     return k + smooth_k + d
 
 
-def _warmup_stochrsi(p: Dict[str, Any]) -> int:
+def _warmup_stochrsi(p: dict[str, Any]) -> int:
     """StochRSI needs rsi_length + length + max(k, d)."""
     length = p.get("length", 14)
     rsi_length = p.get("rsi_length", 14)
@@ -104,52 +105,52 @@ def _warmup_stochrsi(p: Dict[str, Any]) -> int:
     return rsi_length + length + max(k, d)
 
 
-def _warmup_adx(p: Dict[str, Any]) -> int:
+def _warmup_adx(p: dict[str, Any]) -> int:
     """ADX needs 2x length for smoothing."""
     return p.get("length", 14) * 2
 
 
-def _warmup_supertrend(p: Dict[str, Any]) -> int:
+def _warmup_supertrend(p: dict[str, Any]) -> int:
     """Supertrend needs ATR warmup."""
     return p.get("length", 10) + 1
 
 
-def _warmup_psar(p: Dict[str, Any]) -> int:
+def _warmup_psar(p: dict[str, Any]) -> int:
     """PSAR needs minimal warmup (2 bars for trend detection)."""
     return 2
 
 
-def _warmup_squeeze(p: Dict[str, Any]) -> int:
+def _warmup_squeeze(p: dict[str, Any]) -> int:
     """Squeeze needs max of BB and KC lengths."""
     bb_length = p.get("bb_length", 20)
     kc_length = p.get("kc_length", 20)
     return max(bb_length, kc_length)
 
 
-def _warmup_kc(p: Dict[str, Any]) -> int:
+def _warmup_kc(p: dict[str, Any]) -> int:
     """Keltner Channel needs EMA + ATR warmup."""
     length = p.get("length", 20)
     return length * 3 + 1  # EMA stabilization + ATR
 
 
-def _warmup_donchian(p: Dict[str, Any]) -> int:
+def _warmup_donchian(p: dict[str, Any]) -> int:
     """Donchian Channel needs max of lower/upper lengths."""
     lower = p.get("lower_length", 20)
     upper = p.get("upper_length", 20)
     return max(lower, upper)
 
 
-def _warmup_aroon(p: Dict[str, Any]) -> int:
+def _warmup_aroon(p: dict[str, Any]) -> int:
     """Aroon needs length + 1."""
     return p.get("length", 25) + 1
 
 
-def _warmup_fisher(p: Dict[str, Any]) -> int:
+def _warmup_fisher(p: dict[str, Any]) -> int:
     """Fisher Transform needs length."""
     return p.get("length", 9)
 
 
-def _warmup_tsi(p: Dict[str, Any]) -> int:
+def _warmup_tsi(p: dict[str, Any]) -> int:
     """TSI needs fast + slow + signal for double smoothing."""
     fast = p.get("fast", 13)
     slow = p.get("slow", 25)
@@ -157,7 +158,7 @@ def _warmup_tsi(p: Dict[str, Any]) -> int:
     return fast + slow + signal
 
 
-def _warmup_kvo(p: Dict[str, Any]) -> int:
+def _warmup_kvo(p: dict[str, Any]) -> int:
     """KVO needs fast + slow + signal."""
     fast = p.get("fast", 34)
     slow = p.get("slow", 55)
@@ -165,7 +166,7 @@ def _warmup_kvo(p: Dict[str, Any]) -> int:
     return fast + slow + signal
 
 
-def _warmup_uo(p: Dict[str, Any]) -> int:
+def _warmup_uo(p: dict[str, Any]) -> int:
     """Ultimate Oscillator needs max of all periods."""
     fast = p.get("fast", 7)
     medium = p.get("medium", 14)
@@ -173,14 +174,14 @@ def _warmup_uo(p: Dict[str, Any]) -> int:
     return max(fast, medium, slow)
 
 
-def _warmup_ppo(p: Dict[str, Any]) -> int:
+def _warmup_ppo(p: dict[str, Any]) -> int:
     """PPO needs same as MACD (EMA-based)."""
     slow = p.get("slow", 26)
     signal = p.get("signal", 9)
     return slow * 3 + signal
 
 
-def _warmup_minimal(p: Dict[str, Any]) -> int:
+def _warmup_minimal(p: dict[str, Any]) -> int:
     """Minimal warmup for cumulative/instant indicators (OBV, OHLC4)."""
     return 1
 
@@ -193,7 +194,7 @@ def _warmup_minimal(p: Dict[str, Any]) -> int:
 # it exists in pandas_ta. This prevents agents from generating unsupported
 # indicator types.
 
-SUPPORTED_INDICATORS: Dict[str, Dict[str, Any]] = {
+SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
     # -------------------------------------------------------------------------
     # Single-Output Indicators
     # -------------------------------------------------------------------------
@@ -520,7 +521,7 @@ COMMON_PARAMS = {
 #                                               Default: _warmup_length
 #   - sparse: bool              - Whether outputs are sparse (need forward-fill)
 #                                 Default: False
-#   - compute_fn: Optional[str] - Custom compute function name for non-pandas_ta indicators
+#   - compute_fn: str | None    - Custom compute function name for non-pandas_ta indicators
 #                                 Default: None (uses pandas_ta)
 #
 # NOTE: Current indicators all use pandas_ta and are not sparse.
@@ -551,18 +552,18 @@ class IndicatorInfo:
             st_short are mutually exclusive - when one has a value, the other is NaN.
     """
     name: str
-    input_series: FrozenSet[str] = field(default_factory=frozenset)
-    accepted_params: FrozenSet[str] = field(default_factory=frozenset)
+    input_series: frozenset[str] = field(default_factory=frozenset)
+    accepted_params: frozenset[str] = field(default_factory=frozenset)
     is_multi_output: bool = False
-    output_keys: Tuple[str, ...] = field(default_factory=tuple)
-    primary_output: Optional[str] = None
+    output_keys: tuple[str, ...] = field(default_factory=tuple)
+    primary_output: str | None = None
     # Phase 0 additions for registry consolidation
-    warmup_formula: Optional[Callable[[Dict[str, Any]], int]] = None
+    warmup_formula: Callable[[dict[str, Any]], int] | None = None
     sparse: bool = False
-    compute_fn: Optional[str] = None
+    compute_fn: str | None = None
     # Mutually exclusive output groups - tuple of tuples of suffix names
     # E.g., (("long", "short"),) means long and short are mutually exclusive
-    mutually_exclusive_outputs: Tuple[Tuple[str, ...], ...] = field(default_factory=tuple)
+    mutually_exclusive_outputs: tuple[tuple[str, ...], ...] = field(default_factory=tuple)
 
     @property
     def requires_hlc(self) -> bool:
@@ -581,7 +582,7 @@ class IndicatorInfo:
                 return True
         return False
 
-    def get_exclusive_group_for_output(self, suffix: str) -> Optional[Tuple[str, ...]]:
+    def get_exclusive_group_for_output(self, suffix: str) -> tuple[str, ...] | None:
         """Get the mutually exclusive group containing this output suffix."""
         for group in self.mutually_exclusive_outputs:
             if suffix in group:
@@ -608,7 +609,7 @@ class IndicatorRegistry:
     wired in our vendor.
     """
     
-    _instance: Optional["IndicatorRegistry"] = None
+    _instance: "IndicatorRegistry | None" = None
     
     def __new__(cls) -> "IndicatorRegistry":
         """Singleton pattern for registry."""
@@ -622,7 +623,7 @@ class IndicatorRegistry:
         if self._initialized:
             return
         
-        self._indicators: Dict[str, IndicatorInfo] = {}
+        self._indicators: dict[str, IndicatorInfo] = {}
         self._build_registry()
         self._initialized = True
     
@@ -685,7 +686,7 @@ class IndicatorRegistry:
             )
         return self._indicators[name_lower]
     
-    def validate_params(self, name: str, params: Dict[str, Any]) -> None:
+    def validate_params(self, name: str, params: dict[str, Any]) -> None:
         """
         Validate that all params are accepted by the indicator.
         
@@ -705,7 +706,7 @@ class IndicatorRegistry:
                     f"Accepted parameters: {sorted(info.accepted_params)}"
                 )
     
-    def list_indicators(self) -> List[str]:
+    def list_indicators(self) -> list[str]:
         """Get sorted list of all supported indicator names."""
         return sorted(self._indicators.keys())
     
@@ -717,7 +718,7 @@ class IndicatorRegistry:
         except ValueError:
             return False
     
-    def get_output_suffixes(self, name: str) -> Tuple[str, ...]:
+    def get_output_suffixes(self, name: str) -> tuple[str, ...]:
         """
         Get canonical output suffixes for a multi-output indicator.
         
@@ -733,7 +734,7 @@ class IndicatorRegistry:
         except ValueError:
             return ()
     
-    def get_primary_output(self, name: str) -> Optional[str]:
+    def get_primary_output(self, name: str) -> str | None:
         """
         Get the primary output suffix for a multi-output indicator.
         
@@ -752,7 +753,7 @@ class IndicatorRegistry:
         except ValueError:
             return None
     
-    def get_expanded_keys(self, indicator_type: str, output_key: str) -> List[str]:
+    def get_expanded_keys(self, indicator_type: str, output_key: str) -> list[str]:
         """
         Get the expanded output keys for an indicator.
         
@@ -781,7 +782,7 @@ class IndicatorRegistry:
         # Multi-output - expand with suffixes
         return [f"{output_key}_{suffix}" for suffix in info.output_keys]
     
-    def get_input_series(self, name: str) -> Set[str]:
+    def get_input_series(self, name: str) -> set[str]:
         """
         Get the set of input series names an indicator needs.
 
@@ -798,7 +799,7 @@ class IndicatorRegistry:
     # Phase 0 Additions: Warmup and Sparse Support
     # =========================================================================
 
-    def get_warmup_bars(self, indicator_type: str, params: Dict[str, Any]) -> int:
+    def get_warmup_bars(self, indicator_type: str, params: dict[str, Any]) -> int:
         """
         Calculate warmup bars needed for an indicator with given params.
 
@@ -841,7 +842,7 @@ class IndicatorRegistry:
         except ValueError:
             return False
 
-    def get_compute_fn(self, name: str) -> Optional[str]:
+    def get_compute_fn(self, name: str) -> str | None:
         """
         Get the custom compute function name for an indicator.
 
@@ -861,8 +862,8 @@ class IndicatorRegistry:
             return None
 
     def get_mutually_exclusive_groups(
-        self, column_names: List[str]
-    ) -> List[Set[str]]:
+        self, column_names: list[str]
+    ) -> list[set[str]]:
         """
         Identify mutually exclusive column groups from a list of column names.
 
@@ -877,8 +878,8 @@ class IndicatorRegistry:
             List of sets, where each set contains column names that are mutually exclusive.
             E.g., [{"st_long", "st_short"}, {"psar_long", "psar_short"}]
         """
-        groups: List[Set[str]] = []
-        processed: Set[str] = set()
+        groups: list[set[str]] = []
+        processed: set[str] = set()
 
         for col in column_names:
             if col in processed:
@@ -950,7 +951,7 @@ def validate_indicator_type(indicator_type: str) -> bool:
     return True
 
 
-def validate_indicator_params(indicator_type: str, params: Dict[str, Any]) -> None:
+def validate_indicator_params(indicator_type: str, params: dict[str, Any]) -> None:
     """
     Validate that params are accepted by the indicator.
     
@@ -965,7 +966,7 @@ def validate_indicator_params(indicator_type: str, params: Dict[str, Any]) -> No
     registry.validate_params(indicator_type, params)
 
 
-def get_expanded_keys(indicator_type: str, output_key: str) -> List[str]:
+def get_expanded_keys(indicator_type: str, output_key: str) -> list[str]:
     """
     Get the expanded output keys for an indicator (canonical API).
 
@@ -980,7 +981,7 @@ def get_expanded_keys(indicator_type: str, output_key: str) -> List[str]:
     return registry.get_expanded_keys(indicator_type, output_key)
 
 
-def get_warmup_bars(indicator_type: str, params: Dict[str, Any]) -> int:
+def get_warmup_bars(indicator_type: str, params: dict[str, Any]) -> int:
     """
     Calculate warmup bars needed for an indicator with given params.
 

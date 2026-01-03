@@ -84,11 +84,20 @@ account:
 symbol_universe:
   - SOLUSDT
 
-# Timeframe Configs (exec required, htf/mtf optional)
+# Timeframes Header (REQUIRED)
+# Groups: ltf=1m,3m,5m | mtf=15m,30m | htf=1h,4h,1d | exec=any
+timeframes:
+  exec: "5m"     # Required
+  ltf: "5m"      # Optional (1m, 3m, 5m)
+  mtf: "15m"     # Optional (15m, 30m)
+  htf: "4h"      # Optional (1h, 4h, 1d)
+
+# Timeframe Configs (tf derived from timeframes header)
 tf_configs:
-  exec: { tf, role, warmup_bars, feature_specs, required_indicators }
+  exec: { role, warmup_bars, feature_specs, required_indicators }
   htf:  { ... }  # Optional
   mtf:  { ... }  # Optional
+  ltf:  { ... }  # Optional
 
 # Position Policy
 position_policy:

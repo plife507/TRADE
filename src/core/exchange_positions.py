@@ -10,7 +10,7 @@ Handles:
 """
 
 import re
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ..exchanges.bybit_client import BybitAPIError
 from ..utils.helpers import safe_float
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 # Position Queries
 # =============================================================================
 
-def get_position(manager: "ExchangeManager", symbol: str) -> Optional["Position"]:
+def get_position(manager: "ExchangeManager", symbol: str) -> "Position | None":
     """
     Get position for a specific symbol.
     
@@ -57,7 +57,7 @@ def get_position(manager: "ExchangeManager", symbol: str) -> Optional["Position"
                 position_type="futures",
                 side=side,
                 size=size,
-                size_usd=size * current_price,
+                size_usdt=size * current_price,
                 entry_price=entry_price,
                 current_price=current_price,
                 unrealized_pnl=unrealized_pnl,
@@ -76,7 +76,7 @@ def get_position(manager: "ExchangeManager", symbol: str) -> Optional["Position"
     return None
 
 
-def get_all_positions(manager: "ExchangeManager") -> List["Position"]:
+def get_all_positions(manager: "ExchangeManager") -> list["Position"]:
     """
     Get all open positions.
     
@@ -110,7 +110,7 @@ def get_all_positions(manager: "ExchangeManager") -> List["Position"]:
             position_type="futures",
             side=side,
             size=size,
-            size_usd=size * current_price,
+            size_usdt=size * current_price,
             entry_price=entry_price,
             current_price=current_price,
             unrealized_pnl=unrealized_pnl,
@@ -130,9 +130,9 @@ def get_all_positions(manager: "ExchangeManager") -> List["Position"]:
 
 
 def get_total_exposure(manager: "ExchangeManager") -> float:
-    """Get total position exposure in USD."""
+    """Get total position exposure in USDT."""
     positions = get_all_positions(manager)
-    return sum(pos.size_usd for pos in positions)
+    return sum(pos.size_usdt for pos in positions)
 
 
 # =============================================================================
@@ -343,7 +343,7 @@ def cancel_position_conditional_orders(
     symbol: str,
     position_side: str,
     require_bot_id: bool = True,
-) -> List[str]:
+) -> list[str]:
     """
     Cancel conditional orders that would close the given position.
     
@@ -447,7 +447,7 @@ def cancel_position_conditional_orders(
 def reconcile_orphaned_orders(
     manager: "ExchangeManager",
     symbol: str = None
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     """
     Find and cancel conditional orders for positions that no longer exist.
     
@@ -466,7 +466,7 @@ def reconcile_orphaned_orders(
     from . import exchange_orders_manage as orders
     from .exchange_manager import Order
     
-    cancelled_by_symbol: Dict[str, List[str]] = {}
+    cancelled_by_symbol: dict[str, list[str]] = {}
     
     try:
         # Get all open positions
@@ -477,7 +477,7 @@ def reconcile_orphaned_orders(
         all_orders = orders.get_open_orders(manager, symbol)
         
         # Group orders by symbol
-        orders_by_symbol: Dict[str, List[Order]] = {}
+        orders_by_symbol: dict[str, list[Order]] = {}
         for order in all_orders:
             if order.symbol not in orders_by_symbol:
                 orders_by_symbol[order.symbol] = []
@@ -607,7 +607,7 @@ def set_risk_limit_by_id(
         return False
 
 
-def get_risk_limits(manager: "ExchangeManager", symbol: str = None) -> List[Dict]:
+def get_risk_limits(manager: "ExchangeManager", symbol: str = None) -> list[dict]:
     """
     Get risk limit tiers for a symbol.
     
@@ -789,7 +789,7 @@ def get_transaction_log(
     currency: str = None,
     log_type: str = None,
     limit: int = 50,
-) -> Dict:
+) -> dict:
     """
     Get transaction logs from Unified account.
     
@@ -820,7 +820,7 @@ def get_transaction_log(
         return {"list": [], "error": str(e)}
 
 
-def get_collateral_info(manager: "ExchangeManager", currency: str = None) -> List[Dict]:
+def get_collateral_info(manager: "ExchangeManager", currency: str = None) -> list[dict]:
     """
     Get collateral information for Unified account.
     
@@ -868,7 +868,7 @@ def get_borrow_history(
     time_range: TimeRange,
     currency: str = None,
     limit: int = 50,
-) -> Dict:
+) -> dict:
     """
     Get borrow/interest history.
     
@@ -895,7 +895,7 @@ def get_borrow_history(
         return {"list": [], "error": str(e)}
 
 
-def get_coin_greeks(manager: "ExchangeManager", base_coin: str = None) -> List[Dict]:
+def get_coin_greeks(manager: "ExchangeManager", base_coin: str = None) -> list[dict]:
     """
     Get current account Greeks information (for options).
     

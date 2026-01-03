@@ -11,7 +11,8 @@ This module is wired ONLY from tools/entrypoints.
 Core engine/sim/runtime must NOT import from artifacts.
 
 Artifact version tracks the schema evolution:
-- 0.1-dev: Initial development version
+- 0.1.0-dev: Initial development version
+- 1.0.0: Current stable schema
 """
 
 from .manifest_writer import ManifestWriter
@@ -31,6 +32,13 @@ from .artifact_standards import (
     compute_results_summary,
     VersionMismatchError,
     MANIFEST_SCHEMA_VERSION,
+)
+from .parquet_writer import (
+    PARQUET_VERSION,
+    DEFAULT_COMPRESSION,
+    write_parquet,
+    read_parquet,
+    compare_csv_parquet,
 )
 
 # Current artifact schema version
@@ -56,5 +64,11 @@ __all__ = [
     # Version safety (Phase 1 fixes)
     "VersionMismatchError",
     "MANIFEST_SCHEMA_VERSION",
+    # Parquet format constants and utilities
+    "PARQUET_VERSION",
+    "DEFAULT_COMPRESSION",
+    "write_parquet",
+    "read_parquet",
+    "compare_csv_parquet",
 ]
 

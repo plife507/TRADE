@@ -20,12 +20,11 @@ Or with explicit dates (backward compatible):
 """
 
 from datetime import datetime
-from typing import Dict, Tuple, Optional, List
 
 
 # Timeframe group mappings
 # Maps group names to specific tfs that belong to that group
-TF_GROUPS: Dict[str, List[str]] = {
+TF_GROUPS: dict[str, list[str]] = {
     "low_tf": ["1m", "5m"],
     "mid_tf": ["15m", "1h"],
     "high_tf": ["4h", "1d", "1D"],
@@ -53,7 +52,7 @@ def get_tf_group(tf: str) -> str:
 # Dates are ISO format strings for clarity
 # NOTE: These are fallback defaults. System YAML configs should define their own windows.
 # Windows should align with available data in the database.
-PRESETS: Dict[str, Dict[str, Dict[str, Tuple[str, str]]]] = {
+PRESETS: dict[str, dict[str, dict[str, tuple[str, str]]]] = {
     # Bitcoin - the reference asset
     "BTCUSDT": {
         "low_tf": {
@@ -104,7 +103,7 @@ PRESETS: Dict[str, Dict[str, Dict[str, Tuple[str, str]]]] = {
 }
 
 # Default presets for symbols not explicitly defined
-DEFAULT_PRESETS: Dict[str, Dict[str, Tuple[str, str]]] = {
+DEFAULT_PRESETS: dict[str, dict[str, tuple[str, str]]] = {
     "low_tf": {
         "hygiene": ("2025-01-01", "2025-06-30"),
         "test": ("2025-07-01", "2025-09-30"),
@@ -124,7 +123,7 @@ def get_window_preset(
     symbol: str,
     tf: str,
     preset_name: str,
-) -> Tuple[datetime, datetime]:
+) -> tuple[datetime, datetime]:
     """
     Get a window preset for a given symbol and tf.
     
@@ -170,7 +169,7 @@ def get_window_preset(
     )
 
 
-def list_available_presets(symbol: str, tf: str) -> List[str]:
+def list_available_presets(symbol: str, tf: str) -> list[str]:
     """
     List available preset names for a symbol and tf.
     

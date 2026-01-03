@@ -13,7 +13,6 @@ Features:
 """
 
 import time
-from typing import Dict, List, Optional
 from datetime import datetime
 from dataclasses import dataclass, field
 
@@ -29,7 +28,7 @@ class PortfolioSnapshot:
     available: float
     total_exposure: float
     unrealized_pnl: float
-    positions: List[Position]
+    positions: list[Position]
     source: str = "rest"  # "rest" or "websocket"
     
     @property
@@ -40,7 +39,7 @@ class PortfolioSnapshot:
     def has_positions(self) -> bool:
         return len(self.positions) > 0
     
-    def get_position(self, symbol: str) -> Optional[Position]:
+    def get_position(self, symbol: str) -> Position | None:
         """Get position for a specific symbol."""
         for pos in self.positions:
             if pos.symbol == symbol:
@@ -62,7 +61,7 @@ class PortfolioSnapshot:
                     "symbol": p.symbol,
                     "side": p.side,
                     "size": p.size,
-                    "size_usd": p.size_usd,
+                    "size_usdt": p.size_usdt,
                     "entry_price": p.entry_price,
                     "current_price": p.current_price,
                     "pnl": p.unrealized_pnl,
@@ -80,19 +79,19 @@ class TradeRecord:
     timestamp: datetime
     symbol: str
     side: str  # "BUY" or "SELL"
-    size_usd: float
+    size_usdt: float
     price: float
-    realized_pnl: Optional[float] = None
+    realized_pnl: float | None = None
     fees: float = 0.0
-    order_id: Optional[str] = None
-    strategy: Optional[str] = None
+    order_id: str | None = None
+    strategy: str | None = None
     
     def to_dict(self) -> dict:
         return {
             "timestamp": self.timestamp.isoformat(),
             "symbol": self.symbol,
             "side": self.side,
-            "size_usd": self.size_usd,
+            "size_usdt": self.size_usdt,
             "price": self.price,
             "realized_pnl": self.realized_pnl,
             "fees": self.fees,
@@ -143,7 +142,7 @@ class PositionManager:
         self._realtime_state = None
         
         # Trade history
-        self._trades: List[TradeRecord] = []
+        self._trades: list[TradeRecord] = []
         
         # Daily tracking
         self._daily_realized_pnl = 0.0
@@ -236,7 +235,7 @@ class PositionManager:
                     position_type="futures",
                     side="long" if ws_pos.side.lower() == "buy" else "short",
                     size=ws_pos.size,
-                    size_usd=ws_pos.position_value,
+                    size_usdt=ws_pos.position_value,
                     entry_price=ws_pos.entry_price,
                     current_price=ws_pos.mark_price,
                     unrealized_pnl=ws_pos.unrealized_pnl,
@@ -280,7 +279,7 @@ class PositionManager:
         balance_info = self.exchange.get_balance()
         positions = self.exchange.get_all_positions()
         
-        total_exposure = sum(p.size_usd for p in positions)
+        total_exposure = sum(p.size_usdt for p in positions)
         unrealized_pnl = sum(p.unrealized_pnl for p in positions)
         
         self._last_rest_sync = time.time()
@@ -295,10 +294,10 @@ class PositionManager:
             source="rest",
         )
     
-    def get_position(self, symbol: str) -> Optional[Position]:
+    def get_position(self, symbol: str) -> Position | None:
         """
         Get position for a specific symbol.
-        
+
         Uses WebSocket data if available, otherwise REST.
         """
         # Try WebSocket first
@@ -310,7 +309,7 @@ class PositionManager:
                     symbol=ws_pos.symbol,
                     side=ws_pos.side,
                     size=ws_pos.size,
-                    size_usd=ws_pos.position_value,
+                    size_usdt=ws_pos.position_value,
                     entry_price=ws_pos.entry_price,
                     current_price=ws_pos.mark_price,
                     unrealized_pnl=ws_pos.unrealized_pnl,
@@ -325,7 +324,7 @@ class PositionManager:
         self._last_source = "rest"
         return self.exchange.get_position(symbol)
     
-    def get_open_orders(self, symbol: str = None) -> List[dict]:
+    def get_open_orders(self, symbol: str | None = None) -> list[dict]:
         """
         Get open orders.
         
@@ -348,20 +347,20 @@ class PositionManager:
         self,
         symbol: str,
         side: str,
-        size_usd: float,
+        size_usdt: float,
         price: float,
-        realized_pnl: float = None,
+        realized_pnl: float | None = None,
         fees: float = 0.0,
-        order_id: str = None,
-        strategy: str = None,
+        order_id: str | None = None,
+        strategy: str | None = None,
     ):
         """
         Record a completed trade.
-        
+
         Args:
             symbol: Trading symbol
             side: BUY or SELL
-            size_usd: Trade size in USD
+            size_usdt: Trade size in USDT
             price: Execution price
             realized_pnl: Realized PnL (for closing trades)
             fees: Trading fees
@@ -369,12 +368,12 @@ class PositionManager:
             strategy: Strategy that generated the trade
         """
         self._check_daily_reset()
-        
+
         trade = TradeRecord(
             timestamp=datetime.now(),
             symbol=symbol,
             side=side.upper(),
-            size_usd=size_usd,
+            size_usdt=size_usdt,
             price=price,
             realized_pnl=realized_pnl,
             fees=fees,
@@ -392,12 +391,12 @@ class PositionManager:
             "TRADE_RECORDED",
             symbol=symbol,
             side=side,
-            size=size_usd,
+            size=size_usdt,
             price=price,
             pnl=realized_pnl,
         )
     
-    def record_execution_from_ws(self, exec_data) -> Optional[TradeRecord]:
+    def record_execution_from_ws(self, exec_data) -> TradeRecord | None:
         """
         Record a trade from WebSocket execution event.
         
@@ -410,13 +409,13 @@ class PositionManager:
         if not hasattr(exec_data, 'symbol'):
             return None
         
-        # Calculate approximate USD size
-        size_usd = exec_data.qty * exec_data.price
-        
+        # Calculate approximate USDT size
+        size_usdt = exec_data.qty * exec_data.price
+
         self.record_trade(
             symbol=exec_data.symbol,
             side=exec_data.side,
-            size_usd=size_usd,
+            size_usdt=size_usdt,
             price=exec_data.price,
             fees=exec_data.exec_fee,
             order_id=exec_data.order_id,
@@ -436,7 +435,7 @@ class PositionManager:
             "realized_pnl": self._daily_realized_pnl,
         }
     
-    def get_trade_history(self, limit: int = 100) -> List[dict]:
+    def get_trade_history(self, limit: int = 100) -> list[dict]:
         """Get recent trade history."""
         trades = self._trades[-limit:] if limit else self._trades
         return [t.to_dict() for t in trades]

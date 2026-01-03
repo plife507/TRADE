@@ -15,7 +15,7 @@ Gate runs BEFORE signal_rules evaluation.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Any
+from typing import Any
 
 from ..idea_card import IdeaCard
 
@@ -33,11 +33,11 @@ class RoleValidationResult:
     role: str
     tf: str
     passed: bool
-    required_keys: List[str]
-    available_keys: List[str]
-    missing_keys: List[str]
-    
-    def to_dict(self) -> Dict[str, Any]:
+    required_keys: list[str]
+    available_keys: list[str]
+    missing_keys: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "role": self.role,
             "tf": self.tf,
@@ -52,12 +52,12 @@ class RoleValidationResult:
 class IndicatorRequirementsResult:
     """
     Result of indicator requirements validation.
-    
+
     Contains per-role validation results and overall status.
     """
     status: IndicatorGateStatus
-    role_results: Dict[str, RoleValidationResult] = field(default_factory=dict)
-    error_message: Optional[str] = None
+    role_results: dict[str, RoleValidationResult] = field(default_factory=dict)
+    error_message: str | None = None
     
     @property
     def passed(self) -> bool:
@@ -67,15 +67,15 @@ class IndicatorRequirementsResult:
     def failed(self) -> bool:
         return self.status == IndicatorGateStatus.FAILED
     
-    def get_missing_keys_by_role(self) -> Dict[str, List[str]]:
+    def get_missing_keys_by_role(self) -> dict[str, list[str]]:
         """Get missing keys grouped by role."""
         return {
             role: result.missing_keys
             for role, result in self.role_results.items()
             if result.missing_keys
         }
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status.value,
             "passed": self.passed,
@@ -114,7 +114,7 @@ class IndicatorRequirementsResult:
 
 def validate_indicator_requirements(
     idea_card: IdeaCard,
-    available_keys_by_role: Dict[str, Set[str]],
+    available_keys_by_role: dict[str, set[str]],
 ) -> IndicatorRequirementsResult:
     """
     Validate that all required indicator keys are available.
@@ -133,7 +133,7 @@ def validate_indicator_requirements(
     Returns:
         IndicatorRequirementsResult with pass/fail status and details
     """
-    role_results: Dict[str, RoleValidationResult] = {}
+    role_results: dict[str, RoleValidationResult] = {}
     all_passed = True
     has_requirements = False
     
@@ -204,7 +204,7 @@ def validate_indicator_requirements(
 def extract_available_keys_from_dataframe(
     df: "pd.DataFrame",
     exclude_ohlcv: bool = True,
-) -> Set[str]:
+) -> set[str]:
     """
     Extract available indicator keys from a computed DataFrame.
     
@@ -231,8 +231,8 @@ def extract_available_keys_from_dataframe(
 
 
 def extract_available_keys_from_feature_frames(
-    feature_frames: Dict[str, Any],
-) -> Dict[str, Set[str]]:
+    feature_frames: dict[str, Any],
+) -> dict[str, set[str]]:
     """
     Extract available indicator keys from computed feature frames.
     

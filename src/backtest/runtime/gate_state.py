@@ -28,7 +28,6 @@ Gate evaluation order (fail-fast):
 """
 
 from dataclasses import dataclass
-from typing import Optional, List
 
 from src.backtest.runtime.state_types import (
     GateCode,
@@ -75,7 +74,7 @@ class GateContext:
     max_exposure_pct: float = 100.0
     cooldown_bars_remaining: int = 0
     risk_policy_passed: bool = True
-    risk_policy_reason: Optional[str] = None
+    risk_policy_reason: str | None = None
 
 
 def evaluate_gates(ctx: GateContext) -> GateResult:
@@ -91,9 +90,9 @@ def evaluate_gates(ctx: GateContext) -> GateResult:
     Returns:
         GateResult with pass/fail status and reason codes
     """
-    failed_codes: List[GateCode] = []
-    first_failure: Optional[GateCode] = None
-    first_reason: Optional[str] = None
+    failed_codes: list[GateCode] = []
+    first_failure: GateCode | None = None
+    first_reason: str | None = None
 
     # Gate 1: Warmup remaining
     if ctx.bar_idx < ctx.warmup_bars:
@@ -128,6 +127,9 @@ def evaluate_gates(ctx: GateContext) -> GateResult:
             first_reason = ctx.risk_policy_reason or "Risk policy blocked"
 
     # Gate 5: Max drawdown
+    # P2-004: Using >= (greater-than-or-equal) is intentional:
+    # - At exactly the limit, the trade is blocked (conservative)
+    # - This prevents "boundary trades" that could exceed the limit
     if ctx.current_drawdown_pct >= ctx.max_drawdown_limit_pct:
         code = GateCode.G_MAX_DRAWDOWN
         failed_codes.append(code)

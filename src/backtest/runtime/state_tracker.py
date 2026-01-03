@@ -25,8 +25,9 @@ Usage in engine:
         self._state_tracker.on_bar_end()
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import List, Optional, Callable, Dict, Any
+from typing import Any
 
 from src.backtest.runtime.state_types import (
     SignalStateValue,
@@ -65,11 +66,13 @@ class StateTrackerConfig:
         max_positions: Max allowed positions
         max_drawdown_pct: Max allowed drawdown percentage
         cooldown_bars: Post-trade cooldown bars
+        max_history: Max block history entries (0 = unlimited, default 10000)
     """
     warmup_bars: int = 0
     max_positions: int = 100
     max_drawdown_pct: float = 100.0
     cooldown_bars: int = 0
+    max_history: int = 10000  # Prevent unbounded memory growth
 
 
 class StateTracker:
@@ -85,7 +88,7 @@ class StateTracker:
         signal_counter: Counter for signal IDs
     """
 
-    def __init__(self, config: Optional[StateTrackerConfig] = None):
+    def __init__(self, config: StateTrackerConfig | None = None):
         """
         Initialize state tracker.
 
@@ -112,7 +115,8 @@ class StateTracker:
         self._size_usdt = 0.0
 
         # History for auditing
-        self.block_history: List[BlockState] = []
+        self.block_history: list[BlockState] = []
+        self._block_index: dict[int, BlockState] = {}  # O(1) lookup by bar_idx
 
     def reset(self) -> None:
         """Reset all state for new backtest run."""
@@ -130,6 +134,7 @@ class StateTracker:
         self._size_computed = False
         self._size_usdt = 0.0
         self.block_history = []
+        self._block_index = {}
 
     def on_bar_start(self, bar_idx: int) -> None:
         """
@@ -195,7 +200,7 @@ class StateTracker:
     def on_risk_check(
         self,
         passed: bool,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         drawdown_pct: float = 0.0,
         available_margin: float = float('inf'),
         required_margin: float = 0.0,
@@ -256,7 +261,7 @@ class StateTracker:
         """Called when order is filled."""
         self._order_filled = True
 
-    def on_order_rejected(self, reason: Optional[str] = None) -> None:
+    def on_order_rejected(self, reason: str | None = None) -> None:
         """
         Called when order is rejected.
 
@@ -298,7 +303,6 @@ class StateTracker:
             bar_idx=self._current_bar_idx,
             signal_confirmed=new_signal_state.value == SignalStateValue.CONFIRMED,
             signal_direction=new_signal_state.direction,
-            signal_id=new_signal_state.signal_id,
             gate_result=self._gate_result,
             size_computed=self._size_computed,
             size_usdt=self._size_usdt,
@@ -322,6 +326,20 @@ class StateTracker:
 
         # Record in history
         self.block_history.append(block_state)
+        self._block_index[self._current_bar_idx] = block_state
+
+        # Prune old history if max_history exceeded (prevents unbounded memory growth)
+        # P2-006 FIX: More efficient pruning - only clean up index entries we remove
+        max_hist = self.config.max_history
+        if max_hist > 0 and len(self.block_history) > max_hist:
+            # Calculate how many entries to remove
+            excess = len(self.block_history) - max_hist
+            # Get bar_idx values to remove from index (O(excess) instead of O(n))
+            for i in range(excess):
+                old_bar_idx = self.block_history[i].bar_idx
+                self._block_index.pop(old_bar_idx, None)
+            # Slice the history (creates new list - unavoidable with list)
+            self.block_history = self.block_history[excess:]
 
         return block_state
 
@@ -333,22 +351,21 @@ class StateTracker:
         """Get current action state."""
         return self._action_state
 
-    def get_block_at(self, bar_idx: int) -> Optional[BlockState]:
+    def get_block_at(self, bar_idx: int) -> BlockState | None:
         """
         Get block state at specific bar.
+
+        O(1) lookup via dict index.
 
         Args:
             bar_idx: Bar index
 
         Returns:
-            BlockState or None if not found
+            BlockState or None if not found (or pruned from history)
         """
-        for block in self.block_history:
-            if block.bar_idx == bar_idx:
-                return block
-        return None
+        return self._block_index.get(bar_idx)
 
-    def summary_stats(self) -> Dict[str, Any]:
+    def summary_stats(self) -> dict[str, Any]:
         """
         Get summary statistics from block history.
 
@@ -365,7 +382,7 @@ class StateTracker:
         gates_blocked = sum(1 for b in self.block_history if b.is_blocked)
 
         # Gate code breakdown
-        gate_codes: Dict[str, int] = {}
+        gate_codes: dict[str, int] = {}
         for b in self.block_history:
             if b.is_blocked:
                 code_name = b.block_code.name
@@ -387,6 +404,7 @@ def create_state_tracker(
     max_positions: int = 100,
     max_drawdown_pct: float = 100.0,
     cooldown_bars: int = 0,
+    max_history: int = 10000,
 ) -> StateTracker:
     """
     Factory function for StateTracker.
@@ -396,6 +414,7 @@ def create_state_tracker(
         max_positions: Max allowed positions
         max_drawdown_pct: Max allowed drawdown percentage
         cooldown_bars: Post-trade cooldown bars
+        max_history: Max block history entries (0 = unlimited)
 
     Returns:
         Configured StateTracker instance
@@ -405,5 +424,6 @@ def create_state_tracker(
         max_positions=max_positions,
         max_drawdown_pct=max_drawdown_pct,
         cooldown_bars=cooldown_bars,
+        max_history=max_history,
     )
     return StateTracker(config)

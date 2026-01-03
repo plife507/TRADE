@@ -15,7 +15,7 @@ Close detection is data-driven (via close_ts maps), not modulo-based.
 """
 
 from datetime import datetime
-from typing import Dict, Optional, Set
+from collections.abc import Callable
 
 from .types import Bar, FeatureSnapshot
 
@@ -30,23 +30,23 @@ class TimeframeCache:
     
     def __init__(self):
         """Initialize empty cache."""
-        self._htf_snapshot: Optional[FeatureSnapshot] = None
-        self._mtf_snapshot: Optional[FeatureSnapshot] = None
-        
+        self._htf_snapshot: FeatureSnapshot | None = None
+        self._mtf_snapshot: FeatureSnapshot | None = None
+
         # Close timestamp lookup sets (populated during data loading)
-        self._htf_close_ts: Set[datetime] = set()
-        self._mtf_close_ts: Set[datetime] = set()
-        
+        self._htf_close_ts: set[datetime] = set()
+        self._mtf_close_ts: set[datetime] = set()
+
         # Tracking
-        self._htf_tf: Optional[str] = None
-        self._mtf_tf: Optional[str] = None
-        self._last_htf_update_ts: Optional[datetime] = None
-        self._last_mtf_update_ts: Optional[datetime] = None
+        self._htf_tf: str | None = None
+        self._mtf_tf: str | None = None
+        self._last_htf_update_ts: datetime | None = None
+        self._last_mtf_update_ts: datetime | None = None
     
     def set_close_ts_maps(
         self,
-        htf_close_ts: Set[datetime],
-        mtf_close_ts: Set[datetime],
+        htf_close_ts: set[datetime],
+        mtf_close_ts: set[datetime],
         htf_tf: str,
         mtf_tf: str,
     ) -> None:
@@ -96,11 +96,11 @@ class TimeframeCache:
         self._mtf_snapshot = snapshot
         self._last_mtf_update_ts = snapshot.ts_close
     
-    def get_htf(self) -> Optional[FeatureSnapshot]:
+    def get_htf(self) -> FeatureSnapshot | None:
         """Get cached HTF snapshot (carry-forward)."""
         return self._htf_snapshot
-    
-    def get_mtf(self) -> Optional[FeatureSnapshot]:
+
+    def get_mtf(self) -> FeatureSnapshot | None:
         """Get cached MTF snapshot (carry-forward)."""
         return self._mtf_snapshot
     
@@ -137,9 +137,9 @@ class TimeframeCache:
     def refresh_step(
         self,
         current_ts_close: datetime,
-        htf_snapshot_factory: callable,
-        mtf_snapshot_factory: callable,
-    ) -> tuple:
+        htf_snapshot_factory: Callable[[], FeatureSnapshot],
+        mtf_snapshot_factory: Callable[[], FeatureSnapshot],
+    ) -> tuple[bool, bool]:
         """
         Refresh caches for current step.
         
@@ -200,7 +200,7 @@ class TimeframeCache:
 
 def build_close_ts_map(
     bars: list,
-) -> Set[datetime]:
+) -> set[datetime]:
     """
     Build a set of close timestamps from a list of Bars.
     
@@ -216,7 +216,7 @@ def build_close_ts_map(
 def build_close_ts_map_from_df(
     df,
     ts_close_column: str = "ts_close",
-) -> Set[datetime]:
+) -> set[datetime]:
     """
     Build a set of close timestamps from a DataFrame.
     

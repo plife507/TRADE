@@ -15,7 +15,7 @@ CLI: python trade_cli.py backtest math-parity --idea-card <ID> --start <date> --
 
 import pandas as pd
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 from dataclasses import dataclass, field
 from datetime import datetime
 import numpy as np
@@ -36,19 +36,19 @@ class ColumnParityResult:
     nan_mask_identical: bool
     feedstore_values: int
     recomputed_values: int
-    first_mismatches: List[Dict[str, Any]] = field(default_factory=list)
-    error_message: Optional[str] = None
+    first_mismatches: list[dict[str, Any]] = field(default_factory=list)
+    error_message: str | None = None
 
 
 @dataclass
 class InMemoryParityResult:
     """Result of the complete in-memory math parity audit."""
     success: bool
-    error_message: Optional[str] = None
-    summary: Optional[Dict[str, Any]] = None
-    column_results: List[ColumnParityResult] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    error_message: str | None = None
+    summary: dict[str, Any] | None = None
+    column_results: list[ColumnParityResult] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""
         return {
             "success": self.success,
@@ -110,9 +110,9 @@ class InMemoryParityResult:
 
 def audit_in_memory_parity_from_feeds(
     exec_df: pd.DataFrame,
-    htf_df: Optional[pd.DataFrame],
-    mtf_df: Optional[pd.DataFrame],
-    feature_specs: List[Dict[str, Any]],
+    htf_df: pd.DataFrame | None,
+    mtf_df: pd.DataFrame | None,
+    feature_specs: list[dict[str, Any]],
     tolerance: float = 1e-8,
 ) -> InMemoryParityResult:
     """
@@ -133,7 +133,7 @@ def audit_in_memory_parity_from_feeds(
     """
     try:
         registry = get_registry()
-        all_results: List[ColumnParityResult] = []
+        all_results: list[ColumnParityResult] = []
         
         # Process each TF role
         tf_frames = [
@@ -390,7 +390,7 @@ def run_in_memory_parity_for_idea_card(
     idea_card_path: str,
     start_date: str,
     end_date: str,
-    output_dir: Optional[Path] = None,
+    output_dir: Path | None = None,
 ) -> InMemoryParityResult:
     """
     Run in-memory parity audit for an IdeaCard without producing backtest artifacts.

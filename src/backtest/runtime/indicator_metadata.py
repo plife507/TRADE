@@ -28,7 +28,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .feed_store import FeedStore
@@ -70,7 +70,7 @@ def get_code_version() -> str:
 # Canonicalization
 # =============================================================================
 
-def canonicalize_params(params: Dict[str, Any]) -> Dict[str, Any]:
+def canonicalize_params(params: dict[str, Any]) -> dict[str, Any]:
     """
     Canonicalize parameters for stable hashing.
     
@@ -129,7 +129,7 @@ def canonicalize_params(params: Dict[str, Any]) -> Dict[str, Any]:
 
 def compute_feature_spec_id(
     indicator_type: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     input_source: str,
 ) -> str:
     """
@@ -216,7 +216,7 @@ class IndicatorMetadata:
     
     # Definition
     indicator_type: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
     input_source: str
     
     # Context (NOT hashed)
@@ -229,8 +229,8 @@ class IndicatorMetadata:
     first_valid_idx_observed: int
     start_bar_idx: int
     end_bar_idx: int
-    start_ts: Optional[datetime] = None
-    end_ts: Optional[datetime] = None
+    start_ts: datetime | None = None
+    end_ts: datetime | None = None
     
     # Versioning
     pandas_ta_version: str = field(default_factory=get_pandas_ta_version)
@@ -246,7 +246,7 @@ class IndicatorMetadata:
         if len(self.feature_spec_id) != 12:
             raise ValueError(f"feature_spec_id must be 12 chars, got {len(self.feature_spec_id)}")
     
-    def to_dict(self, serialize_datetime: bool = False) -> Dict[str, Any]:
+    def to_dict(self, serialize_datetime: bool = False) -> dict[str, Any]:
         """
         Convert to dict for serialization.
         
@@ -318,13 +318,13 @@ class MetadataValidationResult:
     is_valid: bool
     coverage_ok: bool
     ids_consistent: bool
-    missing_metadata: List[str] = field(default_factory=list)
-    extra_metadata: List[str] = field(default_factory=list)
-    id_mismatches: List[Dict[str, str]] = field(default_factory=list)
-    key_mismatches: List[str] = field(default_factory=list)
+    missing_metadata: list[str] = field(default_factory=list)
+    extra_metadata: list[str] = field(default_factory=list)
+    id_mismatches: list[dict[str, str]] = field(default_factory=list)
+    key_mismatches: list[str] = field(default_factory=list)
 
 
-def validate_metadata_coverage(feed_store: "FeedStore") -> bool:
+def validate_metadata_coverage(feed_store: FeedStore) -> bool:
     """
     Validate that every indicator has corresponding metadata.
     
@@ -339,7 +339,7 @@ def validate_metadata_coverage(feed_store: "FeedStore") -> bool:
     return indicator_keys == metadata_keys
 
 
-def validate_feature_spec_ids(feed_store: "FeedStore") -> MetadataValidationResult:
+def validate_feature_spec_ids(feed_store: FeedStore) -> MetadataValidationResult:
     """
     Validate metadata coverage and feature_spec_id consistency.
     
@@ -398,7 +398,7 @@ def validate_feature_spec_ids(feed_store: "FeedStore") -> MetadataValidationResu
 # Export Utilities
 # =============================================================================
 
-def _build_run_header() -> Dict[str, str]:
+def _build_run_header() -> dict[str, str]:
     """Build run header for exports."""
     return {
         "schema_version": "indicator-metadata-v1",
@@ -409,9 +409,9 @@ def _build_run_header() -> Dict[str, str]:
 
 
 def _filter_metadata(
-    metadata_dict: Dict[str, IndicatorMetadata],
-    filters: Optional[Dict[str, Any]] = None,
-) -> List[IndicatorMetadata]:
+    metadata_dict: dict[str, IndicatorMetadata],
+    filters: dict[str, Any] | None = None,
+) -> list[IndicatorMetadata]:
     """
     Filter metadata by criteria.
     
@@ -440,9 +440,9 @@ def _filter_metadata(
 
 
 def export_metadata_jsonl(
-    feed_store: "FeedStore",
+    feed_store: FeedStore,
     output_path: Path,
-    filters: Optional[Dict[str, Any]] = None,
+    filters: dict[str, Any] | None = None,
     include_header: bool = True,
 ) -> None:
     """
@@ -475,9 +475,9 @@ def export_metadata_jsonl(
 
 
 def export_metadata_json(
-    feed_store: "FeedStore",
+    feed_store: FeedStore,
     output_path: Path,
-    filters: Optional[Dict[str, Any]] = None,
+    filters: dict[str, Any] | None = None,
 ) -> None:
     """
     Export metadata to JSON format.
@@ -508,9 +508,9 @@ def export_metadata_json(
 
 
 def export_metadata_csv(
-    feed_store: "FeedStore",
+    feed_store: FeedStore,
     output_path: Path,
-    filters: Optional[Dict[str, Any]] = None,
+    filters: dict[str, Any] | None = None,
 ) -> None:
     """
     Export metadata to CSV format (flattened).

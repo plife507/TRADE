@@ -26,7 +26,7 @@ Registry Consolidation (2025-12-31):
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any
 
 
 def is_multi_output(indicator_type: str) -> bool:
@@ -45,7 +45,7 @@ def is_multi_output(indicator_type: str) -> bool:
     return get_registry().is_multi_output(indicator_type.lower())
 
 
-def get_output_names(indicator_type: str) -> Tuple[str, ...]:
+def get_output_names(indicator_type: str) -> tuple[str, ...]:
     """
     Get output names for an indicator type.
 
@@ -121,11 +121,11 @@ class FeatureSpec:
     """
     indicator_type: str
     output_key: str
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
     input_source: InputSource = InputSource.CLOSE
-    input_indicator_key: Optional[str] = None
-    outputs: Optional[Dict[str, str]] = None
-    description: Optional[str] = None
+    input_indicator_key: str | None = None
+    outputs: dict[str, str] | None = None
+    description: str | None = None
 
     def __post_init__(self):
         """Validate spec."""
@@ -173,7 +173,7 @@ class FeatureSpec:
         return is_multi_output(self.indicator_type)
     
     @property
-    def output_keys_list(self) -> List[str]:
+    def output_keys_list(self) -> list[str]:
         """
         Get all output keys this spec will produce.
         
@@ -207,12 +207,12 @@ class FeatureSpec:
         if self.outputs and output_name in self.outputs:
             return self.outputs[output_name]
         return f"{self.output_key}_{output_name}"
-    
+
     @property
     def length(self) -> int:
         """Get the length/period parameter (most indicators use this)."""
         return self.params.get("length", 0)
-    
+
     @property
     def warmup_bars(self) -> int:
         """
@@ -238,7 +238,7 @@ class FeatureSpec:
         registry = get_registry()
         return registry.get_warmup_bars(self.indicator_type.lower(), self.params)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "indicator_type": self.indicator_type.lower(),
@@ -251,7 +251,7 @@ class FeatureSpec:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "FeatureSpec":
+    def from_dict(cls, d: dict[str, Any]) -> "FeatureSpec":
         """
         Create from dict.
 
@@ -283,7 +283,7 @@ class FeatureSpecSet:
     """
     symbol: str
     tf: str
-    specs: List[FeatureSpec] = field(default_factory=list)
+    specs: list[FeatureSpec] = field(default_factory=list)
     
     def __post_init__(self):
         """Validate specs."""
@@ -340,7 +340,7 @@ class FeatureSpecSet:
         self.specs.append(spec)
     
     @property
-    def output_keys(self) -> List[str]:
+    def output_keys(self) -> list[str]:
         """Get all output keys (including multi-output expansion)."""
         keys = []
         for spec in self.specs:
@@ -354,16 +354,16 @@ class FeatureSpecSet:
             return 0
         return max(s.warmup_bars for s in self.specs)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "symbol": self.symbol,
             "tf": self.tf,
             "specs": [s.to_dict() for s in self.specs],
         }
-    
+
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "FeatureSpecSet":
+    def from_dict(cls, d: dict[str, Any]) -> "FeatureSpecSet":
         """Create from dict."""
         specs = [FeatureSpec.from_dict(s) for s in d.get("specs", [])]
         return cls(
@@ -421,7 +421,7 @@ def macd_spec(
     fast: int = 12,
     slow: int = 26,
     signal: int = 9,
-    outputs: Optional[Dict[str, str]] = None,
+    outputs: dict[str, str] | None = None,
 ) -> FeatureSpec:
     """
     Create MACD spec.
@@ -448,7 +448,7 @@ def bbands_spec(
     output_key: str,
     length: int = 20,
     std: float = 2.0,
-    outputs: Optional[Dict[str, str]] = None,
+    outputs: dict[str, str] | None = None,
 ) -> FeatureSpec:
     """
     Create Bollinger Bands spec.
@@ -475,7 +475,7 @@ def stoch_spec(
     k: int = 14,
     d: int = 3,
     smooth_k: int = 3,
-    outputs: Optional[Dict[str, str]] = None,
+    outputs: dict[str, str] | None = None,
 ) -> FeatureSpec:
     """
     Create Stochastic Oscillator spec.
@@ -504,7 +504,7 @@ def stochrsi_spec(
     rsi_length: int = 14,
     k: int = 3,
     d: int = 3,
-    outputs: Optional[Dict[str, str]] = None,
+    outputs: dict[str, str] | None = None,
 ) -> FeatureSpec:
     """
     Create Stochastic RSI spec.

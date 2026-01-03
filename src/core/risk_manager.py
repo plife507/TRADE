@@ -8,7 +8,7 @@ Optionally integrates with GlobalRiskView for account-level risk checks
 when WebSocket data is available.
 """
 
-from typing import Dict, Optional, Tuple, List, Any
+from typing import Any
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -22,11 +22,11 @@ class Signal:
     """Trading signal from a strategy."""
     symbol: str
     direction: str  # "LONG", "SHORT", "FLAT"
-    size_usd: float
+    size_usdt: float  # Position size in USDT
     strategy: str
     confidence: float = 1.0
-    metadata: dict = None
-    
+    metadata: dict | None = None
+
     def __post_init__(self):
         self.metadata = self.metadata or {}
 
@@ -36,9 +36,9 @@ class RiskCheckResult:
     """Result of risk check."""
     allowed: bool
     reason: str
-    adjusted_size: Optional[float] = None
-    warnings: List[str] = None
-    
+    adjusted_size: float | None = None
+    warnings: list[str] | None = None
+
     def __post_init__(self):
         self.warnings = self.warnings or []
 
@@ -63,18 +63,18 @@ class RiskManager:
     - Position status checks (liquidating, ADL, reduce-only)
     """
     
-    def __init__(self, config: RiskConfig = None, enable_global_risk: bool = True):
+    def __init__(self, config: RiskConfig | None = None, enable_global_risk: bool = True):
         self.config = config or get_config().risk
         self.logger = get_logger()
-        
+
         # Daily tracking
         self._daily_pnl = 0.0
         self._daily_trades = 0
         self._last_reset = datetime.now().date()
-        
+
         # Global risk view integration (optional)
         self._enable_global_risk = enable_global_risk
-        self._global_risk_view: Optional[Any] = None
+        self._global_risk_view: Any | None = None
         
         if enable_global_risk:
             try:
@@ -172,7 +172,7 @@ class RiskManager:
             global_decision = self._global_risk_view.check_pre_trade(
                 signal=signal,
                 symbol=signal.symbol,
-                size_usd=signal.size_usd,
+                size_usdt=signal.size_usdt,
             )
             if not global_decision.allowed:
                 self.logger.risk(
@@ -188,7 +188,7 @@ class RiskManager:
                     component="risk_manager",
                     symbol=signal.symbol,
                     direction=signal.direction,
-                    size_usd=signal.size_usd,
+                    size_usdt=signal.size_usdt,
                     block_reason="global_risk",
                     veto_reason=global_decision.veto_reason.value,
                     message=global_decision.message,
@@ -212,7 +212,7 @@ class RiskManager:
                 component="risk_manager",
                 symbol=signal.symbol,
                 direction=signal.direction,
-                size_usd=signal.size_usd,
+                size_usdt=signal.size_usdt,
                 block_reason="daily_loss_limit",
                 daily_pnl=self._daily_pnl,
                 limit=self.config.max_daily_loss_usd,
@@ -236,7 +236,7 @@ class RiskManager:
                 component="risk_manager",
                 symbol=signal.symbol,
                 direction=signal.direction,
-                size_usd=signal.size_usd,
+                size_usdt=signal.size_usdt,
                 block_reason="min_balance",
                 available=portfolio.available,
                 min_required=self.config.min_balance_usd,
@@ -247,11 +247,11 @@ class RiskManager:
             )
         
         # Check 3: Maximum position size
-        max_size = self.config.max_position_size_usd
-        adjusted_size = signal.size_usd
-        
-        if signal.size_usd > max_size:
-            warnings.append(f"Size reduced from ${signal.size_usd:.2f} to ${max_size:.2f}")
+        max_size = self.config.max_position_size_usdt
+        adjusted_size = signal.size_usdt
+
+        if signal.size_usdt > max_size:
+            warnings.append(f"Size reduced from ${signal.size_usdt:.2f} to ${max_size:.2f}")
             adjusted_size = max_size
         
         # Check 4: Maximum total exposure
@@ -292,18 +292,18 @@ class RiskManager:
         self.logger.risk(
             "ALLOWED",
             f"Signal approved: {signal.symbol} {signal.direction} ${adjusted_size:.2f}",
-            original_size=signal.size_usd,
+            original_size=signal.size_usdt,
             adjusted_size=adjusted_size
         )
-        
+
         return RiskCheckResult(
             allowed=True,
             reason="All risk checks passed",
-            adjusted_size=adjusted_size if adjusted_size != signal.size_usd else None,
+            adjusted_size=adjusted_size if adjusted_size != signal.size_usdt else None,
             warnings=warnings,
         )
     
-    def check_leverage(self, symbol: str, requested_leverage: int) -> Tuple[bool, int]:
+    def check_leverage(self, symbol: str, requested_leverage: int) -> tuple[bool, int]:
         """
         Check and cap leverage.
         
@@ -335,7 +335,7 @@ class RiskManager:
         max_per_trade = portfolio.balance * (self.config.max_risk_per_trade_percent / 100)
         
         return min(
-            self.config.max_position_size_usd,
+            self.config.max_position_size_usdt,
             remaining_exposure,
             max_per_trade,
         )
@@ -348,7 +348,7 @@ class RiskManager:
             "daily_pnl": self._daily_pnl,
             "daily_loss_limit": self.config.max_daily_loss_usd,
             "daily_loss_remaining": self.config.max_daily_loss_usd + self._daily_pnl,
-            "max_position_size": self.config.max_position_size_usd,
+            "max_position_size": self.config.max_position_size_usdt,
             "max_exposure": self.config.max_total_exposure_usd,
             "max_leverage": self.config.max_leverage,
             "min_balance": self.config.min_balance_usd,
@@ -372,18 +372,18 @@ class RiskManager:
         
         return status
     
-    def get_global_risk_snapshot(self) -> Optional[Any]:
+    def get_global_risk_snapshot(self) -> Any | None:
         """
         Get the global portfolio risk snapshot.
-        
+
         Returns PortfolioRiskSnapshot if GlobalRiskView is enabled,
         otherwise None.
         """
         if self._global_risk_view:
             return self._global_risk_view.build_snapshot()
         return None
-    
-    def get_global_risk_summary(self) -> Optional[Dict[str, Any]]:
+
+    def get_global_risk_summary(self) -> dict[str, Any] | None:
         """
         Get comprehensive global risk summary for CLI/agent display.
         
@@ -462,8 +462,8 @@ class RiskManager:
         margin_usd: float,
         leverage: int,
         stop_loss_roi_pct: float,
-        take_profits: List[Dict[str, float]],
-    ) -> Dict[str, Any]:
+        take_profits: list[dict[str, float]],
+    ) -> dict[str, Any]:
         """
         Calculate all trade levels for RR-based position.
         

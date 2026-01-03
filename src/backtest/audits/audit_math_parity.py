@@ -7,7 +7,7 @@ match pandas_ta exactly, ensuring no implementation drift or bugs.
 
 import pandas as pd
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
 from dataclasses import dataclass
 import numpy as np
 
@@ -26,15 +26,15 @@ class ColumnAuditResult:
     nan_mask_identical: bool
     snapshot_values: int
     pandas_ta_values: int
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 @dataclass
 class MathParityAuditResult:
     """Result of the complete math parity audit."""
     success: bool
-    error_message: Optional[str] = None
-    data: Optional[Dict[str, Any]] = None
+    error_message: str | None = None
+    data: dict[str, Any] | None = None
 
 
 def audit_math_parity_from_snapshots(run_dir: Path) -> MathParityAuditResult:

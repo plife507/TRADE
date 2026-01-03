@@ -19,42 +19,56 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
+# =============================================================================
+# Parquet Format Constants
+# =============================================================================
+
+# Parquet format version for artifact files.
+# Version 2.6 chosen for broad compatibility (pyarrow 4.0+, pandas 1.0+, Spark 3.0+).
+# Increment only when needing newer features (e.g., nanosecond timestamps require 2.6+).
+PARQUET_VERSION = "2.6"
+
+# Default compression codec for artifact files.
+# Snappy: fast compression/decompression, reasonable compression ratio.
+DEFAULT_COMPRESSION = "snappy"
+
+
 def write_parquet(
     df: pd.DataFrame,
     path: Path,
-    compression: str = "snappy",
+    compression: str = DEFAULT_COMPRESSION,
 ) -> Path:
     """
     Write DataFrame to Parquet with consistent settings.
-    
+
     Args:
         df: DataFrame to write
         path: Output path (should end with .parquet)
-        compression: Compression codec (default: snappy)
-        
+        compression: Compression codec (default: snappy via DEFAULT_COMPRESSION)
+
     Returns:
         Path to written file
-        
+
     Notes:
         - Uses pyarrow engine
         - No index written (matches CSV behavior)
         - Lossless dtypes (floats remain float64, ints remain int64)
         - Stable compression (snappy)
+        - Version controlled via PARQUET_VERSION constant
     """
     # Convert to pyarrow table for explicit control
     table = pa.Table.from_pandas(df, preserve_index=False)
-    
+
     # Write with consistent settings
     pq.write_table(
         table,
         path,
         compression=compression,
-        # Use version 2.6 for broad compatibility
-        version="2.6",
+        version=PARQUET_VERSION,
         # Don't write pandas metadata (keeps files clean)
         # Note: We preserve dtypes via pyarrow's native type inference
     )
-    
+
     return path
 
 

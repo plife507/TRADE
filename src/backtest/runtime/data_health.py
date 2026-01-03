@@ -12,7 +12,6 @@ If gaps are detected, heal_database is invoked before simulation starts.
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple
 
 from .timeframe import tf_duration
 
@@ -44,8 +43,8 @@ class CoverageInfo:
     """Coverage information for a single series/TF."""
     series: str
     tf: str
-    earliest: Optional[datetime]
-    latest: Optional[datetime]
+    earliest: datetime | None
+    latest: datetime | None
     bar_count: int
     covers_start: bool  # earliest <= load_start
     covers_end: bool    # latest >= load_end
@@ -84,31 +83,31 @@ class SanityIssue:
 @dataclass
 class DataHealthReport:
     """Complete data health report."""
-    
+
     # Request parameters
     load_start: datetime
     load_end: datetime
-    required_tfs: List[str]
-    required_series: List[str]
+    required_tfs: list[str]
+    required_series: list[str]
     symbol: str
-    
+
     # Results
     passed: bool = False
-    
+
     # Coverage results
-    coverage: Dict[str, CoverageInfo] = field(default_factory=dict)
-    coverage_issues: List[str] = field(default_factory=list)
-    
+    coverage: dict[str, CoverageInfo] = field(default_factory=dict)
+    coverage_issues: list[str] = field(default_factory=list)
+
     # Gap results
-    gaps: List[GapRange] = field(default_factory=list)
+    gaps: list[GapRange] = field(default_factory=list)
     total_missing_bars: int = 0
-    
+
     # Sanity results
-    sanity_issues: List[SanityIssue] = field(default_factory=list)
-    
+    sanity_issues: list[SanityIssue] = field(default_factory=list)
+
     # Healing info
     heal_required: bool = False
-    heal_ranges: List[GapRange] = field(default_factory=list)
+    heal_ranges: list[GapRange] = field(default_factory=list)
     
     def to_dict(self) -> dict:
         return {
@@ -140,9 +139,9 @@ class DataHealthCheck:
         self,
         load_start: datetime,
         load_end: datetime,
-        required_tfs: List[str],
+        required_tfs: list[str],
         symbol: str,
-        required_series: Optional[List[str]] = None,
+        required_series: list[str] | None = None,
     ):
         """
         Initialize health check.
@@ -162,9 +161,9 @@ class DataHealthCheck:
     
     def check_coverage(
         self,
-        timestamps_by_tf: Dict[str, List[datetime]],
+        timestamps_by_tf: dict[str, list[datetime]],
         series: str = "ohlcv",
-    ) -> Tuple[Dict[str, CoverageInfo], List[str]]:
+    ) -> tuple[dict[str, CoverageInfo], list[str]]:
         """
         Check data coverage for each required TF.
         
@@ -235,9 +234,9 @@ class DataHealthCheck:
     
     def detect_gaps(
         self,
-        timestamps_by_tf: Dict[str, List[datetime]],
+        timestamps_by_tf: dict[str, list[datetime]],
         series: str = "ohlcv",
-    ) -> List[GapRange]:
+    ) -> list[GapRange]:
         """
         Detect gaps in data within [load_start, load_end].
         
@@ -335,10 +334,10 @@ class DataHealthCheck:
     
     def check_sanity(
         self,
-        data_rows: List[dict],
+        data_rows: list[dict],
         series: str = "ohlcv",
         tf: str = "",
-    ) -> List[SanityIssue]:
+    ) -> list[SanityIssue]:
         """
         Check data sanity (OHLC consistency, no NaNs, etc.).
         
@@ -413,8 +412,8 @@ class DataHealthCheck:
     
     def run(
         self,
-        timestamps_by_series_tf: Dict[str, Dict[str, List[datetime]]],
-        data_rows_by_tf: Optional[Dict[str, List[dict]]] = None,
+        timestamps_by_series_tf: dict[str, dict[str, list[datetime]]],
+        data_rows_by_tf: dict[str, list[dict]] | None = None,
     ) -> DataHealthReport:
         """
         Run full health check and return report.

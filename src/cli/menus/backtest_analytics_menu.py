@@ -12,7 +12,7 @@ All operations read from backtests/ artifact folder.
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.panel import Panel
@@ -90,7 +90,7 @@ def backtest_analytics_menu(cli: "TradeCLI"):
             return
 
 
-def _scan_runs(limit: int = 20) -> List[dict]:
+def _scan_runs(limit: int = 20) -> list[dict]:
     """Scan backtests directory for recent runs."""
     runs = []
 
@@ -126,7 +126,7 @@ def _scan_runs(limit: int = 20) -> List[dict]:
     return runs[:limit]
 
 
-def _select_run(prompt_text: str = "Select run") -> Optional[str]:
+def _select_run(prompt_text: str = "Select run") -> str | None:
     """Show list of runs and let user select one."""
     runs = _scan_runs(limit=15)
 

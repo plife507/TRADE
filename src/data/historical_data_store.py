@@ -22,7 +22,8 @@ import sys
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Optional, Union, Tuple, Callable, Any
+from collections.abc import Callable
+from typing import Any
 from dataclasses import dataclass
 
 from ..exchanges.bybit_client import BybitClient
@@ -169,10 +170,10 @@ class SyncStatus:
     """Status of a symbol/tf sync."""
     symbol: str
     tf: str
-    first_timestamp: Optional[datetime]
-    last_timestamp: Optional[datetime]
+    first_timestamp: datetime | None
+    last_timestamp: datetime | None
     candle_count: int
-    gaps: List[Tuple[datetime, datetime]]
+    gaps: list[tuple[datetime, datetime]]
     is_current: bool
 
 
@@ -321,8 +322,17 @@ class HistoricalDataStore:
             self.conn.execute(f"""
                 ALTER TABLE {self.table_ohlcv} ADD COLUMN turnover DOUBLE
             """)
-        except Exception:
-            pass  # Column already exists
+            self.logger.debug(f"Added 'turnover' column to {self.table_ohlcv}")
+        except duckdb.CatalogException as e:
+            # Expected: column already exists in table
+            if "already exists" in str(e).lower():
+                pass  # Schema migration not needed
+            else:
+                self.logger.error(f"Schema migration failed for {self.table_ohlcv}: {e}")
+                raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error during schema migration: {e}")
+            raise
         
         self.conn.execute(f"""
             CREATE TABLE IF NOT EXISTS {self.table_sync_metadata} (
@@ -398,54 +408,35 @@ class HistoricalDataStore:
         """)
         
         # Create indexes for faster queries (env-specific index names)
+        # Note: CREATE INDEX IF NOT EXISTS should not raise for existing indexes,
+        # but we handle CatalogException in case of race conditions or schema issues.
         idx_suffix = f"_{self.env}"
-        try:
-            self.conn.execute(f"""
-                CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_tf{idx_suffix}
-                ON {self.table_ohlcv}(symbol, timeframe)
-            """)
-        except Exception:
-            pass  # Index may already exist
-        
-        try:
-            self.conn.execute(f"""
-                CREATE INDEX IF NOT EXISTS idx_ohlcv_timestamp{idx_suffix}
-                ON {self.table_ohlcv}(timestamp)
-            """)
-        except Exception:
-            pass  # Index may already exist
-        
-        try:
-            self.conn.execute(f"""
-                CREATE INDEX IF NOT EXISTS idx_funding_symbol{idx_suffix}
-                ON {self.table_funding}(symbol)
-            """)
-        except Exception:
-            pass
-        
-        try:
-            self.conn.execute(f"""
-                CREATE INDEX IF NOT EXISTS idx_funding_timestamp{idx_suffix}
-                ON {self.table_funding}(timestamp)
-            """)
-        except Exception:
-            pass
-        
-        try:
-            self.conn.execute(f"""
-                CREATE INDEX IF NOT EXISTS idx_oi_symbol{idx_suffix}
-                ON {self.table_oi}(symbol)
-            """)
-        except Exception:
-            pass
-        
-        try:
-            self.conn.execute(f"""
-                CREATE INDEX IF NOT EXISTS idx_oi_timestamp{idx_suffix}
-                ON {self.table_oi}(timestamp)
-            """)
-        except Exception:
-            pass
+
+        index_definitions = [
+            (f"idx_ohlcv_symbol_tf{idx_suffix}", self.table_ohlcv, "(symbol, timeframe)"),
+            (f"idx_ohlcv_timestamp{idx_suffix}", self.table_ohlcv, "(timestamp)"),
+            (f"idx_funding_symbol{idx_suffix}", self.table_funding, "(symbol)"),
+            (f"idx_funding_timestamp{idx_suffix}", self.table_funding, "(timestamp)"),
+            (f"idx_oi_symbol{idx_suffix}", self.table_oi, "(symbol)"),
+            (f"idx_oi_timestamp{idx_suffix}", self.table_oi, "(timestamp)"),
+        ]
+
+        for idx_name, table_name, columns in index_definitions:
+            try:
+                self.conn.execute(f"""
+                    CREATE INDEX IF NOT EXISTS {idx_name}
+                    ON {table_name}{columns}
+                """)
+            except duckdb.CatalogException as e:
+                # Expected: index already exists (race condition with IF NOT EXISTS)
+                if "already exists" in str(e).lower():
+                    pass
+                else:
+                    self.logger.warning(f"Index creation issue for {idx_name}: {e}")
+            except Exception as e:
+                # Log unexpected errors but don't fail initialization
+                # Indexes are optimization, not critical for correctness
+                self.logger.warning(f"Unexpected error creating index {idx_name}: {e}")
     
     # ==================== PERIOD PARSING ====================
     
@@ -498,12 +489,12 @@ class HistoricalDataStore:
     
     def sync(
         self,
-        symbols: Union[str, List[str]],
+        symbols: str | list[str],
         period: str = "1M",
-        timeframes: List[str] = None,
+        timeframes: list[str] = None,
         progress_callback: Callable = None,
         show_spinner: bool = True,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Sync historical data for symbols. See module docstring for details."""
         from . import historical_sync
         return historical_sync.sync(
@@ -512,13 +503,13 @@ class HistoricalDataStore:
     
     def sync_range(
         self,
-        symbols: Union[str, List[str]],
+        symbols: str | list[str],
         start: datetime,
         end: datetime,
-        timeframes: List[str] = None,
+        timeframes: list[str] = None,
         progress_callback: Callable = None,
         show_spinner: bool = True,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Sync a specific date range with progress logging."""
         from . import historical_sync
         return historical_sync.sync_range(
@@ -527,11 +518,11 @@ class HistoricalDataStore:
     
     def sync_forward(
         self,
-        symbols: Union[str, List[str]],
-        timeframes: List[str] = None,
+        symbols: str | list[str],
+        timeframes: list[str] = None,
         progress_callback: Callable = None,
         show_spinner: bool = True,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Sync data forward from the last stored candle to now."""
         from . import historical_sync
         return historical_sync.sync_forward(
@@ -618,11 +609,11 @@ class HistoricalDataStore:
     
     def sync_funding(
         self,
-        symbols: Union[str, List[str]],
+        symbols: str | list[str],
         period: str = "3M",
         progress_callback: Callable = None,
         show_spinner: bool = True,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """
         Sync funding rate history for symbols.
         
@@ -873,12 +864,12 @@ class HistoricalDataStore:
     
     def sync_open_interest(
         self,
-        symbols: Union[str, List[str]],
+        symbols: str | list[str],
         period: str = "1M",
         interval: str = "1h",
         progress_callback: Callable = None,
         show_spinner: bool = True,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """
         Sync open interest history for symbols.
         
@@ -1125,7 +1116,7 @@ class HistoricalDataStore:
     
     # ==================== GAP DETECTION & FILLING ====================
     
-    def detect_gaps(self, symbol: str, timeframe: str) -> List[Tuple[datetime, datetime]]:
+    def detect_gaps(self, symbol: str, timeframe: str) -> list[tuple[datetime, datetime]]:
         """Detect gaps in data for a symbol/timeframe."""
         from . import historical_maintenance
         return historical_maintenance.detect_gaps(self, symbol, timeframe)
@@ -1135,7 +1126,7 @@ class HistoricalDataStore:
         symbol: str = None,
         timeframe: str = None,
         progress_callback: Callable = None,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Detect and fill gaps in data."""
         from . import historical_maintenance
         return historical_maintenance.fill_gaps(self, symbol, timeframe, progress_callback)
@@ -1145,7 +1136,7 @@ class HistoricalDataStore:
         symbol: str = None,
         fix_issues: bool = True,
         fill_gaps_after: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Comprehensive data integrity check and repair."""
         from . import historical_maintenance
         return historical_maintenance.heal_comprehensive(
@@ -1209,7 +1200,7 @@ class HistoricalDataStore:
         symbol: str,
         preset: str = "day",
         period: str = "1M",
-    ) -> Dict[str, pd.DataFrame]:
+    ) -> dict[str, pd.DataFrame]:
         """
         Get multi-timeframe data for backtesting.
         
@@ -1252,7 +1243,7 @@ class HistoricalDataStore:
     
     # ==================== STATUS METHODS ====================
     
-    def status(self, symbol: str = None) -> Dict:
+    def status(self, symbol: str = None) -> dict:
         """
         Get status of cached data.
         
@@ -1294,14 +1285,14 @@ class HistoricalDataStore:
         
         return status
     
-    def list_symbols(self) -> List[str]:
+    def list_symbols(self) -> list[str]:
         """List all symbols with cached data."""
         rows = self.conn.execute(f"""
             SELECT DISTINCT symbol FROM {self.table_sync_metadata} ORDER BY symbol
         """).fetchall()
         return [r[0] for r in rows]
     
-    def get_database_stats(self) -> Dict:
+    def get_database_stats(self) -> dict:
         """Get overall database statistics with per-symbol and per-timeframe breakdowns."""
         # OHLCV stats (aggregate)
         ohlcv_stats = self.conn.execute(f"""
@@ -1463,12 +1454,12 @@ class HistoricalDataStore:
         from . import historical_maintenance
         return historical_maintenance.delete_symbol_timeframe(self, symbol, timeframe)
     
-    def cleanup_empty_symbols(self) -> List[str]:
+    def cleanup_empty_symbols(self) -> list[str]:
         """Remove symbols that have metadata but no actual data."""
         from . import historical_maintenance
         return historical_maintenance.cleanup_empty_symbols(self)
     
-    def get_symbol_summary(self) -> List[Dict]:
+    def get_symbol_summary(self) -> list[dict]:
         """
         Get summary of all symbols with their data status.
         Useful for displaying in delete menu.
@@ -1509,12 +1500,12 @@ class HistoricalDataStore:
         self,
         symbol: str,
         data_type: str,
-        timeframe: Optional[str] = None,
-        earliest_ts: Optional[datetime] = None,
-        latest_ts: Optional[datetime] = None,
+        timeframe: str | None = None,
+        earliest_ts: datetime | None = None,
+        latest_ts: datetime | None = None,
         row_count: int = 0,
         gap_count: int = 0,
-        launch_time: Optional[datetime] = None,
+        launch_time: datetime | None = None,
         source: str = "full_from_launch",
     ):
         """
@@ -1544,7 +1535,7 @@ class HistoricalDataStore:
             row_count, gap_count, launch_time, source, datetime.now()
         ])
     
-    def get_extremes(self, symbol: Optional[str] = None) -> Dict[str, Any]:
+    def get_extremes(self, symbol: str | None = None) -> dict[str, Any]:
         """
         Get extremes metadata for symbol(s).
         
@@ -1597,8 +1588,8 @@ class HistoricalDataStore:
 # ==============================================================================
 
 # Cached instances per environment
-_store_live: Optional[HistoricalDataStore] = None
-_store_demo: Optional[HistoricalDataStore] = None
+_store_live: HistoricalDataStore | None = None
+_store_demo: HistoricalDataStore | None = None
 
 
 def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV) -> HistoricalDataStore:
@@ -1710,7 +1701,7 @@ def append_ohlcv(
     """
     store = get_historical_store(env)
     store._store_dataframe(symbol, tf, df)
-    store._update_metadata(symbol, timeframe)
+    store._update_metadata(symbol, tf)
 
 
 def get_funding(
@@ -1763,7 +1754,7 @@ def get_open_interest(
 
 def get_symbol_timeframe_ranges(
     env: DataEnv = DEFAULT_DATA_ENV,
-) -> Dict[str, Dict]:
+) -> dict[str, dict]:
     """
     Get available data ranges for all symbol/timeframe combinations.
     

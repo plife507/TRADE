@@ -13,7 +13,6 @@ Design:
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import FrozenSet, Optional, Set
 
 
 class OpCategory(Enum):
@@ -42,7 +41,7 @@ class OperatorSpec:
     category: OpCategory
     needs_tolerance: bool = False
     needs_prev_value: bool = False
-    error_if_unsupported: Optional[str] = None
+    error_if_unsupported: str | None = None
 
 
 # =============================================================================
@@ -121,15 +120,15 @@ OPERATOR_REGISTRY = {
 }
 
 # Canonical names only (excludes aliases)
-SUPPORTED_OPERATORS: FrozenSet[str] = frozenset(
+SUPPORTED_OPERATORS: frozenset[str] = frozenset(
     spec.name for spec in OPERATOR_REGISTRY.values() if spec.supported
 )
 
 # All known operator names (including aliases)
-ALL_OPERATORS: FrozenSet[str] = frozenset(OPERATOR_REGISTRY.keys())
+ALL_OPERATORS: frozenset[str] = frozenset(OPERATOR_REGISTRY.keys())
 
 
-def get_operator_spec(operator: str) -> Optional[OperatorSpec]:
+def get_operator_spec(operator: str) -> OperatorSpec | None:
     """
     Get operator specification from registry.
 
@@ -148,7 +147,7 @@ def is_operator_supported(operator: str) -> bool:
     return spec is not None and spec.supported
 
 
-def validate_operator(operator: str) -> Optional[str]:
+def validate_operator(operator: str) -> str | None:
     """
     Validate operator at compile time.
 
@@ -173,7 +172,7 @@ def validate_operator(operator: str) -> Optional[str]:
     return None
 
 
-def get_canonical_operator(operator: str) -> Optional[str]:
+def get_canonical_operator(operator: str) -> str | None:
     """
     Get canonical operator name (resolves aliases).
 

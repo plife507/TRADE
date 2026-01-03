@@ -9,7 +9,6 @@ Contains:
 """
 
 import os
-from typing import Optional
 from datetime import datetime
 
 from rich.console import Console
@@ -216,9 +215,9 @@ class TimeRangeSelection:
     """Result from time range selection - can be a preset window or custom start/end."""
     def __init__(
         self,
-        window: Optional[str] = None,
-        start_ms: Optional[int] = None,
-        end_ms: Optional[int] = None,
+        window: str | None = None,
+        start_ms: int | None = None,
+        end_ms: int | None = None,
         is_back: bool = False,
     ):
         self.window = window
@@ -235,7 +234,7 @@ class TimeRangeSelection:
         return self.window is not None and not self.is_custom
 
 
-def _parse_datetime_input(value: str, default_now: bool = False) -> Optional[datetime]:
+def _parse_datetime_input(value: str, default_now: bool = False) -> datetime | None:
     """Parse a datetime string. If default_now=True, blank input returns current datetime."""
     value = value.strip()
     if not value:
@@ -371,7 +370,7 @@ def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSel
 
 
 
-def print_error_below_menu(error_message: str, error_details: str = None):
+def print_error_below_menu(error_message: str, error_details: str | None = None):
     """Print error message below the static menu with proper formatting."""
     console.print()
     console.print("[dim]" + "─" * 80 + "[/dim]")

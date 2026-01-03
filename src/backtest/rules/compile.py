@@ -12,7 +12,7 @@ Design:
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from .types import RefValue, ReasonCode, ValueType
 
@@ -30,18 +30,18 @@ class RefNamespace(str, Enum):
     LITERAL = "literal"  # Compile-time constant (number, bool, enum token)
 
 
-# Registry of valid price fields (Stage 1: only mark.close)
+# Registry of valid price fields
 PRICE_FIELDS = {
-    "mark": {"close"},  # Stage 6 adds: high, low
+    "mark": {"close", "high", "low"},
     # "last": {"close"},  # Reserved for future
 }
 
 # Registry of valid structure fields by type
 # Imported from market_structure.types at runtime to avoid circular imports
-STRUCTURE_FIELDS: Dict[str, Tuple[str, ...]] = {}
+STRUCTURE_FIELDS: dict[str, tuple[str, ...]] = {}
 
 
-def _get_structure_fields() -> Dict[str, Tuple[str, ...]]:
+def _get_structure_fields() -> dict[str, tuple[str, ...]]:
     """Lazy load structure fields to avoid circular imports."""
     global STRUCTURE_FIELDS
     if not STRUCTURE_FIELDS:
@@ -73,10 +73,10 @@ class CompiledRef:
     """
 
     namespace: RefNamespace
-    tokens: Tuple[str, ...]  # Path segments after namespace
+    tokens: tuple[str, ...]  # Path segments after namespace
     path: str  # Original path for error messages
-    literal_value: Optional[Any] = None  # For LITERAL refs
-    literal_type: Optional[ValueType] = None  # For LITERAL refs
+    literal_value: Any | None = None  # For LITERAL refs
+    literal_type: ValueType | None = None  # For LITERAL refs
 
     @property
     def is_literal(self) -> bool:
@@ -124,7 +124,7 @@ class CompiledRef:
 class CompileError(Exception):
     """Error during reference compilation with actionable message."""
 
-    def __init__(self, path: str, message: str, allowed: Optional[List[str]] = None):
+    def __init__(self, path: str, message: str, allowed: list[str] | None = None):
         self.path = path
         self.allowed = allowed
         full_msg = f"Invalid path '{path}': {message}"
@@ -135,9 +135,9 @@ class CompileError(Exception):
 
 def validate_ref_path(
     path: str,
-    available_indicators: Optional[Dict[str, List[str]]] = None,
-    available_structures: Optional[List[str]] = None,
-) -> Tuple[RefNamespace, Tuple[str, ...]]:
+    available_indicators: dict[str, list[str]] | None = None,
+    available_structures: list[str] | None = None,
+) -> tuple[RefNamespace, tuple[str, ...]]:
     """
     Validate a reference path and return parsed tokens.
 
@@ -189,7 +189,7 @@ def validate_ref_path(
         )
 
 
-def _validate_price_path(path: str, tokens: Tuple[str, ...]) -> None:
+def _validate_price_path(path: str, tokens: tuple[str, ...]) -> None:
     """Validate price.* path."""
     if len(tokens) < 2:
         raise CompileError(
@@ -218,8 +218,8 @@ def _validate_price_path(path: str, tokens: Tuple[str, ...]) -> None:
 
 def _validate_indicator_path(
     path: str,
-    tokens: Tuple[str, ...],
-    available_indicators: Optional[Dict[str, List[str]]],
+    tokens: tuple[str, ...],
+    available_indicators: dict[str, list[str]] | None,
 ) -> None:
     """Validate indicator.* path."""
     if len(tokens) < 1:
@@ -243,10 +243,11 @@ def _validate_indicator_path(
     # Validate indicator key if registry provided
     if available_indicators is not None:
         role_indicators = available_indicators.get(tf_role, [])
-        # Also check OHLCV which is always available
+        # Also check OHLCV and built-in keys which are always available
         ohlcv = ["open", "high", "low", "close", "volume"]
-        if indicator_key not in role_indicators and indicator_key not in ohlcv:
-            all_available = role_indicators + ohlcv
+        builtin_keys = ["mark_price"]  # 1m eval loop built-in
+        if indicator_key not in role_indicators and indicator_key not in ohlcv and indicator_key not in builtin_keys:
+            all_available = role_indicators + ohlcv + builtin_keys
             raise CompileError(
                 path,
                 f"Indicator '{indicator_key}' not declared for tf_role '{tf_role}'",
@@ -256,8 +257,8 @@ def _validate_indicator_path(
 
 def _validate_structure_path(
     path: str,
-    tokens: Tuple[str, ...],
-    available_structures: Optional[List[str]],
+    tokens: tuple[str, ...],
+    available_structures: list[str] | None,
 ) -> None:
     """
     Validate structure.* path.
@@ -303,8 +304,8 @@ def _validate_structure_path(
 
 def compile_ref(
     value: Any,
-    available_indicators: Optional[Dict[str, List[str]]] = None,
-    available_structures: Optional[List[str]] = None,
+    available_indicators: dict[str, list[str]] | None = None,
+    available_structures: list[str] | None = None,
 ) -> CompiledRef:
     """
     Compile a reference value (path string or literal).
@@ -354,10 +355,10 @@ def compile_ref(
 
 
 def compile_condition(
-    condition_dict: Dict[str, Any],
-    available_indicators: Optional[Dict[str, List[str]]] = None,
-    available_structures: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    condition_dict: dict[str, Any],
+    available_indicators: dict[str, list[str]] | None = None,
+    available_structures: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Compile a condition dict, replacing paths with CompiledRefs.
 

@@ -10,8 +10,8 @@ Provides tool-layer access to backtesting functionality:
 All tools return ToolResult for consistency with other tools.
 """
 
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+from typing import Any
 from pathlib import Path
 import os
 
@@ -411,7 +411,7 @@ def backtest_run_tool(
     system_id: str,
     window_name: str = "hygiene",
     write_artifacts: bool = True,
-    risk_overrides: Optional[Dict[str, Any]] = None,
+    risk_overrides: dict[str, Any] | None = None,
     run_preflight: bool = True,
     heal_if_needed: bool = True,
 ) -> ToolResult:
@@ -615,8 +615,8 @@ def _write_manifest_and_eventlog(
     config: SystemConfig,
     window_name: str,
     result,
-    preflight_data: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Path]:
+    preflight_data: dict[str, Any] | None = None,
+) -> dict[str, Path]:
     """
     Write run_manifest.json and events.jsonl to run_dir.
     
@@ -682,7 +682,7 @@ def _write_manifest_and_eventlog(
                 "type": "entry",
                 "price": trade.entry_price,
                 "qty": trade.entry_size,
-                "size_usd": trade.entry_size_usd,
+                "size_usdt": trade.entry_size_usdt,
             }, timestamp=trade.entry_time)
             
             # Exit fill (if closed)
@@ -722,7 +722,7 @@ def _write_epoch_artifacts(
     config: SystemConfig,
     window_name: str,
     result,
-) -> Optional[str]:
+) -> str | None:
     """Write epoch tracking metadata for lineage (separate from engine artifacts)."""
     try:
         tracker = StrategyEpochTracker(
@@ -770,7 +770,7 @@ def _write_epoch_artifacts(
                 run_id=run_id,
                 symbol=trade.symbol,
                 side=trade.side.upper(),
-                size_usd=trade.entry_size_usd,
+                size_usdt=trade.entry_size_usdt,
                 price=trade.entry_price,
                 pnl=trade.net_pnl,
             )

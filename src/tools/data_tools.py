@@ -12,8 +12,10 @@ Time Range Support:
 - Large ranges may be limited to prevent bloat (configurable per tool)
 """
 
-from typing import Optional, Dict, Any, List, Callable, Union, Tuple
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from typing import Any
+
 from .shared import ToolResult, _get_historical_store
 from ..config.constants import DataEnv, DEFAULT_DATA_ENV
 
@@ -27,9 +29,9 @@ MAX_QUERY_RANGE_DAYS = 365
 
 
 def _normalize_datetime(
-    value: Optional[Union[datetime, str]],
+    value: datetime | str | None,
     param_name: str = "datetime",
-) -> Tuple[Optional[datetime], Optional[str]]:
+) -> tuple[datetime | None, str | None]:
     """
     Normalize a datetime value from various input formats.
     
@@ -80,10 +82,10 @@ def _normalize_datetime(
 
 
 def _validate_time_range(
-    start: Optional[datetime],
-    end: Optional[datetime],
+    start: datetime | None,
+    end: datetime | None,
     max_days: int = MAX_QUERY_RANGE_DAYS,
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Validate a time range for reasonableness.
     
@@ -110,10 +112,10 @@ def _validate_time_range(
 
 
 def _normalize_time_range_params(
-    start: Optional[Union[datetime, str]],
-    end: Optional[Union[datetime, str]],
+    start: datetime | str | None,
+    end: datetime | str | None,
     max_days: int = MAX_QUERY_RANGE_DAYS,
-) -> Tuple[Optional[datetime], Optional[datetime], Optional[str]]:
+) -> tuple[datetime | None, datetime | None, str | None]:
     """
     Normalize and validate start/end time range parameters.
     
@@ -314,7 +316,7 @@ def list_cached_symbols_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
         )
 
 
-def get_symbol_status_tool(symbol: Optional[str] = None, env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
+def get_symbol_status_tool(symbol: str | None = None, env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
     """
     Get per-symbol aggregate status (total candles, gaps, timeframe count).
     
@@ -408,7 +410,7 @@ def get_symbol_summary_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
         )
 
 
-def get_symbol_timeframe_ranges_tool(symbol: Optional[str] = None, env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
+def get_symbol_timeframe_ranges_tool(symbol: str | None = None, env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
     """
     Get detailed per-symbol/timeframe breakdown showing date ranges and health.
     
@@ -470,10 +472,10 @@ def get_symbol_timeframe_ranges_tool(symbol: Optional[str] = None, env: DataEnv 
 
 
 def sync_symbols_tool(
-    symbols: List[str],
+    symbols: list[str],
     period: str = "1M",
-    timeframes: Optional[List[str]] = None,
-    progress_callback: Optional[Callable] = None,
+    timeframes: list[str] | None = None,
+    progress_callback: Callable | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -547,10 +549,10 @@ def sync_symbols_tool(
 
 
 def sync_range_tool(
-    symbols: List[str],
+    symbols: list[str],
     start: datetime,
     end: datetime,
-    timeframes: Optional[List[str]] = None,
+    timeframes: list[str] | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -596,9 +598,9 @@ def sync_range_tool(
 
 
 def fill_gaps_tool(
-    symbol: Optional[str] = None,
-    timeframe: Optional[str] = None,
-    progress_callback: Optional[Callable] = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    progress_callback: Callable | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -643,7 +645,7 @@ def fill_gaps_tool(
 
 
 def heal_data_tool(
-    symbol: Optional[str] = None,
+    symbol: str | None = None,
     fix_issues: bool = True,
     fill_gaps_after: bool = True,
     env: DataEnv = DEFAULT_DATA_ENV,
@@ -866,9 +868,9 @@ def delete_all_data_tool(vacuum: bool = True, env: DataEnv = DEFAULT_DATA_ENV) -
 
 
 def sync_funding_tool(
-    symbols: List[str],
+    symbols: list[str],
     period: str = "3M",
-    progress_callback: Optional[Callable] = None,
+    progress_callback: Callable | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -918,9 +920,9 @@ def sync_funding_tool(
 
 def get_funding_history_tool(
     symbol: str,
-    period: Optional[str] = None,
-    start: Optional[Union[datetime, str]] = None,
-    end: Optional[Union[datetime, str]] = None,
+    period: str | None = None,
+    start: datetime | str | None = None,
+    end: datetime | str | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -1023,10 +1025,10 @@ def get_funding_history_tool(
 def get_ohlcv_history_tool(
     symbol: str,
     timeframe: str = "1h",
-    period: Optional[str] = None,
-    start: Optional[Union[datetime, str]] = None,
-    end: Optional[Union[datetime, str]] = None,
-    limit: Optional[int] = None,
+    period: str | None = None,
+    start: datetime | str | None = None,
+    end: datetime | str | None = None,
+    limit: int | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -1142,10 +1144,10 @@ def get_ohlcv_history_tool(
 
 
 def sync_open_interest_tool(
-    symbols: List[str],
+    symbols: list[str],
     period: str = "1M",
     interval: str = "1h",
-    progress_callback: Optional[Callable] = None,
+    progress_callback: Callable | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -1198,9 +1200,9 @@ def sync_open_interest_tool(
 
 def get_open_interest_history_tool(
     symbol: str,
-    period: Optional[str] = None,
-    start: Optional[Union[datetime, str]] = None,
-    end: Optional[Union[datetime, str]] = None,
+    period: str | None = None,
+    start: datetime | str | None = None,
+    end: datetime | str | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -1301,8 +1303,8 @@ def get_open_interest_history_tool(
 
 
 def sync_to_now_tool(
-    symbols: List[str],
-    timeframes: Optional[List[str]] = None,
+    symbols: list[str],
+    timeframes: list[str] | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -1362,8 +1364,8 @@ def sync_to_now_tool(
 
 
 def sync_to_now_and_fill_gaps_tool(
-    symbols: List[str],
-    timeframes: Optional[List[str]] = None,
+    symbols: list[str],
+    timeframes: list[str] | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -1457,10 +1459,10 @@ def sync_to_now_and_fill_gaps_tool(
 
 
 def build_symbol_history_tool(
-    symbols: List[str],
+    symbols: list[str],
     period: str = "1M",
-    timeframes: Optional[List[str]] = None,
-    oi_interval: Optional[str] = None,
+    timeframes: list[str] | None = None,
+    oi_interval: str | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -1648,7 +1650,7 @@ def get_instrument_launch_time_tool(
 
 def sync_full_from_launch_tool(
     symbol: str,
-    timeframes: Optional[List[str]] = None,
+    timeframes: list[str] | None = None,
     category: str = "linear",
     max_history_years: float = DEFAULT_MAX_HISTORY_YEARS,
     sync_funding: bool = True,
@@ -1657,7 +1659,7 @@ def sync_full_from_launch_tool(
     fill_gaps_after: bool = True,
     heal_after: bool = True,
     dry_run: bool = False,
-    progress_callback: Optional[Callable] = None,
+    progress_callback: Callable | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
@@ -1964,7 +1966,7 @@ def _days_to_period(days: int) -> str:
         return f"{max(1, days)}D"
 
 
-def _build_extremes_metadata(store, symbol: str, timeframes: List[str]) -> Dict[str, Any]:
+def _build_extremes_metadata(store, symbol: str, timeframes: list[str]) -> dict[str, Any]:
     """
     Build extremes/bounds metadata for a symbol after sync.
     
@@ -2044,8 +2046,8 @@ def _build_extremes_metadata(store, symbol: str, timeframes: List[str]) -> Dict[
 def _persist_extremes_to_db(
     store,
     symbol: str,
-    extremes: Dict[str, Any],
-    launch_time: Optional[datetime],
+    extremes: dict[str, Any],
+    launch_time: datetime | None,
     source: str,
 ):
     """
@@ -2145,7 +2147,7 @@ def _persist_extremes_to_db(
 
 
 def get_data_extremes_tool(
-    symbol: Optional[str] = None,
+    symbol: str | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """

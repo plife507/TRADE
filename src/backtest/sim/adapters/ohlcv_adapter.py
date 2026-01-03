@@ -10,9 +10,10 @@ Handles:
 - Data validation
 - ts_open/ts_close computation
 """
+from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, Any, List, Union, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -23,7 +24,7 @@ from ...runtime.timeframe import tf_duration
 
 
 def adapt_ohlcv_row_canonical(
-    row: Union[Dict[str, Any], "pd.Series"],
+    row: dict[str, Any] | "pd.Series",
     *,
     symbol: str,
     tf: str,
@@ -90,7 +91,7 @@ def adapt_ohlcv_dataframe_canonical(
     *,
     symbol: str,
     tf: str,
-) -> List[CanonicalBar]:
+) -> list[CanonicalBar]:
     """
     Convert a pandas DataFrame to a list of canonical Bars.
     
@@ -122,7 +123,7 @@ def build_bar_close_ts_map(
     *,
     symbol: str,
     tf: str,
-) -> Dict[datetime, CanonicalBar]:
+) -> dict[datetime, CanonicalBar]:
     """
     Build a mapping from ts_close -> Bar for data-driven close detection.
     

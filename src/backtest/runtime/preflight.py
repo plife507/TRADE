@@ -16,12 +16,13 @@ TOOL DISCIPLINE (MANDATORY):
 - All tool calls MUST pass explicit parameters (no implicit defaults)
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from math import ceil
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Callable, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 import json
 import pandas as pd
 import numpy as np
@@ -46,12 +47,12 @@ class PreflightStatus(str, Enum):
 class ToolCallRecord:
     """Record of a tool call made during auto-fix."""
     tool_name: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
     success: bool
     message: str = ""
     timestamp: datetime = field(default_factory=_utcnow)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "tool_name": self.tool_name,
@@ -68,11 +69,11 @@ class AutoSyncConfig:
     enabled: bool = False
     max_attempts: int = 2
     data_env: str = "live"  # "live" or "demo"
-    
+
     # Tool hooks for dependency injection (used in testing)
-    sync_range_tool: Optional[Callable] = None
-    fill_gaps_tool: Optional[Callable] = None
-    heal_data_tool: Optional[Callable] = None
+    sync_range_tool: Callable | None = None
+    fill_gaps_tool: Callable | None = None
+    heal_data_tool: Callable | None = None
 
 
 @dataclass
@@ -80,10 +81,10 @@ class AutoSyncResult:
     """Result of auto-sync attempt."""
     attempted: bool = False
     success: bool = False
-    tool_calls: List[ToolCallRecord] = field(default_factory=list)
+    tool_calls: list[ToolCallRecord] = field(default_factory=list)
     attempts_made: int = 0
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "attempted": self.attempted,
@@ -102,7 +103,7 @@ class GapInfo:
     actual_bars: int
     gap_duration_minutes: float
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "start_ts": self.start_ts.isoformat(),
@@ -113,7 +114,7 @@ class GapInfo:
         }
 
 
-def _datetime_to_epoch_ms(dt: Optional[datetime]) -> Optional[int]:
+def _datetime_to_epoch_ms(dt: datetime | None) -> int | None:
     """Convert datetime to epoch milliseconds."""
     if dt is None:
         return None
@@ -130,35 +131,35 @@ class TFPreflightResult:
     symbol: str
     tf: str
     status: PreflightStatus
-    
+
     # Coverage info
-    min_ts: Optional[datetime] = None
-    max_ts: Optional[datetime] = None
+    min_ts: datetime | None = None
+    max_ts: datetime | None = None
     bar_count: int = 0
-    
+
     # Required range
-    required_start: Optional[datetime] = None
-    required_end: Optional[datetime] = None
+    required_start: datetime | None = None
+    required_end: datetime | None = None
     warmup_bars: int = 0
-    
+
     # Validation results
     data_exists: bool = False
     covers_range: bool = False
     is_monotonic: bool = False
     is_unique: bool = False
     alignment_ok: bool = False
-    
+
     # Gaps
-    gaps: List[GapInfo] = field(default_factory=list)
+    gaps: list[GapInfo] = field(default_factory=list)
     max_gap_minutes: float = 0.0
     gap_threshold_minutes: float = 0.0
     gaps_within_threshold: bool = True
-    
+
     # Errors
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "symbol": self.symbol,
@@ -207,20 +208,20 @@ class PreflightReport:
     window_start: datetime
     window_end: datetime
     overall_status: PreflightStatus
-    tf_results: Dict[str, TFPreflightResult]  # key: "symbol:tf"
+    tf_results: dict[str, TFPreflightResult]  # key: "symbol:tf"
     run_timestamp: datetime = field(default_factory=_utcnow)
-    auto_sync_result: Optional[AutoSyncResult] = None
+    auto_sync_result: AutoSyncResult | None = None
     # Computed warmup requirements (source of truth from IdeaCard indicators)
-    computed_warmup_requirements: Optional["WarmupRequirements"] = None
+    computed_warmup_requirements: "WarmupRequirements | None" = None
     # Phase 6: Error classification for structured smoke test assertions
-    error_code: Optional[str] = None  # e.g., "INSUFFICIENT_COVERAGE", "HISTORY_UNAVAILABLE", "MISSING_1M_COVERAGE"
-    error_details: Optional[Dict[str, Any]] = None
+    error_code: str | None = None  # e.g., "INSUFFICIENT_COVERAGE", "HISTORY_UNAVAILABLE", "MISSING_1M_COVERAGE"
+    error_details: dict[str, Any] | None = None
     # 1m Price Feed: Mandatory 1m coverage fields
     has_1m_coverage: bool = False
     exec_to_1m_mapping_feasible: bool = False
     required_1m_bars: int = 0
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         result = {
             "idea_card_id": self.idea_card_id,
@@ -266,7 +267,7 @@ class PreflightReport:
 
         return result
     
-    def _get_exec_result(self) -> Optional[TFPreflightResult]:
+    def _get_exec_result(self) -> TFPreflightResult | None:
         """Get the exec role TFPreflightResult (first result if only one symbol)."""
         for key, tf_result in self.tf_results.items():
             # Return first result (typically exec TF for single-symbol runs)
@@ -277,7 +278,7 @@ class PreflightReport:
         """Write report to JSON file."""
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2)
+            json.dump(self.to_dict(), f, indent=2, sort_keys=True)
     
     def print_summary(self) -> None:
         """Print summary to console."""
@@ -422,7 +423,10 @@ def validate_tf_data(
     eff_start_cmp = effective_start.replace(tzinfo=None) if effective_start.tzinfo else effective_start
     req_end_cmp = required_end.replace(tzinfo=None) if required_end.tzinfo else required_end
     
-    # Check 2: Covers required range
+    # Check 2: Covers required range (inclusive bounds)
+    # - min_ts <= eff_start_cmp: data starts at or before required start (for warmup)
+    # - max_ts >= req_end_cmp: data ends at or after required end
+    # P2-002: Confirmed correct - inclusive coverage check
     if min_ts <= eff_start_cmp and max_ts >= req_end_cmp:
         result.covers_range = True
     else:
@@ -505,7 +509,7 @@ def validate_tf_data(
     return result
 
 
-def _get_default_tools() -> Tuple[Callable, Callable, Callable]:
+def _get_default_tools() -> tuple[Callable, Callable, Callable]:
     """
     Get the default data tools for auto-sync.
     
@@ -520,7 +524,7 @@ def _get_default_tools() -> Tuple[Callable, Callable, Callable]:
 
 
 def _run_auto_sync(
-    pairs_to_sync: List[Tuple[str, str, datetime, datetime]],
+    pairs_to_sync: list[tuple[str, str, datetime, datetime]],
     auto_sync_config: AutoSyncConfig,
 ) -> AutoSyncResult:
     """
@@ -559,7 +563,7 @@ def _run_auto_sync(
     data_env = auto_sync_config.data_env
     
     # Group by symbol for batching
-    symbols_tfs: Dict[str, List[Tuple[str, datetime, datetime]]] = {}
+    symbols_tfs: dict[str, list[tuple[str, datetime, datetime]]] = {}
     for symbol, tf, start, end in pairs_to_sync:
         if symbol not in symbols_tfs:
             symbols_tfs[symbol] = []
@@ -659,20 +663,20 @@ def _run_auto_sync(
 
 
 def _validate_all_pairs(
-    pairs_to_check: List[Tuple[str, str, int]],
+    pairs_to_check: list[tuple[str, str, int]],
     data_loader: "DataLoader",
     window_start: datetime,
     window_end: datetime,
     gap_threshold_multiplier: float,
-) -> Tuple[Dict[str, TFPreflightResult], List[Tuple[str, str, datetime, datetime]]]:
+) -> tuple[dict[str, TFPreflightResult], list[tuple[str, str, datetime, datetime]]]:
     """
     Validate all (symbol, tf) pairs and collect failures.
     
     Returns:
         Tuple of (tf_results dict, list of failed pairs needing sync)
     """
-    tf_results: Dict[str, TFPreflightResult] = {}
-    failed_pairs: List[Tuple[str, str, datetime, datetime]] = []
+    tf_results: dict[str, TFPreflightResult] = {}
+    failed_pairs: list[tuple[str, str, datetime, datetime]] = []
     
     for symbol, tf, warmup_bars in pairs_to_check:
         key = f"{symbol}:{tf}"
@@ -733,8 +737,8 @@ def _validate_exec_to_1m_mapping(
     exec_tf: str,
     window_start: datetime,
     window_end: datetime,
-    df_1m: Optional[pd.DataFrame],
-) -> Tuple[bool, Optional[str]]:
+    df_1m: pd.DataFrame | None,
+) -> tuple[bool, str | None]:
     """
     Validate that exec TF close times can be mapped to 1m bars.
 
@@ -835,7 +839,7 @@ def run_preflight_gate(
     window_end: datetime,
     gap_threshold_multiplier: float = 3.0,
     auto_sync_missing: bool = False,
-    auto_sync_config: Optional[AutoSyncConfig] = None,
+    auto_sync_config: AutoSyncConfig | None = None,
 ) -> PreflightReport:
     """
     Run the data preflight gate for an IdeaCard.
@@ -906,7 +910,7 @@ def run_preflight_gate(
     # ==========================================================================
     # STEP 2: Collect all (symbol, tf) pairs with computed warmup
     # ==========================================================================
-    pairs_to_check: List[Tuple[str, str, int]] = []  # (symbol, tf, warmup_bars)
+    pairs_to_check: list[tuple[str, str, int]] = []  # (symbol, tf, warmup_bars)
 
     for symbol in idea_card.symbol_universe:
         for role, tf_config in idea_card.tf_configs.items():
@@ -954,7 +958,7 @@ def run_preflight_gate(
         gap_threshold_multiplier=gap_threshold_multiplier,
     )
     
-    auto_sync_result: Optional[AutoSyncResult] = None
+    auto_sync_result: AutoSyncResult | None = None
     
     # If there are failures and auto-sync is enabled, try to fix
     if failed_pairs and auto_sync_missing:
@@ -1019,7 +1023,7 @@ def run_preflight_gate(
 
     # Validate exec→1m mapping feasibility
     exec_to_1m_mapping_feasible = True
-    mapping_error: Optional[str] = None
+    mapping_error: str | None = None
 
     if has_1m_coverage:
         # Get exec TF from IdeaCard
@@ -1067,8 +1071,8 @@ def run_preflight_gate(
         overall_passed = False
 
     # Phase 6: Classify error for structured smoke test assertions
-    error_code: Optional[str] = None
-    error_details: Optional[Dict[str, Any]] = None
+    error_code: str | None = None
+    error_details: dict[str, Any] | None = None
 
     if not overall_passed:
         # Check 1m-specific failures first (highest priority)
@@ -1157,5 +1161,4 @@ def run_preflight_gate(
 
 
 # Type alias for data loader callable
-from typing import Callable
 DataLoader = Callable[[str, str, datetime, datetime], pd.DataFrame]

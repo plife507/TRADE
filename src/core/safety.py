@@ -6,7 +6,7 @@ and halt trading operations.
 """
 
 import threading
-from typing import Optional, Callable
+from collections.abc import Callable
 from datetime import datetime
 
 from ..utils.logger import get_logger
@@ -14,26 +14,26 @@ from ..utils.logger import get_logger
 
 class PanicState:
     """Tracks panic/emergency state."""
-    
+
     def __init__(self):
         self._triggered = False
-        self._trigger_time: Optional[datetime] = None
-        self._reason: Optional[str] = None
+        self._trigger_time: datetime | None = None
+        self._reason: str | None = None
         self._lock = threading.Lock()
         self._callbacks: list[Callable] = []
-    
+
     @property
     def is_triggered(self) -> bool:
         with self._lock:
             return self._triggered
-    
+
     @property
-    def trigger_time(self) -> Optional[datetime]:
+    def trigger_time(self) -> datetime | None:
         with self._lock:
             return self._trigger_time
-    
+
     @property
-    def reason(self) -> Optional[str]:
+    def reason(self) -> str | None:
         with self._lock:
             return self._reason
     

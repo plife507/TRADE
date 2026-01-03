@@ -16,7 +16,7 @@ Phase: Price Feed (1m) + Preflight Gate + Packet Injection
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Any
 import numpy as np
 
 from ..runtime.rollup_bucket import ExecRollupBucket, ROLLUP_KEYS
@@ -36,7 +36,7 @@ class RollupComparisonResult:
     abs_diff: float
     passed: bool
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "key": self.key,
             "observed": self.observed,
@@ -51,11 +51,11 @@ class RollupIntervalResult:
     """Result of validating a single exec interval's rollups."""
     interval_idx: int
     quote_count: int
-    comparisons: List[RollupComparisonResult]
+    comparisons: list[RollupComparisonResult]
     passed: bool
-    first_failure: Optional[RollupComparisonResult] = None
+    first_failure: RollupComparisonResult | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "interval_idx": self.interval_idx,
             "quote_count": self.quote_count,
@@ -74,12 +74,12 @@ class RollupParityResult:
     failed_intervals: int
     total_comparisons: int
     failed_comparisons: int
-    interval_results: List[RollupIntervalResult]
+    interval_results: list[RollupIntervalResult]
     accessor_tests_passed: bool
     bucket_tests_passed: bool
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
             "total_intervals": self.total_intervals,
@@ -98,7 +98,7 @@ def generate_synthetic_quotes(
     n_quotes: int = 100,
     seed: int = 1337,
     base_price: float = 100.0,
-) -> List[QuoteState]:
+) -> list[QuoteState]:
     """
     Generate deterministic synthetic QuoteState data for rollup audits.
 
@@ -132,9 +132,12 @@ def generate_synthetic_quotes(
         # Volume with variation
         volume = 1000 + abs(np.random.randn() * 500)
 
+        # For simplicity in tests, open_1m = close of previous bar or base_price for first
+        open_price = price if i == 0 else quotes[-1].last
         quote = QuoteState(
             ts_ms=1704067200000 + i * 60000,  # 1-minute intervals
             last=price,
+            open_1m=open_price,
             high_1m=high,
             low_1m=low,
             mark=price * (1 + np.random.randn() * 0.0001),  # Tiny mark deviation
@@ -146,7 +149,7 @@ def generate_synthetic_quotes(
     return quotes
 
 
-def compute_expected_rollups(quotes: List[QuoteState]) -> Dict[str, float]:
+def compute_expected_rollups(quotes: list[QuoteState]) -> dict[str, float]:
     """
     Manually compute expected rollup values from a list of quotes.
 
@@ -170,8 +173,8 @@ def compute_expected_rollups(quotes: List[QuoteState]) -> Dict[str, float]:
 
     min_price = min(q.low_1m for q in quotes)
     max_price = max(q.high_1m for q in quotes)
-    open_price = quotes[0].last  # First quote's last price
-    close_price = quotes[-1].last  # Last quote's last price
+    open_price = quotes[0].open_1m  # First quote's open price (P2-001 FIX)
+    close_price = quotes[-1].last  # Last quote's close price
     total_volume = sum(q.volume_1m for q in quotes)
     bar_count = len(quotes)
 
@@ -186,7 +189,7 @@ def compute_expected_rollups(quotes: List[QuoteState]) -> Dict[str, float]:
 
 
 def validate_bucket_accumulation(
-    quotes: List[QuoteState],
+    quotes: list[QuoteState],
     tolerance: float = 1e-10,
 ) -> RollupIntervalResult:
     """
@@ -263,6 +266,7 @@ def validate_bucket_reset() -> bool:
     quote = QuoteState(
         ts_ms=1704067200000,
         last=100.0,
+        open_1m=99.5,
         high_1m=101.0,
         low_1m=99.0,
         mark=100.0,
@@ -292,9 +296,9 @@ def validate_bucket_reset() -> bool:
 
 
 def validate_snapshot_accessors(
-    rollups: Dict[str, float],
+    rollups: dict[str, float],
     tolerance: float = 1e-10,
-) -> List[RollupComparisonResult]:
+) -> list[RollupComparisonResult]:
     """
     Validate RuntimeSnapshotView rollup accessors against raw dict values.
 

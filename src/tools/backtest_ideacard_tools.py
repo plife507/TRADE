@@ -13,10 +13,8 @@ All tools are the GOLDEN PATH for backtest execution.
 CLI and agents should use these tools, not direct engine access.
 """
 
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Set
 import traceback
 
 import pandas as pd
@@ -136,11 +134,11 @@ def normalize_timestamp(dt: datetime) -> datetime:
 def backtest_preflight_idea_card_tool(
     idea_card_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
-    symbol: Optional[str] = None,
-    start: Optional[datetime] = None,
-    end: Optional[datetime] = None,
-    idea_cards_dir: Optional[Path] = None,
-    symbol_override: Optional[str] = None,
+    symbol: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    idea_cards_dir: Path | None = None,
+    symbol_override: str | None = None,
     fix_gaps: bool = False,
 ) -> ToolResult:
     """
@@ -322,18 +320,18 @@ def backtest_preflight_idea_card_tool(
 def backtest_run_idea_card_tool(
     idea_card_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
-    symbol: Optional[str] = None,
-    start: Optional[datetime] = None,
-    end: Optional[datetime] = None,
+    symbol: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
     smoke: bool = False,
     strict: bool = True,
     write_artifacts: bool = True,
-    artifacts_dir: Optional[Path] = None,
-    idea_cards_dir: Optional[Path] = None,
-    initial_equity_override: Optional[float] = None,
-    max_leverage_override: Optional[float] = None,
+    artifacts_dir: Path | None = None,
+    idea_cards_dir: Path | None = None,
+    initial_equity_override: float | None = None,
+    max_leverage_override: float | None = None,
     emit_snapshots: bool = False,
-    symbol_override: Optional[str] = None,
+    symbol_override: str | None = None,
     fix_gaps: bool = True,
     validate_artifacts_after: bool = True,
 ) -> ToolResult:
@@ -681,10 +679,10 @@ def backtest_run_idea_card_tool(
 def backtest_indicators_tool(
     idea_card_id: str,
     data_env: DataEnv = DEFAULT_DATA_ENV,
-    symbol: Optional[str] = None,
-    start: Optional[datetime] = None,
-    end: Optional[datetime] = None,
-    idea_cards_dir: Optional[Path] = None,
+    symbol: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    idea_cards_dir: Path | None = None,
     compute_values: bool = False,
 ) -> ToolResult:
     """
@@ -844,7 +842,7 @@ def backtest_indicators_tool(
 # Data Fix (tools-layer dispatch to existing tools)
 # =============================================================================
 
-def _datetime_to_epoch_ms(dt: Optional[datetime]) -> Optional[int]:
+def _datetime_to_epoch_ms(dt: datetime | None) -> int | None:
     """Convert datetime to epoch milliseconds."""
     if dt is None:
         return None
@@ -854,14 +852,14 @@ def _datetime_to_epoch_ms(dt: Optional[datetime]) -> Optional[int]:
 def backtest_data_fix_tool(
     idea_card_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
-    symbol: Optional[str] = None,
-    start: Optional[datetime] = None,
-    end: Optional[datetime] = None,
+    symbol: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
     max_lookback_days: int = 7,
     sync_to_now: bool = False,
     fill_gaps: bool = True,
     heal: bool = False,
-    idea_cards_dir: Optional[Path] = None,
+    idea_cards_dir: Path | None = None,
 ) -> ToolResult:
     """
     Fix data for an IdeaCard backtest by calling existing data tools.
@@ -1059,7 +1057,7 @@ def backtest_data_fix_tool(
 # =============================================================================
 
 def backtest_list_idea_cards_tool(
-    idea_cards_dir: Optional[Path] = None,
+    idea_cards_dir: Path | None = None,
 ) -> ToolResult:
     """
     List available IdeaCards.
@@ -1095,7 +1093,7 @@ def backtest_list_idea_cards_tool(
 
 def backtest_idea_card_normalize_tool(
     idea_card_id: str,
-    idea_cards_dir: Optional[Path] = None,
+    idea_cards_dir: Path | None = None,
     write_in_place: bool = False,
 ) -> ToolResult:
     """

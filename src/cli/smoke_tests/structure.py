@@ -20,10 +20,70 @@ from rich.panel import Panel
 
 console = Console()
 
+# =============================================================================
+# Test Configuration Constants
+# =============================================================================
+
+# Default parameters for smoke tests
+DEFAULT_SAMPLE_BARS = 500
+DEFAULT_RANDOM_SEED = 42
+
+# Synthetic OHLCV generation parameters
+PRICE_BASE = 40000.0           # Base price for synthetic data
+PRICE_TREND_AMPLITUDE = 1000.0  # Amplitude of slow trend oscillation
+PRICE_FAST_AMPLITUDE = 500.0    # Amplitude of fast oscillation
+PRICE_NOISE_STD = 50.0          # Standard deviation of price noise
+HIGH_SPREAD_STD = 100.0         # High spread std dev from close
+HIGH_MIN_SPREAD = 20.0          # Minimum high above close
+LOW_SPREAD_STD = 100.0          # Low spread std dev from close
+LOW_MIN_SPREAD = 20.0           # Minimum low below close
+OPEN_NOISE_STD = 30.0           # Open price noise std dev
+VOLUME_STD = 1000.0             # Volume std dev
+VOLUME_MIN = 100.0              # Minimum volume
+SIN_CYCLES = 8                  # Number of sin cycles over sample period
+SLOW_SIN_MULTIPLIER = 0.5       # Multiplier for slow trend
+FAST_SIN_MULTIPLIER = 2.0       # Multiplier for fast oscillation
+
+# Timeframe configuration
+MINUTES_PER_BAR = 5             # 5-minute bars
+
+# Swing detector parameters
+SWING_LOOKBACK_LEFT = 5
+SWING_LOOKBACK_RIGHT = 5
+
+# Zone configuration
+ZONE_WIDTH_PERCENT = 0.01       # 1% zone width
+
+# Structure builder stage
+BUILDER_STAGE = 2               # Stage 2 (exec-only)
+
+# Test indices for snapshot access validation
+SNAPSHOT_TEST_INDICES = [100, 250]  # Sample indices plus sample_bars-1 added dynamically
+ZONE_TEST_BAR_INDEX = 250       # Middle bar index for zone testing
+INSTANCE_ID_CHECK_INDICES = [0, 50, 100, 200, 300]  # Indices for instance_id validation
+
+# Output formatting
+SEPARATOR_WIDTH = 60
+
+# State tracking smoke test parameters
+STATE_TRACKER_WARMUP_BARS = 10
+STATE_TRACKER_TEST_BARS = 15
+STATE_TRACKER_DETERMINISM_BARS = 20
+STATE_TRACKER_SIGNAL_BARS = (11, 13)           # Bars where signals fire in basic test
+STATE_TRACKER_DETERMINISM_SIGNAL_BARS = (11, 13, 15)  # Bars for determinism test
+
+# Parity test parameters
+PARITY_TEST_WINDOW_DAYS = 7     # Days of data for parity test
+PARITY_TEST_MIN_BARS = 100      # Minimum bars required for parity test
+
+# Mock exchange parameters
+MOCK_EQUITY_USDT = 10000.0
+MOCK_AVAILABLE_BALANCE_USDT = 10000.0
+
 
 def run_structure_smoke(
-    sample_bars: int = 500,
-    seed: int = 42,
+    sample_bars: int = DEFAULT_SAMPLE_BARS,
+    seed: int = DEFAULT_RANDOM_SEED,
 ) -> int:
     """
     Run market structure smoke test.
@@ -81,25 +141,27 @@ def run_structure_smoke(
     np.random.seed(seed)
 
     # Create trending data with clear swings
-    t = np.linspace(0, 8 * np.pi, sample_bars)
+    t = np.linspace(0, SIN_CYCLES * np.pi, sample_bars)
     # Base trend with oscillation
-    base = 40000 + 1000 * np.sin(t * 0.5) + 500 * np.sin(t * 2)
+    base = (PRICE_BASE
+            + PRICE_TREND_AMPLITUDE * np.sin(t * SLOW_SIN_MULTIPLIER)
+            + PRICE_FAST_AMPLITUDE * np.sin(t * FAST_SIN_MULTIPLIER))
     # Add noise
-    noise = np.random.randn(sample_bars) * 50
+    noise = np.random.randn(sample_bars) * PRICE_NOISE_STD
 
     close = base + noise
-    high = close + np.abs(np.random.randn(sample_bars) * 100) + 20
-    low = close - np.abs(np.random.randn(sample_bars) * 100) - 20
-    open_ = close + np.random.randn(sample_bars) * 30
-    volume = np.abs(np.random.randn(sample_bars) * 1000) + 100
+    high = close + np.abs(np.random.randn(sample_bars) * HIGH_SPREAD_STD) + HIGH_MIN_SPREAD
+    low = close - np.abs(np.random.randn(sample_bars) * LOW_SPREAD_STD) - LOW_MIN_SPREAD
+    open_ = close + np.random.randn(sample_bars) * OPEN_NOISE_STD
+    volume = np.abs(np.random.randn(sample_bars) * VOLUME_STD) + VOLUME_MIN
 
     # Generate timestamps (5m bars)
     start_ts = datetime(2024, 1, 1, 0, 0, 0)
     ts_close = np.array([
-        start_ts + timedelta(minutes=5 * (i + 1)) for i in range(sample_bars)
+        start_ts + timedelta(minutes=MINUTES_PER_BAR * (i + 1)) for i in range(sample_bars)
     ])
     ts_open = np.array([
-        start_ts + timedelta(minutes=5 * i) for i in range(sample_bars)
+        start_ts + timedelta(minutes=MINUTES_PER_BAR * i) for i in range(sample_bars)
     ])
 
     console.print(f"  [green]OK[/] Generated {sample_bars} bars")
@@ -126,7 +188,7 @@ def run_structure_smoke(
         failures += 1
         return failures
 
-    params = {"left": 5, "right": 5}
+    params = {"left": SWING_LOOKBACK_LEFT, "right": SWING_LOOKBACK_RIGHT}
 
     try:
         swing_outputs = swing_detector.build_batch(ohlcv, params)
@@ -212,14 +274,14 @@ def run_structure_smoke(
         key="demand_1",
         type=ZoneType.DEMAND,
         width_model="percent",
-        width_params={"pct": 0.01},  # 1% width
+        width_params={"pct": ZONE_WIDTH_PERCENT},
     )
 
     supply_zone = ZoneSpec(
         key="supply_1",
         type=ZoneType.SUPPLY,
         width_model="percent",
-        width_params={"pct": 0.01},  # 1% width
+        width_params={"pct": ZONE_WIDTH_PERCENT},
     )
 
     # Create SWING spec with zones
@@ -227,7 +289,7 @@ def run_structure_smoke(
         key="ms_5m",
         type=StructureType.SWING,
         tf_role="exec",
-        params={"left": 5, "right": 5},
+        params={"left": SWING_LOOKBACK_LEFT, "right": SWING_LOOKBACK_RIGHT},
         confirmation=ConfirmationConfig(mode="immediate"),
         zones=[demand_zone, supply_zone],  # Stage 5: Zones attached
     )
@@ -246,7 +308,7 @@ def run_structure_smoke(
     console.print(f"      TREND: key='{trend_spec.key}', block_id='{trend_spec.block_id[:8]}...'")
 
     # Build structures
-    builder = StructureBuilder(stage=2)
+    builder = StructureBuilder(stage=BUILDER_STAGE)
 
     try:
         stores = builder.build(ohlcv, [swing_spec, trend_spec])
@@ -292,7 +354,7 @@ def run_structure_smoke(
         key="ms_htf",
         type=StructureType.SWING,
         tf_role="ctx",  # Not allowed in Stage 2
-        params={"left": 5, "right": 5},
+        params={"left": SWING_LOOKBACK_LEFT, "right": SWING_LOOKBACK_RIGHT},
         confirmation=ConfirmationConfig(mode="immediate"),
     )
 
@@ -360,14 +422,14 @@ def run_structure_smoke(
 
     # Create mock exchange (just needs minimal interface)
     class MockExchange:
-        equity_usdt = 10000.0
-        available_balance_usdt = 10000.0
+        equity_usdt = MOCK_EQUITY_USDT
+        available_balance_usdt = MOCK_AVAILABLE_BALANCE_USDT
         position = None
         unrealized_pnl_usdt = 0.0
         entries_disabled = False
 
     # Test snapshot access at various bar indices
-    test_indices = [100, 250, sample_bars - 1]
+    test_indices = SNAPSHOT_TEST_INDICES + [sample_bars - 1]
 
     for bar_idx in test_indices:
         console.print(f"\n  [bold]Testing snapshot at bar {bar_idx}:[/]")
@@ -419,11 +481,11 @@ def run_structure_smoke(
 
     snapshot = RuntimeSnapshotView(
         feeds=multi_feed,
-        exec_idx=250,  # Middle of data
+        exec_idx=ZONE_TEST_BAR_INDEX,  # Middle of data
         htf_idx=None,
         mtf_idx=None,
         exchange=MockExchange(),
-        mark_price=close[250],
+        mark_price=close[ZONE_TEST_BAR_INDEX],
         mark_price_source="close",
     )
 
@@ -619,7 +681,7 @@ def run_structure_smoke(
             else:
                 # Check instance_id is 0 where state is NONE, non-zero otherwise
                 state_arr = zone_store.fields["state"]
-                for i in [0, 50, 100, 200, 300]:
+                for i in INSTANCE_ID_CHECK_INDICES:
                     if i < sample_bars:
                         if state_arr[i] == ZoneState.NONE.value:
                             if instance_id_arr[i] != 0:
@@ -655,10 +717,10 @@ def run_structure_smoke(
             "key": "test_block",
             "type": "swing",
             "tf_role": "exec",
-            "params": {"left": 5, "right": 5},
+            "params": {"left": SWING_LOOKBACK_LEFT, "right": SWING_LOOKBACK_RIGHT},
             "zones": [
-                {"key": "demand_1", "type": "demand", "width_model": "percent", "width_params": {"pct": 0.01}},
-                {"key": "demand_1", "type": "demand", "width_model": "percent", "width_params": {"pct": 0.02}},  # Duplicate!
+                {"key": "demand_1", "type": "demand", "width_model": "percent", "width_params": {"pct": ZONE_WIDTH_PERCENT}},
+                {"key": "demand_1", "type": "demand", "width_model": "percent", "width_params": {"pct": ZONE_WIDTH_PERCENT * 2}},  # Duplicate!
             ],
         }
         StructureSpec.from_dict(dup_zones_spec)
@@ -772,7 +834,7 @@ def run_structure_smoke(
     console.print(f"\n[bold]Step 10: Test Pure Function (detect_swing_pivots)[/]")
 
     try:
-        is_swing_high, is_swing_low = detect_swing_pivots(high, low, left=5, right=5)
+        is_swing_high, is_swing_low = detect_swing_pivots(high, low, left=SWING_LOOKBACK_LEFT, right=SWING_LOOKBACK_RIGHT)
         num_highs = np.sum(is_swing_high)
         num_lows = np.sum(is_swing_low)
         console.print(f"  [green]OK[/] detect_swing_pivots() completed")
@@ -785,9 +847,9 @@ def run_structure_smoke(
     # =========================================================================
     # Summary
     # =========================================================================
-    console.print(f"\n{'='*60}")
+    console.print(f"\n{'=' * SEPARATOR_WIDTH}")
     console.print(f"[bold cyan]MARKET STRUCTURE SMOKE TEST COMPLETE (Stage 5)[/]")
-    console.print(f"{'='*60}")
+    console.print(f"{'=' * SEPARATOR_WIDTH}")
 
     console.print(f"\n[bold]Summary:[/]")
     console.print(f"  Bars tested: {sample_bars}")
@@ -994,16 +1056,16 @@ def run_state_tracking_smoke() -> int:
     # =========================================================================
     console.print(f"\n[bold]Step 5: Test StateTracker[/]")
 
-    tracker = create_state_tracker(warmup_bars=10)
+    tracker = create_state_tracker(warmup_bars=STATE_TRACKER_WARMUP_BARS)
 
     # Simulate a few bars
-    for bar_idx in range(15):
+    for bar_idx in range(STATE_TRACKER_TEST_BARS):
         tracker.on_bar_start(bar_idx)
-        tracker.on_warmup_check(bar_idx >= 10, 10)
+        tracker.on_warmup_check(bar_idx >= STATE_TRACKER_WARMUP_BARS, STATE_TRACKER_WARMUP_BARS)
         tracker.on_history_check(True, bar_idx)
 
-        # Simulate signal on bars 11 and 13
-        if bar_idx in (11, 13):
+        # Simulate signal on specific bars
+        if bar_idx in STATE_TRACKER_SIGNAL_BARS:
             tracker.on_signal_evaluated(1)  # LONG signal
         else:
             tracker.on_signal_evaluated(0)  # No signal
@@ -1012,19 +1074,20 @@ def run_state_tracking_smoke() -> int:
         tracker.on_bar_end()
 
     # Check history was recorded
-    if len(tracker.block_history) != 15:
-        console.print(f"  [red]FAIL[/] block_history should have 15 entries, got {len(tracker.block_history)}")
+    if len(tracker.block_history) != STATE_TRACKER_TEST_BARS:
+        console.print(f"  [red]FAIL[/] block_history should have {STATE_TRACKER_TEST_BARS} entries, got {len(tracker.block_history)}")
         failures += 1
     else:
         console.print(f"  [green]OK[/] block_history has correct length")
 
     # Check summary stats
     stats = tracker.summary_stats()
-    if stats.get("total_bars") != 15:
+    expected_signals = len(STATE_TRACKER_SIGNAL_BARS)
+    if stats.get("total_bars") != STATE_TRACKER_TEST_BARS:
         console.print(f"  [red]FAIL[/] summary_stats total_bars wrong")
         failures += 1
-    elif stats.get("signals_detected", 0) < 2:
-        console.print(f"  [red]FAIL[/] summary_stats should show 2 signals detected")
+    elif stats.get("signals_detected", 0) < expected_signals:
+        console.print(f"  [red]FAIL[/] summary_stats should show {expected_signals} signals detected")
         failures += 1
     else:
         console.print(f"  [green]OK[/] StateTracker summary_stats works")
@@ -1035,16 +1098,16 @@ def run_state_tracking_smoke() -> int:
     console.print(f"\n[bold]Step 6: Test Determinism[/]")
 
     # Run twice with same inputs
-    tracker1 = create_state_tracker(warmup_bars=10)
-    tracker2 = create_state_tracker(warmup_bars=10)
+    tracker1 = create_state_tracker(warmup_bars=STATE_TRACKER_WARMUP_BARS)
+    tracker2 = create_state_tracker(warmup_bars=STATE_TRACKER_WARMUP_BARS)
 
-    for bar_idx in range(20):
+    for bar_idx in range(STATE_TRACKER_DETERMINISM_BARS):
         # Same inputs to both trackers
-        signal_direction = 1 if bar_idx in (11, 13, 15) else 0
+        signal_direction = 1 if bar_idx in STATE_TRACKER_DETERMINISM_SIGNAL_BARS else 0
 
         for t in (tracker1, tracker2):
             t.on_bar_start(bar_idx)
-            t.on_warmup_check(bar_idx >= 10, 10)
+            t.on_warmup_check(bar_idx >= STATE_TRACKER_WARMUP_BARS, STATE_TRACKER_WARMUP_BARS)
             t.on_history_check(True, bar_idx)
             t.on_signal_evaluated(signal_direction)
             t.on_position_check(0)
@@ -1052,7 +1115,7 @@ def run_state_tracking_smoke() -> int:
 
     # Compare histories
     determinism_ok = True
-    for i in range(20):
+    for i in range(STATE_TRACKER_DETERMINISM_BARS):
         b1 = tracker1.block_history[i]
         b2 = tracker2.block_history[i]
         if b1.signal.value != b2.signal.value:
@@ -1072,9 +1135,9 @@ def run_state_tracking_smoke() -> int:
     # =========================================================================
     # Summary
     # =========================================================================
-    console.print(f"\n{'='*60}")
+    console.print(f"\n{'=' * SEPARATOR_WIDTH}")
     console.print(f"[bold cyan]STATE TRACKING SMOKE TEST COMPLETE (Stage 7)[/]")
-    console.print(f"{'='*60}")
+    console.print(f"{'=' * SEPARATOR_WIDTH}")
 
     console.print(f"\n[bold]Stage 7 Checklist:[/]")
     console.print(f"  [green]OK[/] State type enums imported")
@@ -1160,7 +1223,7 @@ def run_state_tracking_parity_smoke(
         store = get_historical_store()
         # Use a short window for smoke testing
         window_end = datetime.now(timezone.utc).replace(tzinfo=None)
-        window_start = window_end - timedelta(days=7)
+        window_start = window_end - timedelta(days=PARITY_TEST_WINDOW_DAYS)
 
         # Check if we have data
         df = store.query_ohlcv(
@@ -1170,9 +1233,9 @@ def run_state_tracking_parity_smoke(
             end=window_end,
         )
 
-        if df is None or len(df) < 100:
+        if df is None or len(df) < PARITY_TEST_MIN_BARS:
             console.print(f"  [yellow]SKIP[/] Insufficient data ({len(df) if df is not None else 0} bars)")
-            console.print(f"      Need at least 100 bars for parity test")
+            console.print(f"      Need at least {PARITY_TEST_MIN_BARS} bars for parity test")
             console.print(f"      Run: python trade_cli.py data sync --symbol {symbol} --tf {exec_tf}")
             return 0  # Skip, not fail
 
@@ -1280,9 +1343,9 @@ def run_state_tracking_parity_smoke(
     # =========================================================================
     # Summary
     # =========================================================================
-    console.print(f"\n{'='*60}")
+    console.print(f"\n{'=' * SEPARATOR_WIDTH}")
     console.print(f"[bold cyan]STATE TRACKING PARITY SMOKE TEST COMPLETE[/]")
-    console.print(f"{'='*60}")
+    console.print(f"{'=' * SEPARATOR_WIDTH}")
 
     console.print(f"\n[bold]Record-Only Guarantee:[/]")
     console.print(f"  [green]OK[/] record_state_tracking=True produces identical trades")

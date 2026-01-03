@@ -28,9 +28,10 @@ Usage:
 
 import time
 import threading
-from typing import Dict, List, Optional, Any, Callable, Deque
-from queue import Queue, Empty
+from collections.abc import Callable
 from collections import defaultdict, deque
+from queue import Queue, Empty
+from typing import Any
 
 import pandas as pd
 
@@ -140,17 +141,17 @@ class RealtimeState:
         self._callback_lock = threading.Lock()
         
         # Public market data state
-        self._tickers: Dict[str, TickerData] = {}
-        self._orderbooks: Dict[str, OrderbookData] = {}
-        self._klines: Dict[str, Dict[str, KlineData]] = defaultdict(dict)  # {symbol: {interval: kline}}
-        self._recent_trades: Dict[str, List[TradeData]] = defaultdict(list)  # Keep last N trades
-        
+        self._tickers: dict[str, TickerData] = {}
+        self._orderbooks: dict[str, OrderbookData] = {}
+        self._klines: dict[str, dict[str, KlineData]] = defaultdict(dict)  # {symbol: {interval: kline}}
+        self._recent_trades: dict[str, list[TradeData]] = defaultdict(list)  # Keep last N trades
+
         # Private account data state
-        self._positions: Dict[str, PositionData] = {}  # {symbol: position}
-        self._orders: Dict[str, OrderData] = {}  # {order_id: order}
-        self._executions: List[ExecutionData] = []  # Recent executions
-        self._wallet: Dict[str, WalletData] = {}  # {coin: wallet}
-        self._account_metrics: Optional[AccountMetrics] = None  # Unified account-level metrics
+        self._positions: dict[str, PositionData] = {}  # {symbol: position}
+        self._orders: dict[str, OrderData] = {}  # {order_id: order}
+        self._executions: list[ExecutionData] = []  # Recent executions
+        self._wallet: dict[str, WalletData] = {}  # {coin: wallet}
+        self._account_metrics: AccountMetrics | None = None  # Unified account-level metrics
         
         # Connection status
         self._public_ws_status = ConnectionStatus()
@@ -161,18 +162,18 @@ class RealtimeState:
         self._event_queue: Queue = Queue() if enable_event_queue else None
         
         # Callbacks
-        self._ticker_callbacks: List[Callable[[TickerData], None]] = []
-        self._orderbook_callbacks: List[Callable[[OrderbookData], None]] = []
-        self._trade_callbacks: List[Callable[[TradeData], None]] = []
-        self._kline_callbacks: List[Callable[[KlineData], None]] = []
-        self._position_callbacks: List[Callable[[PositionData], None]] = []
-        self._order_callbacks: List[Callable[[OrderData], None]] = []
-        self._execution_callbacks: List[Callable[[ExecutionData], None]] = []
-        self._wallet_callbacks: List[Callable[[WalletData], None]] = []
-        self._account_metrics_callbacks: List[Callable[[AccountMetrics], None]] = []
-        
+        self._ticker_callbacks: list[Callable[[TickerData], None]] = []
+        self._orderbook_callbacks: list[Callable[[OrderbookData], None]] = []
+        self._trade_callbacks: list[Callable[[TradeData], None]] = []
+        self._kline_callbacks: list[Callable[[KlineData], None]] = []
+        self._position_callbacks: list[Callable[[PositionData], None]] = []
+        self._order_callbacks: list[Callable[[OrderData], None]] = []
+        self._execution_callbacks: list[Callable[[ExecutionData], None]] = []
+        self._wallet_callbacks: list[Callable[[WalletData], None]] = []
+        self._account_metrics_callbacks: list[Callable[[AccountMetrics], None]] = []
+
         # Stats
-        self._update_counts: Dict[str, int] = defaultdict(int)
+        self._update_counts: dict[str, int] = defaultdict(int)
         self._started_at = time.time()
         
         # Configuration
@@ -184,7 +185,7 @@ class RealtimeState:
         # ==============================================================================
         # Structure: env -> symbol -> timeframe -> deque[MTFCandle]
         # Used for strategy warm-up and lookback during live execution
-        self._mtf_buffers: Dict[str, Dict[str, Dict[str, Deque[MTFCandle]]]] = {
+        self._mtf_buffers: dict[str, dict[str, dict[str, deque[MTFCandle]]]] = {
             "live": defaultdict(lambda: defaultdict(deque)),
             "demo": defaultdict(lambda: defaultdict(deque)),
         }
@@ -202,12 +203,12 @@ class RealtimeState:
         self._emit_event(EventType.TICKER_UPDATE, ticker, ticker.symbol)
         self._invoke_callbacks(self._ticker_callbacks, ticker)
     
-    def get_ticker(self, symbol: str) -> Optional[TickerData]:
+    def get_ticker(self, symbol: str) -> TickerData | None:
         """Get ticker for a symbol (thread-safe)."""
         with self._lock:
             return self._tickers.get(symbol)
-    
-    def get_all_tickers(self) -> Dict[str, TickerData]:
+
+    def get_all_tickers(self) -> dict[str, TickerData]:
         """Get all tickers (thread-safe copy)."""
         with self._lock:
             return dict(self._tickers)
@@ -263,7 +264,7 @@ class RealtimeState:
                 self._emit_event(EventType.ORDERBOOK_DELTA, existing, symbol)
                 self._invoke_callbacks(self._orderbook_callbacks, existing)
     
-    def get_orderbook(self, symbol: str) -> Optional[OrderbookData]:
+    def get_orderbook(self, symbol: str) -> OrderbookData | None:
         """Get orderbook for a symbol (thread-safe)."""
         with self._lock:
             return self._orderbooks.get(symbol)
@@ -296,12 +297,12 @@ class RealtimeState:
         self._emit_event(event_type, kline, kline.symbol)
         self._invoke_callbacks(self._kline_callbacks, kline)
     
-    def get_kline(self, symbol: str, interval: str) -> Optional[KlineData]:
+    def get_kline(self, symbol: str, interval: str) -> KlineData | None:
         """Get latest kline for symbol and interval."""
         with self._lock:
             return self._klines.get(symbol, {}).get(interval)
-    
-    def get_all_klines(self, symbol: str) -> Dict[str, KlineData]:
+
+    def get_all_klines(self, symbol: str) -> dict[str, KlineData]:
         """Get all klines for a symbol."""
         with self._lock:
             return dict(self._klines.get(symbol, {}))
@@ -330,7 +331,7 @@ class RealtimeState:
         symbol: str,
         timeframe: str,
         candles_df: pd.DataFrame,
-        max_size: int = None,
+        max_size: int | None = None,
     ) -> int:
         """
         Initialize an MTF ring buffer from historical DataFrame.
@@ -352,7 +353,7 @@ class RealtimeState:
             max_size = get_mtf_buffer_size(timeframe)
         
         with self._lock:
-            buffer: Deque[MTFCandle] = deque(maxlen=max_size)
+            buffer: deque[MTFCandle] = deque(maxlen=max_size)
             
             count = 0
             for _, row in candles_df.iterrows():
@@ -399,8 +400,8 @@ class RealtimeState:
         env: DataEnv,
         symbol: str,
         timeframe: str,
-        limit: int = None,
-    ) -> List[MTFCandle]:
+        limit: int | None = None,
+    ) -> list[MTFCandle]:
         """Get candles from an MTF ring buffer."""
         env = validate_data_env(env)
         symbol = symbol.upper()
@@ -423,7 +424,7 @@ class RealtimeState:
         env: DataEnv,
         symbol: str,
         timeframe: str,
-        limit: int = None,
+        limit: int | None = None,
     ) -> pd.DataFrame:
         """Get MTF buffer as a pandas DataFrame (OHLCV format)."""
         candles = self.get_mtf_buffer(env, symbol, timeframe, limit)
@@ -442,7 +443,7 @@ class RealtimeState:
         
         return pd.DataFrame(data)
     
-    def get_mtf_buffer_stats(self, env: DataEnv = None) -> Dict[str, Any]:
+    def get_mtf_buffer_stats(self, env: DataEnv = None) -> dict[str, Any]:
         """Get statistics about MTF buffers."""
         with self._lock:
             stats = {}
@@ -494,7 +495,7 @@ class RealtimeState:
         self._emit_event(EventType.TRADE, trade, trade.symbol)
         self._invoke_callbacks(self._trade_callbacks, trade)
     
-    def get_recent_trades(self, symbol: str, limit: int = 50) -> List[TradeData]:
+    def get_recent_trades(self, symbol: str, limit: int = 50) -> list[TradeData]:
         """Get recent trades for a symbol."""
         with self._lock:
             trades = self._recent_trades.get(symbol, [])
@@ -521,12 +522,12 @@ class RealtimeState:
         self._emit_event(EventType.POSITION_UPDATE, position, position.symbol)
         self._invoke_callbacks(self._position_callbacks, position)
     
-    def get_position(self, symbol: str) -> Optional[PositionData]:
+    def get_position(self, symbol: str) -> PositionData | None:
         """Get position for a symbol."""
         with self._lock:
             return self._positions.get(symbol)
-    
-    def get_all_positions(self) -> Dict[str, PositionData]:
+
+    def get_all_positions(self) -> dict[str, PositionData]:
         """Get all open positions."""
         with self._lock:
             return dict(self._positions)
@@ -561,12 +562,12 @@ class RealtimeState:
         self._emit_event(EventType.ORDER_UPDATE, order, order.symbol)
         self._invoke_callbacks(self._order_callbacks, order)
     
-    def get_order(self, order_id: str) -> Optional[OrderData]:
+    def get_order(self, order_id: str) -> OrderData | None:
         """Get order by ID."""
         with self._lock:
             return self._orders.get(order_id)
-    
-    def get_open_orders(self, symbol: str = None) -> List[OrderData]:
+
+    def get_open_orders(self, symbol: str | None = None) -> list[OrderData]:
         """Get open orders, optionally filtered by symbol."""
         with self._lock:
             orders = list(self._orders.values())
@@ -594,7 +595,7 @@ class RealtimeState:
         self._emit_event(EventType.EXECUTION, execution, execution.symbol)
         self._invoke_callbacks(self._execution_callbacks, execution)
     
-    def get_recent_executions(self, symbol: str = None, limit: int = 50) -> List[ExecutionData]:
+    def get_recent_executions(self, symbol: str | None = None, limit: int = 50) -> list[ExecutionData]:
         """Get recent executions, optionally filtered by symbol."""
         with self._lock:
             execs = list(self._executions)
@@ -620,12 +621,12 @@ class RealtimeState:
         self._emit_event(EventType.WALLET_UPDATE, wallet, wallet.coin)
         self._invoke_callbacks(self._wallet_callbacks, wallet)
     
-    def get_wallet(self, coin: str = "USDT") -> Optional[WalletData]:
+    def get_wallet(self, coin: str = "USDT") -> WalletData | None:
         """Get wallet for a coin."""
         with self._lock:
             return self._wallet.get(coin)
-    
-    def get_all_wallets(self) -> Dict[str, WalletData]:
+
+    def get_all_wallets(self) -> dict[str, WalletData]:
         """Get all wallet balances."""
         with self._lock:
             return dict(self._wallet)
@@ -657,7 +658,7 @@ class RealtimeState:
         self._emit_event(EventType.WALLET_UPDATE, metrics, "account")
         self._invoke_callbacks(self._account_metrics_callbacks, metrics)
     
-    def get_account_metrics(self) -> Optional[AccountMetrics]:
+    def get_account_metrics(self) -> AccountMetrics | None:
         """Get unified account metrics."""
         with self._lock:
             return self._account_metrics
@@ -685,7 +686,7 @@ class RealtimeState:
         self._public_ws_status.connected_at = time.time()
         self._emit_event(EventType.CONNECTED, {"stream": "public"})
     
-    def set_public_ws_disconnected(self, error: str = None):
+    def set_public_ws_disconnected(self, error: str | None = None):
         """Mark public WebSocket as disconnected."""
         self._public_ws_status.state = ConnectionState.DISCONNECTED
         self._public_ws_status.disconnected_at = time.time()
@@ -705,7 +706,7 @@ class RealtimeState:
         self._private_ws_status.connected_at = time.time()
         self._emit_event(EventType.CONNECTED, {"stream": "private"})
     
-    def set_private_ws_disconnected(self, error: str = None):
+    def set_private_ws_disconnected(self, error: str | None = None):
         """Mark private WebSocket as disconnected."""
         self._private_ws_status.state = ConnectionState.DISCONNECTED
         self._private_ws_status.disconnected_at = time.time()
@@ -739,7 +740,7 @@ class RealtimeState:
     # Event Queue
     # ==========================================================================
     
-    def _emit_event(self, event_type: EventType, data: Any, symbol: str = ""):
+    def _emit_event(self, event_type: EventType, data, symbol: str = ""):
         """Emit event to the queue if enabled."""
         if self._event_queue_enabled and self._event_queue:
             event = RealtimeEvent(
@@ -749,7 +750,7 @@ class RealtimeState:
             )
             self._event_queue.put_nowait(event)
     
-    def get_event(self, timeout: float = None) -> Optional[RealtimeEvent]:
+    def get_event(self, timeout: float | None = None) -> RealtimeEvent | None:
         """Get next event from queue (blocking)."""
         if not self._event_queue:
             return None
@@ -757,8 +758,8 @@ class RealtimeState:
             return self._event_queue.get(timeout=timeout)
         except Empty:
             return None
-    
-    def get_event_nowait(self) -> Optional[RealtimeEvent]:
+
+    def get_event_nowait(self) -> RealtimeEvent | None:
         """Get next event from queue (non-blocking)."""
         if not self._event_queue:
             return None
@@ -784,7 +785,7 @@ class RealtimeState:
     # Callbacks
     # ==========================================================================
     
-    def _invoke_callbacks(self, callbacks: List[Callable], data: Any):
+    def _invoke_callbacks(self, callbacks: list[Callable], data):
         """Invoke all registered callbacks."""
         for callback in callbacks:
             try:
@@ -844,7 +845,7 @@ class RealtimeState:
     # Portfolio Risk Snapshot
     # ==========================================================================
     
-    def build_portfolio_snapshot(self, config: Any = None) -> PortfolioRiskSnapshot:
+    def build_portfolio_snapshot(self, config=None) -> PortfolioRiskSnapshot:
         """
         Build a comprehensive portfolio risk snapshot.
         
@@ -908,7 +909,7 @@ class RealtimeState:
 # Singleton Instance
 # ==============================================================================
 
-_realtime_state: Optional[RealtimeState] = None
+_realtime_state: RealtimeState | None = None
 _state_lock = threading.Lock()
 
 

@@ -15,18 +15,19 @@ Identifier model:
 Phase 2: RuntimeSnapshot is the only supported snapshot type.
 """
 
-from typing import Dict, Callable, Optional, Any, List, Tuple
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from ..backtest.runtime.types import RuntimeSnapshot
 from ..core.risk_manager import Signal
 
 
 # Type alias for strategy functions (accepts RuntimeSnapshot only)
-StrategyFunction = Callable[[RuntimeSnapshot, Dict[str, Any]], Optional[Signal]]
+StrategyFunction = Callable[[RuntimeSnapshot, dict[str, Any]], Signal | None]
 
 # Registry key type
-StrategyKey = Tuple[str, str]  # (strategy_id, strategy_version)
+StrategyKey = tuple[str, str]  # (strategy_id, strategy_version)
 
 
 @dataclass
@@ -37,7 +38,7 @@ class StrategyMetadata:
     function: StrategyFunction
     description: str
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "strategy_id": self.strategy_id,
@@ -47,7 +48,7 @@ class StrategyMetadata:
 
 
 # Registry of available strategies: (strategy_id, strategy_version) -> metadata
-_STRATEGIES: Dict[StrategyKey, StrategyMetadata] = {}
+_STRATEGIES: dict[StrategyKey, StrategyMetadata] = {}
 
 
 def register_strategy(
@@ -98,7 +99,7 @@ def get_strategy(strategy_id: str, strategy_version: str) -> StrategyFunction:
     return _STRATEGIES[key].function
 
 
-def get_strategy_metadata(strategy_id: str, strategy_version: str) -> Optional[StrategyMetadata]:
+def get_strategy_metadata(strategy_id: str, strategy_version: str) -> StrategyMetadata | None:
     """
     Get strategy metadata by ID and version.
     
@@ -113,12 +114,12 @@ def get_strategy_metadata(strategy_id: str, strategy_version: str) -> Optional[S
     return _STRATEGIES.get(key)
 
 
-def list_strategies() -> List[Tuple[str, str]]:
+def list_strategies() -> list[tuple[str, str]]:
     """List all registered strategy (id, version) tuples."""
     return list(_STRATEGIES.keys())
 
 
-def list_strategies_with_metadata() -> List[Dict[str, Any]]:
+def list_strategies_with_metadata() -> list[dict[str, Any]]:
     """
     List all registered strategies with their metadata.
     

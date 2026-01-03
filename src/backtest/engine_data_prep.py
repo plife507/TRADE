@@ -16,7 +16,7 @@ The BacktestEngine delegates to these functions, maintaining the same public API
 import pandas as pd
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .runtime.types import FeatureSnapshot, create_not_ready_feature_snapshot
 from .runtime.types import Bar as CanonicalBar
@@ -66,16 +66,16 @@ class MultiTFPreparedFrames:
     Phase 3: Supports HTF/MTF/LTF data loading and indicator precomputation.
     """
     # TF mapping (htf, mtf, ltf -> tf string)
-    tf_mapping: Dict[str, str]
+    tf_mapping: dict[str, str]
 
     # DataFrames with indicators per TF (key = tf string, e.g., "4h", "1h", "5m")
-    frames: Dict[str, pd.DataFrame] = field(default_factory=dict)
+    frames: dict[str, pd.DataFrame] = field(default_factory=dict)
 
     # Close timestamp sets per TF (for data-driven close detection)
-    close_ts_maps: Dict[str, Set[datetime]] = field(default_factory=dict)
+    close_ts_maps: dict[str, set[datetime]] = field(default_factory=dict)
 
     # LTF is the primary (simulation stepping)
-    ltf_frame: Optional[pd.DataFrame] = None
+    ltf_frame: pd.DataFrame | None = None
     ltf_sim_start_index: int = 0
 
     # Warmup metadata
@@ -84,9 +84,9 @@ class MultiTFPreparedFrames:
     max_indicator_lookback: int = 0
 
     # Window metadata
-    requested_start: Optional[datetime] = None
-    requested_end: Optional[datetime] = None
-    simulation_start: Optional[datetime] = None
+    requested_start: datetime | None = None
+    requested_end: datetime | None = None
+    simulation_start: datetime | None = None
 
     # Note: HTF/MTF/LTF close timestamps are accessed directly via close_ts_maps.get(tf, set())
     # Dead helper methods (get_htf_close_ts, get_mtf_close_ts, get_ltf_close_ts) removed 2025-12-31
@@ -316,7 +316,7 @@ def prepare_backtest_frame_impl(
             f"Not enough history for {config.symbol} {config.tf} "
             f"to satisfy warm-up + window. Simulation would start at {sim_start_ts}, "
             f"but requested window ends at {requested_end}. "
-            f"Adjust warmup_multiplier (current: {warmup_multiplier}) or window dates."
+            f"Adjust warmup_bars (current: {warmup_bars}) or window dates."
         )
 
     # Check we have at least some bars for simulation
@@ -352,7 +352,7 @@ def prepare_backtest_frame_impl(
 def prepare_multi_tf_frames_impl(
     config: SystemConfig,
     window: "WindowConfig",
-    tf_mapping: Dict[str, str],
+    tf_mapping: dict[str, str],
     multi_tf_mode: bool,
     logger=None,
 ) -> MultiTFPreparedFrames:
@@ -453,8 +453,8 @@ def prepare_multi_tf_frames_impl(
 
     # Load data for each unique TF
     unique_tfs = set(tf_mapping.values())
-    frames: Dict[str, pd.DataFrame] = {}
-    close_ts_maps: Dict[str, Set[datetime]] = {}
+    frames: dict[str, pd.DataFrame] = {}
+    close_ts_maps: dict[str, set[datetime]] = {}
 
     for tf in unique_tfs:
         df = store.get_ohlcv(
@@ -643,7 +643,7 @@ def get_tf_features_at_close_impl(
     ts_close: datetime,
     bar: CanonicalBar,
     mtf_frames: MultiTFPreparedFrames,
-    tf_mapping: Dict[str, str],
+    tf_mapping: dict[str, str],
     config: SystemConfig,
 ) -> FeatureSnapshot:
     """

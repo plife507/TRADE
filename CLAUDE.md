@@ -18,19 +18,27 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 
 **Engine Complete**:
 - 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
-- 42 indicators in string-based registry (single source of truth)
+- 42 indicators in INDICATOR_REGISTRY (single source of truth)
+- 5 structures in STRUCTURE_REGISTRY (swing, fibonacci, zone, trend, rolling_window)
 - IdeaCard-first CLI with full menu coverage
-- 24 validation IdeaCards in `configs/idea_cards/_validation/`
+- 30 validation IdeaCards in `configs/idea_cards/_validation/`
 
-**Audit Swarm Complete (2026-01-01)**:
+**Incremental State Architecture (2026-01-03)**:
+- O(1) hot loop access via MonotonicDeque/RingBuffer
+- STRUCTURE_REGISTRY parallel to INDICATOR_REGISTRY
+- Agent-composable IdeaCard blocks (variables, features, structures, rules)
+- See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
+- See: `docs/architecture/IDEACARD_VISION.md`
+
+**1m Evaluation Loop (2026-01-02)**:
+- mark_price resolution in snapshot
+- 1m TP/SL checking in hot loop
+- See: `docs/todos/1M_EVAL_LOOP_REFACTOR.md`
+
+**Audit Swarm (2026-01-01)**:
 - 12 P1 fixes implemented (critical blockers resolved)
-- 33 open bugs tracked: 4 P1, 19 P2, 10 P3
-- See: `docs/todos/AUDIT_OPEN_BUGS.md`
-
-**Next Up**: Market Structure Features (Phase 5)
-- Swing/pivot/trend detection
-- Registry consolidation Phase 3
-- See: `docs/todos/ARRAY_BACKED_HOT_LOOP_PHASES.md`
+- P1-09 (O(n) hot loop) fixed by Incremental State
+- See: `docs/audits/OPEN_BUGS.md`
 
 ### Explicitly off-limits until later phases
 
@@ -70,7 +78,8 @@ TRADE/
 │   │   ├── engine.py              # Backtest orchestrator
 │   │   ├── sim/                   # Simulated exchange (pricing, execution, ledger)
 │   │   ├── runtime/               # Snapshot, FeedStore, TFContext
-│   │   └── features/              # FeatureSpec, FeatureFrameBuilder
+│   │   ├── features/              # FeatureSpec, FeatureFrameBuilder
+│   │   └── incremental/           # O(1) structure detection (STRUCTURE_REGISTRY)
 │   ├── core/                      # DOMAIN: Live Trading (exchange-native semantics)
 │   │   ├── risk_manager.py        # Live risk checks (Signal.size_usdt)
 │   │   ├── position_manager.py    # Position tracking

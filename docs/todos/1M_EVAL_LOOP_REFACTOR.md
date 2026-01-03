@@ -58,8 +58,8 @@ def get_1m_indices_for_exec(self, exec_idx: int, exec_tf: str) -> tuple[int, int
 - `runtime/rollup_bucket.py` - ExecRollupBucket (already accumulates 1m)
 
 ### Checklist
-- [ ] Add `get_1m_indices_for_exec()` to FeedStore
-- [ ] Add TF ratio utility if not exists
+- [x] Add `get_1m_indices_for_exec()` to FeedStore
+- [x] Add TF ratio utility if not exists
 
 ---
 
@@ -91,8 +91,8 @@ def get_feature(self, key: str, tf_role: str = "exec", offset: int = 0):
 - Compiled refs path already works (agent 5 confirmed)
 
 ### Checklist
-- [ ] Add mark_price case to get_feature()
-- [ ] Verify price.mark.close → mark_price resolution works
+- [x] Add mark_price case to get_feature()
+- [x] Verify price.mark.close → mark_price resolution works
 
 ---
 

@@ -18,7 +18,6 @@ RECORD-ONLY MODE:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 from src.backtest.runtime.state_types import (
     ActionStateValue,
@@ -37,7 +36,6 @@ class ActionState:
     Attributes:
         value: Current state (ActionStateValue enum)
         direction: Action direction (1=long, -1=short, 0=none)
-        signal_id: ID of the signal that triggered this action
         size_usdt: Computed position size (0 if not sized)
         submitted_bar: Bar index when order was submitted (-1 if not submitted)
         filled_bar: Bar index when order was filled (-1 if not filled)
@@ -45,11 +43,10 @@ class ActionState:
     """
     value: ActionStateValue = ActionStateValue.IDLE
     direction: int = 0
-    signal_id: int = 0
     size_usdt: float = 0.0
     submitted_bar: int = -1
     filled_bar: int = -1
-    reject_reason: Optional[str] = None
+    reject_reason: str | None = None
 
     def is_idle(self) -> bool:
         """Check if no action is pending."""
@@ -105,14 +102,13 @@ def transition_action_state(
     bar_idx: int,
     signal_confirmed: bool,
     signal_direction: int,
-    signal_id: int,
     gate_result: GateResult,
     size_computed: bool,
     size_usdt: float,
     order_submitted: bool,
     order_filled: bool,
     order_rejected: bool,
-    reject_reason: Optional[str] = None,
+    reject_reason: str | None = None,
 ) -> ActionState:
     """
     Pure transition function for action state.
@@ -125,7 +121,6 @@ def transition_action_state(
         bar_idx: Current bar index
         signal_confirmed: Whether a confirmed signal exists
         signal_direction: Signal direction (1=long, -1=short)
-        signal_id: ID of the triggering signal
         gate_result: Result of gate evaluation
         size_computed: Whether position size was computed
         size_usdt: Computed position size
@@ -150,7 +145,6 @@ def transition_action_state(
             return ActionState(
                 value=ActionStateValue.ACTIONABLE,
                 direction=signal_direction,
-                signal_id=signal_id,
                 size_usdt=0.0,
                 submitted_bar=-1,
                 filled_bar=-1,
@@ -165,7 +159,6 @@ def transition_action_state(
             return ActionState(
                 value=ActionStateValue.ACTIONABLE,
                 direction=signal_direction,
-                signal_id=signal_id,
                 size_usdt=0.0,
                 submitted_bar=-1,
                 filled_bar=-1,
@@ -181,7 +174,6 @@ def transition_action_state(
             return ActionState(
                 value=ActionStateValue.IDLE,
                 direction=0,
-                signal_id=0,
                 size_usdt=0.0,
                 submitted_bar=-1,
                 filled_bar=-1,
@@ -191,7 +183,6 @@ def transition_action_state(
             return ActionState(
                 value=ActionStateValue.SIZING,
                 direction=prev_state.direction,
-                signal_id=prev_state.signal_id,
                 size_usdt=size_usdt,
                 submitted_bar=-1,
                 filled_bar=-1,
@@ -206,7 +197,6 @@ def transition_action_state(
             return ActionState(
                 value=ActionStateValue.REJECTED,
                 direction=prev_state.direction,
-                signal_id=prev_state.signal_id,
                 size_usdt=prev_state.size_usdt,
                 submitted_bar=-1,
                 filled_bar=-1,
@@ -216,7 +206,6 @@ def transition_action_state(
             return ActionState(
                 value=ActionStateValue.SUBMITTED,
                 direction=prev_state.direction,
-                signal_id=prev_state.signal_id,
                 size_usdt=prev_state.size_usdt,
                 submitted_bar=bar_idx,
                 filled_bar=-1,
@@ -231,7 +220,6 @@ def transition_action_state(
             return ActionState(
                 value=ActionStateValue.FILLED,
                 direction=prev_state.direction,
-                signal_id=prev_state.signal_id,
                 size_usdt=prev_state.size_usdt,
                 submitted_bar=prev_state.submitted_bar,
                 filled_bar=bar_idx,
@@ -241,7 +229,6 @@ def transition_action_state(
             return ActionState(
                 value=ActionStateValue.REJECTED,
                 direction=prev_state.direction,
-                signal_id=prev_state.signal_id,
                 size_usdt=prev_state.size_usdt,
                 submitted_bar=prev_state.submitted_bar,
                 filled_bar=-1,

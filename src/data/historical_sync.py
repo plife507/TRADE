@@ -5,7 +5,7 @@ Contains: sync, sync_range, sync_forward, and internal sync methods.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Union, Callable, TYPE_CHECKING
+from typing import Callable, Union, TYPE_CHECKING
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -20,12 +20,12 @@ def _get_constants():
 
 def sync(
     store: "HistoricalDataStore",
-    symbols: Union[str, List[str]],
+    symbols: Union[str, list[str]],
     period: str = "1M",
-    timeframes: List[str] = None,
+    timeframes: list[str] = None,
     progress_callback: Callable = None,
     show_spinner: bool = True,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """Sync historical data for symbols."""
     TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner = _get_constants()
     
@@ -97,13 +97,13 @@ def sync(
 
 def sync_range(
     store: "HistoricalDataStore",
-    symbols: Union[str, List[str]],
+    symbols: Union[str, list[str]],
     start: datetime,
     end: datetime,
-    timeframes: List[str] = None,
+    timeframes: list[str] = None,
     progress_callback: Callable = None,
     show_spinner: bool = True,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """Sync a specific date range with progress logging."""
     TIMEFRAMES, _, ActivityEmoji, ActivitySpinner = _get_constants()
     
@@ -161,11 +161,11 @@ def sync_range(
 
 def sync_forward(
     store: "HistoricalDataStore",
-    symbols: Union[str, List[str]],
-    timeframes: List[str] = None,
+    symbols: Union[str, list[str]],
+    timeframes: list[str] = None,
     progress_callback: Callable = None,
     show_spinner: bool = True,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """Sync data forward from the last stored candle to now."""
     TIMEFRAMES, _, ActivityEmoji, ActivitySpinner = _get_constants()
     

@@ -19,10 +19,11 @@ Tool-calling pipeline (in process_bar):
 6. metrics: record(step_result) -> MetricsUpdate
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, List, TYPE_CHECKING
-import uuid
+from typing import TYPE_CHECKING
 
 from .types import (
     Bar,
@@ -44,6 +45,7 @@ from .types import (
 from .bar_compat import get_bar_ts_open, get_bar_timestamp
 from .ledger import Ledger, LedgerConfig
 from .pricing import PriceModel, PriceModelConfig, SpreadModel, SpreadConfig, IntrabarPath
+from .pricing.intrabar_path import check_tp_sl_1m
 from .execution import ExecutionModel, ExecutionModelConfig, SlippageConfig
 from .funding import FundingModel
 from .liquidation import LiquidationModel
@@ -51,6 +53,7 @@ from .metrics import ExchangeMetrics
 
 if TYPE_CHECKING:
     from ..system_config import RiskProfileConfig
+    from ..runtime.feed_store import FeedStore
 
 # Import validation function for symbol validation
 from ..system_config import validate_usdt_pair
@@ -68,8 +71,8 @@ class SimulatedExchange:
         self,
         symbol: str,
         initial_capital: float,
-        execution_config: Optional[ExecutionConfig] = None,
-        risk_profile: "RiskProfileConfig" = None,
+        execution_config: ExecutionConfig | None = None,
+        risk_profile: RiskProfileConfig | None = None,
         leverage: float = 1.0,
     ):
         """
@@ -131,26 +134,28 @@ class SimulatedExchange:
         self._metrics = ExchangeMetrics()
         
         # State
-        self.position: Optional[Position] = None
-        self.pending_order: Optional[Order] = None
-        self.trades: List = []  # Trade records (compatible with old interface)
-        self._pending_close_reason: Optional[str] = None
-        self._current_ts: Optional[datetime] = None
+        self.position: Position | None = None
+        self.pending_order: Order | None = None
+        self.trades: list = []  # Trade records (compatible with old interface)
+        self._trade_counter: int = 0  # Sequential trade ID counter (deterministic)
+        self._order_counter: int = 0  # Sequential order ID counter (deterministic)
+        self._position_counter: int = 0  # Sequential position ID counter (deterministic)
+        self._pending_close_reason: str | None = None
+        self._current_ts: datetime | None = None
         self._current_bar_index: int = 0
-        self._last_closed_trades: List = []  # Phase 4: closed trades from last step
-        
+
         # Phase 4: Snapshot readiness context (set by engine each bar)
         self._current_snapshot_ready: bool = True
         
         # Starvation tracking
         self.entries_disabled: bool = False
-        self.entries_disabled_reason: Optional[StopReason] = None
-        self.first_starved_ts: Optional[datetime] = None
-        self.first_starved_bar_index: Optional[int] = None
+        self.entries_disabled_reason: StopReason | None = None
+        self.first_starved_ts: datetime | None = None
+        self.first_starved_bar_index: int | None = None
         self.entry_attempts_count: int = 0
         self.entry_rejections_count: int = 0
-        self.last_rejection_code: Optional[str] = None
-        self.last_rejection_reason: Optional[str] = None
+        self.last_rejection_code: str | None = None
+        self.last_rejection_reason: str | None = None
         self.last_fill_rejected: bool = False
         self.total_fees_paid: float = 0.0
     
@@ -219,12 +224,7 @@ class SimulatedExchange:
     @property
     def leverage(self) -> float:
         return self._leverage
-    
-    @property
-    def last_closed_trades(self) -> List:
-        """Get trades closed in the last process_bar call (Phase 4 backward compat)."""
-        return self._last_closed_trades
-    
+
     # ─────────────────────────────────────────────────────────────────────────
     # Order Management
     # ─────────────────────────────────────────────────────────────────────────
@@ -233,10 +233,10 @@ class SimulatedExchange:
         self,
         side: str,
         size_usdt: float,
-        stop_loss: Optional[float] = None,
-        take_profit: Optional[float] = None,
-        timestamp: Optional[datetime] = None,
-    ) -> Optional[OrderId]:
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+        timestamp: datetime | None = None,
+    ) -> OrderId | None:
         """Submit an order to be filled on next bar."""
         self.entry_attempts_count += 1
         
@@ -249,7 +249,8 @@ class SimulatedExchange:
             return None
         
         order_side = OrderSide.LONG if side == "long" else OrderSide.SHORT
-        order_id = f"order-{uuid.uuid4().hex[:8]}"
+        self._order_counter += 1
+        order_id = f"order_{self._order_counter:04d}"
         
         self.pending_order = Order(
             order_id=order_id,
@@ -306,18 +307,27 @@ class SimulatedExchange:
     def process_bar(
         self,
         bar: Bar,
-        prev_bar: Optional[Bar] = None,
-        funding_events: Optional[List[FundingEvent]] = None,
+        prev_bar: Bar | None = None,
+        funding_events: list[FundingEvent] | None = None,
+        quote_feed: "FeedStore | None" = None,
+        exec_1m_range: tuple[int, int] | None = None,
     ) -> StepResult:
         """
         Process a new bar - main simulation step.
-        
+
         - Fills occur at ts_open (bar open)
         - MTM updates occur at step time (ts_close)
-        
+
         Mark price computed exactly once per step via PriceModel.
         All MTM/liquidation uses the same mark_price.
-        
+
+        Args:
+            bar: Current exec-timeframe bar
+            prev_bar: Previous exec-timeframe bar (for funding)
+            funding_events: Funding events to process
+            quote_feed: Optional 1m FeedStore for granular TP/SL checking
+            exec_1m_range: Optional (start_idx, end_idx) of 1m bars within this exec bar
+
         Returns:
             StepResult with mark_price, fills, and all step events
         """
@@ -326,7 +336,7 @@ class SimulatedExchange:
         step_time = get_bar_timestamp(bar)  # ts_close for canonical, timestamp for legacy
         
         self._current_ts = step_time
-        fills: List[Fill] = []
+        fills: list[Fill] = []
         closed_trades = []
         
         # 1. Get prices - COMPUTE MARK PRICE EXACTLY ONCE
@@ -335,38 +345,84 @@ class SimulatedExchange:
         mark_price = prices.mark_price  # Single source of truth for this step
         
         # 2. Apply funding (if position exists)
+        # Note: Bybit uses mark_price at funding time, not entry_price
         prev_ts = get_bar_timestamp(prev_bar) if prev_bar else None
         funding_result = self._funding.apply_events(
-            funding_events or [], prev_ts, step_time, self.position
+            funding_events or [], prev_ts, step_time, self.position, mark_price
         )
         if funding_result.funding_pnl != 0:
             self._ledger.apply_funding(funding_result.funding_pnl)
         
         # 3. Fill pending entry order (at ts_open)
+        # BUG-004 FIX: Capture entry fill for StepResult.fills
         if self.pending_order is not None:
-            self._fill_pending_order(bar)
+            entry_fill = self._fill_pending_order(bar)
+            if entry_fill:
+                fills.append(entry_fill)
         
         # 4. Handle pending close (at ts_open)
+        # BUG-004 FIX: Capture exit fill for StepResult.fills
         if self._pending_close_reason and self.position:
-            trade = self._close_position(bar.open, ts_open, self._pending_close_reason)
-            if trade:
+            result = self._close_position(bar.open, ts_open, self._pending_close_reason)
+            if result:
+                trade, exit_fill = result
                 closed_trades.append(trade)
+                fills.append(exit_fill)
             self._pending_close_reason = None
         
         # 5. Check TP/SL (exit at appropriate price within bar)
         if self.position:
-            exit_reason = self._execution.check_tp_sl(self.position, bar)
-            if exit_reason:
-                exit_price = self._intrabar.get_exit_price(
-                    bar, self.position.side, exit_reason,
-                    self.position.take_profit, self.position.stop_loss
-                )
-                # Phase 4: Determine exit_price_source based on exit_reason
-                exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
+            exit_reason = None
+            exit_price = None
+            exit_price_source = None
+
+            # Try 1m granular TP/SL check if quote_feed and range provided
+            if quote_feed is not None and exec_1m_range is not None:
+                start_1m, end_1m = exec_1m_range
+                # Build list of 1m bars as (open, high, low, close) tuples
+                bars_1m = []
+                for i in range(start_1m, min(end_1m + 1, quote_feed.length)):
+                    bars_1m.append((
+                        float(quote_feed.open[i]),
+                        float(quote_feed.high[i]),
+                        float(quote_feed.low[i]),
+                        float(quote_feed.close[i]),
+                    ))
+
+                if bars_1m:
+                    position_side = "long" if self.position.side == OrderSide.LONG else "short"
+                    result_1m = check_tp_sl_1m(
+                        position_side=position_side,
+                        entry_price=self.position.entry_price,
+                        take_profit=self.position.take_profit,
+                        stop_loss=self.position.stop_loss,
+                        bars_1m=bars_1m,
+                    )
+                    if result_1m:
+                        reason_str, hit_bar_idx, price = result_1m
+                        exit_reason = FillReason.STOP_LOSS if reason_str == "stop_loss" else FillReason.TAKE_PROFIT
+                        exit_price = price
+                        exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
+
+            # Fallback to exec-bar OHLC check if no 1m hit or no quote_feed
+            if exit_reason is None:
+                exit_reason = self._execution.check_tp_sl(self.position, bar)
+                if exit_reason:
+                    exit_price = self._intrabar.get_exit_price(
+                        bar, self.position.side, exit_reason,
+                        self.position.take_profit, self.position.stop_loss
+                    )
+                    exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
+
+            # Close position if TP/SL hit
+            # BUG-004 FIX: Capture exit fill for StepResult.fills
+            if exit_reason and exit_price is not None:
                 # TP/SL fills occur at ts_open (conservative: fill at bar start)
-                trade = self._close_position(exit_price, ts_open, exit_reason.value, exit_price_source)
-                if trade:
+                result = self._close_position(exit_price, ts_open, exit_reason.value, exit_price_source)
+                if result:
+                    trade, exit_fill = result
                     closed_trades.append(trade)
+                    fills.append(exit_fill)
 
         # 5b. Track min/max price for MAE/MFE (if position still open)
         if self.position:
@@ -378,10 +434,29 @@ class SimulatedExchange:
 
         # 6. Update balances at bar close using the single mark_price
         self._ledger.update_for_mark_price(self.position, mark_price)
-        
-        # Store closed trades for backward compatibility
-        self._last_closed_trades = closed_trades
-        
+
+        # 7. Check liquidation (after ledger update)
+        if self.position:
+            liq_result = self._liquidation.check_liquidation(
+                self._ledger.state, prices, self.position
+            )
+            if liq_result.liquidated and liq_result.event:
+                # Liquidation triggered - close position at mark price
+                # BUG-004 FIX: Capture exit fill for StepResult.fills
+                result = self._close_position(
+                    mark_price, step_time, "liquidation", "mark_price"
+                )
+                if result:
+                    trade, exit_fill = result
+                    closed_trades.append(trade)
+                    fills.append(exit_fill)
+                    # Apply liquidation fee (P0 FIX: was apply_exit_fee which doesn't exist)
+                    self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
+                    self.total_fees_paid += liq_result.event.liquidation_fee
+
+        # NOTE: closed_trades list is local; callers use step_result.fills or
+        # self.trades (cumulative). _last_closed_trades removed (no legacy code forward).
+
         # Return StepResult with unified mark price
         return StepResult(
             timestamp=step_time,
@@ -394,42 +469,52 @@ class SimulatedExchange:
             prices=prices,
         )
     
-    def _fill_pending_order(self, bar: Bar) -> None:
+    def _fill_pending_order(self, bar: Bar) -> Fill | None:
         """
         Fill pending entry order.
-        
+
         Entry fills occur at ts_open (bar open).
+
+        Returns:
+            Fill object if order was filled, None if rejected.
+            BUG-004 FIX: Returns fill for StepResult.fills population.
         """
         order = self.pending_order
         self.pending_order = None
         self.last_fill_rejected = False
-        
+
         result = self._execution.fill_entry_order(
             order, bar, self.available_balance_usdt,
             lambda n: self.compute_required_for_entry(n),
         )
-        
+
         if result.rejections:
             self.last_fill_rejected = True
             self.entry_rejections_count += 1
             self.last_rejection_code = result.rejections[0].code
             self.last_rejection_reason = result.rejections[0].reason
-            return
-        
+            return None
+
         if result.fills:
             fill = result.fills[0]
             self._ledger.apply_entry_fee(fill.fee)
             self.total_fees_paid += fill.fee
-            
+
             # fill.timestamp is ts_open (from execution_model)
+            self._position_counter += 1
+            # P1-005 DOCUMENTED: size_usdt semantics
+            # - size_usdt = "intended notional" (order.size_usdt, before slippage)
+            # - size * entry_price = "actual fill notional" (after slippage)
+            # This is intentional: size_usdt tracks trader intent, actual fill varies.
+            # Fee calculation uses size_usdt for consistency (entry and exit both use intended).
             self.position = Position(
-                position_id=f"pos-{uuid.uuid4().hex[:8]}",
+                position_id=f"pos_{self._position_counter:04d}",
                 symbol=order.symbol,
                 side=order.side,
                 entry_price=fill.price,
                 entry_time=fill.timestamp,  # ts_open
                 size=fill.size,
-                size_usdt=order.size_usdt,
+                size_usdt=order.size_usdt,  # Intended notional (before slippage)
                 stop_loss=order.stop_loss,
                 take_profit=order.take_profit,
                 fees_paid=fill.fee,
@@ -437,22 +522,29 @@ class SimulatedExchange:
                 entry_bar_index=self._current_bar_index,
                 entry_ready=self._current_snapshot_ready,
             )
+            return fill
+
+        return None
     
     def _close_position(
         self,
         exit_price: float,
         exit_time: datetime,
         reason: str,
-        exit_price_source: Optional[str] = None,
-    ):
+        exit_price_source: str | None = None,
+    ) -> tuple | None:
         """
         Close position and create trade record.
-        
+
         Args:
             exit_price: Price at which to close
             exit_time: Timestamp of the close
             reason: Exit reason (tp, sl, signal, end_of_data, liquidation, force)
             exit_price_source: How exit price was determined (tp_level, sl_level, bar_close, etc.)
+
+        Returns:
+            Tuple of (Trade, Fill) if position was closed, None if no position.
+            BUG-004 FIX: Returns fill for StepResult.fills population.
         """
         pos = self.position
         if pos is None:
@@ -509,8 +601,9 @@ class SimulatedExchange:
 
         # Create trade record with Phase 4 fields
         from ..types import Trade
+        self._trade_counter += 1
         trade = Trade(
-            trade_id=f"trade-{uuid.uuid4().hex[:8]}",
+            trade_id=f"trade_{self._trade_counter:03d}",
             symbol=pos.symbol,
             side=pos.side.value,
             entry_time=pos.entry_time,
@@ -522,7 +615,7 @@ class SimulatedExchange:
             exit_reason=reason,
             realized_pnl=realized_pnl,
             fees_paid=pos.fees_paid + fill.fee,
-            net_pnl=realized_pnl - fill.fee,
+            net_pnl=realized_pnl - (pos.fees_paid + fill.fee),  # Must include BOTH entry and exit fees
             stop_loss=pos.stop_loss,
             take_profit=pos.take_profit,
             # Phase 4: Bar indices and debugging fields
@@ -538,25 +631,32 @@ class SimulatedExchange:
 
         self.trades.append(trade)
         self.position = None
-        return trade
-    
+        return trade, fill  # BUG-004 FIX: Return both for fills population
+
     def force_close_position(
         self,
         price: float,
         timestamp: datetime,
         reason: str = "end_of_data",
-        exit_price_source: Optional[str] = None,
+        exit_price_source: str | None = None,
     ):
         """
         Force close any open position.
-        
+
         Args:
             price: Exit price
             timestamp: Exit timestamp
             reason: Exit reason (default: end_of_data)
             exit_price_source: How exit price was determined (default: bar_close)
+
+        Returns:
+            Trade record if position was closed, None if no position.
         """
-        return self._close_position(price, timestamp, reason, exit_price_source)
+        result = self._close_position(price, timestamp, reason, exit_price_source)
+        if result:
+            trade, _ = result
+            return trade
+        return None
     
     def get_state(self):
         """Get current exchange state for debugging."""

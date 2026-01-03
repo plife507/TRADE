@@ -9,7 +9,6 @@ Spread is expressed in price units (not percentage).
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 from ..types import Bar
 
@@ -33,7 +32,7 @@ class SpreadModel:
     Phase 1 supports fixed spread only.
     """
     
-    def __init__(self, config: Optional[SpreadConfig] = None):
+    def __init__(self, config: SpreadConfig | None = None):
         """
         Initialize spread model.
         
@@ -93,7 +92,7 @@ class SpreadModel:
         # Future: implement volume-based spread model
         return self._fixed_spread(bar)
     
-    def get_bid_ask(self, mid: float, spread: float) -> Tuple[float, float]:
+    def get_bid_ask(self, mid: float, spread: float) -> tuple[float, float]:
         """
         Derive bid and ask prices from mid and spread.
         

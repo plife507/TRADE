@@ -9,7 +9,7 @@ IMPORTANT: Symbols should ALWAYS be passed as explicit parameters.
 NO function should have a default symbol value.
 """
 
-from typing import List, Literal
+from typing import Literal
 from pathlib import Path
 
 
@@ -30,7 +30,7 @@ from pathlib import Path
 TradingEnv = Literal["demo", "live"]
 
 # Valid trading environments
-TRADING_ENVS: List[TradingEnv] = ["demo", "live"]
+TRADING_ENVS: list[TradingEnv] = ["demo", "live"]
 
 
 def validate_trading_env(env: str) -> TradingEnv:
@@ -88,7 +88,7 @@ def get_trading_env_mapping() -> dict:
 DataEnv = Literal["live", "demo"]
 
 # Valid data environments
-DATA_ENVS: List[DataEnv] = ["live", "demo"]
+DATA_ENVS: list[DataEnv] = ["live", "demo"]
 
 # Default data environment (always use live for research/backtest)
 DEFAULT_DATA_ENV: DataEnv = "live"
@@ -192,7 +192,7 @@ def validate_symbol(symbol: str) -> str:
     return normalized
 
 
-def validate_symbols(symbols: List[str]) -> List[str]:
+def validate_symbols(symbols: list[str]) -> list[str]:
     """
     Validate and normalize a list of symbols.
     
@@ -238,7 +238,7 @@ def format_symbols_prompt() -> str:
 # Common timeframe strings for reference
 TIMEFRAMES = {
     "1m": "1",
-    "3m": "3", 
+    "3m": "3",
     "5m": "5",
     "15m": "15",
     "30m": "30",
@@ -253,3 +253,21 @@ TIMEFRAMES = {
 }
 
 DEFAULT_TIMEFRAME = "15m"
+
+# ==================== Timeframe Groups (for IdeaCard validation) ====================
+# These define which timeframes are valid for each role
+
+TF_GROUP_LTF = ["1m", "3m", "5m"]         # LTF (high-resolution)
+TF_GROUP_MTF = ["15m", "30m"]             # MTF (medium resolution)
+TF_GROUP_HTF = ["1h", "4h", "1d"]         # HTF (low resolution)
+
+# All valid timeframes for backtesting
+ALL_BACKTEST_TIMEFRAMES = TF_GROUP_LTF + TF_GROUP_MTF + TF_GROUP_HTF
+
+# Mapping from role to allowed timeframe groups
+TF_ROLE_GROUPS = {
+    "ltf": TF_GROUP_LTF,    # Low timeframe: 1m, 3m, 5m
+    "mtf": TF_GROUP_MTF,    # Medium timeframe: 15m, 30m
+    "htf": TF_GROUP_HTF,    # High timeframe: 1h, 4h, 1d
+    "exec": ALL_BACKTEST_TIMEFRAMES,  # Execution can be any valid TF
+}

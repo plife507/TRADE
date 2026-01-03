@@ -14,8 +14,7 @@ Execution flow:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import uuid
 
 from ..types import (
@@ -60,7 +59,7 @@ class ExecutionModel:
     2. Check TP/SL against bar OHLC for positions
     """
     
-    def __init__(self, config: Optional[ExecutionModelConfig] = None):
+    def __init__(self, config: ExecutionModelConfig | None = None):
         """
         Initialize execution model.
         
@@ -158,7 +157,7 @@ class ExecutionModel:
         self,
         position: Position,
         bar: Bar,
-    ) -> Optional[FillReason]:
+    ) -> FillReason | None:
         """
         Check if TP or SL is hit for a position.
         
@@ -184,7 +183,7 @@ class ExecutionModel:
         position: Position,
         bar: Bar,
         reason: FillReason,
-        exit_price: Optional[float] = None,
+        exit_price: float | None = None,
     ) -> Fill:
         """
         Fill an exit (close position).
@@ -216,9 +215,10 @@ class ExecutionModel:
             bar,
         )
         
-        # Calculate fee
-        exit_notional = position.size * fill_price
-        fee = exit_notional * self._config.taker_fee_rate
+        # Calculate fee using size_usdt for consistency with entry fee calculation
+        # BUG-002 FIX: Entry uses order.size_usdt * fee_rate, so exit uses
+        # position.size_usdt * fee_rate for symmetric fee treatment
+        fee = position.size_usdt * self._config.taker_fee_rate
         
         return Fill(
             fill_id=f"fill-{uuid.uuid4().hex[:8]}",

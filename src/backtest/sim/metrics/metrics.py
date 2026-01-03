@@ -14,7 +14,7 @@ Strategy-level metrics are computed separately in engine.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ..types import StepResult, Fill, FillReason
 
@@ -58,7 +58,7 @@ class ExchangeMetricsSnapshot:
     # Volume metrics
     total_volume_usdt: float = 0.0
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total_slippage_usdt": self.total_slippage_usdt,
             "avg_slippage_bps": self.avg_slippage_bps,
@@ -93,8 +93,8 @@ class ExchangeMetrics:
     def _reset(self) -> None:
         """Reset all metrics to zero."""
         # Slippage tracking
-        self._slippage_amounts: List[float] = []  # USD amounts
-        self._slippage_bps_list: List[float] = []
+        self._slippage_amounts: list[float] = []  # USD amounts
+        self._slippage_bps_list: list[float] = []
         
         # Fee tracking
         self._entry_fees = 0.0

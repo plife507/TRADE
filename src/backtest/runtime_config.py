@@ -11,11 +11,16 @@ Design principles:
 - Immutable after creation
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import TYPE_CHECKING, Any
 
-from .idea_card import IdeaCard, AccountConfig, FeeModel
+if TYPE_CHECKING:
+    from .idea_card import IdeaCard
+
+from .idea_card import AccountConfig, FeeModel
 
 
 @dataclass(frozen=True)
@@ -43,18 +48,18 @@ class RuntimeConfig:
     maker_fee_rate: float = 0.0002  # Default Bybit rate
     
     # Slippage (from IdeaCard.account.slippage_bps - optional)
-    slippage_bps: Optional[float] = None
+    slippage_bps: float | None = None
     
     # Trade size constraints (from IdeaCard.account - optional)
     min_trade_notional_usdt: float = 1.0
-    max_notional_usdt: Optional[float] = None
-    max_margin_usdt: Optional[float] = None
+    max_notional_usdt: float | None = None
+    max_margin_usdt: float | None = None
     
     # Symbol and timeframe config (from IdeaCard)
     symbol: str = ""
     exec_tf: str = ""
-    htf: Optional[str] = None
-    mtf: Optional[str] = None
+    htf: str | None = None
+    mtf: str | None = None
     
     # Warmup requirements (from IdeaCard tf_configs)
     warmup_bars_exec: int = 0
@@ -62,8 +67,8 @@ class RuntimeConfig:
     warmup_bars_mtf: int = 0
     
     # Window dates (from CLI/runner)
-    window_start: Optional[datetime] = None
-    window_end: Optional[datetime] = None
+    window_start: datetime | None = None
+    window_end: datetime | None = None
     
     # Data environment (from CLI)
     data_env: str = "live"
@@ -92,13 +97,13 @@ class RuntimeConfig:
     def from_idea_card(
         cls,
         idea_card: IdeaCard,
-        symbol_override: Optional[str] = None,
-        starting_equity_override: Optional[float] = None,
-        max_leverage_override: Optional[float] = None,
-        window_start: Optional[datetime] = None,
-        window_end: Optional[datetime] = None,
+        symbol_override: str | None = None,
+        starting_equity_override: float | None = None,
+        max_leverage_override: float | None = None,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
         data_env: str = "live",
-    ) -> "RuntimeConfig":
+    ) -> RuntimeConfig:
         """
         Create RuntimeConfig from IdeaCard with optional overrides.
         
@@ -201,7 +206,7 @@ class RuntimeConfig:
             required_indicators_mtf=required_mtf,
         )
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization/logging."""
         return {
             "idea_card_id": self.idea_card_id,
@@ -232,7 +237,7 @@ class RuntimeConfig:
             "required_indicators_mtf": list(self.required_indicators_mtf),
         }
     
-    def get_required_indicators_by_role(self) -> Dict[str, List[str]]:
+    def get_required_indicators_by_role(self) -> dict[str, list[str]]:
         """Get required indicators grouped by TF role."""
         result = {}
         if self.required_indicators_exec:

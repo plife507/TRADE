@@ -5,7 +5,6 @@ Loads settings from environment variables with sensible defaults.
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -335,8 +334,8 @@ class RiskConfig:
     max_leverage: int = 3
     default_leverage: int = 2
     
-    # Position size limits (USD)
-    max_position_size_usd: float = 50.0
+    # Position size limits (USDT)
+    max_position_size_usdt: float = 50.0
     max_total_exposure_usd: float = 200.0
     
     # Loss limits
@@ -351,13 +350,13 @@ class RiskConfig:
     
     # Hard caps (cannot be overridden by config)
     HARD_MAX_LEVERAGE: int = 10
-    HARD_MAX_POSITION_USD: float = 1000.0
+    HARD_MAX_POSITION_USDT: float = 1000.0
     HARD_MIN_BALANCE: float = 5.0
     
     def __post_init__(self):
         """Enforce hard caps."""
         self.max_leverage = min(self.max_leverage, self.HARD_MAX_LEVERAGE)
-        self.max_position_size_usd = min(self.max_position_size_usd, self.HARD_MAX_POSITION_USD)
+        self.max_position_size_usdt = min(self.max_position_size_usdt, self.HARD_MAX_POSITION_USDT)
         self.min_balance_usd = max(self.min_balance_usd, self.HARD_MIN_BALANCE)
 
 
@@ -377,37 +376,37 @@ class DataConfig:
 class WebSocketConfig:
     """
     WebSocket and real-time data configuration.
-    
+
     WebSocket Endpoint Modes:
     - LIVE: stream.bybit.com (live trading, real money)
     - DEMO: stream-demo.bybit.com (fake money)
     - Demo: stream-demo.bybit.com (demo trading API, fake money)
-    
+
     For PUBLIC streams (market data), you can optionally use LIVE streams
     even when trading on demo API since market data is the same.
-    
+
     For PRIVATE streams (positions, orders), the stream must match your
     REST API mode since authentication is account-specific.
     """
     # Master toggle
     enable_websocket: bool = True
-    
+
     # Auto-start WebSocket on application initialization
     auto_start: bool = True
-    
+
     # Timeout settings (seconds)
     startup_timeout: float = 10.0   # Max wait for WebSocket connection
     shutdown_timeout: float = 5.0   # Max wait for graceful shutdown
-    
+
     # Runner mode: "polling" (traditional) or "realtime" (event-driven)
     runner_mode: str = "polling"  # Default to polling for backwards compatibility
-    
+
     # Public stream options
     enable_ticker_stream: bool = True
     enable_orderbook_stream: bool = False  # High frequency, disabled by default
     enable_trades_stream: bool = False     # High frequency, disabled by default
     enable_klines_stream: bool = True
-    kline_intervals: List[str] = field(default_factory=lambda: ["15"])
+    kline_intervals: list[str] = field(default_factory=lambda: ["15"])
     
     # Private stream options
     enable_position_stream: bool = True
@@ -465,31 +464,31 @@ class LogConfig:
     log_errors_separately: bool = True
 
 
-@dataclass 
+@dataclass
 class TradingConfig:
     """
     Main trading configuration.
-    
+
     Trading modes have a strict 1:1 mapping to API environments:
     - PAPER mode → must use DEMO API (BYBIT_USE_DEMO=true)
     - REAL mode → must use LIVE API (BYBIT_USE_DEMO=false)
-    
+
     We never simulate trades in this codebase; both modes execute
     real orders on the Bybit API. The difference is which account
     (demo vs live) receives those orders.
     """
     # Mode (paper = demo account, real = live account)
     mode: str = TradingMode.PAPER
-    
+
     # Symbols - must be set via env var (DEFAULT_SYMBOLS) or passed explicitly
-    default_symbols: List[str] = field(default_factory=list)
+    default_symbols: list[str] = field(default_factory=list)
     
     # Runner settings
     loop_interval_seconds: float = 15.0
     
     # Strategy settings
     strategies_dir: str = "src/strategies/configs"
-    active_strategies: List[str] = field(default_factory=list)
+    active_strategies: list[str] = field(default_factory=list)
     
     @property
     def is_paper(self) -> bool:
@@ -520,30 +519,30 @@ class TradingConfig:
 class SmokeTestConfig:
     """
     Configuration for non-interactive smoke test suite.
-    
+
     Loaded from environment variables:
     - TRADE_SMOKE_SYMBOLS: Comma-separated symbols (e.g., "BTCUSDT,ETHUSDT,SOLUSDT")
     - TRADE_SMOKE_PERIOD: Time period for data pulls (e.g., "1Y", "6M", "3M")
     - TRADE_SMOKE_USD_SIZE: Small USD amount for demo trades (e.g., "5")
     - TRADE_SMOKE_ENABLE_GAP_TESTING: Enable intentional gap testing (e.g., "true")
-    
+
     Safety: Smoke tests always run in DEMO/PAPER mode.
     """
     # Symbols to test (must have at least 3 for full smoke test)
-    symbols: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
-    
+    symbols: list[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+
     # Period for historical data pulls (1Y = 1 year, 6M = 6 months, etc.)
     period: str = "1Y"
-    
+
     # Small USD amount for demo trading tests (must meet minimum order size)
     # Default $20 to handle most symbols' minimum order requirements
     usd_size: float = 20.0
-    
+
     # Enable intentional gap testing (creates gaps then tests repair)
     enable_gap_testing: bool = True
-    
+
     # Timeframes to test (subset for faster smoke tests)
-    timeframes: List[str] = field(default_factory=lambda: ["1h", "4h", "1d"])
+    timeframes: list[str] = field(default_factory=lambda: ["1h", "4h", "1d"])
     
     # Open interest interval for smoke test
     oi_interval: str = "1h"
@@ -578,12 +577,12 @@ class SmokeTestConfig:
 class Config:
     """
     Central configuration manager.
-    
+
     Loads configuration from environment variables and provides
     typed access to all settings.
     """
-    
-    _instance: Optional['Config'] = None
+
+    _instance: 'Config | None' = None
     
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -653,7 +652,7 @@ class Config:
         """Load risk configuration from environment."""
         return RiskConfig(
             max_leverage=int(os.getenv("MAX_LEVERAGE", "3")),
-            max_position_size_usd=float(os.getenv("MAX_POSITION_SIZE_USD", "50")),
+            max_position_size_usdt=float(os.getenv("MAX_POSITION_SIZE_USDT", "50")),
             max_daily_loss_usd=float(os.getenv("MAX_DAILY_LOSS_USD", "20")),
             min_balance_usd=float(os.getenv("MIN_BALANCE_USD", "10")),
         )
@@ -752,7 +751,7 @@ class Config:
         Config._instance = None
         return Config(env_file)
     
-    def validate(self) -> tuple[bool, List[str]]:
+    def validate(self) -> tuple[bool, list[str]]:
         """
         Validate configuration for Unified Trading Account.
         
@@ -821,9 +820,9 @@ class Config:
                 f"Max leverage ({self.risk.max_leverage}) exceeds hard cap of {self.risk.HARD_MAX_LEVERAGE}"
             )
         
-        if self.risk.max_position_size_usd > self.risk.HARD_MAX_POSITION_USD:
+        if self.risk.max_position_size_usdt > self.risk.HARD_MAX_POSITION_USDT:
             errors.append(
-                f"Max position size (${self.risk.max_position_size_usd}) exceeds hard cap of ${self.risk.HARD_MAX_POSITION_USD}"
+                f"Max position size (${self.risk.max_position_size_usdt}) exceeds hard cap of ${self.risk.HARD_MAX_POSITION_USDT}"
             )
         
         if self.risk.default_leverage > self.risk.max_leverage:
@@ -874,7 +873,7 @@ class Config:
         # Should not reach here if validation passed
         return True, f"{self.bybit.get_mode_name()} mode ready"
     
-    def validate_trading_mode_consistency(self) -> tuple[bool, List[str]]:
+    def validate_trading_mode_consistency(self) -> tuple[bool, list[str]]:
         """
         SAFETY GUARD RAIL: Validate strict mapping between trading mode and API environment.
         
@@ -916,7 +915,7 @@ class Config:
         
         return len(errors) == 0, all_messages
     
-    def validate_data_credentials(self) -> tuple[bool, List[str]]:
+    def validate_data_credentials(self) -> tuple[bool, list[str]]:
         """
         Validate that LIVE data credentials are configured (STRICT).
         
@@ -1040,7 +1039,7 @@ class Config:
             "",
             "Risk Settings:",
             f"  Max Leverage:    {self.risk.max_leverage}x (cap: {self.risk.HARD_MAX_LEVERAGE}x)",
-            f"  Max Position:    ${self.risk.max_position_size_usd:,.0f} (cap: ${self.risk.HARD_MAX_POSITION_USD:,.0f})",
+            f"  Max Position:    ${self.risk.max_position_size_usdt:,.0f} (cap: ${self.risk.HARD_MAX_POSITION_USDT:,.0f})",
             f"  Max Daily Loss:  ${self.risk.max_daily_loss_usd:,.0f}",
             f"  Min Balance:     ${self.risk.min_balance_usd:,.0f}",
             "",

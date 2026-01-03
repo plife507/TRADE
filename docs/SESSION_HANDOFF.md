@@ -1,79 +1,72 @@
 # Session Handoff
 
-**Generated**: 2026-01-01 (end of session)
-**Branch**: main (synced with origin)
+**Generated**: 2026-01-03 (post-audit cleanup)
+**Branch**: main (uncommitted changes)
 
 ---
 
 ## Last Session Summary
 
-Completed full audit swarm cycle and documentation consolidation:
+Completed fresh audit and documentation cleanup:
 
-1. **Agentic Audit Swarm**: 10 specialized agents audited entire codebase
-2. **P1 Fixes Applied**: 12/16 critical issues fixed
-3. **Re-Audit**: Verified fixes, found 1 new issue (fixed)
-4. **Documentation Overhaul**: Consolidated TODOs, updated all status docs, archived completed work
+1. **Archived 72 fixed bugs** from previous audit swarm (P0:7, P1:25, P2:28, P3:12)
+2. **Ran fresh validation** - ALL TESTS PASS (9/9 IdeaCards, 42/42 indicators, 11/11 rollups)
+3. **Scanned for new issues** - Found 9 minor bugs (P1:2, P2:3, P3:4)
+4. **Cleaned documentation** - Reset OPEN_BUGS.md, updated TODO.md, PROJECT_STATUS.md
 
 ---
 
 ## Current State
 
-**Branch**: main (clean, synced with origin)
+**Branch**: main (uncommitted - incremental state + bug fixes + doc cleanup)
 
-**No uncommitted changes** - all work committed and pushed.
+**Bug Status**:
+| Priority | Count | Nature |
+|----------|-------|--------|
+| P0 | 0 | None |
+| P1 | 2 | Config patterns (hasattr guards, hardcoded max_exposure) |
+| P2 | 3 | Type safety (loose typing, dynamic access) |
+| P3 | 4 | Polish (deprecated code, comments) |
 
-**Recent Commits**:
-```
-9739f16 docs: update project status and architecture docs
-b439902 docs: consolidate and archive completed TODO files
-b36a772 feat(market-structure): add Stage 6-7 zone interaction and state types
-60c87e3 docs: archive audit reports and create open bugs TODO
-c6134b6 fix(backtest): remove remaining warmup_multiplier references
-15af29c Merge branch 'fix/audit-p1-swarm': P1 audit fixes
-```
-
----
-
-## Project Status
-
-| Component | Status |
-|-----------|--------|
-| Market Structure | Stages 0-7 ✅ Complete |
-| Audit P1 Fixes | 12/16 ✅ Fixed |
-| Open Bugs | 4 P1, 19 P2, 10 P3 |
-| Indicators | 42 in registry |
-| Validation IdeaCards | 24 |
+**Validation**:
+- IdeaCards: 9/9 normalize
+- Indicators: 42/42 pass toolkit audit
+- Rollup: 11/11 intervals pass
+- Metrics: 6/6 tests pass
+- Structure smoke: All stages pass
+- Metadata smoke: All invariants pass
 
 ---
 
-## Active TODO Files
+## Files Changed This Session
 
-| Document | Status |
-|----------|--------|
-| `docs/todos/INDEX.md` | Master index |
-| `docs/todos/AUDIT_OPEN_BUGS.md` | 33 open bugs |
-| `docs/todos/BACKTEST_ANALYTICS_PHASES.md` | Phases 5-6 pending |
+**Documentation Updated**:
+- `docs/audits/OPEN_BUGS.md` - Reset with fresh audit findings
+- `docs/audits/archived/2026-01-03_BUGS_RESOLVED.md` - New archive of 72 fixed bugs
+- `docs/todos/TODO.md` - Cleaned, removed completed work
+- `docs/PROJECT_STATUS.md` - Updated bug counts, next steps
+- `docs/SESSION_HANDOFF.md` - This file
 
 ---
 
 ## Priority Items for Next Session
 
-### 1. P1 Open Issues (4 remaining - all deferred)
-| ID | Issue | Location | Review |
-|----|-------|----------|--------|
-| P1-09 | O(n) in bars_exec_high/low | snapshot_view.py | [Technical Review](audits/P1_09_BARS_EXEC_MINMAX_REVIEW.md) |
-| P1-12 | TREND assumes single SWING | builder.py | |
-| P1-13 | Dual close detection | TimeframeCache/FeedStore | |
-| P1-15 | Schema drift detection | snapshot_view.py | |
+### 1. Commit All Changes
+```bash
+git add -A
+git commit -m "feat: archive 72 bugs, fresh audit (9 minor), doc cleanup"
+```
 
-### 2. P2 Quick Wins
-- P2-04: Remove legacy SWING_OUTPUTS aliases
-- P2-12: Add StateTracker.reset() call on init
-- P2-11: Wire V_65 to comparison test
+### 2. Optional Quick Wins (P1)
+| Bug | Location | Fix | Effort |
+|-----|----------|-----|--------|
+| P1-02 | `runtime/state_tracker.py:244` | Add max_exposure_pct to config | 30m |
+| P1-01 | `engine_data_prep.py` | Standardize feature_specs_by_role | 2h |
 
 ### 3. Future Work
-- Stage 8: Demo/Live streaming (separate track)
-- Backtest Analytics Phases 5-6: Benchmark comparison
+- Streaming (Stage 8) - Demo/Live websocket
+- BOS/CHoCH Detection - Break of Structure / Change of Character
+- Agent Module - Automated strategy generation
 
 ---
 
@@ -82,11 +75,12 @@ c6134b6 fix(backtest): remove remaining warmup_multiplier references
 ```bash
 # Check status
 git status
-cat docs/todos/AUDIT_OPEN_BUGS.md
+git diff --stat
 
 # Run validation
 python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest structure-smoke
+python trade_cli.py backtest audit-rollup
+python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
 
 # Full smoke (with backtest)
 $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"
@@ -100,7 +94,7 @@ python trade_cli.py --smoke full
 | Doc | Purpose |
 |-----|---------|
 | `CLAUDE.md` | AI assistant guidance |
+| `docs/audits/OPEN_BUGS.md` | Current bug tracker (9 open) |
+| `docs/audits/archived/2026-01-03_BUGS_RESOLVED.md` | Archived 72 fixed bugs |
+| `docs/todos/TODO.md` | Active work tracking |
 | `docs/PROJECT_STATUS.md` | Full project status |
-| `docs/todos/INDEX.md` | TODO master index |
-| `docs/todos/AUDIT_OPEN_BUGS.md` | Bug tracker |
-| `docs/audits/2026-01-01/` | Archived audit reports |

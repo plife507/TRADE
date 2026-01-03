@@ -4,7 +4,7 @@ Market data tools for TRADE trading bot.
 These tools provide access to prices, OHLCV, funding rates, orderbooks, and more.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Any
 from .shared import ToolResult, _get_exchange_manager
 
 
@@ -251,7 +251,7 @@ def get_orderbook_tool(symbol: str, limit: int = 25) -> ToolResult:
         )
 
 
-def get_instruments_tool(symbol: Optional[str] = None) -> ToolResult:
+def get_instruments_tool(symbol: str | None = None) -> ToolResult:
     """
     Get instrument information for a symbol or all symbols.
     

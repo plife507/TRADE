@@ -6,7 +6,6 @@ Enums and dataclasses for the price engine layer.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class PriceRef(str, Enum):
@@ -28,7 +27,7 @@ class HealthCheckResult:
     ok: bool
     provider_name: str
     message: str
-    details: Optional[dict] = None
+    details: dict | None = None
 
     def __bool__(self) -> bool:
         return self.ok

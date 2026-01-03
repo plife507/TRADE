@@ -29,7 +29,7 @@ from enum import Enum
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 
 from .types import WindowConfig
 from .window_presets import get_window_preset, has_preset
@@ -57,17 +57,6 @@ class MarginMode(Enum):
     # PORTFOLIO = "portfolio"  # Future: not implemented
 
 
-class PositionMode(Enum):
-    """
-    Position mode enum (extension point for future modes).
-    
-    This simulator version supports ONEWAY only.
-    Hedge mode will be added in future versions.
-    """
-    ONEWAY = "oneway"
-    # HEDGE = "hedge"  # Future: not implemented
-
-
 class InstrumentType(Enum):
     """
     Instrument type enum (extension point for future modes).
@@ -85,7 +74,7 @@ class InstrumentType(Enum):
 # Mode Lock Validation Functions
 # =============================================================================
 
-def validate_usdt_pair(symbol: str) -> Tuple[str, str]:
+def validate_usdt_pair(symbol: str) -> tuple[str, str]:
     """
     Validate and parse USDT-quoted perpetual pair.
     
@@ -199,9 +188,9 @@ class DataBuildConfig:
     """Dataset build configuration."""
     env: str = "live"
     period: str = "3M"
-    tfs: List[str] = field(default_factory=lambda: ["1h"])
-    
-    def to_dict(self) -> Dict[str, Any]:
+    tfs: list[str] = field(default_factory=lambda: ["1h"])
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "env": self.env,
@@ -263,13 +252,13 @@ class RiskProfileConfig:
     stop_equity_usdt: float = 0.0  # In USDT (name kept for backward compat)
     
     # Margin model fields
-    _initial_margin_rate: Optional[float] = None  # If None, derived from max_leverage
+    _initial_margin_rate: float | None = None  # If None, derived from max_leverage
     maintenance_margin_rate: float = 0.005  # 0.5% - Bybit lowest tier default
     mark_price_source: str = "close"
-    
+
     # Fee model fields
     taker_fee_rate: float = 0.0006  # 0.06% default (Bybit typical)
-    maker_fee_rate: Optional[float] = None
+    maker_fee_rate: float | None = None
     fee_mode: str = "taker_only"  # MVP: only taker fees applied
     
     # Entry gate behavior
@@ -280,7 +269,43 @@ class RiskProfileConfig:
     position_mode: str = "oneway"  # One-way only for this version (no hedge)
     quote_ccy: str = "USDT"  # USDT-quoted pairs only for this version
     instrument_type: str = "perp"  # Perpetual contracts only for this version
-    
+
+    # Valid values for mode locks (Phase 1 restrictions)
+    _VALID_MARK_PRICE_SOURCES = ("close",)
+    _VALID_FEE_MODES = ("taker_only",)
+    _VALID_MARGIN_MODES = ("isolated",)
+    _VALID_POSITION_MODES = ("oneway",)
+
+    def __post_init__(self) -> None:
+        """Validate config fields at load time (fail-loud)."""
+        # Validate mark_price_source
+        if self.mark_price_source not in self._VALID_MARK_PRICE_SOURCES:
+            raise ValueError(
+                f"Invalid mark_price_source='{self.mark_price_source}'. "
+                f"Phase 1 supports only: {self._VALID_MARK_PRICE_SOURCES}"
+            )
+
+        # Validate fee_mode
+        if self.fee_mode not in self._VALID_FEE_MODES:
+            raise ValueError(
+                f"Invalid fee_mode='{self.fee_mode}'. "
+                f"MVP supports only: {self._VALID_FEE_MODES}"
+            )
+
+        # Validate margin_mode
+        if self.margin_mode not in self._VALID_MARGIN_MODES:
+            raise ValueError(
+                f"Invalid margin_mode='{self.margin_mode}'. "
+                f"This simulator version supports only: {self._VALID_MARGIN_MODES}"
+            )
+
+        # Validate position_mode
+        if self.position_mode not in self._VALID_POSITION_MODES:
+            raise ValueError(
+                f"Invalid position_mode='{self.position_mode}'. "
+                f"This simulator version supports only: {self._VALID_POSITION_MODES}"
+            )
+
     @property
     def initial_margin_rate(self) -> float:
         """
@@ -294,7 +319,7 @@ class RiskProfileConfig:
         return 1.0 / self.max_leverage
     
     @initial_margin_rate.setter
-    def initial_margin_rate(self, value: Optional[float]) -> None:
+    def initial_margin_rate(self, value: float | None) -> None:
         """Set explicit initial margin rate."""
         self._initial_margin_rate = value
     
@@ -307,7 +332,7 @@ class RiskProfileConfig:
         """
         return 1.0 / self.initial_margin_rate
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             # Core
@@ -339,7 +364,7 @@ class RiskProfileConfig:
 
 def resolve_risk_profile(
     base: RiskProfileConfig,
-    overrides: Optional[Dict[str, Any]] = None,
+    overrides: dict[str, Any] | None = None,
 ) -> RiskProfileConfig:
     """
     Merge CLI overrides into a base risk profile.
@@ -403,8 +428,8 @@ class StrategyInstanceInputs:
     """Input configuration for a StrategyInstance (symbol/tf/feed alias)."""
     symbol: str = ""
     tf: str = ""
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "symbol": self.symbol,
@@ -427,14 +452,14 @@ class StrategyInstanceConfig:
     
     # Inputs (which data feed this instance consumes)
     inputs: StrategyInstanceInputs = field(default_factory=StrategyInstanceInputs)
-    
+
     # Instance-specific parameters
-    params: Dict[str, Any] = field(default_factory=dict)
-    
+    params: dict[str, Any] = field(default_factory=dict)
+
     # Optional role tag (e.g., "entry", "filter", "exit")
-    role: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    role: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         result = {
             "strategy_instance_id": self.strategy_instance_id,
@@ -473,14 +498,14 @@ class SystemConfig:
     
     # Execution timeframe (master clock for stepping)
     # If None, defaults to tf (LTF)
-    exec_tf: Optional[str] = None
-    
+    exec_tf: str | None = None
+
     # Strategy instances (1..N)
-    strategies: List[StrategyInstanceConfig] = field(default_factory=list)
+    strategies: list[StrategyInstanceConfig] = field(default_factory=list)
     primary_strategy_instance_id: str = ""
-    
+
     # Windows (raw from YAML)
-    windows: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    windows: dict[str, dict[str, str]] = field(default_factory=dict)
     
     # Risk configuration
     risk_profile: RiskProfileConfig = field(default_factory=RiskProfileConfig)
@@ -492,21 +517,21 @@ class SystemConfig:
     # IdeaCard-declared warmup bars per TF role (exec/htf/mtf)
     # This is the CANONICAL warmup source - engine MUST use this, not recompute
     # MUST NOT be empty - engine will fail loud if missing (no fallback path)
-    warmup_bars_by_role: Dict[str, int] = field(default_factory=dict)
-    
+    warmup_bars_by_role: dict[str, int] = field(default_factory=dict)
+
     # IdeaCard-declared delay bars per TF role (exec/htf/mtf)
     # Delay = bars to skip at evaluation start (no-lookahead guarantee)
     # Engine MUST fail loud if this is missing when IdeaCard declares market_structure
-    delay_bars_by_role: Dict[str, int] = field(default_factory=dict)
-    
+    delay_bars_by_role: dict[str, int] = field(default_factory=dict)
+
     # IdeaCard feature specs by role (exec/htf/mtf)
     # Required for indicator computation - no legacy params support
-    feature_specs_by_role: Dict[str, List[Any]] = field(default_factory=dict)
+    feature_specs_by_role: dict[str, list[Any]] = field(default_factory=dict)
 
     # IdeaCard required indicators by role (exec/htf/mtf)
     # Used by find_first_valid_bar to avoid requiring mutually exclusive outputs
     # (e.g., PSAR long/short or SuperTrend long/short)
-    required_indicators_by_role: Dict[str, List[str]] = field(default_factory=dict)
+    required_indicators_by_role: dict[str, list[str]] = field(default_factory=dict)
     
     # Computed after load (not from YAML)
     _system_uid: str = field(default="", repr=False)
@@ -534,7 +559,7 @@ class SystemConfig:
         json_str = json.dumps(canonical, sort_keys=True, separators=(',', ':'))
         return hashlib.sha256(json_str.encode('utf-8')).hexdigest()[:16]
     
-    def to_canonical_dict(self) -> Dict[str, Any]:
+    def to_canonical_dict(self) -> dict[str, Any]:
         """
         Convert to canonical dict for fingerprinting.
         
@@ -602,7 +627,7 @@ class SystemConfig:
         return self.get_primary_strategy().strategy_version
     
     @property
-    def params(self) -> Dict[str, Any]:
+    def params(self) -> dict[str, Any]:
         """Get the primary strategy's params (for convenience)."""
         return self.get_primary_strategy().params
     
@@ -671,7 +696,7 @@ class SystemConfig:
             end=end,
         )
     
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """
         Validate the configuration.
         
@@ -738,7 +763,7 @@ class SystemConfig:
         return errors
 
 
-def _parse_strategy_instance(raw: Dict[str, Any]) -> StrategyInstanceConfig:
+def _parse_strategy_instance(raw: dict[str, Any]) -> StrategyInstanceConfig:
     """Parse a single StrategyInstance from raw YAML dict."""
     inputs_raw = raw.get("inputs", {})
     inputs = StrategyInstanceInputs(
@@ -915,7 +940,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     return config
 
 
-def list_systems() -> List[str]:
+def list_systems() -> list[str]:
     """
     List all available system configurations.
     
@@ -935,7 +960,7 @@ def list_systems() -> List[str]:
     return sorted(systems)
 
 
-def get_system_config_path(system_id: str) -> Optional[Path]:
+def get_system_config_path(system_id: str) -> Path | None:
     """Get the path to a system config file."""
     for ext in (".yml", ".yaml"):
         path = CONFIGS_DIR / f"{system_id}{ext}"

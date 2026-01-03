@@ -12,8 +12,8 @@ Contains all normalized data types used by RealtimeState:
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
 from enum import Enum
+from typing import Any
 
 import pandas as pd
 
@@ -139,8 +139,8 @@ class OrderbookLevel:
 class OrderbookData:
     """Normalized orderbook data."""
     symbol: str
-    bids: List[OrderbookLevel] = field(default_factory=list)
-    asks: List[OrderbookLevel] = field(default_factory=list)
+    bids: list[OrderbookLevel] = field(default_factory=list)
+    asks: list[OrderbookLevel] = field(default_factory=list)
     timestamp: float = field(default_factory=time.time)
     update_id: int = 0
     
@@ -166,7 +166,7 @@ class OrderbookData:
         self.timestamp = time.time()
         self.update_id = delta.get("u", self.update_id)
     
-    def _update_side(self, levels: List[OrderbookLevel], price: float, size: float, reverse: bool):
+    def _update_side(self, levels: list[OrderbookLevel], price: float, size: float, reverse: bool):
         for i, level in enumerate(levels):
             if level.price == price:
                 if size == 0:
@@ -776,7 +776,7 @@ class PortfolioRiskSnapshot:
     worst_liq_symbol: str = ""
     max_position_leverage: float = 0.0
     max_leverage_symbol: str = ""
-    exposure_by_asset: Dict[str, float] = field(default_factory=dict)
+    exposure_by_asset: dict[str, float] = field(default_factory=dict)
     high_risk_position_count: int = 0
     positions_near_liq: int = 0
     is_account_high_risk: bool = False
@@ -788,9 +788,9 @@ class PortfolioRiskSnapshot:
     @classmethod
     def from_state(
         cls,
-        account_metrics: Optional['AccountMetrics'],
-        positions: Dict[str, 'PositionData'],
-        config: Any = None,
+        account_metrics: 'AccountMetrics | None',
+        positions: dict[str, 'PositionData'],
+        config=None,
     ) -> 'PortfolioRiskSnapshot':
         snapshot = cls()
         
@@ -806,7 +806,7 @@ class PortfolioRiskSnapshot:
             snapshot.is_account_high_risk = account_metrics.is_high_risk
             snapshot.liquidation_risk_level = account_metrics.liquidation_risk_level
         
-        exposure_by_asset: Dict[str, float] = {}
+        exposure_by_asset: dict[str, float] = {}
         total_leverage_weighted = 0.0
         total_realized_pnl = 0.0
         
@@ -924,11 +924,11 @@ class RealtimeEvent:
 class ConnectionStatus:
     """WebSocket connection status."""
     state: ConnectionState = ConnectionState.DISCONNECTED
-    connected_at: Optional[float] = None
-    disconnected_at: Optional[float] = None
+    connected_at: float | None = None
+    disconnected_at: float | None = None
     reconnect_count: int = 0
-    last_error: Optional[str] = None
-    last_message_at: Optional[float] = None
+    last_error: str | None = None
+    last_message_at: float | None = None
     
     @property
     def is_connected(self) -> bool:

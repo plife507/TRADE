@@ -1,0 +1,16 @@
+{
+  "name": "trade-workflow",
+  "version": "1.0.0",
+  "description": "TRADE trading bot workflow plugin with specialized agents for backtest engine, validation, and trading system development. Uses Opus for code-modifying agents.",
+  "author": {
+    "name": "TRADE"
+  },
+  "license": "MIT",
+  "keywords": [
+    "trading",
+    "backtest",
+    "validation",
+    "agents",
+    "workflow"
+  ]
+}

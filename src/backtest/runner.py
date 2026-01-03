@@ -25,10 +25,11 @@ Enforces all gates before and after the run:
 If any gate fails, the runner stops and returns a failure status.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Callable
 import json
 import time
 
@@ -96,11 +97,11 @@ from .artifacts.pipeline_signature import PIPELINE_VERSION
 
 class IdeaCardBacktestResult:
     """Result from IdeaCard-native backtest execution."""
-    
+
     def __init__(
         self,
-        trades: List[Any],
-        equity_curve: List[Any],
+        trades: list[Any],
+        equity_curve: list[Any],
         final_equity: float,
         idea_card_hash: str,
         metrics: Any = None,  # BacktestMetrics from engine
@@ -126,23 +127,23 @@ class RunnerConfig:
     """Configuration for the backtest runner."""
     # IdeaCard
     idea_card_id: str = ""
-    idea_card: Optional[IdeaCard] = None
+    idea_card: IdeaCard | None = None
 
     # Window
-    window_start: Optional[datetime] = None
-    window_end: Optional[datetime] = None
-    window_name: Optional[str] = None  # Alternative to explicit dates
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    window_name: str | None = None  # Alternative to explicit dates
 
     # Paths
     base_output_dir: Path = field(default_factory=lambda: Path("backtests"))
-    idea_cards_dir: Optional[Path] = None
+    idea_cards_dir: Path | None = None
 
     # Gates
     skip_preflight: bool = False  # For testing only
     skip_artifact_validation: bool = False  # For testing only
 
     # Data loader
-    data_loader: Optional[DataLoader] = None
+    data_loader: DataLoader | None = None
 
     # Auto-sync
     auto_sync_missing_data: bool = False
@@ -167,20 +168,20 @@ class RunnerResult:
     """Result of a backtest run."""
     success: bool
     run_id: str
-    artifact_path: Optional[Path] = None
-    
+    artifact_path: Path | None = None
+
     # Gate results
-    preflight_report: Optional[PreflightReport] = None
-    artifact_validation: Optional[ArtifactValidationResult] = None
-    
+    preflight_report: PreflightReport | None = None
+    artifact_validation: ArtifactValidationResult | None = None
+
     # Summary
-    summary: Optional[ResultsSummary] = None
-    
+    summary: ResultsSummary | None = None
+
     # Error info
-    error_message: Optional[str] = None
-    gate_failed: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    error_message: str | None = None
+    gate_failed: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "success": self.success,
@@ -196,7 +197,7 @@ class RunnerResult:
 
 def run_backtest_with_gates(
     config: RunnerConfig,
-    engine_factory: Optional[Callable] = None,
+    engine_factory: Callable | None = None,
 ) -> RunnerResult:
     """
     Run a backtest with all gates enforced.
@@ -399,7 +400,7 @@ def run_backtest_with_gates(
             # Get declared feature specs (output_key from each spec)
             from .indicators import get_required_indicator_columns_from_specs
             
-            available_keys_by_role: Dict[str, set] = {}
+            available_keys_by_role: dict[str, set] = {}
             for role, tf_config in idea_card.tf_configs.items():
                 specs = list(tf_config.feature_specs)
                 if specs:
@@ -432,8 +433,8 @@ def run_backtest_with_gates(
         # EXTRACT PREFLIGHT WARMUP + DELAY (SOURCE OF TRUTH)
         # =====================================================================
         # Runner MUST NOT compute warmup/delay - it consumes Preflight output only
-        preflight_warmup_by_role: Optional[Dict[str, int]] = None
-        preflight_delay_by_role: Optional[Dict[str, int]] = None
+        preflight_warmup_by_role: dict[str, int] | None = None
+        preflight_delay_by_role: dict[str, int] | None = None
         if result.preflight_report and result.preflight_report.computed_warmup_requirements:
             preflight_warmup_by_role = result.preflight_report.computed_warmup_requirements.warmup_by_role
             preflight_delay_by_role = result.preflight_report.computed_warmup_requirements.delay_by_role
@@ -479,8 +480,8 @@ def run_backtest_with_gates(
             engine_result = run_engine_with_idea_card(engine, idea_card)
         
         # Extract trades and equity
-        trades: List[Dict[str, Any]] = []
-        equity_curve: List[Dict[str, Any]] = []
+        trades: list[dict[str, Any]] = []
+        equity_curve: list[dict[str, Any]] = []
         idea_card_hash = ""
         
         if hasattr(engine_result, 'trades'):
@@ -730,7 +731,7 @@ def run_smoke_test(
     window_end: datetime,
     data_loader: DataLoader,
     base_output_dir: Path = Path("backtests"),
-    idea_cards_dir: Optional[Path] = None,
+    idea_cards_dir: Path | None = None,
 ) -> RunnerResult:
     """
     Convenience function to run a smoke test for an IdeaCard.

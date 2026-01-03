@@ -7,7 +7,8 @@ close_websockets, and cleanup utilities.
 
 import sys
 import threading
-from typing import Callable, Union, List, Optional, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from pybit.unified_trading import WebSocket
 
@@ -101,28 +102,28 @@ def connect_private_ws(client: "BybitClient") -> WebSocket:
     return client._ws_private
 
 
-def subscribe_ticker(client: "BybitClient", symbol: Union[str, List[str]], callback: Callable):
+def subscribe_ticker(client: "BybitClient", symbol: str | list[str], callback: Callable):
     """Subscribe to ticker updates."""
     ws = connect_public_ws(client)
     ws.ticker_stream(symbol=symbol, callback=callback)
     client.logger.info(f"Subscribed to ticker: {symbol}")
 
 
-def subscribe_orderbook(client: "BybitClient", symbol: Union[str, List[str]], callback: Callable, depth: int = 50):
+def subscribe_orderbook(client: "BybitClient", symbol: str | list[str], callback: Callable, depth: int = 50):
     """Subscribe to orderbook updates."""
     ws = connect_public_ws(client)
     ws.orderbook_stream(depth=depth, symbol=symbol, callback=callback)
     client.logger.info(f"Subscribed to orderbook({depth}): {symbol}")
 
 
-def subscribe_trades(client: "BybitClient", symbol: Union[str, List[str]], callback: Callable):
+def subscribe_trades(client: "BybitClient", symbol: str | list[str], callback: Callable):
     """Subscribe to public trade stream."""
     ws = connect_public_ws(client)
     ws.trade_stream(symbol=symbol, callback=callback)
     client.logger.info(f"Subscribed to trades: {symbol}")
 
 
-def subscribe_klines(client: "BybitClient", symbol: Union[str, List[str]], interval: int, callback: Callable):
+def subscribe_klines(client: "BybitClient", symbol: str | list[str], interval: int, callback: Callable):
     """Subscribe to kline/candlestick updates."""
     ws = connect_public_ws(client)
     ws.kline_stream(interval=interval, symbol=symbol, callback=callback)

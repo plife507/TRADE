@@ -24,7 +24,7 @@ Backend Abstraction:
 from __future__ import annotations
 import pandas as pd
 from dataclasses import dataclass, field
-from typing import Dict, Tuple, Union, Any, Optional, List, Set
+from typing import Any
 
 # Backend import - ONLY place pandas_ta is imported
 import pandas_ta as ta
@@ -38,20 +38,20 @@ import pandas_ta as ta
 class CanonicalizeResult:
     """
     Structured result from canonicalizing pandas_ta multi-output columns.
-    
+
     This is the single source of truth for output key mapping, used by:
     - Vendor multi-output normalization
     - Toolkit contract audit
     - Snapshot parity audit
     """
     indicator_type: str
-    raw_columns: List[str]
-    raw_to_canonical: Dict[str, str]
-    canonical_columns: List[str]
-    declared_columns: List[str]
-    extras_dropped: List[str] = field(default_factory=list)
-    missing_declared: List[str] = field(default_factory=list)
-    collisions: Dict[str, List[str]] = field(default_factory=dict)  # canonical_key -> [raw_cols]
+    raw_columns: list[str]
+    raw_to_canonical: dict[str, str]
+    canonical_columns: list[str]
+    declared_columns: list[str]
+    extras_dropped: list[str] = field(default_factory=list)
+    missing_declared: list[str] = field(default_factory=list)
+    collisions: dict[str, list[str]] = field(default_factory=dict)  # canonical_key -> [raw_cols]
     
     @property
     def has_collisions(self) -> bool:
@@ -69,7 +69,7 @@ class CanonicalizeResult:
 
 def canonicalize_indicator_outputs(
     indicator_type: str,
-    raw_columns: List[str],
+    raw_columns: list[str],
 ) -> CanonicalizeResult:
     """
     Canonicalize pandas_ta raw column names to registry-declared output keys.
@@ -101,8 +101,8 @@ def canonicalize_indicator_outputs(
         declared_columns = []
     
     # Map raw columns to canonical keys
-    raw_to_canonical: Dict[str, str] = {}
-    canonical_to_raw: Dict[str, List[str]] = {}
+    raw_to_canonical: dict[str, str] = {}
+    canonical_to_raw: dict[str, list[str]] = {}
     
     for raw_col in raw_columns:
         canonical_key = _extract_column_key(raw_col, indicator_type)
@@ -148,13 +148,13 @@ def canonicalize_indicator_outputs(
 
 def compute_indicator(
     indicator_name: str,
-    close: Optional[pd.Series] = None,
-    high: Optional[pd.Series] = None,
-    low: Optional[pd.Series] = None,
-    open_: Optional[pd.Series] = None,
-    volume: Optional[pd.Series] = None,
+    close: pd.Series | None = None,
+    high: pd.Series | None = None,
+    low: pd.Series | None = None,
+    open_: pd.Series | None = None,
+    volume: pd.Series | None = None,
     **kwargs
-) -> Union[pd.Series, Dict[str, pd.Series]]:
+) -> pd.Series | dict[str, pd.Series]:
     """
     Dynamic wrapper for supported indicators (FAIL LOUD on unsupported).
     
@@ -172,7 +172,7 @@ def compute_indicator(
         
     Returns:
         pd.Series for single-output indicators
-        Dict[str, pd.Series] for multi-output indicators (column names normalized)
+        dict[str, pd.Series] for multi-output indicators (column names normalized)
         
     Raises:
         ValueError: If indicator_name is not in IndicatorRegistry (UNSUPPORTED_INDICATOR_TYPE)
@@ -265,7 +265,7 @@ def compute_indicator(
         raise ValueError(f"Unexpected result type from {indicator_name}: {type(result)}")
 
 
-def _normalize_multi_output(df: pd.DataFrame, indicator_name: str) -> Dict[str, pd.Series]:
+def _normalize_multi_output(df: pd.DataFrame, indicator_name: str) -> dict[str, pd.Series]:
     """
     Normalize multi-output DataFrame column names to registry-declared keys.
     
@@ -424,7 +424,7 @@ def _extract_column_key(col_name: str, indicator_name: str) -> str:
     return col_lower
 
 
-def get_available_indicators() -> List[str]:
+def get_available_indicators() -> list[str]:
     """
     Get list of all available pandas_ta indicators.
     
@@ -547,7 +547,7 @@ def macd(
     fast: int = 12,
     slow: int = 26,
     signal: int = 9,
-) -> Dict[str, pd.Series]:
+) -> dict[str, pd.Series]:
     """
     Compute MACD (Moving Average Convergence Divergence).
     
@@ -584,7 +584,7 @@ def bbands(
     close: pd.Series,
     length: int = 20,
     std: float = 2.0,
-) -> Dict[str, pd.Series]:
+) -> dict[str, pd.Series]:
     """
     Compute Bollinger Bands.
     
@@ -636,7 +636,7 @@ def stoch(
     k: int = 14,
     d: int = 3,
     smooth_k: int = 3,
-) -> Dict[str, pd.Series]:
+) -> dict[str, pd.Series]:
     """
     Compute Stochastic Oscillator.
     
@@ -676,7 +676,7 @@ def stochrsi(
     rsi_length: int = 14,
     k: int = 3,
     d: int = 3,
-) -> Dict[str, pd.Series]:
+) -> dict[str, pd.Series]:
     """
     Compute Stochastic RSI.
     

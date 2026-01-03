@@ -28,29 +28,32 @@ Usage:
         # Logs here will have the same run_id, trace_id, etc.
 """
 
+from __future__ import annotations
+
 import os
 import socket
 import threading
 import uuid
+from collections.abc import Generator
 from contextvars import ContextVar
 from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
-from typing import Optional, Dict, Any, Generator
+from typing import Any
 
 
 # =============================================================================
 # Context Variables (thread-safe, async-safe)
 # =============================================================================
 
-_run_id: ContextVar[Optional[str]] = ContextVar("run_id", default=None)
-_agent_id: ContextVar[Optional[str]] = ContextVar("agent_id", default=None)
-_trace_id: ContextVar[Optional[str]] = ContextVar("trace_id", default=None)
-_span_id: ContextVar[Optional[str]] = ContextVar("span_id", default=None)
-_parent_span_id: ContextVar[Optional[str]] = ContextVar("parent_span_id", default=None)
-_tool_call_id: ContextVar[Optional[str]] = ContextVar("tool_call_id", default=None)
-_tool_name: ContextVar[Optional[str]] = ContextVar("tool_name", default=None)
-_extra_context: ContextVar[Dict[str, Any]] = ContextVar("extra_context", default={})
+_run_id: ContextVar[str | None] = ContextVar("run_id", default=None)
+_agent_id: ContextVar[str | None] = ContextVar("agent_id", default=None)
+_trace_id: ContextVar[str | None] = ContextVar("trace_id", default=None)
+_span_id: ContextVar[str | None] = ContextVar("span_id", default=None)
+_parent_span_id: ContextVar[str | None] = ContextVar("parent_span_id", default=None)
+_tool_call_id: ContextVar[str | None] = ContextVar("tool_call_id", default=None)
+_tool_name: ContextVar[str | None] = ContextVar("tool_name", default=None)
+_extra_context: ContextVar[dict[str, Any]] = ContextVar("extra_context", default={})
 
 
 # =============================================================================
@@ -84,22 +87,22 @@ def _generate_trace_id() -> str:
 class LogContext:
     """
     Immutable snapshot of the current logging context.
-    
+
     Can be serialized to dict for cross-process propagation.
     """
-    run_id: Optional[str] = None
-    agent_id: Optional[str] = None
-    trace_id: Optional[str] = None
-    span_id: Optional[str] = None
-    parent_span_id: Optional[str] = None
-    tool_call_id: Optional[str] = None
-    tool_name: Optional[str] = None
+    run_id: str | None = None
+    agent_id: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
+    parent_span_id: str | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
     hostname: str = field(default_factory=lambda: _HOSTNAME)
     pid: int = field(default_factory=lambda: _PID)
     thread_id: int = field(default_factory=_get_thread_id)
-    extra: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for cross-process propagation."""
         return {
             "run_id": self.run_id,
@@ -115,7 +118,7 @@ class LogContext:
             **self.extra,
         }
     
-    def to_log_fields(self) -> Dict[str, Any]:
+    def to_log_fields(self) -> dict[str, Any]:
         """
         Return only the fields that should be included in log events.
         
@@ -169,22 +172,22 @@ def get_log_context() -> LogContext:
     )
 
 
-def get_run_id() -> Optional[str]:
+def get_run_id() -> str | None:
     """Get current run ID."""
     return _run_id.get()
 
 
-def get_agent_id() -> Optional[str]:
+def get_agent_id() -> str | None:
     """Get current agent ID."""
     return _agent_id.get()
 
 
-def get_trace_id() -> Optional[str]:
+def get_trace_id() -> str | None:
     """Get current trace ID."""
     return _trace_id.get()
 
 
-def get_tool_call_id() -> Optional[str]:
+def get_tool_call_id() -> str | None:
     """Get current tool call ID."""
     return _tool_call_id.get()
 
@@ -195,13 +198,13 @@ def get_tool_call_id() -> Optional[str]:
 
 @contextmanager
 def log_context_scope(
-    run_id: Optional[str] = None,
-    agent_id: Optional[str] = None,
-    trace_id: Optional[str] = None,
-    span_id: Optional[str] = None,
-    parent_span_id: Optional[str] = None,
-    tool_call_id: Optional[str] = None,
-    tool_name: Optional[str] = None,
+    run_id: str | None = None,
+    agent_id: str | None = None,
+    trace_id: str | None = None,
+    span_id: str | None = None,
+    parent_span_id: str | None = None,
+    tool_call_id: str | None = None,
+    tool_name: str | None = None,
     **extra: Any,
 ) -> Generator[LogContext, None, None]:
     """
@@ -269,9 +272,9 @@ def log_context_scope(
 
 @contextmanager
 def new_run_context(
-    run_id: Optional[str] = None,
-    agent_id: Optional[str] = None,
-    trace_id: Optional[str] = None,
+    run_id: str | None = None,
+    agent_id: str | None = None,
+    trace_id: str | None = None,
     **extra: Any,
 ) -> Generator[LogContext, None, None]:
     """
@@ -310,7 +313,7 @@ def new_run_context(
 @contextmanager
 def new_tool_call_context(
     tool_name: str,
-    tool_call_id: Optional[str] = None,
+    tool_call_id: str | None = None,
     **extra: Any,
 ) -> Generator[LogContext, None, None]:
     """
@@ -371,7 +374,7 @@ def add_context_fields(**fields: Any) -> None:
 # Utility for creating context from meta dict (agent/orchestrator use)
 # =============================================================================
 
-def context_from_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def context_from_meta(meta: dict[str, Any] | None) -> dict[str, Any]:
     """
     Extract context fields from a meta dictionary.
     

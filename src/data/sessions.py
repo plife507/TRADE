@@ -38,9 +38,9 @@ Usage:
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Any
 from datetime import datetime
 import time
+from typing import Any
 
 from ..config.config import get_config
 from ..config.constants import DataEnv, DEFAULT_DATA_ENV, validate_data_env
@@ -53,7 +53,7 @@ from .historical_data_store import get_historical_store, get_latest_ohlcv
 class SessionConfig:
     """
     Base configuration for a trading session.
-    
+
     Attributes:
         session_id: Unique identifier for this session
         env: Data environment ("live" or "demo")
@@ -65,11 +65,11 @@ class SessionConfig:
     """
     session_id: str
     env: DataEnv
-    symbols: List[str]
-    timeframes: List[str] = field(default_factory=lambda: ["15m", "1h", "4h"])
+    symbols: list[str]
+    timeframes: list[str] = field(default_factory=lambda: ["15m", "1h", "4h"])
     warmup_candles: int = 200
-    system_id: Optional[str] = None
-    risk_settings: Dict[str, Any] = field(default_factory=dict)
+    system_id: str | None = None
+    risk_settings: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     
     def __post_init__(self):
@@ -82,7 +82,7 @@ class SessionConfig:
         if not self.timeframes:
             raise ValueError("At least one timeframe is required")
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for logging/serialization."""
         return {
             "session_id": self.session_id,
@@ -126,8 +126,8 @@ class BaseSession:
         self._initialized = False
         self._warmed_up = False
         self._running = False
-        self._started_at: Optional[float] = None
-        self._stopped_at: Optional[float] = None
+        self._started_at: float | None = None
+        self._stopped_at: float | None = None
         
         self._log_info(f"Session created: {self.config.to_dict()}")
     
@@ -142,12 +142,12 @@ class BaseSession:
         return self.config.session_id
     
     @property
-    def symbols(self) -> List[str]:
+    def symbols(self) -> list[str]:
         """Get configured symbols."""
         return self.config.symbols
-    
+
     @property
-    def timeframes(self) -> List[str]:
+    def timeframes(self) -> list[str]:
         """Get configured timeframes."""
         return self.config.timeframes
     
@@ -219,7 +219,7 @@ class BaseSession:
             self._log_error(f"Failed to initialize session: {e}")
             return False
     
-    def warm_up(self) -> Dict[str, int]:
+    def warm_up(self) -> dict[str, int]:
         """
         Warm up MTF buffers with historical data.
         
@@ -285,7 +285,7 @@ class BaseSession:
     # MTF Buffer Access
     # ==========================================================================
     
-    def get_mtf_buffer(self, symbol: str, timeframe: str, limit: int = None):
+    def get_mtf_buffer(self, symbol: str, timeframe: str, limit: int | None = None):
         """
         Get MTF buffer as a list of candles.
         
@@ -304,7 +304,7 @@ class BaseSession:
             limit=limit,
         )
     
-    def get_mtf_buffer_df(self, symbol: str, timeframe: str, limit: int = None):
+    def get_mtf_buffer_df(self, symbol: str, timeframe: str, limit: int | None = None):
         """
         Get MTF buffer as a pandas DataFrame.
         
@@ -360,7 +360,7 @@ class BaseSession:
         runtime = (self._stopped_at - self._started_at) if self._started_at else 0
         self._log_info(f"Session stopped (runtime: {runtime:.1f}s)")
     
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get session status."""
         return {
             "session_id": self.session_id,
@@ -379,23 +379,23 @@ class BaseSession:
 class DemoSession(BaseSession):
     """
     Demo trading session.
-    
+
     Uses env="demo" for:
     - Historical data from demo DuckDB file
     - MTF buffers scoped to demo environment
     - All logs tagged with [DEMO]
-    
+
     Demo sessions use fake money and are isolated from live data.
     """
-    
+
     def __init__(
         self,
         session_id: str,
-        symbols: List[str],
-        timeframes: List[str] = None,
+        symbols: list[str],
+        timeframes: list[str] | None = None,
         warmup_candles: int = 200,
-        system_id: str = None,
-        risk_settings: Dict[str, Any] = None,
+        system_id: str | None = None,
+        risk_settings: dict[str, Any] | None = None,
     ):
         """
         Create a demo session.
@@ -433,23 +433,23 @@ class DemoSession(BaseSession):
 class LiveSession(BaseSession):
     """
     Live trading session.
-    
+
     Uses env="live" for:
     - Historical data from canonical live DuckDB file
     - MTF buffers scoped to live environment
     - All logs tagged with [LIVE]
-    
+
     Live sessions use real money and should have stricter risk controls.
     """
-    
+
     def __init__(
         self,
         session_id: str,
-        symbols: List[str],
-        timeframes: List[str] = None,
+        symbols: list[str],
+        timeframes: list[str] | None = None,
         warmup_candles: int = 200,
-        system_id: str = None,
-        risk_settings: Dict[str, Any] = None,
+        system_id: str | None = None,
+        risk_settings: dict[str, Any] | None = None,
     ):
         """
         Create a live session.
@@ -489,10 +489,10 @@ class LiveSession(BaseSession):
 # ==============================================================================
 
 def create_demo_session(
-    symbols: List[str],
-    timeframes: List[str] = None,
+    symbols: list[str],
+    timeframes: list[str] | None = None,
     warmup_candles: int = 200,
-    system_id: str = None,
+    system_id: str | None = None,
 ) -> DemoSession:
     """
     Factory function to create a demo session with auto-generated ID.
@@ -517,11 +517,11 @@ def create_demo_session(
 
 
 def create_live_session(
-    symbols: List[str],
-    timeframes: List[str] = None,
+    symbols: list[str],
+    timeframes: list[str] | None = None,
     warmup_candles: int = 200,
-    system_id: str = None,
-    risk_settings: Dict[str, Any] = None,
+    system_id: str | None = None,
+    risk_settings: dict[str, Any] | None = None,
 ) -> LiveSession:
     """
     Factory function to create a live session with auto-generated ID.

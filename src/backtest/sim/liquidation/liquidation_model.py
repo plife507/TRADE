@@ -12,8 +12,6 @@ Bybit reference:
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
-import uuid
 
 from ..types import (
     Position,
@@ -44,20 +42,25 @@ class LiquidationModel:
     Position is closed at mark price with liquidation fee.
     """
     
-    def __init__(self, config: Optional[LiquidationModelConfig] = None):
+    def __init__(self, config: LiquidationModelConfig | None = None):
         """
         Initialize liquidation model.
-        
+
         Args:
             config: Optional configuration
         """
         self._config = config or LiquidationModelConfig()
+        self._liquidation_counter: int = 0  # Sequential ID for determinism
+
+    def reset(self) -> None:
+        """Reset liquidation counter for new backtest run."""
+        self._liquidation_counter = 0
     
     def check_liquidation(
         self,
         ledger_state: LedgerState,
         prices: PriceSnapshot,
-        position: Optional[Position],
+        position: Position | None,
     ) -> LiquidationResult:
         """
         Check if liquidation should occur.
@@ -102,9 +105,10 @@ class LiquidationModel:
             liquidation_fee=liquidation_fee,
         )
         
-        # Create fill for the forced close
+        # Create fill for the forced close (sequential ID for determinism)
+        self._liquidation_counter += 1
         result.fill = Fill(
-            fill_id=f"liq-{uuid.uuid4().hex[:8]}",
+            fill_id=f"liq_{self._liquidation_counter:04d}",
             order_id="",
             symbol=position.symbol,
             side=position.side,

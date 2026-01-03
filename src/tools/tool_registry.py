@@ -22,8 +22,9 @@ Usage:
     result = registry.execute("market_buy", symbol="SOLUSDT", usd_amount=100, trading_env="demo")
 """
 
-from typing import Dict, Any, List, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 import time
 import uuid
 
@@ -46,10 +47,10 @@ class ToolSpec:
     function: Callable
     description: str
     category: str
-    parameters: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    required: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    parameters: dict[str, dict[str, Any]] = field(default_factory=dict)
+    required: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/API use."""
         return {
             "name": self.name,
@@ -68,7 +69,7 @@ class ToolRegistry:
     """
     
     def __init__(self):
-        self._tools: Dict[str, ToolSpec] = {}
+        self._tools: dict[str, ToolSpec] = {}
         self._register_all_tools()
     
     def _register_all_tools(self):
@@ -1261,8 +1262,8 @@ class ToolRegistry:
         function: Callable,
         description: str,
         category: str,
-        parameters: Dict[str, Dict[str, Any]],
-        required: List[str],
+        parameters: dict[str, dict[str, Any]],
+        required: list[str],
     ):
         """Register a tool."""
         self._tools[name] = ToolSpec(
@@ -1278,34 +1279,34 @@ class ToolRegistry:
     # PUBLIC API
     # =========================================================================
     
-    def list_tools(self, category: Optional[str] = None) -> List[str]:
+    def list_tools(self, category: str | None = None) -> list[str]:
         """
         List all available tool names.
-        
+
         Args:
             category: Filter by category prefix (e.g., "orders", "positions")
         """
         if category:
-            return [name for name, spec in self._tools.items() 
+            return [name for name, spec in self._tools.items()
                     if spec.category.startswith(category)]
         return list(self._tools.keys())
-    
-    def list_categories(self) -> List[str]:
+
+    def list_categories(self) -> list[str]:
         """List all unique categories."""
         return sorted(set(spec.category for spec in self._tools.values()))
     
-    def get_tool_info(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_tool_info(self, name: str) -> dict[str, Any] | None:
         """
         Get tool specification for AI/LLM function calling.
-        
+
         Returns dict compatible with OpenAI function calling format.
         """
         spec = self._tools.get(name)
         if not spec:
             return None
         return spec.to_dict()
-    
-    def get_all_tools_info(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+
+    def get_all_tools_info(self, category: str | None = None) -> list[dict[str, Any]]:
         """Get all tool specifications (for AI agent initialization)."""
         tools = []
         for name, spec in self._tools.items():
@@ -1314,7 +1315,7 @@ class ToolRegistry:
             tools.append(spec.to_dict())
         return tools
     
-    def execute(self, name: str, *, meta: Optional[Dict[str, Any]] = None, **kwargs) -> ToolResult:
+    def execute(self, name: str, *, meta: dict[str, Any] | None = None, **kwargs) -> ToolResult:
         """
         Execute a tool by name with arguments.
         
@@ -1386,10 +1387,10 @@ class ToolRegistry:
         spec: ToolSpec,
         name: str,
         tool_call_id: str,
-        safe_args: Dict[str, Any],
-        safe_meta: Dict[str, Any],
+        safe_args: dict[str, Any],
+        safe_meta: dict[str, Any],
         logger,
-        kwargs: Dict[str, Any],
+        kwargs: dict[str, Any],
     ) -> ToolResult:
         """Execute a tool with structured event logging."""
         started = time.perf_counter()
@@ -1435,13 +1436,13 @@ class ToolRegistry:
             )
             return ToolResult(success=False, error=f"Tool execution failed: {str(e)}")
     
-    def execute_batch(self, actions: List[Dict[str, Any]]) -> List[ToolResult]:
+    def execute_batch(self, actions: list[dict[str, Any]]) -> list[ToolResult]:
         """
         Execute multiple tools in sequence.
-        
+
         Args:
             actions: List of {"tool": "name", "args": {...}} dicts
-        
+
         Returns:
             List of ToolResults
         """
@@ -1460,7 +1461,7 @@ class ToolRegistry:
 
 
 # Singleton instance for convenience
-_registry: Optional[ToolRegistry] = None
+_registry: ToolRegistry | None = None
 
 def get_registry() -> ToolRegistry:
     """Get the global tool registry instance."""

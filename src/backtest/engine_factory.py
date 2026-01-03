@@ -10,24 +10,26 @@ This module provides factory functions for creating and running BacktestEngine:
 These functions provide the main entry points for backtest execution.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any, List, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .engine import BacktestEngine
     from .types import BacktestResult
     from .idea_card import IdeaCard
     from .runtime.types import RuntimeSnapshot
+    from .runtime.snapshot_view import RuntimeSnapshotView
     from ..core.risk_manager import Signal
 
 
 def run_backtest(
     system_id: str,
     window_name: str,
-    strategy: Callable[["RuntimeSnapshot", Dict[str, Any]], Optional["Signal"]],
-    run_dir: Optional[Path] = None,
+    strategy: Callable[["RuntimeSnapshot", dict[str, Any]], "Signal | None"],
+    run_dir: Path | None = None,
 ) -> "BacktestResult":
     """
     Convenience function to run a backtest.
@@ -58,10 +60,10 @@ def create_engine_from_idea_card(
     idea_card: "IdeaCard",
     window_start: datetime,
     window_end: datetime,
-    warmup_by_role: Dict[str, int],
-    delay_by_role: Optional[Dict[str, int]] = None,
-    run_dir: Optional[Path] = None,
-    on_snapshot: Optional[Callable] = None,
+    warmup_by_role: dict[str, int],
+    delay_by_role: dict[str, int] | None = None,
+    run_dir: Path | None = None,
+    on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
 ) -> "BacktestEngine":
     """
     Create a BacktestEngine from an IdeaCard.
@@ -207,7 +209,7 @@ def create_engine_from_idea_card(
     window_end_naive = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
 
     # Extract required indicators from IdeaCard tf_configs
-    required_indicators_by_role: Dict[str, List[str]] = {}
+    required_indicators_by_role: dict[str, list[str]] = {}
     for role, tf_config in idea_card.tf_configs.items():
         if tf_config.required_indicators:
             required_indicators_by_role[role] = list(tf_config.required_indicators)
@@ -338,7 +340,7 @@ def run_engine_with_idea_card(
     # Create signal evaluator with compiled IdeaCard
     evaluator = IdeaCardSignalEvaluator(compiled_idea_card)
 
-    def idea_card_strategy(snapshot, params) -> Optional[Signal]:
+    def idea_card_strategy(snapshot, params) -> Signal | None:
         """Strategy function that uses IdeaCard signal evaluator."""
         # Check if we have a position
         has_position = snapshot.has_position
@@ -354,7 +356,7 @@ def run_engine_with_idea_card(
             return Signal(
                 symbol=idea_card.symbol_universe[0],
                 direction="LONG",
-                size_usd=0.0,  # Engine computes from risk_profile
+                size_usdt=0.0,  # Engine computes from risk_profile
                 strategy=idea_card.id,
                 confidence=1.0,
                 metadata={
@@ -366,7 +368,7 @@ def run_engine_with_idea_card(
             return Signal(
                 symbol=idea_card.symbol_universe[0],
                 direction="SHORT",
-                size_usd=0.0,
+                size_usdt=0.0,
                 strategy=idea_card.id,
                 confidence=1.0,
                 metadata={
@@ -378,7 +380,7 @@ def run_engine_with_idea_card(
             return Signal(
                 symbol=idea_card.symbol_universe[0],
                 direction="FLAT",
-                size_usd=0.0,
+                size_usdt=0.0,
                 strategy=idea_card.id,
                 confidence=1.0,
             )
@@ -403,8 +405,8 @@ def run_engine_with_idea_card(
 @dataclass
 class IdeaCardBacktestResult:
     """Result from IdeaCard-native backtest execution."""
-    trades: List[Any]
-    equity_curve: List[Any]
+    trades: list[Any]
+    equity_curve: list[Any]
     final_equity: float
     idea_card_hash: str
     metrics: Any = None

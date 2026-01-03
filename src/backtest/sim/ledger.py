@@ -21,7 +21,7 @@ References:
 """
 
 from dataclasses import dataclass
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .types import (
     Fill,
@@ -64,7 +64,7 @@ class Ledger:
     def __init__(
         self,
         initial_capital: float,
-        config: Optional[LedgerConfig] = None,
+        config: LedgerConfig | None = None,
     ):
         """
         Initialize ledger with starting capital.
@@ -103,7 +103,7 @@ class Ledger:
             total_fees_paid=self._total_fees_paid,
         )
     
-    def check_invariants(self) -> List[str]:
+    def check_invariants(self) -> list[str]:
         """
         Check all ledger invariants.
         
@@ -146,7 +146,7 @@ class Ledger:
     
     def update_for_mark_price(
         self,
-        position: Optional[Position],
+        position: Position | None,
         mark_price: float,
     ) -> LedgerUpdate:
         """

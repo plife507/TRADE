@@ -33,7 +33,7 @@ import signal
 import threading
 import time
 import atexit
-from typing import Optional, List, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..config.config import get_config, Config
@@ -48,8 +48,8 @@ class ApplicationStatus:
     websocket_connected: bool = False
     websocket_public: bool = False
     websocket_private: bool = False
-    symbols: List[str] = None
-    error: Optional[str] = None
+    symbols: list[str] = None
+    error: str | None = None
     
     def __post_init__(self):
         self.symbols = self.symbols or []
@@ -79,7 +79,7 @@ class Application:
     Components are initialized lazily to avoid circular imports.
     """
     
-    _instance: Optional['Application'] = None
+    _instance: 'Application | None' = None
     _lock = threading.Lock()
     
     def __init__(self, config: Config = None):
@@ -105,10 +105,10 @@ class Application:
         self._realtime_state = None
         
         # Shutdown callbacks
-        self._shutdown_callbacks: List[Callable] = []
-        
+        self._shutdown_callbacks: list[Callable] = []
+
         # Error tracking
-        self._last_error: Optional[str] = None
+        self._last_error: str | None = None
         
         # Signal handler state
         self._original_sigint_handler = None
@@ -663,7 +663,7 @@ class Application:
 # Singleton Instance
 # ==============================================================================
 
-_application: Optional[Application] = None
+_application: Application | None = None
 _app_lock = threading.Lock()
 
 

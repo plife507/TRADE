@@ -32,6 +32,7 @@ class QuoteState:
     Attributes:
         ts_ms: Epoch milliseconds of the 1m bar close
         last: Last-trade proxy (px.last) - 1m close price
+        open_1m: 1m bar open (for rollup open price tracking)
         high_1m: 1m bar high (for zone touch detection)
         low_1m: 1m bar low (for zone touch detection)
         mark: Mark price (px.mark) for risk/liquidation
@@ -53,6 +54,7 @@ class QuoteState:
 
     ts_ms: int  # Epoch ms of 1m bar close
     last: float  # px.last (1m close price)
+    open_1m: float  # 1m bar open (for rollup)
     high_1m: float  # 1m high
     low_1m: float  # 1m low
     mark: float  # px.mark (mark price or approximation)

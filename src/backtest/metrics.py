@@ -23,7 +23,6 @@ UNIT RULE (HARD):
 
 import math
 import warnings
-from typing import List, Tuple, Optional
 
 from .types import Trade, EquityPoint, BacktestMetrics, TimeBasedReturns
 
@@ -145,8 +144,8 @@ def get_bars_per_year(tf: str, strict: bool = True) -> int:
 
 
 def compute_backtest_metrics(
-    equity_curve: List[EquityPoint],
-    trades: List[Trade],
+    equity_curve: list[EquityPoint],
+    trades: list[Trade],
     tf: str,
     initial_equity: float,
     bars_in_position: int = 0,
@@ -442,8 +441,8 @@ def compute_backtest_metrics(
 
 
 def _compute_drawdown_metrics(
-    equity_curve: List[EquityPoint],
-) -> Tuple[float, float, int]:
+    equity_curve: list[EquityPoint],
+) -> tuple[float, float, int]:
     """
     Compute drawdown metrics from equity curve.
     
@@ -522,7 +521,7 @@ def _compute_drawdown_metrics(
     return max_dd_abs, max_dd_pct, max_dd_duration
 
 
-def _compute_ulcer_index(equity_curve: List[EquityPoint]) -> float:
+def _compute_ulcer_index(equity_curve: list[EquityPoint]) -> float:
     """
     Compute ulcer index from equity curve.
 
@@ -555,8 +554,8 @@ def _compute_ulcer_index(equity_curve: List[EquityPoint]) -> float:
 
 
 def _compute_tail_risk(
-    equity_curve: List[EquityPoint],
-) -> Tuple[float, float, float, float]:
+    equity_curve: list[EquityPoint],
+) -> tuple[float, float, float, float]:
     """
     Compute tail risk metrics from equity curve.
 
@@ -606,7 +605,7 @@ def _compute_tail_risk(
     return round(skewness, 4), round(kurtosis, 4), round(var_95_pct, 4), round(cvar_95_pct, 4)
 
 
-def _compute_returns_for_tail_risk(equity_curve: List[EquityPoint]) -> List[float]:
+def _compute_returns_for_tail_risk(equity_curve: list[EquityPoint]) -> list[float]:
     """Compute per-bar returns from equity curve (for tail risk)."""
     if len(equity_curve) < 2:
         return []
@@ -623,7 +622,7 @@ def _compute_returns_for_tail_risk(equity_curve: List[EquityPoint]) -> List[floa
     return returns
 
 
-def _compute_returns(equity_curve: List[EquityPoint]) -> List[float]:
+def _compute_returns(equity_curve: list[EquityPoint]) -> list[float]:
     """Compute per-bar returns from equity curve."""
     if len(equity_curve) < 2:
         return []
@@ -641,7 +640,7 @@ def _compute_returns(equity_curve: List[EquityPoint]) -> List[float]:
 
 
 def _compute_sharpe(
-    equity_curve: List[EquityPoint],
+    equity_curve: list[EquityPoint],
     tf: str,
     risk_free_rate: float = 0.0,
     strict_tf: bool = True,
@@ -689,7 +688,7 @@ def _compute_sharpe(
 
 
 def _compute_sortino(
-    equity_curve: List[EquityPoint],
+    equity_curve: list[EquityPoint],
     tf: str,
     risk_free_rate: float = 0.0,
     strict_tf: bool = True,
@@ -848,7 +847,7 @@ def _compute_calmar(
     return calmar
 
 
-def _compute_consecutive_streaks(trades: List[Trade]) -> Tuple[int, int]:
+def _compute_consecutive_streaks(trades: list[Trade]) -> tuple[int, int]:
     """
     Compute max consecutive wins and losses.
     
@@ -883,7 +882,7 @@ def _compute_consecutive_streaks(trades: List[Trade]) -> Tuple[int, int]:
 
 
 def _compute_omega(
-    equity_curve: List[EquityPoint],
+    equity_curve: list[EquityPoint],
     threshold: float = 0.0,
 ) -> float:
     """
@@ -918,7 +917,7 @@ def _compute_omega(
 # =============================================================================
 
 def compute_time_based_returns(
-    equity_curve: List[EquityPoint],
+    equity_curve: list[EquityPoint],
 ) -> TimeBasedReturns:
     """
     Compute daily, weekly, and monthly returns from equity curve.
@@ -963,7 +962,7 @@ def compute_time_based_returns(
 
 
 def _aggregate_returns_by_period(
-    equity_curve: List[EquityPoint],
+    equity_curve: list[EquityPoint],
     period_type: str,
 ) -> dict:
     """
@@ -1012,7 +1011,7 @@ def _aggregate_returns_by_period(
 
 def _find_extremes(
     period_returns: dict,
-) -> Tuple[Optional[tuple], Optional[tuple]]:
+) -> tuple[tuple | None, tuple | None]:
     """
     Find best and worst periods from return dict.
 

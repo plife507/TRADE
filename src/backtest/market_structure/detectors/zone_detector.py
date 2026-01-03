@@ -39,8 +39,9 @@ Output Arrays (per-bar, forward-filled):
 """
 
 import hashlib
+from typing import Any
+
 import numpy as np
-from typing import Any, Dict, Optional, Tuple
 
 from src.backtest.market_structure.types import (
     ZoneType,
@@ -114,12 +115,12 @@ class ZoneDetector:
 
     def build_batch(
         self,
-        swing_outputs: Dict[str, np.ndarray],
+        swing_outputs: dict[str, np.ndarray],
         close_prices: np.ndarray,
         zone_spec: ZoneSpec,
         atr: np.ndarray | None = None,
         warmup_bars: int = 0,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Compute zone arrays from swing outputs.
 
@@ -241,7 +242,7 @@ class ZoneDetector:
         atr: np.ndarray | None,
         bar_idx: int,
         warmup_bars: int = 0,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Compute zone width based on width model.
 
@@ -290,7 +291,7 @@ class ZoneDetector:
 
 # Public zone output field mapping (internal -> public)
 # Zones use the same names internally and publicly
-ZONE_OUTPUT_MAPPING: Dict[str, str] = {
+ZONE_OUTPUT_MAPPING: dict[str, str] = {
     "lower": "lower",
     "upper": "upper",
     "state": "state",
@@ -302,4 +303,4 @@ ZONE_OUTPUT_MAPPING: Dict[str, str] = {
 # Public fields for allowlist validation
 # CANONICAL SOURCE: ZONE_OUTPUTS in types.py (single source of truth)
 # This alias exists for import convenience; do NOT add fields here directly
-ZONE_PUBLIC_FIELDS: Tuple[str, ...] = ZONE_OUTPUTS
+ZONE_PUBLIC_FIELDS: tuple[str, ...] = ZONE_OUTPUTS

@@ -24,7 +24,6 @@ RECORD-ONLY MODE:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from src.backtest.runtime.state_types import (
     SignalStateValue,
@@ -55,7 +54,7 @@ class SignalState:
     detected_bar: int = -1
     confirmed_bar: int = -1
     consumed_bar: int = -1
-    gate_result: Optional[GateResult] = None
+    gate_result: GateResult | None = None
     signal_id: int = 0  # Incremented per new signal
 
     def is_none(self) -> bool:

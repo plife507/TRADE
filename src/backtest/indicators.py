@@ -8,7 +8,7 @@ The engine uses only values available at or before the current bar (no look-ahea
 """
 
 import pandas as pd
-from typing import Dict, List, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .features.feature_spec import FeatureSpec
@@ -21,7 +21,7 @@ from .indicator_registry import get_registry
 # via FeatureSpec or IdeaCard. Indicators are declared explicitly, never inferred.
 
 
-def get_warmup_from_specs(specs: List["FeatureSpec"]) -> int:
+def get_warmup_from_specs(specs: list["FeatureSpec"]) -> int:
     """
     Compute warmup bars from FeatureSpecs.
 
@@ -40,8 +40,8 @@ def get_warmup_from_specs(specs: List["FeatureSpec"]) -> int:
 
 
 def get_warmup_from_specs_by_role(
-    specs_by_role: Dict[str, List["FeatureSpec"]],
-) -> Dict[str, int]:
+    specs_by_role: dict[str, list["FeatureSpec"]],
+) -> dict[str, int]:
     """
     Compute warmup bars for each TF role from feature specs.
 
@@ -58,7 +58,7 @@ def get_warmup_from_specs_by_role(
 
 
 def get_max_warmup_from_specs_by_role(
-    specs_by_role: Dict[str, List["FeatureSpec"]],
+    specs_by_role: dict[str, list["FeatureSpec"]],
 ) -> int:
     """
     Get the maximum warmup bars across all TF roles.
@@ -75,7 +75,7 @@ def get_max_warmup_from_specs_by_role(
 
 def apply_feature_spec_indicators(
     df: pd.DataFrame,
-    feature_specs: List,
+    feature_specs: list,
 ) -> pd.DataFrame:
     """
     Apply indicators from FeatureSpecs to a DataFrame.
@@ -239,7 +239,7 @@ def apply_feature_spec_indicators(
     return df
 
 
-def get_required_indicator_columns_from_specs(feature_specs: List) -> List[str]:
+def get_required_indicator_columns_from_specs(feature_specs: list) -> list[str]:
     """
     Get list of indicator columns from FeatureSpecs.
     
@@ -265,7 +265,7 @@ def get_required_indicator_columns_from_specs(feature_specs: List) -> List[str]:
 
 
 
-def find_first_valid_bar(df: pd.DataFrame, indicator_columns: List[str]) -> int:
+def find_first_valid_bar(df: pd.DataFrame, indicator_columns: list[str]) -> int:
     """
     Find the first bar index where all specified indicators are non-NaN.
 

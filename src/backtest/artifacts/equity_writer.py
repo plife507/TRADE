@@ -15,7 +15,7 @@ lossless events.jsonl stream.
 import csv
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 
 class EquityWriter:
@@ -39,7 +39,7 @@ class EquityWriter:
         """
         self.run_dir = Path(run_dir)
         self.filename = filename
-        self._rows: List[Dict[str, Any]] = []
+        self._rows: list[dict[str, Any]] = []
     
     def add_point(
         self,
@@ -70,7 +70,7 @@ class EquityWriter:
     
     def add_points(
         self,
-        equity_curve: List[Dict[str, Any]],
+        equity_curve: list[dict[str, Any]],
     ) -> None:
         """
         Add multiple equity curve points.
@@ -90,10 +90,10 @@ class EquityWriter:
                 "drawdown_pct": point.get("drawdown_pct", 0),
             })
     
-    def write(self) -> Optional[Path]:
+    def write(self) -> Path | None:
         """
         Write equity curve to CSV.
-        
+
         Returns:
             Path to written file, or None if no data
         """
@@ -113,7 +113,7 @@ class EquityWriter:
         
         return csv_path
     
-    def get_rows(self) -> List[Dict[str, Any]]:
+    def get_rows(self) -> list[dict[str, Any]]:
         """Get accumulated rows (for testing)."""
         return list(self._rows)
     

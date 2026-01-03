@@ -6,7 +6,6 @@ MARK is always available (implicit, never declared in IdeaCard).
 """
 
 import logging
-from typing import Optional, Tuple
 
 import numpy as np
 
@@ -79,7 +78,7 @@ class MarkPriceEngine:
             )
         return value
 
-    def get_mark_close_safe(self, ts_close_ms: int) -> Optional[float]:
+    def get_mark_close_safe(self, ts_close_ms: int) -> float | None:
         """
         Get mark close price, returning None if not available.
 
@@ -87,7 +86,7 @@ class MarkPriceEngine:
         """
         return self._provider.get_mark_close(ts_close_ms)
 
-    def get_mark_for_snapshot(self, ts_close_ms: int) -> Tuple[float, str]:
+    def get_mark_for_snapshot(self, ts_close_ms: int) -> tuple[float, str]:
         """
         Get mark price and source for snapshot construction.
 

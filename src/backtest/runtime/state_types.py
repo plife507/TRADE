@@ -17,7 +17,6 @@ Design Principles:
 
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Optional, Tuple
 
 
 class SignalStateValue(IntEnum):
@@ -71,6 +70,9 @@ class GateCode(IntEnum):
     Non-zero codes indicate why action was blocked.
 
     Codes are additive-only (never renumber existing codes).
+
+    Each code has a human-readable description accessible via the
+    `description` property or `get_description()` class method.
     """
     G_PASS = 0                  # All gates passed
     G_WARMUP_REMAINING = 1      # Still in warmup period
@@ -83,9 +85,19 @@ class GateCode(IntEnum):
     G_POSITION_LIMIT = 8        # Max position count reached
     G_EXPOSURE_LIMIT = 9        # Max exposure limit reached
 
+    @property
+    def description(self) -> str:
+        """Return human-readable description for this gate code."""
+        return _GATE_DESCRIPTIONS[self]
 
-# Human-readable gate code descriptions
-GATE_CODE_DESCRIPTIONS: dict[GateCode, str] = {
+    @classmethod
+    def get_description(cls, code: "GateCode") -> str:
+        """Return human-readable description for a gate code."""
+        return _GATE_DESCRIPTIONS.get(code, f"Gate failed: {code.name}")
+
+
+# Internal mapping - not part of public API
+_GATE_DESCRIPTIONS: dict[GateCode, str] = {
     GateCode.G_PASS: "All gates passed",
     GateCode.G_WARMUP_REMAINING: "Warmup period not complete",
     GateCode.G_HISTORY_NOT_READY: "Insufficient bar history for indicators",
@@ -97,6 +109,9 @@ GATE_CODE_DESCRIPTIONS: dict[GateCode, str] = {
     GateCode.G_POSITION_LIMIT: "Maximum open positions reached",
     GateCode.G_EXPOSURE_LIMIT: "Maximum exposure limit reached",
 }
+
+# Backward-compatible alias (deprecated - use GateCode.description or GateCode.get_description())
+GATE_CODE_DESCRIPTIONS: dict[GateCode, str] = _GATE_DESCRIPTIONS
 
 
 @dataclass(frozen=True)
@@ -118,8 +133,8 @@ class GateResult:
     """
     passed: bool
     code: GateCode
-    codes: Tuple[GateCode, ...] = field(default_factory=tuple)
-    reason: Optional[str] = None
+    codes: tuple[GateCode, ...] = field(default_factory=tuple)
+    reason: str | None = None
 
     @classmethod
     def pass_(cls) -> "GateResult":
@@ -130,8 +145,8 @@ class GateResult:
     def fail_(
         cls,
         code: GateCode,
-        reason: Optional[str] = None,
-        additional_codes: Optional[Tuple[GateCode, ...]] = None,
+        reason: str | None = None,
+        additional_codes: tuple[GateCode, ...] | None = None,
     ) -> "GateResult":
         """
         Create a failing gate result.
@@ -143,7 +158,7 @@ class GateResult:
         """
         codes = (code,) if additional_codes is None else (code,) + additional_codes
         if reason is None:
-            reason = GATE_CODE_DESCRIPTIONS.get(code, f"Gate failed: {code.name}")
+            reason = GateCode.get_description(code)
         return cls(passed=False, code=code, codes=codes, reason=reason)
 
     def __repr__(self) -> str:

@@ -5,53 +5,23 @@ Strict type contracts:
 - gt, lt, ge, le: NUMERIC only (int or float)
 - eq: BOOL, INT, or ENUM only (NO float - use approx_eq)
 - approx_eq: FLOAT only, requires tolerance
-- and, or, not: BOOL only
 
 Every evaluation returns EvalResult with ReasonCode.
 """
 
-from dataclasses import dataclass
-from enum import Enum, auto
-from typing import Any, Callable, Dict, Optional, Union
+from collections.abc import Callable
+from typing import Any
 import math
 
 from .types import EvalResult, ReasonCode, RefValue, ValueType
 from .compile import CompiledRef
 
 
-class Operator(str, Enum):
-    """
-    Supported comparison operators.
-
-    Type contracts enforced at evaluation time.
-    """
-
-    # Numeric comparisons (int or float)
-    GT = "gt"  # Greater than
-    LT = "lt"  # Less than
-    GE = "ge"  # Greater than or equal (also: gte)
-    LE = "le"  # Less than or equal (also: lte)
-
-    # Equality (bool, int, enum - NOT float)
-    EQ = "eq"  # Exact equality
-
-    # Float equality (requires tolerance)
-    APPROX_EQ = "approx_eq"  # Approximate equality with tolerance
-
-    # Logical (bool only)
-    AND = "and"
-    OR = "or"
-    NOT = "not"
+# NOTE: Operator enum REMOVED (was dead code - never referenced).
+# All operator handling uses OPERATOR_REGISTRY in registry.py as single source of truth.
 
 
-# Operator aliases (for backward compat with existing IdeaCards)
-OPERATOR_ALIASES = {
-    "gte": Operator.GE,
-    "lte": Operator.LE,
-}
-
-
-def _check_numeric(lhs: RefValue, rhs: RefValue, op: str) -> Optional[EvalResult]:
+def _check_numeric(lhs: RefValue, rhs: RefValue, op: str) -> EvalResult | None:
     """
     Check if both values are numeric. Returns failure EvalResult if not.
 
@@ -65,7 +35,7 @@ def _check_numeric(lhs: RefValue, rhs: RefValue, op: str) -> Optional[EvalResult
     """
     if lhs.is_missing:
         return EvalResult.failure(
-            ReasonCode.R_MISSING_LHS,
+            ReasonCode.MISSING_LHS,
             f"LHS value is missing (None/NaN)",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -74,7 +44,7 @@ def _check_numeric(lhs: RefValue, rhs: RefValue, op: str) -> Optional[EvalResult
 
     if rhs.is_missing:
         return EvalResult.failure(
-            ReasonCode.R_MISSING_RHS,
+            ReasonCode.MISSING_RHS,
             f"RHS value is missing (None/NaN)",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -83,7 +53,7 @@ def _check_numeric(lhs: RefValue, rhs: RefValue, op: str) -> Optional[EvalResult
 
     if not lhs.is_numeric:
         return EvalResult.failure(
-            ReasonCode.R_TYPE_MISMATCH,
+            ReasonCode.TYPE_MISMATCH,
             f"Operator '{op}' requires numeric LHS, got {lhs.value_type.name}",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -92,7 +62,7 @@ def _check_numeric(lhs: RefValue, rhs: RefValue, op: str) -> Optional[EvalResult
 
     if not rhs.is_numeric:
         return EvalResult.failure(
-            ReasonCode.R_TYPE_MISMATCH,
+            ReasonCode.TYPE_MISMATCH,
             f"Operator '{op}' requires numeric RHS, got {rhs.value_type.name}",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -152,7 +122,7 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
 
     if lhs.is_missing:
         return EvalResult.failure(
-            ReasonCode.R_MISSING_LHS,
+            ReasonCode.MISSING_LHS,
             "LHS value is missing (None/NaN)",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -161,7 +131,7 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
 
     if rhs.is_missing:
         return EvalResult.failure(
-            ReasonCode.R_MISSING_RHS,
+            ReasonCode.MISSING_RHS,
             "RHS value is missing (None/NaN)",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -171,7 +141,7 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
     # Reject float equality - must use approx_eq
     if lhs.value_type == ValueType.FLOAT or rhs.value_type == ValueType.FLOAT:
         return EvalResult.failure(
-            ReasonCode.R_FLOAT_EQUALITY,
+            ReasonCode.FLOAT_EQUALITY,
             "Float equality not allowed with 'eq'. Use 'approx_eq' with tolerance",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -182,7 +152,7 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
     allowed = (ValueType.BOOL, ValueType.INT, ValueType.ENUM, ValueType.STRING)
     if lhs.value_type not in allowed:
         return EvalResult.failure(
-            ReasonCode.R_TYPE_MISMATCH,
+            ReasonCode.TYPE_MISMATCH,
             f"Operator 'eq' requires bool/int/enum, got {lhs.value_type.name}",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -196,7 +166,7 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
 def eval_approx_eq(
     lhs: RefValue,
     rhs: RefValue,
-    tolerance: Optional[float] = None,
+    tolerance: float | None = None,
     relative: bool = False,
 ) -> EvalResult:
     """
@@ -215,7 +185,7 @@ def eval_approx_eq(
 
     if tolerance is None:
         return EvalResult.failure(
-            ReasonCode.R_INVALID_TOLERANCE,
+            ReasonCode.INVALID_TOLERANCE,
             "approx_eq requires 'tolerance' parameter",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -224,7 +194,7 @@ def eval_approx_eq(
 
     if tolerance < 0:
         return EvalResult.failure(
-            ReasonCode.R_INVALID_TOLERANCE,
+            ReasonCode.INVALID_TOLERANCE,
             f"Tolerance must be non-negative, got {tolerance}",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
@@ -250,7 +220,7 @@ def eval_approx_eq(
 
 
 # Operator dispatch table
-OPERATORS: Dict[str, Callable] = {
+OPERATORS: dict[str, Callable] = {
     "gt": eval_gt,
     "lt": eval_lt,
     "ge": eval_ge,
@@ -267,7 +237,7 @@ def evaluate_condition(
     operator: str,
     rhs_ref: CompiledRef,
     snapshot,
-    tolerance: Optional[float] = None,
+    tolerance: float | None = None,
     relative_tolerance: bool = False,
 ) -> EvalResult:
     """
@@ -290,7 +260,7 @@ def evaluate_condition(
     # Check for unknown operator
     if op not in OPERATORS:
         return EvalResult.failure(
-            ReasonCode.R_UNKNOWN_OPERATOR,
+            ReasonCode.UNKNOWN_OPERATOR,
             f"Unknown operator '{operator}'",
             lhs_path=lhs_ref.path,
             rhs_repr=rhs_ref.path,
@@ -309,7 +279,7 @@ def evaluate_condition(
 
 
 def evaluate_condition_dict(
-    condition: Dict[str, Any],
+    condition: dict[str, Any],
     snapshot,
 ) -> EvalResult:
     """
@@ -330,13 +300,13 @@ def evaluate_condition_dict(
 
     if not isinstance(lhs_ref, CompiledRef):
         return EvalResult.failure(
-            ReasonCode.R_INTERNAL_ERROR,
+            ReasonCode.INTERNAL_ERROR,
             "Condition missing compiled lhs_ref. Was it normalized?",
         )
 
     if not isinstance(rhs_ref, CompiledRef):
         return EvalResult.failure(
-            ReasonCode.R_INTERNAL_ERROR,
+            ReasonCode.INTERNAL_ERROR,
             "Condition missing compiled rhs_ref. Was it normalized?",
         )
 

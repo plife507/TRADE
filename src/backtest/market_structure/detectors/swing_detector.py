@@ -25,7 +25,7 @@ Output Arrays (per-bar, forward-filled):
 """
 
 import numpy as np
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from src.backtest.market_structure.registry import BaseDetector
 from src.backtest.market_structure.types import SWING_INTERNAL_OUTPUTS
@@ -53,15 +53,15 @@ class SwingDetector(BaseDetector):
     """
 
     @property
-    def output_keys(self) -> Tuple[str, ...]:
+    def output_keys(self) -> tuple[str, ...]:
         """Output key suffixes for swing detector (internal names)."""
         return SWING_INTERNAL_OUTPUTS
 
     def build_batch(
         self,
-        ohlcv: Dict[str, Any],
-        params: Dict[str, Any],
-    ) -> Dict[str, np.ndarray]:
+        ohlcv: dict[str, Any],
+        params: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         """
         Compute swing highs/lows for entire dataset.
 
@@ -173,7 +173,7 @@ def detect_swing_pivots(
     low: np.ndarray,
     left: int,
     right: int,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Pure function to detect pivot points (no forward-fill).
 

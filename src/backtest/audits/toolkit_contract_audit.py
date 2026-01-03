@@ -11,7 +11,7 @@ Uses deterministic synthetic OHLCV data for reproducibility.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional
+from typing import Any
 import numpy as np
 import pandas as pd
 
@@ -24,12 +24,12 @@ class IndicatorAuditResult:
     """Result of auditing a single indicator."""
     indicator_type: str
     passed: bool
-    declared_outputs: List[str]
-    produced_outputs: List[str]
-    extras_dropped: List[str]
-    missing_outputs: List[str]
-    collisions: Dict[str, List[str]]
-    error_message: Optional[str] = None
+    declared_outputs: list[str]
+    produced_outputs: list[str]
+    extras_dropped: list[str]
+    missing_outputs: list[str]
+    collisions: dict[str, list[str]]
+    error_message: str | None = None
     
     @property
     def has_extras(self) -> bool:
@@ -52,12 +52,12 @@ class ToolkitAuditResult:
     passed_indicators: int
     failed_indicators: int
     indicators_with_extras: int
-    indicator_results: List[IndicatorAuditResult]
+    indicator_results: list[IndicatorAuditResult]
     sample_bars: int
     seed: int
-    error_message: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    error_message: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
             "total_indicators": self.total_indicators,

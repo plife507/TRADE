@@ -14,11 +14,10 @@ use. This parameter VALIDATES the caller's intent against the process config but
 does NOT switch environments. If the env doesn't match, the tool returns an error.
 """
 
-from typing import Optional, Dict, Any, List
 from .shared import ToolResult, _get_exchange_manager, validate_trading_env_or_error
 
 
-def set_leverage_tool(symbol: str, leverage: int, trading_env: Optional[str] = None) -> ToolResult:
+def set_leverage_tool(symbol: str, leverage: int, trading_env: str | None = None) -> ToolResult:
     """
     Set leverage for a symbol.
     
@@ -64,7 +63,7 @@ def set_leverage_tool(symbol: str, leverage: int, trading_env: Optional[str] = N
         )
 
 
-def market_buy_tool(symbol: str, usd_amount: float, trading_env: Optional[str] = None) -> ToolResult:
+def market_buy_tool(symbol: str, usd_amount: float, trading_env: str | None = None) -> ToolResult:
     """
     Place a market buy order (open long position).
     
@@ -116,7 +115,7 @@ def market_buy_tool(symbol: str, usd_amount: float, trading_env: Optional[str] =
         )
 
 
-def market_sell_tool(symbol: str, usd_amount: float, trading_env: Optional[str] = None) -> ToolResult:
+def market_sell_tool(symbol: str, usd_amount: float, trading_env: str | None = None) -> ToolResult:
     """
     Place a market sell order (open short position).
     
@@ -171,9 +170,9 @@ def market_sell_tool(symbol: str, usd_amount: float, trading_env: Optional[str] 
 def market_buy_with_tpsl_tool(
     symbol: str,
     usd_amount: float,
-    take_profit: Optional[float] = None,
-    stop_loss: Optional[float] = None,
-    trading_env: Optional[str] = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Place a market buy order with take profit and/or stop loss.
@@ -235,9 +234,9 @@ def market_buy_with_tpsl_tool(
 def market_sell_with_tpsl_tool(
     symbol: str,
     usd_amount: float,
-    take_profit: Optional[float] = None,
-    stop_loss: Optional[float] = None,
-    trading_env: Optional[str] = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Place a market sell order with take profit and/or stop loss.
@@ -296,7 +295,7 @@ def market_sell_with_tpsl_tool(
         )
 
 
-def cancel_all_orders_tool(symbol: Optional[str] = None, trading_env: Optional[str] = None) -> ToolResult:
+def cancel_all_orders_tool(symbol: str | None = None, trading_env: str | None = None) -> ToolResult:
     """
     Cancel all open orders, optionally filtered by symbol.
     
@@ -347,7 +346,7 @@ def limit_buy_tool(
     price: float,
     time_in_force: str = "GTC",
     reduce_only: bool = False,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Place a limit buy order.
@@ -421,7 +420,7 @@ def limit_sell_tool(
     price: float,
     time_in_force: str = "GTC",
     reduce_only: bool = False,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Place a limit sell order.
@@ -495,8 +494,8 @@ def limit_sell_tool(
 def partial_close_position_tool(
     symbol: str,
     close_percent: float,
-    price: Optional[float] = None,
-    trading_env: Optional[str] = None,
+    price: float | None = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Partially close a position by percentage.
@@ -531,7 +530,7 @@ def partial_close_position_tool(
             )
         
         # Calculate close amount
-        close_amount_usd = position.size_usd * (close_percent / 100.0)
+        close_amount_usd = position.size_usdt * (close_percent / 100.0)
         
         # Determine close side (opposite of position)
         close_side = "Sell" if position.side == "long" else "Buy"
@@ -577,7 +576,7 @@ def partial_close_position_tool(
                     "order_id": result.order_id,
                     "close_percent": close_percent,
                     "close_amount_usd": close_amount_usd,
-                    "remaining_size_usd": position.size_usd - close_amount_usd,
+                    "remaining_size_usdt": position.size_usdt - close_amount_usd,
                     "order_type": order_type,
                     "price": price,
                 },
@@ -607,7 +606,7 @@ def stop_market_buy_tool(
     trigger_direction: int = 1,
     trigger_by: str = "LastPrice",
     reduce_only: bool = False,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Place a stop market buy order (triggers when price reaches trigger).
@@ -691,7 +690,7 @@ def stop_market_sell_tool(
     trigger_direction: int = 2,
     trigger_by: str = "LastPrice",
     reduce_only: bool = False,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Place a stop market sell order (triggers when price reaches trigger).
@@ -777,7 +776,7 @@ def stop_limit_buy_tool(
     trigger_by: str = "LastPrice",
     time_in_force: str = "GTC",
     reduce_only: bool = False,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Place a stop limit buy order (triggers limit order when price reaches trigger).
@@ -864,7 +863,7 @@ def stop_limit_sell_tool(
     trigger_by: str = "LastPrice",
     time_in_force: str = "GTC",
     reduce_only: bool = False,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Place a stop limit sell order (triggers limit order when price reaches trigger).
@@ -947,10 +946,10 @@ def stop_limit_sell_tool(
 # ==============================================================================
 
 def get_open_orders_tool(
-    symbol: Optional[str] = None,
-    order_filter: Optional[str] = None,
+    symbol: str | None = None,
+    order_filter: str | None = None,
     limit: int = 50,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Get open orders (real-time).
@@ -1018,9 +1017,9 @@ def get_open_orders_tool(
 
 def cancel_order_tool(
     symbol: str,
-    order_id: Optional[str] = None,
-    order_link_id: Optional[str] = None,
-    trading_env: Optional[str] = None,
+    order_id: str | None = None,
+    order_link_id: str | None = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Cancel a specific order by ID.
@@ -1079,14 +1078,14 @@ def cancel_order_tool(
 
 def amend_order_tool(
     symbol: str,
-    order_id: Optional[str] = None,
-    order_link_id: Optional[str] = None,
-    qty: Optional[float] = None,
-    price: Optional[float] = None,
-    take_profit: Optional[float] = None,
-    stop_loss: Optional[float] = None,
-    trigger_price: Optional[float] = None,
-    trading_env: Optional[str] = None,
+    order_id: str | None = None,
+    order_link_id: str | None = None,
+    qty: float | None = None,
+    price: float | None = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
+    trigger_price: float | None = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Amend an existing order (modify price, quantity, or TP/SL).
@@ -1175,7 +1174,7 @@ def amend_order_tool(
 # Batch Order Tools
 # ==============================================================================
 
-def batch_market_orders_tool(orders: List[Dict[str, Any]], trading_env: Optional[str] = None) -> ToolResult:
+def batch_market_orders_tool(orders: list[dict[str, object]], trading_env: str | None = None) -> ToolResult:
     """
     Place multiple market orders in a batch (max 10 per batch).
     
@@ -1241,7 +1240,7 @@ def batch_market_orders_tool(orders: List[Dict[str, Any]], trading_env: Optional
         )
 
 
-def batch_limit_orders_tool(orders: List[Dict[str, Any]], trading_env: Optional[str] = None) -> ToolResult:
+def batch_limit_orders_tool(orders: list[dict[str, object]], trading_env: str | None = None) -> ToolResult:
     """
     Place multiple limit orders in a batch (max 10 per batch).
     
@@ -1316,7 +1315,7 @@ def batch_limit_orders_tool(orders: List[Dict[str, Any]], trading_env: Optional[
         )
 
 
-def batch_cancel_orders_tool(orders: List[Dict[str, str]], trading_env: Optional[str] = None) -> ToolResult:
+def batch_cancel_orders_tool(orders: list[dict[str, str]], trading_env: str | None = None) -> ToolResult:
     """
     Cancel multiple orders in a batch (max 10 per batch).
     

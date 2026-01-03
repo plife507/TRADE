@@ -20,7 +20,7 @@ PERFORMANCE CONTRACT:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .quote_state import QuoteState
@@ -108,9 +108,9 @@ class ExecRollupBucket:
 
         Performance: O(1) - simple comparisons and updates
         """
-        # Track first open
+        # Track first open (P2-001 FIX: use actual 1m open, not close proxy)
         if self.bar_count_1m == 0:
-            self.open_price_1m = quote.last  # 1m close is used as open proxy for first bar
+            self.open_price_1m = quote.open_1m
 
         # Update price extremes
         self.min_price_1m = min(self.min_price_1m, quote.low_1m)
@@ -125,7 +125,7 @@ class ExecRollupBucket:
         # Increment count
         self.bar_count_1m += 1
 
-    def freeze(self) -> Dict[str, float]:
+    def freeze(self) -> dict[str, float]:
         """
         Freeze the rollup bucket into a dict of packet keys.
 
@@ -186,7 +186,7 @@ class ExecRollupBucket:
         return self.max_price_1m - self.min_price_1m
 
 
-def create_empty_rollup_dict() -> Dict[str, float]:
+def create_empty_rollup_dict() -> dict[str, float]:
     """
     Create an empty rollup dict with default values.
 

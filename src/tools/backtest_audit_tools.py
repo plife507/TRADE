@@ -15,7 +15,6 @@ No production data is modified.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 import traceback
 
 from .shared import ToolResult
@@ -151,7 +150,7 @@ def backtest_audit_in_memory_parity_tool(
     idea_card: str,
     start_date: str,
     end_date: str,
-    output_dir: Optional[str] = None,
+    output_dir: str | None = None,
 ) -> ToolResult:
     """
     Run in-memory math parity audit for an IdeaCard.
@@ -216,7 +215,7 @@ def backtest_math_parity_tool(
     idea_card: str,
     start_date: str,
     end_date: str,
-    output_dir: Optional[str] = None,
+    output_dir: str | None = None,
     contract_sample_bars: int = 2000,
     contract_seed: int = 1337,
 ) -> ToolResult:
@@ -315,8 +314,8 @@ def backtest_math_parity_tool(
 def verify_artifact_parity_tool(
     idea_card_id: str = None,
     symbol: str = None,
-    run_id: Optional[str] = None,
-    base_dir: Optional[str] = None,
+    run_id: str | None = None,
+    base_dir: str | None = None,
     run_dir: Path = None,
 ) -> ToolResult:
     """
@@ -408,7 +407,7 @@ def backtest_audit_snapshot_plumbing_tool(
     idea_card_id: str,
     start_date: str,
     end_date: str,
-    symbol: Optional[str] = None,
+    symbol: str | None = None,
     max_samples: int = 2000,
     tolerance: float = 1e-12,
     strict: bool = True,

@@ -10,7 +10,7 @@ Registry is contract:
 - Unknown types rejected
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Type, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 from src.backtest.market_structure.types import (
@@ -34,9 +34,9 @@ class BaseDetector(ABC):
     @abstractmethod
     def build_batch(
         self,
-        ohlcv: Dict[str, Any],  # np.ndarray values
-        params: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        ohlcv: dict[str, Any],  # np.ndarray values
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Compute structure features for entire dataset.
 
@@ -46,7 +46,7 @@ class BaseDetector(ABC):
 
     @property
     @abstractmethod
-    def output_keys(self) -> Tuple[str, ...]:
+    def output_keys(self) -> tuple[str, ...]:
         """Output key suffixes for this detector."""
         ...
 
@@ -57,10 +57,10 @@ class RegistryEntry:
 
     def __init__(
         self,
-        detector_class: Optional[Type[BaseDetector]],
-        outputs: Tuple[str, ...],
-        required_params: List[str],
-        depends_on: List[StructureType],
+        detector_class: type[BaseDetector] | None,
+        outputs: tuple[str, ...],
+        required_params: list[str],
+        depends_on: list[StructureType],
     ):
         self.detector_class = detector_class  # None until implemented
         self.outputs = outputs
@@ -70,7 +70,7 @@ class RegistryEntry:
 
 # Main registry - single source of truth
 # Detector classes are registered lazily to avoid circular imports
-STRUCTURE_REGISTRY: Dict[StructureType, RegistryEntry] = {
+STRUCTURE_REGISTRY: dict[StructureType, RegistryEntry] = {
     StructureType.SWING: RegistryEntry(
         detector_class=None,  # Populated by register_detectors()
         outputs=STRUCTURE_OUTPUT_SCHEMAS[StructureType.SWING],
@@ -142,7 +142,7 @@ def validate_structure_type(type_str: str) -> StructureType:
 
 def validate_structure_params(
     structure_type: StructureType,
-    params: Dict[str, Any],
+    params: dict[str, Any],
 ) -> None:
     """
     Validate required params for structure type.
@@ -161,7 +161,7 @@ def validate_structure_params(
         )
 
 
-def get_structure_outputs(structure_type: StructureType) -> Tuple[str, ...]:
+def get_structure_outputs(structure_type: StructureType) -> tuple[str, ...]:
     """
     Get output keys for structure type.
 
@@ -173,7 +173,7 @@ def get_structure_outputs(structure_type: StructureType) -> Tuple[str, ...]:
     return entry.outputs
 
 
-def validate_deprecated_keys(config: Dict[str, Any], context: str = "") -> None:
+def validate_deprecated_keys(config: dict[str, Any], context: str = "") -> None:
     """
     Hard-fail on deprecated keys.
 
@@ -192,7 +192,7 @@ def validate_deprecated_keys(config: Dict[str, Any], context: str = "") -> None:
             raise ValueError(f"DEPRECATED_KEY{ctx}: {message}")
 
 
-def validate_structure_block_keys(block: Dict[str, Any], context: str = "") -> None:
+def validate_structure_block_keys(block: dict[str, Any], context: str = "") -> None:
     """
     Hard-fail on deprecated block-level keys.
 

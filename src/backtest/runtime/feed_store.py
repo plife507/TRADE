@@ -21,11 +21,13 @@ METADATA:
 - Accessed via indicator_metadata dict (keyed by indicator_key)
 """
 
+from __future__ import annotations
+
 import bisect
 import numpy as np
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional, Set, List, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -80,28 +82,28 @@ class FeedStore:
     volume: np.ndarray
     
     # Indicator arrays (float32 preferred for memory efficiency)
-    indicators: Dict[str, np.ndarray] = field(default_factory=dict)
-    
+    indicators: dict[str, np.ndarray] = field(default_factory=dict)
+
     # Indicator metadata (in-memory provenance tracking)
-    indicator_metadata: Dict[str, "IndicatorMetadata"] = field(default_factory=dict)
+    indicator_metadata: dict[str, IndicatorMetadata] = field(default_factory=dict)
 
     # Structure stores (keyed by block_id)
     # Populated by StructureBuilder; provides structure.* namespace
-    structures: Dict[str, "StructureStore"] = field(default_factory=dict)
+    structures: dict[str, StructureStore] = field(default_factory=dict)
 
     # Structure key map (block_key -> block_id) for resolution
-    structure_key_map: Dict[str, str] = field(default_factory=dict)
+    structure_key_map: dict[str, str] = field(default_factory=dict)
 
     # Close ts set for cache detection
-    close_ts_set: Set[datetime] = field(default_factory=set)
-    
+    close_ts_set: set[datetime] = field(default_factory=set)
+
     # O(1) ts_close->index mapping (epoch ms -> array index)
     # Used for MTF/HTF forward-fill lookups
-    ts_close_ms_to_idx: Dict[int, int] = field(default_factory=dict)
+    ts_close_ms_to_idx: dict[int, int] = field(default_factory=dict)
 
     # Sorted list of close timestamps (ms) for O(log n) binary search
     # Built once in __post_init__, used by get_last_closed_idx_at_or_before()
-    _sorted_close_ms: List[int] = field(default_factory=list)
+    _sorted_close_ms: list[int] = field(default_factory=list)
 
     # Length
     length: int = 0
@@ -147,7 +149,7 @@ class FeedStore:
             self._sorted_close_ms = sorted(self.ts_close_ms_to_idx.keys())
     
     @property
-    def indicator_keys(self) -> List[str]:
+    def indicator_keys(self) -> list[str]:
         """Get all indicator keys."""
         return list(self.indicators.keys())
     
@@ -169,7 +171,7 @@ class FeedStore:
         """Check if ts is a close timestamp for this TF."""
         return ts in self.close_ts_set
     
-    def get_idx_at_ts_close(self, ts: datetime) -> Optional[int]:
+    def get_idx_at_ts_close(self, ts: datetime) -> int | None:
         """
         Get array index for a given ts_close timestamp.
         
@@ -188,7 +190,7 @@ class FeedStore:
             ts_ms = int(ts.timestamp() * 1000)
         return self.ts_close_ms_to_idx.get(ts_ms)
     
-    def get_last_closed_idx_at_or_before(self, ts: datetime) -> Optional[int]:
+    def get_last_closed_idx_at_or_before(self, ts: datetime) -> int | None:
         """
         Get the last closed bar index at or before a given timestamp.
 
@@ -227,12 +229,35 @@ class FeedStore:
             return int(pd.Timestamp(ts).timestamp() * 1000)
         return int(ts.timestamp() * 1000)
 
+    def get_1m_indices_for_exec(self, exec_idx: int, exec_tf_minutes: int) -> tuple[int, int]:
+        """Return (start_1m_idx, end_1m_idx) for an exec bar.
+
+        Maps an exec-timeframe bar index to the range of 1m bar indices
+        that fall within that exec bar.
+
+        Args:
+            exec_idx: Index of the exec-timeframe bar
+            exec_tf_minutes: Minutes per exec-timeframe bar (e.g., 5 for 5m)
+
+        Returns:
+            Tuple of (start_1m_idx, end_1m_idx) inclusive
+
+        Example:
+            exec_tf="5m" (5 minutes), exec_idx=10
+            -> start_1m = 10 * 5 = 50
+            -> end_1m = 50 + 5 - 1 = 54
+            -> returns (50, 54)
+        """
+        start_1m = exec_idx * exec_tf_minutes
+        end_1m = start_1m + exec_tf_minutes - 1
+        return (start_1m, end_1m)
+
     def get_structure_field(
         self,
         block_key: str,
         field_name: str,
         bar_idx: int,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Get structure field value at specific bar index.
 
@@ -269,7 +294,7 @@ class FeedStore:
         """Check if a structure block exists."""
         return block_key in self.structure_key_map
 
-    def get_structure_fields(self, block_key: str) -> List[str]:
+    def get_structure_fields(self, block_key: str) -> list[str]:
         """Get list of available fields for a structure block."""
         block_id = self.structure_key_map.get(block_key)
         if block_id is None:
@@ -285,7 +310,7 @@ class FeedStore:
         zone_key: str,
         field_name: str,
         bar_idx: int,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Get zone field value at specific bar index.
 
@@ -331,7 +356,7 @@ class FeedStore:
             return False
         return store.has_zone(zone_key)
 
-    def get_zone_fields(self, block_key: str, zone_key: str) -> List[str]:
+    def get_zone_fields(self, block_key: str, zone_key: str) -> list[str]:
         """Get available fields for a zone."""
         block_id = self.structure_key_map.get(block_key)
         if block_id is None:
@@ -347,9 +372,9 @@ class FeedStore:
         df: pd.DataFrame,
         tf: str,
         symbol: str,
-        indicator_columns: Optional[List[str]] = None,
+        indicator_columns: list[str] | None = None,
         prefer_float32: bool = False,
-    ) -> "FeedStore":
+    ) -> FeedStore:
         """
         Build FeedStore from DataFrame with indicators.
         
@@ -393,8 +418,8 @@ class FeedStore:
             ])
         
         # Build close_ts_set and ts_close_ms_to_idx mapping
-        close_ts_set = set()
-        ts_close_ms_to_idx: Dict[int, int] = {}
+        close_ts_set: set[datetime] = set()
+        ts_close_ms_to_idx: dict[int, int] = {}
         for i, ts in enumerate(ts_close):
             if isinstance(ts, np.datetime64):
                 dt = pd.Timestamp(ts).to_pydatetime()
@@ -404,7 +429,7 @@ class FeedStore:
                 ts_ms = int(ts.timestamp() * 1000)
             close_ts_set.add(dt)
             ts_close_ms_to_idx[ts_ms] = i
-        
+
         # Extract indicators
         dtype = np.float32 if prefer_float32 else np.float64
         indicators = {}
@@ -434,8 +459,8 @@ class FeedStore:
         df: pd.DataFrame,
         tf: str,
         symbol: str,
-        feature_arrays: "FeatureArrays",
-    ) -> "FeedStore":
+        feature_arrays: FeatureArrays,
+    ) -> FeedStore:
         """
         Build FeedStore from DataFrame + precomputed FeatureArrays.
         
@@ -474,8 +499,8 @@ class FeedStore:
             ])
         
         # Build close_ts_set and ts_close_ms_to_idx mapping
-        close_ts_set = set()
-        ts_close_ms_to_idx: Dict[int, int] = {}
+        close_ts_set: set[datetime] = set()
+        ts_close_ms_to_idx_features: dict[int, int] = {}
         for i, ts in enumerate(ts_close):
             if isinstance(ts, np.datetime64):
                 dt = pd.Timestamp(ts).to_pydatetime()
@@ -484,8 +509,8 @@ class FeedStore:
                 dt = ts
                 ts_ms = int(ts.timestamp() * 1000)
             close_ts_set.add(dt)
-            ts_close_ms_to_idx[ts_ms] = i
-        
+            ts_close_ms_to_idx_features[ts_ms] = i
+
         return cls(
             tf=tf,
             symbol=symbol,
@@ -499,7 +524,7 @@ class FeedStore:
             indicators=feature_arrays.arrays,  # Already float32
             indicator_metadata=feature_arrays.metadata,  # Provenance tracking
             close_ts_set=close_ts_set,
-            ts_close_ms_to_idx=ts_close_ms_to_idx,
+            ts_close_ms_to_idx=ts_close_ms_to_idx_features,
             length=len(df),
             warmup_bars=feature_arrays.warmup_bars,
         )
@@ -509,17 +534,17 @@ class FeedStore:
 class MultiTFFeedStore:
     """
     Container for multiple FeedStores (HTF, MTF, Exec).
-    
+
     Provides unified access to all timeframe data.
     """
     exec_feed: FeedStore
-    htf_feed: Optional[FeedStore] = None
-    mtf_feed: Optional[FeedStore] = None
-    
+    htf_feed: FeedStore | None = None
+    mtf_feed: FeedStore | None = None
+
     # TF mapping
-    tf_mapping: Dict[str, str] = field(default_factory=dict)
-    
-    def get_feed(self, role: str) -> Optional[FeedStore]:
+    tf_mapping: dict[str, str] = field(default_factory=dict)
+
+    def get_feed(self, role: str) -> FeedStore | None:
         """Get feed by role (htf, mtf, ltf/exec)."""
         if role in ("ltf", "exec"):
             return self.exec_feed

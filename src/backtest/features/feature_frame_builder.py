@@ -15,9 +15,10 @@ Design principles:
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Union, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..idea_card import IdeaCard
@@ -35,8 +36,8 @@ from ..indicator_vendor import compute_indicator
 
 # Type for indicator compute functions
 SingleOutputFn = Callable[..., pd.Series]
-MultiOutputFn = Callable[..., Dict[str, pd.Series]]
-IndicatorFn = Union[SingleOutputFn, MultiOutputFn]
+MultiOutputFn = Callable[..., dict[str, pd.Series]]
+IndicatorFn = SingleOutputFn | MultiOutputFn
 
 
 @dataclass
@@ -57,10 +58,10 @@ class FeatureArrays:
     """
     symbol: str
     tf: str
-    arrays: Dict[str, np.ndarray] = field(default_factory=dict)
+    arrays: dict[str, np.ndarray] = field(default_factory=dict)
     length: int = 0
     warmup_bars: int = 0
-    metadata: Dict[str, "IndicatorMetadata"] = field(default_factory=dict)
+    metadata: dict[str, "IndicatorMetadata"] = field(default_factory=dict)
     
     def __post_init__(self):
         """Validate arrays and metadata consistency."""
@@ -88,7 +89,7 @@ class FeatureArrays:
                     "Metadata must match arrays exactly."
                 )
     
-    def get(self, key: str) -> Optional[np.ndarray]:
+    def get(self, key: str) -> np.ndarray | None:
         """Get array by key, or None if not found."""
         return self.arrays.get(key)
     
@@ -103,7 +104,7 @@ class FeatureArrays:
             raise KeyError(f"Feature key '{key}' not found. Available: {list(self.arrays.keys())}")
         return self.arrays[key]
     
-    def keys(self) -> List[str]:
+    def keys(self) -> list[str]:
         """Get all output keys."""
         return list(self.arrays.keys())
     
@@ -111,13 +112,13 @@ class FeatureArrays:
         """Check if key exists."""
         return key in self.arrays
     
-    def find_first_valid_index(self, keys: Optional[List[str]] = None) -> int:
+    def find_first_valid_index(self, keys: list[str] | None = None) -> int:
         """
         Find the first index where all specified indicators are non-NaN.
-        
+
         Args:
             keys: List of keys to check (default: all keys)
-            
+
         Returns:
             First valid index, or -1 if none found
         """
@@ -168,33 +169,37 @@ class FeatureArrays:
 
 
 # =============================================================================
-# Indicator Registry
+# Indicator Compute Adapter
 # =============================================================================
 
-class IndicatorRegistry:
+class IndicatorCompute:
     """
-    Dynamic registry for computing indicators declared in IdeaCard FeatureSpecs.
+    Compute adapter for indicator calculation in FeatureFrameBuilder.
 
     **ALL pandas_ta indicators are available dynamically!**
     No static registration needed - indicators are computed on-demand based
     on what the IdeaCard declares in its FeatureSpecs.
 
+    Note: This is distinct from IndicatorRegistry in indicator_registry.py,
+    which is the SINGLE SOURCE OF TRUTH for indicator metadata and validation.
+    This class wraps computation logic and delegates validation to the main registry.
+
     Reference: `reference/pandas_ta_repo/` for source code
 
     Usage:
-        registry = IndicatorRegistry()
+        compute = IndicatorCompute()
 
         # Compute any indicator dynamically based on IdeaCard FeatureSpec
-        ema_series = registry.compute("ema", close=close, length=20)
-        adx_dict = registry.compute("adx", high=high, low=low, close=close, length=14)
+        ema_series = compute.compute("ema", close=close, length=20)
+        adx_dict = compute.compute("adx", high=high, low=low, close=close, length=14)
 
         # Custom overrides still supported
-        registry.register("ema", custom_ema_fn)
+        compute.register("ema", custom_ema_fn)
     """
 
     def __init__(self):
         """Initialize registry (no static registrations - all dynamic)."""
-        self._custom_registry: Dict[str, IndicatorFn] = {}
+        self._custom_registry: dict[str, IndicatorFn] = {}
 
     def register(self, indicator_type: str, fn: IndicatorFn):
         """
@@ -223,13 +228,13 @@ class IndicatorRegistry:
     def compute(
         self,
         indicator_type: str,
-        close: Optional[pd.Series] = None,
-        high: Optional[pd.Series] = None,
-        low: Optional[pd.Series] = None,
-        open_: Optional[pd.Series] = None,
-        volume: Optional[pd.Series] = None,
+        close: pd.Series | None = None,
+        high: pd.Series | None = None,
+        low: pd.Series | None = None,
+        open_: pd.Series | None = None,
+        volume: pd.Series | None = None,
         **kwargs,
-    ) -> Union[pd.Series, Dict[str, pd.Series]]:
+    ) -> pd.Series | dict[str, pd.Series]:
         """
         Compute an indicator dynamically.
 
@@ -247,7 +252,7 @@ class IndicatorRegistry:
             **kwargs: Indicator-specific parameters (length, fast, slow, etc.)
 
         Returns:
-            pd.Series for single-output, Dict[str, pd.Series] for multi-output
+            pd.Series for single-output, dict[str, pd.Series] for multi-output
         """
         key = indicator_type.lower()
 
@@ -267,23 +272,33 @@ class IndicatorRegistry:
             **kwargs,
         )
 
-    def list_types(self) -> List[str]:
+    def list_types(self) -> list[str]:
         """List all available indicator types (from main registry)."""
         from ..indicator_registry import get_registry as get_main_registry
         return get_main_registry().list_indicators()
 
-    def list_custom_overrides(self) -> List[str]:
+    def list_custom_overrides(self) -> list[str]:
         """List indicator types with custom overrides registered."""
         return list(self._custom_registry.keys())
 
 
-# Global registry instance
-_default_registry = IndicatorRegistry()
+# Global compute adapter instance
+_default_compute = IndicatorCompute()
 
 
-def get_registry() -> IndicatorRegistry:
-    """Get the default indicator registry."""
-    return _default_registry
+def get_compute() -> IndicatorCompute:
+    """Get the default indicator compute adapter."""
+    return _default_compute
+
+
+# Backwards compatibility alias (deprecated - use get_compute() instead)
+def get_registry() -> IndicatorCompute:
+    """Get the default indicator compute adapter (deprecated - use get_compute())."""
+    return _default_compute
+
+
+# Backwards compatibility alias for import (deprecated - use IndicatorCompute instead)
+IndicatorRegistry = IndicatorCompute
 
 
 # =============================================================================
@@ -293,12 +308,12 @@ def get_registry() -> IndicatorRegistry:
 class FeatureFrameBuilder:
     """
     Builder that computes features from FeatureSpecSet.
-    
+
     Given OHLCV data and a FeatureSpecSet, computes all indicators
     in dependency order and returns FeatureArrays.
-    
-    Uses the IndicatorRegistry for computation, allowing backend swapping.
-    
+
+    Uses IndicatorCompute for computation, allowing backend swapping.
+
     Usage:
         builder = FeatureFrameBuilder()
         arrays = builder.build(df, spec_set)
@@ -307,31 +322,36 @@ class FeatureFrameBuilder:
         ema_20 = arrays.get("ema_20")
         macd_line = arrays.get("macd_macd")  # Multi-output
 
-        # Or with custom registry
-        custom_registry = IndicatorRegistry()
-        custom_registry.register("ema", my_custom_ema)
-        builder = FeatureFrameBuilder(registry=custom_registry)
-    
+        # Or with custom compute adapter
+        custom_compute = IndicatorCompute()
+        custom_compute.register("ema", my_custom_ema)
+        builder = FeatureFrameBuilder(compute=custom_compute)
+
     Performance:
         - All computation is vectorized (via indicator_vendor)
         - Output arrays are float32 for memory efficiency
         - No computation in hot loop
     """
-    
+
     def __init__(
         self,
         prefer_float32: bool = True,
-        registry: Optional[IndicatorRegistry] = None,
+        compute: IndicatorCompute | None = None,
+        registry: IndicatorCompute | None = None,  # Deprecated alias for compute
     ):
         """
         Initialize builder.
-        
+
         Args:
             prefer_float32: If True, convert arrays to float32 (default: True)
-            registry: Custom indicator registry (default: global registry)
+            compute: Custom indicator compute adapter (default: global adapter)
+            registry: Deprecated alias for compute (use compute instead)
         """
         self.prefer_float32 = prefer_float32
-        self.registry = registry or get_registry()
+        # Support both 'compute' and legacy 'registry' parameter
+        self.compute = compute or registry or get_compute()
+        # Backwards compatibility: keep registry attribute pointing to compute
+        self.registry = self.compute
     
     def build(
         self,
@@ -372,10 +392,10 @@ class FeatureFrameBuilder:
         length = len(df)
         
         # Build intermediate results dict for chained indicators
-        computed: Dict[str, pd.Series] = {}
-        
+        computed: dict[str, pd.Series] = {}
+
         # Metadata collection (key -> IndicatorMetadata)
-        metadata_dict: Dict[str, IndicatorMetadata] = {}
+        metadata_dict: dict[str, IndicatorMetadata] = {}
         
         # Cache version info (computed once per build)
         pandas_ta_ver = get_pandas_ta_version()
@@ -443,8 +463,8 @@ class FeatureFrameBuilder:
     def _compute_and_store(
         self,
         spec: FeatureSpec,
-        ohlcv: Dict[str, pd.Series],
-        computed: Dict[str, pd.Series],
+        ohlcv: dict[str, pd.Series],
+        computed: dict[str, pd.Series],
     ):
         """
         Compute indicator and store results in computed dict.
@@ -489,13 +509,13 @@ class FeatureFrameBuilder:
     def _compute_and_store_with_metadata(
         self,
         spec: FeatureSpec,
-        ohlcv: Dict[str, pd.Series],
-        computed: Dict[str, pd.Series],
-        metadata_dict: Dict[str, "IndicatorMetadata"],
+        ohlcv: dict[str, pd.Series],
+        computed: dict[str, pd.Series],
+        metadata_dict: dict[str, "IndicatorMetadata"],
         spec_set: FeatureSpecSet,
         tf_role: str,
         length: int,
-        timestamps: Optional[np.ndarray],
+        timestamps: np.ndarray | None,
         pandas_ta_ver: str,
         code_ver: str,
         computed_at: datetime,
@@ -629,8 +649,8 @@ class FeatureFrameBuilder:
     def _compute_single_output(
         self,
         spec: FeatureSpec,
-        ohlcv: Dict[str, pd.Series],
-        computed: Dict[str, pd.Series],
+        ohlcv: dict[str, pd.Series],
+        computed: dict[str, pd.Series],
     ) -> pd.Series:
         """
         Compute a single-output indicator from spec.
@@ -671,9 +691,9 @@ class FeatureFrameBuilder:
     def _compute_multi_output(
         self,
         spec: FeatureSpec,
-        ohlcv: Dict[str, pd.Series],
-        computed: Dict[str, pd.Series],
-    ) -> Dict[str, pd.Series]:
+        ohlcv: dict[str, pd.Series],
+        computed: dict[str, pd.Series],
+    ) -> dict[str, pd.Series]:
         """
         Compute a multi-output indicator from spec.
         
@@ -713,8 +733,8 @@ class FeatureFrameBuilder:
     def _get_input_series(
         self,
         spec: FeatureSpec,
-        ohlcv: Dict[str, pd.Series],
-        computed: Dict[str, pd.Series],
+        ohlcv: dict[str, pd.Series],
+        computed: dict[str, pd.Series],
     ) -> pd.Series:
         """
         Get the input series for an indicator.
@@ -759,7 +779,7 @@ class FeatureFrameBuilder:
         df: pd.DataFrame,
         symbol: str,
         tf: str,
-        specs: List[FeatureSpec],
+        specs: list[FeatureSpec],
         tf_role: str = "exec",
     ) -> FeatureArrays:
         """
@@ -779,28 +799,31 @@ class FeatureFrameBuilder:
         return self.build(df, spec_set, tf_role=tf_role)
 
 
-def build_features_from_idea_card(
+def build_features_from_preloaded_dfs(
     idea_card: "IdeaCard",
-    dfs: Dict[str, pd.DataFrame],
+    dfs: dict[str, pd.DataFrame],
     symbol: str,
-) -> Dict[str, FeatureArrays]:
+) -> dict[str, FeatureArrays]:
     """
-    Build FeatureArrays for all TFs defined in an IdeaCard.
-    
+    Build FeatureArrays for all TFs defined in an IdeaCard using pre-loaded DataFrames.
+
+    NOTE: For canonical feature building, use build_features_from_idea_card() which
+    takes a data_loader and returns IdeaCardFeatures.
+
     Args:
         idea_card: IdeaCard with TF configs and feature specs
-        dfs: Dict mapping tf -> OHLCV DataFrame
+        dfs: Dict mapping tf -> OHLCV DataFrame (pre-loaded)
         symbol: Symbol to build for
-        
+
     Returns:
         Dict mapping TF role -> FeatureArrays
         e.g., {"exec": FeatureArrays(...), "htf": FeatureArrays(...)}
-        
+
     Raises:
         ValueError: If required TF data is missing
     """
     builder = FeatureFrameBuilder()
-    result: Dict[str, FeatureArrays] = {}
+    result: dict[str, FeatureArrays] = {}
     
     for role, tf_config in idea_card.tf_configs.items():
         tf = tf_config.tf
@@ -846,16 +869,16 @@ class IdeaCardFeatures:
     symbol: str
     
     # FeatureArrays per TF role
-    exec_features: Optional[FeatureArrays] = None
-    htf_features: Optional[FeatureArrays] = None
-    mtf_features: Optional[FeatureArrays] = None
-    
+    exec_features: FeatureArrays | None = None
+    htf_features: FeatureArrays | None = None
+    mtf_features: FeatureArrays | None = None
+
     # Raw DataFrames per TF (for engine use)
-    exec_df: Optional[pd.DataFrame] = None
-    htf_df: Optional[pd.DataFrame] = None
-    mtf_df: Optional[pd.DataFrame] = None
-    
-    def get_features_for_role(self, role: str) -> Optional[FeatureArrays]:
+    exec_df: pd.DataFrame | None = None
+    htf_df: pd.DataFrame | None = None
+    mtf_df: pd.DataFrame | None = None
+
+    def get_features_for_role(self, role: str) -> FeatureArrays | None:
         """Get FeatureArrays for a TF role."""
         if role == "exec":
             return self.exec_features
@@ -865,7 +888,7 @@ class IdeaCardFeatures:
             return self.mtf_features
         return None
     
-    def get_df_for_role(self, role: str) -> Optional[pd.DataFrame]:
+    def get_df_for_role(self, role: str) -> pd.DataFrame | None:
         """Get DataFrame for a TF role."""
         if role == "exec":
             return self.exec_df
@@ -879,8 +902,8 @@ class IdeaCardFeatures:
 def build_features_from_idea_card(
     idea_card: "IdeaCard",
     data_loader: Callable[[str, str], pd.DataFrame],
-    symbol: Optional[str] = None,
-    builder: Optional[FeatureFrameBuilder] = None,
+    symbol: str | None = None,
+    builder: FeatureFrameBuilder | None = None,
 ) -> IdeaCardFeatures:
     """
     Build all features for an IdeaCard.

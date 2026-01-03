@@ -163,7 +163,7 @@ class SimulatedRiskManager:
         max_size = equity * max_lev
         
         size_usdt = min(signal.size_usdt, max_size)
-        
+
         return SizingResult(
             size_usdt=size_usdt,
             method="fixed_notional",

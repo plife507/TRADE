@@ -10,9 +10,12 @@ Gate D.1 requirement: Every backtest run MUST produce pipeline_signature.json.
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Set
+from typing import Any, TYPE_CHECKING
 import json
 import hashlib
+
+if TYPE_CHECKING:
+    from ..idea_card import IdeaCard
 
 
 # Pipeline version - increment when pipeline structure changes
@@ -51,8 +54,8 @@ class PipelineSignature:
     exchange_impl: str = "SimulatedExchange"
     
     # Feature verification
-    declared_feature_keys: List[str] = field(default_factory=list)
-    computed_feature_keys: List[str] = field(default_factory=list)
+    declared_feature_keys: list[str] = field(default_factory=list)
+    computed_feature_keys: list[str] = field(default_factory=list)
     feature_keys_match: bool = False
     
     # Execution verification
@@ -68,22 +71,22 @@ class PipelineSignature:
         computed = set(self.computed_feature_keys)
         self.feature_keys_match = declared == computed
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
     
     def to_json(self) -> str:
         """Convert to JSON string."""
-        return json.dumps(self.to_dict(), indent=2, default=str)
+        return json.dumps(self.to_dict(), indent=2, default=str, sort_keys=True)
     
     def write_json(self, path: Path) -> None:
         """Write to JSON file."""
         path.write_text(self.to_json())
     
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """
         Validate pipeline signature requirements.
-        
+
         Returns:
             List of error messages (empty if valid)
         """
@@ -128,8 +131,8 @@ def create_pipeline_signature(
     idea_card: "IdeaCard",
     idea_card_hash: str,
     resolved_path: str,
-    declared_keys: List[str],
-    computed_keys: List[str],
+    declared_keys: list[str],
+    computed_keys: list[str],
 ) -> PipelineSignature:
     """
     Create a pipeline signature for a backtest run.

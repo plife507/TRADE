@@ -15,7 +15,6 @@ SCHEMA VERSION:
 """
 
 from enum import Enum
-from typing import Dict, List, Tuple
 
 
 # =============================================================================
@@ -79,7 +78,7 @@ class TrendState(int, Enum):
 # Note: Default float64 for price levels/bounds to avoid boundary edge bugs.
 # Optimize to float32 only if profiling shows memory pressure.
 
-SWING_INTERNAL_OUTPUTS: Tuple[str, ...] = (
+SWING_INTERNAL_OUTPUTS: tuple[str, ...] = (
     "high_level",  # float64: Price level of swing high
     "high_idx",    # int32: Bar index of swing high
     "low_level",   # float64: Price level of swing low
@@ -88,8 +87,8 @@ SWING_INTERNAL_OUTPUTS: Tuple[str, ...] = (
     "recency",     # int16: Bars since last update
 )
 
-TREND_INTERNAL_OUTPUTS: Tuple[str, ...] = (
-    "trend_state",     # int8: 0=none, 1=bullish, 2=bearish
+TREND_INTERNAL_OUTPUTS: tuple[str, ...] = (
+    "trend_state",     # int8: 0=unknown, 1=UP, 2=DOWN (TrendState enum)
     "recency",         # int16: Bars since state change
     "parent_version",  # int32: Version counter (increments on change)
 )
@@ -99,7 +98,7 @@ TREND_INTERNAL_OUTPUTS: Tuple[str, ...] = (
 # PUBLIC OUTPUT SCHEMAS (exposed via snapshot.get())
 # =============================================================================
 
-SWING_PUBLIC_OUTPUTS: Tuple[str, ...] = (
+SWING_PUBLIC_OUTPUTS: tuple[str, ...] = (
     "swing_high_level",    # float64: Price level of swing high
     "swing_high_idx",      # int32: Bar index of swing high
     "swing_low_level",     # float64: Price level of swing low
@@ -107,8 +106,8 @@ SWING_PUBLIC_OUTPUTS: Tuple[str, ...] = (
     "swing_recency_bars",  # int16: Bars since last update
 )
 
-TREND_PUBLIC_OUTPUTS: Tuple[str, ...] = (
-    "trend_state",     # int8: 0=none, 1=bullish, 2=bearish
+TREND_PUBLIC_OUTPUTS: tuple[str, ...] = (
+    "trend_state",     # int8: 0=unknown, 1=UP, 2=DOWN (TrendState enum)
     "parent_version",  # int32: Version counter
 )
 
@@ -117,7 +116,7 @@ TREND_PUBLIC_OUTPUTS: Tuple[str, ...] = (
 # INTERNAL → PUBLIC MAPPING
 # =============================================================================
 
-SWING_OUTPUT_MAPPING: Dict[str, str] = {
+SWING_OUTPUT_MAPPING: dict[str, str] = {
     # internal_key: public_key
     "high_level": "swing_high_level",
     "high_idx": "swing_high_idx",
@@ -127,7 +126,7 @@ SWING_OUTPUT_MAPPING: Dict[str, str] = {
     # "state" is internal-only (not exposed publicly)
 }
 
-TREND_OUTPUT_MAPPING: Dict[str, str] = {
+TREND_OUTPUT_MAPPING: dict[str, str] = {
     # internal_key: public_key (same names for TREND)
     "trend_state": "trend_state",
     "parent_version": "parent_version",
@@ -136,38 +135,29 @@ TREND_OUTPUT_MAPPING: Dict[str, str] = {
 
 
 # =============================================================================
-# LEGACY ALIASES (for backward compat during transition)
-# =============================================================================
-
-# These will be removed after Stage 2 is complete
-SWING_OUTPUTS = SWING_INTERNAL_OUTPUTS  # Deprecated: use SWING_INTERNAL_OUTPUTS
-TREND_OUTPUTS = TREND_INTERNAL_OUTPUTS  # Deprecated: use TREND_INTERNAL_OUTPUTS
-
-
-# =============================================================================
 # STRUCTURE OUTPUT SCHEMAS (used by registry)
 # =============================================================================
 
 # Output schemas by structure type (public names for validation)
-STRUCTURE_OUTPUT_SCHEMAS: Dict[StructureType, Tuple[str, ...]] = {
+STRUCTURE_OUTPUT_SCHEMAS: dict[StructureType, tuple[str, ...]] = {
     StructureType.SWING: SWING_PUBLIC_OUTPUTS,
     StructureType.TREND: TREND_PUBLIC_OUTPUTS,
 }
 
 # Internal output schemas (used by detectors)
-STRUCTURE_INTERNAL_SCHEMAS: Dict[StructureType, Tuple[str, ...]] = {
+STRUCTURE_INTERNAL_SCHEMAS: dict[StructureType, tuple[str, ...]] = {
     StructureType.SWING: SWING_INTERNAL_OUTPUTS,
     StructureType.TREND: TREND_INTERNAL_OUTPUTS,
 }
 
 # Mapping from internal to public names
-STRUCTURE_OUTPUT_MAPPINGS: Dict[StructureType, Dict[str, str]] = {
+STRUCTURE_OUTPUT_MAPPINGS: dict[StructureType, dict[str, str]] = {
     StructureType.SWING: SWING_OUTPUT_MAPPING,
     StructureType.TREND: TREND_OUTPUT_MAPPING,
 }
 
 # Required params by structure type
-STRUCTURE_REQUIRED_PARAMS: Dict[StructureType, List[str]] = {
+STRUCTURE_REQUIRED_PARAMS: dict[StructureType, list[str]] = {
     StructureType.SWING: ["left", "right"],
     StructureType.TREND: [],  # Trend derives from swings, no params
 }
@@ -177,7 +167,7 @@ STRUCTURE_REQUIRED_PARAMS: Dict[StructureType, List[str]] = {
 # ZONE OUTPUT SCHEMAS (Stage 5.1+)
 # =============================================================================
 
-ZONE_OUTPUTS: Tuple[str, ...] = (
+ZONE_OUTPUTS: tuple[str, ...] = (
     "lower",            # float64: Lower bound
     "upper",            # float64: Upper bound
     "state",            # int8: 0=none, 1=active, 2=broken

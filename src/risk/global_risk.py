@@ -16,7 +16,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..config.config import Config, get_config
 from ..data.realtime_state import (
@@ -46,14 +46,14 @@ class RiskVeto(Enum):
 class RiskDecision:
     """
     Result of a pre-trade risk check.
-    
+
     Indicates whether a trade should proceed and provides
     reasons if it should be blocked.
     """
     allowed: bool
     veto_reason: RiskVeto = RiskVeto.NONE
     message: str = ""
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     
     @classmethod
     def allow(cls, message: str = "") -> 'RiskDecision':
@@ -85,7 +85,7 @@ class RiskLimits:
     
     # Position-level limits
     max_leverage: float = 10.0  # Maximum leverage per position
-    max_position_size_usd: float = 10000.0  # Max size per position
+    max_position_size_usdt: float = 10000.0  # Max size per position
     max_total_exposure_usd: float = 50000.0  # Max total notional exposure
     max_positions: int = 10  # Maximum open positions
     
@@ -101,7 +101,7 @@ class RiskLimits:
         """Load limits from config."""
         return cls(
             max_leverage=float(config.risk.max_leverage),
-            max_position_size_usd=float(config.risk.max_position_size_usd),
+            max_position_size_usdt=float(config.risk.max_position_size_usdt),
             max_daily_loss_usd=float(config.risk.max_daily_loss_usd),
             min_available_balance_usd=float(config.risk.min_balance_usd),
         )
@@ -132,8 +132,8 @@ class GlobalRiskView:
     
     def __init__(
         self,
-        realtime_state: Optional[RealtimeState] = None,
-        config: Optional[Config] = None,
+        realtime_state: RealtimeState | None = None,
+        config: Config | None = None,
     ):
         """
         Initialize GlobalRiskView.
@@ -151,7 +151,7 @@ class GlobalRiskView:
         
         # Caching
         self._cache_lock = threading.Lock()
-        self._cached_snapshot: Optional[PortfolioRiskSnapshot] = None
+        self._cached_snapshot: PortfolioRiskSnapshot | None = None
         self._cache_timestamp: float = 0.0
         self._min_cache_interval: float = 1.0  # Minimum seconds between rebuilds
         
@@ -225,10 +225,10 @@ class GlobalRiskView:
     
     def check_pre_trade(
         self,
-        signal: Optional[Any] = None,
-        symbol: Optional[str] = None,
-        side: Optional[str] = None,
-        size_usd: Optional[float] = None,
+        signal: Any | None = None,
+        symbol: str | None = None,
+        side: str | None = None,
+        size_usdt: float | None = None,
     ) -> RiskDecision:
         """
         Check if a trade should be allowed based on current risk state.
@@ -240,7 +240,7 @@ class GlobalRiskView:
             signal: Trading signal (optional, for signal-based checks)
             symbol: Symbol to trade (optional)
             side: "Buy" or "Sell" (optional)
-            size_usd: Size in USD (optional)
+            size_usdt: Size in USDT (optional)
         
         Returns:
             RiskDecision indicating if trade is allowed
@@ -319,12 +319,12 @@ class GlobalRiskView:
                 )
         
         # Check 8: Proposed trade size (if provided)
-        if size_usd and size_usd > self.limits.max_position_size_usd:
+        if size_usdt and size_usdt > self.limits.max_position_size_usdt:
             return RiskDecision.deny(
                 RiskVeto.POSITION_LIMIT,
-                f"Trade size exceeds limit: ${size_usd:.2f}",
-                size_usd=size_usd,
-                limit=self.limits.max_position_size_usd,
+                f"Trade size exceeds limit: ${size_usdt:.2f}",
+                size_usdt=size_usdt,
+                limit=self.limits.max_position_size_usdt,
             )
         
         # All checks passed
@@ -333,14 +333,14 @@ class GlobalRiskView:
             f"MM rate: {snapshot.account_mm_rate:.1%})"
         )
     
-    def get_limits(self) -> Dict[str, Any]:
+    def get_limits(self) -> dict[str, Any]:
         """Get current risk limits as a dict."""
         return {
             "max_account_im_rate": self.limits.max_account_im_rate,
             "max_account_mm_rate": self.limits.max_account_mm_rate,
             "min_available_balance_usd": self.limits.min_available_balance_usd,
             "max_leverage": self.limits.max_leverage,
-            "max_position_size_usd": self.limits.max_position_size_usd,
+            "max_position_size_usdt": self.limits.max_position_size_usdt,
             "max_total_exposure_usd": self.limits.max_total_exposure_usd,
             "max_positions": self.limits.max_positions,
             "min_liq_distance_pct": self.limits.min_liq_distance_pct,
@@ -355,7 +355,7 @@ class GlobalRiskView:
                 setattr(self.limits, key, value)
                 self.logger.info(f"Updated risk limit: {key} = {value}")
     
-    def get_equity_drawdown(self) -> Dict[str, float]:
+    def get_equity_drawdown(self) -> dict[str, float]:
         """Get current drawdown from high-water mark."""
         snapshot = self.build_snapshot()
         
@@ -392,7 +392,7 @@ class GlobalRiskView:
         
         self._daily_realized_pnl += pnl
     
-    def get_daily_pnl(self) -> Dict[str, float]:
+    def get_daily_pnl(self) -> dict[str, float]:
         """Get daily realized PnL info."""
         return {
             "daily_realized_pnl": self._daily_realized_pnl,
@@ -401,7 +401,7 @@ class GlobalRiskView:
             "reset_time": self._daily_pnl_reset_time,
         }
     
-    def get_risk_summary(self) -> Dict[str, Any]:
+    def get_risk_summary(self) -> dict[str, Any]:
         """
         Get a comprehensive risk summary for CLI or agent display.
         """
@@ -422,13 +422,13 @@ class GlobalRiskView:
 # Singleton Instance
 # ==============================================================================
 
-_global_risk_view: Optional[GlobalRiskView] = None
+_global_risk_view: GlobalRiskView | None = None
 _grv_lock = threading.Lock()
 
 
 def get_global_risk_view(
-    realtime_state: Optional[RealtimeState] = None,
-    config: Optional[Config] = None,
+    realtime_state: RealtimeState | None = None,
+    config: Config | None = None,
 ) -> GlobalRiskView:
     """
     Get the global GlobalRiskView singleton.

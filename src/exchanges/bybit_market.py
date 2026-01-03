@@ -5,7 +5,7 @@ Contains: get_klines, get_ticker, get_funding_rate, get_open_interest,
 get_orderbook, get_instruments, get_instrument_info, get_server_time, get_risk_limit
 """
 
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -52,7 +52,7 @@ def get_klines(
     return df
 
 
-def get_ticker(client: "BybitClient", symbol: str = None, category: str = "linear") -> Dict[str, Any]:
+def get_ticker(client: "BybitClient", symbol: str = None, category: str = "linear") -> dict[str, Any]:
     """Get ticker information."""
     client._public_limiter.acquire()
     
@@ -74,9 +74,9 @@ def get_funding_rate(
     symbol: str,
     limit: int = 1,
     category: str = "linear",
-    start_time: Optional[int] = None,
-    end_time: Optional[int] = None,
-) -> List[Dict]:
+    start_time: int | None = None,
+    end_time: int | None = None,
+) -> list[dict]:
     """Get funding rate history."""
     client._public_limiter.acquire()
     
@@ -102,9 +102,9 @@ def get_open_interest(
     interval: str = "5min",
     limit: int = 1,
     category: str = "linear",
-    start_time: Optional[int] = None,
-    end_time: Optional[int] = None,
-) -> List[Dict]:
+    start_time: int | None = None,
+    end_time: int | None = None,
+) -> list[dict]:
     """Get open interest data."""
     client._public_limiter.acquire()
     
@@ -125,7 +125,7 @@ def get_open_interest(
     return result.get("list", [])
 
 
-def get_orderbook(client: "BybitClient", symbol: str, limit: int = 25, category: str = "linear") -> Dict:
+def get_orderbook(client: "BybitClient", symbol: str, limit: int = 25, category: str = "linear") -> dict:
     """Get orderbook depth."""
     client._public_limiter.acquire()
     
@@ -138,7 +138,7 @@ def get_orderbook(client: "BybitClient", symbol: str, limit: int = 25, category:
     return client._extract_result(response)
 
 
-def get_instruments(client: "BybitClient", symbol: str = None, category: str = "linear") -> List[Dict]:
+def get_instruments(client: "BybitClient", symbol: str = None, category: str = "linear") -> list[dict]:
     """Get instrument specifications."""
     client._public_limiter.acquire()
     
@@ -151,13 +151,13 @@ def get_instruments(client: "BybitClient", symbol: str = None, category: str = "
     return result.get("list", [])
 
 
-def get_instrument_info(client: "BybitClient", symbol: str, category: str = "linear") -> Dict:
+def get_instrument_info(client: "BybitClient", symbol: str, category: str = "linear") -> dict:
     """Get instrument info for a single symbol."""
     instruments = get_instruments(client, symbol=symbol, category=category)
     return instruments[0] if instruments else None
 
 
-def get_server_time(client: "BybitClient") -> Dict:
+def get_server_time(client: "BybitClient") -> dict:
     """Get Bybit server time."""
     client._public_limiter.acquire()
     
@@ -165,7 +165,7 @@ def get_server_time(client: "BybitClient") -> Dict:
     return client._extract_result(response)
 
 
-def get_risk_limit(client: "BybitClient", symbol: str = None, category: str = "linear") -> List[Dict]:
+def get_risk_limit(client: "BybitClient", symbol: str = None, category: str = "linear") -> list[dict]:
     """Get risk limit info for symbols."""
     client._public_limiter.acquire()
     
@@ -178,7 +178,7 @@ def get_risk_limit(client: "BybitClient", symbol: str = None, category: str = "l
     return result.get("list", [])
 
 
-def get_instrument_launch_time(client: "BybitClient", symbol: str, category: str = "linear") -> Optional[int]:
+def get_instrument_launch_time(client: "BybitClient", symbol: str, category: str = "linear") -> int | None:
     """
     Get instrument launch timestamp in milliseconds.
     

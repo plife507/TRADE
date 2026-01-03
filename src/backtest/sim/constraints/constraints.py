@@ -15,7 +15,6 @@ All monetary values are in USDT (quote currency).
 """
 
 from dataclasses import dataclass
-from typing import Optional
 import math
 
 from ..types import Order
@@ -30,12 +29,12 @@ class ConstraintConfig:
     max_leverage: float = 100.0  # Maximum leverage
     
     # Optional price bounds
-    min_price: Optional[float] = None
-    max_price: Optional[float] = None
-    
+    min_price: float | None = None
+    max_price: float | None = None
+
     # Optional qty bounds
-    min_qty: Optional[float] = None
-    max_qty: Optional[float] = None
+    min_qty: float | None = None
+    max_qty: float | None = None
 
 
 @dataclass
@@ -46,8 +45,8 @@ class ValidationResult:
     warnings: list
     
     # Adjusted values (after rounding)
-    adjusted_price: Optional[float] = None
-    adjusted_qty: Optional[float] = None
+    adjusted_price: float | None = None
+    adjusted_qty: float | None = None
     
     def __init__(self):
         self.valid = True
@@ -64,7 +63,7 @@ class Constraints:
     Phase 1: Basic tick/lot rounding and min notional check.
     """
     
-    def __init__(self, config: Optional[ConstraintConfig] = None):
+    def __init__(self, config: ConstraintConfig | None = None):
         """
         Initialize constraints.
         

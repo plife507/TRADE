@@ -19,7 +19,7 @@ Currency model (this simulator version):
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 # Re-export canonical Bar from runtime.types
 from .runtime.types import Bar
@@ -68,9 +68,9 @@ class Trade:
     entry_size_usdt: float
     
     # Exit details (None if still open)
-    exit_time: Optional[datetime] = None
-    exit_price: Optional[float] = None
-    exit_reason: Optional[str] = None  # "tp", "sl", "signal", "end_of_data", "liquidation", "force"
+    exit_time: datetime | None = None
+    exit_price: float | None = None
+    exit_reason: str | None = None  # "tp", "sl", "signal", "end_of_data", "liquidation", "force"
     
     # PnL
     realized_pnl: float = 0.0
@@ -78,19 +78,19 @@ class Trade:
     net_pnl: float = 0.0
     
     # Risk levels
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-    
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
     # Phase 4: Bar indices for debugging and auditing
-    entry_bar_index: Optional[int] = None
-    exit_bar_index: Optional[int] = None
-    
+    entry_bar_index: int | None = None
+    exit_bar_index: int | None = None
+
     # Phase 4: Exit price source (e.g., "tp_level", "sl_level", "bar_close", "mark_price")
-    exit_price_source: Optional[str] = None
-    
+    exit_price_source: str | None = None
+
     # Phase 4: Snapshot readiness state at entry/exit
     entry_ready: bool = True
-    exit_ready: Optional[bool] = None
+    exit_ready: bool | None = None
 
     # MAE/MFE: Maximum Adverse/Favorable Excursion during trade
     mae_pct: float = 0.0  # Max adverse move as % of entry price
@@ -113,13 +113,13 @@ class Trade:
         return (self.net_pnl / abs(self.entry_size_usdt)) * 100.0
     
     @property
-    def duration_bars(self) -> Optional[int]:
+    def duration_bars(self) -> int | None:
         """Calculate duration in bars if both indices are set."""
         if self.entry_bar_index is not None and self.exit_bar_index is not None:
             return self.exit_bar_index - self.entry_bar_index
         return None
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "trade_id": self.trade_id,
             "symbol": self.symbol,
@@ -157,8 +157,8 @@ class EquityPoint:
     equity: float
     drawdown: float = 0.0
     drawdown_pct: float = 0.0
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "equity": self.equity,
@@ -187,8 +187,8 @@ class AccountCurvePoint:
     maintenance_margin_usdt: float
     has_position: bool = False
     entries_disabled: bool = False
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "equity_usdt": self.equity_usdt,
@@ -313,7 +313,7 @@ class BacktestMetrics:
     mae_avg_pct: float = 0.0        # Avg Maximum Adverse Excursion (worst drawdown per trade)
     mfe_avg_pct: float = 0.0        # Avg Maximum Favorable Excursion (best profit per trade)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""
         return {
             # Equity
@@ -404,9 +404,9 @@ class StrategyInstanceSummary:
     strategy_instance_id: str
     strategy_id: str
     strategy_version: str
-    role: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    role: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         result = {
             "strategy_instance_id": self.strategy_instance_id,
@@ -448,8 +448,8 @@ class BacktestRunConfigEcho:
     
     # Optional version tracking
     execution_version: str = "1.0.0"
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "initial_margin_rate": self.initial_margin_rate,
             "maintenance_margin_rate": self.maintenance_margin_rate,
@@ -494,7 +494,7 @@ class BacktestResult:
     finished_at: datetime
     
     # Strategies summary (all instances in the system)
-    strategies: List[StrategyInstanceSummary] = field(default_factory=list)
+    strategies: list[StrategyInstanceSummary] = field(default_factory=list)
     
     # System-level fields
     symbol: str = ""
@@ -520,7 +520,7 @@ class BacktestResult:
     data_window_requested_end: str = ""
     data_window_loaded_start: str = ""     # After warm-up & clamping
     data_window_loaded_end: str = ""
-    simulation_start_ts: Optional[datetime] = None  # When simulation actually started
+    simulation_start_ts: datetime | None = None  # When simulation actually started
     
     # Artifact paths (relative to run directory)
     trades_path: str = "trades.csv"
@@ -528,34 +528,34 @@ class BacktestResult:
     result_path: str = "result.json"
     
     # In-memory data (not serialized to JSON by default)
-    trades: List[Trade] = field(default_factory=list)
-    equity_curve: List[EquityPoint] = field(default_factory=list)
-    
-    # Legacy fields for backward compat
-    artifact_dir: Optional[str] = None
-    
+    trades: list[Trade] = field(default_factory=list)
+    equity_curve: list[EquityPoint] = field(default_factory=list)
+
+    # Artifact paths
+    artifact_dir: str | None = None
+
     # Account curve (full margin state per bar)
-    account_curve: List[AccountCurvePoint] = field(default_factory=list)
-    
+    account_curve: list[AccountCurvePoint] = field(default_factory=list)
+
     # Run config echo (for reproducibility)
-    run_config_echo: Optional[BacktestRunConfigEcho] = None
-    
+    run_config_echo: BacktestRunConfigEcho | None = None
+
     # Stop classification (proof-grade)
-    stop_classification: Optional[StopReason] = None  # None if ended naturally
-    stop_reason_detail: Optional[str] = None  # Human-readable stable text
-    
+    stop_classification: StopReason | None = None  # None if ended naturally
+    stop_reason_detail: str | None = None  # Human-readable stable text
+
     # Early-stop fields (terminal states: account_blown, insufficient_free_margin)
     # Legacy stop_reason kept for backward compat, maps from stop_classification
     stopped_early: bool = False
-    stop_reason: Optional[str] = None  # Legacy: "account_blown" | "insufficient_free_margin" | "liquidated"
-    stop_ts: Optional[datetime] = None
-    stop_bar_index: Optional[int] = None
-    stop_details: Optional[Dict[str, Any]] = None  # Full exchange snapshot at stop
-    
+    stop_reason: str | None = None  # Legacy: "account_blown" | "insufficient_free_margin" | "liquidated"
+    stop_ts: datetime | None = None
+    stop_bar_index: int | None = None
+    stop_details: dict[str, Any] | None = None  # Full exchange snapshot at stop
+
     # Starvation tracking (non-terminal)
     entries_disabled: bool = False
-    first_starved_ts: Optional[datetime] = None
-    first_starved_bar_index: Optional[int] = None
+    first_starved_ts: datetime | None = None
+    first_starved_bar_index: int | None = None
     entry_attempts_count: int = 0
     entry_rejections_count: int = 0
     
@@ -567,8 +567,8 @@ class BacktestResult:
     @property
     def end_time(self) -> datetime:
         return self.end_ts
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert to dict for JSON serialization.
         
@@ -615,14 +615,13 @@ class BacktestResult:
             "trades_path": self.trades_path,
             "equity_path": self.equity_path,
             "result_path": self.result_path,
-            # Legacy
             "artifact_dir": self.artifact_dir,
             # Run config echo
             "run_config_echo": self.run_config_echo.to_dict() if self.run_config_echo else None,
             # Stop classification (proof-grade)
             "stop_classification": self.stop_classification.value if self.stop_classification else None,
             "stop_reason_detail": self.stop_reason_detail,
-            # Early-stop fields (legacy compat)
+            # Early-stop fields
             "stopped_early": self.stopped_early,
             "stop_reason": self.stop_reason,
             "stop_ts": self.stop_ts.isoformat() if self.stop_ts else None,
@@ -648,19 +647,19 @@ class TimeBasedReturns:
     Return values are percentages (e.g., 5.2 = 5.2% return).
     """
     # Period returns: {period_key: return_pct}
-    daily_returns: Dict[str, float] = field(default_factory=dict)    # "2025-01-15" -> 1.5
-    weekly_returns: Dict[str, float] = field(default_factory=dict)   # "2025-W03" -> 3.2
-    monthly_returns: Dict[str, float] = field(default_factory=dict)  # "2025-01" -> 8.7
+    daily_returns: dict[str, float] = field(default_factory=dict)    # "2025-01-15" -> 1.5
+    weekly_returns: dict[str, float] = field(default_factory=dict)   # "2025-W03" -> 3.2
+    monthly_returns: dict[str, float] = field(default_factory=dict)  # "2025-01" -> 8.7
 
     # Best/worst periods: (period_key, return_pct) or None
-    best_day: Optional[tuple] = None      # ("2025-01-15", 5.2)
-    worst_day: Optional[tuple] = None     # ("2025-01-20", -3.1)
-    best_week: Optional[tuple] = None     # ("2025-W03", 8.5)
-    worst_week: Optional[tuple] = None    # ("2025-W05", -4.2)
-    best_month: Optional[tuple] = None    # ("2025-01", 12.3)
-    worst_month: Optional[tuple] = None   # ("2025-02", -6.1)
+    best_day: tuple[str, float] | None = None      # ("2025-01-15", 5.2)
+    worst_day: tuple[str, float] | None = None     # ("2025-01-20", -3.1)
+    best_week: tuple[str, float] | None = None     # ("2025-W03", 8.5)
+    worst_week: tuple[str, float] | None = None    # ("2025-W05", -4.2)
+    best_month: tuple[str, float] | None = None    # ("2025-01", 12.3)
+    worst_month: tuple[str, float] | None = None   # ("2025-02", -6.1)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""
         return {
             "daily_returns": self.daily_returns,

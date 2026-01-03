@@ -4,10 +4,16 @@ Feature specification and computation pipeline.
 This module provides:
 - FeatureSpec: Declarative indicator specification (string-based indicator types)
 - FeatureFrameBuilder: Vectorized indicator computation
-- IndicatorRegistry: Backend-swappable indicator registry
+- IndicatorCompute: Backend-swappable compute adapter for indicator calculation
 
 All indicators are computed outside the hot loop, vectorized,
 and stored in FeedStore-compatible arrays.
+
+**Registry vs Compute (2026-01-02):**
+- IndicatorRegistry (in indicator_registry.py): SINGLE SOURCE OF TRUTH for indicator
+  metadata and validation. Use this for checking supported indicators, params, etc.
+- IndicatorCompute (in this module): Compute adapter that wraps pandas_ta calls and
+  delegates validation to the main registry.
 
 **Registry Consolidation (2025-12-31):**
 - Indicator types are now STRINGS validated against IndicatorRegistry
@@ -45,8 +51,10 @@ from .feature_spec import (
 from .feature_frame_builder import (
     FeatureFrameBuilder,
     FeatureArrays,
-    IndicatorRegistry,
-    get_registry,
+    IndicatorCompute,
+    IndicatorRegistry,  # Deprecated alias for IndicatorCompute
+    get_compute,
+    get_registry,  # Deprecated alias for get_compute
     build_features_from_idea_card,
     IdeaCardFeatures,
 )
@@ -59,11 +67,14 @@ __all__ = [
     # Multi-output helpers
     "is_multi_output",
     "get_output_names",
-    # Builder and registry
+    # Builder and compute adapter
     "FeatureFrameBuilder",
     "FeatureArrays",
-    "IndicatorRegistry",
-    "get_registry",
+    "IndicatorCompute",
+    "get_compute",
+    # Deprecated aliases (for backwards compatibility)
+    "IndicatorRegistry",  # Use IndicatorCompute instead
+    "get_registry",  # Use get_compute instead
     # IdeaCard integration
     "build_features_from_idea_card",
     "IdeaCardFeatures",

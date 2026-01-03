@@ -2,7 +2,7 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** What runs today, what is stubbed, top risks, next steps
-**LAST UPDATED:** January 1, 2026 (Market Structure Stages 0-7 complete, audit tracking active)
+**LAST UPDATED:** January 3, 2026 (Incremental State Architecture complete)
 
 ---
 
@@ -14,6 +14,7 @@
 | Data Layer | ✅ Production | DuckDB, sync, heal working |
 | Backtest Engine | ✅ Production | Modular architecture (8 modules), Stages 0-7 complete |
 | Market Structure | ✅ Production | Swing, Trend, Zones, Zone Interaction, State Tracking |
+| Incremental State | ✅ Production | O(1) hot loop access, Structure Registry, agent-composable blocks |
 | MTF Support | ✅ Production | exec/htf/mtf with delay_bars |
 | Simulated Exchange | ✅ Production | Bybit-aligned accounting |
 | Preflight + Data-Fix | ✅ Production | Phase 6 CLI smoke tests validated + **mandatory 1m coverage** |
@@ -23,7 +24,7 @@
 | IdeaCard Value Flow | ✅ Production | Fail-loud validation, explicit declarations, all phases complete |
 | Live Trading | ⚠️ Functional | Demo API tested, live not validated |
 | Indicator System | ✅ Production | 42 indicators in registry, string-based types |
-| Validation Suite | ✅ Production | 24 validation IdeaCards |
+| Validation Suite | ✅ Production | 30 validation IdeaCards (6 new for structures) |
 | Strategy Factory | ⚠️ Partial | IdeaCards work, promotion manual |
 | Agent Module | ❌ Planned | Not started |
 
@@ -33,6 +34,8 @@
 
 | Phase | Status | Date | Key Features |
 |-------|--------|------|--------------|
+| Incremental State Architecture | ✅ Complete | Jan 3 | O(1) hot loop, Structure Registry, agent-composable blocks |
+| 1m Evaluation Loop Refactor | ✅ Complete | Jan 2 | mark_price resolution, 1m TP/SL checking, validation cards |
 | Market Structure Stages 0-7 | ✅ Complete | Jan 1 | Swing, Trend, Zones, Zone Interaction, State Tracking |
 | State Tracking (Stage 7) | ✅ Complete | Jan 1 | SignalState, ActionState, GateState, BlockState machines |
 | Zone Interaction (Stage 6) | ✅ Complete | Jan 1 | touched, inside, time_in_zone metrics |
@@ -179,24 +182,24 @@ python trade_cli.py backtest metadata-smoke
 
 ---
 
-## Open Bugs (From Audit Swarm)
+## Open Bugs (Post-Refactor Audit 2026-01-03)
 
-| Priority | Total | Fixed | Open | Notes |
-|----------|-------|-------|------|-------|
-| P0 | 0 | 0 | 0 | No critical blockers |
-| P1 | 16 | 12 | 4 | Deferred (low impact) |
-| P2 | 20 | 1 | 19 | Enhancement/polish |
-| P3 | 10 | 0 | 10 | Polish items |
+| Priority | Open | Description |
+|----------|------|-------------|
+| P0 | 0 | No critical blockers |
+| P1 | 2 | Config patterns (hasattr guards, hardcoded values) |
+| P2 | 3 | Type safety (hasattr, dynamic access, type ignores) |
+| P3 | 4 | Polish (deprecated code, comments, defaults) |
 
-**Total Open**: 33 bugs
+**Total Open**: 9 bugs (down from 72 fixed in previous audit)
 
-**P1 Open (Deferred)**:
-- P1-09: O(n) operations in bars_exec_high/low (performance)
-- P1-12: TREND assumes single SWING block (low impact)
-- P1-13: Dual close detection mechanism (low impact, tested)
-- P1-15: Schema drift detection missing (future)
+**Previous Audit**: 72 bugs fixed (P0:7, P1:25, P2:28, P3:12) - archived
 
-**See**: `docs/todos/AUDIT_OPEN_BUGS.md` for full catalog
+**P1 Open**:
+- P1-01: Deprecated config pattern (hasattr guards) - 2h to fix
+- P1-02: Hardcoded max_exposure_pct - 30m to fix
+
+**See**: `docs/audits/OPEN_BUGS.md` for full catalog
 
 ---
 
@@ -224,18 +227,18 @@ python trade_cli.py backtest metadata-smoke
 **Market Structure Stages 0-7:** ✅ Complete (2026-01-01) - Swing, Trend, Zones, Zone Interaction, State Tracking
 **Audit Swarm:** ✅ Complete (2026-01-01) - 12/16 P1 fixes applied, 33 open bugs tracked
 
-### 🔜 NEXT: Bug Remediation + Future Features
+### 🔜 NEXT: Minor Bug Fixes + Future Features
 
-**Active Tracking Document:** `docs/todos/AUDIT_OPEN_BUGS.md`
-**Status:** P0=0, P1=4 open (deferred), P2=19 open, P3=10 open
+**Active Tracking Document:** `docs/audits/OPEN_BUGS.md`
+**Status:** P0=0, P1=2 open, P2=3 open, P3=4 open (9 total)
 
-### Priority 1: Bug Remediation (Optional)
+### Priority 1: Quick Wins (Optional)
 
 | Bug | Effort | Impact |
 |-----|--------|--------|
-| P1-09: O(n) snapshot ops | 2h | Hot loop performance |
-| P1-15: Schema drift detection | 4h | Future-proofing |
-| P2-xx: Various polish items | ~8h total | Code quality |
+| P1-02: Hardcoded max_exposure_pct | 30m | Risk config flexibility |
+| P1-01: Deprecated config patterns | 2h | Code cleanliness |
+| P2-xx: Type safety improvements | ~7h total | Code quality |
 
 ### Priority 2: Future Features (Stage 8+)
 
@@ -252,19 +255,13 @@ python trade_cli.py backtest metadata-smoke
 
 ### Bug Tracking (Active)
 
-**📋 Audit Open Bugs**
-- **Document**: `docs/todos/AUDIT_OPEN_BUGS.md`
-- **Status**: P1: 4 open, P2: 19 open, P3: 10 open (33 total)
-- **Source**: Agentic Audit Swarm (2026-01-01)
-- **Note**: All P0 resolved, remaining are deferred/polish
+**📋 Open Bugs**
+- **Document**: `docs/audits/OPEN_BUGS.md`
+- **Status**: P0: 0, P1: 2, P2: 3, P3: 4 (9 total)
+- **Source**: Post-Refactor Audit (2026-01-03)
+- **Note**: All critical issues resolved, remaining are polish/config
 
 ### Future Enhancements (Priority 2 - Not Blocking)
-
-**📋 Backtest Analytics (Phases 5-6)**
-- **Document**: `docs/todos/BACKTEST_ANALYTICS_PHASES.md`
-- **Status**: Phases 1-4 ✅ Complete, Phases 5-6 📋 PENDING
-- **Scope**: Benchmark comparison, enhanced CLI display
-- **Note**: Future enhancement, not blocking any other work
 
 **📋 Streaming (Stage 8)**
 - **Document**: `docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md` (Section 6, Stage 8)
@@ -307,7 +304,8 @@ python trade_cli.py backtest metadata-smoke
 - [x] IdeaCard value flow complete ✅ (2026-01-01)
 - [x] Market Structure Stages 0-7 complete ✅ (2026-01-01)
 - [x] Audit Swarm P1 fixes (12/16) complete ✅ (2026-01-01)
-- [x] 24 validation IdeaCards pass normalization ✅
+- [x] 30 validation IdeaCards pass normalization ✅ (6 new for structures)
+- [x] Incremental State Architecture complete ✅ (2026-01-03)
 
 ---
 

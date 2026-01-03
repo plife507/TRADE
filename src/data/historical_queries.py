@@ -5,7 +5,7 @@ Contains: get_ohlcv, get_mtf_data, get_funding, get_open_interest
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -68,11 +68,11 @@ def get_ohlcv(
 def get_mtf_data(
     store: "HistoricalDataStore",
     symbol: str,
-    timeframes: List[str],
+    timeframes: list[str],
     period: str = None,
     start: datetime = None,
     end: datetime = None,
-) -> Dict[str, pd.DataFrame]:
+) -> dict[str, pd.DataFrame]:
     """
     Get multi-timeframe data for a symbol.
     

@@ -10,8 +10,11 @@ All functions accept engine state as parameters and return snapshot-related resu
 The BacktestEngine delegates to these functions, maintaining the same public API.
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
 from datetime import datetime
-from typing import Optional, Dict, Callable, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .runtime.types import FeatureSnapshot, HistoryConfig
 from .runtime.feed_store import FeedStore, MultiTFFeedStore
@@ -22,16 +25,17 @@ from .sim import StepResult
 if TYPE_CHECKING:
     from .sim import SimulatedExchange
     from .system_config import RiskProfileConfig
+    from .incremental.state import MultiTFIncrementalState
 
 
 def update_htf_mtf_indices_impl(
     exec_ts_close: datetime,
-    htf_feed: Optional[FeedStore],
-    mtf_feed: Optional[FeedStore],
+    htf_feed: FeedStore | None,
+    mtf_feed: FeedStore | None,
     exec_feed: FeedStore,
     current_htf_idx: int,
     current_mtf_idx: int,
-) -> Tuple[bool, bool, int, int]:
+) -> tuple[bool, bool, int, int]:
     """
     Update HTF/MTF forward-fill indices for RuntimeSnapshotView.
 
@@ -73,10 +77,10 @@ def update_htf_mtf_indices_impl(
 
 def refresh_tf_caches_impl(
     ts_close: datetime,
-    tf_mapping: Dict[str, str],
+    tf_mapping: dict[str, str],
     tf_cache: TimeframeCache,
     get_tf_features_func: Callable[[str, datetime], FeatureSnapshot],
-) -> Tuple[bool, bool]:
+) -> tuple[bool, bool]:
     """
     Refresh HTF/MTF caches at current bar close.
 
@@ -112,17 +116,19 @@ def build_snapshot_view_impl(
     exec_idx: int,
     multi_tf_feed_store: MultiTFFeedStore,
     exec_feed: FeedStore,
-    htf_feed: Optional[FeedStore],
-    mtf_feed: Optional[FeedStore],
-    exchange: "SimulatedExchange",
+    htf_feed: FeedStore | None,
+    mtf_feed: FeedStore | None,
+    exchange: SimulatedExchange,
     multi_tf_mode: bool,
     current_htf_idx: int,
     current_mtf_idx: int,
     history_config: HistoryConfig,
     is_history_ready: bool,
-    risk_profile: "RiskProfileConfig",
-    step_result: Optional[StepResult] = None,
-    rollups: Optional[Dict[str, float]] = None,
+    risk_profile: RiskProfileConfig,
+    step_result: StepResult | None = None,
+    rollups: dict[str, float] | None = None,
+    mark_price_override: float | None = None,
+    incremental_state: "MultiTFIncrementalState | None" = None,
 ) -> RuntimeSnapshotView:
     """
     Build RuntimeSnapshotView for array-backed hot loop.
@@ -144,12 +150,17 @@ def build_snapshot_view_impl(
         risk_profile: RiskProfileConfig for mark_price_source
         step_result: Optional StepResult from exchange (for mark_price)
         rollups: Optional px.rollup.* values from 1m accumulation
+        mark_price_override: Optional override for mark_price (1m evaluation)
+        incremental_state: Optional MultiTFIncrementalState for structure access
 
     Returns:
         RuntimeSnapshotView ready for strategy evaluation
     """
-    # Get mark_price from StepResult or fallback to close
-    if step_result is not None and step_result.mark_price is not None:
+    # Get mark_price: override > step_result > exec close
+    if mark_price_override is not None:
+        mark_price = mark_price_override
+        mark_price_source = "1m_close"  # 1m evaluation mode
+    elif step_result is not None and step_result.mark_price is not None:
         mark_price = step_result.mark_price
         mark_price_source = step_result.mark_price_source
     else:
@@ -171,4 +182,5 @@ def build_snapshot_view_impl(
         history_config=history_config,
         history_ready=is_history_ready,
         rollups=rollups,
+        incremental_state=incremental_state,
     )

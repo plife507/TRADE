@@ -14,7 +14,7 @@ This module delegates to helper modules:
 - exchange_positions: Position queries and management
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -58,20 +58,20 @@ class Position:
     position_type: str
     side: str
     size: float
-    size_usd: float
+    size_usdt: float
     entry_price: float
     current_price: float
     unrealized_pnl: float
     unrealized_pnl_percent: float
     leverage: float
     margin_mode: str
-    liquidation_price: Optional[float] = None
-    take_profit: Optional[float] = None
-    stop_loss: Optional[float] = None
-    trailing_stop: Optional[float] = None
-    adl_rank: Optional[int] = None
+    liquidation_price: float | None = None
+    take_profit: float | None = None
+    stop_loss: float | None = None
+    trailing_stop: float | None = None
+    adl_rank: int | None = None
     is_reduce_only: bool = False
-    cumulative_pnl: Optional[float] = None
+    cumulative_pnl: float | None = None
     
     @property
     def is_open(self) -> bool:
@@ -82,23 +82,23 @@ class Position:
 class Order:
     """Normalized open order data."""
     order_id: str
-    order_link_id: Optional[str]
+    order_link_id: str | None
     symbol: str
     side: str
     order_type: str
-    price: Optional[float]
+    price: float | None
     qty: float
     filled_qty: float
     remaining_qty: float
     status: str
     time_in_force: str
     reduce_only: bool
-    trigger_price: Optional[float] = None
-    trigger_by: Optional[str] = None
-    take_profit: Optional[float] = None
-    stop_loss: Optional[float] = None
-    created_time: Optional[str] = None
-    updated_time: Optional[str] = None
+    trigger_price: float | None = None
+    trigger_by: str | None = None
+    take_profit: float | None = None
+    stop_loss: float | None = None
+    created_time: str | None = None
+    updated_time: str | None = None
     
     @property
     def is_conditional(self) -> bool:
@@ -113,20 +113,20 @@ class Order:
 class OrderResult:
     """Normalized order result."""
     success: bool
-    order_id: Optional[str] = None
-    order_link_id: Optional[str] = None
-    symbol: Optional[str] = None
-    side: Optional[str] = None
-    order_type: Optional[str] = None
-    qty: Optional[float] = None
-    price: Optional[float] = None
-    trigger_price: Optional[float] = None
-    time_in_force: Optional[str] = None
-    take_profit: Optional[float] = None
-    stop_loss: Optional[float] = None
+    order_id: str | None = None
+    order_link_id: str | None = None
+    symbol: str | None = None
+    side: str | None = None
+    order_type: str | None = None
+    qty: float | None = None
+    price: float | None = None
+    trigger_price: float | None = None
+    time_in_force: str | None = None
+    take_profit: float | None = None
+    stop_loss: float | None = None
     reduce_only: bool = False
-    error: Optional[str] = None
-    raw_response: Optional[dict] = None
+    error: str | None = None
+    raw_response: dict | None = None
 
 
 # ==================== Exchange Manager ====================
@@ -184,8 +184,8 @@ class ExchangeManager:
             f"trading_mode={trading_mode}, auth={key_status}, key_source={key_source}"
         )
         
-        self._instruments: Dict[str, dict] = {}
-        self._previous_positions: Dict[str, bool] = {}
+        self._instruments: dict[str, dict] = {}
+        self._previous_positions: dict[str, bool] = {}
         
         # Setup WebSocket cleanup
         from . import exchange_websocket as ws
@@ -219,7 +219,7 @@ class ExchangeManager:
     
     # ==================== Account ====================
     
-    def get_balance(self) -> Dict[str, float]:
+    def get_balance(self) -> dict[str, float]:
         """Get account balance."""
         balance = self.bybit.get_balance()
         total = available = 0.0
@@ -240,11 +240,11 @@ class ExchangeManager:
     
     # ==================== Positions (delegated) ====================
     
-    def get_position(self, symbol: str) -> Optional[Position]:
+    def get_position(self, symbol: str) -> Position | None:
         from . import exchange_positions as pos
         return pos.get_position(self, symbol)
-    
-    def get_all_positions(self) -> List[Position]:
+
+    def get_all_positions(self) -> list[Position]:
         from . import exchange_positions as pos
         return pos.get_all_positions(self)
     
@@ -252,11 +252,11 @@ class ExchangeManager:
         from . import exchange_positions as pos
         return pos.get_total_exposure(self)
     
-    def set_position_tpsl(self, symbol: str, take_profit: float = None, stop_loss: float = None, tpsl_mode: str = "Full") -> bool:
+    def set_position_tpsl(self, symbol: str, take_profit: float | None = None, stop_loss: float | None = None, tpsl_mode: str = "Full") -> bool:
         from . import exchange_positions as pos
         return pos.set_position_tpsl(self, symbol, take_profit, stop_loss, tpsl_mode)
     
-    def set_trailing_stop(self, symbol: str, trailing_stop: float, active_price: float = None) -> bool:
+    def set_trailing_stop(self, symbol: str, trailing_stop: float, active_price: float | None = None) -> bool:
         from . import exchange_positions as pos
         return pos.set_trailing_stop(self, symbol, trailing_stop, active_price)
     
@@ -286,73 +286,73 @@ class ExchangeManager:
         from . import exchange_orders_market as mkt
         return mkt.market_sell(self, symbol, usd_amount)
     
-    def market_buy_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float = None, stop_loss: float = None, tpsl_mode: str = "Full") -> OrderResult:
+    def market_buy_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float | None = None, stop_loss: float | None = None, tpsl_mode: str = "Full") -> OrderResult:
         from . import exchange_orders_market as mkt
         return mkt.market_buy_with_tpsl(self, symbol, usd_amount, take_profit, stop_loss, tpsl_mode)
     
-    def market_sell_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float = None, stop_loss: float = None, tpsl_mode: str = "Full") -> OrderResult:
+    def market_sell_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float | None = None, stop_loss: float | None = None, tpsl_mode: str = "Full") -> OrderResult:
         from . import exchange_orders_market as mkt
         return mkt.market_sell_with_tpsl(self, symbol, usd_amount, take_profit, stop_loss, tpsl_mode)
     
     # ==================== Limit Orders (delegated) ====================
     
-    def limit_buy(self, symbol: str, usd_amount: float, price: float, time_in_force: str = "GTC", reduce_only: bool = False, order_link_id: str = None) -> OrderResult:
+    def limit_buy(self, symbol: str, usd_amount: float, price: float, time_in_force: str = "GTC", reduce_only: bool = False, order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_limit as lmt
         return lmt.limit_buy(self, symbol, usd_amount, price, time_in_force, reduce_only, order_link_id)
     
-    def limit_sell(self, symbol: str, usd_amount: float, price: float, time_in_force: str = "GTC", reduce_only: bool = False, order_link_id: str = None) -> OrderResult:
+    def limit_sell(self, symbol: str, usd_amount: float, price: float, time_in_force: str = "GTC", reduce_only: bool = False, order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_limit as lmt
         return lmt.limit_sell(self, symbol, usd_amount, price, time_in_force, reduce_only, order_link_id)
     
-    def limit_buy_with_tpsl(self, symbol: str, usd_amount: float, price: float, take_profit: float = None, stop_loss: float = None, time_in_force: str = "GTC", tpsl_mode: str = "Full", tp_order_type: str = "Market", sl_order_type: str = "Market", order_link_id: str = None) -> OrderResult:
+    def limit_buy_with_tpsl(self, symbol: str, usd_amount: float, price: float, take_profit: float | None = None, stop_loss: float | None = None, time_in_force: str = "GTC", tpsl_mode: str = "Full", tp_order_type: str = "Market", sl_order_type: str = "Market", order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_limit as lmt
         return lmt.limit_buy_with_tpsl(self, symbol, usd_amount, price, take_profit, stop_loss, time_in_force, tpsl_mode, tp_order_type, sl_order_type, order_link_id)
     
-    def limit_sell_with_tpsl(self, symbol: str, usd_amount: float, price: float, take_profit: float = None, stop_loss: float = None, time_in_force: str = "GTC", tpsl_mode: str = "Full", tp_order_type: str = "Market", sl_order_type: str = "Market", order_link_id: str = None) -> OrderResult:
+    def limit_sell_with_tpsl(self, symbol: str, usd_amount: float, price: float, take_profit: float | None = None, stop_loss: float | None = None, time_in_force: str = "GTC", tpsl_mode: str = "Full", tp_order_type: str = "Market", sl_order_type: str = "Market", order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_limit as lmt
         return lmt.limit_sell_with_tpsl(self, symbol, usd_amount, price, take_profit, stop_loss, time_in_force, tpsl_mode, tp_order_type, sl_order_type, order_link_id)
     
     # ==================== Stop Orders (delegated) ====================
     
-    def stop_market_buy(self, symbol: str, usd_amount: float, trigger_price: float, trigger_direction: int = 1, trigger_by: str = "LastPrice", reduce_only: bool = False, order_link_id: str = None) -> OrderResult:
+    def stop_market_buy(self, symbol: str, usd_amount: float, trigger_price: float, trigger_direction: int = 1, trigger_by: str = "LastPrice", reduce_only: bool = False, order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_stop as stop
         return stop.stop_market_buy(self, symbol, usd_amount, trigger_price, trigger_direction, trigger_by, reduce_only, order_link_id)
     
-    def stop_market_sell(self, symbol: str, usd_amount: float, trigger_price: float, trigger_direction: int = 2, trigger_by: str = "LastPrice", reduce_only: bool = False, order_link_id: str = None) -> OrderResult:
+    def stop_market_sell(self, symbol: str, usd_amount: float, trigger_price: float, trigger_direction: int = 2, trigger_by: str = "LastPrice", reduce_only: bool = False, order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_stop as stop
         return stop.stop_market_sell(self, symbol, usd_amount, trigger_price, trigger_direction, trigger_by, reduce_only, order_link_id)
     
-    def stop_limit_buy(self, symbol: str, usd_amount: float, trigger_price: float, limit_price: float, trigger_direction: int = 1, trigger_by: str = "LastPrice", time_in_force: str = "GTC", reduce_only: bool = False, order_link_id: str = None) -> OrderResult:
+    def stop_limit_buy(self, symbol: str, usd_amount: float, trigger_price: float, limit_price: float, trigger_direction: int = 1, trigger_by: str = "LastPrice", time_in_force: str = "GTC", reduce_only: bool = False, order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_stop as stop
         return stop.stop_limit_buy(self, symbol, usd_amount, trigger_price, limit_price, trigger_direction, trigger_by, time_in_force, reduce_only, order_link_id)
     
-    def stop_limit_sell(self, symbol: str, usd_amount: float, trigger_price: float, limit_price: float, trigger_direction: int = 2, trigger_by: str = "LastPrice", time_in_force: str = "GTC", reduce_only: bool = False, order_link_id: str = None) -> OrderResult:
+    def stop_limit_sell(self, symbol: str, usd_amount: float, trigger_price: float, limit_price: float, trigger_direction: int = 2, trigger_by: str = "LastPrice", time_in_force: str = "GTC", reduce_only: bool = False, order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_stop as stop
         return stop.stop_limit_sell(self, symbol, usd_amount, trigger_price, limit_price, trigger_direction, trigger_by, time_in_force, reduce_only, order_link_id)
     
-    def create_conditional_order(self, symbol: str, side: str, qty: float, trigger_price: float, trigger_direction: TriggerDirection = None, order_type: str = "Market", price: float = None, reduce_only: bool = True, order_link_id: str = None) -> OrderResult:
+    def create_conditional_order(self, symbol: str, side: str, qty: float, trigger_price: float, trigger_direction: TriggerDirection | None = None, order_type: str = "Market", price: float | None = None, reduce_only: bool = True, order_link_id: str | None = None) -> OrderResult:
         from . import exchange_orders_stop as stop
         return stop.create_conditional_order(self, symbol, side, qty, trigger_price, trigger_direction, order_type, price, reduce_only, order_link_id)
     
-    def open_position_with_rr(self, symbol: str, side: str, margin_usd: float, leverage: int, stop_loss_roi_pct: float, take_profits: List[Dict[str, float]]) -> Dict[str, Any]:
+    def open_position_with_rr(self, symbol: str, side: str, margin_usd: float, leverage: int, stop_loss_roi_pct: float, take_profits: list[dict[str, float]]) -> dict[str, Any]:
         from . import exchange_orders_stop as stop
         return stop.open_position_with_rr(self, symbol, side, margin_usd, leverage, stop_loss_roi_pct, take_profits)
     
     # ==================== Order Management (delegated) ====================
     
-    def get_open_orders(self, symbol: str = None) -> List[Order]:
+    def get_open_orders(self, symbol: str | None = None) -> list[Order]:
         from . import exchange_orders_manage as mgmt
         return mgmt.get_open_orders(self, symbol)
     
-    def cancel_order(self, symbol: str, order_id: str = None, order_link_id: str = None) -> bool:
+    def cancel_order(self, symbol: str, order_id: str | None = None, order_link_id: str | None = None) -> bool:
         from . import exchange_orders_manage as mgmt
         return mgmt.cancel_order(self, symbol, order_id, order_link_id)
     
-    def cancel_all_orders(self, symbol: str = None) -> bool:
+    def cancel_all_orders(self, symbol: str | None = None) -> bool:
         from . import exchange_orders_manage as mgmt
         return mgmt.cancel_all_orders(self, symbol)
     
-    def amend_order(self, symbol: str, order_id: str = None, order_link_id: str = None, qty: float = None, price: float = None, take_profit: float = None, stop_loss: float = None, trigger_price: float = None) -> bool:
+    def amend_order(self, symbol: str, order_id: str | None = None, order_link_id: str | None = None, qty: float | None = None, price: float | None = None, take_profit: float | None = None, stop_loss: float | None = None, trigger_price: float | None = None) -> bool:
         from . import exchange_orders_manage as mgmt
         return mgmt.amend_order(self, symbol, order_id, order_link_id, qty, price, take_profit, stop_loss, trigger_price)
     
@@ -360,49 +360,49 @@ class ExchangeManager:
         from . import exchange_orders_manage as mgmt
         return mgmt.close_position(self, symbol, cancel_conditional_orders)
     
-    def close_all_positions(self) -> List[OrderResult]:
+    def close_all_positions(self) -> list[OrderResult]:
         from . import exchange_orders_manage as mgmt
         return mgmt.close_all_positions(self)
     
     # ==================== Order History (delegated) ====================
     
-    def get_order_history(self, time_range: TimeRange, symbol: str = None, limit: int = 50) -> List[Dict]:
+    def get_order_history(self, time_range: TimeRange, symbol: str | None = None, limit: int = 50) -> list[dict]:
         from . import exchange_orders_manage as mgmt
         return mgmt.get_order_history(self, time_range, symbol, limit)
     
-    def get_executions(self, time_range: TimeRange, symbol: str = None, limit: int = 50) -> List[Dict]:
+    def get_executions(self, time_range: TimeRange, symbol: str | None = None, limit: int = 50) -> list[dict]:
         from . import exchange_orders_manage as mgmt
         return mgmt.get_executions(self, time_range, symbol, limit)
     
-    def get_closed_pnl(self, time_range: TimeRange, symbol: str = None, limit: int = 50) -> List[Dict]:
+    def get_closed_pnl(self, time_range: TimeRange, symbol: str | None = None, limit: int = 50) -> list[dict]:
         from . import exchange_orders_manage as mgmt
         return mgmt.get_closed_pnl(self, time_range, symbol, limit)
     
     # ==================== Batch Operations (delegated) ====================
     
-    def batch_market_orders(self, orders: List[Dict[str, Any]]) -> List[OrderResult]:
+    def batch_market_orders(self, orders: list[dict[str, Any]]) -> list[OrderResult]:
         from . import exchange_orders_manage as mgmt
         return mgmt.batch_market_orders(self, orders)
     
-    def batch_limit_orders(self, orders: List[Dict[str, Any]]) -> List[OrderResult]:
+    def batch_limit_orders(self, orders: list[dict[str, Any]]) -> list[OrderResult]:
         from . import exchange_orders_manage as mgmt
         return mgmt.batch_limit_orders(self, orders)
     
-    def batch_cancel_orders(self, orders: List[Dict[str, str]]) -> List[bool]:
+    def batch_cancel_orders(self, orders: list[dict[str, str]]) -> list[bool]:
         from . import exchange_orders_manage as mgmt
         return mgmt.batch_cancel_orders(self, orders)
     
-    def batch_amend_orders(self, orders: List[Dict[str, Any]]) -> List[bool]:
+    def batch_amend_orders(self, orders: list[dict[str, Any]]) -> list[bool]:
         from . import exchange_orders_manage as mgmt
         return mgmt.batch_amend_orders(self, orders)
     
     # ==================== Position Configuration (delegated) ====================
     
-    def cancel_position_conditional_orders(self, symbol: str, position_side: str, require_bot_id: bool = True) -> List[str]:
+    def cancel_position_conditional_orders(self, symbol: str, position_side: str, require_bot_id: bool = True) -> list[str]:
         from . import exchange_positions as pos
         return pos.cancel_position_conditional_orders(self, symbol, position_side, require_bot_id)
     
-    def reconcile_orphaned_orders(self, symbol: str = None) -> Dict[str, List[str]]:
+    def reconcile_orphaned_orders(self, symbol: str | None = None) -> dict[str, list[str]]:
         from . import exchange_positions as pos
         return pos.reconcile_orphaned_orders(self, symbol)
     
@@ -410,7 +410,7 @@ class ExchangeManager:
         from . import exchange_positions as pos
         return pos.set_risk_limit_by_id(self, symbol, risk_id, position_idx)
     
-    def get_risk_limits(self, symbol: str = None) -> List[Dict]:
+    def get_risk_limits(self, symbol: str | None = None) -> list[dict]:
         from . import exchange_positions as pos
         return pos.get_risk_limits(self, symbol)
     
@@ -426,11 +426,11 @@ class ExchangeManager:
         from . import exchange_positions as pos
         return pos.modify_position_margin(self, symbol, margin)
     
-    def switch_to_cross_margin(self, symbol: str, leverage: int = None) -> bool:
+    def switch_to_cross_margin(self, symbol: str, leverage: int | None = None) -> bool:
         from . import exchange_positions as pos
         return pos.switch_to_cross_margin(self, symbol, leverage)
     
-    def switch_to_isolated_margin(self, symbol: str, leverage: int = None) -> bool:
+    def switch_to_isolated_margin(self, symbol: str, leverage: int | None = None) -> bool:
         from . import exchange_positions as pos
         return pos.switch_to_isolated_margin(self, symbol, leverage)
     
@@ -444,11 +444,11 @@ class ExchangeManager:
     
     # ==================== Unified Account (delegated) ====================
     
-    def get_transaction_log(self, time_range: TimeRange, category: str = None, currency: str = None, log_type: str = None, limit: int = 50) -> Dict:
+    def get_transaction_log(self, time_range: TimeRange, category: str | None = None, currency: str | None = None, log_type: str | None = None, limit: int = 50) -> dict:
         from . import exchange_positions as pos
         return pos.get_transaction_log(self, time_range, category, currency, log_type, limit)
     
-    def get_collateral_info(self, currency: str = None) -> List[Dict]:
+    def get_collateral_info(self, currency: str | None = None) -> list[dict]:
         from . import exchange_positions as pos
         return pos.get_collateral_info(self, currency)
     
@@ -456,11 +456,11 @@ class ExchangeManager:
         from . import exchange_positions as pos
         return pos.set_collateral_coin(self, coin, enabled)
     
-    def get_borrow_history(self, time_range: TimeRange, currency: str = None, limit: int = 50) -> Dict:
+    def get_borrow_history(self, time_range: TimeRange, currency: str | None = None, limit: int = 50) -> dict:
         from . import exchange_positions as pos
         return pos.get_borrow_history(self, time_range, currency, limit)
     
-    def get_coin_greeks(self, base_coin: str = None) -> List[Dict]:
+    def get_coin_greeks(self, base_coin: str | None = None) -> list[dict]:
         from . import exchange_positions as pos
         return pos.get_coin_greeks(self, base_coin)
     
@@ -500,7 +500,7 @@ class ExchangeManager:
     
     # ==================== Utility ====================
     
-    def get_rate_limit_status(self) -> Dict:
+    def get_rate_limit_status(self) -> dict:
         """Get current rate limit status."""
         return self.bybit.get_rate_limit_status()
     
@@ -511,6 +511,6 @@ class ExchangeManager:
         except Exception:
             return 0
     
-    def test_connection(self) -> Dict[str, Any]:
+    def test_connection(self) -> dict[str, Any]:
         """Test exchange connectivity."""
         return self.bybit.test_connection()

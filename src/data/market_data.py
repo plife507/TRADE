@@ -28,9 +28,9 @@ Usage:
 """
 
 import time
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from threading import Lock
+from typing import Any
 
 import pandas as pd
 
@@ -43,8 +43,8 @@ from ..utils.helpers import safe_float
 
 class CacheEntry:
     """Simple cache entry with TTL."""
-    
-    def __init__(self, data: Any, ttl_seconds: float):
+
+    def __init__(self, data, ttl_seconds: float):
         self.data = data
         self.expires_at = time.time() + ttl_seconds
     
@@ -55,25 +55,25 @@ class CacheEntry:
 
 class MarketDataCache:
     """Thread-safe cache for market data."""
-    
+
     def __init__(self):
-        self._cache: Dict[str, CacheEntry] = {}
+        self._cache: dict[str, CacheEntry] = {}
         self._lock = Lock()
-    
-    def get(self, key: str) -> Optional[Any]:
+
+    def get(self, key: str):
         """Get cached value if not expired."""
         with self._lock:
             entry = self._cache.get(key)
             if entry and not entry.is_expired:
                 return entry.data
             return None
-    
-    def set(self, key: str, data: Any, ttl_seconds: float):
+
+    def set(self, key: str, data, ttl_seconds: float):
         """Set cache value with TTL."""
         with self._lock:
             self._cache[key] = CacheEntry(data, ttl_seconds)
     
-    def clear(self, key: str = None):
+    def clear(self, key: str | None = None):
         """Clear specific key or entire cache."""
         with self._lock:
             if key:
@@ -172,9 +172,9 @@ class MarketData:
         # Staleness thresholds for WebSocket data (seconds)
         self._ws_ticker_staleness = 5.0
         self._ws_kline_staleness = 60.0
-        
+
         # Track data sources for diagnostics
-        self._last_source: Dict[str, str] = {}
+        self._last_source: dict[str, str] = {}
     
     # ==================== WebSocket State Access ====================
     
@@ -245,7 +245,7 @@ class MarketData:
         self._cache.set(cache_key, price, self._price_ttl)
         return price
     
-    def get_bid_ask(self, symbol: str) -> Dict[str, float]:
+    def get_bid_ask(self, symbol: str) -> dict[str, float]:
         """
         Get current bid/ask prices.
         
@@ -299,7 +299,7 @@ class MarketData:
         self._cache.set(cache_key, result, self._price_ttl)
         return result
     
-    def get_ticker(self, symbol: str) -> Dict[str, Any]:
+    def get_ticker(self, symbol: str) -> dict[str, Any]:
         """
         Get full ticker data.
         
@@ -439,7 +439,7 @@ class MarketData:
         
         return df
     
-    def get_latest_candle(self, symbol: str, timeframe: str = "15") -> Dict[str, Any]:
+    def get_latest_candle(self, symbol: str, timeframe: str = "15") -> dict[str, Any]:
         """
         Get the most recent completed candle.
         
@@ -487,7 +487,7 @@ class MarketData:
     
     # ==================== Funding & OI ====================
     
-    def get_funding_rate(self, symbol: str) -> Dict[str, Any]:
+    def get_funding_rate(self, symbol: str) -> dict[str, Any]:
         """
         Get current funding rate.
         
@@ -538,7 +538,7 @@ class MarketData:
         self._cache.set(cache_key, result, self._funding_ttl)
         return result
     
-    def get_open_interest(self, symbol: str) -> Dict[str, Any]:
+    def get_open_interest(self, symbol: str) -> dict[str, Any]:
         """
         Get open interest data.
         
@@ -588,7 +588,7 @@ class MarketData:
     
     # ==================== Market Snapshot ====================
     
-    def get_market_snapshot(self, symbols: List[str] = None) -> Dict[str, Dict]:
+    def get_market_snapshot(self, symbols: list[str] | None = None) -> dict[str, dict]:
         """
         Get comprehensive market snapshot for multiple symbols.
         
@@ -630,7 +630,7 @@ class MarketData:
         mtf: str = "1h",
         ltf: str = "15m",
         bars: int = 100,
-    ) -> Dict[str, pd.DataFrame]:
+    ) -> dict[str, pd.DataFrame]:
         """
         Get OHLCV data for multiple timeframes at once.
         
@@ -656,9 +656,9 @@ class MarketData:
     def get_multiple_timeframes(
         self,
         symbol: str,
-        timeframes: List[str],
+        timeframes: list[str],
         bars: int = 100,
-    ) -> Dict[str, pd.DataFrame]:
+    ) -> dict[str, pd.DataFrame]:
         """
         Get OHLCV data for arbitrary list of timeframes.
         
@@ -681,7 +681,7 @@ class MarketData:
     
     # ==================== Cache Management ====================
     
-    def clear_cache(self, symbol: str = None):
+    def clear_cache(self, symbol: str | None = None):
         """
         Clear cached data.
         
@@ -697,7 +697,7 @@ class MarketData:
     
     # ==================== Diagnostics ====================
     
-    def get_source_stats(self) -> Dict[str, Any]:
+    def get_source_stats(self) -> dict[str, Any]:
         """Get statistics on data sources used."""
         ws_count = sum(1 for s in self._last_source.values() if s == "websocket")
         rest_count = sum(1 for s in self._last_source.values() if s == "rest")
@@ -709,7 +709,7 @@ class MarketData:
             "last_sources": dict(self._last_source),
         }
     
-    def get_realtime_status(self) -> Dict[str, Any]:
+    def get_realtime_status(self) -> dict[str, Any]:
         """Get status of realtime data connection."""
         if not self.realtime_state:
             return {"available": False, "error": "RealtimeState not available"}
@@ -728,8 +728,8 @@ class MarketData:
 # ==============================================================================
 
 # Cached instances per environment
-_market_data_live: Optional[MarketData] = None
-_market_data_demo: Optional[MarketData] = None
+_market_data_live: MarketData | None = None
+_market_data_demo: MarketData | None = None
 
 
 def get_market_data(env: DataEnv = DEFAULT_DATA_ENV) -> MarketData:
@@ -771,7 +771,7 @@ def get_demo_market_data() -> MarketData:
     return get_market_data(env="demo")
 
 
-def reset_market_data(env: DataEnv = None):
+def reset_market_data(env: DataEnv | None = None):
     """
     Reset the MarketData instance(s) (for testing).
     

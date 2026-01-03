@@ -15,7 +15,6 @@ Phase 1: Added history support for crossover detection and structure-based SL.
 """
 
 from datetime import datetime
-from typing import Dict, Optional, Tuple
 
 from .types import (
     Bar,
@@ -45,8 +44,8 @@ class SnapshotBuilder:
     def __init__(
         self,
         symbol: str,
-        tf_mapping: Dict[str, str],
-        history_config: Optional[HistoryConfig] = None,
+        tf_mapping: dict[str, str],
+        history_config: HistoryConfig | None = None,
     ):
         """
         Initialize snapshot builder.
@@ -70,10 +69,10 @@ class SnapshotBuilder:
         features_htf: FeatureSnapshot,
         features_mtf: FeatureSnapshot,
         features_exec: FeatureSnapshot,
-        history_bars_exec: Tuple[Bar, ...] = (),
-        history_features_exec: Tuple[FeatureSnapshot, ...] = (),
-        history_features_htf: Tuple[FeatureSnapshot, ...] = (),
-        history_features_mtf: Tuple[FeatureSnapshot, ...] = (),
+        history_bars_exec: tuple[Bar, ...] = (),
+        history_features_exec: tuple[FeatureSnapshot, ...] = (),
+        history_features_htf: tuple[FeatureSnapshot, ...] = (),
+        history_features_mtf: tuple[FeatureSnapshot, ...] = (),
         history_ready: bool = True,
     ) -> RuntimeSnapshot:
         """
@@ -148,12 +147,12 @@ class SnapshotBuilder:
         mark_price_source: str,
         exchange_state: ExchangeState,
         features_ltf: FeatureSnapshot,
-        features_htf: Optional[FeatureSnapshot] = None,
-        features_mtf: Optional[FeatureSnapshot] = None,
-        history_bars_exec: Tuple[Bar, ...] = (),
-        history_features_exec: Tuple[FeatureSnapshot, ...] = (),
-        history_features_htf: Tuple[FeatureSnapshot, ...] = (),
-        history_features_mtf: Tuple[FeatureSnapshot, ...] = (),
+        features_htf: FeatureSnapshot | None = None,
+        features_mtf: FeatureSnapshot | None = None,
+        history_bars_exec: tuple[Bar, ...] = (),
+        history_features_exec: tuple[FeatureSnapshot, ...] = (),
+        history_features_htf: tuple[FeatureSnapshot, ...] = (),
+        history_features_mtf: tuple[FeatureSnapshot, ...] = (),
         history_ready: bool = True,
     ) -> RuntimeSnapshot:
         """

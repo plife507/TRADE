@@ -1,0 +1,116 @@
+# =============================================================================
+# V_71: Fibonacci Levels with Swing Dependency
+# =============================================================================
+# Purpose: Validate fibonacci structure with swing dependency resolution.
+# Tests: depends_on field, fibonacci levels computation
+# Expected: Normalizer passes, fib levels accessible in conditions
+# Use Case: Entry at fibonacci retracement levels
+# =============================================================================
+
+id: V_71_fibonacci
+version: "1.0.0"
+name: "Fibonacci Retracement Levels"
+description: "Validate fibonacci structure with swing dependency"
+
+variables:
+  fib_levels: [0.382, 0.5, 0.618]
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+timeframes:
+  exec: "15m"
+
+tf_configs:
+  exec:
+    role: "exec"
+    warmup_bars: 50
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_trend"
+        params:
+          length: 50
+        input_source: "close"
+      - indicator_type: "rsi"
+        output_key: "rsi"
+        params:
+          length: 14
+        input_source: "close"
+
+structures:
+  exec:
+    # Swing detector must be defined first (fibonacci depends on it)
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    # Fibonacci detector with dependency on swing
+    - type: fibonacci
+      key: fib
+      depends_on:
+        swing: swing
+      params:
+        levels: "{{ fib_levels }}"
+        mode: retracement
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+signal_rules:
+  entry_rules:
+    - direction: "long"
+      conditions:
+        # Price at 61.8% fibonacci level
+        - tf: "exec"
+          indicator_key: "structure.fib.level_0.618"
+          operator: "gt"
+          value: 0
+          is_indicator_comparison: false
+        # RSI oversold
+        - tf: "exec"
+          indicator_key: "rsi"
+          operator: "lt"
+          value: 40
+          is_indicator_comparison: false
+        # Above trend EMA
+        - tf: "exec"
+          indicator_key: "close"
+          operator: "gt"
+          value: "ema_trend"
+          is_indicator_comparison: true
+
+  exit_rules:
+    - direction: "long"
+      conditions:
+        - tf: "exec"
+          indicator_key: "rsi"
+          operator: "gt"
+          value: 70
+          is_indicator_comparison: false
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 2.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 1.0
+    max_leverage: 3.0

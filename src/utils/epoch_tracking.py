@@ -41,12 +41,15 @@ Usage:
     experiment.complete(results={...}, overall_metrics={...})
 """
 
+from __future__ import annotations
+
 import json
 import os
+from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Callable
+from typing import Any
 from dataclasses import dataclass, field, asdict
 
 from .logger import get_logger
@@ -106,7 +109,7 @@ class ArtifactWriter:
     def __init__(self, base_dir: str = "backtests"):
         self.base_dir = Path(base_dir)
     
-    def get_run_dir(self, run_id: str, timestamp: datetime = None) -> Path:
+    def get_run_dir(self, run_id: str, timestamp: datetime | None = None) -> Path:
         """Get or create the directory for a run (legacy layout)."""
         ts = timestamp or datetime.now()
         ts_str = ts.strftime("%Y%m%d_%H%M%S")
@@ -141,7 +144,7 @@ class ArtifactWriter:
         run_dir.mkdir(parents=True, exist_ok=True)
         return run_dir
     
-    def write_config(self, run_id: str, config: Dict[str, Any], timestamp: datetime = None) -> Path:
+    def write_config(self, run_id: str, config: dict[str, Any], timestamp: datetime | None = None) -> Path:
         """Write configuration to config.json."""
         run_dir = self.get_run_dir(run_id, timestamp)
         config_path = run_dir / "config.json"
@@ -151,7 +154,7 @@ class ArtifactWriter:
         
         return config_path
     
-    def write_results(self, run_id: str, results: Dict[str, Any], timestamp: datetime = None) -> Path:
+    def write_results(self, run_id: str, results: dict[str, Any], timestamp: datetime | None = None) -> Path:
         """Write full results to results.json."""
         run_dir = self.get_run_dir(run_id, timestamp)
         results_path = run_dir / "results.json"
@@ -161,7 +164,7 @@ class ArtifactWriter:
         
         return results_path
     
-    def write_summary(self, run_id: str, summary: Dict[str, Any], timestamp: datetime = None) -> Path:
+    def write_summary(self, run_id: str, summary: dict[str, Any], timestamp: datetime | None = None) -> Path:
         """Write high-level summary to summary.json."""
         run_dir = self.get_run_dir(run_id, timestamp)
         summary_path = run_dir / "summary.json"
@@ -171,7 +174,7 @@ class ArtifactWriter:
         
         return summary_path
     
-    def append_trade(self, run_id: str, trade: Dict[str, Any], timestamp: datetime = None) -> None:
+    def append_trade(self, run_id: str, trade: dict[str, Any], timestamp: datetime | None = None) -> None:
         """Append a trade record to trades.jsonl."""
         run_dir = self.get_run_dir(run_id, timestamp)
         trades_path = run_dir / "trades.jsonl"
@@ -181,7 +184,7 @@ class ArtifactWriter:
 
 
 # Global artifact writer
-_artifact_writer: Optional[ArtifactWriter] = None
+_artifact_writer: ArtifactWriter | None = None
 
 
 def get_artifact_writer() -> ArtifactWriter:
@@ -216,16 +219,16 @@ class StrategyEpochTracker:
         self.strategy_name = strategy_name
         self.logger = get_logger()
         self._artifact_writer = get_artifact_writer()
-        self._active_epochs: Dict[str, Dict] = {}  # run_id -> epoch info
+        self._active_epochs: dict[str, dict] = {}  # run_id -> epoch info
     
     def epoch_start(
         self,
         epoch: StrategyEpoch,
         symbol: str,
-        tfs: List[str] = None,
-        timeframes: List[str] = None,
-        experiment_id: Optional[str] = None,
-        metadata: Dict = None,
+        tfs: list[str] | None = None,
+        timeframes: list[str] | None = None,
+        experiment_id: str | None = None,
+        metadata: dict | None = None,
         write_artifacts: bool = True,
     ) -> str:
         """
@@ -299,10 +302,10 @@ class StrategyEpochTracker:
         run_id: str,
         epoch: StrategyEpoch,
         symbol: str,
-        metrics: Dict = None,
-        passed: bool = None,
-        next_epoch: Optional[StrategyEpoch] = None,
-        promotion_reason: str = None,
+        metrics: dict | None = None,
+        passed: bool | None = None,
+        next_epoch: StrategyEpoch | None = None,
+        promotion_reason: str | None = None,
         write_artifacts: bool = True,
     ) -> None:
         """
@@ -402,10 +405,10 @@ class StrategyEpochTracker:
         run_id: str,
         symbol: str,
         side: str,
-        size_usd: float,
+        size_usdt: float,
         price: float,
-        pnl: float = None,
-        order_id: str = None,
+        pnl: float | None = None,
+        order_id: str | None = None,
         **extra,
     ) -> None:
         """
@@ -415,7 +418,7 @@ class StrategyEpochTracker:
             run_id: Run ID for the epoch
             symbol: Symbol traded
             side: BUY or SELL
-            size_usd: Position size in USD
+            size_usdt: Position size in USDT
             price: Execution price
             pnl: Realized PnL (optional)
             order_id: Order ID (optional)
@@ -431,7 +434,7 @@ class StrategyEpochTracker:
                 strategy_id=self.strategy_id,
                 symbol=symbol,
                 side=side,
-                size_usd=size_usd,
+                size_usdt=size_usdt,
                 price=price,
                 pnl=pnl,
                 order_id=order_id,
@@ -445,7 +448,7 @@ class StrategyEpochTracker:
             "epoch": epoch,
             "symbol": symbol,
             "side": side,
-            "size_usd": size_usd,
+            "size_usdt": size_usdt,
             "price": price,
             "pnl": pnl,
             "order_id": order_id,
@@ -472,10 +475,10 @@ class StrategyEpochTracker:
 class StrategyConfig:
     """Configuration for a strategy within an experiment."""
     strategy_id: str
-    timeframes: List[str]
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    timeframes: list[str]
+    parameters: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -493,10 +496,10 @@ class ExperimentTracker:
         self,
         symbol: str,
         experiment_id: str,
-        experiment_name: str = None,
+        experiment_name: str | None = None,
         experiment_type: ExperimentType = ExperimentType.SINGLE_STRATEGY,
-        strategies: List[Dict] = None,
-        metadata: Dict = None,
+        strategies: list[dict] | None = None,
+        metadata: dict | None = None,
     ):
         """
         Initialize experiment tracker.
@@ -519,8 +522,8 @@ class ExperimentTracker:
         self._artifact_writer = get_artifact_writer()
         
         # Tracking state
-        self._run_id: Optional[str] = None
-        self._started_at: Optional[datetime] = None
+        self._run_id: str | None = None
+        self._started_at: datetime | None = None
         self._ctx = None
     
     def start(self) -> str:
@@ -566,8 +569,8 @@ class ExperimentTracker:
     
     def complete(
         self,
-        results: Dict[str, Any],
-        overall_metrics: Dict[str, Any] = None,
+        results: dict[str, Any],
+        overall_metrics: dict[str, Any] | None = None,
     ) -> None:
         """
         Complete the experiment with results.
@@ -626,11 +629,11 @@ class ExperimentTracker:
             self._ctx.__exit__(None, None, None)
             self._ctx = None
     
-    def get_run_id(self) -> Optional[str]:
+    def get_run_id(self) -> str | None:
         """Get the current run ID."""
         return self._run_id
     
-    def create_epoch_tracker(self, strategy_id: str, strategy_name: str = None) -> StrategyEpochTracker:
+    def create_epoch_tracker(self, strategy_id: str, strategy_name: str | None = None) -> StrategyEpochTracker:
         """
         Create an epoch tracker linked to this experiment.
         
@@ -649,9 +652,9 @@ class ExperimentTracker:
 def make_timeframe_mix_experiment(
     symbol: str,
     strategy_id: str,
-    timeframes: List[str],
-    experiment_id: str = None,
-    metadata: Dict = None,
+    timeframes: list[str],
+    experiment_id: str | None = None,
+    metadata: dict | None = None,
 ) -> ExperimentTracker:
     """
     Create an experiment testing one strategy on multiple timeframes.
@@ -693,9 +696,9 @@ def make_timeframe_mix_experiment(
 
 def make_multi_strategy_experiment(
     symbol: str,
-    strategy_timeframes: List[Dict[str, Any]],
-    experiment_id: str = None,
-    metadata: Dict = None,
+    strategy_timeframes: list[dict[str, Any]],
+    experiment_id: str | None = None,
+    metadata: dict | None = None,
 ) -> ExperimentTracker:
     """
     Create an experiment testing multiple strategies on the same symbol.
@@ -735,10 +738,10 @@ def make_multi_strategy_experiment(
 def make_parameter_sweep_experiment(
     symbol: str,
     strategy_id: str,
-    timeframes: List[str],
-    parameter_sets: List[Dict[str, Any]],
-    experiment_id: str = None,
-    metadata: Dict = None,
+    timeframes: list[str],
+    parameter_sets: list[dict[str, Any]],
+    experiment_id: str | None = None,
+    metadata: dict | None = None,
 ) -> ExperimentTracker:
     """
     Create an experiment sweeping parameters for a strategy.
@@ -791,15 +794,15 @@ def run_epoch(
     epoch: StrategyEpoch,
     symbol: str,
     strategy_id: str,
-    runner_fn: Callable[..., Dict],
-    strategy_name: str = None,
-    timeframes: List[str] = None,
-    experiment_id: str = None,
-    metadata: Dict = None,
-    promotion_criteria: Callable[[Dict], bool] = None,
-    next_epoch: StrategyEpoch = None,
+    runner_fn: Callable[..., dict],
+    strategy_name: str | None = None,
+    timeframes: list[str] | None = None,
+    experiment_id: str | None = None,
+    metadata: dict | None = None,
+    promotion_criteria: Callable[[dict], bool] | None = None,
+    next_epoch: StrategyEpoch | None = None,
     **runner_kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Wrapper to run an epoch with full tracking.
     

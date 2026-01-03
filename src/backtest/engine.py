@@ -32,12 +32,13 @@ Usage:
     result = engine.run(strategy)
 """
 
+from collections.abc import Callable
 import json
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Callable, List, Dict, Any, Set
+from typing import Any
 import uuid
 
 # Import dataclasses from engine_data_prep module
@@ -115,6 +116,7 @@ from .runtime.feed_store import FeedStore, MultiTFFeedStore
 from .runtime.snapshot_view import RuntimeSnapshotView
 from .runtime.rollup_bucket import ExecRollupBucket, create_empty_rollup_dict
 from .runtime.state_tracker import StateTracker, create_state_tracker
+from .runtime.quote_state import QuoteState
 from .system_config import (
     SystemConfig,
     load_system_config,
@@ -134,6 +136,11 @@ from .sim import SimulatedExchange, ExecutionConfig, StepResult
 from .simulated_risk_manager import SimulatedRiskManager
 from .risk_policy import RiskPolicy, create_risk_policy, RiskDecision
 from .metrics import compute_backtest_metrics
+
+# Incremental state imports (Phase 6)
+from .incremental.base import BarData
+from .incremental.state import MultiTFIncrementalState
+from .incremental.registry import list_structure_types
 
 from ..core.risk_manager import Signal
 from ..data.historical_data_store import get_historical_store, TF_MINUTES
@@ -163,9 +170,9 @@ class BacktestEngine:
         self,
         config: SystemConfig,
         window_name: str = "hygiene",
-        run_dir: Optional[Path] = None,
-        tf_mapping: Optional[Dict[str, str]] = None,
-        on_snapshot: Optional[Callable[["RuntimeSnapshotView", int, int, int], None]] = None,
+        run_dir: Path | None = None,
+        tf_mapping: dict[str, str] | None = None,
+        on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
         record_state_tracking: bool = False,
     ):
         """
@@ -220,12 +227,12 @@ class BacktestEngine:
         )
         
         # State
-        self._data: Optional[pd.DataFrame] = None
-        self._prepared_frame: Optional[PreparedFrame] = None
-        self._mtf_frames: Optional[MultiTFPreparedFrames] = None  # Phase 3
-        self._exchange: Optional[SimulatedExchange] = None
-        self._equity_curve: List[EquityPoint] = []
-        self._started_at: Optional[datetime] = None
+        self._data: pd.DataFrame | None = None
+        self._prepared_frame: PreparedFrame | None = None
+        self._mtf_frames: MultiTFPreparedFrames | None = None  # Phase 3
+        self._exchange: SimulatedExchange | None = None
+        self._equity_curve: list[EquityPoint] = []
+        self._started_at: datetime | None = None
         
         # Phase 3: Multi-TF configuration
         # Default to single-TF mode if no explicit mapping provided
@@ -248,26 +255,26 @@ class BacktestEngine:
         
         # Phase 3: TimeframeCache for HTF/MTF carry-forward
         self._tf_cache = TimeframeCache()
-        
+
         # Phase 3: Indicator DataFrames per TF (populated in prepare_multi_tf_frames)
-        self._htf_df: Optional[pd.DataFrame] = None
-        self._mtf_df: Optional[pd.DataFrame] = None
-        self._ltf_df: Optional[pd.DataFrame] = None
-        
+        self._htf_df: pd.DataFrame | None = None
+        self._mtf_df: pd.DataFrame | None = None
+        self._ltf_df: pd.DataFrame | None = None
+
         # Phase 3: Readiness gate tracking
         self._warmup_complete = False
-        self._first_ready_bar_index: Optional[int] = None
-        
+        self._first_ready_bar_index: int | None = None
+
         # Array-backed hot loop: FeedStores for O(1) array access
-        self._multi_tf_feed_store: Optional[MultiTFFeedStore] = None
-        self._exec_feed: Optional[FeedStore] = None
-        self._htf_feed: Optional[FeedStore] = None
-        self._mtf_feed: Optional[FeedStore] = None
+        self._multi_tf_feed_store: MultiTFFeedStore | None = None
+        self._exec_feed: FeedStore | None = None
+        self._htf_feed: FeedStore | None = None
+        self._mtf_feed: FeedStore | None = None
 
         # Phase 3: 1m Quote Feed + Rollup Bucket
-        self._quote_feed: Optional[FeedStore] = None
+        self._quote_feed: FeedStore | None = None
         self._rollup_bucket: ExecRollupBucket = ExecRollupBucket()
-        self._current_rollups: Dict[str, float] = create_empty_rollup_dict()
+        self._current_rollups: dict[str, float] = create_empty_rollup_dict()
         self._last_1m_idx: int = -1  # Track last processed 1m bar index
 
         # Track HTF/MTF forward-fill indices for RuntimeSnapshotView
@@ -281,7 +288,7 @@ class BacktestEngine:
         # Stage 7: Optional state tracking (record-only)
         # When enabled, tracks signal/action/gate state per bar
         self._record_state_tracking = record_state_tracking
-        self._state_tracker: Optional[StateTracker] = None
+        self._state_tracker: StateTracker | None = None
         if record_state_tracking:
             self._state_tracker = create_state_tracker(
                 warmup_bars=0,  # Will be set after prepare_backtest_frame
@@ -289,6 +296,16 @@ class BacktestEngine:
                 max_drawdown_pct=config.risk_profile.max_drawdown_pct if hasattr(config.risk_profile, 'max_drawdown_pct') else 100.0,
                 cooldown_bars=0,
             )
+            # P2-12: Ensure clean state on init (reset clears any stale state)
+            self._state_tracker.reset()
+
+        # IdeaCard reference (set by factory, None if created directly)
+        # Must be initialized here to avoid AttributeError in _build_structures_into_exec_feed()
+        self._idea_card: "IdeaCard | None" = None
+
+        # Phase 6: Incremental state for structure detection (swing, trend, zone, etc.)
+        # Built from IdeaCard structure specs after engine creation
+        self._incremental_state: MultiTFIncrementalState | None = None
 
         tf_mode_str = "multi-TF" if self._multi_tf_mode else "single-TF"
         self.logger.info(
@@ -303,8 +320,8 @@ class BacktestEngine:
         features_exec: FeatureSnapshot,
         htf_updated: bool,
         mtf_updated: bool,
-        features_htf: Optional[FeatureSnapshot],
-        features_mtf: Optional[FeatureSnapshot],
+        features_htf: FeatureSnapshot | None,
+        features_mtf: FeatureSnapshot | None,
     ) -> None:
         """
         Update rolling history windows.
@@ -339,6 +356,53 @@ class BacktestEngine:
             or if no history is configured.
         """
         return self._history_manager.is_ready()
+
+    def _build_incremental_state(self) -> MultiTFIncrementalState | None:
+        """
+        Build incremental state from IdeaCard structure specs.
+
+        Phase 6: Creates MultiTFIncrementalState for O(1) structure access
+        in the hot loop. The incremental state is updated bar-by-bar.
+
+        Returns:
+            MultiTFIncrementalState if IdeaCard has structure specs, None otherwise.
+
+        Raises:
+            ValueError: If structure specs are invalid (fail-loud with fix suggestions).
+        """
+        if self._idea_card is None:
+            return None
+
+        # Check if IdeaCard has any structure specs
+        has_exec_specs = bool(self._idea_card.structure_specs_exec)
+        has_htf_specs = bool(self._idea_card.structure_specs_htf)
+
+        if not has_exec_specs and not has_htf_specs:
+            self.logger.debug("No structure specs in IdeaCard, skipping incremental state build")
+            return None
+
+        # Convert IncrementalStructureSpec tuples to list of dicts
+        exec_specs = [spec.to_dict() for spec in self._idea_card.structure_specs_exec]
+
+        # Build HTF configs: {timeframe: [spec_dicts]}
+        htf_configs: dict[str, list[dict]] = {}
+        for tf, specs in self._idea_card.structure_specs_htf.items():
+            htf_configs[tf] = [spec.to_dict() for spec in specs]
+
+        # Create incremental state
+        state = MultiTFIncrementalState(
+            exec_tf=self.config.tf,
+            exec_specs=exec_specs,
+            htf_configs=htf_configs if htf_configs else None,
+        )
+
+        self.logger.info(
+            f"Built incremental state: "
+            f"exec_structures={state.exec.list_structures()}, "
+            f"htfs={state.list_htfs()}"
+        )
+
+        return state
 
     def _get_history_tuples(self) -> tuple:
         """
@@ -511,8 +575,11 @@ class BacktestEngine:
         """
         Build market structures into exec FeedStore.
 
-        Stage 3: Exec-only structure blocks from IdeaCard are computed and
-        wired into exec_feed.structures and exec_feed.structure_key_map.
+        Phase 7 Transition:
+        - If IdeaCard has `structures:` section, the incremental state system is used
+          and batch structure building is skipped (incremental is built in run())
+        - If IdeaCard has `market_structure_blocks`, the deprecated batch system is used
+          with a deprecation warning
 
         Called from _build_feed_stores() after exec/htf/mtf feeds are built.
         """
@@ -523,6 +590,22 @@ class BacktestEngine:
             self.logger.warning("Cannot build structures: no exec feed")
             return
 
+        # Phase 7: Check if IdeaCard uses the new incremental structures system
+        # If so, skip the deprecated batch build - incremental state is built in run()
+        has_incremental_structures = (
+            bool(self._idea_card.structure_specs_exec) or
+            bool(self._idea_card.structure_specs_htf)
+        )
+
+        if has_incremental_structures:
+            self.logger.debug(
+                "IdeaCard uses 'structures:' section - "
+                "skipping deprecated batch structure build"
+            )
+            return
+
+        # Legacy path: use deprecated batch structure building
+        # (emits deprecation warning if market_structure_blocks is present)
         build_structures_into_feed(
             exec_feed=self._exec_feed,
             idea_card=self._idea_card,
@@ -605,19 +688,29 @@ class BacktestEngine:
             # No new 1m bars to process
             return
 
-        # Accumulate each 1m bar
+        # Accumulate each 1m bar via direct array access (O(1) per bar)
+        # BUG-001 FIX: Replaced get_quote_at_exec_close() which caused duplicate
+        # accumulation due to binary search finding "last bar at or before timestamp"
         for idx in range(start_1m_idx, end_1m_idx + 1):
-            quote = get_quote_at_exec_close(
-                quote_feed=self._quote_feed,
-                exec_ts_close=self._quote_feed.get_ts_close_datetime(idx),
+            # Build QuoteState directly from 1m feed arrays (O(1))
+            # Use _get_ts_close_ms_at() method which converts ts_close[idx] to epoch ms
+            ts_ms = self._quote_feed._get_ts_close_ms_at(idx)
+            quote = QuoteState(
+                ts_ms=ts_ms,
+                last=float(self._quote_feed.close[idx]),
+                open_1m=float(self._quote_feed.open[idx]),
+                high_1m=float(self._quote_feed.high[idx]),
+                low_1m=float(self._quote_feed.low[idx]),
+                mark=float(self._quote_feed.close[idx]),
+                mark_source="approx_from_ohlcv_1m",
+                volume_1m=float(self._quote_feed.volume[idx]),
             )
-            if quote is not None:
-                self._rollup_bucket.accumulate(quote)
+            self._rollup_bucket.accumulate(quote)
 
         # Update last processed index
         self._last_1m_idx = end_1m_idx
 
-    def _freeze_rollups(self) -> Dict[str, float]:
+    def _freeze_rollups(self) -> dict[str, float]:
         """
         Freeze rollup bucket at exec close and reset for next interval.
 
@@ -667,7 +760,7 @@ class BacktestEngine:
     
     def run(
         self,
-        strategy: Callable[[RuntimeSnapshot, Dict[str, Any]], Optional[Signal]],
+        strategy: Callable[[RuntimeSnapshot, dict[str, Any]], Signal | None],
     ) -> BacktestResult:
         """
         Run the backtest.
@@ -706,6 +799,9 @@ class BacktestEngine:
         exec_feed = self._exec_feed
         num_bars = exec_feed.length
         tf_delta = tf_duration(self.config.tf)
+
+        # Phase 6: Build incremental state for structure detection
+        self._incremental_state = self._build_incremental_state()
         
         # Get resolved risk profile values
         risk_profile = self.config.risk_profile
@@ -731,16 +827,16 @@ class BacktestEngine:
         
         # Bar-by-bar simulation
         self._equity_curve = []
-        self._account_curve: List[AccountCurvePoint] = []
-        prev_bar: Optional[CanonicalBar] = None
-        
+        self._account_curve: list[AccountCurvePoint] = []
+        prev_bar: CanonicalBar | None = None
+
         # Early-stop tracking (proof-grade)
-        stop_classification: Optional[StopReason] = None
-        stop_reason_detail: Optional[str] = None
-        stop_reason: Optional[str] = None  # Legacy compat
-        stop_ts: Optional[datetime] = None
-        stop_bar_index: Optional[int] = None
-        stop_details: Optional[Dict[str, Any]] = None
+        stop_classification: StopReason | None = None
+        stop_reason_detail: str | None = None
+        stop_reason: str | None = None  # Legacy compat
+        stop_ts: datetime | None = None
+        stop_bar_index: int | None = None
+        stop_details: dict[str, Any] | None = None
         
         for i in range(num_bars):
             # Array-backed hot loop: O(1) access to bar data
@@ -761,6 +857,30 @@ class BacktestEngine:
                 volume=float(exec_feed.volume[i]),
             )
 
+            # Phase 6: Update incremental state with current bar
+            # This must happen BEFORE snapshot creation so structures are current
+            if self._incremental_state is not None:
+                # Build indicator dict for BarData (O(1) dict build from arrays)
+                indicator_values: dict[str, float] = {}
+                for key in exec_feed.indicators.keys():
+                    val = exec_feed.indicators[key][i]
+                    if not np.isnan(val):
+                        indicator_values[key] = float(val)
+
+                # Create BarData for incremental update
+                bar_data = BarData(
+                    idx=i,
+                    open=bar.open,
+                    high=bar.high,
+                    low=bar.low,
+                    close=bar.close,
+                    volume=bar.volume,
+                    indicators=indicator_values,
+                )
+
+                # Update exec state every bar
+                self._incremental_state.update_exec(bar_data)
+
             # Stage 7: State tracking - bar start (record-only)
             if self._state_tracker:
                 self._state_tracker.on_bar_start(i)
@@ -769,7 +889,7 @@ class BacktestEngine:
                 self._state_tracker.on_warmup_check(warmup_ok, sim_start_idx)
                 self._state_tracker.on_history_check(
                     self._is_history_ready(),
-                    len(self._history_manager._bars_exec) if hasattr(self._history_manager, '_bars_exec') else 0,
+                    len(self._history_manager.bars_exec),
                 )
 
             # Phase 4: Set bar context for artifact tracking
@@ -779,8 +899,20 @@ class BacktestEngine:
             # Process bar (fills pending orders, checks TP/SL)
             # Note: process_bar receives canonical Bar, uses ts_open for fills
             # Phase 4: process_bar returns StepResult with unified mark_price
-            step_result = self._exchange.process_bar(bar, prev_bar)
-            closed_trades = self._exchange.last_closed_trades  # Phase 4 backward compat
+            # 1m eval: Pass quote_feed and 1m range for granular TP/SL checking
+            exec_1m_range = None
+            if self._quote_feed is not None and self._quote_feed.length > 0:
+                exec_tf_minutes = TF_MINUTES.get(self.config.tf.lower(), 15)
+                start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(i, exec_tf_minutes)
+                end_1m = min(end_1m, self._quote_feed.length - 1)
+                exec_1m_range = (start_1m, end_1m)
+            step_result = self._exchange.process_bar(
+                bar, prev_bar,
+                quote_feed=self._quote_feed,
+                exec_1m_range=exec_1m_range,
+            )
+            # NOTE: Closed trades are in self._exchange.trades (cumulative list)
+            # Fills are in step_result.fills (per-step list) - BUG-004 fix
 
             # Stage 7: Record fills/rejections from step_result (record-only)
             if self._state_tracker and step_result:
@@ -832,7 +964,33 @@ class BacktestEngine:
             mtf_updated = False
             if self._multi_tf_mode:
                 htf_updated, mtf_updated = self._update_htf_mtf_indices(bar.ts_close)
-            
+
+            # Phase 6: Update HTF incremental state on HTF close
+            if self._incremental_state is not None and htf_updated:
+                # Get the HTF timeframe from tf_mapping
+                htf_tf = self._tf_mapping.get("htf")
+                if htf_tf and htf_tf in self._incremental_state.htf:
+                    # Build HTF BarData from HTF feed at current HTF index
+                    htf_feed = self._htf_feed
+                    if htf_feed is not None:
+                        htf_idx = self._current_htf_idx
+                        htf_indicator_values: dict[str, float] = {}
+                        for key in htf_feed.indicators.keys():
+                            val = htf_feed.indicators[key][htf_idx]
+                            if not np.isnan(val):
+                                htf_indicator_values[key] = float(val)
+
+                        htf_bar_data = BarData(
+                            idx=htf_idx,
+                            open=float(htf_feed.open[htf_idx]),
+                            high=float(htf_feed.high[htf_idx]),
+                            low=float(htf_feed.low[htf_idx]),
+                            close=float(htf_feed.close[htf_idx]),
+                            volume=float(htf_feed.volume[htf_idx]),
+                            indicators=htf_indicator_values,
+                        )
+                        self._incremental_state.update_htf(htf_tf, htf_bar_data)
+
             # Array-backed: Extract features from FeedStore (O(1) access)
             features_for_history = {}
             for key in exec_feed.indicators.keys():
@@ -872,7 +1030,7 @@ class BacktestEngine:
                 # Capture stop metadata before handling
                 stop_classification = stop_result.classification
                 stop_reason_detail = stop_result.reason_detail
-                stop_reason = stop_result.legacy_reason
+                stop_reason = stop_result.reason
 
                 # Handle terminal stop (cancel orders, close position)
                 handle_terminal_stop(
@@ -970,11 +1128,17 @@ class BacktestEngine:
                 f"bar.ts_close ({bar.ts_close})"
             )
             # ========== END LOOKAHEAD GUARD ==========
-            
-            # Get strategy signal (skip if entries disabled and no position)
-            signal = None
-            if not self._exchange.entries_disabled or self._exchange.position is not None:
-                signal = strategy(snapshot, self.config.params)
+
+            # ========== 1m EVALUATION SUB-LOOP ==========
+            # Evaluate strategy at each 1m bar within the exec bar
+            # Returns on first signal (max one entry per exec bar)
+            signal, snapshot, signal_ts = self._evaluate_with_1m_subloop(
+                exec_idx=i,
+                strategy=strategy,
+                step_result=step_result,
+                rollups=rollups,
+            )
+            # ========== END 1m EVALUATION SUB-LOOP ==========
 
             # Stage 7: State tracking - record signal (record-only)
             if self._state_tracker:
@@ -989,9 +1153,9 @@ class BacktestEngine:
                 position_count = 1 if self._exchange.position is not None else 0
                 self._state_tracker.on_position_check(position_count)
 
-            # Process signal (use bar for order submission)
+            # Process signal (use signal_ts from 1m sub-loop if available)
             if signal is not None:
-                self._process_signal(signal, bar, snapshot)
+                self._process_signal(signal, bar, snapshot, signal_ts=signal_ts)
             
             # Record equity point and account curve point at ts_close (step time)
             self._equity_curve.append(EquityPoint(
@@ -1292,8 +1456,9 @@ class BacktestEngine:
     def _build_snapshot_view(
         self,
         exec_idx: int,
-        step_result: Optional["StepResult"] = None,
-        rollups: Optional[Dict[str, float]] = None,
+        step_result: "StepResult | None" = None,
+        rollups: dict[str, float] | None = None,
+        mark_price_override: float | None = None,
     ) -> RuntimeSnapshotView:
         """
         Build RuntimeSnapshotView for array-backed hot loop.
@@ -1306,6 +1471,7 @@ class BacktestEngine:
             exec_idx: Current exec bar index
             step_result: Optional StepResult from exchange (for mark_price)
             rollups: Optional px.rollup.* values from 1m accumulation
+            mark_price_override: Optional override for mark_price (1m evaluation)
 
         Returns:
             RuntimeSnapshotView ready for strategy evaluation
@@ -1325,20 +1491,108 @@ class BacktestEngine:
             risk_profile=self.config.risk_profile,
             step_result=step_result,
             rollups=rollups,
+            mark_price_override=mark_price_override,
+            incremental_state=self._incremental_state,
         )
     
     # DELETED: _build_snapshot() - Legacy RuntimeSnapshot builder removed.
     # All snapshot building now uses _build_snapshot_view() for RuntimeSnapshotView.
-    
+
+    def _evaluate_with_1m_subloop(
+        self,
+        exec_idx: int,
+        strategy: "StrategyFn",
+        step_result: "StepResult | None",
+        rollups: dict[str, float] | None,
+    ) -> tuple["Signal | None", "RuntimeSnapshotView", datetime | None]:
+        """
+        Evaluate strategy at 1m granularity within an exec bar.
+
+        Iterates through 1m bars within the current exec bar and evaluates
+        the strategy at each 1m close. Returns on first signal (max one
+        entry per exec bar).
+
+        Args:
+            exec_idx: Current exec bar index
+            strategy: Strategy function to evaluate
+            step_result: StepResult from exchange
+            rollups: px.rollup.* values from 1m accumulation
+
+        Returns:
+            Tuple of (signal, snapshot, signal_ts):
+            - signal: Signal if triggered, None otherwise
+            - snapshot: The snapshot used for evaluation (last evaluated)
+            - signal_ts: Timestamp of signal (1m close) if triggered, None otherwise
+        """
+        # Get exec TF minutes for 1m mapping
+        exec_tf_minutes = TF_MINUTES.get(self.config.tf.lower(), 15)
+
+        # Check if 1m quote feed is available
+        if self._quote_feed is None or self._quote_feed.length == 0:
+            # Fallback: evaluate at exec close only (no 1m sub-loop)
+            snapshot = self._build_snapshot_view(exec_idx, step_result, rollups)
+            signal = None
+            if not self._exchange.entries_disabled or self._exchange.position is not None:
+                signal = strategy(snapshot, self.config.params)
+            return signal, snapshot, None
+
+        # Get 1m bar range for this exec bar
+        start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(exec_idx, exec_tf_minutes)
+
+        # Clamp to available 1m data
+        end_1m = min(end_1m, self._quote_feed.length - 1)
+
+        # Track last snapshot for return
+        last_snapshot = None
+
+        # Iterate through 1m bars
+        for sub_idx in range(start_1m, end_1m + 1):
+            # Get 1m close as mark_price
+            mark_price_1m = float(self._quote_feed.close[sub_idx])
+
+            # Build snapshot with 1m mark_price override
+            snapshot = self._build_snapshot_view(
+                exec_idx=exec_idx,
+                step_result=step_result,
+                rollups=rollups,
+                mark_price_override=mark_price_1m,
+            )
+            last_snapshot = snapshot
+
+            # Skip if entries disabled and no position
+            if self._exchange.entries_disabled and self._exchange.position is None:
+                continue
+
+            # Evaluate strategy
+            signal = strategy(snapshot, self.config.params)
+
+            if signal is not None:
+                # Get 1m close timestamp for order submission
+                signal_ts = self._quote_feed.get_ts_close_datetime(sub_idx)
+                return signal, snapshot, signal_ts
+
+        # No signal triggered - return last snapshot for consistency
+        if last_snapshot is None:
+            last_snapshot = self._build_snapshot_view(exec_idx, step_result, rollups)
+
+        return None, last_snapshot, None
+
     def _process_signal(
         self,
         signal: Signal,
         bar: CanonicalBar,
         snapshot: "RuntimeSnapshotView",
+        signal_ts: datetime | None = None,
     ) -> None:
         """Process a strategy signal through risk sizing and submit order.
-        
+
         REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
+
+        Args:
+            signal: Strategy signal to process
+            bar: Current exec bar (for fallback timestamp)
+            snapshot: RuntimeSnapshotView for sizing
+            signal_ts: Optional override timestamp (from 1m evaluation)
         """
         exchange = self._exchange
         
@@ -1360,11 +1614,14 @@ class BacktestEngine:
         side = "long" if signal.direction == "LONG" else "short"
         
         # Apply risk policy for filtering (if risk_mode=rules)
+        # P1-004 FIX: Pass unrealized_pnl and position_count for accurate risk checks
         decision = self.risk_policy.check(
             signal=signal,
             equity=exchange.equity,
             available_balance=exchange.available_balance,
             total_exposure=exchange.position.size_usdt if exchange.position else 0,
+            unrealized_pnl=exchange.unrealized_pnl_usdt,
+            position_count=1 if exchange.position else 0,
         )
         
         if not decision.allowed:
@@ -1389,13 +1646,14 @@ class BacktestEngine:
         stop_loss = signal.metadata.get("stop_loss") if signal.metadata else None
         take_profit = signal.metadata.get("take_profit") if signal.metadata else None
         
-        # Submit order (use ts_close as signal timestamp - decision made at bar close)
+        # Submit order (use signal_ts if provided, else bar.ts_close)
+        order_timestamp = signal_ts if signal_ts is not None else bar.ts_close
         exchange.submit_order(
             side=side,
             size_usdt=size_usdt,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            timestamp=bar.ts_close,
+            timestamp=order_timestamp,
         )
 
         # Stage 7: Record order submission (record-only)
@@ -1417,7 +1675,7 @@ class BacktestEngine:
         if self.run_dir:
             write_artifacts_impl(result, self.run_dir, self.logger)
 
-    def get_state_tracker(self) -> Optional[StateTracker]:
+    def get_state_tracker(self) -> StateTracker | None:
         """
         Get the state tracker if state tracking is enabled.
 
@@ -1429,7 +1687,7 @@ class BacktestEngine:
         """
         return self._state_tracker
 
-    def get_state_tracking_stats(self) -> Dict[str, Any]:
+    def get_state_tracking_stats(self) -> dict[str, Any]:
         """
         Get state tracking summary statistics.
 

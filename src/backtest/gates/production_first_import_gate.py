@@ -20,11 +20,9 @@ Usage:
 """
 
 import ast
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
 
 
@@ -97,7 +95,7 @@ class GateViolation:
     violation_type: ViolationType
     symbol: str
     message: str
-    suggested_target: Optional[str] = None
+    suggested_target: str | None = None
     
     def __str__(self) -> str:
         target_hint = f" -> move to {self.suggested_target}" if self.suggested_target else ""
@@ -108,7 +106,7 @@ class GateViolation:
 class GateResult:
     """Result of running the gate."""
     passed: bool
-    violations: List[GateViolation] = field(default_factory=list)
+    violations: list[GateViolation] = field(default_factory=list)
     files_scanned: int = 0
     files_with_violations: int = 0
     files_importing_backtest: int = 0
@@ -128,7 +126,7 @@ class GateResult:
         
         if self.violations:
             # Group by violation type
-            by_type: Dict[ViolationType, List[GateViolation]] = {}
+            by_type: dict[ViolationType, list[GateViolation]] = {}
             for v in self.violations:
                 if v.violation_type not in by_type:
                     by_type[v.violation_type] = []
@@ -159,13 +157,13 @@ class GateResult:
 
 class TestFileVisitor(ast.NodeVisitor):
     """AST visitor to find violations in test files."""
-    
+
     def __init__(self, file_path: str, is_allowlisted: bool = False):
         self.file_path = file_path
         self.is_allowlisted = is_allowlisted
-        self.violations: List[GateViolation] = []
+        self.violations: list[GateViolation] = []
         self.imports_backtest = False
-        self.source_lines: List[str] = []
+        self.source_lines: list[str] = []
     
     def set_source(self, source: str) -> None:
         """Set source code for line-by-line analysis."""
@@ -234,7 +232,7 @@ class TestFileVisitor(ast.NodeVisitor):
         
         self.generic_visit(node)
     
-    def _get_suggested_target(self, symbol: str) -> Optional[str]:
+    def _get_suggested_target(self, symbol: str) -> str | None:
         """Get suggested target module for a symbol."""
         # First try exact match
         if symbol in SUGGESTED_TARGETS:
@@ -264,7 +262,7 @@ def is_allowlisted(file_path: Path, tests_root: Path) -> bool:
     return False
 
 
-def scan_file(file_path: Path, tests_root: Path) -> Tuple[List[GateViolation], bool]:
+def scan_file(file_path: Path, tests_root: Path) -> tuple[list[GateViolation], bool]:
     """
     Scan a single test file for violations.
     
@@ -298,7 +296,7 @@ def scan_file(file_path: Path, tests_root: Path) -> Tuple[List[GateViolation], b
 
 
 def run_production_first_gate(
-    tests_dir: Optional[Path] = None,
+    tests_dir: Path | None = None,
     fail_on_violations: bool = True,
 ) -> GateResult:
     """
@@ -319,9 +317,9 @@ def run_production_first_gate(
     if not tests_dir.exists():
         return GateResult(passed=True, files_scanned=0)
     
-    all_violations: List[GateViolation] = []
+    all_violations: list[GateViolation] = []
     files_scanned = 0
-    files_with_violations: Set[str] = set()
+    files_with_violations: set[str] = set()
     files_importing_backtest = 0
     
     # Find all Python test files

@@ -18,7 +18,6 @@ Tie-break rules:
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional, List
 
 from ..types import Bar, PricePoint, OrderSide, FillReason
 from ..bar_compat import get_bar_ts_open
@@ -39,7 +38,7 @@ class IntrabarPath:
     and follows conservative tie-break rules.
     """
     
-    def __init__(self, config: Optional[IntrabarPathConfig] = None):
+    def __init__(self, config: IntrabarPathConfig | None = None):
         """
         Initialize intrabar path generator.
         
@@ -51,8 +50,8 @@ class IntrabarPath:
     def generate_path(
         self,
         bar: Bar,
-        seed: Optional[int] = None,
-    ) -> List[PricePoint]:
+        seed: int | None = None,
+    ) -> list[PricePoint]:
         """
         Generate deterministic price path within a bar.
         
@@ -92,7 +91,7 @@ class IntrabarPath:
         self,
         bar: Bar,
         side: OrderSide,
-    ) -> List[PricePoint]:
+    ) -> list[PricePoint]:
         """
         Generate price path optimized for a specific position side.
         
@@ -136,9 +135,9 @@ class IntrabarPath:
         bar: Bar,
         side: OrderSide,
         entry_price: float,
-        tp: Optional[float],
-        sl: Optional[float],
-    ) -> Optional[FillReason]:
+        tp: float | None,
+        sl: float | None,
+    ) -> FillReason | None:
         """
         Check if TP or SL is hit within the bar.
         
@@ -190,19 +189,19 @@ class IntrabarPath:
         bar: Bar,
         side: OrderSide,
         reason: FillReason,
-        tp: Optional[float],
-        sl: Optional[float],
+        tp: float | None,
+        sl: float | None,
     ) -> float:
         """
         Get the exit price for a TP/SL fill.
-        
+
         Args:
             bar: OHLC bar (legacy or canonical)
             side: Position side
             reason: FillReason (STOP_LOSS or TAKE_PROFIT)
             tp: Take profit price
             sl: Stop loss price
-            
+
         Returns:
             Exit price
         """
@@ -212,4 +211,51 @@ class IntrabarPath:
             return tp if tp is not None else bar.close
         else:
             return bar.close
+
+
+def check_tp_sl_1m(
+    position_side: str,
+    entry_price: float,
+    take_profit: float | None,
+    stop_loss: float | None,
+    bars_1m: list[tuple[float, float, float, float]],  # List of (open, high, low, close)
+) -> tuple[str, int, float] | None:
+    """Check TP/SL against each 1m bar in order.
+
+    Iterates through 1m bars chronologically and checks if TP or SL
+    is triggered. Uses conservative tie-break (SL checked before TP).
+
+    Args:
+        position_side: "long" or "short"
+        entry_price: Position entry price
+        take_profit: TP level or None
+        stop_loss: SL level or None
+        bars_1m: List of 1m bars as (open, high, low, close) tuples
+
+    Returns:
+        Tuple of (reason, hit_bar_idx, exit_price) or None if no hit
+        - reason: "stop_loss" or "take_profit"
+        - hit_bar_idx: Index in bars_1m where hit occurred
+        - exit_price: The TP or SL level that was hit
+    """
+    if take_profit is None and stop_loss is None:
+        return None
+
+    is_long = position_side.lower() == "long"
+
+    for idx, (bar_open, bar_high, bar_low, bar_close) in enumerate(bars_1m):
+        # Conservative tie-break: check SL before TP
+        if stop_loss is not None:
+            if is_long and bar_low <= stop_loss:
+                return ("stop_loss", idx, stop_loss)
+            if not is_long and bar_high >= stop_loss:
+                return ("stop_loss", idx, stop_loss)
+
+        if take_profit is not None:
+            if is_long and bar_high >= take_profit:
+                return ("take_profit", idx, take_profit)
+            if not is_long and bar_low <= take_profit:
+                return ("take_profit", idx, take_profit)
+
+    return None
 

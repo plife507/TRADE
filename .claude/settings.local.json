@@ -9,7 +9,20 @@
       "Bash(powershell -Command \"\\(Get-Content ''c:\\\\CODE\\\\AI\\\\TRADE\\\\src\\\\backtest\\\\engine.py'' | Measure-Object -Line\\).Lines\")",
       "Bash(powershell -Command \"\\(Get-Content ''c:\\\\CODE\\\\AI\\\\TRADE\\\\src\\\\backtest\\\\engine_data_prep.py'' | Measure-Object -Line\\).Lines\")",
       "Bash(python:*)",
-      "Bash(set TRADE_SMOKE_INCLUDE_BACKTEST=1)"
+      "Bash(set TRADE_SMOKE_INCLUDE_BACKTEST=1)",
+      "Bash(mv:*)",
+      "Bash(git add:*)",
+      "Bash(powershell -Command \"\\(Get-Content ''C:\\\\code\\\\ai\\\\trade\\\\src\\\\cli\\\\smoke_tests.py'' | Measure-Object -Line\\).Lines\")",
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\audits\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\audits\")",
+      "Bash(powershell -Command:*)",
+      "Bash(findstr:*)",
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\reviews\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\reviews\")",
+      "Bash(sort:*)",
+      "Bash(while read file)",
+      "Bash(done)",
+      "Bash(xargs:*)",
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\todos\\\\archived\\\\2026-01\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\todos\\\\archived\\\\2026-01\")",
+      "Bash(ls:*)"
     ]
   }
 }

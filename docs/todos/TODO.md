@@ -1,84 +1,76 @@
 # Active TODO
 
-**Last Updated**: 2026-01-02
-**Status**: All audit bugs fixed, ready for 1m eval loop refactor
+**Last Updated**: 2026-01-03
+**Status**: Post-Refactor - Ready for New Work
 
 ---
 
-## Current Focus
+## Current State
 
-| Priority | Item | Status |
-|----------|------|--------|
-| **ACTIVE** | 1m Evaluation Loop Refactor | See [1M_EVAL_LOOP_REFACTOR.md](1M_EVAL_LOOP_REFACTOR.md) |
+**All major refactors complete:**
+- Incremental State Architecture (2026-01-03)
+- 1m Evaluation Loop (2026-01-02)
+- Market Structure Stages 0-7 (2026-01-01)
+- 72 bugs fixed across P0-P3
 
----
-
-## 1m Evaluation Loop Refactor
-
-**Goal**: Mandatory 1m signal evaluation for zone-touch detection
-**Status**: ✅ COMPLETE (2026-01-02)
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | 1m Index Mapping | [x] |
-| Phase 2 | Snapshot mark_price Resolution | [x] |
-| Phase 3 | Engine 1m Sub-Loop | [x] |
-| Phase 4 | Exchange 1m Fill Timing | [x] |
-| Phase 5 | Data Loading Verification | [x] |
-| Phase 6 | Validation IdeaCards | [x] |
-
-Full spec: [1M_EVAL_LOOP_REFACTOR.md](1M_EVAL_LOOP_REFACTOR.md)
+**Validation Status**:
+- 30/30 IdeaCards normalize
+- 42/42 indicators pass audit
+- All smoke tests pass
 
 ---
 
-## Completed (2026-01-02)
+## Next Steps (Priority Order)
 
-All P0-P3 bugs from Architecture Review are **FIXED**.
+### 1. Commit Uncommitted Work
+```bash
+git add -A
+git commit -m "feat: incremental state architecture, 72 bug fixes, validation complete"
+```
 
-See [OPEN_BUGS.md](../audits/OPEN_BUGS.md) for full audit history:
-- P0: 7 fixed, 0 open
-- P1: 25 fixed, 0 open
-- P2: 28 fixed, 0 open
-- P3: 12 fixed, 0 open
+### 2. Deferred Structural Refactoring
 
----
+| Task | Effort | Notes |
+|------|--------|-------|
+| Split BacktestEngine.run() (~500 LOC) | 4h | Too large for single method |
+| Refactor IdeaCard (1165 LOC) | 8h | Split into focused classes |
+| Split tool_registry.py (1200+ LOC) | 4h | Split by category |
+| Unify data preparation paths | 4h | Consolidate duplicate code |
 
-## Structural Refactoring (Deferred)
+### 3. Future Features
 
-From Architecture Review - do after 1m refactor:
-
-### Phase 3: Code Consolidation
-- [ ] Unify data preparation paths in engine
-- [ ] Consolidate manifest/hash implementations
-- [ ] Merge duplicate IndicatorRegistry classes
-- [ ] Extract shared validation logic in CLI
-
-### Phase 4: Complete Integrations
-- [ ] Wire LiquidationModel into exchange simulation
-- [ ] Enable ExchangeMetrics recording
-- [ ] Apply Constraints validation to orders
-- [ ] Integrate ImpactModel into execution
-
-### Phase 5: Architecture Cleanup
-- [ ] Split BacktestEngine.run() (~500 LOC) into smaller methods
-- [ ] Refactor IdeaCard (1165 LOC) into smaller focused classes
-- [ ] Split tool_registry.py (1200+ LOC) by category
-- [ ] Complete RuntimeSnapshot -> RuntimeSnapshotView migration
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Streaming (Stage 8) | Future | Demo/Live websocket |
+| BOS/CHoCH Detection | Future | Break of Structure / Change of Character |
+| Advanced Operators | Future | crosses_up, crosses_down, within_bps |
+| Agent Module | Future | Automated strategy generation |
 
 ---
 
 ## Quick Reference
 
 ```bash
-# Validate before commit
-python trade_cli.py backtest idea-card-normalize --idea-card BTCUSDT_1h_ema_basic
+# Validate
+python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest audit-toolkit
+python trade_cli.py backtest audit-rollup
+python trade_cli.py backtest structure-smoke
 
-# Backtest smoke test
-python trade_cli.py --smoke backtest
-
-# Full smoke (requires TRADE_SMOKE_INCLUDE_BACKTEST=1)
+# Backtest smoke (requires env var)
 $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
 ```
+
+---
+
+## Completed Work (Archived)
+
+| Phase | Date | Archive |
+|-------|------|---------|
+| Incremental State | 2026-01-03 | [INCREMENTAL_STATE_IMPLEMENTATION.md](INCREMENTAL_STATE_IMPLEMENTATION.md) |
+| 1m Eval Loop | 2026-01-02 | [1M_EVAL_LOOP_REFACTOR.md](1M_EVAL_LOOP_REFACTOR.md) |
+| Bug Remediation | 2026-01-03 | [../audits/archived/2026-01-03_BUGS_RESOLVED.md](../audits/archived/2026-01-03_BUGS_RESOLVED.md) |
+| Market Structure | 2026-01-01 | [archived/2026-01-01/MARKET_STRUCTURE_PHASES.md](archived/2026-01-01/MARKET_STRUCTURE_PHASES.md) |
 
 ---
 
@@ -86,11 +78,5 @@ $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
 
 - **MUST NOT write code before TODO exists**
 - Every code change maps to a TODO checkbox
-- New work discovered → STOP → update TODO → continue
-- 1m refactor phases are the current work
-
----
-
-## Archive
-
-Completed work archived in `docs/todos/archived/` by date.
+- New work discovered: STOP -> update TODO -> continue
+- Completed phases are FROZEN

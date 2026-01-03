@@ -9,7 +9,6 @@ This module only provides duration helpers for warmup/buffer calculations.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict
 
 # Import TF_MINUTES from data store (canonical source)
 from ...data.historical_data_store import TF_MINUTES
@@ -64,7 +63,7 @@ def tf_minutes(tf: str) -> int:
     return TF_MINUTES[tf_key]
 
 
-def validate_tf_mapping(tf_mapping: Dict[str, str]) -> None:
+def validate_tf_mapping(tf_mapping: dict[str, str]) -> None:
     """
     Validate a timeframe mapping (htf/mtf/ltf -> tf string).
     
@@ -102,7 +101,7 @@ def validate_tf_mapping(tf_mapping: Dict[str, str]) -> None:
         )
 
 
-def get_supported_timeframes() -> Dict[str, int]:
+def get_supported_timeframes() -> dict[str, int]:
     """
     Get all supported timeframes and their durations in minutes.
     
@@ -115,39 +114,53 @@ def get_supported_timeframes() -> Dict[str, int]:
 def ceil_to_tf_close(dt: datetime, tf: str) -> datetime:
     """
     Align a datetime to the next TF close boundary (ceiling).
-    
+
     If dt is already on a TF close boundary, returns dt unchanged.
     Otherwise, returns the next TF close after dt.
-    
+
     Used for no-lookahead evaluation start alignment:
     - eval_start = ceil_to_tf_close(window_start, exec_tf) + delay_bars * tf_duration
-    
+
     Args:
-        dt: Datetime to align (timezone-naive UTC assumed)
+        dt: Datetime to align (naive UTC or aware with any timezone)
         tf: Timeframe string (e.g., "5m", "1h", "4h")
-        
+
     Returns:
-        Datetime aligned to TF close boundary (ceiling)
-        
+        Datetime aligned to TF close boundary (ceiling).
+        Returns naive datetime if input was naive, aware if input was aware.
+
     Examples:
         >>> ceil_to_tf_close(datetime(2024, 1, 1, 10, 3), "5m")
         datetime(2024, 1, 1, 10, 5)  # Next 5m close
-        
+
         >>> ceil_to_tf_close(datetime(2024, 1, 1, 10, 5), "5m")
         datetime(2024, 1, 1, 10, 5)  # Already on boundary
     """
     tf_min = tf_minutes(tf)
-    
+
+    # P2-003 FIX: Handle timezone-aware datetimes correctly
+    # dt.timestamp() always returns UTC seconds regardless of timezone,
+    # so the modulo calculation is consistent. We preserve the original
+    # tzinfo in the returned datetime.
+    original_tz = dt.tzinfo
+
     # Convert to minutes since epoch for modulo calculation
+    # Note: timestamp() returns UTC epoch seconds for both naive and aware datetimes
     total_minutes = int(dt.timestamp() // 60)
-    
+
     # Check if already on boundary
     remainder = total_minutes % tf_min
     if remainder == 0:
         return dt
-    
+
     # Calculate minutes to add to reach next boundary
     minutes_to_add = tf_min - remainder
-    
-    return dt + timedelta(minutes=minutes_to_add)
+
+    result = dt + timedelta(minutes=minutes_to_add)
+
+    # Ensure we preserve timezone info
+    if original_tz is not None and result.tzinfo is None:
+        result = result.replace(tzinfo=original_tz)
+
+    return result
 

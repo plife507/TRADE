@@ -12,10 +12,8 @@ Used by verification suite to enable pandas_ta parity audits.
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any
 import json
-
-from .runtime.types import FeatureSnapshot
 
 
 @dataclass
@@ -26,12 +24,12 @@ class SnapshotFrameInfo:
     row_count: int
     column_count: int
     timestamp_range: tuple[datetime, datetime]
-    columns_present: List[str]  # ordered list of all columns as written
-    feature_specs_resolved: List[Dict[str, Any]]
+    columns_present: list[str]  # ordered list of all columns as written
+    feature_specs_resolved: list[dict[str, Any]]
     # Per feature_spec contract tracking
-    outputs_expected_by_registry: Dict[str, List[str]]  # output_key -> expected outputs
-    outputs_written: Dict[str, List[str]]  # output_key -> actual outputs in frame
-    extras_dropped: Dict[str, List[str]]  # output_key -> extras dropped by vendor
+    outputs_expected_by_registry: dict[str, list[str]]  # output_key -> expected outputs
+    outputs_written: dict[str, list[str]]  # output_key -> actual outputs in frame
+    extras_dropped: dict[str, list[str]]  # output_key -> extras dropped by vendor
 
 
 @dataclass
@@ -42,11 +40,11 @@ class SnapshotManifest:
     window_start: datetime
     window_end: datetime
     exec_tf: str
-    htf: Optional[str]
-    mtf: Optional[str]
+    htf: str | None
+    mtf: str | None
 
     # Frame info keyed by ROLE (exec/htf/mtf), not TF
-    frames: Dict[str, SnapshotFrameInfo]  # role -> info
+    frames: dict[str, SnapshotFrameInfo]  # role -> info
 
     # Metadata
     frame_format: str = "parquet"
@@ -57,7 +55,7 @@ class SnapshotManifest:
         if self.created_at is None:
             self.created_at = datetime.now()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""
         result = {
             "idea_card_id": self.idea_card_id,
@@ -98,14 +96,14 @@ def emit_snapshot_artifacts(
     window_start: datetime,
     window_end: datetime,
     exec_tf: str,
-    htf: Optional[str],
-    mtf: Optional[str],
+    htf: str | None,
+    mtf: str | None,
     exec_df: Any,  # DataFrame
-    htf_df: Optional[Any] = None,  # DataFrame
-    mtf_df: Optional[Any] = None,  # DataFrame
-    exec_feature_specs: Optional[List] = None,
-    htf_feature_specs: Optional[List] = None,
-    mtf_feature_specs: Optional[List] = None,
+    htf_df: Any | None = None,  # DataFrame
+    mtf_df: Any | None = None,  # DataFrame
+    exec_feature_specs: list | None = None,
+    htf_feature_specs: list | None = None,
+    mtf_feature_specs: list | None = None,
 ) -> Path:
     """
     Emit snapshot artifacts to run_dir/snapshots/ (role-keyed).
@@ -136,8 +134,8 @@ def emit_snapshot_artifacts(
         df: pd.DataFrame,
         role: str,
         tf: str,
-        feature_specs: Optional[List] = None
-    ) -> Optional[SnapshotFrameInfo]:
+        feature_specs: list | None = None
+    ) -> SnapshotFrameInfo | None:
         """Write a frame with role-keyed naming and contract tracking."""
         if df is None or df.empty:
             return None
@@ -148,9 +146,9 @@ def emit_snapshot_artifacts(
 
         # Build feature specs resolved and contract tracking
         feature_specs_resolved = []
-        outputs_expected_by_registry: Dict[str, List[str]] = {}
-        outputs_written: Dict[str, List[str]] = {}
-        extras_dropped: Dict[str, List[str]] = {}
+        outputs_expected_by_registry: dict[str, list[str]] = {}
+        outputs_written: dict[str, list[str]] = {}
+        extras_dropped: dict[str, list[str]] = {}
 
         if feature_specs:
             for spec in feature_specs:
@@ -229,12 +227,12 @@ def emit_snapshot_artifacts(
 
     manifest_path = snapshots_dir / "snapshot_manifest.json"
     with open(manifest_path, "w") as f:
-        json.dump(manifest.to_dict(), f, indent=2)
+        json.dump(manifest.to_dict(), f, indent=2, sort_keys=True)
 
     return snapshots_dir
 
 
-def load_snapshot_artifacts(run_dir: Path) -> Optional[Dict[str, Any]]:
+def load_snapshot_artifacts(run_dir: Path) -> dict[str, Any] | None:
     """
     Load snapshot artifacts from a run directory (role-keyed).
 

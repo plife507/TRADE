@@ -13,7 +13,6 @@ All monetary values are in USDT (quote currency).
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 from ..types import Bar
 
@@ -39,7 +38,7 @@ class ImpactModel:
     NEVER to infer buy/sell direction.
     """
     
-    def __init__(self, config: Optional[ImpactConfig] = None):
+    def __init__(self, config: ImpactConfig | None = None):
         """
         Initialize impact model.
         

@@ -18,7 +18,8 @@ Reference: C:/CODE/AI/TRADE/reference/exchanges/pybit/
 """
 
 import time
-from typing import Optional, Dict, List, Any, Callable, Union
+from collections.abc import Callable
+from typing import Any
 from functools import wraps
 
 import pandas as pd
@@ -42,7 +43,7 @@ from ..utils.time_range import TimeRange
 class BybitAPIError(Exception):
     """Custom exception wrapping pybit errors for backwards compatibility."""
     
-    def __init__(self, code: int, message: str, response: dict = None, original: Exception = None):
+    def __init__(self, code: int, message: str, response: dict | None = None, original: Exception | None = None):
         self.code = code
         self.message = message
         self.response = response
@@ -50,7 +51,7 @@ class BybitAPIError(Exception):
         super().__init__(f"Bybit API Error {code}: {message}")
     
     @classmethod
-    def from_pybit(cls, error: Union[FailedRequestError, InvalidRequestError]):
+    def from_pybit(cls, error: FailedRequestError | InvalidRequestError):
         """Create from a pybit exception."""
         return cls(
             code=getattr(error, 'status_code', -1),
@@ -96,8 +97,8 @@ class BybitClient:
     
     def __init__(
         self,
-        api_key: str = None,
-        api_secret: str = None,
+        api_key: str | None = None,
+        api_secret: str | None = None,
         use_demo: bool = True,
         recv_window: int = 20000,
         log_requests: bool = False,
@@ -157,8 +158,8 @@ class BybitClient:
             "reset_timestamp": None,
         }
         
-        self._ws_public: Optional[WebSocket] = None
-        self._ws_private: Optional[WebSocket] = None
+        self._ws_public: WebSocket | None = None
+        self._ws_private: WebSocket | None = None
     
     def _sync_server_time(self):
         """Sync local time with Bybit server to detect clock drift."""
@@ -232,269 +233,269 @@ class BybitClient:
     # ==================== Market Data (delegated) ====================
     
     @handle_pybit_errors
-    def get_klines(self, symbol: str, interval: str = "15", limit: int = 200, 
-                   start: int = None, end: int = None, category: str = "linear") -> pd.DataFrame:
+    def get_klines(self, symbol: str, interval: str = "15", limit: int = 200,
+                   start: int | None = None, end: int | None = None, category: str = "linear") -> pd.DataFrame:
         from . import bybit_market as mkt
         return mkt.get_klines(self, symbol, interval, limit, start, end, category)
     
     @handle_pybit_errors
-    def get_ticker(self, symbol: str = None, category: str = "linear") -> Dict[str, Any]:
+    def get_ticker(self, symbol: str | None = None, category: str = "linear") -> dict[str, Any]:
         from . import bybit_market as mkt
         return mkt.get_ticker(self, symbol, category)
     
     @handle_pybit_errors
     def get_funding_rate(self, symbol: str, limit: int = 1, category: str = "linear",
-                         start_time: Optional[int] = None, end_time: Optional[int] = None) -> List[Dict]:
+                         start_time: int | None = None, end_time: int | None = None) -> list[dict]:
         from . import bybit_market as mkt
         return mkt.get_funding_rate(self, symbol, limit, category, start_time, end_time)
     
     @handle_pybit_errors
     def get_open_interest(self, symbol: str, interval: str = "5min", limit: int = 1,
-                          category: str = "linear", start_time: Optional[int] = None,
-                          end_time: Optional[int] = None) -> List[Dict]:
+                          category: str = "linear", start_time: int | None = None,
+                          end_time: int | None = None) -> list[dict]:
         from . import bybit_market as mkt
         return mkt.get_open_interest(self, symbol, interval, limit, category, start_time, end_time)
     
     @handle_pybit_errors
-    def get_orderbook(self, symbol: str, limit: int = 25, category: str = "linear") -> Dict:
+    def get_orderbook(self, symbol: str, limit: int = 25, category: str = "linear") -> dict:
         from . import bybit_market as mkt
         return mkt.get_orderbook(self, symbol, limit, category)
     
     @handle_pybit_errors
-    def get_instruments(self, symbol: str = None, category: str = "linear") -> List[Dict]:
+    def get_instruments(self, symbol: str | None = None, category: str = "linear") -> list[dict]:
         from . import bybit_market as mkt
         return mkt.get_instruments(self, symbol, category)
     
-    def get_instrument_info(self, symbol: str, category: str = "linear") -> Dict:
+    def get_instrument_info(self, symbol: str, category: str = "linear") -> dict:
         from . import bybit_market as mkt
         return mkt.get_instrument_info(self, symbol, category)
     
     @handle_pybit_errors
-    def get_server_time(self) -> Dict:
+    def get_server_time(self) -> dict:
         from . import bybit_market as mkt
         return mkt.get_server_time(self)
     
     @handle_pybit_errors
-    def get_risk_limit(self, symbol: str = None, category: str = "linear") -> List[Dict]:
+    def get_risk_limit(self, symbol: str | None = None, category: str = "linear") -> list[dict]:
         from . import bybit_market as mkt
         return mkt.get_risk_limit(self, symbol, category)
     
     @handle_pybit_errors
-    def get_instrument_launch_time(self, symbol: str, category: str = "linear") -> Optional[int]:
+    def get_instrument_launch_time(self, symbol: str, category: str = "linear") -> int | None:
         from . import bybit_market as mkt
         return mkt.get_instrument_launch_time(self, symbol, category)
     
     # ==================== Account (delegated) ====================
     
     @handle_pybit_errors
-    def get_balance(self, account_type: str = "UNIFIED") -> Dict:
+    def get_balance(self, account_type: str = "UNIFIED") -> dict:
         from . import bybit_account as acct
         return acct.get_balance(self, account_type)
     
     @handle_pybit_errors
-    def get_positions(self, symbol: str = None, settle_coin: str = "USDT", category: str = "linear") -> List[Dict]:
+    def get_positions(self, symbol: str | None = None, settle_coin: str = "USDT", category: str = "linear") -> list[dict]:
         from . import bybit_account as acct
         return acct.get_positions(self, symbol, settle_coin, category)
     
     @handle_pybit_errors
-    def get_account_info(self) -> Dict:
+    def get_account_info(self) -> dict:
         from . import bybit_account as acct
         return acct.get_account_info(self)
     
     @handle_pybit_errors
-    def get_fee_rates(self, symbol: str = None, category: str = "linear") -> Dict:
+    def get_fee_rates(self, symbol: str | None = None, category: str = "linear") -> dict:
         from . import bybit_account as acct
         return acct.get_fee_rates(self, symbol, category)
     
     # UTA Extended
     @handle_pybit_errors
     def get_transaction_log(self, time_range: TimeRange, account_type: str = "UNIFIED",
-                            category: str = None, currency: str = None, base_coin: str = None,
-                            log_type: str = None, limit: int = 50, cursor: str = None) -> Dict:
+                            category: str | None = None, currency: str | None = None, base_coin: str | None = None,
+                            log_type: str | None = None, limit: int = 50, cursor: str | None = None) -> dict:
         from . import bybit_account as acct
         return acct.get_transaction_log(self, time_range, account_type, category, currency, base_coin, log_type, limit, cursor)
     
     @handle_pybit_errors
-    def get_collateral_info(self, currency: str = None) -> List[Dict]:
+    def get_collateral_info(self, currency: str | None = None) -> list[dict]:
         from . import bybit_account as acct
         return acct.get_collateral_info(self, currency)
     
     @handle_pybit_errors
-    def set_collateral_coin(self, coin: str, switch: str) -> Dict:
+    def set_collateral_coin(self, coin: str, switch: str) -> dict:
         from . import bybit_account as acct
         return acct.set_collateral_coin(self, coin, switch)
     
     @handle_pybit_errors
-    def batch_set_collateral_coin(self, coins: List[Dict[str, str]]) -> Dict:
+    def batch_set_collateral_coin(self, coins: list[dict[str, str]]) -> dict:
         from . import bybit_account as acct
         return acct.batch_set_collateral_coin(self, coins)
     
     @handle_pybit_errors
-    def get_borrow_history(self, time_range: TimeRange, currency: str = None,
-                           limit: int = 50, cursor: str = None) -> Dict:
+    def get_borrow_history(self, time_range: TimeRange, currency: str | None = None,
+                           limit: int = 50, cursor: str | None = None) -> dict:
         from . import bybit_account as acct
         return acct.get_borrow_history(self, time_range, currency, limit, cursor)
     
     @handle_pybit_errors
-    def repay_liability(self, coin: str = None) -> Dict:
+    def repay_liability(self, coin: str | None = None) -> dict:
         from . import bybit_account as acct
         return acct.repay_liability(self, coin)
     
     @handle_pybit_errors
-    def get_coin_greeks(self, base_coin: str = None) -> List[Dict]:
+    def get_coin_greeks(self, base_coin: str | None = None) -> list[dict]:
         from . import bybit_account as acct
         return acct.get_coin_greeks(self, base_coin)
     
     @handle_pybit_errors
-    def set_account_margin_mode(self, margin_mode: str) -> Dict:
+    def set_account_margin_mode(self, margin_mode: str) -> dict:
         from . import bybit_account as acct
         return acct.set_account_margin_mode(self, margin_mode)
     
     @handle_pybit_errors
-    def upgrade_to_unified_account(self) -> Dict:
+    def upgrade_to_unified_account(self) -> dict:
         from . import bybit_account as acct
         return acct.upgrade_to_unified_account(self)
     
     @handle_pybit_errors
-    def get_transferable_amount(self, coin: str) -> Dict:
+    def get_transferable_amount(self, coin: str) -> dict:
         from . import bybit_account as acct
         return acct.get_transferable_amount(self, coin)
     
     @handle_pybit_errors
-    def get_mmp_state(self, base_coin: str) -> Dict:
+    def get_mmp_state(self, base_coin: str) -> dict:
         from . import bybit_account as acct
         return acct.get_mmp_state(self, base_coin)
     
     @handle_pybit_errors
     def set_mmp(self, base_coin: str, window: int, frozen_period: int,
-                qty_limit: str, delta_limit: str) -> Dict:
+                qty_limit: str, delta_limit: str) -> dict:
         from . import bybit_account as acct
         return acct.set_mmp(self, base_coin, window, frozen_period, qty_limit, delta_limit)
     
     @handle_pybit_errors
-    def reset_mmp(self, base_coin: str) -> Dict:
+    def reset_mmp(self, base_coin: str) -> dict:
         from . import bybit_account as acct
         return acct.reset_mmp(self, base_coin)
     
     @handle_pybit_errors
-    def get_borrow_quota(self, category: str, symbol: str, side: str) -> Dict:
+    def get_borrow_quota(self, category: str, symbol: str, side: str) -> dict:
         from . import bybit_account as acct
         return acct.get_borrow_quota(self, category, symbol, side)
     
     # ==================== Trading (delegated) ====================
     
     @handle_pybit_errors
-    def create_order(self, symbol: str, side: str, order_type: str, qty: float, **kwargs) -> Dict:
+    def create_order(self, symbol: str, side: str, order_type: str, qty: float, **kwargs) -> dict:
         from . import bybit_trading as trd
         return trd.create_order(self, symbol, side, order_type, qty, **kwargs)
     
     @handle_pybit_errors
-    def amend_order(self, symbol: str, order_id: str = None, order_link_id: str = None, **kwargs) -> Dict:
+    def amend_order(self, symbol: str, order_id: str | None = None, order_link_id: str | None = None, **kwargs) -> dict:
         from . import bybit_trading as trd
         return trd.amend_order(self, symbol, order_id, order_link_id, **kwargs)
     
     @handle_pybit_errors
-    def cancel_order(self, symbol: str, order_id: str = None, order_link_id: str = None,
-                     category: str = "linear") -> Dict:
+    def cancel_order(self, symbol: str, order_id: str | None = None, order_link_id: str | None = None,
+                     category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.cancel_order(self, symbol, order_id, order_link_id, category)
     
     @handle_pybit_errors
-    def cancel_all_orders(self, symbol: str = None, category: str = "linear") -> Dict:
+    def cancel_all_orders(self, symbol: str | None = None, category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.cancel_all_orders(self, symbol, category)
     
     @handle_pybit_errors
-    def get_open_orders(self, symbol: str = None, order_id: str = None, order_link_id: str = None,
-                        open_only: int = 0, limit: int = 50, category: str = "linear") -> List[Dict]:
+    def get_open_orders(self, symbol: str | None = None, order_id: str | None = None, order_link_id: str | None = None,
+                        open_only: int = 0, limit: int = 50, category: str = "linear") -> list[dict]:
         from . import bybit_trading as trd
         return trd.get_open_orders(self, symbol, order_id, order_link_id, open_only, limit, category)
     
     @handle_pybit_errors
-    def get_order_history(self, time_range: TimeRange, symbol: str = None, **kwargs) -> Dict:
+    def get_order_history(self, time_range: TimeRange, symbol: str | None = None, **kwargs) -> dict:
         from . import bybit_trading as trd
         return trd.get_order_history(self, time_range, symbol, **kwargs)
     
     @handle_pybit_errors
-    def set_leverage(self, symbol: str, leverage: int, category: str = "linear") -> Dict:
+    def set_leverage(self, symbol: str, leverage: int, category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.set_leverage(self, symbol, leverage, category)
     
     @handle_pybit_errors
     def create_conditional_order(self, symbol: str, side: str, qty: str, trigger_price: str,
-                                  trigger_direction: int, **kwargs) -> Dict:
+                                  trigger_direction: int, **kwargs) -> dict:
         from . import bybit_trading as trd
         return trd.create_conditional_order(self, symbol, side, qty, trigger_price, trigger_direction, **kwargs)
     
     @handle_pybit_errors
-    def set_trading_stop(self, symbol: str, **kwargs) -> Dict:
+    def set_trading_stop(self, symbol: str, **kwargs) -> dict:
         from . import bybit_trading as trd
         return trd.set_trading_stop(self, symbol, **kwargs)
     
     @handle_pybit_errors
-    def get_executions(self, time_range: TimeRange, symbol: str = None, **kwargs) -> List[Dict]:
+    def get_executions(self, time_range: TimeRange, symbol: str | None = None, **kwargs) -> list[dict]:
         from . import bybit_trading as trd
         return trd.get_executions(self, time_range, symbol, **kwargs)
     
     @handle_pybit_errors
-    def get_closed_pnl(self, time_range: TimeRange, symbol: str = None, **kwargs) -> Dict:
+    def get_closed_pnl(self, time_range: TimeRange, symbol: str | None = None, **kwargs) -> dict:
         from . import bybit_trading as trd
         return trd.get_closed_pnl(self, time_range, symbol, **kwargs)
     
     # Batch operations
     @handle_pybit_errors
-    def batch_create_orders(self, orders: List[Dict], category: str = "linear") -> Dict:
+    def batch_create_orders(self, orders: list[dict], category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.batch_create_orders(self, orders, category)
     
     @handle_pybit_errors
-    def batch_amend_orders(self, orders: List[Dict], category: str = "linear") -> Dict:
+    def batch_amend_orders(self, orders: list[dict], category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.batch_amend_orders(self, orders, category)
     
     @handle_pybit_errors
-    def batch_cancel_orders(self, orders: List[Dict], category: str = "linear") -> Dict:
+    def batch_cancel_orders(self, orders: list[dict], category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.batch_cancel_orders(self, orders, category)
     
     # Position management
     @handle_pybit_errors
     def set_risk_limit(self, symbol: str, risk_id: int, position_idx: int = 0,
-                       category: str = "linear") -> Dict:
+                       category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.set_risk_limit(self, symbol, risk_id, position_idx, category)
     
     @handle_pybit_errors
-    def set_tp_sl_mode(self, symbol: str, tp_sl_mode: str, category: str = "linear") -> Dict:
+    def set_tp_sl_mode(self, symbol: str, tp_sl_mode: str, category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.set_tp_sl_mode(self, symbol, tp_sl_mode, category)
     
     @handle_pybit_errors
     def set_auto_add_margin(self, symbol: str, auto_add_margin: int, position_idx: int = 0,
-                            category: str = "linear") -> Dict:
+                            category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.set_auto_add_margin(self, symbol, auto_add_margin, position_idx, category)
     
     @handle_pybit_errors
     def modify_position_margin(self, symbol: str, margin: str, position_idx: int = 0,
-                               category: str = "linear") -> Dict:
+                               category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.modify_position_margin(self, symbol, margin, position_idx, category)
     
     @handle_pybit_errors
     def switch_cross_isolated_margin(self, symbol: str, trade_mode: int, buy_leverage: str,
-                                      sell_leverage: str, category: str = "linear") -> Dict:
+                                      sell_leverage: str, category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.switch_cross_isolated_margin(self, symbol, trade_mode, buy_leverage, sell_leverage, category)
     
     @handle_pybit_errors
-    def switch_position_mode_v5(self, mode: int, symbol: str = None, coin: str = None,
-                                 category: str = "linear") -> Dict:
+    def switch_position_mode_v5(self, mode: int, symbol: str | None = None, coin: str | None = None,
+                                 category: str = "linear") -> dict:
         from . import bybit_trading as trd
         return trd.switch_position_mode_v5(self, mode, symbol, coin, category)
     
     @handle_pybit_errors
-    def set_disconnect_cancel_all(self, time_window: int) -> Dict:
+    def set_disconnect_cancel_all(self, time_window: int) -> dict:
         from . import bybit_trading as trd
         return trd.set_disconnect_cancel_all(self, time_window)
     
@@ -508,19 +509,19 @@ class BybitClient:
         from . import bybit_websocket as ws
         return ws.connect_private_ws(self)
     
-    def subscribe_ticker(self, symbol: Union[str, List[str]], callback: Callable):
+    def subscribe_ticker(self, symbol: str | list[str], callback: Callable):
         from . import bybit_websocket as ws
         ws.subscribe_ticker(self, symbol, callback)
     
-    def subscribe_orderbook(self, symbol: Union[str, List[str]], callback: Callable, depth: int = 50):
+    def subscribe_orderbook(self, symbol: str | list[str], callback: Callable, depth: int = 50):
         from . import bybit_websocket as ws
         ws.subscribe_orderbook(self, symbol, callback, depth)
     
-    def subscribe_trades(self, symbol: Union[str, List[str]], callback: Callable):
+    def subscribe_trades(self, symbol: str | list[str], callback: Callable):
         from . import bybit_websocket as ws
         ws.subscribe_trades(self, symbol, callback)
     
-    def subscribe_klines(self, symbol: Union[str, List[str]], interval: int, callback: Callable):
+    def subscribe_klines(self, symbol: str | list[str], interval: int, callback: Callable):
         from . import bybit_websocket as ws
         ws.subscribe_klines(self, symbol, interval, callback)
     
@@ -550,12 +551,12 @@ class BybitClient:
         """Get calculated time offset from server in ms."""
         return self._time_offset_ms
     
-    def get_rate_limit_status(self) -> Dict:
+    def get_rate_limit_status(self) -> dict:
         """Get current rate limit status from last response."""
         return self._rate_limit_status.copy()
     
     @handle_pybit_errors
-    def test_connection(self) -> Dict[str, Any]:
+    def test_connection(self) -> dict[str, Any]:
         """Test exchange connectivity and authentication."""
         result = {
             "connected": False,

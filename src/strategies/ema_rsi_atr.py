@@ -16,7 +16,7 @@ Identifier model:
 Phase 2: RuntimeSnapshot is the only supported snapshot type.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any
 
 from ..backtest.runtime.types import RuntimeSnapshot
 from ..core.risk_manager import Signal
@@ -30,8 +30,8 @@ STRATEGY_DESCRIPTION = "EMA crossover + RSI filter + ATR-based TP/SL"
 
 def ema_rsi_atr_strategy(
     snapshot: RuntimeSnapshot,
-    params: Dict[str, Any],
-) -> Optional[Signal]:
+    params: dict[str, Any],
+) -> Signal | None:
     """
     EMA + RSI + ATR strategy.
     
@@ -73,7 +73,7 @@ def ema_rsi_atr_strategy(
     atr_tp_mult = params.get("atr_tp_multiplier", 2.0)
     
     # Default position size (will be adjusted by risk policy if enabled)
-    position_size_usd = params.get("position_size_usd", 100.0)
+    position_size_usdt = params.get("position_size_usdt", 100.0)
     
     # Already in a position - check for exit signal
     if position_side is not None:
@@ -107,7 +107,7 @@ def ema_rsi_atr_strategy(
     return Signal(
         symbol=symbol,
         direction=direction,
-        size_usd=position_size_usd,
+        size_usdt=position_size_usdt,
         strategy=STRATEGY_ID,  # Use stable ID, not versioned
         confidence=1.0,
         metadata={

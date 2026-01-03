@@ -7,7 +7,7 @@ Handles:
 - Conditional orders (for split TPs)
 """
 
-from typing import List, Dict, Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 from decimal import Decimal, ROUND_DOWN
 
 from ..exchanges.bybit_client import BybitAPIError
@@ -282,8 +282,8 @@ def open_position_with_rr(
     margin_usd: float,
     leverage: int,
     stop_loss_roi_pct: float,
-    take_profits: List[Dict[str, float]],
-) -> Dict[str, Any]:
+    take_profits: list[dict[str, float]],
+) -> dict[str, Any]:
     """Open a position with RR-based stop loss and multiple take profits."""
     from .exchange_manager import TriggerDirection
     from . import exchange_instruments as inst

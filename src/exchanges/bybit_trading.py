@@ -7,7 +7,7 @@ set_trading_stop, get_executions, get_closed_pnl, batch operations,
 position management methods.
 """
 
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ..utils.time_range import TimeRange
 from ..utils.helpers import safe_float
@@ -39,7 +39,7 @@ def create_order(
     trigger_by: str = None,
     category: str = "linear",
     position_idx: int = 0,
-) -> Dict:
+) -> dict:
     """Place an order on Bybit."""
     client._order_limiter.acquire()
     
@@ -102,7 +102,7 @@ def amend_order(
     trigger_price: str = None,
     trigger_by: str = None,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Amend an existing order."""
     client._order_limiter.acquire()
     
@@ -144,7 +144,7 @@ def cancel_order(
     order_id: str = None,
     order_link_id: str = None,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Cancel an order."""
     client._order_limiter.acquire()
     
@@ -161,7 +161,7 @@ def cancel_order(
     return client._extract_result(response)
 
 
-def cancel_all_orders(client: "BybitClient", symbol: str = None, category: str = "linear") -> Dict:
+def cancel_all_orders(client: "BybitClient", symbol: str = None, category: str = "linear") -> dict:
     """Cancel all open orders."""
     client._order_limiter.acquire()
     
@@ -183,7 +183,7 @@ def get_open_orders(
     open_only: int = 0,
     limit: int = 50,
     category: str = "linear",
-) -> List[Dict]:
+) -> list[dict]:
     """Get open orders."""
     client._private_limiter.acquire()
     
@@ -216,7 +216,7 @@ def get_order_history(
     order_filter: str = None,
     limit: int = 50,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Get order history."""
     client._private_limiter.acquire()
     
@@ -246,7 +246,7 @@ def get_order_history(
     return client._extract_result(response)
 
 
-def set_leverage(client: "BybitClient", symbol: str, leverage: int, category: str = "linear") -> Dict:
+def set_leverage(client: "BybitClient", symbol: str, leverage: int, category: str = "linear") -> dict:
     """Set leverage for a symbol."""
     client._private_limiter.acquire()
     
@@ -273,7 +273,7 @@ def create_conditional_order(
     time_in_force: str = "GTC",
     trigger_by: str = "LastPrice",
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Create a conditional (trigger) order."""
     client._order_limiter.acquire()
     
@@ -317,7 +317,7 @@ def set_trading_stop(
     tp_order_type: str = "Market",
     sl_order_type: str = "Market",
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Set trading stop (TP/SL/trailing) for a position."""
     client._private_limiter.acquire()
     
@@ -362,7 +362,7 @@ def get_executions(
     exec_type: str = None,
     limit: int = 50,
     category: str = "linear",
-) -> List[Dict]:
+) -> list[dict]:
     """Get trade execution history."""
     client._private_limiter.acquire()
     
@@ -394,7 +394,7 @@ def get_closed_pnl(
     limit: int = 50,
     cursor: str = None,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Get closed position PnL history."""
     client._private_limiter.acquire()
     
@@ -418,7 +418,7 @@ def get_closed_pnl(
 
 # ==================== Batch Operations ====================
 
-def batch_create_orders(client: "BybitClient", orders: List[Dict], category: str = "linear") -> Dict:
+def batch_create_orders(client: "BybitClient", orders: list[dict], category: str = "linear") -> dict:
     """Place multiple orders in a single request (max 10)."""
     client._order_limiter.acquire()
     
@@ -429,7 +429,7 @@ def batch_create_orders(client: "BybitClient", orders: List[Dict], category: str
     return client._extract_result(response)
 
 
-def batch_amend_orders(client: "BybitClient", orders: List[Dict], category: str = "linear") -> Dict:
+def batch_amend_orders(client: "BybitClient", orders: list[dict], category: str = "linear") -> dict:
     """Amend multiple orders in a single request (max 10)."""
     client._order_limiter.acquire()
     
@@ -440,7 +440,7 @@ def batch_amend_orders(client: "BybitClient", orders: List[Dict], category: str 
     return client._extract_result(response)
 
 
-def batch_cancel_orders(client: "BybitClient", orders: List[Dict], category: str = "linear") -> Dict:
+def batch_cancel_orders(client: "BybitClient", orders: list[dict], category: str = "linear") -> dict:
     """Cancel multiple orders in a single request (max 10)."""
     client._order_limiter.acquire()
     
@@ -459,7 +459,7 @@ def set_risk_limit(
     risk_id: int,
     position_idx: int = 0,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Set risk limit tier for a symbol."""
     client._private_limiter.acquire()
     
@@ -477,7 +477,7 @@ def set_tp_sl_mode(
     symbol: str,
     tp_sl_mode: str,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Set TP/SL mode (Full or Partial)."""
     client._private_limiter.acquire()
     
@@ -495,7 +495,7 @@ def set_auto_add_margin(
     auto_add_margin: int,
     position_idx: int = 0,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Enable/disable auto add margin."""
     client._private_limiter.acquire()
     
@@ -514,7 +514,7 @@ def modify_position_margin(
     margin: str,
     position_idx: int = 0,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Add or reduce position margin."""
     client._private_limiter.acquire()
     
@@ -534,7 +534,7 @@ def switch_cross_isolated_margin(
     buy_leverage: str,
     sell_leverage: str,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Switch between cross and isolated margin."""
     client._private_limiter.acquire()
     
@@ -554,7 +554,7 @@ def switch_position_mode_v5(
     symbol: str = None,
     coin: str = None,
     category: str = "linear",
-) -> Dict:
+) -> dict:
     """Switch position mode (One-way: 0, Hedge: 3)."""
     client._private_limiter.acquire()
     
@@ -571,7 +571,7 @@ def switch_position_mode_v5(
     return client._extract_result(response)
 
 
-def set_disconnect_cancel_all(client: "BybitClient", time_window: int) -> Dict:
+def set_disconnect_cancel_all(client: "BybitClient", time_window: int) -> dict:
     """Set Disconnect Cancel All (DCP) window."""
     client._private_limiter.acquire()
     

@@ -20,7 +20,7 @@ Each line is a self-contained JSON object.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class EventLogWriter:
@@ -64,8 +64,8 @@ class EventLogWriter:
     def log_event(
         self,
         event_type: str,
-        data: Dict[str, Any],
-        timestamp: Optional[datetime] = None,
+        data: dict[str, Any],
+        timestamp: datetime | None = None,
     ) -> None:
         """
         Log a single event.
@@ -85,7 +85,7 @@ class EventLogWriter:
             **data,
         }
         
-        self._file.write(json.dumps(event, default=str) + "\n")
+        self._file.write(json.dumps(event, default=str, sort_keys=True) + "\n")
         self._file.flush()
         self._event_count += 1
     
@@ -95,8 +95,8 @@ class EventLogWriter:
         ts_close: datetime,
         mark_price: float,
         mark_price_source: str,
-        bar_ohlcv: Dict[str, float],
-        exchange_state: Dict[str, Any],
+        bar_ohlcv: dict[str, float],
+        exchange_state: dict[str, Any],
     ) -> None:
         """
         Log a simulation step event.
@@ -120,24 +120,24 @@ class EventLogWriter:
     
     def log_fill(
         self,
-        fill_data: Dict[str, Any],
-        timestamp: Optional[datetime] = None,
+        fill_data: dict[str, Any],
+        timestamp: datetime | None = None,
     ) -> None:
         """Log a fill event."""
         self.log_event("fill", fill_data, timestamp)
     
     def log_funding(
         self,
-        funding_data: Dict[str, Any],
-        timestamp: Optional[datetime] = None,
+        funding_data: dict[str, Any],
+        timestamp: datetime | None = None,
     ) -> None:
         """Log a funding event."""
         self.log_event("funding", funding_data, timestamp)
     
     def log_liquidation(
         self,
-        liquidation_data: Dict[str, Any],
-        timestamp: Optional[datetime] = None,
+        liquidation_data: dict[str, Any],
+        timestamp: datetime | None = None,
     ) -> None:
         """Log a liquidation event."""
         self.log_event("liquidation", liquidation_data, timestamp)
@@ -145,7 +145,7 @@ class EventLogWriter:
     def log_entries_disabled(
         self,
         reason: str,
-        timestamp: Optional[datetime] = None,
+        timestamp: datetime | None = None,
     ) -> None:
         """Log an entries-disabled event."""
         self.log_event("entries_disabled", {"reason": reason}, timestamp)
@@ -154,7 +154,7 @@ class EventLogWriter:
         self,
         tf: str,
         ts_close: datetime,
-        features: Dict[str, float],
+        features: dict[str, float],
     ) -> None:
         """Log an HTF cache refresh event."""
         self.log_event("htf_refresh", {
@@ -167,7 +167,7 @@ class EventLogWriter:
         self,
         tf: str,
         ts_close: datetime,
-        features: Dict[str, float],
+        features: dict[str, float],
     ) -> None:
         """Log an MTF cache refresh event."""
         self.log_event("mtf_refresh", {
@@ -181,9 +181,9 @@ class EventLogWriter:
         bar_index: int,
         exec_ts_close: datetime,
         snapshot_ready: bool,
-        exec_ctx: Optional[Dict[str, Any]] = None,
-        htf_ctx: Optional[Dict[str, Any]] = None,
-        mtf_ctx: Optional[Dict[str, Any]] = None,
+        exec_ctx: dict[str, Any] | None = None,
+        htf_ctx: dict[str, Any] | None = None,
+        mtf_ctx: dict[str, Any] | None = None,
     ) -> None:
         """
         Log per-TF snapshot context for debugging (Phase 4).

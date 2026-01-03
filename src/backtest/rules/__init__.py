@@ -16,7 +16,6 @@ from .types import (
     ValueType,
     EvalResult,
     RefValue,
-    RULE_EVAL_SCHEMA_VERSION,
 )
 from .compile import (
     CompiledRef,
@@ -26,7 +25,6 @@ from .compile import (
 )
 from .eval import (
     evaluate_condition,
-    Operator,
     OPERATORS,
 )
 from .registry import (
@@ -41,8 +39,6 @@ from .registry import (
 )
 
 __all__ = [
-    # Schema version
-    "RULE_EVAL_SCHEMA_VERSION",
     # Types
     "ReasonCode",
     "ValueType",
@@ -55,7 +51,6 @@ __all__ = [
     "RefNamespace",
     # Evaluation
     "evaluate_condition",
-    "Operator",
     "OPERATORS",
     # Registry
     "OperatorSpec",

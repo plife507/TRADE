@@ -16,9 +16,11 @@ Design principles:
 - History is bounded by config (no unbounded memory growth)
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional, Any, Tuple, List
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,7 @@ class HistoryConfig:
             self.features_mtf_count > 0
         )
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "bars_exec_count": self.bars_exec_count,
@@ -112,9 +114,9 @@ class Bar:
     low: float
     close: float
     volume: float
-    turnover: Optional[float] = None
+    turnover: float | None = None
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "symbol": self.symbol,
@@ -130,7 +132,7 @@ class Bar:
         }
     
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "Bar":
+    def from_dict(cls, d: dict[str, Any]) -> Bar:
         """Create Bar from dict."""
         ts_open = d["ts_open"]
         ts_close = d["ts_close"]
@@ -172,10 +174,10 @@ class FeatureSnapshot:
     tf: str
     ts_close: datetime
     bar: Bar
-    features: Dict[str, float] = field(default_factory=dict)
+    features: dict[str, float] = field(default_factory=dict)
     ready: bool = True
-    not_ready_reason: Optional[str] = None
-    features_computed_at: Optional[datetime] = None  # When features were computed
+    not_ready_reason: str | None = None
+    features_computed_at: datetime | None = None  # When features were computed
     
     def is_stale_at(self, exec_ts_close: datetime) -> bool:
         """
@@ -192,7 +194,7 @@ class FeatureSnapshot:
         """
         return exec_ts_close > self.ts_close
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "tf": self.tf,
@@ -236,15 +238,15 @@ class ExchangeState:
     available_balance_usdt: float
     maintenance_margin_usdt: float
     has_position: bool = False
-    position_side: Optional[str] = None
+    position_side: str | None = None
     position_size_usdt: float = 0.0
     position_qty: float = 0.0
     position_entry_price: float = 0.0
     unrealized_pnl_usdt: float = 0.0
     entries_disabled: bool = False
-    entries_disabled_reason: Optional[str] = None
+    entries_disabled_reason: str | None = None
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "equity_usdt": self.equity_usdt,
@@ -308,14 +310,14 @@ class RuntimeSnapshot:
     features_htf: FeatureSnapshot
     features_mtf: FeatureSnapshot
     features_exec: FeatureSnapshot
-    tf_mapping: Dict[str, str] = field(default_factory=dict)
-    
+    tf_mapping: dict[str, str] = field(default_factory=dict)
+
     # History fields (tuples are immutable, preventing accidental mutation)
-    history_bars_exec: Tuple[Bar, ...] = field(default_factory=tuple)
-    history_features_exec: Tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
-    history_features_htf: Tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
-    history_features_mtf: Tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
-    history_config: Optional["HistoryConfig"] = None
+    history_bars_exec: tuple[Bar, ...] = field(default_factory=tuple)
+    history_features_exec: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
+    history_features_htf: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
+    history_features_mtf: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
+    history_config: HistoryConfig | None = None
     history_ready: bool = True  # True if no history required or history is filled
     
     # Backward compatibility aliases
@@ -390,7 +392,7 @@ class RuntimeSnapshot:
         return self.features_exec.ts_close
     
     # History access helpers
-    def prev_features_exec(self, lookback: int = 1) -> Optional[FeatureSnapshot]:
+    def prev_features_exec(self, lookback: int = 1) -> FeatureSnapshot | None:
         """
         Get previous exec-TF feature snapshot.
         
@@ -407,7 +409,7 @@ class RuntimeSnapshot:
             return None
         return self.history_features_exec[idx]
     
-    def prev_bar_exec(self, lookback: int = 1) -> Optional[Bar]:
+    def prev_bar_exec(self, lookback: int = 1) -> Bar | None:
         """
         Get previous exec-TF bar.
         
@@ -424,7 +426,7 @@ class RuntimeSnapshot:
             return None
         return self.history_bars_exec[idx]
     
-    def prev_features_htf(self, lookback: int = 1) -> Optional[FeatureSnapshot]:
+    def prev_features_htf(self, lookback: int = 1) -> FeatureSnapshot | None:
         """Get previous HTF feature snapshot."""
         if lookback < 1:
             raise ValueError("lookback must be >= 1")
@@ -432,8 +434,8 @@ class RuntimeSnapshot:
         if idx < 0:
             return None
         return self.history_features_htf[idx]
-    
-    def prev_features_mtf(self, lookback: int = 1) -> Optional[FeatureSnapshot]:
+
+    def prev_features_mtf(self, lookback: int = 1) -> FeatureSnapshot | None:
         """Get previous MTF feature snapshot."""
         if lookback < 1:
             raise ValueError("lookback must be >= 1")
@@ -442,7 +444,7 @@ class RuntimeSnapshot:
             return None
         return self.history_features_mtf[idx]
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         result = {
             "ts_close": self.ts_close.isoformat(),

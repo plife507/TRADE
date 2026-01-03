@@ -15,7 +15,7 @@ import json
 import hashlib
 import pandas as pd
 from pathlib import Path
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .artifacts.parquet_writer import write_parquet
 from .metrics import compute_time_based_returns
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from .types import BacktestResult, EquityPoint
 
 
-def calculate_drawdowns_impl(equity_curve: List["EquityPoint"]) -> None:
+def calculate_drawdowns_impl(equity_curve: list["EquityPoint"]) -> None:
     """
     Calculate drawdown values for equity curve.
 
@@ -154,7 +154,7 @@ def write_artifacts_impl(
         time_based_returns = compute_time_based_returns(result.equity_curve)
         returns_path = run_dir / "returns.json"
         with open(returns_path, "w") as f:
-            json.dump(time_based_returns.to_dict(), f, indent=2)
+            json.dump(time_based_returns.to_dict(), f, indent=2, sort_keys=True)
 
     # Compute artifact hashes for reproducibility (Parquet files)
     artifact_hashes = {}
@@ -175,7 +175,7 @@ def write_artifacts_impl(
     # Write result.json
     result_path = run_dir / "result.json"
     with open(result_path, "w") as f:
-        json.dump(result_dict, f, indent=2)
+        json.dump(result_dict, f, indent=2, sort_keys=True)
 
     if logger:
         logger.info(f"Artifacts written to {run_dir}")

@@ -4,8 +4,10 @@ Market Structure Specifications.
 Dataclasses for structure blocks and zones with spec_id computation.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal
+from typing import Any, Literal
 import hashlib
 import json
 
@@ -31,16 +33,16 @@ class ConfirmationConfig:
                 f"ConfirmationConfig: mode='bar_count' requires bars > 0, got {self.bars}"
             )
 
-    def to_canonical_dict(self) -> Dict[str, Any]:
+    def to_canonical_dict(self) -> dict[str, Any]:
         """Canonical dict for hashing."""
         return {"mode": self.mode, "bars": self.bars}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for YAML serialization."""
         return {"mode": self.mode, "bars": self.bars}
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "ConfirmationConfig":
+    def from_dict(cls, d: dict[str, Any]) -> ConfirmationConfig:
         """Create from dict."""
         return cls(
             mode=d.get("mode", "immediate"),
@@ -62,7 +64,7 @@ class ZoneSpec:
     key: str  # User-facing name ("demand_1")
     type: ZoneType  # demand, supply
     width_model: Literal["atr_mult", "percent", "fixed"]
-    width_params: Dict[str, Any] = field(default_factory=dict)
+    width_params: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.key:
@@ -83,7 +85,7 @@ class ZoneSpec:
                     "ZoneSpec: width_model='fixed' requires width in width_params"
                 )
 
-    def to_canonical_dict(self) -> Dict[str, Any]:
+    def to_canonical_dict(self) -> dict[str, Any]:
         """Canonical dict for hashing."""
         return {
             "key": self.key,
@@ -92,7 +94,7 @@ class ZoneSpec:
             "width_params": dict(sorted(self.width_params.items())),
         }
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for YAML serialization."""
         return {
             "key": self.key,
@@ -102,7 +104,7 @@ class ZoneSpec:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "ZoneSpec":
+    def from_dict(cls, d: dict[str, Any]) -> ZoneSpec:
         """Create from dict."""
         return cls(
             key=d["key"],
@@ -125,9 +127,10 @@ class StructureSpec:
     key: str  # User-facing name ("ms_5m")
     type: StructureType  # swing, trend
     tf_role: str  # "exec" or "ctx"
-    params: Dict[str, Any]  # Explicit, no defaults
+    params: dict[str, Any]  # Explicit, no defaults
     confirmation: ConfirmationConfig
-    zones: List[ZoneSpec] = field(default_factory=list)
+    zones: list[ZoneSpec] = field(default_factory=list)
+    depends_on_swing: str | None = None  # For TREND: which SWING block to derive from
 
     def __post_init__(self) -> None:
         if not self.key:
@@ -211,7 +214,7 @@ class StructureSpec:
         json_str = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(json_str.encode()).hexdigest()[:12]
 
-    def to_canonical_dict(self) -> Dict[str, Any]:
+    def to_canonical_dict(self) -> dict[str, Any]:
         """Full canonical dict for debugging/logging."""
         result = {
             "key": self.key,
@@ -229,7 +232,7 @@ class StructureSpec:
             result["zone_block_id"] = self.zone_block_id
         return result
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for YAML serialization."""
         result = {
             "key": self.key,
@@ -240,10 +243,12 @@ class StructureSpec:
         }
         if self.zones:
             result["zones"] = [z.to_dict() for z in self.zones]
+        if self.depends_on_swing:
+            result["depends_on_swing"] = self.depends_on_swing
         return result
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "StructureSpec":
+    def from_dict(cls, d: dict[str, Any]) -> StructureSpec:
         """
         Create from dict (YAML parsing).
 
@@ -290,7 +295,7 @@ class StructureSpec:
         tf_role = d.get("tf_role", "exec")
 
         # Parse zones (Stage 5+, SWING blocks only)
-        zones: List[ZoneSpec] = []
+        zones: list[ZoneSpec] = []
         zones_raw = d.get("zones", [])
         if zones_raw:
             # Validate zones are only on SWING blocks
@@ -317,6 +322,14 @@ class StructureSpec:
                     f"{duplicates}. Zone keys must be unique within a block."
                 )
 
+        # Parse depends_on_swing (TREND blocks only)
+        depends_on_swing = d.get("depends_on_swing")
+        if depends_on_swing and struct_type != StructureType.TREND:
+            raise ValueError(
+                f"'depends_on_swing' is only valid for TREND blocks, "
+                f"not '{struct_type.value}'. Remove it from block '{d.get('key', '?')}'."
+            )
+
         return cls(
             key=d["key"],
             type=struct_type,
@@ -324,13 +337,14 @@ class StructureSpec:
             params=params,
             confirmation=confirmation,
             zones=zones,
+            depends_on_swing=depends_on_swing,
         )
 
 
 def compute_spec_id(
     structure_type: str,
-    params: Dict[str, Any],
-    confirmation: Dict[str, Any],
+    params: dict[str, Any],
+    confirmation: dict[str, Any],
 ) -> str:
     """
     Compute spec_id from raw dict data (for parsing).
@@ -352,7 +366,7 @@ def compute_spec_id(
     return hashlib.sha256(json_str.encode()).hexdigest()[:12]
 
 
-def compute_zone_spec_id(zones: List[Dict[str, Any]]) -> str:
+def compute_zone_spec_id(zones: list[dict[str, Any]]) -> str:
     """
     Compute zone_spec_id from raw dict data (for parsing).
 

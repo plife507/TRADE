@@ -14,10 +14,12 @@ Stage 2 Constraints:
 - Required params must exist per structure type
 """
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -58,20 +60,20 @@ class StructureManifestEntry:
     spec_id: str
     type: str  # "swing" or "trend"
     tf_role: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
     confirmation_mode: str
     confirmation_bars: int
-    output_fields: List[str]
+    output_fields: list[str]
     schema_version: str = STRUCTURE_SCHEMA_VERSION
-    enum_labels: Dict[str, Dict[int, str]] = field(default_factory=dict)
+    enum_labels: dict[str, dict[int, str]] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""
         return asdict(self)
 
     def to_json(self) -> str:
         """Convert to JSON string."""
-        return json.dumps(self.to_dict(), separators=(",", ":"))
+        return json.dumps(self.to_dict(), separators=(",", ":"), sort_keys=True)
 
 
 @dataclass
@@ -86,10 +88,28 @@ class ZoneStore:
     """
     zone_key: str
     zone_type: str
-    fields: Dict[str, np.ndarray] = field(default_factory=dict)
+    fields: dict[str, np.ndarray] = field(default_factory=dict)
 
-    def get_field(self, field_name: str, bar_idx: int) -> Optional[float]:
-        """Get zone field value at specific bar index."""
+    def get_field(self, field_name: str, bar_idx: int) -> float | None:
+        """
+        Get zone field value at specific bar index.
+
+        Args:
+            field_name: Field name (e.g., "lower", "state", "touched")
+            bar_idx: Bar index to retrieve
+
+        Returns:
+            float value, or NaN for missing numeric data.
+            Returns None only for out-of-bounds access.
+
+        Raises:
+            ValueError: If field_name is unknown for this zone
+
+        Note:
+            NaN is returned (not None) for missing numeric data to distinguish
+            between "no data exists" (out-of-bounds → None) and "data exists but
+            value is not available" (e.g., zone not active → NaN for bounds).
+        """
         if field_name not in self.fields:
             raise ValueError(
                 f"Unknown field '{field_name}' for zone '{self.zone_key}'. "
@@ -99,9 +119,10 @@ class ZoneStore:
         if bar_idx < 0 or bar_idx >= len(arr):
             return None
         val = arr[bar_idx]
-        if np.isnan(val) if isinstance(val, float) else False:
-            return None
-        return float(val) if isinstance(val, (np.floating, float)) else int(val)
+        # Return NaN as-is for missing numeric data; convert to Python float/int
+        if isinstance(val, (np.floating, float)):
+            return float(val)  # Preserves NaN
+        return int(val)
 
 
 @dataclass
@@ -119,10 +140,10 @@ class StructureStore:
     block_id: str
     block_key: str
     structure_type: StructureType
-    fields: Dict[str, np.ndarray] = field(default_factory=dict)
-    zones: Dict[str, ZoneStore] = field(default_factory=dict)
+    fields: dict[str, np.ndarray] = field(default_factory=dict)
+    zones: dict[str, ZoneStore] = field(default_factory=dict)
 
-    def get_field(self, field_name: str, bar_idx: int) -> Optional[float]:
+    def get_field(self, field_name: str, bar_idx: int) -> float | None:
         """
         Get field value at specific bar index.
 
@@ -131,10 +152,16 @@ class StructureStore:
             bar_idx: Bar index to retrieve
 
         Returns:
-            Field value or None if not available
+            float value, or NaN for missing numeric data (no valid value at this bar).
+            Returns None only for out-of-bounds access.
 
         Raises:
             ValueError: If field_name is not in allowlist
+
+        Note:
+            NaN is returned (not None) for missing numeric data to distinguish
+            between "no data exists" (out-of-bounds → None) and "data exists but
+            value is not available" (e.g., no pivot confirmed yet → NaN).
         """
         if field_name not in self.fields:
             raise ValueError(
@@ -145,13 +172,14 @@ class StructureStore:
         if bar_idx < 0 or bar_idx >= len(arr):
             return None
         val = arr[bar_idx]
-        if np.isnan(val) if isinstance(val, float) else False:
-            return None
-        return float(val) if isinstance(val, (np.floating, float)) else int(val)
+        # Return NaN as-is for missing numeric data; convert to Python float/int
+        if isinstance(val, (np.floating, float)):
+            return float(val)  # Preserves NaN
+        return int(val)
 
     def get_zone_field(
         self, zone_key: str, field_name: str, bar_idx: int
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Get zone field value at specific bar index.
 
@@ -177,7 +205,7 @@ class StructureStore:
         """Check if zone exists."""
         return zone_key in self.zones
 
-    def get_zone_fields(self, zone_key: str) -> List[str]:
+    def get_zone_fields(self, zone_key: str) -> list[str]:
         """Get available fields for a zone."""
         if zone_key not in self.zones:
             return []
@@ -203,7 +231,7 @@ class StructureBuilder:
         """
         self._stage = stage
 
-    def validate_stage2_constraints(self, specs: List[StructureSpec]) -> None:
+    def validate_stage2_constraints(self, specs: list[StructureSpec]) -> None:
         """
         Validate that all specs meet Stage 2 requirements.
 
@@ -228,8 +256,8 @@ class StructureBuilder:
 
     def _resolve_dependency_order(
         self,
-        specs: List[StructureSpec]
-    ) -> List[StructureSpec]:
+        specs: list[StructureSpec]
+    ) -> list[StructureSpec]:
         """
         Sort specs by dependency order.
 
@@ -250,9 +278,9 @@ class StructureBuilder:
 
     def _map_to_public_schema(
         self,
-        internal_outputs: Dict[str, np.ndarray],
+        internal_outputs: dict[str, np.ndarray],
         structure_type: StructureType,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Map internal detector outputs to public field names.
 
@@ -272,12 +300,54 @@ class StructureBuilder:
 
         return public_outputs
 
+    def _compute_atr_if_needed(
+        self,
+        ohlcv: dict[str, np.ndarray],
+        zone_specs: list["ZoneSpec"],
+    ) -> np.ndarray | None:
+        """
+        Compute ATR on-demand if any zone uses atr_mult width model.
+
+        Args:
+            ohlcv: Dict with 'high', 'low', 'close' arrays
+            zone_specs: List of ZoneSpec to check
+
+        Returns:
+            ATR array if needed, None otherwise
+        """
+        # Check if any zone needs ATR
+        atr_zones = [z for z in zone_specs if z.width_model == "atr_mult"]
+        if not atr_zones:
+            return None
+
+        # Get atr_len from first zone (all atr_mult zones should use same length)
+        # If different zones need different ATR lengths, they should be computed separately
+        atr_len = atr_zones[0].width_params.get("atr_len", 14)
+
+        # Import pandas-ta for ATR computation
+        try:
+            import pandas_ta as ta
+            import pandas as pd
+        except ImportError:
+            raise ImportError(
+                "Zone width_model='atr_mult' requires pandas-ta. "
+                "Install with: pip install pandas-ta"
+            )
+
+        # Compute ATR using pandas-ta
+        high = pd.Series(ohlcv["high"])
+        low = pd.Series(ohlcv["low"])
+        close = pd.Series(ohlcv["close"])
+
+        atr_series = ta.atr(high, low, close, length=atr_len)
+        return atr_series.to_numpy()
+
     def _build_zones(
         self,
         store: StructureStore,
-        swing_outputs: Dict[str, np.ndarray],
-        ohlcv: Dict[str, np.ndarray],
-        zone_specs: List["ZoneSpec"],
+        swing_outputs: dict[str, np.ndarray],
+        ohlcv: dict[str, np.ndarray],
+        zone_specs: list["ZoneSpec"],
     ) -> None:
         """
         Build zone outputs and attach to structure store.
@@ -306,13 +376,16 @@ class StructureBuilder:
         zone_detector = ZoneDetector()
         interaction_computer = ZoneInteractionComputer()
 
+        # Compute ATR on-demand if any zone uses atr_mult
+        atr = self._compute_atr_if_needed(ohlcv, zone_specs)
+
         for zone_spec in zone_specs:
             # Compute zone arrays (lower, upper, state, recency, parent_anchor_id, instance_id)
             zone_outputs = zone_detector.build_batch(
                 swing_outputs=swing_outputs,
                 close_prices=ohlcv["close"],
                 zone_spec=zone_spec,
-                atr=None,  # TODO: Pass ATR if width_model='atr_mult'
+                atr=atr,
             )
 
             # Stage 6: Compute interaction metrics
@@ -338,9 +411,9 @@ class StructureBuilder:
 
     def build(
         self,
-        ohlcv: Dict[str, np.ndarray],
-        specs: List[StructureSpec],
-    ) -> Dict[str, StructureStore]:
+        ohlcv: dict[str, np.ndarray],
+        specs: list[StructureSpec],
+    ) -> dict[str, StructureStore]:
         """
         Build structure outputs for all specs.
 
@@ -361,10 +434,10 @@ class StructureBuilder:
         ordered_specs = self._resolve_dependency_order(specs)
 
         # Store results
-        stores: Dict[str, StructureStore] = {}
+        stores: dict[str, StructureStore] = {}
 
         # Track swing outputs for TREND dependency
-        swing_outputs_cache: Dict[str, Dict[str, np.ndarray]] = {}
+        swing_outputs_cache: dict[str, dict[str, np.ndarray]] = {}
 
         for spec in ordered_specs:
             detector = get_detector(spec.type)
@@ -378,14 +451,32 @@ class StructureBuilder:
             elif spec.type == StructureType.TREND:
                 # TREND derives from SWING
                 # Find the swing block this TREND depends on
-                # For Stage 2, we assume one SWING block exists
                 if not swing_outputs_cache:
                     raise Stage2ValidationError(
                         f"TREND block '{spec.key}' requires SWING outputs, "
                         f"but no SWING blocks were processed."
                     )
-                # Use the first (and typically only) swing outputs
-                swing_outputs = list(swing_outputs_cache.values())[0]
+
+                # P1-12 fix: Use explicit depends_on_swing if specified
+                if spec.depends_on_swing:
+                    # Find the specified SWING block by key
+                    swing_key = spec.depends_on_swing
+                    matching_block_ids = [
+                        block_id for block_id, _ in swing_outputs_cache.items()
+                        if any(s.key == swing_key and s.block_id == block_id for s in specs if s.type == StructureType.SWING)
+                    ]
+                    if not matching_block_ids:
+                        available_swings = [s.key for s in specs if s.type == StructureType.SWING]
+                        raise Stage2ValidationError(
+                            f"TREND block '{spec.key}' depends on SWING block '{swing_key}', "
+                            f"but no SWING block with that key was found. "
+                            f"Available SWING blocks: {available_swings}"
+                        )
+                    swing_outputs = swing_outputs_cache[matching_block_ids[0]]
+                else:
+                    # Fallback: use first SWING block (backward compatible, with warning behavior)
+                    swing_outputs = list(swing_outputs_cache.values())[0]
+
                 internal_outputs = detector.build_batch(swing_outputs, spec.params)
             else:
                 raise ValueError(f"Unknown structure type: {spec.type}")
@@ -415,7 +506,7 @@ class StructureBuilder:
 
         return stores
 
-    def build_key_map(self, stores: Dict[str, StructureStore]) -> Dict[str, str]:
+    def build_key_map(self, stores: dict[str, StructureStore]) -> dict[str, str]:
         """
         Build block_key → block_id mapping for runtime resolution.
 
@@ -429,9 +520,9 @@ class StructureBuilder:
 
     def build_manifest(
         self,
-        specs: List[StructureSpec],
-        stores: Dict[str, StructureStore],
-    ) -> List[StructureManifestEntry]:
+        specs: list[StructureSpec],
+        stores: dict[str, StructureStore],
+    ) -> list[StructureManifestEntry]:
         """
         Build manifest entries for all structure blocks.
 
@@ -474,7 +565,7 @@ class StructureBuilder:
     def _get_enum_labels_for_type(
         self,
         structure_type: StructureType,
-    ) -> Dict[str, Dict[int, str]]:
+    ) -> dict[str, dict[int, str]]:
         """
         Get enum label maps for a structure type.
 
@@ -491,8 +582,8 @@ class StructureBuilder:
 
     def write_manifest(
         self,
-        manifest: List[StructureManifestEntry],
-        path: Union[str, Path],
+        manifest: list[StructureManifestEntry],
+        path: str | Path,
     ) -> None:
         """
         Write manifest to JSONL file.
@@ -509,7 +600,7 @@ class StructureBuilder:
                 f.write(entry.to_json() + "\n")
 
 
-def validate_stage2_exec_only(specs: List[StructureSpec]) -> None:
+def validate_stage2_exec_only(specs: list[StructureSpec]) -> None:
     """
     Standalone validator for Stage 2 exec-only constraint.
 

@@ -16,7 +16,7 @@ Checks:
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..idea_card import IdeaCard
@@ -38,8 +38,8 @@ class ValueFlowCheck:
 class ValueFlowAuditResult:
     """Result of the value flow audit."""
     passed: bool
-    checks: List[ValueFlowCheck]
-    errors: List[str]
+    checks: list[ValueFlowCheck]
+    errors: list[str]
 
     @property
     def checks_passed(self) -> int:
@@ -69,8 +69,8 @@ def audit_value_flow(
     Returns:
         ValueFlowAuditResult with check details
     """
-    checks: List[ValueFlowCheck] = []
-    errors: List[str] = []
+    checks: list[ValueFlowCheck] = []
+    errors: list[str] = []
 
     # Check 1: slippage_bps
     expected_slippage = idea_card.account.slippage_bps if idea_card.account.slippage_bps is not None else 5.0

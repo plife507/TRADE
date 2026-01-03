@@ -11,7 +11,9 @@ This module handles rolling history window management:
 The BacktestEngine delegates to these functions/class, maintaining the same public API.
 """
 
-from typing import List, Optional, Tuple, TYPE_CHECKING
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from .runtime.types import (
     Bar as CanonicalBar,
@@ -69,10 +71,10 @@ class HistoryManager:
         self._config = history_config
 
         # Rolling history windows (mutable lists, converted to tuples for snapshot)
-        self._history_bars_exec: List[CanonicalBar] = []
-        self._history_features_exec: List[FeatureSnapshot] = []
-        self._history_features_htf: List[FeatureSnapshot] = []
-        self._history_features_mtf: List[FeatureSnapshot] = []
+        self._history_bars_exec: list[CanonicalBar] = []
+        self._history_features_exec: list[FeatureSnapshot] = []
+        self._history_features_htf: list[FeatureSnapshot] = []
+        self._history_features_mtf: list[FeatureSnapshot] = []
 
     @property
     def config(self) -> HistoryConfig:
@@ -80,22 +82,22 @@ class HistoryManager:
         return self._config
 
     @property
-    def bars_exec(self) -> List[CanonicalBar]:
+    def bars_exec(self) -> list[CanonicalBar]:
         """Get current exec bar history."""
         return self._history_bars_exec
 
     @property
-    def features_exec(self) -> List[FeatureSnapshot]:
+    def features_exec(self) -> list[FeatureSnapshot]:
         """Get current exec feature history."""
         return self._history_features_exec
 
     @property
-    def features_htf(self) -> List[FeatureSnapshot]:
+    def features_htf(self) -> list[FeatureSnapshot]:
         """Get current HTF feature history."""
         return self._history_features_htf
 
     @property
-    def features_mtf(self) -> List[FeatureSnapshot]:
+    def features_mtf(self) -> list[FeatureSnapshot]:
         """Get current MTF feature history."""
         return self._history_features_mtf
 
@@ -105,8 +107,8 @@ class HistoryManager:
         features_exec: FeatureSnapshot,
         htf_updated: bool,
         mtf_updated: bool,
-        features_htf: Optional[FeatureSnapshot],
-        features_mtf: Optional[FeatureSnapshot],
+        features_htf: FeatureSnapshot | None,
+        features_mtf: FeatureSnapshot | None,
     ) -> None:
         """
         Update rolling history windows.
@@ -181,7 +183,7 @@ class HistoryManager:
 
         return True
 
-    def get_tuples(self) -> Tuple[tuple, tuple, tuple, tuple]:
+    def get_tuples(self) -> tuple[tuple, tuple, tuple, tuple]:
         """
         Get immutable history tuples for snapshot.
 

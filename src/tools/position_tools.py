@@ -32,7 +32,7 @@ Usage:
     result = close_position_tool("BTCUSDT")
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 # Import shared types and helpers from the shared module
 from .shared import (
@@ -46,13 +46,13 @@ from .shared import (
 )
 
 
-def _position_to_dict(pos) -> Dict[str, Any]:
+def _position_to_dict(pos) -> dict[str, Any]:
     """Convert a Position object to a serializable dictionary."""
     return {
         "symbol": pos.symbol,
         "side": pos.side,
         "size": pos.size,
-        "size_usd": getattr(pos, "size_usd", pos.size * pos.current_price if hasattr(pos, "current_price") else 0),
+        "size_usdt": getattr(pos, "size_usdt", pos.size * pos.current_price if hasattr(pos, "current_price") else 0),
         "entry_price": pos.entry_price,
         "current_price": getattr(pos, "current_price", getattr(pos, "mark_price", 0)),
         "unrealized_pnl": pos.unrealized_pnl,
@@ -67,13 +67,13 @@ def _position_to_dict(pos) -> Dict[str, Any]:
     }
 
 
-def _ws_position_to_dict(ws_pos) -> Dict[str, Any]:
+def _ws_position_to_dict(ws_pos) -> dict[str, Any]:
     """Convert a WebSocket PositionData to a serializable dictionary."""
     return {
         "symbol": ws_pos.symbol,
         "side": ws_pos.side.lower() if ws_pos.side else "none",
         "size": ws_pos.size,
-        "size_usd": ws_pos.position_value,
+        "size_usdt": ws_pos.position_value,
         "entry_price": ws_pos.entry_price,
         "current_price": ws_pos.mark_price,
         "unrealized_pnl": ws_pos.unrealized_pnl,
@@ -92,7 +92,7 @@ def _ws_position_to_dict(ws_pos) -> Dict[str, Any]:
 # Position Listing Tools
 # ==============================================================================
 
-def list_open_positions_tool(symbol: Optional[str] = None, trading_env: Optional[str] = None) -> ToolResult:
+def list_open_positions_tool(symbol: str | None = None, trading_env: str | None = None) -> ToolResult:
     """
     List all open positions, optionally filtered by symbol.
     
@@ -153,7 +153,7 @@ def list_open_positions_tool(symbol: Optional[str] = None, trading_env: Optional
         )
 
 
-def get_position_detail_tool(symbol: str, trading_env: Optional[str] = None) -> ToolResult:
+def get_position_detail_tool(symbol: str, trading_env: str | None = None) -> ToolResult:
     """
     Get detailed information for a specific position.
     
@@ -223,7 +223,7 @@ def get_position_detail_tool(symbol: str, trading_env: Optional[str] = None) -> 
 # Stop Loss Tools
 # ==============================================================================
 
-def set_stop_loss_tool(symbol: str, stop_price: float, trading_env: Optional[str] = None) -> ToolResult:
+def set_stop_loss_tool(symbol: str, stop_price: float, trading_env: str | None = None) -> ToolResult:
     """
     Set or update the stop loss price for an existing position.
     
@@ -284,7 +284,7 @@ def set_stop_loss_tool(symbol: str, stop_price: float, trading_env: Optional[str
         )
 
 
-def remove_stop_loss_tool(symbol: str, trading_env: Optional[str] = None) -> ToolResult:
+def remove_stop_loss_tool(symbol: str, trading_env: str | None = None) -> ToolResult:
     """
     Remove the stop loss from an existing position.
     
@@ -344,7 +344,7 @@ def remove_stop_loss_tool(symbol: str, trading_env: Optional[str] = None) -> Too
 # Take Profit Tools
 # ==============================================================================
 
-def set_take_profit_tool(symbol: str, take_profit_price: float, trading_env: Optional[str] = None) -> ToolResult:
+def set_take_profit_tool(symbol: str, take_profit_price: float, trading_env: str | None = None) -> ToolResult:
     """
     Set or update the take profit price for an existing position.
     
@@ -405,7 +405,7 @@ def set_take_profit_tool(symbol: str, take_profit_price: float, trading_env: Opt
         )
 
 
-def remove_take_profit_tool(symbol: str, trading_env: Optional[str] = None) -> ToolResult:
+def remove_take_profit_tool(symbol: str, trading_env: str | None = None) -> ToolResult:
     """
     Remove the take profit from an existing position.
     
@@ -467,10 +467,10 @@ def remove_take_profit_tool(symbol: str, trading_env: Optional[str] = None) -> T
 
 def set_position_tpsl_tool(
     symbol: str,
-    take_profit: Optional[float] = None,
-    stop_loss: Optional[float] = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
     tpsl_mode: str = "Full",
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Set both take profit and stop loss for an existing position.
@@ -549,8 +549,8 @@ def set_position_tpsl_tool(
 def set_trailing_stop_tool(
     symbol: str,
     trailing_distance: float,
-    active_price: Optional[float] = None,
-    trading_env: Optional[str] = None,
+    active_price: float | None = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Set or remove a trailing stop for an existing position.
@@ -625,7 +625,7 @@ def set_trailing_stop_tool(
         )
 
 
-def set_trailing_stop_by_percent_tool(symbol: str, percent: float, trading_env: Optional[str] = None) -> ToolResult:
+def set_trailing_stop_by_percent_tool(symbol: str, percent: float, trading_env: str | None = None) -> ToolResult:
     """
     Set a trailing stop using a percentage of current price.
     
@@ -696,7 +696,7 @@ def set_trailing_stop_by_percent_tool(symbol: str, percent: float, trading_env: 
 def close_position_tool(
     symbol: str,
     cancel_conditional_orders: bool = True,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Close an open position for a symbol.
@@ -768,7 +768,7 @@ def close_position_tool(
 # Panic / Emergency Tools
 # ==============================================================================
 
-def panic_close_all_tool(reason: Optional[str] = None, trading_env: Optional[str] = None) -> ToolResult:
+def panic_close_all_tool(reason: str | None = None, trading_env: str | None = None) -> ToolResult:
     """
     Emergency close all positions and cancel all orders.
     
@@ -848,7 +848,7 @@ def panic_close_all_tool(reason: Optional[str] = None, trading_env: Optional[str
 # Position Configuration Tools
 # ==============================================================================
 
-def set_risk_limit_tool(symbol: str, risk_id: int, trading_env: Optional[str] = None) -> ToolResult:
+def set_risk_limit_tool(symbol: str, risk_id: int, trading_env: str | None = None) -> ToolResult:
     """
     Set risk limit for a symbol by risk ID.
     
@@ -893,7 +893,7 @@ def set_risk_limit_tool(symbol: str, risk_id: int, trading_env: Optional[str] = 
         )
 
 
-def get_risk_limits_tool(symbol: str, trading_env: Optional[str] = None) -> ToolResult:
+def get_risk_limits_tool(symbol: str, trading_env: str | None = None) -> ToolResult:
     """
     Get risk limit tiers for a symbol.
     
@@ -934,7 +934,7 @@ def get_risk_limits_tool(symbol: str, trading_env: Optional[str] = None) -> Tool
         )
 
 
-def set_tp_sl_mode_tool(symbol: str, full_mode: bool, trading_env: Optional[str] = None) -> ToolResult:
+def set_tp_sl_mode_tool(symbol: str, full_mode: bool, trading_env: str | None = None) -> ToolResult:
     """
     Set TP/SL mode for a symbol.
     
@@ -979,7 +979,7 @@ def set_tp_sl_mode_tool(symbol: str, full_mode: bool, trading_env: Optional[str]
         )
 
 
-def set_auto_add_margin_tool(symbol: str, enabled: bool, trading_env: Optional[str] = None) -> ToolResult:
+def set_auto_add_margin_tool(symbol: str, enabled: bool, trading_env: str | None = None) -> ToolResult:
     """
     Enable or disable auto-add-margin for isolated margin position.
     
@@ -1024,7 +1024,7 @@ def set_auto_add_margin_tool(symbol: str, enabled: bool, trading_env: Optional[s
         )
 
 
-def modify_position_margin_tool(symbol: str, margin: float, trading_env: Optional[str] = None) -> ToolResult:
+def modify_position_margin_tool(symbol: str, margin: float, trading_env: str | None = None) -> ToolResult:
     """
     Add or reduce margin for isolated margin position.
     
@@ -1072,7 +1072,7 @@ def modify_position_margin_tool(symbol: str, margin: float, trading_env: Optiona
         )
 
 
-def switch_margin_mode_tool(symbol: str, isolated: bool, leverage: Optional[int] = None, trading_env: Optional[str] = None) -> ToolResult:
+def switch_margin_mode_tool(symbol: str, isolated: bool, leverage: int | None = None, trading_env: str | None = None) -> ToolResult:
     """
     Switch between cross and isolated margin mode for a symbol.
     
@@ -1122,7 +1122,7 @@ def switch_margin_mode_tool(symbol: str, isolated: bool, leverage: Optional[int]
         )
 
 
-def switch_position_mode_tool(hedge_mode: bool, trading_env: Optional[str] = None) -> ToolResult:
+def switch_position_mode_tool(hedge_mode: bool, trading_env: str | None = None) -> ToolResult:
     """
     Switch position mode for the account.
     

@@ -12,9 +12,10 @@ Usage:
         # Execute trade
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Any
 
 from ..core.risk_manager import Signal, RiskCheckResult, RiskManager, RiskConfig
 from ..core.position_manager import PortfolioSnapshot
@@ -25,12 +26,12 @@ from .system_config import RiskProfileConfig
 class RiskDecision:
     """
     Result of a risk policy check.
-    
+
     Mirrors RiskCheckResult but decoupled from core RiskManager.
     """
     allowed: bool
     reason: str
-    adjusted_size: Optional[float] = None
+    adjusted_size: float | None = None
     
     @classmethod
     def allow(cls, reason: str = "Allowed", adjusted_size: float = None) -> "RiskDecision":
@@ -55,16 +56,20 @@ class RiskPolicy(ABC):
         equity: float,
         available_balance: float,
         total_exposure: float,
+        unrealized_pnl: float = 0.0,
+        position_count: int = 0,
     ) -> RiskDecision:
         """
         Check if a signal should be allowed.
-        
+
         Args:
             signal: Trading signal to evaluate
             equity: Current portfolio equity
             available_balance: Available balance for new trades
             total_exposure: Current total position exposure
-            
+            unrealized_pnl: Unrealized PnL from open positions
+            position_count: Number of open positions
+
         Returns:
             RiskDecision with allowed/denied status
         """
@@ -100,8 +105,10 @@ class NoneRiskPolicy(RiskPolicy):
         equity: float,
         available_balance: float,
         total_exposure: float,
+        unrealized_pnl: float = 0.0,
+        position_count: int = 0,
     ) -> RiskDecision:
-        """Always allow signals."""
+        """Always allow signals (ignores portfolio state)."""
         return RiskDecision.allow(
             reason="NoneRiskPolicy: all signals allowed",
             adjusted_size=None,  # No adjustment
@@ -185,24 +192,32 @@ class RulesRiskPolicy(RiskPolicy):
         equity: float,
         available_balance: float,
         total_exposure: float,
+        unrealized_pnl: float = 0.0,
+        position_count: int = 0,
     ) -> RiskDecision:
         """
         Check signal against risk rules.
-        
-        Builds a minimal PortfolioSnapshot and delegates to RiskManager.
+
+        Builds a PortfolioSnapshot and delegates to RiskManager.
+
+        Args:
+            signal: Signal to check
+            equity: Current equity (balance + unrealized PnL)
+            available_balance: Available balance for new positions
+            total_exposure: Total position exposure in USDT
+            unrealized_pnl: Unrealized PnL from open positions (P1-004 fix)
+            position_count: Number of open positions (P1-004 fix)
         """
-        # Build a minimal portfolio snapshot for the check
-        # We don't have full position objects, but RiskManager.check() only
-        # needs balance, available, and total_exposure
         from datetime import datetime
-        
+
+        # P1-004 FIX: Include unrealized_pnl and position count from exchange
         portfolio = PortfolioSnapshot(
             timestamp=datetime.now(),
             balance=equity,
             available=available_balance,
             total_exposure=total_exposure,
-            unrealized_pnl=0.0,
-            positions=[],
+            unrealized_pnl=unrealized_pnl,
+            positions=[{"count": position_count}] if position_count > 0 else [],
             source="backtest",
         )
         

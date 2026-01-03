@@ -3,9 +3,10 @@ Rate limiter for API calls.
 Implements token bucket algorithm with separate limits for public and private endpoints.
 """
 
+from __future__ import annotations
+
 import time
 import threading
-from typing import Dict, Optional
 from collections import deque
 
 
@@ -20,7 +21,7 @@ class RateLimiter:
     - Optional burst allowance
     """
     
-    def __init__(self, max_calls: int, period: float = 1.0, burst: int = None):
+    def __init__(self, max_calls: int, period: float = 1.0, burst: int | None = None):
         """
         Initialize rate limiter.
         
@@ -36,7 +37,7 @@ class RateLimiter:
         self._lock = threading.Lock()
         self._call_times: deque = deque()
     
-    def acquire(self, timeout: float = None) -> bool:
+    def acquire(self, timeout: float | None = None) -> bool:
         """
         Acquire permission to make an API call.
         Blocks until a slot is available or timeout is reached.
@@ -150,7 +151,7 @@ class MultiRateLimiter:
     """
     
     def __init__(self):
-        self._limiters: Dict[str, RateLimiter] = {}
+        self._limiters: dict[str, RateLimiter] = {}
         self._lock = threading.Lock()
     
     def add_limiter(self, name: str, max_calls: int, period: float = 1.0) -> RateLimiter:
@@ -160,11 +161,11 @@ class MultiRateLimiter:
             self._limiters[name] = limiter
             return limiter
     
-    def get_limiter(self, name: str) -> Optional[RateLimiter]:
+    def get_limiter(self, name: str) -> RateLimiter | None:
         """Get a rate limiter by name."""
         return self._limiters.get(name)
     
-    def acquire(self, name: str, timeout: float = None) -> bool:
+    def acquire(self, name: str, timeout: float | None = None) -> bool:
         """Acquire from a specific limiter."""
         limiter = self._limiters.get(name)
         if limiter:

@@ -27,9 +27,9 @@ from .orders import (
 
 from .backtest import (
     run_backtest_smoke,
-    run_backtest_smoke_mixed_idea_cards,
+    run_backtest_mixed_smoke,
     run_phase6_backtest_smoke,
-    run_backtest_smoke_suite,
+    run_backtest_suite_smoke,
 )
 
 from .metadata import (
@@ -62,9 +62,9 @@ __all__ = [
     "run_live_check_smoke",
     # Backtest tests
     "run_backtest_smoke",
-    "run_backtest_smoke_mixed_idea_cards",
+    "run_backtest_mixed_smoke",
     "run_phase6_backtest_smoke",
-    "run_backtest_smoke_suite",
+    "run_backtest_suite_smoke",
     # Metadata tests
     "run_metadata_smoke",
     # Price tests

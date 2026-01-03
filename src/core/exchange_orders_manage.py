@@ -10,7 +10,7 @@ Handles:
 - Batch operations
 """
 
-from typing import Dict, List, Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from ..utils.helpers import safe_float
 from ..utils.time_range import TimeRange
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 # Order Queries
 # =============================================================================
 
-def get_open_orders(manager: "ExchangeManager", symbol: str = None) -> List["Order"]:
+def get_open_orders(manager: "ExchangeManager", symbol: str = None) -> list["Order"]:
     """Get all open orders."""
     from .exchange_manager import Order
     
@@ -196,7 +196,7 @@ def close_position(
         )
         
         manager.logger.trade("POSITION_CLOSED", symbol=symbol, side=close_side,
-                            size=position.size_usd, pnl=position.unrealized_pnl,
+                            size=position.size_usdt, pnl=position.unrealized_pnl,
                             cancelled_conditional_orders=len(cancelled_orders))
         
         ws.remove_symbol_from_websocket(manager, symbol)
@@ -211,7 +211,7 @@ def close_position(
         return OrderResult(success=False, error=str(e))
 
 
-def close_all_positions(manager: "ExchangeManager") -> List["OrderResult"]:
+def close_all_positions(manager: "ExchangeManager") -> list["OrderResult"]:
     """Close all open positions."""
     from .exchange_manager import OrderResult
     
@@ -241,7 +241,7 @@ def get_order_history(
     time_range: TimeRange,
     symbol: str = None,
     limit: int = 50,
-) -> List[Dict]:
+) -> list[dict]:
     """Get order history. TimeRange is REQUIRED."""
     try:
         result = manager.bybit.get_order_history(time_range=time_range, symbol=symbol, limit=limit)
@@ -256,7 +256,7 @@ def get_executions(
     time_range: TimeRange,
     symbol: str = None,
     limit: int = 50,
-) -> List[Dict]:
+) -> list[dict]:
     """Get trade execution history. TimeRange is REQUIRED."""
     try:
         return manager.bybit.get_executions(time_range=time_range, symbol=symbol, limit=limit)
@@ -270,7 +270,7 @@ def get_closed_pnl(
     time_range: TimeRange,
     symbol: str = None,
     limit: int = 50,
-) -> List[Dict]:
+) -> list[dict]:
     """Get closed position PnL history. TimeRange is REQUIRED."""
     try:
         result = manager.bybit.get_closed_pnl(time_range=time_range, symbol=symbol, limit=limit)
@@ -286,8 +286,8 @@ def get_closed_pnl(
 
 def batch_market_orders(
     manager: "ExchangeManager",
-    orders: List[Dict[str, Any]],
-) -> List["OrderResult"]:
+    orders: list[dict[str, Any]],
+) -> list["OrderResult"]:
     """Execute multiple market orders in a batch."""
     from .exchange_manager import OrderResult
     from . import exchange_instruments as inst
@@ -348,8 +348,8 @@ def batch_market_orders(
 
 def batch_limit_orders(
     manager: "ExchangeManager",
-    orders: List[Dict[str, Any]],
-) -> List["OrderResult"]:
+    orders: list[dict[str, Any]],
+) -> list["OrderResult"]:
     """Execute multiple limit orders in a batch."""
     from .exchange_manager import OrderResult
     from . import exchange_instruments as inst
@@ -416,8 +416,8 @@ def batch_limit_orders(
 
 def batch_cancel_orders(
     manager: "ExchangeManager",
-    orders: List[Dict[str, str]],
-) -> List[bool]:
+    orders: list[dict[str, str]],
+) -> list[bool]:
     """Cancel multiple orders in a batch."""
     try:
         manager._validate_trading_operation()
@@ -443,8 +443,8 @@ def batch_cancel_orders(
 
 def batch_amend_orders(
     manager: "ExchangeManager",
-    orders: List[Dict[str, Any]],
-) -> List[bool]:
+    orders: list[dict[str, Any]],
+) -> list[bool]:
     """Amend multiple orders in a batch."""
     from . import exchange_instruments as inst
     

@@ -15,7 +15,7 @@ Usage:
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -37,9 +37,9 @@ class ArtifactParityResult:
     csv_path: Path
     parquet_path: Path
     passed: bool
-    errors: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "artifact_name": self.artifact_name,
             "csv_path": str(self.csv_path),
@@ -49,17 +49,17 @@ class ArtifactParityResult:
         }
 
 
-@dataclass 
+@dataclass
 class RunParityResult:
     """Result of parity verification for an entire run."""
     run_dir: Path
     passed: bool
     artifacts_checked: int = 0
     artifacts_passed: int = 0
-    artifact_results: List[ArtifactParityResult] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    artifact_results: list[ArtifactParityResult] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "run_dir": str(self.run_dir),
             "passed": self.passed,
@@ -134,7 +134,7 @@ def verify_artifact_parity(
 
 def verify_run_parity(
     run_dir: Path,
-    artifacts: Optional[List[str]] = None,
+    artifacts: list[str] | None = None,
     float_tolerance: float = 1e-12,
 ) -> RunParityResult:
     """
@@ -180,7 +180,7 @@ def find_latest_run(
     base_dir: Path,
     idea_card_id: str,
     symbol: str,
-) -> Optional[Path]:
+) -> Path | None:
     """
     Find the latest run directory for an idea card + symbol.
     
@@ -217,7 +217,7 @@ def verify_idea_card_parity(
     base_dir: Path,
     idea_card_id: str,
     symbol: str,
-    run_id: Optional[str] = None,
+    run_id: str | None = None,
     float_tolerance: float = 1e-12,
 ) -> RunParityResult:
     """

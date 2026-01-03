@@ -30,7 +30,7 @@ Hash determinism:
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Set
+from typing import Any
 import json
 
 
@@ -81,10 +81,6 @@ STANDARD_FILES = {
     "account_curve": "account_curve.parquet",
     # Logs directory
     "logs_dir": "logs",
-    # Legacy CSV aliases (for backward-compat reading of old runs)
-    "trades_csv": "trades.csv",
-    "equity_csv": "equity.csv",
-    "account_curve_csv": "account_curve.csv",
 }
 
 # Required files that MUST exist after a successful run (Phase 3.2: Parquet)
@@ -164,7 +160,7 @@ REQUIRED_RESULT_FIELDS = {
 #
 # =============================================================================
 
-RUN_CATEGORIES = {"_validation", "strategies"}
+RUN_CATEGORIES: set[str] = {"_validation", "strategies"}
 
 # Category-specific behavior
 CATEGORY_OVERWRITE_ALLOWED = {
@@ -215,12 +211,12 @@ class ArtifactPathConfig:
     idea_card_id: str = ""
     universe_id: str = ""  # Symbol or uni_<hash> for multi-symbol
     tf_exec: str = ""  # Stored in manifest, not in path
-    window_start: Optional[datetime] = None  # Stored in manifest
-    window_end: Optional[datetime] = None    # Stored in manifest
+    window_start: datetime | None = None  # Stored in manifest
+    window_end: datetime | None = None    # Stored in manifest
     run_id: str = ""  # 8-char (or 12-char) input hash
     idea_card_hash: str = ""  # Required for hash computation
     short_hash_length: int = 8  # Default 8, use 12 for collision recovery
-    attempt_id: Optional[str] = None  # Timestamp for strategies category
+    attempt_id: str | None = None  # Timestamp for strategies category
     
     def __post_init__(self):
         """Generate run_id (input hash) if not provided."""
@@ -301,7 +297,7 @@ class ArtifactPathConfig:
         self.run_folder.mkdir(parents=True, exist_ok=True)
         return self.run_folder
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "base_dir": str(self.base_dir),
@@ -369,11 +365,11 @@ class RunManifest:
     idea_card_hash: str
     
     # Symbol Universe
-    symbols: List[str]        # Canonical: sorted, uppercase
-    
+    symbols: list[str]        # Canonical: sorted, uppercase
+
     # Timeframes
     tf_exec: str              # Execution timeframe ({value}{unit} format)
-    tf_ctx: List[str]         # All context timeframes (sorted)
+    tf_ctx: list[str]         # All context timeframes (sorted)
     
     # Window
     window_start: str         # YYYY-MM-DD
@@ -397,27 +393,27 @@ class RunManifest:
     
     # Data Provenance
     data_source_id: str = "duckdb_live"   # e.g., "duckdb_live", "duckdb_demo", vendor
-    data_version: Optional[str] = None     # Snapshot/version reference if available
+    data_version: str | None = None     # Snapshot/version reference if available
     candle_policy: str = "closed_only"     # "closed_only" (no partial candles)
-    
+
     # Randomness
-    seed: Optional[int] = None
+    seed: int | None = None
     
     # Category & Overwrite Semantics
     category: str = "_validation"     # "_validation" or "strategies"
     is_promotable: bool = False       # _validation = never promotable
     allows_overwrite: bool = True     # _validation = overwrite, strategies = append
-    attempt_id: Optional[str] = None  # For strategies: timestamp of this attempt
-    
+    attempt_id: str | None = None  # For strategies: timestamp of this attempt
+
     # Warmup/Delay (audit-only - SOURCE OF TRUTH is SystemConfig, not manifest)
     # These fields are for reproducibility audit trail only
     # RENAMED: computed_warmup_by_role → computed_lookback_bars_by_role (breaking change)
-    computed_lookback_bars_by_role: Optional[Dict[str, int]] = None  # lookback (warmup) from Preflight
-    computed_delay_bars_by_role: Optional[Dict[str, int]] = None  # delay from Preflight
-    warmup_tool_calls: Optional[List[Dict[str, Any]]] = None  # Tool calls made during auto-backfill
-    
+    computed_lookback_bars_by_role: dict[str, int] | None = None  # lookback (warmup) from Preflight
+    computed_delay_bars_by_role: dict[str, int] | None = None  # delay from Preflight
+    warmup_tool_calls: list[dict[str, Any]] | None = None  # Tool calls made during auto-backfill
+
     # Phase 6: Engine-truth evaluation start (epoch-ms)
-    eval_start_ts_ms: Optional[int] = None  # simulation_start_ts from engine result
+    eval_start_ts_ms: int | None = None  # simulation_start_ts from engine result
     equity_timestamp_column: str = "ts_ms"  # Column name for equity timestamp (standardized)
     
     # Audit Trail
@@ -444,7 +440,7 @@ class RunManifest:
             from .hashes import compute_universe_id
             self.universe_id = compute_universe_id(self.symbols)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""
         result = {
             # Hash identity
@@ -514,10 +510,10 @@ class RunManifest:
     
     def write_json(self, path: Path) -> None:
         """Write manifest to JSON file."""
-        path.write_text(json.dumps(self.to_dict(), indent=2))
+        path.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True))
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RunManifest":
+    def from_dict(cls, data: dict[str, Any]) -> "RunManifest":
         """
         Load manifest from dict with version compatibility check.
 
@@ -683,8 +679,8 @@ class ManifestVerificationResult:
     is_valid: bool
     folder_matches: bool
     hash_integrity: bool
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def verify_run_folder(run_folder: Path) -> tuple[bool, str]:
@@ -741,16 +737,16 @@ class ArtifactValidationResult:
     """Result of artifact validation."""
     passed: bool
     run_folder: Path
-    files_found: Set[str] = field(default_factory=set)
-    files_missing: Set[str] = field(default_factory=set)
-    column_errors: Dict[str, List[str]] = field(default_factory=dict)
-    result_field_errors: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    files_found: set[str] = field(default_factory=set)
+    files_missing: set[str] = field(default_factory=set)
+    column_errors: dict[str, list[str]] = field(default_factory=dict)
+    result_field_errors: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     # Phase 2: Pipeline signature validation
-    pipeline_signature_valid: Optional[bool] = None
-    pipeline_signature_errors: List[str] = field(default_factory=list)
+    pipeline_signature_valid: bool | None = None
+    pipeline_signature_errors: list[str] = field(default_factory=list)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "passed": self.passed,
@@ -910,7 +906,7 @@ def validate_artifacts(run_folder: Path) -> ArtifactValidationResult:
     return result
 
 
-def validate_artifact_path_config(config: ArtifactPathConfig) -> List[str]:
+def validate_artifact_path_config(config: ArtifactPathConfig) -> list[str]:
     """
     Validate artifact path configuration before run.
     
@@ -1007,7 +1003,7 @@ class ResultsSummary:
     equity_hash: str = ""     # SHA256 hash of equity.parquet content
     run_hash: str = ""        # Combined hash (trades + equity + idea_card)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             # Identity
@@ -1074,7 +1070,7 @@ class ResultsSummary:
         """Write summary to JSON file."""
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2)
+            json.dump(self.to_dict(), f, indent=2, sort_keys=True)
     
     def print_summary(self) -> None:
         """Print comprehensive summary to console."""
@@ -1133,8 +1129,8 @@ def compute_results_summary(
     window_start: datetime,
     window_end: datetime,
     run_id: str,
-    trades: List[Dict[str, Any]],
-    equity_curve: List[Dict[str, Any]],
+    trades: list[dict[str, Any]],
+    equity_curve: list[dict[str, Any]],
     artifact_path: str = "",
     run_duration_seconds: float = 0.0,
     # Gate D required fields
@@ -1146,7 +1142,7 @@ def compute_results_summary(
     equity_hash: str = "",
     run_hash: str = "",
     # Optional pre-computed metrics from BacktestMetrics
-    metrics: Optional[Any] = None,  # BacktestMetrics type hint avoided for circular import
+    metrics: Any | None = None,  # BacktestMetrics type hint avoided for circular import
 ) -> ResultsSummary:
     """
     Compute results summary from trades and equity curve.

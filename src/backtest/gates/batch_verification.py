@@ -7,7 +7,7 @@ Gate D.2 requirement: Run 5 randomized IdeaCards and verify all pass.
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 import json
 
 from .idea_card_generator import (
@@ -26,15 +26,15 @@ class CardRunResult:
     direction: str
     exec_tf: str
     success: bool
-    error_message: Optional[str] = None
-    artifact_path: Optional[str] = None
+    error_message: str | None = None
+    artifact_path: str | None = None
     preflight_passed: bool = False
     indicators_declared_only: bool = False
     evaluation_executed: bool = False
     artifacts_exist: bool = False
-    deterministic_hash: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    deterministic_hash: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -44,20 +44,20 @@ class BatchSummary:
     seed: int
     num_cards: int
     all_passed: bool
-    idea_ids: List[str] = field(default_factory=list)
-    symbols: List[str] = field(default_factory=list)
-    directions: List[str] = field(default_factory=list)
-    artifact_paths: List[str] = field(default_factory=list)
-    results: List[CardRunResult] = field(default_factory=list)
+    idea_ids: list[str] = field(default_factory=list)
+    symbols: list[str] = field(default_factory=list)
+    directions: list[str] = field(default_factory=list)
+    artifact_paths: list[str] = field(default_factory=list)
+    results: list[CardRunResult] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["results"] = [r.to_dict() if hasattr(r, 'to_dict') else r for r in self.results]
         return d
     
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2, default=str)
+        return json.dumps(self.to_dict(), indent=2, default=str, sort_keys=True)
     
     def write_json(self, path: Path) -> None:
         path.write_text(self.to_json())
@@ -70,8 +70,8 @@ def run_batch_verification(
     output_dir: Path = Path("backtests/batch_verification"),
     env: str = "live",
     cleanup_after: bool = False,
-    window_start: Optional[datetime] = None,
-    window_end: Optional[datetime] = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
 ) -> BatchSummary:
     """
     Run batch verification of generated IdeaCards.
@@ -115,7 +115,7 @@ def run_batch_verification(
     if window_start is None:
         window_start = window_end - timedelta(days=window_days)
     
-    results: List[CardRunResult] = []
+    results: list[CardRunResult] = []
     
     for card in generated_cards:
         print(f"\n{'='*60}")

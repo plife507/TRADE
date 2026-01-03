@@ -13,10 +13,12 @@ The BacktestEngine delegates to these functions, maintaining the same public API
 Phase 2: Adds 1m quote feed for simulator price proxy.
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import Optional, Dict, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .runtime.feed_store import FeedStore, MultiTFFeedStore
 from .runtime.quote_state import QuoteState
@@ -37,8 +39,8 @@ class FeedStoreBuilderResult:
         self,
         multi_tf_feed_store: MultiTFFeedStore,
         exec_feed: FeedStore,
-        htf_feed: Optional[FeedStore],
-        mtf_feed: Optional[FeedStore],
+        htf_feed: FeedStore | None,
+        mtf_feed: FeedStore | None,
     ):
         self.multi_tf_feed_store = multi_tf_feed_store
         self.exec_feed = exec_feed
@@ -47,14 +49,14 @@ class FeedStoreBuilderResult:
 
 
 def build_feed_stores_impl(
-    config: "SystemConfig",
-    tf_mapping: Dict[str, str],
+    config: SystemConfig,
+    tf_mapping: dict[str, str],
     multi_tf_mode: bool,
-    mtf_frames: Optional["MultiTFPreparedFrames"],
-    prepared_frame: Optional["PreparedFrame"],
-    data: Optional[pd.DataFrame],
+    mtf_frames: MultiTFPreparedFrames | None,
+    prepared_frame: PreparedFrame | None,
+    data: pd.DataFrame | None,
     logger=None,
-) -> Tuple[MultiTFFeedStore, FeedStore, Optional[FeedStore], Optional[FeedStore]]:
+) -> tuple[MultiTFFeedStore, FeedStore, FeedStore | None, FeedStore | None]:
     """
     Build FeedStores from prepared frames for array-backed hot loop.
 
@@ -85,9 +87,9 @@ def build_feed_stores_impl(
 
     specs_by_role = config.feature_specs_by_role if hasattr(config, 'feature_specs_by_role') else {}
 
-    exec_feed: Optional[FeedStore] = None
-    htf_feed: Optional[FeedStore] = None
-    mtf_feed: Optional[FeedStore] = None
+    exec_feed: FeedStore | None = None
+    htf_feed: FeedStore | None = None
+    mtf_feed: FeedStore | None = None
 
     if multi_tf_mode and mtf_frames is not None:
         # Multi-TF mode: build feeds for each TF
@@ -165,17 +167,30 @@ def build_feed_stores_impl(
 
 
 # =============================================================================
-# Stage 3: Market Structure Building
+# Stage 3: Market Structure Building (DEPRECATED - Phase 7 Transition)
 # =============================================================================
+#
+# DEPRECATION NOTICE (Phase 7):
+# - `market_structure_blocks` in IdeaCard is DEPRECATED in favor of `structures:` section
+# - New IdeaCards should use the incremental `structures:` section for O(1) hot-loop access
+# - The batch system will be removed in a future release
+# - See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
+#
+# =============================================================================
+
+import warnings
 
 
 def build_structures_into_feed(
     exec_feed: FeedStore,
-    idea_card: "IdeaCard",
+    idea_card: IdeaCard,
     logger=None,
 ) -> None:
     """
-    Build market structures and wire them into exec FeedStore.
+    [DEPRECATED] Build market structures and wire them into exec FeedStore.
+
+    DEPRECATION: Use the `structures:` section in IdeaCard instead of `market_structure_blocks`.
+    The incremental state system provides O(1) access in the hot loop.
 
     Stage 3: All structure blocks are exec-only.
 
@@ -202,6 +217,19 @@ def build_structures_into_feed(
     if not structure_specs:
         logger.debug("No market_structure_blocks in IdeaCard, skipping structure build")
         return
+
+    # Phase 7: Emit deprecation warning when market_structure_blocks is used
+    warnings.warn(
+        "IdeaCard 'market_structure_blocks' is deprecated. "
+        "Use the 'structures:' section instead for O(1) hot-loop access. "
+        "See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    logger.warning(
+        "DEPRECATED: market_structure_blocks will be removed in a future release. "
+        "Migrate to 'structures:' section in IdeaCard."
+    )
 
     # Import here to avoid circular imports
     from .market_structure import StructureBuilder
@@ -301,7 +329,7 @@ def get_quote_at_exec_close(
     quote_feed: FeedStore,
     exec_ts_close: datetime,
     mark_source: str = "approx_from_ohlcv_1m",
-) -> Optional[QuoteState]:
+) -> QuoteState | None:
     """
     Get the most recent closed 1m quote at or before an exec TF close.
 
@@ -338,6 +366,7 @@ def get_quote_at_exec_close(
     return QuoteState(
         ts_ms=ts_ms,
         last=float(quote_feed.close[idx]),
+        open_1m=float(quote_feed.open[idx]),
         high_1m=float(quote_feed.high[idx]),
         low_1m=float(quote_feed.low[idx]),
         mark=float(quote_feed.close[idx]),  # Phase 2: approx from OHLCV

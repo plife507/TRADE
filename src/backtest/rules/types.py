@@ -6,14 +6,7 @@ Enums and dataclasses for condition evaluation with strict typing.
 
 from dataclasses import dataclass
 from enum import IntEnum, auto
-from typing import Any, Optional, Union
-
-
-# =============================================================================
-# Schema Version for Artifact Safety
-# =============================================================================
-# Bump this when rule evaluation semantics change to prevent mixing old/new.
-RULE_EVAL_SCHEMA_VERSION: int = 1
+from typing import Any
 
 
 class ReasonCode(IntEnum):
@@ -25,29 +18,29 @@ class ReasonCode(IntEnum):
     """
 
     # Success
-    R_OK = 0  # Condition evaluated successfully to true/false
+    OK = 0  # Condition evaluated successfully to true/false
 
     # Missing data
-    R_MISSING_VALUE = auto()  # Referenced value is None/NaN
-    R_MISSING_LHS = auto()  # Left-hand side reference not found
-    R_MISSING_RHS = auto()  # Right-hand side reference not found
+    MISSING_VALUE = auto()  # Referenced value is None/NaN
+    MISSING_LHS = auto()  # Left-hand side reference not found
+    MISSING_RHS = auto()  # Right-hand side reference not found
 
     # Type errors
-    R_TYPE_MISMATCH = auto()  # LHS/RHS types incompatible for operator
-    R_FLOAT_EQUALITY = auto()  # Attempted float == without approx_eq
+    TYPE_MISMATCH = auto()  # LHS/RHS types incompatible for operator
+    FLOAT_EQUALITY = auto()  # Attempted float == without approx_eq
 
     # Operator errors
-    R_UNKNOWN_OPERATOR = auto()  # Operator not recognized
-    R_UNSUPPORTED_OPERATOR = auto()  # Operator known but not supported (Stage 4c)
-    R_INVALID_TOLERANCE = auto()  # approx_eq missing/invalid tolerance
+    UNKNOWN_OPERATOR = auto()  # Operator not recognized
+    UNSUPPORTED_OPERATOR = auto()  # Operator known but not supported (Stage 4c)
+    INVALID_TOLERANCE = auto()  # approx_eq missing/invalid tolerance
 
     # Path errors
-    R_INVALID_PATH = auto()  # Path syntax invalid
-    R_UNKNOWN_NAMESPACE = auto()  # Path namespace not recognized
-    R_UNKNOWN_FIELD = auto()  # Field not found in namespace
+    INVALID_PATH = auto()  # Path syntax invalid
+    UNKNOWN_NAMESPACE = auto()  # Path namespace not recognized
+    UNKNOWN_FIELD = auto()  # Field not found in namespace
 
     # Internal
-    R_INTERNAL_ERROR = auto()  # Unexpected internal error
+    INTERNAL_ERROR = auto()  # Unexpected internal error
 
 
 class ValueType(IntEnum):
@@ -64,7 +57,7 @@ class ValueType(IntEnum):
     NUMERIC = auto()  # int or float (for gt, lt, ge, le, approx_eq)
     INT = auto()  # int only (for eq)
     FLOAT = auto()  # float only (for approx_eq, NOT eq)
-    BOOL = auto()  # bool only (for eq, and/or/not)
+    BOOL = auto()  # bool only (for eq)
     ENUM = auto()  # enum token (normalized to int, for eq)
     STRING = auto()  # string (not allowed in numeric ops)
     MISSING = auto()  # None or NaN
@@ -152,10 +145,10 @@ class EvalResult:
 
     ok: bool  # True if condition is satisfied
     reason: ReasonCode  # Reason code explaining outcome
-    lhs_path: Optional[str] = None  # Left-hand side path
-    rhs_repr: Optional[str] = None  # Right-hand side representation
-    operator: Optional[str] = None  # Operator used
-    message: Optional[str] = None  # Human-readable explanation
+    lhs_path: str | None = None  # Left-hand side path
+    rhs_repr: str | None = None  # Right-hand side representation
+    operator: str | None = None  # Operator used
+    message: str | None = None  # Human-readable explanation
 
     @classmethod
     def success(
@@ -168,7 +161,7 @@ class EvalResult:
         """Create a successful evaluation result."""
         return cls(
             ok=ok,
-            reason=ReasonCode.R_OK,
+            reason=ReasonCode.OK,
             lhs_path=lhs_path,
             rhs_repr=rhs_repr,
             operator=operator,
@@ -179,9 +172,9 @@ class EvalResult:
         cls,
         reason: ReasonCode,
         message: str,
-        lhs_path: Optional[str] = None,
-        rhs_repr: Optional[str] = None,
-        operator: Optional[str] = None,
+        lhs_path: str | None = None,
+        rhs_repr: str | None = None,
+        operator: str | None = None,
     ) -> "EvalResult":
         """Create a failure result (condition not met or error)."""
         return cls(

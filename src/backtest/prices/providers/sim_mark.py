@@ -5,7 +5,8 @@ Provides MARK price for backtest/sim mode using historical OHLCV data.
 Stage 1: Uses exec bar close price (closed candle only, no lookahead).
 """
 
-from typing import Protocol, Optional
+from typing import Protocol
+
 import numpy as np
 
 from src.backtest.prices.types import HealthCheckResult, MarkPriceResult
@@ -14,7 +15,7 @@ from src.backtest.prices.types import HealthCheckResult, MarkPriceResult
 class MarkProvider(Protocol):
     """Protocol for mark price providers."""
 
-    def get_mark_close(self, ts_close_ms: int) -> Optional[float]:
+    def get_mark_close(self, ts_close_ms: int) -> float | None:
         """Get mark close price at the given exec bar close timestamp."""
         ...
 
@@ -71,7 +72,7 @@ class SimMarkProvider:
         for i, ts in enumerate(ts_close_array):
             self._ts_to_idx[int(ts)] = i
 
-    def get_mark_close(self, ts_close_ms: int) -> Optional[float]:
+    def get_mark_close(self, ts_close_ms: int) -> float | None:
         """
         Get mark close price at the given timestamp.
 
@@ -86,7 +87,7 @@ class SimMarkProvider:
             return None
         return float(self._close[idx])
 
-    def get_mark_result(self, ts_close_ms: int) -> Optional[MarkPriceResult]:
+    def get_mark_result(self, ts_close_ms: int) -> MarkPriceResult | None:
         """
         Get full mark price result with metadata.
 

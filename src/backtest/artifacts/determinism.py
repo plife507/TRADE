@@ -19,7 +19,7 @@ USAGE:
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from .artifact_standards import (
     STANDARD_FILES,
@@ -35,7 +35,7 @@ class HashComparison:
     run_b_value: str
     matches: bool
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "field": self.field_name,
             "run_a": self.run_a_value,
@@ -50,16 +50,16 @@ class DeterminismResult:
     passed: bool
     run_a_path: str
     run_b_path: str
-    hash_comparisons: List[HashComparison] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    
+    hash_comparisons: list[HashComparison] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
     # Metadata
     run_a_idea_card_id: str = ""
     run_b_idea_card_id: str = ""
     mode: str = "compare"  # "compare" or "rerun"
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "passed": self.passed,
             "mode": self.mode,
@@ -107,7 +107,7 @@ class DeterminismResult:
         print(f"{'='*60}\n")
 
 
-def load_result_json(run_path: Path) -> Optional[Dict[str, Any]]:
+def load_result_json(run_path: Path) -> dict[str, Any] | None:
     """Load result.json from a run path."""
     result_file = run_path / STANDARD_FILES["result"]
     if not result_file.exists():

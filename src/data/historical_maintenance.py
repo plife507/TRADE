@@ -5,7 +5,7 @@ Contains: detect_gaps, fill_gaps, heal, delete_symbol, cleanup_empty_symbols, va
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Callable, Union, TYPE_CHECKING
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -17,7 +17,7 @@ def _get_constants():
     return TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner
 
 
-def detect_gaps(store: "HistoricalDataStore", symbol: str, timeframe: str) -> List[Tuple[datetime, datetime]]:
+def detect_gaps(store: "HistoricalDataStore", symbol: str, timeframe: str) -> list[tuple[datetime, datetime]]:
     """
     Detect gaps in stored data.
     
@@ -57,7 +57,7 @@ def fill_gaps(
     symbol: str = None,
     timeframe: str = None,
     progress_callback: Callable = None,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Fill detected gaps in data.
     
@@ -123,7 +123,7 @@ def heal(
     symbol: str = None,
     timeframe: str = None,
     progress_callback: Callable = None,
-) -> Dict[str, Dict]:
+) -> dict[str, dict]:
     """
     Heal data by detecting and filling gaps, plus verifying integrity.
     
@@ -212,7 +212,7 @@ def delete_symbol_timeframe(store: "HistoricalDataStore", symbol: str, timeframe
     return count
 
 
-def cleanup_empty_symbols(store: "HistoricalDataStore") -> List[str]:
+def cleanup_empty_symbols(store: "HistoricalDataStore") -> list[str]:
     """Remove symbols with no data from metadata tables."""
     symbols_with_data = store.conn.execute(f"""
         SELECT DISTINCT symbol FROM {store.table_ohlcv}
@@ -248,7 +248,7 @@ def heal_comprehensive(
     symbol: str = None,
     fix_issues: bool = True,
     fill_gaps_after: bool = True,
-) -> Dict:
+) -> dict:
     """
     Comprehensive data integrity check and repair.
     

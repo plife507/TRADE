@@ -46,7 +46,8 @@ from ...tools import (
 
 # Import from sibling modules
 from .data import run_data_builder_smoke
-from .backtest import run_backtest_smoke_suite
+from .backtest import run_backtest_suite_smoke
+from .structure import run_structure_smoke
 
 console = Console()
 
@@ -313,7 +314,18 @@ def run_full_cli_smoke(smoke_config, app, config) -> int:
     console.print(f"\n[bold magenta]{'='*50}[/]")
     console.print(f"[bold magenta]PART 8: BACKTEST SMOKE (Phase 6)[/]")
     console.print(f"[bold magenta]{'='*50}[/]")
-    failures += run_backtest_smoke_suite(smoke_config, app, config)
+    failures += run_backtest_suite_smoke(smoke_config, app, config)
+
+    # PART 9: Structure Smoke (Incremental State - opt-in)
+    import os
+    include_backtest = os.environ.get("TRADE_SMOKE_INCLUDE_BACKTEST", "0")
+    if include_backtest in ("1", "true", "True", "TRUE"):
+        console.print(f"\n[bold magenta]{'='*50}[/]")
+        console.print(f"[bold magenta]PART 9: STRUCTURE SMOKE (Incremental State)[/]")
+        console.print(f"[bold magenta]{'='*50}[/]")
+        failures += run_structure_smoke()
+    else:
+        console.print(f"\n[dim]Part 9: Structure smoke skipped (set TRADE_SMOKE_INCLUDE_BACKTEST=1)[/]")
 
     console.print(f"\n[bold]Full CLI Smoke Test Complete[/]")
     console.print(f"  Symbols tested: {symbols}")

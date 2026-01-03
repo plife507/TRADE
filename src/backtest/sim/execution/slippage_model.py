@@ -14,7 +14,6 @@ All monetary values are in USDT (quote currency).
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 from ..types import Bar, OrderSide
 
@@ -38,7 +37,7 @@ class SlippageModel:
     Phase 1 supports fixed slippage only.
     """
     
-    def __init__(self, config: Optional[SlippageConfig] = None):
+    def __init__(self, config: SlippageConfig | None = None):
         """
         Initialize slippage model.
         
@@ -56,8 +55,8 @@ class SlippageModel:
         self,
         price: float,
         side: OrderSide,
-        size_usdt: Optional[float] = None,
-        bar: Optional[Bar] = None,
+        size_usdt: float | None = None,
+        bar: Bar | None = None,
     ) -> float:
         """
         Apply slippage to execution price.
@@ -88,8 +87,8 @@ class SlippageModel:
         self,
         price: float,
         position_side: OrderSide,
-        size_usdt: Optional[float] = None,
-        bar: Optional[Bar] = None,
+        size_usdt: float | None = None,
+        bar: Bar | None = None,
     ) -> float:
         """
         Apply slippage to exit price.
@@ -119,8 +118,8 @@ class SlippageModel:
     def _calculate_slippage(
         self,
         price: float,
-        size_usdt: Optional[float] = None,
-        bar: Optional[Bar] = None,
+        size_usdt: float | None = None,
+        bar: Bar | None = None,
     ) -> float:
         """
         Calculate slippage amount.
@@ -143,8 +142,8 @@ class SlippageModel:
     
     def get_slippage_bps(
         self,
-        size_usdt: Optional[float] = None,
-        bar: Optional[Bar] = None,
+        size_usdt: float | None = None,
+        bar: Bar | None = None,
     ) -> float:
         """
         Get slippage in basis points.

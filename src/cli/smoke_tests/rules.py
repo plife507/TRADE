@@ -250,35 +250,35 @@ def run_rules_smoke(
 
     tests = [
         # Numeric comparisons
-        ("10 > 20", eval_gt(v_int_10, v_int_20), False, ReasonCode.R_OK),
-        ("20 > 10", eval_gt(v_int_20, v_int_10), True, ReasonCode.R_OK),
-        ("10 < 20", eval_lt(v_int_10, v_int_20), True, ReasonCode.R_OK),
-        ("10 >= 10", eval_ge(v_int_10, v_int_10), True, ReasonCode.R_OK),
-        ("10 <= 20", eval_le(v_int_10, v_int_20), True, ReasonCode.R_OK),
+        ("10 > 20", eval_gt(v_int_10, v_int_20), False, ReasonCode.OK),
+        ("20 > 10", eval_gt(v_int_20, v_int_10), True, ReasonCode.OK),
+        ("10 < 20", eval_lt(v_int_10, v_int_20), True, ReasonCode.OK),
+        ("10 >= 10", eval_ge(v_int_10, v_int_10), True, ReasonCode.OK),
+        ("10 <= 20", eval_le(v_int_10, v_int_20), True, ReasonCode.OK),
 
         # Int equality
-        ("10 == 10", eval_eq(v_int_10, v_int_10), True, ReasonCode.R_OK),
-        ("10 == 20", eval_eq(v_int_10, v_int_20), False, ReasonCode.R_OK),
+        ("10 == 10", eval_eq(v_int_10, v_int_10), True, ReasonCode.OK),
+        ("10 == 20", eval_eq(v_int_10, v_int_20), False, ReasonCode.OK),
 
         # Bool equality
-        ("true == true", eval_eq(v_bool_true, v_bool_true), True, ReasonCode.R_OK),
-        ("true == false", eval_eq(v_bool_true, v_bool_false), False, ReasonCode.R_OK),
+        ("true == true", eval_eq(v_bool_true, v_bool_true), True, ReasonCode.OK),
+        ("true == false", eval_eq(v_bool_true, v_bool_false), False, ReasonCode.OK),
 
         # Float equality should fail
-        ("10.0 == 10.0", eval_eq(v_float_10, v_float_10), False, ReasonCode.R_FLOAT_EQUALITY),
+        ("10.0 == 10.0", eval_eq(v_float_10, v_float_10), False, ReasonCode.FLOAT_EQUALITY),
 
         # Missing value handling
-        ("missing > 10", eval_gt(v_missing, v_int_10), False, ReasonCode.R_MISSING_LHS),
-        ("10 > missing", eval_gt(v_int_10, v_missing), False, ReasonCode.R_MISSING_RHS),
-        ("nan < 10", eval_lt(v_nan, v_int_10), False, ReasonCode.R_MISSING_LHS),
+        ("missing > 10", eval_gt(v_missing, v_int_10), False, ReasonCode.MISSING_LHS),
+        ("10 > missing", eval_gt(v_int_10, v_missing), False, ReasonCode.MISSING_RHS),
+        ("nan < 10", eval_lt(v_nan, v_int_10), False, ReasonCode.MISSING_LHS),
 
         # String/numeric mismatch
-        ("'UP' > 10", eval_gt(v_string, v_int_10), False, ReasonCode.R_TYPE_MISMATCH),
+        ("'UP' > 10", eval_gt(v_string, v_int_10), False, ReasonCode.TYPE_MISMATCH),
 
         # approx_eq with tolerance
-        ("10.0 ~= 10.0 (tol=0.1)", eval_approx_eq(v_float_10, v_float_10, tolerance=0.1), True, ReasonCode.R_OK),
-        ("10.0 ~= 20.5 (tol=0.1)", eval_approx_eq(v_float_10, v_float_20, tolerance=0.1), False, ReasonCode.R_OK),
-        ("10.0 ~= 10.0 (no tol)", eval_approx_eq(v_float_10, v_float_10), False, ReasonCode.R_INVALID_TOLERANCE),
+        ("10.0 ~= 10.0 (tol=0.1)", eval_approx_eq(v_float_10, v_float_10, tolerance=0.1), True, ReasonCode.OK),
+        ("10.0 ~= 20.5 (tol=0.1)", eval_approx_eq(v_float_10, v_float_20, tolerance=0.1), False, ReasonCode.OK),
+        ("10.0 ~= 10.0 (no tol)", eval_approx_eq(v_float_10, v_float_10), False, ReasonCode.INVALID_TOLERANCE),
     ]
 
     for name, result, expected_ok, expected_reason in tests:
@@ -400,10 +400,10 @@ def run_rules_smoke(
 
     # Test unknown operator
     result4 = evaluate_condition(lhs_rsi, "INVALID_OP", rhs_30, snapshot)
-    if result4.reason == ReasonCode.R_UNKNOWN_OPERATOR:
-        console.print(f"  [green]OK[/] Unknown operator returns R_UNKNOWN_OPERATOR")
+    if result4.reason == ReasonCode.UNKNOWN_OPERATOR:
+        console.print(f"  [green]OK[/] Unknown operator returns UNKNOWN_OPERATOR")
     else:
-        console.print(f"  [red]FAIL[/] Unknown operator should return R_UNKNOWN_OPERATOR")
+        console.print(f"  [red]FAIL[/] Unknown operator should return UNKNOWN_OPERATOR")
         failures += 1
 
     # =========================================================================
@@ -501,15 +501,7 @@ def run_rules_smoke(
         validate_operator,
         is_operator_supported,
     )
-    from src.backtest.rules.types import RULE_EVAL_SCHEMA_VERSION
     from src.backtest.idea_card_yaml_builder import ConditionCompileError
-
-    # Test schema version exists
-    if RULE_EVAL_SCHEMA_VERSION >= 1:
-        console.print(f"  [green]OK[/] RULE_EVAL_SCHEMA_VERSION = {RULE_EVAL_SCHEMA_VERSION}")
-    else:
-        console.print(f"  [red]FAIL[/] RULE_EVAL_SCHEMA_VERSION missing or invalid")
-        failures += 1
 
     # Test supported operators
     expected_supported = {"gt", "lt", "ge", "le", "eq", "approx_eq"}
@@ -588,10 +580,10 @@ def run_rules_smoke(
     # Collect results from first run
     run1_results = []
     for name, expected_ok, expected_reason in [
-        ("10 > 20", False, ReasonCode.R_OK),
-        ("20 > 10", True, ReasonCode.R_OK),
-        ("10 < 20", True, ReasonCode.R_OK),
-        ("10 == 10", True, ReasonCode.R_OK),
+        ("10 > 20", False, ReasonCode.OK),
+        ("20 > 10", True, ReasonCode.OK),
+        ("10 < 20", True, ReasonCode.OK),
+        ("10 == 10", True, ReasonCode.OK),
     ]:
         if ">" in name:
             result = eval_gt(v_int_10, v_int_20) if "20 > 10" not in name else eval_gt(v_int_20, v_int_10)
@@ -604,10 +596,10 @@ def run_rules_smoke(
     # Second run with same inputs
     run2_results = []
     for name, expected_ok, expected_reason in [
-        ("10 > 20", False, ReasonCode.R_OK),
-        ("20 > 10", True, ReasonCode.R_OK),
-        ("10 < 20", True, ReasonCode.R_OK),
-        ("10 == 10", True, ReasonCode.R_OK),
+        ("10 > 20", False, ReasonCode.OK),
+        ("20 > 10", True, ReasonCode.OK),
+        ("10 < 20", True, ReasonCode.OK),
+        ("10 == 10", True, ReasonCode.OK),
     ]:
         if ">" in name:
             result = eval_gt(v_int_10, v_int_20) if "20 > 10" not in name else eval_gt(v_int_20, v_int_10)
@@ -650,7 +642,6 @@ def run_rules_smoke(
     console.print(f"  [green]OK[/] Stage 4c: Crossover operators banned")
     console.print(f"  [green]OK[/] Stage 4c: Compile-time validation enforced")
     console.print(f"  [green]OK[/] Stage 4c: Double-run determinism verified")
-    console.print(f"  [green]OK[/] Stage 4c: RULE_EVAL_SCHEMA_VERSION = {RULE_EVAL_SCHEMA_VERSION}")
 
     if failures == 0:
         console.print(f"\n[bold green]OK[/] STAGE 4c RULE EVALUATION VERIFIED")

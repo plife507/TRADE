@@ -16,7 +16,6 @@ All buffers are config-driven with sensible defaults.
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, Optional, List
 
 from .timeframe import tf_duration, tf_minutes
 
@@ -62,7 +61,7 @@ class LoadWindow:
     tail_buffer_span: timedelta
     
     # Metadata
-    warmup_bars_by_tf: Dict[str, int]
+    warmup_bars_by_tf: dict[str, int]
     max_lookback_bars: int
     
     def to_dict(self) -> dict:
@@ -99,9 +98,9 @@ def compute_warmup_bars(max_lookback: int) -> int:
 
 
 def compute_warmup_span(
-    tf_mapping: Dict[str, str],
-    indicator_lookbacks: Dict[str, int],
-    warmup_config: Optional[WarmupConfig] = None,
+    tf_mapping: dict[str, str],
+    indicator_lookbacks: dict[str, int],
+    warmup_config: WarmupConfig | None = None,
 ) -> timedelta:
     """
     Compute total warmup span from TF mapping and indicator lookbacks.
@@ -132,8 +131,8 @@ def compute_warmup_span(
 
 
 def compute_safety_buffer_span(
-    tf_mapping: Dict[str, str],
-    warmup_config: Optional[WarmupConfig] = None,
+    tf_mapping: dict[str, str],
+    warmup_config: WarmupConfig | None = None,
 ) -> timedelta:
     """
     Compute safety buffer span (extra closes to ensure cache readiness).
@@ -155,8 +154,8 @@ def compute_safety_buffer_span(
 
 
 def compute_tail_buffer_span(
-    tf_mapping: Dict[str, str],
-    warmup_config: Optional[WarmupConfig] = None,
+    tf_mapping: dict[str, str],
+    warmup_config: WarmupConfig | None = None,
 ) -> timedelta:
     """
     Compute tail buffer span (extra bars at end for funding).
@@ -179,9 +178,9 @@ def compute_tail_buffer_span(
 def compute_load_window(
     test_start: datetime,
     test_end: datetime,
-    tf_mapping: Dict[str, str],
-    indicator_lookbacks: Dict[str, int],
-    warmup_config: Optional[WarmupConfig] = None,
+    tf_mapping: dict[str, str],
+    indicator_lookbacks: dict[str, int],
+    warmup_config: WarmupConfig | None = None,
 ) -> LoadWindow:
     """
     Compute the full load window for a backtest run.
@@ -290,7 +289,7 @@ class DataWindow:
     
     # Component spans (for debugging)
     warmup_span: timedelta
-    htf_warmup_span: Optional[timedelta] = None
+    htf_warmup_span: timedelta | None = None
     
     def to_dict(self) -> dict:
         """Convert to dict for serialization."""
@@ -309,8 +308,8 @@ class DataWindow:
 def compute_data_window(
     window_start: datetime,
     window_end: datetime,
-    warmup_bars_by_role: Dict[str, int],
-    tf_by_role: Dict[str, str],
+    warmup_bars_by_role: dict[str, int],
+    tf_by_role: dict[str, str],
     safety_buffer_bars: int = 0,
 ) -> DataWindow:
     """

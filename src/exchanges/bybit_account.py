@@ -5,7 +5,7 @@ Contains: get_balance, get_positions, get_account_info, get_fee_rates,
 and UTA extended methods (transaction_log, collateral, borrow, etc.)
 """
 
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ..utils.time_range import TimeRange
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .bybit_client import BybitClient
 
 
-def get_balance(client: "BybitClient", account_type: str = "UNIFIED") -> Dict:
+def get_balance(client: "BybitClient", account_type: str = "UNIFIED") -> dict:
     """Get account balance."""
     client._private_limiter.acquire()
     
@@ -28,7 +28,7 @@ def get_balance(client: "BybitClient", account_type: str = "UNIFIED") -> Dict:
 
 def get_positions(
     client: "BybitClient", symbol: str = None, settle_coin: str = "USDT", category: str = "linear"
-) -> List[Dict]:
+) -> list[dict]:
     """Get open positions."""
     client._private_limiter.acquire()
     
@@ -44,7 +44,7 @@ def get_positions(
     return result.get("list", [])
 
 
-def get_account_info(client: "BybitClient") -> Dict:
+def get_account_info(client: "BybitClient") -> dict:
     """Get account info (margin mode, etc)."""
     client._private_limiter.acquire()
     
@@ -52,7 +52,7 @@ def get_account_info(client: "BybitClient") -> Dict:
     return client._extract_result(response)
 
 
-def get_fee_rates(client: "BybitClient", symbol: str = None, category: str = "linear") -> Dict:
+def get_fee_rates(client: "BybitClient", symbol: str = None, category: str = "linear") -> dict:
     """Get fee rates for the account."""
     client._private_limiter.acquire()
     
@@ -77,7 +77,7 @@ def get_transaction_log(
     log_type: str = None,
     limit: int = 50,
     cursor: str = None,
-) -> Dict:
+) -> dict:
     """Get transaction logs in Unified account."""
     client._private_limiter.acquire()
     
@@ -105,7 +105,7 @@ def get_transaction_log(
     return client._extract_result(response)
 
 
-def get_collateral_info(client: "BybitClient", currency: str = None) -> List[Dict]:
+def get_collateral_info(client: "BybitClient", currency: str = None) -> list[dict]:
     """Get collateral info for coins."""
     client._private_limiter.acquire()
     
@@ -118,7 +118,7 @@ def get_collateral_info(client: "BybitClient", currency: str = None) -> List[Dic
     return result.get("list", [])
 
 
-def set_collateral_coin(client: "BybitClient", coin: str, switch: str) -> Dict:
+def set_collateral_coin(client: "BybitClient", coin: str, switch: str) -> dict:
     """Enable/disable a coin as collateral."""
     client._private_limiter.acquire()
     
@@ -129,7 +129,7 @@ def set_collateral_coin(client: "BybitClient", coin: str, switch: str) -> Dict:
     return client._extract_result(response)
 
 
-def batch_set_collateral_coin(client: "BybitClient", coins: List[Dict[str, str]]) -> Dict:
+def batch_set_collateral_coin(client: "BybitClient", coins: list[dict[str, str]]) -> dict:
     """Batch set collateral coins."""
     client._private_limiter.acquire()
     
@@ -143,7 +143,7 @@ def get_borrow_history(
     currency: str = None,
     limit: int = 50,
     cursor: str = None,
-) -> Dict:
+) -> dict:
     """Get borrow history for Unified account."""
     client._private_limiter.acquire()
     
@@ -164,7 +164,7 @@ def get_borrow_history(
     return client._extract_result(response)
 
 
-def repay_liability(client: "BybitClient", coin: str = None) -> Dict:
+def repay_liability(client: "BybitClient", coin: str = None) -> dict:
     """Repay liabilities in Unified account."""
     client._private_limiter.acquire()
     
@@ -176,7 +176,7 @@ def repay_liability(client: "BybitClient", coin: str = None) -> Dict:
     return client._extract_result(response)
 
 
-def get_coin_greeks(client: "BybitClient", base_coin: str = None) -> List[Dict]:
+def get_coin_greeks(client: "BybitClient", base_coin: str = None) -> list[dict]:
     """Get options Greeks for coins."""
     client._private_limiter.acquire()
     
@@ -189,7 +189,7 @@ def get_coin_greeks(client: "BybitClient", base_coin: str = None) -> List[Dict]:
     return result.get("list", [])
 
 
-def set_account_margin_mode(client: "BybitClient", margin_mode: str) -> Dict:
+def set_account_margin_mode(client: "BybitClient", margin_mode: str) -> dict:
     """Set account margin mode (REGULAR_MARGIN or PORTFOLIO_MARGIN)."""
     client._private_limiter.acquire()
     
@@ -197,7 +197,7 @@ def set_account_margin_mode(client: "BybitClient", margin_mode: str) -> Dict:
     return client._extract_result(response)
 
 
-def upgrade_to_unified_account(client: "BybitClient") -> Dict:
+def upgrade_to_unified_account(client: "BybitClient") -> dict:
     """Upgrade to Unified Trading Account."""
     client._private_limiter.acquire()
     
@@ -205,7 +205,7 @@ def upgrade_to_unified_account(client: "BybitClient") -> Dict:
     return client._extract_result(response)
 
 
-def get_transferable_amount(client: "BybitClient", coin: str) -> Dict:
+def get_transferable_amount(client: "BybitClient", coin: str) -> dict:
     """Get amount available to transfer out."""
     client._private_limiter.acquire()
     
@@ -214,7 +214,7 @@ def get_transferable_amount(client: "BybitClient", coin: str) -> Dict:
     return result
 
 
-def get_mmp_state(client: "BybitClient", base_coin: str) -> Dict:
+def get_mmp_state(client: "BybitClient", base_coin: str) -> dict:
     """Get Market Maker Protection state."""
     client._private_limiter.acquire()
     
@@ -229,7 +229,7 @@ def set_mmp(
     frozen_period: int,
     qty_limit: str,
     delta_limit: str,
-) -> Dict:
+) -> dict:
     """Configure Market Maker Protection."""
     client._private_limiter.acquire()
     
@@ -243,7 +243,7 @@ def set_mmp(
     return client._extract_result(response)
 
 
-def reset_mmp(client: "BybitClient", base_coin: str) -> Dict:
+def reset_mmp(client: "BybitClient", base_coin: str) -> dict:
     """Reset MMP status."""
     client._private_limiter.acquire()
     
@@ -256,7 +256,7 @@ def get_borrow_quota(
     category: str,
     symbol: str,
     side: str,
-) -> Dict:
+) -> dict:
     """Get borrow quota for spot margin trading."""
     client._private_limiter.acquire()
     

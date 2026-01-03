@@ -19,6 +19,8 @@ Usage:
     logger.event("tool.call.end", tool_name="market_buy", success=True, elapsed_ms=150.5)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -26,7 +28,7 @@ import copy
 import socket
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Any, Dict, List, Union
+from typing import Any
 
 # =============================================================================
 # Configuration (can be overridden via environment variables)
@@ -106,7 +108,7 @@ def redact_value(value: Any, key: str = "", max_length: int = 500) -> Any:
     return rep
 
 
-def redact_dict(d: Dict[str, Any], max_length: int = 500) -> Dict[str, Any]:
+def redact_dict(d: dict[str, Any], max_length: int = 500) -> dict[str, Any]:
     """
     Recursively redact a dictionary for safe logging.
     
@@ -180,7 +182,7 @@ class TradingLogger:
     - Integration with log_context for distributed tracing correlation
     """
     
-    _instance: Optional['TradingLogger'] = None
+    _instance: TradingLogger | None = None
     _initialized: bool = False
     
     def __new__(cls, *args, **kwargs):
@@ -416,7 +418,7 @@ class TradingLogger:
         summary = self._format_event_summary(event_name, fields)
         self.main_logger.log(log_level, summary)
     
-    def _get_context_fields(self) -> Dict[str, Any]:
+    def _get_context_fields(self) -> dict[str, Any]:
         """Get context fields from log_context module."""
         try:
             from .log_context import get_log_context
@@ -431,7 +433,7 @@ class TradingLogger:
         except Exception:
             return {}
     
-    def _format_event_summary(self, event_name: str, fields: Dict[str, Any]) -> str:
+    def _format_event_summary(self, event_name: str, fields: dict[str, Any]) -> str:
         """Format an event as a human-readable log line."""
         parts = [f"[{event_name}]"]
         
@@ -449,7 +451,7 @@ class TradingLogger:
         
         return " | ".join(parts)
     
-    def _write_jsonl(self, record: Dict[str, Any]) -> None:
+    def _write_jsonl(self, record: dict[str, Any]) -> None:
         """Write a record to the JSONL file."""
         if not self._jsonl_file:
             return
@@ -477,7 +479,7 @@ class TradingLogger:
 
 
 # Global logger instance
-_logger: Optional[TradingLogger] = None
+_logger: TradingLogger | None = None
 
 
 def get_logger(log_dir: str = "logs", log_level: str = "INFO") -> TradingLogger:

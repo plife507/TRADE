@@ -16,14 +16,14 @@ NOTE on Trading Environment:
 """
 
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, Any, Union
+from typing import Any
 
 
 @dataclass
 class ToolResult:
     """
     Standard return type for all tools.
-    
+
     Attributes:
         success: Whether the operation succeeded
         message: Human-readable success/info message
@@ -34,12 +34,12 @@ class ToolResult:
     """
     success: bool
     message: str = ""
-    symbol: Optional[str] = None
-    data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    source: Optional[str] = None
+    symbol: str | None = None
+    data: dict[str, Any] | None = None
+    error: str | None = None
+    source: str | None = None
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
 
@@ -48,10 +48,10 @@ class ToolResult:
 # Lazy Import Helpers (Avoid Circular Dependencies)
 # ==============================================================================
 
-def _get_exchange_manager():
+def _get_exchange_manager() -> "ExchangeManager":
     """
     Get the ExchangeManager singleton (lazy import).
-    
+
     NOTE: Per-process trading env is fixed at startup. The returned ExchangeManager
     is either configured for DEMO or LIVE based on BYBIT_USE_DEMO and TRADING_MODE.
     Use `trading_env` parameter in tools only for VALIDATION, not switching.
@@ -66,7 +66,7 @@ def _get_exchange_manager():
 # Trading Environment Validation (Agent/Orchestrator Support)
 # ==============================================================================
 
-def get_trading_env_summary() -> Dict[str, Any]:
+def get_trading_env_summary() -> dict[str, Any]:
     """
     Get summary of the current process's trading environment.
     
@@ -98,29 +98,29 @@ class TradingEnvMismatchError(Exception):
     pass
 
 
-def _get_exchange_manager_for_env(trading_env: Optional[str] = None):
+def _get_exchange_manager_for_env(trading_env: str | None = None) -> "ExchangeManager":
     """
     Get the ExchangeManager singleton, validating against the requested trading_env.
-    
+
     This function enables agents/orchestrators to assert they're talking to the
     correct environment. It does NOT switch environments - it only validates.
-    
+
     Args:
         trading_env: Optional trading environment ("demo" or "live").
                      If None, returns the manager without validation.
                      If provided, validates against the process's configured env.
-    
+
     Returns:
         ExchangeManager instance if validation passes
-        
+
     Raises:
         TradingEnvMismatchError: If trading_env doesn't match process config
         ValueError: If trading_env is invalid
-        
+
     Usage:
         # Agent calling for DEMO trading
         manager = _get_exchange_manager_for_env("demo")
-        
+
         # If this process is configured for LIVE, raises TradingEnvMismatchError
         # with a clear message explaining the mismatch
     """
@@ -154,22 +154,22 @@ def _get_exchange_manager_for_env(trading_env: Optional[str] = None):
     return manager
 
 
-def validate_trading_env_or_error(trading_env: Optional[str] = None) -> Union[None, ToolResult]:
+def validate_trading_env_or_error(trading_env: str | None = None) -> ToolResult | None:
     """
     Validate trading_env and return a ToolResult error if mismatched.
-    
+
     This is a convenience wrapper for use in tools. Instead of try/except,
     tools can call this and return early if there's an error.
-    
+
     Args:
         trading_env: Optional trading environment to validate
-        
+
     Returns:
         None if validation passes (or trading_env is None)
         ToolResult with success=False if there's a mismatch
-        
+
     Usage in a tool:
-        def my_trading_tool(symbol: str, trading_env: Optional[str] = None):
+        def my_trading_tool(symbol: str, trading_env: str | None = None):
             error = validate_trading_env_or_error(trading_env)
             if error:
                 return error
@@ -193,7 +193,7 @@ def validate_trading_env_or_error(trading_env: Optional[str] = None) -> Union[No
         )
 
 
-def _get_realtime_state():
+def _get_realtime_state() -> "RealtimeState":
     """Get the RealtimeState singleton (lazy import)."""
     from ..data.realtime_state import get_realtime_state
     return get_realtime_state()
@@ -296,13 +296,13 @@ def _get_data_source() -> str:
     return "websocket" if _is_websocket_connected() else "rest_api"
 
 
-def _get_historical_store(env: str = "live"):
+def _get_historical_store(env: str = "live") -> "HistoricalDataStore":
     """
     Get the HistoricalDataStore singleton for a given environment (lazy import).
-    
+
     Args:
         env: Data environment ("live" or "demo"). Defaults to "live".
-        
+
     Returns:
         HistoricalDataStore instance for the specified environment.
     """
@@ -310,7 +310,7 @@ def _get_historical_store(env: str = "live"):
     return get_historical_store(env=env)
 
 
-def _get_global_risk_view():
+def _get_global_risk_view() -> "GlobalRiskView":
     """Get the GlobalRiskView singleton (lazy import)."""
     from ..risk import get_global_risk_view
     return get_global_risk_view()
@@ -341,7 +341,7 @@ def _ensure_symbol_subscribed(symbol: str) -> bool:
         return False
 
 
-def _get_realtime_bootstrap():
+def _get_realtime_bootstrap() -> "RealtimeBootstrap | None":
     """Get the RealtimeBootstrap singleton (lazy import)."""
     try:
         from ..data.realtime_bootstrap import get_realtime_bootstrap

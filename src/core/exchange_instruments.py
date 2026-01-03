@@ -2,26 +2,55 @@
 Instrument information and trading helpers for ExchangeManager.
 
 Handles:
-- Instrument info caching (tick sizes, lot sizes)
+- Instrument info caching (tick sizes, lot sizes) with TTL-based expiration
 - Price rounding to valid tick sizes
 - Quantity calculation from USD amounts
 - Price precision utilities
 """
 
+import time
 from typing import Dict, TYPE_CHECKING
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager
 
+# Cache TTL for instrument data (1 hour)
+# Instruments specs (tick size, lot size) rarely change but can be updated by exchanges
+INSTRUMENT_CACHE_TTL_SECONDS = 3600
+
 
 def get_instrument_info(manager: "ExchangeManager", symbol: str) -> dict:
-    """Get and cache instrument specifications."""
-    if symbol not in manager._instruments:
-        instruments = manager.bybit.get_instruments(symbol)
-        if instruments:
-            manager._instruments[symbol] = instruments[0]
-    return manager._instruments.get(symbol, {})
+    """
+    Get and cache instrument specifications.
+
+    Cache entries expire after INSTRUMENT_CACHE_TTL_SECONDS (1 hour) to ensure
+    stale data is refreshed if exchange updates specs (tick size, lot size, etc.)
+    mid-session.
+
+    Args:
+        manager: ExchangeManager instance
+        symbol: Trading symbol (e.g., "BTCUSDT")
+
+    Returns:
+        Instrument specification dict from exchange, or empty dict if not found
+    """
+    entry = manager._instruments.get(symbol)
+
+    # Check if cached and not expired
+    if entry and (time.time() - entry.get("cached_at", 0)) < INSTRUMENT_CACHE_TTL_SECONDS:
+        return entry.get("data", {})
+
+    # Fetch fresh data from exchange
+    instruments = manager.bybit.get_instruments(symbol)
+    if instruments:
+        manager._instruments[symbol] = {
+            "data": instruments[0],
+            "cached_at": time.time()
+        }
+        return instruments[0]
+
+    return {}
 
 
 def round_price(manager: "ExchangeManager", symbol: str, price: float) -> float:

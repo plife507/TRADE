@@ -9,9 +9,10 @@ Handles:
 - Time window filtering
 - Timestamp parsing
 """
+from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, Any, List, Union, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 from ..types import FundingEvent
 
 
-def adapt_funding_row(row: Union[Dict[str, Any], "pd.Series"]) -> FundingEvent:
+def adapt_funding_row(row: dict[str, Any] | "pd.Series") -> FundingEvent:
     """
     Convert a single funding row to a FundingEvent.
     
@@ -59,10 +60,10 @@ def adapt_funding_row(row: Union[Dict[str, Any], "pd.Series"]) -> FundingEvent:
 
 
 def adapt_funding_rows(
-    rows: List[Dict[str, Any]],
-    prev_ts: Optional[datetime],
+    rows: list[dict[str, Any]],
+    prev_ts: datetime | None,
     ts: datetime,
-) -> List[FundingEvent]:
+) -> list[FundingEvent]:
     """
     Convert funding rows to events, filtering to time window (prev_ts, ts].
     
@@ -98,9 +99,9 @@ def adapt_funding_rows(
 
 def adapt_funding_dataframe(
     df: "pd.DataFrame",
-    prev_ts: Optional[datetime] = None,
-    ts: Optional[datetime] = None,
-) -> List[FundingEvent]:
+    prev_ts: datetime | None = None,
+    ts: datetime | None = None,
+) -> list[FundingEvent]:
     """
     Convert a pandas DataFrame to a list of FundingEvents.
     

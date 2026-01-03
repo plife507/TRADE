@@ -15,10 +15,10 @@ import hashlib
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 
-def get_git_commit() -> Optional[str]:
+def get_git_commit() -> str | None:
     """Get current git commit hash, or None if not in a git repo."""
     try:
         result = subprocess.run(
@@ -51,7 +51,7 @@ class ManifestWriter:
     def __init__(
         self,
         run_dir: Path,
-        artifact_version: str = "0.1-dev",
+        artifact_version: str = "0.1.0-dev",
     ):
         """
         Initialize manifest writer.
@@ -62,7 +62,7 @@ class ManifestWriter:
         """
         self.run_dir = Path(run_dir)
         self.artifact_version = artifact_version
-        self._manifest: Dict[str, Any] = {
+        self._manifest: dict[str, Any] = {
             "artifact_version": artifact_version,
             "created_at": datetime.now().isoformat(),
         }
@@ -72,7 +72,7 @@ class ManifestWriter:
         run_id: str,
         system_id: str,
         symbol: str,
-        tf_mapping: Dict[str, str],
+        tf_mapping: dict[str, str],
     ) -> None:
         """Set basic run information."""
         self._manifest.update({
@@ -86,8 +86,8 @@ class ManifestWriter:
         self,
         load_start: datetime,
         load_end: datetime,
-        test_start: Optional[datetime] = None,
-        test_end: Optional[datetime] = None,
+        test_start: datetime | None = None,
+        test_end: datetime | None = None,
     ) -> None:
         """Set data window information."""
         self._manifest["data_window"] = {
@@ -137,7 +137,7 @@ class ManifestWriter:
         
         manifest_path = self.run_dir / "run_manifest.json"
         with open(manifest_path, "w") as f:
-            json.dump(self._manifest, f, indent=2, default=str)
+            json.dump(self._manifest, f, indent=2, default=str, sort_keys=True)
         
         return manifest_path
     

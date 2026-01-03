@@ -8,7 +8,7 @@ Handles:
 """
 
 import re
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager
@@ -75,7 +75,7 @@ def on_position_update_cleanup(manager: "ExchangeManager", position_data):
         manager.logger.warning(f"Error in position cleanup callback for {position_data.symbol}: {e}")
 
 
-def cancel_conditional_orders_for_symbol(manager: "ExchangeManager", symbol: str) -> List[str]:
+def cancel_conditional_orders_for_symbol(manager: "ExchangeManager", symbol: str) -> list[str]:
     """
     Cancel all bot-generated conditional reduce-only orders for a symbol.
     

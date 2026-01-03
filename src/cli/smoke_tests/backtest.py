@@ -168,25 +168,25 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
             else:
                 console.print(f"  [yellow]WARN[/] result.json not found (smoke mode may skip)")
 
-            # Check trades.csv
-            trades_csv = artifact_dir / "trades.csv"
-            if trades_csv.exists():
-                console.print(f"  [green]OK[/] trades.csv exists")
+            # Check trades.parquet
+            trades_path = artifact_dir / "trades.parquet"
+            if trades_path.exists():
+                console.print(f"  [green]OK[/] trades.parquet exists")
                 try:
-                    trades_df = pd.read_csv(trades_csv)
+                    trades_df = pd.read_parquet(trades_path)
                     console.print(f"      {len(trades_df)} trades recorded")
                 except Exception as e:
-                    console.print(f"  [red]FAIL[/] Error reading trades.csv: {e}")
+                    console.print(f"  [red]FAIL[/] Error reading trades.parquet: {e}")
                     failures += 1
             else:
-                console.print(f"  [yellow]WARN[/] trades.csv not found")
+                console.print(f"  [yellow]WARN[/] trades.parquet not found")
 
-            # Check equity.csv
-            equity_csv = artifact_dir / "equity.csv"
-            if equity_csv.exists():
-                console.print(f"  [green]OK[/] equity.csv exists")
+            # Check equity.parquet
+            equity_path = artifact_dir / "equity.parquet"
+            if equity_path.exists():
+                console.print(f"  [green]OK[/] equity.parquet exists")
                 try:
-                    equity_df = pd.read_csv(equity_csv)
+                    equity_df = pd.read_parquet(equity_path)
                     console.print(f"      {len(equity_df)} equity points")
 
                     if "equity" in equity_df.columns and (equity_df["equity"] > 0).all():
@@ -195,10 +195,10 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
                         console.print(f"  [red]FAIL[/] Some equity values <= 0")
                         failures += 1
                 except Exception as e:
-                    console.print(f"  [red]FAIL[/] Error reading equity.csv: {e}")
+                    console.print(f"  [red]FAIL[/] Error reading equity.parquet: {e}")
                     failures += 1
             else:
-                console.print(f"  [yellow]WARN[/] equity.csv not found")
+                console.print(f"  [yellow]WARN[/] equity.parquet not found")
 
         # Print summary from preflight for diagnostics confirmation
         if preflight_result.data:
@@ -293,7 +293,9 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
         idea_card_id = os.environ.get("BACKTEST_SMOKE_IDEA_CARD")
 
     if idea_card_id is None and idea_cards:
-        idea_card_id = idea_cards[0]  # Use first available
+        # Prefer valid test cards (T*) over error test cases (E*)
+        valid_cards = [c for c in idea_cards if c.startswith("T")]
+        idea_card_id = valid_cards[0] if valid_cards else idea_cards[0]
 
     # If we have an IdeaCard, use the golden path
     if idea_card_id:
@@ -306,21 +308,15 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
     return 1
 
 
-def run_backtest_smoke_mixed_idea_cards() -> int:
+def run_backtest_mixed_smoke() -> int:
     """
-    Run backtest smoke test with a mix of idea cards to validate various scenarios.
+    Run backtest smoke test with validation IdeaCards.
 
-    Tests multiple idea cards covering:
-    - Single-TF strategies
-    - Multi-TF strategies
-    - Different timeframes (5m, 15m, 1h, 4h)
-    - Different indicators
-    - Different symbols
+    Tests all validation cards in configs/idea_cards/_validation/:
+    - V_60-V_62: 1m evaluation loop (mark_price, zone touch, entry timing)
+    - V_70-V_75: Incremental state structures (swing, fibonacci, zone, trend, rolling_window, multi-TF)
 
-    Also validates issues from BACKTESTER_FUNCTION_ISSUES_REVIEW.md:
-    - Issue #4: TF validation (unknown TF should raise)
-    - Issue #3: Warmup handoff validation
-    - Issue #5: Metadata coverage validation
+    These cards validate the full engine pipeline end-to-end.
 
     Returns:
         0 on success, number of failures otherwise
@@ -333,14 +329,19 @@ def run_backtest_smoke_mixed_idea_cards() -> int:
 
     failures = 0
 
-    # Select a diverse mix of idea cards using V_XX naming convention
+    # Select a diverse mix of validation cards from configs/idea_cards/_validation/
     idea_cards_to_test = [
-        # Single-TF tests
-        "V_01_single_5m_rsi_ema",
-        "V_02_single_15m_bbands",
-        # Multi-TF tests
-        "V_11_mtf_5m_15m_1h_momentum",
-        "V_13_mtf_5m_1h_4h_alignment",
+        # Core validation cards (1m eval loop)
+        "V_60_mark_price_basic",
+        "V_61_zone_touch",
+        "V_62_entry_timing",
+        # Structure validation cards (incremental state)
+        "V_70_swing_basic",
+        "V_71_fibonacci",
+        "V_72_zone_state",
+        "V_73_trend_direction",
+        "V_74_rolling_window",
+        "V_75_multi_tf",
     ]
 
     # Filter to only existing cards
@@ -416,9 +417,9 @@ def run_phase6_backtest_smoke() -> int:
 
     failures = 0
 
-    # Test IdeaCards for Phase 6
-    WARMUP_MATRIX_CARD = "test__phase6_warmup_matrix__BTCUSDT_5m"
-    MTF_ALIGNMENT_CARD = "test__phase6_mtf_alignment__BTCUSDT_5m_1h_4h"
+    # Test IdeaCards for Phase 6 - progressive validation cards
+    WARMUP_MATRIX_CARD = "T03_multi_indicator"  # Single TF with multiple indicators
+    MTF_ALIGNMENT_CARD = "T09_mtf_three"  # Full MTF with 3 timeframes
     TEST_SYMBOL = "BTCUSDT"
     TEST_ENV = "live"
 
@@ -777,7 +778,7 @@ def run_phase6_backtest_smoke() -> int:
     return failures
 
 
-def run_backtest_smoke_suite(smoke_config, app, config) -> int:
+def run_backtest_suite_smoke(smoke_config, app, config) -> int:
     """
     Run backtest-specific smoke tests (for smoke suite integration).
 

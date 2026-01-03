@@ -609,7 +609,7 @@ def _confirm_live_mode(config) -> bool:
     risk_table.add_column("Setting", style=BillArtColors.GREEN_MONEY, width=25)
     risk_table.add_column("Value", style=f"bold {BillArtColors.GOLD_BRIGHT}", width=20)
     
-    risk_table.add_row("Max Position Size:", f"${config.risk.max_position_size_usd:,.2f}")
+    risk_table.add_row("Max Position Size:", f"${config.risk.max_position_size_usdt:,.2f}")
     risk_table.add_row("Max Daily Loss:", f"${config.risk.max_daily_loss_usd:,.2f}")
     risk_table.add_row("Max Leverage:", f"{config.risk.max_leverage}x")
     risk_table.add_row("Min Balance Protection:", f"${config.risk.min_balance_usd:,.2f}")

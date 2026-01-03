@@ -10,8 +10,6 @@ from src.backtest.market_structure.types import (
     ZoneType,
     ZoneState,
     TrendState,
-    SWING_OUTPUTS,
-    TREND_OUTPUTS,
 )
 from src.backtest.market_structure.spec import (
     ConfirmationConfig,
@@ -48,8 +46,6 @@ __all__ = [
     "ZoneType",
     "ZoneState",
     "TrendState",
-    "SWING_OUTPUTS",
-    "TREND_OUTPUTS",
     # Specs
     "ConfirmationConfig",
     "StructureSpec",

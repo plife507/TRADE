@@ -13,7 +13,7 @@ All operations call tools - no direct engine access from CLI.
 """
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.panel import Panel
@@ -106,7 +106,7 @@ def backtest_ideacard_menu(cli: "TradeCLI"):
             return
 
 
-def _select_idea_card(prompt_text: str = "Select IdeaCard") -> Optional[str]:
+def _select_idea_card(prompt_text: str = "Select IdeaCard") -> str | None:
     """
     Show numbered list of IdeaCards and let user select by number.
 

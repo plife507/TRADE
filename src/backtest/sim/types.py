@@ -20,7 +20,7 @@ Currency model (this simulator version):
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 # Type alias for order IDs
 OrderId = str
@@ -91,14 +91,14 @@ class Order:
     side: OrderSide
     size_usdt: float
     order_type: OrderType = OrderType.MARKET
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-    limit_price: Optional[float] = None
-    trigger_price: Optional[float] = None
-    created_at: Optional[datetime] = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    limit_price: float | None = None
+    trigger_price: float | None = None
+    created_at: datetime | None = None
     status: OrderStatus = OrderStatus.PENDING
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "order_id": self.order_id,
             "symbol": self.symbol,
@@ -136,15 +136,15 @@ class Position:
     entry_time: datetime
     size: float  # Base currency units
     size_usdt: float
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
     fees_paid: float = 0.0
     # Phase 4: Bar tracking and readiness
-    entry_bar_index: Optional[int] = None
+    entry_bar_index: int | None = None
     entry_ready: bool = True
     # MAE/MFE tracking: min/max price during position lifetime
-    min_price: Optional[float] = None
-    max_price: Optional[float] = None
+    min_price: float | None = None
+    max_price: float | None = None
 
     def unrealized_pnl(self, mark_price: float) -> float:
         """Calculate unrealized PnL at given mark price."""
@@ -153,7 +153,7 @@ class Position:
         else:
             return (self.entry_price - mark_price) * self.size
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "position_id": self.position_id,
             "symbol": self.symbol,
@@ -196,8 +196,8 @@ class Fill:
     reason: FillReason
     fee: float = 0.0
     slippage: float = 0.0
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "fill_id": self.fill_id,
             "order_id": self.order_id,
@@ -227,8 +227,8 @@ class FundingEvent:
     timestamp: datetime
     symbol: str
     funding_rate: float
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "symbol": self.symbol,
@@ -250,8 +250,8 @@ class LiquidationEvent:
     equity_usdt: float
     maintenance_margin_usdt: float
     liquidation_fee: float
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "symbol": self.symbol,
@@ -281,8 +281,8 @@ class PriceSnapshot:
     bid_price: float
     ask_price: float
     spread: float
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "mark_price": self.mark_price,
@@ -308,8 +308,8 @@ class PricePoint:
     timestamp: datetime
     price: float
     sequence: int  # Order within the bar (0 = first)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "price": self.price,
@@ -328,8 +328,8 @@ class Rejection:
     reason: str
     code: str
     timestamp: datetime
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "order_id": self.order_id,
             "reason": self.reason,
@@ -341,11 +341,11 @@ class Rejection:
 @dataclass
 class FillResult:
     """Result of order execution within a bar."""
-    fills: List[Fill] = field(default_factory=list)
-    rejections: List[Rejection] = field(default_factory=list)
-    orders_remaining: List[Order] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    fills: list[Fill] = field(default_factory=list)
+    rejections: list[Rejection] = field(default_factory=list)
+    orders_remaining: list[Order] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "fills": [f.to_dict() for f in self.fills],
             "rejections": [r.to_dict() for r in self.rejections],
@@ -357,9 +357,9 @@ class FillResult:
 class FundingResult:
     """Result of funding application."""
     funding_pnl: float = 0.0
-    events_applied: List[FundingEvent] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    events_applied: list[FundingEvent] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "funding_pnl": self.funding_pnl,
             "events_applied": [e.to_dict() for e in self.events_applied],
@@ -370,10 +370,10 @@ class FundingResult:
 class LiquidationResult:
     """Result of liquidation check."""
     liquidated: bool = False
-    event: Optional[LiquidationEvent] = None
-    fill: Optional[Fill] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    event: LiquidationEvent | None = None
+    fill: Fill | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "liquidated": self.liquidated,
             "event": self.event.to_dict() if self.event else None,
@@ -406,8 +406,8 @@ class LedgerState:
     available_balance_usdt: float
     maintenance_margin_usdt: float
     total_fees_paid: float
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "cash_balance_usdt": self.cash_balance_usdt,
             "unrealized_pnl_usdt": self.unrealized_pnl_usdt,
@@ -427,8 +427,8 @@ class LedgerUpdate:
     realized_pnl: float = 0.0
     fees_paid: float = 0.0
     funding_paid: float = 0.0
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "state": self.state.to_dict(),
             "realized_pnl": self.realized_pnl,
@@ -455,19 +455,19 @@ class StepResult:
     """
     timestamp: datetime
     # Phase 4: Canonical mark price fields
-    ts_close: Optional[datetime] = None
-    mark_price: Optional[float] = None
+    ts_close: datetime | None = None
+    mark_price: float | None = None
     mark_price_source: str = "close"
     # Event aggregates
-    fills: List[Fill] = field(default_factory=list)
-    rejections: List[Rejection] = field(default_factory=list)
+    fills: list[Fill] = field(default_factory=list)
+    rejections: list[Rejection] = field(default_factory=list)
     funding_result: FundingResult = field(default_factory=FundingResult)
     liquidation_result: LiquidationResult = field(default_factory=LiquidationResult)
-    ledger_update: Optional[LedgerUpdate] = None
-    prices: Optional[PriceSnapshot] = None
-    debug_audit: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    ledger_update: LedgerUpdate | None = None
+    prices: PriceSnapshot | None = None
+    debug_audit: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "ts_close": self.ts_close.isoformat() if self.ts_close else None,
@@ -497,28 +497,28 @@ class SimulatorExchangeState:
     state, use runtime.types.ExchangeState instead.
     """
     symbol: str
-    timestamp: Optional[datetime]
+    timestamp: datetime | None
     ledger: LedgerState
-    position: Optional[Position]
-    pending_orders: List[Order]
-    
+    position: Position | None
+    pending_orders: list[Order]
+
     # Starvation tracking
     entries_disabled: bool = False
-    entries_disabled_reason: Optional[StopReason] = None
-    first_starved_ts: Optional[datetime] = None
-    first_starved_bar_index: Optional[int] = None
+    entries_disabled_reason: StopReason | None = None
+    first_starved_ts: datetime | None = None
+    first_starved_bar_index: int | None = None
     entry_attempts_count: int = 0
     entry_rejections_count: int = 0
-    last_rejection_code: Optional[str] = None
-    last_rejection_reason: Optional[str] = None
+    last_rejection_code: str | None = None
+    last_rejection_reason: str | None = None
     
     # Config echo
     leverage: float = 1.0
     initial_margin_rate: float = 1.0
     maintenance_margin_rate: float = 0.005
     taker_fee_rate: float = 0.0006
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "symbol": self.symbol,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,

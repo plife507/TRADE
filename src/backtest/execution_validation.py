@@ -19,7 +19,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .idea_card import IdeaCard, Condition, EntryRule, ExitRule, TFConfig
@@ -83,9 +83,9 @@ class ValidationIssue:
     severity: ValidationSeverity
     code: str
     message: str
-    location: Optional[str] = None  # e.g., "entry_rules[0].conditions[1]"
-    
-    def to_dict(self) -> Dict:
+    location: str | None = None  # e.g., "entry_rules[0].conditions[1]"
+
+    def to_dict(self) -> dict:
         return {
             "severity": self.severity.value,
             "code": self.code,
@@ -98,20 +98,20 @@ class ValidationIssue:
 class IdeaCardValidationResult:
     """Result of IdeaCard validation."""
     is_valid: bool
-    issues: List[ValidationIssue] = field(default_factory=list)
-    hash: Optional[str] = None
-    
+    issues: list[ValidationIssue] = field(default_factory=list)
+    hash: str | None = None
+
     @property
-    def errors(self) -> List[ValidationIssue]:
+    def errors(self) -> list[ValidationIssue]:
         """Get only error-level issues."""
         return [i for i in self.issues if i.severity == ValidationSeverity.ERROR]
-    
+
     @property
-    def warnings(self) -> List[ValidationIssue]:
+    def warnings(self) -> list[ValidationIssue]:
         """Get only warning-level issues."""
         return [i for i in self.issues if i.severity == ValidationSeverity.WARNING]
-    
-    def to_dict(self) -> Dict:
+
+    def to_dict(self) -> dict:
         return {
             "is_valid": self.is_valid,
             "hash": self.hash,
@@ -135,12 +135,12 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
     
     Args:
         idea_card: IdeaCard to validate
-        
+
     Returns:
         IdeaCardValidationResult with issues (if any)
     """
-    issues: List[ValidationIssue] = []
-    
+    issues: list[ValidationIssue] = []
+
     # Required fields
     if not idea_card.id:
         issues.append(ValidationIssue(
@@ -258,7 +258,7 @@ class FeatureReference:
     location: str  # e.g., "entry_rules[0].conditions[1].indicator_key"
 
 
-def extract_rule_feature_refs(idea_card: "IdeaCard") -> List[FeatureReference]:
+def extract_rule_feature_refs(idea_card: "IdeaCard") -> list[FeatureReference]:
     """
     Extract all feature references from IdeaCard signal rules.
     
@@ -270,7 +270,7 @@ def extract_rule_feature_refs(idea_card: "IdeaCard") -> List[FeatureReference]:
     Returns:
         List of FeatureReference objects
     """
-    refs: List[FeatureReference] = []
+    refs: list[FeatureReference] = []
     
     if not idea_card.signal_rules:
         return refs
@@ -333,29 +333,33 @@ def extract_rule_feature_refs(idea_card: "IdeaCard") -> List[FeatureReference]:
 # OHLCV columns are always available (not declared as features)
 OHLCV_COLUMNS = {"open", "high", "low", "close", "volume", "timestamp"}
 
+# Built-in keys available without declaration (1m eval loop feature)
+BUILTIN_KEYS = {"mark_price"}
 
-def get_declared_features_by_role(idea_card: "IdeaCard") -> Dict[str, Set[str]]:
+
+def get_declared_features_by_role(idea_card: "IdeaCard") -> dict[str, set[str]]:
     """
     Get all declared feature keys organized by TF role.
-    
+
     OHLCV columns (open, high, low, close, volume) are always implicitly available.
-    
+    Built-in keys (mark_price) are also always available without declaration.
+
     Args:
         idea_card: IdeaCard with TF configs
-        
+
     Returns:
-        Dict mapping role -> set of feature keys (including OHLCV columns)
+        Dict mapping role -> set of feature keys (including OHLCV and built-in)
     """
-    result: Dict[str, Set[str]] = {}
-    
+    result: dict[str, set[str]] = {}
+
     for role, tf_config in idea_card.tf_configs.items():
-        # Start with OHLCV columns - always available
-        keys = set(OHLCV_COLUMNS)
+        # Start with OHLCV columns and built-in keys - always available
+        keys = set(OHLCV_COLUMNS) | set(BUILTIN_KEYS)
         for spec in tf_config.feature_specs:
             # Add all output keys (including multi-output expansion)
             keys.update(spec.output_keys_list)
         result[role] = keys
-    
+
     return result
 
 
@@ -372,12 +376,12 @@ def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResu
     
     Args:
         idea_card: IdeaCard to validate
-        
+
     Returns:
         IdeaCardValidationResult with issues (if any)
     """
-    issues: List[ValidationIssue] = []
-    
+    issues: list[ValidationIssue] = []
+
     # Get all declared features
     declared = get_declared_features_by_role(idea_card)
     
@@ -440,20 +444,20 @@ class WarmupRequirements:
     Engine MUST NOT apply lookback again to evaluation start.
     """
     # Per-TF warmup/lookback bars (for data fetch)
-    warmup_by_role: Dict[str, int] = field(default_factory=dict)
-    
+    warmup_by_role: dict[str, int] = field(default_factory=dict)
+
     # Per-TF delay bars (for evaluation offset)
-    delay_by_role: Dict[str, int] = field(default_factory=dict)
-    
+    delay_by_role: dict[str, int] = field(default_factory=dict)
+
     # Maximum across all TFs
     max_warmup_bars: int = 0
     max_delay_bars: int = 0
-    
+
     # Source breakdown
-    feature_warmup: Dict[str, int] = field(default_factory=dict)  # role -> max feature warmup
+    feature_warmup: dict[str, int] = field(default_factory=dict)  # role -> max feature warmup
     bars_history_required: int = 0
-    
-    def to_dict(self) -> Dict:
+
+    def to_dict(self) -> dict:
         return {
             "warmup_by_role": self.warmup_by_role,
             "delay_by_role": self.delay_by_role,
@@ -533,9 +537,9 @@ def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
     Returns:
         WarmupRequirements with per-TF warmup and delay
     """
-    warmup_by_role: Dict[str, int] = {}
-    delay_by_role: Dict[str, int] = {}
-    feature_warmup: Dict[str, int] = {}
+    warmup_by_role: dict[str, int] = {}
+    delay_by_role: dict[str, int] = {}
+    feature_warmup: dict[str, int] = {}
 
     # Compute structure warmup (Stage 3: all blocks are exec-only)
     structure_warmup = _compute_structure_warmup(idea_card)
@@ -593,10 +597,10 @@ def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
 class PreEvaluationStatus:
     """Status of pre-evaluation validation."""
     is_ready: bool
-    issues: List[ValidationIssue] = field(default_factory=list)
-    warmup_satisfied: Dict[str, bool] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict:
+    issues: list[ValidationIssue] = field(default_factory=list)
+    warmup_satisfied: dict[str, bool] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
         return {
             "is_ready": self.is_ready,
             "warmup_satisfied": self.warmup_satisfied,
@@ -607,8 +611,8 @@ class PreEvaluationStatus:
 
 def validate_pre_evaluation(
     idea_card: "IdeaCard",
-    bar_counts: Dict[str, int],  # role -> current bar count
-    warmup_requirements: Optional[WarmupRequirements] = None,
+    bar_counts: dict[str, int],  # role -> current bar count
+    warmup_requirements: WarmupRequirements | None = None,
 ) -> PreEvaluationStatus:
     """
     Validate IdeaCard is ready for evaluation at current bar.
@@ -627,8 +631,8 @@ def validate_pre_evaluation(
     Returns:
         PreEvaluationStatus indicating readiness
     """
-    issues: List[ValidationIssue] = []
-    warmup_satisfied: Dict[str, bool] = {}
+    issues: list[ValidationIssue] = []
+    warmup_satisfied: dict[str, bool] = {}
     
     # Compute warmup if not provided
     if warmup_requirements is None:
@@ -675,7 +679,7 @@ def validate_idea_card_full(idea_card: "IdeaCard") -> IdeaCardValidationResult:
     Returns:
         Combined IdeaCardValidationResult
     """
-    all_issues: List[ValidationIssue] = []
+    all_issues: list[ValidationIssue] = []
     
     # Gate 8.0: Contract
     contract_result = validate_idea_card_contract(idea_card)
@@ -721,14 +725,14 @@ class EvaluationResult:
     """Result of IdeaCard signal evaluation."""
     decision: SignalDecision
     reason: str = ""
-    matched_rule_index: Optional[int] = None
-    
+    matched_rule_index: int | None = None
+
     # For entry signals
-    stop_loss_price: Optional[float] = None
-    take_profit_price: Optional[float] = None
-    size_usdt: Optional[float] = None
-    
-    def to_dict(self) -> Dict:
+    stop_loss_price: float | None = None
+    take_profit_price: float | None = None
+    size_usdt: float | None = None
+
+    def to_dict(self) -> dict:
         return {
             "decision": self.decision.value,
             "reason": self.reason,
@@ -777,7 +781,7 @@ class IdeaCardSignalEvaluator:
         self,
         snapshot: "SnapshotView",
         has_position: bool,
-        position_side: Optional[str] = None,
+        position_side: str | None = None,
     ) -> EvaluationResult:
         """
         Evaluate signal rules against current snapshot.
@@ -847,7 +851,7 @@ class IdeaCardSignalEvaluator:
         tf_role: str,
         snapshot,  # RuntimeSnapshotView only (legacy RuntimeSnapshot not supported)
         offset: int = 0,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Get feature value from snapshot for given indicator and TF role.
 
@@ -870,7 +874,7 @@ class IdeaCardSignalEvaluator:
         Raises:
             TypeError: If snapshot does not implement SnapshotView contract
         """
-        # Require RuntimeSnapshotView — fail fast if legacy snapshot passed
+        # Require RuntimeSnapshotView - fail fast if legacy snapshot passed
         if not hasattr(snapshot, 'get_feature'):
             raise TypeError(
                 f"IdeaCardSignalEvaluator requires RuntimeSnapshotView (with get_feature method). "
@@ -903,7 +907,7 @@ class IdeaCardSignalEvaluator:
     
     def _evaluate_conditions(
         self,
-        conditions: Tuple,
+        conditions: tuple,
         snapshot: "SnapshotView",
     ) -> bool:
         """
@@ -1032,7 +1036,7 @@ class IdeaCardSignalEvaluator:
         self,
         snapshot: "SnapshotView",
         direction: str,
-    ) -> Tuple[Optional[float], Optional[float]]:
+    ) -> tuple[float | None, float | None]:
         """
         Compute stop loss and take profit prices from risk model.
         
@@ -1112,7 +1116,7 @@ class IdeaCardSignalEvaluator:
         
         return sl_price, tp_price
     
-    def check_warmup_satisfied(self, bar_counts: Dict[str, int]) -> bool:
+    def check_warmup_satisfied(self, bar_counts: dict[str, int]) -> bool:
         """
         Check if warmup requirements are satisfied.
         

@@ -13,12 +13,12 @@ from the same input data across runs.
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ..types import Trade, EquityPoint
 
 
-def compute_trades_hash(trades: List[Trade]) -> str:
+def compute_trades_hash(trades: list[Trade]) -> str:
     """
     Compute deterministic hash of trades list.
     
@@ -51,7 +51,7 @@ def compute_trades_hash(trades: List[Trade]) -> str:
     return hashlib.sha256(serialized.encode('utf-8')).hexdigest()[:16]
 
 
-def compute_equity_hash(equity_curve: List[EquityPoint]) -> str:
+def compute_equity_hash(equity_curve: list[EquityPoint]) -> str:
     """
     Compute deterministic hash of equity curve.
     
@@ -82,7 +82,7 @@ def compute_equity_hash(equity_curve: List[EquityPoint]) -> str:
 def compute_run_hash(
     trades_hash: str,
     equity_hash: str,
-    idea_card_hash: Optional[str] = None,
+    idea_card_hash: str | None = None,
 ) -> str:
     """
     Compute combined run hash from component hashes.
@@ -125,10 +125,11 @@ def compute_run_hash(
 # =============================================================================
 
 # Default short hash length (chars)
-DEFAULT_SHORT_HASH_LENGTH = 8
+# 12 chars = 48 bits = ~281 trillion possibilities (negligible collision risk)
+DEFAULT_SHORT_HASH_LENGTH = 12
 
 # Extended short hash length for collision recovery
-EXTENDED_SHORT_HASH_LENGTH = 12
+EXTENDED_SHORT_HASH_LENGTH = 16
 
 
 def _canonicalize_symbol(symbol: str) -> str:
@@ -136,7 +137,7 @@ def _canonicalize_symbol(symbol: str) -> str:
     return symbol.upper()
 
 
-def _canonicalize_symbols(symbols: List[str]) -> List[str]:
+def _canonicalize_symbols(symbols: list[str]) -> list[str]:
     """Canonicalize and sort symbol list."""
     return sorted(set(_canonicalize_symbol(s) for s in symbols))
 
@@ -209,7 +210,7 @@ def _canonicalize_tf(tf: str) -> str:
     return tf_stripped
 
 
-def compute_universe_id(symbols: List[str]) -> str:
+def compute_universe_id(symbols: list[str]) -> str:
     """
     Compute deterministic universe identifier for symbol sets.
     
@@ -247,11 +248,11 @@ class InputHashComponents:
     idea_card_hash: str
     
     # Symbol universe
-    symbols: List[str]
-    
+    symbols: list[str]
+
     # Timeframes
     tf_exec: str
-    tf_ctx: List[str]  # All timeframes used (HTF, MTF, etc.)
+    tf_ctx: list[str]  # All timeframes used (HTF, MTF, etc.)
     
     # Window
     window_start: str  # YYYY-MM-DD
@@ -265,13 +266,13 @@ class InputHashComponents:
     
     # Data provenance (REQUIRED for determinism)
     data_source_id: str = "duckdb_live"  # e.g., "duckdb_live", "duckdb_demo", vendor ID
-    data_version: Optional[str] = None   # Snapshot/version reference if available
+    data_version: str | None = None   # Snapshot/version reference if available
     candle_policy: str = "closed_only"   # "closed_only" (no partial candles)
-    
+
     # Randomness
-    seed: Optional[int] = None
+    seed: int | None = None
     
-    def _canonicalize(self) -> Dict[str, Any]:
+    def _canonicalize(self) -> dict[str, Any]:
         """
         Convert to canonical dict for hashing.
         
@@ -307,7 +308,7 @@ class InputHashComponents:
             "seed": self.seed,
         }
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to canonical dict for hashing."""
         return self._canonicalize()
     
@@ -339,17 +340,17 @@ def compute_input_hash(
     idea_card_hash: str,
     window_start: str,
     window_end: str,
-    symbols: Optional[List[str]] = None,
+    symbols: list[str] | None = None,
     tf_exec: str = "",
-    tf_ctx: Optional[List[str]] = None,
+    tf_ctx: list[str] | None = None,
     fee_model_version: str = "1.0.0",
     simulator_version: str = "1.0.0",
     engine_version: str = "1.0.0",
     fill_policy_version: str = "1.0.0",
     data_source_id: str = "duckdb_live",
-    data_version: Optional[str] = None,
+    data_version: str | None = None,
     candle_policy: str = "closed_only",
-    seed: Optional[int] = None,
+    seed: int | None = None,
     short_hash_length: int = DEFAULT_SHORT_HASH_LENGTH,
 ) -> str:
     """

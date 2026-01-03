@@ -14,7 +14,7 @@ SAFETY GUARD RAILS:
 """
 
 import time
-from typing import Optional, Callable, List
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -31,10 +31,10 @@ class ExecutionResult:
     success: bool
     signal: Signal
     risk_check: RiskCheckResult
-    order_result: Optional[OrderResult] = None
-    executed_size: Optional[float] = None
-    error: Optional[str] = None
-    timestamp: datetime = None
+    order_result: OrderResult | None = None
+    executed_size: float | None = None
+    error: str | None = None
+    timestamp: datetime | None = None
     source: str = "rest"  # "rest" or "websocket"
     
     def __post_init__(self):
@@ -47,7 +47,7 @@ class ExecutionResult:
             "timestamp": self.timestamp.isoformat(),
             "symbol": self.signal.symbol,
             "direction": self.signal.direction,
-            "requested_size": self.signal.size_usd,
+            "requested_size": self.signal.size_usdt,
             "executed_size": self.executed_size,
             "risk_allowed": self.risk_check.allowed,
             "risk_reason": self.risk_check.reason,
@@ -64,12 +64,12 @@ class PendingOrder:
     order_id: str
     symbol: str
     direction: str
-    size_usd: float
+    size_usdt: float
     submitted_at: float = field(default_factory=time.time)
     confirmed: bool = False
     filled: bool = False
-    fill_price: Optional[float] = None
-    error: Optional[str] = None
+    fill_price: float | None = None
+    error: str | None = None
 
 
 class OrderExecutor:
@@ -115,7 +115,7 @@ class OrderExecutor:
         self._pending_orders: dict[str, PendingOrder] = {}
         
         # Callbacks
-        self._execution_callbacks: List[Callable[[ExecutionResult], None]] = []
+        self._execution_callbacks: list[Callable[[ExecutionResult], None]] = []
         
         # Setup WebSocket callbacks if enabled
         if use_ws_feedback:
@@ -164,7 +164,9 @@ class OrderExecutor:
             pending.confirmed = True
         elif order_data.status in ("Cancelled", "Rejected"):
             pending.error = f"Order {order_data.status}"
-        
+            # Auto-cleanup failed orders to prevent memory leak
+            self._cleanup_completed_order(order_id)
+
         self.logger.debug(f"Order {order_id} status: {order_data.status}")
     
     def _on_execution(self, exec_data):
@@ -179,14 +181,17 @@ class OrderExecutor:
         # Update fill info
         pending.fill_price = exec_data.price
         pending.filled = True
-        
+
         # Record the trade via position manager
         self.position.record_execution_from_ws(exec_data)
-        
+
         self.logger.info(
             f"Execution received via WS: {exec_data.symbol} "
             f"{exec_data.side} {exec_data.qty} @ {exec_data.price}"
         )
+
+        # Auto-cleanup completed orders to prevent memory leak
+        self._cleanup_completed_order(order_id)
     
     # ==================== Core Execution ====================
     
@@ -238,7 +243,7 @@ class OrderExecutor:
             self._invoke_callbacks(result)
             return result
         
-        self.logger.info(f"Executing signal: {signal.symbol} {signal.direction} ${signal.size_usd:.2f}")
+        self.logger.info(f"Executing signal: {signal.symbol} {signal.direction} ${signal.size_usdt:.2f}")
         
         # Emit order.execute.start event
         self.logger.event(
@@ -246,7 +251,7 @@ class OrderExecutor:
             component="order_executor",
             symbol=signal.symbol,
             direction=signal.direction,
-            size_usd=signal.size_usd,
+            size_usdt=signal.size_usdt,
             strategy=signal.strategy,
         )
         
@@ -285,7 +290,7 @@ class OrderExecutor:
             self.logger.warning(f"Risk warning: {warning}")
         
         # Determine execution size
-        exec_size = risk_result.adjusted_size or signal.size_usd
+        exec_size = risk_result.adjusted_size or signal.size_usdt
         
         # Step 2: Execute order
         order_result = None
@@ -337,15 +342,18 @@ class OrderExecutor:
                 order_id=order_result.order_id,
                 symbol=signal.symbol,
                 direction=signal.direction,
-                size_usd=exec_size,
+                size_usdt=exec_size,
             )
+            # Periodic cleanup of stale orders (every 50 orders, 5 minute timeout)
+            if len(self._pending_orders) > 50:
+                self.cleanup_old_pending_orders(max_age_seconds=300)
         
         # Step 3: Record trade (immediate REST feedback)
         if order_result and order_result.success:
             self.position.record_trade(
                 symbol=signal.symbol,
                 side="BUY" if signal.direction == "LONG" else "SELL",
-                size_usd=exec_size,
+                size_usdt=exec_size,
                 price=order_result.price or 0,
                 order_id=order_result.order_id,
                 strategy=signal.strategy,
@@ -381,7 +389,7 @@ class OrderExecutor:
         self._invoke_callbacks(result)
         return result
     
-    def close_position(self, symbol: str, strategy: str = None) -> ExecutionResult:
+    def close_position(self, symbol: str, strategy: str | None = None) -> ExecutionResult:
         """
         Close a position (convenience method).
         
@@ -395,7 +403,7 @@ class OrderExecutor:
         signal = Signal(
             symbol=symbol,
             direction="FLAT",
-            size_usd=0,  # Size determined by position
+            size_usdt=0,  # Size determined by position
             strategy=strategy or "manual",
         )
         
@@ -427,7 +435,7 @@ class OrderExecutor:
     
     # ==================== Pending Order Management ====================
     
-    def get_pending_order(self, order_id: str) -> Optional[PendingOrder]:
+    def get_pending_order(self, order_id: str) -> PendingOrder | None:
         """Get a pending order by ID."""
         return self._pending_orders.get(order_id)
     
@@ -455,13 +463,25 @@ class OrderExecutor:
         
         if to_remove:
             self.logger.debug(f"Cleaned up {len(to_remove)} old pending orders")
+
+    def _cleanup_completed_order(self, order_id: str) -> None:
+        """
+        Remove a specific completed order from pending dict.
+
+        Called automatically after fills or cancellations.
+
+        Args:
+            order_id: Order ID to remove
+        """
+        if order_id in self._pending_orders:
+            del self._pending_orders[order_id]
     
     def wait_for_fill(
         self,
         order_id: str,
         timeout: float = 10.0,
         poll_interval: float = 0.1,
-    ) -> Optional[PendingOrder]:
+    ) -> PendingOrder | None:
         """
         Wait for an order to be filled via WebSocket.
         

@@ -17,10 +17,11 @@ Bybit API Time Constraints (from docs):
 | Borrow History   | 30 days        | 30 days    |
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Dict, Optional, Tuple
 
 
 class TimeRangePreset(Enum):
@@ -101,27 +102,27 @@ class TimeRange:
     # =========================================================================
     
     @classmethod
-    def last_1h(cls, now: Optional[datetime] = None, endpoint_type: str = "default") -> "TimeRange":
+    def last_1h(cls, now: datetime | None = None, endpoint_type: str = "default") -> TimeRange:
         """Create a time range for the last 1 hour."""
         return cls._from_hours_back(1, now, "last_1h", endpoint_type)
     
     @classmethod
-    def last_4h(cls, now: Optional[datetime] = None, endpoint_type: str = "default") -> "TimeRange":
+    def last_4h(cls, now: datetime | None = None, endpoint_type: str = "default") -> TimeRange:
         """Create a time range for the last 4 hours."""
         return cls._from_hours_back(4, now, "last_4h", endpoint_type)
     
     @classmethod
-    def last_24h(cls, now: Optional[datetime] = None, endpoint_type: str = "default") -> "TimeRange":
+    def last_24h(cls, now: datetime | None = None, endpoint_type: str = "default") -> TimeRange:
         """Create a time range for the last 24 hours."""
         return cls._from_hours_back(24, now, "last_24h", endpoint_type)
     
     @classmethod
-    def last_7d(cls, now: Optional[datetime] = None, endpoint_type: str = "default") -> "TimeRange":
+    def last_7d(cls, now: datetime | None = None, endpoint_type: str = "default") -> TimeRange:
         """Create a time range for the last 7 days."""
         return cls._from_days_back(7, now, "last_7d", endpoint_type)
     
     @classmethod
-    def last_30d(cls, now: Optional[datetime] = None, endpoint_type: str = "default") -> "TimeRange":
+    def last_30d(cls, now: datetime | None = None, endpoint_type: str = "default") -> TimeRange:
         """Create a time range for the last 30 days (only valid for borrow_history)."""
         return cls._from_days_back(30, now, "last_30d", endpoint_type)
     
@@ -129,9 +130,9 @@ class TimeRange:
     def from_preset(
         cls,
         preset: TimeRangePreset,
-        now: Optional[datetime] = None,
+        now: datetime | None = None,
         endpoint_type: str = "default",
-    ) -> "TimeRange":
+    ) -> TimeRange:
         """
         Create a TimeRange from a preset.
         
@@ -163,9 +164,9 @@ class TimeRange:
     def from_window_string(
         cls,
         window: str,
-        now: Optional[datetime] = None,
+        now: datetime | None = None,
         endpoint_type: str = "default",
-    ) -> "TimeRange":
+    ) -> TimeRange:
         """
         Create a TimeRange from a window string like "24h", "7d", "30d".
         
@@ -222,7 +223,7 @@ class TimeRange:
         start: datetime,
         end: datetime,
         endpoint_type: str = "default",
-    ) -> "TimeRange":
+    ) -> TimeRange:
         """
         Create a TimeRange from datetime objects.
         
@@ -262,7 +263,7 @@ class TimeRange:
         start_ms: int,
         end_ms: int,
         endpoint_type: str = "default",
-    ) -> "TimeRange":
+    ) -> TimeRange:
         """
         Create a TimeRange from millisecond timestamps.
         
@@ -292,7 +293,7 @@ class TimeRange:
     # Conversion Methods
     # =========================================================================
     
-    def to_bybit_params(self) -> Dict[str, int]:
+    def to_bybit_params(self) -> dict[str, int]:
         """
         Convert to Bybit API parameters.
         
@@ -304,7 +305,7 @@ class TimeRange:
             "endTime": self.end_ms,
         }
     
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """
         Convert to a dictionary for inclusion in ToolResult.data.
         
@@ -323,7 +324,7 @@ class TimeRange:
             "endpoint_type": self.endpoint_type,
         }
     
-    def to_tuple_ms(self) -> Tuple[int, int]:
+    def to_tuple_ms(self) -> tuple[int, int]:
         """Return (start_ms, end_ms) tuple."""
         return (self.start_ms, self.end_ms)
     
@@ -388,10 +389,10 @@ class TimeRange:
     def _from_hours_back(
         cls,
         hours: int,
-        now: Optional[datetime],
+        now: datetime | None,
         label: str,
         endpoint_type: str,
-    ) -> "TimeRange":
+    ) -> TimeRange:
         """Create a time range going back N hours from now."""
         now_utc = cls._get_now_utc(now)
         start_utc = now_utc - timedelta(hours=hours)
@@ -407,10 +408,10 @@ class TimeRange:
     def _from_days_back(
         cls,
         days: int,
-        now: Optional[datetime],
+        now: datetime | None,
         label: str,
         endpoint_type: str,
-    ) -> "TimeRange":
+    ) -> TimeRange:
         """Create a time range going back N days from now."""
         now_utc = cls._get_now_utc(now)
         start_utc = now_utc - timedelta(days=days)
@@ -423,7 +424,7 @@ class TimeRange:
         )
     
     @staticmethod
-    def _get_now_utc(now: Optional[datetime]) -> datetime:
+    def _get_now_utc(now: datetime | None) -> datetime:
         """Get current UTC time or convert provided time to UTC."""
         if now is None:
             return datetime.now(timezone.utc)
@@ -443,9 +444,9 @@ class TimeRange:
 # =============================================================================
 
 def parse_time_window(
-    window: Optional[str] = None,
-    start_ms: Optional[int] = None,
-    end_ms: Optional[int] = None,
+    window: str | None = None,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
     endpoint_type: str = "default",
     default_window: str = "24h",
 ) -> TimeRange:

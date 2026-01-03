@@ -15,7 +15,6 @@ RECORD-ONLY MODE:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from src.backtest.runtime.state_types import (
     SignalStateValue,
@@ -72,7 +71,7 @@ class BlockState:
         return not self.gate.passed
 
     @property
-    def block_reason(self) -> Optional[str]:
+    def block_reason(self) -> str | None:
         """Get reason for block (if blocked)."""
         if self.gate.passed:
             return None

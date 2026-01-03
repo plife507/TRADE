@@ -16,7 +16,7 @@ Stop precedence (highest to lowest priority):
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .types import StopReason
 
@@ -36,16 +36,16 @@ class StopCheckResult:
     strategy_starved: bool = False
 
     # Stop classification (if terminal)
-    classification: Optional[StopReason] = None
+    classification: StopReason | None = None
 
     # Human-readable reason detail
-    reason_detail: Optional[str] = None
+    reason_detail: str | None = None
 
-    # Legacy reason string
-    legacy_reason: Optional[str] = None
+    # Short reason string for trade records
+    reason: str | None = None
 
 
-def check_liquidation(exchange: "SimulatedExchange") -> Optional[StopCheckResult]:
+def check_liquidation(exchange: "SimulatedExchange") -> StopCheckResult | None:
     """
     Check if exchange is in liquidatable state.
 
@@ -64,7 +64,7 @@ def check_liquidation(exchange: "SimulatedExchange") -> Optional[StopCheckResult
                 f"Liquidation: equity ${exchange.equity_usdt:.2f} "
                 f"<= maintenance margin ${exchange.maintenance_margin:.2f}"
             ),
-            legacy_reason="liquidated",
+            reason="liquidated",
         )
     return None
 
@@ -72,7 +72,7 @@ def check_liquidation(exchange: "SimulatedExchange") -> Optional[StopCheckResult
 def check_equity_floor(
     exchange: "SimulatedExchange",
     stop_equity_usdt: float,
-) -> Optional[StopCheckResult]:
+) -> StopCheckResult | None:
     """
     Check if equity hit floor threshold.
 
@@ -92,7 +92,7 @@ def check_equity_floor(
                 f"Equity floor hit: equity ${exchange.equity_usdt:.2f} "
                 f"<= threshold ${stop_equity_usdt:.2f}"
             ),
-            legacy_reason="account_blown",
+            reason="account_blown",
         )
     return None
 
@@ -103,7 +103,7 @@ def check_strategy_starvation(
     bar_ts_close: datetime,
     bar_index: int,
     logger=None,
-) -> Optional[StopCheckResult]:
+) -> StopCheckResult | None:
     """
     Check if strategy is starved (can't meet entry gate).
 
@@ -145,7 +145,7 @@ def check_strategy_starvation(
                 f"Strategy starved: available=${exchange.available_balance_usdt:.2f} "
                 f"< required=${required_for_min:.2f}"
             ),
-            legacy_reason="starved",
+            reason="starved",
         )
 
     return None
@@ -203,7 +203,7 @@ def check_all_stop_conditions(
         strategy_starved=False,
         classification=None,
         reason_detail=None,
-        legacy_reason=None,
+        reason=None,
     )
 
 

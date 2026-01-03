@@ -30,7 +30,7 @@ Usage:
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Optional, Union
 import pandas as pd
 
 from ..config.constants import DataEnv
@@ -134,7 +134,7 @@ class HistoricalBackend(ABC):
         self,
         symbol: str,
         timeframe: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get the time range of stored OHLCV data.
         
@@ -236,20 +236,20 @@ class HistoricalBackend(ABC):
     # ==========================================================================
     
     @abstractmethod
-    def get_symbol_list(self) -> List[str]:
+    def get_symbol_list(self) -> list[str]:
         """
         Get list of all symbols with stored data.
-        
+
         Returns:
             List of symbol strings
         """
         pass
     
     @abstractmethod
-    def get_database_stats(self) -> Dict[str, Any]:
+    def get_database_stats(self) -> dict[str, Any]:
         """
         Get database statistics.
-        
+
         Returns:
             Dict with storage stats (symbols, candle counts, size, etc.)
         """
@@ -387,7 +387,7 @@ class MongoBackend(HistoricalBackend):
         self,
         symbol: str,
         timeframe: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get OHLCV time range from MongoDB."""
         raise NotImplementedError("MongoDB backend not yet implemented")
     
@@ -425,11 +425,11 @@ class MongoBackend(HistoricalBackend):
         """Append open interest data to MongoDB."""
         raise NotImplementedError("MongoDB backend not yet implemented")
     
-    def get_symbol_list(self) -> List[str]:
+    def get_symbol_list(self) -> list[str]:
         """Get symbol list from MongoDB."""
         raise NotImplementedError("MongoDB backend not yet implemented")
     
-    def get_database_stats(self) -> Dict[str, Any]:
+    def get_database_stats(self) -> dict[str, Any]:
         """Get database stats from MongoDB."""
         raise NotImplementedError("MongoDB backend not yet implemented")
     

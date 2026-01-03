@@ -13,7 +13,6 @@ All monetary values are in USDT (quote currency).
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 from ..types import Bar
 
@@ -36,7 +35,7 @@ class LiquidityModel:
     NEVER to infer buy/sell direction.
     """
     
-    def __init__(self, config: Optional[LiquidityConfig] = None):
+    def __init__(self, config: LiquidityConfig | None = None):
         """
         Initialize liquidity model.
         

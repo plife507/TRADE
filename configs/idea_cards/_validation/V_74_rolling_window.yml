@@ -1,0 +1,114 @@
+# =============================================================================
+# V_74: Rolling Window Min/Max
+# =============================================================================
+# Purpose: Validate rolling_window structure for O(1) min/max.
+# Tests: size, field, mode parameters
+# Expected: Normalizer passes, recent_low.value accessible in conditions
+# Use Case: Support/resistance from recent highs and lows
+# =============================================================================
+
+id: V_74_rolling_window
+version: "1.0.0"
+name: "Rolling Window Min/Max"
+description: "Validate O(1) rolling window min/max detection"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+timeframes:
+  exec: "15m"
+
+tf_configs:
+  exec:
+    role: "exec"
+    warmup_bars: 50
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_trend"
+        params:
+          length: 50
+        input_source: "close"
+      - indicator_type: "rsi"
+        output_key: "rsi"
+        params:
+          length: 14
+        input_source: "close"
+
+structures:
+  exec:
+    # 20-bar rolling low (support)
+    - type: rolling_window
+      key: recent_low
+      params:
+        size: 20
+        field: low
+        mode: min
+    # 20-bar rolling high (resistance)
+    - type: rolling_window
+      key: recent_high
+      params:
+        size: 20
+        field: high
+        mode: max
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+signal_rules:
+  entry_rules:
+    - direction: "long"
+      conditions:
+        # Price near 20-bar low (support bounce)
+        - tf: "exec"
+          indicator_key: "structure.recent_low.value"
+          operator: "gt"
+          value: 0
+          is_indicator_comparison: false
+        # RSI oversold confirmation
+        - tf: "exec"
+          indicator_key: "rsi"
+          operator: "lt"
+          value: 35
+          is_indicator_comparison: false
+        # Above trend EMA
+        - tf: "exec"
+          indicator_key: "close"
+          operator: "gt"
+          value: "ema_trend"
+          is_indicator_comparison: true
+
+  exit_rules:
+    - direction: "long"
+      conditions:
+        # Exit near 20-bar high (resistance)
+        - tf: "exec"
+          indicator_key: "mark_price"
+          operator: "gt"
+          value: "structure.recent_high.value"
+          is_indicator_comparison: true
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 2.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 1.0
+    max_leverage: 3.0

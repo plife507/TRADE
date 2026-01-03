@@ -27,14 +27,24 @@ LEGACY REMOVED:
 - exchange_state shim removed
 """
 
+import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Dict, Optional, Any
+from typing import Any, TYPE_CHECKING
 
 import numpy as np
 
 from .feed_store import FeedStore, MultiTFFeedStore
 from .types import ExchangeState, HistoryConfig, DEFAULT_HISTORY_CONFIG
+
+if TYPE_CHECKING:
+    from ..incremental.state import MultiTFIncrementalState
+
+
+# Module-level cache for path tokenization (P2-07: avoid string split in hot loop)
+# Paths are static strings, so caching at module level is safe and efficient.
+_PATH_CACHE: dict[str, list] = {}
 
 
 @dataclass
@@ -47,7 +57,7 @@ class TFContext:
     feed: FeedStore
     current_idx: int  # Current bar index in this TF's feed
     ready: bool = False  # Whether this TF has valid features
-    not_ready_reason: Optional[str] = None
+    not_ready_reason: str | None = None
     
     @property
     def ts_close(self) -> datetime:
@@ -59,7 +69,7 @@ class TFContext:
         """Get ts_open at current index."""
         return self.feed.get_ts_open_datetime(self.current_idx)
     
-    def get_indicator(self, name: str) -> Optional[float]:
+    def get_indicator(self, name: str) -> float | None:
         """
         Get indicator value at current index.
         
@@ -154,21 +164,22 @@ class RuntimeSnapshotView:
         'exchange', 'mark_price', 'mark_price_source',
         'tf_mapping', 'history_config',
         'history_ready', '_feeds', '_rollups',
-        '_resolvers',
+        '_resolvers', '_incremental_state',
     )
     
     def __init__(
         self,
         feeds: MultiTFFeedStore,
         exec_idx: int,
-        htf_idx: Optional[int],
-        mtf_idx: Optional[int],
+        htf_idx: int | None,
+        mtf_idx: int | None,
         exchange,  # SimulatedExchange reference
         mark_price: float,
         mark_price_source: str,
-        history_config: Optional[HistoryConfig] = None,
+        history_config: HistoryConfig | None = None,
         history_ready: bool = True,
-        rollups: Optional[Dict[str, float]] = None,
+        rollups: dict[str, float] | None = None,
+        incremental_state: "MultiTFIncrementalState | None" = None,
     ):
         """
         Initialize snapshot view.
@@ -184,8 +195,10 @@ class RuntimeSnapshotView:
             history_config: History configuration
             history_ready: Whether history windows are filled
             rollups: Optional px.rollup.* values from 1m accumulation
+            incremental_state: Optional MultiTFIncrementalState for structure access
         """
         self._feeds = feeds
+        self._incremental_state = incremental_state
         self.symbol = feeds.exec_feed.symbol
         self.exec_tf = feeds.exec_feed.tf
         self.exec_idx = exec_idx
@@ -296,26 +309,26 @@ class RuntimeSnapshotView:
     # =========================================================================
     
     @property
-    def ema_fast(self) -> Optional[float]:
+    def ema_fast(self) -> float | None:
         """Current exec EMA fast value."""
         return self.exec_ctx.get_indicator("ema_fast")
     
     @property
-    def ema_slow(self) -> Optional[float]:
+    def ema_slow(self) -> float | None:
         """Current exec EMA slow value."""
         return self.exec_ctx.get_indicator("ema_slow")
     
     @property
-    def rsi(self) -> Optional[float]:
+    def rsi(self) -> float | None:
         """Current exec RSI value."""
         return self.exec_ctx.get_indicator("rsi")
     
     @property
-    def atr(self) -> Optional[float]:
+    def atr(self) -> float | None:
         """Current exec ATR value."""
         return self.exec_ctx.get_indicator("atr")
     
-    def indicator(self, name: str) -> Optional[float]:
+    def indicator(self, name: str) -> float | None:
         """Get current exec indicator by name. Returns None if undeclared."""
         return self.exec_ctx.get_indicator(name)
     
@@ -342,27 +355,27 @@ class RuntimeSnapshotView:
     # Previous Bar/Indicator Accessors (for crossovers, structure SL)
     # =========================================================================
     
-    def prev_ema_fast(self, lookback: int = 1) -> Optional[float]:
+    def prev_ema_fast(self, lookback: int = 1) -> float | None:
         """Get previous EMA fast value (for crossover detection)."""
         return self._get_prev_indicator("ema_fast", lookback)
     
-    def prev_ema_slow(self, lookback: int = 1) -> Optional[float]:
+    def prev_ema_slow(self, lookback: int = 1) -> float | None:
         """Get previous EMA slow value (for crossover detection)."""
         return self._get_prev_indicator("ema_slow", lookback)
     
-    def prev_rsi(self, lookback: int = 1) -> Optional[float]:
+    def prev_rsi(self, lookback: int = 1) -> float | None:
         """Get previous RSI value."""
         return self._get_prev_indicator("rsi", lookback)
     
-    def prev_atr(self, lookback: int = 1) -> Optional[float]:
+    def prev_atr(self, lookback: int = 1) -> float | None:
         """Get previous ATR value."""
         return self._get_prev_indicator("atr", lookback)
     
-    def prev_indicator(self, name: str, lookback: int = 1) -> Optional[float]:
+    def prev_indicator(self, name: str, lookback: int = 1) -> float | None:
         """Get previous indicator value by name."""
         return self._get_prev_indicator(name, lookback)
     
-    def _get_prev_indicator(self, name: str, lookback: int) -> Optional[float]:
+    def _get_prev_indicator(self, name: str, lookback: int) -> float | None:
         """Internal: get previous indicator via direct index offset."""
         if lookback < 1:
             raise ValueError("lookback must be >= 1")
@@ -376,7 +389,7 @@ class RuntimeSnapshotView:
 
         return None
     
-    def bars_exec_low(self, n: int) -> Optional[float]:
+    def bars_exec_low(self, n: int) -> float | None:
         """Get lowest low of last n exec bars (for structure SL)."""
         if n < 1:
             raise ValueError("n must be >= 1")
@@ -389,7 +402,7 @@ class RuntimeSnapshotView:
         
         return float(np.min(self._feeds.exec_feed.low[start_idx:end_idx]))
     
-    def bars_exec_high(self, n: int) -> Optional[float]:
+    def bars_exec_high(self, n: int) -> float | None:
         """Get highest high of last n exec bars (for structure SL)."""
         if n < 1:
             raise ValueError("n must be >= 1")
@@ -402,21 +415,21 @@ class RuntimeSnapshotView:
         
         return float(np.max(self._feeds.exec_feed.high[start_idx:end_idx]))
     
-    def prev_close(self, lookback: int = 1) -> Optional[float]:
+    def prev_close(self, lookback: int = 1) -> float | None:
         """Get previous close price."""
         prev_idx = self.exec_idx - lookback
         if prev_idx < 0:
             return None
         return float(self._feeds.exec_feed.close[prev_idx])
     
-    def prev_high(self, lookback: int = 1) -> Optional[float]:
+    def prev_high(self, lookback: int = 1) -> float | None:
         """Get previous high price."""
         prev_idx = self.exec_idx - lookback
         if prev_idx < 0:
             return None
         return float(self._feeds.exec_feed.high[prev_idx])
     
-    def prev_low(self, lookback: int = 1) -> Optional[float]:
+    def prev_low(self, lookback: int = 1) -> float | None:
         """Get previous low price."""
         prev_idx = self.exec_idx - lookback
         if prev_idx < 0:
@@ -428,40 +441,40 @@ class RuntimeSnapshotView:
     # =========================================================================
     
     @property
-    def htf_ema_fast(self) -> Optional[float]:
+    def htf_ema_fast(self) -> float | None:
         """HTF EMA fast (forward-filled from last close)."""
         return self.htf_ctx.get_indicator("ema_fast")
     
     @property
-    def htf_ema_slow(self) -> Optional[float]:
+    def htf_ema_slow(self) -> float | None:
         """HTF EMA slow (forward-filled from last close)."""
         return self.htf_ctx.get_indicator("ema_slow")
     
     @property
-    def htf_rsi(self) -> Optional[float]:
+    def htf_rsi(self) -> float | None:
         """HTF RSI (forward-filled from last close)."""
         return self.htf_ctx.get_indicator("rsi")
     
     @property
-    def mtf_ema_fast(self) -> Optional[float]:
+    def mtf_ema_fast(self) -> float | None:
         """MTF EMA fast (forward-filled from last close)."""
         return self.mtf_ctx.get_indicator("ema_fast")
     
     @property
-    def mtf_ema_slow(self) -> Optional[float]:
+    def mtf_ema_slow(self) -> float | None:
         """MTF EMA slow (forward-filled from last close)."""
         return self.mtf_ctx.get_indicator("ema_slow")
     
     @property
-    def mtf_rsi(self) -> Optional[float]:
+    def mtf_rsi(self) -> float | None:
         """MTF RSI (forward-filled from last close)."""
         return self.mtf_ctx.get_indicator("rsi")
     
-    def htf_indicator(self, name: str) -> Optional[float]:
+    def htf_indicator(self, name: str) -> float | None:
         """Get HTF indicator by name."""
         return self.htf_ctx.get_indicator(name)
     
-    def mtf_indicator(self, name: str) -> Optional[float]:
+    def mtf_indicator(self, name: str) -> float | None:
         """Get MTF indicator by name."""
         return self.mtf_ctx.get_indicator(name)
     
@@ -488,7 +501,7 @@ class RuntimeSnapshotView:
         indicator_key: str,
         tf_role: str = "exec",
         offset: int = 0,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Unified feature lookup API for strategy evaluation.
         
@@ -503,6 +516,12 @@ class RuntimeSnapshotView:
         Returns:
             Feature value or None if not available
         """
+        # Handle mark_price specially - always returns current mark price
+        if indicator_key == "mark_price":
+            if offset != 0:
+                raise ValueError("mark_price offset not yet supported - use offset=0")
+            return self.mark_price
+
         # Get the appropriate context
         if tf_role in ("exec", "ltf"):
             ctx = self.exec_ctx
@@ -618,7 +637,7 @@ class RuntimeSnapshotView:
         return self.exchange.position is not None
     
     @property
-    def position_side(self) -> Optional[str]:
+    def position_side(self) -> str | None:
         """Current position side (long/short/None)."""
         if self.exchange.position is None:
             return None
@@ -682,7 +701,7 @@ class RuntimeSnapshotView:
             return 0.0
         return self.rollup_max_1m - self.rollup_min_1m
 
-    def get_rollup(self, key: str) -> Optional[float]:
+    def get_rollup(self, key: str) -> float | None:
         """
         Get rollup value by key.
 
@@ -700,9 +719,100 @@ class RuntimeSnapshotView:
         return bool(self._rollups) and self.rollup_bars_1m > 0
 
     @property
-    def rollups(self) -> Dict[str, float]:
+    def rollups(self) -> dict[str, float]:
         """Get all rollup values as a dict."""
         return dict(self._rollups)
+
+    # =========================================================================
+    # Incremental Structure Accessors (Phase 6)
+    # =========================================================================
+
+    def get_structure(self, path: str) -> float:
+        """
+        Get structure value by path.
+
+        Phase 6: Provides O(1) access to incremental structure values.
+        Falls back to FeedStore structures for legacy market_structure_blocks.
+
+        Args:
+            path: Dot-separated path like "swing.high_level" or "trend.direction"
+                  For exec TF: "swing.high_level"
+                  For HTF: "htf_1h.swing.high_level"
+
+        Returns:
+            The structure value
+
+        Raises:
+            KeyError: If path is invalid, with actionable suggestion
+        """
+        if self._incremental_state is None:
+            raise KeyError(
+                f"No incremental state available. "
+                f"Add 'structures:' section to IdeaCard. "
+                f"See docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md"
+            )
+
+        # Try direct lookup (for paths like "swing.high_level")
+        parts = path.split(".")
+        if len(parts) < 2:
+            raise KeyError(
+                f"Invalid structure path: '{path}'. "
+                f"Expected format: '<struct_key>.<output_key>'"
+            )
+
+        struct_key = parts[0]
+        output_key = ".".join(parts[1:])
+
+        # Check exec state
+        if struct_key in self._incremental_state.exec.structures:
+            internal_path = f"exec.{struct_key}.{output_key}"
+            return self._incremental_state.get_value(internal_path)
+
+        # Check if it's an HTF path (starts with htf_)
+        if struct_key.startswith("htf_"):
+            # Path format: "htf_<tf>.<struct_key>.<output_key>"
+            tf_name = parts[0][4:]  # Remove "htf_" prefix
+            # P2-005 FIX: Validate HTF path has enough parts before accessing
+            if len(parts) < 3:
+                raise KeyError(
+                    f"Invalid HTF structure path: '{path}'. "
+                    f"Expected format: 'htf_<tf>.<struct_key>.<output_key>'"
+                )
+            if tf_name in self._incremental_state.htf:
+                actual_struct_key = parts[1]
+                actual_output_key = ".".join(parts[2:])
+                internal_path = f"htf_{tf_name}.{actual_struct_key}.{actual_output_key}"
+                return self._incremental_state.get_value(internal_path)
+
+        # Structure not found
+        available_exec = self._incremental_state.exec.list_structures()
+        available_htf = []
+        for htf_name in self._incremental_state.list_htfs():
+            for s_key in self._incremental_state.htf[htf_name].list_structures():
+                available_htf.append(f"htf_{htf_name}.{s_key}")
+
+        all_available = available_exec + available_htf
+        raise KeyError(
+            f"Structure '{struct_key}' not found. "
+            f"Available: {all_available}. "
+            f"Add structure to IdeaCard 'structures:' section."
+        )
+
+    @property
+    def has_incremental_state(self) -> bool:
+        """Check if incremental state is available."""
+        return self._incremental_state is not None
+
+    def list_structure_paths(self) -> list[str]:
+        """
+        List all available incremental structure paths.
+
+        Returns:
+            List of valid "struct_key.output_key" paths
+        """
+        if self._incremental_state is None:
+            return []
+        return self._incremental_state.list_all_paths()
 
     # =========================================================================
     # Canonical Path Resolver (DSL Interface)
@@ -713,7 +823,7 @@ class RuntimeSnapshotView:
     #
     # =========================================================================
 
-    def _build_resolvers(self) -> Dict[str, Callable]:
+    def _build_resolvers(self) -> dict[str, Callable]:
         """
         Build namespace resolver dispatch table (instance variable).
 
@@ -726,7 +836,7 @@ class RuntimeSnapshotView:
             "structure": self._resolve_structure_path,
         }
 
-    def get(self, path: str) -> Optional[float]:
+    def get(self, path: str) -> float | None:
         """
         Canonical path resolver for DSL and strategy access.
 
@@ -747,7 +857,11 @@ class RuntimeSnapshotView:
         Raises:
             ValueError: If path is unknown (forward-only, no silent failures)
         """
-        parts = path.split(".")
+        # P2-07: Use cached path tokens to avoid string split in hot loop
+        parts = _PATH_CACHE.get(path)
+        if parts is None:
+            parts = path.split(".")
+            _PATH_CACHE[path] = parts
         namespace = parts[0]
 
         # Dispatch to namespace resolver (instance lookup, no getattr)
@@ -761,7 +875,7 @@ class RuntimeSnapshotView:
 
         return resolver(parts[1:], path)
 
-    def _resolve_indicator_path(self, parts: list, full_path: str) -> Optional[float]:
+    def _resolve_indicator_path(self, parts: list, full_path: str) -> float | None:
         """
         Resolve indicator.* paths.
 
@@ -782,7 +896,7 @@ class RuntimeSnapshotView:
         tf_role = parts[1] if len(parts) > 1 else "exec"
         return self.get_feature(indicator_key, tf_role)
 
-    def _resolve_price_path(self, parts: list, full_path: str) -> Optional[float]:
+    def _resolve_price_path(self, parts: list, full_path: str) -> float | None:
         """
         Resolve price.* paths.
 
@@ -831,16 +945,37 @@ class RuntimeSnapshotView:
                 f"Supported: mark"
             )
 
-    def _resolve_structure_path(self, parts: list, full_path: str) -> Optional[float]:
+    def _resolve_structure_path(self, parts: list, full_path: str) -> float | None:
         """
         Resolve structure.* paths.
 
-        Supports:
-        - structure.<block_key>.<field>
-        - structure.<block_key>.zones.<zone_key>.<field>  (Stage 5+)
+        Phase 7 Transition:
+        Two parallel structure systems exist during the transition:
+
+        1. NEW: Incremental State (`structures:` section in IdeaCard)
+           - O(1) access via MultiTFIncrementalState
+           - Updated bar-by-bar in the engine hot loop
+           - Preferred for all new IdeaCards
+
+        2. DEPRECATED: FeedStore structures (`market_structure_blocks` in IdeaCard)
+           - Built by build_structures_into_feed() (deprecated function)
+           - Stored in FeedStore.structures dict
+           - Will be removed in a future release
+
+        Resolution priority:
+        1. Try incremental state first (if present)
+        2. Fall back to FeedStore structures (deprecated, legacy support)
+
+        Path formats:
+        - structure.<block_key>.<field> -> exec TF structure (incremental or FeedStore)
+        - structure.<block_key>.zones.<zone_key>.<field> -> zone field (FeedStore only)
+
+        Incremental state paths use MultiTFIncrementalState format internally:
+        - "exec.<struct_key>.<output_key>" for exec TF
+        - "htf_<tf>.<struct_key>.<output_key>" for HTF
 
         Args:
-            parts: Path parts after "structure." (e.g., ["ms_5m", "swing_high_level"])
+            parts: Path parts after "structure." (e.g., ["swing", "high_level"])
             full_path: Full original path for error messages
 
         Returns:
@@ -858,15 +993,64 @@ class RuntimeSnapshotView:
         block_key = parts[0]
         field_or_zones = parts[1]
 
-        # Validate structure exists
+        # =====================================================================
+        # PRIMARY PATH: Try incremental state first (O(1) access)
+        # =====================================================================
+        if self._incremental_state is not None:
+            # Check if this is an exec structure
+            if block_key in self._incremental_state.exec.structures:
+                try:
+                    # Build internal path: "exec.<struct_key>.<output_key>"
+                    output_key = ".".join(parts[1:])
+                    internal_path = f"exec.{block_key}.{output_key}"
+                    value = self._incremental_state.get_value(internal_path)
+                    # Handle different value types
+                    if isinstance(value, str):
+                        # String values (e.g., trend direction) - convert to float for DSL
+                        # Return None for string values in numeric context
+                        return None
+                    return float(value)
+                except KeyError:
+                    # Output key not found - continue to FeedStore fallback
+                    pass
+
+            # Check if this is an HTF structure
+            for htf_name, htf_state in self._incremental_state.htf.items():
+                if block_key in htf_state.structures:
+                    try:
+                        output_key = ".".join(parts[1:])
+                        internal_path = f"htf_{htf_name}.{block_key}.{output_key}"
+                        value = self._incremental_state.get_value(internal_path)
+                        if isinstance(value, str):
+                            return None
+                        return float(value)
+                    except KeyError:
+                        pass
+
+        # =====================================================================
+        # DEPRECATED PATH: FeedStore structures (legacy market_structure_blocks)
+        # This fallback will be removed when market_structure_blocks is deleted.
+        # =====================================================================
         if not self.exec_ctx.feed.has_structure(block_key):
-            available = list(self.exec_ctx.feed.structure_key_map.keys())
+            # Build helpful error message with available structures
+            available_feedstore = list(self.exec_ctx.feed.structure_key_map.keys())
+            available_incremental = []
+            if self._incremental_state is not None:
+                available_incremental.extend(self._incremental_state.exec.list_structures())
+                for htf_name, htf_state in self._incremental_state.htf.items():
+                    for struct_key in htf_state.list_structures():
+                        available_incremental.append(f"{struct_key} (htf_{htf_name})")
+
+            all_available = available_feedstore + available_incremental
+            available_str = ", ".join(all_available) if all_available else "(none defined)"
+
             raise ValueError(
                 f"Unknown structure block_key '{block_key}'. "
-                f"Available: {available}"
+                f"Available: {available_str}. "
+                f"Add 'structures:' section to IdeaCard."
             )
 
-        # Check for zones namespace (Stage 5+)
+        # Check for zones namespace (Stage 5+ - FeedStore only, deprecated path)
         if field_or_zones == "zones":
             # structure.<block_key>.zones.<zone_key>.<field>
             if len(parts) < 4:
@@ -877,12 +1061,12 @@ class RuntimeSnapshotView:
             zone_key = parts[2]
             zone_field = parts[3]
 
-            # Resolve zone field via FeedStore
+            # Resolve zone field via FeedStore (deprecated)
             return self.exec_ctx.feed.get_zone_field(
                 block_key, zone_key, zone_field, self.exec_idx
             )
 
-        # structure.<block_key>.<field>
+        # structure.<block_key>.<field> via FeedStore (deprecated)
         field_name = field_or_zones
 
         # Validate field is in public allowlist
@@ -893,24 +1077,29 @@ class RuntimeSnapshotView:
                 f"Valid fields: {available_fields}"
             )
 
-        # Get field value at current exec bar index
+        # Get field value at current exec bar index (deprecated FeedStore path)
         return self.exec_ctx.feed.get_structure_field(
             block_key, field_name, self.exec_idx
         )
 
     def has_path(self, path: str) -> bool:
         """
-        Check if a path is available.
+        Check if a path is available with a valid value.
 
         Args:
             path: Dot-separated path
 
         Returns:
-            True if path can be resolved
+            True if path can be resolved to a valid value (not None/NaN)
         """
         try:
             value = self.get(path)
-            return value is not None
+            if value is None:
+                return False
+            # Check for NaN (numeric missing value)
+            if isinstance(value, float) and math.isnan(value):
+                return False
+            return True
         except ValueError:
             return False
 
@@ -925,7 +1114,7 @@ class RuntimeSnapshotView:
     # Serialization (for debugging only, not in hot loop)
     # =========================================================================
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for debugging/serialization."""
         return {
             "ts_close": self.ts_close.isoformat(),

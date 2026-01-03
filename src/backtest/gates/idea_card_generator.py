@@ -21,7 +21,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 import yaml
 import numpy as np
 
@@ -68,12 +68,12 @@ class GeneratedIdeaCard:
     direction: str
     exec_tf: str
     htf_tf: str
-    indicators: List[Dict[str, Any]]
+    indicators: list[dict[str, Any]]
     yaml_path: Path
     yaml_content: str
 
 
-def get_available_symbols(env: str = "live") -> List[str]:
+def get_available_symbols(env: str = "live") -> list[str]:
     """
     Get symbols available in local DuckDB data.
     
@@ -103,7 +103,7 @@ def get_available_symbols(env: str = "live") -> List[str]:
         return ["BTCUSDT", "SOLUSDT"]
 
 
-def generate_random_indicator(rng: np.random.Generator, used_types: set) -> Dict[str, Any]:
+def generate_random_indicator(rng: np.random.Generator, used_types: set) -> dict[str, Any]:
     """
     Generate a random indicator spec.
     
@@ -151,7 +151,7 @@ def generate_random_indicator(rng: np.random.Generator, used_types: set) -> Dict
     }
 
 
-def compute_warmup_for_indicator(ind_spec: Dict[str, Any]) -> int:
+def compute_warmup_for_indicator(ind_spec: dict[str, Any]) -> int:
     """Compute warmup bars for an indicator."""
     params = ind_spec.get("params", {})
     
@@ -169,7 +169,7 @@ def compute_warmup_for_indicator(ind_spec: Dict[str, Any]) -> int:
     return 50  # Default
 
 
-def generate_signal_rules(direction: str, indicators: List[Dict[str, Any]], rng: np.random.Generator) -> Dict[str, Any]:
+def generate_signal_rules(direction: str, indicators: list[dict[str, Any]], rng: np.random.Generator) -> dict[str, Any]:
     """Generate valid signal rules for the given direction."""
     registry = get_registry()
     
@@ -259,7 +259,7 @@ def generate_idea_card_yaml(
     direction: str,
     exec_tf: str,
     htf_tf: str,
-    indicators: List[Dict[str, Any]],
+    indicators: list[dict[str, Any]],
     rng: np.random.Generator,
 ) -> str:
     """
@@ -361,7 +361,7 @@ def _to_native(val):
     return val
 
 
-def generate_idea_cards(config: GeneratorConfig) -> List[GeneratedIdeaCard]:
+def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedIdeaCard]:
     """
     Generate randomized IdeaCards.
     

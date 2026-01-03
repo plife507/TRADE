@@ -27,7 +27,6 @@ Usage:
 
 import time
 import threading
-from typing import List, Dict, Optional, Callable, Set
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -87,7 +86,7 @@ class SubscriptionConfig:
     enable_klines: bool = True
     
     # Kline intervals to subscribe (Bybit format: 1, 5, 15, 60, etc.)
-    kline_intervals: List[str] = field(default_factory=lambda: ["15"])
+    kline_intervals: list[str] = field(default_factory=lambda: ["15"])
     
     # Orderbook depth (1, 25, 50, 100, 200)
     orderbook_depth: int = 50
@@ -174,10 +173,10 @@ class RealtimeBootstrap:
     
     def __init__(
         self,
-        client: BybitClient = None,
-        state: RealtimeState = None,
-        config: SubscriptionConfig = None,
-        env: DataEnv = None,
+        client: BybitClient | None = None,
+        state: RealtimeState | None = None,
+        config: SubscriptionConfig | None = None,
+        env: DataEnv | None = None,
     ):
         """
         Initialize bootstrap.
@@ -222,18 +221,18 @@ class RealtimeBootstrap:
         self.sub_config = config or SubscriptionConfig()
         
         # Tracking
-        self._symbols: Set[str] = set()
+        self._symbols: set[str] = set()
         self._running = False
         self._public_connected = False
         self._private_connected = False
-        
+
         # MTF buffer configuration
         # When a closed kline is received, append to the appropriate MTF buffer
         self._persist_closed_klines_to_mtf: bool = True
-        
+
         # Thread management
         self._lock = threading.Lock()
-        self._monitor_thread: Optional[threading.Thread] = None
+        self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
     
     # ==========================================================================
@@ -242,7 +241,7 @@ class RealtimeBootstrap:
     
     def start(
         self,
-        symbols: List[str] = None,
+        symbols: list[str] | None = None,
         include_private: bool = True,
     ):
         """
@@ -929,7 +928,7 @@ class RealtimeBootstrap:
         self._last_disconnect_time = time.time()
         self._disconnect_count = getattr(self, '_disconnect_count', 0) + 1
     
-    def get_health(self) -> dict:
+    def get_health(self) -> dict[str, object]:
         """
         Get connection health status.
         
@@ -978,7 +977,7 @@ class RealtimeBootstrap:
     # Status and Introspection
     # ==========================================================================
     
-    def get_status(self) -> dict:
+    def get_status(self) -> dict[str, object]:
         """Get current bootstrap status."""
         # Determine API modes using standardized DEMO/LIVE terminology
         if self.app_config.bybit.is_demo:
@@ -1035,7 +1034,7 @@ class RealtimeBootstrap:
 # Singleton Instance
 # ==============================================================================
 
-_realtime_bootstrap: Optional[RealtimeBootstrap] = None
+_realtime_bootstrap: RealtimeBootstrap | None = None
 _bootstrap_lock = threading.Lock()
 
 

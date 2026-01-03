@@ -1,0 +1,101 @@
+# =============================================================================
+# V_70: Swing Structure Detection
+# =============================================================================
+# Purpose: Validate incremental swing detector in IdeaCard structures section.
+# Tests: swing structure type with left/right parameters
+# Expected: Normalizer passes, swing.high_level accessible in conditions
+# Use Case: Entry when price breaks above recent swing high
+# =============================================================================
+
+id: V_70_swing_basic
+version: "1.0.0"
+name: "Swing Structure Detection"
+description: "Validate swing detection via incremental structure registry"
+
+variables:
+  swing_lookback: 5
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - BTCUSDT
+
+timeframes:
+  exec: "15m"
+
+tf_configs:
+  exec:
+    role: "exec"
+    warmup_bars: 50
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_fast"
+        params:
+          length: 9
+        input_source: "close"
+      - indicator_type: "ema"
+        output_key: "ema_slow"
+        params:
+          length: 21
+        input_source: "close"
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: "{{ swing_lookback }}"
+        right: "{{ swing_lookback }}"
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+signal_rules:
+  entry_rules:
+    - direction: "long"
+      conditions:
+        # Price above swing high (breakout entry)
+        - tf: "exec"
+          indicator_key: "structure.swing.high_level"
+          operator: "gt"
+          value: 0
+          is_indicator_comparison: false
+        # EMA trend filter
+        - tf: "exec"
+          indicator_key: "ema_fast"
+          operator: "gt"
+          value: "ema_slow"
+          is_indicator_comparison: true
+
+  exit_rules:
+    - direction: "long"
+      conditions:
+        - tf: "exec"
+          indicator_key: "ema_fast"
+          operator: "lt"
+          value: "ema_slow"
+          is_indicator_comparison: true
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 2.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 1.0
+    max_leverage: 3.0

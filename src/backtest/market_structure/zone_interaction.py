@@ -23,7 +23,6 @@ No lookahead: Uses closed-candle OHLC only.
 """
 
 import numpy as np
-from typing import Dict
 
 from src.backtest.market_structure.types import ZoneState
 
@@ -38,11 +37,11 @@ class ZoneInteractionComputer:
 
     def build_batch(
         self,
-        zone_outputs: Dict[str, np.ndarray],
+        zone_outputs: dict[str, np.ndarray],
         bar_high: np.ndarray,
         bar_low: np.ndarray,
         bar_close: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Compute interaction metrics for a zone.
 

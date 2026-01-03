@@ -13,7 +13,6 @@ Mark price sources:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 from ..types import Bar, PriceSnapshot
 from ..bar_compat import get_bar_timestamp
@@ -28,7 +27,7 @@ class PriceModelConfig:
 class PriceModel:
     """Derives mark/last/mid prices from OHLC bar data."""
     
-    def __init__(self, config: Optional[PriceModelConfig] = None):
+    def __init__(self, config: PriceModelConfig | None = None):
         """
         Initialize price model.
         

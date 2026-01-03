@@ -24,7 +24,7 @@ What this audit does NOT validate:
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Callable, Set
+from typing import Any
 
 import numpy as np
 
@@ -49,16 +49,16 @@ class ComparisonMismatch:
     tf_role: str
     key: str
     offset: int
-    observed: Optional[float]
-    expected: Optional[float]
+    observed: float | None
+    expected: float | None
     abs_diff: float
     tolerance: float
     exec_idx: int
-    htf_idx: Optional[int]
-    mtf_idx: Optional[int]
+    htf_idx: int | None
+    mtf_idx: int | None
     target_idx: int
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "ts_close": self.ts_close.isoformat(),
             "tf_role": self.tf_role,
@@ -82,12 +82,12 @@ class PlumbingParityResult:
     total_samples: int
     total_comparisons: int
     failed_comparisons: int
-    first_mismatch: Optional[ComparisonMismatch]
-    error_message: Optional[str]
+    first_mismatch: ComparisonMismatch | None
+    error_message: str | None
     runtime_seconds: float = 0.0
     max_samples_reached: bool = False
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
             "total_samples": self.total_samples,
@@ -100,7 +100,7 @@ class PlumbingParityResult:
         }
 
 
-def direct_feed_read(feed: FeedStore, idx: int, key: str) -> Optional[float]:
+def direct_feed_read(feed: FeedStore, idx: int, key: str) -> float | None:
     """
     Direct array read from FeedStore for comparison.
     
@@ -137,10 +137,10 @@ def direct_feed_read(feed: FeedStore, idx: int, key: str) -> Optional[float]:
 
 
 def compare_values(
-    observed: Optional[float],
-    expected: Optional[float],
+    observed: float | None,
+    expected: float | None,
     tolerance: float,
-) -> tuple:
+) -> tuple[bool, float]:
     """
     Compare observed vs expected values.
     
@@ -176,9 +176,9 @@ class PlumbingAuditCallback:
     def __init__(
         self,
         exec_feed: FeedStore,
-        htf_feed: Optional[FeedStore],
-        mtf_feed: Optional[FeedStore],
-        declared_keys_by_role: Dict[str, Set[str]],
+        htf_feed: FeedStore | None,
+        mtf_feed: FeedStore | None,
+        declared_keys_by_role: dict[str, set[str]],
         max_samples: int = 2000,
         tolerance: float = 1e-12,
         strict: bool = True,
@@ -195,12 +195,12 @@ class PlumbingAuditCallback:
         self.samples_count = 0
         self.comparisons_count = 0
         self.failed_comparisons = 0
-        self.first_mismatch: Optional[ComparisonMismatch] = None
+        self.first_mismatch: ComparisonMismatch | None = None
         self.stop_early = False
-        
+
         # Track HTF/MTF index changes for boundary sampling
-        self._prev_htf_idx: Optional[int] = None
-        self._prev_mtf_idx: Optional[int] = None
+        self._prev_htf_idx: int | None = None
+        self._prev_mtf_idx: int | None = None
         
         # Offsets to test
         self._offsets = [0, 1, 2, 5]
@@ -398,11 +398,11 @@ def audit_snapshot_plumbing_parity(
     idea_card_id: str,
     start_date: datetime,
     end_date: datetime,
-    symbol: Optional[str] = None,
+    symbol: str | None = None,
     max_samples: int = 2000,
     tolerance: float = 1e-12,
     strict: bool = True,
-    idea_cards_dir: Optional[Path] = None,
+    idea_cards_dir: Path | None = None,
 ) -> PlumbingParityResult:
     """
     Run snapshot plumbing parity audit.
@@ -480,7 +480,7 @@ def audit_snapshot_plumbing_parity(
             )
         
         # Get declared keys by role
-        declared_keys_by_role: Dict[str, Set[str]] = {}
+        declared_keys_by_role: dict[str, set[str]] = {}
         for role, tf_config in idea_card.tf_configs.items():
             specs = list(tf_config.feature_specs)
             expanded_keys = get_required_indicator_columns_from_specs(specs)

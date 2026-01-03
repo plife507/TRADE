@@ -11,7 +11,7 @@ Usage:
     # Returns: "💰 Fetching account balance..."
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Any
 from dataclasses import dataclass
 
 
@@ -29,7 +29,7 @@ class ActionDescriptor:
 
 
 # Centralized action registry - finance/trading themed
-ACTION_REGISTRY: Dict[str, ActionDescriptor] = {
+ACTION_REGISTRY: dict[str, ActionDescriptor] = {
     # ==================== ACCOUNT ====================
     "account.view_balance": ActionDescriptor(
         emoji="💰",
@@ -567,7 +567,7 @@ def get_action_label(action_key: str) -> str:
     return "Operation"
 
 
-def _format_params(params: Dict[str, Any]) -> Dict[str, str]:
+def _format_params(params: dict[str, Any]) -> dict[str, str]:
     """
     Format parameters for template interpolation.
     
@@ -604,7 +604,7 @@ def _format_params(params: Dict[str, Any]) -> Dict[str, str]:
     return formatted
 
 
-def format_symbols_list(symbols: List[str], max_display: int = 3) -> str:
+def format_symbols_list(symbols: list[str], max_display: int = 3) -> str:
     """
     Format a list of symbols for display.
     
@@ -642,7 +642,7 @@ def format_period_display(period: str) -> str:
 # DATA BUILDER SPECIALIZED FORMATTERS
 # =============================================================================
 
-def format_data_result(action_key: str, result_data: Any, message: str = "") -> Dict[str, Any]:
+def format_data_result(action_key: str, result_data: Any, message: str = "") -> dict[str, Any]:
     """
     Format action results for rich display.
     
@@ -765,7 +765,7 @@ def format_data_result(action_key: str, result_data: Any, message: str = "") -> 
 format_action_result = format_data_result
 
 
-def _format_symbols_list_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_symbols_list_result(data: Any, message: str) -> dict[str, Any]:
     """Format cached symbols list with rich details."""
     if not data:
         return {
@@ -799,7 +799,7 @@ def _format_symbols_list_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_database_stats_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_database_stats_result(data: Any, message: str) -> dict[str, Any]:
     """Format database statistics."""
     if not data or not isinstance(data, dict):
         return None
@@ -823,7 +823,7 @@ def _format_database_stats_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_symbol_status_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_symbol_status_result(data: Any, message: str) -> dict[str, Any]:
     """Format per-symbol aggregate status."""
     if not data or not isinstance(data, dict):
         return None
@@ -857,7 +857,7 @@ def _format_symbol_status_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_symbol_summary_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_symbol_summary_result(data: Any, message: str) -> dict[str, Any]:
     """Format high-level symbol summary."""
     if not data or not isinstance(data, dict):
         return None
@@ -892,7 +892,7 @@ def _format_symbol_summary_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_timeframe_ranges_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_timeframe_ranges_result(data: Any, message: str) -> dict[str, Any]:
     """Format detailed per-symbol/timeframe ranges."""
     if not data:
         return {
@@ -933,7 +933,7 @@ def _format_timeframe_ranges_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_build_history_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_build_history_result(data: Any, message: str) -> dict[str, Any]:
     """Format build full history results."""
     if not data or not isinstance(data, dict):
         return None
@@ -973,7 +973,7 @@ def _format_build_history_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_sync_forward_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_sync_forward_result(data: Any, message: str) -> dict[str, Any]:
     """Format sync forward to now results."""
     if not data or not isinstance(data, dict):
         return None
@@ -1007,7 +1007,7 @@ def _format_sync_forward_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_sync_fill_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_sync_fill_result(data: Any, message: str) -> dict[str, Any]:
     """Format sync + fill gaps results."""
     if not data or not isinstance(data, dict):
         return None
@@ -1037,7 +1037,7 @@ def _format_sync_fill_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_sync_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_sync_result(data: Any, message: str) -> dict[str, Any]:
     """Format general sync results."""
     if not data or not isinstance(data, dict):
         return None
@@ -1069,7 +1069,7 @@ def _format_sync_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_fill_gaps_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_fill_gaps_result(data: Any, message: str) -> dict[str, Any]:
     """Format gap fill results."""
     if not data or not isinstance(data, dict):
         return None
@@ -1101,7 +1101,7 @@ def _format_fill_gaps_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_heal_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_heal_result(data: Any, message: str) -> dict[str, Any]:
     """Format heal/repair results."""
     if not data or not isinstance(data, dict):
         return None
@@ -1139,7 +1139,7 @@ def _format_heal_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_delete_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_delete_result(data: Any, message: str) -> dict[str, Any]:
     """Format delete symbol result."""
     if not data or not isinstance(data, dict):
         return None
@@ -1155,7 +1155,7 @@ def _format_delete_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_cleanup_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_cleanup_result(data: Any, message: str) -> dict[str, Any]:
     """Format cleanup empty symbols result."""
     if not data or not isinstance(data, dict):
         return None
@@ -1206,7 +1206,7 @@ def _format_currency(value: str | float, decimals: int = 2, prefix: str = "$") -
         return str(value)
 
 
-def _format_closed_pnl_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_closed_pnl_result(data: Any, message: str) -> dict[str, Any]:
     """Format closed PnL records as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -1259,7 +1259,7 @@ def _format_closed_pnl_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_order_history_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_order_history_result(data: Any, message: str) -> dict[str, Any]:
     """Format order history as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -1306,7 +1306,7 @@ def _format_order_history_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_transaction_log_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_transaction_log_result(data: Any, message: str) -> dict[str, Any]:
     """Format transaction log as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -1349,7 +1349,7 @@ def _format_transaction_log_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_borrow_history_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_borrow_history_result(data: Any, message: str) -> dict[str, Any]:
     """Format borrow history as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -1390,7 +1390,7 @@ def _format_borrow_history_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_collateral_info_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_collateral_info_result(data: Any, message: str) -> dict[str, Any]:
     """Format collateral info as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -1434,7 +1434,7 @@ def _format_collateral_info_result(data: Any, message: str) -> Dict[str, Any]:
 # POSITIONS FORMATTERS
 # =============================================================================
 
-def _format_positions_list_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_positions_list_result(data: Any, message: str) -> dict[str, Any]:
     """Format positions list as a human-readable table."""
     if not data:
         return {
@@ -1482,7 +1482,7 @@ def _format_positions_list_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_position_detail_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_position_detail_result(data: Any, message: str) -> dict[str, Any]:
     """Format single position detail as a summary."""
     if not data or not isinstance(data, dict):
         return None
@@ -1528,7 +1528,7 @@ def _format_position_detail_result(data: Any, message: str) -> Dict[str, Any]:
 # ORDERS FORMATTERS
 # =============================================================================
 
-def _format_open_orders_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_open_orders_result(data: Any, message: str) -> dict[str, Any]:
     """Format open orders as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -1584,7 +1584,7 @@ def _format_open_orders_result(data: Any, message: str) -> Dict[str, Any]:
 # MARKET DATA FORMATTERS
 # =============================================================================
 
-def _format_ohlcv_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_ohlcv_result(data: Any, message: str) -> dict[str, Any]:
     """Format OHLCV candles as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -1638,7 +1638,7 @@ def _format_ohlcv_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_orderbook_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_orderbook_result(data: Any, message: str) -> dict[str, Any]:
     """Format orderbook as a human-readable summary."""
     if not data or not isinstance(data, dict):
         return None
@@ -1695,7 +1695,7 @@ def _format_orderbook_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_funding_rate_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_funding_rate_result(data: Any, message: str) -> dict[str, Any]:
     """Format funding rate as a human-readable summary."""
     if not data or not isinstance(data, dict):
         return None
@@ -1731,7 +1731,7 @@ def _format_funding_rate_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_open_interest_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_open_interest_result(data: Any, message: str) -> dict[str, Any]:
     """Format open interest as a human-readable summary."""
     if not data or not isinstance(data, dict):
         return None
@@ -1755,7 +1755,7 @@ def _format_open_interest_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_instruments_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_instruments_result(data: Any, message: str) -> dict[str, Any]:
     """Format instruments info as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -1794,7 +1794,7 @@ def _format_instruments_result(data: Any, message: str) -> Dict[str, Any]:
 # DIAGNOSTICS FORMATTERS
 # =============================================================================
 
-def _format_connection_test_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_connection_test_result(data: Any, message: str) -> dict[str, Any]:
     """Format connection test result."""
     if not data or not isinstance(data, dict):
         return None
@@ -1832,7 +1832,7 @@ def _format_connection_test_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_server_time_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_server_time_result(data: Any, message: str) -> dict[str, Any]:
     """Format server time offset result."""
     if not data or not isinstance(data, dict):
         return None
@@ -1855,7 +1855,7 @@ def _format_server_time_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_rate_limits_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_rate_limits_result(data: Any, message: str) -> dict[str, Any]:
     """Format rate limits status."""
     if not data or not isinstance(data, dict):
         return None
@@ -1902,7 +1902,7 @@ def _format_rate_limits_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_ticker_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_ticker_result(data: Any, message: str) -> dict[str, Any]:
     """Format ticker data."""
     if not data or not isinstance(data, dict):
         return None
@@ -1942,7 +1942,7 @@ def _format_ticker_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_health_check_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_health_check_result(data: Any, message: str) -> dict[str, Any]:
     """Format health check result."""
     if not data or not isinstance(data, dict):
         return None
@@ -1984,7 +1984,7 @@ def _format_health_check_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_websocket_status_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_websocket_status_result(data: Any, message: str) -> dict[str, Any]:
     """Format WebSocket status."""
     if not data or not isinstance(data, dict):
         return None
@@ -2038,7 +2038,7 @@ def _format_websocket_status_result(data: Any, message: str) -> Dict[str, Any]:
 # GENERIC / UTILITY FORMATTERS
 # =============================================================================
 
-def _format_simple_success_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_simple_success_result(data: Any, message: str) -> dict[str, Any]:
     """
     Format simple success results as a clean key-value table.
     
@@ -2106,7 +2106,7 @@ def _format_simple_success_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_balance_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_balance_result(data: Any, message: str) -> dict[str, Any]:
     """Format account balance as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -2150,7 +2150,7 @@ def _format_balance_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_exposure_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_exposure_result(data: Any, message: str) -> dict[str, Any]:
     """Format total exposure as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -2183,7 +2183,7 @@ def _format_exposure_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_account_info_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_account_info_result(data: Any, message: str) -> dict[str, Any]:
     """Format account info as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -2222,7 +2222,7 @@ def _format_account_info_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_portfolio_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_portfolio_result(data: Any, message: str) -> dict[str, Any]:
     """Format portfolio snapshot as a human-readable summary."""
     if not data or not isinstance(data, dict):
         return None
@@ -2264,7 +2264,7 @@ def _format_portfolio_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_coin_greeks_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_coin_greeks_result(data: Any, message: str) -> dict[str, Any]:
     """Format coin greeks as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -2300,7 +2300,7 @@ def _format_coin_greeks_result(data: Any, message: str) -> Dict[str, Any]:
     return _format_simple_success_result(data, message)
 
 
-def _format_transferable_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_transferable_result(data: Any, message: str) -> dict[str, Any]:
     """Format transferable amount as a human-readable display."""
     if not data or not isinstance(data, dict):
         return None
@@ -2327,7 +2327,7 @@ def _format_transferable_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_risk_limits_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_risk_limits_result(data: Any, message: str) -> dict[str, Any]:
     """Format risk limits as a human-readable table."""
     if not data or not isinstance(data, dict):
         return None
@@ -2365,7 +2365,7 @@ def _format_risk_limits_result(data: Any, message: str) -> Dict[str, Any]:
     return _format_simple_success_result(data, message)
 
 
-def _format_order_placed_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_order_placed_result(data: Any, message: str) -> dict[str, Any]:
     """Format order placement result as a human-readable display."""
     if not data or not isinstance(data, dict):
         return None
@@ -2405,7 +2405,7 @@ def _format_order_placed_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_price_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_price_result(data: Any, message: str) -> dict[str, Any]:
     """Format price result as a human-readable display."""
     if not data or not isinstance(data, dict):
         return None
@@ -2438,7 +2438,7 @@ def _format_price_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_market_test_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_market_test_result(data: Any, message: str) -> dict[str, Any]:
     """Format market data test result."""
     if not data or not isinstance(data, dict):
         return None
@@ -2476,7 +2476,7 @@ def _format_market_test_result(data: Any, message: str) -> Dict[str, Any]:
     }
 
 
-def _format_panic_result(data: Any, message: str) -> Dict[str, Any]:
+def _format_panic_result(data: Any, message: str) -> dict[str, Any]:
     """Format panic close all result."""
     if not data or not isinstance(data, dict):
         return {

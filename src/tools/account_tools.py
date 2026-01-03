@@ -11,12 +11,11 @@ use. This parameter VALIDATES the caller's intent against the process config but
 does NOT switch environments. If the env doesn't match, the tool returns an error.
 """
 
-from typing import Optional, Dict, Any
 from .shared import ToolResult, _get_exchange_manager, _get_realtime_state, _is_websocket_connected, validate_trading_env_or_error
 from ..utils.time_range import TimeRange, parse_time_window
 
 
-def get_account_balance_tool(trading_env: Optional[str] = None) -> ToolResult:
+def get_account_balance_tool(trading_env: str | None = None) -> ToolResult:
     """
     Get account balance information.
     
@@ -54,7 +53,7 @@ def get_account_balance_tool(trading_env: Optional[str] = None) -> ToolResult:
         )
 
 
-def get_total_exposure_tool(trading_env: Optional[str] = None) -> ToolResult:
+def get_total_exposure_tool(trading_env: str | None = None) -> ToolResult:
     """
     Get total position exposure across all positions.
     
@@ -84,7 +83,7 @@ def get_total_exposure_tool(trading_env: Optional[str] = None) -> ToolResult:
         )
 
 
-def get_account_info_tool(trading_env: Optional[str] = None) -> ToolResult:
+def get_account_info_tool(trading_env: str | None = None) -> ToolResult:
     """
     Get detailed account information (margin mode, etc.).
     
@@ -118,7 +117,7 @@ def get_account_info_tool(trading_env: Optional[str] = None) -> ToolResult:
         )
 
 
-def get_portfolio_snapshot_tool(trading_env: Optional[str] = None) -> ToolResult:
+def get_portfolio_snapshot_tool(trading_env: str | None = None) -> ToolResult:
     """
     Get a comprehensive portfolio snapshot using GlobalRiskView.
     
@@ -183,12 +182,12 @@ def get_portfolio_snapshot_tool(trading_env: Optional[str] = None) -> ToolResult
 
 
 def get_order_history_tool(
-    window: Optional[str] = None,
-    start_ms: Optional[int] = None,
-    end_ms: Optional[int] = None,
-    symbol: Optional[str] = None,
+    window: str | None = None,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
+    symbol: str | None = None,
     limit: int = 50,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Get order history within a specified time range.
@@ -245,12 +244,12 @@ def get_order_history_tool(
 
 
 def get_closed_pnl_tool(
-    window: Optional[str] = None,
-    start_ms: Optional[int] = None,
-    end_ms: Optional[int] = None,
-    symbol: Optional[str] = None,
+    window: str | None = None,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
+    symbol: str | None = None,
     limit: int = 50,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Get closed P&L records within a specified time range.
@@ -314,14 +313,14 @@ def get_closed_pnl_tool(
 # ==============================================================================
 
 def get_transaction_log_tool(
-    window: Optional[str] = None,
-    start_ms: Optional[int] = None,
-    end_ms: Optional[int] = None,
-    category: Optional[str] = None,
-    currency: Optional[str] = None,
-    log_type: Optional[str] = None,
+    window: str | None = None,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
+    category: str | None = None,
+    currency: str | None = None,
+    log_type: str | None = None,
     limit: int = 50,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Get transaction logs from Unified account within a specified time range.
@@ -385,7 +384,7 @@ def get_transaction_log_tool(
         )
 
 
-def get_collateral_info_tool(currency: Optional[str] = None, trading_env: Optional[str] = None) -> ToolResult:
+def get_collateral_info_tool(currency: str | None = None, trading_env: str | None = None) -> ToolResult:
     """
     Get collateral information for Unified account.
     
@@ -423,7 +422,7 @@ def get_collateral_info_tool(currency: Optional[str] = None, trading_env: Option
         )
 
 
-def set_collateral_coin_tool(coin: str, enabled: bool, trading_env: Optional[str] = None) -> ToolResult:
+def set_collateral_coin_tool(coin: str, enabled: bool, trading_env: str | None = None) -> ToolResult:
     """
     Enable or disable a coin as collateral.
     
@@ -466,12 +465,12 @@ def set_collateral_coin_tool(coin: str, enabled: bool, trading_env: Optional[str
 
 
 def get_borrow_history_tool(
-    window: Optional[str] = None,
-    start_ms: Optional[int] = None,
-    end_ms: Optional[int] = None,
-    currency: Optional[str] = None,
+    window: str | None = None,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
+    currency: str | None = None,
     limit: int = 50,
-    trading_env: Optional[str] = None,
+    trading_env: str | None = None,
 ) -> ToolResult:
     """
     Get borrow/interest history within a specified time range.
@@ -529,7 +528,7 @@ def get_borrow_history_tool(
         )
 
 
-def get_coin_greeks_tool(base_coin: Optional[str] = None, trading_env: Optional[str] = None) -> ToolResult:
+def get_coin_greeks_tool(base_coin: str | None = None, trading_env: str | None = None) -> ToolResult:
     """
     Get account Greeks information (for options).
     
@@ -563,7 +562,7 @@ def get_coin_greeks_tool(base_coin: Optional[str] = None, trading_env: Optional[
         )
 
 
-def set_account_margin_mode_tool(portfolio_margin: bool, trading_env: Optional[str] = None) -> ToolResult:
+def set_account_margin_mode_tool(portfolio_margin: bool, trading_env: str | None = None) -> ToolResult:
     """
     Set account-level margin mode.
     
@@ -601,7 +600,7 @@ def set_account_margin_mode_tool(portfolio_margin: bool, trading_env: Optional[s
         )
 
 
-def get_transferable_amount_tool(coin: str, trading_env: Optional[str] = None) -> ToolResult:
+def get_transferable_amount_tool(coin: str, trading_env: str | None = None) -> ToolResult:
     """
     Get the available amount to transfer for a coin.
     
