@@ -53,6 +53,9 @@ Usage:
 # Shared types
 from .shared import ToolResult
 
+# Tool Registry
+from .tool_registry import ToolRegistry
+
 # Position tools
 from .position_tools import (
     list_open_positions_tool,
@@ -205,6 +208,7 @@ from .backtest_cli_wrapper import (
 __all__ = [
     # Shared types
     "ToolResult",
+    "ToolRegistry",
     
     # Position tools
     "list_open_positions_tool",
