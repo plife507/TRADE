@@ -85,7 +85,8 @@ def build_feed_stores_impl(
     if mtf_frames is None and prepared_frame is None:
         raise ValueError("No prepared frames. Call prepare_multi_tf_frames() first.")
 
-    specs_by_role = config.feature_specs_by_role if hasattr(config, 'feature_specs_by_role') else {}
+    # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
+    specs_by_role = config.feature_specs_by_role
 
     exec_feed: FeedStore | None = None
     htf_feed: FeedStore | None = None
@@ -173,8 +174,13 @@ def build_feed_stores_impl(
 # DEPRECATION NOTICE (Phase 7):
 # - `market_structure_blocks` in IdeaCard is DEPRECATED in favor of `structures:` section
 # - New IdeaCards should use the incremental `structures:` section for O(1) hot-loop access
-# - The batch system will be removed in a future release
-# - See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
+# - REMOVAL DATE: 2026-04-01 (Q2 2026)
+# - Migration guide: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
+#
+# To migrate:
+#   1. Replace `market_structure_blocks:` with `structures:` in IdeaCard
+#   2. Use structure.key.output_name in signal_rules instead of structure paths
+#   3. Test with `backtest run --idea-card <card>` to verify
 #
 # =============================================================================
 
@@ -220,14 +226,14 @@ def build_structures_into_feed(
 
     # Phase 7: Emit deprecation warning when market_structure_blocks is used
     warnings.warn(
-        "IdeaCard 'market_structure_blocks' is deprecated. "
+        "IdeaCard 'market_structure_blocks' is deprecated and will be removed 2026-04-01. "
         "Use the 'structures:' section instead for O(1) hot-loop access. "
         "See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md",
         DeprecationWarning,
         stacklevel=2,
     )
     logger.warning(
-        "DEPRECATED: market_structure_blocks will be removed in a future release. "
+        "DEPRECATED: market_structure_blocks will be removed 2026-04-01. "
         "Migrate to 'structures:' section in IdeaCard."
     )
 

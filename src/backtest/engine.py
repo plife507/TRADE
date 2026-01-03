@@ -290,10 +290,11 @@ class BacktestEngine:
         self._record_state_tracking = record_state_tracking
         self._state_tracker: StateTracker | None = None
         if record_state_tracking:
+            # RiskProfileConfig.max_drawdown_pct is always defined (default: 100.0)
             self._state_tracker = create_state_tracker(
                 warmup_bars=0,  # Will be set after prepare_backtest_frame
                 max_positions=1,  # Single position per symbol
-                max_drawdown_pct=config.risk_profile.max_drawdown_pct if hasattr(config.risk_profile, 'max_drawdown_pct') else 100.0,
+                max_drawdown_pct=config.risk_profile.max_drawdown_pct,
                 cooldown_bars=0,
             )
             # P2-12: Ensure clean state on init (reset clears any stale state)

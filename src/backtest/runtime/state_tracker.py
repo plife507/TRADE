@@ -65,12 +65,14 @@ class StateTrackerConfig:
         warmup_bars: Required warmup bars
         max_positions: Max allowed positions
         max_drawdown_pct: Max allowed drawdown percentage
+        max_exposure_pct: Max allowed exposure percentage
         cooldown_bars: Post-trade cooldown bars
         max_history: Max block history entries (0 = unlimited, default 10000)
     """
     warmup_bars: int = 0
     max_positions: int = 100
     max_drawdown_pct: float = 100.0
+    max_exposure_pct: float = 100.0
     cooldown_bars: int = 0
     max_history: int = 10000  # Prevent unbounded memory growth
 
@@ -241,7 +243,7 @@ class StateTracker:
         self._gate_context.position_count = position_count
         self._gate_context.max_positions = self.config.max_positions
         self._gate_context.current_exposure_pct = exposure_pct
-        self._gate_context.max_exposure_pct = 100.0  # TODO: make configurable
+        self._gate_context.max_exposure_pct = self.config.max_exposure_pct
 
     def on_sizing_computed(self, size_usdt: float) -> None:
         """

@@ -248,6 +248,7 @@ class RiskProfileConfig:
     sizing_model: str = "percent_equity"
     risk_per_trade_pct: float = 1.0
     max_leverage: float = 2.0
+    max_drawdown_pct: float = 100.0  # Max allowed drawdown percentage (for state tracking)
     min_trade_usdt: float = 1.0  # In USDT (name kept for backward compat)
     stop_equity_usdt: float = 0.0  # In USDT (name kept for backward compat)
     
@@ -340,6 +341,7 @@ class RiskProfileConfig:
             "sizing_model": self.sizing_model,
             "risk_per_trade_pct": self.risk_per_trade_pct,
             "max_leverage": self.max_leverage,
+            "max_drawdown_pct": self.max_drawdown_pct,
             "min_trade_usdt": self.min_trade_usdt,  # In USDT (name kept for backward compat)
             "stop_equity_usdt": self.stop_equity_usdt,  # In USDT (name kept for backward compat)
             # Margin model
@@ -399,6 +401,7 @@ def resolve_risk_profile(
         sizing_model=overrides.get("sizing_model", base.sizing_model),
         risk_per_trade_pct=float(overrides.get("risk_per_trade_pct", base.risk_per_trade_pct)),
         max_leverage=float(overrides.get("max_leverage", base.max_leverage)),
+        max_drawdown_pct=float(overrides.get("max_drawdown_pct", base.max_drawdown_pct)),
         min_trade_usdt=float(overrides.get("min_trade_usdt", base.min_trade_usdt)),
         stop_equity_usdt=float(overrides.get("stop_equity_usdt", base.stop_equity_usdt)),
         # Margin model
@@ -852,6 +855,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
         sizing_model=risk_profile_raw.get("sizing_model", "percent_equity"),
         risk_per_trade_pct=float(risk_profile_raw.get("risk_per_trade_pct", 1.0)),
         max_leverage=float(risk_profile_raw.get("max_leverage", 2.0)),
+        max_drawdown_pct=float(risk_profile_raw.get("max_drawdown_pct", 100.0)),
         min_trade_usdt=float(risk_profile_raw.get("min_trade_usdt", 1.0)),
         stop_equity_usdt=float(risk_profile_raw.get("stop_equity_usdt", 0.0)),
         # Margin model

@@ -174,7 +174,8 @@ def prepare_backtest_frame_impl(
     warmup_bars = warmup_bars_by_role['exec']
 
     # max_lookback is the raw max warmup from specs (for indicator validation only)
-    exec_specs = config.feature_specs_by_role.get('exec', []) if hasattr(config, 'feature_specs_by_role') else []
+    # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
+    exec_specs = config.feature_specs_by_role.get('exec', [])
     max_lookback = get_warmup_from_specs(exec_specs) if exec_specs else 0
 
     # Compute data window using centralized utility
@@ -226,7 +227,8 @@ def prepare_backtest_frame_impl(
 
     # Apply indicators from IdeaCard FeatureSpecs (ONLY supported path)
     # No legacy params-based indicators - IdeaCard is the single source of truth
-    if hasattr(config, 'feature_specs_by_role') and config.feature_specs_by_role:
+    # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
+    if config.feature_specs_by_role:
         exec_specs = config.feature_specs_by_role.get('exec', [])
         if exec_specs:
             df = apply_feature_spec_indicators(df, exec_specs)
@@ -240,10 +242,10 @@ def prepare_backtest_frame_impl(
     # Find first bar where all required indicators are valid
     # Use required_indicators from YAML (not all expanded outputs) to avoid
     # issues with mutually exclusive outputs like PSAR long/short or SuperTrend long/short
-    required_indicators_by_role = getattr(config, 'required_indicators_by_role', {})
-    if required_indicators_by_role.get('exec'):
-        required_cols = list(required_indicators_by_role['exec'])
-    elif hasattr(config, 'feature_specs_by_role') and config.feature_specs_by_role:
+    # SystemConfig.required_indicators_by_role and feature_specs_by_role are always defined
+    if config.required_indicators_by_role.get('exec'):
+        required_cols = list(config.required_indicators_by_role['exec'])
+    elif config.feature_specs_by_role:
         # Fallback to expanding all feature_specs if no required_indicators declared
         exec_specs = config.feature_specs_by_role.get('exec', [])
         required_cols = get_required_indicator_columns_from_specs(exec_specs)
@@ -423,8 +425,8 @@ def prepare_multi_tf_frames_impl(
     warmup_multiplier = 1
 
     # max_lookback is the raw max warmup from specs (for indicator validation only)
-    specs_by_role = config.feature_specs_by_role if hasattr(config, 'feature_specs_by_role') else {}
-    exec_specs = specs_by_role.get('exec', [])
+    # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
+    exec_specs = config.feature_specs_by_role.get('exec', [])
     max_lookback = get_warmup_from_specs(exec_specs, warmup_multiplier=1) if exec_specs else 0
 
     # Compute data window using centralized utility
@@ -482,7 +484,8 @@ def prepare_multi_tf_frames_impl(
                 tf_role = role
                 break
 
-        if hasattr(config, 'feature_specs_by_role') and config.feature_specs_by_role:
+        # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
+        if config.feature_specs_by_role:
             # Try role-specific specs first, fallback to exec
             specs = config.feature_specs_by_role.get(tf_role) or \
                     config.feature_specs_by_role.get('exec', [])
@@ -514,10 +517,10 @@ def prepare_multi_tf_frames_impl(
     # Find first valid bar in LTF where all indicators are ready
     # Use required_indicators from YAML (not all expanded outputs) to avoid
     # issues with mutually exclusive outputs like PSAR long/short or SuperTrend long/short
-    required_indicators_by_role = getattr(config, 'required_indicators_by_role', {})
-    if required_indicators_by_role.get('exec'):
-        required_cols = list(required_indicators_by_role['exec'])
-    elif hasattr(config, 'feature_specs_by_role') and config.feature_specs_by_role:
+    # SystemConfig.required_indicators_by_role and feature_specs_by_role are always defined
+    if config.required_indicators_by_role.get('exec'):
+        required_cols = list(config.required_indicators_by_role['exec'])
+    elif config.feature_specs_by_role:
         # Fallback to expanding all feature_specs if no required_indicators declared
         exec_specs = config.feature_specs_by_role.get('exec', [])
         required_cols = get_required_indicator_columns_from_specs(exec_specs)
@@ -706,11 +709,11 @@ def get_tf_features_at_close_impl(
             break
 
     # Try to use required_indicators from YAML first (handles mutually exclusive outputs)
-    required_indicators_by_role = getattr(config, 'required_indicators_by_role', {})
+    # SystemConfig.required_indicators_by_role and feature_specs_by_role are always defined
     required_cols = []
-    if tf_role and required_indicators_by_role.get(tf_role):
-        required_cols = list(required_indicators_by_role[tf_role])
-    elif hasattr(config, 'feature_specs_by_role') and config.feature_specs_by_role:
+    if tf_role and config.required_indicators_by_role.get(tf_role):
+        required_cols = list(config.required_indicators_by_role[tf_role])
+    elif config.feature_specs_by_role:
         # Fallback to expanding all feature_specs if no required_indicators declared
         specs = config.feature_specs_by_role.get(tf_role) or \
                 config.feature_specs_by_role.get('exec', [])
