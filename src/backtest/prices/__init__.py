@@ -22,6 +22,7 @@ from src.backtest.prices.source import (
     DataNotAvailableError,
 )
 from src.backtest.prices.backtest_source import BacktestPriceSource
+from src.backtest.prices.demo_source import DemoPriceSource
 
 __all__ = [
     # Protocol (W3)
@@ -30,6 +31,7 @@ __all__ = [
     "DataNotAvailableError",
     # Implementations (W3)
     "BacktestPriceSource",
+    "DemoPriceSource",
     # Types
     "PriceRef",
     "HealthCheckResult",
