@@ -219,7 +219,259 @@ def eval_approx_eq(
     return EvalResult.success(result, lhs.path, str(rhs.value), "approx_eq")
 
 
+def eval_between(lhs: RefValue, low: float, high: float) -> EvalResult:
+    """
+    Evaluate low <= lhs <= high (numeric only).
+
+    Args:
+        lhs: Left-hand side value
+        low: Lower bound (inclusive)
+        high: Upper bound (inclusive)
+
+    Returns:
+        EvalResult with comparison outcome
+    """
+    op = "between"
+
+    if lhs.is_missing:
+        return EvalResult.failure(
+            ReasonCode.MISSING_LHS,
+            "LHS value is missing (None/NaN)",
+            lhs_path=lhs.path,
+            rhs_repr=f"[{low}, {high}]",
+            operator=op,
+        )
+
+    if not lhs.is_numeric:
+        return EvalResult.failure(
+            ReasonCode.TYPE_MISMATCH,
+            f"Operator 'between' requires numeric LHS, got {lhs.value_type.name}",
+            lhs_path=lhs.path,
+            rhs_repr=f"[{low}, {high}]",
+            operator=op,
+        )
+
+    result = low <= lhs.value <= high
+    return EvalResult.success(result, lhs.path, f"[{low}, {high}]", op)
+
+
+def eval_near_abs(lhs: RefValue, rhs: RefValue, tolerance: float) -> EvalResult:
+    """
+    Evaluate |lhs - rhs| <= tolerance (absolute tolerance).
+
+    Args:
+        lhs: Left-hand side value
+        rhs: Right-hand side value
+        tolerance: Absolute tolerance
+
+    Returns:
+        EvalResult with comparison outcome
+    """
+    op = "near_abs"
+
+    if tolerance < 0:
+        return EvalResult.failure(
+            ReasonCode.INVALID_TOLERANCE,
+            f"Tolerance must be non-negative, got {tolerance}",
+            lhs_path=lhs.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    check = _check_numeric(lhs, rhs, op)
+    if check:
+        return check
+
+    result = abs(lhs.value - rhs.value) <= tolerance
+    return EvalResult.success(result, lhs.path, f"{rhs.value} ± {tolerance}", op)
+
+
+def eval_near_pct(lhs: RefValue, rhs: RefValue, tolerance: float) -> EvalResult:
+    """
+    Evaluate |lhs - rhs| / |rhs| <= tolerance (percentage tolerance).
+
+    Args:
+        lhs: Left-hand side value
+        rhs: Right-hand side value
+        tolerance: Relative tolerance (0.01 = 1%)
+
+    Returns:
+        EvalResult with comparison outcome
+    """
+    op = "near_pct"
+
+    if tolerance < 0:
+        return EvalResult.failure(
+            ReasonCode.INVALID_TOLERANCE,
+            f"Tolerance must be non-negative, got {tolerance}",
+            lhs_path=lhs.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    check = _check_numeric(lhs, rhs, op)
+    if check:
+        return check
+
+    # Avoid division by zero
+    if rhs.value == 0:
+        # If both are zero, they're equal
+        result = lhs.value == 0
+    else:
+        result = abs(lhs.value - rhs.value) / abs(rhs.value) <= tolerance
+
+    pct_str = f"{tolerance * 100:.2f}%"
+    return EvalResult.success(result, lhs.path, f"{rhs.value} ± {pct_str}", op)
+
+
+def eval_in(lhs: RefValue, values: tuple) -> EvalResult:
+    """
+    Evaluate lhs in values (discrete types only - bool/int/enum/string).
+
+    Args:
+        lhs: Left-hand side value
+        values: Tuple of allowed values
+
+    Returns:
+        EvalResult with comparison outcome
+    """
+    op = "in"
+
+    if lhs.is_missing:
+        return EvalResult.failure(
+            ReasonCode.MISSING_LHS,
+            "LHS value is missing (None/NaN)",
+            lhs_path=lhs.path,
+            rhs_repr=str(list(values)),
+            operator=op,
+        )
+
+    # Reject float - same as eq
+    if lhs.value_type == ValueType.FLOAT:
+        return EvalResult.failure(
+            ReasonCode.FLOAT_EQUALITY,
+            "Float not allowed with 'in'. Use numeric range operators instead",
+            lhs_path=lhs.path,
+            rhs_repr=str(list(values)),
+            operator=op,
+        )
+
+    # Allow: bool, int, enum, string
+    allowed = (ValueType.BOOL, ValueType.INT, ValueType.ENUM, ValueType.STRING)
+    if lhs.value_type not in allowed:
+        return EvalResult.failure(
+            ReasonCode.TYPE_MISMATCH,
+            f"Operator 'in' requires bool/int/enum/string, got {lhs.value_type.name}",
+            lhs_path=lhs.path,
+            rhs_repr=str(list(values)),
+            operator=op,
+        )
+
+    result = lhs.value in values
+    return EvalResult.success(result, lhs.path, str(list(values)), op)
+
+
+def eval_cross_above(
+    lhs_curr: RefValue,
+    lhs_prev: RefValue,
+    rhs: RefValue,
+) -> EvalResult:
+    """
+    Evaluate cross_above: LHS crosses above RHS.
+
+    Definition: prev_lhs < rhs AND curr_lhs >= rhs
+
+    Args:
+        lhs_curr: Current bar LHS value
+        lhs_prev: Previous bar LHS value
+        rhs: Right-hand side value (threshold or indicator)
+
+    Returns:
+        EvalResult: True if cross above occurred
+    """
+    op = "cross_above"
+
+    # Check current bar values
+    check = _check_numeric(lhs_curr, rhs, op)
+    if check:
+        return check
+
+    # Check previous bar value
+    if lhs_prev.is_missing:
+        return EvalResult.failure(
+            ReasonCode.MISSING_PREV_VALUE,
+            "Previous bar value missing for cross_above",
+            lhs_path=lhs_curr.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    if not lhs_prev.is_numeric:
+        return EvalResult.failure(
+            ReasonCode.TYPE_MISMATCH,
+            f"Previous value must be numeric, got {lhs_prev.value_type.name}",
+            lhs_path=lhs_curr.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    # cross_above: prev < rhs AND curr >= rhs
+    result = lhs_prev.value < rhs.value and lhs_curr.value >= rhs.value
+    return EvalResult.success(result, lhs_curr.path, str(rhs.value), op)
+
+
+def eval_cross_below(
+    lhs_curr: RefValue,
+    lhs_prev: RefValue,
+    rhs: RefValue,
+) -> EvalResult:
+    """
+    Evaluate cross_below: LHS crosses below RHS.
+
+    Definition: prev_lhs > rhs AND curr_lhs <= rhs
+
+    Args:
+        lhs_curr: Current bar LHS value
+        lhs_prev: Previous bar LHS value
+        rhs: Right-hand side value (threshold or indicator)
+
+    Returns:
+        EvalResult: True if cross below occurred
+    """
+    op = "cross_below"
+
+    # Check current bar values
+    check = _check_numeric(lhs_curr, rhs, op)
+    if check:
+        return check
+
+    # Check previous bar value
+    if lhs_prev.is_missing:
+        return EvalResult.failure(
+            ReasonCode.MISSING_PREV_VALUE,
+            "Previous bar value missing for cross_below",
+            lhs_path=lhs_curr.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    if not lhs_prev.is_numeric:
+        return EvalResult.failure(
+            ReasonCode.TYPE_MISMATCH,
+            f"Previous value must be numeric, got {lhs_prev.value_type.name}",
+            lhs_path=lhs_curr.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    # cross_below: prev > rhs AND curr <= rhs
+    result = lhs_prev.value > rhs.value and lhs_curr.value <= rhs.value
+    return EvalResult.success(result, lhs_curr.path, str(rhs.value), op)
+
+
 # Operator dispatch table
+# Note: between, near_abs, near_pct, in, cross_above, cross_below
+# are handled separately due to different call signatures
 OPERATORS: dict[str, Callable] = {
     "gt": eval_gt,
     "lt": eval_lt,
@@ -230,6 +482,13 @@ OPERATORS: dict[str, Callable] = {
     "eq": eval_eq,
     "approx_eq": eval_approx_eq,
 }
+
+# Operators with special signatures (not in OPERATORS dispatch table)
+# - between: (lhs, low, high)
+# - near_abs: (lhs, rhs, tolerance)
+# - near_pct: (lhs, rhs, tolerance)
+# - in: (lhs, values)
+# - cross_above/cross_below: (lhs_curr, lhs_prev, rhs)
 
 
 def evaluate_condition(
@@ -256,6 +515,21 @@ def evaluate_condition(
     """
     # Normalize operator
     op = operator.lower()
+
+    # Handle crossover operators (need previous bar value)
+    if op in ("cross_above", "cross_below"):
+        # Resolve current values
+        lhs_curr = lhs_ref.resolve(snapshot)
+        rhs = rhs_ref.resolve(snapshot)
+
+        # Get previous bar LHS value using offset resolution
+        prev_value = snapshot.get_with_offset(lhs_ref.path, offset=1)
+        lhs_prev = RefValue.from_resolved(prev_value, f"{lhs_ref.path}[prev]")
+
+        if op == "cross_above":
+            return eval_cross_above(lhs_curr, lhs_prev, rhs)
+        else:
+            return eval_cross_below(lhs_curr, lhs_prev, rhs)
 
     # Check for unknown operator
     if op not in OPERATORS:

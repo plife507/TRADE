@@ -63,14 +63,14 @@ from .idea_card import (
     TakeProfitType,
     SizingRule,
     SizingModel,
-    SignalRules,
-    EntryRule,
-    ExitRule,
-    Condition,
-    RuleOperator,
-    TFConfig,
     load_idea_card,
     list_idea_cards,
+)
+from .feature_registry import (
+    Feature,
+    FeatureType,
+    FeatureRegistry,
+    InputSource,
 )
 from .execution_validation import (
     # Gate 8.0
@@ -133,7 +133,7 @@ __all__ = [
     # Simulated risk manager
     "SimulatedRiskManager",
     "SizingResult",
-    # IdeaCard (Phase 7)
+    # IdeaCard
     "IdeaCard",
     "PositionPolicy",
     "PositionMode",
@@ -144,14 +144,13 @@ __all__ = [
     "TakeProfitType",
     "SizingRule",
     "SizingModel",
-    "SignalRules",
-    "EntryRule",
-    "ExitRule",
-    "Condition",
-    "RuleOperator",
-    "TFConfig",
     "load_idea_card",
     "list_idea_cards",
+    # Feature Registry
+    "Feature",
+    "FeatureType",
+    "FeatureRegistry",
+    "InputSource",
     # Execution Validation (Phase 8)
     "compute_idea_card_hash",
     "validate_idea_card_contract",

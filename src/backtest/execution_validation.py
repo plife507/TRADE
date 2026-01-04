@@ -22,7 +22,8 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .idea_card import IdeaCard, Condition, EntryRule, ExitRule, TFConfig
+    from .idea_card import IdeaCard, TFConfig
+    from .rules.strategy_blocks import Block
 
 # Note: IndicatorType enum removed in Registry Consolidation Phase 2
 # All indicator type handling is now via string + registry validation
@@ -209,12 +210,12 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
                 ),
             ))
     
-    # Signal rules must exist for execution
-    if idea_card.signal_rules is None:
+    # Blocks must exist for signal generation
+    if not idea_card.blocks:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.WARNING,
-            code="NO_SIGNAL_RULES",
-            message="No signal_rules defined - IdeaCard cannot generate signals",
+            code="NO_BLOCKS",
+            message="No blocks defined - IdeaCard cannot generate signals",
         ))
     
     # Risk model should exist
@@ -252,81 +253,81 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
 
 @dataclass
 class FeatureReference:
-    """A reference to a feature/indicator in signal rules."""
+    """A reference to a feature/indicator in blocks."""
     key: str
-    tf_role: str  # "exec", "htf", "mtf"
-    location: str  # e.g., "entry_rules[0].conditions[1].indicator_key"
+    tf_role: str  # "exec" (blocks use feature_id which encodes TF)
+    location: str  # e.g., "blocks[0].cases[0].when"
 
 
 def extract_rule_feature_refs(idea_card: "IdeaCard") -> list[FeatureReference]:
     """
-    Extract all feature references from IdeaCard signal rules.
-    
-    Gate 8.1: Finds all indicator_key references in conditions.
-    
+    Extract all feature references from IdeaCard blocks.
+
+    Gate 8.1: Finds all feature_id references in block expressions.
+
     Args:
-        idea_card: IdeaCard with signal rules
-        
+        idea_card: IdeaCard with blocks
+
     Returns:
         List of FeatureReference objects
     """
+    from .rules.dsl_nodes import (
+        Expr, Cond, AllExpr, AnyExpr, NotExpr,
+        HoldsFor, OccurredWithin, CountTrue, FeatureRef,
+    )
+
     refs: list[FeatureReference] = []
-    
-    if not idea_card.signal_rules:
+
+    if not idea_card.blocks:
         return refs
-    
-    # Extract from entry rules
-    for i, rule in enumerate(idea_card.signal_rules.entry_rules):
-        for j, cond in enumerate(rule.conditions):
-            location = f"entry_rules[{i}].conditions[{j}].indicator_key"
+
+    def _extract_from_expr(expr: Expr, location: str) -> None:
+        """Recursively extract feature refs from expression."""
+        if isinstance(expr, Cond):
+            # Extract LHS feature
             refs.append(FeatureReference(
-                key=cond.indicator_key,
-                tf_role=cond.tf,
-                location=location,
+                key=expr.lhs.feature_id,
+                tf_role="exec",  # Blocks use feature_id which encodes TF
+                location=f"{location}.lhs",
             ))
-            
-            # If comparing to another indicator
-            if cond.is_indicator_comparison:
-                location = f"entry_rules[{i}].conditions[{j}].value"
+            # Extract RHS if it's a FeatureRef
+            if isinstance(expr.rhs, FeatureRef):
                 refs.append(FeatureReference(
-                    key=str(cond.value),
-                    tf_role=cond.tf,
-                    location=location,
+                    key=expr.rhs.feature_id,
+                    tf_role="exec",
+                    location=f"{location}.rhs",
                 ))
-    
-    # Extract from exit rules
-    for i, rule in enumerate(idea_card.signal_rules.exit_rules):
-        for j, cond in enumerate(rule.conditions):
-            location = f"exit_rules[{i}].conditions[{j}].indicator_key"
-            refs.append(FeatureReference(
-                key=cond.indicator_key,
-                tf_role=cond.tf,
-                location=location,
-            ))
-            
-            if cond.is_indicator_comparison:
-                location = f"exit_rules[{i}].conditions[{j}].value"
-                refs.append(FeatureReference(
-                    key=str(cond.value),
-                    tf_role=cond.tf,
-                    location=location,
-                ))
-    
+        elif isinstance(expr, AllExpr):
+            for i, child in enumerate(expr.children):
+                _extract_from_expr(child, f"{location}.all[{i}]")
+        elif isinstance(expr, AnyExpr):
+            for i, child in enumerate(expr.children):
+                _extract_from_expr(child, f"{location}.any[{i}]")
+        elif isinstance(expr, NotExpr):
+            _extract_from_expr(expr.child, f"{location}.not")
+        elif isinstance(expr, (HoldsFor, OccurredWithin, CountTrue)):
+            _extract_from_expr(expr.expr, f"{location}.window")
+
+    # Extract from all blocks
+    for i, block in enumerate(idea_card.blocks):
+        for j, case in enumerate(block.cases):
+            _extract_from_expr(case.when, f"blocks[{i}].cases[{j}].when")
+
     # Extract from risk model if ATR-based SL
-    if idea_card.risk_model and idea_card.risk_model.stop_loss.atr_key:
+    if idea_card.risk_model and idea_card.risk_model.stop_loss.atr_feature_id:
         refs.append(FeatureReference(
-            key=idea_card.risk_model.stop_loss.atr_key,
-            tf_role="exec",  # SL uses exec TF
-            location="risk_model.stop_loss.atr_key",
-        ))
-    
-    if idea_card.risk_model and idea_card.risk_model.take_profit.atr_key:
-        refs.append(FeatureReference(
-            key=idea_card.risk_model.take_profit.atr_key,
+            key=idea_card.risk_model.stop_loss.atr_feature_id,
             tf_role="exec",
-            location="risk_model.take_profit.atr_key",
+            location="risk_model.stop_loss.atr_feature_id",
         ))
-    
+
+    if idea_card.risk_model and idea_card.risk_model.take_profit.atr_feature_id:
+        refs.append(FeatureReference(
+            key=idea_card.risk_model.take_profit.atr_feature_id,
+            tf_role="exec",
+            location="risk_model.take_profit.atr_feature_id",
+        ))
+
     return refs
 
 
@@ -391,7 +392,11 @@ def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResu
     for ref in refs:
         role = ref.tf_role
         key = ref.key
-        
+
+        # Skip structure paths - validated separately by structure block validation
+        if key.startswith("structure."):
+            continue
+
         # Check TF role exists
         if role not in declared:
             if role not in idea_card.tf_configs:
@@ -476,6 +481,8 @@ def _compute_structure_warmup(idea_card: "IdeaCard") -> int:
     TREND: needs multiple swings to form a trend pattern.
            Uses conservative heuristic: (left + right) * 5
            This allows ~4 swing points to form before trend is valid.
+    DERIVED_ZONE: cascades from source structure warmup.
+           Uses source swing's left + right + buffer for pivot confirmation.
 
     Note: TREND warmup is computed independently even if a SWING block
     is declared, to ensure sufficient warmup regardless of block order.
@@ -488,7 +495,7 @@ def _compute_structure_warmup(idea_card: "IdeaCard") -> int:
     """
     max_structure_warmup = 0
 
-    # First pass: find SWING params for TREND warmup computation
+    # First pass: find SWING params for dependent structures (TREND, DERIVED_ZONE)
     swing_left = 5  # default
     swing_right = 5  # default
     for spec in idea_card.market_structure_blocks:
@@ -517,6 +524,11 @@ def _compute_structure_warmup(idea_card: "IdeaCard") -> int:
             # plus buffer for confirmation. Not a guarantee, but prevents
             # premature empty trend_state in early bars.
             struct_warmup = (swing_left + swing_right) * 5
+        elif spec.type.value == "derived_zone":
+            # DERIVED_ZONE cascades from source swing structure.
+            # Needs source to have confirmed at least 2 pivots for valid zone derivation.
+            # Warmup = source swing warmup + 1 bar for regen trigger.
+            struct_warmup = swing_left + swing_right + 1
 
         max_structure_warmup = max(max_structure_warmup, struct_warmup)
 
@@ -745,26 +757,24 @@ class EvaluationResult:
 
 class IdeaCardSignalEvaluator:
     """
-    Evaluates IdeaCard signal rules against snapshot state.
-    
+    Evaluates IdeaCard blocks against snapshot state.
+
     Gate 8.3: Interface for deterministic signal evaluation.
-    
+
     The evaluator:
-    1. Reads feature values from snapshot
-    2. Evaluates entry/exit conditions
+    1. Uses StrategyBlocksExecutor to evaluate blocks
+    2. Maps Intent to SignalDecision
     3. Computes SL/TP from risk model
-    4. Returns SignalDecision
-    
-    This is the interface - concrete implementation will be in Phase 8 execution.
+    4. Returns EvaluationResult
     """
-    
+
     def __init__(self, idea_card: "IdeaCard"):
         """
         Initialize evaluator with IdeaCard.
-        
+
         Args:
-            idea_card: The IdeaCard containing signal rules
-            
+            idea_card: The IdeaCard containing blocks
+
         Raises:
             ValueError: If IdeaCard is invalid
         """
@@ -773,10 +783,14 @@ class IdeaCardSignalEvaluator:
         if not validation.is_valid:
             errors = [i.message for i in validation.errors]
             raise ValueError(f"IdeaCard validation failed: {'; '.join(errors)}")
-        
+
         self.idea_card = idea_card
         self.warmup = compute_warmup_requirements(idea_card)
-    
+
+        # Initialize blocks executor
+        from .rules.strategy_blocks import StrategyBlocksExecutor
+        self._blocks_executor = StrategyBlocksExecutor()
+
     def evaluate(
         self,
         snapshot: "SnapshotView",
@@ -784,254 +798,123 @@ class IdeaCardSignalEvaluator:
         position_side: str | None = None,
     ) -> EvaluationResult:
         """
-        Evaluate signal rules against current snapshot.
-        
+        Evaluate blocks against current snapshot.
+
         Args:
             snapshot: Current RuntimeSnapshotView
             has_position: Whether there's an open position
             position_side: "long" or "short" if has_position
-            
+
         Returns:
             EvaluationResult with decision and details
         """
-        signal_rules = self.idea_card.signal_rules
-        if signal_rules is None:
-            return EvaluationResult(
-                decision=SignalDecision.NO_ACTION,
-                reason="No signal_rules defined in IdeaCard",
-            )
-        
-        # If no position, evaluate entry rules
-        if not has_position:
-            for i, rule in enumerate(signal_rules.entry_rules):
-                # Check position policy allows this direction
-                if rule.direction == "long" and not self.idea_card.position_policy.allows_long():
-                    continue
-                if rule.direction == "short" and not self.idea_card.position_policy.allows_short():
-                    continue
-                
-                # Evaluate all conditions (AND logic)
-                if self._evaluate_conditions(rule.conditions, snapshot):
-                    decision = SignalDecision.ENTRY_LONG if rule.direction == "long" else SignalDecision.ENTRY_SHORT
-                    
-                    # Compute SL/TP from risk model
-                    sl_price, tp_price = self._compute_sl_tp(snapshot, rule.direction)
-                    
-                    return EvaluationResult(
-                        decision=decision,
-                        reason=f"Entry rule {i} matched ({rule.direction})",
-                        matched_rule_index=i,
-                        stop_loss_price=sl_price,
-                        take_profit_price=tp_price,
-                    )
-        
-        # If has position, evaluate exit rules
-        else:
-            for i, rule in enumerate(signal_rules.exit_rules):
-                # Only evaluate exit rules for current position direction
-                if rule.direction != position_side:
-                    continue
-                
-                # Evaluate all conditions (AND logic)
-                if self._evaluate_conditions(rule.conditions, snapshot):
-                    return EvaluationResult(
-                        decision=SignalDecision.EXIT,
-                        reason=f"Exit rule {i} matched ({rule.exit_type})",
-                        matched_rule_index=i,
-                    )
-        
+        # Use blocks (primary DSL format)
+        if self.idea_card.blocks:
+            return self._evaluate_blocks(snapshot, has_position, position_side)
+
+        # No blocks defined
         return EvaluationResult(
             decision=SignalDecision.NO_ACTION,
-            reason="No rules matched",
+            reason="No blocks defined in IdeaCard",
         )
-    
-    def _get_feature_value(
+
+    def _evaluate_blocks(
         self,
-        indicator_key: str,
-        tf_role: str,
-        snapshot,  # RuntimeSnapshotView only (legacy RuntimeSnapshot not supported)
-        offset: int = 0,
+        snapshot: "SnapshotView",
+        has_position: bool,
+        position_side: str | None,
+    ) -> EvaluationResult:
+        """
+        Evaluate blocks using StrategyBlocksExecutor.
+
+        Args:
+            snapshot: Current RuntimeSnapshotView
+            has_position: Whether there's an open position
+            position_side: "long" or "short" if has_position
+
+        Returns:
+            EvaluationResult with decision and details
+        """
+        # Execute all blocks
+        intents = self._blocks_executor.execute(self.idea_card.blocks, snapshot)
+
+        # Map intents to decision
+        for intent in intents:
+            action = intent.action
+
+            # Entry signals (only when no position)
+            if action == "entry_long" and not has_position:
+                if not self.idea_card.position_policy.allows_long():
+                    continue
+                sl_price, tp_price = self._compute_sl_tp(snapshot, "long")
+                return EvaluationResult(
+                    decision=SignalDecision.ENTRY_LONG,
+                    reason=f"Block emitted entry_long",
+                    stop_loss_price=sl_price,
+                    take_profit_price=tp_price,
+                )
+
+            elif action == "entry_short" and not has_position:
+                if not self.idea_card.position_policy.allows_short():
+                    continue
+                sl_price, tp_price = self._compute_sl_tp(snapshot, "short")
+                return EvaluationResult(
+                    decision=SignalDecision.ENTRY_SHORT,
+                    reason=f"Block emitted entry_short",
+                    stop_loss_price=sl_price,
+                    take_profit_price=tp_price,
+                )
+
+            # Exit signals (only when has matching position)
+            elif action == "exit_long" and has_position and position_side == "long":
+                return EvaluationResult(
+                    decision=SignalDecision.EXIT,
+                    reason=f"Block emitted exit_long",
+                )
+
+            elif action == "exit_short" and has_position and position_side == "short":
+                return EvaluationResult(
+                    decision=SignalDecision.EXIT,
+                    reason=f"Block emitted exit_short",
+                )
+
+            elif action == "exit_all" and has_position:
+                return EvaluationResult(
+                    decision=SignalDecision.EXIT,
+                    reason=f"Block emitted exit_all",
+                )
+
+        return EvaluationResult(
+            decision=SignalDecision.NO_ACTION,
+            reason="No actionable intents from blocks",
+        )
+
+    def _get_snapshot_value(
+        self,
+        snapshot: "SnapshotView",
+        key: str,
+        tf_role: str = "exec",
     ) -> float | None:
         """
-        Get feature value from snapshot for given indicator and TF role.
-
-        REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
-        Uses unified get_feature() API for O(1) array access.
-
-        Stage 3: Also supports structure paths (structure.<block_key>.<field>).
-        Structure paths are exec-only and use snapshot.get() for resolution.
+        Get a value from snapshot using the appropriate method.
 
         Args:
-            indicator_key: Indicator key (e.g., "ema_20", "close") or
-                           structure path (e.g., "structure.ms_5m.swing_high_level")
-            tf_role: TF role ("exec", "htf", "mtf")
-            snapshot: RuntimeSnapshotView instance
-            offset: Bar offset (0 = current, 1 = previous)
-
-        Returns:
-            Feature value or None if not available
-
-        Raises:
-            TypeError: If snapshot does not implement SnapshotView contract
-        """
-        # Require RuntimeSnapshotView - fail fast if legacy snapshot passed
-        if not hasattr(snapshot, 'get_feature'):
-            raise TypeError(
-                f"IdeaCardSignalEvaluator requires RuntimeSnapshotView (with get_feature method). "
-                f"Got {type(snapshot).__name__}. Legacy RuntimeSnapshot is not supported."
-            )
-
-        # Stage 3: Handle structure paths (structure.<block_key>.<field>)
-        # Structures are exec-only, offset not yet supported for structures
-        if indicator_key.startswith("structure."):
-            if not hasattr(snapshot, 'get'):
-                raise TypeError(
-                    f"Structure access requires RuntimeSnapshotView with get() method. "
-                    f"Got {type(snapshot).__name__}."
-                )
-            # Structure access is exec-only in Stage 3
-            if tf_role != "exec":
-                raise ValueError(
-                    f"Structure access is exec-only in Stage 3. "
-                    f"Cannot access structure with tf_role='{tf_role}'."
-                )
-            # Offset not supported for structures in Stage 3
-            if offset != 0:
-                # Silently use current value - crossover detection on structures
-                # would require structure history, which is Stage 4+
-                pass
-            return snapshot.get(indicator_key)
-
-        # Use unified API for O(1) array access
-        return snapshot.get_feature(indicator_key, tf_role, offset)
-    
-    def _evaluate_conditions(
-        self,
-        conditions: tuple,
-        snapshot: "SnapshotView",
-    ) -> bool:
-        """
-        Evaluate all conditions (AND logic).
-
-        Stage 4b: Uses compiled refs for O(1) evaluation when available.
-        Falls back to legacy path-based evaluation if refs not compiled.
-
-        Args:
-            conditions: Tuple of Condition objects
             snapshot: Runtime snapshot
+            key: Feature key (e.g., "close", "atr_14")
+            tf_role: TF role
 
         Returns:
-            True if all conditions are met
+            Value or None if not available
         """
-        from .idea_card import RuleOperator
+        try:
+            if hasattr(snapshot, 'get_feature'):
+                return snapshot.get_feature(key, tf_role, 0)
+            elif hasattr(snapshot, 'get'):
+                return snapshot.get(key)
+            return None
+        except (KeyError, AttributeError):
+            return None
 
-        for cond in conditions:
-            # Stage 4b: Use compiled refs if available
-            if cond.has_compiled_refs():
-                if not self._evaluate_condition_compiled(cond, snapshot):
-                    return False
-                continue
-
-            # Legacy path: Get current value via string parsing
-            current_val = self._get_feature_value(cond.indicator_key, cond.tf, snapshot, offset=0)
-            if current_val is None:
-                return False  # Can't evaluate if value not available
-
-            # Get comparison value
-            if cond.is_indicator_comparison:
-                compare_val = self._get_feature_value(str(cond.value), cond.tf, snapshot, offset=0)
-                if compare_val is None:
-                    return False
-            else:
-                compare_val = float(cond.value)
-
-            # Evaluate based on operator
-            if cond.operator == RuleOperator.GT:
-                if not (current_val > compare_val):
-                    return False
-            elif cond.operator == RuleOperator.GTE:
-                if not (current_val >= compare_val):
-                    return False
-            elif cond.operator == RuleOperator.LT:
-                if not (current_val < compare_val):
-                    return False
-            elif cond.operator == RuleOperator.LTE:
-                if not (current_val <= compare_val):
-                    return False
-            elif cond.operator == RuleOperator.EQ:
-                if not (abs(current_val - compare_val) < 1e-9):
-                    return False
-            elif cond.operator == RuleOperator.CROSS_ABOVE:
-                # Current > compare AND previous <= compare
-                prev_val = self._get_feature_value(cond.indicator_key, cond.tf, snapshot, offset=cond.prev_offset)
-                if cond.is_indicator_comparison:
-                    prev_compare = self._get_feature_value(str(cond.value), cond.tf, snapshot, offset=cond.prev_offset)
-                else:
-                    prev_compare = compare_val
-
-                if prev_val is None or prev_compare is None:
-                    return False
-                if not (current_val > compare_val and prev_val <= prev_compare):
-                    return False
-            elif cond.operator == RuleOperator.CROSS_BELOW:
-                # Current < compare AND previous >= compare
-                prev_val = self._get_feature_value(cond.indicator_key, cond.tf, snapshot, offset=cond.prev_offset)
-                if cond.is_indicator_comparison:
-                    prev_compare = self._get_feature_value(str(cond.value), cond.tf, snapshot, offset=cond.prev_offset)
-                else:
-                    prev_compare = compare_val
-
-                if prev_val is None or prev_compare is None:
-                    return False
-                if not (current_val < compare_val and prev_val >= prev_compare):
-                    return False
-            else:
-                return False  # Unknown operator
-
-        return True
-
-    def _evaluate_condition_compiled(
-        self,
-        cond: "Condition",
-        snapshot: "SnapshotView",
-    ) -> bool:
-        """
-        Evaluate a single condition using compiled refs (Stage 4c).
-
-        Stage 4c: Compiled-only evaluation. No legacy fallback.
-        Unsupported operators are rejected at compile time.
-
-        Args:
-            cond: Condition with compiled lhs_ref and rhs_ref
-            snapshot: Runtime snapshot
-
-        Returns:
-            True if condition is met
-        """
-        from .rules.eval import evaluate_condition
-        from .rules.registry import get_canonical_operator, is_operator_supported
-
-        op_str = cond.operator.value
-        canonical_op = get_canonical_operator(op_str)
-
-        # Stage 4c: This should never happen if compilation was done correctly
-        # Unsupported operators are rejected at compile time
-        if canonical_op is None or not is_operator_supported(op_str):
-            # Log error but return False (never raise in hot loop)
-            # This is a bug - operator should have been rejected at compile time
-            return False
-
-        # Evaluate using compiled refs
-        result = evaluate_condition(
-            lhs_ref=cond.lhs_ref,
-            operator=canonical_op,
-            rhs_ref=cond.rhs_ref,
-            snapshot=snapshot,
-            tolerance=cond.tolerance,
-        )
-
-        return result.ok
-    
     def _compute_sl_tp(
         self,
         snapshot: "SnapshotView",
@@ -1039,30 +922,30 @@ class IdeaCardSignalEvaluator:
     ) -> tuple[float | None, float | None]:
         """
         Compute stop loss and take profit prices from risk model.
-        
+
         Args:
             snapshot: Runtime snapshot
             direction: "long" or "short"
-            
+
         Returns:
             Tuple of (stop_loss_price, take_profit_price)
         """
         risk_model = self.idea_card.risk_model
         if risk_model is None:
             return None, None
-        
+
         # Use close price as entry reference
-        entry_price = self._get_feature_value("close", "exec", snapshot, offset=0)
+        entry_price = self._get_snapshot_value(snapshot, "close", "exec")
         if entry_price is None:
             return None, None
-        
+
         sl_price = None
         sl_distance = None
-        
+
         # Compute stop loss
         sl_rule = risk_model.stop_loss
         if sl_rule.type.value == "atr_multiple":
-            atr = self._get_feature_value(sl_rule.atr_key, "exec", snapshot, offset=0)
+            atr = self._get_snapshot_value(snapshot, sl_rule.atr_key, "exec")
             if atr is not None:
                 sl_distance = atr * sl_rule.value
                 buffer = entry_price * (sl_rule.buffer_pct / 100.0)
@@ -1082,9 +965,9 @@ class IdeaCardSignalEvaluator:
                 sl_price = entry_price - sl_distance
             else:
                 sl_price = entry_price + sl_distance
-        
+
         tp_price = None
-        
+
         # Compute take profit
         tp_rule = risk_model.take_profit
         if tp_rule.type.value == "rr_ratio" and sl_distance is not None:
@@ -1094,7 +977,7 @@ class IdeaCardSignalEvaluator:
             else:
                 tp_price = entry_price - tp_distance
         elif tp_rule.type.value == "atr_multiple":
-            atr = self._get_feature_value(tp_rule.atr_key, "exec", snapshot, offset=0)
+            atr = self._get_snapshot_value(snapshot, tp_rule.atr_key, "exec")
             if atr is not None:
                 tp_distance = atr * tp_rule.value
                 if direction == "long":
@@ -1113,9 +996,9 @@ class IdeaCardSignalEvaluator:
                 tp_price = entry_price + tp_distance
             else:
                 tp_price = entry_price - tp_distance
-        
+
         return sl_price, tp_price
-    
+
     def check_warmup_satisfied(self, bar_counts: dict[str, int]) -> bool:
         """
         Check if warmup requirements are satisfied.

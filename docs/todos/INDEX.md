@@ -1,7 +1,7 @@
 # TODO Index
 
 Documentation index for work tracking in the TRADE project.
-**Last Updated**: 2026-01-03
+**Last Updated**: 2026-01-04
 
 ---
 
@@ -10,16 +10,8 @@ Documentation index for work tracking in the TRADE project.
 | Document | Description | Status |
 |----------|-------------|--------|
 | [TODO.md](TODO.md) | Current focus, next steps | Ready for new work |
-| [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker (9 open) | Active |
-
----
-
-## Reference (Complete - Read-Only)
-
-| Document | Description | Status |
-|----------|-------------|--------|
-| [INCREMENTAL_STATE_IMPLEMENTATION.md](INCREMENTAL_STATE_IMPLEMENTATION.md) | Incremental state architecture | COMPLETE 2026-01-03 |
-| [1M_EVAL_LOOP_REFACTOR.md](1M_EVAL_LOOP_REFACTOR.md) | 1m evaluation loop spec | COMPLETE 2026-01-02 |
+| [MEGA_FILE_REFACTOR.md](MEGA_FILE_REFACTOR.md) | Engine file size refactoring | Phases 1-3 COMPLETE, Phase 4 pending |
+| [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker (4 open) | Active |
 
 ---
 
@@ -29,7 +21,7 @@ Completed work is archived by date in `archived/`:
 
 | Folder | Period | Key Work |
 |--------|--------|----------|
-| `2026-01/` | Jan 2026 | Backtest analytics, array-backed loop, registry consolidation |
+| `2026-01/` | Jan 2026 | Incremental state, 1m eval loop spec, backtest analytics, registry consolidation |
 | `2026-01-01/` | Jan 1, 2026 | Market structure, IdeaCard value flow, metrics, legacy cleanup |
 | `2025-12-31/` | Dec 31, 2025 | Price feed 1m preflight |
 | `2025-12-30/` | Dec 30, 2025 | Engine modular refactor, backtester fixes |

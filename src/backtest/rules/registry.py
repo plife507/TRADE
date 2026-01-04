@@ -96,26 +96,20 @@ OPERATOR_REGISTRY = {
         needs_tolerance=True,
     ),
 
-    # Crossover operators - BANNED in Stage 4c
+    # Crossover operators - ENABLED
+    # cross_above: prev < rhs AND curr >= rhs
+    # cross_below: prev > rhs AND curr <= rhs
     "cross_above": OperatorSpec(
         name="cross_above",
-        supported=False,
+        supported=True,
         category=OpCategory.NUMERIC,
         needs_prev_value=True,
-        error_if_unsupported=(
-            "Operator 'cross_above' is not supported in compiled evaluation (Stage 4c). "
-            "Rewrite using derived indicator features (e.g., 'rsi_crossed_30') or wait for Stage 5."
-        ),
     ),
     "cross_below": OperatorSpec(
         name="cross_below",
-        supported=False,
+        supported=True,
         category=OpCategory.NUMERIC,
         needs_prev_value=True,
-        error_if_unsupported=(
-            "Operator 'cross_below' is not supported in compiled evaluation (Stage 4c). "
-            "Rewrite using derived indicator features (e.g., 'rsi_crossed_70') or wait for Stage 5."
-        ),
     ),
 }
 

@@ -19,6 +19,23 @@ This applies to ALL code changes in this repository.
 
 ---
 
+## PRIME DIRECTIVE: MODERN PYTHON ONLY
+
+**Use ONLY modern Python syntax and patterns. NO legacy compatibility.**
+
+- Type hints: `def foo(x: str) -> int:` (always)
+- f-strings: `f"{name}"` (never `%` or `.format()`)
+- Pathlib: `Path()` (never `os.path`)
+- Dataclasses: `@dataclass` for data containers
+- Match statements: `match x:` where cleaner than if/elif
+- Walrus operator: `:=` where it improves readability
+- Union types: `X | None` (never `Optional[X]`)
+- Dict/list syntax: `dict[str, int]` (never `Dict[str, int]`)
+
+Minimum Python version: **3.12**
+
+---
+
 ## PRIME DIRECTIVE: LF LINE ENDINGS ONLY
 
 **ALL files MUST use LF (`\n`) line endings. NEVER CRLF (`\r\n`).**
@@ -35,12 +52,35 @@ open(file, 'wb').write(content.encode('utf-8'))
 open(file, 'w').write(content)
 ```
 
-If Edit tool fails with "file unexpectedly modified", run:
-```bash
-git ls-files --eol | grep "w/crlf"  # Find CRLF files
-```
-
 This is enforced by `.gitattributes` (`* text=auto`, `*.py eol=lf`).
+
+### "File Unexpectedly Modified" Error (Windows Edit Tool Issue)
+
+**Why this happens**: The Edit tool compares file signatures between read and write. On Windows, several factors cause the signature to change unexpectedly:
+
+1. **Line ending normalization** - Git or editors may convert LF to CRLF between read and write
+2. **External tool modifications** - VS Code auto-formatters, linters (black, ruff), or git hooks may modify files
+3. **Stale reads** - If too much time passes between reading and editing, another process may modify the file
+
+**Troubleshooting steps (in order)**:
+
+1. **Read immediately before editing** - This resolves most cases. The file must be freshly read right before the Edit call.
+   ```
+   Read file → Edit file (no delay, no other operations between)
+   ```
+
+2. **Use smaller, more targeted edits** - Large edits spanning many lines are more likely to hit timing issues.
+
+3. **Check for CRLF contamination**:
+   ```bash
+   git ls-files --eol | grep "w/crlf"  # Find CRLF files in working tree
+   ```
+
+4. **For untracked files** - The issue is more persistent because git normalization does not apply. Options:
+   - Use the Write tool to overwrite the entire file
+   - Use bash: `cat > file.py << 'EOF' ... EOF`
+
+**Note**: If Edit fails repeatedly even with fresh reads, the file may be actively watched by an external tool (VS Code, file watcher, etc.). Close other editors or use Write/bash as fallback.
 
 ---
 
@@ -59,9 +99,15 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 **Engine Complete**:
 - 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
 - 42 indicators in INDICATOR_REGISTRY (single source of truth)
-- 5 structures in STRUCTURE_REGISTRY (swing, fibonacci, zone, trend, rolling_window)
+- 6 structures in STRUCTURE_REGISTRY (+derived_zone in Phase 12)
 - IdeaCard-first CLI with full menu coverage
-- 30 validation IdeaCards in `configs/idea_cards/_validation/`
+- 11 validation IdeaCards (V_100+ blocks format only)
+
+**Derived Zones - Phase 12 (2026-01-04)**:
+- K slots + aggregates pattern for derived zones from swing pivots
+- zone0_*/zone1_*/... slot fields with NONE/ACTIVE/BROKEN states
+- Aggregate fields: any_active, any_touched, active_count, closest_active_*
+- See: `docs/architecture/DERIVATION_RULE_INVESTIGATION.md`
 
 **Incremental State Architecture (2026-01-03)**:
 - O(1) hot loop access via MonotonicDeque/RingBuffer
@@ -139,6 +185,54 @@ TRADE/
 ├── CLAUDE.md                      # AI assistant guidance (this file)
 └── trade_cli.py                   # CLI entry point
 ```
+
+## Timeframe Definitions (Multi-Timeframe Trading)
+
+The engine supports multi-timeframe analysis with three timeframe roles. These terms are used consistently throughout the codebase.
+
+### Timeframe Roles
+
+| Role | Meaning | Typical Values | Purpose |
+|------|---------|----------------|---------|
+| **LTF** | Low Timeframe | 1m, 3m, 5m, 15m | Execution timing (entries/exits), micro-structure. Engine iterates bar-by-bar. |
+| **MTF** | Mid Timeframe | 30m, 1h, 2h, 4h | Trade bias + structure context for LTF execution. |
+| **HTF** | High Timeframe | 6h, 8h, 12h, 1D | Higher-level trend + major levels. **Capped at 1D** (no weekly/monthly). |
+| **exec** | Execution TF | = LTF | The timeframe at which trading decisions are evaluated. Defaults to LTF in IdeaCard. |
+
+### Hierarchy Rule
+
+```
+HTF >= MTF >= LTF (in minutes)
+```
+
+This is enforced by `validate_tf_mapping()` in `src/backtest/runtime/timeframe.py`.
+
+### Example Configuration
+
+```yaml
+# IdeaCard timeframes
+tf: "15m"           # exec/LTF - bar-by-bar stepping
+mtf: "1h"           # Optional intermediate TF
+htf: "4h"           # Optional higher TF for context
+```
+
+Internally maps to:
+```python
+tf_mapping = {
+    "ltf": "15m",   # = tf (exec)
+    "mtf": "1h",    # or defaults to ltf if not specified
+    "htf": "4h",    # or defaults to ltf if not specified
+}
+```
+
+### Forward-Fill Behavior
+
+Any timeframe **slower than exec** forward-fills its values until its bar closes:
+- **exec** (LTF): Updates every bar (no forward-fill)
+- **MTF**: Forward-fills until MTF bar closes
+- **HTF**: Forward-fills until HTF bar closes
+
+This ensures no-lookahead: values always reflect the last **CLOSED** bar, never partial/forming bars.
 
 ## Module Documentation
 
@@ -523,11 +617,19 @@ Location: `configs/idea_cards/_validation/`
 
 | Card | Purpose |
 |------|---------|
-| V_60_mark_price_basic.yml | mark_price accessible in conditions |
-| V_61_zone_touch.yml | mark_price vs indicator comparison (BBands) |
-| V_62_entry_timing.yml | MTF pattern (15m exec, 1h HTF) |
+| V_100_blocks_basic.yml | Basic blocks DSL validation |
+| V_101_all_any.yml | Nested all/any boolean logic |
+| V_102_between.yml | Between operator validation |
+| V_103_crossover.yml | cross_above/cross_below operators |
+| V_104_holds_for.yml | holds_for window operator |
+| V_105_occurred_within.yml | occurred_within window operator |
+| V_106_not_operator.yml | NOT boolean operator |
+| V_115_type_safe_operators.yml | Type-safe operator validation |
+| V_120_derived_zones_basic.yml | Derived zones K slots |
+| V_121_derived_zones_aggregates.yml | Derived zones aggregate fields |
+| V_122_derived_zones_empty_slots.yml | Empty slot guard patterns |
 
-**Total**: 3 validation cards for 1m eval loop
+**Total**: 11 validation cards (V_100+ blocks format only)
 
 ### Validation Tiers
 
@@ -544,7 +646,7 @@ TIER 4+: Integration Tests (DB required)
 **IdeaCard normalization is the critical gate.** It validates that:
 - Indicator keys match the registry
 - Params are valid for each indicator type
-- Signal rules reference declared features
+- Blocks DSL references declared features
 - Schema is correct
 
 As the engine evolves, normalization ensures IdeaCards stay in sync. When agents generate IdeaCards, they MUST run normalization for validation feedback.
@@ -560,8 +662,7 @@ As the engine evolves, normalization ensures IdeaCards stay in sync. When agents
 | Simulated exchange | `docs/architecture/SIMULATED_EXCHANGE.md` |
 | Artifact storage format | `docs/architecture/ARTIFACT_STORAGE_FORMAT.md` |
 | IdeaCard → Engine flow | `docs/architecture/IDEACARD_ENGINE_FLOW.md` |
-| Project rules | `docs/project/PROJECT_RULES.md` |
-| Project overview | `docs/project/PROJECT_OVERVIEW.md` |
+| IdeaCard Syntax | `docs/guides/IDEACARD_SYNTAX.md` |
 
 ### Vendor References (Read-Only Truth)
 

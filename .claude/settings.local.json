@@ -32,7 +32,23 @@
       "Bash(git -C \"c:/CODE/AI/TRADE\" status --short)",
       "Bash(git checkout:*)",
       "Bash(for f in docs/todos/MEGA_FILE_REFACTOR.md src/tools/data_tools.py src/tools/data_tools_common.py src/tools/data_tools_query.py src/tools/data_tools_status.py src/tools/data_tools_sync.py)",
-      "Bash(do python -c \"open\\(''$f'', ''rb''\\).read\\(\\).replace\\(b''\\\\r\\\\n'', b''\\\\n''\\)\")"
+      "Bash(do python -c \"open\\(''$f'', ''rb''\\).read\\(\\).replace\\(b''\\\\r\\\\n'', b''\\\\n''\\)\")",
+      "Bash(while read f)",
+      "Bash(do python -c \"import ast; ast.parse\\(open\\(''$f''\\).read\\(\\)\\)\")",
+      "Bash(echo:*)",
+      "Bash(copy:*)",
+      "Bash(cd:*)",
+      "Bash(del \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_70_swing_basic.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_71_fibonacci.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_72_zone_state.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_73_trend_direction.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_74_rolling_window.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_75_multi_tf.yml\")",
+      "Bash(del \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_80_ema_crossover.yml\")",
+      "Bash(del \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_90_single_tf.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_91_multi_tf_indicators.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_92_structures_basic.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_93_structures_multi_tf.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_94_mixed_full.yml\" \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\idea_cards\\\\_validation\\\\V_95_depends_on_chain.yml\")",
+      "Bash(for card in V_100 V_101 V_102 V_103 V_104 V_105 V_106 V_115 V_120 V_121 V_122)",
+      "Bash(do echo \"=== Validating $card ===\")",
+      "Bash(for file in ARCH_REVIEW_CORE_LIVE.md ARCH_REVIEW_DATA.md ARCH_REVIEW_ENGINE_CORE.md ARCH_REVIEW_FEATURES_INDICATORS.md ARCH_REVIEW_RULES_ARTIFACTS.md ARCH_REVIEW_RUNTIME.md ARCH_REVIEW_SIM_EXCHANGE.md ARCH_REVIEW_TOOLS_CLI_EXCHANGES.md ARCHITECTURE_DESIGN_REVIEW.md ARCHITECTURE_REVIEW_MASTER.md BACKTEST_ENGINE_ARCHITECTURE_REVIEW.md BACKTEST_ENGINE_CODE_REVIEW.md BACKTEST_SYSTEM_REVIEW.md BACKTEST_VISUALIZATION_SPEC.md BACKTESTER_FUNCTION_ISSUES_REVIEW.md BACKTESTER_FUNCTION_ISSUES_VALIDATION.md BACKTESTER_HASH_AND_MATH_VALIDATION.md CURRENT_STATE_TO_TARGET_STATE_GAP_REVIEW__BACKTEST_MTF_REGISTRY_PACKET.md EXCEPTION_HIERARCHY_REVIEW.md FIX4_HISTORY_UPDATE_DESIGN_REVIEW.md MARKET_STRUCTURE_INTEGRATION_REVIEW_FINDINGS.md MATH_PARITY_0_COLUMNS_EXPLANATION.md MATH_PARITY_BUG_FOUND.md UNIFIED_WARMUP_ARCHITECTURE_REVIEW.md)",
+      "Bash(do mv \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\reviews$file\" \"C:\\\\code\\\\ai\\\\trade\\\\docs\\\\_archived\\\\reviews__$file\")",
+      "Bash(git -C \"C:/code/ai/trade\" status --short)",
+      "Bash(git -C \"C:/code/ai/trade\" log --oneline -10)",
+      "Bash(git -C \"C:/code/ai/trade\" diff --stat)",
+      "Bash(git -C \"C:/code/ai/trade\" add -A)"
     ]
   }
 }

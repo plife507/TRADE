@@ -20,6 +20,19 @@ SNAPSHOT VIEW CONTRACT:
 - has_feature(indicator_key, tf_role): Check feature availability
 - exec_ctx, htf_ctx, mtf_ctx: TF contexts for direct access
 
+MULTI-TIMEFRAME FORWARD-FILL:
+All timeframes slower than exec forward-fill their values until their bar closes.
+- exec_ctx: Updates every bar (current exec index)
+- mtf_ctx: Forward-fills until MTF bar closes (same index across multiple exec bars)
+- htf_ctx: Forward-fills until HTF bar closes (same index across multiple exec bars)
+
+Example (exec=15m, HTF=1h):
+    exec bars:    |  1  |  2  |  3  |  4  |  5  |  ...
+    htf_ctx.idx:  [  0     0     0     0  ] [  1  ...
+                  ^--- same HTF index until 1h bar closes
+
+This ensures no-lookahead: HTF/MTF values reflect last CLOSED bar only.
+
 LEGACY REMOVED:
 - RuntimeSnapshot (materialized dataclass) is NOT supported
 - SnapshotBuilder is NOT used
@@ -40,6 +53,7 @@ from .types import ExchangeState, HistoryConfig, DEFAULT_HISTORY_CONFIG
 
 if TYPE_CHECKING:
     from ..incremental.state import MultiTFIncrementalState
+    from ..feature_registry import FeatureRegistry
 
 
 # Module-level cache for path tokenization (P2-07: avoid string split in hot loop)
@@ -165,6 +179,7 @@ class RuntimeSnapshotView:
         'tf_mapping', 'history_config',
         'history_ready', '_feeds', '_rollups',
         '_resolvers', '_incremental_state',
+        '_feature_registry', '_feature_id_cache',
     )
     
     def __init__(
@@ -180,6 +195,7 @@ class RuntimeSnapshotView:
         history_ready: bool = True,
         rollups: dict[str, float] | None = None,
         incremental_state: "MultiTFIncrementalState | None" = None,
+        feature_registry: "FeatureRegistry | None" = None,
     ):
         """
         Initialize snapshot view.
@@ -196,9 +212,12 @@ class RuntimeSnapshotView:
             history_ready: Whether history windows are filled
             rollups: Optional px.rollup.* values from 1m accumulation
             incremental_state: Optional MultiTFIncrementalState for structure access
+            feature_registry: Optional FeatureRegistry for feature_id-based access
         """
         self._feeds = feeds
         self._incremental_state = incremental_state
+        self._feature_registry = feature_registry
+        self._feature_id_cache: dict[str, tuple[str, str]] = {}  # feature_id -> (tf, key)
         self.symbol = feeds.exec_feed.symbol
         self.exec_tf = feeds.exec_feed.tf
         self.exec_idx = exec_idx
@@ -815,6 +834,152 @@ class RuntimeSnapshotView:
         return self._incremental_state.list_all_paths()
 
     # =========================================================================
+    # Feature Registry Access (Feature ID-based lookup)
+    # =========================================================================
+
+    def get_by_feature_id(
+        self,
+        feature_id: str,
+        offset: int = 0,
+        field: str = "value",
+    ) -> float | None:
+        """
+        Get feature value by Feature ID (from FeatureRegistry).
+
+        This is the primary access method for the new Feature Registry architecture.
+        Features are referenced by unique ID, and the registry provides TF mapping.
+
+        Args:
+            feature_id: Unique feature ID from IdeaCard features list
+            offset: Bar offset (0 = current, 1 = previous, etc.)
+            field: Output field for multi-output features (default: "value")
+
+        Returns:
+            Feature value or None if not available
+
+        Raises:
+            KeyError: If feature_id is not in registry
+        """
+        if self._feature_registry is None:
+            raise KeyError(
+                f"No FeatureRegistry available. Cannot resolve feature_id '{feature_id}'. "
+                f"Use IdeaCard with 'features:' section."
+            )
+
+        # Check cache first
+        cache_key = f"{feature_id}:{field}"
+        cached = self._feature_id_cache.get(cache_key)
+
+        if cached is None:
+            # Look up feature in registry
+            feature = self._feature_registry.get(feature_id)
+            tf = feature.tf
+
+            # Determine the indicator key
+            if feature.is_indicator:
+                # For indicators, the key is the feature ID or output_keys[0]
+                if feature.output_keys:
+                    # Multi-output indicator - use field to select output
+                    if field == "value":
+                        indicator_key = feature.output_keys[0]
+                    else:
+                        # Find matching output key
+                        for ok in feature.output_keys:
+                            if ok.endswith(f"_{field}") or ok == field:
+                                indicator_key = ok
+                                break
+                        else:
+                            indicator_key = feature.id
+                else:
+                    indicator_key = feature.id
+            else:
+                # For structures, the key is the structure type output
+                indicator_key = f"structure.{feature_id}.{field}"
+
+            cached = (tf, indicator_key)
+            self._feature_id_cache[cache_key] = cached
+
+        tf, indicator_key = cached
+
+        # Check if this is a structure access
+        if indicator_key.startswith("structure."):
+            # Use structure accessor
+            path = indicator_key[10:]  # Remove "structure." prefix
+            try:
+                return self.get_structure(path)
+            except KeyError:
+                return None
+
+        # Get the appropriate feed for this TF
+        feed = self._get_feed_for_tf(tf)
+        if feed is None:
+            return None
+
+        # Get the context index for this TF
+        ctx_idx = self._get_context_idx_for_tf(tf)
+        if ctx_idx is None:
+            return None
+
+        # Compute target index with offset
+        target_idx = ctx_idx - offset
+        if target_idx < 0 or target_idx >= feed.length:
+            return None
+
+        # Handle OHLCV keys
+        if indicator_key in ("open", "high", "low", "close", "volume"):
+            arr = getattr(feed, indicator_key)
+            return float(arr[target_idx])
+
+        # Handle indicator keys
+        if indicator_key not in feed.indicators:
+            return None
+        val = feed.indicators[indicator_key][target_idx]
+        if np.isnan(val):
+            return None
+        return float(val)
+
+    def _get_feed_for_tf(self, tf: str) -> FeedStore | None:
+        """Get the FeedStore for a specific timeframe."""
+        exec_tf = self._feeds.exec_feed.tf
+
+        if tf == exec_tf:
+            return self._feeds.exec_feed
+
+        # Check HTF
+        if self._feeds.htf_feed is not None and self._feeds.htf_feed.tf == tf:
+            return self._feeds.htf_feed
+
+        # Check MTF
+        if self._feeds.mtf_feed is not None and self._feeds.mtf_feed.tf == tf:
+            return self._feeds.mtf_feed
+
+        # TF not found in feeds
+        return None
+
+    def _get_context_idx_for_tf(self, tf: str) -> int | None:
+        """Get the current context index for a specific timeframe."""
+        exec_tf = self._feeds.exec_feed.tf
+
+        if tf == exec_tf:
+            return self.exec_ctx.current_idx
+
+        # Check HTF
+        if self._feeds.htf_feed is not None and self._feeds.htf_feed.tf == tf:
+            return self.htf_ctx.current_idx
+
+        # Check MTF
+        if self._feeds.mtf_feed is not None and self._feeds.mtf_feed.tf == tf:
+            return self.mtf_ctx.current_idx
+
+        return None
+
+    def has_feature_id(self, feature_id: str) -> bool:
+        """Check if a feature ID is available in the registry."""
+        if self._feature_registry is None:
+            return False
+        return self._feature_registry.has(feature_id)
+
+    # =========================================================================
     # Canonical Path Resolver (DSL Interface)
     # =========================================================================
     #
@@ -834,6 +999,7 @@ class RuntimeSnapshotView:
             "price": self._resolve_price_path,
             "indicator": self._resolve_indicator_path,
             "structure": self._resolve_structure_path,
+            "feature": self._resolve_feature_path,
         }
 
     def get(self, path: str) -> float | None:
@@ -874,6 +1040,45 @@ class RuntimeSnapshotView:
             )
 
         return resolver(parts[1:], path)
+
+    def get_with_offset(self, path: str, offset: int) -> float | None:
+        """
+        Resolve a path with a bar offset.
+
+        Used by crossover operators to get previous bar values.
+
+        Args:
+            path: Dot-separated path (e.g., "indicator.rsi" or "indicator.ema.htf")
+            offset: Bar offset (0 = current, 1 = previous bar, etc.)
+
+        Returns:
+            Value at path with offset, or None if not available
+
+        Note:
+            Only indicator paths support offset. Price/structure paths
+            return None for offset > 0.
+        """
+        parts = _PATH_CACHE.get(path)
+        if parts is None:
+            parts = path.split(".")
+            _PATH_CACHE[path] = parts
+
+        namespace = parts[0]
+
+        if namespace == "indicator":
+            # Extract indicator_key and tf_role from path
+            if len(parts) < 2:
+                return None
+            indicator_key = parts[1]
+            tf_role = parts[2] if len(parts) > 2 else "exec"
+            return self.get_feature(indicator_key, tf_role, offset)
+
+        # For non-indicator paths, offset only supported for offset=0
+        if offset > 0:
+            return None
+
+        # Fall back to regular resolution for current bar
+        return self.get(path)
 
     def _resolve_indicator_path(self, parts: list, full_path: str) -> float | None:
         """
@@ -1081,6 +1286,32 @@ class RuntimeSnapshotView:
         return self.exec_ctx.feed.get_structure_field(
             block_key, field_name, self.exec_idx
         )
+
+    def _resolve_feature_path(self, parts: list, full_path: str) -> float | None:
+        """
+        Resolve feature.* paths (Feature Registry architecture).
+
+        Supports:
+        - feature.<feature_id> -> feature value (primary output)
+        - feature.<feature_id>.<field> -> specific output field
+
+        Args:
+            parts: Path parts after "feature." (e.g., ["ema_fast"] or ["bbands_20", "upper"])
+            full_path: Full original path for error messages
+
+        Returns:
+            Feature value or None if NaN/unavailable
+        """
+        if len(parts) < 1:
+            raise ValueError(f"Invalid feature path: '{full_path}' (missing feature_id)")
+
+        feature_id = parts[0]
+        field = parts[1] if len(parts) > 1 else "value"
+
+        try:
+            return self.get_by_feature_id(feature_id, offset=0, field=field)
+        except KeyError as e:
+            raise ValueError(str(e))
 
     def has_path(self, path: str) -> bool:
         """

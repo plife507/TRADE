@@ -43,6 +43,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
 
+from src.backtest.rules.types import FeatureOutputType
+
 
 # =============================================================================
 # Warmup Formula Functions
@@ -503,6 +505,132 @@ COMMON_PARAMS = {
 
 
 # =============================================================================
+# Indicator Output Types
+# =============================================================================
+# Maps each indicator to its output types for compile-time type validation.
+# Used by DSL to validate operator compatibility (eq only for discrete types,
+# near_* only for numeric types).
+#
+# Single-output indicators: {"value": FeatureOutputType}
+# Multi-output indicators: {suffix: FeatureOutputType for each output}
+
+INDICATOR_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
+    # -------------------------------------------------------------------------
+    # Single-Output Indicators (all FLOAT)
+    # -------------------------------------------------------------------------
+    "ema": {"value": FeatureOutputType.FLOAT},
+    "sma": {"value": FeatureOutputType.FLOAT},
+    "rsi": {"value": FeatureOutputType.FLOAT},
+    "atr": {"value": FeatureOutputType.FLOAT},
+    "cci": {"value": FeatureOutputType.FLOAT},
+    "willr": {"value": FeatureOutputType.FLOAT},
+    "roc": {"value": FeatureOutputType.FLOAT},
+    "mom": {"value": FeatureOutputType.FLOAT},
+    "kama": {"value": FeatureOutputType.FLOAT},
+    "alma": {"value": FeatureOutputType.FLOAT},
+    "wma": {"value": FeatureOutputType.FLOAT},
+    "dema": {"value": FeatureOutputType.FLOAT},
+    "tema": {"value": FeatureOutputType.FLOAT},
+    "trima": {"value": FeatureOutputType.FLOAT},
+    "zlma": {"value": FeatureOutputType.FLOAT},
+    "natr": {"value": FeatureOutputType.FLOAT},
+    "mfi": {"value": FeatureOutputType.FLOAT},
+    "obv": {"value": FeatureOutputType.FLOAT},
+    "cmf": {"value": FeatureOutputType.FLOAT},
+    "cmo": {"value": FeatureOutputType.FLOAT},
+    "linreg": {"value": FeatureOutputType.FLOAT},
+    "midprice": {"value": FeatureOutputType.FLOAT},
+    "ohlc4": {"value": FeatureOutputType.FLOAT},
+    "trix": {"value": FeatureOutputType.FLOAT},
+    "uo": {"value": FeatureOutputType.FLOAT},
+    "ppo": {"value": FeatureOutputType.FLOAT},
+
+    # -------------------------------------------------------------------------
+    # Multi-Output Indicators
+    # -------------------------------------------------------------------------
+    "macd": {
+        "macd": FeatureOutputType.FLOAT,
+        "signal": FeatureOutputType.FLOAT,
+        "histogram": FeatureOutputType.FLOAT,
+    },
+    "bbands": {
+        "lower": FeatureOutputType.FLOAT,
+        "middle": FeatureOutputType.FLOAT,
+        "upper": FeatureOutputType.FLOAT,
+        "bandwidth": FeatureOutputType.FLOAT,
+        "percent_b": FeatureOutputType.FLOAT,
+    },
+    "stoch": {
+        "k": FeatureOutputType.FLOAT,
+        "d": FeatureOutputType.FLOAT,
+    },
+    "stochrsi": {
+        "k": FeatureOutputType.FLOAT,
+        "d": FeatureOutputType.FLOAT,
+    },
+    "adx": {
+        "adx": FeatureOutputType.FLOAT,
+        "dmp": FeatureOutputType.FLOAT,
+        "dmn": FeatureOutputType.FLOAT,
+        "adxr": FeatureOutputType.FLOAT,
+    },
+    "aroon": {
+        "up": FeatureOutputType.FLOAT,
+        "down": FeatureOutputType.FLOAT,
+        "osc": FeatureOutputType.FLOAT,
+    },
+    "kc": {
+        "lower": FeatureOutputType.FLOAT,
+        "basis": FeatureOutputType.FLOAT,
+        "upper": FeatureOutputType.FLOAT,
+    },
+    "donchian": {
+        "lower": FeatureOutputType.FLOAT,
+        "middle": FeatureOutputType.FLOAT,
+        "upper": FeatureOutputType.FLOAT,
+    },
+    "supertrend": {
+        "trend": FeatureOutputType.FLOAT,      # Price level
+        "direction": FeatureOutputType.INT,     # 1 (up) or -1 (down)
+        "long": FeatureOutputType.FLOAT,        # Long stop level (NaN when short)
+        "short": FeatureOutputType.FLOAT,       # Short stop level (NaN when long)
+    },
+    "psar": {
+        "long": FeatureOutputType.FLOAT,        # Long SAR level (NaN when short)
+        "short": FeatureOutputType.FLOAT,       # Short SAR level (NaN when long)
+        "af": FeatureOutputType.FLOAT,          # Acceleration factor
+        "reversal": FeatureOutputType.INT,      # 1 when reversal occurs, 0 otherwise
+    },
+    "squeeze": {
+        "sqz": FeatureOutputType.FLOAT,         # Momentum value
+        "on": FeatureOutputType.BOOL,           # Squeeze is on (inside KC)
+        "off": FeatureOutputType.BOOL,          # Squeeze is off (outside KC)
+        "no_sqz": FeatureOutputType.BOOL,       # No squeeze (neutral)
+    },
+    "vortex": {
+        "vip": FeatureOutputType.FLOAT,         # VI+
+        "vim": FeatureOutputType.FLOAT,         # VI-
+    },
+    "dm": {
+        "dmp": FeatureOutputType.FLOAT,         # DM+
+        "dmn": FeatureOutputType.FLOAT,         # DM-
+    },
+    "fisher": {
+        "fisher": FeatureOutputType.FLOAT,
+        "signal": FeatureOutputType.FLOAT,
+    },
+    "tsi": {
+        "tsi": FeatureOutputType.FLOAT,
+        "signal": FeatureOutputType.FLOAT,
+    },
+    "kvo": {
+        "kvo": FeatureOutputType.FLOAT,
+        "signal": FeatureOutputType.FLOAT,
+    },
+}
+
+
+# =============================================================================
 # Indicator Entry Schema
 # =============================================================================
 # Each indicator in SUPPORTED_INDICATORS may have the following fields:
@@ -861,6 +989,42 @@ class IndicatorRegistry:
         except ValueError:
             return None
 
+    def get_output_type(
+        self, indicator_type: str, field: str = "value"
+    ) -> FeatureOutputType:
+        """
+        Get the output type for an indicator field.
+
+        Used by DSL to validate operator compatibility at IdeaCard load time:
+        - eq operator only allowed on discrete types (INT, BOOL, ENUM)
+        - near_abs/near_pct only allowed on numeric types (FLOAT, INT)
+
+        Args:
+            indicator_type: Indicator type name (e.g., "ema", "macd")
+            field: Output field name. For single-output indicators, use "value".
+                   For multi-output indicators, use the suffix (e.g., "macd", "signal").
+
+        Returns:
+            FeatureOutputType for the field
+
+        Raises:
+            ValueError: If indicator not supported or field not found
+        """
+        name_lower = indicator_type.lower()
+        if name_lower not in INDICATOR_OUTPUT_TYPES:
+            raise ValueError(
+                f"No output types defined for indicator: '{indicator_type}'"
+            )
+
+        type_map = INDICATOR_OUTPUT_TYPES[name_lower]
+        if field not in type_map:
+            raise ValueError(
+                f"Unknown field '{field}' for indicator '{indicator_type}'. "
+                f"Available fields: {list(type_map.keys())}"
+            )
+
+        return type_map[field]
+
     def get_mutually_exclusive_groups(
         self, column_names: list[str]
     ) -> list[set[str]]:
@@ -994,3 +1158,23 @@ def get_warmup_bars(indicator_type: str, params: dict[str, Any]) -> int:
     """
     registry = get_registry()
     return registry.get_warmup_bars(indicator_type, params)
+
+
+def get_indicator_output_type(
+    indicator_type: str, field: str = "value"
+) -> FeatureOutputType:
+    """
+    Get the output type for an indicator field.
+
+    Used by DSL to validate operator compatibility at IdeaCard load time.
+
+    Args:
+        indicator_type: Indicator type name (e.g., "ema", "macd")
+        field: Output field name. For single-output indicators, use "value".
+               For multi-output indicators, use the suffix (e.g., "macd", "signal").
+
+    Returns:
+        FeatureOutputType for the field
+    """
+    registry = get_registry()
+    return registry.get_output_type(indicator_type, field)

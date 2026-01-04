@@ -1,0 +1,136 @@
+# V_115: Type-Safe Operators - Demonstrates correct operator usage per type
+#
+# Type compatibility rules enforced at IdeaCard load time:
+# - FLOAT types: Use gt/lt/gte/lte/between/near_abs/near_pct (NOT eq/in)
+# - INT types: Can use eq/in (e.g., trend.direction == 1)
+# - ENUM types: Use eq/in only (e.g., zone.state == "active")
+#
+# This card tests:
+# 1. near_pct for float comparison (price near fib level)
+# 2. eq for INT comparison (trend direction)
+# 3. between for range check (RSI between 40-60)
+
+id: V_115_type_safe_operators
+version: "3.0.0"
+name: "Validation 115: Type-Safe Operators"
+description: "Tests operator/type compatibility enforcement"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+symbol_universe:
+  - "BTCUSDT"
+
+execution_tf: "1h"
+
+features:
+  - id: "rsi"
+    tf: "1h"
+    type: indicator
+    indicator_type: rsi
+    params:
+      length: 14
+
+  - id: "ema_fast"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params:
+      length: 9
+
+  - id: "ema_slow"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params:
+      length: 21
+
+  - id: "trend"
+    tf: "1h"
+    type: structure
+    structure_type: trend
+    depends_on:
+      swing: swing
+    params: {}
+
+  - id: "swing"
+    tf: "1h"
+    type: structure
+    structure_type: swing
+    params:
+      left: 5
+      right: 5
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+blocks:
+  - id: entry
+    cases:
+      - when:
+          all:
+            # CORRECT: Using 'eq' with INT type (trend.direction is INT)
+            - lhs:
+                feature_id: "trend"
+                field: "direction"
+              op: eq
+              rhs: 1
+            # CORRECT: Using 'between' for FLOAT range check
+            - lhs:
+                feature_id: "rsi"
+              op: between
+              rhs:
+                low: 30
+                high: 50
+            # CORRECT: Using 'gt' for FLOAT comparison
+            - lhs:
+                feature_id: "ema_fast"
+              op: gt
+              rhs:
+                feature_id: "ema_slow"
+        emit:
+          - action: entry_long
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          any:
+            # CORRECT: Using 'eq' with INT type (negative direction)
+            - lhs:
+                feature_id: "trend"
+                field: "direction"
+              op: eq
+              rhs: -1
+            # CORRECT: Using 'gt' for FLOAT comparison
+            - lhs:
+                feature_id: "rsi"
+              op: gt
+              rhs: 70
+        emit:
+          - action: exit_long
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 5.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 2.0
+    max_leverage: 3.0

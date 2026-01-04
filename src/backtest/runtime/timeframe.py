@@ -4,6 +4,16 @@ Timeframe utilities for the backtest runtime.
 Provides timeframe duration calculation and validation.
 Uses TF_MINUTES from the data store as the source of truth.
 
+Timeframe Role Definitions:
+    LTF (Low Timeframe): 1m, 3m, 5m, 15m - Execution timing, micro-structure
+    MTF (Mid Timeframe): 30m, 1h, 2h, 4h - Trade bias + structure context
+    HTF (High Timeframe): 6h, 8h, 12h, 1D - Higher-level trend (capped at 1D)
+    exec: = LTF. The timeframe at which trading decisions are evaluated.
+
+Hierarchy Rule:
+    HTF >= MTF >= LTF (in minutes)
+    Enforced by validate_tf_mapping()
+
 Note: Close detection is data-driven (via close_ts maps), not modulo-based.
 This module only provides duration helpers for warmup/buffer calculations.
 """

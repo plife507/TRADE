@@ -34,11 +34,86 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from src.backtest.rules.types import FeatureOutputType
+
 if TYPE_CHECKING:
     from .base import BaseIncrementalDetector
 
 # Global registry: maps structure type name to detector class
 STRUCTURE_REGISTRY: dict[str, type["BaseIncrementalDetector"]] = {}
+
+
+# =============================================================================
+# Structure Output Types
+# =============================================================================
+# Maps each structure type to its output field types for compile-time validation.
+# Used by DSL to validate operator compatibility at IdeaCard load time:
+# - eq operator only allowed on discrete types (INT, BOOL, ENUM)
+# - near_abs/near_pct only allowed on numeric types (FLOAT, INT)
+
+STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
+    "swing": {
+        "high_level": FeatureOutputType.FLOAT,    # Price level of swing high
+        "high_idx": FeatureOutputType.INT,        # Bar index of swing high
+        "low_level": FeatureOutputType.FLOAT,     # Price level of swing low
+        "low_idx": FeatureOutputType.INT,         # Bar index of swing low
+        "version": FeatureOutputType.INT,         # Monotonic counter, increments on confirmed pivot
+        "last_confirmed_pivot_idx": FeatureOutputType.INT,   # Bar index of last confirmed pivot
+        "last_confirmed_pivot_type": FeatureOutputType.ENUM, # "high" or "low"
+    },
+    "trend": {
+        "direction": FeatureOutputType.INT,       # 1 (up), -1 (down), 0 (neutral)
+        "strength": FeatureOutputType.FLOAT,      # Trend strength metric
+        "bars_in_trend": FeatureOutputType.INT,   # Bars since trend started
+        "version": FeatureOutputType.INT,         # Monotonic counter, increments on direction change
+    },
+    "zone": {
+        "state": FeatureOutputType.ENUM,          # "active", "broken", "none"
+        "upper": FeatureOutputType.FLOAT,         # Upper boundary of zone
+        "lower": FeatureOutputType.FLOAT,         # Lower boundary of zone
+        "anchor_idx": FeatureOutputType.INT,      # Bar index where zone was formed
+        "version": FeatureOutputType.INT,         # Monotonic counter, increments on state change
+    },
+    "fibonacci": {
+        # Dynamic: level_0.236, level_0.382, level_0.5, level_0.618, level_0.786, etc.
+        # Lookup should match prefix "level_" and return FLOAT
+        "level_0.236": FeatureOutputType.FLOAT,
+        "level_0.382": FeatureOutputType.FLOAT,
+        "level_0.5": FeatureOutputType.FLOAT,
+        "level_0.618": FeatureOutputType.FLOAT,
+        "level_0.786": FeatureOutputType.FLOAT,
+        "level_1.0": FeatureOutputType.FLOAT,
+        "level_1.272": FeatureOutputType.FLOAT,
+        "level_1.618": FeatureOutputType.FLOAT,
+    },
+    "rolling_window": {
+        "value": FeatureOutputType.FLOAT,         # Rolling min/max value
+    },
+    "derived_zone": {
+        # Slot fields (zone{N}_*) - dynamic based on max_active param
+        # Use prefix matching in get_structure_output_type()
+        "zone0_lower": FeatureOutputType.FLOAT,
+        "zone0_upper": FeatureOutputType.FLOAT,
+        "zone0_state": FeatureOutputType.ENUM,
+        "zone0_anchor_idx": FeatureOutputType.INT,
+        "zone0_age_bars": FeatureOutputType.INT,
+        "zone0_touched_this_bar": FeatureOutputType.BOOL,
+        "zone0_touch_count": FeatureOutputType.INT,
+        "zone0_last_touch_age": FeatureOutputType.INT,
+        "zone0_inside": FeatureOutputType.BOOL,
+        "zone0_instance_id": FeatureOutputType.INT,
+        # Aggregate fields
+        "active_count": FeatureOutputType.INT,
+        "any_active": FeatureOutputType.BOOL,
+        "any_touched": FeatureOutputType.BOOL,
+        "any_inside": FeatureOutputType.BOOL,
+        "closest_active_lower": FeatureOutputType.FLOAT,
+        "closest_active_upper": FeatureOutputType.FLOAT,
+        "closest_active_idx": FeatureOutputType.INT,
+        "newest_active_idx": FeatureOutputType.INT,
+        "source_version": FeatureOutputType.INT,
+    },
+}
 
 
 def register_structure(name: str):
@@ -223,3 +298,61 @@ def unregister_structure(name: str) -> bool:
         del STRUCTURE_REGISTRY[name]
         return True
     return False
+
+
+def get_structure_output_type(
+    structure_type: str, field: str
+) -> FeatureOutputType:
+    """
+    Get the output type for a structure field.
+
+    Used by DSL to validate operator compatibility at IdeaCard load time:
+    - eq operator only allowed on discrete types (INT, BOOL, ENUM)
+    - near_abs/near_pct only allowed on numeric types (FLOAT, INT)
+
+    Args:
+        structure_type: Structure type name (e.g., "swing", "trend", "zone")
+        field: Output field name (e.g., "high_level", "direction", "state")
+
+    Returns:
+        FeatureOutputType for the field
+
+    Raises:
+        ValueError: If structure type not found or field not found
+    """
+    if structure_type not in STRUCTURE_OUTPUT_TYPES:
+        available = list(STRUCTURE_OUTPUT_TYPES.keys())
+        raise ValueError(
+            f"No output types defined for structure: '{structure_type}'. "
+            f"Available: {available}"
+        )
+
+    type_map = STRUCTURE_OUTPUT_TYPES[structure_type]
+
+    # Direct lookup first
+    if field in type_map:
+        return type_map[field]
+
+    # For fibonacci, handle dynamic level fields (level_0.XXX)
+    if structure_type == "fibonacci" and field.startswith("level_"):
+        # All fibonacci levels are FLOAT
+        return FeatureOutputType.FLOAT
+
+    # For derived_zone, handle dynamic slot fields (zone{N}_{field})
+    if structure_type == "derived_zone" and field.startswith("zone"):
+        # Parse zone{N}_{field} pattern
+        try:
+            underscore_idx = field.index("_")
+            slot_field = field[underscore_idx + 1:]
+
+            # Map slot field to type using zone0_ prefix
+            canonical_key = f"zone0_{slot_field}"
+            if canonical_key in type_map:
+                return type_map[canonical_key]
+        except (ValueError, KeyError):
+            pass  # Fall through to error
+
+    raise ValueError(
+        f"Unknown field '{field}' for structure '{structure_type}'. "
+        f"Available fields: {list(type_map.keys())}"
+    )

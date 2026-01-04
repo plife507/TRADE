@@ -94,6 +94,10 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
         self.strength: float = 0.0  # Placeholder for future enhancement
         self.bars_in_trend: int = 0
 
+        # Version tracking: increments when direction changes
+        # Used by derived structures to detect trend changes
+        self._version: int = 0
+
     def update(self, bar_idx: int, bar: "BarData") -> None:
         """
         Process one bar and update trend classification.
@@ -132,10 +136,11 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
         # Determine new direction based on most recent HH/HL pattern
         new_dir = self._classify_direction(self._last_hh, self._last_hl)
 
-        # If direction changed, reset bars_in_trend
+        # If direction changed, reset bars_in_trend and bump version
         if new_dir != self.direction:
             self.direction = new_dir
             self.bars_in_trend = 0
+            self._version += 1
         else:
             self.bars_in_trend += 1
 
@@ -177,7 +182,7 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
         Returns:
             ["direction", "strength", "bars_in_trend"]
         """
-        return ["direction", "strength", "bars_in_trend"]
+        return ["direction", "strength", "bars_in_trend", "version"]
 
     def get_value(self, key: str) -> int | float:
         """
@@ -198,5 +203,7 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
             return self.strength
         elif key == "bars_in_trend":
             return self.bars_in_trend
+        elif key == "version":
+            return self._version
         else:
             raise KeyError(key)

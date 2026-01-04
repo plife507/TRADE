@@ -161,6 +161,10 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
         # Track last swing index to detect new swings
         self._last_swing_idx: int = -1
 
+        # Version tracking: increments on state changes (new zone or broken)
+        # Used by derived structures to detect zone state changes
+        self._version: int = 0
+
     def update(self, bar_idx: int, bar: "BarData") -> None:
         """
         Process one bar and update zone state.
@@ -200,15 +204,18 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
             self.state = "active"
             self.anchor_idx = int(swing_idx)
             self._last_swing_idx = int(swing_idx)
+            self._version += 1
 
         # Check for zone break (only when active)
         if self.state == "active":
             if self.zone_type == "demand" and bar.close < self.lower:
                 # Demand zone broken: price closed below lower boundary
                 self.state = "broken"
+                self._version += 1
             elif self.zone_type == "supply" and bar.close > self.upper:
                 # Supply zone broken: price closed above upper boundary
                 self.state = "broken"
+                self._version += 1
 
     def get_output_keys(self) -> list[str]:
         """
@@ -217,7 +224,7 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
         Returns:
             List of output key names.
         """
-        return ["state", "upper", "lower", "anchor_idx"]
+        return ["state", "upper", "lower", "anchor_idx", "version"]
 
     def get_value(self, key: str) -> float | int | str:
         """
@@ -240,5 +247,7 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
             return self.lower
         elif key == "anchor_idx":
             return self.anchor_idx
+        elif key == "version":
+            return self._version
         else:
             raise KeyError(key)

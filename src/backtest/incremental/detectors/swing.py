@@ -127,6 +127,12 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
         self.low_level: float = float("nan")
         self.low_idx: int = -1
 
+        # Version tracking: increments exactly once per confirmed pivot
+        # Used by derived structures (e.g., derived_zone) to trigger regen
+        self._version: int = 0
+        self._last_confirmed_pivot_idx: int = -1
+        self._last_confirmed_pivot_type: str = ""  # "high" or "low"
+
     def update(self, bar_idx: int, bar: "BarData") -> None:
         """
         Process one bar, checking for confirmed swing pivots.
@@ -157,11 +163,19 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
         if self._is_swing_high(pivot_idx):
             self.high_level = self._high_buf[pivot_idx]
             self.high_idx = pivot_bar_idx
+            # Version bump: exactly once per confirmed pivot
+            self._version += 1
+            self._last_confirmed_pivot_idx = pivot_bar_idx
+            self._last_confirmed_pivot_type = "high"
 
         # Check for swing low
         if self._is_swing_low(pivot_idx):
             self.low_level = self._low_buf[pivot_idx]
             self.low_idx = pivot_bar_idx
+            # Version bump: exactly once per confirmed pivot
+            self._version += 1
+            self._last_confirmed_pivot_idx = pivot_bar_idx
+            self._last_confirmed_pivot_type = "low"
 
     def _is_swing_high(self, pivot_idx: int) -> bool:
         """
@@ -212,16 +226,24 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
         Return list of output keys.
 
         Returns:
-            ["high_level", "high_idx", "low_level", "low_idx"]
+            List including version tracking fields for derived structures.
         """
-        return ["high_level", "high_idx", "low_level", "low_idx"]
+        return [
+            "high_level",
+            "high_idx",
+            "low_level",
+            "low_idx",
+            "version",
+            "last_confirmed_pivot_idx",
+            "last_confirmed_pivot_type",
+        ]
 
-    def get_value(self, key: str) -> float | int:
+    def get_value(self, key: str) -> float | int | str:
         """
         Get output by key.
 
         Args:
-            key: One of "high_level", "high_idx", "low_level", "low_idx".
+            key: One of the output keys.
 
         Returns:
             The output value.
@@ -237,6 +259,12 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
             return self.low_level
         elif key == "low_idx":
             return self.low_idx
+        elif key == "version":
+            return self._version
+        elif key == "last_confirmed_pivot_idx":
+            return self._last_confirmed_pivot_idx
+        elif key == "last_confirmed_pivot_type":
+            return self._last_confirmed_pivot_type
         else:
             raise KeyError(key)
 

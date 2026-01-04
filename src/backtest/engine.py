@@ -146,6 +146,11 @@ from ..core.risk_manager import Signal
 from ..data.historical_data_store import get_historical_store, TF_MINUTES
 from ..utils.logger import get_logger
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .feature_registry import FeatureRegistry
+    from .idea_card import IdeaCard
+
 
 class BacktestEngine:
     """
@@ -174,6 +179,7 @@ class BacktestEngine:
         tf_mapping: dict[str, str] | None = None,
         on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
         record_state_tracking: bool = False,
+        feature_registry: "FeatureRegistry | None" = None,
     ):
         """
         Initialize backtest engine.
@@ -190,8 +196,14 @@ class BacktestEngine:
             record_state_tracking: Optional flag to enable Stage 7 state tracking.
                         When True, records signal/action/gate state per bar.
                         Record-only: does not affect trade outcomes.
+            feature_registry: Optional FeatureRegistry from IdeaCard.
+                        When set, provides unified access to features on any TF.
+                        Replaces role-based tf_mapping approach.
         """
         self.config = config
+
+        # Feature Registry (new architecture - replaces role-based TF mapping)
+        self._feature_registry = feature_registry or config.feature_registry
         self.window_name = window_name
         self.window = config.get_window(window_name)
         self.run_dir = Path(run_dir) if run_dir else None
@@ -277,7 +289,9 @@ class BacktestEngine:
         self._current_rollups: dict[str, float] = create_empty_rollup_dict()
         self._last_1m_idx: int = -1  # Track last processed 1m bar index
 
-        # Track HTF/MTF forward-fill indices for RuntimeSnapshotView
+        # Track forward-fill indices for all TFs slower than exec.
+        # These stay constant until their respective TF bar closes.
+        # See _update_htf_mtf_indices() for forward-fill semantics.
         self._current_htf_idx: int = 0
         self._current_mtf_idx: int = 0
         
@@ -360,39 +374,59 @@ class BacktestEngine:
 
     def _build_incremental_state(self) -> MultiTFIncrementalState | None:
         """
-        Build incremental state from IdeaCard structure specs.
+        Build incremental state from Feature Registry structure specs.
 
-        Phase 6: Creates MultiTFIncrementalState for O(1) structure access
+        Creates MultiTFIncrementalState for O(1) structure access
         in the hot loop. The incremental state is updated bar-by-bar.
 
+        Uses Feature Registry to get structure features and groups them by TF.
+
         Returns:
-            MultiTFIncrementalState if IdeaCard has structure specs, None otherwise.
+            MultiTFIncrementalState if registry has structures, None otherwise.
 
         Raises:
             ValueError: If structure specs are invalid (fail-loud with fix suggestions).
         """
-        if self._idea_card is None:
+        # Prefer Feature Registry if available
+        registry = self._feature_registry
+        if registry is None and self._idea_card is not None:
+            registry = self._idea_card.feature_registry
+
+        if registry is None:
             return None
 
-        # Check if IdeaCard has any structure specs
-        has_exec_specs = bool(self._idea_card.structure_specs_exec)
-        has_htf_specs = bool(self._idea_card.structure_specs_htf)
-
-        if not has_exec_specs and not has_htf_specs:
-            self.logger.debug("No structure specs in IdeaCard, skipping incremental state build")
+        # Get all structure features from registry
+        structures = registry.get_structures()
+        if not structures:
+            self.logger.debug("No structure features in registry, skipping incremental state build")
             return None
 
-        # Convert IncrementalStructureSpec tuples to list of dicts
-        exec_specs = [spec.to_dict() for spec in self._idea_card.structure_specs_exec]
+        exec_tf = registry.execution_tf
 
-        # Build HTF configs: {timeframe: [spec_dicts]}
+        # Group structures by TF
+        exec_specs: list[dict] = []
         htf_configs: dict[str, list[dict]] = {}
-        for tf, specs in self._idea_card.structure_specs_htf.items():
-            htf_configs[tf] = [spec.to_dict() for spec in specs]
+
+        for feature in structures:
+            spec_dict = {
+                "type": feature.structure_type,
+                "key": feature.id,
+                "params": dict(feature.params) if feature.params else {},
+            }
+            if feature.depends_on:
+                spec_dict["depends_on"] = dict(feature.depends_on)
+
+            if feature.tf == exec_tf:
+                exec_specs.append(spec_dict)
+            else:
+                # HTF structure
+                if feature.tf not in htf_configs:
+                    htf_configs[feature.tf] = []
+                htf_configs[feature.tf].append(spec_dict)
 
         # Create incremental state
         state = MultiTFIncrementalState(
-            exec_tf=self.config.tf,
+            exec_tf=exec_tf,
             exec_specs=exec_specs,
             htf_configs=htf_configs if htf_configs else None,
         )
@@ -591,12 +625,13 @@ class BacktestEngine:
             self.logger.warning("Cannot build structures: no exec feed")
             return
 
-        # Phase 7: Check if IdeaCard uses the new incremental structures system
+        # Check if IdeaCard uses the Feature Registry with structures
         # If so, skip the deprecated batch build - incremental state is built in run()
-        has_incremental_structures = (
-            bool(self._idea_card.structure_specs_exec) or
-            bool(self._idea_card.structure_specs_htf)
-        )
+        registry = self._feature_registry
+        if registry is None and self._idea_card is not None:
+            registry = self._idea_card.feature_registry
+
+        has_incremental_structures = registry is not None and len(registry.get_structures()) > 0
 
         if has_incremental_structures:
             self.logger.debug(
@@ -1429,16 +1464,23 @@ class BacktestEngine:
         """
         Update HTF/MTF forward-fill indices for RuntimeSnapshotView.
 
-        Uses O(1) ts_close_ms_to_idx mapping from FeedStore.
-        Called at each exec bar close to update forward-filled indices.
+        Forward-fill principle: Any TF slower than exec keeps its index constant
+        until its bar closes. This ensures no-lookahead (values reflect last
+        CLOSED bar only, never partial/forming bars).
 
-        Delegates to engine_snapshot.update_htf_mtf_indices_impl().
+        Example (exec=15m, HTF=1h):
+            exec bars:      |  1  |  2  |  3  |  4  |  5  |  ...
+            htf_ctx.idx:    [  0     0     0     0  ] [  1  ...
+            htf_updated:       F     F     F     T      F  ...
+
+        Uses O(1) ts_close_ms_to_idx mapping from FeedStore.
+        Called at each exec bar close. Index only changes when TF bar closes.
 
         Args:
             exec_ts_close: Current exec bar's ts_close
 
         Returns:
-            Tuple of (htf_updated, mtf_updated) booleans
+            Tuple of (htf_updated, mtf_updated) booleans indicating if index changed
         """
         htf_updated, mtf_updated, new_htf_idx, new_mtf_idx = update_htf_mtf_indices_impl(
             exec_ts_close=exec_ts_close,

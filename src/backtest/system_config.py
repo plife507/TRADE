@@ -31,8 +31,13 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any
 
+from typing import TYPE_CHECKING
+
 from .types import WindowConfig
 from .window_presets import get_window_preset, has_preset
+
+if TYPE_CHECKING:
+    from .feature_registry import FeatureRegistry
 
 
 # Path to system configs directory
@@ -535,7 +540,19 @@ class SystemConfig:
     # Used by find_first_valid_bar to avoid requiring mutually exclusive outputs
     # (e.g., PSAR long/short or SuperTrend long/short)
     required_indicators_by_role: dict[str, list[str]] = field(default_factory=dict)
-    
+
+    # ==========================================================================
+    # Feature Registry Architecture (replaces role-based approach)
+    # ==========================================================================
+
+    # FeatureRegistry from IdeaCard (unified indicator/structure access)
+    # When set, this is the canonical source for features, warmup, and TFs
+    feature_registry: "FeatureRegistry | None" = None
+
+    # Warmup bars keyed by TF string (e.g., {"15m": 50, "1h": 200})
+    # Used with Feature Registry architecture - replaces warmup_bars_by_role
+    warmup_by_tf: dict[str, int] = field(default_factory=dict)
+
     # Computed after load (not from YAML)
     _system_uid: str = field(default="", repr=False)
     

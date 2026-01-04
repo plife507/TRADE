@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .engine import BacktestEngine
     from .types import BacktestResult
     from .idea_card import IdeaCard
+    from .feature_registry import FeatureRegistry
     from .runtime.types import RuntimeSnapshot
     from .runtime.snapshot_view import RuntimeSnapshotView
     from ..core.risk_manager import Signal
@@ -52,16 +53,32 @@ def run_backtest(
 
 
 # =============================================================================
-# IdeaCard-Native Engine Factory (P1.2 Refactor)
+# IdeaCard-Native Engine Factory (Feature Registry Architecture)
 # =============================================================================
-# Replaces create_default_engine_factory and IdeaCardEngineWrapper in runner.py
+# Uses the new FeatureRegistry for unified indicator/structure access on any TF.
+
+
+def _compute_warmup_by_tf(registry: "FeatureRegistry") -> dict[str, int]:
+    """
+    Compute warmup bars required for each timeframe.
+
+    Args:
+        registry: FeatureRegistry with all features.
+
+    Returns:
+        Dict mapping TF string to warmup bars needed.
+    """
+    warmup_by_tf = {}
+    for tf in registry.get_all_tfs():
+        warmup_by_tf[tf] = registry.get_warmup_for_tf(tf)
+    return warmup_by_tf
+
 
 def create_engine_from_idea_card(
     idea_card: "IdeaCard",
     window_start: datetime,
     window_end: datetime,
-    warmup_by_role: dict[str, int],
-    delay_by_role: dict[str, int] | None = None,
+    warmup_by_tf: dict[str, int] | None = None,
     run_dir: Path | None = None,
     on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
 ) -> "BacktestEngine":
@@ -69,14 +86,13 @@ def create_engine_from_idea_card(
     Create a BacktestEngine from an IdeaCard.
 
     This is the canonical factory for IdeaCard-native backtest execution.
-    Replaces the legacy adapter pattern (IdeaCardEngineWrapper).
+    Uses the FeatureRegistry for unified indicator/structure access on any TF.
 
     Args:
         idea_card: Source IdeaCard with all strategy/feature specs
         window_start: Backtest window start
         window_end: Backtest window end
-        warmup_by_role: Warmup bars per TF role (from Preflight)
-        delay_by_role: Delay bars per TF role (from Preflight)
+        warmup_by_tf: Warmup bars per TF (auto-computed from registry if None)
         run_dir: Optional output directory for artifacts
         on_snapshot: Optional snapshot callback for auditing
 
@@ -103,6 +119,9 @@ def create_engine_from_idea_card(
 
     # Get first symbol
     symbol = idea_card.symbol_universe[0] if idea_card.symbol_universe else "BTCUSDT"
+
+    # Get feature registry
+    registry = idea_card.feature_registry
 
     # Extract capital/account params from IdeaCard (REQUIRED - no defaults)
     initial_equity = idea_card.account.starting_equity_usdt
@@ -131,7 +150,7 @@ def create_engine_from_idea_card(
     if idea_card.account.slippage_bps is not None:
         slippage_bps = idea_card.account.slippage_bps
 
-    # Extract maker fee from IdeaCard (fee_model guaranteed to exist from validation above)
+    # Extract maker fee from IdeaCard
     maker_fee_bps = idea_card.account.fee_model.maker_bps
 
     # Extract risk params from IdeaCard risk_model
@@ -158,39 +177,23 @@ def create_engine_from_idea_card(
         maintenance_margin_rate=maintenance_margin_rate,
     )
 
-    # Extract feature specs from IdeaCard
-    feature_specs_by_role = {}
-    for role, tf_config in idea_card.tf_configs.items():
-        feature_specs_by_role[role] = list(tf_config.feature_specs)
-
-    # Delay defaults to empty dict (all zeros)
-    delay_bars_by_role = delay_by_role if delay_by_role is not None else {}
+    # Compute warmup from registry if not provided
+    if warmup_by_tf is None:
+        warmup_by_tf = _compute_warmup_by_tf(registry)
 
     # Auto-detect if crossover operators require history
-    requires_history = False
-    for rule in idea_card.signal_rules.entry_rules:
-        for cond in rule.conditions:
-            if cond.operator.value in ("cross_above", "cross_below"):
-                requires_history = True
-                break
-    for rule in idea_card.signal_rules.exit_rules:
-        for cond in rule.conditions:
-            if cond.operator.value in ("cross_above", "cross_below"):
-                requires_history = True
-                break
+    requires_history = _blocks_require_history(idea_card.blocks)
 
     # Build params with history config if crossovers are used
-    strategy_params = {}
+    strategy_params: dict[str, Any] = {}
     if requires_history:
-        strategy_params["history"] = {
-            "bars_exec_count": 2,
-            "features_exec_count": 2,
-            "features_htf_count": 2,
-            "features_mtf_count": 2,
-        }
+        # Request 2 bars of history for each TF with features
+        history_config: dict[str, int] = {}
+        for tf in registry.get_all_tfs():
+            history_config[f"features_{tf}_count"] = 2
+        strategy_params["history"] = history_config
 
-    # Pass execution params from IdeaCard to engine (fixes value flow bug)
-    # These flow to ExecutionConfig in engine.py
+    # Pass execution params from IdeaCard to engine
     strategy_params["slippage_bps"] = slippage_bps
     strategy_params["taker_fee_bps"] = taker_fee_rate * 10000  # Convert rate to bps
     strategy_params["maker_fee_bps"] = maker_fee_bps
@@ -200,7 +203,7 @@ def create_engine_from_idea_card(
         strategy_instance_id="idea_card_strategy",
         strategy_id=idea_card.id,
         strategy_version=idea_card.version,
-        inputs=StrategyInstanceInputs(symbol=symbol, tf=idea_card.exec_tf),
+        inputs=StrategyInstanceInputs(symbol=symbol, tf=idea_card.execution_tf),
         params=strategy_params,
     )
 
@@ -208,17 +211,11 @@ def create_engine_from_idea_card(
     window_start_naive = window_start.replace(tzinfo=None) if window_start.tzinfo else window_start
     window_end_naive = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
 
-    # Extract required indicators from IdeaCard tf_configs
-    required_indicators_by_role: dict[str, list[str]] = {}
-    for role, tf_config in idea_card.tf_configs.items():
-        if tf_config.required_indicators:
-            required_indicators_by_role[role] = list(tf_config.required_indicators)
-
     # Create SystemConfig
     system_config = SystemConfig(
         system_id=idea_card.id,
         symbol=symbol,
-        tf=idea_card.exec_tf,
+        tf=idea_card.execution_tf,
         strategies=[strategy_instance],
         primary_strategy_instance_id="idea_card_strategy",
         windows={
@@ -229,25 +226,17 @@ def create_engine_from_idea_card(
         },
         risk_profile=risk_profile,
         risk_mode="none",
-        feature_specs_by_role=feature_specs_by_role,
-        warmup_bars_by_role=warmup_by_role,
-        delay_bars_by_role=delay_bars_by_role,
-        required_indicators_by_role=required_indicators_by_role,
+        # New fields for Feature Registry architecture
+        feature_registry=registry,
+        warmup_by_tf=warmup_by_tf,
     )
-
-    # Build tf_mapping from IdeaCard
-    tf_mapping = {
-        "ltf": idea_card.exec_tf,
-        "mtf": idea_card.mtf or idea_card.exec_tf,
-        "htf": idea_card.htf or idea_card.exec_tf,
-    }
 
     # Create engine
     engine = BacktestEngine(
         config=system_config,
         window_name="run",
         run_dir=run_dir,
-        tf_mapping=tf_mapping,
+        feature_registry=registry,
         on_snapshot=on_snapshot,
     )
 
@@ -257,50 +246,41 @@ def create_engine_from_idea_card(
     return engine
 
 
-def _verify_all_conditions_compiled(idea_card: "IdeaCard") -> None:
+def _blocks_require_history(blocks: list) -> bool:
     """
-    Verify all conditions in IdeaCard have compiled references.
-
-    Fix 3.1 (P1-03): Makes compilation mandatory at engine init.
-    This ensures no uncompiled conditions reach the hot loop.
+    Check if any blocks use crossover operators that require history.
 
     Args:
-        idea_card: The compiled IdeaCard to verify
+        blocks: List of Block objects
 
-    Raises:
-        RuntimeError: If any condition is missing compiled refs
+    Returns:
+        True if crossover operators are used
     """
-    if idea_card.signal_rules is None:
-        return  # Nothing to verify
+    from .rules.dsl_nodes import (
+        Expr, Cond, AllExpr, AnyExpr, NotExpr,
+        HoldsFor, OccurredWithin, CountTrue,
+    )
 
-    uncompiled = []
+    def _check_expr(expr: Expr) -> bool:
+        """Recursively check expression for crossover operators."""
+        if isinstance(expr, Cond):
+            return expr.op in ("cross_above", "cross_below")
+        elif isinstance(expr, AllExpr):
+            return any(_check_expr(c) for c in expr.children)
+        elif isinstance(expr, AnyExpr):
+            return any(_check_expr(c) for c in expr.children)
+        elif isinstance(expr, NotExpr):
+            return _check_expr(expr.child)
+        elif isinstance(expr, (HoldsFor, OccurredWithin, CountTrue)):
+            return _check_expr(expr.expr)
+        return False
 
-    # Check entry rules
-    for i, rule in enumerate(idea_card.signal_rules.entry_rules):
-        for j, cond in enumerate(rule.conditions):
-            if not cond.has_compiled_refs():
-                uncompiled.append(
-                    f"entry_rules[{i}].conditions[{j}]: "
-                    f"{cond.indicator_key} {cond.operator.value} {cond.value}"
-                )
+    for block in blocks:
+        for case in block.cases:
+            if _check_expr(case.when):
+                return True
 
-    # Check exit rules
-    for i, rule in enumerate(idea_card.signal_rules.exit_rules):
-        for j, cond in enumerate(rule.conditions):
-            if not cond.has_compiled_refs():
-                uncompiled.append(
-                    f"exit_rules[{i}].conditions[{j}]: "
-                    f"{cond.indicator_key} {cond.operator.value} {cond.value}"
-                )
-
-    if uncompiled:
-        raise RuntimeError(
-            f"Conditions must be compiled before execution. "
-            f"Found {len(uncompiled)} uncompiled condition(s):\n  - "
-            + "\n  - ".join(uncompiled[:5])
-            + (f"\n  ... and {len(uncompiled) - 5} more" if len(uncompiled) > 5 else "")
-            + "\n\nFix: Ensure compile_idea_card() is called before run_engine_with_idea_card()."
-        )
+    return False
 
 
 def run_engine_with_idea_card(
@@ -310,8 +290,7 @@ def run_engine_with_idea_card(
     """
     Run a BacktestEngine using IdeaCard signal evaluation.
 
-    This replaces IdeaCardEngineWrapper.run() and consolidates signal
-    evaluation into the engine execution flow.
+    This consolidates signal evaluation into the engine execution flow.
 
     Args:
         engine: BacktestEngine (created via create_engine_from_idea_card)
@@ -325,20 +304,16 @@ def run_engine_with_idea_card(
         SignalDecision,
         compute_idea_card_hash,
     )
-    from .idea_card_yaml_builder import compile_idea_card
     from ..core.risk_manager import Signal
 
     # Import here to avoid circular import
     IdeaCardBacktestResult = _get_idea_card_result_class()
 
-    # Stage 4b: Compile condition refs for O(1) hot-loop evaluation
-    compiled_idea_card = compile_idea_card(idea_card)
+    # Verify all conditions have valid feature_id refs
+    _verify_all_conditions_compiled(idea_card)
 
-    # Fix 3.1 (P1-03): Verify all conditions are compiled before execution
-    _verify_all_conditions_compiled(compiled_idea_card)
-
-    # Create signal evaluator with compiled IdeaCard
-    evaluator = IdeaCardSignalEvaluator(compiled_idea_card)
+    # Create signal evaluator
+    evaluator = IdeaCardSignalEvaluator(idea_card)
 
     def idea_card_strategy(snapshot, params) -> Signal | None:
         """Strategy function that uses IdeaCard signal evaluator."""

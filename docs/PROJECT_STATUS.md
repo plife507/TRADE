@@ -2,7 +2,7 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** What runs today, what is stubbed, top risks, next steps
-**LAST UPDATED:** January 3, 2026 (Incremental State Architecture complete)
+**LAST UPDATED:** January 4, 2026 (Legacy IdeaCards removed, all blocks format)
 
 ---
 
@@ -14,7 +14,8 @@
 | Data Layer | ✅ Production | DuckDB, sync, heal working |
 | Backtest Engine | ✅ Production | Modular architecture (8 modules), Stages 0-7 complete |
 | Market Structure | ✅ Production | Swing, Trend, Zones, Zone Interaction, State Tracking |
-| Incremental State | ✅ Production | O(1) hot loop access, Structure Registry, agent-composable blocks |
+| Incremental State | ✅ Production | O(1) hot loop access, 6 structures in registry |
+| Derived Zones | ✅ Production | K slots + aggregates pattern (Phase 12) |
 | MTF Support | ✅ Production | exec/htf/mtf with delay_bars |
 | Simulated Exchange | ✅ Production | Bybit-aligned accounting |
 | Preflight + Data-Fix | ✅ Production | Phase 6 CLI smoke tests validated + **mandatory 1m coverage** |
@@ -22,9 +23,10 @@
 | Artifact Standards | ✅ Production | ts_ms, eval_start_ts_ms, structured exports |
 | Backtest Metrics | ✅ Production | **62 unified fields**: equity, drawdown, trade stats, risk-adjusted ratios, tail risk (skewness, kurtosis, VaR, CVaR), leverage metrics, MAE/MFE, benchmark alpha |
 | IdeaCard Value Flow | ✅ Production | Fail-loud validation, explicit declarations, all phases complete |
+| Blocks DSL | ✅ Production | v3.0.0 - nested all/any/not, 11 operators, window operators |
 | Live Trading | ⚠️ Functional | Demo API tested, live not validated |
 | Indicator System | ✅ Production | 42 indicators in registry, string-based types |
-| Validation Suite | ✅ Production | 30 validation IdeaCards (6 new for structures) |
+| Validation Suite | ✅ Production | 11 validation IdeaCards (V_100+ blocks format only) |
 | Strategy Factory | ⚠️ Partial | IdeaCards work, promotion manual |
 | Agent Module | ❌ Planned | Not started |
 
@@ -34,6 +36,9 @@
 
 | Phase | Status | Date | Key Features |
 |-------|--------|------|--------------|
+| Legacy Cleanup | ✅ Complete | Jan 4 | All signal_rules IdeaCards removed, blocks-only format |
+| Derived Zones (Phase 12) | ✅ Complete | Jan 4 | K slots + aggregates, derived_zone detector |
+| Mega-file Refactor | ✅ Complete | Jan 3 | data_tools, tool_registry, datetime_utils splits |
 | Incremental State Architecture | ✅ Complete | Jan 3 | O(1) hot loop, Structure Registry, agent-composable blocks |
 | 1m Evaluation Loop Refactor | ✅ Complete | Jan 2 | mark_price resolution, 1m TP/SL checking, validation cards |
 | Market Structure Stages 0-7 | ✅ Complete | Jan 1 | Swing, Trend, Zones, Zone Interaction, State Tracking |
@@ -62,6 +67,19 @@
 | Backtest Financial Metrics | ✅ Complete | Dec 18 | Fixed Max DD%, proper CAGR/Calmar |
 
 **See**: `docs/session_reviews/` for detailed implementation notes
+
+---
+
+## Structure Registry (6 Detectors)
+
+| Type | Description | Outputs |
+|------|-------------|---------|
+| `swing` | Swing high/low detection | high_level, high_idx, low_level, low_idx, version |
+| `fibonacci` | Fib retracement/extension | level_0.382, level_0.5, level_0.618, etc. |
+| `zone` | Demand/supply zones | state, upper, lower, anchor_idx |
+| `trend` | Trend classification | direction, strength, bars_in_trend |
+| `rolling_window` | O(1) rolling min/max | value |
+| `derived_zone` | Fib zones from pivots | K slots + aggregates (zone0_*, any_touched, etc.) |
 
 ---
 
@@ -157,11 +175,11 @@ python trade_cli.py backtest metadata-smoke
 
 | Component | Status | What's Missing |
 |-----------|--------|----------------|
-| Streaming (Stage 8) | 📋 Future | Demo/Live websocket, real-time tick aggregation |
-| Promotion automation | 📋 Stubbed | Manual process only |
-| Drift detection (Phase 5 Audit) | 📋 Future | Baseline storage system |
-| Live trading validation | 📋 Incomplete | Demo tested, live untested |
-| Agent module | ❌ Not started | Future phase |
+| Streaming (Stage 8) | Future | Demo/Live websocket, real-time tick aggregation |
+| Promotion automation | Stubbed | Manual process only |
+| Drift detection (Phase 5 Audit) | Future | Baseline storage system |
+| Live trading validation | Incomplete | Demo tested, live untested |
+| Agent module | Not started | Future phase |
 
 ---
 
@@ -207,6 +225,9 @@ python trade_cli.py backtest metadata-smoke
 
 | Issue | Status | Date | Document |
 |-------|--------|------|----------|
+| Legacy IdeaCards removed | ✅ COMPLETE | 2026-01-04 | All signal_rules cards deleted, blocks-only |
+| Derived Zones (Phase 12) | ✅ COMPLETE | 2026-01-04 | K slots + aggregates pattern |
+| Mega-file Refactor | ✅ COMPLETE | 2026-01-03 | Phases 1-3 done |
 | Market Structure Stages 0-7 | ✅ COMPLETE | 2026-01-01 | docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md |
 | Audit Swarm P1 fixes (12/16) | ✅ COMPLETE | 2026-01-01 | docs/audits/2026-01-01/FIX_PLAN.md |
 | Metrics v1/v2 consolidation | ✅ COMPLETE | 2026-01-01 | Single unified BacktestMetrics with 62 fields |
@@ -224,62 +245,25 @@ python trade_cli.py backtest metadata-smoke
 ## Next Steps (Canonical Roadmap)
 
 **Current Status:** Backtest Engine and Market Structure complete ✅
-**Market Structure Stages 0-7:** ✅ Complete (2026-01-01) - Swing, Trend, Zones, Zone Interaction, State Tracking
-**Audit Swarm:** ✅ Complete (2026-01-01) - 12/16 P1 fixes applied, 33 open bugs tracked
+**IdeaCard Format:** All blocks DSL (v3.0.0), signal_rules deprecated and removed
 
-### 🔜 NEXT: Minor Bug Fixes + Future Features
+### NEXT: Choose One
 
-**Active Tracking Document:** `docs/audits/OPEN_BUGS.md`
-**Status:** P0=0, P1=2 open, P2=3 open, P3=4 open (9 total)
+| Feature | Priority | Effort | Description |
+|---------|----------|--------|-------------|
+| **Phase 4 Refactor** | Next | 2h | Split idea_card.py into focused modules |
+| **Streaming (Stage 8)** | High | 16h+ | Demo/Live websocket integration |
+| **BOS/CHoCH Detection** | Medium | 8h | Break of Structure / Change of Character |
+| **Advanced Operators** | Medium | 4h | crosses_up, crosses_down, within_bps |
+| **Agent Module** | Future | 40h+ | Automated strategy generation |
 
-### Priority 1: Quick Wins (Optional)
+### Active Tracking Documents
 
-| Bug | Effort | Impact |
-|-----|--------|--------|
-| P1-02: Hardcoded max_exposure_pct | 30m | Risk config flexibility |
-| P1-01: Deprecated config patterns | 2h | Code cleanliness |
-| P2-xx: Type safety improvements | ~7h total | Code quality |
-
-### Priority 2: Future Features (Stage 8+)
-
-| Feature | Effort | Status |
-|---------|--------|--------|
-| Streaming (Stage 8) | 16h+ | 📋 Future - Demo/Live websocket integration |
-| Backtest Analytics (Phases 5-6) | 8h | 📋 Pending - Benchmark comparison, enhanced CLI |
-| BOS/CHoCH Detection | 8h | 📋 Future - Break of Structure / Change of Character |
-| Advanced Operators | 4h | 📋 Future - crosses_up, crosses_down, within_bps |
-
----
-
-## Consolidated Next Actions (All Active TODOs)
-
-### Bug Tracking (Active)
-
-**📋 Open Bugs**
-- **Document**: `docs/audits/OPEN_BUGS.md`
-- **Status**: P0: 0, P1: 2, P2: 3, P3: 4 (9 total)
-- **Source**: Post-Refactor Audit (2026-01-03)
-- **Note**: All critical issues resolved, remaining are polish/config
-
-### Future Enhancements (Priority 2 - Not Blocking)
-
-**📋 Streaming (Stage 8)**
-- **Document**: `docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md` (Section 6, Stage 8)
-- **Status**: 📋 FUTURE (separate track)
-- **Scope**: Demo/Live websocket, real-time tick aggregation
-- **Note**: Not required for backtest pipeline
-
-### Ongoing Work (Priority 3)
-
-**Strategy Development**
-- Create production strategies
-- Backtest validation runs
-- Performance analysis
-
-**Live Trading Preparation**
-- Extended demo mode testing (8h)
-- Risk manager validation (4h)
-- Live data feed integration (4h)
+| Document | Purpose |
+|----------|---------|
+| `docs/todos/TODO.md` | Active work tracking |
+| `docs/todos/MEGA_FILE_REFACTOR.md` | Phase 4 refactor plan |
+| `docs/audits/OPEN_BUGS.md` | Bug tracker |
 
 ---
 
@@ -295,7 +279,7 @@ python trade_cli.py backtest metadata-smoke
 - [x] Determinism verification available (`verify-determinism --re-run`)
 - [x] Production pipeline validated (5 IdeaCards, all gates passed)
 - [x] No linter errors
-- [x] Documentation updated (January 1, 2026)
+- [x] Documentation updated (January 4, 2026)
 - [x] Refactor cleanup complete ✅
 - [x] Engine modular refactor complete ✅ (2025-12-30)
 - [x] Backtester fixes Phase 1 complete ✅ (2025-12-30)
@@ -304,8 +288,10 @@ python trade_cli.py backtest metadata-smoke
 - [x] IdeaCard value flow complete ✅ (2026-01-01)
 - [x] Market Structure Stages 0-7 complete ✅ (2026-01-01)
 - [x] Audit Swarm P1 fixes (12/16) complete ✅ (2026-01-01)
-- [x] 30 validation IdeaCards pass normalization ✅ (6 new for structures)
+- [x] 11 validation IdeaCards pass normalization ✅ (V_100+ blocks format only)
 - [x] Incremental State Architecture complete ✅ (2026-01-03)
+- [x] Derived Zones (Phase 12) complete ✅ (2026-01-04)
+- [x] Legacy IdeaCards removed ✅ (2026-01-04)
 
 ---
 
@@ -336,15 +322,10 @@ python trade_cli.py --smoke data
 
 | Topic | Document |
 |-------|----------|
-| Start here | `docs/DOCS_INDEX.md` |
-| Current state | `docs/contracts/state_of_the_union.md` |
-| Architecture | `docs/architecture/ARCH_SNAPSHOT.md` |
-| Domains | `docs/domains/DOMAIN_MAP.md` |
-| Modules | `docs/modules/MODULE_NOTES.md` |
-| Data | `docs/data/DATA_MODULE.md` |
-| Audit | `docs/audits/AUDIT_MODULE.md` |
-| Strategy Factory | `docs/strategy_factory/STRATEGY_FACTORY.md` |
 | AI Guidance | `CLAUDE.md` |
+| Active TODOs | `docs/todos/TODO.md` |
+| Architecture | `docs/architecture/` |
+| IdeaCard Syntax | `docs/guides/IDEACARD_SYNTAX.md` |
+| Bugs | `docs/audits/OPEN_BUGS.md` |
 
 ---
-

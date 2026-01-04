@@ -1,8 +1,8 @@
 # Incremental State Architecture
 
-**Status**: Design Complete
+**Status**: Implementation Complete (Phase 12 done)
 **Created**: 2026-01-02
-**Updated**: 2026-01-02
+**Updated**: 2026-01-04
 **Purpose**: Unified bar-by-bar state for market structure and rolling windows
 
 ## Vision Alignment
@@ -50,7 +50,8 @@ This architecture supports the IdeaCard Vision (see `IDEACARD_VISION.md`):
 │  exec (15m) ─────────────────────────────────────────────   │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │ TFIncrementalState                                  │   │
-│  │   structures: {swing, fib, zone, trend, low_20}     │   │
+│  │   structures: {swing, fib, zone, trend, low_20,     │   │
+│  │                derived_zone}                        │   │
 │  │   UPDATE: Every exec bar                            │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                             │
@@ -568,6 +569,94 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
         return self._deque.get()
 ```
 
+### Derived Zone Detector (Phase 12)
+
+K slots + aggregates pattern for derived zones from market structure.
+See `DERIVATION_RULE_INVESTIGATION.md` for complete specification.
+
+```python
+@register_structure("derived_zone")
+class IncrementalDerivedZone(BaseIncrementalDetector):
+
+    REQUIRED_PARAMS = ["levels", "price_source"]
+    OPTIONAL_PARAMS = {"max_active": 5, "mode": "retracement"}
+    DEPENDS_ON = ["source"]  # e.g., swing detector
+
+    @classmethod
+    def _validate_params(cls, struct_type: str, key: str, params: dict) -> None:
+        levels = params.get("levels")
+        if not isinstance(levels, list) or len(levels) == 0:
+            raise ValueError(
+                f"Structure '{key}': 'levels' must be non-empty list\n"
+                f"\n"
+                f"Fix: levels: [0.236, 0.382, 0.5, 0.618, 0.786]"
+            )
+
+        price_source = params.get("price_source", "mark_close")
+        if price_source not in ("mark_close", "last_close"):
+            raise ValueError(
+                f"Structure '{key}': 'price_source' must be 'mark_close' or 'last_close'\n"
+                f"\n"
+                f"Fix: price_source: mark_close"
+            )
+
+    def __init__(self, params: dict, deps: dict):
+        self.source = deps["source"]  # Swing detector
+        self.levels = params["levels"]
+        self.max_active = params.get("max_active", 5)
+        self.mode = params.get("mode", "retracement")
+        self.price_source = params.get("price_source", "mark_close")
+
+        self._zones: list[dict] = []  # Internal zone storage
+        self._source_version: int = 0
+
+    def update(self, bar_idx: int, bar: BarData) -> None:
+        # REGEN PATH: Only on source version change
+        current_version = self.source.get_value("version")
+        if current_version != self._source_version:
+            self._regenerate_zones(bar_idx, bar)
+            self._source_version = current_version
+
+        # INTERACTION PATH: Every exec bar
+        self._update_zone_interactions(bar_idx, bar)
+
+    def get_output_keys(self) -> list[str]:
+        # Slot fields (0 to max_active-1)
+        keys = []
+        for n in range(self.max_active):
+            keys.extend([
+                f"zone{n}_lower", f"zone{n}_upper", f"zone{n}_state",
+                f"zone{n}_anchor_idx", f"zone{n}_age_bars",
+                f"zone{n}_touched_this_bar", f"zone{n}_touch_count",
+                f"zone{n}_inside", f"zone{n}_instance_id",
+            ])
+        # Aggregate fields
+        keys.extend([
+            "active_count", "any_active", "any_touched", "any_inside",
+            "closest_active_lower", "closest_active_upper", "closest_active_idx",
+            "newest_active_idx", "source_version",
+        ])
+        return keys
+
+    def get_value(self, key: str) -> float | int | str | None:
+        # Returns None for empty float slots (JSON-safe null)
+        # Returns "NONE" for empty state slots
+        # Returns -1 for empty int slots
+        # Returns False for empty bool slots
+        ...
+```
+
+**Key design decisions:**
+
+| Decision | Choice |
+|----------|--------|
+| Slot ordering | Most recent first (`zone0` = newest) |
+| Empty float encoding | `null` (not NaN) for JSON safety |
+| Zone hash | blake2b for platform stability |
+| Touched semantics | Event (reset each bar), not sticky |
+| Regen trigger | Source structure version change only |
+| Interaction update | Every exec bar |
+
 ## State Containers
 
 ### BarData
@@ -825,6 +914,16 @@ structures:
         field: low
         mode: min
 
+    - type: derived_zone
+      key: fib_zones
+      depends_on:
+        source: swing
+      params:
+        levels: [0.236, 0.382, 0.5, 0.618, 0.786]
+        mode: retracement
+        price_source: mark_close
+        max_active: 5
+
   htf:
     "1h":
       - type: swing
@@ -866,17 +965,17 @@ Every error includes actionable fix suggestions.
 
 ## Implementation Phases
 
-| Phase | Focus | Hours |
-|-------|-------|-------|
-| 1 | Core primitives (MonotonicDeque, RingBuffer) | 2-3 |
-| 2 | Base class + registry + validation | 2-3 |
-| 3 | Detectors (swing, fib, zone, trend, rolling_window) | 4-6 |
-| 4 | TFIncrementalState + MultiTFIncrementalState | 2-3 |
-| 5 | IdeaCard schema + parser | 2-3 |
-| 6 | Engine integration | 2-3 |
-| 7 | Remove batch code | 1-2 |
-| 8 | Validation + docs | 1-2 |
-| **Total** | | **~18-25** |
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 1 | Core primitives (MonotonicDeque, RingBuffer) | ✅ Complete |
+| 2 | Base class + registry + validation | ✅ Complete |
+| 3 | Detectors (swing, fib, zone, trend, rolling_window) | ✅ Complete |
+| 4 | TFIncrementalState + MultiTFIncrementalState | ✅ Complete |
+| 5 | IdeaCard schema + parser | ✅ Complete |
+| 6 | Engine integration | ✅ Complete |
+| 7 | Remove batch code | ✅ Complete |
+| 8 | Validation + docs | ✅ Complete |
+| 12 | Derived zones (K slots + aggregates) | ✅ Complete |
 
 ## What Gets Removed
 
@@ -888,5 +987,6 @@ After migration:
 ## Related Documents
 
 - `IDEACARD_VISION.md` - Vision and goals
-- `IDEACARD_ENGINE_FLOW.md` - Current IdeaCard flow
+- `IDEACARD_SYNTAX.md` - Blocks DSL v3.0.0 syntax reference
+- `DERIVATION_RULE_INVESTIGATION.md` - Phase 12 derived zones (K slots + aggregates)
 - `../project/PROJECT_OVERVIEW.md` - Project roadmap

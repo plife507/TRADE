@@ -24,6 +24,7 @@ class ReasonCode(IntEnum):
     MISSING_VALUE = auto()  # Referenced value is None/NaN
     MISSING_LHS = auto()  # Left-hand side reference not found
     MISSING_RHS = auto()  # Right-hand side reference not found
+    MISSING_PREV_VALUE = auto()  # Previous bar value needed but unavailable (crossover)
 
     # Type errors
     TYPE_MISMATCH = auto()  # LHS/RHS types incompatible for operator
@@ -82,13 +83,52 @@ class ValueType(IntEnum):
         if isinstance(value, float):
             # Check for NaN
             import math
-
             if math.isnan(value):
                 return cls.MISSING
             return cls.FLOAT
         if isinstance(value, str):
             return cls.STRING
         return cls.UNKNOWN
+
+
+class FeatureOutputType(IntEnum):
+    """
+    Compile-time output type declarations for feature fields.
+
+    Used to validate operator compatibility at IdeaCard load time:
+    - FLOAT: Numeric, but eq requires near_abs/near_pct (no exact equality)
+    - INT: Discrete integer, eq/in allowed
+    - BOOL: Boolean, eq allowed
+    - ENUM: String enum token (e.g., "UP", "DOWN"), eq/in allowed
+
+    Examples:
+        - rsi.value → FLOAT
+        - trend.direction → INT (1, -1, 0)
+        - zone.state → ENUM ("active", "broken", "none")
+        - swing.high_idx → INT
+    """
+
+    FLOAT = auto()   # Numeric float (use near_* for equality)
+    INT = auto()     # Discrete integer (eq/in allowed)
+    BOOL = auto()    # Boolean (eq allowed)
+    ENUM = auto()    # String enum token (eq/in allowed)
+
+    def is_numeric(self) -> bool:
+        """Check if type supports numeric operators (gt, lt, between, near_*)."""
+        return self in (FeatureOutputType.FLOAT, FeatureOutputType.INT)
+
+    def is_discrete(self) -> bool:
+        """Check if type supports discrete operators (eq, in)."""
+        return self in (FeatureOutputType.INT, FeatureOutputType.BOOL, FeatureOutputType.ENUM)
+
+    def allows_eq(self) -> bool:
+        """Check if type allows exact equality (eq operator)."""
+        # FLOAT disallowed - must use near_abs or near_pct
+        return self.is_discrete()
+
+    def allows_near(self) -> bool:
+        """Check if type allows near_abs/near_pct operators."""
+        return self.is_numeric()
 
 
 @dataclass(frozen=True)

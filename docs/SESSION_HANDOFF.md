@@ -1,90 +1,79 @@
 # Session Handoff
 
-**Generated**: 2026-01-03 (post-audit cleanup)
+**Generated**: 2026-01-04
 **Branch**: main (uncommitted changes)
 
 ---
 
-## Last Session Summary
+## Current State Summary
 
-Completed fresh audit and documentation cleanup:
+**All major work complete:**
+- Blocks DSL v3.0.0 with 12 operators, 3 window operators, nested boolean logic
+- 6 structures in STRUCTURE_REGISTRY (swing, fibonacci, zone, trend, rolling_window, derived_zone)
+- 42 indicators in INDICATOR_REGISTRY
+- 15 validation IdeaCards (V_100-V_122) - all blocks format
+- Phases 1-3 of mega-file refactor complete
+- Legacy signal_rules IdeaCards and docs removed
+- 72 bugs fixed across P0-P3
+- All specs docs verified current (2026-01-04)
 
-1. **Archived 72 fixed bugs** from previous audit swarm (P0:7, P1:25, P2:28, P3:12)
-2. **Ran fresh validation** - ALL TESTS PASS (9/9 IdeaCards, 42/42 indicators, 11/11 rollups)
-3. **Scanned for new issues** - Found 9 minor bugs (P1:2, P2:3, P3:4)
-4. **Cleaned documentation** - Reset OPEN_BUGS.md, updated TODO.md, PROJECT_STATUS.md
-
----
-
-## Current State
-
-**Branch**: main (uncommitted - incremental state + bug fixes + doc cleanup)
-
-**Bug Status**:
-| Priority | Count | Nature |
-|----------|-------|--------|
-| P0 | 0 | None |
-| P1 | 2 | Config patterns (hasattr guards, hardcoded max_exposure) |
-| P2 | 3 | Type safety (loose typing, dynamic access) |
-| P3 | 4 | Polish (deprecated code, comments) |
-
-**Validation**:
-- IdeaCards: 9/9 normalize
-- Indicators: 42/42 pass toolkit audit
-- Rollup: 11/11 intervals pass
-- Metrics: 6/6 tests pass
-- Structure smoke: All stages pass
-- Metadata smoke: All invariants pass
+**Open Bugs**: 4 total (0 P0, 0 P1, 2 P2, 2 P3)
 
 ---
 
-## Files Changed This Session
+## Validation Status
 
-**Documentation Updated**:
-- `docs/audits/OPEN_BUGS.md` - Reset with fresh audit findings
-- `docs/audits/archived/2026-01-03_BUGS_RESOLVED.md` - New archive of 72 fixed bugs
-- `docs/todos/TODO.md` - Cleaned, removed completed work
-- `docs/PROJECT_STATUS.md` - Updated bug counts, next steps
-- `docs/SESSION_HANDOFF.md` - This file
-
----
-
-## Priority Items for Next Session
-
-### 1. Commit All Changes
-```bash
-git add -A
-git commit -m "feat: archive 72 bugs, fresh audit (9 minor), doc cleanup"
-```
-
-### 2. Optional Quick Wins (P1)
-| Bug | Location | Fix | Effort |
-|-----|----------|-----|--------|
-| P1-02 | `runtime/state_tracker.py:244` | Add max_exposure_pct to config | 30m |
-| P1-01 | `engine_data_prep.py` | Standardize feature_specs_by_role | 2h |
-
-### 3. Future Work
-- Streaming (Stage 8) - Demo/Live websocket
-- BOS/CHoCH Detection - Break of Structure / Change of Character
-- Agent Module - Automated strategy generation
+| Check | Result |
+|-------|--------|
+| IdeaCard normalize | 15/15 pass |
+| Indicator audit | 42/42 pass |
+| Rollup audit | 11/11 intervals |
+| Structure smoke | 6/6 types |
+| Blocks DSL | All operators working |
 
 ---
 
-## Quick Start Commands
+## Files Changed Recently
+
+**Documentation Cleanup (2026-01-04)**:
+- `docs/architecture/` → `docs/specs/` - Folder renamed
+- `docs/guides/IDEACARD_SYNTAX.md` → `docs/specs/` - Moved into specs
+- 24 review files → `docs/_archived/reviews__*.md` - All development reviews archived
+- 3 legacy specs → `docs/specs/archived/` - Legacy signal_rules docs archived
+- `docs/specs/INCREMENTAL_STATE_ARCHITECTURE.md` - Phase 12 derived_zone added
+
+**Validation Cards Added**:
+- `V_107_near_abs.yml` - near_abs operator test
+- `V_108_near_pct.yml` - near_pct operator test
+- `V_109_in_operator.yml` - between operator test
+- `V_110_count_true.yml` - count_true window operator test
+
+---
+
+## Next Steps
+
+| Priority | Task | Document |
+|----------|------|----------|
+| Next | Phase 4: Split idea_card.py | `docs/todos/MEGA_FILE_REFACTOR.md` |
+| High | Streaming (Stage 8) | Demo/Live websocket |
+| Medium | BOS/CHoCH Detection | Break of Structure |
+| Medium | Advanced Operators | crosses_up, crosses_down |
+| Future | Agent Module | Automated strategy generation |
+
+---
+
+## Quick Validation
 
 ```bash
-# Check status
-git status
-git diff --stat
-
-# Run validation
-python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest audit-rollup
+# Validate IdeaCards
 python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
 
+# Audit indicators and rollups
+python trade_cli.py backtest audit-toolkit
+python trade_cli.py backtest audit-rollup
+
 # Full smoke (with backtest)
-$env:TRADE_SMOKE_INCLUDE_BACKTEST="1"
-python trade_cli.py --smoke full
+$env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
 ```
 
 ---
@@ -94,7 +83,8 @@ python trade_cli.py --smoke full
 | Doc | Purpose |
 |-----|---------|
 | `CLAUDE.md` | AI assistant guidance |
-| `docs/audits/OPEN_BUGS.md` | Current bug tracker (9 open) |
-| `docs/audits/archived/2026-01-03_BUGS_RESOLVED.md` | Archived 72 fixed bugs |
 | `docs/todos/TODO.md` | Active work tracking |
+| `docs/todos/MEGA_FILE_REFACTOR.md` | Phase 4 pending |
+| `docs/audits/OPEN_BUGS.md` | Bug tracker (4 open) |
 | `docs/PROJECT_STATUS.md` | Full project status |
+| `docs/specs/INDEX.md` | 7 active specs (architecture, DSL, incremental state) |

@@ -232,13 +232,9 @@ def run_backtest_with_gates(
         # Compute idea_card_hash for deterministic run folder naming
         idea_card_hash = compute_idea_card_hash(idea_card)
         
-        # Collect all timeframes from IdeaCard
-        tf_ctx = [idea_card.exec_tf]
-        if idea_card.htf:
-            tf_ctx.append(idea_card.htf)
-        if idea_card.mtf:
-            tf_ctx.append(idea_card.mtf)
-        tf_ctx = sorted(set(tf_ctx))  # Dedupe and sort
+        # Collect all timeframes from FeatureRegistry
+        exec_tf = idea_card.execution_tf
+        tf_ctx = sorted(idea_card.feature_registry.get_all_tfs())
         
         # Determine data source ID based on env (for data provenance)
         data_source_id = "duckdb_live"  # Default; would be set from config.data_env if available
@@ -247,7 +243,7 @@ def run_backtest_with_gates(
         input_components = InputHashComponents(
             idea_card_hash=idea_card_hash,
             symbols=idea_card.symbol_universe,
-            tf_exec=idea_card.exec_tf,
+            tf_exec=exec_tf,
             tf_ctx=tf_ctx,
             window_start=config.window_start.strftime("%Y-%m-%d"),
             window_end=config.window_end.strftime("%Y-%m-%d"),
@@ -278,7 +274,7 @@ def run_backtest_with_gates(
             category="_validation",  # Current mode: engine validation
             idea_card_id=idea_card.id,
             universe_id=universe_id,  # Symbol or uni_<hash> for multi-symbol
-            tf_exec=idea_card.exec_tf,
+            tf_exec=exec_tf,
             window_start=config.window_start,
             window_end=config.window_end,
             run_id=short_hash,  # 8-char deterministic hash
@@ -311,7 +307,7 @@ def run_backtest_with_gates(
             symbols=idea_card.symbol_universe,
             universe_id=universe_id,
             # Timeframes
-            tf_exec=idea_card.exec_tf,
+            tf_exec=exec_tf,
             tf_ctx=tf_ctx,
             # Window
             window_start=config.window_start.strftime("%Y-%m-%d"),
@@ -542,7 +538,7 @@ def run_backtest_with_gates(
         summary = compute_results_summary(
             idea_card_id=idea_card.id,
             symbol=symbol,
-            tf_exec=idea_card.exec_tf,
+            tf_exec=exec_tf,
             window_start=config.window_start,
             window_end=config.window_end,
             run_id=run_id,
@@ -681,7 +677,7 @@ def run_backtest_with_gates(
                     symbol=symbol,
                     window_start=config.window_start,
                     window_end=config.window_end,
-                    exec_tf=idea_card.exec_tf,
+                    exec_tf=exec_tf,
                     htf=idea_card.htf,
                     mtf=idea_card.mtf,
                     exec_df=exec_df,

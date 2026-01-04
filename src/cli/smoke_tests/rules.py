@@ -422,153 +422,96 @@ def run_rules_smoke(
         failures += 1
 
     # =========================================================================
-    # Step 6: Test End-to-End IdeaCard Compilation (Stage 4b)
+    # Step 6: Test DSL Block Parsing and Evaluation
     # =========================================================================
-    console.print(f"\n[bold]Step 6: Test End-to-End IdeaCard Compilation (Stage 4b)[/]")
+    console.print(f"\n[bold]Step 6: Test DSL Block Parsing and Evaluation[/]")
 
-    from src.backtest.idea_card import IdeaCard, Condition, EntryRule, SignalRules, RuleOperator
-    from src.backtest.idea_card_yaml_builder import compile_condition, compile_idea_card
+    from src.backtest.rules.dsl_nodes import FeatureRef, Cond, AllExpr, AnyExpr
+    from src.backtest.rules.dsl_parser import parse_expr, parse_blocks
+    from src.backtest.rules.strategy_blocks import Block, Case, Intent
 
-    # Create a minimal Condition
-    cond = Condition(
-        indicator_key="rsi_14",
-        operator=RuleOperator.LT,
-        value=30,
-        is_indicator_comparison=False,
-        tf="exec",
-    )
+    # Test basic Cond creation
+    lhs = FeatureRef(feature_id="rsi_14")
+    rhs_val = 30.0
+    cond = Cond(lhs=lhs, op="lt", rhs=rhs_val)
 
-    # Test compile_condition
-    available_indicators = {"exec": ["rsi_14", "close", "high", "low", "open", "volume"]}
-    compiled_cond = compile_condition(cond, available_indicators=available_indicators)
-
-    if compiled_cond.has_compiled_refs():
-        console.print(f"  [green]OK[/] compile_condition() produced compiled refs")
+    if cond.op == "lt" and cond.lhs.feature_id == "rsi_14":
+        console.print(f"  [green]OK[/] Cond node created correctly")
     else:
-        console.print(f"  [red]FAIL[/] compile_condition() did not produce refs")
+        console.print(f"  [red]FAIL[/] Cond node creation failed")
         failures += 1
 
-    # Verify LHS ref
-    if compiled_cond.lhs_ref is not None:
-        from src.backtest.rules.compile import RefNamespace
-        if compiled_cond.lhs_ref.namespace == RefNamespace.INDICATOR:
-            console.print(f"  [green]OK[/] LHS is INDICATOR namespace")
-        else:
-            console.print(f"  [red]FAIL[/] LHS should be INDICATOR, got {compiled_cond.lhs_ref.namespace}")
-            failures += 1
+    # Test AllExpr with multiple conditions
+    cond2 = Cond(lhs=FeatureRef(feature_id="ema_fast"), op="gt", rhs=FeatureRef(feature_id="ema_slow"))
+    all_expr = AllExpr(children=(cond, cond2))
 
-    # Verify RHS ref (literal)
-    if compiled_cond.rhs_ref is not None:
-        if compiled_cond.rhs_ref.is_literal and compiled_cond.rhs_ref.literal_value == 30:
-            console.print(f"  [green]OK[/] RHS is literal 30")
-        else:
-            console.print(f"  [red]FAIL[/] RHS should be literal 30")
-            failures += 1
-
-    # Test structure path compilation
-    struct_cond = Condition(
-        indicator_key="structure.swing_15m.swing_high_level",
-        operator=RuleOperator.GT,
-        value=0,
-        tf="exec",
-    )
-    compiled_struct = compile_condition(
-        struct_cond,
-        available_indicators=available_indicators,
-        available_structures=["swing_15m"],
-    )
-
-    if compiled_struct.has_compiled_refs():
-        from src.backtest.rules.compile import RefNamespace
-        if compiled_struct.lhs_ref.namespace == RefNamespace.STRUCTURE:
-            console.print(f"  [green]OK[/] Structure path compiled to STRUCTURE namespace")
-        else:
-            console.print(f"  [red]FAIL[/] Structure path should be STRUCTURE namespace")
-            failures += 1
+    if len(all_expr.children) == 2:
+        console.print(f"  [green]OK[/] AllExpr with 2 children created")
     else:
-        console.print(f"  [red]FAIL[/] Structure path failed to compile")
+        console.print(f"  [red]FAIL[/] AllExpr creation failed")
         failures += 1
 
-    console.print(f"  Stage 4b: IdeaCard compilation wiring verified")
+    # Test parse_expr from dict
+    expr_dict = {
+        "all": [
+            {"lhs": {"feature_id": "rsi_14"}, "op": "lt", "rhs": 30},
+            {"lhs": {"feature_id": "close"}, "op": "gt", "rhs": {"feature_id": "ema_trend"}},
+        ]
+    }
+    parsed_expr = parse_expr(expr_dict)
 
-    # =========================================================================
-    # Step 7: Stage 4c - Operator Registry and Compile-Time Validation
-    # =========================================================================
-    console.print(f"\n[bold]Step 7: Stage 4c - Operator Registry & Compile-Time Validation[/]")
-
-    from src.backtest.rules.registry import (
-        SUPPORTED_OPERATORS,
-        validate_operator,
-        is_operator_supported,
-    )
-    from src.backtest.idea_card_yaml_builder import ConditionCompileError
-
-    # Test supported operators
-    expected_supported = {"gt", "lt", "ge", "le", "eq", "approx_eq"}
-    if SUPPORTED_OPERATORS == expected_supported:
-        console.print(f"  [green]OK[/] SUPPORTED_OPERATORS correct: {sorted(SUPPORTED_OPERATORS)}")
+    if isinstance(parsed_expr, AllExpr) and len(parsed_expr.children) == 2:
+        console.print(f"  [green]OK[/] parse_expr correctly parsed AllExpr with 2 conditions")
     else:
-        console.print(f"  [red]FAIL[/] SUPPORTED_OPERATORS mismatch")
+        console.print(f"  [red]FAIL[/] parse_expr failed to parse AllExpr")
         failures += 1
 
-    # Test crossover operators are banned
-    for banned_op in ["cross_above", "cross_below"]:
-        error = validate_operator(banned_op)
-        if error and "not supported" in error.lower():
-            console.print(f"  [green]OK[/] Operator '{banned_op}' rejected at compile time")
-        else:
-            console.print(f"  [red]FAIL[/] Operator '{banned_op}' should be rejected")
-            failures += 1
+    # Test Block/Case/Intent creation
+    intent = Intent(action="entry_long")
+    case = Case(when=parsed_expr, emit=(intent,))
+    block = Block(id="entry", cases=(case,))
 
-    # Test crossover Condition compilation fails
-    crossover_cond = Condition(
-        indicator_key="rsi_14",
-        operator=RuleOperator.CROSS_ABOVE,
-        value=30,
-        tf="exec",
-    )
+    if block.id == "entry" and len(block.cases) == 1:
+        console.print(f"  [green]OK[/] Block/Case/Intent created correctly")
+    else:
+        console.print(f"  [red]FAIL[/] Block creation failed")
+        failures += 1
+
+    console.print(f"  DSL blocks parsing verified")
+
+    # =========================================================================
+    # Step 7: Test DSL Operator Validation
+    # =========================================================================
+    console.print(f"\n[bold]Step 7: DSL Operator Validation[/]")
+
+    from src.backtest.rules.dsl_nodes import VALID_OPERATORS
+
+    # Test valid operators are in registry
+    expected_ops = {"gt", "gte", "lt", "lte", "eq", "between", "near_abs", "near_pct", "in", "cross_above", "cross_below"}
+    if VALID_OPERATORS == expected_ops:
+        console.print(f"  [green]OK[/] VALID_OPERATORS contains all 11 operators")
+    else:
+        missing = expected_ops - VALID_OPERATORS
+        extra = VALID_OPERATORS - expected_ops
+        if missing:
+            console.print(f"  [red]FAIL[/] Missing operators: {missing}")
+            failures += 1
+        if extra:
+            console.print(f"  [yellow]WARN[/] Extra operators: {extra}")
+
+    # Test invalid operator is rejected
     try:
-        compile_condition(crossover_cond, available_indicators=available_indicators)
-        console.print(f"  [red]FAIL[/] cross_above should fail at compile time")
+        bad_cond = Cond(lhs=FeatureRef(feature_id="rsi"), op="INVALID", rhs=30)
+        console.print(f"  [red]FAIL[/] Invalid operator should be rejected")
         failures += 1
-    except ConditionCompileError as e:
-        if "cross_above" in str(e).lower() and "not supported" in str(e).lower():
-            console.print(f"  [green]OK[/] cross_above Condition rejected with actionable error")
+    except ValueError as e:
+        if "INVALID" in str(e) or "operator" in str(e).lower():
+            console.print(f"  [green]OK[/] Invalid operator rejected with error")
         else:
-            console.print(f"  [red]FAIL[/] cross_above error message not actionable: {e}")
+            console.print(f"  [red]FAIL[/] Error message not informative: {e}")
             failures += 1
 
-    # Test eq with float literal rejected at compile time
-    float_eq_cond = Condition(
-        indicator_key="rsi_14",
-        operator=RuleOperator.EQ,
-        value=30.5,  # Float literal
-        tf="exec",
-    )
-    try:
-        compile_condition(float_eq_cond, available_indicators=available_indicators)
-        console.print(f"  [red]FAIL[/] eq with float literal should fail at compile time")
-        failures += 1
-    except ConditionCompileError as e:
-        if "float" in str(e).lower() and "approx_eq" in str(e).lower():
-            console.print(f"  [green]OK[/] eq with float literal rejected with actionable error")
-        else:
-            console.print(f"  [red]FAIL[/] eq float error message not actionable: {e}")
-            failures += 1
-
-    # Test approx_eq without tolerance rejected
-    approx_no_tol = Condition(
-        indicator_key="rsi_14",
-        operator=RuleOperator.EQ,  # Actually need an approx_eq RuleOperator
-        value=30.5,
-        tolerance=None,
-        tf="exec",
-    )
-    # Note: We don't have RuleOperator.APPROX_EQ yet, so this tests eq rejection
-    # The tolerance validation test is in the operator tests above
-
-    # Test tolerance validation (invalid values)
-    console.print(f"  Stage 4c: Compile-time validation verified")
+    console.print(f"  DSL operator validation verified")
 
     # =========================================================================
     # Step 8: Determinism Verification (Run Twice)

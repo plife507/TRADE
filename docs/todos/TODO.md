@@ -1,6 +1,6 @@
 # Active TODO
 
-**Last Updated**: 2026-01-03
+**Last Updated**: 2026-01-04
 **Status**: All major work COMPLETE - ready for new features
 
 ---
@@ -8,6 +8,7 @@
 ## Current State
 
 **All major work complete:**
+- Legacy cleanup (2026-01-04) - All signal_rules IdeaCards removed
 - Mega-file refactoring (2026-01-03) - Phases 1-3 done
 - Incremental State Architecture (2026-01-03)
 - 1m Evaluation Loop (2026-01-02)
@@ -16,8 +17,9 @@
 
 **Validation Status**:
 - 80 tools registered, 23 categories
-- 30/30 IdeaCards normalize
+- 11/11 IdeaCards normalize (V_100+ blocks format only)
 - 42/42 indicators pass audit
+- 6 structures in STRUCTURE_REGISTRY
 - All smoke tests pass
 
 **Refactoring Results**:
@@ -31,8 +33,9 @@
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
-| **Streaming (Stage 8)** | Next | Demo/Live websocket integration |
-| **BOS/CHoCH Detection** | High | Break of Structure / Change of Character |
+| **Phase 4 Refactor** | Next | Split idea_card.py into focused modules |
+| **Streaming (Stage 8)** | High | Demo/Live websocket integration |
+| **BOS/CHoCH Detection** | Medium | Break of Structure / Change of Character |
 | **Advanced Operators** | Medium | `crosses_up`, `crosses_down`, `within_bps` |
 | **Agent Module** | Future | Automated strategy generation |
 
@@ -56,6 +59,7 @@ $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
 
 | Phase | Date | Notes |
 |-------|------|-------|
+| Legacy Cleanup | 2026-01-04 | Removed all signal_rules IdeaCards |
 | Mega-file Refactor | 2026-01-03 | Phases 1-3 complete |
 | Incremental State | 2026-01-03 | O(1) hot loop |
 | 1m Eval Loop | 2026-01-02 | mark_price in snapshot |

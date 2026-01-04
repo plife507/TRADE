@@ -1,7 +1,7 @@
 # Open Bugs
 
-**Last Updated**: 2026-01-03 (Bug Fix Session)
-**Status**: All P1 fixed, P2/P3 reduced
+**Last Updated**: 2026-01-04
+**Status**: All P0-P1 fixed, 4 open (2 P2, 2 P3)
 
 ---
 
@@ -11,15 +11,18 @@
 |----------|------|-------------|
 | P0 | 0 | Critical blockers |
 | P1 | 0 | High priority - config patterns (FIXED) |
-| P2 | 1 | Medium priority - type safety |
+| P2 | 2 | Medium priority - type safety, sizing |
 | P3 | 2 | Polish - cleanup |
 
 **Validation Status**: ALL TESTS PASS
-- IdeaCards: 9/9 normalize
-- Indicators: 42/42 pass audit
+- IdeaCards: 15/15 normalize (V_100-V_122 blocks format)
+- Indicators: **42/42 pass stress test** (all single + multi-output)
+- Crossover operators: cross_above, cross_below ENABLED
 - Rollup: 11/11 intervals pass
 - Metrics: 6/6 tests pass
 - Structure smoke: All stages pass
+- Stress test Tier 1-2: 7/7 produce trades
+- Stress test Tier 3: swing (205), zone (491) verified
 
 ---
 
@@ -44,6 +47,25 @@
 - **Impact**: Minimal - pandas_ta interface is stable
 - **Effort**: N/A
 
+### P2-05: Silent Trade Rejection with Tight Stops + Large Sizing
+- **Location**: Position sizing/risk calculation in engine
+- **Issue**: `percent_equity` sizing with value=10.0 + stop_loss ≤3% produces 0 trades silently
+- **Status**: OPEN - needs investigation
+- **Reproduction**:
+  - Config: sizing.value=10.0, stop_loss.value=3.0, max_leverage=3.0
+  - Expected: Trades execute or warning logged
+  - Actual: 0 trades, no error/warning
+- **Workaround**: Use stop_loss ≥4% or sizing.value ≤2%
+- **Impact**: Medium - valid configs silently produce no trades
+- **Effort**: Medium - needs root cause analysis in position sizing logic
+
+### P2-06: Multi-Output Indicator Reference Mismatch - FIXED
+- **Location**: `compile_idea_card()` in `idea_card_yaml_builder.py`
+- **Issue**: `compile_idea_card` used `spec.output_key` instead of `spec.output_keys_list`
+- **Fix**: Changed to use `spec.output_keys_list` to include all multi-output expanded keys
+- **Verified**: All 16 multi-output indicators now pass (macd, bbands, stoch, etc.)
+- **Status**: FIXED in 2026-01-03 stress test session
+
 ---
 
 ## P3 Open
@@ -63,6 +85,31 @@
 ---
 
 ## Resolved This Session (2026-01-03)
+
+### ENHANCEMENT: Crossover Operators Enabled
+- **Location**: `src/backtest/rules/registry.py`, `eval.py`, `snapshot_view.py`, `idea_card.py`
+- **Feature**: `cross_above` and `cross_below` operators now fully supported
+- **Implementation**:
+  1. Removed from `BANNED_OPERATORS` in `idea_card.py`
+  2. Set `supported=True` in `OPERATOR_REGISTRY`
+  3. Added `eval_cross_above()` and `eval_cross_below()` functions
+  4. Added `get_with_offset()` to `RuntimeSnapshotView` for prev-bar access
+  5. Updated `evaluate_condition()` to handle crossover operators
+- **Semantics**:
+  - `cross_above`: `prev_lhs < rhs AND curr_lhs >= rhs`
+  - `cross_below`: `prev_lhs > rhs AND curr_lhs <= rhs`
+- **Verified**: V_80_ema_crossover.yml (16 trades) validates and runs
+- **Validation**: `configs/idea_cards/_validation/V_80_ema_crossover.yml`
+
+### P2-07: Structure Paths Fail Validation - FIXED
+- **Location**: `execution_validation.py:validate_idea_card_features()` and `idea_card_yaml_builder.py:compile_idea_card()`
+- **Issue**: Structure paths like `structure.swing.high_level` failed validation because:
+  1. `validate_idea_card_features()` didn't skip structure paths
+  2. `compile_idea_card()` only checked `market_structure_blocks` (old format), not `structure_specs_exec` (new format)
+- **Fix**:
+  1. Added skip for `structure.` prefixed paths in validation
+  2. Added `structure_specs_exec` and `structure_specs_htf` to available_structures in compile
+- **Verified**: V_70 swing (205 trades), V_72 zone (491 trades) now work
 
 ### P1-01: Deprecated Config Pattern (hasattr guards) - FIXED
 - **Fix**: Removed 8 hasattr guards for `feature_specs_by_role` in `engine_data_prep.py`, `engine_feed_builder.py`
@@ -121,6 +168,6 @@ When auditing, check for these patterns:
 
 | Date | Document | Bugs Fixed |
 |------|----------|------------|
-| 2026-01-03 | This session | 7 (P1:2, P2:2, P3:3) |
+| 2026-01-03 | This session | 9 fixes + crossover enhancement |
 | 2026-01-03 | [archived/2026-01-03_BUGS_RESOLVED.md](archived/2026-01-03_BUGS_RESOLVED.md) | 72 (P0:7, P1:25, P2:28, P3:12) |
 | 2026-01-01 | [2026-01-01/](2026-01-01/) | Original audit reports |

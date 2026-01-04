@@ -1,0 +1,972 @@
+# IdeaCard Syntax Reference (v3.0.0)
+
+Complete syntax guide for the IdeaCard DSL - declarative strategy specification.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Required Sections](#required-sections)
+3. [Features (Indicators)](#features-indicators)
+4. [Structures (Market Structure)](#structures-market-structure)
+5. [Blocks (Signal Logic)](#blocks-signal-logic)
+6. [Operators](#operators)
+7. [Boolean Logic (all/any/not)](#boolean-logic-allanynot)
+8. [Window Operators](#window-operators)
+9. [Accessing Features and Structures](#accessing-features-and-structures)
+10. [Risk Model](#risk-model)
+11. [Complete Examples](#complete-examples)
+
+---
+
+## Overview
+
+An IdeaCard is a YAML file that defines a complete trading strategy:
+
+```yaml
+id: my_strategy
+version: "3.0.0"
+name: "My Strategy Name"
+description: "What this strategy does"
+
+account: { ... }          # Account configuration
+symbol_universe: [...]    # Symbols to trade
+execution_tf: "1h"        # Execution timeframe
+features: [...]           # Indicators
+blocks: [...]             # Signal logic (entry/exit rules)
+position_policy: { ... }  # Position constraints
+risk_model: { ... }       # SL/TP/sizing
+```
+
+---
+
+## Required Sections
+
+### Identity
+
+```yaml
+id: V_100_my_strategy       # Unique identifier (filename without .yml)
+version: "3.0.0"            # Schema version (3.0.0 for blocks format)
+name: "Strategy Name"       # Human-readable name
+description: "Description"  # What it does
+```
+
+### Account Configuration
+
+```yaml
+account:
+  starting_equity_usdt: 10000.0   # Required: starting capital
+  max_leverage: 3.0               # Required: max leverage allowed
+  margin_mode: "isolated_usdt"    # Must be "isolated_usdt"
+  min_trade_notional_usdt: 10.0   # Minimum trade size
+  fee_model:
+    taker_bps: 6.0                # Taker fee in basis points (0.06%)
+    maker_bps: 2.0                # Maker fee in basis points
+  slippage_bps: 2.0               # Slippage estimate
+```
+
+### Symbol Universe
+
+```yaml
+symbol_universe:
+  - "BTCUSDT"
+  - "ETHUSDT"
+```
+
+### Execution Timeframe
+
+```yaml
+execution_tf: "1h"   # Bar-by-bar stepping granularity
+```
+
+Valid timeframes: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `8h`, `12h`, `1D`
+
+### Position Policy
+
+```yaml
+position_policy:
+  mode: "long_only"              # "long_only", "short_only", "long_short"
+  max_positions_per_symbol: 1    # Must be 1 (single position only)
+  allow_flip: false              # Not yet supported
+  allow_scale_in: false          # Not yet supported
+  allow_scale_out: false         # Not yet supported
+```
+
+---
+
+## Features (Indicators)
+
+Features define indicators with unique IDs for reference in blocks.
+
+### Basic Syntax
+
+```yaml
+features:
+  - id: "ema_fast"           # Unique ID for referencing
+    tf: "1h"                 # Timeframe
+    type: indicator          # "indicator" for technical indicators
+    indicator_type: ema      # Indicator type from registry
+    params:
+      length: 9              # Indicator-specific parameters
+```
+
+### Common Indicators
+
+```yaml
+# EMA (Exponential Moving Average)
+- id: "ema_50"
+  tf: "1h"
+  type: indicator
+  indicator_type: ema
+  params:
+    length: 50
+
+# SMA (Simple Moving Average)
+- id: "sma_20"
+  tf: "1h"
+  type: indicator
+  indicator_type: sma
+  params:
+    length: 20
+
+# RSI (Relative Strength Index)
+- id: "rsi_14"
+  tf: "1h"
+  type: indicator
+  indicator_type: rsi
+  params:
+    length: 14
+
+# ATR (Average True Range)
+- id: "atr_14"
+  tf: "1h"
+  type: indicator
+  indicator_type: atr
+  params:
+    length: 14
+
+# MACD (Moving Average Convergence Divergence)
+# Multi-output: macd, macd_signal, macd_hist
+- id: "macd"
+  tf: "1h"
+  type: indicator
+  indicator_type: macd
+  params:
+    fast: 12
+    slow: 26
+    signal: 9
+
+# Bollinger Bands
+# Multi-output: bbl (lower), bbm (middle), bbu (upper)
+- id: "bbands"
+  tf: "1h"
+  type: indicator
+  indicator_type: bbands
+  params:
+    length: 20
+    std: 2.0
+
+# Stochastic
+# Multi-output: stoch_k, stoch_d
+- id: "stoch"
+  tf: "1h"
+  type: indicator
+  indicator_type: stoch
+  params:
+    k: 14
+    d: 3
+    smooth_k: 3
+```
+
+### Multi-Timeframe Features
+
+```yaml
+features:
+  # Execution TF indicator
+  - id: "ema_fast"
+    tf: "15m"
+    type: indicator
+    indicator_type: ema
+    params: { length: 9 }
+
+  # Higher TF indicator (forward-fills between closes)
+  - id: "ema_1h"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params: { length: 50 }
+```
+
+---
+
+## Structures (Market Structure)
+
+Structures provide O(1) market structure detection. They are declared separately from features.
+
+### Structure Types
+
+| Type | Description | Outputs |
+|------|-------------|---------|
+| `swing` | Swing high/low detection | `high_level`, `low_level`, `high_idx`, `low_idx`, `version` |
+| `trend` | Trend classification (HH/HL) | `direction`, `strength`, `bars_in_trend`, `version` |
+| `zone` | Demand/supply zones | `state`, `upper`, `lower`, `version` |
+| `fibonacci` | Fibonacci levels | `level_0.382`, `level_0.5`, `level_0.618`, etc. |
+| `rolling_window` | O(1) rolling min/max | `value` |
+| `derived_zone` | Fib zones from pivots | K slots + aggregates (see below) |
+
+### Derived Zones (K Slots + Aggregates)
+
+Derived zones create Fibonacci zones from swing pivots:
+
+```yaml
+- id: "fib_zones"
+  tf: "1h"
+  type: structure
+  structure_type: derived_zone
+  depends_on: {source: "swing"}
+  params: {levels: [0.382, 0.5, 0.618], mode: retracement, max_active: 5}
+```
+
+**Slot Fields**: `zone{N}_lower`, `zone{N}_upper`, `zone{N}_state` (NONE/ACTIVE/BROKEN)
+
+**Aggregates**: `active_count`, `any_active`, `any_touched`, `closest_active_lower`
+
+### Structure Declaration (in tf_configs)
+
+```yaml
+timeframes:
+  exec: "15m"
+  htf: "1h"
+
+tf_configs:
+  exec:
+    role: "exec"
+    warmup_bars: 50
+    feature_specs:
+      - indicator_type: "ema"
+        output_key: "ema_fast"
+        params: { length: 9 }
+
+structures:
+  exec:
+    # Swing detector
+    - type: swing
+      key: swing              # Reference as "structure.swing"
+      params:
+        left: 5               # Bars to left for confirmation
+        right: 5              # Bars to right for confirmation
+
+    # Trend detector (depends on swing)
+    - type: trend
+      key: trend              # Reference as "structure.trend"
+      depends_on:
+        swing: swing          # Uses swing detector for pattern analysis
+
+    # Zone detector
+    - type: zone
+      key: demand_zone
+      depends_on:
+        swing: swing
+      params:
+        zone_type: demand     # "demand" or "supply"
+        width_atr: 1.5        # Zone width in ATR units
+
+    # Fibonacci levels
+    - type: fibonacci
+      key: fib
+      depends_on:
+        swing: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+
+    # Rolling window min/max
+    - type: rolling_window
+      key: recent_low
+      params:
+        size: 20              # Window size in bars
+        field: low            # Field to track
+        mode: min             # "min" or "max"
+
+  # HTF structures
+  htf:
+    "1h":
+      - type: swing
+        key: swing_1h
+        params: { left: 3, right: 3 }
+      - type: trend
+        key: trend_1h
+        depends_on:
+          swing: swing_1h
+```
+
+---
+
+## Blocks (Signal Logic)
+
+Blocks define entry/exit logic with nested boolean expressions.
+
+### Basic Block Structure
+
+```yaml
+blocks:
+  - id: entry                 # Block identifier
+    cases:                    # List of cases (first-match wins)
+      - when:                 # Condition expression
+          lhs:
+            feature_id: "ema_fast"
+          op: gt
+          rhs:
+            feature_id: "ema_slow"
+        emit:                 # Actions if condition is true
+          - action: entry_long
+    else:                     # Optional: if no case matches
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          lhs:
+            feature_id: "ema_fast"
+          op: lt
+          rhs:
+            feature_id: "ema_slow"
+        emit:
+          - action: exit_long
+```
+
+### Valid Actions
+
+| Action | Description |
+|--------|-------------|
+| `entry_long` | Enter long position |
+| `entry_short` | Enter short position |
+| `exit_long` | Exit long position |
+| `exit_short` | Exit short position |
+| `exit_all` | Exit all positions |
+| `no_action` | Do nothing |
+
+---
+
+## Operators
+
+### Comparison Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `gt` | Greater than | `RSI > 50` |
+| `gte` | Greater than or equal | `RSI >= 50` |
+| `lt` | Less than | `RSI < 30` |
+| `lte` | Less than or equal | `RSI <= 30` |
+| `eq` | Equal (discrete types) | `trend.direction == 1` |
+| `approx_eq` | Approximate equality (float) | `\|price - level\| <= tolerance` |
+| `between` | In range (inclusive) | `30 <= RSI <= 70` |
+| `near_abs` | Near (absolute tolerance) | `|price - level| <= 10` |
+| `near_pct` | Near (percentage tolerance) | `|price - level| / level <= 0.01` |
+| `in` | In set of values | `direction in [1, -1]` |
+
+### Crossover Operators
+
+| Operator | Description | Semantics |
+|----------|-------------|-----------|
+| `cross_above` | Cross above | `prev <= target AND curr > target` |
+| `cross_below` | Cross below | `prev >= target AND curr < target` |
+
+### Operator Examples
+
+```yaml
+# Simple comparison: RSI < 30
+- when:
+    lhs:
+      feature_id: "rsi_14"
+    op: lt
+    rhs: 30
+
+# Feature comparison: EMA fast > EMA slow
+- when:
+    lhs:
+      feature_id: "ema_fast"
+    op: gt
+    rhs:
+      feature_id: "ema_slow"
+
+# Between: RSI in neutral zone
+- when:
+    lhs:
+      feature_id: "rsi_14"
+    op: between
+    rhs:
+      low: 30
+      high: 70
+
+# Near percent: Price near fib level (within 0.5%)
+- when:
+    lhs:
+      feature_id: "mark_price"
+    op: near_pct
+    rhs:
+      feature_id: "fib"
+      field: "level_0.618"
+    tolerance: 0.005
+
+# Crossover: EMA crosses above
+- when:
+    lhs:
+      feature_id: "ema_fast"
+    op: cross_above
+    rhs:
+      feature_id: "ema_slow"
+
+# Equality: Trend is up (direction = 1)
+- when:
+    lhs:
+      feature_id: "trend"
+      field: "direction"
+    op: eq
+    rhs: 1
+
+# Approximate equality: Price near fib level (absolute tolerance)
+- when:
+    lhs:
+      feature_id: "close"
+    op: approx_eq
+    rhs:
+      feature_id: "fib"
+      field: "level_0.618"
+    tolerance: 10.0
+```
+
+---
+
+## Boolean Logic (all/any/not)
+
+### AND Logic (all)
+
+```yaml
+- when:
+    all:
+      - lhs:
+          feature_id: "ema_fast"
+        op: gt
+        rhs:
+          feature_id: "ema_slow"
+      - lhs:
+          feature_id: "rsi_14"
+        op: lt
+        rhs: 70
+```
+
+### OR Logic (any)
+
+```yaml
+- when:
+    any:
+      - lhs:
+          feature_id: "rsi_14"
+        op: lt
+        rhs: 30
+      - lhs:
+          feature_id: "rsi_14"
+        op: gt
+        rhs: 70
+```
+
+### NOT Logic (not)
+
+```yaml
+- when:
+    not:
+      lhs:
+        feature_id: "rsi_14"
+      op: gt
+      rhs: 70
+```
+
+### Nested Logic
+
+```yaml
+# (EMA fast > EMA slow) AND (RSI < 70 OR RSI > 30)
+- when:
+    all:
+      - lhs:
+          feature_id: "ema_fast"
+        op: gt
+        rhs:
+          feature_id: "ema_slow"
+      - any:
+          - lhs:
+              feature_id: "rsi_14"
+            op: lt
+            rhs: 70
+          - lhs:
+              feature_id: "rsi_14"
+            op: gt
+            rhs: 30
+```
+
+---
+
+## Window Operators
+
+Window operators check conditions over multiple bars.
+
+### holds_for
+
+Condition must be true for N consecutive bars:
+
+```yaml
+- when:
+    holds_for:
+      bars: 5
+      expr:
+        lhs:
+          feature_id: "rsi_14"
+        op: gt
+        rhs: 50
+```
+
+### occurred_within
+
+Condition was true at least once in last N bars:
+
+```yaml
+- when:
+    occurred_within:
+      bars: 3
+      expr:
+        lhs:
+          feature_id: "ema_fast"
+        op: cross_above
+        rhs:
+          feature_id: "ema_slow"
+```
+
+### count_true
+
+Condition was true at least M times in last N bars:
+
+```yaml
+- when:
+    count_true:
+      bars: 10
+      min_true: 3
+      expr:
+        lhs:
+          feature_id: "rsi_14"
+        op: gt
+        rhs: 70
+```
+
+---
+
+## Accessing Features and Structures
+
+### Referencing Features
+
+```yaml
+# Simple feature reference
+lhs:
+  feature_id: "ema_fast"
+
+# With field (for multi-output indicators)
+lhs:
+  feature_id: "macd"
+  field: "signal"      # Access MACD signal line
+
+# With offset (previous bar)
+lhs:
+  feature_id: "close"
+  offset: 1            # Previous bar's close
+```
+
+### Referencing Structures
+
+Structures are referenced by their key with field selection:
+
+```yaml
+# Swing structure
+lhs:
+  feature_id: "swing"
+  field: "high_level"    # Swing high price
+
+# Trend structure
+lhs:
+  feature_id: "trend"
+  field: "direction"     # 1=up, -1=down, 0=neutral
+
+# Fibonacci structure
+lhs:
+  feature_id: "fib"
+  field: "level_0.618"   # 61.8% fib level
+
+# Zone structure
+lhs:
+  feature_id: "demand_zone"
+  field: "upper"         # Zone upper boundary
+
+# Rolling window
+lhs:
+  feature_id: "recent_low"
+  field: "value"         # Window min/max value
+```
+
+### Built-in Features
+
+Available without declaration:
+
+```yaml
+# OHLCV data
+feature_id: "open"
+feature_id: "high"
+feature_id: "low"
+feature_id: "close"
+feature_id: "volume"
+
+# Mark price (current market price)
+feature_id: "mark_price"
+```
+
+---
+
+## Risk Model
+
+```yaml
+risk_model:
+  stop_loss:
+    type: "percent"        # or "atr_multiple", "structure", "fixed_points"
+    value: 2.0             # 2% stop loss
+
+  take_profit:
+    type: "rr_ratio"       # or "atr_multiple", "percent", "fixed_points"
+    value: 2.0             # 2:1 reward-to-risk ratio
+
+  sizing:
+    model: "percent_equity"  # or "fixed_usdt", "risk_based"
+    value: 2.0               # 2% of equity per trade
+    max_leverage: 3.0        # Maximum leverage
+```
+
+### Stop Loss Types
+
+```yaml
+# Percentage-based
+stop_loss:
+  type: "percent"
+  value: 2.0
+
+# ATR-based
+stop_loss:
+  type: "atr_multiple"
+  value: 2.0
+  atr_feature_id: "atr_14"   # Reference to ATR feature
+
+# Structure-based (e.g., swing low)
+stop_loss:
+  type: "structure"
+  value: 1.0                 # Multiplier
+  buffer_pct: 0.1            # Buffer percentage
+```
+
+### Take Profit Types
+
+```yaml
+# Risk-reward ratio
+take_profit:
+  type: "rr_ratio"
+  value: 2.0         # 2R target
+
+# Percentage
+take_profit:
+  type: "percent"
+  value: 4.0         # 4% take profit
+
+# ATR-based
+take_profit:
+  type: "atr_multiple"
+  value: 3.0
+  atr_feature_id: "atr_14"
+```
+
+---
+
+## Complete Examples
+
+### Example 1: Simple EMA Crossover
+
+```yaml
+id: ema_crossover
+version: "3.0.0"
+name: "EMA Crossover Strategy"
+description: "Long when EMA(9) crosses above EMA(21)"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+
+symbol_universe:
+  - "BTCUSDT"
+
+execution_tf: "1h"
+
+features:
+  - id: "ema_fast"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params: { length: 9 }
+
+  - id: "ema_slow"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params: { length: 21 }
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+
+blocks:
+  - id: entry
+    cases:
+      - when:
+          lhs:
+            feature_id: "ema_fast"
+          op: cross_above
+          rhs:
+            feature_id: "ema_slow"
+        emit:
+          - action: entry_long
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          lhs:
+            feature_id: "ema_fast"
+          op: cross_below
+          rhs:
+            feature_id: "ema_slow"
+        emit:
+          - action: exit_long
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 3.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 2.0
+    max_leverage: 3.0
+```
+
+### Example 2: Multi-Condition with RSI Filter
+
+```yaml
+id: ema_rsi_strategy
+version: "3.0.0"
+name: "EMA + RSI Strategy"
+description: "Long when EMA bullish AND RSI not overbought"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  fee_model:
+    taker_bps: 6.0
+
+symbol_universe:
+  - "BTCUSDT"
+
+execution_tf: "1h"
+
+features:
+  - id: "ema_fast"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params: { length: 9 }
+
+  - id: "ema_slow"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params: { length: 21 }
+
+  - id: "rsi"
+    tf: "1h"
+    type: indicator
+    indicator_type: rsi
+    params: { length: 14 }
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+
+blocks:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - lhs:
+                feature_id: "ema_fast"
+              op: gt
+              rhs:
+                feature_id: "ema_slow"
+            - lhs:
+                feature_id: "rsi"
+              op: lt
+              rhs: 70
+        emit:
+          - action: entry_long
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          any:
+            - lhs:
+                feature_id: "ema_fast"
+              op: lt
+              rhs:
+                feature_id: "ema_slow"
+            - lhs:
+                feature_id: "rsi"
+              op: gt
+              rhs: 80
+        emit:
+          - action: exit_long
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 3.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 2.0
+    max_leverage: 3.0
+```
+
+### Example 3: Multi-Timeframe with Trend Filter
+
+```yaml
+id: mtf_trend_strategy
+version: "3.0.0"
+name: "MTF Trend Strategy"
+description: "Trade with 1h trend, execute on 15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  fee_model:
+    taker_bps: 6.0
+
+symbol_universe:
+  - "BTCUSDT"
+
+execution_tf: "15m"
+
+features:
+  # Execution TF indicators
+  - id: "ema_fast_15m"
+    tf: "15m"
+    type: indicator
+    indicator_type: ema
+    params: { length: 9 }
+
+  - id: "ema_slow_15m"
+    tf: "15m"
+    type: indicator
+    indicator_type: ema
+    params: { length: 21 }
+
+  # HTF trend indicator
+  - id: "ema_trend_1h"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params: { length: 50 }
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+
+blocks:
+  - id: entry
+    cases:
+      - when:
+          all:
+            # HTF filter: price above 1h EMA (uptrend)
+            - lhs:
+                feature_id: "close"
+              op: gt
+              rhs:
+                feature_id: "ema_trend_1h"
+            # LTF signal: EMA crossover
+            - lhs:
+                feature_id: "ema_fast_15m"
+              op: cross_above
+              rhs:
+                feature_id: "ema_slow_15m"
+        emit:
+          - action: entry_long
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          lhs:
+            feature_id: "ema_fast_15m"
+          op: cross_below
+          rhs:
+            feature_id: "ema_slow_15m"
+        emit:
+          - action: exit_long
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 2.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 1.5
+    max_leverage: 3.0
+```
+
+---
+
+## Version History
+
+| Version | Changes |
+|---------|---------|
+| 3.0.0 | Blocks-based DSL with nested all/any/not, window operators |
+| 2.0.0 | Legacy signal_rules format (deprecated) |
+
+---
+
+## See Also
+
+- `configs/idea_cards/_validation/` - Validation card examples
+- `docs/specs/IDEACARD_ENGINE_FLOW.md` - Engine integration
+- `docs/specs/INCREMENTAL_STATE_ARCHITECTURE.md` - Structure detectors
