@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 from .types import Transition, RationalizedState, MarketRegime, TransitionFilter
 from .transitions import TransitionManager
+from .derived import DerivedStateComputer
 
 if TYPE_CHECKING:
     from src.backtest.incremental.state import MultiTFIncrementalState
@@ -65,6 +66,7 @@ class StateRationalizer:
             history_depth: Maximum transitions to keep in history buffer
         """
         self._transition_manager = TransitionManager(history_depth=history_depth)
+        self._derived_computer = DerivedStateComputer()
         self._history_depth = history_depth
 
     def rationalize(
@@ -115,17 +117,15 @@ class StateRationalizer:
     ) -> dict[str, Any]:
         """Compute derived values from current state.
 
-        Placeholder for W2-P3 implementation.
-        Will compute:
+        Delegates to DerivedStateComputer.
+
+        Computes:
         - confluence_score: Signal alignment (0.0-1.0)
         - alignment: HTF/MTF/LTF agreement
         - momentum: Aggregate momentum signal
+        - structure_stability: Recent change frequency
         """
-        # W2-P3: Full implementation via DerivedStateComputer
-        return {
-            "confluence_score": 0.0,
-            "alignment": 0.0,
-        }
+        return self._derived_computer.compute(incremental_state, bar)
 
     def _classify_regime(
         self,
@@ -134,11 +134,15 @@ class StateRationalizer:
     ) -> MarketRegime:
         """Classify current market regime.
 
-        Placeholder for W2-P3 implementation.
-        Will use trend direction, volatility, range detection.
+        Delegates to DerivedStateComputer.
+
+        Returns:
+        - TRENDING_UP: Strong uptrend
+        - TRENDING_DOWN: Strong downtrend
+        - RANGING: Low volatility, no trend
+        - VOLATILE: High volatility, no clear trend
         """
-        # W2-P3: Full implementation using trend detector + volatility
-        return MarketRegime.UNKNOWN
+        return self._derived_computer.classify_regime(incremental_state, bar)
 
     def get_recent_transitions(
         self,

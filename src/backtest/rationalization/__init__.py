@@ -33,6 +33,7 @@ from .types import (
 )
 from .rationalizer import StateRationalizer
 from .transitions import TransitionManager, TRACKED_FIELDS
+from .derived import DerivedStateComputer
 
 __all__ = [
     # Core types
@@ -45,4 +46,6 @@ __all__ = [
     # Transition detection
     "TransitionManager",
     "TRACKED_FIELDS",
+    # Derived state
+    "DerivedStateComputer",
 ]
