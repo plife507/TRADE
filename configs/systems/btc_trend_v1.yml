@@ -1,0 +1,23 @@
+id: btc_trend_v1
+version: "1.0.0"
+name: "BTC Trend System v1"
+description: |
+  Production-ready trend following system for BTCUSDT.
+  Combines trend following and momentum strategies.
+
+mode: backtest
+
+playbooks:
+  - playbook_id: trend_following
+    weight: 1.0
+
+risk_profile:
+  initial_capital: 10000
+  max_drawdown_pct: 20.0
+  risk_per_trade_pct: 1.0
+  max_leverage: 3.0
+
+tags:
+  - btc
+  - trend
+  - v1

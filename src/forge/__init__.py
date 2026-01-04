@@ -29,6 +29,15 @@ from src.forge.playbooks import (
     PlaybookNotFoundError,
 )
 
+from src.forge.systems import (
+    System,
+    PlaybookRef,
+    load_system,
+    list_systems,
+    save_system,
+    SystemNotFoundError,
+)
+
 __all__ = [
     # Setups (W4-P1/P2)
     "Setup",
@@ -43,4 +52,11 @@ __all__ = [
     "list_playbooks",
     "save_playbook",
     "PlaybookNotFoundError",
+    # Systems (W4-P4)
+    "System",
+    "PlaybookRef",
+    "load_system",
+    "list_systems",
+    "save_system",
+    "SystemNotFoundError",
 ]
