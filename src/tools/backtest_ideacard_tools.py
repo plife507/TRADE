@@ -421,10 +421,11 @@ def backtest_run_idea_card_tool(
         logger.info("=" * 60)
         logger.info(f"  symbol: {resolved_symbol}")
         logger.info(f"  tf_exec: {exec_tf}")
-        if idea_card.htf:
-            logger.info(f"  tf_htf: {idea_card.htf}")
-        if idea_card.mtf:
-            logger.info(f"  tf_mtf: {idea_card.mtf}")
+        # Show all unique TFs from features
+        all_tfs = idea_card.get_all_tfs()
+        other_tfs = sorted([tf for tf in all_tfs if tf != exec_tf])
+        if other_tfs:
+            logger.info(f"  other_tfs: {', '.join(other_tfs)}")
         logger.info("-" * 40)
         logger.info(f"  starting_equity_usdt: {resolved_starting_equity:,.2f}")
         logger.info(f"  max_leverage: {resolved_max_leverage:.1f}x")
@@ -435,12 +436,12 @@ def backtest_run_idea_card_tool(
         if idea_card.account.slippage_bps:
             logger.info(f"  slippage_bps: {idea_card.account.slippage_bps}")
         logger.info("-" * 40)
-        # Warmup spans
-        for role in ["exec", "htf", "mtf"]:
-            if role in idea_card.tf_configs:
-                warmup = idea_card.get_required_warmup_bars(role)
-                tf = idea_card.tf_configs[role].tf
-                logger.info(f"  warmup_{role}: {warmup} bars ({tf})")
+        # Warmup spans - use feature_registry
+        from ..backtest.execution_validation import compute_warmup_requirements
+        warmup_reqs = compute_warmup_requirements(idea_card)
+        for tf in sorted(all_tfs):
+            warmup = warmup_reqs.warmup_by_role.get(tf, 0)
+            logger.info(f"  warmup_{tf}: {warmup} bars")
         logger.info("=" * 60)
 
         # If smoke mode and no start/end provided, use last 100 bars from DB
@@ -481,14 +482,19 @@ def backtest_run_idea_card_tool(
             IndicatorGateStatus,
         )
 
-        # Compute expanded keys from IdeaCard FeatureSpecs
+        # Compute expanded keys from IdeaCard feature_registry
         available_keys_by_role = {}
         declared_keys_by_role = {}
-        for role, tf_config in idea_card.tf_configs.items():
-            specs = list(tf_config.feature_specs)
-            expanded = get_required_indicator_columns_from_specs(specs)
-            available_keys_by_role[role] = set(expanded)
-            declared_keys_by_role[role] = sorted(expanded)
+        registry = idea_card.feature_registry
+        for tf in registry.get_all_tfs():
+            features = registry.get_for_tf(tf)
+            expanded = set()
+            for feature in features:
+                expanded.add(feature.id)
+                if feature.output_keys:
+                    expanded.update(feature.output_keys)
+            available_keys_by_role[tf] = expanded
+            declared_keys_by_role[tf] = sorted(expanded)
 
         indicator_gate_result = validate_indicator_requirements(
             idea_card=idea_card,
@@ -514,11 +520,8 @@ def backtest_run_idea_card_tool(
             logger.info("[GATE] Indicator requirements: SKIPPED (no required_indicators declared)")
 
         # Print indicator keys (Phase B requirement)
-        logger.info(f"Declared indicator keys (exec): {declared_keys_by_role.get('exec', [])}")
-        if declared_keys_by_role.get("htf"):
-            logger.info(f"Declared indicator keys (htf): {declared_keys_by_role['htf']}")
-        if declared_keys_by_role.get("mtf"):
-            logger.info(f"Declared indicator keys (mtf): {declared_keys_by_role['mtf']}")
+        exec_tf = idea_card.execution_tf
+        logger.info(f"Declared indicator keys ({exec_tf}): {declared_keys_by_role.get(exec_tf, [])}")
 
         # Use the existing runner infrastructure
         from ..backtest.runner import (
@@ -739,20 +742,23 @@ def backtest_indicators_tool(
 
         symbol = validate_symbol(symbol)
 
-        # Get all feature specs by role
-        feature_specs_by_role = {}
+        # Get all features by TF from registry
+        registry = idea_card.feature_registry
+        all_tfs = registry.get_all_tfs()
         declared_keys_by_role = {}
         expanded_keys_by_role = {}
 
-        for role, tf_config in idea_card.tf_configs.items():
-            specs = list(tf_config.feature_specs)
-            feature_specs_by_role[role] = specs
-
-            # Get declared keys (output_key from each spec)
-            declared_keys_by_role[role] = sorted([s.output_key for s in specs])
-
-            # Get expanded keys (including multi-output suffixes)
-            expanded_keys_by_role[role] = sorted(get_required_indicator_columns_from_specs(specs))
+        for tf in all_tfs:
+            features = registry.get_for_tf(tf)
+            declared = set()
+            expanded = set()
+            for feature in features:
+                declared.add(feature.id)
+                expanded.add(feature.id)
+                if feature.output_keys:
+                    expanded.update(feature.output_keys)
+            declared_keys_by_role[tf] = sorted(declared)
+            expanded_keys_by_role[tf] = sorted(expanded)
 
         # Build result
         result_data = {
@@ -761,8 +767,7 @@ def backtest_indicators_tool(
             "db_path": str(db_path),
             "symbol": symbol,
             "exec_tf": idea_card.exec_tf,
-            "htf": idea_card.htf,
-            "mtf": idea_card.mtf,
+            "all_tfs": sorted(all_tfs),
             "declared_keys_by_role": declared_keys_by_role,
             "expanded_keys_by_role": expanded_keys_by_role,
             "total_declared_keys": sum(len(v) for v in declared_keys_by_role.values()),
@@ -770,62 +775,24 @@ def backtest_indicators_tool(
         }
 
         # If compute_values, actually load data and compute indicators
+        # Note: This feature requires further refactoring to work with new schema
         if compute_values and start and end:
-            from ..backtest.indicators import apply_feature_spec_indicators, find_first_valid_bar
-
-            store = get_historical_store(env=data_env)
-
-            computed_info = {}
-            for role, specs in feature_specs_by_role.items():
-                if not specs:
-                    continue
-
-                tf = idea_card.tf_configs[role].tf
-
-                # Normalize timestamps
-                start_norm = normalize_timestamp(start)
-                end_norm = normalize_timestamp(end) if end else datetime.now().replace(tzinfo=None)
-
-                # Load data
-                df = store.get_ohlcv(symbol, tf, start_norm, end_norm)
-
-                if df is None or df.empty:
-                    computed_info[role] = {"error": f"No data for {symbol} {tf}"}
-                    continue
-
-                # Apply indicators
-                df = apply_feature_spec_indicators(df, specs)
-
-                # Find first valid bar
-                expanded_cols = get_required_indicator_columns_from_specs(specs)
-                first_valid = find_first_valid_bar(df, expanded_cols)
-
-                # Get actual computed columns
-                actual_cols = [c for c in df.columns if c not in ['timestamp', 'open', 'high', 'low', 'close', 'volume']]
-
-                computed_info[role] = {
-                    "tf": tf,
-                    "data_rows": len(df),
-                    "first_valid_bar": first_valid,
-                    "computed_columns": sorted(actual_cols),
-                    "all_indicators_valid": first_valid >= 0,
-                }
-
-            result_data["computed_info"] = computed_info
+            logger.warning("compute_values not yet supported with new IdeaCard schema")
+            result_data["computed_info"] = {"warning": "Not yet supported"}
 
         # Log output
         logger.info(f"Indicator key discovery for {idea_card_id}:")
-        for role in ["exec", "htf", "mtf"]:
-            if role in declared_keys_by_role:
-                declared = declared_keys_by_role[role]
-                expanded = expanded_keys_by_role[role]
-                logger.info(f"  {role} ({idea_card.tf_configs.get(role, {}).tf if role in idea_card.tf_configs else 'N/A'}):")
+        for tf in sorted(all_tfs):
+            if tf in declared_keys_by_role:
+                declared = declared_keys_by_role[tf]
+                expanded = expanded_keys_by_role[tf]
+                logger.info(f"  {tf}:")
                 logger.info(f"    declared: {declared}")
                 logger.info(f"    expanded: {expanded}")
 
         return ToolResult(
             success=True,
-            message=f"Found {result_data['total_expanded_keys']} indicator keys across {len(feature_specs_by_role)} TF roles",
+            message=f"Found {result_data['total_expanded_keys']} indicator keys across {len(all_tfs)} TFs",
             symbol=symbol,
             data=result_data,
         )
@@ -908,9 +875,7 @@ def backtest_data_fix_tool(
         symbol = validate_symbol(symbol)
 
         # Get all TFs from IdeaCard + mandatory 1m for price feed
-        tfs = set()
-        for role, tf_config in idea_card.tf_configs.items():
-            tfs.add(tf_config.tf)
+        tfs = set(idea_card.get_all_tfs())
         # 1m is mandatory for price feed (quote proxy) - always include
         tfs.add("1m")
         tfs = sorted(tfs)

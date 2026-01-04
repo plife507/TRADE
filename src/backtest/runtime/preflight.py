@@ -894,15 +894,21 @@ def run_preflight_gate(
     warmup_requirements = compute_warmup_requirements(idea_card)
     
     # Validate that warmup doesn't push data start before earliest available data
-    for role, tf_config in idea_card.tf_configs.items():
-        warmup = warmup_requirements.warmup_by_role.get(role, 0)
+    # In new schema, use feature_registry to get all TFs
+    try:
+        all_tfs = idea_card.feature_registry.get_all_tfs()
+    except Exception:
+        all_tfs = {idea_card.execution_tf} if idea_card.execution_tf else set()
+
+    for tf in all_tfs:
+        warmup = warmup_requirements.warmup_by_role.get(tf, 0)
         safety = _compute_safety_buffer(warmup)
         total_warmup = warmup + safety
-        tf_minutes = parse_tf_to_minutes(tf_config.tf)
+        tf_minutes = parse_tf_to_minutes(tf)
         data_start = window_start - timedelta(minutes=total_warmup * tf_minutes)
         if data_start < earliest_date:
             raise ValueError(
-                f"Warmup for {role} TF ({total_warmup} bars of {tf_config.tf}) would require data "
+                f"Warmup for {tf} TF ({total_warmup} bars) would require data "
                 f"starting {data_start.date()}, which is before earliest available Bybit data "
                 f"({earliest_date.date()}). Reduce warmup_bars or use a later window_start."
             )
@@ -913,13 +919,13 @@ def run_preflight_gate(
     pairs_to_check: list[tuple[str, str, int]] = []  # (symbol, tf, warmup_bars)
 
     for symbol in idea_card.symbol_universe:
-        for role, tf_config in idea_card.tf_configs.items():
-            # Use computed warmup from WarmupRequirements (not tf_config.effective_warmup_bars)
-            warmup = warmup_requirements.warmup_by_role.get(role, 0)
+        for tf in all_tfs:
+            # Use computed warmup from WarmupRequirements
+            warmup = warmup_requirements.warmup_by_role.get(tf, 0)
             # Add safety buffer
             safety_buffer = _compute_safety_buffer(warmup)
             warmup_with_buffer = warmup + safety_buffer
-            pairs_to_check.append((symbol, tf_config.tf, warmup_with_buffer))
+            pairs_to_check.append((symbol, tf, warmup_with_buffer))
 
     # ==========================================================================
     # STEP 2.5: Add mandatory 1m coverage check for all symbols
@@ -929,14 +935,14 @@ def run_preflight_gate(
     # The 1m warmup is calculated as: max warmup bars across all roles, converted to 1m.
 
     # Check if 1m is already declared (skip if already in pairs)
-    declared_tfs = {tf_config.tf.lower() for tf_config in idea_card.tf_configs.values()}
+    declared_tfs = {tf.lower() for tf in all_tfs}
 
     if "1m" not in declared_tfs:
         # Calculate 1m warmup: max warmup across all roles, converted to 1m bars
         max_warmup_minutes = 0
-        for role, tf_config in idea_card.tf_configs.items():
-            role_warmup = warmup_requirements.warmup_by_role.get(role, 0)
-            tf_minutes = parse_tf_to_minutes(tf_config.tf)
+        for tf in all_tfs:
+            role_warmup = warmup_requirements.warmup_by_role.get(tf, 0)
+            tf_minutes = parse_tf_to_minutes(tf)
             warmup_minutes = role_warmup * tf_minutes
             max_warmup_minutes = max(max_warmup_minutes, warmup_minutes)
 
@@ -1026,9 +1032,9 @@ def run_preflight_gate(
     mapping_error: str | None = None
 
     if has_1m_coverage:
-        # Get exec TF from IdeaCard
-        exec_tf = idea_card.tf_configs.get("exec")
-        if exec_tf:
+        # Get exec TF from IdeaCard (new schema uses execution_tf directly)
+        exec_tf_str = idea_card.execution_tf
+        if exec_tf_str:
             # Load 1m data for mapping validation
             for symbol in idea_card.symbol_universe:
                 key_1m = f"{symbol}:1m"
@@ -1042,7 +1048,7 @@ def run_preflight_gate(
                         )
                         df_1m = data_loader(symbol, "1m", effective_start_1m, window_end)
                         mapping_ok, err = _validate_exec_to_1m_mapping(
-                            exec_tf=exec_tf.tf,
+                            exec_tf=exec_tf_str,
                             window_start=window_start,
                             window_end=window_end,
                             df_1m=df_1m,

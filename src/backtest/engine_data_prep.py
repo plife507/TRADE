@@ -80,7 +80,6 @@ class MultiTFPreparedFrames:
 
     # Warmup metadata
     warmup_bars: int = 0
-    warmup_multiplier: int = 5
     max_indicator_lookback: int = 0
 
     # Window metadata
@@ -420,14 +419,10 @@ def prepare_multi_tf_frames_impl(
             # Single-TF mode: all roles map to same TF, use exec warmup
             pass  # htf_warmup_bars will be computed below
 
-    # warmup_multiplier is legacy - Preflight now computes the final warmup_bars
-    # We keep the field for PreparedFrame/MultiTFPreparedFrames compatibility but always use 1
-    warmup_multiplier = 1
-
     # max_lookback is the raw max warmup from specs (for indicator validation only)
     # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
     exec_specs = config.feature_specs_by_role.get('exec', [])
-    max_lookback = get_warmup_from_specs(exec_specs, warmup_multiplier=1) if exec_specs else 0
+    max_lookback = get_warmup_from_specs(exec_specs) if exec_specs else 0
 
     # Compute data window using centralized utility
     tf_by_role = {
@@ -606,7 +601,6 @@ def prepare_multi_tf_frames_impl(
         ltf_frame=ltf_frame,
         ltf_sim_start_index=sim_start_idx,
         warmup_bars=warmup_bars,
-        warmup_multiplier=warmup_multiplier,
         max_indicator_lookback=max_lookback,
         requested_start=requested_start,
         requested_end=requested_end,

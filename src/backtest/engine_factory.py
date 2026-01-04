@@ -109,6 +109,8 @@ def create_engine_from_idea_card(
         StrategyInstanceConfig,
         StrategyInstanceInputs,
     )
+    from .features.feature_spec import FeatureSpec, InputSource as FSInputSource
+    from .feature_registry import FeatureType
 
     # Validate required sections
     if idea_card.account is None:
@@ -122,6 +124,38 @@ def create_engine_from_idea_card(
 
     # Get feature registry
     registry = idea_card.feature_registry
+
+    # Build feature_specs_by_role from registry (for backward compat with engine_data_prep)
+    def _feature_to_spec(feature) -> FeatureSpec | None:
+        """Convert Feature to FeatureSpec (indicators only)."""
+        if feature.type != FeatureType.INDICATOR:
+            return None  # Structures don't have FeatureSpecs
+        # Map InputSource enum
+        input_source_map = {
+            "close": FSInputSource.CLOSE,
+            "open": FSInputSource.OPEN,
+            "high": FSInputSource.HIGH,
+            "low": FSInputSource.LOW,
+            "volume": FSInputSource.VOLUME,
+        }
+        fs_input = input_source_map.get(feature.input_source.value, FSInputSource.CLOSE)
+        return FeatureSpec(
+            indicator_type=feature.indicator_type,
+            output_key=feature.id,
+            params=dict(feature.params),
+            input_source=fs_input,
+        )
+
+    feature_specs_by_role: dict[str, list[FeatureSpec]] = {}
+    for tf in registry.get_all_tfs():
+        specs = []
+        for feature in registry.get_for_tf(tf):
+            spec = _feature_to_spec(feature)
+            if spec:
+                specs.append(spec)
+        feature_specs_by_role[tf] = specs
+    # Also set 'exec' role pointing to execution_tf specs
+    feature_specs_by_role["exec"] = feature_specs_by_role.get(idea_card.execution_tf, [])
 
     # Extract capital/account params from IdeaCard (REQUIRED - no defaults)
     initial_equity = idea_card.account.starting_equity_usdt
@@ -211,6 +245,46 @@ def create_engine_from_idea_card(
     window_start_naive = window_start.replace(tzinfo=None) if window_start.tzinfo else window_start
     window_end_naive = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
 
+    # Build warmup_bars_by_role from warmup_by_tf for backward compatibility
+    # Engine data prep still uses role-based warmup
+    warmup_bars_by_role = {
+        "exec": warmup_by_tf.get(idea_card.execution_tf, 0),
+        "ltf": warmup_by_tf.get(idea_card.execution_tf, 0),  # LTF = exec in single-TF
+        "mtf": warmup_by_tf.get(idea_card.execution_tf, 0),  # MTF = exec in single-TF
+        "htf": warmup_by_tf.get(idea_card.execution_tf, 0),  # HTF = exec in single-TF
+    }
+    # Override with actual TF values if multi-TF
+    for tf, warmup in warmup_by_tf.items():
+        warmup_bars_by_role[tf] = warmup
+
+    # Build tf_mapping from feature registry TFs
+    # Sort TFs by minutes to determine htf/mtf/ltf roles
+    from .runtime.timeframe import tf_minutes
+    all_tfs = sorted(registry.get_all_tfs(), key=lambda tf: tf_minutes(tf))
+    exec_tf = idea_card.execution_tf
+
+    if len(all_tfs) == 1:
+        # Single-TF mode
+        tf_mapping = {"htf": exec_tf, "mtf": exec_tf, "ltf": exec_tf}
+    else:
+        # Multi-TF mode: map TFs to roles
+        # ltf = execution_tf, mtf = next higher, htf = highest
+        tf_mapping = {"ltf": exec_tf}
+        non_exec_tfs = [tf for tf in all_tfs if tf != exec_tf]
+        if non_exec_tfs:
+            # Sort remaining TFs by minutes (ascending)
+            non_exec_sorted = sorted(non_exec_tfs, key=lambda tf: tf_minutes(tf))
+            if len(non_exec_sorted) >= 2:
+                tf_mapping["mtf"] = non_exec_sorted[0]  # Lowest non-exec
+                tf_mapping["htf"] = non_exec_sorted[-1]  # Highest non-exec
+            elif len(non_exec_sorted) == 1:
+                # Only one other TF - use it as both mtf and htf
+                tf_mapping["mtf"] = non_exec_sorted[0]
+                tf_mapping["htf"] = non_exec_sorted[0]
+        else:
+            tf_mapping["mtf"] = exec_tf
+            tf_mapping["htf"] = exec_tf
+
     # Create SystemConfig
     system_config = SystemConfig(
         system_id=idea_card.id,
@@ -229,6 +303,9 @@ def create_engine_from_idea_card(
         # New fields for Feature Registry architecture
         feature_registry=registry,
         warmup_by_tf=warmup_by_tf,
+        # Backward compat for engine_data_prep
+        warmup_bars_by_role=warmup_bars_by_role,
+        feature_specs_by_role=feature_specs_by_role,
     )
 
     # Create engine
@@ -238,6 +315,7 @@ def create_engine_from_idea_card(
         run_dir=run_dir,
         feature_registry=registry,
         on_snapshot=on_snapshot,
+        tf_mapping=tf_mapping,
     )
 
     # Store IdeaCard reference for run_with_idea_card()
@@ -309,8 +387,7 @@ def run_engine_with_idea_card(
     # Import here to avoid circular import
     IdeaCardBacktestResult = _get_idea_card_result_class()
 
-    # Verify all conditions have valid feature_id refs
-    _verify_all_conditions_compiled(idea_card)
+    # Note: Block validation happens at IdeaCard construction via _validate_block_types()
 
     # Create signal evaluator
     evaluator = IdeaCardSignalEvaluator(idea_card)

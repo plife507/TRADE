@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from .sim import SimulatedExchange
     from .system_config import RiskProfileConfig
     from .incremental.state import MultiTFIncrementalState
+    from .feature_registry import FeatureRegistry
 
 
 def update_htf_mtf_indices_impl(
@@ -129,6 +130,7 @@ def build_snapshot_view_impl(
     rollups: dict[str, float] | None = None,
     mark_price_override: float | None = None,
     incremental_state: "MultiTFIncrementalState | None" = None,
+    feature_registry: "FeatureRegistry | None" = None,
 ) -> RuntimeSnapshotView:
     """
     Build RuntimeSnapshotView for array-backed hot loop.
@@ -152,6 +154,7 @@ def build_snapshot_view_impl(
         rollups: Optional px.rollup.* values from 1m accumulation
         mark_price_override: Optional override for mark_price (1m evaluation)
         incremental_state: Optional MultiTFIncrementalState for structure access
+        feature_registry: Optional FeatureRegistry for feature_id-based access
 
     Returns:
         RuntimeSnapshotView ready for strategy evaluation
@@ -183,4 +186,5 @@ def build_snapshot_view_impl(
         history_ready=is_history_ready,
         rollups=rollups,
         incremental_state=incremental_state,
+        feature_registry=feature_registry,
     )

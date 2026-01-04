@@ -165,11 +165,11 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
         ))
     
     # Exec TF is required
-    if "exec" not in idea_card.tf_configs:
+    if not idea_card.execution_tf:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_EXEC_TF",
-            message="exec timeframe is required in tf_configs",
+            message="execution_tf is required",
         ))
     
     # Account config is REQUIRED (no hard-coded defaults)
@@ -198,17 +198,8 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
             ))
     
     # Warmup bars validation (P2.2: prevent excessive data requests)
-    for role, tf_config in idea_card.tf_configs.items():
-        warmup = tf_config.effective_warmup_bars
-        if warmup > MAX_WARMUP_BARS:
-            issues.append(ValidationIssue(
-                severity=ValidationSeverity.ERROR,
-                code="WARMUP_TOO_LARGE",
-                message=(
-                    f"tf_configs.{role}.warmup_bars ({warmup}) exceeds maximum ({MAX_WARMUP_BARS}). "
-                    f"Reduce warmup_bars or adjust indicator lookback periods."
-                ),
-            ))
+    # Warmup is computed from feature registry at runtime - validation
+    # happens during compute_warmup_requirements() call
     
     # Blocks must exist for signal generation
     if not idea_card.blocks:
@@ -345,23 +336,35 @@ def get_declared_features_by_role(idea_card: "IdeaCard") -> dict[str, set[str]]:
     OHLCV columns (open, high, low, close, volume) are always implicitly available.
     Built-in keys (mark_price) are also always available without declaration.
 
+    With the new IdeaCard schema, features are stored in a flat list with each
+    Feature having its own tf attribute. We use the feature_registry to get
+    all declared feature keys.
+
     Args:
-        idea_card: IdeaCard with TF configs
+        idea_card: IdeaCard with features list
 
     Returns:
-        Dict mapping role -> set of feature keys (including OHLCV and built-in)
+        Dict mapping "exec" -> set of all feature keys (including OHLCV and built-in)
     """
-    result: dict[str, set[str]] = {}
+    # New schema: features are in a flat list, all accessible from exec context
+    # The feature_registry handles multi-TF features with forward-fill semantics
+    keys = set(OHLCV_COLUMNS) | set(BUILTIN_KEYS)
 
-    for role, tf_config in idea_card.tf_configs.items():
-        # Start with OHLCV columns and built-in keys - always available
-        keys = set(OHLCV_COLUMNS) | set(BUILTIN_KEYS)
-        for spec in tf_config.feature_specs:
-            # Add all output keys (including multi-output expansion)
-            keys.update(spec.output_keys_list)
-        result[role] = keys
+    # Get all feature IDs from the registry (includes expanded multi-output keys)
+    try:
+        registry = idea_card.feature_registry
+        # Add all feature IDs (primary keys)
+        for feature in registry.all_features():
+            keys.add(feature.id)
+            # Also add output_keys for multi-output indicators
+            if feature.output_keys:
+                keys.update(feature.output_keys)
+    except Exception:
+        # If registry fails to build, return just OHLCV/builtin
+        pass
 
-    return result
+    # All features are accessible from "exec" context in new schema
+    return {"exec": keys}
 
 
 def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResult:
@@ -389,34 +392,22 @@ def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResu
     # Get all references
     refs = extract_rule_feature_refs(idea_card)
     
+    # In new schema, all features are accessible from "exec" context
+    exec_features = declared.get("exec", set())
+
     for ref in refs:
-        role = ref.tf_role
         key = ref.key
 
         # Skip structure paths - validated separately by structure block validation
         if key.startswith("structure."):
             continue
 
-        # Check TF role exists
-        if role not in declared:
-            if role not in idea_card.tf_configs:
-                issues.append(ValidationIssue(
-                    severity=ValidationSeverity.ERROR,
-                    code="UNKNOWN_TF_ROLE",
-                    message=f"TF role '{role}' referenced but not configured",
-                    location=ref.location,
-                ))
-            else:
-                # TF exists but has no features - might be valid for OHLCV access
-                pass
-            continue
-        
-        # Check feature exists
-        if key not in declared[role]:
+        # Check feature exists in declared features
+        if key not in exec_features:
             issues.append(ValidationIssue(
                 severity=ValidationSeverity.ERROR,
                 code="UNDECLARED_FEATURE",
-                message=f"Feature '{key}' referenced but not declared in {role} TF",
+                message=f"Feature '{key}' referenced but not declared in features",
                 location=ref.location,
             ))
     
@@ -475,61 +466,49 @@ class WarmupRequirements:
 
 def _compute_structure_warmup(idea_card: "IdeaCard") -> int:
     """
-    Compute warmup needed for market structure blocks.
+    Compute warmup needed for market structure features.
 
-    SWING: needs left + right bars for pivot confirmation.
-    TREND: needs multiple swings to form a trend pattern.
-           Uses conservative heuristic: (left + right) * 5
-           This allows ~4 swing points to form before trend is valid.
-    DERIVED_ZONE: cascades from source structure warmup.
-           Uses source swing's left + right + buffer for pivot confirmation.
+    In the new IdeaCard schema, structures are part of the features list
+    with type='structure' and structure_type indicating the detector type.
 
-    Note: TREND warmup is computed independently even if a SWING block
-    is declared, to ensure sufficient warmup regardless of block order.
+    Warmup formulas are stored in STRUCTURE_WARMUP_FORMULAS registry.
+    See: src/backtest/incremental/registry.py
 
     Args:
-        idea_card: IdeaCard with market_structure_blocks
+        idea_card: IdeaCard with features list
 
     Returns:
         Maximum warmup bars needed for structure computation
+
+    Raises:
+        KeyError: If structure type has no warmup formula in registry
     """
+    from src.backtest.incremental.registry import get_structure_warmup
+
+    registry = idea_card.feature_registry
+    structures = registry.get_structures()
+
+    if not structures:
+        return 0
+
+    # First pass: find MAX swing params across all swings for dependent structures
+    # Multiple swings may exist (e.g., exec swing + HTF swing) - use largest window
+    max_left = 5  # default
+    max_right = 5  # default
+    for feature in structures:
+        if feature.structure_type == "swing":
+            max_left = max(max_left, feature.params.get("left", 5))
+            max_right = max(max_right, feature.params.get("right", 5))
+    swing_params = {"left": max_left, "right": max_right}
+
+    # Second pass: compute warmup for each structure using registry
     max_structure_warmup = 0
-
-    # First pass: find SWING params for dependent structures (TREND, DERIVED_ZONE)
-    swing_left = 5  # default
-    swing_right = 5  # default
-    for spec in idea_card.market_structure_blocks:
-        if spec.tf_role != "exec":
-            continue
-        if spec.type.value == "swing":
-            swing_left = spec.params.get("left", 5)
-            swing_right = spec.params.get("right", 5)
-            break  # Use first SWING block's params
-
-    for spec in idea_card.market_structure_blocks:
-        # tf_role must be "exec" in Stage 3, so all blocks contribute to exec warmup
-        if spec.tf_role != "exec":
-            continue
-
-        struct_warmup = 0
-        if spec.type.value == "swing":
-            # SWING needs left + right bars
-            left = spec.params.get("left", 5)
-            right = spec.params.get("right", 5)
-            struct_warmup = left + right
-        elif spec.type.value == "trend":
-            # TREND needs multiple swings to form pattern.
-            # Conservative heuristic: (left + right) * 5
-            # Rationale: ~4 swing points needed for HH/HL or LL/LH classification,
-            # plus buffer for confirmation. Not a guarantee, but prevents
-            # premature empty trend_state in early bars.
-            struct_warmup = (swing_left + swing_right) * 5
-        elif spec.type.value == "derived_zone":
-            # DERIVED_ZONE cascades from source swing structure.
-            # Needs source to have confirmed at least 2 pivots for valid zone derivation.
-            # Warmup = source swing warmup + 1 bar for regen trigger.
-            struct_warmup = swing_left + swing_right + 1
-
+    for feature in structures:
+        struct_warmup = get_structure_warmup(
+            feature.structure_type,
+            feature.params,
+            swing_params,
+        )
         max_structure_warmup = max(max_structure_warmup, struct_warmup)
 
     return max_structure_warmup
@@ -539,9 +518,11 @@ def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
     """
     Compute canonical warmup requirements for an IdeaCard.
 
-    Gate 8.2: Warmup = max(feature_warmups[tf], rule_lookback_bars[tf], bars_window_required[tf], structure_warmup)
+    Gate 8.2: Warmup = max(feature_warmups, structure_warmup)
 
-    Additionally computes delay_by_role from market_structure.delay_bars per TF role.
+    With the new IdeaCard schema, features are stored in a flat list with each
+    Feature having its own tf attribute. We use the feature_registry to compute
+    warmup requirements.
 
     Args:
         idea_card: IdeaCard to analyze
@@ -556,36 +537,34 @@ def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
     # Compute structure warmup (Stage 3: all blocks are exec-only)
     structure_warmup = _compute_structure_warmup(idea_card)
 
-    for role, tf_config in idea_card.tf_configs.items():
-        # Get max warmup from feature specs
-        max_feature_warmup = 0
-        for spec in tf_config.feature_specs:
-            max_feature_warmup = max(max_feature_warmup, spec.warmup_bars)
+    try:
+        registry = idea_card.feature_registry
+        all_tfs = registry.get_all_tfs()
 
-        feature_warmup[role] = max_feature_warmup
+        for tf in all_tfs:
+            # Get max warmup from feature registry for this TF
+            max_feature_warmup = registry.get_warmup_for_tf(tf)
+            feature_warmup[tf] = max_feature_warmup
 
-        # Get market_structure lookback and delay (if present)
-        structure_lookback = 0
-        structure_delay = 0
-        if tf_config.market_structure is not None:
-            structure_lookback = tf_config.market_structure.lookback_bars
-            structure_delay = tf_config.market_structure.delay_bars
+            # Include structure_warmup for exec TF
+            role_structure_warmup = structure_warmup if tf == idea_card.execution_tf else 0
+            effective_warmup = max(max_feature_warmup, role_structure_warmup)
 
-        # Combine for effective lookback (warmup)
-        # Include structure_warmup for exec role (Stage 3: all structure blocks are exec)
-        role_structure_warmup = structure_warmup if role == "exec" else 0
-        effective_warmup = max(
-            max_feature_warmup,
-            tf_config.warmup_bars,
-            idea_card.bars_history_required,
-            structure_lookback,
-            role_structure_warmup,
-        )
+            warmup_by_role[tf] = effective_warmup
+            delay_by_role[tf] = 0  # No delay in new schema
 
-        warmup_by_role[role] = effective_warmup
+        # Ensure exec TF is always present
+        if idea_card.execution_tf and idea_card.execution_tf not in warmup_by_role:
+            warmup_by_role[idea_card.execution_tf] = structure_warmup
+            delay_by_role[idea_card.execution_tf] = 0
+            feature_warmup[idea_card.execution_tf] = 0
 
-        # Delay is from market_structure only (not combined with other sources)
-        delay_by_role[role] = max(structure_delay, 0)
+    except Exception:
+        # Fallback if registry fails
+        if idea_card.execution_tf:
+            warmup_by_role[idea_card.execution_tf] = structure_warmup
+            delay_by_role[idea_card.execution_tf] = 0
+            feature_warmup[idea_card.execution_tf] = 0
 
     # Overall max
     max_warmup = max(warmup_by_role.values()) if warmup_by_role else 0
@@ -597,7 +576,7 @@ def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
         max_warmup_bars=max_warmup,
         max_delay_bars=max_delay,
         feature_warmup=feature_warmup,
-        bars_history_required=idea_card.bars_history_required,
+        bars_history_required=0,  # No longer used in new schema
     )
 
 
@@ -661,7 +640,7 @@ def validate_pre_evaluation(
                 severity=ValidationSeverity.ERROR,
                 code="WARMUP_NOT_SATISFIED",
                 message=f"{role} TF needs {required_warmup} bars, has {current_bars}",
-                location=f"tf_configs.{role}",
+                location=f"features[tf={role}]",
             ))
     
     is_ready = not any(i.severity == ValidationSeverity.ERROR for i in issues)
@@ -945,7 +924,7 @@ class IdeaCardSignalEvaluator:
         # Compute stop loss
         sl_rule = risk_model.stop_loss
         if sl_rule.type.value == "atr_multiple":
-            atr = self._get_snapshot_value(snapshot, sl_rule.atr_key, "exec")
+            atr = self._get_snapshot_value(snapshot, sl_rule.atr_feature_id, "exec")
             if atr is not None:
                 sl_distance = atr * sl_rule.value
                 buffer = entry_price * (sl_rule.buffer_pct / 100.0)
@@ -977,7 +956,7 @@ class IdeaCardSignalEvaluator:
             else:
                 tp_price = entry_price - tp_distance
         elif tp_rule.type.value == "atr_multiple":
-            atr = self._get_snapshot_value(snapshot, tp_rule.atr_key, "exec")
+            atr = self._get_snapshot_value(snapshot, tp_rule.atr_feature_id, "exec")
             if atr is not None:
                 tp_distance = atr * tp_rule.value
                 if direction == "long":

@@ -1,0 +1,102 @@
+# T_001: EMA Crossover Strategy (Simple)
+# Real trading logic: Classic 9/21 EMA crossover with RSI filter
+# Entry: Fast EMA crosses above slow + RSI not overbought
+# Exit: Fast EMA crosses below slow
+
+id: T_001_ema_crossover
+version: "3.0.0"
+name: "Stress Test 001: EMA Crossover"
+description: |
+  Classic momentum strategy using exponential moving average crossover.
+  Filter: Only enter when RSI < 70 (avoid buying overbought).
+  This tests: basic indicators, cross_above/cross_below operators, all logic.
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+symbol_universe:
+  - "BTCUSDT"
+
+execution_tf: "1h"
+
+features:
+  - id: "ema_9"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params:
+      length: 9
+
+  - id: "ema_21"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params:
+      length: 21
+
+  - id: "rsi_14"
+    tf: "1h"
+    type: indicator
+    indicator_type: rsi
+    params:
+      length: 14
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
+  allow_scale_in: false
+  allow_scale_out: false
+
+blocks:
+  - id: entry
+    cases:
+      - when:
+          all:
+            # Golden cross: fast crosses above slow
+            - lhs:
+                feature_id: "ema_9"
+              op: cross_above
+              rhs:
+                feature_id: "ema_21"
+            # Filter: RSI not overbought
+            - lhs:
+                feature_id: "rsi_14"
+              op: lt
+              rhs: 70
+        emit:
+          - action: entry_long
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      # Death cross: fast crosses below slow
+      - when:
+          lhs:
+            feature_id: "ema_9"
+          op: cross_below
+          rhs:
+            feature_id: "ema_21"
+        emit:
+          - action: exit_long
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 3.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 2.0
+    max_leverage: 5.0

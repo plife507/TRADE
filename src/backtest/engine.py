@@ -1520,6 +1520,7 @@ class BacktestEngine:
             rollups=rollups,
             mark_price_override=mark_price_override,
             incremental_state=self._incremental_state,
+            feature_registry=self._feature_registry,
         )
 
     def _evaluate_with_1m_subloop(

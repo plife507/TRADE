@@ -118,54 +118,62 @@ def validate_indicator_requirements(
 ) -> IndicatorRequirementsResult:
     """
     Validate that all required indicator keys are available.
-    
+
     This gate runs after feature computation (FeatureFrameBuilder) and
     before signal evaluation. It ensures:
-    - All required_indicators declared in tf_configs are available
+    - All features declared in the registry are available
     - Missing keys produce actionable error messages
     - Gate fails loudly, no silent NaNs or KeyErrors
-    
+
     Args:
-        idea_card: IdeaCard with required_indicators declared per TF
-        available_keys_by_role: Dict of role -> set of available indicator keys
+        idea_card: IdeaCard with features declared in feature_registry
+        available_keys_by_role: Dict of TF -> set of available indicator keys
             (from computed feature frames)
-            
+
     Returns:
         IndicatorRequirementsResult with pass/fail status and details
     """
     role_results: dict[str, RoleValidationResult] = {}
     all_passed = True
     has_requirements = False
-    
-    for role, tf_config in idea_card.tf_configs.items():
-        required = list(tf_config.required_indicators)
-        available = available_keys_by_role.get(role, set())
-        
+
+    # Use feature_registry to get features by TF
+    registry = idea_card.feature_registry
+    for tf in registry.get_all_tfs():
+        features = registry.get_for_tf(tf)
+        # Get required keys from features (feature IDs + output_keys)
+        required = set()
+        for f in features:
+            required.add(f.id)
+            if f.output_keys:
+                required.update(f.output_keys)
+
+        available = available_keys_by_role.get(tf, set())
+
         if not required:
-            # No requirements declared for this role
-            role_results[role] = RoleValidationResult(
-                role=role,
-                tf=tf_config.tf,
+            # No requirements declared for this TF
+            role_results[tf] = RoleValidationResult(
+                role=tf,
+                tf=tf,
                 passed=True,
                 required_keys=[],
                 available_keys=sorted(available),
                 missing_keys=[],
             )
             continue
-        
+
         has_requirements = True
-        
+
         # Check which required keys are missing
-        required_set = set(required)
-        missing = required_set - available
-        
+        missing = required - available
+
         passed = len(missing) == 0
         if not passed:
             all_passed = False
-        
-        role_results[role] = RoleValidationResult(
-            role=role,
-            tf=tf_config.tf,
+
+        role_results[tf] = RoleValidationResult(
+            role=tf,
+            tf=tf,
             passed=passed,
             required_keys=sorted(required),
             available_keys=sorted(available),

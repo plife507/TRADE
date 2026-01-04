@@ -25,6 +25,14 @@ Reference documentation for TRADE system architecture and specifications.
 
 ---
 
+## Execution & Order Management
+
+| Document | Purpose |
+|----------|---------|
+| [LIMIT_ORDERS_AND_SCALING.md](LIMIT_ORDERS_AND_SCALING.md) | **Future Phase**: Limit orders, position scaling, fill simulation, live parity |
+
+---
+
 ## Incremental State (O(1) Hot Loop)
 
 | Document | Purpose |

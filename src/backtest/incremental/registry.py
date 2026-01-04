@@ -116,6 +116,68 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
 }
 
 
+# =============================================================================
+# Structure Warmup Formulas
+# =============================================================================
+# Maps each structure type to its warmup calculation function.
+# Used by execution_validation to compute warmup requirements at load time.
+#
+# Each formula receives:
+#   - params: dict of structure params from IdeaCard
+#   - swing_params: dict with 'left' and 'right' from source swing (for dependents)
+#
+# Returns: int (warmup bars needed)
+
+STRUCTURE_WARMUP_FORMULAS: dict[str, callable] = {
+    # SWING: needs left + right bars for pivot confirmation
+    "swing": lambda params, swing_params: params.get("left", 5) + params.get("right", 5),
+
+    # TREND: needs multiple swings to form trend pattern
+    # Conservative heuristic: (left + right) * 5
+    "trend": lambda params, swing_params: (swing_params["left"] + swing_params["right"]) * 5,
+
+    # DERIVED_ZONE: source swing warmup + 1 bar for regen trigger
+    "derived_zone": lambda params, swing_params: swing_params["left"] + swing_params["right"] + 1,
+
+    # FIBONACCI: same as source swing warmup
+    "fibonacci": lambda params, swing_params: swing_params["left"] + swing_params["right"],
+
+    # ZONE: same as source swing warmup
+    "zone": lambda params, swing_params: swing_params["left"] + swing_params["right"],
+
+    # ROLLING_WINDOW: needs its size parameter
+    "rolling_window": lambda params, swing_params: params.get("size", 20),
+}
+
+
+def get_structure_warmup(structure_type: str, params: dict, swing_params: dict | None = None) -> int:
+    """
+    Get warmup bars needed for a structure type.
+
+    Args:
+        structure_type: Structure type name (e.g., "swing", "trend")
+        params: Structure params from IdeaCard
+        swing_params: Dict with 'left' and 'right' from source swing (for dependents)
+
+    Returns:
+        Warmup bars needed
+
+    Raises:
+        KeyError: If structure type has no warmup formula
+    """
+    if structure_type not in STRUCTURE_WARMUP_FORMULAS:
+        raise KeyError(
+            f"No warmup formula for structure type '{structure_type}'. "
+            f"Available: {list(STRUCTURE_WARMUP_FORMULAS.keys())}"
+        )
+
+    # Default swing params for independent structures
+    if swing_params is None:
+        swing_params = {"left": 5, "right": 5}
+
+    return STRUCTURE_WARMUP_FORMULAS[structure_type](params, swing_params)
+
+
 def register_structure(name: str):
     """
     Decorator to register a structure detector class.

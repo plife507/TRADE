@@ -219,6 +219,11 @@ def build_structures_into_feed(
     if logger is None:
         logger = get_logger()
 
+    # New schema: structures are in feature_registry, not market_structure_blocks
+    if not hasattr(idea_card, "market_structure_blocks"):
+        logger.debug("New IdeaCard schema detected - structures handled by incremental state")
+        return
+
     structure_specs = list(idea_card.market_structure_blocks)
     if not structure_specs:
         logger.debug("No market_structure_blocks in IdeaCard, skipping structure build")

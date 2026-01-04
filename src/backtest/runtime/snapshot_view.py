@@ -536,20 +536,19 @@ class RuntimeSnapshotView:
             return self.mark_price
 
         # Get the appropriate context
+        # In single-TF mode, htf_ctx and mtf_ctx point to exec_ctx
+        # Use the context's feed directly to handle both single-TF and multi-TF modes
         if tf_role in ("exec", "ltf"):
             ctx = self.exec_ctx
-            feed = self._feeds.exec_feed
         elif tf_role == "htf":
             ctx = self.htf_ctx
-            feed = self._feeds.htf_feed
         elif tf_role == "mtf":
             ctx = self.mtf_ctx
-            feed = self._feeds.mtf_feed
         else:
             return None
-        
-        if feed is None:
-            return None
+
+        # Get feed from context (handles single-TF mode where htf/mtf ctx = exec_ctx)
+        feed = ctx.feed
         
         # Compute target index
         target_idx = ctx.current_idx - offset
@@ -590,22 +589,74 @@ class RuntimeSnapshotView:
         # OHLCV is always available
         if indicator_key in ("open", "high", "low", "close", "volume"):
             return True
-        
-        # Get the appropriate feed
+
+        # Get context for TF role (handles single-TF mode where htf/mtf = exec)
         if tf_role in ("exec", "ltf"):
-            feed = self._feeds.exec_feed
+            ctx = self.exec_ctx
         elif tf_role == "htf":
-            feed = self._feeds.htf_feed
+            ctx = self.htf_ctx
         elif tf_role == "mtf":
-            feed = self._feeds.mtf_feed
+            ctx = self.mtf_ctx
         else:
             return False
-        
-        if feed is None:
-            return False
-        
-        return indicator_key in feed.indicators
-    
+
+        return indicator_key in ctx.feed.indicators
+
+    def get_feature_value(
+        self,
+        feature_id: str,
+        field: str | None = None,
+        offset: int = 0,
+    ) -> float | None:
+        """
+        Get feature value for DSL evaluation.
+
+        This is the expected API for the DSL evaluator (dsl_eval.py).
+        Maps feature_id to indicator_key and uses the feature's declared TF.
+
+        For multi-output indicators like MACD:
+        - feature_id="macd", field="histogram" -> indicator_key="macd_histogram"
+        - feature_id="adx", field="dmp" -> indicator_key="adx_dmp"
+
+        For multi-TF features:
+        - Looks up the feature's TF from the registry
+        - Maps TF to role (exec/mtf/htf) via tf_mapping
+
+        Args:
+            feature_id: Feature ID (e.g., "ema_9", "rsi_14", "macd", "ema_50_4h")
+            field: Optional field for multi-output indicators (e.g., "histogram", "signal")
+            offset: Bar offset (0 = current, 1 = previous)
+
+        Returns:
+            Feature value or None if not available
+        """
+        # Build the indicator key dynamically
+        # - Single-output indicators: field is None/empty/"value" -> key = feature_id
+        #   ("value" is the DSL default field for single-output indicators)
+        # - Multi-output indicators: field is set to actual output -> key = feature_id + "_" + field
+        #   The field values come from INDICATOR_REGISTRY output_keys (e.g., "histogram", "signal")
+        if field and field != "value":
+            indicator_key = f"{feature_id}_{field}"
+        else:
+            indicator_key = feature_id
+
+        # Determine TF role from feature registry
+        tf_role = "exec"  # Default
+        if self._feature_registry is not None:
+            feature = self._feature_registry.get_or_none(feature_id)
+            if feature is not None:
+                feature_tf = feature.tf
+                # Map TF to role via tf_mapping
+                if feature_tf == self.tf_mapping.get("htf"):
+                    tf_role = "htf"
+                elif feature_tf == self.tf_mapping.get("mtf"):
+                    tf_role = "mtf"
+                elif feature_tf == self.tf_mapping.get("ltf"):
+                    tf_role = "exec"
+                # else: fallback to exec
+
+        return self.get_feature(indicator_key, tf_role=tf_role, offset=offset)
+
     # =========================================================================
     # Staleness (for MTF forward-fill validation)
     # =========================================================================

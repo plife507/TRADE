@@ -383,47 +383,43 @@ def run_backtest_with_gates(
         # Validate that all required indicator keys are declared
         # This runs before simulation to catch misnamed keys early
         # The actual key availability check happens after frame preparation
-        
-        # Check if IdeaCard has any required_indicators declared
-        has_required_indicators = any(
-            tf_config.required_indicators
-            for tf_config in idea_card.tf_configs.values()
-        )
-        
-        if has_required_indicators:
+
+        # Check if IdeaCard has any features declared
+        registry = idea_card.feature_registry
+        has_features = len(list(registry.all_features())) > 0
+
+        if has_features:
             print("\n[INDICATOR GATE] Validating Indicator Requirements...")
-            
-            # Get declared feature specs (output_key from each spec)
-            from .indicators import get_required_indicator_columns_from_specs
-            
+
+            # Build available keys from feature registry
             available_keys_by_role: dict[str, set] = {}
-            for role, tf_config in idea_card.tf_configs.items():
-                specs = list(tf_config.feature_specs)
-                if specs:
-                    # Get the expanded keys (including multi-output suffixes)
-                    expanded_keys = get_required_indicator_columns_from_specs(specs)
-                    available_keys_by_role[role] = set(expanded_keys)
-                else:
-                    available_keys_by_role[role] = set()
-            
+            for tf in registry.get_all_tfs():
+                features = registry.get_for_tf(tf)
+                keys = set()
+                for f in features:
+                    keys.add(f.id)
+                    if f.output_keys:
+                        keys.update(f.output_keys)
+                available_keys_by_role[tf] = keys
+
             # Validate required vs available
             indicator_gate_result = validate_indicator_requirements(
                 idea_card=idea_card,
                 available_keys_by_role=available_keys_by_role,
             )
-            
+
             # Print result
             if indicator_gate_result.passed:
-                print("  [PASS] All required indicators are declared in FeatureSpecs")
+                print("  [PASS] All required indicators are declared in features")
             elif indicator_gate_result.status == IndicatorGateStatus.SKIPPED:
-                print("  [SKIP] No required_indicators declared in IdeaCard")
+                print("  [SKIP] No features declared in IdeaCard")
             else:
                 print(indicator_gate_result.format_error())
                 result.gate_failed = "indicator_requirements"
                 result.error_message = indicator_gate_result.error_message
                 raise GateFailure(result.error_message)
         else:
-            print("\n[INDICATOR GATE] Skipped - no required_indicators declared")
+            print("\n[INDICATOR GATE] Skipped - no features declared")
         
         # =====================================================================
         # EXTRACT PREFLIGHT WARMUP + DELAY (SOURCE OF TRUTH)
@@ -470,8 +466,7 @@ def run_backtest_with_gates(
                 idea_card=idea_card,
                 window_start=config.window_start,
                 window_end=config.window_end,
-                warmup_by_role=preflight_warmup_by_role,
-                delay_by_role=preflight_delay_by_role,
+                warmup_by_tf=preflight_warmup_by_role,
             )
             engine_result = run_engine_with_idea_card(engine, idea_card)
         
@@ -573,11 +568,12 @@ def run_backtest_with_gates(
             create_pipeline_signature,
         )
         
-        # Get declared feature keys from IdeaCard
+        # Get declared feature keys from IdeaCard feature_registry
         declared_keys = []
-        for role, tf_config in idea_card.tf_configs.items():
-            for spec in tf_config.feature_specs:
-                declared_keys.extend(spec.output_keys_list)
+        for feature in idea_card.feature_registry.all_features():
+            declared_keys.append(feature.id)
+            if feature.output_keys:
+                declared_keys.extend(feature.output_keys)
         
         # Get computed feature keys (from engine result if available)
         computed_keys = declared_keys.copy()  # Assume match for now (validated in FeatureFrameBuilder)
