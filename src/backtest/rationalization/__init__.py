@@ -34,6 +34,14 @@ from .types import (
 from .rationalizer import StateRationalizer
 from .transitions import TransitionManager, TRACKED_FIELDS
 from .derived import DerivedStateComputer
+from .conflicts import (
+    ConflictResolver,
+    ResolutionConfig,
+    ResolutionStrategy,
+    VetoCondition,
+    Signal,
+    ResolutionResult,
+)
 
 __all__ = [
     # Core types
@@ -48,4 +56,11 @@ __all__ = [
     "TRACKED_FIELDS",
     # Derived state
     "DerivedStateComputer",
+    # Conflict resolution
+    "ConflictResolver",
+    "ResolutionConfig",
+    "ResolutionStrategy",
+    "VetoCondition",
+    "Signal",
+    "ResolutionResult",
 ]
