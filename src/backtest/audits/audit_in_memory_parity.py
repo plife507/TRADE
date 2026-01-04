@@ -410,7 +410,7 @@ def run_in_memory_parity_for_idea_card(
     Returns:
         InMemoryParityResult with detailed comparison
     """
-    from ..idea_card import load_idea_card
+    from ..play import load_idea_card
     from ..runner import RunnerConfig, run_backtest_with_gates
     from datetime import datetime as dt
     

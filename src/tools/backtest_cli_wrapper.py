@@ -3,7 +3,7 @@ CLI Wrapper for IdeaCard-based backtests.
 
 This module re-exports all backtest tools from their focused modules
 for backward compatibility. New code should import directly from:
-- backtest_ideacard_tools.py: IdeaCard execution tools
+- backtest_play_tools.py: IdeaCard execution tools
 - backtest_audit_tools.py: Audit and verification tools
 
 This is the GOLDEN PATH for backtest execution:
@@ -14,10 +14,10 @@ No ad-hoc test harnesses that re-implement pipeline logic.
 """
 
 # =============================================================================
-# Re-exports from backtest_ideacard_tools.py
+# Re-exports from backtest_play_tools.py
 # =============================================================================
 
-from .backtest_ideacard_tools import (
+from .backtest_play_tools import (
     # Constants
     CANONICAL_TIMEFRAMES,
     BYBIT_API_INTERVALS,

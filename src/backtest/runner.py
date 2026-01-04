@@ -40,7 +40,7 @@ def _utcnow() -> datetime:
 
 import pandas as pd
 
-from .idea_card import IdeaCard, load_idea_card
+from .play import IdeaCard, load_idea_card
 from .runtime.preflight import (
     PreflightStatus,
     PreflightReport,

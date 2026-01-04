@@ -14,7 +14,7 @@ from .production_first_import_gate import (
     GateResult,
 )
 
-from .idea_card_generator import (
+from .play_generator import (
     GeneratorConfig,
     GeneratedIdeaCard,
     generate_idea_cards,

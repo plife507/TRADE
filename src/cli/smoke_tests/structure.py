@@ -1181,7 +1181,7 @@ def run_state_tracking_parity_smoke(
     from pathlib import Path
     import tempfile
 
-    from src.backtest.idea_card import load_idea_card
+    from src.backtest.play import load_idea_card
     from src.backtest.execution_validation import compute_warmup_requirements
     from src.backtest.engine_factory import create_engine_from_idea_card, run_engine_with_idea_card
     from src.backtest.artifacts.hashes import compute_trades_hash

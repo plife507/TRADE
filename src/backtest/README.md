@@ -49,7 +49,7 @@ from src.backtest.runner import run_backtest_with_gates, RunnerConfig, RunnerRes
 ### IdeaCard Loading
 
 ```python
-from src.backtest.idea_card import load_idea_card, list_plays, IdeaCard
+from src.backtest.play import load_idea_card, list_plays, IdeaCard
 ```
 
 ### Validation

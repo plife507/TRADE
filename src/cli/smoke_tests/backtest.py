@@ -552,7 +552,7 @@ def run_phase6_backtest_smoke() -> int:
     console.print(f"\n[bold cyan]TEST 3: MTF Alignment IdeaCard[/]")
 
     try:
-        from ...backtest.idea_card import load_idea_card
+        from ...backtest.play import load_idea_card
         from ...backtest.execution_validation import validate_idea_card_full
 
         idea_card = load_idea_card(MTF_ALIGNMENT_CARD)

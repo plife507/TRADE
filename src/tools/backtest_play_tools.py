@@ -33,7 +33,7 @@ from ..data.historical_data_store import (
     TIMEFRAMES as DB_TIMEFRAMES,
     TF_MINUTES,
 )
-from ..backtest.idea_card import load_idea_card, list_idea_cards, IdeaCard
+from ..backtest.play import load_idea_card, list_idea_cards, IdeaCard
 from ..backtest.execution_validation import (
     validate_idea_card_full,
     compute_warmup_requirements,
@@ -1085,8 +1085,8 @@ def backtest_idea_card_normalize_tool(
         ToolResult with validation results
     """
     import yaml
-    from ..backtest.idea_card import IDEA_CARDS_DIR
-    from ..backtest.idea_card_yaml_builder import (
+    from ..backtest.play import IDEA_CARDS_DIR
+    from ..backtest.play_yaml_builder import (
         normalize_idea_card_yaml,
         format_validation_errors,
     )
@@ -1188,7 +1188,7 @@ def backtest_idea_card_normalize_batch_tool(
         ToolResult with batch normalization results
     """
     try:
-        from ..backtest.idea_card import list_idea_cards
+        from ..backtest.play import list_idea_cards
 
         # Get all IdeaCard IDs in the directory
         idea_card_ids = list_idea_cards(base_dir=idea_cards_dir)

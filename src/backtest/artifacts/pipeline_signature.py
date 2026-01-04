@@ -15,7 +15,7 @@ import json
 import hashlib
 
 if TYPE_CHECKING:
-    from ..idea_card import IdeaCard
+    from ..play import IdeaCard
 
 
 # Pipeline version - increment when pipeline structure changes

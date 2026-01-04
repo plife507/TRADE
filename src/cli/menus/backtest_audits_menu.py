@@ -179,7 +179,7 @@ def _run_rollup_audit():
 def _run_math_parity_audit(cli: "TradeCLI"):
     """Run math parity audit for an IdeaCard."""
     from trade_cli import run_long_action
-    from src.cli.menus.backtest_ideacard_menu import _select_idea_card, _get_date_range
+    from src.cli.menus.backtest_play_menu import _select_idea_card, _get_date_range
 
     console.print()
 
@@ -228,7 +228,7 @@ def _run_math_parity_audit(cli: "TradeCLI"):
 def _run_snapshot_plumbing_audit(cli: "TradeCLI"):
     """Run snapshot plumbing audit for an IdeaCard."""
     from trade_cli import run_long_action
-    from src.cli.menus.backtest_ideacard_menu import _select_idea_card, _get_date_range
+    from src.cli.menus.backtest_play_menu import _select_idea_card, _get_date_range
 
     console.print()
 

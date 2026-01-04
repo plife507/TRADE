@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..idea_card import IdeaCard
+    from ..play import IdeaCard
     from ..runtime.indicator_metadata import IndicatorMetadata
 
 from .feature_spec import (

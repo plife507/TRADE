@@ -29,7 +29,7 @@ from ..utils.logger import get_logger
 if TYPE_CHECKING:
     from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
     from .system_config import SystemConfig
-    from .idea_card import IdeaCard
+    from .play import IdeaCard
 
 
 class FeedStoreBuilderResult:

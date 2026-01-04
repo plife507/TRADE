@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from ..idea_card import IdeaCard
+from ..play import IdeaCard
 
 
 class IndicatorGateStatus(str, Enum):

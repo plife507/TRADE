@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 import json
 
-from .idea_card_generator import (
+from .play_generator import (
     GeneratorConfig,
     GeneratedIdeaCard,
     generate_idea_cards,
@@ -90,7 +90,7 @@ def run_batch_verification(
         BatchSummary with results for all cards
     """
     from ..runner import run_backtest_with_gates, RunnerConfig
-    from ..idea_card import load_idea_card
+    from ..play import load_idea_card
     from ...data.historical_data_store import get_historical_store
     
     # Generate IdeaCards

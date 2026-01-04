@@ -168,7 +168,7 @@ def backtest_audit_in_memory_parity_tool(
         ToolResult with parity audit results
     """
     try:
-        from ..backtest.audits.audit_in_memory_parity import run_in_memory_parity_for_idea_card
+        from ..backtest.audits.audit_in_memory_parity import run_in_memory_parity_for_play
 
         output_path = Path(output_dir) if output_dir else None
 
@@ -238,7 +238,7 @@ def backtest_math_parity_tool(
         ToolResult with combined audit results
     """
     from ..backtest.audits.toolkit_contract_audit import run_toolkit_contract_audit
-    from ..backtest.audits.audit_in_memory_parity import run_in_memory_parity_for_idea_card
+    from ..backtest.audits.audit_in_memory_parity import run_in_memory_parity_for_play
 
     results = {
         "contract_audit": None,

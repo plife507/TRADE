@@ -22,7 +22,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .idea_card import IdeaCard, TFConfig
+    from .play import IdeaCard, TFConfig
     from .rules.strategy_blocks import Block
 
 # Note: IndicatorType enum removed in Registry Consolidation Phase 2

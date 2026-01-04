@@ -35,6 +35,33 @@ Keep the validation system in sync with the evolving codebase. The `validate` ag
 
 ---
 
+## CRITICAL: Windows File Editing Rules
+
+**The Edit tool on Windows has signature-mismatch issues. Follow these rules:**
+
+1. **Read IMMEDIATELY before Edit** - No delay between Read and Edit
+2. **Prefer Write for new files** - Use Write tool for new validation Plays
+3. **Prefer Write for full rewrites** - If changing >50% of file, use Write instead of Edit
+4. **Small targeted edits only** - Edit is for surgical changes, not wholesale rewrites
+5. **If Edit fails with "unexpectedly modified"**:
+   - Re-read the file immediately
+   - Retry the Edit, OR
+   - Fall back to Write tool with full file content
+
+**Example - Correct pattern:**
+```
+1. Read file → immediate Edit (same message or sequential)
+```
+
+**Example - Wrong pattern:**
+```
+1. Read file
+2. Do other work / call other tools
+3. Edit file  ← WILL LIKELY FAIL
+```
+
+---
+
 ## Task 1: Adding Coverage for New Indicator
 
 When a new indicator is added to `indicator_registry.py`:

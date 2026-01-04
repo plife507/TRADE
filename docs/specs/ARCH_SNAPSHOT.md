@@ -1,8 +1,24 @@
 # TRADE Architecture
 
-**STATUS:** CANONICAL  
-**PURPOSE:** System architecture, domains, runtime, invariants, accounting  
-**LAST UPDATED:** December 30, 2025 (Engine Modular Refactor complete)
+**STATUS:** CANONICAL
+**PURPOSE:** System architecture, domains, runtime, invariants, accounting
+**LAST UPDATED:** January 4, 2026 (Terminology update)
+
+---
+
+## Terminology (2026-01-04)
+
+This document uses the new trading hierarchy terminology:
+
+| Term | Definition |
+|------|------------|
+| **Setup** | Reusable rule blocks, filters, entry/exit logic |
+| **Play** | Complete strategy specification (formerly "IdeaCard") |
+| **Playbook** | Collection of plays with regime routing |
+| **System** | Full trading operation with risk/execution |
+| **Forge** | Development/validation environment (src/forge/) |
+
+See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete architecture.
 
 ---
 
@@ -15,7 +31,7 @@
 | CLI | `src/cli/` | Production | ✅ Stable |
 | Trade Execution | `src/core/` + `src/exchanges/` | Functional | Maintenance |
 | Data | `src/data/` | Production | ✅ Stable |
-| Strategy Factory | `configs/idea_cards/` | Production | ✅ Core Complete |
+| Strategy Factory | `configs/plays/` (formerly idea_cards/) | Production | ✅ Core Complete |
 | Audit & Validation | `src/backtest/artifacts/` | Production | ✅ Complete |
 
 **Status:** All P0 blockers resolved (December 17-18, 2025). System is production-ready.
@@ -247,7 +263,7 @@ def process_bar(bar, signal):
 ## Recent Completions (December 17-18, 2025)
 
 ✅ **Delay Bars Implementation** (December 17, 2024)
-- Delay bars integrated into IdeaCard schema, Preflight, SystemConfig, and Engine
+- Delay bars integrated into Play schema, Preflight, SystemConfig, and Engine
 - Validated via CLI across 3 symbols, 3 date ranges, 8 uncommon indicators
 - Fixed data sync progress logging (no more silent operations)
 - All artifacts correctly reflect delay bars in manifest and metadata
@@ -275,7 +291,7 @@ def process_bar(bar, signal):
 - **See**: `docs/session_reviews/2025-12-18_backtest_financial_metrics_audit.md` for formulas
 
 ✅ **Production Pipeline Validation** (All gates passed)
-- End-to-end pipeline validated with 5 IdeaCards
+- End-to-end pipeline validated with 5 Plays
 - All 6 validation gates tested and verified
 - Schema issues discovered and documented
 - **See**: `docs/session_reviews/2025-12-18_production_pipeline_validation.md` for details
@@ -298,19 +314,19 @@ tools = registry.list_tools(category="backtest")
 info = registry.get_tool_info("run_backtest")
 
 # Execution
-result = registry.execute("run_backtest", idea_card_id="...", start="...", end="...")
+result = registry.execute("run_backtest", play_id="...", start="...", end="...")
 ```
 
-### 2. IdeaCard Generation
+### 2. Play Generation
 
-Agents can generate IdeaCards programmatically:
+Agents can generate Plays programmatically:
 
 ```python
-from src.backtest.idea_card import IdeaCard
-from src.backtest.idea_card_yaml_builder import write_idea_card_yaml
+from src.backtest.idea_card import Play  # Note: file still named idea_card.py
+from src.backtest.idea_card_yaml_builder import write_play_yaml
 
-# Build IdeaCard from components
-idea_card = IdeaCard(
+# Build Play from components
+play = Play(
     id="agent_generated_001",
     symbol="BTCUSDT",
     tf_configs={...},
@@ -319,13 +335,13 @@ idea_card = IdeaCard(
 )
 
 # Serialize to YAML
-write_idea_card_yaml(idea_card, Path("configs/idea_cards/agent_generated_001.yml"))
+write_play_yaml(play, Path("configs/plays/agent_generated_001.yml"))
 ```
 
 ### 3. Backtest Result Parsing
 
 ```python
-result = run_backtest_from_idea_card(idea_card_id, start, end)
+result = run_backtest_from_play(play_id, start, end)
 
 # Access structured data
 metrics = result.metrics
@@ -404,7 +420,7 @@ ohlcv = get_ohlcv_tool(symbol="BTCUSDT", timeframe="1h", start=..., end=...)
 8. **Artifact validation** — Automatic HARD FAIL if artifacts invalid (not warning)
 9. **Pipeline signature** — Every run proves production pipeline used (no "cheating")
 10. **Warmup is canonical** — Engine uses `SystemConfig.warmup_bars_by_role` (never recomputes)
-11. **Delay bars are explicit** — Evaluation start offset declared in IdeaCard `market_structure`
+11. **Delay bars are explicit** — Evaluation start offset declared in Play `market_structure`
 12. **Fail loud** — Missing warmup/delay config raises `ValueError` (no fallbacks)
 
 ---
@@ -440,7 +456,7 @@ assert available_balance_usdt == max(0.0, free_margin_usdt)
 | Entry | `entry_notional × taker_fee_rate` (deducted from cash) |
 | Exit | `exit_notional × taker_fee_rate` (deducted from realized PnL) |
 
-**Default rate:** 0.06% taker, 0.02% maker (configurable per IdeaCard)
+**Default rate:** 0.06% taker, 0.02% maker (configurable per Play)
 
 ### Funding Model
 
@@ -468,7 +484,7 @@ assert available_balance_usdt == max(0.0, free_margin_usdt)
 ### Required Files (per run)
 
 ```
-backtests/<idea_card_id>/<symbol>/<hash>/
+backtests/<play_id>/<symbol>/<hash>/
 ├── result.json              # Summary metrics + hashes (trades_hash, equity_hash, run_hash)
 ├── trades.parquet           # Trade records (entry_ts_ms, exit_ts_ms, net_pnl_usdt, ...)
 ├── equity.parquet           # Equity curve (ts_ms, equity_usdt, cash_balance_usdt, ...)
@@ -495,11 +511,11 @@ backtests/<idea_card_id>/<symbol>/<hash>/
 
 **Pipeline Signature JSON:**
 - Proves production pipeline was used (not legacy paths)
-- Validates: `config_source == "IdeaCard"`, `uses_system_config_loader == False`, `placeholder_mode == False`
+- Validates: `config_source == "Play"`, `uses_system_config_loader == False`, `placeholder_mode == False`
 - **HARD FAIL** if missing or invalid
 
 **Run Manifest JSON:**
-- Input tracking: `full_hash` (input hash), `idea_hash` (IdeaCard hash)
+- Input tracking: `full_hash` (input hash), `play_hash` (Play hash)
 - Timing: `eval_start_ts_ms` (evaluation start timestamp)
 - Configuration: `symbol`, `timeframe`, `window_start`, `window_end`
 
@@ -539,8 +555,8 @@ snapshot.mtf_rsi  # MTF indicator (constant until next MTF close)
 
 | Gate | Command | Acceptance |
 |------|---------|------------|
-| Contract Validation | `validate_idea_card_full()` (automatic) | All schema checks pass |
-| Preflight Gate | `backtest preflight --idea-card <ID>` (automatic) | Data coverage + warmup sufficient |
+| Contract Validation | `validate_play_full()` (automatic) | All schema checks pass |
+| Preflight Gate | `backtest preflight --play <ID>` (automatic) | Data coverage + warmup sufficient |
 | Auto-Sync | `--fix-gaps` flag (default enabled) | Missing data fetched automatically |
 
 ### Post-Run Gates (Automatic)
@@ -548,7 +564,7 @@ snapshot.mtf_rsi  # MTF indicator (constant until next MTF close)
 | Gate | When | Acceptance |
 |------|------|------------|
 | Artifact Validation | After every `backtest run` | All required files exist with correct structure |
-| Pipeline Signature | After every `backtest run` | `config_source == "IdeaCard"`, `uses_system_config_loader == False` |
+| Pipeline Signature | After every `backtest run` | `config_source == "Play"`, `uses_system_config_loader == False` |
 | Hash Recording | After every `backtest run` | `trades_hash`, `equity_hash`, `run_hash` stored in `result.json` |
 
 **Behavior:** Missing or invalid artifacts cause **HARD FAIL** (not warning).
@@ -573,7 +589,7 @@ snapshot.mtf_rsi  # MTF indicator (constant until next MTF close)
 |----------|---------|
 | **ARCH_INDICATOR_WARMUP.md** | Indicator warmup computation, variable requirements, adding new indicators |
 | **ARCH_DELAY_BARS.md** | Delay bars functionality, market structure configuration, evaluation start offset |
-| **IDEACARD_ENGINE_FLOW.md** | IdeaCard to engine field mappings |
+| **PLAY_ENGINE_FLOW.md** | Play to engine field mappings (formerly IDEACARD_ENGINE_FLOW.md) |
 
 **Archived:**
 - `archived/MARKET_STRUCTURE_INTEGRATION_PROPOSAL.md` - Historical proposal; superseded by implementation (Stages 0-7 complete in `docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md`)

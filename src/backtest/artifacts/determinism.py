@@ -229,7 +229,7 @@ def verify_determinism_rerun(
     result.run_a_idea_card_id = idea_card_id
     
     # Import here to avoid circular imports
-    from src.tools.backtest_cli_wrapper import backtest_run_idea_card_tool
+    from src.tools.backtest_cli_wrapper import backtest_run_play_tool
     
     # Re-run the IdeaCard with the same window
     rerun_result = backtest_run_idea_card_tool(

@@ -18,9 +18,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .idea_card import IdeaCard
+    from .play import IdeaCard
 
-from .idea_card import AccountConfig, FeeModel
+from .play import AccountConfig, FeeModel
 
 
 @dataclass(frozen=True)

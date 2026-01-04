@@ -1,8 +1,24 @@
 # Delay Bars & Market Structure Configuration
 
-**STATUS:** CANONICAL  
-**PURPOSE:** Delay bars functionality, market structure configuration, evaluation start offset  
-**LAST UPDATED:** December 18, 2025
+**STATUS:** CANONICAL
+**PURPOSE:** Delay bars functionality, market structure configuration, evaluation start offset
+**LAST UPDATED:** January 4, 2026 (Terminology update)
+
+---
+
+## Terminology (2026-01-04)
+
+This document uses the new trading hierarchy terminology:
+
+| Term | Definition |
+|------|------------|
+| **Setup** | Reusable rule blocks, filters, entry/exit logic |
+| **Play** | Complete strategy specification (formerly "IdeaCard") |
+| **Playbook** | Collection of plays with regime routing |
+| **System** | Full trading operation with risk/execution |
+| **Forge** | Development/validation environment (src/forge/) |
+
+See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete architecture.
 
 ---
 
@@ -21,7 +37,7 @@ Delay bars allow strategies to specify an evaluation start delay (in bars) indep
 
 ## Market Structure Configuration
 
-### IdeaCard Schema
+### Play Schema
 
 ```yaml
 tf_configs:
@@ -45,14 +61,14 @@ tf_configs:
 ### Data Flow
 
 ```
-IdeaCard market_structure
-    ↓
-compute_warmup_requirements() → delay_by_role
-    ↓
-Preflight → delay_by_role in PreflightReport
-    ↓
+Play market_structure
+    |
+compute_warmup_requirements() -> delay_by_role
+    |
+Preflight -> delay_by_role in PreflightReport
+    |
 SystemConfig.delay_bars_by_role
-    ↓
+    |
 Engine applies delay offset (closed-candle aligned)
 ```
 
@@ -62,8 +78,8 @@ Engine applies delay offset (closed-candle aligned)
 
 ### Integration Points
 
-1. **IdeaCard** (`src/backtest/idea_card.py`): Added `MarketStructureConfig` to `TFConfig`
-2. **Preflight** (`src/backtest/execution_validation.py`): Computes `delay_by_role` from IdeaCard
+1. **Play** (`src/backtest/idea_card.py`): Added `MarketStructureConfig` to `TFConfig`
+2. **Preflight** (`src/backtest/execution_validation.py`): Computes `delay_by_role` from Play
 3. **SystemConfig** (`src/backtest/system_config.py`): Added `delay_bars_by_role` to system UID
 4. **Engine** (`src/backtest/engine.py`): Applies delay offset to `simulation_start_ts` using `ceil_to_tf_close()`
 5. **Artifacts** (`src/backtest/artifacts/artifact_standards.py`): Added `computed_delay_bars_by_role` to `RunManifest`
@@ -121,7 +137,7 @@ if not delay_bars_by_role or 'exec' not in delay_bars_by_role:
 
 ### Backward Compatibility
 
-Existing IdeaCards without `market_structure` will use:
+Existing Plays without `market_structure` will use:
 - `lookback_bars = max(warmup_bars, feature_warmup, bars_history_required)`
 - `delay_bars = 0`
 
@@ -219,7 +235,7 @@ delay_bars = 20      # Evaluation offset
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **MarketStructureConfig** | `src/backtest/idea_card.py` | Data structure definition |
+| **MarketStructureConfig** | `src/backtest/idea_card.py` | Data structure definition (file name unchanged) |
 | **Delay Computation** | `src/backtest/execution_validation.py` | `compute_warmup_requirements()` extracts delay |
 | **SystemConfig** | `src/backtest/system_config.py` | Stores `delay_bars_by_role` |
 | **Engine Application** | `src/backtest/engine.py` | Applies delay offset (2 locations: single-TF, multi-TF) |
@@ -230,7 +246,7 @@ delay_bars = 20      # Evaluation offset
 
 ## References
 
-- Market Structure Config: `src/backtest/idea_card.py:638-677`
+- Market Structure Config: `src/backtest/idea_card.py:638-677` (file name unchanged)
 - Delay Computation: `src/backtest/execution_validation.py:421-461`
 - Engine Application: `src/backtest/engine.py:460-465` (single-TF), `646-659` (multi-TF)
 - Timeframe Utils: `src/backtest/runtime/timeframe.py`

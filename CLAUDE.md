@@ -62,6 +62,17 @@ This is enforced by `.gitattributes` (`* text=auto`, `*.py eol=lf`).
 2. **External tool modifications** - VS Code auto-formatters, linters (black, ruff), or git hooks may modify files
 3. **Stale reads** - If too much time passes between reading and editing, another process may modify the file
 
+**Decision Tree - Edit vs Write:**
+
+| Scenario | Tool to Use |
+|----------|-------------|
+| New file | Write |
+| Changing >50% of file | Write |
+| Surgical change (1-20 lines) | Edit (with fresh Read) |
+| Edit failed once | Re-read → retry Edit |
+| Edit failed twice | Use Write |
+| Untracked file | Write (preferred) |
+
 **Troubleshooting steps (in order)**:
 
 1. **Read immediately before editing** - This resolves most cases. The file must be freshly read right before the Edit call.
@@ -80,7 +91,7 @@ This is enforced by `.gitattributes` (`* text=auto`, `*.py eol=lf`).
    - Use the Write tool to overwrite the entire file
    - Use bash: `cat > file.py << 'EOF' ... EOF`
 
-**Note**: If Edit fails repeatedly even with fresh reads, the file may be actively watched by an external tool (VS Code, file watcher, etc.). Close other editors or use Write/bash as fallback.
+**CRITICAL for Agents**: Any agent with Write+Edit tools MUST follow the decision tree above. When in doubt, use Write.
 
 ---
 

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..idea_card import IdeaCard
+    from ..play import IdeaCard
     from ..engine import BacktestEngine
 
 

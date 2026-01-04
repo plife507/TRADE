@@ -52,7 +52,7 @@ from .risk_policy import (
     create_risk_policy,
 )
 from .simulated_risk_manager import SimulatedRiskManager, SizingResult
-from .idea_card import (
+from .play import (
     IdeaCard,
     PositionPolicy,
     PositionMode,

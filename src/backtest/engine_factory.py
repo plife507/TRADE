@@ -19,7 +19,7 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from .engine import BacktestEngine
     from .types import BacktestResult
-    from .idea_card import IdeaCard
+    from .play import IdeaCard
     from .feature_registry import FeatureRegistry
     from .runtime.types import RuntimeSnapshot
     from .runtime.snapshot_view import RuntimeSnapshotView

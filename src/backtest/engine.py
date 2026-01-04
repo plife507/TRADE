@@ -142,7 +142,7 @@ from ..utils.logger import get_logger
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .feature_registry import FeatureRegistry
-    from .idea_card import IdeaCard
+    from .play import IdeaCard
 
 
 class BacktestEngine:

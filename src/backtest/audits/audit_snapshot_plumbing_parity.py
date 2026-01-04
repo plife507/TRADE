@@ -28,7 +28,7 @@ from typing import Any
 
 import numpy as np
 
-from ..idea_card import load_idea_card, IdeaCard, IDEA_CARDS_DIR
+from ..play import load_idea_card, IdeaCard, IDEA_CARDS_DIR
 from ..execution_validation import compute_warmup_requirements
 from ..runtime.feed_store import FeedStore
 from ..runtime.snapshot_view import RuntimeSnapshotView

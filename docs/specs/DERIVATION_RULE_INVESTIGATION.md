@@ -223,13 +223,13 @@ Engine hot loop:
   5. Conditions read via snapshot.get_structure("swing.high_level")
 ```
 
-### 1.3 Feature Registry & IdeaCard
+### 1.3 Feature Registry & Play
 
 | File | Class | Purpose |
 |------|-------|---------|
 | `/c/code/ai/trade/src/backtest/feature_registry.py` | `Feature` | Single feature (indicator or structure) with ID, TF, type, params, dependencies |
-| `/c/code/ai/trade/src/backtest/feature_registry.py` | `FeatureRegistry` | Maps feature ID → Feature; supports TF-based lookups |
-| `/c/code/ai/trade/src/backtest/idea_card.py` | `IdeaCard` | Declarative strategy config with features list and signal rules |
+| `/c/code/ai/trade/src/backtest/feature_registry.py` | `FeatureRegistry` | Maps feature ID -> Feature; supports TF-based lookups |
+| `/c/code/ai/trade/src/backtest/idea_card.py` | `Play` (IdeaCard) | Declarative strategy config with features list and signal rules |
 
 **Feature Anatomy** (structure example):
 ```python
@@ -469,7 +469,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         raise KeyError(key)
 ```
 
-**Step 4: Update IdeaCard feature declaration**
+**Step 4: Update Play feature declaration**
 
 ```yaml
 features:
@@ -717,7 +717,7 @@ Derived zone detector for fib-based, SR-based, and order-block zones.
 Subscribes to a source structure and regenerates zones when source version changes.
 Maintains bounded active set with optional TTL and supersede policy.
 
-Example IdeaCard:
+Example Play:
     features:
       - id: "swing_1h"
         tf: "1h"
@@ -987,12 +987,12 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
 Add structure warmup requirements:
 
 ```python
-def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
+def compute_warmup_requirements(play: "Play") -> WarmupRequirements:
     """Compute warmup bars needed for all features."""
     # ... existing indicator logic ...
     
     # NEW: Add structure requirements
-    for feature in idea_card.features:
+    for feature in play.features:
         if feature.is_structure:
             tf = feature.tf
             
@@ -1012,7 +1012,7 @@ def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
 
 ---
 
-### 4.2 IdeaCard Syntax for Derived Zones
+### 4.2 Play Syntax for Derived Zones
 
 **Example 1: Fibonacci Zones**
 
@@ -1245,7 +1245,7 @@ signal_rules:
 | **Version tracking** | Trend detector has `parent_version`; others lack explicit version | `/c/code/ai/trade/src/backtest/incremental/detectors/trend.py` |
 | **Zone interaction** | Already computed but separate from detectors | `/c/code/ai/trade/src/backtest/market_structure/zone_interaction.py` |
 | **Preflight warmup** | Only covers indicators; must extend for structures | `/c/code/ai/trade/src/backtest/execution_validation.py` compute_warmup_requirements |
-| **IdeaCard syntax** | Feature ID + structure_type + depends_on already supported | `/c/code/ai/trade/src/backtest/idea_card.py` Feature class |
+| **Play syntax** | Feature ID + structure_type + depends_on already supported | `/c/code/ai/trade/src/backtest/idea_card.py` Feature class |
 | **Snapshot access** | `get_structure()` and `get_by_feature_id()` work for any detector | `/c/code/ai/trade/src/backtest/runtime/snapshot_view.py` |
 
 ---
@@ -1256,7 +1256,7 @@ signal_rules:
 2. **Create derived_zone detector** (File 4, ~250 lines)
 3. **Update structure registry** (File 5, ~10 lines)
 4. **Extend preflight warmup** (File 6, ~30 lines)
-5. **Add IdeaCard validation** (existing `id_card_yaml_builder.py`, ~20 lines)
+5. **Add Play validation** (existing `id_card_yaml_builder.py`, ~20 lines)
 6. **Create validation smoke test** (new YAML file)
 7. **Add unit + integration tests** (new test file, ~300 lines)
 

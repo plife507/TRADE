@@ -29,7 +29,7 @@ import numpy as np
 from ..indicator_registry import get_registry
 
 # Import YAML builder for normalization/validation
-from ..idea_card_yaml_builder import normalize_idea_card_yaml, format_validation_errors
+from ..play_yaml_builder import normalize_idea_card_yaml, format_validation_errors
 
 # Indicator allowlist - uses registry-supported indicators only
 # Use conservative period bounds to ensure warmup fits in typical test windows

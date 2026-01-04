@@ -2,13 +2,29 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** Indicator warmup computation, variable requirements, adding new indicators
-**LAST UPDATED:** December 31, 2025 (Registry Consolidation complete)
+**LAST UPDATED:** January 4, 2026 (Terminology update)
+
+---
+
+## Terminology (2026-01-04)
+
+This document uses the new trading hierarchy terminology:
+
+| Term | Definition |
+|------|------------|
+| **Setup** | Reusable rule blocks, filters, entry/exit logic |
+| **Play** | Complete strategy specification (formerly "IdeaCard") |
+| **Playbook** | Collection of plays with regime routing |
+| **System** | Full trading operation with risk/execution |
+| **Forge** | Development/validation environment (src/forge/) |
+
+See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete architecture.
 
 ---
 
 ## Executive Summary
 
-Indicator warmup requirements are **variable** and computed dynamically from indicator types and their parameters. Each indicator type has a specific warmup formula (EMA: 3×length, RSI: length+1, etc.). The system uses a single source of truth: `compute_warmup_requirements()` aggregates warmup per TF role from IdeaCard declarations.
+Indicator warmup requirements are **variable** and computed dynamically from indicator types and their parameters. Each indicator type has a specific warmup formula (EMA: 3xlength, RSI: length+1, etc.). The system uses a single source of truth: `compute_warmup_requirements()` aggregates warmup per TF role from Play declarations.
 
 **Key Principles:**
 - ✅ Warmup is **variable** based on indicator parameters
@@ -22,7 +38,7 @@ Indicator warmup requirements are **variable** and computed dynamically from ind
 ## Warmup Computation Flow
 
 ```
-IdeaCard declares FeatureSpecs
+Play declares FeatureSpecs
     ↓
 FeatureSpec.warmup_bars (type-specific formula)
     ↓
@@ -257,7 +273,7 @@ def _warmup_chaikin(p: Dict[str, Any]) -> int:
 },
 ```
 
-**That's it!** The indicator is now available for use in IdeaCards.
+**That's it!** The indicator is now available for use in Plays.
 
 ---
 
@@ -266,7 +282,7 @@ def _warmup_chaikin(p: Dict[str, Any]) -> int:
 ### Indicator Computation Flow (Post-Consolidation)
 
 ```
-IdeaCard FeatureSpec (indicator_type as STRING)
+Play FeatureSpec (indicator_type as STRING)
     ↓
 IndicatorRegistry.is_supported()  ← CRITICAL GATE
     ↓
@@ -308,7 +324,7 @@ After Registry Consolidation (2025-12-31), ALL indicator metadata lives in one f
 
 ### Single Source of Truth
 
-**IdeaCard → `compute_warmup_requirements()` → `SystemConfig.warmup_bars_by_role` → Engine**
+**Play -> `compute_warmup_requirements()` -> `SystemConfig.warmup_bars_by_role` -> Engine**
 
 The engine **MUST NOT** recompute warmup from feature specs. It uses the canonical warmup from `SystemConfig.warmup_bars_by_role` or fails loud.
 
@@ -318,7 +334,7 @@ warmup_bars_by_role = getattr(self.config, 'warmup_bars_by_role', {})
 if not warmup_bars_by_role or 'exec' not in warmup_bars_by_role:
     raise ValueError(
         "MISSING_WARMUP_CONFIG: warmup_bars_by_role['exec'] not set. "
-        "Ensure IdeaCard warmup is wired through compute_warmup_requirements()."
+        "Ensure Play warmup is wired through compute_warmup_requirements()."
     )
 warmup_bars = warmup_bars_by_role['exec']
 ```
