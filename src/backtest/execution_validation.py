@@ -46,7 +46,7 @@ EARLIEST_BYBIT_DATE_MONTH = 11  # November 2018
 # Gate 8.0: Play Execution Contract
 # =============================================================================
 
-def compute_idea_card_hash(idea_card: "Play") -> str:
+def compute_play_hash(idea_card: "Play") -> str:
     """
     Compute a deterministic hash for an Play.
     
@@ -122,7 +122,7 @@ class PlayValidationResult:
         }
 
 
-def validate_idea_card_contract(idea_card: "Play") -> PlayValidationResult:
+def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
     """
     Validate Play execution contract.
     
@@ -221,7 +221,7 @@ def validate_idea_card_contract(idea_card: "Play") -> PlayValidationResult:
     card_hash = None
     if not any(i.severity == ValidationSeverity.ERROR for i in issues):
         try:
-            card_hash = compute_idea_card_hash(idea_card)
+            card_hash = compute_play_hash(idea_card)
         except Exception as e:
             issues.append(ValidationIssue(
                 severity=ValidationSeverity.ERROR,
@@ -367,7 +367,7 @@ def get_declared_features_by_role(idea_card: "Play") -> dict[str, set[str]]:
     return {"exec": keys}
 
 
-def validate_idea_card_features(idea_card: "Play") -> PlayValidationResult:
+def validate_play_features(idea_card: "Play") -> PlayValidationResult:
     """
     Validate all feature references in Play.
     
@@ -656,7 +656,7 @@ def validate_pre_evaluation(
 # Combined Validation
 # =============================================================================
 
-def validate_idea_card_full(idea_card: "Play") -> PlayValidationResult:
+def validate_play_full(idea_card: "Play") -> PlayValidationResult:
     """
     Run all validation gates on an Play.
     
@@ -673,12 +673,12 @@ def validate_idea_card_full(idea_card: "Play") -> PlayValidationResult:
     all_issues: list[ValidationIssue] = []
     
     # Gate 8.0: Contract
-    contract_result = validate_idea_card_contract(idea_card)
+    contract_result = validate_play_contract(idea_card)
     all_issues.extend(contract_result.issues)
     
     # Gate 8.1: Features (only if contract is valid)
     if contract_result.is_valid:
-        feature_result = validate_idea_card_features(idea_card)
+        feature_result = validate_play_features(idea_card)
         all_issues.extend(feature_result.issues)
     
     is_valid = not any(i.severity == ValidationSeverity.ERROR for i in all_issues)
@@ -694,7 +694,7 @@ def validate_idea_card_full(idea_card: "Play") -> PlayValidationResult:
 # Gate 8.3: Play → SystemConfig Adapter (DELETED - P1.2 Refactor)
 # =============================================================================
 # PlaySystemConfig and adapt_idea_card_to_system_config have been deleted.
-# Engine now accepts Play directly via create_engine_from_idea_card().
+# Engine now accepts Play directly via create_engine_from_play().
 # See: src/backtest/engine.py
 # =============================================================================
 
@@ -758,7 +758,7 @@ class PlaySignalEvaluator:
             ValueError: If Play is invalid
         """
         # Validate
-        validation = validate_idea_card_full(idea_card)
+        validation = validate_play_full(idea_card)
         if not validation.is_valid:
             errors = [i.message for i in validation.errors]
             raise ValueError(f"Play validation failed: {'; '.join(errors)}")

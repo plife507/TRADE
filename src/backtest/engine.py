@@ -80,8 +80,8 @@ from .engine_artifacts import calculate_drawdowns_impl, write_artifacts_impl
 # These are re-exported for backward compatibility
 from .engine_factory import (
     run_backtest,
-    create_engine_from_idea_card,
-    run_engine_with_idea_card,
+    create_engine_from_play,
+    run_engine_with_play,
 )
 
 from .types import (
@@ -1727,5 +1727,5 @@ class BacktestEngine:
         return self._state_tracker.summary_stats()
 
 
-# NOTE: Factory functions (run_backtest, create_engine_from_idea_card, run_engine_with_idea_card)
+# NOTE: Factory functions (run_backtest, create_engine_from_play, run_engine_with_play)
 # are now in engine_factory.py and imported at the top of this module for backward compatibility.

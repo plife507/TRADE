@@ -422,7 +422,7 @@ def parse_blocks(data: list) -> list[Block]:
 # High-Level API
 # =============================================================================
 
-def parse_idea_card_blocks(idea_card_dict: dict) -> list[Block]:
+def parse_play_blocks(idea_card_dict: dict) -> list[Block]:
     """
     Parse blocks from an Play dict.
 

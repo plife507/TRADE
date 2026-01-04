@@ -172,7 +172,7 @@ def backtest_audit_in_memory_parity_tool(
 
         output_path = Path(output_dir) if output_dir else None
 
-        result = run_in_memory_parity_for_idea_card(
+        result = run_in_memory_parity_for_play(
             idea_card_path=idea_card,
             start_date=start_date,
             end_date=end_date,
@@ -269,7 +269,7 @@ def backtest_math_parity_tool(
 
         # Step 2: In-memory parity audit
         output_path = Path(output_dir) if output_dir else None
-        parity_result = run_in_memory_parity_for_idea_card(
+        parity_result = run_in_memory_parity_for_play(
             idea_card_path=idea_card,
             start_date=start_date,
             end_date=end_date,

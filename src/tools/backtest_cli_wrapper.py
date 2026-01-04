@@ -26,12 +26,12 @@ from .backtest_play_tools import (
     validate_canonical_tf,
     normalize_timestamp,
     # Play Tools
-    backtest_preflight_idea_card_tool,
-    backtest_run_idea_card_tool,
+    backtest_preflight_play_tool,
+    backtest_run_play_tool,
     backtest_indicators_tool,
     backtest_data_fix_tool,
-    backtest_list_idea_cards_tool,
-    backtest_idea_card_normalize_tool,
+    backtest_list_plays_tool,
+    backtest_play_normalize_tool,
     backtest_idea_card_normalize_batch_tool,
 )
 
@@ -65,12 +65,12 @@ __all__ = [
     "validate_canonical_tf",
     "normalize_timestamp",
     # Play Tools
-    "backtest_preflight_idea_card_tool",
-    "backtest_run_idea_card_tool",
+    "backtest_preflight_play_tool",
+    "backtest_run_play_tool",
     "backtest_indicators_tool",
     "backtest_data_fix_tool",
-    "backtest_list_idea_cards_tool",
-    "backtest_idea_card_normalize_tool",
+    "backtest_list_plays_tool",
+    "backtest_play_normalize_tool",
     "backtest_idea_card_normalize_batch_tool",
     # Audit Tools
     "backtest_audit_math_from_snapshots_tool",

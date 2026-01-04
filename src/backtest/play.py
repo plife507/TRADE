@@ -576,7 +576,7 @@ class Play:
 IDEA_CARDS_DIR = Path(__file__).parent.parent.parent / "configs" / "plays"
 
 
-def load_idea_card(idea_card_id: str, base_dir: Path | None = None) -> Play:
+def load_play(idea_card_id: str, base_dir: Path | None = None) -> Play:
     """
     Load an Play from YAML file.
 
@@ -605,7 +605,7 @@ def load_idea_card(idea_card_id: str, base_dir: Path | None = None) -> Play:
             break
 
     if not path:
-        available = list_idea_cards(search_dir)
+        available = list_plays(search_dir)
         raise FileNotFoundError(
             f"Play '{idea_card_id}' not found in {search_dir}. Available: {available}"
         )
@@ -619,7 +619,7 @@ def load_idea_card(idea_card_id: str, base_dir: Path | None = None) -> Play:
     return Play.from_dict(raw)
 
 
-def list_idea_cards(base_dir: Path | None = None) -> list[str]:
+def list_plays(base_dir: Path | None = None) -> list[str]:
     """List all available Play files."""
     search_dir = base_dir or IDEA_CARDS_DIR
 

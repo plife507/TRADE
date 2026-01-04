@@ -386,7 +386,7 @@ def _compare_column(
     )
 
 
-def run_in_memory_parity_for_idea_card(
+def run_in_memory_parity_for_play(
     idea_card_path: str,
     start_date: str,
     end_date: str,
@@ -410,7 +410,7 @@ def run_in_memory_parity_for_idea_card(
     Returns:
         InMemoryParityResult with detailed comparison
     """
-    from ..play import load_idea_card
+    from ..play import load_play
     from ..runner import RunnerConfig, run_backtest_with_gates
     from datetime import datetime as dt
     
@@ -423,7 +423,7 @@ def run_in_memory_parity_for_idea_card(
         )
         
         # Load the Play
-        idea_card = config.load_idea_card()
+        idea_card = config.load_play()
         symbol = idea_card.symbol_universe[0]
         
         # Get the feature spec sets using the correct API
@@ -465,15 +465,15 @@ def run_in_memory_parity_for_idea_card(
                 })
         
         # Build the backtest engine using the Play-native engine factory
-        # P1.2 Refactor: Use create_engine_from_idea_card() instead of legacy adapter
-        from ..engine import create_engine_from_idea_card
+        # P1.2 Refactor: Use create_engine_from_play() instead of legacy adapter
+        from ..engine import create_engine_from_play
         from ..execution_validation import compute_warmup_requirements
         
         # Compute warmup requirements
         warmup_req = compute_warmup_requirements(idea_card)
         
         # Create engine directly from Play
-        engine = create_engine_from_idea_card(
+        engine = create_engine_from_play(
             idea_card=idea_card,
             window_start=config.window_start,
             window_end=config.window_end,

@@ -13,8 +13,8 @@ import json
 from .play_generator import (
     GeneratorConfig,
     GeneratedPlay,
-    generate_idea_cards,
-    cleanup_generated_cards,
+    generate_plays,
+    cleanup_generated_plays,
 )
 
 
@@ -90,7 +90,7 @@ def run_batch_verification(
         BatchSummary with results for all cards
     """
     from ..runner import run_backtest_with_gates, RunnerConfig
-    from ..play import load_idea_card
+    from ..play import load_play
     from ...data.historical_data_store import get_historical_store
     
     # Generate Plays
@@ -98,7 +98,7 @@ def run_batch_verification(
         seed=seed,
         num_cards=num_cards,
     )
-    generated_cards = generate_idea_cards(gen_config)
+    generated_cards = generate_plays(gen_config)
     
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -125,7 +125,7 @@ def run_batch_verification(
         
         try:
             # Load the generated Play
-            idea_card = load_idea_card(card.id, base_dir=gen_config.output_dir)
+            idea_card = load_play(card.id, base_dir=gen_config.output_dir)
             
             # Create runner config
             config = RunnerConfig(
@@ -198,7 +198,7 @@ def run_batch_verification(
     
     # Cleanup if requested
     if cleanup_after:
-        cleanup_generated_cards(gen_config.output_dir)
+        cleanup_generated_plays(gen_config.output_dir)
     
     return summary
 

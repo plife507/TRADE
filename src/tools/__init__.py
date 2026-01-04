@@ -190,12 +190,12 @@ from .backtest_tools import (
 
 # Backtest CLI wrapper tools (Play-based, golden path)
 from .backtest_cli_wrapper import (
-    backtest_preflight_idea_card_tool,
-    backtest_run_idea_card_tool,
+    backtest_preflight_play_tool,
+    backtest_run_play_tool,
     backtest_data_fix_tool,
-    backtest_list_idea_cards_tool,
+    backtest_list_plays_tool,
     backtest_indicators_tool,
-    backtest_idea_card_normalize_tool,
+    backtest_play_normalize_tool,
     verify_artifact_parity_tool,
     # Audit tools
     backtest_audit_toolkit_tool,
@@ -327,12 +327,12 @@ __all__ = [
     "backtest_list_strategies_tool",
     
     # Backtest CLI wrapper tools (Play-based, golden path)
-    "backtest_preflight_idea_card_tool",
-    "backtest_run_idea_card_tool",
+    "backtest_preflight_play_tool",
+    "backtest_run_play_tool",
     "backtest_data_fix_tool",
-    "backtest_list_idea_cards_tool",
+    "backtest_list_plays_tool",
     "backtest_indicators_tool",
-    "backtest_idea_card_normalize_tool",
+    "backtest_play_normalize_tool",
     "verify_artifact_parity_tool",
     # Audit tools
     "backtest_audit_toolkit_tool",

@@ -1181,9 +1181,9 @@ def run_state_tracking_parity_smoke(
     from pathlib import Path
     import tempfile
 
-    from src.backtest.play import load_idea_card
+    from src.backtest.play import load_play
     from src.backtest.execution_validation import compute_warmup_requirements
-    from src.backtest.engine_factory import create_engine_from_idea_card, run_engine_with_idea_card
+    from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
     from src.backtest.artifacts.hashes import compute_trades_hash
     from src.data.historical_data_store import get_historical_store
 
@@ -1201,7 +1201,7 @@ def run_state_tracking_parity_smoke(
     console.print(f"\n[bold]Step 1: Load Play[/]")
 
     try:
-        idea_card = load_idea_card(idea_card_id)
+        idea_card = load_play(idea_card_id)
         console.print(f"  [green]OK[/] Loaded Play: {idea_card_id}")
     except FileNotFoundError as e:
         console.print(f"  [red]FAIL[/] Play not found: {e}")
@@ -1266,7 +1266,7 @@ def run_state_tracking_parity_smoke(
     console.print(f"\n[bold]Step 4: Run Backtest (record_state_tracking=False)[/]")
 
     try:
-        engine_baseline = create_engine_from_idea_card(
+        engine_baseline = create_engine_from_play(
             idea_card=idea_card,
             window_start=window_start,
             window_end=window_end,
@@ -1277,7 +1277,7 @@ def run_state_tracking_parity_smoke(
         # Explicitly set record_state_tracking=False (should be default)
         engine_baseline.record_state_tracking = False
 
-        result_baseline = run_engine_with_idea_card(engine_baseline, idea_card)
+        result_baseline = run_engine_with_play(engine_baseline, idea_card)
         trades_hash_baseline = compute_trades_hash(result_baseline.trades)
 
         console.print(f"  [green]OK[/] Baseline run completed")
@@ -1296,7 +1296,7 @@ def run_state_tracking_parity_smoke(
     console.print(f"\n[bold]Step 5: Run Backtest (record_state_tracking=True)[/]")
 
     try:
-        engine_with_tracking = create_engine_from_idea_card(
+        engine_with_tracking = create_engine_from_play(
             idea_card=idea_card,
             window_start=window_start,
             window_end=window_end,
@@ -1307,7 +1307,7 @@ def run_state_tracking_parity_smoke(
         # Enable state tracking
         engine_with_tracking.record_state_tracking = True
 
-        result_with_tracking = run_engine_with_idea_card(engine_with_tracking, idea_card)
+        result_with_tracking = run_engine_with_play(engine_with_tracking, idea_card)
         trades_hash_with_tracking = compute_trades_hash(result_with_tracking.trades)
 
         console.print(f"  [green]OK[/] State tracking run completed")

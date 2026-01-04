@@ -807,7 +807,7 @@ def build_features_from_preloaded_dfs(
     """
     Build FeatureArrays for all TFs defined in an Play using pre-loaded DataFrames.
 
-    NOTE: For canonical feature building, use build_features_from_idea_card() which
+    NOTE: For canonical feature building, use build_features_from_play() which
     takes a data_loader and returns PlayFeatures.
 
     Args:
@@ -899,7 +899,7 @@ class PlayFeatures:
         return None
 
 
-def build_features_from_idea_card(
+def build_features_from_play(
     idea_card: "Play",
     data_loader: Callable[[str, str], pd.DataFrame],
     symbol: str | None = None,
@@ -948,7 +948,7 @@ def build_features_from_idea_card(
         if df is None or df.empty:
             raise ValueError(
                 f"data_loader returned empty data for {symbol} {tf}. "
-                f"Ensure data exists before calling build_features_from_idea_card."
+                f"Ensure data exists before calling build_features_from_play."
             )
         
         # Build FeatureSpecSet from Play's TFConfig

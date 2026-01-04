@@ -10,7 +10,7 @@ Rules:
 - Indicators from IndicatorRegistry (not hardcoded list)
 - Single direction per card (long_only OR short_only)
 - Mixed directions across batch
-- All generated YAMLs must pass normalize_idea_card_yaml validation
+- All generated YAMLs must pass normalize_play_yaml validation
 
 Agent Rule:
     Agents may only generate Plays through `backtest idea-card-normalize`
@@ -29,7 +29,7 @@ import numpy as np
 from ..indicator_registry import get_registry
 
 # Import YAML builder for normalization/validation
-from ..play_yaml_builder import normalize_idea_card_yaml, format_validation_errors
+from ..play_yaml_builder import normalize_play_yaml, format_validation_errors
 
 # Indicator allowlist - uses registry-supported indicators only
 # Use conservative period bounds to ensure warmup fits in typical test windows
@@ -253,7 +253,7 @@ def generate_signal_rules(direction: str, indicators: list[dict[str, Any]], rng:
         }
 
 
-def generate_idea_card_yaml(
+def generate_play_yaml(
     idea_id: str,
     symbol: str,
     direction: str,
@@ -265,7 +265,7 @@ def generate_idea_card_yaml(
     """
     Generate Play YAML content.
     
-    Uses normalize_idea_card_yaml to validate and auto-generate required_indicators.
+    Uses normalize_play_yaml to validate and auto-generate required_indicators.
     Raises ValueError if validation fails.
     """
     
@@ -339,7 +339,7 @@ def generate_idea_card_yaml(
     }
     
     # Normalize and validate before dumping
-    normalized, result = normalize_idea_card_yaml(idea_card, auto_generate_required=True)
+    normalized, result = normalize_play_yaml(idea_card, auto_generate_required=True)
     
     if not result.is_valid:
         error_msg = format_validation_errors(result.errors)
@@ -361,7 +361,7 @@ def _to_native(val):
     return val
 
 
-def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedPlay]:
+def generate_plays(config: GeneratorConfig) -> list[GeneratedPlay]:
     """
     Generate randomized Plays.
     
@@ -406,7 +406,7 @@ def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedPlay]:
         idea_id = f"generated_{symbol.lower()}_{exec_tf}_{i+1:02d}"
         
         # Generate YAML
-        yaml_content = generate_idea_card_yaml(
+        yaml_content = generate_play_yaml(
             idea_id=idea_id,
             symbol=symbol,
             direction=direction,
@@ -434,7 +434,7 @@ def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedPlay]:
     return results
 
 
-def cleanup_generated_cards(output_dir: Path = Path("configs/plays/generated")) -> None:
+def cleanup_generated_plays(output_dir: Path = Path("configs/plays/generated")) -> None:
     """Remove all generated Plays."""
     if output_dir.exists():
         for f in output_dir.glob("*.yml"):

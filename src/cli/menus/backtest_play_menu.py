@@ -23,14 +23,14 @@ from rich.text import Text
 
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper
 from src.tools import (
-    backtest_list_idea_cards_tool,
-    backtest_preflight_idea_card_tool,
-    backtest_run_idea_card_tool,
+    backtest_list_plays_tool,
+    backtest_preflight_play_tool,
+    backtest_run_play_tool,
     backtest_data_fix_tool,
     backtest_indicators_tool,
 )
 from src.tools.backtest_cli_wrapper import (
-    backtest_idea_card_normalize_tool,
+    backtest_play_normalize_tool,
 )
 
 if TYPE_CHECKING:
@@ -91,7 +91,7 @@ def backtest_ideacard_menu(cli: "TradeCLI"):
             return  # Go back to backtest menu
 
         if choice == 1:
-            _list_idea_cards(cli)
+            _list_plays(cli)
         elif choice == 2:
             _run_ideacard_backtest(cli)
         elif choice == 3:
@@ -106,14 +106,14 @@ def backtest_ideacard_menu(cli: "TradeCLI"):
             return
 
 
-def _select_idea_card(prompt_text: str = "Select Play") -> str | None:
+def _select_play(prompt_text: str = "Select Play") -> str | None:
     """
     Show numbered list of Plays and let user select by number.
 
     Returns:
         Selected idea_card_id or None if cancelled
     """
-    result = backtest_list_idea_cards_tool()
+    result = backtest_list_plays_tool()
 
     if not result.success or not result.data:
         console.print(f"[{CLIColors.NEON_RED}]Error loading Plays: {result.error}[/]")
@@ -193,14 +193,14 @@ def _get_date_range() -> tuple:
         return None, None
 
 
-def _list_idea_cards(cli: "TradeCLI"):
+def _list_plays(cli: "TradeCLI"):
     """List all available Plays."""
     from trade_cli import run_tool_action, print_data_result
 
     console.print()
     console.print(f"[{CLIColors.NEON_CYAN}]Loading Plays...[/]")
 
-    result = backtest_list_idea_cards_tool()
+    result = backtest_list_plays_tool()
 
     if result.success:
         cards = result.data.get("idea_cards", [])
@@ -233,7 +233,7 @@ def _run_ideacard_backtest(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_idea_card("Select Play to run")
+    idea_card_id = _select_play("Select Play to run")
     if not idea_card_id:
         return
 
@@ -256,7 +256,7 @@ def _run_ideacard_backtest(cli: "TradeCLI"):
     console.print()
     result = run_long_action(
         "backtest.run",
-        backtest_run_idea_card_tool,
+        backtest_run_play_tool,
         idea_card_id=idea_card_id,
         start=start_date,
         end=end_date,
@@ -305,7 +305,7 @@ def _preflight_check(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_idea_card("Select Play for preflight")
+    idea_card_id = _select_play("Select Play for preflight")
     if not idea_card_id:
         return
 
@@ -323,7 +323,7 @@ def _preflight_check(cli: "TradeCLI"):
     console.print()
     result = run_long_action(
         "backtest.preflight",
-        backtest_preflight_idea_card_tool,
+        backtest_preflight_play_tool,
         idea_card_id=idea_card_id,
         start=start_date,
         end=end_date,
@@ -370,7 +370,7 @@ def _data_fix(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_idea_card("Select Play for data fix")
+    idea_card_id = _select_play("Select Play for data fix")
     if not idea_card_id:
         return
 
@@ -410,7 +410,7 @@ def _view_indicators(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_idea_card("Select Play to inspect")
+    idea_card_id = _select_play("Select Play to inspect")
     if not idea_card_id:
         return
 
@@ -446,7 +446,7 @@ def _normalize_ideacard(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_idea_card("Select Play to normalize")
+    idea_card_id = _select_play("Select Play to normalize")
     if not idea_card_id:
         return
 
@@ -459,7 +459,7 @@ def _normalize_ideacard(cli: "TradeCLI"):
     console.print()
     console.print(f"[{CLIColors.NEON_CYAN}]Normalizing Play...[/]")
 
-    result = backtest_idea_card_normalize_tool(
+    result = backtest_play_normalize_tool(
         idea_card_id=idea_card_id,
         write_in_place=write_in_place,
     )

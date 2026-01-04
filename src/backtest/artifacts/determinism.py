@@ -232,7 +232,7 @@ def verify_determinism_rerun(
     from src.tools.backtest_cli_wrapper import backtest_run_play_tool
     
     # Re-run the Play with the same window
-    rerun_result = backtest_run_idea_card_tool(
+    rerun_result = backtest_run_play_tool(
         idea_card_id=idea_card_id,
         window_start=window_start,
         window_end=window_end,

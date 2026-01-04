@@ -17,8 +17,8 @@ from .production_first_import_gate import (
 from .play_generator import (
     GeneratorConfig,
     GeneratedPlay,
-    generate_idea_cards,
-    cleanup_generated_cards,
+    generate_plays,
+    cleanup_generated_plays,
     get_available_symbols,
 )
 
@@ -37,8 +37,8 @@ __all__ = [
     # Gate D.2
     "GeneratorConfig",
     "GeneratedPlay",
-    "generate_idea_cards",
-    "cleanup_generated_cards",
+    "generate_plays",
+    "cleanup_generated_plays",
     "get_available_symbols",
     "CardRunResult",
     "BatchSummary",

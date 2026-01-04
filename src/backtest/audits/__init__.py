@@ -9,7 +9,7 @@ This module consolidates all audit functionality for backtest validation:
 """
 
 from .audit_in_memory_parity import (
-    run_in_memory_parity_for_idea_card,
+    run_in_memory_parity_for_play,
     audit_in_memory_parity_from_feeds,
     InMemoryParityResult,
     ColumnParityResult,
@@ -38,7 +38,7 @@ from .artifact_parity_verifier import (
 
 __all__ = [
     # In-memory parity
-    "run_in_memory_parity_for_idea_card",
+    "run_in_memory_parity_for_play",
     "audit_in_memory_parity_from_feeds",
     "InMemoryParityResult",
     "ColumnParityResult",

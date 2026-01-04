@@ -747,7 +747,7 @@ def validate_structure_references(
 # Main Entry Points
 # =============================================================================
 
-def validate_idea_card_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
+def validate_play_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
     """
     Validate an Play YAML dict at build time.
 
@@ -835,7 +835,7 @@ def generate_required_indicators(
     return result
 
 
-def normalize_idea_card_yaml(
+def normalize_play_yaml(
     idea_card_dict: dict[str, Any],
     auto_generate_required: bool = True,
 ) -> tuple[dict[str, Any], ValidationResult]:
@@ -859,7 +859,7 @@ def normalize_idea_card_yaml(
         Callers should refuse to write YAML if validation fails.
     """
     # Validate first
-    result = validate_idea_card_yaml(idea_card_dict)
+    result = validate_play_yaml(idea_card_dict)
     
     if not result.is_valid:
         # Return unchanged - caller should refuse to write

@@ -28,7 +28,7 @@ from typing import Any
 
 import numpy as np
 
-from ..play import load_idea_card, Play, IDEA_CARDS_DIR
+from ..play import load_play, Play, IDEA_CARDS_DIR
 from ..execution_validation import compute_warmup_requirements
 from ..runtime.feed_store import FeedStore
 from ..runtime.snapshot_view import RuntimeSnapshotView
@@ -451,9 +451,9 @@ def audit_snapshot_plumbing_parity(
             
             # Get the ID without extension
             card_id = id_path.stem if id_path.suffix in (".yml", ".yaml") else id_path.name
-            idea_card = load_idea_card(card_id, base_dir=subdir)
+            idea_card = load_play(card_id, base_dir=subdir)
         else:
-            idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
+            idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
         
         # Resolve symbol
         if symbol is None:

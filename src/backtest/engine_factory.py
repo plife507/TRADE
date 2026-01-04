@@ -3,8 +3,8 @@ Factory functions module for BacktestEngine.
 
 This module provides factory functions for creating and running BacktestEngine:
 - run_backtest: Convenience function to run a backtest from system_id
-- create_engine_from_idea_card: Create engine from Play
-- run_engine_with_idea_card: Run engine with Play signal evaluation
+- create_engine_from_play: Create engine from Play
+- run_engine_with_play: Run engine with Play signal evaluation
 - _get_idea_card_result_class: Get PlayBacktestResult class
 
 These functions provide the main entry points for backtest execution.
@@ -74,7 +74,7 @@ def _compute_warmup_by_tf(registry: "FeatureRegistry") -> dict[str, int]:
     return warmup_by_tf
 
 
-def create_engine_from_idea_card(
+def create_engine_from_play(
     idea_card: "Play",
     window_start: datetime,
     window_end: datetime,
@@ -361,7 +361,7 @@ def _blocks_require_history(blocks: list) -> bool:
     return False
 
 
-def run_engine_with_idea_card(
+def run_engine_with_play(
     engine: "BacktestEngine",
     idea_card: "Play",
 ) -> "PlayBacktestResult":
@@ -371,7 +371,7 @@ def run_engine_with_idea_card(
     This consolidates signal evaluation into the engine execution flow.
 
     Args:
-        engine: BacktestEngine (created via create_engine_from_idea_card)
+        engine: BacktestEngine (created via create_engine_from_play)
         idea_card: Play with signal rules
 
     Returns:
@@ -380,7 +380,7 @@ def run_engine_with_idea_card(
     from .execution_validation import (
         PlaySignalEvaluator,
         SignalDecision,
-        compute_idea_card_hash,
+        compute_play_hash,
     )
     from ..core.risk_manager import Signal
 
@@ -443,7 +443,7 @@ def run_engine_with_idea_card(
     backtest_result = engine.run(idea_card_strategy)
 
     # Compute Play hash
-    idea_card_hash = compute_idea_card_hash(idea_card)
+    idea_card_hash = compute_play_hash(idea_card)
 
     return PlayBacktestResult(
         trades=backtest_result.trades,

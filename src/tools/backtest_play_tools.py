@@ -33,9 +33,9 @@ from ..data.historical_data_store import (
     TIMEFRAMES as DB_TIMEFRAMES,
     TF_MINUTES,
 )
-from ..backtest.play import load_idea_card, list_idea_cards, Play
+from ..backtest.play import load_play, list_plays, Play
 from ..backtest.execution_validation import (
-    validate_idea_card_full,
+    validate_play_full,
     compute_warmup_requirements,
     get_declared_features_by_role,
 )
@@ -131,7 +131,7 @@ def normalize_timestamp(dt: datetime) -> datetime:
 # Preflight Check (tools-layer)
 # =============================================================================
 
-def backtest_preflight_idea_card_tool(
+def backtest_preflight_play_tool(
     idea_card_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
     symbol: str | None = None,
@@ -170,7 +170,7 @@ def backtest_preflight_idea_card_tool(
 
         # Load Play
         try:
-            idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
+            idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
         except FileNotFoundError as e:
             return ToolResult(
                 success=False,
@@ -178,12 +178,12 @@ def backtest_preflight_idea_card_tool(
                 data={
                     "env": env,
                     "db_path": str(db_path),
-                    "available_idea_cards": list_idea_cards(idea_cards_dir),
+                    "available_idea_cards": list_plays(idea_cards_dir),
                 },
             )
 
         # Validate Play
-        validation = validate_idea_card_full(idea_card)
+        validation = validate_play_full(idea_card)
         if not validation.is_valid:
             return ToolResult(
                 success=False,
@@ -317,7 +317,7 @@ def backtest_preflight_idea_card_tool(
 # Run Backtest (tools-layer)
 # =============================================================================
 
-def backtest_run_idea_card_tool(
+def backtest_run_play_tool(
     idea_card_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
     symbol: str | None = None,
@@ -370,7 +370,7 @@ def backtest_run_idea_card_tool(
             symbol = symbol_override
 
         # Run preflight first (with auto-sync if fix_gaps=True)
-        preflight_result = backtest_preflight_idea_card_tool(
+        preflight_result = backtest_preflight_play_tool(
             idea_card_id=idea_card_id,
             env=env,
             symbol=symbol,
@@ -386,7 +386,7 @@ def backtest_run_idea_card_tool(
         preflight_data = preflight_result.data
 
         # Load Play
-        idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
+        idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
 
         # Validate account config is present (required - no defaults)
         if idea_card.account is None:
@@ -563,7 +563,7 @@ def backtest_run_idea_card_tool(
         )
 
         # Run backtest with gates
-        # P1.2 Refactor: engine_factory is now handled internally via create_engine_from_idea_card()
+        # P1.2 Refactor: engine_factory is now handled internally via create_engine_from_play()
         run_result = run_backtest_with_gates(
             config=runner_config,
         )
@@ -715,16 +715,16 @@ def backtest_indicators_tool(
 
         # Load Play
         try:
-            idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
+            idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
         except FileNotFoundError as e:
             return ToolResult(
                 success=False,
                 error=str(e),
-                data={"available_idea_cards": list_idea_cards(idea_cards_dir)},
+                data={"available_idea_cards": list_plays(idea_cards_dir)},
             )
 
         # Validate Play
-        validation = validate_idea_card_full(idea_card)
+        validation = validate_play_full(idea_card)
         if not validation.is_valid:
             return ToolResult(
                 success=False,
@@ -861,7 +861,7 @@ def backtest_data_fix_tool(
         db_path = resolve_db_path(env)
 
         # Load Play to get TFs
-        idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
+        idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
 
         # Resolve symbol
         if symbol is None:
@@ -1021,7 +1021,7 @@ def backtest_data_fix_tool(
 # List Plays (tools-layer)
 # =============================================================================
 
-def backtest_list_idea_cards_tool(
+def backtest_list_plays_tool(
     idea_cards_dir: Path | None = None,
 ) -> ToolResult:
     """
@@ -1034,7 +1034,7 @@ def backtest_list_idea_cards_tool(
         ToolResult with list of Play IDs
     """
     try:
-        cards = list_idea_cards(base_dir=idea_cards_dir)
+        cards = list_plays(base_dir=idea_cards_dir)
 
         return ToolResult(
             success=True,
@@ -1056,7 +1056,7 @@ def backtest_list_idea_cards_tool(
 # Play Normalization (build-time validation)
 # =============================================================================
 
-def backtest_idea_card_normalize_tool(
+def backtest_play_normalize_tool(
     idea_card_id: str,
     idea_cards_dir: Path | None = None,
     write_in_place: bool = False,
@@ -1087,7 +1087,7 @@ def backtest_idea_card_normalize_tool(
     import yaml
     from ..backtest.play import IDEA_CARDS_DIR
     from ..backtest.play_yaml_builder import (
-        normalize_idea_card_yaml,
+        normalize_play_yaml,
         format_validation_errors,
     )
 
@@ -1103,7 +1103,7 @@ def backtest_idea_card_normalize_tool(
                 break
 
         if yaml_path is None:
-            cards = list_idea_cards(base_dir=idea_cards_dir)
+            cards = list_plays(base_dir=idea_cards_dir)
             return ToolResult(
                 success=False,
                 error=f"Play '{idea_card_id}' not found in {search_dir}",
@@ -1121,7 +1121,7 @@ def backtest_idea_card_normalize_tool(
             )
 
         # Normalize and validate
-        normalized, result = normalize_idea_card_yaml(raw, auto_generate_required=True)
+        normalized, result = normalize_play_yaml(raw, auto_generate_required=True)
 
         if not result.is_valid:
             error_details = format_validation_errors(result.errors)
@@ -1188,10 +1188,10 @@ def backtest_idea_card_normalize_batch_tool(
         ToolResult with batch normalization results
     """
     try:
-        from ..backtest.play import list_idea_cards
+        from ..backtest.play import list_plays
 
         # Get all Play IDs in the directory
-        idea_card_ids = list_idea_cards(base_dir=idea_cards_dir)
+        idea_card_ids = list_plays(base_dir=idea_cards_dir)
 
         if not idea_card_ids:
             return ToolResult(
@@ -1209,7 +1209,7 @@ def backtest_idea_card_normalize_batch_tool(
         for idea_card_id in idea_card_ids:
             try:
                 # Use the existing single-card normalize function
-                single_result = backtest_idea_card_normalize_tool(
+                single_result = backtest_play_normalize_tool(
                     idea_card_id=idea_card_id,
                     idea_cards_dir=idea_cards_dir,
                     write_in_place=write_in_place,

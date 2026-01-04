@@ -42,8 +42,8 @@ from .engine import BacktestEngine
 from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
 from .engine_factory import (
     run_backtest,
-    create_engine_from_idea_card,
-    run_engine_with_idea_card,
+    create_engine_from_play,
+    run_engine_with_play,
 )
 from .risk_policy import (
     RiskPolicy,
@@ -63,8 +63,8 @@ from .play import (
     TakeProfitType,
     SizingRule,
     SizingModel,
-    load_idea_card,
-    list_idea_cards,
+    load_play,
+    list_plays,
 )
 from .feature_registry import (
     Feature,
@@ -74,15 +74,15 @@ from .feature_registry import (
 )
 from .execution_validation import (
     # Gate 8.0
-    compute_idea_card_hash,
-    validate_idea_card_contract,
+    compute_play_hash,
+    validate_play_contract,
     PlayValidationResult,
     ValidationIssue,
     ValidationSeverity,
     # Gate 8.1
     extract_rule_feature_refs,
     get_declared_features_by_role,
-    validate_idea_card_features,
+    validate_play_features,
     FeatureReference,
     # Gate 8.2
     compute_warmup_requirements,
@@ -95,7 +95,7 @@ from .execution_validation import (
     validate_pre_evaluation,
     PreEvaluationStatus,
     # Combined
-    validate_idea_card_full,
+    validate_play_full,
 )
 
 __all__ = [
@@ -144,22 +144,22 @@ __all__ = [
     "TakeProfitType",
     "SizingRule",
     "SizingModel",
-    "load_idea_card",
-    "list_idea_cards",
+    "load_play",
+    "list_plays",
     # Feature Registry
     "Feature",
     "FeatureType",
     "FeatureRegistry",
     "InputSource",
     # Execution Validation (Phase 8)
-    "compute_idea_card_hash",
-    "validate_idea_card_contract",
+    "compute_play_hash",
+    "validate_play_contract",
     "PlayValidationResult",
     "ValidationIssue",
     "ValidationSeverity",
     "extract_rule_feature_refs",
     "get_declared_features_by_role",
-    "validate_idea_card_features",
+    "validate_play_features",
     "FeatureReference",
     "compute_warmup_requirements",
     "WarmupRequirements",
@@ -169,8 +169,8 @@ __all__ = [
     "EvaluationResult",
     "validate_pre_evaluation",
     "PreEvaluationStatus",
-    "validate_idea_card_full",
+    "validate_play_full",
     # P1.2 Refactor: New Play-native engine factory
-    "create_engine_from_idea_card",
-    "run_engine_with_idea_card",
+    "create_engine_from_play",
+    "run_engine_with_play",
 ]

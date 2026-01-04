@@ -94,7 +94,7 @@ class RuntimeConfig:
             )
     
     @classmethod
-    def from_idea_card(
+    def from_play(
         cls,
         idea_card: Play,
         symbol_override: str | None = None,

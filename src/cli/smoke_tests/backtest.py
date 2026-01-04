@@ -15,10 +15,10 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ...tools import (
-    backtest_preflight_idea_card_tool,
-    backtest_run_idea_card_tool,
+    backtest_preflight_play_tool,
+    backtest_run_play_tool,
     backtest_data_fix_tool,
-    backtest_list_idea_cards_tool,
+    backtest_list_plays_tool,
 )
 
 console = Console()
@@ -46,7 +46,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     console.print(f"\n[bold cyan]Step 2: Preflight Check (Phase A Gate)[/]")
     console.print(f"  [dim]Checking env/symbol/tf/coverage...[/]")
 
-    preflight_result = backtest_preflight_idea_card_tool(
+    preflight_result = backtest_preflight_play_tool(
         idea_card_id=idea_card_id,
         env="live",  # Always use live data env for smoke
     )
@@ -98,7 +98,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
             if fix_result.success:
                 console.print(f"  [green]OK[/] Data fix completed: {fix_result.message}")
                 # Retry preflight
-                preflight_result = backtest_preflight_idea_card_tool(
+                preflight_result = backtest_preflight_play_tool(
                     idea_card_id=idea_card_id,
                     env="live",
                 )
@@ -118,7 +118,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     console.print(f"\n[bold cyan]Step 3: Run Backtest (Smoke Mode)[/]")
     console.print(f"  [dim]Running with --smoke --strict...[/]")
 
-    run_result = backtest_run_idea_card_tool(
+    run_result = backtest_run_play_tool(
         idea_card_id=idea_card_id,
         env="live",
         smoke=True,
@@ -278,7 +278,7 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
     console.print(f"\n[bold cyan]Step 1: Check for Plays (Golden Path)[/]")
 
     # List available Plays
-    result = backtest_list_idea_cards_tool()
+    result = backtest_list_plays_tool()
     idea_cards = []
     if result.success and result.data:
         idea_cards = result.data.get("idea_cards", [])
@@ -345,7 +345,7 @@ def run_backtest_mixed_smoke() -> int:
     ]
 
     # Filter to only existing cards
-    result = backtest_list_idea_cards_tool()
+    result = backtest_list_plays_tool()
     available_cards = []
     if result.success and result.data:
         available_cards = result.data.get("idea_cards", [])
@@ -433,7 +433,7 @@ def run_phase6_backtest_smoke() -> int:
         end_dt = datetime.now()
         start_dt = end_dt - timedelta(days=7)  # 7 days window
 
-        result = backtest_preflight_idea_card_tool(
+        result = backtest_preflight_play_tool(
             idea_card_id=WARMUP_MATRIX_CARD,
             env=TEST_ENV,
             symbol_override=TEST_SYMBOL,
@@ -552,11 +552,11 @@ def run_phase6_backtest_smoke() -> int:
     console.print(f"\n[bold cyan]TEST 3: MTF Alignment Play[/]")
 
     try:
-        from ...backtest.play import load_idea_card
-        from ...backtest.execution_validation import validate_idea_card_full
+        from ...backtest.play import load_play
+        from ...backtest.execution_validation import validate_play_full
 
-        idea_card = load_idea_card(MTF_ALIGNMENT_CARD)
-        validation = validate_idea_card_full(idea_card)
+        idea_card = load_play(MTF_ALIGNMENT_CARD)
+        validation = validate_play_full(idea_card)
 
         if validation.is_valid:
             console.print(f"  [green]OK[/] MTF Play validates")
@@ -660,7 +660,7 @@ def run_phase6_backtest_smoke() -> int:
 
         console.print(f"  [dim]Running backtest: {WARMUP_MATRIX_CARD} ({start_dt.date()} to {end_dt.date()})...[/]")
 
-        run_result = backtest_run_idea_card_tool(
+        run_result = backtest_run_play_tool(
             idea_card_id=WARMUP_MATRIX_CARD,
             env=TEST_ENV,
             start=start_dt,
@@ -669,7 +669,7 @@ def run_phase6_backtest_smoke() -> int:
         )
 
         if run_result.success and run_result.data:
-            # artifact_dir is the key used by backtest_run_idea_card_tool
+            # artifact_dir is the key used by backtest_run_play_tool
             artifact_path = run_result.data.get("artifact_dir")
             console.print(f"  [green]OK[/] Backtest completed")
             console.print(f"      Artifact dir: {artifact_path}")

@@ -40,7 +40,7 @@ def _utcnow() -> datetime:
 
 import pandas as pd
 
-from .play import Play, load_idea_card
+from .play import Play, load_play
 from .runtime.preflight import (
     PreflightStatus,
     PreflightReport,
@@ -71,9 +71,9 @@ from .gates.indicator_requirements_gate import (
     IndicatorRequirementsResult,
 )
 from .execution_validation import (
-    validate_idea_card_full,
+    validate_play_full,
     compute_warmup_requirements,
-    compute_idea_card_hash,
+    compute_play_hash,
     PlaySignalEvaluator,
     SignalDecision,
 )
@@ -117,7 +117,7 @@ class PlayBacktestResult:
 # DELETED: create_default_engine_factory and PlayEngineWrapper
 # =============================================================================
 # P1.2 Refactor: These adapter classes have been deleted.
-# Use engine.create_engine_from_idea_card() and engine.run_engine_with_idea_card()
+# Use engine.create_engine_from_play() and engine.run_engine_with_play()
 # directly from src.backtest.engine module.
 # =============================================================================
 
@@ -151,7 +151,7 @@ class RunnerConfig:
     # Snapshot emission
     emit_snapshots: bool = False
     
-    def load_idea_card(self) -> Play:
+    def load_play(self) -> Play:
         """Load the Play if not already loaded."""
         if self.idea_card is not None:
             return self.idea_card
@@ -159,7 +159,7 @@ class RunnerConfig:
         if not self.idea_card_id:
             raise ValueError("idea_card_id is required")
         
-        self.idea_card = load_idea_card(self.idea_card_id, base_dir=self.idea_cards_dir)
+        self.idea_card = load_play(self.idea_card_id, base_dir=self.idea_cards_dir)
         return self.idea_card
 
 
@@ -218,7 +218,7 @@ def run_backtest_with_gates(
     
     try:
         # Load Play
-        idea_card = config.load_idea_card()
+        idea_card = config.load_play()
         
         # Validate window
         if not config.window_start or not config.window_end:
@@ -230,7 +230,7 @@ def run_backtest_with_gates(
         symbol = idea_card.symbol_universe[0]
         
         # Compute idea_card_hash for deterministic run folder naming
-        idea_card_hash = compute_idea_card_hash(idea_card)
+        idea_card_hash = compute_play_hash(idea_card)
         
         # Collect all timeframes from FeatureRegistry
         exec_tf = idea_card.execution_tf
@@ -453,7 +453,7 @@ def run_backtest_with_gates(
         print("\n[RUN] Running Backtest...")
         
         # Import engine factory functions (P1.2 Refactor)
-        from .engine import create_engine_from_idea_card, run_engine_with_idea_card
+        from .engine import create_engine_from_play, run_engine_with_play
         
         # Create engine directly from Play (no adapter layer)
         if engine_factory is not None:
@@ -462,13 +462,13 @@ def run_backtest_with_gates(
             engine_result = engine.run()
         else:
             # Standard path: use new Play-native engine factory
-            engine = create_engine_from_idea_card(
+            engine = create_engine_from_play(
                 idea_card=idea_card,
                 window_start=config.window_start,
                 window_end=config.window_end,
                 warmup_by_tf=preflight_warmup_by_role,
             )
-            engine_result = run_engine_with_idea_card(engine, idea_card)
+            engine_result = run_engine_with_play(engine, idea_card)
         
         # Extract trades and equity
         trades: list[dict[str, Any]] = []
@@ -482,7 +482,7 @@ def run_backtest_with_gates(
         if hasattr(engine_result, 'idea_card_hash'):
             idea_card_hash = engine_result.idea_card_hash
         else:
-            idea_card_hash = compute_idea_card_hash(idea_card)
+            idea_card_hash = compute_play_hash(idea_card)
         
         # Write trades.parquet (Phase 3.2: Parquet-only)
         trades_df = pd.DataFrame(trades) if trades else pd.DataFrame(columns=[
