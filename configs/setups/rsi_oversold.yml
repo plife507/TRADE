@@ -1,0 +1,22 @@
+id: rsi_oversold
+version: "1.0.0"
+name: "RSI Oversold"
+description: "RSI below 30 - potential bullish reversal zone"
+
+tags:
+  - momentum
+  - mean_reversion
+  - long_bias
+
+features:
+  - id: rsi
+    type: indicator
+    tf: "15m"
+    indicator_type: rsi
+    params:
+      length: 14
+
+condition:
+  lhs: {feature_id: rsi}
+  op: lt
+  rhs: 30
