@@ -10,9 +10,9 @@
 **Architecture Evolution (5 Workstreams)**:
 - ✅ **W1: The Forge** (2026-01-04) - `src/forge/` with validation framework
 - ✅ **W2: StateRationalizer** (2026-01-04) - Layer 2 transitions, derived state, conflicts
-- 🔄 **W3: Price Source Abstraction** - NEXT
-- ⏳ **W4: Trading Hierarchy** - Pending (Setup/Play/Playbook/System)
-- ⏳ **W5: Live/Demo Integration** - Pending (bundled with W3)
+- ✅ **W3: Price Source Abstraction** (2026-01-04) - PriceSource protocol, BacktestPriceSource
+- ✅ **W5: Live/Demo Stubs** (2026-01-04) - DemoPriceSource, LivePriceSource stubs
+- 🔄 **W4: Trading Hierarchy** - NEXT (Setup/Play/Playbook/System)
 
 **Prior Work Complete:**
 - Forge Migration (2026-01-04) - IdeaCard -> Play rename (8 phases, 221 files)
@@ -37,25 +37,30 @@ from src.backtest.rationalization import StateRationalizer, RationalizedState
 
 ---
 
-## Active Work: W3 Price Source Abstraction
+## Active Work: W4 Trading Hierarchy
 
-**Goal**: Unified interface for backtest/demo/live price feeds
+**Goal**: Implement Setup → Play → Playbook → System hierarchy
 
-### W3-P1: Protocol Definition
-- [ ] Create `src/backtest/prices/source.py` with PriceSource Protocol
-- [ ] Define PricePoint dataclass
-- [ ] Define methods: get_mark_price, get_ohlcv, get_1m_marks, healthcheck
+### W4-P1: Setup Dataclass
+- [ ] Create `src/forge/setups/` directory
+- [ ] Define `Setup` dataclass (id, version, condition, features)
+- [ ] Create `configs/setups/` for YAML files
+- [ ] Add `setups:` section to Play schema
 
-### W3-P2: Backtest Implementation
-- [ ] Create `src/backtest/prices/backtest_source.py`
-- [ ] Wrap HistoricalDataStore
-- [ ] Inject into BacktestEngine
+### W4-P2: Setup DSL Integration
+- [ ] Add `SetupRef` node to DSL
+- [ ] Support `setup: <id>` in block conditions
+- [ ] Parse setup references in Play
 
-### W3-P3 + W5: Demo/Live Sources (bundled)
-- [ ] Create `src/backtest/prices/demo_source.py`
-- [ ] Create `src/core/prices/live_source.py`
-- [ ] WebSocket integration
-- [ ] Live engine mode
+### W4-P3: Playbook Implementation
+- [ ] Create `src/forge/playbooks/` directory
+- [ ] Define `Playbook` dataclass
+- [ ] Create `configs/playbooks/` for YAML files
+
+### W4-P4: System Enhancement
+- [ ] Add `playbook_id` to SystemConfig
+- [ ] Resolve playbook → strategies
+- [ ] Create `configs/systems/` directory
 
 ---
 
@@ -73,9 +78,8 @@ from src.backtest.rationalization import StateRationalizer, RationalizedState
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
-| **W3 Price Source** | ACTIVE | Unified price interface |
-| **W5 Live/Demo** | Bundled | WebSocket + live engine mode |
-| **W4 Hierarchy** | Next | Setup/Playbook/System dataclasses |
+| **W4 Hierarchy** | ACTIVE | Setup/Playbook/System dataclasses |
+| **W5 Full Implementation** | Future | WebSocket + live engine mode |
 | **BOS/CHoCH Detection** | Medium | Break of Structure / Change of Character |
 
 ---
