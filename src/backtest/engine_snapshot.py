@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from .system_config import RiskProfileConfig
     from .incremental.state import MultiTFIncrementalState
     from .feature_registry import FeatureRegistry
+    from .rationalization import RationalizedState
 
 
 def update_htf_mtf_indices_impl(
@@ -131,6 +132,7 @@ def build_snapshot_view_impl(
     mark_price_override: float | None = None,
     incremental_state: "MultiTFIncrementalState | None" = None,
     feature_registry: "FeatureRegistry | None" = None,
+    rationalized_state: "RationalizedState | None" = None,
 ) -> RuntimeSnapshotView:
     """
     Build RuntimeSnapshotView for array-backed hot loop.
@@ -155,6 +157,7 @@ def build_snapshot_view_impl(
         mark_price_override: Optional override for mark_price (1m evaluation)
         incremental_state: Optional MultiTFIncrementalState for structure access
         feature_registry: Optional FeatureRegistry for feature_id-based access
+        rationalized_state: Optional RationalizedState for Layer 2 access
 
     Returns:
         RuntimeSnapshotView ready for strategy evaluation
@@ -187,4 +190,5 @@ def build_snapshot_view_impl(
         rollups=rollups,
         incremental_state=incremental_state,
         feature_registry=feature_registry,
+        rationalized_state=rationalized_state,
     )

@@ -48,6 +48,7 @@ from .types import ExchangeState, HistoryConfig, DEFAULT_HISTORY_CONFIG
 if TYPE_CHECKING:
     from ..incremental.state import MultiTFIncrementalState
     from ..feature_registry import FeatureRegistry
+    from ..rationalization import RationalizedState
 
 
 # Module-level cache for path tokenization (P2-07: avoid string split in hot loop)
@@ -174,6 +175,7 @@ class RuntimeSnapshotView:
         'history_ready', '_feeds', '_rollups',
         '_resolvers', '_incremental_state',
         '_feature_registry', '_feature_id_cache',
+        '_rationalized_state',
     )
     
     def __init__(
@@ -190,6 +192,7 @@ class RuntimeSnapshotView:
         rollups: dict[str, float] | None = None,
         incremental_state: "MultiTFIncrementalState | None" = None,
         feature_registry: "FeatureRegistry | None" = None,
+        rationalized_state: "RationalizedState | None" = None,
     ):
         """
         Initialize snapshot view.
@@ -207,10 +210,12 @@ class RuntimeSnapshotView:
             rollups: Optional px.rollup.* values from 1m accumulation
             incremental_state: Optional MultiTFIncrementalState for structure access
             feature_registry: Optional FeatureRegistry for feature_id-based access
+            rationalized_state: Optional RationalizedState for Layer 2 access
         """
         self._feeds = feeds
         self._incremental_state = incremental_state
         self._feature_registry = feature_registry
+        self._rationalized_state = rationalized_state
         self._feature_id_cache: dict[str, tuple[str, str]] = {}  # feature_id -> (tf, key)
         self.symbol = feeds.exec_feed.symbol
         self.exec_tf = feeds.exec_feed.tf
@@ -490,7 +495,49 @@ class RuntimeSnapshotView:
     def mtf_indicator(self, name: str) -> float | None:
         """Get MTF indicator by name."""
         return self.mtf_ctx.get_indicator(name)
-    
+
+    # =========================================================================
+    # Layer 2: Rationalized State Access (W2)
+    # =========================================================================
+
+    @property
+    def rationalized_state(self) -> "RationalizedState | None":
+        """Get current rationalized state (Layer 2)."""
+        return self._rationalized_state
+
+    def get_rationalized_value(self, field: str) -> Any:
+        """
+        Get a value from rationalized state.
+
+        Accessible via get_feature_value("rationalize", field=...).
+
+        Args:
+            field: Field name (e.g., "confluence_score", "regime", "alignment")
+
+        Returns:
+            Value or None if not available
+        """
+        if self._rationalized_state is None:
+            return None
+
+        # Check derived values first
+        derived = self._rationalized_state.derived_values
+        if field in derived:
+            return derived[field]
+
+        # Check core properties
+        match field:
+            case "transition_count":
+                return self._rationalized_state.transition_count
+            case "has_transitions":
+                return self._rationalized_state.has_transitions
+            case "regime":
+                return self._rationalized_state.regime.value
+            case "bar_idx":
+                return self._rationalized_state.bar_idx
+            case _:
+                return None
+
     @property
     def available_htf_indicators(self) -> list:
         """Get list of available HTF indicator keys."""
@@ -614,6 +661,10 @@ class RuntimeSnapshotView:
         This is the expected API for the DSL evaluator (dsl_eval.py).
         Maps feature_id to indicator_key and uses the feature's declared TF.
 
+        Special feature_ids:
+        - feature_id="rationalize" -> Layer 2 rationalized state values
+          (confluence_score, alignment, regime, etc.)
+
         For multi-output indicators like MACD:
         - feature_id="macd", field="histogram" -> indicator_key="macd_histogram"
         - feature_id="adx", field="dmp" -> indicator_key="adx_dmp"
@@ -623,13 +674,20 @@ class RuntimeSnapshotView:
         - Maps TF to role (exec/mtf/htf) via tf_mapping
 
         Args:
-            feature_id: Feature ID (e.g., "ema_9", "rsi_14", "macd", "ema_50_4h")
+            feature_id: Feature ID (e.g., "ema_9", "rsi_14", "macd", "ema_50_4h", "rationalize")
             field: Optional field for multi-output indicators (e.g., "histogram", "signal")
-            offset: Bar offset (0 = current, 1 = previous)
+                   For rationalize: required field name (e.g., "confluence_score", "regime")
+            offset: Bar offset (0 = current, 1 = previous). Note: rationalize ignores offset.
 
         Returns:
             Feature value or None if not available
         """
+        # Handle special "rationalize" feature_id for Layer 2 state
+        if feature_id == "rationalize":
+            if field is None:
+                return None
+            return self.get_rationalized_value(field)
+
         # Build the indicator key dynamically
         # - Single-output indicators: field is None/empty/"value" -> key = feature_id
         #   ("value" is the DSL default field for single-output indicators)

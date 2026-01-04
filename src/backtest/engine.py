@@ -134,6 +134,7 @@ from .metrics import compute_backtest_metrics
 from .incremental.base import BarData
 from .incremental.state import MultiTFIncrementalState
 from .incremental.registry import list_structure_types
+from .rationalization import StateRationalizer, RationalizedState
 
 from ..core.risk_manager import Signal
 from ..data.historical_data_store import get_historical_store, TF_MINUTES
@@ -311,6 +312,11 @@ class BacktestEngine:
         # Phase 6: Incremental state for structure detection (swing, trend, zone, etc.)
         # Built from Play structure specs after engine creation
         self._incremental_state: MultiTFIncrementalState | None = None
+
+        # W2: StateRationalizer for Layer 2 transition detection and derived state
+        # Created alongside incremental_state, called after structure updates
+        self._rationalizer: StateRationalizer | None = None
+        self._rationalized_state: RationalizedState | None = None
 
         tf_mode_str = "multi-TF" if self._multi_tf_mode else "single-TF"
         self.logger.info(
@@ -822,7 +828,13 @@ class BacktestEngine:
 
         # Phase 6: Build incremental state for structure detection
         self._incremental_state = self._build_incremental_state()
-        
+
+        # W2: Build StateRationalizer for Layer 2 (only if incremental state exists)
+        if self._incremental_state is not None:
+            self._rationalizer = StateRationalizer(history_depth=1000)
+        else:
+            self._rationalizer = None
+
         # Get resolved risk profile values
         risk_profile = self.config.risk_profile
         initial_equity = risk_profile.initial_equity
@@ -900,6 +912,14 @@ class BacktestEngine:
 
                 # Update exec state every bar
                 self._incremental_state.update_exec(bar_data)
+
+                # W2: Rationalize state after structure updates (Layer 2)
+                if self._rationalizer is not None:
+                    self._rationalized_state = self._rationalizer.rationalize(
+                        bar_idx=i,
+                        incremental_state=self._incremental_state,
+                        bar=bar_data,
+                    )
 
             # Stage 7: State tracking - bar start (record-only)
             if self._state_tracker:
@@ -1521,6 +1541,7 @@ class BacktestEngine:
             mark_price_override=mark_price_override,
             incremental_state=self._incremental_state,
             feature_registry=self._feature_registry,
+            rationalized_state=self._rationalized_state,
         )
 
     def _evaluate_with_1m_subloop(

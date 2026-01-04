@@ -1334,12 +1334,12 @@ def handle_backtest_normalize(args) -> int:
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]PLAY NORMALIZE[/]\n"
-            f"Play: {args.play} | Write: {args.write}",
+            f"Play: {args.idea_card} | Write: {args.write}",
             border_style="cyan"
         ))
 
     result = backtest_play_normalize_tool(
-        play_id=args.play,
+        play_id=args.idea_card,
         plays_dir=plays_dir,
         write_in_place=args.write,
     )
