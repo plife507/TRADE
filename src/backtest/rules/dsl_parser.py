@@ -1,5 +1,5 @@
 """
-DSL Parser: YAML to AST conversion for IdeaCard blocks.
+DSL Parser: YAML to AST conversion for Play blocks.
 
 Parses the blocks format from YAML into AST node types.
 
@@ -424,10 +424,10 @@ def parse_blocks(data: list) -> list[Block]:
 
 def parse_idea_card_blocks(idea_card_dict: dict) -> list[Block]:
     """
-    Parse blocks from an IdeaCard dict.
+    Parse blocks from an Play dict.
 
     Args:
-        idea_card_dict: Raw IdeaCard dictionary.
+        idea_card_dict: Raw Play dictionary.
 
     Returns:
         List of Block instances.
@@ -437,7 +437,7 @@ def parse_idea_card_blocks(idea_card_dict: dict) -> list[Block]:
     """
     if "blocks" not in idea_card_dict:
         raise ValueError(
-            "IdeaCard must have 'blocks' key. "
+            "Play must have 'blocks' key. "
             "Legacy signal_rules format is not supported."
         )
 

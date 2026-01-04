@@ -33,7 +33,7 @@ Phase 4 (State Containers):
 - MultiTFIncrementalState: Unified container for exec + HTF states
 
 Future Phases:
-- IdeaCard schema + parser integration
+- Play schema + parser integration
 - Engine integration
 - Batch code removal
 

@@ -1,8 +1,8 @@
 """
-DSL AST Node Types for IdeaCard Expression Language.
+DSL AST Node Types for Play Expression Language.
 
 This module defines the abstract syntax tree (AST) node types for the
-vNext IdeaCard condition language. Nodes are frozen dataclasses for
+vNext Play condition language. Nodes are frozen dataclasses for
 immutability and hashability.
 
 Node Categories:
@@ -578,7 +578,7 @@ def validate_operator_type_compatibility(
     """
     Validate that an operator is compatible with the LHS output type.
 
-    This is called at compile-time (IdeaCard loading) to catch type errors
+    This is called at compile-time (Play loading) to catch type errors
     before runtime.
 
     Type compatibility rules:

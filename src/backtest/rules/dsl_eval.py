@@ -1,5 +1,5 @@
 """
-DSL Expression Evaluator for IdeaCard vNext.
+DSL Expression Evaluator for Play vNext.
 
 Evaluates AST expression trees against a RuntimeSnapshotView.
 Supports nested boolean logic, window operators, and type-safe operators.

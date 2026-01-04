@@ -110,7 +110,7 @@ def emit_snapshot_artifacts(
 
     Args:
         run_dir: Run directory (e.g., backtests/system_symbol_tf/run-001/)
-        idea_card_id: IdeaCard identifier
+        idea_card_id: Play identifier
         symbol: Trading symbol
         window_start/end: Backtest window
         exec_tf/htf/mtf: Timeframes

@@ -1,7 +1,7 @@
 """
 Indicator Requirements Gate.
 
-Validates that all required indicator keys declared in the IdeaCard
+Validates that all required indicator keys declared in the Play
 are available after feature computation, before signal evaluation.
 
 This gate ensures:
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from ..play import IdeaCard
+from ..play import Play
 
 
 class IndicatorGateStatus(str, Enum):
@@ -113,7 +113,7 @@ class IndicatorRequirementsResult:
 
 
 def validate_indicator_requirements(
-    idea_card: IdeaCard,
+    idea_card: Play,
     available_keys_by_role: dict[str, set[str]],
 ) -> IndicatorRequirementsResult:
     """
@@ -126,7 +126,7 @@ def validate_indicator_requirements(
     - Gate fails loudly, no silent NaNs or KeyErrors
 
     Args:
-        idea_card: IdeaCard with features declared in feature_registry
+        idea_card: Play with features declared in feature_registry
         available_keys_by_role: Dict of TF -> set of available indicator keys
             (from computed feature frames)
 

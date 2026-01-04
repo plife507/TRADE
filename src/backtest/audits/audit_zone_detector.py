@@ -133,7 +133,7 @@ def test_validate_zone_type() -> None:
             raise AssertionError(f"Should have rejected zone_type={invalid!r}")
         except ValueError as e:
             assert "'zone_type' must be 'demand' or 'supply'" in str(e)
-            assert "Fix in IdeaCard:" in str(e)
+            assert "Fix in Play:" in str(e)
             assert "Hint:" in str(e)
 
     print("  zone_type validation: PASSED")
@@ -167,7 +167,7 @@ def test_validate_width_atr() -> None:
             raise AssertionError(f"Should have rejected width_atr={invalid!r}")
         except ValueError as e:
             assert "'width_atr' must be a positive number" in str(e)
-            assert "Fix in IdeaCard:" in str(e)
+            assert "Fix in Play:" in str(e)
             assert "Hint:" in str(e)
 
     print("  width_atr validation: PASSED")

@@ -236,7 +236,7 @@ def test_validate_and_create_missing_params() -> None:
         error_msg = str(e)
         assert "missing required params" in error_msg, f"Wrong error: {e}"
         assert "threshold" in error_msg, f"Should mention missing param: {e}"
-        assert "Fix in IdeaCard:" in error_msg, f"Should include fix suggestion: {e}"
+        assert "Fix in Play:" in error_msg, f"Should include fix suggestion: {e}"
         assert "REQUIRED" in error_msg, f"Should mark as REQUIRED: {e}"
 
     unregister_structure("_param_test")
@@ -282,7 +282,7 @@ def test_validate_and_create_missing_deps() -> None:
         error_msg = str(e)
         assert "missing dependencies" in error_msg, f"Wrong error: {e}"
         assert "trend" in error_msg, f"Should mention missing dep: {e}"
-        assert "Fix in IdeaCard:" in error_msg, f"Should include fix suggestion: {e}"
+        assert "Fix in Play:" in error_msg, f"Should include fix suggestion: {e}"
         assert "depends_on:" in error_msg, f"Should show depends_on section: {e}"
 
     unregister_structure("_dep_test")

@@ -56,7 +56,7 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
         - lower: Lower boundary of the zone
         - anchor_idx: Bar index where the zone was anchored (swing pivot bar)
 
-    Example IdeaCard configuration:
+    Example Play configuration:
         structures:
           exec:
             - type: swing
@@ -107,7 +107,7 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}): 'zone_type' must be 'demand' or 'supply', got {zone_type!r}\n"
                 f"\n"
-                f"Fix in IdeaCard:\n"
+                f"Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
                 f"    params:\n"
@@ -124,7 +124,7 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}): 'width_atr' must be a positive number, got {width_atr!r}\n"
                 f"\n"
-                f"Fix in IdeaCard:\n"
+                f"Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
                 f"    params:\n"

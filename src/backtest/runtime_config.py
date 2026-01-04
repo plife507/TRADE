@@ -1,11 +1,11 @@
 """
 RuntimeConfig: Unified configuration for backtest execution.
 
-RuntimeConfig is the bridge between IdeaCard and the backtest engine.
+RuntimeConfig is the bridge between Play and the backtest engine.
 It carries all runtime variables explicitly - no defaults are assumed.
 
 Design principles:
-- All values come from IdeaCard.account or CLI overrides
+- All values come from Play.account or CLI overrides
 - No hard-coded defaults for capital/account fields
 - Validation at construction time
 - Immutable after creation
@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .play import IdeaCard
+    from .play import Play
 
 from .play import AccountConfig, FeeModel
 
@@ -29,39 +29,39 @@ class RuntimeConfig:
     Unified runtime configuration for backtest execution.
     
     Carries all runtime variables needed by the backtest engine.
-    Constructed from IdeaCard + optional CLI overrides.
+    Constructed from Play + optional CLI overrides.
     
-    All capital/account fields are REQUIRED (from IdeaCard.account).
+    All capital/account fields are REQUIRED (from Play.account).
     No hard-coded defaults - fail loud if missing.
     """
-    # Identity (from IdeaCard)
+    # Identity (from Play)
     idea_card_id: str
     idea_card_version: str
     
-    # Account/capital config (from IdeaCard.account - REQUIRED)
+    # Account/capital config (from Play.account - REQUIRED)
     starting_equity_usdt: float
     max_leverage: float
     margin_mode: str
     
-    # Fee model (from IdeaCard.account.fee_model - optional)
+    # Fee model (from Play.account.fee_model - optional)
     taker_fee_rate: float = 0.0006  # Default Bybit rate
     maker_fee_rate: float = 0.0002  # Default Bybit rate
     
-    # Slippage (from IdeaCard.account.slippage_bps - optional)
+    # Slippage (from Play.account.slippage_bps - optional)
     slippage_bps: float | None = None
     
-    # Trade size constraints (from IdeaCard.account - optional)
+    # Trade size constraints (from Play.account - optional)
     min_trade_notional_usdt: float = 1.0
     max_notional_usdt: float | None = None
     max_margin_usdt: float | None = None
     
-    # Symbol and timeframe config (from IdeaCard)
+    # Symbol and timeframe config (from Play)
     symbol: str = ""
     exec_tf: str = ""
     htf: str | None = None
     mtf: str | None = None
     
-    # Warmup requirements (from IdeaCard tf_configs)
+    # Warmup requirements (from Play tf_configs)
     warmup_bars_exec: int = 0
     warmup_bars_htf: int = 0
     warmup_bars_mtf: int = 0
@@ -73,11 +73,11 @@ class RuntimeConfig:
     # Data environment (from CLI)
     data_env: str = "live"
     
-    # Risk model sizing (from IdeaCard.risk_model)
+    # Risk model sizing (from Play.risk_model)
     sizing_model: str = "percent_equity"
     sizing_value: float = 1.0
     
-    # Required indicators by role (from IdeaCard.tf_configs[role].required_indicators)
+    # Required indicators by role (from Play.tf_configs[role].required_indicators)
     required_indicators_exec: tuple = field(default_factory=tuple)
     required_indicators_htf: tuple = field(default_factory=tuple)
     required_indicators_mtf: tuple = field(default_factory=tuple)
@@ -96,7 +96,7 @@ class RuntimeConfig:
     @classmethod
     def from_idea_card(
         cls,
-        idea_card: IdeaCard,
+        idea_card: Play,
         symbol_override: str | None = None,
         starting_equity_override: float | None = None,
         max_leverage_override: float | None = None,
@@ -105,10 +105,10 @@ class RuntimeConfig:
         data_env: str = "live",
     ) -> RuntimeConfig:
         """
-        Create RuntimeConfig from IdeaCard with optional overrides.
+        Create RuntimeConfig from Play with optional overrides.
         
         Args:
-            idea_card: Source IdeaCard (must have account section)
+            idea_card: Source Play (must have account section)
             symbol_override: Override symbol (default: first in symbol_universe)
             starting_equity_override: Override starting equity
             max_leverage_override: Override max leverage
@@ -120,18 +120,18 @@ class RuntimeConfig:
             RuntimeConfig with all values resolved
             
         Raises:
-            ValueError: If IdeaCard is missing required account section
+            ValueError: If Play is missing required account section
         """
         # Validate account config is present
         if idea_card.account is None:
             raise ValueError(
-                f"IdeaCard '{idea_card.id}' is missing account section. "
+                f"Play '{idea_card.id}' is missing account section. "
                 "account.starting_equity_usdt and account.max_leverage are required."
             )
         
         account = idea_card.account
         
-        # Resolve capital/account values (IdeaCard is source of truth, overrides win)
+        # Resolve capital/account values (Play is source of truth, overrides win)
         starting_equity = (
             starting_equity_override 
             if starting_equity_override is not None 
@@ -154,7 +154,7 @@ class RuntimeConfig:
         symbol = symbol_override
         if symbol is None:
             if not idea_card.symbol_universe:
-                raise ValueError("IdeaCard has no symbols in symbol_universe")
+                raise ValueError("Play has no symbols in symbol_universe")
             symbol = idea_card.symbol_universe[0]
         
         # Extract sizing from risk model

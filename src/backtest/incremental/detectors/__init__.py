@@ -3,7 +3,7 @@ Incremental structure detectors.
 
 This package contains detector implementations that update incrementally
 bar-by-bar. Each detector is registered via @register_structure and can
-be used in IdeaCards.
+be used in Plays.
 
 Available Detectors:
 - rolling_window: O(1) amortized sliding window min/max

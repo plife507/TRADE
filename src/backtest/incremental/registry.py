@@ -47,7 +47,7 @@ STRUCTURE_REGISTRY: dict[str, type["BaseIncrementalDetector"]] = {}
 # Structure Output Types
 # =============================================================================
 # Maps each structure type to its output field types for compile-time validation.
-# Used by DSL to validate operator compatibility at IdeaCard load time:
+# Used by DSL to validate operator compatibility at Play load time:
 # - eq operator only allowed on discrete types (INT, BOOL, ENUM)
 # - near_abs/near_pct only allowed on numeric types (FLOAT, INT)
 
@@ -123,7 +123,7 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
 # Used by execution_validation to compute warmup requirements at load time.
 #
 # Each formula receives:
-#   - params: dict of structure params from IdeaCard
+#   - params: dict of structure params from Play
 #   - swing_params: dict with 'left' and 'right' from source swing (for dependents)
 #
 # Returns: int (warmup bars needed)
@@ -156,7 +156,7 @@ def get_structure_warmup(structure_type: str, params: dict, swing_params: dict |
 
     Args:
         structure_type: Structure type name (e.g., "swing", "trend")
-        params: Structure params from IdeaCard
+        params: Structure params from Play
         swing_params: Dict with 'left' and 'right' from source swing (for dependents)
 
     Returns:
@@ -368,7 +368,7 @@ def get_structure_output_type(
     """
     Get the output type for a structure field.
 
-    Used by DSL to validate operator compatibility at IdeaCard load time:
+    Used by DSL to validate operator compatibility at Play load time:
     - eq operator only allowed on discrete types (INT, BOOL, ENUM)
     - near_abs/near_pct only allowed on numeric types (FLOAT, INT)
 

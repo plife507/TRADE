@@ -121,7 +121,7 @@ class StructureSpec:
 
     Defines a market structure detector with optional child zones.
 
-    IdeaCard YAML key is 'type', not 'structure_type' (hard-fail on old key).
+    Play YAML key is 'type', not 'structure_type' (hard-fail on old key).
     """
 
     key: str  # User-facing name ("ms_5m")
@@ -261,7 +261,7 @@ class StructureSpec:
         # Hard-fail on legacy key
         if "structure_type" in d:
             raise ValueError(
-                "IdeaCard uses 'type', not 'structure_type' for market_structure_blocks. "
+                "Play uses 'type', not 'structure_type' for market_structure_blocks. "
                 "Replace 'structure_type' with 'type' in your YAML."
             )
 

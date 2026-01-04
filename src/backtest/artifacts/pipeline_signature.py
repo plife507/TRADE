@@ -15,7 +15,7 @@ import json
 import hashlib
 
 if TYPE_CHECKING:
-    from ..play import IdeaCard
+    from ..play import Play
 
 
 # Pipeline version - increment when pipeline structure changes
@@ -28,7 +28,7 @@ class PipelineSignature:
     Records the exact pipeline configuration and implementations used.
     
     This proves:
-    - IdeaCard is the config source (not SystemConfig)
+    - Play is the config source (not SystemConfig)
     - Real FeatureFrameBuilder was used
     - Real engine was executed
     - No placeholder/stub mode
@@ -43,7 +43,7 @@ class PipelineSignature:
     pipeline_version: str = PIPELINE_VERSION
     
     # Config source verification
-    config_source: str = "IdeaCard"
+    config_source: str = "Play"
     uses_system_config_loader: bool = False
     
     # Implementation names (for auditability)
@@ -92,9 +92,9 @@ class PipelineSignature:
         """
         errors = []
         
-        # Config source must be IdeaCard
-        if self.config_source != "IdeaCard":
-            errors.append(f"config_source must be 'IdeaCard', got '{self.config_source}'")
+        # Config source must be Play
+        if self.config_source != "Play":
+            errors.append(f"config_source must be 'Play', got '{self.config_source}'")
         
         # Must not use SystemConfig loader
         if self.uses_system_config_loader:
@@ -128,7 +128,7 @@ class PipelineSignature:
 
 def create_pipeline_signature(
     run_id: str,
-    idea_card: "IdeaCard",
+    idea_card: "Play",
     idea_card_hash: str,
     resolved_path: str,
     declared_keys: list[str],
@@ -139,10 +139,10 @@ def create_pipeline_signature(
     
     Args:
         run_id: Unique run identifier
-        idea_card: The IdeaCard used
-        idea_card_hash: Hash of the IdeaCard
-        resolved_path: Path where IdeaCard was loaded from
-        declared_keys: Feature keys declared in IdeaCard
+        idea_card: The Play used
+        idea_card_hash: Hash of the Play
+        resolved_path: Path where Play was loaded from
+        declared_keys: Feature keys declared in Play
         computed_keys: Feature keys actually computed
         
     Returns:

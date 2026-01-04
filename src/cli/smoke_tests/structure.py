@@ -1162,14 +1162,14 @@ def run_state_tracking_parity_smoke(
     Run State Tracking Parity Smoke Test.
 
     Validates the "record-only guarantee": state tracking must not affect
-    trade outcomes. Runs the same IdeaCard twice:
+    trade outcomes. Runs the same Play twice:
     1. With record_state_tracking=False (baseline)
     2. With record_state_tracking=True (test)
 
     Compares trades hashes to ensure parity.
 
     Args:
-        idea_card_id: IdeaCard to use for the test (default: V_01)
+        idea_card_id: Play to use for the test (default: V_01)
 
     Returns:
         Number of failures (0 = success)
@@ -1196,15 +1196,15 @@ def run_state_tracking_parity_smoke(
     failures = 0
 
     # =========================================================================
-    # Step 1: Load IdeaCard and compute window
+    # Step 1: Load Play and compute window
     # =========================================================================
-    console.print(f"\n[bold]Step 1: Load IdeaCard[/]")
+    console.print(f"\n[bold]Step 1: Load Play[/]")
 
     try:
         idea_card = load_idea_card(idea_card_id)
-        console.print(f"  [green]OK[/] Loaded IdeaCard: {idea_card_id}")
+        console.print(f"  [green]OK[/] Loaded Play: {idea_card_id}")
     except FileNotFoundError as e:
-        console.print(f"  [red]FAIL[/] IdeaCard not found: {e}")
+        console.print(f"  [red]FAIL[/] Play not found: {e}")
         return 1
 
     # Get symbol and check data availability

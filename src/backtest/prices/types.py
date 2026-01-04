@@ -12,7 +12,7 @@ class PriceRef(str, Enum):
     """
     Supported price references.
 
-    MARK is always available (implicit, never declared in IdeaCard).
+    MARK is always available (implicit, never declared in Play).
     LAST is reserved for future use.
     """
 

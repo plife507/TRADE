@@ -33,7 +33,7 @@ Usage:
     registry.validate_params("ema", {"foo": 20})     # Raises ValueError
 
 Agent Rule:
-    Agents may only generate IdeaCards through `backtest idea-card-normalize`
+    Agents may only generate Plays through `backtest idea-card-normalize`
     and must refuse to write YAML if normalization fails.
 """
 
@@ -995,7 +995,7 @@ class IndicatorRegistry:
         """
         Get the output type for an indicator field.
 
-        Used by DSL to validate operator compatibility at IdeaCard load time:
+        Used by DSL to validate operator compatibility at Play load time:
         - eq operator only allowed on discrete types (INT, BOOL, ENUM)
         - near_abs/near_pct only allowed on numeric types (FLOAT, INT)
 
@@ -1166,7 +1166,7 @@ def get_indicator_output_type(
     """
     Get the output type for an indicator field.
 
-    Used by DSL to validate operator compatibility at IdeaCard load time.
+    Used by DSL to validate operator compatibility at Play load time.
 
     Args:
         indicator_type: Indicator type name (e.g., "ema", "macd")

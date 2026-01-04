@@ -18,14 +18,14 @@ from .indicator_registry import get_registry
 
 
 # NOTE: No default indicator columns — all indicators must be explicitly requested
-# via FeatureSpec or IdeaCard. Indicators are declared explicitly, never inferred.
+# via FeatureSpec or Play. Indicators are declared explicitly, never inferred.
 
 
 def get_warmup_from_specs(specs: list["FeatureSpec"]) -> int:
     """
     Compute warmup bars from FeatureSpecs.
 
-    This is the canonical way to compute warmup for IdeaCard-based backtests.
+    This is the canonical way to compute warmup for Play-based backtests.
     Uses each spec's warmup_bars property which computes proper warmup per indicator type.
 
     Args:
@@ -80,7 +80,7 @@ def apply_feature_spec_indicators(
     """
     Apply indicators from FeatureSpecs to a DataFrame.
     
-    This is the IdeaCard-based indicator computation.
+    This is the Play-based indicator computation.
     Supports all indicator types in the FeatureSpec system.
     
     Args:

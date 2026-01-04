@@ -4,7 +4,7 @@ Rolling window min/max detector using MonotonicDeque.
 Provides O(1) amortized rolling window minimum or maximum over
 a configurable number of bars for any OHLCV field.
 
-Usage in IdeaCard:
+Usage in Play:
     structures:
       exec:
         - type: rolling_window

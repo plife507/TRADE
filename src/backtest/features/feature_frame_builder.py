@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..play import IdeaCard
+    from ..play import Play
     from ..runtime.indicator_metadata import IndicatorMetadata
 
 from .feature_spec import (
@@ -178,7 +178,7 @@ class IndicatorCompute:
 
     **ALL pandas_ta indicators are available dynamically!**
     No static registration needed - indicators are computed on-demand based
-    on what the IdeaCard declares in its FeatureSpecs.
+    on what the Play declares in its FeatureSpecs.
 
     Note: This is distinct from IndicatorRegistry in indicator_registry.py,
     which is the SINGLE SOURCE OF TRUTH for indicator metadata and validation.
@@ -189,7 +189,7 @@ class IndicatorCompute:
     Usage:
         compute = IndicatorCompute()
 
-        # Compute any indicator dynamically based on IdeaCard FeatureSpec
+        # Compute any indicator dynamically based on Play FeatureSpec
         ema_series = compute.compute("ema", close=close, length=20)
         adx_dict = compute.compute("adx", high=high, low=low, close=close, length=14)
 
@@ -239,7 +239,7 @@ class IndicatorCompute:
         Compute an indicator dynamically.
 
         Uses pandas_ta compute_indicator() to handle ANY indicator type
-        declared in the IdeaCard's FeatureSpecs. Custom overrides take
+        declared in the Play's FeatureSpecs. Custom overrides take
         precedence if registered.
 
         Args:
@@ -800,18 +800,18 @@ class FeatureFrameBuilder:
 
 
 def build_features_from_preloaded_dfs(
-    idea_card: "IdeaCard",
+    idea_card: "Play",
     dfs: dict[str, pd.DataFrame],
     symbol: str,
 ) -> dict[str, FeatureArrays]:
     """
-    Build FeatureArrays for all TFs defined in an IdeaCard using pre-loaded DataFrames.
+    Build FeatureArrays for all TFs defined in an Play using pre-loaded DataFrames.
 
     NOTE: For canonical feature building, use build_features_from_idea_card() which
-    takes a data_loader and returns IdeaCardFeatures.
+    takes a data_loader and returns PlayFeatures.
 
     Args:
-        idea_card: IdeaCard with TF configs and feature specs
+        idea_card: Play with TF configs and feature specs
         dfs: Dict mapping tf -> OHLCV DataFrame (pre-loaded)
         symbol: Symbol to build for
 
@@ -831,13 +831,13 @@ def build_features_from_preloaded_dfs(
         # Check data is available
         if tf not in dfs:
             raise ValueError(
-                f"IdeaCard requires {tf} data for '{role}' TF, but it was not provided. "
+                f"Play requires {tf} data for '{role}' TF, but it was not provided. "
                 f"Available TFs: {list(dfs.keys())}"
             )
         
         df = dfs[tf]
         
-        # Get FeatureSpecSet from IdeaCard
+        # Get FeatureSpecSet from Play
         spec_set = idea_card.get_feature_spec_set(role, symbol)
         
         if spec_set is None or not spec_set.specs:
@@ -855,13 +855,13 @@ def build_features_from_preloaded_dfs(
 
 
 # =============================================================================
-# IdeaCard Feature Building
+# Play Feature Building
 # =============================================================================
 
 @dataclass
-class IdeaCardFeatures:
+class PlayFeatures:
     """
-    Container for features computed from an IdeaCard.
+    Container for features computed from an Play.
     
     Holds FeatureArrays for each TF role (exec, htf, mtf).
     """
@@ -900,41 +900,41 @@ class IdeaCardFeatures:
 
 
 def build_features_from_idea_card(
-    idea_card: "IdeaCard",
+    idea_card: "Play",
     data_loader: Callable[[str, str], pd.DataFrame],
     symbol: str | None = None,
     builder: FeatureFrameBuilder | None = None,
-) -> IdeaCardFeatures:
+) -> PlayFeatures:
     """
-    Build all features for an IdeaCard.
+    Build all features for an Play.
     
-    Loads data for each TF configured in the IdeaCard and computes
+    Loads data for each TF configured in the Play and computes
     indicators using FeatureFrameBuilder.
     
     This is the canonical path for feature computation:
-    IdeaCard → FeatureSpecSets → FeatureFrameBuilder → FeatureArrays
+    Play → FeatureSpecSets → FeatureFrameBuilder → FeatureArrays
     
     Args:
-        idea_card: The IdeaCard defining features
+        idea_card: The Play defining features
         data_loader: Function(symbol, tf) -> DataFrame with OHLCV data
         symbol: Override symbol (default: first in symbol_universe)
         builder: Optional FeatureFrameBuilder (default: create new)
         
     Returns:
-        IdeaCardFeatures with FeatureArrays per TF role
+        PlayFeatures with FeatureArrays per TF role
         
     Raises:
         ValueError: If data_loader returns empty DataFrame
     """
     if symbol is None:
         if not idea_card.symbol_universe:
-            raise ValueError("IdeaCard has no symbols in symbol_universe")
+            raise ValueError("Play has no symbols in symbol_universe")
         symbol = idea_card.symbol_universe[0]
     
     if builder is None:
         builder = FeatureFrameBuilder()
     
-    result = IdeaCardFeatures(
+    result = PlayFeatures(
         idea_card_id=idea_card.id,
         symbol=symbol,
     )
@@ -951,7 +951,7 @@ def build_features_from_idea_card(
                 f"Ensure data exists before calling build_features_from_idea_card."
             )
         
-        # Build FeatureSpecSet from IdeaCard's TFConfig
+        # Build FeatureSpecSet from Play's TFConfig
         spec_set = idea_card.get_feature_spec_set(role, symbol)
         
         if spec_set and spec_set.specs:

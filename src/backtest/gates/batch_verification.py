@@ -1,7 +1,7 @@
 """
-Batch Verification — Runs multiple IdeaCards and produces batch_summary.json.
+Batch Verification — Runs multiple Plays and produces batch_summary.json.
 
-Gate D.2 requirement: Run 5 randomized IdeaCards and verify all pass.
+Gate D.2 requirement: Run 5 randomized Plays and verify all pass.
 """
 
 from dataclasses import dataclass, field, asdict
@@ -12,7 +12,7 @@ import json
 
 from .play_generator import (
     GeneratorConfig,
-    GeneratedIdeaCard,
+    GeneratedPlay,
     generate_idea_cards,
     cleanup_generated_cards,
 )
@@ -20,7 +20,7 @@ from .play_generator import (
 
 @dataclass
 class CardRunResult:
-    """Result of running a single IdeaCard."""
+    """Result of running a single Play."""
     idea_id: str
     symbol: str
     direction: str
@@ -74,11 +74,11 @@ def run_batch_verification(
     window_end: datetime | None = None,
 ) -> BatchSummary:
     """
-    Run batch verification of generated IdeaCards.
+    Run batch verification of generated Plays.
     
     Args:
         seed: Random seed for determinism
-        num_cards: Number of IdeaCards to generate and test
+        num_cards: Number of Plays to generate and test
         window_days: Backtest window length in days (if dates not specified)
         output_dir: Output directory for batch artifacts
         env: Data environment ("live" or "demo")
@@ -93,7 +93,7 @@ def run_batch_verification(
     from ..play import load_idea_card
     from ...data.historical_data_store import get_historical_store
     
-    # Generate IdeaCards
+    # Generate Plays
     gen_config = GeneratorConfig(
         seed=seed,
         num_cards=num_cards,
@@ -124,7 +124,7 @@ def run_batch_verification(
         print(f"{'='*60}")
         
         try:
-            # Load the generated IdeaCard
+            # Load the generated Play
             idea_card = load_idea_card(card.id, base_dir=gen_config.output_dir)
             
             # Create runner config

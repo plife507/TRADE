@@ -198,7 +198,7 @@ class ArtifactPathConfig:
     - Single symbol: symbol name (e.g., "BTCUSDT")
     - Multiple symbols: hash of sorted list (e.g., "uni_a1b2c3d4")
     
-    This resolves symbol redundancy between folder paths, IdeaCard IDs, and manifests.
+    This resolves symbol redundancy between folder paths, Play IDs, and manifests.
     
     RUN_HASH:
     - Default: 8-char short hash
@@ -1080,7 +1080,7 @@ class ResultsSummary:
         print("\n" + "=" * 60)
         print("  BACKTEST RESULTS SUMMARY")
         print("=" * 60)
-        print(f"  IdeaCard:    {self.idea_card_id}")
+        print(f"  Play:    {self.idea_card_id}")
         print(f"  Symbol:      {self.symbol}")
         print(f"  Timeframe:   {self.tf_exec}")
         print(f"  Window:      {self.window_start.date()} -> {self.window_end.date()} ({window_days}d)")
@@ -1148,7 +1148,7 @@ def compute_results_summary(
     Compute results summary from trades and equity curve.
     
     Args:
-        idea_card_id: IdeaCard identifier
+        idea_card_id: Play identifier
         symbol: Trading symbol
         tf_exec: Execution timeframe
         window_start: Backtest window start
@@ -1158,9 +1158,9 @@ def compute_results_summary(
         equity_curve: List of equity point dicts with equity field
         artifact_path: Path to artifact folder
         run_duration_seconds: Run duration
-        idea_hash: IdeaCard hash for determinism tracking
+        idea_hash: Play hash for determinism tracking
         pipeline_version: Pipeline version string
-        resolved_idea_path: Path where IdeaCard was loaded from
+        resolved_idea_path: Path where Play was loaded from
         trades_hash: SHA256 hash of trades output
         equity_hash: SHA256 hash of equity curve output
         run_hash: Combined hash of trades + equity for determinism

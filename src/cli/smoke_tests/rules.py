@@ -579,7 +579,7 @@ def run_rules_smoke(
     console.print(f"  [green]OK[/] Missing: None/NaN returns R_MISSING_*")
     console.print(f"  [green]OK[/] Type mismatch: returns R_TYPE_MISMATCH")
     console.print(f"  [green]OK[/] Deterministic: same input -> same output")
-    console.print(f"  [green]OK[/] Stage 4b: IdeaCard compilation wiring")
+    console.print(f"  [green]OK[/] Stage 4b: Play compilation wiring")
     console.print(f"  [green]OK[/] Stage 4c: Operator registry (source of truth)")
     console.print(f"  [green]OK[/] Stage 4c: Crossover operators banned")
     console.print(f"  [green]OK[/] Stage 4c: Compile-time validation enforced")

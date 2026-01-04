@@ -555,7 +555,7 @@ def evaluate_condition_dict(
     """
     Evaluate a condition dict (with pre-compiled refs) against a snapshot.
 
-    This is the main entry point for IdeaCard signal evaluation.
+    This is the main entry point for Play signal evaluation.
 
     Args:
         condition: Dict with 'lhs_ref', 'rhs_ref', 'operator' keys

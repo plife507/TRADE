@@ -56,15 +56,15 @@ def backtest_audits_menu(cli: "TradeCLI"):
 
         menu = CLIStyles.create_menu_table()
 
-        # Quick audits (no IdeaCard needed)
+        # Quick audits (no Play needed)
         menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.BOT} Quick Audits ---[/]", "")
         menu.add_row("1", f"[bold {CLIColors.NEON_GREEN}]Toolkit Contract[/]", f"[{CLIColors.NEON_GREEN}]Validate indicator registry (42 indicators)[/]")
         menu.add_row("2", "Rollup Parity", "Validate 1m price feed accumulation")
         menu.add_row("", "", "")
 
-        # IdeaCard audits (require IdeaCard selection)
-        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.LEDGER} IdeaCard Audits ---[/]", "")
-        menu.add_row("3", "Math Parity", "Validate indicator computation for IdeaCard")
+        # Play audits (require Play selection)
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.LEDGER} Play Audits ---[/]", "")
+        menu.add_row("3", "Math Parity", "Validate indicator computation for Play")
         menu.add_row("4", "Snapshot Plumbing", "Validate data flow in snapshot system")
         menu.add_row("", "", "")
 
@@ -177,14 +177,14 @@ def _run_rollup_audit():
 
 
 def _run_math_parity_audit(cli: "TradeCLI"):
-    """Run math parity audit for an IdeaCard."""
+    """Run math parity audit for an Play."""
     from trade_cli import run_long_action
     from src.cli.menus.backtest_play_menu import _select_idea_card, _get_date_range
 
     console.print()
 
-    # Select IdeaCard
-    idea_card_id = _select_idea_card("Select IdeaCard for math parity audit")
+    # Select Play
+    idea_card_id = _select_idea_card("Select Play for math parity audit")
     if not idea_card_id:
         return
 
@@ -226,14 +226,14 @@ def _run_math_parity_audit(cli: "TradeCLI"):
 
 
 def _run_snapshot_plumbing_audit(cli: "TradeCLI"):
-    """Run snapshot plumbing audit for an IdeaCard."""
+    """Run snapshot plumbing audit for an Play."""
     from trade_cli import run_long_action
     from src.cli.menus.backtest_play_menu import _select_idea_card, _get_date_range
 
     console.print()
 
-    # Select IdeaCard
-    idea_card_id = _select_idea_card("Select IdeaCard for snapshot plumbing audit")
+    # Select Play
+    idea_card_id = _select_idea_card("Select Play for snapshot plumbing audit")
     if not idea_card_id:
         return
 
@@ -346,12 +346,12 @@ def _run_artifact_parity_check():
 
 
 def _run_all_quick_audits():
-    """Run all quick audits (no IdeaCard/data needed)."""
+    """Run all quick audits (no Play/data needed)."""
     from src.cli.smoke_tests import run_rules_smoke, run_structure_smoke
 
     console.print()
     console.print(f"[bold {CLIColors.NEON_CYAN}]Running All Quick Audits[/]")
-    console.print(f"[{CLIColors.DIM_TEXT}]These audits use synthetic data and don't require an IdeaCard[/]")
+    console.print(f"[{CLIColors.DIM_TEXT}]These audits use synthetic data and don't require an Play[/]")
     console.print()
 
     all_passed = True

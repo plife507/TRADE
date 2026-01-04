@@ -95,7 +95,7 @@ class FeatureOutputType(IntEnum):
     """
     Compile-time output type declarations for feature fields.
 
-    Used to validate operator compatibility at IdeaCard load time:
+    Used to validate operator compatibility at Play load time:
     - FLOAT: Numeric, but eq requires near_abs/near_pct (no exact equality)
     - INT: Discrete integer, eq/in allowed
     - BOOL: Boolean, eq allowed

@@ -3,9 +3,9 @@ Factory functions module for BacktestEngine.
 
 This module provides factory functions for creating and running BacktestEngine:
 - run_backtest: Convenience function to run a backtest from system_id
-- create_engine_from_idea_card: Create engine from IdeaCard
-- run_engine_with_idea_card: Run engine with IdeaCard signal evaluation
-- _get_idea_card_result_class: Get IdeaCardBacktestResult class
+- create_engine_from_idea_card: Create engine from Play
+- run_engine_with_idea_card: Run engine with Play signal evaluation
+- _get_idea_card_result_class: Get PlayBacktestResult class
 
 These functions provide the main entry points for backtest execution.
 """
@@ -19,7 +19,7 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from .engine import BacktestEngine
     from .types import BacktestResult
-    from .play import IdeaCard
+    from .play import Play
     from .feature_registry import FeatureRegistry
     from .runtime.types import RuntimeSnapshot
     from .runtime.snapshot_view import RuntimeSnapshotView
@@ -53,7 +53,7 @@ def run_backtest(
 
 
 # =============================================================================
-# IdeaCard-Native Engine Factory (Feature Registry Architecture)
+# Play-Native Engine Factory (Feature Registry Architecture)
 # =============================================================================
 # Uses the new FeatureRegistry for unified indicator/structure access on any TF.
 
@@ -75,7 +75,7 @@ def _compute_warmup_by_tf(registry: "FeatureRegistry") -> dict[str, int]:
 
 
 def create_engine_from_idea_card(
-    idea_card: "IdeaCard",
+    idea_card: "Play",
     window_start: datetime,
     window_end: datetime,
     warmup_by_tf: dict[str, int] | None = None,
@@ -83,13 +83,13 @@ def create_engine_from_idea_card(
     on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
 ) -> "BacktestEngine":
     """
-    Create a BacktestEngine from an IdeaCard.
+    Create a BacktestEngine from an Play.
 
-    This is the canonical factory for IdeaCard-native backtest execution.
+    This is the canonical factory for Play-native backtest execution.
     Uses the FeatureRegistry for unified indicator/structure access on any TF.
 
     Args:
-        idea_card: Source IdeaCard with all strategy/feature specs
+        idea_card: Source Play with all strategy/feature specs
         window_start: Backtest window start
         window_end: Backtest window end
         warmup_by_tf: Warmup bars per TF (auto-computed from registry if None)
@@ -97,10 +97,10 @@ def create_engine_from_idea_card(
         on_snapshot: Optional snapshot callback for auditing
 
     Returns:
-        BacktestEngine configured from IdeaCard
+        BacktestEngine configured from Play
 
     Raises:
-        ValueError: If IdeaCard is missing required sections (account)
+        ValueError: If Play is missing required sections (account)
     """
     from .engine import BacktestEngine
     from .system_config import (
@@ -115,7 +115,7 @@ def create_engine_from_idea_card(
     # Validate required sections
     if idea_card.account is None:
         raise ValueError(
-            f"IdeaCard '{idea_card.id}' is missing account section. "
+            f"Play '{idea_card.id}' is missing account section. "
             "account.starting_equity_usdt and account.max_leverage are required."
         )
 
@@ -157,37 +157,37 @@ def create_engine_from_idea_card(
     # Also set 'exec' role pointing to execution_tf specs
     feature_specs_by_role["exec"] = feature_specs_by_role.get(idea_card.execution_tf, [])
 
-    # Extract capital/account params from IdeaCard (REQUIRED - no defaults)
+    # Extract capital/account params from Play (REQUIRED - no defaults)
     initial_equity = idea_card.account.starting_equity_usdt
     max_leverage = idea_card.account.max_leverage
 
-    # Extract fee model from IdeaCard (REQUIRED - fail loud if missing)
+    # Extract fee model from Play (REQUIRED - fail loud if missing)
     if idea_card.account.fee_model is None:
         raise ValueError(
-            f"IdeaCard '{idea_card.id}' is missing account.fee_model. "
+            f"Play '{idea_card.id}' is missing account.fee_model. "
             "Fee model is required (taker_bps, maker_bps). No silent defaults allowed. "
             "Add: account.fee_model.taker_bps and account.fee_model.maker_bps"
         )
     taker_fee_rate = idea_card.account.fee_model.taker_rate
 
-    # Extract min trade notional from IdeaCard (REQUIRED - fail loud if missing)
+    # Extract min trade notional from Play (REQUIRED - fail loud if missing)
     if idea_card.account.min_trade_notional_usdt is None:
         raise ValueError(
-            f"IdeaCard '{idea_card.id}' is missing account.min_trade_notional_usdt. "
+            f"Play '{idea_card.id}' is missing account.min_trade_notional_usdt. "
             "Minimum trade notional is required. No silent defaults allowed. "
             "Add: account.min_trade_notional_usdt (e.g., 10.0)"
         )
     min_trade_usdt = idea_card.account.min_trade_notional_usdt
 
-    # Extract slippage from IdeaCard if present (flows to ExecutionConfig)
+    # Extract slippage from Play if present (flows to ExecutionConfig)
     slippage_bps = 5.0  # Default only if not specified
     if idea_card.account.slippage_bps is not None:
         slippage_bps = idea_card.account.slippage_bps
 
-    # Extract maker fee from IdeaCard
+    # Extract maker fee from Play
     maker_fee_bps = idea_card.account.fee_model.maker_bps
 
-    # Extract risk params from IdeaCard risk_model
+    # Extract risk params from Play risk_model
     risk_per_trade_pct = 1.0
     if idea_card.risk_model:
         if idea_card.risk_model.sizing.model.value == "percent_equity":
@@ -196,7 +196,7 @@ def create_engine_from_idea_card(
         if idea_card.risk_model.sizing.max_leverage:
             max_leverage = idea_card.risk_model.sizing.max_leverage
 
-    # Extract maintenance margin rate from IdeaCard if present
+    # Extract maintenance margin rate from Play if present
     maintenance_margin_rate = 0.005  # Default: Bybit lowest tier (0.5%)
     if idea_card.account.maintenance_margin_rate is not None:
         maintenance_margin_rate = idea_card.account.maintenance_margin_rate
@@ -227,7 +227,7 @@ def create_engine_from_idea_card(
             history_config[f"features_{tf}_count"] = 2
         strategy_params["history"] = history_config
 
-    # Pass execution params from IdeaCard to engine
+    # Pass execution params from Play to engine
     strategy_params["slippage_bps"] = slippage_bps
     strategy_params["taker_fee_bps"] = taker_fee_rate * 10000  # Convert rate to bps
     strategy_params["maker_fee_bps"] = maker_fee_bps
@@ -318,7 +318,7 @@ def create_engine_from_idea_card(
         tf_mapping=tf_mapping,
     )
 
-    # Store IdeaCard reference for run_with_idea_card()
+    # Store Play reference for run_with_idea_card()
     engine._idea_card = idea_card
 
     return engine
@@ -363,37 +363,37 @@ def _blocks_require_history(blocks: list) -> bool:
 
 def run_engine_with_idea_card(
     engine: "BacktestEngine",
-    idea_card: "IdeaCard",
-) -> "IdeaCardBacktestResult":
+    idea_card: "Play",
+) -> "PlayBacktestResult":
     """
-    Run a BacktestEngine using IdeaCard signal evaluation.
+    Run a BacktestEngine using Play signal evaluation.
 
     This consolidates signal evaluation into the engine execution flow.
 
     Args:
         engine: BacktestEngine (created via create_engine_from_idea_card)
-        idea_card: IdeaCard with signal rules
+        idea_card: Play with signal rules
 
     Returns:
-        IdeaCardBacktestResult with trades, equity curve, and metrics
+        PlayBacktestResult with trades, equity curve, and metrics
     """
     from .execution_validation import (
-        IdeaCardSignalEvaluator,
+        PlaySignalEvaluator,
         SignalDecision,
         compute_idea_card_hash,
     )
     from ..core.risk_manager import Signal
 
     # Import here to avoid circular import
-    IdeaCardBacktestResult = _get_idea_card_result_class()
+    PlayBacktestResult = _get_idea_card_result_class()
 
-    # Note: Block validation happens at IdeaCard construction via _validate_block_types()
+    # Note: Block validation happens at Play construction via _validate_block_types()
 
     # Create signal evaluator
-    evaluator = IdeaCardSignalEvaluator(idea_card)
+    evaluator = PlaySignalEvaluator(idea_card)
 
     def idea_card_strategy(snapshot, params) -> Signal | None:
-        """Strategy function that uses IdeaCard signal evaluator."""
+        """Strategy function that uses Play signal evaluator."""
         # Check if we have a position
         has_position = snapshot.has_position
         position_side = snapshot.position_side
@@ -442,10 +442,10 @@ def run_engine_with_idea_card(
     # Run the engine
     backtest_result = engine.run(idea_card_strategy)
 
-    # Compute IdeaCard hash
+    # Compute Play hash
     idea_card_hash = compute_idea_card_hash(idea_card)
 
-    return IdeaCardBacktestResult(
+    return PlayBacktestResult(
         trades=backtest_result.trades,
         equity_curve=backtest_result.equity_curve,
         final_equity=backtest_result.metrics.final_equity,
@@ -455,8 +455,8 @@ def run_engine_with_idea_card(
 
 
 @dataclass
-class IdeaCardBacktestResult:
-    """Result from IdeaCard-native backtest execution."""
+class PlayBacktestResult:
+    """Result from Play-native backtest execution."""
     trades: list[Any]
     equity_curve: list[Any]
     final_equity: float
@@ -466,9 +466,9 @@ class IdeaCardBacktestResult:
 
 def _get_idea_card_result_class():
     """
-    Get IdeaCardBacktestResult class (avoids import at module level).
+    Get PlayBacktestResult class (avoids import at module level).
 
     This allows runner.py to define the class and engine.py to use it
     without circular imports.
     """
-    return IdeaCardBacktestResult
+    return PlayBacktestResult

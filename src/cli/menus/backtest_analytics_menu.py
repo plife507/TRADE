@@ -137,7 +137,7 @@ def _select_run(prompt_text: str = "Select run") -> str | None:
     # Display table
     table = Table(title="Recent Backtest Runs", show_header=True, header_style="bold")
     table.add_column("#", style="dim", width=3)
-    table.add_column("IdeaCard", style=CLIColors.NEON_CYAN, max_width=25)
+    table.add_column("Play", style=CLIColors.NEON_CYAN, max_width=25)
     table.add_column("Symbol", style=CLIColors.NEON_YELLOW)
     table.add_column("Return", justify="right")
     table.add_column("Trades", justify="right")
@@ -193,7 +193,7 @@ def _list_recent_runs():
 
         table = Table(title=f"Recent Backtest Runs ({len(runs)} found)", show_header=True, header_style="bold")
         table.add_column("#", style="dim", width=3)
-        table.add_column("IdeaCard", style=CLIColors.NEON_CYAN, max_width=30)
+        table.add_column("Play", style=CLIColors.NEON_CYAN, max_width=30)
         table.add_column("Symbol", style=CLIColors.NEON_YELLOW)
         table.add_column("Return", justify="right")
         table.add_column("Trades", justify="right")

@@ -1,9 +1,9 @@
 """
-CLI Wrapper for IdeaCard-based backtests.
+CLI Wrapper for Play-based backtests.
 
 This module re-exports all backtest tools from their focused modules
 for backward compatibility. New code should import directly from:
-- backtest_play_tools.py: IdeaCard execution tools
+- backtest_play_tools.py: Play execution tools
 - backtest_audit_tools.py: Audit and verification tools
 
 This is the GOLDEN PATH for backtest execution:
@@ -25,7 +25,7 @@ from .backtest_play_tools import (
     # Utilities
     validate_canonical_tf,
     normalize_timestamp,
-    # IdeaCard Tools
+    # Play Tools
     backtest_preflight_idea_card_tool,
     backtest_run_idea_card_tool,
     backtest_indicators_tool,
@@ -64,7 +64,7 @@ __all__ = [
     # Utilities
     "validate_canonical_tf",
     "normalize_timestamp",
-    # IdeaCard Tools
+    # Play Tools
     "backtest_preflight_idea_card_tool",
     "backtest_run_idea_card_tool",
     "backtest_indicators_tool",

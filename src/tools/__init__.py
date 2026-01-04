@@ -188,7 +188,7 @@ from .backtest_tools import (
     backtest_list_strategies_tool,
 )
 
-# Backtest CLI wrapper tools (IdeaCard-based, golden path)
+# Backtest CLI wrapper tools (Play-based, golden path)
 from .backtest_cli_wrapper import (
     backtest_preflight_idea_card_tool,
     backtest_run_idea_card_tool,
@@ -326,7 +326,7 @@ __all__ = [
     "backtest_verify_data_tool",
     "backtest_list_strategies_tool",
     
-    # Backtest CLI wrapper tools (IdeaCard-based, golden path)
+    # Backtest CLI wrapper tools (Play-based, golden path)
     "backtest_preflight_idea_card_tool",
     "backtest_run_idea_card_tool",
     "backtest_data_fix_tool",

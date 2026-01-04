@@ -153,13 +153,13 @@ def backtest_audit_in_memory_parity_tool(
     output_dir: str | None = None,
 ) -> ToolResult:
     """
-    Run in-memory math parity audit for an IdeaCard.
+    Run in-memory math parity audit for an Play.
 
     Compares FeatureFrameBuilder output against fresh pandas_ta computation.
     Does NOT emit snapshot artifacts or Parquet — purely in-memory comparison.
 
     Args:
-        idea_card: Path to IdeaCard YAML
+        idea_card: Path to Play YAML
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
         output_dir: Optional output directory for diff CSV (written only on failure)
@@ -227,7 +227,7 @@ def backtest_math_parity_tool(
     2. In-memory math parity audit (indicator computation validation)
 
     Args:
-        idea_card: Path to IdeaCard YAML for parity audit
+        idea_card: Path to Play YAML for parity audit
         start_date: Start date for parity audit (YYYY-MM-DD)
         end_date: End date for parity audit (YYYY-MM-DD)
         output_dir: Optional output directory for diff reports
@@ -325,7 +325,7 @@ def verify_artifact_parity_tool(
     contain identical data. Used during migration validation.
 
     Args:
-        idea_card_id: IdeaCard ID (optional if run_dir provided)
+        idea_card_id: Play ID (optional if run_dir provided)
         symbol: Trading symbol (optional if run_dir provided)
         run_id: Specific run ID (e.g., "run-001") or None for latest
         base_dir: Base backtests directory (default: "backtests")
@@ -419,10 +419,10 @@ def backtest_audit_snapshot_plumbing_tool(
     This audit proves the plumbing is correct without testing indicator math.
 
     Args:
-        idea_card_id: IdeaCard identifier or path
+        idea_card_id: Play identifier or path
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
-        symbol: Override symbol (optional, inferred from IdeaCard)
+        symbol: Override symbol (optional, inferred from Play)
         max_samples: Max exec bar samples (default: 2000)
         tolerance: Tolerance for float comparison (default: 1e-12)
         strict: Stop at first mismatch (default: True)

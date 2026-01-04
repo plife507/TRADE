@@ -226,7 +226,7 @@ class TFIncrementalState:
                 f"\n"
                 f"Available structures: {available_str}\n"
                 f"\n"
-                f"Fix: Use one of the available structure keys, or add the structure to your IdeaCard."
+                f"Fix: Use one of the available structure keys, or add the structure to your Play."
             )
 
         return self.structures[struct_key].get_value_safe(output_key)
@@ -354,7 +354,7 @@ class MultiTFIncrementalState:
                 f"\n"
                 f"Available HTFs: {available_str}\n"
                 f"\n"
-                f"Fix: Add HTF configuration to your IdeaCard:\n"
+                f"Fix: Add HTF configuration to your Play:\n"
                 f"  structures:\n"
                 f"    htf:\n"
                 f"      \"{timeframe}\":\n"

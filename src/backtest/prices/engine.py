@@ -2,7 +2,7 @@
 Mark Price Engine.
 
 Single producer of mark_price and mark_price_source for snapshot construction.
-MARK is always available (implicit, never declared in IdeaCard).
+MARK is always available (implicit, never declared in Play).
 """
 
 import logging

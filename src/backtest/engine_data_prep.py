@@ -224,8 +224,8 @@ def prepare_backtest_frame_impl(
         f"Loaded {len(df)} bars: {loaded_start} to {loaded_end}"
     )
 
-    # Apply indicators from IdeaCard FeatureSpecs (ONLY supported path)
-    # No legacy params-based indicators - IdeaCard is the single source of truth
+    # Apply indicators from Play FeatureSpecs (ONLY supported path)
+    # No legacy params-based indicators - Play is the single source of truth
     # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
     if config.feature_specs_by_role:
         exec_specs = config.feature_specs_by_role.get('exec', [])
@@ -234,7 +234,7 @@ def prepare_backtest_frame_impl(
     else:
         raise ValueError(
             "No feature_specs_by_role in config. "
-            "IdeaCard with declared FeatureSpecs is required. "
+            "Play with declared FeatureSpecs is required. "
             "Legacy params-based indicators are not supported."
         )
 
@@ -413,7 +413,7 @@ def prepare_multi_tf_frames_impl(
             raise ValueError(
                 "MISSING_WARMUP_CONFIG: warmup_bars_by_role['htf'] not set for multi-TF mode. "
                 "Preflight gate must compute warmup for HTF role. "
-                "Check IdeaCard has htf TF config with warmup declared."
+                "Check Play has htf TF config with warmup declared."
             )
         else:
             # Single-TF mode: all roles map to same TF, use exec warmup
@@ -471,7 +471,7 @@ def prepare_multi_tf_frames_impl(
         # Ensure sorted by timestamp
         df = df.sort_values("timestamp").reset_index(drop=True)
 
-        # Apply indicators from IdeaCard FeatureSpecs for this TF
+        # Apply indicators from Play FeatureSpecs for this TF
         # Map TF back to role (htf/mtf/exec) to get correct specs
         tf_role = None
         for role, role_tf in tf_mapping.items():
@@ -489,7 +489,7 @@ def prepare_multi_tf_frames_impl(
         else:
             raise ValueError(
                 f"No feature_specs_by_role in config for TF {tf}. "
-                "IdeaCard with declared FeatureSpecs is required."
+                "Play with declared FeatureSpecs is required."
             )
 
         # Add ts_close column for close detection

@@ -1,14 +1,14 @@
 """
 Backtest menu for the CLI.
 
-Handles all backtesting operations through IdeaCard-based workflow:
-- IdeaCard management and execution
+Handles all backtesting operations through Play-based workflow:
+- Play management and execution
 - Audits and verification
 - Analytics and results
 - Data preparation
 
 All operations call tools - no direct engine access from CLI.
-IdeaCard-only: SystemConfig is not supported.
+Play-only: SystemConfig is not supported.
 """
 
 from typing import TYPE_CHECKING
@@ -32,7 +32,7 @@ console = Console()
 
 
 def backtest_menu(cli: "TradeCLI"):
-    """Backtest menu - IdeaCard-based workflow."""
+    """Backtest menu - Play-based workflow."""
     from trade_cli import (
         clear_screen, print_header, get_choice, BACK,
     )
@@ -45,14 +45,14 @@ def backtest_menu(cli: "TradeCLI"):
         status_line = Text()
         status_line.append("Backtest Engine ", style=f"bold {CLIColors.NEON_MAGENTA}")
         status_line.append("│ ", style=CLIColors.DIM_TEXT)
-        status_line.append("IdeaCard-driven strategy backtesting", style=CLIColors.DIM_TEXT)
+        status_line.append("Play-driven strategy backtesting", style=CLIColors.DIM_TEXT)
         console.print(Panel(status_line, border_style=f"dim {CLIColors.NEON_MAGENTA}"))
 
         menu = CLIStyles.create_menu_table()
 
-        # IdeaCard section
+        # Play section
         menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.BOT} Backtesting ---[/]", "")
-        menu.add_row("1", f"[bold {CLIColors.NEON_CYAN}]IdeaCard Backtests[/]", f"[{CLIColors.NEON_CYAN}]Run, preflight, data fix, indicators[/]")
+        menu.add_row("1", f"[bold {CLIColors.NEON_CYAN}]Play Backtests[/]", f"[{CLIColors.NEON_CYAN}]Run, preflight, data fix, indicators[/]")
         menu.add_row("", "", "")
 
         # Audits section (Phase 2 - placeholder)
@@ -77,7 +77,7 @@ def backtest_menu(cli: "TradeCLI"):
             return  # Go back to main menu
 
         if choice == 1:
-            # IdeaCard Backtests submenu
+            # Play Backtests submenu
             backtest_ideacard_menu(cli)
 
         elif choice == 2:

@@ -13,7 +13,7 @@ Outputs:
 - strength: float (0.0, can be enhanced later with additional metrics)
 - bars_in_trend: int (increments each bar, resets on direction change)
 
-Example IdeaCard usage:
+Example Play usage:
     structures:
       exec:
         - type: swing

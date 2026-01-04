@@ -211,7 +211,7 @@ class PreflightReport:
     tf_results: dict[str, TFPreflightResult]  # key: "symbol:tf"
     run_timestamp: datetime = field(default_factory=_utcnow)
     auto_sync_result: AutoSyncResult | None = None
-    # Computed warmup requirements (source of truth from IdeaCard indicators)
+    # Computed warmup requirements (source of truth from Play indicators)
     computed_warmup_requirements: "WarmupRequirements | None" = None
     # Phase 6: Error classification for structured smoke test assertions
     error_code: str | None = None  # e.g., "INSUFFICIENT_COVERAGE", "HISTORY_UNAVAILABLE", "MISSING_1M_COVERAGE"
@@ -284,7 +284,7 @@ class PreflightReport:
         """Print summary to console."""
         status_icon = "[OK]" if self.overall_status == PreflightStatus.PASSED else "[FAIL]"
         print(f"\n{status_icon} Preflight Gate: {self.overall_status.value.upper()}")
-        print(f"   IdeaCard: {self.idea_card_id}")
+        print(f"   Play: {self.idea_card_id}")
         print(f"   Window: {self.window_start.date()} -> {self.window_end.date()}")
         print()
 
@@ -833,7 +833,7 @@ def _validate_exec_to_1m_mapping(
 
 
 def run_preflight_gate(
-    idea_card: "IdeaCard",
+    idea_card: "Play",
     data_loader: "DataLoader",
     window_start: datetime,
     window_end: datetime,
@@ -842,7 +842,7 @@ def run_preflight_gate(
     auto_sync_config: AutoSyncConfig | None = None,
 ) -> PreflightReport:
     """
-    Run the data preflight gate for an IdeaCard.
+    Run the data preflight gate for an Play.
     
     WARMUP COMPUTATION (SINGLE SOURCE OF TRUTH):
     - Calls compute_warmup_requirements(idea_card) EXACTLY ONCE at the start
@@ -856,7 +856,7 @@ def run_preflight_gate(
     - Simulator/backtest MUST NOT modify DuckDB directly
     
     Args:
-        idea_card: The IdeaCard to validate data for
+        idea_card: The Play to validate data for
         data_loader: Callable that loads data for (symbol, tf, start, end) -> DataFrame
         window_start: Backtest window start
         window_end: Backtest window end
@@ -888,7 +888,7 @@ def run_preflight_gate(
         )
     
     # ==========================================================================
-    # STEP 1: Compute warmup requirements ONCE from IdeaCard (SOURCE OF TRUTH)
+    # STEP 1: Compute warmup requirements ONCE from Play (SOURCE OF TRUTH)
     # ==========================================================================
     
     warmup_requirements = compute_warmup_requirements(idea_card)
@@ -1032,7 +1032,7 @@ def run_preflight_gate(
     mapping_error: str | None = None
 
     if has_1m_coverage:
-        # Get exec TF from IdeaCard (new schema uses execution_tf directly)
+        # Get exec TF from Play (new schema uses execution_tf directly)
         exec_tf_str = idea_card.execution_tf
         if exec_tf_str:
             # Load 1m data for mapping validation

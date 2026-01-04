@@ -142,7 +142,7 @@ from ..utils.logger import get_logger
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .feature_registry import FeatureRegistry
-    from .play import IdeaCard
+    from .play import Play
 
 
 class BacktestEngine:
@@ -189,7 +189,7 @@ class BacktestEngine:
             record_state_tracking: Optional flag to enable Stage 7 state tracking.
                         When True, records signal/action/gate state per bar.
                         Record-only: does not affect trade outcomes.
-            feature_registry: Optional FeatureRegistry from IdeaCard.
+            feature_registry: Optional FeatureRegistry from Play.
                         When set, provides unified access to features on any TF.
                         Replaces role-based tf_mapping approach.
         """
@@ -304,12 +304,12 @@ class BacktestEngine:
             # P2-12: Ensure clean state on init (reset clears any stale state)
             self._state_tracker.reset()
 
-        # IdeaCard reference (set by factory, None if created directly)
+        # Play reference (set by factory, None if created directly)
         # Must be initialized here to avoid AttributeError in _build_structures_into_exec_feed()
-        self._idea_card: "IdeaCard | None" = None
+        self._idea_card: "Play | None" = None
 
         # Phase 6: Incremental state for structure detection (swing, trend, zone, etc.)
-        # Built from IdeaCard structure specs after engine creation
+        # Built from Play structure specs after engine creation
         self._incremental_state: MultiTFIncrementalState | None = None
 
         tf_mode_str = "multi-TF" if self._multi_tf_mode else "single-TF"
@@ -600,7 +600,7 @@ class BacktestEngine:
         """
         Build market structures into exec FeedStore.
 
-        Checks if IdeaCard uses the Feature Registry with structures section.
+        Checks if Play uses the Feature Registry with structures section.
         If so, incremental state is used (built in run()) and batch building is skipped.
         Otherwise, falls back to deprecated batch structure building with warning.
 
@@ -613,7 +613,7 @@ class BacktestEngine:
             self.logger.warning("Cannot build structures: no exec feed")
             return
 
-        # Check if IdeaCard uses the Feature Registry with structures
+        # Check if Play uses the Feature Registry with structures
         # If so, skip batch build - incremental state is built in run()
         registry = self._feature_registry
         if registry is None and self._idea_card is not None:
@@ -622,7 +622,7 @@ class BacktestEngine:
         has_incremental_structures = registry is not None and len(registry.get_structures()) > 0
 
         if has_incremental_structures:
-            self.logger.debug("IdeaCard uses 'structures:' section - using incremental state")
+            self.logger.debug("Play uses 'structures:' section - using incremental state")
             return
 
         # Fallback: use batch structure building (emits deprecation warning if present)

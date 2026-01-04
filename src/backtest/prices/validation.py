@@ -2,7 +2,7 @@
 Mark Price Validation.
 
 Stage 1: Validates MARK availability for backtest/sim.
-MARK is always required (not conditional on IdeaCard).
+MARK is always required (not conditional on Play).
 """
 
 import logging
@@ -33,7 +33,7 @@ def validate_mark_price_availability(engine: MarkPriceEngine) -> MarkValidationR
     Validate that MarkPriceEngine is ready to serve mark prices.
 
     This is the Stage 1 preflight check for MARK. Call during engine setup.
-    MARK is always required (not conditional on IdeaCard).
+    MARK is always required (not conditional on Play).
 
     Args:
         engine: MarkPriceEngine instance

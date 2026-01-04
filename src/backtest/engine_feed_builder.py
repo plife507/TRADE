@@ -29,7 +29,7 @@ from ..utils.logger import get_logger
 if TYPE_CHECKING:
     from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
     from .system_config import SystemConfig
-    from .play import IdeaCard
+    from .play import Play
 
 
 class FeedStoreBuilderResult:
@@ -172,13 +172,13 @@ def build_feed_stores_impl(
 # =============================================================================
 #
 # DEPRECATION NOTICE (Phase 7):
-# - `market_structure_blocks` in IdeaCard is DEPRECATED in favor of `structures:` section
-# - New IdeaCards should use the incremental `structures:` section for O(1) hot-loop access
+# - `market_structure_blocks` in Play is DEPRECATED in favor of `structures:` section
+# - New Plays should use the incremental `structures:` section for O(1) hot-loop access
 # - REMOVAL DATE: 2026-04-01 (Q2 2026)
 # - Migration guide: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 #
 # To migrate:
-#   1. Replace `market_structure_blocks:` with `structures:` in IdeaCard
+#   1. Replace `market_structure_blocks:` with `structures:` in Play
 #   2. Use structure.key.output_name in signal_rules instead of structure paths
 #   3. Test with `backtest run --idea-card <card>` to verify
 #
@@ -189,26 +189,26 @@ import warnings
 
 def build_structures_into_feed(
     exec_feed: FeedStore,
-    idea_card: IdeaCard,
+    idea_card: Play,
     logger=None,
 ) -> None:
     """
     [DEPRECATED] Build market structures and wire them into exec FeedStore.
 
-    DEPRECATION: Use the `structures:` section in IdeaCard instead of `market_structure_blocks`.
+    DEPRECATION: Use the `structures:` section in Play instead of `market_structure_blocks`.
     The incremental state system provides O(1) access in the hot loop.
 
     Stage 3: All structure blocks are exec-only.
 
     This function:
-    1. Extracts market_structure_blocks from IdeaCard
+    1. Extracts market_structure_blocks from Play
     2. Builds OHLCV dict from exec_feed arrays
     3. Calls StructureBuilder.build() to compute structures
     4. Wires stores and key_map into exec_feed.structures / structure_key_map
 
     Args:
         exec_feed: The exec FeedStore to wire structures into
-        idea_card: IdeaCard with market_structure_blocks
+        idea_card: Play with market_structure_blocks
         logger: Optional logger instance
 
     Note:
@@ -221,17 +221,17 @@ def build_structures_into_feed(
 
     # New schema: structures are in feature_registry, not market_structure_blocks
     if not hasattr(idea_card, "market_structure_blocks"):
-        logger.debug("New IdeaCard schema detected - structures handled by incremental state")
+        logger.debug("New Play schema detected - structures handled by incremental state")
         return
 
     structure_specs = list(idea_card.market_structure_blocks)
     if not structure_specs:
-        logger.debug("No market_structure_blocks in IdeaCard, skipping structure build")
+        logger.debug("No market_structure_blocks in Play, skipping structure build")
         return
 
     # Phase 7: Emit deprecation warning when market_structure_blocks is used
     warnings.warn(
-        "IdeaCard 'market_structure_blocks' is deprecated and will be removed 2026-04-01. "
+        "Play 'market_structure_blocks' is deprecated and will be removed 2026-04-01. "
         "Use the 'structures:' section instead for O(1) hot-loop access. "
         "See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md",
         DeprecationWarning,
@@ -239,7 +239,7 @@ def build_structures_into_feed(
     )
     logger.warning(
         "DEPRECATED: market_structure_blocks will be removed 2026-04-01. "
-        "Migrate to 'structures:' section in IdeaCard."
+        "Migrate to 'structures:' section in Play."
     )
 
     # Import here to avoid circular imports

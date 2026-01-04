@@ -16,7 +16,7 @@ Implementation follows 14 locked decisions from DERIVATION_RULE_INVESTIGATION.md
 - Touched semantics: event (reset each bar)
 - Closest: distance to nearest boundary
 
-Example IdeaCard usage:
+Example Play usage:
     structures:
       exec:
         - type: swing

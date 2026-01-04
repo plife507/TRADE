@@ -56,7 +56,7 @@ from .feature_frame_builder import (
     get_compute,
     get_registry,  # Deprecated alias for get_compute
     build_features_from_play,
-    IdeaCardFeatures,
+    PlayFeatures,
 )
 
 __all__ = [
@@ -75,9 +75,9 @@ __all__ = [
     # Deprecated aliases (for backwards compatibility)
     "IndicatorRegistry",  # Use IndicatorCompute instead
     "get_registry",  # Use get_compute instead
-    # IdeaCard integration
+    # Play integration
     "build_features_from_play",
-    "IdeaCardFeatures",
+    "PlayFeatures",
     # Factory functions
     "ema_spec",
     "sma_spec",

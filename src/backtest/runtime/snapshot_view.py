@@ -506,7 +506,7 @@ class RuntimeSnapshotView:
         return list(self._feeds.mtf_feed.indicators.keys())
     
     # =========================================================================
-    # Unified Feature Lookup API (for IdeaCardSignalEvaluator)
+    # Unified Feature Lookup API (for PlaySignalEvaluator)
     # =========================================================================
     
     def get_feature(
@@ -519,7 +519,7 @@ class RuntimeSnapshotView:
         Unified feature lookup API for strategy evaluation.
         
         Supports both OHLCV and indicator keys across all TF roles.
-        Used by IdeaCardSignalEvaluator for condition evaluation.
+        Used by PlaySignalEvaluator for condition evaluation.
         
         Args:
             indicator_key: Key to look up (e.g., "close", "ema_20", "rsi")
@@ -812,7 +812,7 @@ class RuntimeSnapshotView:
         if self._incremental_state is None:
             raise KeyError(
                 f"No incremental state available. "
-                f"Add 'structures:' section to IdeaCard. "
+                f"Add 'structures:' section to Play. "
                 f"See docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md"
             )
 
@@ -859,7 +859,7 @@ class RuntimeSnapshotView:
         raise KeyError(
             f"Structure '{struct_key}' not found. "
             f"Available: {all_available}. "
-            f"Add structure to IdeaCard 'structures:' section."
+            f"Add structure to Play 'structures:' section."
         )
 
     @property
@@ -895,7 +895,7 @@ class RuntimeSnapshotView:
         Features are referenced by unique ID, and the registry provides TF mapping.
 
         Args:
-            feature_id: Unique feature ID from IdeaCard features list
+            feature_id: Unique feature ID from Play features list
             offset: Bar offset (0 = current, 1 = previous, etc.)
             field: Output field for multi-output features (default: "value")
 
@@ -908,7 +908,7 @@ class RuntimeSnapshotView:
         if self._feature_registry is None:
             raise KeyError(
                 f"No FeatureRegistry available. Cannot resolve feature_id '{feature_id}'. "
-                f"Use IdeaCard with 'features:' section."
+                f"Use Play with 'features:' section."
             )
 
         # Check cache first
@@ -1201,12 +1201,12 @@ class RuntimeSnapshotView:
 
         Two structure access methods are supported:
 
-        1. Incremental State (`structures:` section in IdeaCard)
+        1. Incremental State (`structures:` section in Play)
            - O(1) access via MultiTFIncrementalState
            - Updated bar-by-bar in the engine hot loop
-           - Primary method for all new IdeaCards
+           - Primary method for all new Plays
 
-        2. FeedStore structures (`market_structure_blocks` in IdeaCard)
+        2. FeedStore structures (`market_structure_blocks` in Play)
            - Batch-built structures stored in FeedStore.structures dict
            - Legacy support for compatibility
 
@@ -1294,7 +1294,7 @@ class RuntimeSnapshotView:
             raise ValueError(
                 f"Unknown structure block_key '{block_key}'. "
                 f"Available: {available_str}. "
-                f"Add 'structures:' section to IdeaCard."
+                f"Add 'structures:' section to Play."
             )
 
         # Check for zones namespace (FeedStore structures only)

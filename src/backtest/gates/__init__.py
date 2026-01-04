@@ -5,7 +5,7 @@ Gates are read-only validators that scan and report violations.
 They do NOT auto-edit files.
 
 Gate D.1: Pipeline signature verification
-Gate D.2: Batch verification with generated IdeaCards
+Gate D.2: Batch verification with generated Plays
 """
 
 from .production_first_import_gate import (
@@ -16,7 +16,7 @@ from .production_first_import_gate import (
 
 from .play_generator import (
     GeneratorConfig,
-    GeneratedIdeaCard,
+    GeneratedPlay,
     generate_idea_cards,
     cleanup_generated_cards,
     get_available_symbols,
@@ -36,7 +36,7 @@ __all__ = [
     "GateResult",
     # Gate D.2
     "GeneratorConfig",
-    "GeneratedIdeaCard",
+    "GeneratedPlay",
     "generate_idea_cards",
     "cleanup_generated_cards",
     "get_available_symbols",

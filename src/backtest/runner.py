@@ -1,7 +1,7 @@
 """
 Backtest Runner with Gate Enforcement.
 
-The canonical runner for executing IdeaCard-based backtests.
+The canonical runner for executing Play-based backtests.
 Enforces all gates before and after the run:
 
 1. Data Preflight Gate (before run)
@@ -40,7 +40,7 @@ def _utcnow() -> datetime:
 
 import pandas as pd
 
-from .play import IdeaCard, load_idea_card
+from .play import Play, load_idea_card
 from .runtime.preflight import (
     PreflightStatus,
     PreflightReport,
@@ -74,7 +74,7 @@ from .execution_validation import (
     validate_idea_card_full,
     compute_warmup_requirements,
     compute_idea_card_hash,
-    IdeaCardSignalEvaluator,
+    PlaySignalEvaluator,
     SignalDecision,
 )
 
@@ -92,11 +92,11 @@ from .artifacts.pipeline_signature import PIPELINE_VERSION
 
 
 # =============================================================================
-# IdeaCard-Native Backtest Execution
+# Play-Native Backtest Execution
 # =============================================================================
 
-class IdeaCardBacktestResult:
-    """Result from IdeaCard-native backtest execution."""
+class PlayBacktestResult:
+    """Result from Play-native backtest execution."""
 
     def __init__(
         self,
@@ -114,7 +114,7 @@ class IdeaCardBacktestResult:
 
 
 # =============================================================================
-# DELETED: create_default_engine_factory and IdeaCardEngineWrapper
+# DELETED: create_default_engine_factory and PlayEngineWrapper
 # =============================================================================
 # P1.2 Refactor: These adapter classes have been deleted.
 # Use engine.create_engine_from_idea_card() and engine.run_engine_with_idea_card()
@@ -125,9 +125,9 @@ class IdeaCardBacktestResult:
 @dataclass
 class RunnerConfig:
     """Configuration for the backtest runner."""
-    # IdeaCard
+    # Play
     idea_card_id: str = ""
-    idea_card: IdeaCard | None = None
+    idea_card: Play | None = None
 
     # Window
     window_start: datetime | None = None
@@ -151,8 +151,8 @@ class RunnerConfig:
     # Snapshot emission
     emit_snapshots: bool = False
     
-    def load_idea_card(self) -> IdeaCard:
-        """Load the IdeaCard if not already loaded."""
+    def load_idea_card(self) -> Play:
+        """Load the Play if not already loaded."""
         if self.idea_card is not None:
             return self.idea_card
         
@@ -217,7 +217,7 @@ def run_backtest_with_gates(
     result = RunnerResult(success=False, run_id=run_id)
     
     try:
-        # Load IdeaCard
+        # Load Play
         idea_card = config.load_idea_card()
         
         # Validate window
@@ -226,7 +226,7 @@ def run_backtest_with_gates(
         
         # Get first symbol (for now, only single-symbol support)
         if not idea_card.symbol_universe:
-            raise ValueError("IdeaCard has no symbols in symbol_universe")
+            raise ValueError("Play has no symbols in symbol_universe")
         symbol = idea_card.symbol_universe[0]
         
         # Compute idea_card_hash for deterministic run folder naming
@@ -384,7 +384,7 @@ def run_backtest_with_gates(
         # This runs before simulation to catch misnamed keys early
         # The actual key availability check happens after frame preparation
 
-        # Check if IdeaCard has any features declared
+        # Check if Play has any features declared
         registry = idea_card.feature_registry
         has_features = len(list(registry.all_features())) > 0
 
@@ -412,7 +412,7 @@ def run_backtest_with_gates(
             if indicator_gate_result.passed:
                 print("  [PASS] All required indicators are declared in features")
             elif indicator_gate_result.status == IndicatorGateStatus.SKIPPED:
-                print("  [SKIP] No features declared in IdeaCard")
+                print("  [SKIP] No features declared in Play")
             else:
                 print(indicator_gate_result.format_error())
                 result.gate_failed = "indicator_requirements"
@@ -455,13 +455,13 @@ def run_backtest_with_gates(
         # Import engine factory functions (P1.2 Refactor)
         from .engine import create_engine_from_idea_card, run_engine_with_idea_card
         
-        # Create engine directly from IdeaCard (no adapter layer)
+        # Create engine directly from Play (no adapter layer)
         if engine_factory is not None:
             # Custom factory provided (for testing/DI) - use legacy path
             engine = engine_factory(idea_card, config)
             engine_result = engine.run()
         else:
-            # Standard path: use new IdeaCard-native engine factory
+            # Standard path: use new Play-native engine factory
             engine = create_engine_from_idea_card(
                 idea_card=idea_card,
                 window_start=config.window_start,
@@ -527,7 +527,7 @@ def run_backtest_with_gates(
         equity_hash = compute_equity_hash(engine_result.equity_curve) if hasattr(engine_result, 'equity_curve') and engine_result.equity_curve else ""
         run_hash = compute_run_hash(trades_hash, equity_hash, idea_card_hash)
         
-        # Resolve idea path (where IdeaCard was loaded from)
+        # Resolve idea path (where Play was loaded from)
         resolved_idea_path = str(config.idea_cards_dir / f"{idea_card.id}.yml") if config.idea_cards_dir else f"configs/plays/{idea_card.id}.yml"
         
         summary = compute_results_summary(
@@ -568,7 +568,7 @@ def run_backtest_with_gates(
             create_pipeline_signature,
         )
         
-        # Get declared feature keys from IdeaCard feature_registry
+        # Get declared feature keys from Play feature_registry
         declared_keys = []
         for feature in idea_card.feature_registry.all_features():
             declared_keys.append(feature.id)
@@ -640,7 +640,7 @@ def run_backtest_with_gates(
                 mtf_specs = None
 
                 # Get DataFrames from engine
-                # The engine is actually an IdeaCardEngineWrapper, so access the real engine
+                # The engine is actually an PlayEngineWrapper, so access the real engine
                 real_engine = getattr(engine, 'engine', engine)
 
                 # For single-TF mode, use _prepared_frame.full_df (includes computed indicators)
@@ -726,15 +726,15 @@ def run_smoke_test(
     idea_cards_dir: Path | None = None,
 ) -> RunnerResult:
     """
-    Convenience function to run a smoke test for an IdeaCard.
+    Convenience function to run a smoke test for an Play.
     
     Args:
-        idea_card_id: IdeaCard identifier
+        idea_card_id: Play identifier
         window_start: Backtest window start
         window_end: Backtest window end
         data_loader: Function to load data (symbol, tf) -> DataFrame
         base_output_dir: Base directory for artifacts
-        idea_cards_dir: Directory containing IdeaCard YAMLs
+        idea_cards_dir: Directory containing Play YAMLs
         
     Returns:
         RunnerResult with success status
@@ -769,14 +769,14 @@ def main():
     import sys
     
     parser = argparse.ArgumentParser(
-        description="Run IdeaCard-based backtest with gate enforcement",
+        description="Run Play-based backtest with gate enforcement",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     
     parser.add_argument(
         "--idea",
         required=True,
-        help="IdeaCard ID (filename without .yml) or path to YAML file",
+        help="Play ID (filename without .yml) or path to YAML file",
     )
     parser.add_argument(
         "--start",
@@ -802,7 +802,7 @@ def main():
     parser.add_argument(
         "--idea-dir",
         default=None,
-        help="Override IdeaCard directory (default: configs/plays/)",
+        help="Override Play directory (default: configs/plays/)",
     )
     parser.add_argument(
         "--skip-preflight",
@@ -857,7 +857,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"  BACKTEST RUNNER")
     print(f"{'='*60}")
-    print(f"  IdeaCard:   {args.idea}")
+    print(f"  Play:   {args.idea}")
     print(f"  Window:     {window_start.date()} -> {window_end.date()}")
     print(f"  Env:        {args.env}")
     print(f"  Export:     {args.export_root}")

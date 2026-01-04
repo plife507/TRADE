@@ -1,13 +1,13 @@
 """
-IdeaCard-based backtest tools.
+Play-based backtest tools.
 
-This module contains all tools for IdeaCard workflow:
+This module contains all tools for Play workflow:
 - Preflight check (data coverage validation)
 - Run backtest (full execution)
 - Indicator discovery (key listing)
 - Data fix (sync/heal)
-- List IdeaCards
-- Normalize IdeaCard (validation)
+- List Plays
+- Normalize Play (validation)
 
 All tools are the GOLDEN PATH for backtest execution.
 CLI and agents should use these tools, not direct engine access.
@@ -33,7 +33,7 @@ from ..data.historical_data_store import (
     TIMEFRAMES as DB_TIMEFRAMES,
     TF_MINUTES,
 )
-from ..backtest.play import load_idea_card, list_idea_cards, IdeaCard
+from ..backtest.play import load_idea_card, list_idea_cards, Play
 from ..backtest.execution_validation import (
     validate_idea_card_full,
     compute_warmup_requirements,
@@ -142,17 +142,17 @@ def backtest_preflight_idea_card_tool(
     fix_gaps: bool = False,
 ) -> ToolResult:
     """
-    Run preflight check for an IdeaCard backtest using production preflight gate.
+    Run preflight check for an Play backtest using production preflight gate.
 
     Phase 6: Calls run_preflight_gate() and returns PreflightReport.to_dict() unchanged.
 
     Args:
-        idea_card_id: IdeaCard identifier
+        idea_card_id: Play identifier
         env: Data environment ("live" or "demo")
-        symbol: Override symbol (default: first in IdeaCard.symbol_universe)
+        symbol: Override symbol (default: first in Play.symbol_universe)
         start: Window start (required)
         end: Window end (default: now)
-        idea_cards_dir: Override IdeaCard directory
+        idea_cards_dir: Override Play directory
         symbol_override: Alias for symbol (Phase 6 smoke test support)
         fix_gaps: If True, auto-fetch and fix missing data (uses data tools)
 
@@ -168,7 +168,7 @@ def backtest_preflight_idea_card_tool(
         env = validate_data_env(env)
         db_path = resolve_db_path(env)
 
-        # Load IdeaCard
+        # Load Play
         try:
             idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
         except FileNotFoundError as e:
@@ -182,12 +182,12 @@ def backtest_preflight_idea_card_tool(
                 },
             )
 
-        # Validate IdeaCard
+        # Validate Play
         validation = validate_idea_card_full(idea_card)
         if not validation.is_valid:
             return ToolResult(
                 success=False,
-                error=f"IdeaCard validation failed: {[i.message for i in validation.errors]}",
+                error=f"Play validation failed: {[i.message for i in validation.errors]}",
                 data={"validation_errors": [i.message for i in validation.errors]},
             )
 
@@ -196,7 +196,7 @@ def backtest_preflight_idea_card_tool(
             if not idea_card.symbol_universe:
                 return ToolResult(
                     success=False,
-                    error="IdeaCard has no symbols in symbol_universe and none provided",
+                    error="Play has no symbols in symbol_universe and none provided",
                 )
             symbol = idea_card.symbol_universe[0]
 
@@ -336,16 +336,16 @@ def backtest_run_idea_card_tool(
     validate_artifacts_after: bool = True,
 ) -> ToolResult:
     """
-    Run a backtest for an IdeaCard.
+    Run a backtest for an Play.
 
     This is the GOLDEN PATH for backtest execution.
     All validation, data loading, and execution flows through here.
 
-    Capital/account config comes from IdeaCard.account section (required).
+    Capital/account config comes from Play.account section (required).
     CLI can override specific values using the override parameters.
 
     Args:
-        idea_card_id: IdeaCard identifier
+        idea_card_id: Play identifier
         env: Data environment ("live" or "demo")
         symbol: Override symbol
         start: Window start
@@ -354,9 +354,9 @@ def backtest_run_idea_card_tool(
         strict: If True, use strict indicator access (default: True)
         write_artifacts: If True, write result artifacts
         artifacts_dir: Override artifacts directory
-        idea_cards_dir: Override IdeaCard directory
-        initial_equity_override: Override starting equity (defaults to IdeaCard.account.starting_equity_usdt)
-        max_leverage_override: Override max leverage (defaults to IdeaCard.account.max_leverage)
+        idea_cards_dir: Override Play directory
+        initial_equity_override: Override starting equity (defaults to Play.account.starting_equity_usdt)
+        max_leverage_override: Override max leverage (defaults to Play.account.max_leverage)
         symbol_override: Alias for symbol (Phase 6 smoke test support)
         fix_gaps: If True (default), auto-fetch and fix missing data during preflight
         validate_artifacts_after: If True (default), validate artifacts after run (HARD FAIL if invalid)
@@ -385,7 +385,7 @@ def backtest_run_idea_card_tool(
 
         preflight_data = preflight_result.data
 
-        # Load IdeaCard
+        # Load Play
         idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
 
         # Validate account config is present (required - no defaults)
@@ -393,12 +393,12 @@ def backtest_run_idea_card_tool(
             return ToolResult(
                 success=False,
                 error=(
-                    f"IdeaCard '{idea_card_id}' is missing account section. "
+                    f"Play '{idea_card_id}' is missing account section. "
                     "account.starting_equity_usdt and account.max_leverage are required."
                 ),
             )
 
-        # Resolve config values (IdeaCard is source of truth, CLI can override)
+        # Resolve config values (Play is source of truth, CLI can override)
         resolved_starting_equity = (
             initial_equity_override
             if initial_equity_override is not None
@@ -411,7 +411,7 @@ def backtest_run_idea_card_tool(
         )
         resolved_min_trade = idea_card.account.min_trade_notional_usdt or 1.0
 
-        # Resolve symbol from preflight data or IdeaCard
+        # Resolve symbol from preflight data or Play
         resolved_symbol = preflight_data.get("symbol") or idea_card.symbol_universe[0]
         exec_tf = validate_canonical_tf(idea_card.exec_tf)
 
@@ -482,7 +482,7 @@ def backtest_run_idea_card_tool(
             IndicatorGateStatus,
         )
 
-        # Compute expanded keys from IdeaCard feature_registry
+        # Compute expanded keys from Play feature_registry
         available_keys_by_role = {}
         declared_keys_by_role = {}
         registry = idea_card.feature_registry
@@ -689,19 +689,19 @@ def backtest_indicators_tool(
     compute_values: bool = False,
 ) -> ToolResult:
     """
-    Discover and print indicator keys for an IdeaCard.
+    Discover and print indicator keys for an Play.
 
     This command replaces pytest-based indicator key validation.
     Run this to see exactly what indicator keys will be computed
-    so you can fix FeatureSpec/IdeaCard declarations.
+    so you can fix FeatureSpec/Play declarations.
 
     Args:
-        idea_card_id: IdeaCard identifier
+        idea_card_id: Play identifier
         data_env: Data environment ("live" or "demo")
         symbol: Override symbol
         start: Window start (for computing actual values)
         end: Window end
-        idea_cards_dir: Override IdeaCard directory
+        idea_cards_dir: Override Play directory
         compute_values: If True, actually compute indicators and show first non-NaN index
 
     Returns:
@@ -713,7 +713,7 @@ def backtest_indicators_tool(
         db_path = resolve_db_path(data_env)
         ohlcv_table = resolve_table_name("ohlcv", data_env)
 
-        # Load IdeaCard
+        # Load Play
         try:
             idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
         except FileNotFoundError as e:
@@ -723,12 +723,12 @@ def backtest_indicators_tool(
                 data={"available_idea_cards": list_idea_cards(idea_cards_dir)},
             )
 
-        # Validate IdeaCard
+        # Validate Play
         validation = validate_idea_card_full(idea_card)
         if not validation.is_valid:
             return ToolResult(
                 success=False,
-                error=f"IdeaCard validation failed: {[i.message for i in validation.errors]}",
+                error=f"Play validation failed: {[i.message for i in validation.errors]}",
             )
 
         # Resolve symbol
@@ -736,7 +736,7 @@ def backtest_indicators_tool(
             if not idea_card.symbol_universe:
                 return ToolResult(
                     success=False,
-                    error="IdeaCard has no symbols and none provided",
+                    error="Play has no symbols and none provided",
                 )
             symbol = idea_card.symbol_universe[0]
 
@@ -777,7 +777,7 @@ def backtest_indicators_tool(
         # If compute_values, actually load data and compute indicators
         # Note: This feature requires further refactoring to work with new schema
         if compute_values and start and end:
-            logger.warning("compute_values not yet supported with new IdeaCard schema")
+            logger.warning("compute_values not yet supported with new Play schema")
             result_data["computed_info"] = {"warning": "Not yet supported"}
 
         # Log output
@@ -829,21 +829,21 @@ def backtest_data_fix_tool(
     idea_cards_dir: Path | None = None,
 ) -> ToolResult:
     """
-    Fix data for an IdeaCard backtest by calling existing data tools.
+    Fix data for an Play backtest by calling existing data tools.
 
     Phase 6: Bounded enforcement + progress tracking + structured result.
 
     Args:
-        idea_card_id: IdeaCard identifier
+        idea_card_id: Play identifier
         env: Data environment
         symbol: Override symbol
-        start: Sync from this date (default: IdeaCard warmup requirements)
+        start: Sync from this date (default: Play warmup requirements)
         end: Sync to this date (required for bounded mode)
         max_lookback_days: Max lookback days (default 7). If (end - start) > this, clamp start.
         sync_to_now: If True, sync data to current time
         fill_gaps: If True, fill gaps after sync
         heal: If True, run full heal after sync
-        idea_cards_dir: Override IdeaCard directory
+        idea_cards_dir: Override Play directory
 
     Returns:
         ToolResult with structured data fix summary including bounds and progress
@@ -860,7 +860,7 @@ def backtest_data_fix_tool(
         env = validate_data_env(env)
         db_path = resolve_db_path(env)
 
-        # Load IdeaCard to get TFs
+        # Load Play to get TFs
         idea_card = load_idea_card(idea_card_id, base_dir=idea_cards_dir)
 
         # Resolve symbol
@@ -868,13 +868,13 @@ def backtest_data_fix_tool(
             if not idea_card.symbol_universe:
                 return ToolResult(
                     success=False,
-                    error="IdeaCard has no symbols and none provided",
+                    error="Play has no symbols and none provided",
                 )
             symbol = idea_card.symbol_universe[0]
 
         symbol = validate_symbol(symbol)
 
-        # Get all TFs from IdeaCard + mandatory 1m for price feed
+        # Get all TFs from Play + mandatory 1m for price feed
         tfs = set(idea_card.get_all_tfs())
         # 1m is mandatory for price feed (quote proxy) - always include
         tfs.add("1m")
@@ -1018,27 +1018,27 @@ def backtest_data_fix_tool(
 
 
 # =============================================================================
-# List IdeaCards (tools-layer)
+# List Plays (tools-layer)
 # =============================================================================
 
 def backtest_list_idea_cards_tool(
     idea_cards_dir: Path | None = None,
 ) -> ToolResult:
     """
-    List available IdeaCards.
+    List available Plays.
 
     Args:
-        idea_cards_dir: Override IdeaCard directory
+        idea_cards_dir: Override Play directory
 
     Returns:
-        ToolResult with list of IdeaCard IDs
+        ToolResult with list of Play IDs
     """
     try:
         cards = list_idea_cards(base_dir=idea_cards_dir)
 
         return ToolResult(
             success=True,
-            message=f"Found {len(cards)} IdeaCards",
+            message=f"Found {len(cards)} Plays",
             data={
                 "idea_cards": cards,
                 "directory": str(idea_cards_dir) if idea_cards_dir else "configs/plays/",
@@ -1048,12 +1048,12 @@ def backtest_list_idea_cards_tool(
     except Exception as e:
         return ToolResult(
             success=False,
-            error=f"Failed to list IdeaCards: {e}",
+            error=f"Failed to list Plays: {e}",
         )
 
 
 # =============================================================================
-# IdeaCard Normalization (build-time validation)
+# Play Normalization (build-time validation)
 # =============================================================================
 
 def backtest_idea_card_normalize_tool(
@@ -1062,7 +1062,7 @@ def backtest_idea_card_normalize_tool(
     write_in_place: bool = False,
 ) -> ToolResult:
     """
-    Normalize and validate an IdeaCard YAML at build time.
+    Normalize and validate an Play YAML at build time.
 
     This command validates:
     - All indicator_types are supported
@@ -1073,12 +1073,12 @@ def backtest_idea_card_normalize_tool(
     with auto-generated required_indicators.
 
     Agent Rule:
-        Agents may only generate IdeaCards through this command and must
+        Agents may only generate Plays through this command and must
         refuse to write YAML if normalization fails.
 
     Args:
-        idea_card_id: IdeaCard identifier
-        idea_cards_dir: Override IdeaCard directory
+        idea_card_id: Play identifier
+        idea_cards_dir: Override Play directory
         write_in_place: If True, write normalized YAML back to file
 
     Returns:
@@ -1106,7 +1106,7 @@ def backtest_idea_card_normalize_tool(
             cards = list_idea_cards(base_dir=idea_cards_dir)
             return ToolResult(
                 success=False,
-                error=f"IdeaCard '{idea_card_id}' not found in {search_dir}",
+                error=f"Play '{idea_card_id}' not found in {search_dir}",
                 data={"available_idea_cards": cards},
             )
 
@@ -1127,7 +1127,7 @@ def backtest_idea_card_normalize_tool(
             error_details = format_validation_errors(result.errors)
             return ToolResult(
                 success=False,
-                error=f"IdeaCard validation failed with {len(result.errors)} error(s)",
+                error=f"Play validation failed with {len(result.errors)} error(s)",
                 data={
                     "idea_card_id": idea_card_id,
                     "yaml_path": str(yaml_path),
@@ -1143,7 +1143,7 @@ def backtest_idea_card_normalize_tool(
 
             return ToolResult(
                 success=True,
-                message=f"IdeaCard '{idea_card_id}' normalized and written to {yaml_path}",
+                message=f"Play '{idea_card_id}' normalized and written to {yaml_path}",
                 data={
                     "idea_card_id": idea_card_id,
                     "yaml_path": str(yaml_path),
@@ -1155,7 +1155,7 @@ def backtest_idea_card_normalize_tool(
         # Dry-run: just return validation success
         return ToolResult(
             success=True,
-            message=f"IdeaCard '{idea_card_id}' passed validation (dry-run, not written)",
+            message=f"Play '{idea_card_id}' passed validation (dry-run, not written)",
             data={
                 "idea_card_id": idea_card_id,
                 "yaml_path": str(yaml_path),
@@ -1166,7 +1166,7 @@ def backtest_idea_card_normalize_tool(
         )
 
     except Exception as e:
-        logger.error(f"IdeaCard normalization failed: {e}\n{traceback.format_exc()}")
+        logger.error(f"Play normalization failed: {e}\n{traceback.format_exc()}")
         return ToolResult(
             success=False,
             error=f"Normalization error: {e}",
@@ -1178,10 +1178,10 @@ def backtest_idea_card_normalize_batch_tool(
     write_in_place: bool = False,
 ) -> ToolResult:
     """
-    Batch normalize all IdeaCards in a directory.
+    Batch normalize all Plays in a directory.
 
     Args:
-        idea_cards_dir: Directory containing IdeaCard YAML files
+        idea_cards_dir: Directory containing Play YAML files
         write_in_place: If True, write normalized YAML back to files
 
     Returns:
@@ -1190,22 +1190,22 @@ def backtest_idea_card_normalize_batch_tool(
     try:
         from ..backtest.play import list_idea_cards
 
-        # Get all IdeaCard IDs in the directory
+        # Get all Play IDs in the directory
         idea_card_ids = list_idea_cards(base_dir=idea_cards_dir)
 
         if not idea_card_ids:
             return ToolResult(
                 success=False,
-                error=f"No IdeaCard YAML files found in {idea_cards_dir}",
+                error=f"No Play YAML files found in {idea_cards_dir}",
             )
 
         results = []
         passed_count = 0
         failed_count = 0
 
-        logger.info(f"Batch normalizing {len(idea_card_ids)} IdeaCards in {idea_cards_dir}")
+        logger.info(f"Batch normalizing {len(idea_card_ids)} Plays in {idea_cards_dir}")
 
-        # Process each IdeaCard
+        # Process each Play
         for idea_card_id in idea_card_ids:
             try:
                 # Use the existing single-card normalize function

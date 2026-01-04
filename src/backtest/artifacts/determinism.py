@@ -5,7 +5,7 @@ Phase 3: Hash-based determinism verification.
 
 This module provides:
 - Compare two backtest runs for hash equality
-- Re-run verification (execute same IdeaCard, compare outputs)
+- Re-run verification (execute same Play, compare outputs)
 - Detailed diff reporting on hash mismatches
 
 USAGE:
@@ -83,9 +83,9 @@ class DeterminismResult:
         print(f"  Run B: {self.run_b_path}")
         
         if self.run_a_idea_card_id:
-            print(f"  IdeaCard A: {self.run_a_idea_card_id}")
+            print(f"  Play A: {self.run_a_idea_card_id}")
         if self.run_b_idea_card_id:
-            print(f"  IdeaCard B: {self.run_b_idea_card_id}")
+            print(f"  Play B: {self.run_b_idea_card_id}")
         
         print(f"\n  Hash Comparisons:")
         for comp in self.hash_comparisons:
@@ -151,14 +151,14 @@ def compare_runs(
         result.errors.append(f"Cannot load result.json from run B: {run_b_path}")
         return result
     
-    # Extract IdeaCard IDs
+    # Extract Play IDs
     result.run_a_idea_card_id = result_a.get("idea_card_id", "")
     result.run_b_idea_card_id = result_b.get("idea_card_id", "")
     
-    # Warn if different IdeaCards
+    # Warn if different Plays
     if result.run_a_idea_card_id != result.run_b_idea_card_id:
         result.warnings.append(
-            f"Comparing different IdeaCards: {result.run_a_idea_card_id} vs {result.run_b_idea_card_id}"
+            f"Comparing different Plays: {result.run_a_idea_card_id} vs {result.run_b_idea_card_id}"
         )
     
     # Compare hashes
@@ -191,7 +191,7 @@ def verify_determinism_rerun(
     fix_gaps: bool = False,
 ) -> DeterminismResult:
     """
-    Verify determinism by re-running the same IdeaCard and comparing outputs.
+    Verify determinism by re-running the same Play and comparing outputs.
     
     Args:
         run_path: Path to existing run's artifact folder
@@ -207,7 +207,7 @@ def verify_determinism_rerun(
         mode="rerun",
     )
     
-    # Load manifest from existing run to get IdeaCard and window
+    # Load manifest from existing run to get Play and window
     manifest_file = run_path / STANDARD_FILES["manifest"]
     if not manifest_file.exists():
         result.passed = False
@@ -231,7 +231,7 @@ def verify_determinism_rerun(
     # Import here to avoid circular imports
     from src.tools.backtest_cli_wrapper import backtest_run_play_tool
     
-    # Re-run the IdeaCard with the same window
+    # Re-run the Play with the same window
     rerun_result = backtest_run_idea_card_tool(
         idea_card_id=idea_card_id,
         window_start=window_start,

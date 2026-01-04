@@ -1,19 +1,19 @@
 """
-IdeaCard Generator — Creates randomized valid IdeaCards for batch verification.
+Play Generator — Creates randomized valid Plays for batch verification.
 
-Gate D.2 requirement: Generate 5 valid IdeaCards with randomized indicators,
+Gate D.2 requirement: Generate 5 valid Plays with randomized indicators,
 selecting symbols from available local data only.
 
 Rules:
 - Deterministic seed
-- ≥2 indicators per IdeaCard on tf_exec
+- ≥2 indicators per Play on tf_exec
 - Indicators from IndicatorRegistry (not hardcoded list)
 - Single direction per card (long_only OR short_only)
 - Mixed directions across batch
 - All generated YAMLs must pass normalize_idea_card_yaml validation
 
 Agent Rule:
-    Agents may only generate IdeaCards through `backtest idea-card-normalize`
+    Agents may only generate Plays through `backtest idea-card-normalize`
     and must refuse to write YAML if normalization fails.
 """
 
@@ -52,7 +52,7 @@ TIMEFRAMES_HTF = ["4h"]   # 4h for HTF context
 
 @dataclass
 class GeneratorConfig:
-    """Configuration for IdeaCard generation."""
+    """Configuration for Play generation."""
     seed: int = 42
     num_cards: int = 5
     min_indicators: int = 2
@@ -61,8 +61,8 @@ class GeneratorConfig:
 
 
 @dataclass
-class GeneratedIdeaCard:
-    """Result of IdeaCard generation."""
+class GeneratedPlay:
+    """Result of Play generation."""
     id: str
     symbol: str
     direction: str
@@ -263,7 +263,7 @@ def generate_idea_card_yaml(
     rng: np.random.Generator,
 ) -> str:
     """
-    Generate IdeaCard YAML content.
+    Generate Play YAML content.
     
     Uses normalize_idea_card_yaml to validate and auto-generate required_indicators.
     Raises ValueError if validation fails.
@@ -290,7 +290,7 @@ def generate_idea_card_yaml(
         "id": idea_id,
         "version": "1.0.0",
         "name": f"Generated {symbol} {exec_tf} Strategy",
-        "description": f"Auto-generated IdeaCard for Gate D.2 verification. Direction: {direction}",
+        "description": f"Auto-generated Play for Gate D.2 verification. Direction: {direction}",
         "account": {
             "starting_equity_usdt": 10000.0,
             "max_leverage": 3.0,
@@ -343,7 +343,7 @@ def generate_idea_card_yaml(
     
     if not result.is_valid:
         error_msg = format_validation_errors(result.errors)
-        raise ValueError(f"Generated IdeaCard failed validation:\n{error_msg}")
+        raise ValueError(f"Generated Play failed validation:\n{error_msg}")
     
     return yaml.dump(normalized, sort_keys=False, default_flow_style=False)
 
@@ -361,15 +361,15 @@ def _to_native(val):
     return val
 
 
-def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedIdeaCard]:
+def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedPlay]:
     """
-    Generate randomized IdeaCards.
+    Generate randomized Plays.
     
     Args:
         config: Generator configuration
         
     Returns:
-        List of generated IdeaCards
+        List of generated Plays
     """
     rng = np.random.default_rng(config.seed)
     
@@ -420,7 +420,7 @@ def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedIdeaCard]:
         yaml_path = config.output_dir / f"{idea_id}.yml"
         yaml_path.write_text(yaml_content)
         
-        results.append(GeneratedIdeaCard(
+        results.append(GeneratedPlay(
             id=idea_id,
             symbol=symbol,
             direction=direction,
@@ -435,7 +435,7 @@ def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedIdeaCard]:
 
 
 def cleanup_generated_cards(output_dir: Path = Path("configs/plays/generated")) -> None:
-    """Remove all generated IdeaCards."""
+    """Remove all generated Plays."""
     if output_dir.exists():
         for f in output_dir.glob("*.yml"):
             f.unlink()

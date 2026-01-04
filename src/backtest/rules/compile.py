@@ -1,7 +1,7 @@
 """
-Compiled reference resolver for IdeaCard conditions.
+Compiled reference resolver for Play conditions.
 
-Paths are parsed and validated at IdeaCard normalization time,
+Paths are parsed and validated at Play normalization time,
 not during hot-loop evaluation. This eliminates string parsing overhead.
 
 Design:
@@ -62,7 +62,7 @@ class CompiledRef:
     """
     Pre-compiled reference for fast resolution.
 
-    Created at IdeaCard normalization time. Contains:
+    Created at Play normalization time. Contains:
     - namespace: Which resolver to use
     - tokens: Pre-parsed path segments
     - path: Original path for error messages
@@ -141,7 +141,7 @@ def validate_ref_path(
     """
     Validate a reference path and return parsed tokens.
 
-    Called at IdeaCard normalization time. Fails fast with actionable errors.
+    Called at Play normalization time. Fails fast with actionable errors.
 
     Args:
         path: Dot-separated path (e.g., "price.mark.close", "indicator.rsi_14")
@@ -362,7 +362,7 @@ def compile_condition(
     """
     Compile a condition dict, replacing paths with CompiledRefs.
 
-    This is called during IdeaCard normalization to pre-compile all references.
+    This is called during Play normalization to pre-compile all references.
 
     Args:
         condition_dict: Raw condition from YAML

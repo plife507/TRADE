@@ -1,12 +1,12 @@
 """
 Feature Registry: Unified registry for all features (indicators + structures).
 
-This module provides a single source of truth for all features declared in an IdeaCard.
+This module provides a single source of truth for all features declared in an Play.
 Features can be indicators or structures, each on a specific timeframe.
 
 Key Concepts:
 - Feature: A single indicator or structure with unique ID, on a specific TF
-- FeatureRegistry: Central registry holding all features for an IdeaCard
+- FeatureRegistry: Central registry holding all features for an Play
 - Features are referenced by ID in blocks (not by role like exec/htf/mtf)
 
 Design Goals:
@@ -15,7 +15,7 @@ Design Goals:
 3. ID-based references: Block conditions reference features by unique ID
 4. O(1) lookups: Fast access by ID or by TF
 
-Example IdeaCard:
+Example Play:
     execution_tf: "15m"
     features:
       - id: "ema_fast"
@@ -197,7 +197,7 @@ class Feature:
 
 class FeatureRegistry:
     """
-    Central registry of all features for an IdeaCard.
+    Central registry of all features for an Play.
 
     Provides:
     - O(1) lookup by feature ID
@@ -246,7 +246,7 @@ class FeatureRegistry:
         if feature.id in self._features:
             raise ValueError(
                 f"Duplicate feature ID: '{feature.id}'. "
-                f"Feature IDs must be unique within an IdeaCard."
+                f"Feature IDs must be unique within an Play."
             )
 
         self._features[feature.id] = feature
@@ -396,7 +396,7 @@ class FeatureRegistry:
         """
         Get the output type for a feature field.
 
-        Used by DSL to validate operator compatibility at IdeaCard load time:
+        Used by DSL to validate operator compatibility at Play load time:
         - eq operator only allowed on discrete types (INT, BOOL, ENUM)
         - near_abs/near_pct only allowed on numeric types (FLOAT, INT)
 

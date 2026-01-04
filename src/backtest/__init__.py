@@ -53,7 +53,7 @@ from .risk_policy import (
 )
 from .simulated_risk_manager import SimulatedRiskManager, SizingResult
 from .play import (
-    IdeaCard,
+    Play,
     PositionPolicy,
     PositionMode,
     RiskModel,
@@ -76,7 +76,7 @@ from .execution_validation import (
     # Gate 8.0
     compute_idea_card_hash,
     validate_idea_card_contract,
-    IdeaCardValidationResult,
+    PlayValidationResult,
     ValidationIssue,
     ValidationSeverity,
     # Gate 8.1
@@ -87,8 +87,8 @@ from .execution_validation import (
     # Gate 8.2
     compute_warmup_requirements,
     WarmupRequirements,
-    # Gate 8.3 (IdeaCardSystemConfig DELETED - P1.2 Refactor)
-    IdeaCardSignalEvaluator,
+    # Gate 8.3 (PlaySystemConfig DELETED - P1.2 Refactor)
+    PlaySignalEvaluator,
     SignalDecision,
     EvaluationResult,
     # Gate 8.4
@@ -133,8 +133,8 @@ __all__ = [
     # Simulated risk manager
     "SimulatedRiskManager",
     "SizingResult",
-    # IdeaCard
-    "IdeaCard",
+    # Play
+    "Play",
     "PositionPolicy",
     "PositionMode",
     "RiskModel",
@@ -154,7 +154,7 @@ __all__ = [
     # Execution Validation (Phase 8)
     "compute_idea_card_hash",
     "validate_idea_card_contract",
-    "IdeaCardValidationResult",
+    "PlayValidationResult",
     "ValidationIssue",
     "ValidationSeverity",
     "extract_rule_feature_refs",
@@ -163,14 +163,14 @@ __all__ = [
     "FeatureReference",
     "compute_warmup_requirements",
     "WarmupRequirements",
-    # IdeaCardSystemConfig and adapt_idea_card_to_system_config DELETED (P1.2 Refactor)
-    "IdeaCardSignalEvaluator",
+    # PlaySystemConfig and adapt_idea_card_to_system_config DELETED (P1.2 Refactor)
+    "PlaySignalEvaluator",
     "SignalDecision",
     "EvaluationResult",
     "validate_pre_evaluation",
     "PreEvaluationStatus",
     "validate_idea_card_full",
-    # P1.2 Refactor: New IdeaCard-native engine factory
+    # P1.2 Refactor: New Play-native engine factory
     "create_engine_from_idea_card",
     "run_engine_with_idea_card",
 ]

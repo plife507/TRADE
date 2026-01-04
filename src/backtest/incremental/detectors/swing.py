@@ -19,7 +19,7 @@ Outputs:
     low_level: Most recent confirmed swing low price level (NaN if none).
     low_idx: Bar index of the most recent swing low (-1 if none).
 
-Example IdeaCard usage:
+Example Play usage:
     structures:
       exec:
         - type: swing

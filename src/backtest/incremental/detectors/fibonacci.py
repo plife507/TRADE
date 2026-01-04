@@ -5,7 +5,7 @@ Computes Fibonacci levels from swing high/low points provided by
 a swing detector dependency. Levels are recalculated only when the
 swing points change, ensuring O(1) per-bar updates in most cases.
 
-Usage in IdeaCard:
+Usage in Play:
     structures:
       exec:
         - type: swing

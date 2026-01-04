@@ -28,7 +28,7 @@ from typing import Any
 
 import numpy as np
 
-from ..play import load_idea_card, IdeaCard, IDEA_CARDS_DIR
+from ..play import load_idea_card, Play, IDEA_CARDS_DIR
 from ..execution_validation import compute_warmup_requirements
 from ..runtime.feed_store import FeedStore
 from ..runtime.snapshot_view import RuntimeSnapshotView
@@ -408,14 +408,14 @@ def audit_snapshot_plumbing_parity(
     Run snapshot plumbing parity audit.
     
     Args:
-        idea_card_id: IdeaCard identifier or path
+        idea_card_id: Play identifier or path
         start_date: Start of audit window
         end_date: End of audit window
-        symbol: Override symbol (optional, inferred from IdeaCard)
+        symbol: Override symbol (optional, inferred from Play)
         max_samples: Max exec bar samples (default: 2000)
         tolerance: Tolerance for float comparison (default: 1e-12)
         strict: Stop at first mismatch (default: True)
-        idea_cards_dir: Optional directory for IdeaCards
+        idea_cards_dir: Optional directory for Plays
         
     Returns:
         PlumbingParityResult with audit results
@@ -433,7 +433,7 @@ def audit_snapshot_plumbing_parity(
     start_time = time.perf_counter()
     
     try:
-        # Load IdeaCard - handle subdirectory paths
+        # Load Play - handle subdirectory paths
         # If idea_card_id contains a path separator or file extension, resolve it as a path
         from pathlib import Path as PathLib
         
@@ -464,7 +464,7 @@ def audit_snapshot_plumbing_parity(
                     total_comparisons=0,
                     failed_comparisons=0,
                     first_mismatch=None,
-                    error_message="IdeaCard has no symbols in symbol_universe and none provided",
+                    error_message="Play has no symbols in symbol_universe and none provided",
                 )
             symbol = idea_card.symbol_universe[0]
         
@@ -476,7 +476,7 @@ def audit_snapshot_plumbing_parity(
                 total_comparisons=0,
                 failed_comparisons=0,
                 first_mismatch=None,
-                error_message=f"IdeaCard '{idea_card_id}' is missing account section.",
+                error_message=f"Play '{idea_card_id}' is missing account section.",
             )
         
         # Get declared keys by role
@@ -486,7 +486,7 @@ def audit_snapshot_plumbing_parity(
             expanded_keys = get_required_indicator_columns_from_specs(specs)
             declared_keys_by_role[role] = set(expanded_keys)
         
-        # Extract params from IdeaCard
+        # Extract params from Play
         initial_equity = idea_card.account.starting_equity_usdt
         max_leverage = idea_card.account.max_leverage
         
@@ -514,12 +514,12 @@ def audit_snapshot_plumbing_parity(
             min_trade_usdt=min_trade_usdt,
         )
         
-        # Extract feature specs from IdeaCard for engine
+        # Extract feature specs from Play for engine
         feature_specs_by_role = {}
         for role, tf_config in idea_card.tf_configs.items():
             feature_specs_by_role[role] = list(tf_config.feature_specs)
         
-        # Compute warmup requirements from IdeaCard (P0.2 fix)
+        # Compute warmup requirements from Play (P0.2 fix)
         warmup_reqs = compute_warmup_requirements(idea_card)
         warmup_bars_by_role = warmup_reqs.warmup_by_role
         delay_bars_by_role = warmup_reqs.delay_by_role

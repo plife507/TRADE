@@ -7,7 +7,7 @@ Production backtest framework for TRADE. This module is the **only supported pat
 ## Canonical Pipeline
 
 ```
-IdeaCard(YAML)
+Play(YAML)
     ↓
 validate_idea_card_full()
     ↓
@@ -28,11 +28,11 @@ Artifacts (preflight_report.json, result.json, trades.csv, equity.csv)
 
 ---
 
-## IdeaCard Location
+## Play Location
 
 **Canonical path**: `configs/plays/`
 
-- Production IdeaCards live in `configs/plays/*.yml`
+- Production Plays live in `configs/plays/*.yml`
 - `src/strategies/plays/` is for examples/templates only
 - Override with `--idea-dir` flag if loading from alternate location
 
@@ -46,10 +46,10 @@ Artifacts (preflight_report.json, result.json, trades.csv, equity.csv)
 from src.backtest.runner import run_backtest_with_gates, RunnerConfig, RunnerResult
 ```
 
-### IdeaCard Loading
+### Play Loading
 
 ```python
-from src.backtest.play import load_idea_card, list_plays, IdeaCard
+from src.backtest.play import load_idea_card, list_plays, Play
 ```
 
 ### Validation
@@ -74,7 +74,7 @@ from src.backtest.features import FeatureSpec, FeatureFrameBuilder, IndicatorReg
 
 | Module | Responsibility |
 |--------|----------------|
-| `idea_card.py` | IdeaCard schema + loader + list |
+| `idea_card.py` | Play schema + loader + list |
 | `execution_validation.py` | Gate 8.x (hash, contract, features, warmup, pre-eval) |
 | `features/` | FeatureSpec + Registry + FeatureFrameBuilder |
 | `runtime/` | FeedStores + Cache + SnapshotView + Preflight gate |

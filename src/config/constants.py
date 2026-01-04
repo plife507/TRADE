@@ -254,7 +254,7 @@ TIMEFRAMES = {
 
 DEFAULT_TIMEFRAME = "15m"
 
-# ==================== Timeframe Groups (for IdeaCard validation) ====================
+# ==================== Timeframe Groups (for Play validation) ====================
 # These define which timeframes are valid for each role
 
 TF_GROUP_LTF = ["1m", "3m", "5m"]         # LTF (high-resolution)

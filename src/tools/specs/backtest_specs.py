@@ -104,22 +104,22 @@ SPECS = [
         "parameters": {},
         "required": [],
     },
-    # IdeaCard tools (Golden Path)
+    # Play tools (Golden Path)
     {
         "name": "backtest_list_idea_cards",
-        "description": "List all available IdeaCards for backtesting",
+        "description": "List all available Plays for backtesting",
         "category": "backtest.ideacard",
         "parameters": {
-            "idea_cards_dir": {"type": "string", "description": "Override IdeaCard directory", "optional": True},
+            "idea_cards_dir": {"type": "string", "description": "Override Play directory", "optional": True},
         },
         "required": [],
     },
     {
         "name": "backtest_preflight",
-        "description": "Run preflight check for an IdeaCard backtest (data coverage, warmup)",
+        "description": "Run preflight check for an Play backtest (data coverage, warmup)",
         "category": "backtest.ideacard",
         "parameters": {
-            "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+            "idea_card_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
             "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "start": {"type": "string", "description": "Window start datetime", "optional": True},
@@ -130,10 +130,10 @@ SPECS = [
     },
     {
         "name": "backtest_run_idea_card",
-        "description": "Run a backtest for an IdeaCard (Golden Path)",
+        "description": "Run a backtest for an Play (Golden Path)",
         "category": "backtest.ideacard",
         "parameters": {
-            "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+            "idea_card_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
             "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "start": {"type": "string", "description": "Window start datetime", "optional": True},
@@ -145,10 +145,10 @@ SPECS = [
     },
     {
         "name": "backtest_data_fix",
-        "description": "Fix data for an IdeaCard backtest (sync/heal)",
+        "description": "Fix data for an Play backtest (sync/heal)",
         "category": "backtest.ideacard",
         "parameters": {
-            "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+            "idea_card_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment", "default": "live"},
             "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "start": {"type": "string", "description": "Sync from this date", "optional": True},
@@ -162,10 +162,10 @@ SPECS = [
     },
     {
         "name": "backtest_indicators",
-        "description": "Discover indicator keys for an IdeaCard",
+        "description": "Discover indicator keys for an Play",
         "category": "backtest.ideacard",
         "parameters": {
-            "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+            "idea_card_id": {"type": "string", "description": "Play identifier"},
             "data_env": {"type": "string", "description": "Data environment", "default": "live"},
             "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "compute_values": {"type": "boolean", "description": "Compute actual values", "default": False},
@@ -174,10 +174,10 @@ SPECS = [
     },
     {
         "name": "backtest_normalize_idea_card",
-        "description": "Normalize and validate an IdeaCard YAML",
+        "description": "Normalize and validate an Play YAML",
         "category": "backtest.ideacard",
         "parameters": {
-            "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+            "idea_card_id": {"type": "string", "description": "Play identifier"},
             "idea_cards_dir": {"type": "string", "description": "Override directory", "optional": True},
             "write_in_place": {"type": "boolean", "description": "Write normalized YAML", "default": False},
         },
@@ -213,7 +213,7 @@ SPECS = [
         "description": "Run math parity audit (contract + in-memory parity)",
         "category": "backtest.audit",
         "parameters": {
-            "idea_card": {"type": "string", "description": "Path to IdeaCard YAML"},
+            "idea_card": {"type": "string", "description": "Path to Play YAML"},
             "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
             "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
             "output_dir": {"type": "string", "description": "Output directory for diffs", "optional": True},
@@ -225,7 +225,7 @@ SPECS = [
         "description": "Run snapshot plumbing parity audit (validates data flow)",
         "category": "backtest.audit",
         "parameters": {
-            "idea_card_id": {"type": "string", "description": "IdeaCard identifier"},
+            "idea_card_id": {"type": "string", "description": "Play identifier"},
             "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
             "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
             "symbol": {"type": "string", "description": "Override symbol", "optional": True},
@@ -239,7 +239,7 @@ SPECS = [
         "description": "Verify backtest artifact integrity",
         "category": "backtest.audit",
         "parameters": {
-            "idea_card_id": {"type": "string", "description": "IdeaCard ID", "optional": True},
+            "idea_card_id": {"type": "string", "description": "Play ID", "optional": True},
             "symbol": {"type": "string", "description": "Trading symbol", "optional": True},
             "run_id": {"type": "string", "description": "Specific run ID", "optional": True},
             "base_dir": {"type": "string", "description": "Base backtests directory", "optional": True},

@@ -125,7 +125,7 @@ def audit_in_memory_parity_from_feeds(
         exec_df: Exec TF DataFrame with OHLCV + computed indicators
         htf_df: Optional HTF DataFrame with OHLCV + computed indicators
         mtf_df: Optional MTF DataFrame with OHLCV + computed indicators
-        feature_specs: List of feature spec dicts (from IdeaCard or manifest)
+        feature_specs: List of feature spec dicts (from Play or manifest)
         tolerance: Max allowed absolute difference (default: 1e-8)
         
     Returns:
@@ -148,7 +148,7 @@ def audit_in_memory_parity_from_feeds(
             
             # For each feature spec, recompute and compare
             for spec in feature_specs:
-                # Handle different spec formats (IdeaCard vs manifest)
+                # Handle different spec formats (Play vs manifest)
                 if isinstance(spec, dict):
                     indicator_type = spec.get("indicator_type") or spec.get("type")
                     output_key = spec.get("output_key") or spec.get("key")
@@ -393,16 +393,16 @@ def run_in_memory_parity_for_idea_card(
     output_dir: Path | None = None,
 ) -> InMemoryParityResult:
     """
-    Run in-memory parity audit for an IdeaCard without producing backtest artifacts.
+    Run in-memory parity audit for an Play without producing backtest artifacts.
     
     This:
-    1. Loads the IdeaCard
+    1. Loads the Play
     2. Fetches historical data
     3. Builds FeatureFrames using FeatureFrameBuilder
     4. Compares computed indicators against fresh pandas_ta computation
     
     Args:
-        idea_card_path: Path to IdeaCard YAML (or idea card ID for lookup)
+        idea_card_path: Path to Play YAML (or idea card ID for lookup)
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
         output_dir: Optional output directory for diff CSV
@@ -415,14 +415,14 @@ def run_in_memory_parity_for_idea_card(
     from datetime import datetime as dt
     
     try:
-        # Use RunnerConfig to load and prepare the IdeaCard
+        # Use RunnerConfig to load and prepare the Play
         config = RunnerConfig(
             idea_card_id=idea_card_path,
             window_start=dt.fromisoformat(start_date),
             window_end=dt.fromisoformat(end_date),
         )
         
-        # Load the IdeaCard
+        # Load the Play
         idea_card = config.load_idea_card()
         symbol = idea_card.symbol_universe[0]
         
@@ -464,7 +464,7 @@ def run_in_memory_parity_for_idea_card(
                     "tf_roles": ["mtf"],
                 })
         
-        # Build the backtest engine using the IdeaCard-native engine factory
+        # Build the backtest engine using the Play-native engine factory
         # P1.2 Refactor: Use create_engine_from_idea_card() instead of legacy adapter
         from ..engine import create_engine_from_idea_card
         from ..execution_validation import compute_warmup_requirements
@@ -472,7 +472,7 @@ def run_in_memory_parity_for_idea_card(
         # Compute warmup requirements
         warmup_req = compute_warmup_requirements(idea_card)
         
-        # Create engine directly from IdeaCard
+        # Create engine directly from Play
         engine = create_engine_from_idea_card(
             idea_card=idea_card,
             window_start=config.window_start,

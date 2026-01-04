@@ -1,13 +1,13 @@
 """
-IdeaCard Backtest submenu for the CLI.
+Play Backtest submenu for the CLI.
 
-Handles IdeaCard-based backtesting operations (Golden Path):
-- List and select IdeaCards
+Handles Play-based backtesting operations (Golden Path):
+- List and select Plays
 - Run preflight checks
 - Execute backtests
 - Data fix/sync
 - View indicators
-- Normalize/validate IdeaCards
+- Normalize/validate Plays
 
 All operations call tools - no direct engine access from CLI.
 """
@@ -41,7 +41,7 @@ console = Console()
 
 
 def backtest_ideacard_menu(cli: "TradeCLI"):
-    """IdeaCard backtest submenu."""
+    """Play backtest submenu."""
     from trade_cli import (
         clear_screen, print_header, get_input, get_choice, BACK,
         print_error_below_menu, run_tool_action, run_long_action,
@@ -52,9 +52,9 @@ def backtest_ideacard_menu(cli: "TradeCLI"):
         clear_screen()
         print_header()
 
-        # Show IdeaCard info header
+        # Show Play info header
         status_line = Text()
-        status_line.append("IdeaCard Backtests ", style=f"bold {CLIColors.NEON_CYAN}")
+        status_line.append("Play Backtests ", style=f"bold {CLIColors.NEON_CYAN}")
         status_line.append("│ ", style=CLIColors.DIM_TEXT)
         status_line.append("YAML-driven strategy backtesting (Golden Path)", style=CLIColors.DIM_TEXT)
         console.print(Panel(status_line, border_style=f"dim {CLIColors.NEON_CYAN}"))
@@ -62,21 +62,21 @@ def backtest_ideacard_menu(cli: "TradeCLI"):
         menu = CLIStyles.create_menu_table()
 
         # List section
-        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.LEDGER} IdeaCards ---[/]", "")
-        menu.add_row("1", "List IdeaCards", "View all available IdeaCard configs")
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.LEDGER} Plays ---[/]", "")
+        menu.add_row("1", "List Plays", "View all available Play configs")
         menu.add_row("", "", "")
 
         # Execution section
         menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.TRADE} Execute ---[/]", "")
-        menu.add_row("2", f"[bold {CLIColors.NEON_GREEN}]Run Backtest[/]", f"[{CLIColors.NEON_GREEN}]Execute IdeaCard backtest[/]")
+        menu.add_row("2", f"[bold {CLIColors.NEON_GREEN}]Run Backtest[/]", f"[{CLIColors.NEON_GREEN}]Execute Play backtest[/]")
         menu.add_row("3", "Preflight Check", "Validate data coverage before running")
-        menu.add_row("4", "Data Fix", "Sync and heal data for IdeaCard")
+        menu.add_row("4", "Data Fix", "Sync and heal data for Play")
         menu.add_row("", "", "")
 
         # Inspection section
         menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- {CLIIcons.BOT} Inspect ---[/]", "")
-        menu.add_row("5", "View Indicators", "Show declared indicators for IdeaCard")
-        menu.add_row("6", "Normalize IdeaCard", "Validate and normalize YAML structure")
+        menu.add_row("5", "View Indicators", "Show declared indicators for Play")
+        menu.add_row("6", "Normalize Play", "Validate and normalize YAML structure")
         menu.add_row("", "", "")
 
         # Navigation
@@ -106,9 +106,9 @@ def backtest_ideacard_menu(cli: "TradeCLI"):
             return
 
 
-def _select_idea_card(prompt_text: str = "Select IdeaCard") -> str | None:
+def _select_idea_card(prompt_text: str = "Select Play") -> str | None:
     """
-    Show numbered list of IdeaCards and let user select by number.
+    Show numbered list of Plays and let user select by number.
 
     Returns:
         Selected idea_card_id or None if cancelled
@@ -116,19 +116,19 @@ def _select_idea_card(prompt_text: str = "Select IdeaCard") -> str | None:
     result = backtest_list_idea_cards_tool()
 
     if not result.success or not result.data:
-        console.print(f"[{CLIColors.NEON_RED}]Error loading IdeaCards: {result.error}[/]")
+        console.print(f"[{CLIColors.NEON_RED}]Error loading Plays: {result.error}[/]")
         return None
 
     cards = result.data.get("idea_cards", [])
 
     if not cards:
-        console.print(f"[{CLIColors.NEON_YELLOW}]No IdeaCards found in configs/plays/[/]")
+        console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in configs/plays/[/]")
         return None
 
     # Display numbered list
-    table = Table(title="Available IdeaCards", show_header=True, header_style="bold")
+    table = Table(title="Available Plays", show_header=True, header_style="bold")
     table.add_column("#", style="dim", width=4)
-    table.add_column("IdeaCard ID", style=CLIColors.NEON_CYAN)
+    table.add_column("Play ID", style=CLIColors.NEON_CYAN)
 
     for i, card_id in enumerate(cards, 1):
         table.add_row(str(i), card_id)
@@ -194,11 +194,11 @@ def _get_date_range() -> tuple:
 
 
 def _list_idea_cards(cli: "TradeCLI"):
-    """List all available IdeaCards."""
+    """List all available Plays."""
     from trade_cli import run_tool_action, print_data_result
 
     console.print()
-    console.print(f"[{CLIColors.NEON_CYAN}]Loading IdeaCards...[/]")
+    console.print(f"[{CLIColors.NEON_CYAN}]Loading Plays...[/]")
 
     result = backtest_list_idea_cards_tool()
 
@@ -207,13 +207,13 @@ def _list_idea_cards(cli: "TradeCLI"):
         directory = result.data.get("directory", "")
 
         console.print()
-        console.print(f"[{CLIColors.NEON_GREEN}]Found {len(cards)} IdeaCards in {directory}[/]")
+        console.print(f"[{CLIColors.NEON_GREEN}]Found {len(cards)} Plays in {directory}[/]")
         console.print()
 
         if cards:
             table = Table(show_header=True, header_style="bold")
             table.add_column("#", style="dim", width=4)
-            table.add_column("IdeaCard ID", style=CLIColors.NEON_CYAN)
+            table.add_column("Play ID", style=CLIColors.NEON_CYAN)
 
             for i, card_id in enumerate(cards, 1):
                 table.add_row(str(i), card_id)
@@ -227,13 +227,13 @@ def _list_idea_cards(cli: "TradeCLI"):
 
 
 def _run_ideacard_backtest(cli: "TradeCLI"):
-    """Run a full IdeaCard backtest."""
+    """Run a full Play backtest."""
     from trade_cli import run_long_action
 
     console.print()
 
-    # Select IdeaCard
-    idea_card_id = _select_idea_card("Select IdeaCard to run")
+    # Select Play
+    idea_card_id = _select_idea_card("Select Play to run")
     if not idea_card_id:
         return
 
@@ -245,7 +245,7 @@ def _run_ideacard_backtest(cli: "TradeCLI"):
     # Confirm
     console.print()
     console.print(f"[{CLIColors.NEON_CYAN}]Running backtest:[/]")
-    console.print(f"  IdeaCard: [{CLIColors.NEON_GREEN}]{idea_card_id}[/]")
+    console.print(f"  Play: [{CLIColors.NEON_GREEN}]{idea_card_id}[/]")
     console.print(f"  Window: {start_date.date()} to {end_date.date()}")
     console.print()
 
@@ -299,13 +299,13 @@ def _run_ideacard_backtest(cli: "TradeCLI"):
 
 
 def _preflight_check(cli: "TradeCLI"):
-    """Run preflight check for an IdeaCard."""
+    """Run preflight check for an Play."""
     from trade_cli import run_long_action
 
     console.print()
 
-    # Select IdeaCard
-    idea_card_id = _select_idea_card("Select IdeaCard for preflight")
+    # Select Play
+    idea_card_id = _select_idea_card("Select Play for preflight")
     if not idea_card_id:
         return
 
@@ -364,13 +364,13 @@ def _preflight_check(cli: "TradeCLI"):
 
 
 def _data_fix(cli: "TradeCLI"):
-    """Run data fix/sync for an IdeaCard."""
+    """Run data fix/sync for an Play."""
     from trade_cli import run_long_action
 
     console.print()
 
-    # Select IdeaCard
-    idea_card_id = _select_idea_card("Select IdeaCard for data fix")
+    # Select Play
+    idea_card_id = _select_idea_card("Select Play for data fix")
     if not idea_card_id:
         return
 
@@ -406,11 +406,11 @@ def _data_fix(cli: "TradeCLI"):
 
 
 def _view_indicators(cli: "TradeCLI"):
-    """View indicators for an IdeaCard."""
+    """View indicators for an Play."""
     console.print()
 
-    # Select IdeaCard
-    idea_card_id = _select_idea_card("Select IdeaCard to inspect")
+    # Select Play
+    idea_card_id = _select_idea_card("Select Play to inspect")
     if not idea_card_id:
         return
 
@@ -442,11 +442,11 @@ def _view_indicators(cli: "TradeCLI"):
 
 
 def _normalize_ideacard(cli: "TradeCLI"):
-    """Normalize and validate an IdeaCard YAML."""
+    """Normalize and validate an Play YAML."""
     console.print()
 
-    # Select IdeaCard
-    idea_card_id = _select_idea_card("Select IdeaCard to normalize")
+    # Select Play
+    idea_card_id = _select_idea_card("Select Play to normalize")
     if not idea_card_id:
         return
 
@@ -457,7 +457,7 @@ def _normalize_ideacard(cli: "TradeCLI"):
     )
 
     console.print()
-    console.print(f"[{CLIColors.NEON_CYAN}]Normalizing IdeaCard...[/]")
+    console.print(f"[{CLIColors.NEON_CYAN}]Normalizing Play...[/]")
 
     result = backtest_idea_card_normalize_tool(
         idea_card_id=idea_card_id,
@@ -466,7 +466,7 @@ def _normalize_ideacard(cli: "TradeCLI"):
 
     console.print()
     if result.success:
-        console.print(f"[{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} IdeaCard is valid![/]")
+        console.print(f"[{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} Play is valid![/]")
 
         data = result.data or {}
         if "warnings" in data and data["warnings"]:

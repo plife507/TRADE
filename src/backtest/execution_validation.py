@@ -1,8 +1,8 @@
 """
-Execution Validation: IdeaCard → Engine Contract Validation.
+Execution Validation: Play → Engine Contract Validation.
 
-Phase 8 implementation for validating IdeaCards before execution:
-- Gate 8.0: IdeaCard execution contract (hashing, validation)
+Phase 8 implementation for validating Plays before execution:
+- Gate 8.0: Play execution contract (hashing, validation)
 - Gate 8.1: Feature reference extraction and validation
 - Gate 8.2: Warmup window definition
 - Gate 8.4: Pre-evaluation validation gates
@@ -22,7 +22,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .play import IdeaCard, TFConfig
+    from .play import Play, TFConfig
     from .rules.strategy_blocks import Block
 
 # Note: IndicatorType enum removed in Registry Consolidation Phase 2
@@ -43,18 +43,18 @@ EARLIEST_BYBIT_DATE_MONTH = 11  # November 2018
 
 
 # =============================================================================
-# Gate 8.0: IdeaCard Execution Contract
+# Gate 8.0: Play Execution Contract
 # =============================================================================
 
-def compute_idea_card_hash(idea_card: "IdeaCard") -> str:
+def compute_idea_card_hash(idea_card: "Play") -> str:
     """
-    Compute a deterministic hash for an IdeaCard.
+    Compute a deterministic hash for an Play.
     
-    Identical IdeaCards produce identical hashes.
+    Identical Plays produce identical hashes.
     Hash is based on all execution-relevant fields.
     
     Args:
-        idea_card: The IdeaCard to hash
+        idea_card: The Play to hash
         
     Returns:
         SHA256 hash as hex string (first 16 chars for readability)
@@ -96,8 +96,8 @@ class ValidationIssue:
 
 
 @dataclass
-class IdeaCardValidationResult:
-    """Result of IdeaCard validation."""
+class PlayValidationResult:
+    """Result of Play validation."""
     is_valid: bool
     issues: list[ValidationIssue] = field(default_factory=list)
     hash: str | None = None
@@ -122,11 +122,11 @@ class IdeaCardValidationResult:
         }
 
 
-def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResult:
+def validate_idea_card_contract(idea_card: "Play") -> PlayValidationResult:
     """
-    Validate IdeaCard execution contract.
+    Validate Play execution contract.
     
-    Gate 8.0: Ensures IdeaCard is a valid, deterministic execution unit.
+    Gate 8.0: Ensures Play is a valid, deterministic execution unit.
     
     Checks:
     - Required fields are present
@@ -135,10 +135,10 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
     - Hash is computable
     
     Args:
-        idea_card: IdeaCard to validate
+        idea_card: Play to validate
 
     Returns:
-        IdeaCardValidationResult with issues (if any)
+        PlayValidationResult with issues (if any)
     """
     issues: list[ValidationIssue] = []
 
@@ -147,21 +147,21 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_ID",
-            message="IdeaCard.id is required",
+            message="Play.id is required",
         ))
     
     if not idea_card.version:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_VERSION",
-            message="IdeaCard.version is required",
+            message="Play.version is required",
         ))
     
     if not idea_card.symbol_universe:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_SYMBOLS",
-            message="IdeaCard.symbol_universe is required (at least one symbol)",
+            message="Play.symbol_universe is required (at least one symbol)",
         ))
     
     # Exec TF is required
@@ -178,7 +178,7 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
             severity=ValidationSeverity.ERROR,
             code="MISSING_ACCOUNT",
             message=(
-                "IdeaCard.account section is required. "
+                "Play.account section is required. "
                 "Specify account.starting_equity_usdt and account.max_leverage."
             ),
         ))
@@ -206,7 +206,7 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
         issues.append(ValidationIssue(
             severity=ValidationSeverity.WARNING,
             code="NO_BLOCKS",
-            message="No blocks defined - IdeaCard cannot generate signals",
+            message="No blocks defined - Play cannot generate signals",
         ))
     
     # Risk model should exist
@@ -226,12 +226,12 @@ def validate_idea_card_contract(idea_card: "IdeaCard") -> IdeaCardValidationResu
             issues.append(ValidationIssue(
                 severity=ValidationSeverity.ERROR,
                 code="HASH_FAILED",
-                message=f"Failed to compute IdeaCard hash: {e}",
+                message=f"Failed to compute Play hash: {e}",
             ))
     
     is_valid = not any(i.severity == ValidationSeverity.ERROR for i in issues)
     
-    return IdeaCardValidationResult(
+    return PlayValidationResult(
         is_valid=is_valid,
         issues=issues,
         hash=card_hash,
@@ -250,14 +250,14 @@ class FeatureReference:
     location: str  # e.g., "blocks[0].cases[0].when"
 
 
-def extract_rule_feature_refs(idea_card: "IdeaCard") -> list[FeatureReference]:
+def extract_rule_feature_refs(idea_card: "Play") -> list[FeatureReference]:
     """
-    Extract all feature references from IdeaCard blocks.
+    Extract all feature references from Play blocks.
 
     Gate 8.1: Finds all feature_id references in block expressions.
 
     Args:
-        idea_card: IdeaCard with blocks
+        idea_card: Play with blocks
 
     Returns:
         List of FeatureReference objects
@@ -329,19 +329,19 @@ OHLCV_COLUMNS = {"open", "high", "low", "close", "volume", "timestamp"}
 BUILTIN_KEYS = {"mark_price"}
 
 
-def get_declared_features_by_role(idea_card: "IdeaCard") -> dict[str, set[str]]:
+def get_declared_features_by_role(idea_card: "Play") -> dict[str, set[str]]:
     """
     Get all declared feature keys organized by TF role.
 
     OHLCV columns (open, high, low, close, volume) are always implicitly available.
     Built-in keys (mark_price) are also always available without declaration.
 
-    With the new IdeaCard schema, features are stored in a flat list with each
+    With the new Play schema, features are stored in a flat list with each
     Feature having its own tf attribute. We use the feature_registry to get
     all declared feature keys.
 
     Args:
-        idea_card: IdeaCard with features list
+        idea_card: Play with features list
 
     Returns:
         Dict mapping "exec" -> set of all feature keys (including OHLCV and built-in)
@@ -367,9 +367,9 @@ def get_declared_features_by_role(idea_card: "IdeaCard") -> dict[str, set[str]]:
     return {"exec": keys}
 
 
-def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResult:
+def validate_idea_card_features(idea_card: "Play") -> PlayValidationResult:
     """
-    Validate all feature references in IdeaCard.
+    Validate all feature references in Play.
     
     Gate 8.1: Ensures all referenced features are declared.
     
@@ -379,10 +379,10 @@ def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResu
     - No unknown indicator types
     
     Args:
-        idea_card: IdeaCard to validate
+        idea_card: Play to validate
 
     Returns:
-        IdeaCardValidationResult with issues (if any)
+        PlayValidationResult with issues (if any)
     """
     issues: list[ValidationIssue] = []
 
@@ -413,7 +413,7 @@ def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResu
     
     is_valid = not any(i.severity == ValidationSeverity.ERROR for i in issues)
     
-    return IdeaCardValidationResult(
+    return PlayValidationResult(
         is_valid=is_valid,
         issues=issues,
     )
@@ -426,7 +426,7 @@ def validate_idea_card_features(idea_card: "IdeaCard") -> IdeaCardValidationResu
 @dataclass
 class WarmupRequirements:
     """
-    Warmup requirements for an IdeaCard.
+    Warmup requirements for an Play.
     
     Contains two distinct concepts:
     - warmup/lookback: Bars needed for data fetch and indicator computation
@@ -464,18 +464,18 @@ class WarmupRequirements:
         }
 
 
-def _compute_structure_warmup(idea_card: "IdeaCard") -> int:
+def _compute_structure_warmup(idea_card: "Play") -> int:
     """
     Compute warmup needed for market structure features.
 
-    In the new IdeaCard schema, structures are part of the features list
+    In the new Play schema, structures are part of the features list
     with type='structure' and structure_type indicating the detector type.
 
     Warmup formulas are stored in STRUCTURE_WARMUP_FORMULAS registry.
     See: src/backtest/incremental/registry.py
 
     Args:
-        idea_card: IdeaCard with features list
+        idea_card: Play with features list
 
     Returns:
         Maximum warmup bars needed for structure computation
@@ -514,18 +514,18 @@ def _compute_structure_warmup(idea_card: "IdeaCard") -> int:
     return max_structure_warmup
 
 
-def compute_warmup_requirements(idea_card: "IdeaCard") -> WarmupRequirements:
+def compute_warmup_requirements(idea_card: "Play") -> WarmupRequirements:
     """
-    Compute canonical warmup requirements for an IdeaCard.
+    Compute canonical warmup requirements for an Play.
 
     Gate 8.2: Warmup = max(feature_warmups, structure_warmup)
 
-    With the new IdeaCard schema, features are stored in a flat list with each
+    With the new Play schema, features are stored in a flat list with each
     Feature having its own tf attribute. We use the feature_registry to compute
     warmup requirements.
 
     Args:
-        idea_card: IdeaCard to analyze
+        idea_card: Play to analyze
 
     Returns:
         WarmupRequirements with per-TF warmup and delay
@@ -601,12 +601,12 @@ class PreEvaluationStatus:
 
 
 def validate_pre_evaluation(
-    idea_card: "IdeaCard",
+    idea_card: "Play",
     bar_counts: dict[str, int],  # role -> current bar count
     warmup_requirements: WarmupRequirements | None = None,
 ) -> PreEvaluationStatus:
     """
-    Validate IdeaCard is ready for evaluation at current bar.
+    Validate Play is ready for evaluation at current bar.
     
     Gate 8.4: Pre-evaluation validation.
     
@@ -615,7 +615,7 @@ def validate_pre_evaluation(
     - All required features are available
     
     Args:
-        idea_card: IdeaCard being evaluated
+        idea_card: Play being evaluated
         bar_counts: Current bar count per TF role
         warmup_requirements: Pre-computed warmup (or computed if None)
         
@@ -656,19 +656,19 @@ def validate_pre_evaluation(
 # Combined Validation
 # =============================================================================
 
-def validate_idea_card_full(idea_card: "IdeaCard") -> IdeaCardValidationResult:
+def validate_idea_card_full(idea_card: "Play") -> PlayValidationResult:
     """
-    Run all validation gates on an IdeaCard.
+    Run all validation gates on an Play.
     
     Combines:
     - Gate 8.0: Contract validation
     - Gate 8.1: Feature validation
     
     Args:
-        idea_card: IdeaCard to validate
+        idea_card: Play to validate
         
     Returns:
-        Combined IdeaCardValidationResult
+        Combined PlayValidationResult
     """
     all_issues: list[ValidationIssue] = []
     
@@ -683,7 +683,7 @@ def validate_idea_card_full(idea_card: "IdeaCard") -> IdeaCardValidationResult:
     
     is_valid = not any(i.severity == ValidationSeverity.ERROR for i in all_issues)
     
-    return IdeaCardValidationResult(
+    return PlayValidationResult(
         is_valid=is_valid,
         issues=all_issues,
         hash=contract_result.hash,
@@ -691,16 +691,16 @@ def validate_idea_card_full(idea_card: "IdeaCard") -> IdeaCardValidationResult:
 
 
 # =============================================================================
-# Gate 8.3: IdeaCard → SystemConfig Adapter (DELETED - P1.2 Refactor)
+# Gate 8.3: Play → SystemConfig Adapter (DELETED - P1.2 Refactor)
 # =============================================================================
-# IdeaCardSystemConfig and adapt_idea_card_to_system_config have been deleted.
-# Engine now accepts IdeaCard directly via create_engine_from_idea_card().
+# PlaySystemConfig and adapt_idea_card_to_system_config have been deleted.
+# Engine now accepts Play directly via create_engine_from_idea_card().
 # See: src/backtest/engine.py
 # =============================================================================
 
 
 # =============================================================================
-# Gate 8.3: IdeaCard Signal Evaluator Interface
+# Gate 8.3: Play Signal Evaluator Interface
 # =============================================================================
 
 class SignalDecision(str, Enum):
@@ -713,7 +713,7 @@ class SignalDecision(str, Enum):
 
 @dataclass
 class EvaluationResult:
-    """Result of IdeaCard signal evaluation."""
+    """Result of Play signal evaluation."""
     decision: SignalDecision
     reason: str = ""
     matched_rule_index: int | None = None
@@ -734,9 +734,9 @@ class EvaluationResult:
         }
 
 
-class IdeaCardSignalEvaluator:
+class PlaySignalEvaluator:
     """
-    Evaluates IdeaCard blocks against snapshot state.
+    Evaluates Play blocks against snapshot state.
 
     Gate 8.3: Interface for deterministic signal evaluation.
 
@@ -747,21 +747,21 @@ class IdeaCardSignalEvaluator:
     4. Returns EvaluationResult
     """
 
-    def __init__(self, idea_card: "IdeaCard"):
+    def __init__(self, idea_card: "Play"):
         """
-        Initialize evaluator with IdeaCard.
+        Initialize evaluator with Play.
 
         Args:
-            idea_card: The IdeaCard containing blocks
+            idea_card: The Play containing blocks
 
         Raises:
-            ValueError: If IdeaCard is invalid
+            ValueError: If Play is invalid
         """
         # Validate
         validation = validate_idea_card_full(idea_card)
         if not validation.is_valid:
             errors = [i.message for i in validation.errors]
-            raise ValueError(f"IdeaCard validation failed: {'; '.join(errors)}")
+            raise ValueError(f"Play validation failed: {'; '.join(errors)}")
 
         self.idea_card = idea_card
         self.warmup = compute_warmup_requirements(idea_card)
@@ -794,7 +794,7 @@ class IdeaCardSignalEvaluator:
         # No blocks defined
         return EvaluationResult(
             decision=SignalDecision.NO_ACTION,
-            reason="No blocks defined in IdeaCard",
+            reason="No blocks defined in Play",
         )
 
     def _evaluate_blocks(

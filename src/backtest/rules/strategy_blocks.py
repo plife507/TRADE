@@ -1,5 +1,5 @@
 """
-Strategy Blocks: Case-based control flow for IdeaCard.
+Strategy Blocks: Case-based control flow for Play.
 
 Provides deterministic, first-match execution semantics for trading logic.
 

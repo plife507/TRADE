@@ -4,7 +4,7 @@ Deterministic hashing utilities for backtest artifacts.
 Provides hash functions for:
 - Trades list (for replay determinism)
 - Equity curve (for replay determinism)
-- IdeaCard (for config identity)
+- Play (for config identity)
 
 All hash functions produce deterministic, reproducible hashes
 from the same input data across runs.
@@ -90,7 +90,7 @@ def compute_run_hash(
     Args:
         trades_hash: Hash of trades list
         equity_hash: Hash of equity curve
-        idea_card_hash: Optional hash of IdeaCard config
+        idea_card_hash: Optional hash of Play config
         
     Returns:
         Combined SHA256 hash (first 16 chars)
@@ -359,7 +359,7 @@ def compute_input_hash(
     Used for folder naming - same inputs = same folder.
     
     Args:
-        idea_card_hash: Hash of IdeaCard config
+        idea_card_hash: Hash of Play config
         window_start: Window start as ISO string (YYYY-MM-DD)
         window_end: Window end as ISO string (YYYY-MM-DD)
         symbols: List of symbols

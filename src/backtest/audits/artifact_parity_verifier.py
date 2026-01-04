@@ -186,7 +186,7 @@ def find_latest_run(
     
     Args:
         base_dir: Base backtests directory
-        idea_card_id: IdeaCard ID
+        idea_card_id: Play ID
         symbol: Trading symbol
         
     Returns:
@@ -225,7 +225,7 @@ def verify_idea_card_parity(
     
     Args:
         base_dir: Base backtests directory (default: Path("backtests"))
-        idea_card_id: IdeaCard ID
+        idea_card_id: Play ID
         symbol: Trading symbol
         run_id: Specific run ID (e.g., "run-001") or None for latest
         float_tolerance: Tolerance for float comparison

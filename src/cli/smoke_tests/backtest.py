@@ -26,13 +26,13 @@ console = Console()
 
 def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> int:
     """
-    Run backtest smoke test using IdeaCard-based wrapper (golden path).
+    Run backtest smoke test using Play-based wrapper (golden path).
 
     This is the canonical smoke test that uses the same CLI wrapper
     that `trade_cli.py backtest run --smoke` uses.
 
     Args:
-        idea_card_id: IdeaCard identifier to test
+        idea_card_id: Play identifier to test
         fresh_db: Whether to wipe DB and rebuild data first
 
     Returns:
@@ -40,7 +40,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     """
     failures = 0
 
-    console.print(f"\n[bold cyan]IdeaCard Smoke Test: {idea_card_id}[/]")
+    console.print(f"\n[bold cyan]Play Smoke Test: {idea_card_id}[/]")
 
     # Step 2: Run preflight check (Phase A gate)
     console.print(f"\n[bold cyan]Step 2: Preflight Check (Phase A Gate)[/]")
@@ -233,12 +233,12 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     console.print(f"[bold magenta]{'='*60}[/]")
 
     console.print(f"\n[bold]Summary:[/]")
-    console.print(f"  IdeaCard: {idea_card_id}")
+    console.print(f"  Play: {idea_card_id}")
     console.print(f"  Fresh DB: {fresh_db}")
     console.print(f"  Failures: {failures}")
 
     if failures == 0:
-        console.print(f"\n[bold green]OK BACKTEST ENGINE VERIFIED (IdeaCard Path)[/]")
+        console.print(f"\n[bold green]OK BACKTEST ENGINE VERIFIED (Play Path)[/]")
     else:
         console.print(f"\n[bold red]FAIL {failures} TEST(S) FAILED[/]")
 
@@ -247,10 +247,10 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
 
 def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
     """
-    Run the backtest smoke test using IdeaCard-based workflow.
+    Run the backtest smoke test using Play-based workflow.
 
     Tests the backtest engine end-to-end:
-    1. List available IdeaCards
+    1. List available Plays
     2. Run preflight check (env/symbol/tf/coverage diagnostics)
     3. Optionally prepare data (with fresh_db option)
     4. Run backtest with --smoke mode
@@ -258,7 +258,7 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
 
     Args:
         fresh_db: Whether to wipe DB and rebuild data
-        idea_card_id: IdeaCard to test (defaults to env var BACKTEST_SMOKE_IDEA_CARD)
+        idea_card_id: Play to test (defaults to env var BACKTEST_SMOKE_IDEA_CARD)
 
     Returns:
         Number of failures
@@ -272,23 +272,23 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
     failures = 0
 
     # =============================
-    # GOLDEN PATH: Try IdeaCard first
+    # GOLDEN PATH: Try Play first
     # =============================
 
-    console.print(f"\n[bold cyan]Step 1: Check for IdeaCards (Golden Path)[/]")
+    console.print(f"\n[bold cyan]Step 1: Check for Plays (Golden Path)[/]")
 
-    # List available IdeaCards
+    # List available Plays
     result = backtest_list_idea_cards_tool()
     idea_cards = []
     if result.success and result.data:
         idea_cards = result.data.get("idea_cards", [])
-        console.print(f"  [green]OK[/] Found {len(idea_cards)} IdeaCards")
+        console.print(f"  [green]OK[/] Found {len(idea_cards)} Plays")
         for card in idea_cards[:5]:
             console.print(f"    - {card}")
     else:
-        console.print(f"  [yellow]WARN[/] No IdeaCards found: {result.error}")
+        console.print(f"  [yellow]WARN[/] No Plays found: {result.error}")
 
-    # Determine IdeaCard to test
+    # Determine Play to test
     if idea_card_id is None:
         idea_card_id = os.environ.get("BACKTEST_SMOKE_IDEA_CARD")
 
@@ -297,20 +297,20 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
         valid_cards = [c for c in idea_cards if c.startswith("T")]
         idea_card_id = valid_cards[0] if valid_cards else idea_cards[0]
 
-    # If we have an IdeaCard, use the golden path
+    # If we have an Play, use the golden path
     if idea_card_id:
-        console.print(f"\n  [bold]Using IdeaCard: {idea_card_id}[/]")
+        console.print(f"\n  [bold]Using Play: {idea_card_id}[/]")
         return _run_backtest_smoke_idea_card(idea_card_id, fresh_db)
 
-    # No IdeaCards found - fail
-    console.print(f"\n[bold red]FAIL[/] No IdeaCards found in configs/plays/")
-    console.print(f"[dim]Create an IdeaCard YAML file or set BACKTEST_SMOKE_IDEA_CARD env var[/]")
+    # No Plays found - fail
+    console.print(f"\n[bold red]FAIL[/] No Plays found in configs/plays/")
+    console.print(f"[dim]Create an Play YAML file or set BACKTEST_SMOKE_IDEA_CARD env var[/]")
     return 1
 
 
 def run_backtest_mixed_smoke() -> int:
     """
-    Run backtest smoke test with validation IdeaCards.
+    Run backtest smoke test with validation Plays.
 
     Tests all validation cards in configs/plays/_validation/:
     - V_60-V_62: 1m evaluation loop (mark_price, zone touch, entry timing)
@@ -417,7 +417,7 @@ def run_phase6_backtest_smoke() -> int:
 
     failures = 0
 
-    # Test IdeaCards for Phase 6 - progressive validation cards
+    # Test Plays for Phase 6 - progressive validation cards
     WARMUP_MATRIX_CARD = "T03_multi_indicator"  # Single TF with multiple indicators
     MTF_ALIGNMENT_CARD = "T09_mtf_three"  # Full MTF with 3 timeframes
     TEST_SYMBOL = "BTCUSDT"
@@ -485,7 +485,7 @@ def run_phase6_backtest_smoke() -> int:
             failures += 1
 
     except FileNotFoundError as e:
-        console.print(f"  [yellow]SKIP[/] IdeaCard not found: {e}")
+        console.print(f"  [yellow]SKIP[/] Play not found: {e}")
     except Exception as e:
         console.print(f"  [red]FAIL[/] Preflight error: {e}")
         traceback.print_exc()
@@ -540,16 +540,16 @@ def run_phase6_backtest_smoke() -> int:
             console.print(f"  [yellow]WARN[/] No data in data-fix result")
 
     except FileNotFoundError as e:
-        console.print(f"  [yellow]SKIP[/] IdeaCard not found: {e}")
+        console.print(f"  [yellow]SKIP[/] Play not found: {e}")
     except Exception as e:
         console.print(f"  [red]FAIL[/] Data-fix error: {e}")
         traceback.print_exc()
         failures += 1
 
     # =========================================================================
-    # TEST 3: MTF Alignment IdeaCard validation
+    # TEST 3: MTF Alignment Play validation
     # =========================================================================
-    console.print(f"\n[bold cyan]TEST 3: MTF Alignment IdeaCard[/]")
+    console.print(f"\n[bold cyan]TEST 3: MTF Alignment Play[/]")
 
     try:
         from ...backtest.play import load_idea_card
@@ -559,7 +559,7 @@ def run_phase6_backtest_smoke() -> int:
         validation = validate_idea_card_full(idea_card)
 
         if validation.is_valid:
-            console.print(f"  [green]OK[/] MTF IdeaCard validates")
+            console.print(f"  [green]OK[/] MTF Play validates")
             console.print(f"      exec_tf: {idea_card.exec_tf}")
             console.print(f"      mtf: {idea_card.mtf}")
             console.print(f"      htf: {idea_card.htf}")
@@ -579,15 +579,15 @@ def run_phase6_backtest_smoke() -> int:
             else:
                 console.print(f"  [yellow]WARN[/] Same delay bars across all roles")
         else:
-            console.print(f"  [red]FAIL[/] MTF IdeaCard validation failed")
+            console.print(f"  [red]FAIL[/] MTF Play validation failed")
             for err in validation.errors:
                 console.print(f"      - {err.message}")
             failures += 1
 
     except FileNotFoundError as e:
-        console.print(f"  [yellow]SKIP[/] MTF IdeaCard not found: {e}")
+        console.print(f"  [yellow]SKIP[/] MTF Play not found: {e}")
     except Exception as e:
-        console.print(f"  [red]FAIL[/] MTF IdeaCard error: {e}")
+        console.print(f"  [red]FAIL[/] MTF Play error: {e}")
         traceback.print_exc()
         failures += 1
 

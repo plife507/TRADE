@@ -522,21 +522,21 @@ class SystemConfig:
     # Data build settings
     data_build: DataBuildConfig = field(default_factory=DataBuildConfig)
 
-    # IdeaCard-declared warmup bars per TF role (exec/htf/mtf)
+    # Play-declared warmup bars per TF role (exec/htf/mtf)
     # This is the CANONICAL warmup source - engine MUST use this, not recompute
     # MUST NOT be empty - engine will fail loud if missing (no fallback path)
     warmup_bars_by_role: dict[str, int] = field(default_factory=dict)
 
-    # IdeaCard-declared delay bars per TF role (exec/htf/mtf)
+    # Play-declared delay bars per TF role (exec/htf/mtf)
     # Delay = bars to skip at evaluation start (no-lookahead guarantee)
-    # Engine MUST fail loud if this is missing when IdeaCard declares market_structure
+    # Engine MUST fail loud if this is missing when Play declares market_structure
     delay_bars_by_role: dict[str, int] = field(default_factory=dict)
 
-    # IdeaCard feature specs by role (exec/htf/mtf)
+    # Play feature specs by role (exec/htf/mtf)
     # Required for indicator computation - no legacy params support
     feature_specs_by_role: dict[str, list[Any]] = field(default_factory=dict)
 
-    # IdeaCard required indicators by role (exec/htf/mtf)
+    # Play required indicators by role (exec/htf/mtf)
     # Used by find_first_valid_bar to avoid requiring mutually exclusive outputs
     # (e.g., PSAR long/short or SuperTrend long/short)
     required_indicators_by_role: dict[str, list[str]] = field(default_factory=dict)
@@ -545,7 +545,7 @@ class SystemConfig:
     # Feature Registry Architecture (replaces role-based approach)
     # ==========================================================================
 
-    # FeatureRegistry from IdeaCard (unified indicator/structure access)
+    # FeatureRegistry from Play (unified indicator/structure access)
     # When set, this is the canonical source for features, warmup, and TFs
     feature_registry: "FeatureRegistry | None" = None
 
@@ -805,7 +805,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     """
     Load a system configuration from YAML.
     
-    DEPRECATED: YAML SystemConfig is deprecated. Use IdeaCard for backtesting.
+    DEPRECATED: YAML SystemConfig is deprecated. Use Play for backtesting.
     
     This function exists for legacy compatibility. New backtests should use:
         python trade_cli.py backtest run --idea-card <card_id> --start <date> --end <date>
@@ -824,7 +824,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     import warnings
     warnings.warn(
         f"YAML SystemConfig '{system_id}' is deprecated. "
-        "Migrate to IdeaCard YAML format at configs/plays/. "
+        "Migrate to Play YAML format at configs/plays/. "
         "See docs/strategy_factory/STRATEGY_FACTORY.md for migration guide.",
         DeprecationWarning,
         stacklevel=2
@@ -913,7 +913,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     
     # NOTE: warmup_bars_by_role is NOT populated from YAML.
     # Engine will fail loud with MISSING_WARMUP_CONFIG if you try to run a backtest.
-    # This is intentional - YAML SystemConfig is deprecated, use IdeaCard instead.
+    # This is intentional - YAML SystemConfig is deprecated, use Play instead.
     config = SystemConfig(
         system_id=raw.get("system_id", system_id),
         symbol=raw.get("symbol", ""),

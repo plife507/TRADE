@@ -1,7 +1,7 @@
 """
-IdeaCard: Declarative strategy specification with Feature Registry.
+Play: Declarative strategy specification with Feature Registry.
 
-An IdeaCard is a self-contained, declarative configuration that defines:
+An Play is a self-contained, declarative configuration that defines:
 - What features (indicators + structures) the strategy needs, on any timeframe
 - What position policy to follow (long_only, short_only, long_short)
 - Entry/exit rules (signal logic referencing features by ID)
@@ -371,15 +371,15 @@ class RiskModel:
 
 
 # =============================================================================
-# IdeaCard
+# Play
 # =============================================================================
 
 @dataclass
-class IdeaCard:
+class Play:
     """
     Complete, self-contained strategy specification with Feature Registry.
 
-    An IdeaCard declares:
+    An Play declares:
     - Identity (id, version)
     - Account config (starting equity, leverage, fees) - REQUIRED
     - Scope (symbols)
@@ -423,13 +423,13 @@ class IdeaCard:
     _registry: FeatureRegistry | None = field(default=None, repr=False)
 
     def __post_init__(self):
-        """Validate the IdeaCard."""
+        """Validate the Play."""
         errors = self.validate()
         if errors:
-            raise ValueError(f"Invalid IdeaCard: {'; '.join(errors)}")
+            raise ValueError(f"Invalid Play: {'; '.join(errors)}")
 
     def validate(self) -> list[str]:
-        """Validate the IdeaCard."""
+        """Validate the Play."""
         errors = []
 
         if not self.id:
@@ -524,7 +524,7 @@ class IdeaCard:
         return result
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "IdeaCard":
+    def from_dict(cls, d: dict[str, Any]) -> "Play":
         """Create from dict."""
         # Parse account config
         account_dict = d.get("account")
@@ -576,16 +576,16 @@ class IdeaCard:
 IDEA_CARDS_DIR = Path(__file__).parent.parent.parent / "configs" / "plays"
 
 
-def load_idea_card(idea_card_id: str, base_dir: Path | None = None) -> IdeaCard:
+def load_idea_card(idea_card_id: str, base_dir: Path | None = None) -> Play:
     """
-    Load an IdeaCard from YAML file.
+    Load an Play from YAML file.
 
     Args:
         idea_card_id: Identifier (filename without .yml)
         base_dir: Optional base directory
 
     Returns:
-        Validated IdeaCard instance
+        Validated Play instance
     """
     search_dir = base_dir or IDEA_CARDS_DIR
     search_paths = [
@@ -607,7 +607,7 @@ def load_idea_card(idea_card_id: str, base_dir: Path | None = None) -> IdeaCard:
     if not path:
         available = list_idea_cards(search_dir)
         raise FileNotFoundError(
-            f"IdeaCard '{idea_card_id}' not found in {search_dir}. Available: {available}"
+            f"Play '{idea_card_id}' not found in {search_dir}. Available: {available}"
         )
 
     with open(path, "r", encoding="utf-8") as f:
@@ -616,11 +616,11 @@ def load_idea_card(idea_card_id: str, base_dir: Path | None = None) -> IdeaCard:
     if not raw:
         raise ValueError(f"Empty or invalid YAML in {path}")
 
-    return IdeaCard.from_dict(raw)
+    return Play.from_dict(raw)
 
 
 def list_idea_cards(base_dir: Path | None = None) -> list[str]:
-    """List all available IdeaCard files."""
+    """List all available Play files."""
     search_dir = base_dir or IDEA_CARDS_DIR
 
     if not search_dir.exists():

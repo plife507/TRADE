@@ -1,5 +1,5 @@
 """
-Rule evaluation module for IdeaCard conditions.
+Rule evaluation module for Play conditions.
 
 Stage 4c: Compiled reference resolver + strict operator semantics.
 

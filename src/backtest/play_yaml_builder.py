@@ -1,7 +1,7 @@
 """
-IdeaCard YAML Builder: Build-time validation and normalization.
+Play YAML Builder: Build-time validation and normalization.
 
-This module provides build-time validation for IdeaCard YAML files:
+This module provides build-time validation for Play YAML files:
 - Validates indicator types are supported (via IndicatorRegistry)
 - Validates params are accepted by each indicator
 - Validates all feature references use expanded keys (not base keys)
@@ -19,7 +19,7 @@ Key Design (per user specification):
             raise UNDECLARED_FEATURE
 
 Agent Rule:
-    Agents may only generate IdeaCards through `backtest idea-card-normalize`
+    Agents may only generate Plays through `backtest idea-card-normalize`
     and must refuse to write YAML if normalization fails.
 """
 
@@ -83,7 +83,7 @@ class ValidationError:
 
 @dataclass
 class ValidationResult:
-    """Result of IdeaCard YAML validation."""
+    """Result of Play YAML validation."""
     is_valid: bool
     errors: list[ValidationError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -202,7 +202,7 @@ def build_all_scope_mappings(
     Build scope mappings for all tf_configs.
     
     Args:
-        idea_card_dict: The raw IdeaCard dict from YAML
+        idea_card_dict: The raw Play dict from YAML
         registry: IndicatorRegistry instance
         
     Returns:
@@ -296,7 +296,7 @@ def validate_signal_rules(
     Validate all feature references in signal_rules.
     
     Args:
-        idea_card_dict: The raw IdeaCard dict
+        idea_card_dict: The raw Play dict
         all_mappings: All scope mappings
         
     Returns:
@@ -368,7 +368,7 @@ def validate_risk_model_refs(
     Validate feature references in risk_model (e.g., atr_key).
     
     Args:
-        idea_card_dict: The raw IdeaCard dict
+        idea_card_dict: The raw Play dict
         all_mappings: All scope mappings (uses "exec" for risk model)
         
     Returns:
@@ -494,7 +494,7 @@ def validate_structure_blocks(
     idea_card_dict: dict[str, Any],
 ) -> tuple[list[ValidationError], dict[str, set[str]], dict[str, set[str]]]:
     """
-    Validate market_structure_blocks in IdeaCard YAML.
+    Validate market_structure_blocks in Play YAML.
 
     Stage 3+ validation:
     - tf_role must be "exec" only
@@ -503,7 +503,7 @@ def validate_structure_blocks(
     - Required params per type
 
     Args:
-        idea_card_dict: The raw IdeaCard dict from YAML
+        idea_card_dict: The raw Play dict from YAML
 
     Returns:
         Tuple of (errors, structure_fields_by_key, zone_keys_by_block)
@@ -623,7 +623,7 @@ def validate_structure_references(
     Stage 5+: Handles zone paths: structure.<block_key>.zones.<zone_key>.<field>
 
     Args:
-        idea_card_dict: The raw IdeaCard dict (modified in-place for normalization)
+        idea_card_dict: The raw Play dict (modified in-place for normalization)
         structure_fields: Dict from validate_structure_blocks()
         zone_keys: Dict from validate_structure_blocks() (Stage 5+)
 
@@ -749,7 +749,7 @@ def validate_structure_references(
 
 def validate_idea_card_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
     """
-    Validate an IdeaCard YAML dict at build time.
+    Validate an Play YAML dict at build time.
 
     This is the main validation entry point. It:
     1. Validates all indicator_types are supported
@@ -758,7 +758,7 @@ def validate_idea_card_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
     4. Validates market_structure_blocks (Stage 3)
 
     Args:
-        idea_card_dict: The raw IdeaCard dict from YAML
+        idea_card_dict: The raw Play dict from YAML
 
     Returns:
         ValidationResult with is_valid and list of errors
@@ -807,7 +807,7 @@ def generate_required_indicators(
     so users don't need to manually maintain this list.
     
     Args:
-        idea_card_dict: The raw IdeaCard dict
+        idea_card_dict: The raw Play dict
         
     Returns:
         Dict of role -> list of required indicator keys
@@ -840,7 +840,7 @@ def normalize_idea_card_yaml(
     auto_generate_required: bool = True,
 ) -> tuple[dict[str, Any], ValidationResult]:
     """
-    Normalize and validate an IdeaCard YAML dict.
+    Normalize and validate an Play YAML dict.
     
     This is the main entry point for the YAML builder. It:
     1. Validates the YAML (fails loud if invalid)
@@ -848,7 +848,7 @@ def normalize_idea_card_yaml(
     3. Returns the normalized dict
     
     Args:
-        idea_card_dict: The raw IdeaCard dict from YAML
+        idea_card_dict: The raw Play dict from YAML
         auto_generate_required: If True, auto-generate required_indicators
         
     Returns:

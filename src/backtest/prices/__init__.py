@@ -2,7 +2,7 @@
 Price Engine.
 
 Provides mark price at every exec bar close.
-MARK is implicit - always available, never declared in IdeaCard.
+MARK is implicit - always available, never declared in Play.
 """
 
 from src.backtest.prices.types import PriceRef, HealthCheckResult, MarkPriceResult

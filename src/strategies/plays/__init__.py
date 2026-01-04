@@ -1,1 +1,1 @@
-# IdeaCards directory - contains declarative strategy specifications
+# Plays directory - contains declarative strategy specifications

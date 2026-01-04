@@ -147,7 +147,7 @@ class BaseIncrementalDetector(ABC):
         Args:
             struct_type: The structure type name (for error messages).
             key: The unique key for this structure instance.
-            params: Parameter dict from IdeaCard.
+            params: Parameter dict from Play.
             deps: Dict of dependency instances (key = dep type, value = detector).
 
         Returns:
@@ -166,7 +166,7 @@ class BaseIncrementalDetector(ABC):
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}) missing required params: {missing_params}\n"
                 f"\n"
-                f"Fix in IdeaCard:\n"
+                f"Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
                 f"    params:\n"
@@ -182,7 +182,7 @@ class BaseIncrementalDetector(ABC):
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}) missing dependencies: {missing_deps}\n"
                 f"\n"
-                f"Fix in IdeaCard:\n"
+                f"Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
                 f"    depends_on:\n"
