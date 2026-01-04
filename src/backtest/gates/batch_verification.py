@@ -125,11 +125,11 @@ def run_batch_verification(
         
         try:
             # Load the generated Play
-            idea_card = load_play(card.id, base_dir=gen_config.output_dir)
+            play = load_play(card.id, base_dir=gen_config.output_dir)
             
             # Create runner config
             config = RunnerConfig(
-                idea_card=idea_card,
+                play=play,
                 window_start=window_start,
                 window_end=window_end,
                 data_loader=data_loader,

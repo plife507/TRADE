@@ -286,7 +286,7 @@ def generate_play_yaml(
     # Generate signal rules using expanded keys for multi-output indicators
     signal_rules = generate_signal_rules(direction, indicators, rng)
     
-    idea_card = {
+    play = {
         "id": idea_id,
         "version": "1.0.0",
         "name": f"Generated {symbol} {exec_tf} Strategy",
@@ -339,7 +339,7 @@ def generate_play_yaml(
     }
     
     # Normalize and validate before dumping
-    normalized, result = normalize_play_yaml(idea_card, auto_generate_required=True)
+    normalized, result = normalize_play_yaml(play, auto_generate_required=True)
     
     if not result.is_valid:
         error_msg = format_validation_errors(result.errors)

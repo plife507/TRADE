@@ -103,13 +103,13 @@ class PlayBacktestResult:
         trades: list[Any],
         equity_curve: list[Any],
         final_equity: float,
-        idea_card_hash: str,
+        play_hash: str,
         metrics: Any = None,  # BacktestMetrics from engine
     ):
         self.trades = trades
         self.equity_curve = equity_curve
         self.final_equity = final_equity
-        self.idea_card_hash = idea_card_hash
+        self.play_hash = play_hash
         self.metrics = metrics
 
 
@@ -126,8 +126,8 @@ class PlayBacktestResult:
 class RunnerConfig:
     """Configuration for the backtest runner."""
     # Play
-    idea_card_id: str = ""
-    idea_card: Play | None = None
+    play_id: str = ""
+    play: Play | None = None
 
     # Window
     window_start: datetime | None = None
@@ -136,7 +136,7 @@ class RunnerConfig:
 
     # Paths
     base_output_dir: Path = field(default_factory=lambda: Path("backtests"))
-    idea_cards_dir: Path | None = None
+    plays_dir: Path | None = None
 
     # Gates
     skip_preflight: bool = False  # For testing only
@@ -153,14 +153,14 @@ class RunnerConfig:
     
     def load_play(self) -> Play:
         """Load the Play if not already loaded."""
-        if self.idea_card is not None:
-            return self.idea_card
+        if self.play is not None:
+            return self.play
         
-        if not self.idea_card_id:
-            raise ValueError("idea_card_id is required")
+        if not self.play_id:
+            raise ValueError("play_id is required")
         
-        self.idea_card = load_play(self.idea_card_id, base_dir=self.idea_cards_dir)
-        return self.idea_card
+        self.play = load_play(self.play_id, base_dir=self.plays_dir)
+        return self.play
 
 
 @dataclass
@@ -218,31 +218,31 @@ def run_backtest_with_gates(
     
     try:
         # Load Play
-        idea_card = config.load_play()
+        play = config.load_play()
         
         # Validate window
         if not config.window_start or not config.window_end:
             raise ValueError("window_start and window_end are required")
         
         # Get first symbol (for now, only single-symbol support)
-        if not idea_card.symbol_universe:
+        if not play.symbol_universe:
             raise ValueError("Play has no symbols in symbol_universe")
-        symbol = idea_card.symbol_universe[0]
+        symbol = play.symbol_universe[0]
         
-        # Compute idea_card_hash for deterministic run folder naming
-        idea_card_hash = compute_play_hash(idea_card)
+        # Compute play_hash for deterministic run folder naming
+        play_hash = compute_play_hash(play)
         
         # Collect all timeframes from FeatureRegistry
-        exec_tf = idea_card.execution_tf
-        tf_ctx = sorted(idea_card.feature_registry.get_all_tfs())
+        exec_tf = play.execution_tf
+        tf_ctx = sorted(play.feature_registry.get_all_tfs())
         
         # Determine data source ID based on env (for data provenance)
         data_source_id = "duckdb_live"  # Default; would be set from config.data_env if available
         
         # Build input hash components (ALL factors affecting results)
         input_components = InputHashComponents(
-            idea_card_hash=idea_card_hash,
-            symbols=idea_card.symbol_universe,
+            play_hash=play_hash,
+            symbols=play.symbol_universe,
             tf_exec=exec_tf,
             tf_ctx=tf_ctx,
             window_start=config.window_start.strftime("%Y-%m-%d"),
@@ -272,13 +272,13 @@ def run_backtest_with_gates(
         artifact_config = ArtifactPathConfig(
             base_dir=config.base_output_dir,
             category="_validation",  # Current mode: engine validation
-            idea_card_id=idea_card.id,
+            play_id=play.id,
             universe_id=universe_id,  # Symbol or uni_<hash> for multi-symbol
             tf_exec=exec_tf,
             window_start=config.window_start,
             window_end=config.window_end,
             run_id=short_hash,  # 8-char deterministic hash
-            idea_card_hash=idea_card_hash,
+            play_hash=play_hash,
             short_hash_length=short_hash_length,
         )
         # Capture the generated run_id
@@ -301,10 +301,10 @@ def run_backtest_with_gates(
             short_hash_length=short_hash_length,
             hash_algorithm="sha256",
             # Strategy config
-            idea_card_id=idea_card.id,
-            idea_card_hash=idea_card_hash,
+            play_id=play.id,
+            play_hash=play_hash,
             # Symbol universe
-            symbols=idea_card.symbol_universe,
+            symbols=play.symbol_universe,
             universe_id=universe_id,
             # Timeframes
             tf_exec=exec_tf,
@@ -344,7 +344,7 @@ def run_backtest_with_gates(
             print("\n[PREFLIGHT] Running Data Preflight Gate...")
             
             preflight_report = run_preflight_gate(
-                idea_card=idea_card,
+                play=play,
                 data_loader=config.data_loader,
                 window_start=config.window_start,
                 window_end=config.window_end,
@@ -385,7 +385,7 @@ def run_backtest_with_gates(
         # The actual key availability check happens after frame preparation
 
         # Check if Play has any features declared
-        registry = idea_card.feature_registry
+        registry = play.feature_registry
         has_features = len(list(registry.all_features())) > 0
 
         if has_features:
@@ -404,7 +404,7 @@ def run_backtest_with_gates(
 
             # Validate required vs available
             indicator_gate_result = validate_indicator_requirements(
-                idea_card=idea_card,
+                play=play,
                 available_keys_by_role=available_keys_by_role,
             )
 
@@ -443,7 +443,7 @@ def run_backtest_with_gates(
             # For skip_preflight mode (testing only), compute warmup directly
             # This is NOT the production path - only for testing without preflight
             print("[WARN] Preflight skipped - computing warmup directly (testing mode only)")
-            warmup_reqs = compute_warmup_requirements(idea_card)
+            warmup_reqs = compute_warmup_requirements(play)
             preflight_warmup_by_role = warmup_reqs.warmup_by_role
             preflight_delay_by_role = warmup_reqs.delay_by_role
         
@@ -458,31 +458,31 @@ def run_backtest_with_gates(
         # Create engine directly from Play (no adapter layer)
         if engine_factory is not None:
             # Custom factory provided (for testing/DI) - use legacy path
-            engine = engine_factory(idea_card, config)
+            engine = engine_factory(play, config)
             engine_result = engine.run()
         else:
             # Standard path: use new Play-native engine factory
             engine = create_engine_from_play(
-                idea_card=idea_card,
+                play=play,
                 window_start=config.window_start,
                 window_end=config.window_end,
                 warmup_by_tf=preflight_warmup_by_role,
             )
-            engine_result = run_engine_with_play(engine, idea_card)
+            engine_result = run_engine_with_play(engine, play)
         
         # Extract trades and equity
         trades: list[dict[str, Any]] = []
         equity_curve: list[dict[str, Any]] = []
-        idea_card_hash = ""
+        play_hash = ""
         
         if hasattr(engine_result, 'trades'):
             trades = [t.to_dict() if hasattr(t, 'to_dict') else t for t in engine_result.trades]
         if hasattr(engine_result, 'equity_curve'):
             equity_curve = [e.to_dict() if hasattr(e, 'to_dict') else e for e in engine_result.equity_curve]
-        if hasattr(engine_result, 'idea_card_hash'):
-            idea_card_hash = engine_result.idea_card_hash
+        if hasattr(engine_result, 'play_hash'):
+            play_hash = engine_result.play_hash
         else:
-            idea_card_hash = compute_play_hash(idea_card)
+            play_hash = compute_play_hash(play)
         
         # Write trades.parquet (Phase 3.2: Parquet-only)
         trades_df = pd.DataFrame(trades) if trades else pd.DataFrame(columns=[
@@ -525,13 +525,13 @@ def run_backtest_with_gates(
         # Compute hashes for determinism tracking
         trades_hash = compute_trades_hash(engine_result.trades) if hasattr(engine_result, 'trades') and engine_result.trades else ""
         equity_hash = compute_equity_hash(engine_result.equity_curve) if hasattr(engine_result, 'equity_curve') and engine_result.equity_curve else ""
-        run_hash = compute_run_hash(trades_hash, equity_hash, idea_card_hash)
+        run_hash = compute_run_hash(trades_hash, equity_hash, play_hash)
         
         # Resolve idea path (where Play was loaded from)
-        resolved_idea_path = str(config.idea_cards_dir / f"{idea_card.id}.yml") if config.idea_cards_dir else f"configs/plays/{idea_card.id}.yml"
+        resolved_idea_path = str(config.plays_dir / f"{play.id}.yml") if config.plays_dir else f"configs/plays/{play.id}.yml"
         
         summary = compute_results_summary(
-            idea_card_id=idea_card.id,
+            play_id=play.id,
             symbol=symbol,
             tf_exec=exec_tf,
             window_start=config.window_start,
@@ -542,7 +542,7 @@ def run_backtest_with_gates(
             artifact_path=str(artifact_path),
             run_duration_seconds=run_duration,
             # Gate D required fields
-            idea_hash=idea_card_hash,
+            idea_hash=play_hash,
             pipeline_version=PIPELINE_VERSION,
             resolved_idea_path=resolved_idea_path,
             # Determinism hashes (Phase 3)
@@ -570,7 +570,7 @@ def run_backtest_with_gates(
         
         # Get declared feature keys from Play feature_registry
         declared_keys = []
-        for feature in idea_card.feature_registry.all_features():
+        for feature in play.feature_registry.all_features():
             declared_keys.append(feature.id)
             if feature.output_keys:
                 declared_keys.extend(feature.output_keys)
@@ -580,8 +580,8 @@ def run_backtest_with_gates(
         
         pipeline_sig = create_pipeline_signature(
             run_id=run_id,
-            idea_card=idea_card,
-            idea_card_hash=idea_card_hash,
+            play=play,
+            play_hash=play_hash,
             resolved_path=resolved_idea_path,
             declared_keys=declared_keys,
             computed_keys=computed_keys,
@@ -669,13 +669,13 @@ def run_backtest_with_gates(
                 # Emit snapshots
                 snapshots_dir = emit_snapshot_artifacts(
                     run_dir=artifact_path,
-                    idea_card_id=idea_card.id,
+                    play_id=play.id,
                     symbol=symbol,
                     window_start=config.window_start,
                     window_end=config.window_end,
                     exec_tf=exec_tf,
-                    htf=idea_card.htf,
-                    mtf=idea_card.mtf,
+                    htf=play.htf,
+                    mtf=play.mtf,
                     exec_df=exec_df,
                     htf_df=htf_df,
                     mtf_df=mtf_df,
@@ -718,34 +718,34 @@ def run_backtest_with_gates(
 
 
 def run_smoke_test(
-    idea_card_id: str,
+    play_id: str,
     window_start: datetime,
     window_end: datetime,
     data_loader: DataLoader,
     base_output_dir: Path = Path("backtests"),
-    idea_cards_dir: Path | None = None,
+    plays_dir: Path | None = None,
 ) -> RunnerResult:
     """
     Convenience function to run a smoke test for an Play.
     
     Args:
-        idea_card_id: Play identifier
+        play_id: Play identifier
         window_start: Backtest window start
         window_end: Backtest window end
         data_loader: Function to load data (symbol, tf) -> DataFrame
         base_output_dir: Base directory for artifacts
-        idea_cards_dir: Directory containing Play YAMLs
+        plays_dir: Directory containing Play YAMLs
         
     Returns:
         RunnerResult with success status
     """
     config = RunnerConfig(
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         window_start=window_start,
         window_end=window_end,
         data_loader=data_loader,
         base_output_dir=base_output_dir,
-        idea_cards_dir=idea_cards_dir,
+        plays_dir=plays_dir,
     )
     
     return run_backtest_with_gates(config)
@@ -843,12 +843,12 @@ def main():
     
     # Build config
     config = RunnerConfig(
-        idea_card_id=args.idea,
+        play_id=args.idea,
         window_start=window_start,
         window_end=window_end,
         data_loader=data_loader,
         base_output_dir=Path(args.export_root),
-        idea_cards_dir=Path(args.idea_dir) if args.idea_dir else None,
+        plays_dir=Path(args.idea_dir) if args.idea_dir else None,
         skip_preflight=args.skip_preflight,
         auto_sync_missing_data=args.auto_sync,
     )

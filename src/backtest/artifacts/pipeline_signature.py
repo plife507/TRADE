@@ -35,9 +35,9 @@ class PipelineSignature:
     """
     # Run identification
     run_id: str
-    idea_card_id: str
-    idea_card_hash: str
-    resolved_idea_card_path: str
+    play_id: str
+    play_hash: str
+    resolved_play_path: str
     
     # Pipeline version
     pipeline_version: str = PIPELINE_VERSION
@@ -128,8 +128,8 @@ class PipelineSignature:
 
 def create_pipeline_signature(
     run_id: str,
-    idea_card: "Play",
-    idea_card_hash: str,
+    play: "Play",
+    play_hash: str,
     resolved_path: str,
     declared_keys: list[str],
     computed_keys: list[str],
@@ -139,8 +139,8 @@ def create_pipeline_signature(
     
     Args:
         run_id: Unique run identifier
-        idea_card: The Play used
-        idea_card_hash: Hash of the Play
+        play: The Play used
+        play_hash: Hash of the Play
         resolved_path: Path where Play was loaded from
         declared_keys: Feature keys declared in Play
         computed_keys: Feature keys actually computed
@@ -150,9 +150,9 @@ def create_pipeline_signature(
     """
     return PipelineSignature(
         run_id=run_id,
-        idea_card_id=idea_card.id,
-        idea_card_hash=idea_card_hash,
-        resolved_idea_card_path=resolved_path,
+        play_id=play.id,
+        play_hash=play_hash,
+        resolved_play_path=resolved_path,
         declared_feature_keys=sorted(declared_keys),
         computed_feature_keys=sorted(computed_keys),
     )

@@ -306,7 +306,7 @@ class BacktestEngine:
 
         # Play reference (set by factory, None if created directly)
         # Must be initialized here to avoid AttributeError in _build_structures_into_exec_feed()
-        self._idea_card: "Play | None" = None
+        self._play: "Play | None" = None
 
         # Phase 6: Incremental state for structure detection (swing, trend, zone, etc.)
         # Built from Play structure specs after engine creation
@@ -628,7 +628,7 @@ class BacktestEngine:
         # Fallback: use batch structure building (emits deprecation warning if present)
         build_structures_into_feed(
             exec_feed=self._exec_feed,
-            idea_card=self._idea_card,
+            play=self._idea_card,
             logger=self.logger,
         )
 

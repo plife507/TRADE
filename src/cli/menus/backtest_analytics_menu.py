@@ -107,7 +107,7 @@ def _scan_runs(limit: int = 20) -> list[dict]:
 
             runs.append({
                 "run_id": result.get("run_id", run_dir.name),
-                "idea_card": result.get("system_id", "unknown"),
+                "play": result.get("system_id", "unknown"),
                 "symbol": result.get("symbol", ""),
                 "net_return_pct": result.get("metrics", {}).get("net_return_pct", 0),
                 "total_trades": result.get("metrics", {}).get("total_trades", 0),
@@ -149,7 +149,7 @@ def _select_run(prompt_text: str = "Select run") -> str | None:
         ret_style = CLIColors.NEON_GREEN if ret_pct >= 0 else CLIColors.NEON_RED
         table.add_row(
             str(i),
-            run["idea_card"][:25],
+            run["play"][:25],
             run["symbol"],
             f"[{ret_style}]{ret_pct:.1f}%[/]",
             str(run["total_trades"]),
@@ -212,7 +212,7 @@ def _list_recent_runs():
 
             table.add_row(
                 str(i),
-                run["idea_card"][:30],
+                run["play"][:30],
                 run["symbol"],
                 f"[{ret_style}]{ret_pct:.1f}%[/]",
                 str(run["total_trades"]),

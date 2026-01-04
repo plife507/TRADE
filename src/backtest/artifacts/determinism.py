@@ -55,8 +55,8 @@ class DeterminismResult:
     warnings: list[str] = field(default_factory=list)
 
     # Metadata
-    run_a_idea_card_id: str = ""
-    run_b_idea_card_id: str = ""
+    run_a_play_id: str = ""
+    run_b_play_id: str = ""
     mode: str = "compare"  # "compare" or "rerun"
 
     def to_dict(self) -> dict[str, Any]:
@@ -65,8 +65,8 @@ class DeterminismResult:
             "mode": self.mode,
             "run_a_path": self.run_a_path,
             "run_b_path": self.run_b_path,
-            "run_a_idea_card_id": self.run_a_idea_card_id,
-            "run_b_idea_card_id": self.run_b_idea_card_id,
+            "run_a_play_id": self.run_a_play_id,
+            "run_b_play_id": self.run_b_play_id,
             "hash_comparisons": [c.to_dict() for c in self.hash_comparisons],
             "errors": self.errors,
             "warnings": self.warnings,
@@ -82,10 +82,10 @@ class DeterminismResult:
         print(f"  Run A: {self.run_a_path}")
         print(f"  Run B: {self.run_b_path}")
         
-        if self.run_a_idea_card_id:
-            print(f"  Play A: {self.run_a_idea_card_id}")
-        if self.run_b_idea_card_id:
-            print(f"  Play B: {self.run_b_idea_card_id}")
+        if self.run_a_play_id:
+            print(f"  Play A: {self.run_a_play_id}")
+        if self.run_b_play_id:
+            print(f"  Play B: {self.run_b_play_id}")
         
         print(f"\n  Hash Comparisons:")
         for comp in self.hash_comparisons:
@@ -152,13 +152,13 @@ def compare_runs(
         return result
     
     # Extract Play IDs
-    result.run_a_idea_card_id = result_a.get("idea_card_id", "")
-    result.run_b_idea_card_id = result_b.get("idea_card_id", "")
+    result.run_a_play_id = result_a.get("play_id", "")
+    result.run_b_play_id = result_b.get("play_id", "")
     
     # Warn if different Plays
-    if result.run_a_idea_card_id != result.run_b_idea_card_id:
+    if result.run_a_play_id != result.run_b_play_id:
         result.warnings.append(
-            f"Comparing different Plays: {result.run_a_idea_card_id} vs {result.run_b_idea_card_id}"
+            f"Comparing different Plays: {result.run_a_play_id} vs {result.run_b_play_id}"
         )
     
     # Compare hashes
@@ -217,23 +217,23 @@ def verify_determinism_rerun(
     with open(manifest_file, "r", encoding="utf-8") as f:
         manifest = json.load(f)
     
-    idea_card_id = manifest.get("idea_card_id", "")
+    play_id = manifest.get("play_id", "")
     window_start = manifest.get("window_start", "")
     window_end = manifest.get("window_end", "")
     
-    if not idea_card_id:
+    if not play_id:
         result.passed = False
-        result.errors.append("Manifest missing idea_card_id")
+        result.errors.append("Manifest missing play_id")
         return result
     
-    result.run_a_idea_card_id = idea_card_id
+    result.run_a_play_id = play_id
     
     # Import here to avoid circular imports
     from src.tools.backtest_cli_wrapper import backtest_run_play_tool
     
     # Re-run the Play with the same window
     rerun_result = backtest_run_play_tool(
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         window_start=window_start,
         window_end=window_end,
         fix_gaps=fix_gaps,
@@ -252,7 +252,7 @@ def verify_determinism_rerun(
     
     rerun_path = Path(rerun_result.data["artifact_path"])
     result.run_b_path = str(rerun_path)
-    result.run_b_idea_card_id = idea_card_id
+    result.run_b_play_id = play_id
     
     # Now compare the two runs
     comparison = compare_runs(run_path, rerun_path)

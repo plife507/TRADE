@@ -147,7 +147,7 @@ def backtest_audit_toolkit_tool(
 # =============================================================================
 
 def backtest_audit_in_memory_parity_tool(
-    idea_card: str,
+    play: str,
     start_date: str,
     end_date: str,
     output_dir: str | None = None,
@@ -159,7 +159,7 @@ def backtest_audit_in_memory_parity_tool(
     Does NOT emit snapshot artifacts or Parquet — purely in-memory comparison.
 
     Args:
-        idea_card: Path to Play YAML
+        play: Path to Play YAML
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
         output_dir: Optional output directory for diff CSV (written only on failure)
@@ -173,7 +173,7 @@ def backtest_audit_in_memory_parity_tool(
         output_path = Path(output_dir) if output_dir else None
 
         result = run_in_memory_parity_for_play(
-            idea_card_path=idea_card,
+            play_path=play,
             start_date=start_date,
             end_date=end_date,
             output_dir=output_path,
@@ -212,7 +212,7 @@ def backtest_audit_in_memory_parity_tool(
 # =============================================================================
 
 def backtest_math_parity_tool(
-    idea_card: str,
+    play: str,
     start_date: str,
     end_date: str,
     output_dir: str | None = None,
@@ -227,7 +227,7 @@ def backtest_math_parity_tool(
     2. In-memory math parity audit (indicator computation validation)
 
     Args:
-        idea_card: Path to Play YAML for parity audit
+        play: Path to Play YAML for parity audit
         start_date: Start date for parity audit (YYYY-MM-DD)
         end_date: End date for parity audit (YYYY-MM-DD)
         output_dir: Optional output directory for diff reports
@@ -270,7 +270,7 @@ def backtest_math_parity_tool(
         # Step 2: In-memory parity audit
         output_path = Path(output_dir) if output_dir else None
         parity_result = run_in_memory_parity_for_play(
-            idea_card_path=idea_card,
+            play_path=play,
             start_date=start_date,
             end_date=end_date,
             output_dir=output_path,
@@ -312,7 +312,7 @@ def backtest_math_parity_tool(
 # =============================================================================
 
 def verify_artifact_parity_tool(
-    idea_card_id: str = None,
+    play_id: str = None,
     symbol: str = None,
     run_id: str | None = None,
     base_dir: str | None = None,
@@ -325,7 +325,7 @@ def verify_artifact_parity_tool(
     contain identical data. Used during migration validation.
 
     Args:
-        idea_card_id: Play ID (optional if run_dir provided)
+        play_id: Play ID (optional if run_dir provided)
         symbol: Trading symbol (optional if run_dir provided)
         run_id: Specific run ID (e.g., "run-001") or None for latest
         base_dir: Base backtests directory (default: "backtests")
@@ -360,11 +360,11 @@ def verify_artifact_parity_tool(
                     data=artifact_validation.to_dict(),
                 )
 
-        # Standard verification via idea_card_id and symbol
-        if idea_card_id is None or symbol is None:
+        # Standard verification via play_id and symbol
+        if play_id is None or symbol is None:
             return ToolResult(
                 success=False,
-                error="Either run_dir or both idea_card_id and symbol are required",
+                error="Either run_dir or both play_id and symbol are required",
             )
 
         # Default base dir
@@ -373,7 +373,7 @@ def verify_artifact_parity_tool(
         # Run parity verification
         result = verify_idea_card_parity(
             base_dir=backtests_dir,
-            idea_card_id=idea_card_id,
+            play_id=play_id,
             symbol=symbol,
             run_id=run_id,
         )
@@ -404,7 +404,7 @@ def verify_artifact_parity_tool(
 # =============================================================================
 
 def backtest_audit_snapshot_plumbing_tool(
-    idea_card_id: str,
+    play_id: str,
     start_date: str,
     end_date: str,
     symbol: str | None = None,
@@ -419,7 +419,7 @@ def backtest_audit_snapshot_plumbing_tool(
     This audit proves the plumbing is correct without testing indicator math.
 
     Args:
-        idea_card_id: Play identifier or path
+        play_id: Play identifier or path
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
         symbol: Override symbol (optional, inferred from Play)
@@ -437,7 +437,7 @@ def backtest_audit_snapshot_plumbing_tool(
         end = datetime.strptime(end_date, "%Y-%m-%d")
 
         result = audit_snapshot_plumbing_parity(
-            idea_card_id=idea_card_id,
+            play_id=play_id,
             symbol=symbol,
             start_date=start,
             end_date=end,

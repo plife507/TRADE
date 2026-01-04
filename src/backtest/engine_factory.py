@@ -75,7 +75,7 @@ def _compute_warmup_by_tf(registry: "FeatureRegistry") -> dict[str, int]:
 
 
 def create_engine_from_play(
-    idea_card: "Play",
+    play: "Play",
     window_start: datetime,
     window_end: datetime,
     warmup_by_tf: dict[str, int] | None = None,
@@ -89,7 +89,7 @@ def create_engine_from_play(
     Uses the FeatureRegistry for unified indicator/structure access on any TF.
 
     Args:
-        idea_card: Source Play with all strategy/feature specs
+        play: Source Play with all strategy/feature specs
         window_start: Backtest window start
         window_end: Backtest window end
         warmup_by_tf: Warmup bars per TF (auto-computed from registry if None)
@@ -113,17 +113,17 @@ def create_engine_from_play(
     from .feature_registry import FeatureType
 
     # Validate required sections
-    if idea_card.account is None:
+    if play.account is None:
         raise ValueError(
-            f"Play '{idea_card.id}' is missing account section. "
+            f"Play '{play.id}' is missing account section. "
             "account.starting_equity_usdt and account.max_leverage are required."
         )
 
     # Get first symbol
-    symbol = idea_card.symbol_universe[0] if idea_card.symbol_universe else "BTCUSDT"
+    symbol = play.symbol_universe[0] if play.symbol_universe else "BTCUSDT"
 
     # Get feature registry
-    registry = idea_card.feature_registry
+    registry = play.feature_registry
 
     # Build feature_specs_by_role from registry (for backward compat with engine_data_prep)
     def _feature_to_spec(feature) -> FeatureSpec | None:
@@ -155,51 +155,51 @@ def create_engine_from_play(
                 specs.append(spec)
         feature_specs_by_role[tf] = specs
     # Also set 'exec' role pointing to execution_tf specs
-    feature_specs_by_role["exec"] = feature_specs_by_role.get(idea_card.execution_tf, [])
+    feature_specs_by_role["exec"] = feature_specs_by_role.get(play.execution_tf, [])
 
     # Extract capital/account params from Play (REQUIRED - no defaults)
-    initial_equity = idea_card.account.starting_equity_usdt
-    max_leverage = idea_card.account.max_leverage
+    initial_equity = play.account.starting_equity_usdt
+    max_leverage = play.account.max_leverage
 
     # Extract fee model from Play (REQUIRED - fail loud if missing)
-    if idea_card.account.fee_model is None:
+    if play.account.fee_model is None:
         raise ValueError(
-            f"Play '{idea_card.id}' is missing account.fee_model. "
+            f"Play '{play.id}' is missing account.fee_model. "
             "Fee model is required (taker_bps, maker_bps). No silent defaults allowed. "
             "Add: account.fee_model.taker_bps and account.fee_model.maker_bps"
         )
-    taker_fee_rate = idea_card.account.fee_model.taker_rate
+    taker_fee_rate = play.account.fee_model.taker_rate
 
     # Extract min trade notional from Play (REQUIRED - fail loud if missing)
-    if idea_card.account.min_trade_notional_usdt is None:
+    if play.account.min_trade_notional_usdt is None:
         raise ValueError(
-            f"Play '{idea_card.id}' is missing account.min_trade_notional_usdt. "
+            f"Play '{play.id}' is missing account.min_trade_notional_usdt. "
             "Minimum trade notional is required. No silent defaults allowed. "
             "Add: account.min_trade_notional_usdt (e.g., 10.0)"
         )
-    min_trade_usdt = idea_card.account.min_trade_notional_usdt
+    min_trade_usdt = play.account.min_trade_notional_usdt
 
     # Extract slippage from Play if present (flows to ExecutionConfig)
     slippage_bps = 5.0  # Default only if not specified
-    if idea_card.account.slippage_bps is not None:
-        slippage_bps = idea_card.account.slippage_bps
+    if play.account.slippage_bps is not None:
+        slippage_bps = play.account.slippage_bps
 
     # Extract maker fee from Play
-    maker_fee_bps = idea_card.account.fee_model.maker_bps
+    maker_fee_bps = play.account.fee_model.maker_bps
 
     # Extract risk params from Play risk_model
     risk_per_trade_pct = 1.0
-    if idea_card.risk_model:
-        if idea_card.risk_model.sizing.model.value == "percent_equity":
-            risk_per_trade_pct = idea_card.risk_model.sizing.value
+    if play.risk_model:
+        if play.risk_model.sizing.model.value == "percent_equity":
+            risk_per_trade_pct = play.risk_model.sizing.value
         # Override max_leverage from risk_model.sizing if different
-        if idea_card.risk_model.sizing.max_leverage:
-            max_leverage = idea_card.risk_model.sizing.max_leverage
+        if play.risk_model.sizing.max_leverage:
+            max_leverage = play.risk_model.sizing.max_leverage
 
     # Extract maintenance margin rate from Play if present
     maintenance_margin_rate = 0.005  # Default: Bybit lowest tier (0.5%)
-    if idea_card.account.maintenance_margin_rate is not None:
-        maintenance_margin_rate = idea_card.account.maintenance_margin_rate
+    if play.account.maintenance_margin_rate is not None:
+        maintenance_margin_rate = play.account.maintenance_margin_rate
 
     # Build RiskProfileConfig
     risk_profile = RiskProfileConfig(
@@ -216,7 +216,7 @@ def create_engine_from_play(
         warmup_by_tf = _compute_warmup_by_tf(registry)
 
     # Auto-detect if crossover operators require history
-    requires_history = _blocks_require_history(idea_card.blocks)
+    requires_history = _blocks_require_history(play.blocks)
 
     # Build params with history config if crossovers are used
     strategy_params: dict[str, Any] = {}
@@ -235,9 +235,9 @@ def create_engine_from_play(
     # Create strategy instance
     strategy_instance = StrategyInstanceConfig(
         strategy_instance_id="idea_card_strategy",
-        strategy_id=idea_card.id,
-        strategy_version=idea_card.version,
-        inputs=StrategyInstanceInputs(symbol=symbol, tf=idea_card.execution_tf),
+        strategy_id=play.id,
+        strategy_version=play.version,
+        inputs=StrategyInstanceInputs(symbol=symbol, tf=play.execution_tf),
         params=strategy_params,
     )
 
@@ -248,10 +248,10 @@ def create_engine_from_play(
     # Build warmup_bars_by_role from warmup_by_tf for backward compatibility
     # Engine data prep still uses role-based warmup
     warmup_bars_by_role = {
-        "exec": warmup_by_tf.get(idea_card.execution_tf, 0),
-        "ltf": warmup_by_tf.get(idea_card.execution_tf, 0),  # LTF = exec in single-TF
-        "mtf": warmup_by_tf.get(idea_card.execution_tf, 0),  # MTF = exec in single-TF
-        "htf": warmup_by_tf.get(idea_card.execution_tf, 0),  # HTF = exec in single-TF
+        "exec": warmup_by_tf.get(play.execution_tf, 0),
+        "ltf": warmup_by_tf.get(play.execution_tf, 0),  # LTF = exec in single-TF
+        "mtf": warmup_by_tf.get(play.execution_tf, 0),  # MTF = exec in single-TF
+        "htf": warmup_by_tf.get(play.execution_tf, 0),  # HTF = exec in single-TF
     }
     # Override with actual TF values if multi-TF
     for tf, warmup in warmup_by_tf.items():
@@ -261,7 +261,7 @@ def create_engine_from_play(
     # Sort TFs by minutes to determine htf/mtf/ltf roles
     from .runtime.timeframe import tf_minutes
     all_tfs = sorted(registry.get_all_tfs(), key=lambda tf: tf_minutes(tf))
-    exec_tf = idea_card.execution_tf
+    exec_tf = play.execution_tf
 
     if len(all_tfs) == 1:
         # Single-TF mode
@@ -287,9 +287,9 @@ def create_engine_from_play(
 
     # Create SystemConfig
     system_config = SystemConfig(
-        system_id=idea_card.id,
+        system_id=play.id,
         symbol=symbol,
-        tf=idea_card.execution_tf,
+        tf=play.execution_tf,
         strategies=[strategy_instance],
         primary_strategy_instance_id="idea_card_strategy",
         windows={
@@ -319,7 +319,7 @@ def create_engine_from_play(
     )
 
     # Store Play reference for run_with_idea_card()
-    engine._idea_card = idea_card
+    engine._idea_card = play
 
     return engine
 
@@ -363,7 +363,7 @@ def _blocks_require_history(blocks: list) -> bool:
 
 def run_engine_with_play(
     engine: "BacktestEngine",
-    idea_card: "Play",
+    play: "Play",
 ) -> "PlayBacktestResult":
     """
     Run a BacktestEngine using Play signal evaluation.
@@ -372,7 +372,7 @@ def run_engine_with_play(
 
     Args:
         engine: BacktestEngine (created via create_engine_from_play)
-        idea_card: Play with signal rules
+        play: Play with signal rules
 
     Returns:
         PlayBacktestResult with trades, equity curve, and metrics
@@ -390,7 +390,7 @@ def run_engine_with_play(
     # Note: Block validation happens at Play construction via _validate_block_types()
 
     # Create signal evaluator
-    evaluator = PlaySignalEvaluator(idea_card)
+    evaluator = PlaySignalEvaluator(play)
 
     def idea_card_strategy(snapshot, params) -> Signal | None:
         """Strategy function that uses Play signal evaluator."""
@@ -406,10 +406,10 @@ def run_engine_with_play(
             return None
         elif result.decision == SignalDecision.ENTRY_LONG:
             return Signal(
-                symbol=idea_card.symbol_universe[0],
+                symbol=play.symbol_universe[0],
                 direction="LONG",
                 size_usdt=0.0,  # Engine computes from risk_profile
-                strategy=idea_card.id,
+                strategy=play.id,
                 confidence=1.0,
                 metadata={
                     "stop_loss": result.stop_loss_price,
@@ -418,10 +418,10 @@ def run_engine_with_play(
             )
         elif result.decision == SignalDecision.ENTRY_SHORT:
             return Signal(
-                symbol=idea_card.symbol_universe[0],
+                symbol=play.symbol_universe[0],
                 direction="SHORT",
                 size_usdt=0.0,
-                strategy=idea_card.id,
+                strategy=play.id,
                 confidence=1.0,
                 metadata={
                     "stop_loss": result.stop_loss_price,
@@ -430,10 +430,10 @@ def run_engine_with_play(
             )
         elif result.decision == SignalDecision.EXIT:
             return Signal(
-                symbol=idea_card.symbol_universe[0],
+                symbol=play.symbol_universe[0],
                 direction="FLAT",
                 size_usdt=0.0,
-                strategy=idea_card.id,
+                strategy=play.id,
                 confidence=1.0,
             )
 
@@ -443,13 +443,13 @@ def run_engine_with_play(
     backtest_result = engine.run(idea_card_strategy)
 
     # Compute Play hash
-    idea_card_hash = compute_play_hash(idea_card)
+    play_hash = compute_play_hash(play)
 
     return PlayBacktestResult(
         trades=backtest_result.trades,
         equity_curve=backtest_result.equity_curve,
         final_equity=backtest_result.metrics.final_equity,
-        idea_card_hash=idea_card_hash,
+        play_hash=play_hash,
         metrics=backtest_result.metrics,
     )
 
@@ -460,7 +460,7 @@ class PlayBacktestResult:
     trades: list[Any]
     equity_curve: list[Any]
     final_equity: float
-    idea_card_hash: str
+    play_hash: str
     metrics: Any = None
 
 

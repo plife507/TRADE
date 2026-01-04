@@ -132,12 +132,12 @@ def normalize_timestamp(dt: datetime) -> datetime:
 # =============================================================================
 
 def backtest_preflight_play_tool(
-    idea_card_id: str,
+    play_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
     symbol: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
-    idea_cards_dir: Path | None = None,
+    plays_dir: Path | None = None,
     symbol_override: str | None = None,
     fix_gaps: bool = False,
 ) -> ToolResult:
@@ -147,12 +147,12 @@ def backtest_preflight_play_tool(
     Phase 6: Calls run_preflight_gate() and returns PreflightReport.to_dict() unchanged.
 
     Args:
-        idea_card_id: Play identifier
+        play_id: Play identifier
         env: Data environment ("live" or "demo")
         symbol: Override symbol (default: first in Play.symbol_universe)
         start: Window start (required)
         end: Window end (default: now)
-        idea_cards_dir: Override Play directory
+        plays_dir: Override Play directory
         symbol_override: Alias for symbol (Phase 6 smoke test support)
         fix_gaps: If True, auto-fetch and fix missing data (uses data tools)
 
@@ -170,7 +170,7 @@ def backtest_preflight_play_tool(
 
         # Load Play
         try:
-            idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
+            play = load_play(play_id, base_dir=plays_dir)
         except FileNotFoundError as e:
             return ToolResult(
                 success=False,
@@ -178,12 +178,12 @@ def backtest_preflight_play_tool(
                 data={
                     "env": env,
                     "db_path": str(db_path),
-                    "available_idea_cards": list_plays(idea_cards_dir),
+                    "available_idea_cards": list_plays(plays_dir),
                 },
             )
 
         # Validate Play
-        validation = validate_play_full(idea_card)
+        validation = validate_play_full(play)
         if not validation.is_valid:
             return ToolResult(
                 success=False,
@@ -193,12 +193,12 @@ def backtest_preflight_play_tool(
 
         # Resolve symbol
         if symbol is None:
-            if not idea_card.symbol_universe:
+            if not play.symbol_universe:
                 return ToolResult(
                     success=False,
                     error="Play has no symbols in symbol_universe and none provided",
                 )
-            symbol = idea_card.symbol_universe[0]
+            symbol = play.symbol_universe[0]
 
         # Validate symbol
         symbol = validate_symbol(symbol)
@@ -223,7 +223,7 @@ def backtest_preflight_play_tool(
 
         # If start is None, query DB for coverage and use last 100 bars (smoke mode support)
         if start is None:
-            exec_tf = validate_canonical_tf(idea_card.exec_tf)
+            exec_tf = validate_canonical_tf(play.exec_tf)
             # Query DB for coverage of exec TF
             key = f"{symbol}_{exec_tf}"
             db_status = store.status(symbol)
@@ -267,7 +267,7 @@ def backtest_preflight_play_tool(
             )
 
         preflight_report = run_preflight_gate(
-            idea_card=idea_card,
+            play=play,
             data_loader=data_loader,
             window_start=start,
             window_end=end,
@@ -276,7 +276,7 @@ def backtest_preflight_play_tool(
         )
 
         # Get exec TF info for message
-        exec_tf = validate_canonical_tf(idea_card.exec_tf)
+        exec_tf = validate_canonical_tf(play.exec_tf)
 
         # Return PreflightReport.to_dict() unchanged (Phase 6 requirement)
         report_dict = preflight_report.to_dict()
@@ -289,7 +289,7 @@ def backtest_preflight_play_tool(
         if preflight_report.overall_status.value == "passed":
             return ToolResult(
                 success=True,
-                message=f"Preflight OK for {idea_card_id}: {symbol} {exec_tf}",
+                message=f"Preflight OK for {play_id}: {symbol} {exec_tf}",
                 symbol=symbol,
                 data=report_dict,
             )
@@ -318,7 +318,7 @@ def backtest_preflight_play_tool(
 # =============================================================================
 
 def backtest_run_play_tool(
-    idea_card_id: str,
+    play_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
     symbol: str | None = None,
     start: datetime | None = None,
@@ -327,7 +327,7 @@ def backtest_run_play_tool(
     strict: bool = True,
     write_artifacts: bool = True,
     artifacts_dir: Path | None = None,
-    idea_cards_dir: Path | None = None,
+    plays_dir: Path | None = None,
     initial_equity_override: float | None = None,
     max_leverage_override: float | None = None,
     emit_snapshots: bool = False,
@@ -345,7 +345,7 @@ def backtest_run_play_tool(
     CLI can override specific values using the override parameters.
 
     Args:
-        idea_card_id: Play identifier
+        play_id: Play identifier
         env: Data environment ("live" or "demo")
         symbol: Override symbol
         start: Window start
@@ -354,7 +354,7 @@ def backtest_run_play_tool(
         strict: If True, use strict indicator access (default: True)
         write_artifacts: If True, write result artifacts
         artifacts_dir: Override artifacts directory
-        idea_cards_dir: Override Play directory
+        plays_dir: Override Play directory
         initial_equity_override: Override starting equity (defaults to Play.account.starting_equity_usdt)
         max_leverage_override: Override max leverage (defaults to Play.account.max_leverage)
         symbol_override: Alias for symbol (Phase 6 smoke test support)
@@ -371,12 +371,12 @@ def backtest_run_play_tool(
 
         # Run preflight first (with auto-sync if fix_gaps=True)
         preflight_result = backtest_preflight_play_tool(
-            idea_card_id=idea_card_id,
+            play_id=play_id,
             env=env,
             symbol=symbol,
             start=start,
             end=end,
-            idea_cards_dir=idea_cards_dir,
+            plays_dir=plays_dir,
             fix_gaps=fix_gaps,
         )
 
@@ -386,14 +386,14 @@ def backtest_run_play_tool(
         preflight_data = preflight_result.data
 
         # Load Play
-        idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
+        play = load_play(play_id, base_dir=plays_dir)
 
         # Validate account config is present (required - no defaults)
-        if idea_card.account is None:
+        if play.account is None:
             return ToolResult(
                 success=False,
                 error=(
-                    f"Play '{idea_card_id}' is missing account section. "
+                    f"Play '{play_id}' is missing account section. "
                     "account.starting_equity_usdt and account.max_leverage are required."
                 ),
             )
@@ -402,18 +402,18 @@ def backtest_run_play_tool(
         resolved_starting_equity = (
             initial_equity_override
             if initial_equity_override is not None
-            else idea_card.account.starting_equity_usdt
+            else play.account.starting_equity_usdt
         )
         resolved_max_leverage = (
             max_leverage_override
             if max_leverage_override is not None
-            else idea_card.account.max_leverage
+            else play.account.max_leverage
         )
-        resolved_min_trade = idea_card.account.min_trade_notional_usdt or 1.0
+        resolved_min_trade = play.account.min_trade_notional_usdt or 1.0
 
         # Resolve symbol from preflight data or Play
-        resolved_symbol = preflight_data.get("symbol") or idea_card.symbol_universe[0]
-        exec_tf = validate_canonical_tf(idea_card.exec_tf)
+        resolved_symbol = preflight_data.get("symbol") or play.symbol_universe[0]
+        exec_tf = validate_canonical_tf(play.exec_tf)
 
         # Print Resolved Config Summary (Phase 5.3 requirement)
         logger.info("=" * 60)
@@ -422,7 +422,7 @@ def backtest_run_play_tool(
         logger.info(f"  symbol: {resolved_symbol}")
         logger.info(f"  tf_exec: {exec_tf}")
         # Show all unique TFs from features
-        all_tfs = idea_card.get_all_tfs()
+        all_tfs = play.get_all_tfs()
         other_tfs = sorted([tf for tf in all_tfs if tf != exec_tf])
         if other_tfs:
             logger.info(f"  other_tfs: {', '.join(other_tfs)}")
@@ -430,15 +430,15 @@ def backtest_run_play_tool(
         logger.info(f"  starting_equity_usdt: {resolved_starting_equity:,.2f}")
         logger.info(f"  max_leverage: {resolved_max_leverage:.1f}x")
         logger.info(f"  min_trade_notional_usdt: {resolved_min_trade:.2f}")
-        if idea_card.account.fee_model:
-            logger.info(f"  taker_fee_bps: {idea_card.account.fee_model.taker_bps}")
-            logger.info(f"  maker_fee_bps: {idea_card.account.fee_model.maker_bps}")
-        if idea_card.account.slippage_bps:
-            logger.info(f"  slippage_bps: {idea_card.account.slippage_bps}")
+        if play.account.fee_model:
+            logger.info(f"  taker_fee_bps: {play.account.fee_model.taker_bps}")
+            logger.info(f"  maker_fee_bps: {play.account.fee_model.maker_bps}")
+        if play.account.slippage_bps:
+            logger.info(f"  slippage_bps: {play.account.slippage_bps}")
         logger.info("-" * 40)
         # Warmup spans - use feature_registry
         from ..backtest.execution_validation import compute_warmup_requirements
-        warmup_reqs = compute_warmup_requirements(idea_card)
+        warmup_reqs = compute_warmup_requirements(play)
         for tf in sorted(all_tfs):
             warmup = warmup_reqs.warmup_by_role.get(tf, 0)
             logger.info(f"  warmup_{tf}: {warmup} bars")
@@ -485,7 +485,7 @@ def backtest_run_play_tool(
         # Compute expanded keys from Play feature_registry
         available_keys_by_role = {}
         declared_keys_by_role = {}
-        registry = idea_card.feature_registry
+        registry = play.feature_registry
         for tf in registry.get_all_tfs():
             features = registry.get_for_tf(tf)
             expanded = set()
@@ -497,7 +497,7 @@ def backtest_run_play_tool(
             declared_keys_by_role[tf] = sorted(expanded)
 
         indicator_gate_result = validate_indicator_requirements(
-            idea_card=idea_card,
+            play=play,
             available_keys_by_role=available_keys_by_role,
         )
 
@@ -520,7 +520,7 @@ def backtest_run_play_tool(
             logger.info("[GATE] Indicator requirements: SKIPPED (no required_indicators declared)")
 
         # Print indicator keys (Phase B requirement)
-        exec_tf = idea_card.execution_tf
+        exec_tf = play.execution_tf
         logger.info(f"Declared indicator keys ({exec_tf}): {declared_keys_by_role.get(exec_tf, [])}")
 
         # Use the existing runner infrastructure
@@ -550,12 +550,12 @@ def backtest_run_play_tool(
         # For smoke tests, we trust the CLI wrapper's preflight check
         # NOTE: skip_artifact_validation=True because we skip preflight (no preflight_report.json)
         runner_config = RunnerConfig(
-            idea_card_id=idea_card_id,
-            idea_card=idea_card,
+            play_id=play_id,
+            play=play,
             window_start=start,
             window_end=end,
             base_output_dir=artifacts_dir,
-            idea_cards_dir=idea_cards_dir,
+            plays_dir=plays_dir,
             skip_preflight=True,  # CLI wrapper already validated
             skip_artifact_validation=True,  # Skip because preflight is skipped (no preflight_report.json)
             data_loader=data_loader,
@@ -587,7 +587,7 @@ def backtest_run_play_tool(
 
         result_data = {
             "preflight": preflight_data,
-            "idea_card_id": idea_card_id,
+            "play_id": play_id,
             "symbol": resolved_symbol,
             "exec_tf": exec_tf,
             "env": env,
@@ -680,12 +680,12 @@ def backtest_run_play_tool(
 # =============================================================================
 
 def backtest_indicators_tool(
-    idea_card_id: str,
+    play_id: str,
     data_env: DataEnv = DEFAULT_DATA_ENV,
     symbol: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
-    idea_cards_dir: Path | None = None,
+    plays_dir: Path | None = None,
     compute_values: bool = False,
 ) -> ToolResult:
     """
@@ -696,12 +696,12 @@ def backtest_indicators_tool(
     so you can fix FeatureSpec/Play declarations.
 
     Args:
-        idea_card_id: Play identifier
+        play_id: Play identifier
         data_env: Data environment ("live" or "demo")
         symbol: Override symbol
         start: Window start (for computing actual values)
         end: Window end
-        idea_cards_dir: Override Play directory
+        plays_dir: Override Play directory
         compute_values: If True, actually compute indicators and show first non-NaN index
 
     Returns:
@@ -715,16 +715,16 @@ def backtest_indicators_tool(
 
         # Load Play
         try:
-            idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
+            play = load_play(play_id, base_dir=plays_dir)
         except FileNotFoundError as e:
             return ToolResult(
                 success=False,
                 error=str(e),
-                data={"available_idea_cards": list_plays(idea_cards_dir)},
+                data={"available_idea_cards": list_plays(plays_dir)},
             )
 
         # Validate Play
-        validation = validate_play_full(idea_card)
+        validation = validate_play_full(play)
         if not validation.is_valid:
             return ToolResult(
                 success=False,
@@ -733,17 +733,17 @@ def backtest_indicators_tool(
 
         # Resolve symbol
         if symbol is None:
-            if not idea_card.symbol_universe:
+            if not play.symbol_universe:
                 return ToolResult(
                     success=False,
                     error="Play has no symbols and none provided",
                 )
-            symbol = idea_card.symbol_universe[0]
+            symbol = play.symbol_universe[0]
 
         symbol = validate_symbol(symbol)
 
         # Get all features by TF from registry
-        registry = idea_card.feature_registry
+        registry = play.feature_registry
         all_tfs = registry.get_all_tfs()
         declared_keys_by_role = {}
         expanded_keys_by_role = {}
@@ -762,11 +762,11 @@ def backtest_indicators_tool(
 
         # Build result
         result_data = {
-            "idea_card_id": idea_card_id,
+            "play_id": play_id,
             "data_env": data_env,
             "db_path": str(db_path),
             "symbol": symbol,
-            "exec_tf": idea_card.exec_tf,
+            "exec_tf": play.exec_tf,
             "all_tfs": sorted(all_tfs),
             "declared_keys_by_role": declared_keys_by_role,
             "expanded_keys_by_role": expanded_keys_by_role,
@@ -781,7 +781,7 @@ def backtest_indicators_tool(
             result_data["computed_info"] = {"warning": "Not yet supported"}
 
         # Log output
-        logger.info(f"Indicator key discovery for {idea_card_id}:")
+        logger.info(f"Indicator key discovery for {play_id}:")
         for tf in sorted(all_tfs):
             if tf in declared_keys_by_role:
                 declared = declared_keys_by_role[tf]
@@ -817,7 +817,7 @@ def _datetime_to_epoch_ms(dt: datetime | None) -> int | None:
 
 
 def backtest_data_fix_tool(
-    idea_card_id: str,
+    play_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
     symbol: str | None = None,
     start: datetime | None = None,
@@ -826,7 +826,7 @@ def backtest_data_fix_tool(
     sync_to_now: bool = False,
     fill_gaps: bool = True,
     heal: bool = False,
-    idea_cards_dir: Path | None = None,
+    plays_dir: Path | None = None,
 ) -> ToolResult:
     """
     Fix data for an Play backtest by calling existing data tools.
@@ -834,7 +834,7 @@ def backtest_data_fix_tool(
     Phase 6: Bounded enforcement + progress tracking + structured result.
 
     Args:
-        idea_card_id: Play identifier
+        play_id: Play identifier
         env: Data environment
         symbol: Override symbol
         start: Sync from this date (default: Play warmup requirements)
@@ -843,7 +843,7 @@ def backtest_data_fix_tool(
         sync_to_now: If True, sync data to current time
         fill_gaps: If True, fill gaps after sync
         heal: If True, run full heal after sync
-        idea_cards_dir: Override Play directory
+        plays_dir: Override Play directory
 
     Returns:
         ToolResult with structured data fix summary including bounds and progress
@@ -861,21 +861,21 @@ def backtest_data_fix_tool(
         db_path = resolve_db_path(env)
 
         # Load Play to get TFs
-        idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
+        play = load_play(play_id, base_dir=plays_dir)
 
         # Resolve symbol
         if symbol is None:
-            if not idea_card.symbol_universe:
+            if not play.symbol_universe:
                 return ToolResult(
                     success=False,
                     error="Play has no symbols and none provided",
                 )
-            symbol = idea_card.symbol_universe[0]
+            symbol = play.symbol_universe[0]
 
         symbol = validate_symbol(symbol)
 
         # Get all TFs from Play + mandatory 1m for price feed
-        tfs = set(idea_card.get_all_tfs())
+        tfs = set(play.get_all_tfs())
         # 1m is mandatory for price feed (quote proxy) - always include
         tfs.add("1m")
         tfs = sorted(tfs)
@@ -917,7 +917,7 @@ def backtest_data_fix_tool(
             "applied": bounds_applied,
         }
 
-        logger.info(f"Data fix for {idea_card_id}: env={env}, db={db_path}, symbol={symbol}, tfs={tfs}")
+        logger.info(f"Data fix for {play_id}: env={env}, db={db_path}, symbol={symbol}, tfs={tfs}")
         if bounds_applied:
             logger.info(f"  Bounds applied: start clamped to {start}")
 
@@ -1022,26 +1022,26 @@ def backtest_data_fix_tool(
 # =============================================================================
 
 def backtest_list_plays_tool(
-    idea_cards_dir: Path | None = None,
+    plays_dir: Path | None = None,
 ) -> ToolResult:
     """
     List available Plays.
 
     Args:
-        idea_cards_dir: Override Play directory
+        plays_dir: Override Play directory
 
     Returns:
         ToolResult with list of Play IDs
     """
     try:
-        cards = list_plays(base_dir=idea_cards_dir)
+        cards = list_plays(base_dir=plays_dir)
 
         return ToolResult(
             success=True,
             message=f"Found {len(cards)} Plays",
             data={
                 "idea_cards": cards,
-                "directory": str(idea_cards_dir) if idea_cards_dir else "configs/plays/",
+                "directory": str(plays_dir) if plays_dir else "configs/plays/",
             },
         )
 
@@ -1057,8 +1057,8 @@ def backtest_list_plays_tool(
 # =============================================================================
 
 def backtest_play_normalize_tool(
-    idea_card_id: str,
-    idea_cards_dir: Path | None = None,
+    play_id: str,
+    plays_dir: Path | None = None,
     write_in_place: bool = False,
 ) -> ToolResult:
     """
@@ -1077,15 +1077,15 @@ def backtest_play_normalize_tool(
         refuse to write YAML if normalization fails.
 
     Args:
-        idea_card_id: Play identifier
-        idea_cards_dir: Override Play directory
+        play_id: Play identifier
+        plays_dir: Override Play directory
         write_in_place: If True, write normalized YAML back to file
 
     Returns:
         ToolResult with validation results
     """
     import yaml
-    from ..backtest.play import IDEA_CARDS_DIR
+    from ..backtest.play import PLAYS_DIR
     from ..backtest.play_yaml_builder import (
         normalize_play_yaml,
         format_validation_errors,
@@ -1093,20 +1093,20 @@ def backtest_play_normalize_tool(
 
     try:
         # Resolve path
-        search_dir = idea_cards_dir or IDEA_CARDS_DIR
+        search_dir = plays_dir or PLAYS_DIR
         yaml_path = None
 
         for ext in (".yml", ".yaml"):
-            path = search_dir / f"{idea_card_id}{ext}"
+            path = search_dir / f"{play_id}{ext}"
             if path.exists():
                 yaml_path = path
                 break
 
         if yaml_path is None:
-            cards = list_plays(base_dir=idea_cards_dir)
+            cards = list_plays(base_dir=plays_dir)
             return ToolResult(
                 success=False,
-                error=f"Play '{idea_card_id}' not found in {search_dir}",
+                error=f"Play '{play_id}' not found in {search_dir}",
                 data={"available_idea_cards": cards},
             )
 
@@ -1129,7 +1129,7 @@ def backtest_play_normalize_tool(
                 success=False,
                 error=f"Play validation failed with {len(result.errors)} error(s)",
                 data={
-                    "idea_card_id": idea_card_id,
+                    "play_id": play_id,
                     "yaml_path": str(yaml_path),
                     "errors": [e.to_dict() for e in result.errors],
                     "error_details": error_details,
@@ -1143,9 +1143,9 @@ def backtest_play_normalize_tool(
 
             return ToolResult(
                 success=True,
-                message=f"Play '{idea_card_id}' normalized and written to {yaml_path}",
+                message=f"Play '{play_id}' normalized and written to {yaml_path}",
                 data={
-                    "idea_card_id": idea_card_id,
+                    "play_id": play_id,
                     "yaml_path": str(yaml_path),
                     "normalized": True,
                     "written": True,
@@ -1155,9 +1155,9 @@ def backtest_play_normalize_tool(
         # Dry-run: just return validation success
         return ToolResult(
             success=True,
-            message=f"Play '{idea_card_id}' passed validation (dry-run, not written)",
+            message=f"Play '{play_id}' passed validation (dry-run, not written)",
             data={
-                "idea_card_id": idea_card_id,
+                "play_id": play_id,
                 "yaml_path": str(yaml_path),
                 "normalized": True,
                 "written": False,
@@ -1174,14 +1174,14 @@ def backtest_play_normalize_tool(
 
 
 def backtest_idea_card_normalize_batch_tool(
-    idea_cards_dir: Path,
+    plays_dir: Path,
     write_in_place: bool = False,
 ) -> ToolResult:
     """
     Batch normalize all Plays in a directory.
 
     Args:
-        idea_cards_dir: Directory containing Play YAML files
+        plays_dir: Directory containing Play YAML files
         write_in_place: If True, write normalized YAML back to files
 
     Returns:
@@ -1191,32 +1191,32 @@ def backtest_idea_card_normalize_batch_tool(
         from ..backtest.play import list_plays
 
         # Get all Play IDs in the directory
-        idea_card_ids = list_plays(base_dir=idea_cards_dir)
+        play_ids = list_plays(base_dir=plays_dir)
 
-        if not idea_card_ids:
+        if not play_ids:
             return ToolResult(
                 success=False,
-                error=f"No Play YAML files found in {idea_cards_dir}",
+                error=f"No Play YAML files found in {plays_dir}",
             )
 
         results = []
         passed_count = 0
         failed_count = 0
 
-        logger.info(f"Batch normalizing {len(idea_card_ids)} Plays in {idea_cards_dir}")
+        logger.info(f"Batch normalizing {len(play_ids)} Plays in {plays_dir}")
 
         # Process each Play
-        for idea_card_id in idea_card_ids:
+        for play_id in play_ids:
             try:
                 # Use the existing single-card normalize function
                 single_result = backtest_play_normalize_tool(
-                    idea_card_id=idea_card_id,
-                    idea_cards_dir=idea_cards_dir,
+                    play_id=play_id,
+                    plays_dir=plays_dir,
                     write_in_place=write_in_place,
                 )
 
                 card_result = {
-                    "idea_card_id": idea_card_id,
+                    "play_id": play_id,
                     "success": single_result.success,
                     "message": single_result.message if single_result.success else single_result.error,
                     "data": single_result.data,
@@ -1230,9 +1230,9 @@ def backtest_idea_card_normalize_batch_tool(
                 results.append(card_result)
 
             except Exception as e:
-                logger.error(f"Failed to process {idea_card_id}: {e}")
+                logger.error(f"Failed to process {play_id}: {e}")
                 card_result = {
-                    "idea_card_id": idea_card_id,
+                    "play_id": play_id,
                     "success": False,
                     "message": str(e),
                     "data": None,
@@ -1244,17 +1244,17 @@ def backtest_idea_card_normalize_batch_tool(
         overall_success = failed_count == 0
 
         summary = {
-            "total_cards": len(idea_card_ids),
+            "total_cards": len(play_ids),
             "passed": passed_count,
             "failed": failed_count,
-            "directory": str(idea_cards_dir),
+            "directory": str(plays_dir),
             "write_in_place": write_in_place,
         }
 
         if overall_success:
             return ToolResult(
                 success=True,
-                message=f"Batch normalization successful: {passed_count}/{len(idea_card_ids)} cards passed",
+                message=f"Batch normalization successful: {passed_count}/{len(play_ids)} cards passed",
                 data={
                     "summary": summary,
                     "results": results,
@@ -1263,7 +1263,7 @@ def backtest_idea_card_normalize_batch_tool(
         else:
             return ToolResult(
                 success=False,
-                error=f"Batch normalization failed: {failed_count}/{len(idea_card_ids)} cards failed",
+                error=f"Batch normalization failed: {failed_count}/{len(play_ids)} cards failed",
                 data={
                     "summary": summary,
                     "results": results,

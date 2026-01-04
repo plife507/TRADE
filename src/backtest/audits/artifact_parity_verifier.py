@@ -178,7 +178,7 @@ def verify_run_parity(
 
 def find_latest_run(
     base_dir: Path,
-    idea_card_id: str,
+    play_id: str,
     symbol: str,
 ) -> Path | None:
     """
@@ -186,13 +186,13 @@ def find_latest_run(
     
     Args:
         base_dir: Base backtests directory
-        idea_card_id: Play ID
+        play_id: Play ID
         symbol: Trading symbol
         
     Returns:
         Path to latest run directory, or None if not found
     """
-    symbol_dir = base_dir / idea_card_id / symbol
+    symbol_dir = base_dir / play_id / symbol
     if not symbol_dir.exists():
         return None
     
@@ -215,7 +215,7 @@ def find_latest_run(
 
 def verify_idea_card_parity(
     base_dir: Path,
-    idea_card_id: str,
+    play_id: str,
     symbol: str,
     run_id: str | None = None,
     float_tolerance: float = 1e-12,
@@ -225,7 +225,7 @@ def verify_idea_card_parity(
     
     Args:
         base_dir: Base backtests directory (default: Path("backtests"))
-        idea_card_id: Play ID
+        play_id: Play ID
         symbol: Trading symbol
         run_id: Specific run ID (e.g., "run-001") or None for latest
         float_tolerance: Tolerance for float comparison
@@ -234,14 +234,14 @@ def verify_idea_card_parity(
         RunParityResult with verification results
     """
     if run_id:
-        run_dir = base_dir / idea_card_id / symbol / run_id
+        run_dir = base_dir / play_id / symbol / run_id
     else:
-        run_dir = find_latest_run(base_dir, idea_card_id, symbol)
+        run_dir = find_latest_run(base_dir, play_id, symbol)
         if run_dir is None:
             return RunParityResult(
-                run_dir=base_dir / idea_card_id / symbol / "unknown",
+                run_dir=base_dir / play_id / symbol / "unknown",
                 passed=False,
-                errors=[f"No runs found for {idea_card_id}/{symbol}"],
+                errors=[f"No runs found for {play_id}/{symbol}"],
             )
     
     return verify_run_parity(run_dir, float_tolerance=float_tolerance)

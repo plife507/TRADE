@@ -113,7 +113,7 @@ class IndicatorRequirementsResult:
 
 
 def validate_indicator_requirements(
-    idea_card: Play,
+    play: Play,
     available_keys_by_role: dict[str, set[str]],
 ) -> IndicatorRequirementsResult:
     """
@@ -126,7 +126,7 @@ def validate_indicator_requirements(
     - Gate fails loudly, no silent NaNs or KeyErrors
 
     Args:
-        idea_card: Play with features declared in feature_registry
+        play: Play with features declared in feature_registry
         available_keys_by_role: Dict of TF -> set of available indicator keys
             (from computed feature frames)
 
@@ -138,7 +138,7 @@ def validate_indicator_requirements(
     has_requirements = False
 
     # Use feature_registry to get features by TF
-    registry = idea_card.feature_registry
+    registry = play.feature_registry
     for tf in registry.get_all_tfs():
         features = registry.get_for_tf(tf)
         # Get required keys from features (feature IDs + output_keys)

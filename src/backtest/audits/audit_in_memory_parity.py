@@ -387,7 +387,7 @@ def _compare_column(
 
 
 def run_in_memory_parity_for_play(
-    idea_card_path: str,
+    play_path: str,
     start_date: str,
     end_date: str,
     output_dir: Path | None = None,
@@ -402,7 +402,7 @@ def run_in_memory_parity_for_play(
     4. Compares computed indicators against fresh pandas_ta computation
     
     Args:
-        idea_card_path: Path to Play YAML (or idea card ID for lookup)
+        play_path: Path to Play YAML (or idea card ID for lookup)
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
         output_dir: Optional output directory for diff CSV
@@ -417,19 +417,19 @@ def run_in_memory_parity_for_play(
     try:
         # Use RunnerConfig to load and prepare the Play
         config = RunnerConfig(
-            idea_card_id=idea_card_path,
+            play_id=play_path,
             window_start=dt.fromisoformat(start_date),
             window_end=dt.fromisoformat(end_date),
         )
         
         # Load the Play
-        idea_card = config.load_play()
-        symbol = idea_card.symbol_universe[0]
+        play = config.load_play()
+        symbol = play.symbol_universe[0]
         
         # Get the feature spec sets using the correct API
-        exec_spec_set = idea_card.get_feature_spec_set("exec", symbol)
-        htf_spec_set = idea_card.get_feature_spec_set("htf", symbol)
-        mtf_spec_set = idea_card.get_feature_spec_set("mtf", symbol)
+        exec_spec_set = play.get_feature_spec_set("exec", symbol)
+        htf_spec_set = play.get_feature_spec_set("htf", symbol)
+        mtf_spec_set = play.get_feature_spec_set("mtf", symbol)
         
         # Collect all feature specs across TFs
         all_feature_specs = []
@@ -470,11 +470,11 @@ def run_in_memory_parity_for_play(
         from ..execution_validation import compute_warmup_requirements
         
         # Compute warmup requirements
-        warmup_req = compute_warmup_requirements(idea_card)
+        warmup_req = compute_warmup_requirements(play)
         
         # Create engine directly from Play
         engine = create_engine_from_play(
-            idea_card=idea_card,
+            play=play,
             window_start=config.window_start,
             window_end=config.window_end,
             warmup_by_role=warmup_req.warmup_by_role,

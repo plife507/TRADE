@@ -7,7 +7,7 @@ All backtest runs MUST produce artifacts in this format.
 Folder structure (hash-based, deterministic):
     backtests/
     └── {category}/                    # _validation or strategies
-        └── {idea_card_id}/
+        └── {play_id}/
             └── {symbol}/
                 └── {8-char-input-hash}/
                     ├── run_manifest.json      # Full hash + all inputs
@@ -124,7 +124,7 @@ REQUIRED_EQUITY_COLUMNS = {
 }
 
 REQUIRED_RESULT_FIELDS = {
-    "idea_card_id",
+    "play_id",
     "symbol",
     "tf_exec",
     "window_start",
@@ -180,10 +180,10 @@ class ArtifactPathConfig:
     Configuration for building artifact paths.
     
     FOLDER STRUCTURE:
-        {base_dir}/{category}/{idea_card_id}/{universe_id}/{run_hash}/
+        {base_dir}/{category}/{play_id}/{universe_id}/{run_hash}/
         
         For strategies (append-only):
-        {base_dir}/strategies/{idea_card_id}/{universe_id}/{run_hash}/attempts/{timestamp}/
+        {base_dir}/strategies/{play_id}/{universe_id}/{run_hash}/attempts/{timestamp}/
     
     CATEGORIES:
     - _validation: Engine validation and test runs
@@ -208,13 +208,13 @@ class ArtifactPathConfig:
     """
     base_dir: Path = field(default_factory=lambda: Path("backtests"))
     category: str = "_validation"  # "_validation" or "strategies"
-    idea_card_id: str = ""
+    play_id: str = ""
     universe_id: str = ""  # Symbol or uni_<hash> for multi-symbol
     tf_exec: str = ""  # Stored in manifest, not in path
     window_start: datetime | None = None  # Stored in manifest
     window_end: datetime | None = None    # Stored in manifest
     run_id: str = ""  # 8-char (or 12-char) input hash
-    idea_card_hash: str = ""  # Required for hash computation
+    play_hash: str = ""  # Required for hash computation
     short_hash_length: int = 8  # Default 8, use 12 for collision recovery
     attempt_id: str | None = None  # Timestamp for strategies category
     
@@ -225,10 +225,10 @@ class ArtifactPathConfig:
             raise ValueError(f"Invalid category: {self.category}. Must be one of {RUN_CATEGORIES}")
         
         # Generate hash-based run_id if not provided
-        if not self.run_id and self.idea_card_hash and self.window_start and self.window_end:
+        if not self.run_id and self.play_hash and self.window_start and self.window_end:
             from .hashes import compute_input_hash
             self.run_id = compute_input_hash(
-                idea_card_hash=self.idea_card_hash,
+                play_hash=self.play_hash,
                 window_start=self.window_start.strftime("%Y-%m-%d"),
                 window_end=self.window_end.strftime("%Y-%m-%d"),
                 short_hash_length=self.short_hash_length,
@@ -263,10 +263,10 @@ class ArtifactPathConfig:
         Get the full path to the run folder.
         
         _validation structure:
-            {base_dir}/_validation/{idea_card_id}/{universe_id}/{run_id}/
+            {base_dir}/_validation/{play_id}/{universe_id}/{run_id}/
             
         strategies structure (append-only):
-            {base_dir}/strategies/{idea_card_id}/{universe_id}/{run_id}/attempts/{attempt_id}/
+            {base_dir}/strategies/{play_id}/{universe_id}/{run_id}/attempts/{attempt_id}/
         
         Example: 
             backtests/_validation/test__ema_atr/BTCUSDT/a1b2c3d4/
@@ -275,7 +275,7 @@ class ArtifactPathConfig:
         base_path = (
             self.base_dir
             / self.category
-            / self.idea_card_id
+            / self.play_id
             / self.universe_id
             / self.run_id
         )
@@ -302,7 +302,7 @@ class ArtifactPathConfig:
         return {
             "base_dir": str(self.base_dir),
             "category": self.category,
-            "idea_card_id": self.idea_card_id,
+            "play_id": self.play_id,
             "universe_id": self.universe_id,
             "tf_exec": self.tf_exec,
             "window_start": self.window_start.isoformat() if self.window_start else None,
@@ -361,8 +361,8 @@ class RunManifest:
     short_hash_length: int    # 8 (default) or 12 (collision recovery)
     
     # Strategy Config
-    idea_card_id: str
-    idea_card_hash: str
+    play_id: str
+    play_hash: str
     
     # Symbol Universe
     symbols: list[str]        # Canonical: sorted, uppercase
@@ -450,8 +450,8 @@ class RunManifest:
             "hash_algorithm": self.hash_algorithm,
             
             # Strategy config
-            "idea_card_id": self.idea_card_id,
-            "idea_card_hash": self.idea_card_hash,
+            "play_id": self.play_id,
+            "play_hash": self.play_hash,
             
             # Symbol universe
             "symbols": self.symbols,
@@ -541,8 +541,8 @@ class RunManifest:
             hash_algorithm=data.get("hash_algorithm", "sha256"),
             
             # Strategy config
-            idea_card_id=data["idea_card_id"],
-            idea_card_hash=data["idea_card_hash"],
+            play_id=data["play_id"],
+            play_hash=data["play_hash"],
             
             # Symbol universe
             symbols=data["symbols"],
@@ -915,8 +915,8 @@ def validate_artifact_path_config(config: ArtifactPathConfig) -> list[str]:
     """
     errors = []
     
-    if not config.idea_card_id:
-        errors.append("idea_card_id is required")
+    if not config.play_id:
+        errors.append("play_id is required")
     if not config.universe_id:
         errors.append("universe_id is required")
     if not config.tf_exec:
@@ -937,7 +937,7 @@ def validate_artifact_path_config(config: ArtifactPathConfig) -> list[str]:
 class ResultsSummary:
     """Summary of backtest results with comprehensive analytics."""
     # Identity
-    idea_card_id: str
+    play_id: str
     symbol: str
     tf_exec: str
     window_start: datetime
@@ -1001,13 +1001,13 @@ class ResultsSummary:
     # Determinism hashes (Phase 3 - hash-based verification)
     trades_hash: str = ""     # SHA256 hash of trades.parquet content
     equity_hash: str = ""     # SHA256 hash of equity.parquet content
-    run_hash: str = ""        # Combined hash (trades + equity + idea_card)
+    run_hash: str = ""        # Combined hash (trades + equity + play)
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             # Identity
-            "idea_card_id": self.idea_card_id,
+            "play_id": self.play_id,
             "symbol": self.symbol,
             "tf_exec": self.tf_exec,
             "window_start": self.window_start.isoformat(),
@@ -1080,7 +1080,7 @@ class ResultsSummary:
         print("\n" + "=" * 60)
         print("  BACKTEST RESULTS SUMMARY")
         print("=" * 60)
-        print(f"  Play:    {self.idea_card_id}")
+        print(f"  Play:    {self.play_id}")
         print(f"  Symbol:      {self.symbol}")
         print(f"  Timeframe:   {self.tf_exec}")
         print(f"  Window:      {self.window_start.date()} -> {self.window_end.date()} ({window_days}d)")
@@ -1123,7 +1123,7 @@ class ResultsSummary:
 
 
 def compute_results_summary(
-    idea_card_id: str,
+    play_id: str,
     symbol: str,
     tf_exec: str,
     window_start: datetime,
@@ -1148,7 +1148,7 @@ def compute_results_summary(
     Compute results summary from trades and equity curve.
     
     Args:
-        idea_card_id: Play identifier
+        play_id: Play identifier
         symbol: Trading symbol
         tf_exec: Execution timeframe
         window_start: Backtest window start
@@ -1170,7 +1170,7 @@ def compute_results_summary(
         ResultsSummary with computed metrics
     """
     summary = ResultsSummary(
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         symbol=symbol,
         tf_exec=tf_exec,
         window_start=window_start,

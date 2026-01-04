@@ -800,7 +800,7 @@ class FeatureFrameBuilder:
 
 
 def build_features_from_preloaded_dfs(
-    idea_card: "Play",
+    play: "Play",
     dfs: dict[str, pd.DataFrame],
     symbol: str,
 ) -> dict[str, FeatureArrays]:
@@ -811,7 +811,7 @@ def build_features_from_preloaded_dfs(
     takes a data_loader and returns PlayFeatures.
 
     Args:
-        idea_card: Play with TF configs and feature specs
+        play: Play with TF configs and feature specs
         dfs: Dict mapping tf -> OHLCV DataFrame (pre-loaded)
         symbol: Symbol to build for
 
@@ -825,7 +825,7 @@ def build_features_from_preloaded_dfs(
     builder = FeatureFrameBuilder()
     result: dict[str, FeatureArrays] = {}
     
-    for role, tf_config in idea_card.tf_configs.items():
+    for role, tf_config in play.tf_configs.items():
         tf = tf_config.tf
         
         # Check data is available
@@ -838,7 +838,7 @@ def build_features_from_preloaded_dfs(
         df = dfs[tf]
         
         # Get FeatureSpecSet from Play
-        spec_set = idea_card.get_feature_spec_set(role, symbol)
+        spec_set = play.get_feature_spec_set(role, symbol)
         
         if spec_set is None or not spec_set.specs:
             # No features for this TF - create empty arrays
@@ -865,7 +865,7 @@ class PlayFeatures:
     
     Holds FeatureArrays for each TF role (exec, htf, mtf).
     """
-    idea_card_id: str
+    play_id: str
     symbol: str
     
     # FeatureArrays per TF role
@@ -900,7 +900,7 @@ class PlayFeatures:
 
 
 def build_features_from_play(
-    idea_card: "Play",
+    play: "Play",
     data_loader: Callable[[str, str], pd.DataFrame],
     symbol: str | None = None,
     builder: FeatureFrameBuilder | None = None,
@@ -915,7 +915,7 @@ def build_features_from_play(
     Play → FeatureSpecSets → FeatureFrameBuilder → FeatureArrays
     
     Args:
-        idea_card: The Play defining features
+        play: The Play defining features
         data_loader: Function(symbol, tf) -> DataFrame with OHLCV data
         symbol: Override symbol (default: first in symbol_universe)
         builder: Optional FeatureFrameBuilder (default: create new)
@@ -927,20 +927,20 @@ def build_features_from_play(
         ValueError: If data_loader returns empty DataFrame
     """
     if symbol is None:
-        if not idea_card.symbol_universe:
+        if not play.symbol_universe:
             raise ValueError("Play has no symbols in symbol_universe")
-        symbol = idea_card.symbol_universe[0]
+        symbol = play.symbol_universe[0]
     
     if builder is None:
         builder = FeatureFrameBuilder()
     
     result = PlayFeatures(
-        idea_card_id=idea_card.id,
+        play_id=play.id,
         symbol=symbol,
     )
     
     # Process each TF role
-    for role, tf_config in idea_card.tf_configs.items():
+    for role, tf_config in play.tf_configs.items():
         tf = tf_config.tf
         
         # Load data
@@ -952,7 +952,7 @@ def build_features_from_play(
             )
         
         # Build FeatureSpecSet from Play's TFConfig
-        spec_set = idea_card.get_feature_spec_set(role, symbol)
+        spec_set = play.get_feature_spec_set(role, symbol)
         
         if spec_set and spec_set.specs:
             # Compute features with tf_role for metadata provenance

@@ -573,21 +573,21 @@ class Play:
 # Loader
 # =============================================================================
 
-IDEA_CARDS_DIR = Path(__file__).parent.parent.parent / "configs" / "plays"
+PLAYS_DIR = Path(__file__).parent.parent.parent / "configs" / "plays"
 
 
-def load_play(idea_card_id: str, base_dir: Path | None = None) -> Play:
+def load_play(play_id: str, base_dir: Path | None = None) -> Play:
     """
     Load an Play from YAML file.
 
     Args:
-        idea_card_id: Identifier (filename without .yml)
+        play_id: Identifier (filename without .yml)
         base_dir: Optional base directory
 
     Returns:
         Validated Play instance
     """
-    search_dir = base_dir or IDEA_CARDS_DIR
+    search_dir = base_dir or PLAYS_DIR
     search_paths = [
         search_dir,
         search_dir / "_validation",
@@ -597,7 +597,7 @@ def load_play(idea_card_id: str, base_dir: Path | None = None) -> Play:
     path = None
     for search_path in search_paths:
         for ext in (".yml", ".yaml"):
-            candidate = search_path / f"{idea_card_id}{ext}"
+            candidate = search_path / f"{play_id}{ext}"
             if candidate.exists():
                 path = candidate
                 break
@@ -607,7 +607,7 @@ def load_play(idea_card_id: str, base_dir: Path | None = None) -> Play:
     if not path:
         available = list_plays(search_dir)
         raise FileNotFoundError(
-            f"Play '{idea_card_id}' not found in {search_dir}. Available: {available}"
+            f"Play '{play_id}' not found in {search_dir}. Available: {available}"
         )
 
     with open(path, "r", encoding="utf-8") as f:
@@ -621,7 +621,7 @@ def load_play(idea_card_id: str, base_dir: Path | None = None) -> Play:
 
 def list_plays(base_dir: Path | None = None) -> list[str]:
     """List all available Play files."""
-    search_dir = base_dir or IDEA_CARDS_DIR
+    search_dir = base_dir or PLAYS_DIR
 
     if not search_dir.exists():
         return []

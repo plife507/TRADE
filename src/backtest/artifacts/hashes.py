@@ -82,7 +82,7 @@ def compute_equity_hash(equity_curve: list[EquityPoint]) -> str:
 def compute_run_hash(
     trades_hash: str,
     equity_hash: str,
-    idea_card_hash: str | None = None,
+    play_hash: str | None = None,
 ) -> str:
     """
     Compute combined run hash from component hashes.
@@ -90,7 +90,7 @@ def compute_run_hash(
     Args:
         trades_hash: Hash of trades list
         equity_hash: Hash of equity curve
-        idea_card_hash: Optional hash of Play config
+        play_hash: Optional hash of Play config
         
     Returns:
         Combined SHA256 hash (first 16 chars)
@@ -99,8 +99,8 @@ def compute_run_hash(
         "trades": trades_hash,
         "equity": equity_hash,
     }
-    if idea_card_hash:
-        components["idea_card"] = idea_card_hash
+    if play_hash:
+        components["play"] = play_hash
     
     serialized = json.dumps(components, sort_keys=True)
     return hashlib.sha256(serialized.encode('utf-8')).hexdigest()[:16]
@@ -245,7 +245,7 @@ class InputHashComponents:
     Changing ANY of these fields MUST change the hash.
     """
     # Strategy config
-    idea_card_hash: str
+    play_hash: str
     
     # Symbol universe
     symbols: list[str]
@@ -280,7 +280,7 @@ class InputHashComponents:
         """
         return {
             # Strategy
-            "idea_card_hash": self.idea_card_hash,
+            "play_hash": self.play_hash,
             
             # Symbols (sorted, uppercase, deduplicated)
             "symbols": _canonicalize_symbols(self.symbols),
@@ -337,7 +337,7 @@ class InputHashComponents:
 
 
 def compute_input_hash(
-    idea_card_hash: str,
+    play_hash: str,
     window_start: str,
     window_end: str,
     symbols: list[str] | None = None,
@@ -359,7 +359,7 @@ def compute_input_hash(
     Used for folder naming - same inputs = same folder.
     
     Args:
-        idea_card_hash: Hash of Play config
+        play_hash: Hash of Play config
         window_start: Window start as ISO string (YYYY-MM-DD)
         window_end: Window end as ISO string (YYYY-MM-DD)
         symbols: List of symbols
@@ -379,7 +379,7 @@ def compute_input_hash(
         SHA256 hash (first N chars) - short for folder names
     """
     components = InputHashComponents(
-        idea_card_hash=idea_card_hash,
+        play_hash=play_hash,
         symbols=symbols or [],
         tf_exec=tf_exec,
         tf_ctx=tf_ctx or [],

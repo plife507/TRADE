@@ -35,7 +35,7 @@ class RuntimeConfig:
     No hard-coded defaults - fail loud if missing.
     """
     # Identity (from Play)
-    idea_card_id: str
+    play_id: str
     idea_card_version: str
     
     # Account/capital config (from Play.account - REQUIRED)
@@ -96,7 +96,7 @@ class RuntimeConfig:
     @classmethod
     def from_play(
         cls,
-        idea_card: Play,
+        play: Play,
         symbol_override: str | None = None,
         starting_equity_override: float | None = None,
         max_leverage_override: float | None = None,
@@ -108,7 +108,7 @@ class RuntimeConfig:
         Create RuntimeConfig from Play with optional overrides.
         
         Args:
-            idea_card: Source Play (must have account section)
+            play: Source Play (must have account section)
             symbol_override: Override symbol (default: first in symbol_universe)
             starting_equity_override: Override starting equity
             max_leverage_override: Override max leverage
@@ -123,13 +123,13 @@ class RuntimeConfig:
             ValueError: If Play is missing required account section
         """
         # Validate account config is present
-        if idea_card.account is None:
+        if play.account is None:
             raise ValueError(
-                f"Play '{idea_card.id}' is missing account section. "
+                f"Play '{play.id}' is missing account section. "
                 "account.starting_equity_usdt and account.max_leverage are required."
             )
         
-        account = idea_card.account
+        account = play.account
         
         # Resolve capital/account values (Play is source of truth, overrides win)
         starting_equity = (
@@ -153,33 +153,33 @@ class RuntimeConfig:
         # Resolve symbol
         symbol = symbol_override
         if symbol is None:
-            if not idea_card.symbol_universe:
+            if not play.symbol_universe:
                 raise ValueError("Play has no symbols in symbol_universe")
-            symbol = idea_card.symbol_universe[0]
+            symbol = play.symbol_universe[0]
         
         # Extract sizing from risk model
         sizing_model = "percent_equity"
         sizing_value = 1.0
-        if idea_card.risk_model:
-            sizing_model = idea_card.risk_model.sizing.model.value
-            sizing_value = idea_card.risk_model.sizing.value
+        if play.risk_model:
+            sizing_model = play.risk_model.sizing.model.value
+            sizing_value = play.risk_model.sizing.value
             # risk_model.sizing.max_leverage can override
-            if idea_card.risk_model.sizing.max_leverage:
-                max_leverage = idea_card.risk_model.sizing.max_leverage
+            if play.risk_model.sizing.max_leverage:
+                max_leverage = play.risk_model.sizing.max_leverage
         
         # Extract warmup requirements
-        warmup_exec = idea_card.get_required_warmup_bars("exec")
-        warmup_htf = idea_card.get_required_warmup_bars("htf")
-        warmup_mtf = idea_card.get_required_warmup_bars("mtf")
+        warmup_exec = play.get_required_warmup_bars("exec")
+        warmup_htf = play.get_required_warmup_bars("htf")
+        warmup_mtf = play.get_required_warmup_bars("mtf")
         
         # Extract required indicators
-        required_exec = tuple(idea_card.tf_configs.get("exec", None).required_indicators) if "exec" in idea_card.tf_configs else ()
-        required_htf = tuple(idea_card.tf_configs.get("htf", None).required_indicators) if "htf" in idea_card.tf_configs else ()
-        required_mtf = tuple(idea_card.tf_configs.get("mtf", None).required_indicators) if "mtf" in idea_card.tf_configs else ()
+        required_exec = tuple(play.tf_configs.get("exec", None).required_indicators) if "exec" in play.tf_configs else ()
+        required_htf = tuple(play.tf_configs.get("htf", None).required_indicators) if "htf" in play.tf_configs else ()
+        required_mtf = tuple(play.tf_configs.get("mtf", None).required_indicators) if "mtf" in play.tf_configs else ()
         
         return cls(
-            idea_card_id=idea_card.id,
-            idea_card_version=idea_card.version,
+            play_id=play.id,
+            idea_card_version=play.version,
             starting_equity_usdt=starting_equity,
             max_leverage=max_leverage,
             margin_mode=account.margin_mode,
@@ -190,9 +190,9 @@ class RuntimeConfig:
             max_notional_usdt=account.max_notional_usdt,
             max_margin_usdt=account.max_margin_usdt,
             symbol=symbol,
-            exec_tf=idea_card.exec_tf,
-            htf=idea_card.htf,
-            mtf=idea_card.mtf,
+            exec_tf=play.exec_tf,
+            htf=play.htf,
+            mtf=play.mtf,
             warmup_bars_exec=warmup_exec,
             warmup_bars_htf=warmup_htf,
             warmup_bars_mtf=warmup_mtf,
@@ -209,7 +209,7 @@ class RuntimeConfig:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization/logging."""
         return {
-            "idea_card_id": self.idea_card_id,
+            "play_id": self.play_id,
             "idea_card_version": self.idea_card_version,
             "starting_equity_usdt": self.starting_equity_usdt,
             "max_leverage": self.max_leverage,
@@ -254,7 +254,7 @@ class RuntimeConfig:
             "=" * 60,
             "RESOLVED CONFIG SUMMARY",
             "=" * 60,
-            f"  idea_card: {self.idea_card_id} v{self.idea_card_version}",
+            f"  play: {self.play_id} v{self.idea_card_version}",
             f"  symbol: {self.symbol}",
             f"  tf_exec: {self.exec_tf}",
         ]

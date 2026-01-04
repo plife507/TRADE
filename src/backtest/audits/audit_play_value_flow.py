@@ -56,14 +56,14 @@ class ValueFlowAuditResult:
 
 
 def audit_value_flow(
-    idea_card: "Play",
+    play: "Play",
     engine: "BacktestEngine",
 ) -> ValueFlowAuditResult:
     """
     Audit that Play values flow correctly to engine configuration.
 
     Args:
-        idea_card: Source Play
+        play: Source Play
         engine: Configured BacktestEngine
 
     Returns:
@@ -73,7 +73,7 @@ def audit_value_flow(
     errors: list[str] = []
 
     # Check 1: slippage_bps
-    expected_slippage = idea_card.account.slippage_bps if idea_card.account.slippage_bps is not None else 5.0
+    expected_slippage = play.account.slippage_bps if play.account.slippage_bps is not None else 5.0
     actual_slippage = engine.execution_config.slippage_bps
     slippage_check = ValueFlowCheck(
         name="slippage_bps",
@@ -90,8 +90,8 @@ def audit_value_flow(
         )
 
     # Check 2: taker_fee_rate (fees flow to RiskProfileConfig, not ExecutionConfig)
-    if idea_card.account.fee_model:
-        expected_taker_rate = idea_card.account.fee_model.taker_rate  # decimal
+    if play.account.fee_model:
+        expected_taker_rate = play.account.fee_model.taker_rate  # decimal
         actual_taker_rate = engine.config.risk_profile.taker_fee_rate  # decimal
         taker_check = ValueFlowCheck(
             name="taker_fee_rate",
@@ -108,8 +108,8 @@ def audit_value_flow(
             )
 
     # Check 3: maker_fee_bps (stored in strategy_params, used by some components)
-    if idea_card.account.fee_model:
-        expected_maker = idea_card.account.fee_model.maker_bps
+    if play.account.fee_model:
+        expected_maker = play.account.fee_model.maker_bps
         # maker_fee_bps is passed through strategy_params
         actual_maker = engine.config.params.get("maker_fee_bps", 0.0)
         maker_check = ValueFlowCheck(
@@ -127,7 +127,7 @@ def audit_value_flow(
             )
 
     # Check 4: maintenance_margin_rate
-    expected_mmr = idea_card.account.maintenance_margin_rate if idea_card.account.maintenance_margin_rate is not None else 0.005
+    expected_mmr = play.account.maintenance_margin_rate if play.account.maintenance_margin_rate is not None else 0.005
     actual_mmr = engine.config.risk_profile.maintenance_margin_rate
     mmr_check = ValueFlowCheck(
         name="maintenance_margin_rate",
@@ -144,8 +144,8 @@ def audit_value_flow(
         )
 
     # Check 5: min_trade_notional_usdt
-    if idea_card.account.min_trade_notional_usdt is not None:
-        expected_min_trade = idea_card.account.min_trade_notional_usdt
+    if play.account.min_trade_notional_usdt is not None:
+        expected_min_trade = play.account.min_trade_notional_usdt
         actual_min_trade = engine.config.risk_profile.min_trade_usdt
         min_trade_check = ValueFlowCheck(
             name="min_trade_notional_usdt",

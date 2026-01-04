@@ -111,7 +111,7 @@ def _select_play(prompt_text: str = "Select Play") -> str | None:
     Show numbered list of Plays and let user select by number.
 
     Returns:
-        Selected idea_card_id or None if cancelled
+        Selected play_id or None if cancelled
     """
     result = backtest_list_plays_tool()
 
@@ -233,8 +233,8 @@ def _run_ideacard_backtest(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_play("Select Play to run")
-    if not idea_card_id:
+    play_id = _select_play("Select Play to run")
+    if not play_id:
         return
 
     # Get date range
@@ -245,7 +245,7 @@ def _run_ideacard_backtest(cli: "TradeCLI"):
     # Confirm
     console.print()
     console.print(f"[{CLIColors.NEON_CYAN}]Running backtest:[/]")
-    console.print(f"  Play: [{CLIColors.NEON_GREEN}]{idea_card_id}[/]")
+    console.print(f"  Play: [{CLIColors.NEON_GREEN}]{play_id}[/]")
     console.print(f"  Window: {start_date.date()} to {end_date.date()}")
     console.print()
 
@@ -257,7 +257,7 @@ def _run_ideacard_backtest(cli: "TradeCLI"):
     result = run_long_action(
         "backtest.run",
         backtest_run_play_tool,
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         start=start_date,
         end=end_date,
     )
@@ -305,8 +305,8 @@ def _preflight_check(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_play("Select Play for preflight")
-    if not idea_card_id:
+    play_id = _select_play("Select Play for preflight")
+    if not play_id:
         return
 
     # Get date range
@@ -324,7 +324,7 @@ def _preflight_check(cli: "TradeCLI"):
     result = run_long_action(
         "backtest.preflight",
         backtest_preflight_play_tool,
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         start=start_date,
         end=end_date,
         fix_gaps=fix_gaps,
@@ -370,8 +370,8 @@ def _data_fix(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_play("Select Play for data fix")
-    if not idea_card_id:
+    play_id = _select_play("Select Play for data fix")
+    if not play_id:
         return
 
     # Get date range
@@ -383,7 +383,7 @@ def _data_fix(cli: "TradeCLI"):
     result = run_long_action(
         "backtest.data_fix",
         backtest_data_fix_tool,
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         start=start_date,
         end=end_date,
     )
@@ -410,20 +410,20 @@ def _view_indicators(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_play("Select Play to inspect")
-    if not idea_card_id:
+    play_id = _select_play("Select Play to inspect")
+    if not play_id:
         return
 
     console.print()
     console.print(f"[{CLIColors.NEON_CYAN}]Loading indicators...[/]")
 
-    result = backtest_indicators_tool(idea_card_id=idea_card_id)
+    result = backtest_indicators_tool(play_id=play_id)
 
     console.print()
     if result.success:
         data = result.data or {}
 
-        console.print(f"[{CLIColors.NEON_GREEN}]Indicators for {idea_card_id}:[/]")
+        console.print(f"[{CLIColors.NEON_GREEN}]Indicators for {play_id}:[/]")
         console.print()
 
         # Show by timeframe role
@@ -446,8 +446,8 @@ def _normalize_ideacard(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_play("Select Play to normalize")
-    if not idea_card_id:
+    play_id = _select_play("Select Play to normalize")
+    if not play_id:
         return
 
     # Ask about write
@@ -460,7 +460,7 @@ def _normalize_ideacard(cli: "TradeCLI"):
     console.print(f"[{CLIColors.NEON_CYAN}]Normalizing Play...[/]")
 
     result = backtest_play_normalize_tool(
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         write_in_place=write_in_place,
     )
 

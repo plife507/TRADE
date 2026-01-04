@@ -1156,7 +1156,7 @@ def run_state_tracking_smoke() -> int:
 
 
 def run_state_tracking_parity_smoke(
-    idea_card_id: str = "V_01_single_5m_rsi_ema",
+    play_id: str = "V_01_single_5m_rsi_ema",
 ) -> int:
     """
     Run State Tracking Parity Smoke Test.
@@ -1169,7 +1169,7 @@ def run_state_tracking_parity_smoke(
     Compares trades hashes to ensure parity.
 
     Args:
-        idea_card_id: Play to use for the test (default: V_01)
+        play_id: Play to use for the test (default: V_01)
 
     Returns:
         Number of failures (0 = success)
@@ -1201,15 +1201,15 @@ def run_state_tracking_parity_smoke(
     console.print(f"\n[bold]Step 1: Load Play[/]")
 
     try:
-        idea_card = load_play(idea_card_id)
-        console.print(f"  [green]OK[/] Loaded Play: {idea_card_id}")
+        play = load_play(play_id)
+        console.print(f"  [green]OK[/] Loaded Play: {play_id}")
     except FileNotFoundError as e:
         console.print(f"  [red]FAIL[/] Play not found: {e}")
         return 1
 
     # Get symbol and check data availability
-    symbol = idea_card.symbol_universe[0] if idea_card.symbol_universe else "BTCUSDT"
-    exec_tf = idea_card.exec_tf
+    symbol = play.symbol_universe[0] if play.symbol_universe else "BTCUSDT"
+    exec_tf = play.exec_tf
 
     console.print(f"      Symbol: {symbol}")
     console.print(f"      Exec TF: {exec_tf}")
@@ -1252,7 +1252,7 @@ def run_state_tracking_parity_smoke(
     console.print(f"\n[bold]Step 3: Compute Warmup[/]")
 
     try:
-        warmup_reqs = compute_warmup_requirements(idea_card)
+        warmup_reqs = compute_warmup_requirements(play)
         warmup_by_role = warmup_reqs.warmup_by_role
         delay_by_role = warmup_reqs.delay_by_role
         console.print(f"  [green]OK[/] Warmup by role: {warmup_by_role}")
@@ -1267,7 +1267,7 @@ def run_state_tracking_parity_smoke(
 
     try:
         engine_baseline = create_engine_from_play(
-            idea_card=idea_card,
+            play=play,
             window_start=window_start,
             window_end=window_end,
             warmup_by_role=warmup_by_role,
@@ -1277,7 +1277,7 @@ def run_state_tracking_parity_smoke(
         # Explicitly set record_state_tracking=False (should be default)
         engine_baseline.record_state_tracking = False
 
-        result_baseline = run_engine_with_play(engine_baseline, idea_card)
+        result_baseline = run_engine_with_play(engine_baseline, play)
         trades_hash_baseline = compute_trades_hash(result_baseline.trades)
 
         console.print(f"  [green]OK[/] Baseline run completed")
@@ -1297,7 +1297,7 @@ def run_state_tracking_parity_smoke(
 
     try:
         engine_with_tracking = create_engine_from_play(
-            idea_card=idea_card,
+            play=play,
             window_start=window_start,
             window_end=window_end,
             warmup_by_role=warmup_by_role,
@@ -1307,7 +1307,7 @@ def run_state_tracking_parity_smoke(
         # Enable state tracking
         engine_with_tracking.record_state_tracking = True
 
-        result_with_tracking = run_engine_with_play(engine_with_tracking, idea_card)
+        result_with_tracking = run_engine_with_play(engine_with_tracking, play)
         trades_hash_with_tracking = compute_trades_hash(result_with_tracking.trades)
 
         console.print(f"  [green]OK[/] State tracking run completed")

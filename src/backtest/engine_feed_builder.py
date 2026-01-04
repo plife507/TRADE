@@ -189,7 +189,7 @@ import warnings
 
 def build_structures_into_feed(
     exec_feed: FeedStore,
-    idea_card: Play,
+    play: Play,
     logger=None,
 ) -> None:
     """
@@ -208,7 +208,7 @@ def build_structures_into_feed(
 
     Args:
         exec_feed: The exec FeedStore to wire structures into
-        idea_card: Play with market_structure_blocks
+        play: Play with market_structure_blocks
         logger: Optional logger instance
 
     Note:
@@ -220,11 +220,11 @@ def build_structures_into_feed(
         logger = get_logger()
 
     # New schema: structures are in feature_registry, not market_structure_blocks
-    if not hasattr(idea_card, "market_structure_blocks"):
+    if not hasattr(play, "market_structure_blocks"):
         logger.debug("New Play schema detected - structures handled by incremental state")
         return
 
-    structure_specs = list(idea_card.market_structure_blocks)
+    structure_specs = list(play.market_structure_blocks)
     if not structure_specs:
         logger.debug("No market_structure_blocks in Play, skipping structure build")
         return

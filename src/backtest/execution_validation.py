@@ -46,7 +46,7 @@ EARLIEST_BYBIT_DATE_MONTH = 11  # November 2018
 # Gate 8.0: Play Execution Contract
 # =============================================================================
 
-def compute_play_hash(idea_card: "Play") -> str:
+def compute_play_hash(play: "Play") -> str:
     """
     Compute a deterministic hash for an Play.
     
@@ -54,13 +54,13 @@ def compute_play_hash(idea_card: "Play") -> str:
     Hash is based on all execution-relevant fields.
     
     Args:
-        idea_card: The Play to hash
+        play: The Play to hash
         
     Returns:
         SHA256 hash as hex string (first 16 chars for readability)
     """
     # Convert to dict (deterministic serialization)
-    card_dict = idea_card.to_dict()
+    card_dict = play.to_dict()
     
     # Sort keys for determinism
     canonical_json = json.dumps(card_dict, sort_keys=True, separators=(",", ":"))
@@ -122,7 +122,7 @@ class PlayValidationResult:
         }
 
 
-def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
+def validate_play_contract(play: "Play") -> PlayValidationResult:
     """
     Validate Play execution contract.
     
@@ -135,7 +135,7 @@ def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
     - Hash is computable
     
     Args:
-        idea_card: Play to validate
+        play: Play to validate
 
     Returns:
         PlayValidationResult with issues (if any)
@@ -143,21 +143,21 @@ def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
     issues: list[ValidationIssue] = []
 
     # Required fields
-    if not idea_card.id:
+    if not play.id:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_ID",
             message="Play.id is required",
         ))
     
-    if not idea_card.version:
+    if not play.version:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_VERSION",
             message="Play.version is required",
         ))
     
-    if not idea_card.symbol_universe:
+    if not play.symbol_universe:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_SYMBOLS",
@@ -165,7 +165,7 @@ def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
         ))
     
     # Exec TF is required
-    if not idea_card.execution_tf:
+    if not play.execution_tf:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_EXEC_TF",
@@ -173,7 +173,7 @@ def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
         ))
     
     # Account config is REQUIRED (no hard-coded defaults)
-    if idea_card.account is None:
+    if play.account is None:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_ACCOUNT",
@@ -184,17 +184,17 @@ def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
         ))
     else:
         # Validate account values
-        if idea_card.account.starting_equity_usdt <= 0:
+        if play.account.starting_equity_usdt <= 0:
             issues.append(ValidationIssue(
                 severity=ValidationSeverity.ERROR,
                 code="INVALID_STARTING_EQUITY",
-                message=f"account.starting_equity_usdt must be positive. Got: {idea_card.account.starting_equity_usdt}",
+                message=f"account.starting_equity_usdt must be positive. Got: {play.account.starting_equity_usdt}",
             ))
-        if idea_card.account.max_leverage <= 0:
+        if play.account.max_leverage <= 0:
             issues.append(ValidationIssue(
                 severity=ValidationSeverity.ERROR,
                 code="INVALID_MAX_LEVERAGE",
-                message=f"account.max_leverage must be positive. Got: {idea_card.account.max_leverage}",
+                message=f"account.max_leverage must be positive. Got: {play.account.max_leverage}",
             ))
     
     # Warmup bars validation (P2.2: prevent excessive data requests)
@@ -202,7 +202,7 @@ def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
     # happens during compute_warmup_requirements() call
     
     # Blocks must exist for signal generation
-    if not idea_card.blocks:
+    if not play.blocks:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.WARNING,
             code="NO_BLOCKS",
@@ -210,7 +210,7 @@ def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
         ))
     
     # Risk model should exist
-    if idea_card.risk_model is None:
+    if play.risk_model is None:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.WARNING,
             code="NO_RISK_MODEL",
@@ -221,7 +221,7 @@ def validate_play_contract(idea_card: "Play") -> PlayValidationResult:
     card_hash = None
     if not any(i.severity == ValidationSeverity.ERROR for i in issues):
         try:
-            card_hash = compute_play_hash(idea_card)
+            card_hash = compute_play_hash(play)
         except Exception as e:
             issues.append(ValidationIssue(
                 severity=ValidationSeverity.ERROR,
@@ -250,14 +250,14 @@ class FeatureReference:
     location: str  # e.g., "blocks[0].cases[0].when"
 
 
-def extract_rule_feature_refs(idea_card: "Play") -> list[FeatureReference]:
+def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
     """
     Extract all feature references from Play blocks.
 
     Gate 8.1: Finds all feature_id references in block expressions.
 
     Args:
-        idea_card: Play with blocks
+        play: Play with blocks
 
     Returns:
         List of FeatureReference objects
@@ -269,7 +269,7 @@ def extract_rule_feature_refs(idea_card: "Play") -> list[FeatureReference]:
 
     refs: list[FeatureReference] = []
 
-    if not idea_card.blocks:
+    if not play.blocks:
         return refs
 
     def _extract_from_expr(expr: Expr, location: str) -> None:
@@ -300,21 +300,21 @@ def extract_rule_feature_refs(idea_card: "Play") -> list[FeatureReference]:
             _extract_from_expr(expr.expr, f"{location}.window")
 
     # Extract from all blocks
-    for i, block in enumerate(idea_card.blocks):
+    for i, block in enumerate(play.blocks):
         for j, case in enumerate(block.cases):
             _extract_from_expr(case.when, f"blocks[{i}].cases[{j}].when")
 
     # Extract from risk model if ATR-based SL
-    if idea_card.risk_model and idea_card.risk_model.stop_loss.atr_feature_id:
+    if play.risk_model and play.risk_model.stop_loss.atr_feature_id:
         refs.append(FeatureReference(
-            key=idea_card.risk_model.stop_loss.atr_feature_id,
+            key=play.risk_model.stop_loss.atr_feature_id,
             tf_role="exec",
             location="risk_model.stop_loss.atr_feature_id",
         ))
 
-    if idea_card.risk_model and idea_card.risk_model.take_profit.atr_feature_id:
+    if play.risk_model and play.risk_model.take_profit.atr_feature_id:
         refs.append(FeatureReference(
-            key=idea_card.risk_model.take_profit.atr_feature_id,
+            key=play.risk_model.take_profit.atr_feature_id,
             tf_role="exec",
             location="risk_model.take_profit.atr_feature_id",
         ))
@@ -329,7 +329,7 @@ OHLCV_COLUMNS = {"open", "high", "low", "close", "volume", "timestamp"}
 BUILTIN_KEYS = {"mark_price"}
 
 
-def get_declared_features_by_role(idea_card: "Play") -> dict[str, set[str]]:
+def get_declared_features_by_role(play: "Play") -> dict[str, set[str]]:
     """
     Get all declared feature keys organized by TF role.
 
@@ -341,7 +341,7 @@ def get_declared_features_by_role(idea_card: "Play") -> dict[str, set[str]]:
     all declared feature keys.
 
     Args:
-        idea_card: Play with features list
+        play: Play with features list
 
     Returns:
         Dict mapping "exec" -> set of all feature keys (including OHLCV and built-in)
@@ -352,7 +352,7 @@ def get_declared_features_by_role(idea_card: "Play") -> dict[str, set[str]]:
 
     # Get all feature IDs from the registry (includes expanded multi-output keys)
     try:
-        registry = idea_card.feature_registry
+        registry = play.feature_registry
         # Add all feature IDs (primary keys)
         for feature in registry.all_features():
             keys.add(feature.id)
@@ -367,7 +367,7 @@ def get_declared_features_by_role(idea_card: "Play") -> dict[str, set[str]]:
     return {"exec": keys}
 
 
-def validate_play_features(idea_card: "Play") -> PlayValidationResult:
+def validate_play_features(play: "Play") -> PlayValidationResult:
     """
     Validate all feature references in Play.
     
@@ -379,7 +379,7 @@ def validate_play_features(idea_card: "Play") -> PlayValidationResult:
     - No unknown indicator types
     
     Args:
-        idea_card: Play to validate
+        play: Play to validate
 
     Returns:
         PlayValidationResult with issues (if any)
@@ -387,10 +387,10 @@ def validate_play_features(idea_card: "Play") -> PlayValidationResult:
     issues: list[ValidationIssue] = []
 
     # Get all declared features
-    declared = get_declared_features_by_role(idea_card)
+    declared = get_declared_features_by_role(play)
     
     # Get all references
-    refs = extract_rule_feature_refs(idea_card)
+    refs = extract_rule_feature_refs(play)
     
     # In new schema, all features are accessible from "exec" context
     exec_features = declared.get("exec", set())
@@ -464,7 +464,7 @@ class WarmupRequirements:
         }
 
 
-def _compute_structure_warmup(idea_card: "Play") -> int:
+def _compute_structure_warmup(play: "Play") -> int:
     """
     Compute warmup needed for market structure features.
 
@@ -475,7 +475,7 @@ def _compute_structure_warmup(idea_card: "Play") -> int:
     See: src/backtest/incremental/registry.py
 
     Args:
-        idea_card: Play with features list
+        play: Play with features list
 
     Returns:
         Maximum warmup bars needed for structure computation
@@ -485,7 +485,7 @@ def _compute_structure_warmup(idea_card: "Play") -> int:
     """
     from src.backtest.incremental.registry import get_structure_warmup
 
-    registry = idea_card.feature_registry
+    registry = play.feature_registry
     structures = registry.get_structures()
 
     if not structures:
@@ -514,7 +514,7 @@ def _compute_structure_warmup(idea_card: "Play") -> int:
     return max_structure_warmup
 
 
-def compute_warmup_requirements(idea_card: "Play") -> WarmupRequirements:
+def compute_warmup_requirements(play: "Play") -> WarmupRequirements:
     """
     Compute canonical warmup requirements for an Play.
 
@@ -525,7 +525,7 @@ def compute_warmup_requirements(idea_card: "Play") -> WarmupRequirements:
     warmup requirements.
 
     Args:
-        idea_card: Play to analyze
+        play: Play to analyze
 
     Returns:
         WarmupRequirements with per-TF warmup and delay
@@ -535,10 +535,10 @@ def compute_warmup_requirements(idea_card: "Play") -> WarmupRequirements:
     feature_warmup: dict[str, int] = {}
 
     # Compute structure warmup (Stage 3: all blocks are exec-only)
-    structure_warmup = _compute_structure_warmup(idea_card)
+    structure_warmup = _compute_structure_warmup(play)
 
     try:
-        registry = idea_card.feature_registry
+        registry = play.feature_registry
         all_tfs = registry.get_all_tfs()
 
         for tf in all_tfs:
@@ -547,24 +547,24 @@ def compute_warmup_requirements(idea_card: "Play") -> WarmupRequirements:
             feature_warmup[tf] = max_feature_warmup
 
             # Include structure_warmup for exec TF
-            role_structure_warmup = structure_warmup if tf == idea_card.execution_tf else 0
+            role_structure_warmup = structure_warmup if tf == play.execution_tf else 0
             effective_warmup = max(max_feature_warmup, role_structure_warmup)
 
             warmup_by_role[tf] = effective_warmup
             delay_by_role[tf] = 0  # No delay in new schema
 
         # Ensure exec TF is always present
-        if idea_card.execution_tf and idea_card.execution_tf not in warmup_by_role:
-            warmup_by_role[idea_card.execution_tf] = structure_warmup
-            delay_by_role[idea_card.execution_tf] = 0
-            feature_warmup[idea_card.execution_tf] = 0
+        if play.execution_tf and play.execution_tf not in warmup_by_role:
+            warmup_by_role[play.execution_tf] = structure_warmup
+            delay_by_role[play.execution_tf] = 0
+            feature_warmup[play.execution_tf] = 0
 
     except Exception:
         # Fallback if registry fails
-        if idea_card.execution_tf:
-            warmup_by_role[idea_card.execution_tf] = structure_warmup
-            delay_by_role[idea_card.execution_tf] = 0
-            feature_warmup[idea_card.execution_tf] = 0
+        if play.execution_tf:
+            warmup_by_role[play.execution_tf] = structure_warmup
+            delay_by_role[play.execution_tf] = 0
+            feature_warmup[play.execution_tf] = 0
 
     # Overall max
     max_warmup = max(warmup_by_role.values()) if warmup_by_role else 0
@@ -601,7 +601,7 @@ class PreEvaluationStatus:
 
 
 def validate_pre_evaluation(
-    idea_card: "Play",
+    play: "Play",
     bar_counts: dict[str, int],  # role -> current bar count
     warmup_requirements: WarmupRequirements | None = None,
 ) -> PreEvaluationStatus:
@@ -615,7 +615,7 @@ def validate_pre_evaluation(
     - All required features are available
     
     Args:
-        idea_card: Play being evaluated
+        play: Play being evaluated
         bar_counts: Current bar count per TF role
         warmup_requirements: Pre-computed warmup (or computed if None)
         
@@ -627,7 +627,7 @@ def validate_pre_evaluation(
     
     # Compute warmup if not provided
     if warmup_requirements is None:
-        warmup_requirements = compute_warmup_requirements(idea_card)
+        warmup_requirements = compute_warmup_requirements(play)
     
     # Check warmup for each TF
     for role, required_warmup in warmup_requirements.warmup_by_role.items():
@@ -656,7 +656,7 @@ def validate_pre_evaluation(
 # Combined Validation
 # =============================================================================
 
-def validate_play_full(idea_card: "Play") -> PlayValidationResult:
+def validate_play_full(play: "Play") -> PlayValidationResult:
     """
     Run all validation gates on an Play.
     
@@ -665,7 +665,7 @@ def validate_play_full(idea_card: "Play") -> PlayValidationResult:
     - Gate 8.1: Feature validation
     
     Args:
-        idea_card: Play to validate
+        play: Play to validate
         
     Returns:
         Combined PlayValidationResult
@@ -673,12 +673,12 @@ def validate_play_full(idea_card: "Play") -> PlayValidationResult:
     all_issues: list[ValidationIssue] = []
     
     # Gate 8.0: Contract
-    contract_result = validate_play_contract(idea_card)
+    contract_result = validate_play_contract(play)
     all_issues.extend(contract_result.issues)
     
     # Gate 8.1: Features (only if contract is valid)
     if contract_result.is_valid:
-        feature_result = validate_play_features(idea_card)
+        feature_result = validate_play_features(play)
         all_issues.extend(feature_result.issues)
     
     is_valid = not any(i.severity == ValidationSeverity.ERROR for i in all_issues)
@@ -747,24 +747,24 @@ class PlaySignalEvaluator:
     4. Returns EvaluationResult
     """
 
-    def __init__(self, idea_card: "Play"):
+    def __init__(self, play: "Play"):
         """
         Initialize evaluator with Play.
 
         Args:
-            idea_card: The Play containing blocks
+            play: The Play containing blocks
 
         Raises:
             ValueError: If Play is invalid
         """
         # Validate
-        validation = validate_play_full(idea_card)
+        validation = validate_play_full(play)
         if not validation.is_valid:
             errors = [i.message for i in validation.errors]
             raise ValueError(f"Play validation failed: {'; '.join(errors)}")
 
-        self.idea_card = idea_card
-        self.warmup = compute_warmup_requirements(idea_card)
+        self.play = play
+        self.warmup = compute_warmup_requirements(play)
 
         # Initialize blocks executor
         from .rules.strategy_blocks import StrategyBlocksExecutor
@@ -788,7 +788,7 @@ class PlaySignalEvaluator:
             EvaluationResult with decision and details
         """
         # Use blocks (primary DSL format)
-        if self.idea_card.blocks:
+        if self.play.blocks:
             return self._evaluate_blocks(snapshot, has_position, position_side)
 
         # No blocks defined
@@ -815,7 +815,7 @@ class PlaySignalEvaluator:
             EvaluationResult with decision and details
         """
         # Execute all blocks
-        intents = self._blocks_executor.execute(self.idea_card.blocks, snapshot)
+        intents = self._blocks_executor.execute(self.play.blocks, snapshot)
 
         # Map intents to decision
         for intent in intents:
@@ -823,7 +823,7 @@ class PlaySignalEvaluator:
 
             # Entry signals (only when no position)
             if action == "entry_long" and not has_position:
-                if not self.idea_card.position_policy.allows_long():
+                if not self.play.position_policy.allows_long():
                     continue
                 sl_price, tp_price = self._compute_sl_tp(snapshot, "long")
                 return EvaluationResult(
@@ -834,7 +834,7 @@ class PlaySignalEvaluator:
                 )
 
             elif action == "entry_short" and not has_position:
-                if not self.idea_card.position_policy.allows_short():
+                if not self.play.position_policy.allows_short():
                     continue
                 sl_price, tp_price = self._compute_sl_tp(snapshot, "short")
                 return EvaluationResult(
@@ -909,7 +909,7 @@ class PlaySignalEvaluator:
         Returns:
             Tuple of (stop_loss_price, take_profit_price)
         """
-        risk_model = self.idea_card.risk_model
+        risk_model = self.play.risk_model
         if risk_model is None:
             return None, None
 

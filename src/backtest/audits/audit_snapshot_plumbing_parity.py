@@ -28,7 +28,7 @@ from typing import Any
 
 import numpy as np
 
-from ..play import load_play, Play, IDEA_CARDS_DIR
+from ..play import load_play, Play, PLAYS_DIR
 from ..execution_validation import compute_warmup_requirements
 from ..runtime.feed_store import FeedStore
 from ..runtime.snapshot_view import RuntimeSnapshotView
@@ -395,27 +395,27 @@ class PlumbingAuditCallback:
 
 
 def audit_snapshot_plumbing_parity(
-    idea_card_id: str,
+    play_id: str,
     start_date: datetime,
     end_date: datetime,
     symbol: str | None = None,
     max_samples: int = 2000,
     tolerance: float = 1e-12,
     strict: bool = True,
-    idea_cards_dir: Path | None = None,
+    plays_dir: Path | None = None,
 ) -> PlumbingParityResult:
     """
     Run snapshot plumbing parity audit.
     
     Args:
-        idea_card_id: Play identifier or path
+        play_id: Play identifier or path
         start_date: Start of audit window
         end_date: End of audit window
         symbol: Override symbol (optional, inferred from Play)
         max_samples: Max exec bar samples (default: 2000)
         tolerance: Tolerance for float comparison (default: 1e-12)
         strict: Stop at first mismatch (default: True)
-        idea_cards_dir: Optional directory for Plays
+        plays_dir: Optional directory for Plays
         
     Returns:
         PlumbingParityResult with audit results
@@ -434,30 +434,30 @@ def audit_snapshot_plumbing_parity(
     
     try:
         # Load Play - handle subdirectory paths
-        # If idea_card_id contains a path separator or file extension, resolve it as a path
+        # If play_id contains a path separator or file extension, resolve it as a path
         from pathlib import Path as PathLib
         
-        if "/" in idea_card_id or "\\" in idea_card_id:
+        if "/" in play_id or "\\" in play_id:
             # Looks like a path - extract directory and ID
-            id_path = PathLib(idea_card_id)
-            if idea_cards_dir is None:
-                idea_cards_dir = IDEA_CARDS_DIR
+            id_path = PathLib(play_id)
+            if plays_dir is None:
+                plays_dir = PLAYS_DIR
             
             # Get parent dir relative to idea_cards base
             if id_path.parent.name:
-                subdir = idea_cards_dir / id_path.parent
+                subdir = plays_dir / id_path.parent
             else:
-                subdir = idea_cards_dir
+                subdir = plays_dir
             
             # Get the ID without extension
             card_id = id_path.stem if id_path.suffix in (".yml", ".yaml") else id_path.name
-            idea_card = load_play(card_id, base_dir=subdir)
+            play = load_play(card_id, base_dir=subdir)
         else:
-            idea_card = load_play(idea_card_id, base_dir=idea_cards_dir)
+            play = load_play(play_id, base_dir=plays_dir)
         
         # Resolve symbol
         if symbol is None:
-            if not idea_card.symbol_universe:
+            if not play.symbol_universe:
                 return PlumbingParityResult(
                     success=False,
                     total_samples=0,
@@ -466,44 +466,44 @@ def audit_snapshot_plumbing_parity(
                     first_mismatch=None,
                     error_message="Play has no symbols in symbol_universe and none provided",
                 )
-            symbol = idea_card.symbol_universe[0]
+            symbol = play.symbol_universe[0]
         
         # Validate account config is present (required - no defaults)
-        if idea_card.account is None:
+        if play.account is None:
             return PlumbingParityResult(
                 success=False,
                 total_samples=0,
                 total_comparisons=0,
                 failed_comparisons=0,
                 first_mismatch=None,
-                error_message=f"Play '{idea_card_id}' is missing account section.",
+                error_message=f"Play '{play_id}' is missing account section.",
             )
         
         # Get declared keys by role
         declared_keys_by_role: dict[str, set[str]] = {}
-        for role, tf_config in idea_card.tf_configs.items():
+        for role, tf_config in play.tf_configs.items():
             specs = list(tf_config.feature_specs)
             expanded_keys = get_required_indicator_columns_from_specs(specs)
             declared_keys_by_role[role] = set(expanded_keys)
         
         # Extract params from Play
-        initial_equity = idea_card.account.starting_equity_usdt
-        max_leverage = idea_card.account.max_leverage
+        initial_equity = play.account.starting_equity_usdt
+        max_leverage = play.account.max_leverage
         
         taker_fee_rate = 0.0006
-        if idea_card.account.fee_model:
-            taker_fee_rate = idea_card.account.fee_model.taker_rate
+        if play.account.fee_model:
+            taker_fee_rate = play.account.fee_model.taker_rate
         
         min_trade_usdt = 1.0
-        if idea_card.account.min_trade_notional_usdt is not None:
-            min_trade_usdt = idea_card.account.min_trade_notional_usdt
+        if play.account.min_trade_notional_usdt is not None:
+            min_trade_usdt = play.account.min_trade_notional_usdt
         
         risk_per_trade_pct = 1.0
-        if idea_card.risk_model:
-            if idea_card.risk_model.sizing.model.value == "percent_equity":
-                risk_per_trade_pct = idea_card.risk_model.sizing.value
-            if idea_card.risk_model.sizing.max_leverage:
-                max_leverage = idea_card.risk_model.sizing.max_leverage
+        if play.risk_model:
+            if play.risk_model.sizing.model.value == "percent_equity":
+                risk_per_trade_pct = play.risk_model.sizing.value
+            if play.risk_model.sizing.max_leverage:
+                max_leverage = play.risk_model.sizing.max_leverage
         
         # Build minimal SystemConfig for engine (same pattern as runner.py)
         risk_profile = RiskProfileConfig(
@@ -516,11 +516,11 @@ def audit_snapshot_plumbing_parity(
         
         # Extract feature specs from Play for engine
         feature_specs_by_role = {}
-        for role, tf_config in idea_card.tf_configs.items():
+        for role, tf_config in play.tf_configs.items():
             feature_specs_by_role[role] = list(tf_config.feature_specs)
         
         # Compute warmup requirements from Play (P0.2 fix)
-        warmup_reqs = compute_warmup_requirements(idea_card)
+        warmup_reqs = compute_warmup_requirements(play)
         warmup_bars_by_role = warmup_reqs.warmup_by_role
         delay_bars_by_role = warmup_reqs.delay_by_role
         
@@ -537,17 +537,17 @@ def audit_snapshot_plumbing_parity(
         # Create strategy instance
         strategy_instance = StrategyInstanceConfig(
             strategy_instance_id="audit_strategy",
-            strategy_id=idea_card.id,
-            strategy_version=idea_card.version,
-            inputs=StrategyInstanceInputs(symbol=symbol, tf=idea_card.exec_tf),
+            strategy_id=play.id,
+            strategy_version=play.version,
+            inputs=StrategyInstanceInputs(symbol=symbol, tf=play.exec_tf),
             params=strategy_params,
         )
         
         # Create SystemConfig
         system_config = SystemConfig(
-            system_id=idea_card.id,
+            system_id=play.id,
             symbol=symbol,
-            tf=idea_card.exec_tf,
+            tf=play.exec_tf,
             strategies=[strategy_instance],
             primary_strategy_instance_id="audit_strategy",
             windows={
@@ -565,9 +565,9 @@ def audit_snapshot_plumbing_parity(
         
         # Build tf_mapping
         tf_mapping = {
-            "htf": idea_card.htf or idea_card.exec_tf,
-            "mtf": idea_card.mtf or idea_card.exec_tf,
-            "ltf": idea_card.exec_tf,
+            "htf": play.htf or play.exec_tf,
+            "mtf": play.mtf or play.exec_tf,
+            "ltf": play.exec_tf,
         }
         
         # Create engine with callback placeholder

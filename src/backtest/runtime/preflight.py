@@ -204,7 +204,7 @@ class TFPreflightResult:
 @dataclass
 class PreflightReport:
     """Complete preflight report for all TFs."""
-    idea_card_id: str
+    play_id: str
     window_start: datetime
     window_end: datetime
     overall_status: PreflightStatus
@@ -224,7 +224,7 @@ class PreflightReport:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         result = {
-            "idea_card_id": self.idea_card_id,
+            "play_id": self.play_id,
             "window": {
                 "start": self.window_start.isoformat(),
                 "end": self.window_end.isoformat(),
@@ -284,7 +284,7 @@ class PreflightReport:
         """Print summary to console."""
         status_icon = "[OK]" if self.overall_status == PreflightStatus.PASSED else "[FAIL]"
         print(f"\n{status_icon} Preflight Gate: {self.overall_status.value.upper()}")
-        print(f"   Play: {self.idea_card_id}")
+        print(f"   Play: {self.play_id}")
         print(f"   Window: {self.window_start.date()} -> {self.window_end.date()}")
         print()
 
@@ -833,7 +833,7 @@ def _validate_exec_to_1m_mapping(
 
 
 def run_preflight_gate(
-    idea_card: "Play",
+    play: "Play",
     data_loader: "DataLoader",
     window_start: datetime,
     window_end: datetime,
@@ -845,7 +845,7 @@ def run_preflight_gate(
     Run the data preflight gate for an Play.
     
     WARMUP COMPUTATION (SINGLE SOURCE OF TRUTH):
-    - Calls compute_warmup_requirements(idea_card) EXACTLY ONCE at the start
+    - Calls compute_warmup_requirements(play) EXACTLY ONCE at the start
     - Stores result in PreflightReport.computed_warmup_requirements
     - All downstream warmup usage (coverage check, backfill) uses this computed value
     - Runner and Engine MUST NOT recompute warmup - they consume this output
@@ -856,7 +856,7 @@ def run_preflight_gate(
     - Simulator/backtest MUST NOT modify DuckDB directly
     
     Args:
-        idea_card: The Play to validate data for
+        play: The Play to validate data for
         data_loader: Callable that loads data for (symbol, tf, start, end) -> DataFrame
         window_start: Backtest window start
         window_end: Backtest window end
@@ -891,14 +891,14 @@ def run_preflight_gate(
     # STEP 1: Compute warmup requirements ONCE from Play (SOURCE OF TRUTH)
     # ==========================================================================
     
-    warmup_requirements = compute_warmup_requirements(idea_card)
+    warmup_requirements = compute_warmup_requirements(play)
     
     # Validate that warmup doesn't push data start before earliest available data
     # In new schema, use feature_registry to get all TFs
     try:
-        all_tfs = idea_card.feature_registry.get_all_tfs()
+        all_tfs = play.feature_registry.get_all_tfs()
     except Exception:
-        all_tfs = {idea_card.execution_tf} if idea_card.execution_tf else set()
+        all_tfs = {play.execution_tf} if play.execution_tf else set()
 
     for tf in all_tfs:
         warmup = warmup_requirements.warmup_by_role.get(tf, 0)
@@ -918,7 +918,7 @@ def run_preflight_gate(
     # ==========================================================================
     pairs_to_check: list[tuple[str, str, int]] = []  # (symbol, tf, warmup_bars)
 
-    for symbol in idea_card.symbol_universe:
+    for symbol in play.symbol_universe:
         for tf in all_tfs:
             # Use computed warmup from WarmupRequirements
             warmup = warmup_requirements.warmup_by_role.get(tf, 0)
@@ -952,7 +952,7 @@ def run_preflight_gate(
         warmup_1m_with_buffer = warmup_1m_bars + safety_buffer_1m
 
         # Add 1m to pairs for each symbol
-        for symbol in idea_card.symbol_universe:
+        for symbol in play.symbol_universe:
             pairs_to_check.append((symbol, "1m", warmup_1m_with_buffer))
     
     # First validation pass
@@ -1016,7 +1016,7 @@ def run_preflight_gate(
     has_1m_coverage = True
     required_1m_bars = 0
 
-    for symbol in idea_card.symbol_universe:
+    for symbol in play.symbol_universe:
         key_1m = f"{symbol}:1m"
         if key_1m in tf_results:
             result_1m = tf_results[key_1m]
@@ -1033,10 +1033,10 @@ def run_preflight_gate(
 
     if has_1m_coverage:
         # Get exec TF from Play (new schema uses execution_tf directly)
-        exec_tf_str = idea_card.execution_tf
+        exec_tf_str = play.execution_tf
         if exec_tf_str:
             # Load 1m data for mapping validation
-            for symbol in idea_card.symbol_universe:
+            for symbol in play.symbol_universe:
                 key_1m = f"{symbol}:1m"
                 result_1m = tf_results.get(key_1m)
                 if result_1m and result_1m.data_exists:
@@ -1085,7 +1085,7 @@ def run_preflight_gate(
         if not has_1m_coverage:
             error_code = "MISSING_1M_COVERAGE"
             # Find the failing 1m result
-            for symbol in idea_card.symbol_universe:
+            for symbol in play.symbol_universe:
                 key_1m = f"{symbol}:1m"
                 result_1m = tf_results.get(key_1m)
                 if result_1m and result_1m.status == PreflightStatus.FAILED:
@@ -1148,7 +1148,7 @@ def run_preflight_gate(
 
     # Build report with computed warmup requirements (SOURCE OF TRUTH for downstream)
     report = PreflightReport(
-        idea_card_id=idea_card.id,
+        play_id=play.id,
         window_start=window_start,
         window_end=window_end,
         overall_status=PreflightStatus.PASSED if overall_passed else PreflightStatus.FAILED,

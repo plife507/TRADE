@@ -35,7 +35,7 @@ class SnapshotFrameInfo:
 @dataclass
 class SnapshotManifest:
     """Manifest for a snapshot artifact set (role-keyed)."""
-    idea_card_id: str
+    play_id: str
     symbol: str
     window_start: datetime
     window_end: datetime
@@ -58,7 +58,7 @@ class SnapshotManifest:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""
         result = {
-            "idea_card_id": self.idea_card_id,
+            "play_id": self.play_id,
             "symbol": self.symbol,
             "window_start": self.window_start.isoformat(),
             "window_end": self.window_end.isoformat(),
@@ -91,7 +91,7 @@ class SnapshotManifest:
 
 def emit_snapshot_artifacts(
     run_dir: Path,
-    idea_card_id: str,
+    play_id: str,
     symbol: str,
     window_start: datetime,
     window_end: datetime,
@@ -110,7 +110,7 @@ def emit_snapshot_artifacts(
 
     Args:
         run_dir: Run directory (e.g., backtests/system_symbol_tf/run-001/)
-        idea_card_id: Play identifier
+        play_id: Play identifier
         symbol: Trading symbol
         window_start/end: Backtest window
         exec_tf/htf/mtf: Timeframes
@@ -215,7 +215,7 @@ def emit_snapshot_artifacts(
 
     # Write manifest
     manifest = SnapshotManifest(
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         symbol=symbol,
         window_start=window_start,
         window_end=window_end,

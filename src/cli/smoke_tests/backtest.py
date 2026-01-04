@@ -24,7 +24,7 @@ from ...tools import (
 console = Console()
 
 
-def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> int:
+def _run_backtest_smoke_idea_card(play_id: str, fresh_db: bool = False) -> int:
     """
     Run backtest smoke test using Play-based wrapper (golden path).
 
@@ -32,7 +32,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     that `trade_cli.py backtest run --smoke` uses.
 
     Args:
-        idea_card_id: Play identifier to test
+        play_id: Play identifier to test
         fresh_db: Whether to wipe DB and rebuild data first
 
     Returns:
@@ -40,14 +40,14 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     """
     failures = 0
 
-    console.print(f"\n[bold cyan]Play Smoke Test: {idea_card_id}[/]")
+    console.print(f"\n[bold cyan]Play Smoke Test: {play_id}[/]")
 
     # Step 2: Run preflight check (Phase A gate)
     console.print(f"\n[bold cyan]Step 2: Preflight Check (Phase A Gate)[/]")
     console.print(f"  [dim]Checking env/symbol/tf/coverage...[/]")
 
     preflight_result = backtest_preflight_play_tool(
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         env="live",  # Always use live data env for smoke
     )
 
@@ -90,7 +90,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
         if fresh_db:
             console.print(f"\n[bold cyan]Step 2b: Attempting Data Fix[/]")
             fix_result = backtest_data_fix_tool(
-                idea_card_id=idea_card_id,
+                play_id=play_id,
                 env="live",
                 sync_to_now=True,
                 fill_gaps=True,
@@ -99,7 +99,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
                 console.print(f"  [green]OK[/] Data fix completed: {fix_result.message}")
                 # Retry preflight
                 preflight_result = backtest_preflight_play_tool(
-                    idea_card_id=idea_card_id,
+                    play_id=play_id,
                     env="live",
                 )
                 if preflight_result.success:
@@ -119,7 +119,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     console.print(f"  [dim]Running with --smoke --strict...[/]")
 
     run_result = backtest_run_play_tool(
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         env="live",
         smoke=True,
         strict=True,
@@ -233,7 +233,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     console.print(f"[bold magenta]{'='*60}[/]")
 
     console.print(f"\n[bold]Summary:[/]")
-    console.print(f"  Play: {idea_card_id}")
+    console.print(f"  Play: {play_id}")
     console.print(f"  Fresh DB: {fresh_db}")
     console.print(f"  Failures: {failures}")
 
@@ -245,7 +245,7 @@ def _run_backtest_smoke_idea_card(idea_card_id: str, fresh_db: bool = False) -> 
     return failures
 
 
-def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
+def run_backtest_smoke(fresh_db: bool = False, play_id: str = None) -> int:
     """
     Run the backtest smoke test using Play-based workflow.
 
@@ -258,7 +258,7 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
 
     Args:
         fresh_db: Whether to wipe DB and rebuild data
-        idea_card_id: Play to test (defaults to env var BACKTEST_SMOKE_IDEA_CARD)
+        play_id: Play to test (defaults to env var BACKTEST_SMOKE_IDEA_CARD)
 
     Returns:
         Number of failures
@@ -279,9 +279,9 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
 
     # List available Plays
     result = backtest_list_plays_tool()
-    idea_cards = []
+    plays = []
     if result.success and result.data:
-        idea_cards = result.data.get("idea_cards", [])
+        plays = result.data.get("idea_cards", [])
         console.print(f"  [green]OK[/] Found {len(idea_cards)} Plays")
         for card in idea_cards[:5]:
             console.print(f"    - {card}")
@@ -289,18 +289,18 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
         console.print(f"  [yellow]WARN[/] No Plays found: {result.error}")
 
     # Determine Play to test
-    if idea_card_id is None:
-        idea_card_id = os.environ.get("BACKTEST_SMOKE_IDEA_CARD")
+    if play_id is None:
+        play_id = os.environ.get("BACKTEST_SMOKE_IDEA_CARD")
 
-    if idea_card_id is None and idea_cards:
+    if play_id is None and plays:
         # Prefer valid test cards (T*) over error test cases (E*)
         valid_cards = [c for c in idea_cards if c.startswith("T")]
-        idea_card_id = valid_cards[0] if valid_cards else idea_cards[0]
+        play_id = valid_cards[0] if valid_cards else idea_cards[0]
 
     # If we have an Play, use the golden path
-    if idea_card_id:
-        console.print(f"\n  [bold]Using Play: {idea_card_id}[/]")
-        return _run_backtest_smoke_idea_card(idea_card_id, fresh_db)
+    if play_id:
+        console.print(f"\n  [bold]Using Play: {play_id}[/]")
+        return _run_backtest_smoke_idea_card(play_id, fresh_db)
 
     # No Plays found - fail
     console.print(f"\n[bold red]FAIL[/] No Plays found in configs/plays/")
@@ -330,7 +330,7 @@ def run_backtest_mixed_smoke() -> int:
     failures = 0
 
     # Select a diverse mix of validation cards from configs/plays/_validation/
-    idea_cards_to_test = [
+    plays_to_test = [
         # Core validation cards (1m eval loop)
         "V_60_mark_price_basic",
         "V_61_zone_touch",
@@ -350,8 +350,8 @@ def run_backtest_mixed_smoke() -> int:
     if result.success and result.data:
         available_cards = result.data.get("idea_cards", [])
 
-    # Filter idea_cards_to_test to only those that exist
-    cards_to_test = [card for card in idea_cards_to_test if card in available_cards]
+    # Filter plays_to_test to only those that exist
+    cards_to_test = [card for card in plays_to_test if card in available_cards]
 
     if not cards_to_test:
         console.print(f"  [yellow]WARN[/] No idea cards found to test")
@@ -434,7 +434,7 @@ def run_phase6_backtest_smoke() -> int:
         start_dt = end_dt - timedelta(days=7)  # 7 days window
 
         result = backtest_preflight_play_tool(
-            idea_card_id=WARMUP_MATRIX_CARD,
+            play_id=WARMUP_MATRIX_CARD,
             env=TEST_ENV,
             symbol_override=TEST_SYMBOL,
             start=start_dt,
@@ -503,7 +503,7 @@ def run_phase6_backtest_smoke() -> int:
         max_lookback = 7  # Should clamp to 7 days
 
         result = backtest_data_fix_tool(
-            idea_card_id=WARMUP_MATRIX_CARD,
+            play_id=WARMUP_MATRIX_CARD,
             env=TEST_ENV,
             start=start_dt,
             end=end_dt,
@@ -555,18 +555,18 @@ def run_phase6_backtest_smoke() -> int:
         from ...backtest.play import load_play
         from ...backtest.execution_validation import validate_play_full
 
-        idea_card = load_play(MTF_ALIGNMENT_CARD)
-        validation = validate_play_full(idea_card)
+        play = load_play(MTF_ALIGNMENT_CARD)
+        validation = validate_play_full(play)
 
         if validation.is_valid:
             console.print(f"  [green]OK[/] MTF Play validates")
-            console.print(f"      exec_tf: {idea_card.exec_tf}")
-            console.print(f"      mtf: {idea_card.mtf}")
-            console.print(f"      htf: {idea_card.htf}")
+            console.print(f"      exec_tf: {play.exec_tf}")
+            console.print(f"      mtf: {play.mtf}")
+            console.print(f"      htf: {play.htf}")
 
             # Check delay bars are different across roles
             delays = {}
-            for role, tf_config in idea_card.tf_configs.items():
+            for role, tf_config in play.tf_configs.items():
                 # delay_bars is in market_structure
                 if tf_config.market_structure:
                     delays[role] = tf_config.market_structure.delay_bars
@@ -614,8 +614,8 @@ def run_phase6_backtest_smoke() -> int:
             full_hash="test",
             short_hash="test",
             short_hash_length=8,
-            idea_card_id="test",
-            idea_card_hash="test",
+            play_id="test",
+            play_hash="test",
             symbols=["BTCUSDT"],
             tf_exec="5m",
             tf_ctx=[],
@@ -661,7 +661,7 @@ def run_phase6_backtest_smoke() -> int:
         console.print(f"  [dim]Running backtest: {WARMUP_MATRIX_CARD} ({start_dt.date()} to {end_dt.date()})...[/]")
 
         run_result = backtest_run_play_tool(
-            idea_card_id=WARMUP_MATRIX_CARD,
+            play_id=WARMUP_MATRIX_CARD,
             env=TEST_ENV,
             start=start_dt,
             end=end_dt,

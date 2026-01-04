@@ -184,8 +184,8 @@ def _run_math_parity_audit(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_play("Select Play for math parity audit")
-    if not idea_card_id:
+    play_id = _select_play("Select Play for math parity audit")
+    if not play_id:
         return
 
     # Get date range
@@ -200,7 +200,7 @@ def _run_math_parity_audit(cli: "TradeCLI"):
     result = run_long_action(
         "backtest.audit_math_parity",
         backtest_math_parity_tool,
-        idea_card=idea_card_id,
+        play=play_id,
         start_date=start_date.strftime("%Y-%m-%d"),
         end_date=end_date.strftime("%Y-%m-%d"),
     )
@@ -233,8 +233,8 @@ def _run_snapshot_plumbing_audit(cli: "TradeCLI"):
     console.print()
 
     # Select Play
-    idea_card_id = _select_play("Select Play for snapshot plumbing audit")
-    if not idea_card_id:
+    play_id = _select_play("Select Play for snapshot plumbing audit")
+    if not play_id:
         return
 
     # Get date range
@@ -249,7 +249,7 @@ def _run_snapshot_plumbing_audit(cli: "TradeCLI"):
     result = run_long_action(
         "backtest.audit_snapshot_plumbing",
         backtest_audit_snapshot_plumbing_tool,
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         start_date=start_date.strftime("%Y-%m-%d"),
         end_date=end_date.strftime("%Y-%m-%d"),
     )
