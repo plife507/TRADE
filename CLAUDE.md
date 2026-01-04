@@ -90,6 +90,29 @@ TRADE is a **modular, production-ready** Bybit futures trading bot with complete
 
 **Key Philosophy**: Safety first, modular always, tools as the API surface, ALL FORWARD.
 
+## Trading Hierarchy
+
+The system uses a four-level hierarchy for organizing trading logic:
+
+| Level | Name | Description | Location |
+|-------|------|-------------|----------|
+| 1 | **Setup** | Atomic trading rules (single condition or pattern) | Within Play YAML |
+| 2 | **Play** | Complete strategy (entry/exit rules, risk params) | `configs/plays/` |
+| 3 | **Playbook** | Collection of related Plays | `configs/playbooks/` |
+| 4 | **System** | Deployment configuration (capital, risk limits) | `configs/systems/` |
+
+### Promotion Path
+
+```
+The Forge (src/forge/) → configs/plays/ (proven)
+     ↓                          ↓
+  Develop & Test            Production-ready
+  Experimental              Validated
+```
+
+- **The Forge** (`src/forge/`): Development and validation environment for experimental Plays
+- **configs/**: Proven, validated configurations ready for backtesting or live use
+
 ## Current Objective (Backtest Engine Roadmap)
 
 We are building the backtesting + strategy factory stack in **phases**. The canonical roadmap lives in `docs/project/PROJECT_OVERVIEW.md` under **"Project Roadmap – TRADE Backtest Engine & Strategy Factory"**.
@@ -100,8 +123,8 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 - 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
 - 42 indicators in INDICATOR_REGISTRY (single source of truth)
 - 6 structures in STRUCTURE_REGISTRY (+derived_zone in Phase 12)
-- IdeaCard-first CLI with full menu coverage
-- 11 validation IdeaCards (V_100+ blocks format only)
+- Play-first CLI with full menu coverage
+- 11 validation Plays (V_100+ blocks format only)
 
 **Derived Zones - Phase 12 (2026-01-04)**:
 - K slots + aggregates pattern for derived zones from swing pivots
@@ -112,9 +135,9 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 **Incremental State Architecture (2026-01-03)**:
 - O(1) hot loop access via MonotonicDeque/RingBuffer
 - STRUCTURE_REGISTRY parallel to INDICATOR_REGISTRY
-- Agent-composable IdeaCard blocks (variables, features, structures, rules)
+- Agent-composable Play blocks (variables, features, structures, rules)
 - See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
-- See: `docs/architecture/IDEACARD_VISION.md`
+- See: `docs/architecture/PLAY_VISION.md`
 
 **1m Evaluation Loop (2026-01-02)**:
 - mark_price resolution in snapshot
@@ -137,6 +160,7 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 - Core backtest engine: `src/backtest/`
   - Modular exchange: `src/backtest/sim/` (pricing, execution, funding, liquidation, ledger, metrics, constraints)
   - Engine orchestrator: `src/backtest/engine.py`
+- The Forge: `src/forge/` (development & validation environment)
 - Backtest API surface (tools): `src/tools/backtest_tools.py`
 - Historical candles source of truth: DuckDB via `src/data/historical_data_store.py`
 - Concrete strategies: `research/strategies/{pending|final|archived}/` (not `src/strategies/`)
@@ -166,6 +190,8 @@ TRADE/
 │   │   ├── runtime/               # Snapshot, FeedStore, TFContext
 │   │   ├── features/              # FeatureSpec, FeatureFrameBuilder
 │   │   └── incremental/           # O(1) structure detection (STRUCTURE_REGISTRY)
+│   ├── forge/                     # DOMAIN: Development & Validation Environment
+│   │   └── ...                    # Play development, testing, promotion tools
 │   ├── core/                      # DOMAIN: Live Trading (exchange-native semantics)
 │   │   ├── risk_manager.py        # Live risk checks (Signal.size_usdt)
 │   │   ├── position_manager.py    # Position tracking
@@ -177,6 +203,11 @@ TRADE/
 │   ├── tools/                     # SHARED: CLI/API surface (PRIMARY INTERFACE)
 │   ├── utils/                     # SHARED: Logging, rate limiting, helpers
 │   └── risk/global_risk.py        # Account-level risk (GlobalRiskView)
+├── configs/
+│   ├── plays/                     # Proven Play configurations (strategies)
+│   │   └── _validation/           # Validation Plays (V_100+)
+│   ├── playbooks/                 # Collections of related Plays
+│   └── systems/                   # Deployment configurations
 ├── docs/
 │   ├── todos/                     # TODO phase documents (canonical work tracking)
 │   ├── architecture/              # Architecture docs
@@ -185,6 +216,27 @@ TRADE/
 ├── CLAUDE.md                      # AI assistant guidance (this file)
 └── trade_cli.py                   # CLI entry point
 ```
+
+## The Forge (Development Environment)
+
+The Forge (`src/forge/`) is the development and validation environment for experimental Plays before promotion to production configs.
+
+### Purpose
+
+- **Develop**: Create and iterate on new Play configurations
+- **Validate**: Run validation checks before promotion
+- **Test**: Execute backtests in isolated environment
+- **Promote**: Move proven Plays to `configs/plays/`
+
+### Workflow
+
+```
+1. Create Play in Forge → 2. Validate & Test → 3. Promote to configs/
+```
+
+### Key Principle
+
+Plays in the Forge are experimental. Only after passing validation gates do they get promoted to `configs/plays/` for production use.
 
 ## Timeframe Definitions (Multi-Timeframe Trading)
 
@@ -197,7 +249,7 @@ The engine supports multi-timeframe analysis with three timeframe roles. These t
 | **LTF** | Low Timeframe | 1m, 3m, 5m, 15m | Execution timing (entries/exits), micro-structure. Engine iterates bar-by-bar. |
 | **MTF** | Mid Timeframe | 30m, 1h, 2h, 4h | Trade bias + structure context for LTF execution. |
 | **HTF** | High Timeframe | 6h, 8h, 12h, 1D | Higher-level trend + major levels. **Capped at 1D** (no weekly/monthly). |
-| **exec** | Execution TF | = LTF | The timeframe at which trading decisions are evaluated. Defaults to LTF in IdeaCard. |
+| **exec** | Execution TF | = LTF | The timeframe at which trading decisions are evaluated. Defaults to LTF in Play. |
 
 ### Hierarchy Rule
 
@@ -210,7 +262,7 @@ This is enforced by `validate_tf_mapping()` in `src/backtest/runtime/timeframe.p
 ### Example Configuration
 
 ```yaml
-# IdeaCard timeframes
+# Play timeframes
 tf: "15m"           # exec/LTF - bar-by-bar stepping
 mtf: "1h"           # Optional intermediate TF
 htf: "4h"           # Optional higher TF for context
@@ -241,6 +293,7 @@ Each major module has its own CLAUDE.md with domain rules and active TODOs:
 | Module | Path | Domain |
 |--------|------|--------|
 | Backtest | `src/backtest/CLAUDE.md` | Simulator, engine, market structure |
+| Forge | `src/forge/CLAUDE.md` | Development & validation environment |
 | Core | `src/core/CLAUDE.md` | Live trading execution |
 | Data | `src/data/CLAUDE.md` | DuckDB, market data |
 | Tools | `src/tools/CLAUDE.md` | CLI/API surface |
@@ -271,7 +324,7 @@ Each major module has its own CLAUDE.md with domain rules and active TODOs:
 - MUST NOT use implicit or silent defaults for required inputs.
 - Missing declarations MUST raise errors, not infer behavior.
 - Example (GLOBAL): `FeedStore.from_dataframe()` with `indicator_columns=None` → empty dict, not default list.
-- Example (GLOBAL): `REQUIRED_INDICATOR_COLUMNS` constant was deleted—indicators MUST be declared via FeatureSpec/Idea Card.
+- Example (GLOBAL): `REQUIRED_INDICATOR_COLUMNS` constant was deleted—indicators MUST be declared via FeatureSpec/Play.
 
 **Closed-Candle Only + TradingView-Style MTF**
 - All indicator computation MUST use closed candles only (never partial).
@@ -323,7 +376,7 @@ Each major module has its own CLAUDE.md with domain rules and active TODOs:
 - MUST reject `margin_mode="cross"` at config validation.
 
 **Indicator Declaration: Explicit Only**
-- Simulator MUST NOT compute indicators unless declared in FeatureSpec/Idea Card.
+- Simulator MUST NOT compute indicators unless declared in FeatureSpec/Play.
 - `TFContext.get_indicator_strict()` raises `KeyError` for undeclared indicators.
 - Strategies MUST NOT assume any indicator exists by default.
 
@@ -339,6 +392,22 @@ Each major module has its own CLAUDE.md with domain rules and active TODOs:
 - `RuntimeSnapshotView` is a read-only view over cached data—MUST NOT deep copy.
 - Snapshot access MUST be O(1)—no DataFrame operations in hot loop.
 - History access via index offset (`prev_ema_fast(1)`, `bars_exec_low(20)`).
+
+---
+
+### DOMAIN RULES — THE FORGE (`src/forge/`)
+
+**Experimental by Default**
+- All Plays in the Forge are considered experimental until promoted.
+- Forge Plays MUST NOT be referenced by production systems.
+
+**Validation Before Promotion**
+- Plays MUST pass all validation tiers before promotion to `configs/plays/`.
+- Promotion is a manual, deliberate action—not automated.
+
+**Isolation**
+- Forge has its own configuration namespace—no collision with production configs.
+- Test data and artifacts stay within Forge scope.
 
 ---
 
@@ -466,10 +535,10 @@ See **Critical Rules → Domain Rules — Live Trading** for WebSocket usage pol
 
 | Use Case | REST | WebSocket |
 |----------|------|-----------|
-| Current state | ✅ Primary | ❌ |
-| Execute trades | ✅ Always | ❌ |
-| Position queries | ✅ Always | ❌ |
-| Risk monitoring | ✅ Basic | ✅ GlobalRiskView only |
+| Current state | Yes Primary | No |
+| Execute trades | Yes Always | No |
+| Position queries | Yes Always | No |
+| Risk monitoring | Yes Basic | Yes GlobalRiskView only |
 
 **Note**: Simulator/backtest does NOT use WebSocket—all data is historical.
 
@@ -495,9 +564,9 @@ Rate limiter: `src/utils/rate_limiter.py`
 ### Strict Mode Mapping
 
 ```
-✅ TRADING_MODE=paper + BYBIT_USE_DEMO=true   → Demo (fake funds)
-✅ TRADING_MODE=real  + BYBIT_USE_DEMO=false  → Live (real funds)
-❌ All other combinations → BLOCKED at startup
+TRADING_MODE=paper + BYBIT_USE_DEMO=true   → Demo (fake funds)
+TRADING_MODE=real  + BYBIT_USE_DEMO=false  → Live (real funds)
+All other combinations → BLOCKED at startup
 ```
 
 ### Data vs Trading Separation
@@ -527,12 +596,16 @@ See **Critical Rules → Safety & API Discipline** for enforcement requirements.
 | Directory | Domain | Contents |
 |-----------|--------|----------|
 | `src/backtest/` | SIMULATOR | Backtest engine, simulated exchange, snapshots, features |
+| `src/forge/` | DEVELOPMENT | Play development, validation, promotion tools |
 | `src/core/` | LIVE | Exchange manager, position, risk, order execution |
 | `src/exchanges/` | LIVE | Bybit API client |
 | `src/tools/` | SHARED | Public API surface for CLI/agents |
 | `src/data/` | SHARED | Market data, DuckDB storage, realtime state |
 | `src/config/` | SHARED | Configuration (domain-agnostic) |
 | `src/utils/` | SHARED | Logging, rate limiting, helpers |
+| `configs/plays/` | — | Proven Play configurations |
+| `configs/playbooks/` | — | Collections of related Plays |
+| `configs/systems/` | — | Deployment configurations |
 | `docs/todos/` | — | TODO phase documents (canonical work tracking) |
 
 ## Reference Documentation
@@ -585,12 +658,12 @@ See `docs/todos/TODO.md` for active work tracking.
 | Agent | Model | Role | Can Modify |
 |-------|-------|------|------------|
 | `validate` | Sonnet | Runs tests, reports results | Nothing (read-only) |
-| `validate-updater` | Opus | Updates validation system | IdeaCards, validate.md, CLAUDE.md |
+| `validate-updater` | Opus | Updates validation system | Plays, validate.md, CLAUDE.md |
 
 **Flow**:
 1. `validate` runs tests, reports failures/coverage gaps
 2. If validation system needs updating → invoke `validate-updater`
-3. `validate-updater` adds IdeaCards, updates expectations, fixes coverage
+3. `validate-updater` adds Plays, updates expectations, fixes coverage
 
 **When to invoke `validate-updater`**:
 - New indicator added to registry
@@ -607,15 +680,15 @@ See `docs/todos/TODO.md` for active work tracking.
 | `src/backtest/engine*.py` | "Run normalize-batch, then one backtest run" |
 | `src/backtest/sim/*.py` | "Run audit-rollup" |
 | `src/backtest/metrics.py` | "Run metrics-audit" |
-| `configs/idea_cards/*.yml` | "Run normalize on that card" |
+| `configs/plays/*.yml` | "Run normalize on that Play" |
 | `src/cli/*.py` | "Quick validate - syntax check" |
 | Any backtest code | "Run TIER 1-2 validation" |
 
-### Validation IdeaCards
+### Validation Plays
 
-Location: `configs/idea_cards/_validation/`
+Location: `configs/plays/_validation/`
 
-| Card | Purpose |
+| Play | Purpose |
 |------|---------|
 | V_100_blocks_basic.yml | Basic blocks DSL validation |
 | V_101_all_any.yml | Nested all/any boolean logic |
@@ -629,27 +702,27 @@ Location: `configs/idea_cards/_validation/`
 | V_121_derived_zones_aggregates.yml | Derived zones aggregate fields |
 | V_122_derived_zones_empty_slots.yml | Empty slot guard patterns |
 
-**Total**: 11 validation cards (V_100+ blocks format only)
+**Total**: 11 validation Plays (V_100+ blocks format only)
 
 ### Validation Tiers
 
 ```
 TIER 0: Quick Check (<10 sec) - For tight refactoring loops
-TIER 1: IdeaCard Normalization - ALWAYS FIRST (validates configs against engine)
+TIER 1: Play Normalization - ALWAYS FIRST (validates configs against engine)
 TIER 2: Unit Audits - audit-toolkit, audit-rollup, metrics-audit, metadata-smoke
-TIER 3: Error Case Validation - Verify broken cards fail correctly
+TIER 3: Error Case Validation - Verify broken Plays fail correctly
 TIER 4+: Integration Tests (DB required)
 ```
 
 ### Key Principle
 
-**IdeaCard normalization is the critical gate.** It validates that:
+**Play normalization is the critical gate.** It validates that:
 - Indicator keys match the registry
 - Params are valid for each indicator type
 - Blocks DSL references declared features
 - Schema is correct
 
-As the engine evolves, normalization ensures IdeaCards stay in sync. When agents generate IdeaCards, they MUST run normalization for validation feedback.
+As the engine evolves, normalization ensures Plays stay in sync. When agents generate Plays, they MUST run normalization for validation feedback.
 
 ## External References
 
@@ -661,8 +734,8 @@ As the engine evolves, normalization ensures IdeaCards stay in sync. When agents
 | Data architecture | `docs/architecture/DATA_ARCHITECTURE.md` |
 | Simulated exchange | `docs/architecture/SIMULATED_EXCHANGE.md` |
 | Artifact storage format | `docs/architecture/ARTIFACT_STORAGE_FORMAT.md` |
-| IdeaCard → Engine flow | `docs/architecture/IDEACARD_ENGINE_FLOW.md` |
-| IdeaCard Syntax | `docs/guides/IDEACARD_SYNTAX.md` |
+| Play → Engine flow | `docs/architecture/PLAY_ENGINE_FLOW.md` |
+| Play Syntax | `docs/guides/PLAY_SYNTAX.md` |
 
 ### Vendor References (Read-Only Truth)
 

@@ -1,4 +1,20 @@
-## INVESTIGATION REPORT: Generic DerivationRule System for Market Structure → Derived Zones
+## INVESTIGATION REPORT: Generic DerivationRule System for Market Structure -> Derived Zones
+
+---
+
+## Terminology (2026-01-04)
+
+This document uses the new trading hierarchy terminology:
+
+| Term | Definition |
+|------|------------|
+| **Setup** | Reusable rule blocks, filters, entry/exit logic |
+| **Play** | Complete strategy specification (formerly "IdeaCard") |
+| **Playbook** | Collection of plays with regime routing |
+| **System** | Full trading operation with risk/execution |
+| **Forge** | Development/validation environment (src/forge/) |
+
+See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete architecture.
 
 ---
 
@@ -11,7 +27,7 @@ Phase 12 implementation is **COMPLETE**. All locked decisions have been implemen
 | 12.1: Version tracking | DONE | `swing.py`, `trend.py`, `zone.py`, `registry.py` |
 | 12.2: derived_zone detector | DONE | `detectors/derived_zone.py` (NEW) |
 | 12.3: Warmup computation | DONE | `execution_validation.py` |
-| 12.4: Validation IdeaCards | DONE | `V_120_*.yml`, `V_121_*.yml`, `V_122_*.yml` |
+| 12.4: Validation Plays | DONE | `V_120_*.yml`, `V_121_*.yml`, `V_122_*.yml` |
 | 12.5: Documentation | DONE | This file |
 
 **Key Implementation Details:**
@@ -107,7 +123,7 @@ def update(self, bar_idx: int, bar: BarData) -> None:
 
 **Implementation**:
 ```yaml
-# In IdeaCard feature params
+# In Play feature params
 - id: fib_zones_1h
   params:
     price_source: mark_close  # or "last_close"

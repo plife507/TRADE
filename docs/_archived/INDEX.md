@@ -25,13 +25,15 @@ Repository audit and reorganization documents.
 - `audit__repo_inventory.md`
 - `audit__reorganization_plan.md`
 
-## Audits (8 files)
+## Audits (10 files)
 
 Technical audits of specific subsystems and bug investigations.
 
 - `audits__indicator_pipeline_e2e_audit.md`
 - `audits__indicator_system_audit.md`
+- `audits__market_structure_indicator_integration.md` - Stage 5 integration analysis (archived 2026-01-04)
 - `audits__math_parity_5m_stress_test.md`
+- `audits__P1_09_BARS_EXEC_MINMAX_REVIEW.md` - O(n) hot loop bug analysis, FIXED by Incremental State (archived 2026-01-04)
 - `audits__phase3_parquet_migration_audit.md`
 - `audits__phase4_snapshot_plumbing_audit.md`
 - `audits__runtime_snapshot_mtf_caching_audit.md`
@@ -105,4 +107,4 @@ Test results and validation delivery documents.
 
 ---
 
-**Total**: 53 archived documents
+**Total**: 55 archived documents

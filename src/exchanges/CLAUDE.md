@@ -10,9 +10,9 @@ Bybit API client. Live trading domain.
 
 ## Rules
 
-- **Never call directly** → All trades go through `src/tools/`
-- **Check reference docs** → `reference/exchanges/bybit/docs/v5/`
-- **Four-leg API** → Trade LIVE/DEMO + Data LIVE/DEMO (see root CLAUDE.md)
+- **Never call directly** - All trades go through `src/tools/`
+- **Check reference docs** - `reference/exchanges/bybit/docs/v5/`
+- **Four-leg API** - Trade LIVE/DEMO + Data LIVE/DEMO (see root CLAUDE.md)
 
 ## Rate Limits
 
@@ -21,6 +21,10 @@ Bybit API client. Live trading domain.
 | IP (public) | 600/5sec |
 | Account/Position | 50/sec |
 | Orders | 10/sec/symbol |
+
+## Relationship to The Forge
+
+The Forge (`src/forge/`) uses the SimulatedExchange for backtesting, not this module. This module is only used for live trading execution after a Play has been validated and promoted.
 
 ## Active TODOs
 

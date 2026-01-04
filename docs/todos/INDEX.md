@@ -9,9 +9,25 @@ Documentation index for work tracking in the TRADE project.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [TODO.md](TODO.md) | Current focus, next steps | Ready for new work |
+| [TODO.md](TODO.md) | Current focus, next steps | **Forge Migration in Progress** |
 | [MEGA_FILE_REFACTOR.md](MEGA_FILE_REFACTOR.md) | Engine file size refactoring | Phases 1-3 COMPLETE, Phase 4 pending |
 | [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker (4 open) | Active |
+
+---
+
+## Forge Migration (Active)
+
+Major refactoring effort to restructure the project:
+
+**Terminology Changes**:
+- "IdeaCard" → "Play"
+- "configs/idea_cards/" → "configs/plays/"
+- "sandbox" → "forge"
+- "src/backtest/audits/" → "src/forge/audits/"
+
+**Hierarchy Model**: Setup → Play → Playbook → System
+
+See [TODO.md](TODO.md) for detailed phase tracking.
 
 ---
 
@@ -22,7 +38,7 @@ Completed work is archived by date in `archived/`:
 | Folder | Period | Key Work |
 |--------|--------|----------|
 | `2026-01/` | Jan 2026 | Incremental state, 1m eval loop spec, backtest analytics, registry consolidation |
-| `2026-01-01/` | Jan 1, 2026 | Market structure, IdeaCard value flow, metrics, legacy cleanup |
+| `2026-01-01/` | Jan 1, 2026 | Market structure, Play value flow, metrics, legacy cleanup |
 | `2025-12-31/` | Dec 31, 2025 | Price feed 1m preflight |
 | `2025-12-30/` | Dec 30, 2025 | Engine modular refactor, backtester fixes |
 | `2025-12-18/` | Dec 18, 2025 | Production pipeline validation, financial metrics |

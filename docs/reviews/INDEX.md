@@ -1,32 +1,43 @@
 # Code Reviews Index
 
-**Status**: All development reviews archived (2026-01-04)
+**Last Updated**: 2026-01-04
 
 ---
 
-## Current State
+## Current Reviews
 
-All code reviews from the development phase have been archived to `docs/_archived/reviews__*.md`.
+The following reviews are current and relevant:
 
-The codebase is now stable with:
-- 42 indicators in INDICATOR_REGISTRY
-- 6 structures in STRUCTURE_REGISTRY
-- Blocks DSL v3.0.0 complete
-- Phases 1-3 of mega-file refactor complete
+| Review | Date | Status | Topic |
+|--------|------|--------|-------|
+| [ARCHITECTURE_EXPERT_REVIEW.md](ARCHITECTURE_EXPERT_REVIEW.md) | 2026-01-04 | Active | Engine design, Sim-Live parity gaps |
+| [SIMULATOR_VS_LIVE_PARITY_REVIEW.md](SIMULATOR_VS_LIVE_PARITY_REVIEW.md) | 2026-01-04 | Active | Detailed capability matrix: sim vs live |
 
 ---
 
-## Archived Reviews Location
+## Key Findings
 
-See `docs/_archived/` for historical reviews:
+### ARCHITECTURE_EXPERT_REVIEW
 
-| Prefix | Category |
-|--------|----------|
-| `reviews__ARCH_REVIEW_*.md` | Architecture reviews (8 files) |
-| `reviews__BACKTEST_*.md` | Backtest engine reviews |
-| `reviews__BACKTESTER_*.md` | Function issue validations |
-| `reviews__MARKET_STRUCTURE_*.md` | Market structure integration |
-| `reviews__MATH_PARITY_*.md` | Math parity audits |
+Comprehensive review of engine architecture:
+- Hot loop: A grade (O(1) access)
+- Multi-TF: A- grade (forward-fill correct)
+- Blocks DSL: B+ grade (needs limit order extensions)
+- Simulated Exchange: C+ grade (single-order limitation)
+- Sim-Live Parity: D grade (major gap - different code paths)
+
+### SIMULATOR_VS_LIVE_PARITY_REVIEW
+
+Current simulator supports ~15% of Bybit live capabilities:
+- Order Types: Only market orders (limit/stop not implemented)
+- Position Management: No scaling, no partial close
+- TP/SL: Basic only (no trailing, no partial)
+
+---
+
+## Archived Reviews
+
+See `docs/_archived/reviews__*.md` for historical reviews.
 
 ---
 

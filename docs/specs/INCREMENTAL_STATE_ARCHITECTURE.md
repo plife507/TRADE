@@ -5,9 +5,27 @@
 **Updated**: 2026-01-04
 **Purpose**: Unified bar-by-bar state for market structure and rolling windows
 
+---
+
+## Terminology (2026-01-04)
+
+This document uses the new trading hierarchy terminology:
+
+| Term | Definition |
+|------|------------|
+| **Setup** | Reusable rule blocks, filters, entry/exit logic |
+| **Play** | Complete strategy specification (formerly "IdeaCard") |
+| **Playbook** | Collection of plays with regime routing |
+| **System** | Full trading operation with risk/execution |
+| **Forge** | Development/validation environment (src/forge/) |
+
+See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete architecture.
+
+---
+
 ## Vision Alignment
 
-This architecture supports the IdeaCard Vision (see `IDEACARD_VISION.md`):
+This architecture supports the Play Vision (see `PLAY_VISION.md`):
 
 - **Agent-ready**: Structures are blocks that can be composed programmatically
 - **Registry-based**: New structure types added without core changes
@@ -37,7 +55,7 @@ This architecture supports the IdeaCard Vision (see `IDEACARD_VISION.md`):
 |-------|---------|-------------|
 | Incremental State Engine | Mostly locked | Core data flow, O(1) guarantees |
 | Structure Registry | Extensible | Add new types anytime |
-| IdeaCard Schema | Fully flexible | Just YAML + parser |
+| Play Schema | Fully flexible | Just YAML + parser |
 | Rule Syntax | Fully flexible | Just string parsing |
 
 ### Multi-Timeframe Structure
@@ -173,7 +191,7 @@ class BaseIncrementalDetector(ABC):
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}) missing required params: {missing}\n"
                 f"\n"
-                f"Fix in IdeaCard:\n"
+                f"Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
                 f"    params:\n"
@@ -186,7 +204,7 @@ class BaseIncrementalDetector(ABC):
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}) missing dependencies: {missing_deps}\n"
                 f"\n"
-                f"Fix in IdeaCard:\n"
+                f"Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
                 f"    depends_on:\n"
@@ -712,7 +730,7 @@ class TFIncrementalState:
                     raise ValueError(
                         f"Structure '{key}' depends on '{dep_key}' not yet defined.\n"
                         f"\n"
-                        f"Define '{dep_key}' BEFORE '{key}' in IdeaCard."
+                        f"Define '{dep_key}' BEFORE '{key}' in Play."
                     )
                 deps[dep_type] = self.structures[dep_key]
 
@@ -810,11 +828,11 @@ class BacktestEngine:
         self._incremental = self._build_incremental()  # NEW
 
     def _build_incremental(self) -> MultiTFIncrementalState:
-        structures_config = self._idea_card.get("structures", {})
+        structures_config = self._play.get("structures", {})
 
         if not structures_config:
             raise ValueError(
-                "IdeaCard missing 'structures' section.\n"
+                "Play missing 'structures' section.\n"
                 "\n"
                 "Add:\n"
                 "  structures:\n"
@@ -879,14 +897,14 @@ class RuntimeSnapshotView:
             raise KeyError(
                 f"Rolling window 'low_{n}' not defined.\n"
                 f"\n"
-                f"Add to IdeaCard:\n"
+                f"Add to Play:\n"
                 f"  - type: rolling_window\n"
                 f"    key: low_{n}\n"
                 f"    params: {{ size: {n}, field: low, mode: min }}"
             )
 ```
 
-## IdeaCard Schema
+## Play Schema
 
 ### Structure Block
 
@@ -957,7 +975,7 @@ How YAML maps to this is up to the parser.
 | Level | When | What |
 |-------|------|------|
 | Registration | Code load | Class contract |
-| Parse-time | IdeaCard load | Schema, types exist |
+| Parse-time | Play load | Schema, types exist |
 | Instantiation | Engine init | Params, dependencies |
 | Runtime | Access | Output keys |
 
@@ -971,7 +989,7 @@ Every error includes actionable fix suggestions.
 | 2 | Base class + registry + validation | ✅ Complete |
 | 3 | Detectors (swing, fib, zone, trend, rolling_window) | ✅ Complete |
 | 4 | TFIncrementalState + MultiTFIncrementalState | ✅ Complete |
-| 5 | IdeaCard schema + parser | ✅ Complete |
+| 5 | Play schema + parser | ✅ Complete |
 | 6 | Engine integration | ✅ Complete |
 | 7 | Remove batch code | ✅ Complete |
 | 8 | Validation + docs | ✅ Complete |
@@ -986,7 +1004,8 @@ After migration:
 
 ## Related Documents
 
-- `IDEACARD_VISION.md` - Vision and goals
-- `IDEACARD_SYNTAX.md` - Blocks DSL v3.0.0 syntax reference
+- `PLAY_VISION.md` - Vision and goals (formerly IDEACARD_VISION.md)
+- `PLAY_SYNTAX.md` - Blocks DSL v3.0.0 syntax reference (formerly IDEACARD_SYNTAX.md)
 - `DERIVATION_RULE_INVESTIGATION.md` - Phase 12 derived zones (K slots + aggregates)
+- `../architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` - StateRationalizer and Forge
 - `../project/PROJECT_OVERVIEW.md` - Project roadmap

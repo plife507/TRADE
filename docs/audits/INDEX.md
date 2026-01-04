@@ -20,6 +20,10 @@
 
 **Previous Audit**: 72 bugs fixed (P0:7, P1:25, P2:28, P3:12)
 
+**NOTE**: Forge migration in progress - audit paths will change:
+- `src/backtest/audits/` → `src/forge/audits/`
+- Validation Plays: `configs/plays/_validation/V_100+`
+
 ---
 
 ## Archived Bugs
@@ -69,8 +73,31 @@ Full codebase audit conducted by 10 specialized agents. **Verdict: ALL ISSUES RE
 
 ---
 
+## Validation Plays (V_100+)
+
+Location: `configs/plays/_validation/` (after migration)
+
+| Play | Purpose |
+|------|---------|
+| V_100_blocks_basic.yml | Basic blocks DSL validation |
+| V_101_all_any.yml | Nested all/any boolean logic |
+| V_102_between.yml | Between operator validation |
+| V_103_crossover.yml | cross_above/cross_below operators |
+| V_104_holds_for.yml | holds_for window operator |
+| V_105_occurred_within.yml | occurred_within window operator |
+| V_106_not_operator.yml | NOT boolean operator |
+| V_115_type_safe_operators.yml | Type-safe operator validation |
+| V_120_derived_zones_basic.yml | Derived zones K slots |
+| V_121_derived_zones_aggregates.yml | Derived zones aggregate fields |
+| V_122_derived_zones_empty_slots.yml | Empty slot guard patterns |
+
+**Total**: 11 validation Plays (V_100+ blocks format only)
+
+---
+
 ## Navigation
 
 - **Bug Tracking**: [OPEN_BUGS.md](OPEN_BUGS.md) - current status (4 open)
 - **Archived Bugs**: [archived/2026-01-03_BUGS_RESOLVED.md](archived/2026-01-03_BUGS_RESOLVED.md) - 72 fixed
 - **Audit Overview**: [2026-01-01/AUDIT_INDEX.md](2026-01-01/AUDIT_INDEX.md) - executive summary
+- **Forge Migration**: [../todos/TODO.md](../todos/TODO.md) - active work

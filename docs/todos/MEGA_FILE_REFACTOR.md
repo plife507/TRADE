@@ -151,44 +151,46 @@
 
 ---
 
-## Phase 4: Split idea_card.py (PENDING)
+## Phase 4: Split play.py (PENDING - After Forge Migration)
 
 **Goal**: 1,705 LOC -> 5 focused modules
 
+**NOTE**: This phase depends on the Forge Migration (see TODO.md). The file will be renamed from `idea_card.py` to `play.py` as part of migration Phase F1.
+
 ### 4.1 Create risk_model.py (~150 LOC)
-- [ ] Create `src/backtest/risk_model.py`
+- [ ] Create `src/forge/risk_model.py`
 - [ ] Move enums: `StopLossType`, `TakeProfitType`, `SizingModel`
 - [ ] Move classes: `StopLossRule`, `TakeProfitRule`, `SizingRule`
 - [ ] Move class: `RiskModel`
 
 ### 4.2 Create signal_rules.py (~180 LOC)
-- [ ] Create `src/backtest/signal_rules.py`
+- [ ] Create `src/forge/signal_rules.py`
 - [ ] Move enum: `RuleOperator`
 - [ ] Move constant: `BANNED_OPERATORS`
 - [ ] Move classes: `Condition`, `EntryRule`, `ExitRule`
 - [ ] Move class: `SignalRules`
 
 ### 4.3 Create structure_specs.py (~280 LOC)
-- [ ] Create `src/backtest/incremental/structure_specs.py`
+- [ ] Create `src/forge/incremental/structure_specs.py`
 - [ ] Move class: `IncrementalStructureSpec`
 - [ ] Move function: `_parse_structure_specs_list()`
 - [ ] Move functions: `_resolve_variable()`, `_resolve_params()`
 
-### 4.4 Create idea_card_loader.py (~100 LOC)
-- [ ] Create `src/backtest/idea_card_loader.py`
-- [ ] Move constant: `IDEA_CARDS_DIR`
-- [ ] Move function: `load_idea_card()`
-- [ ] Move function: `list_idea_cards()`
+### 4.4 Create play_loader.py (~100 LOC)
+- [ ] Create `src/forge/play_loader.py`
+- [ ] Move constant: `PLAYS_DIR`
+- [ ] Move function: `load_play()`
+- [ ] Move function: `list_plays()`
 
-### 4.5 Update idea_card.py
+### 4.5 Update play.py
 - [ ] Add imports from new modules
 - [ ] Remove moved code
-- [ ] Keep: `IdeaCard`, `AccountConfig`, `FeeModel`, `Timeframes`, `TFConfig`, `PositionPolicy`, `MarketStructureConfig`
+- [ ] Keep: `Play`, `AccountConfig`, `FeeModel`, `Timeframes`, `TFConfig`, `PositionPolicy`, `MarketStructureConfig`
 
 ### 4.6 Validate Phase 4
 - [ ] All new files compile
-- [ ] `python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation` passes
-- [ ] `from src.backtest.idea_card import IdeaCard, load_idea_card` works
+- [ ] `python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation` passes
+- [ ] `from src.forge.play import Play, load_play` works
 
 ---
 
@@ -200,6 +202,17 @@
 - [ ] `python trade_cli.py --smoke full` (0 failures)
 - [ ] No file > 500 LOC (verify with line counts)
 - [ ] Commit with message: `refactor: split mega-files into focused modules`
+
+---
+
+## Phase 6: Forge Migration (See TODO.md)
+
+This phase is tracked in detail in [TODO.md](TODO.md) under "Active Work: Forge Migration".
+
+Summary:
+- Phase F1: Rename paths and references (IdeaCard → Play, idea_cards → plays)
+- Phase F2: Create `src/forge/` structure
+- Phase F3: Implement hierarchy (Setup → Play → Playbook → System)
 
 ---
 
@@ -233,17 +246,17 @@ src/tools/specs/system_specs.py
 src/tools/specs/backtest_specs.py
 ```
 
-**Pending files (4)**:
+**Pending files (4)** - will be under `src/forge/` after migration:
 ```
-src/backtest/risk_model.py
-src/backtest/signal_rules.py
-src/backtest/idea_card_loader.py
-src/backtest/incremental/structure_specs.py
+src/forge/risk_model.py
+src/forge/signal_rules.py
+src/forge/play_loader.py
+src/forge/incremental/structure_specs.py
 ```
 
 **Modified files (3)**:
 ```
 src/tools/data_tools.py -> re-export wrapper
 src/tools/tool_registry.py -> load from specs/
-src/backtest/idea_card.py -> imports from splits (pending)
+src/forge/play.py -> imports from splits (pending, after migration)
 ```

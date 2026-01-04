@@ -23,6 +23,15 @@ registry = ToolRegistry()
 registry.execute("market_buy", symbol="SOLUSDT", usd_amount=100)
 ```
 
+## Relationship to The Forge
+
+The Forge (`src/forge/`) uses this tools layer for:
+- Running backtests via `backtest_cli_wrapper.py`
+- Loading and validating Plays
+- Generating performance reports
+
+All Forge operations should go through the tools layer for consistency.
+
 ## Active TODOs
 
 No active work in this module. Stable.

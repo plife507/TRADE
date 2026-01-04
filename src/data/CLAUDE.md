@@ -16,6 +16,10 @@ Market data storage. Domain-agnostic.
 - **Explicit time ranges**: Never rely on implicit defaults
 - **Domain agnostic**: Used by both live and simulator
 
+## Relationship to The Forge
+
+The Forge (`src/forge/`) relies on this module for historical data when validating Plays. All backtesting and strategy validation uses DuckDB as the canonical data source.
+
 ## Active TODOs
 
 No active work in this module. Stable.

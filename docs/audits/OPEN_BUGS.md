@@ -15,7 +15,7 @@
 | P3 | 0 | Polish (2 ACCEPTABLE) |
 
 **Validation Status**: ALL TESTS PASS
-- IdeaCards: 15/15 normalize (V_100-V_122 blocks format)
+- Plays: 15/15 normalize (V_100-V_122 blocks format)
 - Indicators: **42/42 pass stress test** (all single + multi-output)
 - Crossover operators: cross_above, cross_below ENABLED
 - Rollup: 11/11 intervals pass
@@ -23,6 +23,8 @@
 - Structure smoke: All stages pass
 - Stress test Tier 1-2: 7/7 produce trades
 - Stress test Tier 3: swing (205), zone (491) verified
+
+**NOTE**: Terminology migration in progress (IdeaCard → Play, idea_cards → plays, sandbox → forge)
 
 ---
 
@@ -74,7 +76,7 @@
 - **Effort**: N/A
 
 ### P3-04: Type Ignores in Audit Code
-- **Location**: `audits/audit_incremental_registry.py:56,278`
+- **Location**: `src/forge/audits/audit_incremental_registry.py:56,278` (planned location after migration)
 - **Issue**: `# type: ignore` comments in test code
 - **Status**: ACCEPTABLE - intentional test pattern for testing error paths
 - **Effort**: N/A
@@ -94,10 +96,10 @@
 ## Resolved Previous Session (2026-01-03)
 
 ### ENHANCEMENT: Crossover Operators Enabled
-- **Location**: `src/backtest/rules/registry.py`, `eval.py`, `snapshot_view.py`, `idea_card.py`
+- **Location**: `src/backtest/rules/registry.py`, `eval.py`, `snapshot_view.py`, `play.py` (after migration)
 - **Feature**: `cross_above` and `cross_below` operators now fully supported
 - **Implementation**:
-  1. Removed from `BANNED_OPERATORS` in `idea_card.py`
+  1. Removed from `BANNED_OPERATORS` in `play.py`
   2. Set `supported=True` in `OPERATOR_REGISTRY`
   3. Added `eval_cross_above()` and `eval_cross_below()` functions
   4. Added `get_with_offset()` to `RuntimeSnapshotView` for prev-bar access
@@ -106,13 +108,13 @@
   - `cross_above`: `prev_lhs < rhs AND curr_lhs >= rhs`
   - `cross_below`: `prev_lhs > rhs AND curr_lhs <= rhs`
 - **Verified**: V_80_ema_crossover.yml (16 trades) validates and runs
-- **Validation**: `configs/idea_cards/_validation/V_80_ema_crossover.yml`
+- **Validation**: `configs/plays/_validation/V_80_ema_crossover.yml` (after migration)
 
 ### P2-07: Structure Paths Fail Validation - FIXED
-- **Location**: `execution_validation.py:validate_idea_card_features()` and `idea_card_yaml_builder.py:compile_idea_card()`
+- **Location**: `execution_validation.py:validate_play_features()` and `play_yaml_builder.py:compile_play()` (after migration)
 - **Issue**: Structure paths like `structure.swing.high_level` failed validation because:
-  1. `validate_idea_card_features()` didn't skip structure paths
-  2. `compile_idea_card()` only checked `market_structure_blocks` (old format), not `structure_specs_exec` (new format)
+  1. `validate_play_features()` didn't skip structure paths
+  2. `compile_play()` only checked `market_structure_blocks` (old format), not `structure_specs_exec` (new format)
 - **Fix**:
   1. Added skip for `structure.` prefixed paths in validation
   2. Added `structure_specs_exec` and `structure_specs_htf` to available_structures in compile

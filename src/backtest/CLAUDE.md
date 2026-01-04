@@ -14,30 +14,50 @@ Simulator/backtest domain. USDT-only, isolated margin.
 | `incremental/` | Incremental state detectors (O(1) per bar) |
 | `artifacts/` | Run artifacts (manifest, events, equity) |
 | `prices/` | Mark price providers |
-| `gates/` | IdeaCard generation and batch verification |
+| `gates/` | Play generation and batch verification |
 | `audits/` | Parity and validation audits |
 
 ## Key Entry Points
 
 ```python
 from src.backtest import (
-    create_engine_from_idea_card,  # Create engine
-    run_engine_with_idea_card,     # Run with signal evaluation
-    load_idea_card,                # Load YAML config
+    create_engine_from_play,  # Create engine from Play config
+    run_engine_with_play,     # Run with signal evaluation
+    load_play,                # Load YAML config
 )
 ```
 
 ## Engine Flow
 
 ```
-IdeaCard YAML → load_idea_card() → IdeaCard dataclass
-                                         ↓
-                     create_engine_from_idea_card() → BacktestEngine
-                                                           ↓
-                                                    prepare_backtest_frame()
-                                                           ↓
-                                           run_engine_with_idea_card() → BacktestResult
+Play YAML → load_play() → Play dataclass
+                               ↓
+                 create_engine_from_play() → BacktestEngine
+                                                   ↓
+                                            prepare_backtest_frame()
+                                                   ↓
+                                   run_engine_with_play() → BacktestResult
 ```
+
+## Trading Hierarchy
+
+The TRADE system uses a hierarchical strategy model:
+
+| Level | Description |
+|-------|-------------|
+| **Setup** | A single market condition or pattern (e.g., "RSI oversold + support bounce") |
+| **Play** | A complete strategy with entry/exit rules, risk params, and position sizing |
+| **Playbook** | A collection of Plays (e.g., "Trend Following Playbook") |
+| **System** | The full trading system combining multiple Playbooks |
+
+**Play** is the primary unit for backtesting. Located in `configs/plays/`.
+
+## The Forge
+
+The **Forge** (`src/forge/`) is the development and validation environment for Plays. It provides:
+- Play generation and validation
+- Batch testing across multiple symbols/timeframes
+- Performance comparison and analysis
 
 ## Critical Rules
 
@@ -105,7 +125,7 @@ snapshot.htf_ctx.current_idx:  [0, 0, 0, 0, 1, 1, 1, 1]
 
 ## Structure Registry (Incremental State)
 
-The incremental state system provides O(1) per-bar market structure detection. Structures are declared in the IdeaCard `structures` section and accessed via `structure.<key>.<output>` paths.
+The incremental state system provides O(1) per-bar market structure detection. Structures are declared in the Play `structures` section and accessed via `structure.<key>.<output>` paths.
 
 ### Available Structure Types
 
@@ -133,7 +153,7 @@ Derived zones use **K slots + aggregates** pattern:
 - `closest_active_lower`, `closest_active_upper` (FLOAT)
 - `source_version` (INT)
 
-### IdeaCard Configuration
+### Play Configuration
 
 ```yaml
 structures:
@@ -159,7 +179,7 @@ structures:
 
 ### Accessing Structures in Rules (Blocks DSL v3.0.0)
 
-**IMPORTANT**: All IdeaCards use `blocks` format. Legacy `signal_rules` is deprecated.
+**IMPORTANT**: All Plays use `blocks` format. Legacy `signal_rules` is deprecated.
 
 ```yaml
 blocks:
@@ -209,7 +229,7 @@ blocks:
 3. Use `@register_structure("name")` decorator
 4. Define `REQUIRED_PARAMS`, `OPTIONAL_PARAMS`, `DEPENDS_ON`
 5. Implement `update(bar_idx, bar)`, `get_output_keys()`, `get_value(key)`
-6. Add validation card to `configs/idea_cards/_validation/`
+6. Add validation Play to `configs/plays/_validation/`
 
 See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 
@@ -219,12 +239,12 @@ See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 |--------|--------|-------|
 | `market_structure/` | DEPRECATED | Batch-based; use `incremental/` instead |
 | `gates/` | NEEDS UPDATE | Still generates legacy signal_rules format |
-| Legacy IdeaCards | REMOVED | All V_60-V_95 deleted; only V_100+ blocks remain |
+| Legacy Plays | REMOVED | All V_60-V_95 deleted; only V_100+ blocks remain |
 | `signal_rules` format | DEPRECATED | Use `blocks` (v3.0.0) |
 
-## Validation IdeaCards
+## Validation Plays
 
-Location: `configs/idea_cards/_validation/`
+Location: `configs/plays/_validation/`
 
 | Range | Purpose |
 |-------|---------|
