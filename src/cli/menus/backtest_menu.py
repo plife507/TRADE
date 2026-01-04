@@ -20,7 +20,7 @@ from rich.prompt import Prompt
 from rich.text import Text
 
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper
-from src.cli.menus.backtest_ideacard_menu import backtest_ideacard_menu
+from src.cli.menus.backtest_play_menu import backtest_play_menu
 from src.cli.menus.backtest_audits_menu import backtest_audits_menu
 from src.cli.menus.backtest_analytics_menu import backtest_analytics_menu
 
@@ -78,7 +78,7 @@ def backtest_menu(cli: "TradeCLI"):
 
         if choice == 1:
             # Play Backtests submenu
-            backtest_ideacard_menu(cli)
+            backtest_play_menu(cli)
 
         elif choice == 2:
             # Audits & Verification submenu

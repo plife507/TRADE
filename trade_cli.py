@@ -655,10 +655,10 @@ def parse_cli_args() -> argparse.Namespace:
       --smoke data   Run data builder smoke test only
       --smoke full   Run full CLI smoke test (data + trading + diagnostics)
       
-      backtest run   Run IdeaCard-based backtest (golden path)
+      backtest run   Run Play-based backtest (golden path)
       backtest preflight   Check data/config without running
       backtest data-fix    Fix data gaps/coverage
-      backtest list        List available IdeaCards
+      backtest list        List available Plays
     """
     parser = argparse.ArgumentParser(
         description="TRADE - Bybit Unified Trading Account CLI",
@@ -669,7 +669,7 @@ Examples:
   python trade_cli.py --smoke data                 # Data builder smoke test
   python trade_cli.py --smoke full                 # Full CLI smoke test
   
-  # IdeaCard-based backtest (golden path):
+  # Play-based backtest (golden path):
   python trade_cli.py backtest run --idea-card SOLUSDT_15m_ema_crossover
   python trade_cli.py backtest run --idea-card SOLUSDT_15m_ema_crossover --smoke
   python trade_cli.py backtest preflight --idea-card SOLUSDT_15m_ema_crossover
@@ -696,15 +696,15 @@ Examples:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
     # backtest subcommand with its own subcommands
-    backtest_parser = subparsers.add_parser("backtest", help="IdeaCard-based backtest (golden path)")
+    backtest_parser = subparsers.add_parser("backtest", help="Play-based backtest (golden path)")
     backtest_subparsers = backtest_parser.add_subparsers(dest="backtest_command", help="Backtest commands")
     
     # backtest run
-    run_parser = backtest_subparsers.add_parser("run", help="Run an IdeaCard backtest")
-    run_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier (e.g., SOLUSDT_15m_ema_crossover)")
-    run_parser.add_argument("--dir", dest="idea_cards_dir", help="Override IdeaCard directory")
+    run_parser = backtest_subparsers.add_parser("run", help="Run an Play backtest")
+    run_parser.add_argument("--idea-card", required=True, help="Play identifier (e.g., SOLUSDT_15m_ema_crossover)")
+    run_parser.add_argument("--dir", dest="plays_dir", help="Override Play directory")
     run_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment (default: live)")
-    run_parser.add_argument("--symbol", help="Override symbol (default: from IdeaCard)")
+    run_parser.add_argument("--symbol", help="Override symbol (default: from Play)")
     run_parser.add_argument("--start", help="Window start (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
     run_parser.add_argument("--end", help="Window end (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
     run_parser.add_argument("--smoke", action="store_true", help="Smoke mode: fast wiring check with small window")
@@ -721,7 +721,7 @@ Examples:
     
     # backtest preflight
     preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")
-    preflight_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
+    preflight_parser.add_argument("--idea-card", required=True, help="Play identifier")
     preflight_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     preflight_parser.add_argument("--symbol", help="Override symbol")
     preflight_parser.add_argument("--start", help="Window start")
@@ -730,8 +730,8 @@ Examples:
     preflight_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
     
     # backtest indicators (NEW - indicator key discovery)
-    indicators_parser = backtest_subparsers.add_parser("indicators", help="Discover indicator keys for an IdeaCard")
-    indicators_parser.add_argument("--idea-card", help="IdeaCard identifier (required unless --audit-math-from-snapshots)")
+    indicators_parser = backtest_subparsers.add_parser("indicators", help="Discover indicator keys for an Play")
+    indicators_parser.add_argument("--idea-card", help="Play identifier (required unless --audit-math-from-snapshots)")
     indicators_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     indicators_parser.add_argument("--symbol", help="Override symbol")
     indicators_parser.add_argument("--print-keys", action="store_true", default=True, help="Print all indicator keys")
@@ -744,7 +744,7 @@ Examples:
 
     # Make idea-card required unless audit mode
     def validate_indicators_args(args):
-        if not args.audit_math_from_snapshots and not args.idea_card:
+        if not args.audit_math_from_snapshots and not args.play:
             indicators_parser.error("--idea-card is required unless --audit-math-from-snapshots is used")
         if args.audit_math_from_snapshots and not args.run_dir:
             indicators_parser.error("--run-dir is required when using --audit-math-from-snapshots")
@@ -753,8 +753,8 @@ Examples:
     indicators_parser._validate = validate_indicators_args
     
     # backtest data-fix
-    datafix_parser = backtest_subparsers.add_parser("data-fix", help="Fix data for an IdeaCard")
-    datafix_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
+    datafix_parser = backtest_subparsers.add_parser("data-fix", help="Fix data for an Play")
+    datafix_parser.add_argument("--idea-card", required=True, help="Play identifier")
     datafix_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     datafix_parser.add_argument("--symbol", help="Override symbol")
     datafix_parser.add_argument("--start", help="Sync from this date")
@@ -764,26 +764,26 @@ Examples:
     datafix_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
     
     # backtest list
-    list_parser = backtest_subparsers.add_parser("list", help="List available IdeaCards")
-    list_parser.add_argument("--dir", dest="idea_cards_dir", help="Override IdeaCards directory")
+    list_parser = backtest_subparsers.add_parser("list", help="List available Plays")
+    list_parser.add_argument("--dir", dest="plays_dir", help="Override Plays directory")
     list_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
     
     # backtest idea-card-normalize (NEW - build-time validation)
     normalize_parser = backtest_subparsers.add_parser(
         "idea-card-normalize",
-        help="Validate and normalize an IdeaCard YAML (build-time)"
+        help="Validate and normalize an Play YAML (build-time)"
     )
-    normalize_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier")
-    normalize_parser.add_argument("--dir", dest="idea_cards_dir", help="Override IdeaCards directory")
+    normalize_parser.add_argument("--idea-card", required=True, help="Play identifier")
+    normalize_parser.add_argument("--dir", dest="plays_dir", help="Override Plays directory")
     normalize_parser.add_argument("--write", action="store_true", help="Write normalized YAML in-place")
     normalize_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
 
     # backtest idea-card-normalize-batch (NEW - batch normalization)
     batch_normalize_parser = backtest_subparsers.add_parser(
         "idea-card-normalize-batch",
-        help="Batch validate and normalize all IdeaCards in a directory"
+        help="Batch validate and normalize all Plays in a directory"
     )
-    batch_normalize_parser.add_argument("--dir", dest="idea_cards_dir", required=True, help="Directory containing IdeaCard YAML files")
+    batch_normalize_parser.add_argument("--dir", dest="plays_dir", required=True, help="Directory containing Play YAML files")
     batch_normalize_parser.add_argument("--write", action="store_true", help="Write normalized YAML in-place")
     batch_normalize_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
 
@@ -792,8 +792,8 @@ Examples:
         "verify-suite",
         help="Run global indicator & strategy verification suite or artifact parity check"
     )
-    # Standard verification mode (IdeaCard directory)
-    verify_suite_parser.add_argument("--dir", dest="idea_cards_dir", help="Directory containing verification IdeaCard YAML files")
+    # Standard verification mode (Play directory)
+    verify_suite_parser.add_argument("--dir", dest="plays_dir", help="Directory containing verification Play YAML files")
     verify_suite_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     verify_suite_parser.add_argument("--start", help="Fixed window start (YYYY-MM-DD)")
     verify_suite_parser.add_argument("--end", help="Fixed window end (YYYY-MM-DD)")
@@ -802,7 +802,7 @@ Examples:
     verify_suite_parser.add_argument("--skip-toolkit-audit", action="store_true", help="Skip Gate 1 toolkit contract audit")
     # Phase 3.1: CSV vs Parquet parity verification mode
     verify_suite_parser.add_argument("--compare-csv-parquet", action="store_true", help="Verify CSV vs Parquet artifact parity")
-    verify_suite_parser.add_argument("--idea-card", dest="parity_idea_card", help="IdeaCard ID for parity check")
+    verify_suite_parser.add_argument("--idea-card", dest="parity_play", help="Play ID for parity check")
     verify_suite_parser.add_argument("--symbol", dest="parity_symbol", help="Symbol for parity check")
     verify_suite_parser.add_argument("--run", dest="parity_run", help="Run ID (e.g., run-001 or 'latest')")
     
@@ -850,7 +850,7 @@ Examples:
         "math-parity",
         help="Validate indicator math parity (contract + in-memory comparison)"
     )
-    math_parity_parser.add_argument("--idea-card", required=True, help="Path to IdeaCard YAML for parity audit")
+    math_parity_parser.add_argument("--idea-card", required=True, help="Path to Play YAML for parity audit")
     math_parity_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     math_parity_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
     math_parity_parser.add_argument("--output-dir", help="Output directory for diff reports (optional)")
@@ -863,8 +863,8 @@ Examples:
         "audit-snapshot-plumbing",
         help="Run Phase 4 snapshot plumbing parity audit"
     )
-    plumbing_parser.add_argument("--idea-card", required=True, help="IdeaCard identifier or path")
-    plumbing_parser.add_argument("--symbol", help="Override symbol (optional, inferred from IdeaCard)")
+    plumbing_parser.add_argument("--idea-card", required=True, help="Play identifier or path")
+    plumbing_parser.add_argument("--symbol", help="Override symbol (optional, inferred from Play)")
     plumbing_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     plumbing_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
     plumbing_parser.add_argument("--max-samples", type=int, default=2000, help="Max exec samples (default: 2000)")
@@ -880,7 +880,7 @@ Examples:
     )
     determinism_parser.add_argument("--run-a", required=False, help="Path to first run's artifact folder")
     determinism_parser.add_argument("--run-b", required=False, help="Path to second run's artifact folder (for compare mode)")
-    determinism_parser.add_argument("--re-run", action="store_true", help="Re-run the IdeaCard and compare to existing run")
+    determinism_parser.add_argument("--re-run", action="store_true", help="Re-run the Play and compare to existing run")
     determinism_parser.add_argument("--fix-gaps", action="store_true", default=False, help="Allow data sync during re-run")
     determinism_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
     
@@ -927,24 +927,24 @@ def handle_backtest_run(args) -> int:
     """Handle `backtest run` subcommand."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import backtest_run_idea_card_tool
+    from src.tools.backtest_cli_wrapper import backtest_run_play_tool
     
     # Parse dates
     start = _parse_datetime(args.start) if args.start else None
     end = _parse_datetime(args.end) if args.end else None
     artifacts_dir = Path(args.artifacts_dir) if args.artifacts_dir else None
-    idea_cards_dir = Path(args.idea_cards_dir) if args.idea_cards_dir else None
+    plays_dir = Path(args.plays_dir) if args.plays_dir else None
 
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]BACKTEST RUN[/]\n"
-            f"IdeaCard: {args.idea_card}\n"
+            f"Play: {args.play}\n"
             f"DataEnv: {args.data_env} | Smoke: {args.smoke} | Strict: {args.strict}",
             border_style="cyan"
         ))
 
-    result = backtest_run_idea_card_tool(
-        idea_card_id=args.idea_card,
+    result = backtest_run_play_tool(
+        play_id=args.play,
         env=args.data_env,
         symbol=args.symbol,
         start=start,
@@ -953,7 +953,7 @@ def handle_backtest_run(args) -> int:
         strict=args.strict,
         write_artifacts=not args.no_artifacts,
         artifacts_dir=artifacts_dir,
-        idea_cards_dir=idea_cards_dir,
+        plays_dir=plays_dir,
         emit_snapshots=args.emit_snapshots,
         fix_gaps=args.fix_gaps,
         validate_artifacts_after=args.validate,
@@ -987,7 +987,7 @@ def handle_backtest_run(args) -> int:
 def handle_backtest_preflight(args) -> int:
     """Handle `backtest preflight` subcommand."""
     import json
-    from src.tools.backtest_cli_wrapper import backtest_preflight_idea_card_tool, backtest_data_fix_tool
+    from src.tools.backtest_cli_wrapper import backtest_preflight_play_tool, backtest_data_fix_tool
     
     # Parse dates
     start = _parse_datetime(args.start) if args.start else None
@@ -996,7 +996,7 @@ def handle_backtest_preflight(args) -> int:
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]BACKTEST PREFLIGHT[/]\n"
-            f"IdeaCard: {args.idea_card} | DataEnv: {args.data_env}",
+            f"Play: {args.play} | DataEnv: {args.data_env}",
             border_style="cyan"
         ))
     
@@ -1004,8 +1004,8 @@ def handle_backtest_preflight(args) -> int:
     if args.fix_gaps and not args.json_output:
         console.print("[dim]Auto-sync enabled: will fetch missing data if needed[/]")
     
-    result = backtest_preflight_idea_card_tool(
-        idea_card_id=args.idea_card,
+    result = backtest_preflight_play_tool(
+        play_id=args.play,
         env=args.data_env,
         symbol=args.symbol,
         start=start,
@@ -1019,7 +1019,7 @@ def handle_backtest_preflight(args) -> int:
             "status": "pass" if result.success else "fail",
             "message": result.message if result.success else result.error,
             "checks": {
-                "idea_card_valid": result.data.get("idea_card_valid") if result.data else None,
+                "play_valid": result.data.get("play_valid") if result.data else None,
                 "has_sufficient_coverage": result.data.get("has_sufficient_coverage") if result.data else None,
             },
             "data": result.data,
@@ -1110,12 +1110,12 @@ def handle_backtest_indicators(args) -> int:
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]BACKTEST INDICATORS[/]\n"
-            f"IdeaCard: {args.idea_card} | DataEnv: {args.data_env}",
+            f"Play: {args.play} | DataEnv: {args.data_env}",
             border_style="cyan"
         ))
 
     result = backtest_indicators_tool(
-        idea_card_id=args.idea_card,
+        play_id=args.play,
         data_env=args.data_env,
         symbol=args.symbol,
         start=start,
@@ -1136,7 +1136,7 @@ def handle_backtest_indicators(args) -> int:
     if result.success and result.data:
         data = result.data
         console.print(f"\n[bold]Indicator Key Discovery[/]")
-        console.print(f"IdeaCard: {data.get('idea_card_id')}")
+        console.print(f"Play: {data.get('play_id')}")
         console.print(f"Symbol: {data.get('symbol')}")
         console.print(f"Exec TF: {data.get('exec_tf')}")
         if data.get('htf'):
@@ -1181,13 +1181,13 @@ def handle_backtest_data_fix(args) -> int:
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]BACKTEST DATA FIX[/]\n"
-            f"IdeaCard: {args.idea_card} | DataEnv: {args.data_env}\n"
+            f"Play: {args.play} | DataEnv: {args.data_env}\n"
             f"Sync to now: {args.sync_to_now} | Fill gaps: {args.fill_gaps} | Heal: {args.heal}",
             border_style="cyan"
         ))
     
     result = backtest_data_fix_tool(
-        idea_card_id=args.idea_card,
+        play_id=args.play,
         env=args.data_env,
         symbol=args.symbol,
         start=start,
@@ -1222,11 +1222,11 @@ def handle_backtest_list(args) -> int:
     """Handle `backtest list` subcommand."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import backtest_list_idea_cards_tool
+    from src.tools.backtest_cli_wrapper import backtest_list_plays_tool
     
-    idea_cards_dir = Path(args.idea_cards_dir) if args.idea_cards_dir else None
+    plays_dir = Path(args.plays_dir) if args.plays_dir else None
     
-    result = backtest_list_idea_cards_tool(idea_cards_dir=idea_cards_dir)
+    result = backtest_list_plays_tool(plays_dir=plays_dir)
     
     # JSON output mode
     if args.json_output:
@@ -1239,13 +1239,13 @@ def handle_backtest_list(args) -> int:
         return 0 if result.success else 1
     
     if result.success:
-        console.print(f"\n[bold cyan]Available IdeaCards:[/]")
+        console.print(f"\n[bold cyan]Available Plays:[/]")
         console.print(f"[dim]Directory: {result.data['directory']}[/]\n")
         
-        for card_id in result.data["idea_cards"]:
+        for card_id in result.data["plays"]:
             console.print(f"  - {card_id}")
         
-        console.print(f"\n[dim]Total: {len(result.data['idea_cards'])} IdeaCards[/]")
+        console.print(f"\n[dim]Total: {len(result.data['plays'])} Plays[/]")
         return 0
     else:
         console.print(f"\n[bold red]FAIL {result.error}[/]")
@@ -1317,20 +1317,20 @@ def handle_backtest_normalize(args) -> int:
     """Handle `backtest idea-card-normalize` subcommand."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import backtest_idea_card_normalize_tool
+    from src.tools.backtest_cli_wrapper import backtest_play_normalize_tool
 
-    idea_cards_dir = Path(args.idea_cards_dir) if args.idea_cards_dir else None
+    plays_dir = Path(args.plays_dir) if args.plays_dir else None
 
     if not args.json_output:
         console.print(Panel(
-            f"[bold cyan]IDEACARD NORMALIZE[/]\n"
-            f"IdeaCard: {args.idea_card} | Write: {args.write}",
+            f"[bold cyan]PLAY NORMALIZE[/]\n"
+            f"Play: {args.play} | Write: {args.write}",
             border_style="cyan"
         ))
 
-    result = backtest_idea_card_normalize_tool(
-        idea_card_id=args.idea_card,
-        idea_cards_dir=idea_cards_dir,
+    result = backtest_play_normalize_tool(
+        play_id=args.play,
+        plays_dir=plays_dir,
         write_in_place=args.write,
     )
 
@@ -1365,14 +1365,14 @@ def _handle_parity_verification(args, verify_artifact_parity_tool) -> int:
     import json
     
     # Validate required args
-    if not getattr(args, 'parity_idea_card', None):
+    if not getattr(args, 'parity_play', None):
         console.print("[red]Error: --idea-card is required for parity verification[/]")
         return 1
     if not getattr(args, 'parity_symbol', None):
         console.print("[red]Error: --symbol is required for parity verification[/]")
         return 1
     
-    idea_card_id = args.parity_idea_card
+    play_id = args.parity_play
     symbol = args.parity_symbol.upper()
     run_id = getattr(args, 'parity_run', None)
     if run_id and run_id.lower() == 'latest':
@@ -1381,14 +1381,14 @@ def _handle_parity_verification(args, verify_artifact_parity_tool) -> int:
     if not getattr(args, 'json_output', False):
         console.print(Panel(
             f"[bold cyan]CSV ↔ PARQUET PARITY VERIFICATION[/]\n"
-            f"IdeaCard: {idea_card_id}\n"
+            f"Play: {play_id}\n"
             f"Symbol: {symbol}\n"
             f"Run: {run_id or 'latest'}",
             border_style="cyan"
         ))
     
     result = verify_artifact_parity_tool(
-        idea_card_id=idea_card_id,
+        play_id=play_id,
         symbol=symbol,
         run_id=run_id,
     )
@@ -1430,8 +1430,8 @@ def handle_backtest_verify_suite(args) -> int:
     import json
     from pathlib import Path
     from src.tools.backtest_cli_wrapper import (
-        backtest_idea_card_normalize_batch_tool,
-        backtest_run_idea_card_tool,
+        backtest_play_normalize_batch_tool,
+        backtest_run_play_tool,
         backtest_audit_math_from_snapshots_tool,
         backtest_audit_toolkit_tool,
         verify_artifact_parity_tool,
@@ -1446,7 +1446,7 @@ def handle_backtest_verify_suite(args) -> int:
     # =====================================================================
     # Standard Verification Suite Mode
     # =====================================================================
-    if not args.idea_cards_dir:
+    if not args.plays_dir:
         console.print("[red]Error: --dir is required for verification suite mode[/]")
         console.print("[dim]Use --compare-csv-parquet for artifact parity mode[/]")
         return 1
@@ -1455,7 +1455,7 @@ def handle_backtest_verify_suite(args) -> int:
         console.print("[red]Error: --start and --end are required for verification suite mode[/]")
         return 1
 
-    idea_cards_dir = Path(args.idea_cards_dir)
+    plays_dir = Path(args.plays_dir)
     start = _parse_datetime(args.start)
     end = _parse_datetime(args.end)
     skip_toolkit_audit = getattr(args, 'skip_toolkit_audit', False)
@@ -1463,7 +1463,7 @@ def handle_backtest_verify_suite(args) -> int:
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]GLOBAL VERIFICATION SUITE[/]\n"
-            f"Directory: {args.idea_cards_dir}\n"
+            f"Directory: {args.plays_dir}\n"
             f"Window: {args.start} -> {args.end}\n"
             f"DataEnv: {args.data_env} | Strict: {args.strict}\n"
             f"Toolkit Audit: {'SKIPPED' if skip_toolkit_audit else 'ENABLED (Gate 1)'}",
@@ -1472,7 +1472,7 @@ def handle_backtest_verify_suite(args) -> int:
 
     suite_results = {
         "suite_config": {
-            "idea_cards_dir": str(idea_cards_dir),
+            "plays_dir": str(plays_dir),
             "data_env": args.data_env,
             "window_start": args.start,
             "window_end": args.end,
@@ -1519,8 +1519,8 @@ def handle_backtest_verify_suite(args) -> int:
     # =====================================================================
     console.print("\n[bold]Phase 1: Batch Normalization[/]")
 
-    normalize_result = backtest_idea_card_normalize_batch_tool(
-        idea_cards_dir=idea_cards_dir,
+    normalize_result = backtest_play_normalize_batch_tool(
+        plays_dir=plays_dir,
         write_in_place=True,  # Always write for verification
     )
 
@@ -1547,38 +1547,38 @@ def handle_backtest_verify_suite(args) -> int:
     backtest_results = []
     failed_backtests = []
 
-    idea_card_ids = normalize_result.data["results"]
-    for card_result in idea_card_ids:
+    play_ids = normalize_result.data["results"]
+    for card_result in play_ids:
         if not card_result["success"]:
             continue  # Skip cards that failed normalization
 
-        idea_card_id = card_result["idea_card_id"]
-        console.print(f"  Running {idea_card_id}...")
+        play_id = card_result["play_id"]
+        console.print(f"  Running {play_id}...")
 
-        run_result = backtest_run_idea_card_tool(
-            idea_card_id=idea_card_id,
+        run_result = backtest_run_play_tool(
+            play_id=play_id,
             env=args.data_env,
             start=start,
             end=end,
             smoke=False,
             strict=args.strict,
             write_artifacts=False,  # Skip regular artifacts to avoid noise
-            idea_cards_dir=idea_cards_dir,
+            plays_dir=plays_dir,
             emit_snapshots=True,  # Always emit snapshots for verification
         )
 
         backtest_result = {
-            "idea_card_id": idea_card_id,
+            "play_id": play_id,
             "success": run_result.success,
             "message": run_result.message if run_result.success else run_result.error,
             "run_dir": run_result.data.get("artifact_dir") if run_result.data else None,
         }
 
         if run_result.success:
-            console.print(f"    [green]PASS {idea_card_id}: {run_result.message}[/]")
+            console.print(f"    [green]PASS {play_id}: {run_result.message}[/]")
         else:
-            console.print(f"    [red]FAIL {idea_card_id}: {run_result.error}[/]")
-            failed_backtests.append(idea_card_id)
+            console.print(f"    [red]FAIL {play_id}: {run_result.error}[/]")
+            failed_backtests.append(play_id)
 
         backtest_results.append(backtest_result)
 
@@ -1607,20 +1607,20 @@ def handle_backtest_verify_suite(args) -> int:
     failed_audits = []
 
     for backtest_result in backtest_results:
-        idea_card_id = backtest_result["idea_card_id"]
+        play_id = backtest_result["play_id"]
         run_dir = backtest_result["run_dir"]
 
         if not run_dir:
-            console.print(f"  [red]FAIL {idea_card_id}: No run directory[/]")
-            failed_audits.append(idea_card_id)
+            console.print(f"  [red]FAIL {play_id}: No run directory[/]")
+            failed_audits.append(play_id)
             continue
 
-        console.print(f"  Auditing {idea_card_id}...")
+        console.print(f"  Auditing {play_id}...")
 
         audit_result = backtest_audit_math_from_snapshots_tool(run_dir=Path(run_dir))
 
         audit_summary = {
-            "idea_card_id": idea_card_id,
+            "play_id": play_id,
             "success": audit_result.success,
             "message": audit_result.message if audit_result.success else audit_result.error,
             "run_dir": run_dir,
@@ -1637,13 +1637,13 @@ def handle_backtest_verify_suite(args) -> int:
             })
 
             if audit_result.success:
-                console.print(f"    [green]PASS {idea_card_id}: {summary.get('passed_columns', 0)}/{summary.get('total_columns', 0)} columns passed[/]")
+                console.print(f"    [green]PASS {play_id}: {summary.get('passed_columns', 0)}/{summary.get('total_columns', 0)} columns passed[/]")
             else:
-                console.print(f"    [red]FAIL {idea_card_id}: {summary.get('failed_columns', 0)}/{summary.get('total_columns', 0)} columns failed[/]")
-                failed_audits.append(idea_card_id)
+                console.print(f"    [red]FAIL {play_id}: {summary.get('failed_columns', 0)}/{summary.get('total_columns', 0)} columns failed[/]")
+                failed_audits.append(play_id)
         else:
-            console.print(f"    [red]FAIL {idea_card_id}: {audit_result.error}[/]")
-            failed_audits.append(idea_card_id)
+            console.print(f"    [red]FAIL {play_id}: {audit_result.error}[/]")
+            failed_audits.append(play_id)
 
         audit_results.append(audit_summary)
 
@@ -1692,19 +1692,19 @@ def handle_backtest_normalize_batch(args) -> int:
     """Handle `backtest idea-card-normalize-batch` subcommand."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import backtest_idea_card_normalize_batch_tool
+    from src.tools.backtest_cli_wrapper import backtest_play_normalize_batch_tool
 
-    idea_cards_dir = Path(args.idea_cards_dir)
+    plays_dir = Path(args.plays_dir)
 
     if not args.json_output:
         console.print(Panel(
-            f"[bold cyan]IDEACARD NORMALIZE BATCH[/]\n"
-            f"Directory: {args.idea_cards_dir} | Write: {args.write}",
+            f"[bold cyan]PLAY NORMALIZE BATCH[/]\n"
+            f"Directory: {args.plays_dir} | Write: {args.write}",
             border_style="cyan"
         ))
 
-    result = backtest_idea_card_normalize_batch_tool(
-        idea_cards_dir=idea_cards_dir,
+    result = backtest_play_normalize_batch_tool(
+        plays_dir=plays_dir,
         write_in_place=args.write,
     )
 
@@ -1729,7 +1729,7 @@ def handle_backtest_normalize_batch(args) -> int:
                 console.print(f"\n[yellow]Failed cards:[/]")
                 for card_result in result.data.get("results", []):
                     if not card_result.get("success"):
-                        console.print(f"  [red]• {card_result.get('idea_card_id')}: {card_result.get('error', 'Unknown error')}[/]")
+                        console.print(f"  [red]• {card_result.get('play_id')}: {card_result.get('error', 'Unknown error')}[/]")
         return 0
     else:
         console.print(f"\n[bold red]FAIL {result.error}[/]")
@@ -1793,14 +1793,14 @@ def handle_backtest_math_parity(args) -> int:
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]MATH PARITY AUDIT[/]\n"
-            f"IdeaCard: {args.idea_card}\n"
+            f"Play: {args.play}\n"
             f"Window: {args.start} -> {args.end}\n"
             f"Contract audit: {args.contract_sample_bars} bars, seed={args.contract_seed}",
             border_style="cyan"
         ))
     
     result = backtest_math_parity_tool(
-        idea_card=args.idea_card,
+        play=args.play,
         start_date=args.start,
         end_date=args.end,
         output_dir=args.output_dir,
@@ -1883,14 +1883,14 @@ def handle_backtest_audit_snapshot_plumbing(args) -> int:
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]PHASE 4: SNAPSHOT PLUMBING PARITY AUDIT[/]\n"
-            f"IdeaCard: {args.idea_card}\n"
+            f"Play: {args.play}\n"
             f"Window: {args.start} -> {args.end}\n"
             f"Max samples: {args.max_samples} | Tolerance: {args.tolerance:.0e} | Strict: {args.strict}",
             border_style="cyan"
         ))
     
     result = backtest_audit_snapshot_plumbing_tool(
-        idea_card_id=args.idea_card,
+        play_id=args.play,
         start_date=args.start,
         end_date=args.end,
         symbol=args.symbol,
@@ -2009,7 +2009,7 @@ def handle_backtest_verify_determinism(args) -> int:
             return 1
         
         if not args.json_output:
-            console.print(f"[cyan]Re-running IdeaCard from: {run_path}[/]")
+            console.print(f"[cyan]Re-running Play from: {run_path}[/]")
         
         result = verify_determinism_rerun(
             run_path=run_path,

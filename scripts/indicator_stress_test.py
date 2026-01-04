@@ -60,8 +60,8 @@ INDICATORS = {
 }
 
 
-def generate_idea_card(indicator_name: str, config: dict) -> dict:
-    """Generate a simple IdeaCard for testing an indicator."""
+def generate_play(indicator_name: str, config: dict) -> dict:
+    """Generate a simple Play for testing an indicator."""
     is_multi = config.get("multi", False)
     output_key = config.get("output_key", indicator_name)
 
@@ -153,17 +153,17 @@ def generate_idea_card(indicator_name: str, config: dict) -> dict:
     }
 
 
-def run_test(indicator_name: str, config: dict, idea_cards_dir: Path) -> tuple[bool, str, int]:
+def run_test(indicator_name: str, config: dict, plays_dir: Path) -> tuple[bool, str, int]:
     """Run a single indicator test. Returns (success, message, trade_count)."""
     import subprocess
     import re
 
     try:
-        # Generate IdeaCard
-        card_dict = generate_idea_card(indicator_name, config)
+        # Generate Play
+        card_dict = generate_play(indicator_name, config)
 
-        # Write to idea_cards directory
-        card_path = idea_cards_dir / f"stress_test_{indicator_name}.yml"
+        # Write to plays directory
+        card_path = plays_dir / f"stress_test_{indicator_name}.yml"
         with open(card_path, 'w') as f:
             yaml.dump(card_dict, f, default_flow_style=False)
 
@@ -172,7 +172,7 @@ def run_test(indicator_name: str, config: dict, idea_cards_dir: Path) -> tuple[b
             result = subprocess.run(
                 [
                     sys.executable,
-                    str(idea_cards_dir.parent.parent / "trade_cli.py"),
+                    str(plays_dir.parent.parent / "trade_cli.py"),
                     "backtest", "run",
                     "--idea-card", f"stress_test_{indicator_name}",
                     "--start", "2025-11-01",
@@ -217,9 +217,9 @@ def main():
     print("=" * 70)
     print()
 
-    # Get idea_cards directory
+    # Get plays directory
     script_dir = Path(__file__).parent
-    idea_cards_dir = script_dir.parent / "configs" / "idea_cards"
+    plays_dir = script_dir.parent / "configs" / "plays"
 
     results = {"pass": [], "fail": []}
 
@@ -229,7 +229,7 @@ def main():
 
         print(f"[{i:2d}/42] Testing {name} ({indicator_type})... ", end="", flush=True)
 
-        success, message, trades = run_test(name, config, idea_cards_dir)
+        success, message, trades = run_test(name, config, plays_dir)
 
         if success:
             print(f"PASS ({trades} trades)")

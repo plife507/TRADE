@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 console = Console()
 
 
-def backtest_ideacard_menu(cli: "TradeCLI"):
+def backtest_play_menu(cli: "TradeCLI"):
     """Play backtest submenu."""
     from trade_cli import (
         clear_screen, print_header, get_input, get_choice, BACK,

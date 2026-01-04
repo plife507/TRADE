@@ -20,7 +20,7 @@ def main():
             "message": (
                 "Backtest code modified. Remember to validate:\n"
                 "  python trade_cli.py backtest audit-toolkit\n"
-                "  python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation\n"
+                "  python trade_cli.py backtest idea-card-normalize-batch --dir configs/plays/_validation\n"
                 "  python trade_cli.py --smoke backtest"
             )
         }))

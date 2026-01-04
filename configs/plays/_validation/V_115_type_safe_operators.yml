@@ -1,6 +1,6 @@
 # V_115: Type-Safe Operators - Demonstrates correct operator usage per type
 #
-# Type compatibility rules enforced at IdeaCard load time:
+# Type compatibility rules enforced at Play load time:
 # - FLOAT types: Use gt/lt/gte/lte/between/near_abs/near_pct (NOT eq/in)
 # - INT types: Can use eq/in (e.g., trend.direction == 1)
 # - ENUM types: Use eq/in only (e.g., zone.state == "active")
