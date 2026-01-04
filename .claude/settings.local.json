@@ -93,7 +93,8 @@
       "Bash(src/cli/smoke_tests/structure.py )",
       "Bash(src/tools/backtest_audit_tools.py )",
       "Bash(src/tools/backtest_cli_wrapper.py)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

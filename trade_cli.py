@@ -690,9 +690,9 @@ Examples:
     
     parser.add_argument(
         "--smoke",
-        choices=["data", "full", "data_extensive", "orders", "live_check", "backtest"],
+        choices=["data", "full", "data_extensive", "orders", "live_check", "backtest", "forge"],
         default=None,
-        help="Run non-interactive smoke test. 'data'/'full'/'data_extensive'/'orders'/'backtest' use DEMO. 'live_check' tests LIVE connectivity (opt-in, requires LIVE keys)."
+        help="Run non-interactive smoke test. 'data'/'full'/'data_extensive'/'orders'/'backtest'/'forge' use DEMO. 'live_check' tests LIVE connectivity (opt-in, requires LIVE keys)."
     )
     
     parser.add_argument(
@@ -2458,6 +2458,10 @@ def main():
                 # Backtest engine smoke test
                 from src.cli.smoke_tests import run_backtest_smoke
                 exit_code = run_backtest_smoke(fresh_db=args.fresh_db)
+            elif args.smoke == "forge":
+                # Forge plumbing and verification smoke test
+                from src.cli.smoke_tests import run_forge_smoke
+                exit_code = run_forge_smoke()
             else:
                 exit_code = run_smoke_suite(args.smoke, app, config)
             sys.exit(exit_code)

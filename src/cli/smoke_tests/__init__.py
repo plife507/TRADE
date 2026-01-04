@@ -8,6 +8,7 @@ This package contains modular smoke test implementations:
 - backtest: Backtest engine smoke tests
 - metadata: Indicator metadata smoke tests
 - prices: Mark price smoke tests
+- forge: Forge plumbing and verification tests
 """
 
 from .core import (
@@ -50,6 +51,10 @@ from .rules import (
     run_rules_smoke,
 )
 
+from .forge import (
+    run_forge_smoke,
+)
+
 __all__ = [
     # Core entry points
     "run_smoke_suite",
@@ -76,4 +81,6 @@ __all__ = [
     "run_state_tracking_parity_smoke",
     # Rule evaluation tests
     "run_rules_smoke",
+    # Forge validation tests
+    "run_forge_smoke",
 ]

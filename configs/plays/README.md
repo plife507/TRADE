@@ -6,11 +6,15 @@
 
 ```
 configs/
-└── plays/                    # ← Canonical Plays (for backtesting)
-    ├── _TEMPLATE.yml              # Copy this to create new Plays
+└── plays/                         # ← Canonical Plays (for backtesting)
     ├── README.md                  # This file
-    ├── SOLUSDT_5m_ema_crossover.yml
-    └── ...
+    ├── _validation/               # Validation Plays (V_100+)
+    │   ├── V_100_blocks_basic.yml
+    │   ├── V_101_all_any.yml
+    │   └── ...
+    └── _stress_test/              # Stress Test Plays (T_001+)
+        ├── T_001_ema_crossover.yml
+        └── ...
 
 backtests/                         # ← Backtest artifacts (auto-generated)
 └── {play_id}/
@@ -19,53 +23,23 @@ backtests/                         # ← Backtest artifacts (auto-generated)
             ├── trades.csv
             ├── equity.csv
             ├── result.json
-            ├── preflight_report.json
             └── pipeline_signature.json
-
-research/                          # ← Research strategies (future)
-└── strategies/
-    ├── pending/                   # Ideas being tested
-    ├── final/                     # Validated strategies
-    └── archived/                  # Retired strategies
 ```
 
 ## Naming Convention
 
-**Format:** `{SYMBOL}_{TF}_{strategy_name}.yml`
+| Prefix | Purpose | Examples |
+|--------|---------|----------|
+| `V_` | Validation Plays (DSL testing) | `V_100_blocks_basic`, `V_101_all_any` |
+| `T_` | Stress Test Plays (backtest testing) | `T_001_ema_crossover` |
+| `{SYMBOL}_` | Production strategies | `SOLUSDT_5m_ema_crossover` |
 
-| Component | Description | Examples |
-|-----------|-------------|----------|
-| SYMBOL | Trading pair (USDT suffix) | `SOLUSDT`, `BTCUSDT`, `ETHUSDT` |
-| TF | Execution timeframe | `1m`, `5m`, `15m`, `1h`, `4h`, `1d` |
-| strategy_name | Descriptive name (snake_case) | `ema_crossover`, `rsi_reversal` |
-
-**Examples:**
-- `SOLUSDT_5m_ema_crossover.yml`
-- `BTCUSDT_15m_macd_trend.yml`
-- `ETHUSDT_1h_bbands_breakout.yml`
-
-## Play Lifecycle
-
-```
-1. DRAFT → Create from _TEMPLATE.yml
-              └── Validate: backtest indicators --print-keys
-              
-2. TEST  → Run preflight: backtest preflight --idea YOUR_ID
-              └── Run backtest: backtest run --idea YOUR_ID
-
-3. ITERATE → Modify parameters, re-run backtests
-              └── Version bump: 1.0.0 → 1.1.0
-
-4. FINAL → Move validated Play to research/strategies/final/
-              └── (Future: automated promotion)
-```
-
-## File Structure (Required Sections)
+## Play Structure (blocks DSL v3.0.0)
 
 ```yaml
 # Identity
-id: {must_match_filename}
-version: "1.0.0"
+id: V_100_blocks_basic
+version: "3.0.0"
 name: "Display Name"
 description: "Description"
 
@@ -80,76 +54,167 @@ account:
     maker_bps: 2.0
   slippage_bps: 2.0
 
-# Symbol (first used for single-symbol backtest)
+# Symbol
 symbol_universe:
-  - SOLUSDT
+  - "BTCUSDT"
 
-# Timeframes Header (REQUIRED)
-# Groups: ltf=1m,3m,5m | mtf=15m,30m | htf=1h,4h,1d | exec=any
-timeframes:
-  exec: "5m"     # Required
-  ltf: "5m"      # Optional (1m, 3m, 5m)
-  mtf: "15m"     # Optional (15m, 30m)
-  htf: "4h"      # Optional (1h, 4h, 1d)
+# Execution timeframe (bar stepping granularity)
+execution_tf: "1h"
 
-# Timeframe Configs (tf derived from timeframes header)
-tf_configs:
-  exec: { role, warmup_bars, feature_specs, required_indicators }
-  htf:  { ... }  # Optional
-  mtf:  { ... }  # Optional
-  ltf:  { ... }  # Optional
+# Features (indicators + structures)
+features:
+  - id: "ema_fast"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params:
+      length: 9
+
+  - id: "ema_slow"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params:
+      length: 21
 
 # Position Policy
 position_policy:
-  mode: "long_only"  # long_only, short_only, long_short
+  mode: "long_only"
+  max_positions_per_symbol: 1
+  allow_flip: false
 
-# Signal Rules
-signal_rules:
-  entry_rules: [...]
-  exit_rules: [...]
+# Strategy Logic (blocks DSL v3.0.0)
+blocks:
+  - id: entry
+    cases:
+      - when:
+          lhs:
+            feature_id: "ema_fast"
+          op: gt
+          rhs:
+            feature_id: "ema_slow"
+        emit:
+          - action: entry_long
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          lhs:
+            feature_id: "ema_fast"
+          op: lt
+          rhs:
+            feature_id: "ema_slow"
+        emit:
+          - action: exit_long
 
 # Risk Model
 risk_model:
-  stop_loss: { type, value }
-  take_profit: { type, value }
-  sizing: { model, value, max_leverage }
+  stop_loss:
+    type: "percent"
+    value: 5.0
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+  sizing:
+    model: "percent_equity"
+    value: 2.0
+    max_leverage: 3.0
 ```
 
-## Validation Workflow
+## Blocks DSL v3.0.0
+
+### Operators
+
+| Operator | Type | Description |
+|----------|------|-------------|
+| `gt`, `lt`, `gte`, `lte` | Comparison | Numeric comparisons |
+| `eq` | Equality | Discrete values (enum, bool) |
+| `cross_above`, `cross_below` | Crossover | Previous vs current comparison |
+| `between` | Range | Value in range (inclusive) |
+| `near_abs`, `near_pct` | Proximity | Within absolute/percent distance |
+| `in` | Membership | Value in set |
+| `holds_for` | Window | Condition true for N bars |
+| `occurred_within` | Window | Condition occurred in last N bars |
+| `count_true` | Window | Count true conditions in window |
+
+### Boolean Logic
+
+```yaml
+# AND (all must be true)
+all:
+  - lhs: {feature_id: "ema_fast"}
+    op: gt
+    rhs: {feature_id: "ema_slow"}
+  - lhs: {feature_id: "rsi"}
+    op: lt
+    rhs: 70
+
+# OR (any must be true)
+any:
+  - lhs: {feature_id: "rsi"}
+    op: lt
+    rhs: 30
+  - lhs: {feature_id: "rsi"}
+    op: gt
+    rhs: 70
+
+# NOT (negate condition)
+not:
+  lhs: {feature_id: "trend"}
+    op: eq
+    rhs: "down"
+```
+
+### Nested Logic
+
+```yaml
+# (EMA crossover) AND (RSI not overbought OR RSI not oversold)
+when:
+  all:
+    - lhs: {feature_id: "ema_fast"}
+      op: gt
+      rhs: {feature_id: "ema_slow"}
+    - any:
+        - lhs: {feature_id: "rsi"}
+          op: lt
+          rhs: 70
+        - lhs: {feature_id: "rsi"}
+          op: gt
+          rhs: 30
+```
+
+## Validation Plays
+
+| Play | Purpose |
+|------|---------|
+| V_100 | Basic blocks DSL |
+| V_101 | Nested all/any logic |
+| V_102 | Between operator |
+| V_103 | Crossover operators |
+| V_104 | holds_for window |
+| V_105 | occurred_within window |
+| V_106 | NOT operator |
+| V_107-V_110 | near_abs, near_pct, in, count_true |
+| V_115 | Type-safe operators |
+| V_120-V_122 | Derived zones |
+| V_300-V_301 | Setup references |
+
+## CLI Commands
 
 ```bash
-# 1. Check indicator keys are correct
-python trade_cli.py backtest indicators --idea YOUR_ID --print-keys
+# Normalize (validate) a single Play
+python trade_cli.py backtest play-normalize --id V_100_blocks_basic
 
-# 2. Validate data coverage
-python trade_cli.py backtest preflight --idea YOUR_ID
+# Normalize all validation Plays
+python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
 
-# 3. Run backtest
-python trade_cli.py backtest run --idea YOUR_ID --start 2025-01-01 --end 2025-02-01 --env live
+# Run smoke test
+python trade_cli.py --smoke forge
 ```
-
-## Quick Reference
-
-| What | How |
-|------|-----|
-| Create new Play | Copy `_TEMPLATE.yml` |
-| Validate indicator keys | `backtest indicators --print-keys` |
-| Check data coverage | `backtest preflight` |
-| Run backtest | `backtest run --start ... --end ...` |
-| View artifacts | `backtests/{play_id}/{symbol}/run-NNN/` |
-
-## Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| "No data found" | Run data sync first via CLI Data Builder |
-| "Indicator key not found" | Check `required_indicators` matches `feature_specs` keys |
-| "Warmup insufficient" | Increase `warmup_bars` for that TF |
-| Zero trades | Check signal conditions and HTF/MTF filters |
 
 ---
 
-**See Also:**
-- `docs/reviews/PLAY_SYNTAX.md` - Detailed structure docs
-- `docs/guides/WRITING_STRATEGIES.md` - Strategy development guide
-
+**DEPRECATED**: The old `signal_rules` format is no longer supported. Use `blocks` (v3.0.0).

@@ -288,76 +288,8 @@ def validate_feature_reference(
     )
 
 
-def validate_signal_rules(
-    play_dict: dict[str, Any],
-    all_mappings: dict[str, ScopeMappings],
-) -> list[ValidationError]:
-    """
-    Validate all feature references in signal_rules.
-    
-    Args:
-        play_dict: The raw Play dict
-        all_mappings: All scope mappings
-        
-    Returns:
-        List of ValidationErrors
-    """
-    errors: list[ValidationError] = []
-    signal_rules = play_dict.get("signal_rules", {})
-    
-    # Entry rules
-    for i, rule in enumerate(signal_rules.get("entry_rules", [])):
-        for j, cond in enumerate(rule.get("conditions", [])):
-            location = f"signal_rules.entry_rules[{i}].conditions[{j}]"
-            role = cond.get("tf", "exec")
-
-            # Check indicator_key
-            indicator_key = cond.get("indicator_key", "")
-            # Stage 3: Skip structure references (validated separately)
-            if indicator_key and not indicator_key.startswith("structure."):
-                error = validate_feature_reference(
-                    indicator_key, role, f"{location}.indicator_key", all_mappings
-                )
-                if error:
-                    errors.append(error)
-
-            # Check value if it's an indicator comparison
-            if cond.get("is_indicator_comparison", False):
-                value = cond.get("value", "")
-                # Stage 3: Skip structure references (validated separately)
-                if isinstance(value, str) and value and not value.startswith("structure."):
-                    error = validate_feature_reference(
-                        value, role, f"{location}.value", all_mappings
-                    )
-                    if error:
-                        errors.append(error)
-
-    # Exit rules
-    for i, rule in enumerate(signal_rules.get("exit_rules", [])):
-        for j, cond in enumerate(rule.get("conditions", [])):
-            location = f"signal_rules.exit_rules[{i}].conditions[{j}]"
-            role = cond.get("tf", "exec")
-
-            indicator_key = cond.get("indicator_key", "")
-            # Stage 3: Skip structure references (validated separately)
-            if indicator_key and not indicator_key.startswith("structure."):
-                error = validate_feature_reference(
-                    indicator_key, role, f"{location}.indicator_key", all_mappings
-                )
-                if error:
-                    errors.append(error)
-
-            if cond.get("is_indicator_comparison", False):
-                value = cond.get("value", "")
-                # Stage 3: Skip structure references (validated separately)
-                if isinstance(value, str) and value and not value.startswith("structure."):
-                    error = validate_feature_reference(
-                        value, role, f"{location}.value", all_mappings
-                    )
-                    if error:
-                        errors.append(error)
-    
-    return errors
+# REMOVED: validate_signal_rules() - Legacy signal_rules format deprecated
+# All Plays now use blocks DSL v3.0.0. See configs/plays/README.md
 
 
 def validate_risk_model_refs(
@@ -610,137 +542,8 @@ def validate_structure_blocks(
     return errors, structure_fields, zone_keys
 
 
-def validate_structure_references(
-    play_dict: dict[str, Any],
-    structure_fields: dict[str, set[str]],
-    zone_keys: dict[str, set[str]] | None = None,
-) -> list[ValidationError]:
-    """
-    Validate structure references in signal_rules.
-
-    Checks conditions that reference structure.<block_key>.<field>.
-    Stage 3.3: Also normalizes enum tokens (e.g., "BULL" -> 1 for trend_state).
-    Stage 5+: Handles zone paths: structure.<block_key>.zones.<zone_key>.<field>
-
-    Args:
-        play_dict: The raw Play dict (modified in-place for normalization)
-        structure_fields: Dict from validate_structure_blocks()
-        zone_keys: Dict from validate_structure_blocks() (Stage 5+)
-
-    Returns:
-        List of ValidationErrors
-    """
-    errors: list[ValidationError] = []
-    zone_keys = zone_keys or {}
-
-    # Structure references use the indicator_key field with formats:
-    # - structure.<block_key>.<field> (base structure)
-    # - structure.<block_key>.zones.<zone_key>.<field> (zones, Stage 5+)
-
-    signal_rules = play_dict.get("signal_rules", {})
-
-    for rule_type in ["entry_rules", "exit_rules"]:
-        for i, rule in enumerate(signal_rules.get(rule_type, [])):
-            for j, cond in enumerate(rule.get("conditions", [])):
-                indicator_key = cond.get("indicator_key", "")
-                location = f"signal_rules.{rule_type}[{i}].conditions[{j}].indicator_key"
-                value_location = f"signal_rules.{rule_type}[{i}].conditions[{j}].value"
-
-                # Check if this is a structure reference
-                if indicator_key.startswith("structure."):
-                    parts = indicator_key.split(".")
-                    if len(parts) < 3:
-                        errors.append(ValidationError(
-                            code=ValidationErrorCode.UNDECLARED_STRUCTURE,
-                            message=f"Invalid structure reference: '{indicator_key}'. Expected format: structure.<block_key>.<field> or structure.<block_key>.zones.<zone_key>.<field>",
-                            location=location,
-                        ))
-                        continue
-
-                    block_key = parts[1]
-
-                    # Check block exists
-                    if block_key not in structure_fields:
-                        errors.append(ValidationError(
-                            code=ValidationErrorCode.UNDECLARED_STRUCTURE,
-                            message=f"Structure block '{block_key}' referenced but not declared in market_structure_blocks.",
-                            location=location,
-                            suggestions=sorted(structure_fields.keys()) if structure_fields else None,
-                        ))
-                        continue
-
-                    # Stage 5+: Check for zone path: structure.<block>.zones.<zone>.<field>
-                    if len(parts) >= 5 and parts[2] == "zones":
-                        zone_key = parts[3]
-                        field_name = parts[4]
-
-                        # Check zone exists for this block
-                        block_zones = zone_keys.get(block_key, set())
-                        if zone_key not in block_zones:
-                            errors.append(ValidationError(
-                                code=ValidationErrorCode.UNDECLARED_STRUCTURE,
-                                message=f"Zone '{zone_key}' not declared in structure block '{block_key}'.",
-                                location=location,
-                                suggestions=sorted(block_zones) if block_zones else None,
-                            ))
-                            continue
-
-                        # Check zone field exists
-                        valid_zone_fields = set(ZONE_PUBLIC_FIELDS)
-                        if field_name not in valid_zone_fields:
-                            errors.append(ValidationError(
-                                code=ValidationErrorCode.UNDECLARED_STRUCTURE,
-                                message=f"Zone field '{field_name}' not valid.",
-                                location=location,
-                                suggestions=sorted(valid_zone_fields),
-                            ))
-                            continue
-                    else:
-                        # Base structure path: structure.<block>.<field>
-                        field_name = parts[2]
-
-                        # Check field exists
-                        valid_fields = structure_fields[block_key]
-                        if field_name not in valid_fields:
-                            errors.append(ValidationError(
-                                code=ValidationErrorCode.UNDECLARED_STRUCTURE,
-                                message=f"Structure field '{field_name}' not valid for block '{block_key}'.",
-                                location=location,
-                                suggestions=sorted(valid_fields),
-                            ))
-                            continue
-
-                    # Stage 3.3: Validate and normalize enum tokens
-                    # Strict canonical tokens only - no numeric literals for enum fields
-                    value = cond.get("value")
-
-                    if field_name in STRUCTURE_ENUM_FIELDS:
-                        # Enum field - require canonical token, reject numeric
-                        try:
-                            normalized = normalize_enum_token(field_name, value)
-                            cond["value"] = normalized
-                        except ValueError as e:
-                            # Unknown token or numeric literal
-                            enum_class = STRUCTURE_ENUM_FIELDS[field_name]
-                            allowed = sorted(m.name for m in enum_class)
-                            errors.append(ValidationError(
-                                code=ValidationErrorCode.INVALID_ENUM_TOKEN,
-                                message=str(e),
-                                location=value_location,
-                                suggestions=allowed,
-                            ))
-                    elif isinstance(value, str):
-                        # String value on non-enum field
-                        errors.append(ValidationError(
-                            code=ValidationErrorCode.INVALID_ENUM_TOKEN,
-                            message=(
-                                f"Field '{field_name}' is not an enum field. "
-                                f"Use numeric value instead of '{value}'."
-                            ),
-                            location=value_location,
-                        ))
-
-    return errors
+# REMOVED: validate_structure_references() - Legacy signal_rules format deprecated
+# Structure references in blocks DSL are validated by dsl_parser.py
 
 
 # =============================================================================
@@ -754,8 +557,11 @@ def validate_play_yaml(play_dict: dict[str, Any]) -> ValidationResult:
     This is the main validation entry point. It:
     1. Validates all indicator_types are supported
     2. Validates all params are accepted
-    3. Validates all signal_rules/risk_model references use expanded keys
-    4. Validates market_structure_blocks (Stage 3)
+    3. Validates market_structure_blocks
+    4. Validates risk_model references
+
+    NOTE: Legacy signal_rules validation removed. All Plays now use
+    blocks DSL v3.0.0, validated by dsl_parser.py at parse time.
 
     Args:
         play_dict: The raw Play dict from YAML
@@ -770,20 +576,9 @@ def validate_play_yaml(play_dict: dict[str, Any]) -> ValidationResult:
     all_mappings, mapping_errors = build_all_scope_mappings(play_dict, registry)
     all_errors.extend(mapping_errors)
 
-    # Validate market structure blocks (Stage 3+)
-    structure_errors, structure_fields, zone_keys = validate_structure_blocks(play_dict)
+    # Validate market structure blocks
+    structure_errors, _structure_fields, _zone_keys = validate_structure_blocks(play_dict)
     all_errors.extend(structure_errors)
-
-    # Validate signal rules references (indicators)
-    signal_errors = validate_signal_rules(play_dict, all_mappings)
-    all_errors.extend(signal_errors)
-
-    # Validate structure references in signal rules (Stage 3+, zones Stage 5+)
-    if structure_fields or zone_keys:
-        structure_ref_errors = validate_structure_references(
-            play_dict, structure_fields, zone_keys
-        )
-        all_errors.extend(structure_ref_errors)
 
     # Validate risk model references
     risk_errors = validate_risk_model_refs(play_dict, all_mappings)

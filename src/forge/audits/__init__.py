@@ -35,6 +35,13 @@ from .artifact_parity_verifier import (
     ArtifactParityResult,
     RunParityResult,
 )
+from .stress_test_suite import (
+    run_stress_test_suite,
+    StressTestReport,
+    StressTestStepResult,
+    StructureParityResult,
+    IndicatorParityResult,
+)
 
 __all__ = [
     # In-memory parity
@@ -59,5 +66,11 @@ __all__ = [
     "verify_run_parity",
     "ArtifactParityResult",
     "RunParityResult",
+    # Stress test suite
+    "run_stress_test_suite",
+    "StressTestReport",
+    "StressTestStepResult",
+    "StructureParityResult",
+    "IndicatorParityResult",
 ]
 

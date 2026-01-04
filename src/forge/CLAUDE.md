@@ -35,11 +35,11 @@ def maybe_validate(play: Play, force: bool = False):
 
 | Submodule | Purpose | Status |
 |-----------|---------|--------|
-| `audits/` | Parity and correctness audits | Migrating |
-| `validation/` | Play schema and indicator validation | Planned |
+| `audits/` | Parity and correctness audits | ✅ Complete |
+| `validation/` | Play schema and indicator validation | ✅ Complete |
 | `generation/` | Play generation from templates | Planned |
 | `setups/` | Reusable Setup blocks | ✅ Complete |
-| `playbooks/` | Playbook collections | ✅ Complete |
+| `playbooks/` | Playbook collections + runner | ✅ Complete |
 | `systems/` | Trading system configs | ✅ Complete |
 
 ## Key Entry Points
@@ -119,6 +119,85 @@ Play YAML → load_play() → validate_play() → ValidationResult
 | `audit_math_parity` | Indicator math vs pandas_ta | (snapshots) → ParityResult |
 | `audit_plumbing` | Snapshot data flow | (play, dates) → PlumbingResult |
 | `audit_rollup` | 1m price aggregation | (config) → RollupResult |
+
+## Stress Test Suite (2026-01-04)
+
+Full validation + backtest pipeline with hash tracing for debugging flow.
+
+**8-Step Pipeline** (each produces `input_hash → output_hash`):
+1. Generate synthetic candle data (all TFs) → `synthetic_data_hash`
+2. Validate all plays (normalize-batch) → `config_hash`
+3. Run toolkit audit (registry contract) → `registry_hash`
+4. Run structure parity (synthetic data) → `structure_hash`
+5. Run indicator parity (synthetic data) → `indicator_hash`
+6. Run rollup audit (1m aggregation) → `rollup_hash`
+7. Execute validation plays as backtests → `trades_hash`, `equity_hash`
+8. Verify artifacts + determinism → `run_hash`
+
+**Usage**:
+```python
+from src.tools import forge_stress_test_tool
+
+result = forge_stress_test_tool(
+    skip_audits=False,
+    skip_backtest=False,
+    trace_hashes=True,
+)
+# result.data["hash_chain"] = ["a1b2c3d4...", "e5f6g7h8...", ...]
+```
+
+**CLI**: Forge menu → option 6 (Stress Test Suite)
+
+## Playbook Runner (2026-01-04)
+
+Run all plays in a playbook with multiple modes and hash tracking.
+
+**Modes**:
+| Mode | Purpose | Output |
+|------|---------|--------|
+| `verify-math` | Validate configs only (fast) | validation_hash per play |
+| `sequential` | Run backtests one-by-one | run_hash + trades_hash per play |
+| `compare` | Compare metrics side-by-side | hash diffs |
+| `aggregate` | Aggregate system metrics | composite_hash |
+
+**Usage**:
+```python
+from src.tools import forge_run_playbook_tool
+
+result = forge_run_playbook_tool(
+    playbook_id="stress_test",
+    mode="verify-math",  # or sequential, compare, aggregate
+)
+# result.data["hash_summary"] = {"T_001": "abc...", "T_002": "def..."}
+```
+
+**CLI**: Forge menu → option 7 (Run Playbook)
+
+## Synthetic Data Generation
+
+Deterministic, reproducible validation without DB dependency.
+
+**Patterns**:
+| Pattern | Purpose | Tests |
+|---------|---------|-------|
+| `trending` | Clear directional move | Swing highs/lows, trend detection |
+| `ranging` | Sideways consolidation | Zone detection, support/resistance |
+| `volatile` | High volatility spikes | Breakout detection, stop placement |
+| `mtf_aligned` | Multi-TF alignment | HTF/MTF/LTF structure correlation |
+
+**Usage**:
+```python
+from src.forge.validation import generate_synthetic_candles
+
+candles = generate_synthetic_candles(
+    symbol="BTCUSDT",
+    timeframes=["1m", "5m", "15m", "1h", "4h"],
+    bars_per_tf=1000,
+    seed=42,  # Deterministic
+    pattern="trending",
+)
+# candles.data_hash = "abc123..."  # For verification
+```
 
 ## W4 Trading Hierarchy Status
 

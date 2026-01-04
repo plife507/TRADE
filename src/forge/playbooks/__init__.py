@@ -32,6 +32,12 @@ from src.forge.playbooks.playbook import (
     save_playbook,
     PlaybookNotFoundError,
 )
+from src.forge.playbooks.playbook_runner import (
+    run_playbook,
+    PlaybookRunResult,
+    PlayRunResult,
+    RunMode,
+)
 
 __all__ = [
     "Playbook",
@@ -40,4 +46,9 @@ __all__ = [
     "list_playbooks",
     "save_playbook",
     "PlaybookNotFoundError",
+    # Playbook runner
+    "run_playbook",
+    "PlaybookRunResult",
+    "PlayRunResult",
+    "RunMode",
 ]

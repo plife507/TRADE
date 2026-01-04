@@ -1,11 +1,18 @@
 # Active TODO
 
 **Last Updated**: 2026-01-04
-**Status**: ALL WORKSTREAMS COMPLETE (W1-W5)
+**Status**: STRESS TEST BASELINE COMPLETE
 
 ---
 
 ## Current State
+
+**Forge Stress Test Suite (2026-01-04)** - COMPLETE:
+- ✅ Stress Test Suite (8 steps with hash tracing)
+- ✅ Playbook Runner (4 modes: verify-math, sequential, compare, aggregate)
+- ✅ Synthetic Data Generation (trending, ranging, volatile, mtf_aligned patterns)
+- ✅ CLI Menu Integration (Forge menu options 6, 7)
+- ✅ Structure/Indicator Parity Tools
 
 **Architecture Evolution (5 Workstreams) - ALL COMPLETE**:
 - ✅ **W1: The Forge** (2026-01-04) - `src/forge/` with validation framework
@@ -23,7 +30,7 @@
 - 72 bugs fixed across P0-P3
 
 **Validation Status**:
-- 80 tools registered, 23 categories
+- 84 tools registered (+4 forge stress test tools)
 - 17/17 Plays normalize (V_100+ blocks format, V_300+ hierarchy)
 - 42/42 indicators pass audit
 - 6 structures in STRUCTURE_REGISTRY
@@ -77,8 +84,8 @@ System (btc_trend_v1)
 |---------|----------|-------------|
 | **W5 Full Implementation** | Future | WebSocket + live engine mode |
 | **BOS/CHoCH Detection** | Medium | Break of Structure / Change of Character |
-| **Forge CLI Menu** | Medium | Interactive forge workflow |
-| **Playbook Runner** | Medium | Run all plays in a playbook |
+| **Complex Order Types** | Medium | Limit orders, stop orders in backtest |
+| **Multi-Symbol Backtests** | Future | Run multiple symbols in single backtest |
 
 ---
 
@@ -89,6 +96,15 @@ System (btc_trend_v1)
 python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
 python trade_cli.py backtest audit-toolkit
 python trade_cli.py backtest audit-rollup
+
+# Forge verification (smoke test)
+python trade_cli.py --smoke forge
+
+# Forge Stress Test (programmatic)
+python -c "from src.tools import forge_stress_test_tool; print(forge_stress_test_tool())"
+
+# Playbook Runner (programmatic)
+python -c "from src.tools import forge_run_playbook_tool; print(forge_run_playbook_tool('stress_test', mode='verify-math'))"
 
 # Full smoke
 $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
@@ -103,12 +119,13 @@ python -c "from src.forge import list_setups, list_playbooks, list_systems; prin
 
 | Phase | Date | Notes |
 |-------|------|-------|
+| **Stress Test Baseline** | 2026-01-04 | 8-step suite, playbook runner, synthetic data |
 | **W4 Trading Hierarchy** | 2026-01-04 | Setup/Playbook/System complete |
 | **W3 Price Source** | 2026-01-04 | PriceSource protocol |
 | **W2 StateRationalizer** | 2026-01-04 | Layer 2 complete |
 | **W1 Forge** | 2026-01-04 | Forge framework |
 | **Forge Migration** | 2026-01-04 | IdeaCard -> Play (8 phases, 221 files) |
-| Legacy Cleanup | 2026-01-04 | Removed all signal_rules Plays |
+| Legacy Code Cleanup | 2026-01-04 | Removed signal_rules validation, deprecated play_generator |
 | Mega-file Refactor | 2026-01-03 | Phases 1-3 complete |
 | Incremental State | 2026-01-03 | O(1) hot loop |
 | 1m Eval Loop | 2026-01-02 | mark_price in snapshot |

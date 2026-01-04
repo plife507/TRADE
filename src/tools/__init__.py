@@ -205,6 +205,21 @@ from .backtest_cli_wrapper import (
     backtest_audit_rollup_parity_tool,
 )
 
+# Forge stress test tools
+from .forge_stress_test_tools import (
+    forge_stress_test_tool,
+    forge_generate_synthetic_data_tool,
+    forge_structure_parity_tool,
+    forge_indicator_parity_tool,
+)
+
+# Forge playbook tools
+from .forge_playbook_tools import (
+    forge_run_playbook_tool,
+    forge_list_playbooks_tool,
+    forge_get_playbook_tool,
+)
+
 __all__ = [
     # Shared types
     "ToolResult",
@@ -340,4 +355,15 @@ __all__ = [
     "backtest_math_parity_tool",
     "backtest_audit_snapshot_plumbing_tool",
     "backtest_audit_rollup_parity_tool",
+
+    # Forge stress test tools
+    "forge_stress_test_tool",
+    "forge_generate_synthetic_data_tool",
+    "forge_structure_parity_tool",
+    "forge_indicator_parity_tool",
+
+    # Forge playbook tools
+    "forge_run_playbook_tool",
+    "forge_list_playbooks_tool",
+    "forge_get_playbook_tool",
 ]
