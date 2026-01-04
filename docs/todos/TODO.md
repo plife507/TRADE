@@ -1,18 +1,18 @@
 # Active TODO
 
 **Last Updated**: 2026-01-04
-**Status**: W1+W2 COMPLETE, W3 ACTIVE
+**Status**: ALL WORKSTREAMS COMPLETE (W1-W5)
 
 ---
 
 ## Current State
 
-**Architecture Evolution (5 Workstreams)**:
+**Architecture Evolution (5 Workstreams) - ALL COMPLETE**:
 - ✅ **W1: The Forge** (2026-01-04) - `src/forge/` with validation framework
 - ✅ **W2: StateRationalizer** (2026-01-04) - Layer 2 transitions, derived state, conflicts
 - ✅ **W3: Price Source Abstraction** (2026-01-04) - PriceSource protocol, BacktestPriceSource
+- ✅ **W4: Trading Hierarchy** (2026-01-04) - Setup/Play/Playbook/System complete
 - ✅ **W5: Live/Demo Stubs** (2026-01-04) - DemoPriceSource, LivePriceSource stubs
-- 🔄 **W4: Trading Hierarchy** - NEXT (Setup/Play/Playbook/System)
 
 **Prior Work Complete:**
 - Forge Migration (2026-01-04) - IdeaCard -> Play rename (8 phases, 221 files)
@@ -24,53 +24,50 @@
 
 **Validation Status**:
 - 80 tools registered, 23 categories
-- 15/15 Plays normalize (V_100+ blocks format only)
+- 17/17 Plays normalize (V_100+ blocks format, V_300+ hierarchy)
 - 42/42 indicators pass audit
 - 6 structures in STRUCTURE_REGISTRY
 - All smoke tests pass
 
-**New API**:
+**New APIs**:
 ```python
+# Backtest
 from src.backtest import Play, load_play, create_engine_from_play
 from src.backtest.rationalization import StateRationalizer, RationalizedState
+
+# Trading Hierarchy
+from src.forge import (
+    Setup, load_setup, list_setups,
+    Playbook, load_playbook, list_playbooks,
+    System, load_system, list_systems,
+)
 ```
 
 ---
 
-## Active Work: W4 Trading Hierarchy
+## Trading Hierarchy (W4 Complete)
 
-**Goal**: Implement Setup → Play → Playbook → System hierarchy
+**Full Hierarchy Operational**:
+```
+System (btc_trend_v1)
+└── Playbook (trend_following)
+    ├── Play (T_001_ema_crossover)
+    └── Play (T_002_multi_indicator_momentum)
+        └── Setup (rsi_oversold)  ← DSL: `setup: rsi_oversold`
+```
 
-### W4-P1: Setup Dataclass
-- [ ] Create `src/forge/setups/` directory
-- [ ] Define `Setup` dataclass (id, version, condition, features)
-- [ ] Create `configs/setups/` for YAML files
-- [ ] Add `setups:` section to Play schema
+**Config Locations**:
+| Level | Directory | Example |
+|-------|-----------|---------|
+| Setup | `configs/setups/` | rsi_oversold.yml |
+| Play | `configs/plays/` | T_001_ema_crossover.yml |
+| Playbook | `configs/playbooks/` | trend_following.yml |
+| System | `configs/systems/` | btc_trend_v1.yml |
 
-### W4-P2: Setup DSL Integration
-- [ ] Add `SetupRef` node to DSL
-- [ ] Support `setup: <id>` in block conditions
-- [ ] Parse setup references in Play
-
-### W4-P3: Playbook Implementation
-- [ ] Create `src/forge/playbooks/` directory
-- [ ] Define `Playbook` dataclass
-- [ ] Create `configs/playbooks/` for YAML files
-
-### W4-P4: System Enhancement
-- [ ] Add `playbook_id` to SystemConfig
-- [ ] Resolve playbook → strategies
-- [ ] Create `configs/systems/` directory
-
----
-
-## Trading Hierarchy (W4 - After W3)
-
-**Hierarchy Model (Setup -> Play -> Playbook -> System)**:
-- **Setup**: Market condition detection (structure, zones, patterns)
-- **Play**: A single tradeable idea with entry/exit rules
-- **Playbook**: Collection of Plays for a market regime
-- **System**: Complete trading system with Playbooks + risk management
+**Validation Plays**:
+- V_300_setup_basic.yml - Setup reference
+- V_301_setup_composition.yml - Multiple setups
+- V_400_playbook_basic.yml - Playbook loading
 
 ---
 
@@ -78,9 +75,10 @@ from src.backtest.rationalization import StateRationalizer, RationalizedState
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
-| **W4 Hierarchy** | ACTIVE | Setup/Playbook/System dataclasses |
 | **W5 Full Implementation** | Future | WebSocket + live engine mode |
 | **BOS/CHoCH Detection** | Medium | Break of Structure / Change of Character |
+| **Forge CLI Menu** | Medium | Interactive forge workflow |
+| **Playbook Runner** | Medium | Run all plays in a playbook |
 
 ---
 
@@ -94,6 +92,9 @@ python trade_cli.py backtest audit-rollup
 
 # Full smoke
 $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
+
+# Trading Hierarchy
+python -c "from src.forge import list_setups, list_playbooks, list_systems; print(list_setups(), list_playbooks(), list_systems())"
 ```
 
 ---
@@ -102,6 +103,10 @@ $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
 
 | Phase | Date | Notes |
 |-------|------|-------|
+| **W4 Trading Hierarchy** | 2026-01-04 | Setup/Playbook/System complete |
+| **W3 Price Source** | 2026-01-04 | PriceSource protocol |
+| **W2 StateRationalizer** | 2026-01-04 | Layer 2 complete |
+| **W1 Forge** | 2026-01-04 | Forge framework |
 | **Forge Migration** | 2026-01-04 | IdeaCard -> Play (8 phases, 221 files) |
 | Legacy Cleanup | 2026-01-04 | Removed all signal_rules Plays |
 | Mega-file Refactor | 2026-01-03 | Phases 1-3 complete |
