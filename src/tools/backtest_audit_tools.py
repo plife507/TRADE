@@ -335,7 +335,7 @@ def verify_artifact_parity_tool(
         ToolResult with parity verification results
     """
     from ..backtest.artifact_parity_verifier import (
-        verify_idea_card_parity,
+        verify_play_parity,
         RunParityResult,
     )
 
@@ -371,7 +371,7 @@ def verify_artifact_parity_tool(
         backtests_dir = Path(base_dir) if base_dir else Path("backtests")
 
         # Run parity verification
-        result = verify_idea_card_parity(
+        result = verify_play_parity(
             base_dir=backtests_dir,
             play_id=play_id,
             symbol=symbol,

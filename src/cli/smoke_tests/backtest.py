@@ -24,7 +24,7 @@ from ...tools import (
 console = Console()
 
 
-def _run_backtest_smoke_idea_card(play_id: str, fresh_db: bool = False) -> int:
+def _run_backtest_smoke_play(play_id: str, fresh_db: bool = False) -> int:
     """
     Run backtest smoke test using Play-based wrapper (golden path).
 
@@ -229,7 +229,7 @@ def _run_backtest_smoke_idea_card(play_id: str, fresh_db: bool = False) -> int:
 
     # Summary
     console.print(f"\n[bold magenta]{'='*60}[/]")
-    console.print(f"[bold magenta]IDEACARD BACKTEST SMOKE TEST COMPLETE[/]")
+    console.print(f"[bold magenta]PLAY BACKTEST SMOKE TEST COMPLETE[/]")
     console.print(f"[bold magenta]{'='*60}[/]")
 
     console.print(f"\n[bold]Summary:[/]")
@@ -281,9 +281,9 @@ def run_backtest_smoke(fresh_db: bool = False, play_id: str = None) -> int:
     result = backtest_list_plays_tool()
     plays = []
     if result.success and result.data:
-        plays = result.data.get("idea_cards", [])
-        console.print(f"  [green]OK[/] Found {len(idea_cards)} Plays")
-        for card in idea_cards[:5]:
+        plays = result.data.get("plays", [])
+        console.print(f"  [green]OK[/] Found {len(plays)} Plays")
+        for card in plays[:5]:
             console.print(f"    - {card}")
     else:
         console.print(f"  [yellow]WARN[/] No Plays found: {result.error}")
@@ -294,13 +294,13 @@ def run_backtest_smoke(fresh_db: bool = False, play_id: str = None) -> int:
 
     if play_id is None and plays:
         # Prefer valid test cards (T*) over error test cases (E*)
-        valid_cards = [c for c in idea_cards if c.startswith("T")]
-        play_id = valid_cards[0] if valid_cards else idea_cards[0]
+        valid_cards = [c for c in plays if c.startswith("T")]
+        play_id = valid_cards[0] if valid_cards else plays[0]
 
     # If we have an Play, use the golden path
     if play_id:
         console.print(f"\n  [bold]Using Play: {play_id}[/]")
-        return _run_backtest_smoke_idea_card(play_id, fresh_db)
+        return _run_backtest_smoke_play(play_id, fresh_db)
 
     # No Plays found - fail
     console.print(f"\n[bold red]FAIL[/] No Plays found in configs/plays/")
@@ -348,7 +348,7 @@ def run_backtest_mixed_smoke() -> int:
     result = backtest_list_plays_tool()
     available_cards = []
     if result.success and result.data:
-        available_cards = result.data.get("idea_cards", [])
+        available_cards = result.data.get("plays", [])
 
     # Filter plays_to_test to only those that exist
     cards_to_test = [card for card in plays_to_test if card in available_cards]
@@ -373,7 +373,7 @@ def run_backtest_mixed_smoke() -> int:
         console.print(f"[bold cyan]Card {i}/{len(cards_to_test)}: {card_id}[/]")
         console.print(f"[bold cyan]{'='*68}[/]")
 
-        card_failures = _run_backtest_smoke_idea_card(card_id, fresh_db=False)
+        card_failures = _run_backtest_smoke_play(card_id, fresh_db=False)
         failures += card_failures
 
         if card_failures == 0:

@@ -83,7 +83,7 @@ def backtest_ideacard_menu(cli: "TradeCLI"):
         menu.add_row("9", f"{CLIIcons.BACK} Back", "Return to backtest menu")
 
         BillArtWrapper.print_menu_top()
-        console.print(CLIStyles.get_menu_panel(menu, "IDEACARD BACKTESTS"))
+        console.print(CLIStyles.get_menu_panel(menu, "PLAY BACKTESTS"))
         BillArtWrapper.print_menu_bottom()
 
         choice = get_choice(valid_range=range(1, 10))
@@ -119,7 +119,7 @@ def _select_play(prompt_text: str = "Select Play") -> str | None:
         console.print(f"[{CLIColors.NEON_RED}]Error loading Plays: {result.error}[/]")
         return None
 
-    cards = result.data.get("idea_cards", [])
+    cards = result.data.get("plays", [])
 
     if not cards:
         console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in configs/plays/[/]")
@@ -203,7 +203,7 @@ def _list_plays(cli: "TradeCLI"):
     result = backtest_list_plays_tool()
 
     if result.success:
-        cards = result.data.get("idea_cards", [])
+        cards = result.data.get("plays", [])
         directory = result.data.get("directory", "")
 
         console.print()

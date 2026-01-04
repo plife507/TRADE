@@ -443,7 +443,7 @@ def audit_snapshot_plumbing_parity(
             if plays_dir is None:
                 plays_dir = PLAYS_DIR
             
-            # Get parent dir relative to idea_cards base
+            # Get parent dir relative to plays base
             if id_path.parent.name:
                 subdir = plays_dir / id_path.parent
             else:

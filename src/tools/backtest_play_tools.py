@@ -178,7 +178,7 @@ def backtest_preflight_play_tool(
                 data={
                     "env": env,
                     "db_path": str(db_path),
-                    "available_idea_cards": list_plays(plays_dir),
+                    "available_plays": list_plays(plays_dir),
                 },
             )
 
@@ -720,7 +720,7 @@ def backtest_indicators_tool(
             return ToolResult(
                 success=False,
                 error=str(e),
-                data={"available_idea_cards": list_plays(plays_dir)},
+                data={"available_plays": list_plays(plays_dir)},
             )
 
         # Validate Play
@@ -1040,7 +1040,7 @@ def backtest_list_plays_tool(
             success=True,
             message=f"Found {len(cards)} Plays",
             data={
-                "idea_cards": cards,
+                "plays": cards,
                 "directory": str(plays_dir) if plays_dir else "configs/plays/",
             },
         )
@@ -1107,7 +1107,7 @@ def backtest_play_normalize_tool(
             return ToolResult(
                 success=False,
                 error=f"Play '{play_id}' not found in {search_dir}",
-                data={"available_idea_cards": cards},
+                data={"available_plays": cards},
             )
 
         # Load raw YAML
@@ -1173,7 +1173,7 @@ def backtest_play_normalize_tool(
         )
 
 
-def backtest_idea_card_normalize_batch_tool(
+def backtest_play_normalize_batch_tool(
     plays_dir: Path,
     write_in_place: bool = False,
 ) -> ToolResult:

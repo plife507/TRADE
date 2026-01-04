@@ -213,7 +213,7 @@ def find_latest_run(
     return latest_run
 
 
-def verify_idea_card_parity(
+def verify_play_parity(
     base_dir: Path,
     play_id: str,
     symbol: str,

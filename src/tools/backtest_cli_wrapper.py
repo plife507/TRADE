@@ -32,7 +32,7 @@ from .backtest_play_tools import (
     backtest_data_fix_tool,
     backtest_list_plays_tool,
     backtest_play_normalize_tool,
-    backtest_idea_card_normalize_batch_tool,
+    backtest_play_normalize_batch_tool,
 )
 
 
@@ -71,7 +71,7 @@ __all__ = [
     "backtest_data_fix_tool",
     "backtest_list_plays_tool",
     "backtest_play_normalize_tool",
-    "backtest_idea_card_normalize_batch_tool",
+    "backtest_play_normalize_batch_tool",
     # Audit Tools
     "backtest_audit_math_from_snapshots_tool",
     "backtest_audit_toolkit_tool",
