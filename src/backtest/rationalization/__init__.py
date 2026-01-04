@@ -32,6 +32,7 @@ from .types import (
     TransitionFilter,
 )
 from .rationalizer import StateRationalizer
+from .transitions import TransitionManager, TRACKED_FIELDS
 
 __all__ = [
     # Core types
@@ -41,4 +42,7 @@ __all__ = [
     "TransitionFilter",
     # Main class
     "StateRationalizer",
+    # Transition detection
+    "TransitionManager",
+    "TRACKED_FIELDS",
 ]

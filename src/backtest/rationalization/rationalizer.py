@@ -5,13 +5,12 @@ Architecture Principle: Pure Math
 - Input: MultiTFIncrementalState, bar_idx, bar
 - Output: RationalizedState
 - No side effects, engine orchestrates invocation
-- Maintains only the state needed to detect transitions
+- Delegates to specialized components (TransitionManager, DerivedStateComputer)
 
 The StateRationalizer:
-1. Tracks previous values of structure outputs
-2. Detects when values change (transitions)
-3. Computes derived values (confluence, regime, alignment)
-4. Returns a RationalizedState for the current bar
+1. Delegates transition detection to TransitionManager
+2. Computes derived values (confluence, regime, alignment)
+3. Returns a RationalizedState for the current bar
 
 Engine Integration:
     # In engine hot loop, after structure updates:
@@ -23,33 +22,14 @@ See: docs/architecture/IDEACARD_VISION.md
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .types import Transition, RationalizedState, MarketRegime
+from .types import Transition, RationalizedState, MarketRegime, TransitionFilter
+from .transitions import TransitionManager
 
 if TYPE_CHECKING:
     from src.backtest.incremental.state import MultiTFIncrementalState
     from src.backtest.incremental.base import BarData
-
-
-@dataclass
-class DetectorSnapshot:
-    """Snapshot of a detector's output values.
-
-    Used to track previous state for transition detection.
-    """
-    detector_key: str
-    timeframe: str
-    values: dict[str, Any] = field(default_factory=dict)
-
-    def copy(self) -> "DetectorSnapshot":
-        """Create a copy of this snapshot."""
-        return DetectorSnapshot(
-            detector_key=self.detector_key,
-            timeframe=self.timeframe,
-            values=dict(self.values),
-        )
 
 
 class StateRationalizer:
@@ -57,12 +37,15 @@ class StateRationalizer:
     Layer 2 rationalization: transitions, derived state, regime detection.
 
     Pure computation class. Engine calls rationalize() after structure updates.
-    This class maintains previous state only to detect changes.
+    Delegates to specialized components for modularity:
+    - TransitionManager: Transition detection and history
+    - DerivedStateComputer: Derived values (W2-P3)
+    - ConflictResolver: Conflict resolution (W2-P4)
 
     Architecture:
         - rationalize() is pure: (state, bar) -> RationalizedState
-        - Previous values are cached for transition detection
         - No control flow about when to run - engine decides
+        - Components maintain internal state for their computations
 
     Example:
         >>> rationalizer = StateRationalizer()
@@ -71,8 +54,7 @@ class StateRationalizer:
         [Transition(detector='swing', field='high_level', ...)]
 
     Attributes:
-        _previous: Previous detector snapshots by (timeframe, key)
-        _transition_history: Recent transitions for lookback queries
+        _transition_manager: Handles transition detection and history
         _history_depth: Max transitions to keep in history
     """
 
@@ -82,10 +64,8 @@ class StateRationalizer:
         Args:
             history_depth: Maximum transitions to keep in history buffer
         """
-        self._previous: dict[tuple[str, str], DetectorSnapshot] = {}
-        self._transition_history: list[Transition] = []
+        self._transition_manager = TransitionManager(history_depth=history_depth)
         self._history_depth = history_depth
-        self._initialized = False
 
     def rationalize(
         self,
@@ -109,8 +89,11 @@ class StateRationalizer:
         Returns:
             RationalizedState with transitions and derived values
         """
-        # Detect transitions from all timeframes
-        transitions = self._detect_all_transitions(bar_idx, incremental_state)
+        # Detect transitions (delegated to TransitionManager)
+        transitions = self._transition_manager.detect_transitions(
+            bar_idx=bar_idx,
+            incremental_state=incremental_state,
+        )
 
         # Compute derived values
         derived = self._compute_derived_values(incremental_state, bar)
@@ -118,104 +101,12 @@ class StateRationalizer:
         # Classify regime
         regime = self._classify_regime(incremental_state, bar)
 
-        # Update history
-        self._update_history(transitions)
-
         return RationalizedState(
             bar_idx=bar_idx,
             transitions=tuple(transitions),
             derived_values=derived,
             regime=regime,
         )
-
-    def _detect_all_transitions(
-        self,
-        bar_idx: int,
-        incremental_state: "MultiTFIncrementalState",
-    ) -> list[Transition]:
-        """Detect transitions across all timeframes."""
-        transitions: list[Transition] = []
-
-        # Process exec timeframe
-        exec_state = incremental_state.exec
-        for detector_key in exec_state.list_detectors():
-            detector = exec_state.get_detector(detector_key)
-            tf_transitions = self._detect_detector_transitions(
-                bar_idx=bar_idx,
-                timeframe="exec",
-                detector_key=detector_key,
-                detector=detector,
-            )
-            transitions.extend(tf_transitions)
-
-        # Process HTF timeframes
-        for tf_name, tf_state in incremental_state.htf_states.items():
-            for detector_key in tf_state.list_detectors():
-                detector = tf_state.get_detector(detector_key)
-                tf_transitions = self._detect_detector_transitions(
-                    bar_idx=bar_idx,
-                    timeframe=tf_name,
-                    detector_key=detector_key,
-                    detector=detector,
-                )
-                transitions.extend(tf_transitions)
-
-        return transitions
-
-    def _detect_detector_transitions(
-        self,
-        bar_idx: int,
-        timeframe: str,
-        detector_key: str,
-        detector: Any,  # BaseIncrementalDetector
-    ) -> list[Transition]:
-        """Detect transitions for a single detector."""
-        transitions: list[Transition] = []
-        cache_key = (timeframe, detector_key)
-
-        # Get current values
-        current_values: dict[str, Any] = {}
-        for output_key in detector.get_output_keys():
-            current_values[output_key] = detector.get_value(output_key)
-
-        # Get previous snapshot
-        previous = self._previous.get(cache_key)
-
-        if previous is not None:
-            # Compare current vs previous
-            for key, current_val in current_values.items():
-                prev_val = previous.values.get(key)
-                if prev_val != current_val:
-                    transitions.append(Transition(
-                        detector=detector_key,
-                        field=key,
-                        old_value=prev_val,
-                        new_value=current_val,
-                        bar_idx=bar_idx,
-                        timeframe=timeframe,
-                    ))
-        else:
-            # First observation - record initial values
-            # Only emit transitions for non-None values on first bar
-            for key, current_val in current_values.items():
-                if current_val is not None:
-                    transitions.append(Transition(
-                        detector=detector_key,
-                        field=key,
-                        old_value=None,
-                        new_value=current_val,
-                        bar_idx=bar_idx,
-                        timeframe=timeframe,
-                    ))
-
-        # Update previous snapshot
-        self._previous[cache_key] = DetectorSnapshot(
-            detector_key=detector_key,
-            timeframe=timeframe,
-            values=current_values,
-        )
-
-        return transitions
 
     def _compute_derived_values(
         self,
@@ -230,7 +121,7 @@ class StateRationalizer:
         - alignment: HTF/MTF/LTF agreement
         - momentum: Aggregate momentum signal
         """
-        # W2-P3: Full implementation
+        # W2-P3: Full implementation via DerivedStateComputer
         return {
             "confluence_score": 0.0,
             "alignment": 0.0,
@@ -249,15 +140,6 @@ class StateRationalizer:
         # W2-P3: Full implementation using trend detector + volatility
         return MarketRegime.UNKNOWN
 
-    def _update_history(self, transitions: list[Transition]) -> None:
-        """Update transition history buffer."""
-        self._transition_history.extend(transitions)
-
-        # Trim to max depth
-        if len(self._transition_history) > self._history_depth:
-            trim_count = len(self._transition_history) - self._history_depth
-            self._transition_history = self._transition_history[trim_count:]
-
     def get_recent_transitions(
         self,
         count: int | None = None,
@@ -265,6 +147,8 @@ class StateRationalizer:
         field: str | None = None,
     ) -> list[Transition]:
         """Query recent transitions from history.
+
+        Delegates to TransitionManager.
 
         Args:
             count: Max transitions to return (None = all)
@@ -274,24 +158,46 @@ class StateRationalizer:
         Returns:
             List of matching transitions (most recent last)
         """
-        filtered = self._transition_history
+        filter_spec = TransitionFilter(detector=detector, field=field)
+        return self._transition_manager.get_history(
+            filter_spec=filter_spec,
+            count=count,
+        )
 
-        if detector is not None:
-            filtered = [t for t in filtered if t.detector == detector]
+    def get_transitions_since(
+        self,
+        bar_idx: int,
+        detector: str | None = None,
+    ) -> list[Transition]:
+        """Get all transitions since a given bar index.
 
-        if field is not None:
-            filtered = [t for t in filtered if t.field == field]
+        Delegates to TransitionManager.
 
-        if count is not None:
-            filtered = filtered[-count:]
+        Args:
+            bar_idx: Starting bar index (inclusive)
+            detector: Filter by detector name (None = all)
 
-        return filtered
+        Returns:
+            List of transitions since bar_idx
+        """
+        return self._transition_manager.get_transitions_since(
+            bar_idx=bar_idx,
+            detector=detector,
+        )
 
     def reset(self) -> None:
         """Reset all state.
 
         Call when starting a new backtest run.
         """
-        self._previous.clear()
-        self._transition_history.clear()
-        self._initialized = False
+        self._transition_manager.reset()
+
+    @property
+    def transition_history_size(self) -> int:
+        """Current size of transition history."""
+        return self._transition_manager.history_size
+
+    @property
+    def transition_manager(self) -> TransitionManager:
+        """Access to the TransitionManager for advanced queries."""
+        return self._transition_manager
