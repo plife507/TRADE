@@ -19,15 +19,20 @@ Documentation index for work tracking in the TRADE project.
 
 Major refactoring effort to restructure the project:
 
+| Document | Purpose |
+|----------|---------|
+| [FORGE_MIGRATION_RULES.md](FORGE_MIGRATION_RULES.md) | Forward-only rules (NO legacy fallbacks) |
+| [FORGE_MIGRATION_PHASES.md](FORGE_MIGRATION_PHASES.md) | 8 phases with detailed checkboxes |
+| [FORGE_CLEANUP_AGENT.md](FORGE_CLEANUP_AGENT.md) | Final verification checklist |
+
 **Terminology Changes**:
-- "IdeaCard" → "Play"
-- "configs/idea_cards/" → "configs/plays/"
-- "sandbox" → "forge"
-- "src/backtest/audits/" → "src/forge/audits/"
+- "IdeaCard" -> "Play"
+- "configs/idea_cards/" -> "configs/plays/"
+- "sandbox" -> "forge"
 
-**Hierarchy Model**: Setup → Play → Playbook → System
+**Hierarchy Model**: Setup -> Play -> Playbook -> System
 
-See [TODO.md](TODO.md) for detailed phase tracking.
+**Migration Phases**: P1 (dirs) -> P2 (files) -> P3 (classes) -> P4 (functions) -> P5 (vars) -> P6 (CLI) -> P7 (config) -> P8 (cleanup)
 
 ---
 

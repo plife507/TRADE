@@ -23,39 +23,49 @@
 - All smoke tests pass
 
 **Refactoring Results**:
-- `data_tools.py`: 2,205 → 4 modules + wrapper
-- `tool_registry.py`: 1,472 → 303 LOC + 8 spec files
+- `data_tools.py`: 2,205 -> 4 modules + wrapper
+- `tool_registry.py`: 1,472 -> 303 LOC + 8 spec files
 - `datetime_utils.py`: New (150 LOC)
 
 ---
 
 ## Active Work: Forge Migration
 
-**Terminology Changes**:
-- "IdeaCard" → "Play"
-- "configs/idea_cards/" → "configs/plays/"
-- "sandbox" → "forge"
-- "src/backtest/audits/" → "src/forge/audits/" (planned)
+> **See detailed migration docs:**
+> - `FORGE_MIGRATION_RULES.md` - Forward-only rules (NO legacy fallbacks)
+> - `FORGE_MIGRATION_PHASES.md` - 8 phases with checkboxes
+> - `FORGE_CLEANUP_AGENT.md` - Final verification checklist
 
-**Hierarchy Model (Setup → Play → Playbook → System)**:
+**Terminology Changes**:
+- "IdeaCard" -> "Play"
+- "configs/idea_cards/" -> "configs/plays/"
+- "sandbox" -> "forge"
+
+**Hierarchy Model (Setup -> Play -> Playbook -> System)**:
 - **Setup**: Market condition detection (structure, zones, patterns)
 - **Play**: A single tradeable idea with entry/exit rules
 - **Playbook**: Collection of Plays for a market regime
 - **System**: Complete trading system with Playbooks + risk management
 
-### Phase F1: Rename Paths and References
-- [ ] Rename `configs/idea_cards/` → `configs/plays/`
-- [ ] Update all imports referencing "idea_card" → "play"
-- [ ] Update CLI commands (idea-card-normalize → play-normalize, etc.)
-- [ ] Update CLAUDE.md and module docs
+### Migration Phases (P1-P8)
 
-### Phase F2: Forge Structure
+| Phase | Description | Status |
+|-------|-------------|--------|
+| P1 | Directory renames (configs/idea_cards/ -> configs/plays/) | NOT STARTED |
+| P2 | Core file renames (idea_card.py -> play.py) | NOT STARTED |
+| P3 | Class/type renames (IdeaCard -> Play) | NOT STARTED |
+| P4 | Function renames (load_idea_card -> load_play) | NOT STARTED |
+| P5 | Variable/param renames | NOT STARTED |
+| P6 | CLI menu updates | NOT STARTED |
+| P7 | Config/constant updates | NOT STARTED |
+| P8 | Cleanup agent sweep | NOT STARTED |
+
+### Post-Migration: Forge Structure
 - [ ] Create `src/forge/` directory
-- [ ] Move `src/backtest/audits/` → `src/forge/audits/`
+- [ ] Move audits to `src/forge/audits/`
 - [ ] Create `src/forge/plays/` for Play loading/validation
-- [ ] Update all imports
 
-### Phase F3: Hierarchy Implementation
+### Post-Migration: Hierarchy Implementation
 - [ ] Define `Setup` dataclass (market condition specs)
 - [ ] Define `Playbook` dataclass (collection of Plays)
 - [ ] Define `System` dataclass (Playbooks + global risk)
@@ -79,7 +89,7 @@
 
 ```bash
 # Validate (current paths - will change after migration)
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
 python trade_cli.py backtest audit-toolkit
 python trade_cli.py backtest audit-rollup
 
