@@ -10,6 +10,7 @@ Simulator/backtest domain. USDT-only, isolated margin.
 | `runtime/` | RuntimeSnapshotView, FeedStore, TFContext |
 | `features/` | FeatureSpec, FeatureFrameBuilder, indicator computation |
 | `rules/` | Signal rule compilation and evaluation |
+| `rationalization/` | Layer 2: transitions, derived state, regime, conflicts |
 | `market_structure/` | Swing, Trend, Zone detection (batch - DEPRECATED) |
 | `incremental/` | Incremental state detectors (O(1) per bar) |
 | `artifacts/` | Run artifacts (manifest, events, equity) |

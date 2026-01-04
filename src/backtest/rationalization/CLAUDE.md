@@ -107,7 +107,7 @@ Uses trend direction + volatility:
 
 ## Accessing in DSL Blocks
 
-After W2-P5 engine integration:
+Use `feature_id: "rationalize"` to access Layer 2 state in blocks:
 
 ```yaml
 blocks:
@@ -138,11 +138,11 @@ rationalization:
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| W2-P1 | Core infrastructure (types, rationalizer) | CURRENT |
-| W2-P2 | Transition detection (TransitionManager) | PENDING |
-| W2-P3 | Derived state computation | PENDING |
-| W2-P4 | Conflict resolution | PENDING |
-| W2-P5 | Engine integration | PENDING |
+| W2-P1 | Core infrastructure (types, rationalizer) | ✅ COMPLETE |
+| W2-P2 | Transition detection (TransitionManager) | ✅ COMPLETE |
+| W2-P3 | Derived state computation | ✅ COMPLETE |
+| W2-P4 | Conflict resolution | ✅ COMPLETE |
+| W2-P5 | Engine integration | ✅ COMPLETE |
 
 ## Critical Rules
 

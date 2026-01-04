@@ -1,15 +1,21 @@
 # Active TODO
 
 **Last Updated**: 2026-01-04
-**Status**: FORGE MIGRATION COMPLETE
+**Status**: W1+W2 COMPLETE, W3 ACTIVE
 
 ---
 
 ## Current State
 
-**All major work complete:**
-- **Forge Migration** (2026-01-04) - IdeaCard -> Play rename complete (8 phases, 221 files)
-- Legacy cleanup (2026-01-04) - All signal_rules Plays removed
+**Architecture Evolution (5 Workstreams)**:
+- ✅ **W1: The Forge** (2026-01-04) - `src/forge/` with validation framework
+- ✅ **W2: StateRationalizer** (2026-01-04) - Layer 2 transitions, derived state, conflicts
+- 🔄 **W3: Price Source Abstraction** - NEXT
+- ⏳ **W4: Trading Hierarchy** - Pending (Setup/Play/Playbook/System)
+- ⏳ **W5: Live/Demo Integration** - Pending (bundled with W3)
+
+**Prior Work Complete:**
+- Forge Migration (2026-01-04) - IdeaCard -> Play rename (8 phases, 221 files)
 - Mega-file refactoring (2026-01-03) - Phases 1-3 done
 - Incremental State Architecture (2026-01-03)
 - 1m Evaluation Loop (2026-01-02)
@@ -26,11 +32,34 @@
 **New API**:
 ```python
 from src.backtest import Play, load_play, create_engine_from_play
+from src.backtest.rationalization import StateRationalizer, RationalizedState
 ```
 
 ---
 
-## Active Work: Forge Structure
+## Active Work: W3 Price Source Abstraction
+
+**Goal**: Unified interface for backtest/demo/live price feeds
+
+### W3-P1: Protocol Definition
+- [ ] Create `src/backtest/prices/source.py` with PriceSource Protocol
+- [ ] Define PricePoint dataclass
+- [ ] Define methods: get_mark_price, get_ohlcv, get_1m_marks, healthcheck
+
+### W3-P2: Backtest Implementation
+- [ ] Create `src/backtest/prices/backtest_source.py`
+- [ ] Wrap HistoricalDataStore
+- [ ] Inject into BacktestEngine
+
+### W3-P3 + W5: Demo/Live Sources (bundled)
+- [ ] Create `src/backtest/prices/demo_source.py`
+- [ ] Create `src/core/prices/live_source.py`
+- [ ] WebSocket integration
+- [ ] Live engine mode
+
+---
+
+## Trading Hierarchy (W4 - After W3)
 
 **Hierarchy Model (Setup -> Play -> Playbook -> System)**:
 - **Setup**: Market condition detection (structure, zones, patterns)
@@ -38,32 +67,16 @@ from src.backtest import Play, load_play, create_engine_from_play
 - **Playbook**: Collection of Plays for a market regime
 - **System**: Complete trading system with Playbooks + risk management
 
-### Phase F1: Forge Directory Structure
-- [x] Create `src/forge/` directory (DONE)
-- [x] Create `src/forge/__init__.py` (DONE)
-- [x] Create `src/forge/CLAUDE.md` with pure function principles (DONE)
-- [x] Create `src/forge/validation/` for Play validation (DONE)
-- [x] Create `src/forge/generation/` for Play generation (DONE)
-- [ ] Move `src/backtest/audits/` -> `src/forge/audits/`
-- [ ] Update all imports for audits
-
-### Phase F2: Hierarchy Implementation
-- [ ] Define `Setup` dataclass (market condition specs)
-- [ ] Define `Playbook` dataclass (collection of Plays)
-- [ ] Define `System` dataclass (Playbooks + global risk)
-- [ ] Update engine to support hierarchy
-
 ---
 
 ## Next Steps
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
-| **Forge Structure** | Active | Create src/forge/ and move components |
-| **Phase 4 Refactor** | Next | Split play.py into focused modules |
-| **Streaming (Stage 8)** | High | Demo/Live websocket integration |
+| **W3 Price Source** | ACTIVE | Unified price interface |
+| **W5 Live/Demo** | Bundled | WebSocket + live engine mode |
+| **W4 Hierarchy** | Next | Setup/Playbook/System dataclasses |
 | **BOS/CHoCH Detection** | Medium | Break of Structure / Change of Character |
-| **Agent Module** | Future | Automated strategy generation |
 
 ---
 
