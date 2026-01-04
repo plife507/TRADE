@@ -20,6 +20,15 @@ from src.forge.setups import (
     SetupNotFoundError,
 )
 
+from src.forge.playbooks import (
+    Playbook,
+    PlaybookEntry,
+    load_playbook,
+    list_playbooks,
+    save_playbook,
+    PlaybookNotFoundError,
+)
+
 __all__ = [
     # Setups (W4-P1/P2)
     "Setup",
@@ -27,4 +36,11 @@ __all__ = [
     "list_setups",
     "save_setup",
     "SetupNotFoundError",
+    # Playbooks (W4-P3)
+    "Playbook",
+    "PlaybookEntry",
+    "load_playbook",
+    "list_playbooks",
+    "save_playbook",
+    "PlaybookNotFoundError",
 ]

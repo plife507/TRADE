@@ -1,0 +1,25 @@
+id: trend_following
+version: "1.0.0"
+name: "Trend Following Playbook"
+description: |
+  A collection of trend-following strategies that work together.
+  Uses EMA crossovers as primary signals and RSI for confirmation.
+
+tags:
+  - trend
+  - momentum
+  - long_bias
+
+plays:
+  - play_id: T_001_ema_crossover
+    role: primary
+    weight: 0.6
+
+  - play_id: T_002_multi_indicator_momentum
+    role: secondary
+    weight: 0.3
+
+  - play_id: T_003_bollinger_mean_reversion
+    role: contrarian
+    weight: 0.1
+    enabled: false
