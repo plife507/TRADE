@@ -1,19 +1,19 @@
-# IdeaCard Folder Structure
+# Play Folder Structure
 
-> **Canonical location for IdeaCard YAML files used in backtesting.**
+> **Canonical location for Play YAML files used in backtesting.**
 
 ## Folder Tree
 
 ```
 configs/
-└── idea_cards/                    # ← Canonical IdeaCards (for backtesting)
-    ├── _TEMPLATE.yml              # Copy this to create new IdeaCards
+└── plays/                    # ← Canonical Plays (for backtesting)
+    ├── _TEMPLATE.yml              # Copy this to create new Plays
     ├── README.md                  # This file
     ├── SOLUSDT_5m_ema_crossover.yml
     └── ...
 
 backtests/                         # ← Backtest artifacts (auto-generated)
-└── {idea_card_id}/
+└── {play_id}/
     └── {symbol}/
         └── run-{NNN}/
             ├── trades.csv
@@ -44,7 +44,7 @@ research/                          # ← Research strategies (future)
 - `BTCUSDT_15m_macd_trend.yml`
 - `ETHUSDT_1h_bbands_breakout.yml`
 
-## IdeaCard Lifecycle
+## Play Lifecycle
 
 ```
 1. DRAFT → Create from _TEMPLATE.yml
@@ -56,7 +56,7 @@ research/                          # ← Research strategies (future)
 3. ITERATE → Modify parameters, re-run backtests
               └── Version bump: 1.0.0 → 1.1.0
 
-4. FINAL → Move validated IdeaCard to research/strategies/final/
+4. FINAL → Move validated Play to research/strategies/final/
               └── (Future: automated promotion)
 ```
 
@@ -132,11 +132,11 @@ python trade_cli.py backtest run --idea YOUR_ID --start 2025-01-01 --end 2025-02
 
 | What | How |
 |------|-----|
-| Create new IdeaCard | Copy `_TEMPLATE.yml` |
+| Create new Play | Copy `_TEMPLATE.yml` |
 | Validate indicator keys | `backtest indicators --print-keys` |
 | Check data coverage | `backtest preflight` |
 | Run backtest | `backtest run --start ... --end ...` |
-| View artifacts | `backtests/{idea_id}/{symbol}/run-NNN/` |
+| View artifacts | `backtests/{play_id}/{symbol}/run-NNN/` |
 
 ## Common Issues
 
@@ -150,6 +150,6 @@ python trade_cli.py backtest run --idea YOUR_ID --start 2025-01-01 --end 2025-02
 ---
 
 **See Also:**
-- `docs/reviews/IDEACARD_YAML_STRUCTURE_REVIEW.md` - Detailed structure docs
+- `docs/reviews/PLAY_SYNTAX.md` - Detailed structure docs
 - `docs/guides/WRITING_STRATEGIES.md` - Strategy development guide
 

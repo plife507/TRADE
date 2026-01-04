@@ -824,7 +824,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     import warnings
     warnings.warn(
         f"YAML SystemConfig '{system_id}' is deprecated. "
-        "Migrate to IdeaCard YAML format at configs/idea_cards/. "
+        "Migrate to IdeaCard YAML format at configs/plays/. "
         "See docs/strategy_factory/STRATEGY_FACTORY.md for migration guide.",
         DeprecationWarning,
         stacklevel=2

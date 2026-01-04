@@ -122,7 +122,7 @@ def _select_idea_card(prompt_text: str = "Select IdeaCard") -> str | None:
     cards = result.data.get("idea_cards", [])
 
     if not cards:
-        console.print(f"[{CLIColors.NEON_YELLOW}]No IdeaCards found in configs/idea_cards/[/]")
+        console.print(f"[{CLIColors.NEON_YELLOW}]No IdeaCards found in configs/plays/[/]")
         return None
 
     # Display numbered list

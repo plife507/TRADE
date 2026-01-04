@@ -528,7 +528,7 @@ def run_backtest_with_gates(
         run_hash = compute_run_hash(trades_hash, equity_hash, idea_card_hash)
         
         # Resolve idea path (where IdeaCard was loaded from)
-        resolved_idea_path = str(config.idea_cards_dir / f"{idea_card.id}.yml") if config.idea_cards_dir else f"configs/idea_cards/{idea_card.id}.yml"
+        resolved_idea_path = str(config.idea_cards_dir / f"{idea_card.id}.yml") if config.idea_cards_dir else f"configs/plays/{idea_card.id}.yml"
         
         summary = compute_results_summary(
             idea_card_id=idea_card.id,
@@ -802,7 +802,7 @@ def main():
     parser.add_argument(
         "--idea-dir",
         default=None,
-        help="Override IdeaCard directory (default: configs/idea_cards/)",
+        help="Override IdeaCard directory (default: configs/plays/)",
     )
     parser.add_argument(
         "--skip-preflight",

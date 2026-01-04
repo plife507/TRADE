@@ -30,10 +30,10 @@ Artifacts (preflight_report.json, result.json, trades.csv, equity.csv)
 
 ## IdeaCard Location
 
-**Canonical path**: `configs/idea_cards/`
+**Canonical path**: `configs/plays/`
 
-- Production IdeaCards live in `configs/idea_cards/*.yml`
-- `src/strategies/idea_cards/` is for examples/templates only
+- Production IdeaCards live in `configs/plays/*.yml`
+- `src/strategies/plays/` is for examples/templates only
 - Override with `--idea-dir` flag if loading from alternate location
 
 ---
@@ -49,7 +49,7 @@ from src.backtest.runner import run_backtest_with_gates, RunnerConfig, RunnerRes
 ### IdeaCard Loading
 
 ```python
-from src.backtest.idea_card import load_idea_card, list_idea_cards, IdeaCard
+from src.backtest.idea_card import load_idea_card, list_plays, IdeaCard
 ```
 
 ### Validation

@@ -303,7 +303,7 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
         return _run_backtest_smoke_idea_card(idea_card_id, fresh_db)
 
     # No IdeaCards found - fail
-    console.print(f"\n[bold red]FAIL[/] No IdeaCards found in configs/idea_cards/")
+    console.print(f"\n[bold red]FAIL[/] No IdeaCards found in configs/plays/")
     console.print(f"[dim]Create an IdeaCard YAML file or set BACKTEST_SMOKE_IDEA_CARD env var[/]")
     return 1
 
@@ -312,7 +312,7 @@ def run_backtest_mixed_smoke() -> int:
     """
     Run backtest smoke test with validation IdeaCards.
 
-    Tests all validation cards in configs/idea_cards/_validation/:
+    Tests all validation cards in configs/plays/_validation/:
     - V_60-V_62: 1m evaluation loop (mark_price, zone touch, entry timing)
     - V_70-V_75: Incremental state structures (swing, fibonacci, zone, trend, rolling_window, multi-TF)
 
@@ -329,7 +329,7 @@ def run_backtest_mixed_smoke() -> int:
 
     failures = 0
 
-    # Select a diverse mix of validation cards from configs/idea_cards/_validation/
+    # Select a diverse mix of validation cards from configs/plays/_validation/
     idea_cards_to_test = [
         # Core validation cards (1m eval loop)
         "V_60_mark_price_basic",

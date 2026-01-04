@@ -57,7 +57,7 @@ class GeneratorConfig:
     num_cards: int = 5
     min_indicators: int = 2
     max_indicators: int = 4
-    output_dir: Path = field(default_factory=lambda: Path("configs/idea_cards/generated"))
+    output_dir: Path = field(default_factory=lambda: Path("configs/plays/generated"))
 
 
 @dataclass
@@ -434,7 +434,7 @@ def generate_idea_cards(config: GeneratorConfig) -> list[GeneratedIdeaCard]:
     return results
 
 
-def cleanup_generated_cards(output_dir: Path = Path("configs/idea_cards/generated")) -> None:
+def cleanup_generated_cards(output_dir: Path = Path("configs/plays/generated")) -> None:
     """Remove all generated IdeaCards."""
     if output_dir.exists():
         for f in output_dir.glob("*.yml"):

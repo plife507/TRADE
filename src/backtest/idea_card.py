@@ -573,7 +573,7 @@ class IdeaCard:
 # Loader
 # =============================================================================
 
-IDEA_CARDS_DIR = Path(__file__).parent.parent.parent / "configs" / "idea_cards"
+IDEA_CARDS_DIR = Path(__file__).parent.parent.parent / "configs" / "plays"
 
 
 def load_idea_card(idea_card_id: str, base_dir: Path | None = None) -> IdeaCard:
