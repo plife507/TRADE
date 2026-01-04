@@ -281,8 +281,9 @@ class RiskManager:
             adjusted_size = max_risk_usd
         
         # Check 6: Minimum viable size
+        # Skip if signal.size_usdt=0 (backtest engine computes size later)
         min_viable_size = 5.0  # $5 minimum trade
-        if adjusted_size < min_viable_size:
+        if signal.size_usdt > 0 and adjusted_size < min_viable_size:
             return RiskCheckResult(
                 allowed=False,
                 reason=f"Adjusted size too small (${adjusted_size:.2f} < ${min_viable_size:.2f})"

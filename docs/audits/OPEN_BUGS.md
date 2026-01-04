@@ -1,7 +1,7 @@
 # Open Bugs
 
 **Last Updated**: 2026-01-04
-**Status**: All P0-P1 fixed, 4 open (2 P2, 2 P3)
+**Status**: ALL BUGS FIXED or ACCEPTABLE
 
 ---
 
@@ -10,9 +10,9 @@
 | Priority | Open | Description |
 |----------|------|-------------|
 | P0 | 0 | Critical blockers |
-| P1 | 0 | High priority - config patterns (FIXED) |
-| P2 | 2 | Medium priority - type safety, sizing |
-| P3 | 2 | Polish - cleanup |
+| P1 | 0 | High priority (FIXED) |
+| P2 | 0 | Medium priority (1 FIXED, 1 ACCEPTABLE) |
+| P3 | 0 | Polish (2 ACCEPTABLE) |
 
 **Validation Status**: ALL TESTS PASS
 - IdeaCards: 15/15 normalize (V_100-V_122 blocks format)
@@ -38,7 +38,7 @@
 
 ---
 
-## P2 Open
+## P2 (All Resolved)
 
 ### P2-02: Dynamic Attribute Access
 - **Location**: `indicator_vendor.py:193`
@@ -47,17 +47,14 @@
 - **Impact**: Minimal - pandas_ta interface is stable
 - **Effort**: N/A
 
-### P2-05: Silent Trade Rejection with Tight Stops + Large Sizing
-- **Location**: Position sizing/risk calculation in engine
+### P2-05: Silent Trade Rejection with Tight Stops + Large Sizing - FIXED
+- **Location**: `src/core/risk_manager.py:286`
 - **Issue**: `percent_equity` sizing with value=10.0 + stop_loss ≤3% produces 0 trades silently
-- **Status**: OPEN - needs investigation
-- **Reproduction**:
-  - Config: sizing.value=10.0, stop_loss.value=3.0, max_leverage=3.0
-  - Expected: Trades execute or warning logged
-  - Actual: 0 trades, no error/warning
-- **Workaround**: Use stop_loss ≥4% or sizing.value ≤2%
-- **Impact**: Medium - valid configs silently produce no trades
-- **Effort**: Medium - needs root cause analysis in position sizing logic
+- **Root Cause**: Signals created with `size_usdt=0` (engine computes later) were rejected by
+  RiskManager Check 6 (min_viable_size=5.0) because `0 < 5`
+- **Fix**: Skip min_viable_size check when `signal.size_usdt == 0` (backtest engine case)
+- **Verified**: Test confirms signals with size_usdt=0 now pass risk checks
+- **Status**: FIXED in 2026-01-04 session
 
 ### P2-06: Multi-Output Indicator Reference Mismatch - FIXED
 - **Location**: `compile_idea_card()` in `idea_card_yaml_builder.py`
@@ -68,7 +65,7 @@
 
 ---
 
-## P3 Open
+## P3 (All Acceptable)
 
 ### P3-02: Dead Code Comments
 - **Location**: `runtime/snapshot_view.py:23-25`
@@ -84,7 +81,17 @@
 
 ---
 
-## Resolved This Session (2026-01-03)
+## Resolved This Session (2026-01-04)
+
+### P2-05: Silent Trade Rejection - FIXED
+- **Location**: `src/core/risk_manager.py:286`
+- **Issue**: Backtest signals with `size_usdt=0` were rejected by min_viable_size check
+- **Fix**: Skip min_viable_size check when `signal.size_usdt == 0` (engine computes size later)
+- **Verified**: Test confirms signals pass risk checks
+
+---
+
+## Resolved Previous Session (2026-01-03)
 
 ### ENHANCEMENT: Crossover Operators Enabled
 - **Location**: `src/backtest/rules/registry.py`, `eval.py`, `snapshot_view.py`, `idea_card.py`
