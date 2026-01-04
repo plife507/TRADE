@@ -79,15 +79,16 @@ class CLIIcons:
     COIN = "🪙 "
     
     # Actions - trailing space for proper spacing
-    TRADE = "⚡ "       
-    LIMIT = "⏱️ "       
-    STOP = "🛑 "        
-    LIQUIDITY = "💧 "   
-    MINING = "⛏️ "      
+    TRADE = "⚡ "
+    LIMIT = "⏱️ "
+    STOP = "🛑 "
+    LIQUIDITY = "💧 "
+    MINING = "⛏️ "
     NETWORK = "🌐 "
-    DATABASE = "💾 "    
+    DATABASE = "💾 "
     BOT = "🤖 "
     TARGET = "🎯 "
+    FIRE = "🔥 "
 
 # ASCII Art Title
 TITLE_ART = """

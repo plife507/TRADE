@@ -50,6 +50,7 @@ from src.cli.menus import (
     positions_menu as positions_menu_handler,
     account_menu as account_menu_handler,
     backtest_menu as backtest_menu_handler,
+    forge_menu as forge_menu_handler,
 )
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper, BillArtColors
 # Import shared CLI utilities (canonical implementations)
@@ -211,10 +212,11 @@ class TradeCLI:
             menu.add_row("4", f"{CLIIcons.CHART_UP} Market Data", "Get prices, OHLCV, funding rates, orderbook, instruments")
             menu.add_row("5", f"{CLIIcons.MINING} Data Builder", "Build & manage historical data (DuckDB)")
             menu.add_row("6", f"{CLIIcons.TARGET} Backtest Engine", "Run strategy backtests, manage systems")
-            menu.add_row("7", f"{CLIIcons.NETWORK} Connection Test", "Test API connectivity and rate limits")
-            menu.add_row("8", f"{CLIIcons.SETTINGS} Health Check", "Comprehensive system health diagnostic")
-            menu.add_row("9", f"[bold {gold}]{CLIIcons.PANIC} PANIC: Close All & Stop[/]", f"[{gold}]Emergency: Close all positions & cancel orders[/]")
-            menu.add_row("10", f"{CLIIcons.QUIT} Exit", "Exit the CLI")
+            menu.add_row("7", f"{CLIIcons.FIRE} The Forge", "Play development, validation, audits")
+            menu.add_row("8", f"{CLIIcons.NETWORK} Connection Test", "Test API connectivity and rate limits")
+            menu.add_row("9", f"{CLIIcons.SETTINGS} Health Check", "Comprehensive system health diagnostic")
+            menu.add_row("10", f"[bold {gold}]{CLIIcons.PANIC} PANIC: Close All & Stop[/]", f"[{gold}]Emergency: Close all positions & cancel orders[/]")
+            menu.add_row("11", f"{CLIIcons.QUIT} Exit", "Exit the CLI")
             
             # Use art-themed menu panel
             console.print(CLIStyles.get_menu_panel(menu, "MAIN MENU", is_main=True))
@@ -226,7 +228,7 @@ class TradeCLI:
             tip_color = BillArtColors.GREEN_MONEY if CLIStyles.use_art_wrapper else CLIColors.DIM_TEXT
             console.print(f"[{tip_color}]💡 Tip: Type 'back' or 'b' at any prompt to cancel and return to previous menu[/]")
             
-            choice = get_choice(valid_range=range(1, 11))
+            choice = get_choice(valid_range=range(1, 12))
 
             # Handle back/exit command from main menu
             if choice is BACK:
@@ -248,12 +250,14 @@ class TradeCLI:
                 elif choice == 6:
                     self.backtest_menu()
                 elif choice == 7:
-                    self.connection_test()
+                    self.forge_menu()
                 elif choice == 8:
-                    self.health_check()
+                    self.connection_test()
                 elif choice == 9:
-                    self.panic_menu()
+                    self.health_check()
                 elif choice == 10:
+                    self.panic_menu()
+                elif choice == 11:
                     console.print(f"\n[yellow]Goodbye![/]")
                     break
             except KeyboardInterrupt:
@@ -313,10 +317,16 @@ class TradeCLI:
         data_menu_handler(self)
     
     # ==================== BACKTEST MENU ====================
-    
+
     def backtest_menu(self):
         """Backtest engine menu. Delegates to src.cli.menus.backtest_menu."""
         backtest_menu_handler(self)
+
+    # ==================== FORGE MENU ====================
+
+    def forge_menu(self):
+        """The Forge - Play development environment. Delegates to src.cli.menus.forge_menu."""
+        forge_menu_handler(self)
 
     # ==================== CONNECTION TEST ====================
     

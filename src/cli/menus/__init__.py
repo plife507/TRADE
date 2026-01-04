@@ -8,6 +8,7 @@ Each menu module handles a specific area:
 - market_data_menu: Market data queries
 - data_menu: Historical data management
 - backtest_menu: Strategy backtesting
+- forge_menu: Play development and validation (The Forge)
 - diagnostics_menu: Connection tests, health checks
 """
 
@@ -17,6 +18,7 @@ from .orders_menu import orders_menu, market_orders_menu, limit_orders_menu, sto
 from .positions_menu import positions_menu
 from .account_menu import account_menu
 from .backtest_menu import backtest_menu
+from .forge_menu import forge_menu
 
 __all__ = [
     "data_menu",
@@ -29,4 +31,5 @@ __all__ = [
     "positions_menu",
     "account_menu",
     "backtest_menu",
+    "forge_menu",
 ]
