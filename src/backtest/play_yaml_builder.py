@@ -195,14 +195,14 @@ def build_scope_mappings(
 
 
 def build_all_scope_mappings(
-    idea_card_dict: dict[str, Any],
+    play_dict: dict[str, Any],
     registry: IndicatorRegistry,
 ) -> tuple[dict[str, ScopeMappings], list[ValidationError]]:
     """
     Build scope mappings for all tf_configs.
     
     Args:
-        idea_card_dict: The raw Play dict from YAML
+        play_dict: The raw Play dict from YAML
         registry: IndicatorRegistry instance
         
     Returns:
@@ -211,7 +211,7 @@ def build_all_scope_mappings(
     all_mappings: dict[str, ScopeMappings] = {}
     all_errors: list[ValidationError] = []
     
-    tf_configs = idea_card_dict.get("tf_configs", {})
+    tf_configs = play_dict.get("tf_configs", {})
     
     for role, tf_config in tf_configs.items():
         mappings, errors = build_scope_mappings(tf_config, role, registry)
@@ -289,21 +289,21 @@ def validate_feature_reference(
 
 
 def validate_signal_rules(
-    idea_card_dict: dict[str, Any],
+    play_dict: dict[str, Any],
     all_mappings: dict[str, ScopeMappings],
 ) -> list[ValidationError]:
     """
     Validate all feature references in signal_rules.
     
     Args:
-        idea_card_dict: The raw Play dict
+        play_dict: The raw Play dict
         all_mappings: All scope mappings
         
     Returns:
         List of ValidationErrors
     """
     errors: list[ValidationError] = []
-    signal_rules = idea_card_dict.get("signal_rules", {})
+    signal_rules = play_dict.get("signal_rules", {})
     
     # Entry rules
     for i, rule in enumerate(signal_rules.get("entry_rules", [])):
@@ -361,21 +361,21 @@ def validate_signal_rules(
 
 
 def validate_risk_model_refs(
-    idea_card_dict: dict[str, Any],
+    play_dict: dict[str, Any],
     all_mappings: dict[str, ScopeMappings],
 ) -> list[ValidationError]:
     """
     Validate feature references in risk_model (e.g., atr_key).
     
     Args:
-        idea_card_dict: The raw Play dict
+        play_dict: The raw Play dict
         all_mappings: All scope mappings (uses "exec" for risk model)
         
     Returns:
         List of ValidationErrors
     """
     errors: list[ValidationError] = []
-    risk_model = idea_card_dict.get("risk_model", {})
+    risk_model = play_dict.get("risk_model", {})
     
     # Check stop_loss.atr_key
     stop_loss = risk_model.get("stop_loss", {})
@@ -491,7 +491,7 @@ def normalize_enum_token(
 
 
 def validate_structure_blocks(
-    idea_card_dict: dict[str, Any],
+    play_dict: dict[str, Any],
 ) -> tuple[list[ValidationError], dict[str, set[str]], dict[str, set[str]]]:
     """
     Validate market_structure_blocks in Play YAML.
@@ -503,7 +503,7 @@ def validate_structure_blocks(
     - Required params per type
 
     Args:
-        idea_card_dict: The raw Play dict from YAML
+        play_dict: The raw Play dict from YAML
 
     Returns:
         Tuple of (errors, structure_fields_by_key, zone_keys_by_block)
@@ -514,7 +514,7 @@ def validate_structure_blocks(
     structure_fields: dict[str, set[str]] = {}
     zone_keys: dict[str, set[str]] = {}  # Stage 5+: block_key -> {zone_key, ...}
 
-    blocks = idea_card_dict.get("market_structure_blocks", [])
+    blocks = play_dict.get("market_structure_blocks", [])
     if not blocks:
         return errors, structure_fields, zone_keys
 
@@ -611,7 +611,7 @@ def validate_structure_blocks(
 
 
 def validate_structure_references(
-    idea_card_dict: dict[str, Any],
+    play_dict: dict[str, Any],
     structure_fields: dict[str, set[str]],
     zone_keys: dict[str, set[str]] | None = None,
 ) -> list[ValidationError]:
@@ -623,7 +623,7 @@ def validate_structure_references(
     Stage 5+: Handles zone paths: structure.<block_key>.zones.<zone_key>.<field>
 
     Args:
-        idea_card_dict: The raw Play dict (modified in-place for normalization)
+        play_dict: The raw Play dict (modified in-place for normalization)
         structure_fields: Dict from validate_structure_blocks()
         zone_keys: Dict from validate_structure_blocks() (Stage 5+)
 
@@ -637,7 +637,7 @@ def validate_structure_references(
     # - structure.<block_key>.<field> (base structure)
     # - structure.<block_key>.zones.<zone_key>.<field> (zones, Stage 5+)
 
-    signal_rules = idea_card_dict.get("signal_rules", {})
+    signal_rules = play_dict.get("signal_rules", {})
 
     for rule_type in ["entry_rules", "exit_rules"]:
         for i, rule in enumerate(signal_rules.get(rule_type, [])):
@@ -747,9 +747,9 @@ def validate_structure_references(
 # Main Entry Points
 # =============================================================================
 
-def validate_play_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
+def validate_play_yaml(play_dict: dict[str, Any]) -> ValidationResult:
     """
-    Validate an Play YAML dict at build time.
+    Validate a Play YAML dict at build time.
 
     This is the main validation entry point. It:
     1. Validates all indicator_types are supported
@@ -758,7 +758,7 @@ def validate_play_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
     4. Validates market_structure_blocks (Stage 3)
 
     Args:
-        idea_card_dict: The raw Play dict from YAML
+        play_dict: The raw Play dict from YAML
 
     Returns:
         ValidationResult with is_valid and list of errors
@@ -767,26 +767,26 @@ def validate_play_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
     all_errors: list[ValidationError] = []
 
     # Build scope mappings (also validates indicator types and params)
-    all_mappings, mapping_errors = build_all_scope_mappings(idea_card_dict, registry)
+    all_mappings, mapping_errors = build_all_scope_mappings(play_dict, registry)
     all_errors.extend(mapping_errors)
 
     # Validate market structure blocks (Stage 3+)
-    structure_errors, structure_fields, zone_keys = validate_structure_blocks(idea_card_dict)
+    structure_errors, structure_fields, zone_keys = validate_structure_blocks(play_dict)
     all_errors.extend(structure_errors)
 
     # Validate signal rules references (indicators)
-    signal_errors = validate_signal_rules(idea_card_dict, all_mappings)
+    signal_errors = validate_signal_rules(play_dict, all_mappings)
     all_errors.extend(signal_errors)
 
     # Validate structure references in signal rules (Stage 3+, zones Stage 5+)
     if structure_fields or zone_keys:
         structure_ref_errors = validate_structure_references(
-            idea_card_dict, structure_fields, zone_keys
+            play_dict, structure_fields, zone_keys
         )
         all_errors.extend(structure_ref_errors)
 
     # Validate risk model references
-    risk_errors = validate_risk_model_refs(idea_card_dict, all_mappings)
+    risk_errors = validate_risk_model_refs(play_dict, all_mappings)
     all_errors.extend(risk_errors)
 
     is_valid = len(all_errors) == 0
@@ -798,7 +798,7 @@ def validate_play_yaml(idea_card_dict: dict[str, Any]) -> ValidationResult:
 
 
 def generate_required_indicators(
-    idea_card_dict: dict[str, Any],
+    play_dict: dict[str, Any],
 ) -> dict[str, list[str]]:
     """
     Generate required_indicators for each TF role.
@@ -807,7 +807,7 @@ def generate_required_indicators(
     so users don't need to manually maintain this list.
     
     Args:
-        idea_card_dict: The raw Play dict
+        play_dict: The raw Play dict
         
     Returns:
         Dict of role -> list of required indicator keys
@@ -815,7 +815,7 @@ def generate_required_indicators(
     registry = get_registry()
     result: dict[str, list[str]] = {}
     
-    tf_configs = idea_card_dict.get("tf_configs", {})
+    tf_configs = play_dict.get("tf_configs", {})
     
     for role, tf_config in tf_configs.items():
         keys: list[str] = []
@@ -836,11 +836,11 @@ def generate_required_indicators(
 
 
 def normalize_play_yaml(
-    idea_card_dict: dict[str, Any],
+    play_dict: dict[str, Any],
     auto_generate_required: bool = True,
 ) -> tuple[dict[str, Any], ValidationResult]:
     """
-    Normalize and validate an Play YAML dict.
+    Normalize and validate a Play YAML dict.
     
     This is the main entry point for the YAML builder. It:
     1. Validates the YAML (fails loud if invalid)
@@ -848,7 +848,7 @@ def normalize_play_yaml(
     3. Returns the normalized dict
     
     Args:
-        idea_card_dict: The raw Play dict from YAML
+        play_dict: The raw Play dict from YAML
         auto_generate_required: If True, auto-generate required_indicators
         
     Returns:
@@ -859,14 +859,14 @@ def normalize_play_yaml(
         Callers should refuse to write YAML if validation fails.
     """
     # Validate first
-    result = validate_play_yaml(idea_card_dict)
+    result = validate_play_yaml(play_dict)
     
     if not result.is_valid:
         # Return unchanged - caller should refuse to write
-        return idea_card_dict, result
+        return play_dict, result
     
     # Make a copy for normalization
-    normalized = dict(idea_card_dict)
+    normalized = dict(play_dict)
     
     # Auto-generate required_indicators if requested
     if auto_generate_required:
@@ -896,7 +896,7 @@ def format_validation_errors(errors: list[ValidationError]) -> str:
     
     lines = [
         "=" * 60,
-        "IDEACARD YAML VALIDATION FAILED",
+        "PLAY YAML VALIDATION FAILED",
         "=" * 60,
     ]
     

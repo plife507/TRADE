@@ -1,4 +1,4 @@
-# IdeaCard: SOLUSDT 15m EMA Crossover with HTF Filters
+# Play: SOLUSDT 15m EMA Crossover with HTF Filters
 # Purpose: Phase 8 smoke test for the Idea Card pipeline
 # This is a long-only trend-following strategy with:
 # - EMA crossover on 15m (execution timeframe)

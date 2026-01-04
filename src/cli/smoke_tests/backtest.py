@@ -258,7 +258,7 @@ def run_backtest_smoke(fresh_db: bool = False, play_id: str = None) -> int:
 
     Args:
         fresh_db: Whether to wipe DB and rebuild data
-        play_id: Play to test (defaults to env var BACKTEST_SMOKE_IDEA_CARD)
+        play_id: Play to test (defaults to env var BACKTEST_SMOKE_PLAY)
 
     Returns:
         Number of failures
@@ -290,21 +290,21 @@ def run_backtest_smoke(fresh_db: bool = False, play_id: str = None) -> int:
 
     # Determine Play to test
     if play_id is None:
-        play_id = os.environ.get("BACKTEST_SMOKE_IDEA_CARD")
+        play_id = os.environ.get("BACKTEST_SMOKE_PLAY")
 
     if play_id is None and plays:
         # Prefer valid test cards (T*) over error test cases (E*)
         valid_cards = [c for c in plays if c.startswith("T")]
         play_id = valid_cards[0] if valid_cards else plays[0]
 
-    # If we have an Play, use the golden path
+    # If we have a Play, use the golden path
     if play_id:
         console.print(f"\n  [bold]Using Play: {play_id}[/]")
         return _run_backtest_smoke_play(play_id, fresh_db)
 
     # No Plays found - fail
     console.print(f"\n[bold red]FAIL[/] No Plays found in configs/plays/")
-    console.print(f"[dim]Create an Play YAML file or set BACKTEST_SMOKE_IDEA_CARD env var[/]")
+    console.print(f"[dim]Create a Play YAML file or set BACKTEST_SMOKE_PLAY env var[/]")
     return 1
 
 

@@ -379,8 +379,8 @@ class BacktestEngine:
         """
         # Prefer Feature Registry if available
         registry = self._feature_registry
-        if registry is None and self._idea_card is not None:
-            registry = self._idea_card.feature_registry
+        if registry is None and self._play is not None:
+            registry = self._play.feature_registry
 
         if registry is None:
             return None
@@ -606,7 +606,7 @@ class BacktestEngine:
 
         Called from _build_feed_stores() after exec/htf/mtf feeds are built.
         """
-        if self._idea_card is None:
+        if self._play is None:
             return
 
         if self._exec_feed is None:
@@ -616,8 +616,8 @@ class BacktestEngine:
         # Check if Play uses the Feature Registry with structures
         # If so, skip batch build - incremental state is built in run()
         registry = self._feature_registry
-        if registry is None and self._idea_card is not None:
-            registry = self._idea_card.feature_registry
+        if registry is None and self._play is not None:
+            registry = self._play.feature_registry
 
         has_incremental_structures = registry is not None and len(registry.get_structures()) > 0
 
@@ -628,7 +628,7 @@ class BacktestEngine:
         # Fallback: use batch structure building (emits deprecation warning if present)
         build_structures_into_feed(
             exec_feed=self._exec_feed,
-            play=self._idea_card,
+            play=self._play,
             logger=self.logger,
         )
 

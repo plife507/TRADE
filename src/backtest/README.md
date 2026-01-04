@@ -9,7 +9,7 @@ Production backtest framework for TRADE. This module is the **only supported pat
 ```
 Play(YAML)
     ↓
-validate_idea_card_full()
+validate_play_full()
     ↓
 compute_warmup_requirements()
     ↓
@@ -49,16 +49,16 @@ from src.backtest.runner import run_backtest_with_gates, RunnerConfig, RunnerRes
 ### Play Loading
 
 ```python
-from src.backtest.play import load_idea_card, list_plays, Play
+from src.backtest.play import load_play, list_plays, Play
 ```
 
 ### Validation
 
 ```python
 from src.backtest.execution_validation import (
-    validate_idea_card_full,
+    validate_play_full,
     compute_warmup_requirements,
-    compute_idea_card_hash,
+    compute_play_hash,
 )
 ```
 
@@ -74,7 +74,7 @@ from src.backtest.features import FeatureSpec, FeatureFrameBuilder, IndicatorReg
 
 | Module | Responsibility |
 |--------|----------------|
-| `idea_card.py` | Play schema + loader + list |
+| `play.py` | Play schema + loader + list |
 | `execution_validation.py` | Gate 8.x (hash, contract, features, warmup, pre-eval) |
 | `features/` | FeatureSpec + Registry + FeatureFrameBuilder |
 | `runtime/` | FeedStores + Cache + SnapshotView + Preflight gate |

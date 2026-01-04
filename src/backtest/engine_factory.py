@@ -5,7 +5,7 @@ This module provides factory functions for creating and running BacktestEngine:
 - run_backtest: Convenience function to run a backtest from system_id
 - create_engine_from_play: Create engine from Play
 - run_engine_with_play: Run engine with Play signal evaluation
-- _get_idea_card_result_class: Get PlayBacktestResult class
+- _get_play_result_class: Get PlayBacktestResult class
 
 These functions provide the main entry points for backtest execution.
 """
@@ -234,7 +234,7 @@ def create_engine_from_play(
 
     # Create strategy instance
     strategy_instance = StrategyInstanceConfig(
-        strategy_instance_id="idea_card_strategy",
+        strategy_instance_id="play_strategy",
         strategy_id=play.id,
         strategy_version=play.version,
         inputs=StrategyInstanceInputs(symbol=symbol, tf=play.execution_tf),
@@ -291,7 +291,7 @@ def create_engine_from_play(
         symbol=symbol,
         tf=play.execution_tf,
         strategies=[strategy_instance],
-        primary_strategy_instance_id="idea_card_strategy",
+        primary_strategy_instance_id="play_strategy",
         windows={
             "run": {
                 "start": window_start_naive.isoformat(),
@@ -318,8 +318,8 @@ def create_engine_from_play(
         tf_mapping=tf_mapping,
     )
 
-    # Store Play reference for run_with_idea_card()
-    engine._idea_card = play
+    # Store Play reference for run_with_play()
+    engine._play = play
 
     return engine
 
@@ -385,14 +385,14 @@ def run_engine_with_play(
     from ..core.risk_manager import Signal
 
     # Import here to avoid circular import
-    PlayBacktestResult = _get_idea_card_result_class()
+    PlayBacktestResult = _get_play_result_class()
 
     # Note: Block validation happens at Play construction via _validate_block_types()
 
     # Create signal evaluator
     evaluator = PlaySignalEvaluator(play)
 
-    def idea_card_strategy(snapshot, params) -> Signal | None:
+    def play_strategy(snapshot, params) -> Signal | None:
         """Strategy function that uses Play signal evaluator."""
         # Check if we have a position
         has_position = snapshot.has_position
@@ -440,7 +440,7 @@ def run_engine_with_play(
         return None
 
     # Run the engine
-    backtest_result = engine.run(idea_card_strategy)
+    backtest_result = engine.run(play_strategy)
 
     # Compute Play hash
     play_hash = compute_play_hash(play)
@@ -464,7 +464,7 @@ class PlayBacktestResult:
     metrics: Any = None
 
 
-def _get_idea_card_result_class():
+def _get_play_result_class():
     """
     Get PlayBacktestResult class (avoids import at module level).
 

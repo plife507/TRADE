@@ -693,7 +693,7 @@ def validate_play_full(play: "Play") -> PlayValidationResult:
 # =============================================================================
 # Gate 8.3: Play → SystemConfig Adapter (DELETED - P1.2 Refactor)
 # =============================================================================
-# PlaySystemConfig and adapt_idea_card_to_system_config have been deleted.
+# PlaySystemConfig and adapt_play_to_system_config have been deleted.
 # Engine now accepts Play directly via create_engine_from_play().
 # See: src/backtest/engine.py
 # =============================================================================

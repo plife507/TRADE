@@ -163,7 +163,7 @@ __all__ = [
     "FeatureReference",
     "compute_warmup_requirements",
     "WarmupRequirements",
-    # PlaySystemConfig and adapt_idea_card_to_system_config DELETED (P1.2 Refactor)
+    # PlaySystemConfig and adapt_play_to_system_config DELETED (P1.2 Refactor)
     "PlaySignalEvaluator",
     "SignalDecision",
     "EvaluationResult",

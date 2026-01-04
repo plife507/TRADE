@@ -422,12 +422,12 @@ def parse_blocks(data: list) -> list[Block]:
 # High-Level API
 # =============================================================================
 
-def parse_play_blocks(idea_card_dict: dict) -> list[Block]:
+def parse_play_blocks(play_dict: dict) -> list[Block]:
     """
     Parse blocks from an Play dict.
 
     Args:
-        idea_card_dict: Raw Play dictionary.
+        play_dict: Raw Play dictionary.
 
     Returns:
         List of Block instances.
@@ -435,13 +435,13 @@ def parse_play_blocks(idea_card_dict: dict) -> list[Block]:
     Raises:
         ValueError: If no 'blocks' key in dict.
     """
-    if "blocks" not in idea_card_dict:
+    if "blocks" not in play_dict:
         raise ValueError(
             "Play must have 'blocks' key. "
             "Legacy signal_rules format is not supported."
         )
 
-    return parse_blocks(idea_card_dict["blocks"])
+    return parse_blocks(play_dict["blocks"])
 
 
 def validate_blocks_types(

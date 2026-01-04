@@ -36,7 +36,7 @@ class RuntimeConfig:
     """
     # Identity (from Play)
     play_id: str
-    idea_card_version: str
+    play_version: str
     
     # Account/capital config (from Play.account - REQUIRED)
     starting_equity_usdt: float
@@ -179,7 +179,7 @@ class RuntimeConfig:
         
         return cls(
             play_id=play.id,
-            idea_card_version=play.version,
+            play_version=play.version,
             starting_equity_usdt=starting_equity,
             max_leverage=max_leverage,
             margin_mode=account.margin_mode,
@@ -210,7 +210,7 @@ class RuntimeConfig:
         """Convert to dict for serialization/logging."""
         return {
             "play_id": self.play_id,
-            "idea_card_version": self.idea_card_version,
+            "play_version": self.play_version,
             "starting_equity_usdt": self.starting_equity_usdt,
             "max_leverage": self.max_leverage,
             "margin_mode": self.margin_mode,
@@ -254,7 +254,7 @@ class RuntimeConfig:
             "=" * 60,
             "RESOLVED CONFIG SUMMARY",
             "=" * 60,
-            f"  play: {self.play_id} v{self.idea_card_version}",
+            f"  play: {self.play_id} v{self.play_version}",
             f"  symbol: {self.symbol}",
             f"  tf_exec: {self.exec_tf}",
         ]
