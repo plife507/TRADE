@@ -8,7 +8,7 @@ Handles all backtesting operations through IdeaCard-based workflow:
 - Data preparation
 
 All operations call tools - no direct engine access from CLI.
-Forward-only: No legacy SystemConfig support.
+IdeaCard-only: SystemConfig is not supported.
 """
 
 from typing import TYPE_CHECKING

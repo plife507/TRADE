@@ -176,15 +176,18 @@ def backtest_preflight_check_tool(
 ) -> ToolResult:
     """
     Phase -1 preflight data health check and heal loop.
-    
+
     This gate runs BEFORE any simulation starts. It:
     1. Computes the required load window (test window + warmup + buffers)
     2. Checks if symbol has any data coverage; if not and auto_bootstrap=True,
        runs sync_full_from_launch_tool to bootstrap from launchTime
     3. Runs DataHealthCheck on required TFs/series
-    4. If gaps detected and heal_if_needed=True, calls heal_data_tool
+    4. If gaps detected and heal_if_needed=True, calls fill_gaps_tool and sync_range_tool
     5. Rechecks after healing, loops up to max_heal_attempts
     6. Hard-fails if still failing after max attempts
+
+    Pattern: Use data tools (not direct store calls) for healing to maintain
+    the tools-as-API boundary.
     
     Args:
         system_id: System configuration ID
@@ -619,23 +622,26 @@ def _write_manifest_and_eventlog(
 ) -> dict[str, Path]:
     """
     Write run_manifest.json and events.jsonl to run_dir.
-    
+
     Called from backtest_run_tool after engine.run() completes.
     This respects the isolation rule (artifacts wired from tools layer).
-    
+
+    Pattern: Tools layer is responsible for artifact I/O. Engine produces data structures,
+    tools write them to disk. This keeps the engine testable without filesystem dependencies.
+
     Args:
         run_dir: Directory for artifacts
         config: System configuration
         window_name: Window name
         result: BacktestResult from engine
         preflight_data: Optional preflight health report data
-        
+
     Returns:
         Dict mapping artifact names to paths
     """
     artifacts = {}
-    
-    # 1. Write run_manifest.json
+
+    # 1. Write run_manifest.json (run metadata and config snapshot)
     manifest_writer = ManifestWriter(run_dir, artifact_version=ARTIFACT_VERSION)
     manifest_writer.set_run_info(
         run_id=result.run_id,

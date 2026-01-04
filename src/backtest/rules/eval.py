@@ -17,10 +17,6 @@ from .types import EvalResult, ReasonCode, RefValue, ValueType
 from .compile import CompiledRef
 
 
-# NOTE: Operator enum REMOVED (was dead code - never referenced).
-# All operator handling uses OPERATOR_REGISTRY in registry.py as single source of truth.
-
-
 def _check_numeric(lhs: RefValue, rhs: RefValue, op: str) -> EvalResult | None:
     """
     Check if both values are numeric. Returns failure EvalResult if not.

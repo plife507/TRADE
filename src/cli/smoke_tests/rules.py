@@ -96,7 +96,6 @@ def run_rules_smoke(
 
     # Test that compute_spec_id signature no longer includes zones
     try:
-        # This should fail with TypeError if zones param removed correctly
         compute_spec_id("swing", {"left": 5}, {"mode": "immediate"})
         console.print(f"  [green]OK[/] compute_spec_id() no longer requires zones param")
     except TypeError as e:

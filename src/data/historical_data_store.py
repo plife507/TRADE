@@ -143,7 +143,7 @@ TIMEFRAMES = {
     "1d": "D",
 }
 
-# Timeframe to minutes mapping (for edge candle calculations)
+# Timeframe to minutes mapping for period calculations and gap detection
 TF_MINUTES = {
     "1m": 1,
     "5m": 5,
@@ -152,8 +152,6 @@ TF_MINUTES = {
     "4h": 240,
     "1d": 1440,
 }
-# Alias for backward compatibility
-TIMEFRAME_MINUTES = TF_MINUTES
 
 # Period parsing
 PERIOD_MULTIPLIERS = {
@@ -317,17 +315,14 @@ class HistoricalDataStore:
             )
         """)
         
-        # Schema migration: add turnover column if missing from existing table
+        # Schema migration: add turnover column if missing (for historical compatibility)
         try:
             self.conn.execute(f"""
                 ALTER TABLE {self.table_ohlcv} ADD COLUMN turnover DOUBLE
             """)
             self.logger.debug(f"Added 'turnover' column to {self.table_ohlcv}")
         except duckdb.CatalogException as e:
-            # Expected: column already exists in table
-            if "already exists" in str(e).lower():
-                pass  # Schema migration not needed
-            else:
+            if "already exists" not in str(e).lower():
                 self.logger.error(f"Schema migration failed for {self.table_ohlcv}: {e}")
                 raise
         except Exception as e:
@@ -407,9 +402,7 @@ class HistoricalDataStore:
             )
         """)
         
-        # Create indexes for faster queries (env-specific index names)
-        # Note: CREATE INDEX IF NOT EXISTS should not raise for existing indexes,
-        # but we handle CatalogException in case of race conditions or schema issues.
+        # Create indexes for query performance (symbol/timeframe lookups, time ranges)
         idx_suffix = f"_{self.env}"
 
         index_definitions = [
@@ -428,14 +421,10 @@ class HistoricalDataStore:
                     ON {table_name}{columns}
                 """)
             except duckdb.CatalogException as e:
-                # Expected: index already exists (race condition with IF NOT EXISTS)
-                if "already exists" in str(e).lower():
-                    pass
-                else:
+                if "already exists" not in str(e).lower():
                     self.logger.warning(f"Index creation issue for {idx_name}: {e}")
             except Exception as e:
-                # Log unexpected errors but don't fail initialization
-                # Indexes are optimization, not critical for correctness
+                # Indexes are performance optimization; log but don't fail initialization
                 self.logger.warning(f"Unexpected error creating index {idx_name}: {e}")
     
     # ==================== PERIOD PARSING ====================
@@ -563,29 +552,29 @@ class HistoricalDataStore:
         )
     
     def _store_dataframe(self, symbol: str, timeframe: str, df: pd.DataFrame):
-        """Store DataFrame in DuckDB."""
+        """
+        Store OHLCV DataFrame in DuckDB.
+
+        Timestamps are stored as UTC-naive for consistency across all data sources.
+        Duplicate timestamps are replaced (latest data wins).
+        """
         if df.empty:
             return
-        
-        # Normalize symbol to uppercase for consistency
+
         symbol = symbol.upper()
-        
-        # Add symbol and timeframe columns
+
         df = df.copy()
         df["symbol"] = symbol
         df["timeframe"] = timeframe
-        
-        # Remove timezone info from timestamp for DuckDB storage (store as UTC-naive)
-        # This ensures consistent storage regardless of source timezone
+
+        # Store timestamps as UTC-naive for consistency
         if df["timestamp"].dt.tz is not None:
             df["timestamp"] = df["timestamp"].dt.tz_localize(None)
-        
-        # Ensure column order
+
         df = df[["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"]]
-        
-        # Insert or replace (handles duplicates)
+
         self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_ohlcv} 
+            INSERT OR REPLACE INTO {self.table_ohlcv}
             SELECT * FROM df
         """)
     
@@ -1155,44 +1144,42 @@ class HistoricalDataStore:
     ) -> pd.DataFrame:
         """
         Get OHLCV data as DataFrame.
-        
+
         Args:
             symbol: Trading symbol
             tf: Candle timeframe
             period: Period string ("1M", "2W", etc.) - alternative to start/end
-            start: Start datetime
-            end: End datetime
-        
+            start: Start datetime (timezone will be stripped for query)
+            end: End datetime (timezone will be stripped for query)
+
         Returns:
             DataFrame with timestamp, open, high, low, close, volume
         """
-        # Normalize symbol to uppercase for consistency
         symbol = symbol.upper()
-        
+
         query = f"""
             SELECT timestamp, open, high, low, close, volume
             FROM {self.table_ohlcv}
             WHERE symbol = ? AND timeframe = ?
         """
         params = [symbol, tf]
-        
+
         if period:
             start = datetime.now() - self.parse_period(period)
-        
-        # DuckDB stores naive timestamps (UTC assumed)
-        # Strip timezone info to avoid conversion issues
+
+        # Strip timezone for DuckDB comparison (stores UTC-naive)
         if start:
             query += " AND timestamp >= ?"
             start_param = start.replace(tzinfo=None) if start.tzinfo else start
             params.append(start_param)
-        
+
         if end:
             query += " AND timestamp <= ?"
             end_param = end.replace(tzinfo=None) if end.tzinfo else end
             params.append(end_param)
-        
+
         query += " ORDER BY timestamp"
-        
+
         return self.conn.execute(query, params).df()
     
     def get_mtf_data(
@@ -1245,15 +1232,14 @@ class HistoricalDataStore:
     
     def status(self, symbol: str = None) -> dict:
         """
-        Get status of cached data.
-        
+        Get sync status of cached data with gap detection.
+
         Args:
             symbol: Specific symbol or None for all
-        
+
         Returns:
-            Dict with status information
+            Dict mapping "SYMBOL_TF" to status info (candle_count, gaps, is_current)
         """
-        # Normalize symbol to uppercase for consistency
         if symbol:
             symbol = symbol.upper()
             rows = self.conn.execute(f"""
@@ -1263,15 +1249,18 @@ class HistoricalDataStore:
             rows = self.conn.execute(f"""
                 SELECT * FROM {self.table_sync_metadata} ORDER BY symbol, timeframe
             """).fetchall()
-        
+
         status = {}
-        
+
         for row in rows:
             sym, tf, first_ts, last_ts, count, last_sync = row
             key = f"{sym}_{tf}"
-            
+
             gaps = self.detect_gaps(sym, tf)
-            
+
+            # Data is current if last candle is within 1 hour of now
+            is_current = last_ts and (datetime.now() - last_ts).total_seconds() < 3600
+
             status[key] = {
                 "symbol": sym,
                 "timeframe": tf,
@@ -1280,9 +1269,9 @@ class HistoricalDataStore:
                 "candle_count": count,
                 "last_sync": last_sync,
                 "gaps": len(gaps),
-                "is_current": last_ts and (datetime.now() - last_ts).total_seconds() < 3600,
+                "is_current": is_current,
             }
-        
+
         return status
     
     def list_symbols(self) -> list[str]:

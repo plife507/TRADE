@@ -302,7 +302,7 @@ def run_backtest_smoke(fresh_db: bool = False, idea_card_id: str = None) -> int:
         console.print(f"\n  [bold]Using IdeaCard: {idea_card_id}[/]")
         return _run_backtest_smoke_idea_card(idea_card_id, fresh_db)
 
-    # No IdeaCards found - fail (forward-only, no legacy fallback)
+    # No IdeaCards found - fail
     console.print(f"\n[bold red]FAIL[/] No IdeaCards found in configs/idea_cards/")
     console.print(f"[dim]Create an IdeaCard YAML file or set BACKTEST_SMOKE_IDEA_CARD env var[/]")
     return 1

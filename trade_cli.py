@@ -175,8 +175,6 @@ from src.tools import (
 )
 
 
-import logging
-
 class TradeCLI:
     """
     Main CLI class.
@@ -229,12 +227,13 @@ class TradeCLI:
             console.print(f"[{tip_color}]💡 Tip: Type 'back' or 'b' at any prompt to cancel and return to previous menu[/]")
             
             choice = get_choice(valid_range=range(1, 11))
-            
-            # Handle back command from main menu (same as exit)
+
+            # Handle back/exit command from main menu
             if choice is BACK:
                 console.print(f"\n[yellow]Goodbye![/]")
                 break
-            
+
+            # Route to appropriate menu handler
             try:
                 if choice == 1:
                     self.account_menu()
@@ -2336,7 +2335,13 @@ def handle_backtest_metrics_audit(args) -> int:
 
 
 def main():
-    """Main entry point."""
+    """
+    Main entry point for trade_cli.
+
+    Handles two modes:
+    - Interactive: No args -> main menu loop
+    - Non-interactive: --smoke or backtest subcommand -> run and exit
+    """
     # Parse CLI arguments FIRST (before any config or logging)
     args = parse_cli_args()
     
@@ -2389,7 +2394,7 @@ def main():
             sys.exit(1)
     
     # ===== SMOKE TEST MODE =====
-    # If --smoke is specified, run non-interactive smoke tests
+    # Non-interactive smoke tests - run and exit with status code
     if args.smoke:
         config = get_config()
         

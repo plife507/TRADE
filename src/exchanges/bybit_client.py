@@ -591,20 +591,3 @@ class BybitClient:
     def session(self) -> HTTP:
         """Direct access to pybit HTTP session for advanced usage."""
         return self._session
-    
-    # Legacy method aliases for backwards compatibility
-    def call_account_endpoint(self, method: str, **kwargs) -> Any:
-        """Call an account endpoint by method name."""
-        return getattr(self._session, method)(**kwargs)
-    
-    def call_trade_endpoint(self, method: str, **kwargs) -> Any:
-        """Call a trade endpoint by method name."""
-        return getattr(self._session, method)(**kwargs)
-    
-    def call_position_endpoint(self, method: str, **kwargs) -> Any:
-        """Call a position endpoint by method name."""
-        return getattr(self._session, method)(**kwargs)
-    
-    def call_market_endpoint(self, method: str, **kwargs) -> Any:
-        """Call a market endpoint by method name."""
-        return getattr(self._session, method)(**kwargs)

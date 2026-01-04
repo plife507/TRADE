@@ -120,12 +120,10 @@ class ExecutionModel:
             ))
             return result
         
-        # Apply liquidity constraint
+        # Check liquidity constraint (partial fills not yet implemented)
         fillable_usdt = self._liquidity.get_max_fillable(order.size_usdt, bar)
-        
         if fillable_usdt < order.size_usdt:
-            # Partial fill not supported in Phase 1
-            # Full fill or reject
+            # Future: support partial fills here
             pass
         
         # Calculate size in base units
@@ -215,9 +213,7 @@ class ExecutionModel:
             bar,
         )
         
-        # Calculate fee using size_usdt for consistency with entry fee calculation
-        # BUG-002 FIX: Entry uses order.size_usdt * fee_rate, so exit uses
-        # position.size_usdt * fee_rate for symmetric fee treatment
+        # Fee calculation: use notional value (size_usdt) for symmetry with entry fees
         fee = position.size_usdt * self._config.taker_fee_rate
         
         return Fill(

@@ -1,14 +1,18 @@
 """
 Order tool specifications.
 
-NO LEGACY FALLBACKS - Forward coding only.
+Defines metadata for ToolRegistry to discover and validate order tools.
+
+Pattern: Specs declare parameters/descriptions, get_imports() maps tool names
+to actual functions. This separation allows specs to be introspectable without
+importing heavy dependencies.
 """
 
 from .shared_params import TRADING_ENV_PARAM, SYMBOL_PARAM
 
 
 def get_imports():
-    """Return dict of function_name -> import path."""
+    """Return dict of function_name -> actual function reference."""
     from .. import (
         market_buy_tool, market_sell_tool,
         market_buy_with_tpsl_tool, market_sell_with_tpsl_tool,

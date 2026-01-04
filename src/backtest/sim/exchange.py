@@ -339,13 +339,12 @@ class SimulatedExchange:
         fills: list[Fill] = []
         closed_trades = []
         
-        # 1. Get prices - COMPUTE MARK PRICE EXACTLY ONCE
+        # 1. Compute prices (mark price is single source of truth for this bar)
         spread = self._spread_model.get_spread(bar)
         prices = self._price_model.get_prices(bar, spread)
-        mark_price = prices.mark_price  # Single source of truth for this step
-        
-        # 2. Apply funding (if position exists)
-        # Note: Bybit uses mark_price at funding time, not entry_price
+        mark_price = prices.mark_price
+
+        # 2. Apply funding events (uses mark_price, not entry_price per Bybit semantics)
         prev_ts = get_bar_timestamp(prev_bar) if prev_bar else None
         funding_result = self._funding.apply_events(
             funding_events or [], prev_ts, step_time, self.position, mark_price
@@ -353,15 +352,13 @@ class SimulatedExchange:
         if funding_result.funding_pnl != 0:
             self._ledger.apply_funding(funding_result.funding_pnl)
         
-        # 3. Fill pending entry order (at ts_open)
-        # BUG-004 FIX: Capture entry fill for StepResult.fills
+        # 3. Fill pending entry order at bar open
         if self.pending_order is not None:
             entry_fill = self._fill_pending_order(bar)
             if entry_fill:
                 fills.append(entry_fill)
-        
-        # 4. Handle pending close (at ts_open)
-        # BUG-004 FIX: Capture exit fill for StepResult.fills
+
+        # 4. Process pending close at bar open
         if self._pending_close_reason and self.position:
             result = self._close_position(bar.open, ts_open, self._pending_close_reason)
             if result:
@@ -370,13 +367,13 @@ class SimulatedExchange:
                 fills.append(exit_fill)
             self._pending_close_reason = None
         
-        # 5. Check TP/SL (exit at appropriate price within bar)
+        # 5. Check TP/SL exits (1m granular or exec-bar OHLC)
         if self.position:
             exit_reason = None
             exit_price = None
             exit_price_source = None
 
-            # Try 1m granular TP/SL check if quote_feed and range provided
+            # 5a. Use 1m granular check if available (more realistic timing)
             if quote_feed is not None and exec_1m_range is not None:
                 start_1m, end_1m = exec_1m_range
                 # Build list of 1m bars as (open, high, low, close) tuples
@@ -404,7 +401,7 @@ class SimulatedExchange:
                         exit_price = price
                         exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
 
-            # Fallback to exec-bar OHLC check if no 1m hit or no quote_feed
+            # 5b. Fallback to exec-bar OHLC check if no 1m data
             if exit_reason is None:
                 exit_reason = self._execution.check_tp_sl(self.position, bar)
                 if exit_reason:
@@ -414,17 +411,15 @@ class SimulatedExchange:
                     )
                     exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
 
-            # Close position if TP/SL hit
-            # BUG-004 FIX: Capture exit fill for StepResult.fills
+            # 5c. Execute TP/SL exit if triggered
             if exit_reason and exit_price is not None:
-                # TP/SL fills occur at ts_open (conservative: fill at bar start)
                 result = self._close_position(exit_price, ts_open, exit_reason.value, exit_price_source)
                 if result:
                     trade, exit_fill = result
                     closed_trades.append(trade)
                     fills.append(exit_fill)
 
-        # 5b. Track min/max price for MAE/MFE (if position still open)
+        # 6. Track min/max price for MAE/MFE calculation
         if self.position:
             pos = self.position
             if pos.min_price is None or bar.low < pos.min_price:
@@ -432,17 +427,15 @@ class SimulatedExchange:
             if pos.max_price is None or bar.high > pos.max_price:
                 pos.max_price = bar.high
 
-        # 6. Update balances at bar close using the single mark_price
+        # 7. Update ledger with current mark price
         self._ledger.update_for_mark_price(self.position, mark_price)
 
-        # 7. Check liquidation (after ledger update)
+        # 8. Check for liquidation after balance update
         if self.position:
             liq_result = self._liquidation.check_liquidation(
                 self._ledger.state, prices, self.position
             )
             if liq_result.liquidated and liq_result.event:
-                # Liquidation triggered - close position at mark price
-                # BUG-004 FIX: Capture exit fill for StepResult.fills
                 result = self._close_position(
                     mark_price, step_time, "liquidation", "mark_price"
                 )
@@ -450,12 +443,8 @@ class SimulatedExchange:
                     trade, exit_fill = result
                     closed_trades.append(trade)
                     fills.append(exit_fill)
-                    # Apply liquidation fee (P0 FIX: was apply_exit_fee which doesn't exist)
                     self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
                     self.total_fees_paid += liq_result.event.liquidation_fee
-
-        # NOTE: closed_trades list is local; callers use step_result.fills or
-        # self.trades (cumulative). _last_closed_trades removed (no legacy code forward).
 
         # Return StepResult with unified mark price
         return StepResult(
@@ -500,21 +489,18 @@ class SimulatedExchange:
             self._ledger.apply_entry_fee(fill.fee)
             self.total_fees_paid += fill.fee
 
-            # fill.timestamp is ts_open (from execution_model)
             self._position_counter += 1
-            # P1-005 DOCUMENTED: size_usdt semantics
-            # - size_usdt = "intended notional" (order.size_usdt, before slippage)
-            # - size * entry_price = "actual fill notional" (after slippage)
-            # This is intentional: size_usdt tracks trader intent, actual fill varies.
-            # Fee calculation uses size_usdt for consistency (entry and exit both use intended).
+
+            # Create position with filled size and intended notional
+            # Note: size_usdt tracks intended notional, size reflects actual fill after slippage
             self.position = Position(
                 position_id=f"pos_{self._position_counter:04d}",
                 symbol=order.symbol,
                 side=order.side,
                 entry_price=fill.price,
-                entry_time=fill.timestamp,  # ts_open
+                entry_time=fill.timestamp,
                 size=fill.size,
-                size_usdt=order.size_usdt,  # Intended notional (before slippage)
+                size_usdt=order.size_usdt,
                 stop_loss=order.stop_loss,
                 take_profit=order.take_profit,
                 fees_paid=fill.fee,

@@ -47,20 +47,12 @@ class BybitConfig:
     demo_api_secret: str = ""
     demo_data_api_key: str = ""
     demo_data_api_secret: str = ""
-    
+
     # LIVE API keys (api.bybit.com) - REAL MONEY!
     live_api_key: str = ""
     live_api_secret: str = ""
     live_data_api_key: str = ""
     live_data_api_secret: str = ""
-    
-    # DEPRECATED: Legacy/generic keys - NOT used in strict mode
-    # These fields exist only for backward compatibility inspection.
-    # All credential behavior uses only the canonical 4 keys above.
-    api_key: str = ""       # DEPRECATED: Use demo_api_key or live_api_key
-    api_secret: str = ""    # DEPRECATED: Use demo_api_secret or live_api_secret
-    data_api_key: str = ""  # DEPRECATED: Use live_data_api_key
-    data_api_secret: str = ""  # DEPRECATED: Use live_data_api_secret
     
     # Endpoints
     demo_base_url: str = "https://api-demo.bybit.com"   # DEMO (FAKE MONEY)
@@ -615,35 +607,26 @@ class Config:
     def _load_bybit_config(self) -> BybitConfig:
         """
         Load Bybit configuration from environment (STRICT - no fallbacks).
-        
+
         CANONICAL KEY CONTRACT (only these 4 key pairs are used):
         - BYBIT_DEMO_API_KEY / SECRET → DEMO trading (fake money)
         - BYBIT_LIVE_API_KEY / SECRET → LIVE trading (real money)
         - BYBIT_LIVE_DATA_API_KEY / SECRET → Data operations (always LIVE)
         - BYBIT_DEMO_DATA_API_KEY / SECRET → Demo data (optional)
-        
-        Legacy/generic keys (BYBIT_API_KEY, BYBIT_DATA_API_KEY) are loaded
-        for backward compatibility inspection but are NOT used for behavior.
         """
         return BybitConfig(
-            # CANONICAL: Demo trading keys (api-demo.bybit.com)
+            # Demo trading keys (api-demo.bybit.com)
             demo_api_key=os.getenv("BYBIT_DEMO_API_KEY", ""),
             demo_api_secret=os.getenv("BYBIT_DEMO_API_SECRET", ""),
             demo_data_api_key=os.getenv("BYBIT_DEMO_DATA_API_KEY", ""),
             demo_data_api_secret=os.getenv("BYBIT_DEMO_DATA_API_SECRET", ""),
-            
-            # CANONICAL: Live trading keys (api.bybit.com - REAL MONEY!)
+
+            # Live trading keys (api.bybit.com - REAL MONEY!)
             live_api_key=os.getenv("BYBIT_LIVE_API_KEY", ""),
             live_api_secret=os.getenv("BYBIT_LIVE_API_SECRET", ""),
             live_data_api_key=os.getenv("BYBIT_LIVE_DATA_API_KEY", ""),
             live_data_api_secret=os.getenv("BYBIT_LIVE_DATA_API_SECRET", ""),
-            
-            # DEPRECATED: Legacy keys - loaded for inspection only, NOT used for behavior
-            api_key=os.getenv("BYBIT_API_KEY", ""),
-            api_secret=os.getenv("BYBIT_API_SECRET", ""),
-            data_api_key=os.getenv("BYBIT_DATA_API_KEY", ""),
-            data_api_secret=os.getenv("BYBIT_DATA_API_SECRET", ""),
-            
+
             # Demo mode (true = api-demo.bybit.com, false = api.bybit.com)
             use_demo=os.getenv("BYBIT_USE_DEMO", "true").lower() == "true",
         )

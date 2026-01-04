@@ -67,13 +67,18 @@ class ToolRegistry:
         self._register_all_tools()
 
     def _register_all_tools(self):
-        """Register all available tools from specs modules."""
-        # Load all function imports
+        """
+        Register all available tools from specs modules.
+
+        Pattern: Specs define metadata, imports provide actual functions.
+        This allows tools to be discovered dynamically without hardcoding.
+        """
+        # Load all function imports from each category
         all_functions = {}
         for category, get_imports_fn in ALL_IMPORTS.items():
             all_functions.update(get_imports_fn())
 
-        # Register each spec
+        # Register each spec (skips functions that aren't available)
         for spec in ALL_SPECS:
             name = spec["name"]
             if name not in all_functions:
@@ -151,6 +156,9 @@ class ToolRegistry:
         """
         Execute a tool by name with arguments.
 
+        Validates required parameters, sets up logging context, and executes the tool
+        with structured event tracking (tool.call.start/end/error).
+
         Args:
             name: Tool name
             meta: Optional metadata dict with context (run_id, agent_id, trace_id, tool_call_id)
@@ -174,7 +182,7 @@ class ToolRegistry:
         if not spec:
             return ToolResult(success=False, error=f"Unknown tool: {name}")
 
-        # Validate required parameters
+        # Validate required parameters before execution
         missing = [p for p in spec.required if p not in kwargs]
         if missing:
             return ToolResult(

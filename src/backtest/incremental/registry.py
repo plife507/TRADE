@@ -333,24 +333,21 @@ def get_structure_output_type(
     if field in type_map:
         return type_map[field]
 
-    # For fibonacci, handle dynamic level fields (level_0.XXX)
+    # Handle dynamic fibonacci level fields (e.g., level_0.618 -> FLOAT)
     if structure_type == "fibonacci" and field.startswith("level_"):
-        # All fibonacci levels are FLOAT
         return FeatureOutputType.FLOAT
 
-    # For derived_zone, handle dynamic slot fields (zone{N}_{field})
+    # Handle dynamic derived_zone slot fields (e.g., zone1_lower)
+    # All zone slots share the same field types as zone0_*
     if structure_type == "derived_zone" and field.startswith("zone"):
-        # Parse zone{N}_{field} pattern
         try:
             underscore_idx = field.index("_")
             slot_field = field[underscore_idx + 1:]
-
-            # Map slot field to type using zone0_ prefix
             canonical_key = f"zone0_{slot_field}"
             if canonical_key in type_map:
                 return type_map[canonical_key]
         except (ValueError, KeyError):
-            pass  # Fall through to error
+            pass
 
     raise ValueError(
         f"Unknown field '{field}' for structure '{structure_type}'. "

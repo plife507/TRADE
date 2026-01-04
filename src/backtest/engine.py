@@ -15,11 +15,6 @@ ARCHITECTURE (Array-Backed Hot Loop):
 - No pandas ops in hot loop (no df.iloc, no row scanning)
 - All feature access via get_feature(tf_role, indicator_key, offset)
 
-LEGACY REMOVED:
-- RuntimeSnapshot (materialized dataclass) is NOT supported
-- SnapshotBuilder is NOT used — deleted from hot loop
-- Legacy feature access via FeatureSnapshot.features dict is NOT supported
-
 MODULAR STRUCTURE (Phase 1 Refactor):
 - engine_data_prep.py: Data loading and preparation
 - engine.py: Main orchestrator (this file)
@@ -109,8 +104,6 @@ from .runtime.types import (
     create_not_ready_feature_snapshot,
 )
 from .runtime.timeframe import tf_duration, tf_minutes, validate_tf_mapping, ceil_to_tf_close
-# DELETED: SnapshotBuilder import - Legacy RuntimeSnapshot builder removed.
-# All snapshot building now uses RuntimeSnapshotView directly.
 from .runtime.cache import TimeframeCache
 from .runtime.feed_store import FeedStore, MultiTFFeedStore
 from .runtime.snapshot_view import RuntimeSnapshotView
@@ -261,10 +254,7 @@ class BacktestEngine:
         # Parse history config from system config (if present)
         self._history_config = parse_history_config_impl(config)
         self._history_manager = HistoryManager(self._history_config)
-        
-        # DELETED: SnapshotBuilder - Legacy RuntimeSnapshot builder removed.
-        # All snapshot building now uses _build_snapshot_view() for RuntimeSnapshotView.
-        
+
         # Phase 3: TimeframeCache for HTF/MTF carry-forward
         self._tf_cache = TimeframeCache()
 
@@ -610,11 +600,9 @@ class BacktestEngine:
         """
         Build market structures into exec FeedStore.
 
-        Phase 7 Transition:
-        - If IdeaCard has `structures:` section, the incremental state system is used
-          and batch structure building is skipped (incremental is built in run())
-        - If IdeaCard has `market_structure_blocks`, the deprecated batch system is used
-          with a deprecation warning
+        Checks if IdeaCard uses the Feature Registry with structures section.
+        If so, incremental state is used (built in run()) and batch building is skipped.
+        Otherwise, falls back to deprecated batch structure building with warning.
 
         Called from _build_feed_stores() after exec/htf/mtf feeds are built.
         """
@@ -626,7 +614,7 @@ class BacktestEngine:
             return
 
         # Check if IdeaCard uses the Feature Registry with structures
-        # If so, skip the deprecated batch build - incremental state is built in run()
+        # If so, skip batch build - incremental state is built in run()
         registry = self._feature_registry
         if registry is None and self._idea_card is not None:
             registry = self._idea_card.feature_registry
@@ -634,14 +622,10 @@ class BacktestEngine:
         has_incremental_structures = registry is not None and len(registry.get_structures()) > 0
 
         if has_incremental_structures:
-            self.logger.debug(
-                "IdeaCard uses 'structures:' section - "
-                "skipping deprecated batch structure build"
-            )
+            self.logger.debug("IdeaCard uses 'structures:' section - using incremental state")
             return
 
-        # Legacy path: use deprecated batch structure building
-        # (emits deprecation warning if market_structure_blocks is present)
+        # Fallback: use batch structure building (emits deprecation warning if present)
         build_structures_into_feed(
             exec_feed=self._exec_feed,
             idea_card=self._idea_card,
@@ -1537,9 +1521,6 @@ class BacktestEngine:
             mark_price_override=mark_price_override,
             incremental_state=self._incremental_state,
         )
-    
-    # DELETED: _build_snapshot() - Legacy RuntimeSnapshot builder removed.
-    # All snapshot building now uses _build_snapshot_view() for RuntimeSnapshotView.
 
     def _evaluate_with_1m_subloop(
         self,

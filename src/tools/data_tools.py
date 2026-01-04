@@ -54,22 +54,6 @@ from .data_tools_query import (
     build_symbol_history_tool,
 )
 
-# Backward compatibility: expose internal helpers for any direct consumers
-from .data_tools_common import (
-    _sync_range_chunked,
-    _days_to_period,
-    _build_extremes_metadata,
-    _persist_extremes_to_db,
-)
-
-# Also expose datetime utils aliases for backward compat
-from ..utils.datetime_utils import (
-    MAX_QUERY_RANGE_DAYS,
-    normalize_datetime as _normalize_datetime,
-    validate_time_range as _validate_time_range,
-    normalize_time_range_params as _normalize_time_range_params,
-)
-
 __all__ = [
     # Constants
     "TF_GROUP_LOW",
@@ -78,7 +62,6 @@ __all__ = [
     "ALL_TIMEFRAMES",
     "MAX_CHUNK_DAYS",
     "DEFAULT_MAX_HISTORY_YEARS",
-    "MAX_QUERY_RANGE_DAYS",
     # Status tools
     "get_database_stats_tool",
     "list_cached_symbols_tool",

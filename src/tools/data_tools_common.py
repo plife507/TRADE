@@ -2,6 +2,10 @@
 Data tools - common helpers and constants.
 
 Split from data_tools.py for maintainability.
+
+This module contains shared constants and internal helper functions used by
+data_tools_status, data_tools_sync, and data_tools_query. These helpers are
+prefixed with '_' to indicate they're internal utilities, not public tools.
 """
 
 from collections.abc import Callable
@@ -17,17 +21,13 @@ from ..utils.datetime_utils import (
     normalize_time_range_params,
 )
 
-_normalize_datetime = normalize_datetime
-_validate_time_range = validate_time_range
-_normalize_time_range_params = normalize_time_range_params
-
 
 # ==================== CONSTANTS ====================
 
-# Default timeframe groups for full history sync
-TF_GROUP_LOW = ["1m", "5m", "15m"]      # LTF (high-resolution)
-TF_GROUP_MID = ["1h", "4h"]             # MTF
-TF_GROUP_HIGH = ["1d"]                  # HTF
+# Default timeframe groups for full history sync (aligned with backtest TF roles)
+TF_GROUP_LOW = ["1m", "5m", "15m"]      # LTF (execution timeframes)
+TF_GROUP_MID = ["1h", "4h"]             # MTF (structure/bias timeframes)
+TF_GROUP_HIGH = ["1d"]                  # HTF (trend/context, capped at 1D)
 
 # All standard timeframes
 ALL_TIMEFRAMES = TF_GROUP_LOW + TF_GROUP_MID + TF_GROUP_HIGH
@@ -49,15 +49,19 @@ def _sync_range_chunked(
 ) -> int:
     """
     Sync a date range in chunks to handle long histories safely.
-    
-    Returns total candles synced.
+
+    Pattern: Breaks large date ranges into chunks to avoid API limits and
+    memory issues. Default 90-day chunks balance efficiency and safety.
+
+    Returns:
+        Total candles synced across all chunks
     """
     total_synced = 0
     current_start = start
-    
+
     while current_start < end:
         chunk_end = min(current_start + timedelta(days=chunk_days), end)
-        
+
         # Sync this chunk
         result = store.sync_range(
             symbols=[symbol],
@@ -65,15 +69,15 @@ def _sync_range_chunked(
             end=chunk_end,
             timeframes=[timeframe],
         )
-        
+
         # Accumulate results
         key = f"{symbol}_{timeframe}"
         chunk_count = result.get(key, 0)
         if chunk_count > 0:
             total_synced += chunk_count
-        
+
         current_start = chunk_end
-    
+
     return total_synced
 
 
@@ -99,8 +103,12 @@ def _days_to_period(days: int) -> str:
 def _build_extremes_metadata(store, symbol: str, timeframes: list[str]) -> dict[str, Any]:
     """
     Build extremes/bounds metadata for a symbol after sync.
-    
-    Returns metadata about DB coverage for OHLCV (per tf), funding, and OI.
+
+    Queries DuckDB for earliest/latest timestamps and row counts across
+    OHLCV (per timeframe), funding, and open interest data.
+
+    Returns:
+        Dict with metadata about DB coverage for OHLCV (per tf), funding, and OI
     """
     extremes = {
         "symbol": symbol,
@@ -108,7 +116,7 @@ def _build_extremes_metadata(store, symbol: str, timeframes: list[str]) -> dict[
         "funding": {},
         "open_interest": {},
     }
-    
+
     # OHLCV per timeframe
     for tf in timeframes:
         try:
@@ -184,7 +192,10 @@ def _persist_extremes_to_db(
 ):
     """
     Persist extremes metadata to DuckDB table.
-    
+
+    Stores coverage metadata (earliest/latest timestamps, row counts) in the
+    data_extremes table for tracking data quality and coverage over time.
+
     Args:
         store: HistoricalDataStore instance
         symbol: Trading symbol
@@ -193,7 +204,7 @@ def _persist_extremes_to_db(
         source: Source identifier (e.g., "full_from_launch")
     """
     from datetime import datetime as dt
-    
+
     # OHLCV per timeframe
     for tf, tf_data in extremes.get("ohlcv", {}).items():
         earliest = None

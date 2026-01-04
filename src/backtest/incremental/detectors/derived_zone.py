@@ -216,15 +216,18 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         """
         self._current_bar_idx = bar_idx
 
-        # Get current source version (forward-filled from last HTF close)
+        # Two-path state machine:
+        # 1. REGEN PATH: Source swing pivots changed -> regenerate all zones
+        # 2. INTERACTION PATH: Check price interactions with existing zones
+
         current_source_version = self.source.get_value("version")
 
-        # REGEN PATH: Only on source version change
+        # REGEN PATH: Only on source version change (new swing pivot confirmed)
         if current_source_version != self._source_version:
             self._regenerate_zones(bar_idx, bar)
             self._source_version = current_source_version
 
-        # INTERACTION PATH: Every exec close
+        # INTERACTION PATH: Every exec close (check touches, breaks, age updates)
         self._update_zone_interactions(bar_idx, bar)
 
     def _regenerate_zones(self, bar_idx: int, bar: "BarData") -> None:

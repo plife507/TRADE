@@ -161,6 +161,9 @@ def validate_trading_env_or_error(trading_env: str | None = None) -> ToolResult 
     This is a convenience wrapper for use in tools. Instead of try/except,
     tools can call this and return early if there's an error.
 
+    Pattern: Agents specify their intended environment ("demo"/"live"), and this
+    validates against the process config. Prevents routing errors in multi-process setups.
+
     Args:
         trading_env: Optional trading environment to validate
 
@@ -170,8 +173,7 @@ def validate_trading_env_or_error(trading_env: str | None = None) -> ToolResult 
 
     Usage in a tool:
         def my_trading_tool(symbol: str, trading_env: str | None = None):
-            error = validate_trading_env_or_error(trading_env)
-            if error:
+            if error := validate_trading_env_or_error(trading_env):
                 return error
             # ... proceed with tool logic
     """
@@ -217,23 +219,24 @@ _ws_startup_attempt_time = 0
 def _ensure_websocket_running() -> bool:
     """
     Ensure WebSocket is running, starting it if necessary.
-    
+
     This is used by tools that need WebSocket data. If WebSocket is not
     running and auto_start is enabled, it will start the WebSocket.
-    
-    Includes cooldown to prevent repeated startup attempts that flood logs.
-    
+
+    Includes 60-second cooldown to prevent repeated startup attempts that flood logs.
+    Falls back silently to REST on failure.
+
     Returns:
-        True if WebSocket is now connected, False otherwise
+        True if WebSocket is now connected, False otherwise (use REST fallback)
     """
     global _ws_startup_failed, _ws_startup_attempt_time
     import time
-    
+
     # First check if already connected
     if _is_websocket_connected():
         _ws_startup_failed = False  # Reset on success
         return True
-    
+
     # If we've recently failed, don't retry (60s cooldown)
     if _ws_startup_failed:
         if time.time() - _ws_startup_attempt_time < 60:

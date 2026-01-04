@@ -32,12 +32,6 @@ Example (exec=15m, HTF=1h):
                   ^--- same HTF index until 1h bar closes
 
 This ensures no-lookahead: HTF/MTF values reflect last CLOSED bar only.
-
-LEGACY REMOVED:
-- RuntimeSnapshot (materialized dataclass) is NOT supported
-- SnapshotBuilder is NOT used
-- Legacy aliases (bar_ltf, features_exec, etc.) removed
-- exchange_state shim removed
 """
 
 import math
@@ -1154,22 +1148,20 @@ class RuntimeSnapshotView:
         """
         Resolve structure.* paths.
 
-        Phase 7 Transition:
-        Two parallel structure systems exist during the transition:
+        Two structure access methods are supported:
 
-        1. NEW: Incremental State (`structures:` section in IdeaCard)
+        1. Incremental State (`structures:` section in IdeaCard)
            - O(1) access via MultiTFIncrementalState
            - Updated bar-by-bar in the engine hot loop
-           - Preferred for all new IdeaCards
+           - Primary method for all new IdeaCards
 
-        2. DEPRECATED: FeedStore structures (`market_structure_blocks` in IdeaCard)
-           - Built by build_structures_into_feed() (deprecated function)
-           - Stored in FeedStore.structures dict
-           - Will be removed in a future release
+        2. FeedStore structures (`market_structure_blocks` in IdeaCard)
+           - Batch-built structures stored in FeedStore.structures dict
+           - Legacy support for compatibility
 
         Resolution priority:
         1. Try incremental state first (if present)
-        2. Fall back to FeedStore structures (deprecated, legacy support)
+        2. Fall back to FeedStore structures (legacy support)
 
         Path formats:
         - structure.<block_key>.<field> -> exec TF structure (incremental or FeedStore)
@@ -1233,8 +1225,7 @@ class RuntimeSnapshotView:
                         pass
 
         # =====================================================================
-        # DEPRECATED PATH: FeedStore structures (legacy market_structure_blocks)
-        # This fallback will be removed when market_structure_blocks is deleted.
+        # FeedStore structures fallback (legacy market_structure_blocks)
         # =====================================================================
         if not self.exec_ctx.feed.has_structure(block_key):
             # Build helpful error message with available structures
@@ -1255,7 +1246,7 @@ class RuntimeSnapshotView:
                 f"Add 'structures:' section to IdeaCard."
             )
 
-        # Check for zones namespace (Stage 5+ - FeedStore only, deprecated path)
+        # Check for zones namespace (FeedStore structures only)
         if field_or_zones == "zones":
             # structure.<block_key>.zones.<zone_key>.<field>
             if len(parts) < 4:
@@ -1266,12 +1257,12 @@ class RuntimeSnapshotView:
             zone_key = parts[2]
             zone_field = parts[3]
 
-            # Resolve zone field via FeedStore (deprecated)
+            # Resolve zone field via FeedStore
             return self.exec_ctx.feed.get_zone_field(
                 block_key, zone_key, zone_field, self.exec_idx
             )
 
-        # structure.<block_key>.<field> via FeedStore (deprecated)
+        # structure.<block_key>.<field> via FeedStore
         field_name = field_or_zones
 
         # Validate field is in public allowlist
@@ -1282,7 +1273,7 @@ class RuntimeSnapshotView:
                 f"Valid fields: {available_fields}"
             )
 
-        # Get field value at current exec bar index (deprecated FeedStore path)
+        # Get field value at current exec bar index
         return self.exec_ctx.feed.get_structure_field(
             block_key, field_name, self.exec_idx
         )
@@ -1335,16 +1326,9 @@ class RuntimeSnapshotView:
             return False
 
     # =========================================================================
-    # DELETED: Backward Compatibility Aliases
-    # =========================================================================
-    # Legacy aliases (bar_ltf, features_exec, etc.) removed.
-    # Use direct accessors: exec_ctx, htf_ctx, mtf_ctx, or get_feature().
-    # New code must use snapshot.get(path) exclusively.
-    
-    # =========================================================================
     # Serialization (for debugging only, not in hot loop)
     # =========================================================================
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for debugging/serialization."""
         return {
