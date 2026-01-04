@@ -29,8 +29,11 @@ The Forge (`src/forge/`) uses this tools layer for:
 - Running backtests via `backtest_cli_wrapper.py`
 - Loading and validating Plays
 - Generating performance reports
+- Running audits (validation and parity checks)
 
 All Forge operations should go through the tools layer for consistency.
+
+**Architecture Principle**: Tools provide the orchestration layer. The Forge provides pure computation functions. Tools decide WHEN to invoke; Forge defines WHAT to compute.
 
 ## Active TODOs
 

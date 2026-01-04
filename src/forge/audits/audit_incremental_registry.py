@@ -18,8 +18,8 @@ import sys
 from typing import Any
 
 # Import the components we're testing
-from ..incremental.base import BarData, BaseIncrementalDetector
-from ..incremental.registry import (
+from src.backtest.incremental.base import BarData, BaseIncrementalDetector
+from src.backtest.incremental.registry import (
     STRUCTURE_REGISTRY,
     get_structure_info,
     list_structure_types,

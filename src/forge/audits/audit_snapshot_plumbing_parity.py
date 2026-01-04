@@ -28,11 +28,11 @@ from typing import Any
 
 import numpy as np
 
-from ..play import load_play, Play, PLAYS_DIR
-from ..execution_validation import compute_warmup_requirements
-from ..runtime.feed_store import FeedStore
-from ..runtime.snapshot_view import RuntimeSnapshotView
-from ...utils.logger import get_logger
+from src.backtest.play import load_play, Play, PLAYS_DIR
+from src.backtest.execution_validation import compute_warmup_requirements
+from src.backtest.runtime.feed_store import FeedStore
+from src.backtest.runtime.snapshot_view import RuntimeSnapshotView
+from src.utils.logger import get_logger
 
 
 logger = get_logger()
@@ -421,14 +421,14 @@ def audit_snapshot_plumbing_parity(
         PlumbingParityResult with audit results
     """
     import time
-    from ..engine import BacktestEngine
-    from ..system_config import (
+    from src.backtest.engine import BacktestEngine
+    from src.backtest.system_config import (
         SystemConfig,
         RiskProfileConfig,
         StrategyInstanceConfig,
         StrategyInstanceInputs,
     )
-    from ..indicators import get_required_indicator_columns_from_specs
+    from src.backtest.indicators import get_required_indicator_columns_from_specs
     
     start_time = time.perf_counter()
     

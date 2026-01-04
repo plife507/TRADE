@@ -19,8 +19,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..play import Play
-    from ..engine import BacktestEngine
+    from src.backtest.play import Play
+    from src.backtest.engine import BacktestEngine
 
 
 @dataclass

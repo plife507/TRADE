@@ -15,8 +15,8 @@ import math
 
 def test_tf_state_basic() -> None:
     """Test basic TFIncrementalState creation and updates."""
-    from ..incremental.base import BarData
-    from ..incremental.state import TFIncrementalState
+    from src.backtest.incremental.base import BarData
+    from src.backtest.incremental.state import TFIncrementalState
 
     print("Testing TFIncrementalState basic operations...")
     print("-" * 60)
@@ -60,7 +60,7 @@ def test_tf_state_basic() -> None:
 
 def test_tf_state_dependency_chain() -> None:
     """Test TFIncrementalState with swing -> fib -> trend dependency chain."""
-    from ..incremental.base import BarData
+    from src.backtest.incremental.base import BarData
     from .state import TFIncrementalState
 
     print("Testing TFIncrementalState with dependency chain...")
@@ -148,7 +148,7 @@ def test_tf_state_dependency_chain() -> None:
 
 def test_multi_tf_state_basic() -> None:
     """Test basic MultiTFIncrementalState creation and path access."""
-    from ..incremental.base import BarData
+    from src.backtest.incremental.base import BarData
     from .state import MultiTFIncrementalState
 
     print("Testing MultiTFIncrementalState basic operations...")
@@ -219,7 +219,7 @@ def test_multi_tf_state_basic() -> None:
 
 def test_multi_tf_full_chain() -> None:
     """Test MultiTFIncrementalState with full swing + fib + trend chain."""
-    from ..incremental.base import BarData
+    from src.backtest.incremental.base import BarData
     from .state import MultiTFIncrementalState
 
     print("Testing MultiTFIncrementalState with full dependency chain...")
@@ -357,7 +357,7 @@ def test_multi_tf_full_chain() -> None:
 
 def test_error_handling() -> None:
     """Test fail-loud error handling with actionable suggestions."""
-    from ..incremental.base import BarData
+    from src.backtest.incremental.base import BarData
     from .state import MultiTFIncrementalState, TFIncrementalState
 
     print("Testing error handling...")

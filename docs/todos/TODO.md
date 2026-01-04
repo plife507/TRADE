@@ -39,11 +39,13 @@ from src.backtest import Play, load_play, create_engine_from_play
 - **System**: Complete trading system with Playbooks + risk management
 
 ### Phase F1: Forge Directory Structure
-- [ ] Create `src/forge/` directory
-- [ ] Create `src/forge/__init__.py`
+- [x] Create `src/forge/` directory (DONE)
+- [x] Create `src/forge/__init__.py` (DONE)
+- [x] Create `src/forge/CLAUDE.md` with pure function principles (DONE)
+- [x] Create `src/forge/validation/` for Play validation (DONE)
+- [x] Create `src/forge/generation/` for Play generation (DONE)
 - [ ] Move `src/backtest/audits/` -> `src/forge/audits/`
-- [ ] Create `src/forge/plays/` for Play loading/validation
-- [ ] Update all imports
+- [ ] Update all imports for audits
 
 ### Phase F2: Hierarchy Implementation
 - [ ] Define `Setup` dataclass (market condition specs)

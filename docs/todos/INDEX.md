@@ -15,6 +15,22 @@ Documentation index for work tracking in the TRADE project.
 
 ---
 
+## Workstreams (TRADE Architecture Evolution)
+
+| Workstream | Focus | Status |
+|------------|-------|--------|
+| **W1: Forge** | Development environment, audits | **ACTIVE** |
+| W2: Blocks DSL | Pure expression evaluation | Planned |
+| W3: Incremental | O(1) market structure detectors | Implemented |
+| W4: Hierarchy | Setup/Play/Playbook/System | Planned |
+
+**W1 Goals**:
+- Move audits from `src/backtest/audits/` to `src/forge/audits/`
+- Pure function architecture (data flow, no control flow)
+- Validation and generation tooling
+
+---
+
 ## Forge Migration (COMPLETE)
 
 ✅ **Completed 2026-01-04** - 8 phases, 221 file changes

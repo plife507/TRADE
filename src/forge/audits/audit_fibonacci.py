@@ -18,9 +18,9 @@ import math
 import sys
 from typing import Any
 
-from ..incremental.base import BarData, BaseIncrementalDetector
-from ..incremental.registry import unregister_structure
-from ..incremental.detectors.fibonacci import IncrementalFibonacci
+from src.backtest.incremental.base import BarData, BaseIncrementalDetector
+from src.backtest.incremental.registry import unregister_structure
+from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
 
 
 class MockSwingDetector(BaseIncrementalDetector):

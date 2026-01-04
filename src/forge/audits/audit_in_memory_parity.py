@@ -21,8 +21,8 @@ from datetime import datetime
 import numpy as np
 import json
 
-from ..indicator_vendor import compute_indicator
-from ..indicator_registry import get_registry
+from src.backtest.indicator_vendor import compute_indicator
+from src.backtest.indicator_registry import get_registry
 
 
 @dataclass
@@ -410,8 +410,8 @@ def run_in_memory_parity_for_play(
     Returns:
         InMemoryParityResult with detailed comparison
     """
-    from ..play import load_play
-    from ..runner import RunnerConfig, run_backtest_with_gates
+    from src.backtest.play import load_play
+    from src.backtest.runner import RunnerConfig, run_backtest_with_gates
     from datetime import datetime as dt
     
     try:
@@ -466,8 +466,8 @@ def run_in_memory_parity_for_play(
         
         # Build the backtest engine using the Play-native engine factory
         # P1.2 Refactor: Use create_engine_from_play() instead of legacy adapter
-        from ..engine import create_engine_from_play
-        from ..execution_validation import compute_warmup_requirements
+        from src.backtest.engine import create_engine_from_play
+        from src.backtest.execution_validation import compute_warmup_requirements
         
         # Compute warmup requirements
         warmup_req = compute_warmup_requirements(play)

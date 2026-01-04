@@ -160,6 +160,12 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 - P1-09 (O(n) hot loop) fixed by Incremental State
 - See: `docs/audits/OPEN_BUGS.md`
 
+**Active Workstream: W1 - The Forge (2026-01-04)**:
+- Directory structure complete (`src/forge/`)
+- Audits migration in progress (`src/backtest/audits/` -> `src/forge/audits/`)
+- Pure function architecture for all Forge components
+- See: `docs/todos/INDEX.md` for workstream status
+
 ### Explicitly off-limits until later phases
 
 - Forecasting models / ML, composite strategies, strategy selection policies

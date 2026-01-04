@@ -11,9 +11,9 @@ from typing import Any
 from dataclasses import dataclass
 import numpy as np
 
-from ..snapshot_artifacts import load_snapshot_artifacts
-from ..indicator_vendor import compute_indicator
-from ..indicator_registry import get_registry
+from src.backtest.snapshot_artifacts import load_snapshot_artifacts
+from src.backtest.indicator_vendor import compute_indicator
+from src.backtest.indicator_registry import get_registry
 
 
 @dataclass

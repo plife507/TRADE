@@ -15,7 +15,7 @@ Simulator/backtest domain. USDT-only, isolated margin.
 | `artifacts/` | Run artifacts (manifest, events, equity) |
 | `prices/` | Mark price providers |
 | `gates/` | Play generation and batch verification |
-| `audits/` | Parity and validation audits |
+| `audits/` | Parity and validation audits (MIGRATING to `src/forge/audits/`) |
 
 ## Key Entry Points
 
@@ -58,6 +58,9 @@ The **Forge** (`src/forge/`) is the development and validation environment for P
 - Play generation and validation
 - Batch testing across multiple symbols/timeframes
 - Performance comparison and analysis
+- **Audits** (migrating from `src/backtest/audits/`)
+
+See `src/forge/CLAUDE.md` for Forge-specific rules and architecture.
 
 ## Critical Rules
 

@@ -19,10 +19,10 @@ import sys
 
 def test_registration():
     """Test that rolling_window is registered in the structure registry."""
-    from ..incremental.registry import STRUCTURE_REGISTRY, get_structure_info
+    from src.backtest.incremental.registry import STRUCTURE_REGISTRY, get_structure_info
 
     # Import triggers registration
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -41,7 +41,7 @@ def test_registration():
 
 def test_param_validation_size():
     """Test size parameter validation."""
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -85,7 +85,7 @@ def test_param_validation_size():
 
 def test_param_validation_field():
     """Test field parameter validation."""
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -117,7 +117,7 @@ def test_param_validation_field():
 
 def test_param_validation_mode():
     """Test mode parameter validation."""
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -149,7 +149,7 @@ def test_param_validation_mode():
 
 def test_missing_params():
     """Test error when required params are missing."""
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -183,8 +183,8 @@ def test_missing_params():
 
 def test_rolling_min():
     """Test rolling minimum calculation."""
-    from ..incremental.base import BarData
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.base import BarData
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -233,8 +233,8 @@ def test_rolling_min():
 
 def test_rolling_max():
     """Test rolling maximum calculation."""
-    from ..incremental.base import BarData
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.base import BarData
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -278,7 +278,7 @@ def test_rolling_max():
 
 def test_output_keys():
     """Test get_output_keys returns correct keys."""
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -296,7 +296,7 @@ def test_output_keys():
 
 def test_get_value_safe():
     """Test get_value_safe validates key and provides helpful errors."""
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -326,8 +326,8 @@ def test_get_value_safe():
 
 def test_all_fields():
     """Test that all OHLCV fields can be tracked."""
-    from ..incremental.base import BarData
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.base import BarData
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 
@@ -362,7 +362,7 @@ def test_all_fields():
 
 def test_repr():
     """Test string representation."""
-    from ..incremental.detectors.rolling_window import (
+    from src.backtest.incremental.detectors.rolling_window import (
         IncrementalRollingWindow,
     )
 

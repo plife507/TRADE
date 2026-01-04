@@ -15,8 +15,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ..indicator_vendor import compute_indicator, canonicalize_indicator_outputs
-from ..indicator_registry import get_registry
+from src.backtest.indicator_vendor import compute_indicator, canonicalize_indicator_outputs
+from src.backtest.indicator_registry import get_registry
 
 
 @dataclass

@@ -19,7 +19,7 @@ from typing import Any
 
 import pandas as pd
 
-from ..artifacts.parquet_writer import compare_csv_parquet
+from src.backtest.artifacts.parquet_writer import compare_csv_parquet
 
 
 # Artifacts that should have both CSV and Parquet versions

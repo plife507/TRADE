@@ -39,7 +39,7 @@ def backtest_audit_math_from_snapshots_tool(run_dir: Path) -> ToolResult:
         ToolResult with audit results including per-column diff statistics
     """
     try:
-        from ..backtest.audits.audit_math_parity import audit_math_parity_from_snapshots
+        from ..forge.audits.audit_math_parity import audit_math_parity_from_snapshots
 
         result = audit_math_parity_from_snapshots(run_dir)
 
@@ -95,7 +95,7 @@ def backtest_audit_toolkit_tool(
         ToolResult with complete audit results
     """
     try:
-        from ..backtest.audits.toolkit_contract_audit import run_toolkit_contract_audit
+        from ..forge.audits.toolkit_contract_audit import run_toolkit_contract_audit
 
         result = run_toolkit_contract_audit(
             sample_bars=sample_bars,
@@ -168,7 +168,7 @@ def backtest_audit_in_memory_parity_tool(
         ToolResult with parity audit results
     """
     try:
-        from ..backtest.audits.audit_in_memory_parity import run_in_memory_parity_for_play
+        from ..forge.audits.audit_in_memory_parity import run_in_memory_parity_for_play
 
         output_path = Path(output_dir) if output_dir else None
 
@@ -237,8 +237,8 @@ def backtest_math_parity_tool(
     Returns:
         ToolResult with combined audit results
     """
-    from ..backtest.audits.toolkit_contract_audit import run_toolkit_contract_audit
-    from ..backtest.audits.audit_in_memory_parity import run_in_memory_parity_for_play
+    from ..forge.audits.toolkit_contract_audit import run_toolkit_contract_audit
+    from ..forge.audits.audit_in_memory_parity import run_in_memory_parity_for_play
 
     results = {
         "contract_audit": None,
@@ -334,7 +334,7 @@ def verify_artifact_parity_tool(
     Returns:
         ToolResult with parity verification results
     """
-    from ..backtest.artifact_parity_verifier import (
+    from ..forge.audits.artifact_parity_verifier import (
         verify_play_parity,
         RunParityResult,
     )
@@ -430,7 +430,7 @@ def backtest_audit_snapshot_plumbing_tool(
     Returns:
         ToolResult with plumbing parity audit results
     """
-    from ..backtest.audits.audit_snapshot_plumbing_parity import audit_snapshot_plumbing_parity
+    from ..forge.audits.audit_snapshot_plumbing_parity import audit_snapshot_plumbing_parity
 
     try:
         start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -505,7 +505,7 @@ def backtest_audit_rollup_parity_tool(
         ToolResult with rollup parity audit results
     """
     try:
-        from ..backtest.audits.audit_rollup_parity import run_rollup_parity_audit
+        from ..forge.audits.audit_rollup_parity import run_rollup_parity_audit
 
         result = run_rollup_parity_audit(
             n_intervals=n_intervals,
