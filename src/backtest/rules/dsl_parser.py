@@ -36,7 +36,7 @@ from typing import Any
 
 from .dsl_nodes import (
     Expr, Cond, AllExpr, AnyExpr, NotExpr,
-    HoldsFor, OccurredWithin, CountTrue,
+    HoldsFor, OccurredWithin, CountTrue, SetupRef,
     FeatureRef, ScalarValue, RangeValue, ListValue, RhsValue,
     VALID_OPERATORS, WINDOW_BARS_CEILING,
     validate_expr_types,
@@ -280,6 +280,13 @@ def parse_expr(data: dict | list) -> Expr:
             raise ValueError(f"count_true bars exceeds ceiling ({WINDOW_BARS_CEILING})")
         expr = parse_expr(window_data.get("expr", {}))
         return CountTrue(bars=bars, min_true=min_true, expr=expr)
+
+    # Check for setup reference
+    if "setup" in data:
+        setup_id = data["setup"]
+        if not isinstance(setup_id, str):
+            raise ValueError("'setup' must be a string setup_id")
+        return SetupRef(setup_id=setup_id)
 
     # Must be a single condition
     if "lhs" in data and "op" in data:

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from .dsl_nodes import (
     Expr, Cond, AllExpr, AnyExpr, NotExpr,
-    HoldsFor, OccurredWithin, CountTrue,
+    HoldsFor, OccurredWithin, CountTrue, SetupRef,
     FeatureRef, ScalarValue, RangeValue, ListValue, RhsValue,
     CROSSOVER_OPERATORS, DEFAULT_MAX_WINDOW_BARS,
 )
@@ -70,6 +70,8 @@ class ExprEvaluator:
             max_window_bars: Maximum bars for window operators.
         """
         self._max_window = max_window_bars
+        # Cache for parsed setup expressions: setup_id -> Expr
+        self._setup_expr_cache: dict[str, Expr] = {}
 
     def evaluate(self, expr: Expr, snapshot: "RuntimeSnapshotView") -> EvalResult:
         """
@@ -96,6 +98,8 @@ class ExprEvaluator:
             return self._eval_occurred_within(expr, snapshot)
         elif isinstance(expr, CountTrue):
             return self._eval_count_true(expr, snapshot)
+        elif isinstance(expr, SetupRef):
+            return self._eval_setup_ref(expr, snapshot)
         else:
             return EvalResult.failure(
                 ReasonCode.INTERNAL_ERROR,
@@ -406,6 +410,59 @@ class ExprEvaluator:
             operator="count_true",
         )
 
+    def _eval_setup_ref(
+        self, expr: SetupRef, snapshot: "RuntimeSnapshotView"
+    ) -> EvalResult:
+        """
+        Evaluate a SetupRef by loading and evaluating the setup's condition.
+
+        The setup's condition expression is cached after first load.
+        """
+        setup_id = expr.setup_id
+
+        # Check cache first
+        if setup_id not in self._setup_expr_cache:
+            # Load and parse the setup
+            try:
+                from src.forge.setups import load_setup, SetupNotFoundError
+                from .dsl_parser import parse_expr
+
+                setup = load_setup(setup_id)
+                condition_expr = parse_expr(setup.condition)
+                self._setup_expr_cache[setup_id] = condition_expr
+            except SetupNotFoundError:
+                return EvalResult.failure(
+                    ReasonCode.INTERNAL_ERROR,
+                    f"Setup not found: {setup_id}",
+                    operator="setup",
+                )
+            except ValueError as e:
+                return EvalResult.failure(
+                    ReasonCode.INTERNAL_ERROR,
+                    f"Invalid setup condition: {setup_id}: {e}",
+                    operator="setup",
+                )
+
+        # Evaluate the cached expression
+        cached_expr = self._setup_expr_cache[setup_id]
+        result = self.evaluate(cached_expr, snapshot)
+
+        # Wrap the result to indicate it came from a setup
+        if result.ok:
+            return EvalResult.success(
+                True,
+                f"setup:{setup_id}",
+                result.rhs_repr,
+                "setup",
+            )
+        else:
+            return EvalResult.failure(
+                result.reason,
+                f"Setup '{setup_id}' condition failed: {result.message}",
+                lhs_path=f"setup:{setup_id}",
+                operator="setup",
+            )
+
     def _shift_expr(self, expr: Expr, offset: int) -> Expr:
         """
         Create a new expression with all FeatureRefs shifted by offset.
@@ -444,6 +501,12 @@ class ExprEvaluator:
                 min_true=expr.min_true,
                 expr=self._shift_expr(expr.expr, offset),
             )
+
+        elif isinstance(expr, SetupRef):
+            # SetupRef cannot be shifted - the setup's condition will be
+            # evaluated as-is. This may need revision if setups should
+            # support historical lookback.
+            return expr
 
         else:
             return expr

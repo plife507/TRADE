@@ -16,13 +16,15 @@ from src.forge.setups import (
     Setup,
     load_setup,
     list_setups,
+    save_setup,
     SetupNotFoundError,
 )
 
 __all__ = [
-    # Setups (W4-P1)
+    # Setups (W4-P1/P2)
     "Setup",
     "load_setup",
     "list_setups",
+    "save_setup",
     "SetupNotFoundError",
 ]

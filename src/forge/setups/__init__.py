@@ -24,6 +24,7 @@ from src.forge.setups.setup import (
     Setup,
     load_setup,
     list_setups,
+    save_setup,
     SetupNotFoundError,
 )
 
@@ -31,5 +32,6 @@ __all__ = [
     "Setup",
     "load_setup",
     "list_setups",
+    "save_setup",
     "SetupNotFoundError",
 ]

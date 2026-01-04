@@ -522,8 +522,47 @@ class CountTrue:
 # Type Alias
 # =============================================================================
 
+# =============================================================================
+# Setup Reference Node
+# =============================================================================
+
+@dataclass(frozen=True)
+class SetupRef:
+    """
+    A reference to a Setup defined in configs/setups/.
+
+    Setups are reusable market condition blocks that encapsulate
+    common patterns (e.g., "RSI oversold", "EMA pullback").
+
+    When evaluated, the Setup's condition is resolved and evaluated
+    as if it were inlined at this position.
+
+    Attributes:
+        setup_id: The Setup ID to reference (e.g., "rsi_oversold")
+
+    Examples:
+        SetupRef(setup_id="rsi_oversold")
+        SetupRef(setup_id="ema_pullback")
+
+    YAML Syntax:
+        - setup: rsi_oversold
+        - all:
+            - setup: rsi_oversold
+            - setup: ema_pullback
+    """
+    setup_id: str
+
+    def __post_init__(self):
+        """Validate SetupRef parameters."""
+        if not self.setup_id:
+            raise ValueError("SetupRef: setup_id is required")
+
+    def __repr__(self) -> str:
+        return f"Setup({self.setup_id!r})"
+
+
 # All expression types that can appear in a condition tree
-Expr = AllExpr | AnyExpr | NotExpr | Cond | HoldsFor | OccurredWithin | CountTrue
+Expr = AllExpr | AnyExpr | NotExpr | Cond | HoldsFor | OccurredWithin | CountTrue | SetupRef
 
 
 # =============================================================================
