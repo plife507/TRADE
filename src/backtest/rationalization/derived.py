@@ -173,7 +173,7 @@ class DerivedStateComputer:
                 signals_bearish += 1
 
         # Check HTF trends
-        for tf_name, tf_state in incremental_state.htf_states.items():
+        for tf_name, tf_state in incremental_state.htf.items():
             htf_trend = self._get_trend_direction(tf_state)
             if htf_trend is not None:
                 total_signals += 1
@@ -216,7 +216,7 @@ class DerivedStateComputer:
             trends.append(exec_trend)
 
         # Get HTF trends
-        for tf_name, tf_state in incremental_state.htf_states.items():
+        for tf_name, tf_state in incremental_state.htf.items():
             htf_trend = self._get_trend_direction(tf_state)
             if htf_trend is not None and htf_trend != TREND_NEUTRAL:
                 trends.append(htf_trend)
@@ -260,7 +260,7 @@ class DerivedStateComputer:
             weights += 1.0
 
         # Add HTF trends with lower weight
-        for tf_name, tf_state in incremental_state.htf_states.items():
+        for tf_name, tf_state in incremental_state.htf.items():
             htf_trend = self._get_trend_direction(tf_state)
             htf_strength = self._get_trend_strength(tf_state)
 
@@ -329,7 +329,7 @@ class DerivedStateComputer:
     ) -> int | None:
         """Get trend direction from highest timeframe available."""
         # Return first HTF trend found (assumes ordered by TF)
-        for tf_name, tf_state in incremental_state.htf_states.items():
+        for tf_name, tf_state in incremental_state.htf.items():
             direction = self._get_trend_direction(tf_state)
             if direction is not None:
                 return direction

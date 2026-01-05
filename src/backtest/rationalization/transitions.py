@@ -114,7 +114,7 @@ class TransitionManager:
         transitions.extend(exec_transitions)
 
         # Process HTF timeframes
-        for tf_name, tf_state in incremental_state.htf_states.items():
+        for tf_name, tf_state in incremental_state.htf.items():
             htf_transitions = self._detect_tf_transitions(
                 bar_idx=bar_idx,
                 timeframe=tf_name,
@@ -136,8 +136,8 @@ class TransitionManager:
         """Detect transitions for a single timeframe."""
         transitions: list[Transition] = []
 
-        for detector_key in tf_state.list_detectors():
-            detector = tf_state.get_detector(detector_key)
+        for detector_key in tf_state.list_structures():
+            detector = tf_state.structures[detector_key]
             detector_transitions = self._detect_detector_transitions(
                 bar_idx=bar_idx,
                 timeframe=timeframe,

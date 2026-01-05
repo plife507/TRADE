@@ -591,6 +591,7 @@ def load_play(play_id: str, base_dir: Path | None = None) -> Play:
     search_paths = [
         search_dir,
         search_dir / "_validation",
+        search_dir / "_stress_test",
         search_dir / "strategies",
     ]
 
@@ -629,6 +630,7 @@ def list_plays(base_dir: Path | None = None) -> list[str]:
     search_paths = [
         search_dir,
         search_dir / "_validation",
+        search_dir / "_stress_test",
         search_dir / "strategies",
     ]
 
