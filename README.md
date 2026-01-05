@@ -1,102 +1,259 @@
-# TRADE - Bybit Trading Bot
+# TRADE
 
-A modular, production-ready Bybit futures trading bot with complete UTA support, comprehensive order types, position management, and risk controls.
+**Algorithmic trading system with AI-agent composable strategies.**
 
-**Philosophy**: Safety first. Modular always. Tools as the API surface.
+A production-grade backtesting and live trading platform where strategies are defined as composable YAML configurations, validated through a rigorous forge process, and executed with deterministic precision.
+
+## Vision
+
+Build a trading system where:
+- **Strategies are data, not code** - YAML-defined Plays compose into Playbooks and Systems
+- **AI agents can generate and validate strategies** - The Forge provides guardrails for automated strategy creation
+- **Every computation is traceable** - Hash chains verify determinism from data to trades
+- **Math is pure, control is separate** - Components define calculations, engine orchestrates execution
+
+## Architecture
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │              THE FORGE                  │
+                    │   Strategy Development & Validation     │
+                    │                                         │
+                    │  ┌─────────┐  ┌──────────┐  ┌────────┐ │
+                    │  │ Setups  │──│  Plays   │──│Playbook│ │
+                    │  └─────────┘  └──────────┘  └────────┘ │
+                    │       │            │             │      │
+                    │       └────────────┼─────────────┘      │
+                    │                    ▼                    │
+                    │             ┌──────────┐                │
+                    │             │  System  │                │
+                    │             └──────────┘                │
+                    └────────────────────┬────────────────────┘
+                                         │
+                    ┌────────────────────▼────────────────────┐
+                    │           BACKTEST ENGINE               │
+                    │                                         │
+                    │  ┌──────────┐  ┌──────────┐  ┌───────┐ │
+                    │  │Indicators│  │Structures│  │ Rules │ │
+                    │  │   (42)   │  │   (6)    │  │(Blocks│ │
+                    │  └──────────┘  └──────────┘  │ DSL)  │ │
+                    │       │            │         └───────┘ │
+                    │       └────────────┼─────────────┘     │
+                    │                    ▼                    │
+                    │  ┌─────────────────────────────────┐   │
+                    │  │      Simulated Exchange         │   │
+                    │  │  (Pricing, Execution, Ledger)   │   │
+                    │  └─────────────────────────────────┘   │
+                    └────────────────────┬────────────────────┘
+                                         │
+                    ┌────────────────────▼────────────────────┐
+                    │              LIVE ENGINE                │
+                    │         (Bybit Futures API)             │
+                    └─────────────────────────────────────────┘
+```
+
+## Trading Hierarchy
+
+Strategies compose hierarchically:
+
+| Level | Purpose | Example |
+|-------|---------|---------|
+| **Setup** | Reusable market condition | `rsi_oversold`, `ema_pullback` |
+| **Play** | Complete tradeable strategy | `T_001_ema_crossover` |
+| **Playbook** | Collection of Plays | `trend_following` |
+| **System** | Full trading configuration | `btc_momentum_v1` |
+
+```yaml
+# Example Play (configs/plays/T_001_ema_crossover.yml)
+id: T_001_ema_crossover
+version: "3.0.0"
+
+features:
+  - id: "ema_9"
+    type: indicator
+    indicator_type: ema
+    params: { length: 9 }
+
+  - id: "ema_21"
+    type: indicator
+    indicator_type: ema
+    params: { length: 21 }
+
+blocks:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - lhs: { feature_id: "ema_9" }
+              op: cross_above
+              rhs: { feature_id: "ema_21" }
+        emit:
+          - action: entry_long
+
+  - id: exit
+    cases:
+      - when:
+          lhs: { feature_id: "ema_9" }
+          op: cross_below
+          rhs: { feature_id: "ema_21" }
+        emit:
+          - action: exit_long
+```
 
 ## Current Status (January 2026)
 
-**Backtest Engine Production-Ready**:
-- 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
-- 42 indicators in INDICATOR_REGISTRY (single source of truth)
-- 5 structures in STRUCTURE_REGISTRY (swing, fibonacci, zone, trend, rolling_window)
-- IdeaCard YAML-based strategy specification
-- 30 validation IdeaCards for comprehensive testing
-
-**Incremental State Architecture**:
-- O(1) hot loop access via MonotonicDeque/RingBuffer
-- STRUCTURE_REGISTRY parallel to INDICATOR_REGISTRY
-- Agent-composable IdeaCard blocks (variables, features, structures, rules)
-
-**Market Structure Complete** (Stages 0-7):
-- Swing/pivot detection with trend classification
-- Supply/demand zone identification
-- Zone interaction tracking (tested, broken, absorbed)
-- State tracking for actions, blocks, gates, and signals
-
-**Quality Status**:
-- 79 bugs fixed (72 in major refactor + 7 in cleanup)
-- 3 open bugs tracked (0 P1, 1 P2, 2 P3 - all acceptable patterns)
-- All validation tests passing
-
-See `docs/project/PROJECT_OVERVIEW.md` for the full roadmap.
+| Component | Status | Details |
+|-----------|--------|---------|
+| **Backtest Engine** | Production | 62-field metrics, deterministic execution |
+| **Indicators** | 42 registered | EMA, RSI, MACD, Bollinger, Stochastic, ADX, etc. |
+| **Structures** | 6 registered | Swing, Fibonacci, Zone, Trend, Rolling Window, Derived Zone |
+| **The Forge** | Complete | Validation, audits, stress testing |
+| **Trading Hierarchy** | Complete | Setup/Play/Playbook/System |
+| **Live Trading** | Ready | Bybit API, demo + live modes |
+| **Bugs** | 0 open | 79 fixed, all tests passing |
 
 ## Quick Start
 
 ```bash
-# Install
+# Clone and setup
+git clone https://github.com/plife507/TRADE.git
+cd TRADE
 python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # Linux/Mac
+venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 
-# Configure
+# Configure API keys
 cp env.example api_keys.env
-# Edit api_keys.env with your Bybit API keys
+# Edit api_keys.env with your Bybit keys
 
-# Run
-python trade_cli.py            # Interactive CLI
-python trade_cli.py --smoke full  # Smoke test (demo mode)
+# Run smoke tests (demo mode - safe)
+python trade_cli.py --smoke forge    # Forge validation
+python trade_cli.py --smoke full     # Full system test
+
+# Interactive CLI
+python trade_cli.py
 ```
 
-## Architecture Overview
+## Key Commands
+
+```bash
+# Validate a Play
+python trade_cli.py backtest play-normalize --play T_001_ema_crossover
+
+# Run a backtest
+python trade_cli.py backtest run --play T_001_ema_crossover --start 2025-01-01 --end 2025-01-31
+
+# Batch validate all Plays
+python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+
+# Run audit suite
+python trade_cli.py backtest audit-toolkit
+```
+
+## Project Structure
 
 ```
 TRADE/
 ├── src/
-│   ├── backtest/          # Backtest engine (USDT-only, isolated margin)
-│   │   ├── engine.py      # Orchestrator
-│   │   ├── sim/           # Simulated exchange (pricing, execution, ledger)
-│   │   ├── runtime/       # Snapshot, FeedStore, TFContext
-│   │   ├── incremental/   # O(1) structure detection (STRUCTURE_REGISTRY)
-│   │   └── features/      # FeatureSpec, indicators
-│   ├── core/              # Live trading (exchange manager, risk, orders)
-│   ├── exchanges/         # Bybit API client
-│   ├── tools/             # CLI/API surface (primary interface)
-│   ├── data/              # Market data, DuckDB storage
-│   └── utils/             # Logging, rate limiting, helpers
-├── configs/idea_cards/    # Strategy definitions (YAML)
-├── docs/                  # Architecture, guides, TODOs
-└── trade_cli.py           # CLI entry point
+│   ├── backtest/           # Backtest engine
+│   │   ├── engine.py       # Orchestrator
+│   │   ├── sim/            # Simulated exchange
+│   │   ├── incremental/    # O(1) structure detection
+│   │   └── rules/          # Blocks DSL evaluation
+│   ├── forge/              # Strategy forge
+│   │   ├── validation/     # Play validation + synthetic data
+│   │   ├── audits/         # Math parity, plumbing checks
+│   │   ├── setups/         # Reusable setups
+│   │   └── playbooks/      # Playbook runner
+│   ├── core/               # Live trading engine
+│   ├── exchanges/          # Bybit API client
+│   ├── tools/              # 84 registered tools (CLI/API)
+│   └── data/               # DuckDB market data storage
+├── configs/
+│   ├── plays/              # Strategy definitions
+│   ├── setups/             # Reusable conditions
+│   ├── playbooks/          # Play collections
+│   └── systems/            # Full system configs
+├── docs/
+│   ├── architecture/       # Design documents
+│   ├── guides/             # Usage guides
+│   └── todos/              # Work tracking
+└── trade_cli.py            # CLI entry point
 ```
 
-## Key Features
+## Philosophy
 
-| Domain | Capabilities |
-|--------|-------------|
-| **Live Trading** | Market/Limit/Stop orders, TP/SL, trailing stops, batch operations |
-| **Backtest** | Simulated exchange, multi-timeframe, 42 indicators, 62 metrics, market structure |
-| **Data** | DuckDB storage, OHLCV/funding/OI sync, gap filling |
-| **Safety** | Demo mode default, panic button, risk limits, mode validation |
+### ALL FORWARD, NO LEGACY
+No backward compatibility. Delete old code, update all callers. Breaking changes are expected and welcomed.
 
-## Trading Modes
+### Pure Math
+Components define calculations only. No side effects, no control flow about when to run. The engine orchestrates invocation.
 
-| Mode | API | Description |
-|------|-----|-------------|
-| Demo | api-demo.bybit.com | Fake funds (safe testing) |
-| Live | api.bybit.com | Real funds (production) |
+### Fail Loud
+Invalid configurations raise errors immediately. No silent defaults. If something is wrong, you'll know.
 
-Start with Demo mode. Test thoroughly before switching to Live.
+### Hash Everything
+Every computation step produces a hash. Determinism is verified by comparing hash chains across runs.
 
 ## Documentation
 
 | Topic | Location |
 |-------|----------|
-| **Detailed guidance** | `CLAUDE.md` |
-| **Code examples** | `docs/guides/CODE_EXAMPLES.md` |
-| **Project roadmap** | `docs/project/PROJECT_OVERVIEW.md` |
-| **Architecture docs** | `docs/architecture/` |
-| **Environment vars** | `env.example` |
+| AI Assistant Guidance | `CLAUDE.md` |
+| Code Examples | `docs/guides/CODE_EXAMPLES.md` |
+| Backtest Architecture | `src/backtest/CLAUDE.md` |
+| Forge Architecture | `src/forge/CLAUDE.md` |
+| Environment Variables | `env.example` |
+
+## Programmatic API
+
+```python
+# Load and run a Play
+from src.backtest import load_play, create_engine_from_play
+
+play = load_play("T_001_ema_crossover")
+engine = create_engine_from_play(play, data_loader=my_loader)
+result = engine.run()
+print(f"Net PnL: {result.metrics.net_pnl_usdt}")
+
+# Use the Trading Hierarchy
+from src.forge import load_system, load_playbook
+
+system = load_system("btc_momentum_v1")
+for pb_ref in system.get_enabled_playbooks():
+    playbook = load_playbook(pb_ref.playbook_id)
+    for entry in playbook.get_enabled_plays():
+        print(f"Running: {entry.play_id}")
+
+# Generate synthetic test data
+from src.forge.validation import generate_synthetic_candles
+
+candles = generate_synthetic_candles(
+    symbol="BTCUSDT",
+    timeframes=["1m", "5m", "1h"],
+    bars_per_tf=1000,
+    seed=42,
+    pattern="trending",
+)
+```
+
+## Trading Modes
+
+| Mode | Endpoint | Funds | Use Case |
+|------|----------|-------|----------|
+| **Demo** | api-demo.bybit.com | Fake | Development, testing |
+| **Live** | api.bybit.com | Real | Production trading |
+
+Always start with Demo mode. The system defaults to safe settings.
+
+## Roadmap
+
+| Feature | Priority | Status |
+|---------|----------|--------|
+| BOS/CHoCH Detection | Medium | Planned |
+| Complex Order Types | Medium | Planned |
+| Multi-Symbol Backtests | Future | Planned |
+| Live Engine WebSocket | Future | Stubs ready |
 
 ## License
 
