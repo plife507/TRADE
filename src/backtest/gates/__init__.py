@@ -5,12 +5,7 @@ Gates are read-only validators that scan and report violations.
 They do NOT auto-edit files.
 
 Gate D.1: Pipeline signature verification
-Gate D.2: DISABLED - Needs blocks DSL generator (play_generator.py deleted)
-
-STATUS (2026-01-04):
-- play_generator.py DELETED (generated legacy signal_rules format)
-- batch_verification.py DISABLED (depends on deleted generator)
-- Gate D.2 will be re-enabled when blocks DSL generator is built
+Gate D.2: Batch verification with generated Plays (blocks DSL v3.0.0)
 """
 
 from .production_first_import_gate import (
@@ -19,17 +14,35 @@ from .production_first_import_gate import (
     GateResult,
 )
 
-# REMOVED: play_generator.py - Generated legacy signal_rules format
-# TODO: Build new generator that produces blocks DSL v3.0.0 format
+from .play_generator import (
+    GeneratorConfig,
+    GeneratedPlay,
+    generate_plays,
+    cleanup_generated_plays,
+    get_available_symbols,
+)
 
-# DISABLED: batch_verification.py - Depends on deleted play_generator
-# TODO: Re-enable when blocks DSL generator is built
+from .batch_verification import (
+    PlayRunResult,
+    BatchSummary,
+    run_batch_verification,
+    BATCH_SUMMARY_FILE,
+)
 
 __all__ = [
     # Gate A
     "run_production_first_gate",
     "GateViolation",
     "GateResult",
-    # Gate D.2 - DISABLED until blocks DSL generator built
+    # Gate D.2 - Play generation and batch verification
+    "GeneratorConfig",
+    "GeneratedPlay",
+    "generate_plays",
+    "cleanup_generated_plays",
+    "get_available_symbols",
+    "PlayRunResult",
+    "BatchSummary",
+    "run_batch_verification",
+    "BATCH_SUMMARY_FILE",
 ]
 
