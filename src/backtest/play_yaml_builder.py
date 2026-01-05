@@ -19,7 +19,7 @@ Key Design (per user specification):
             raise UNDECLARED_FEATURE
 
 Agent Rule:
-    Agents may only generate Plays through `backtest idea-card-normalize`
+    Agents may only generate Plays through `backtest play-normalize`
     and must refuse to write YAML if normalization fails.
 """
 

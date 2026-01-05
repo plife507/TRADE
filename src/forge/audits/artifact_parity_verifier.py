@@ -182,7 +182,7 @@ def find_latest_run(
     symbol: str,
 ) -> Path | None:
     """
-    Find the latest run directory for an idea card + symbol.
+    Find the latest run directory for a Play + symbol.
     
     Args:
         base_dir: Base backtests directory
@@ -221,7 +221,7 @@ def verify_play_parity(
     float_tolerance: float = 1e-12,
 ) -> RunParityResult:
     """
-    Verify parity for a specific idea card run.
+    Verify parity for a specific Play run.
     
     Args:
         base_dir: Base backtests directory (default: Path("backtests"))

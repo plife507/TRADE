@@ -24,7 +24,7 @@
 - Stress test Tier 1-2: 7/7 produce trades
 - Stress test Tier 3: swing (205), zone (491) verified
 
-**NOTE**: Terminology migration in progress (IdeaCard → Play, idea_cards → plays, sandbox → forge)
+**NOTE**: Terminology migration COMPLETE (IdeaCard → Play, --idea-card → --play)
 
 ---
 

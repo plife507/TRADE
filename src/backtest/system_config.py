@@ -808,7 +808,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     DEPRECATED: YAML SystemConfig is deprecated. Use Play for backtesting.
     
     This function exists for legacy compatibility. New backtests should use:
-        python trade_cli.py backtest run --idea-card <card_id> --start <date> --end <date>
+        python trade_cli.py backtest run --play <play_id> --start <date> --end <date>
     
     Args:
         system_id: System identifier (filename without .yml)

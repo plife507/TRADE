@@ -180,7 +180,7 @@ def build_feed_stores_impl(
 # To migrate:
 #   1. Replace `market_structure_blocks:` with `structures:` in Play
 #   2. Use structure.key.output_name in signal_rules instead of structure paths
-#   3. Test with `backtest run --idea-card <card>` to verify
+#   3. Test with `backtest run --play <play_id>` to verify
 #
 # =============================================================================
 

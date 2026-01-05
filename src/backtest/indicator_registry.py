@@ -33,7 +33,7 @@ Usage:
     registry.validate_params("ema", {"foo": 20})     # Raises ValueError
 
 Agent Rule:
-    Agents may only generate Plays through `backtest idea-card-normalize`
+    Agents may only generate Plays through `backtest play-normalize`
     and must refuse to write YAML if normalization fails.
 """
 

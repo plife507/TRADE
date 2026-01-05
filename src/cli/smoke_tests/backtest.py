@@ -322,8 +322,8 @@ def run_backtest_mixed_smoke() -> int:
         0 on success, number of failures otherwise
     """
     console.print(Panel(
-        "[bold]BACKTEST SMOKE TEST: MIXED IDEA CARDS[/]\n"
-        "[dim]Testing multiple idea cards across different scenarios[/]",
+        "[bold]BACKTEST SMOKE TEST: MIXED PLAYS[/]\n"
+        "[dim]Testing multiple plays across different scenarios[/]",
         border_style="magenta"
     ))
 
@@ -354,7 +354,7 @@ def run_backtest_mixed_smoke() -> int:
     cards_to_test = [card for card in plays_to_test if card in available_cards]
 
     if not cards_to_test:
-        console.print(f"  [yellow]WARN[/] No idea cards found to test")
+        console.print(f"  [yellow]WARN[/] No plays found to test")
         console.print(f"      Available cards: {available_cards[:10]}")
         # Try to use any available card
         if available_cards:
@@ -363,7 +363,7 @@ def run_backtest_mixed_smoke() -> int:
         else:
             return 1
 
-    console.print(f"\n[bold cyan]Testing {len(cards_to_test)} idea cards:[/]")
+    console.print(f"\n[bold cyan]Testing {len(cards_to_test)} plays:[/]")
     for card in cards_to_test:
         console.print(f"  - {card}")
 

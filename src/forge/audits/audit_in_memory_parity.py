@@ -10,7 +10,7 @@ Requirements:
 - In-memory comparison only
 - Outputs small CSV diff report if mismatches found
 
-CLI: python trade_cli.py backtest math-parity --idea-card <ID> --start <date> --end <date>
+CLI: python trade_cli.py backtest math-parity --play <play_id> --start <date> --end <date>
 """
 
 import pandas as pd
@@ -402,7 +402,7 @@ def run_in_memory_parity_for_play(
     4. Compares computed indicators against fresh pandas_ta computation
     
     Args:
-        play_path: Path to Play YAML (or idea card ID for lookup)
+        play_path: Path to Play YAML (or Play ID for lookup)
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
         output_dir: Optional output directory for diff CSV

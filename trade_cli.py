@@ -680,10 +680,10 @@ Examples:
   python trade_cli.py --smoke full                 # Full CLI smoke test
   
   # Play-based backtest (golden path):
-  python trade_cli.py backtest run --idea-card SOLUSDT_15m_ema_crossover
-  python trade_cli.py backtest run --idea-card SOLUSDT_15m_ema_crossover --smoke
-  python trade_cli.py backtest preflight --idea-card SOLUSDT_15m_ema_crossover
-  python trade_cli.py backtest data-fix --idea-card SOLUSDT_15m_ema_crossover
+  python trade_cli.py backtest run --play SOLUSDT_15m_ema_crossover
+  python trade_cli.py backtest run --play SOLUSDT_15m_ema_crossover --smoke
+  python trade_cli.py backtest preflight --play SOLUSDT_15m_ema_crossover
+  python trade_cli.py backtest data-fix --play SOLUSDT_15m_ema_crossover
   python trade_cli.py backtest list
         """
     )
@@ -711,7 +711,7 @@ Examples:
     
     # backtest run
     run_parser = backtest_subparsers.add_parser("run", help="Run an Play backtest")
-    run_parser.add_argument("--idea-card", required=True, help="Play identifier (e.g., SOLUSDT_15m_ema_crossover)")
+    run_parser.add_argument("--play", required=True, help="Play identifier (e.g., SOLUSDT_15m_ema_crossover)")
     run_parser.add_argument("--dir", dest="plays_dir", help="Override Play directory")
     run_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment (default: live)")
     run_parser.add_argument("--symbol", help="Override symbol (default: from Play)")
@@ -731,7 +731,7 @@ Examples:
     
     # backtest preflight
     preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")
-    preflight_parser.add_argument("--idea-card", required=True, help="Play identifier")
+    preflight_parser.add_argument("--play", required=True, help="Play identifier")
     preflight_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     preflight_parser.add_argument("--symbol", help="Override symbol")
     preflight_parser.add_argument("--start", help="Window start")
@@ -741,7 +741,7 @@ Examples:
     
     # backtest indicators (NEW - indicator key discovery)
     indicators_parser = backtest_subparsers.add_parser("indicators", help="Discover indicator keys for an Play")
-    indicators_parser.add_argument("--idea-card", help="Play identifier (required unless --audit-math-from-snapshots)")
+    indicators_parser.add_argument("--play", help="Play identifier (required unless --audit-math-from-snapshots)")
     indicators_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     indicators_parser.add_argument("--symbol", help="Override symbol")
     indicators_parser.add_argument("--print-keys", action="store_true", default=True, help="Print all indicator keys")
@@ -752,10 +752,10 @@ Examples:
     indicators_parser.add_argument("--run-dir", help="Run directory for --audit-math-from-snapshots")
     indicators_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
 
-    # Make idea-card required unless audit mode
+    # Make --play required unless audit mode
     def validate_indicators_args(args):
         if not args.audit_math_from_snapshots and not args.play:
-            indicators_parser.error("--idea-card is required unless --audit-math-from-snapshots is used")
+            indicators_parser.error("--play is required unless --audit-math-from-snapshots is used")
         if args.audit_math_from_snapshots and not args.run_dir:
             indicators_parser.error("--run-dir is required when using --audit-math-from-snapshots")
 
@@ -764,7 +764,7 @@ Examples:
     
     # backtest data-fix
     datafix_parser = backtest_subparsers.add_parser("data-fix", help="Fix data for an Play")
-    datafix_parser.add_argument("--idea-card", required=True, help="Play identifier")
+    datafix_parser.add_argument("--play", required=True, help="Play identifier")
     datafix_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     datafix_parser.add_argument("--symbol", help="Override symbol")
     datafix_parser.add_argument("--start", help="Sync from this date")
@@ -778,19 +778,19 @@ Examples:
     list_parser.add_argument("--dir", dest="plays_dir", help="Override Plays directory")
     list_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
     
-    # backtest idea-card-normalize (NEW - build-time validation)
+    # backtest play-normalize (NEW - build-time validation)
     normalize_parser = backtest_subparsers.add_parser(
-        "idea-card-normalize",
+        "play-normalize",
         help="Validate and normalize an Play YAML (build-time)"
     )
-    normalize_parser.add_argument("--idea-card", required=True, help="Play identifier")
+    normalize_parser.add_argument("--play", required=True, help="Play identifier")
     normalize_parser.add_argument("--dir", dest="plays_dir", help="Override Plays directory")
     normalize_parser.add_argument("--write", action="store_true", help="Write normalized YAML in-place")
     normalize_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
 
-    # backtest idea-card-normalize-batch (NEW - batch normalization)
+    # backtest play-normalize-batch (NEW - batch normalization)
     batch_normalize_parser = backtest_subparsers.add_parser(
-        "idea-card-normalize-batch",
+        "play-normalize-batch",
         help="Batch validate and normalize all Plays in a directory"
     )
     batch_normalize_parser.add_argument("--dir", dest="plays_dir", required=True, help="Directory containing Play YAML files")
@@ -812,7 +812,7 @@ Examples:
     verify_suite_parser.add_argument("--skip-toolkit-audit", action="store_true", help="Skip Gate 1 toolkit contract audit")
     # Phase 3.1: CSV vs Parquet parity verification mode
     verify_suite_parser.add_argument("--compare-csv-parquet", action="store_true", help="Verify CSV vs Parquet artifact parity")
-    verify_suite_parser.add_argument("--idea-card", dest="parity_play", help="Play ID for parity check")
+    verify_suite_parser.add_argument("--play", dest="parity_play", help="Play ID for parity check")
     verify_suite_parser.add_argument("--symbol", dest="parity_symbol", help="Symbol for parity check")
     verify_suite_parser.add_argument("--run", dest="parity_run", help="Run ID (e.g., run-001 or 'latest')")
     
@@ -860,7 +860,7 @@ Examples:
         "math-parity",
         help="Validate indicator math parity (contract + in-memory comparison)"
     )
-    math_parity_parser.add_argument("--idea-card", required=True, help="Path to Play YAML for parity audit")
+    math_parity_parser.add_argument("--play", required=True, help="Path to Play YAML for parity audit")
     math_parity_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     math_parity_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
     math_parity_parser.add_argument("--output-dir", help="Output directory for diff reports (optional)")
@@ -873,7 +873,7 @@ Examples:
         "audit-snapshot-plumbing",
         help="Run Phase 4 snapshot plumbing parity audit"
     )
-    plumbing_parser.add_argument("--idea-card", required=True, help="Play identifier or path")
+    plumbing_parser.add_argument("--play", required=True, help="Play identifier or path")
     plumbing_parser.add_argument("--symbol", help="Override symbol (optional, inferred from Play)")
     plumbing_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     plumbing_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
@@ -1324,7 +1324,7 @@ def _print_preflight_diagnostics(diag: dict):
 
 
 def handle_backtest_normalize(args) -> int:
-    """Handle `backtest idea-card-normalize` subcommand."""
+    """Handle `backtest play-normalize` subcommand."""
     import json
     from pathlib import Path
     from src.tools.backtest_cli_wrapper import backtest_play_normalize_tool
@@ -1334,12 +1334,12 @@ def handle_backtest_normalize(args) -> int:
     if not args.json_output:
         console.print(Panel(
             f"[bold cyan]PLAY NORMALIZE[/]\n"
-            f"Play: {args.idea_card} | Write: {args.write}",
+            f"Play: {args.play} | Write: {args.write}",
             border_style="cyan"
         ))
 
     result = backtest_play_normalize_tool(
-        play_id=args.idea_card,
+        play_id=args.play,
         plays_dir=plays_dir,
         write_in_place=args.write,
     )
@@ -1376,7 +1376,7 @@ def _handle_parity_verification(args, verify_artifact_parity_tool) -> int:
     
     # Validate required args
     if not getattr(args, 'parity_play', None):
-        console.print("[red]Error: --idea-card is required for parity verification[/]")
+        console.print("[red]Error: --play is required for parity verification[/]")
         return 1
     if not getattr(args, 'parity_symbol', None):
         console.print("[red]Error: --symbol is required for parity verification[/]")
@@ -1699,7 +1699,7 @@ def handle_backtest_verify_suite(args) -> int:
 
 
 def handle_backtest_normalize_batch(args) -> int:
-    """Handle `backtest idea-card-normalize-batch` subcommand."""
+    """Handle `backtest play-normalize-batch` subcommand."""
     import json
     from pathlib import Path
     from src.tools.backtest_cli_wrapper import backtest_play_normalize_batch_tool
@@ -2375,9 +2375,9 @@ def main():
             sys.exit(handle_backtest_data_fix(args))
         elif args.backtest_command == "list":
             sys.exit(handle_backtest_list(args))
-        elif args.backtest_command == "idea-card-normalize":
+        elif args.backtest_command == "play-normalize":
             sys.exit(handle_backtest_normalize(args))
-        elif args.backtest_command == "idea-card-normalize-batch":
+        elif args.backtest_command == "play-normalize-batch":
             sys.exit(handle_backtest_normalize_batch(args))
         elif args.backtest_command == "verify-suite":
             sys.exit(handle_backtest_verify_suite(args))
@@ -2400,7 +2400,7 @@ def main():
         elif args.backtest_command == "audit-rollup":
             sys.exit(handle_backtest_audit_rollup(args))
         else:
-            console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|idea-card-normalize|idea-card-normalize-batch|verify-suite|audit-toolkit|metadata-smoke|mark-price-smoke|structure-smoke|math-parity|audit-snapshot-plumbing|verify-determinism|metrics-audit|audit-rollup} --help[/]")
+            console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|play-normalize|play-normalize-batch|verify-suite|audit-toolkit|metadata-smoke|mark-price-smoke|structure-smoke|math-parity|audit-snapshot-plumbing|verify-determinism|metrics-audit|audit-rollup} --help[/]")
             sys.exit(1)
     
     # ===== SMOKE TEST MODE =====

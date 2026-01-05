@@ -125,7 +125,7 @@ python -c "from src.forge import list_setups, list_playbooks, list_systems; prin
 | **W2 StateRationalizer** | 2026-01-04 | Layer 2 complete |
 | **W1 Forge** | 2026-01-04 | Forge framework |
 | **Forge Migration** | 2026-01-04 | IdeaCard -> Play (8 phases, 221 files) |
-| Legacy Code Cleanup | 2026-01-04 | Removed signal_rules validation, deprecated play_generator |
+| Legacy Code Cleanup | 2026-01-04 | Removed signal_rules, CLI renamed (--play, play-normalize) |
 | Mega-file Refactor | 2026-01-03 | Phases 1-3 complete |
 | Incremental State | 2026-01-03 | O(1) hot loop |
 | 1m Eval Loop | 2026-01-02 | mark_price in snapshot |

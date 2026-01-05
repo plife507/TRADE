@@ -5,7 +5,7 @@ Validates that Play configuration values flow correctly to engine components.
 No silent defaults allowed - all values must be explicitly traceable.
 
 Usage:
-    python trade_cli.py backtest audit-value-flow --idea-card <card_id>
+    python trade_cli.py backtest audit-value-flow --play <play_id>
 
 Checks:
 1. slippage_bps: Play → ExecutionConfig
