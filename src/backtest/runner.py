@@ -739,8 +739,8 @@ def run_backtest_with_gates(
 
         # Finalize run logger (writes summary log and index.jsonl entry)
         run_logger.finalize(
-            net_pnl=summary.net_pnl if summary else None,
-            trades_count=summary.total_trades if summary else None,
+            net_pnl=summary.net_pnl_usdt if summary else None,
+            trades_count=summary.trades_count if summary else None,
             status="success",
         )
         set_run_logger(None)

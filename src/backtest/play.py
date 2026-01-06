@@ -824,7 +824,7 @@ class Play:
 # Loader
 # =============================================================================
 
-PLAYS_DIR = Path(__file__).parent.parent.parent / "configs" / "plays"
+PLAYS_DIR = Path(__file__).parent.parent.parent / "strategies" / "plays"
 
 
 def load_play(play_id: str, base_dir: Path | None = None) -> Play:
