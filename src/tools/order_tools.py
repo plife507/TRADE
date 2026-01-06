@@ -15,6 +15,13 @@ does NOT switch environments. If the env doesn't match, the tool returns an erro
 """
 
 from .shared import ToolResult, _get_exchange_manager, validate_trading_env_or_error
+from .order_tools_common import (
+    validate_order_params,
+    validate_symbol,
+    execute_order,
+    execute_simple_order,
+    build_order_data,
+)
 
 
 def set_leverage_tool(symbol: str, leverage: int, trading_env: str | None = None) -> ToolResult:
@@ -66,105 +73,47 @@ def set_leverage_tool(symbol: str, leverage: int, trading_env: str | None = None
 def market_buy_tool(symbol: str, usd_amount: float, trading_env: str | None = None) -> ToolResult:
     """
     Place a market buy order (open long position).
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
-        return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="USD amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.market_buy(symbol, usd_amount)
-        
-        if result.success:
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Buy order filled: {result.qty} @ ${result.price:,.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "side": result.side,
-                    "qty": result.qty,
-                    "price": result.price,
-                    "usd_amount": usd_amount,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Order failed",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing buy order: {str(e)}",
-        )
+    return execute_simple_order(
+        exchange_method="market_buy",
+        symbol=symbol,
+        trading_env=trading_env,
+        usd_amount=usd_amount,
+        success_message="Buy order filled: {qty} @ {price}",
+        error_prefix="placing buy order",
+        extra_data={"usd_amount": usd_amount},
+    )
 
 
 def market_sell_tool(symbol: str, usd_amount: float, trading_env: str | None = None) -> ToolResult:
     """
     Place a market sell order (open short position).
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
-        return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="USD amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.market_sell(symbol, usd_amount)
-        
-        if result.success:
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Sell order filled: {result.qty} @ ${result.price:,.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "side": result.side,
-                    "qty": result.qty,
-                    "price": result.price,
-                    "usd_amount": usd_amount,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Order failed",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing sell order: {str(e)}",
-        )
+    return execute_simple_order(
+        exchange_method="market_sell",
+        symbol=symbol,
+        trading_env=trading_env,
+        usd_amount=usd_amount,
+        success_message="Sell order filled: {qty} @ {price}",
+        error_prefix="placing sell order",
+        extra_data={"usd_amount": usd_amount},
+    )
 
 
 def market_buy_with_tpsl_tool(
@@ -176,59 +125,28 @@ def market_buy_with_tpsl_tool(
 ) -> ToolResult:
     """
     Place a market buy order with take profit and/or stop loss.
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
         take_profit: Take profit price (optional)
         stop_loss: Stop loss price (optional)
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
-        return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="USD amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.market_buy_with_tpsl(
-            symbol, usd_amount, take_profit=take_profit, stop_loss=stop_loss
-        )
-        
-        if result.success:
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Buy order with TP/SL: {result.qty} @ ${result.price:,.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "side": result.side,
-                    "qty": result.qty,
-                    "price": result.price,
-                    "usd_amount": usd_amount,
-                    "take_profit": take_profit,
-                    "stop_loss": stop_loss,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Order failed",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing order: {str(e)}",
-        )
+    return execute_simple_order(
+        exchange_method="market_buy_with_tpsl",
+        symbol=symbol,
+        trading_env=trading_env,
+        usd_amount=usd_amount,
+        success_message="Buy order with TP/SL: {qty} @ {price}",
+        error_prefix="placing order",
+        extra_data={"usd_amount": usd_amount, "take_profit": take_profit, "stop_loss": stop_loss},
+        take_profit=take_profit,
+        stop_loss=stop_loss,
+    )
 
 
 def market_sell_with_tpsl_tool(
@@ -240,59 +158,28 @@ def market_sell_with_tpsl_tool(
 ) -> ToolResult:
     """
     Place a market sell order with take profit and/or stop loss.
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
         take_profit: Take profit price (optional)
         stop_loss: Stop loss price (optional)
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
-        return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="USD amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.market_sell_with_tpsl(
-            symbol, usd_amount, take_profit=take_profit, stop_loss=stop_loss
-        )
-        
-        if result.success:
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Sell order with TP/SL: {result.qty} @ ${result.price:,.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "side": result.side,
-                    "qty": result.qty,
-                    "price": result.price,
-                    "usd_amount": usd_amount,
-                    "take_profit": take_profit,
-                    "stop_loss": stop_loss,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Order failed",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing order: {str(e)}",
-        )
+    return execute_simple_order(
+        exchange_method="market_sell_with_tpsl",
+        symbol=symbol,
+        trading_env=trading_env,
+        usd_amount=usd_amount,
+        success_message="Sell order with TP/SL: {qty} @ {price}",
+        error_prefix="placing order",
+        extra_data={"usd_amount": usd_amount, "take_profit": take_profit, "stop_loss": stop_loss},
+        take_profit=take_profit,
+        stop_loss=stop_loss,
+    )
 
 
 def cancel_all_orders_tool(symbol: str | None = None, trading_env: str | None = None) -> ToolResult:
@@ -350,68 +237,31 @@ def limit_buy_tool(
 ) -> ToolResult:
     """
     Place a limit buy order.
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
         price: Limit price
-        time_in_force: GTC (Good Till Cancel), IOC (Immediate or Cancel), 
+        time_in_force: GTC (Good Till Cancel), IOC (Immediate or Cancel),
                       FOK (Fill or Kill), or PostOnly
         reduce_only: If True, only reduce position (close only)
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
-        return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if price <= 0:
-        return ToolResult(success=False, error="Price must be positive")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="Amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.limit_buy(
-            symbol=symbol,
-            usd_amount=usd_amount,
-            price=price,
-            time_in_force=time_in_force,
-            reduce_only=reduce_only,
-        )
-        
-        if result.success:
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Limit buy order placed: {result.qty} @ ${price:.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "order_link_id": result.order_link_id,
-                    "qty": result.qty,
-                    "price": price,
-                    "side": "Buy",
-                    "order_type": "Limit",
-                    "reduce_only": reduce_only,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Failed to place limit buy order",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing limit buy: {str(e)}",
-        )
+    return execute_simple_order(
+        exchange_method="limit_buy",
+        symbol=symbol,
+        trading_env=trading_env,
+        usd_amount=usd_amount,
+        price=price,
+        success_message="Limit buy order placed: {qty} @ {price}",
+        error_prefix="placing limit buy",
+        extra_data={"side": "Buy", "order_type": "Limit", "reduce_only": reduce_only},
+        time_in_force=time_in_force,
+        reduce_only=reduce_only,
+    )
 
 
 def limit_sell_tool(
@@ -424,7 +274,7 @@ def limit_sell_tool(
 ) -> ToolResult:
     """
     Place a limit sell order.
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
@@ -432,59 +282,22 @@ def limit_sell_tool(
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
-        return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if price <= 0:
-        return ToolResult(success=False, error="Price must be positive")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="Amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.limit_sell(
-            symbol=symbol,
-            usd_amount=usd_amount,
-            price=price,
-            time_in_force=time_in_force,
-            reduce_only=reduce_only,
-        )
-        
-        if result.success:
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Limit sell order placed: {result.qty} @ ${price:.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "order_link_id": result.order_link_id,
-                    "qty": result.qty,
-                    "price": price,
-                    "side": "Sell",
-                    "order_type": "Limit",
-                    "reduce_only": reduce_only,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Failed to place limit sell order",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing limit sell: {str(e)}",
-        )
+    return execute_simple_order(
+        exchange_method="limit_sell",
+        symbol=symbol,
+        trading_env=trading_env,
+        usd_amount=usd_amount,
+        price=price,
+        success_message="Limit sell order placed: {qty} @ {price}",
+        error_prefix="placing limit sell",
+        extra_data={"side": "Sell", "order_type": "Limit", "reduce_only": reduce_only},
+        time_in_force=time_in_force,
+        reduce_only=reduce_only,
+    )
 
 
 # ==============================================================================
@@ -610,11 +423,11 @@ def stop_market_buy_tool(
 ) -> ToolResult:
     """
     Place a stop market buy order (triggers when price reaches trigger).
-    
+
     Use cases:
     - Stop-loss for SHORT positions (trigger when price rises)
     - Breakout entry (buy when price breaks above resistance)
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
@@ -624,63 +437,34 @@ def stop_market_buy_tool(
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         reduce_only: If True, only reduce position (close only)
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
+    if error := validate_order_params(trading_env, symbol, usd_amount=usd_amount, trigger_price=trigger_price):
         return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if trigger_price <= 0:
-        return ToolResult(success=False, error="Trigger price must be positive")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="Amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.stop_market_buy(
-            symbol=symbol,
-            usd_amount=usd_amount,
-            trigger_price=trigger_price,
-            trigger_direction=trigger_direction,
-            trigger_by=trigger_by,
-            reduce_only=reduce_only,
-        )
-        
-        if result.success:
-            direction_str = "rises to" if trigger_direction == 1 else "falls to"
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Stop market BUY: triggers when price {direction_str} ${trigger_price:.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "order_link_id": result.order_link_id,
-                    "qty": result.qty,
-                    "trigger_price": trigger_price,
-                    "trigger_direction": trigger_direction,
-                    "trigger_by": trigger_by,
-                    "side": "Buy",
-                    "order_type": "Stop Market",
-                    "reduce_only": reduce_only,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Failed to place stop market buy order",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing stop market buy: {str(e)}",
-        )
+
+    direction_str = "rises to" if trigger_direction == 1 else "falls to"
+    return execute_simple_order(
+        exchange_method="stop_market_buy",
+        symbol=symbol,
+        trading_env=None,  # Already validated
+        usd_amount=usd_amount,
+        success_message=f"Stop market BUY: triggers when price {direction_str} ${trigger_price:.2f}",
+        error_prefix="placing stop market buy",
+        extra_data={
+            "trigger_price": trigger_price,
+            "trigger_direction": trigger_direction,
+            "trigger_by": trigger_by,
+            "side": "Buy",
+            "order_type": "Stop Market",
+            "reduce_only": reduce_only,
+        },
+        trigger_price=trigger_price,
+        trigger_direction=trigger_direction,
+        trigger_by=trigger_by,
+        reduce_only=reduce_only,
+    )
 
 
 def stop_market_sell_tool(
@@ -694,11 +478,11 @@ def stop_market_sell_tool(
 ) -> ToolResult:
     """
     Place a stop market sell order (triggers when price reaches trigger).
-    
+
     Use cases:
     - Stop-loss for LONG positions (trigger when price falls)
     - Breakdown entry (sell when price breaks below support)
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
@@ -708,63 +492,34 @@ def stop_market_sell_tool(
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         reduce_only: If True, only reduce position (close only)
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
+    if error := validate_order_params(trading_env, symbol, usd_amount=usd_amount, trigger_price=trigger_price):
         return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if trigger_price <= 0:
-        return ToolResult(success=False, error="Trigger price must be positive")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="Amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.stop_market_sell(
-            symbol=symbol,
-            usd_amount=usd_amount,
-            trigger_price=trigger_price,
-            trigger_direction=trigger_direction,
-            trigger_by=trigger_by,
-            reduce_only=reduce_only,
-        )
-        
-        if result.success:
-            direction_str = "rises to" if trigger_direction == 1 else "falls to"
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Stop market SELL: triggers when price {direction_str} ${trigger_price:.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "order_link_id": result.order_link_id,
-                    "qty": result.qty,
-                    "trigger_price": trigger_price,
-                    "trigger_direction": trigger_direction,
-                    "trigger_by": trigger_by,
-                    "side": "Sell",
-                    "order_type": "Stop Market",
-                    "reduce_only": reduce_only,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Failed to place stop market sell order",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing stop market sell: {str(e)}",
-        )
+
+    direction_str = "rises to" if trigger_direction == 1 else "falls to"
+    return execute_simple_order(
+        exchange_method="stop_market_sell",
+        symbol=symbol,
+        trading_env=None,  # Already validated
+        usd_amount=usd_amount,
+        success_message=f"Stop market SELL: triggers when price {direction_str} ${trigger_price:.2f}",
+        error_prefix="placing stop market sell",
+        extra_data={
+            "trigger_price": trigger_price,
+            "trigger_direction": trigger_direction,
+            "trigger_by": trigger_by,
+            "side": "Sell",
+            "order_type": "Stop Market",
+            "reduce_only": reduce_only,
+        },
+        trigger_price=trigger_price,
+        trigger_direction=trigger_direction,
+        trigger_by=trigger_by,
+        reduce_only=reduce_only,
+    )
 
 
 def stop_limit_buy_tool(
@@ -780,9 +535,9 @@ def stop_limit_buy_tool(
 ) -> ToolResult:
     """
     Place a stop limit buy order (triggers limit order when price reaches trigger).
-    
+
     When trigger_price is reached, places a limit buy at limit_price.
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
@@ -793,65 +548,38 @@ def stop_limit_buy_tool(
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
+    if error := validate_order_params(
+        trading_env, symbol, usd_amount=usd_amount,
+        trigger_price=trigger_price, limit_price=limit_price
+    ):
         return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if trigger_price <= 0 or limit_price <= 0:
-        return ToolResult(success=False, error="Prices must be positive")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="Amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.stop_limit_buy(
-            symbol=symbol,
-            usd_amount=usd_amount,
-            trigger_price=trigger_price,
-            limit_price=limit_price,
-            trigger_direction=trigger_direction,
-            trigger_by=trigger_by,
-            time_in_force=time_in_force,
-            reduce_only=reduce_only,
-        )
-        
-        if result.success:
-            direction_str = "rises to" if trigger_direction == 1 else "falls to"
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Stop limit BUY: triggers at ${trigger_price:.2f}, limit @ ${limit_price:.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "order_link_id": result.order_link_id,
-                    "qty": result.qty,
-                    "trigger_price": trigger_price,
-                    "limit_price": limit_price,
-                    "trigger_direction": trigger_direction,
-                    "side": "Buy",
-                    "order_type": "Stop Limit",
-                    "reduce_only": reduce_only,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Failed to place stop limit buy order",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing stop limit buy: {str(e)}",
-        )
+
+    return execute_simple_order(
+        exchange_method="stop_limit_buy",
+        symbol=symbol,
+        trading_env=None,  # Already validated
+        usd_amount=usd_amount,
+        success_message=f"Stop limit BUY: triggers at ${trigger_price:.2f}, limit @ ${limit_price:.2f}",
+        error_prefix="placing stop limit buy",
+        extra_data={
+            "trigger_price": trigger_price,
+            "limit_price": limit_price,
+            "trigger_direction": trigger_direction,
+            "side": "Buy",
+            "order_type": "Stop Limit",
+            "reduce_only": reduce_only,
+        },
+        trigger_price=trigger_price,
+        limit_price=limit_price,
+        trigger_direction=trigger_direction,
+        trigger_by=trigger_by,
+        time_in_force=time_in_force,
+        reduce_only=reduce_only,
+    )
 
 
 def stop_limit_sell_tool(
@@ -867,9 +595,9 @@ def stop_limit_sell_tool(
 ) -> ToolResult:
     """
     Place a stop limit sell order (triggers limit order when price reaches trigger).
-    
+
     When trigger_price is reached, places a limit sell at limit_price.
-    
+
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
@@ -880,65 +608,38 @@ def stop_limit_sell_tool(
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
         trading_env: Optional trading environment ("demo" or "live") for validation
-    
+
     Returns:
         ToolResult with order details
     """
-    if error := validate_trading_env_or_error(trading_env):
+    if error := validate_order_params(
+        trading_env, symbol, usd_amount=usd_amount,
+        trigger_price=trigger_price, limit_price=limit_price
+    ):
         return error
-    
-    if not symbol or not isinstance(symbol, str):
-        return ToolResult(success=False, error="Invalid symbol parameter")
-    
-    if trigger_price <= 0 or limit_price <= 0:
-        return ToolResult(success=False, error="Prices must be positive")
-    
-    if usd_amount <= 0:
-        return ToolResult(success=False, error="Amount must be positive")
-    
-    try:
-        exchange = _get_exchange_manager()
-        result = exchange.stop_limit_sell(
-            symbol=symbol,
-            usd_amount=usd_amount,
-            trigger_price=trigger_price,
-            limit_price=limit_price,
-            trigger_direction=trigger_direction,
-            trigger_by=trigger_by,
-            time_in_force=time_in_force,
-            reduce_only=reduce_only,
-        )
-        
-        if result.success:
-            direction_str = "rises to" if trigger_direction == 1 else "falls to"
-            return ToolResult(
-                success=True,
-                symbol=symbol,
-                message=f"Stop limit SELL: triggers at ${trigger_price:.2f}, limit @ ${limit_price:.2f}",
-                data={
-                    "order_id": result.order_id,
-                    "order_link_id": result.order_link_id,
-                    "qty": result.qty,
-                    "trigger_price": trigger_price,
-                    "limit_price": limit_price,
-                    "trigger_direction": trigger_direction,
-                    "side": "Sell",
-                    "order_type": "Stop Limit",
-                    "reduce_only": reduce_only,
-                },
-            )
-        else:
-            return ToolResult(
-                success=False,
-                symbol=symbol,
-                error=result.error or "Failed to place stop limit sell order",
-            )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            symbol=symbol,
-            error=f"Exception placing stop limit sell: {str(e)}",
-        )
+
+    return execute_simple_order(
+        exchange_method="stop_limit_sell",
+        symbol=symbol,
+        trading_env=None,  # Already validated
+        usd_amount=usd_amount,
+        success_message=f"Stop limit SELL: triggers at ${trigger_price:.2f}, limit @ ${limit_price:.2f}",
+        error_prefix="placing stop limit sell",
+        extra_data={
+            "trigger_price": trigger_price,
+            "limit_price": limit_price,
+            "trigger_direction": trigger_direction,
+            "side": "Sell",
+            "order_type": "Stop Limit",
+            "reduce_only": reduce_only,
+        },
+        trigger_price=trigger_price,
+        limit_price=limit_price,
+        trigger_direction=trigger_direction,
+        trigger_by=trigger_by,
+        time_in_force=time_in_force,
+        reduce_only=reduce_only,
+    )
 
 
 # ==============================================================================

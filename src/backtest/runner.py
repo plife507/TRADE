@@ -77,6 +77,7 @@ from .execution_validation import (
     PlaySignalEvaluator,
     SignalDecision,
 )
+from .logging import RunLogger, set_run_logger
 
 
 class GateFailure(Exception):
@@ -358,7 +359,19 @@ def run_backtest_with_gates(
         
         # Create logs directory
         (artifact_path / "logs").mkdir(exist_ok=True)
-        
+
+        # Initialize per-run logger (writes to artifact logs/ and global play-indexed logs/)
+        run_logger = RunLogger(
+            play_hash=play_hash,
+            run_id=run_id,
+            artifact_dir=artifact_path,
+            play_id=play.id,
+            symbol=symbol,
+            tf=exec_tf,
+        )
+        set_run_logger(run_logger)
+        run_logger.info("Run started", play_id=play.id, symbol=symbol, tf=exec_tf)
+
         # =====================================================================
         # GATE 1: Data Preflight
         # =====================================================================
@@ -493,6 +506,8 @@ def run_backtest_with_gates(
                 window_end=config.window_end,
                 warmup_by_tf=preflight_warmup_by_role,
             )
+            # Set play_hash for debug logging (hash tracing)
+            engine.set_play_hash(play_hash)
             engine_result = run_engine_with_play(engine, play)
         
         # Extract trades and equity
@@ -722,6 +737,14 @@ def run_backtest_with_gates(
         # =====================================================================
         result.success = True
 
+        # Finalize run logger (writes summary log and index.jsonl entry)
+        run_logger.finalize(
+            net_pnl=summary.net_pnl if summary else None,
+            trades_count=summary.total_trades if summary else None,
+            status="success",
+        )
+        set_run_logger(None)
+
         # Print final summary
         summary.print_summary()
 
@@ -731,14 +754,26 @@ def run_backtest_with_gates(
         # Gate failure - already handled
         print(f"\n[FAILED] Gate Failed: {result.gate_failed}")
         print(f"   {result.error_message}")
+        # Finalize run logger with error status
+        try:
+            run_logger.finalize(status="gate_failed")
+            set_run_logger(None)
+        except NameError:
+            pass  # run_logger not yet initialized
         return result
-        
+
     except Exception as e:
         # Unexpected error
         import traceback
         result.error_message = str(e)
         print(f"\n[ERROR] Error: {e}")
         traceback.print_exc()
+        # Finalize run logger with error status
+        try:
+            run_logger.finalize(status="error")
+            set_run_logger(None)
+        except NameError:
+            pass  # run_logger not yet initialized
         return result
 
 

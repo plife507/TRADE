@@ -205,7 +205,8 @@ TRADE/
 │   │   ├── sim/                   # Simulated exchange (pricing, execution, ledger)
 │   │   ├── runtime/               # Snapshot, FeedStore, TFContext
 │   │   ├── features/              # FeatureSpec, FeatureFrameBuilder
-│   │   └── incremental/           # O(1) structure detection (STRUCTURE_REGISTRY)
+│   │   ├── incremental/           # O(1) structure detection (STRUCTURE_REGISTRY)
+│   │   └── logging/               # Per-run logging with hash tracing
 │   ├── forge/                     # DOMAIN: Development & Validation Environment
 │   │   └── ...                    # Play development, testing, promotion tools
 │   ├── core/                      # DOMAIN: Live Trading (exchange-native semantics)
@@ -218,12 +219,20 @@ TRADE/
 │   ├── data/                      # SHARED: Market data, DuckDB, WebSocket state
 │   ├── tools/                     # SHARED: CLI/API surface (PRIMARY INTERFACE)
 │   ├── utils/                     # SHARED: Logging, rate limiting, helpers
+│   │   └── debug.py               # Debug utilities with hash tracing
 │   └── risk/global_risk.py        # Account-level risk (GlobalRiskView)
-├── strategies/
+├── configs/
 │   ├── blocks/                    # Atomic reusable conditions
 │   ├── plays/                     # Proven Play configurations (strategies)
-│   │   └── _validation/           # Validation Plays (V_001+)
+│   │   └── _validation/           # Validation Plays (V_100+)
 │   └── systems/                   # Deployment configurations (multiple plays)
+├── data/                          # Local market data (DuckDB, gitignored)
+│   └── market_data_*.duckdb       # Environment-aware databases
+├── backtests/                     # Backtest artifacts (gitignored)
+│   └── {category}/{play_id}/...   # Hash-based deterministic paths
+├── logs/                          # Log files (gitignored)
+│   ├── backtests/{play_hash}/     # Play-indexed backtest logs
+│   └── *.log                      # Global logs
 ├── docs/
 │   ├── todos/                     # TODO phase documents (canonical work tracking)
 │   ├── architecture/              # Architecture docs
@@ -642,6 +651,7 @@ See **Critical Rules → Safety & API Discipline** for enforcement requirements.
 | Directory | Domain | Contents |
 |-----------|--------|----------|
 | `src/backtest/` | SIMULATOR | Backtest engine, simulated exchange, snapshots, features |
+| `src/backtest/logging/` | SIMULATOR | Per-run logging with hash tracing |
 | `src/forge/` | DEVELOPMENT | Play development, validation, promotion tools |
 | `src/core/` | LIVE | Exchange manager, position, risk, order execution |
 | `src/exchanges/` | LIVE | Bybit API client |
@@ -649,9 +659,13 @@ See **Critical Rules → Safety & API Discipline** for enforcement requirements.
 | `src/data/` | SHARED | Market data, DuckDB storage, realtime state |
 | `src/config/` | SHARED | Configuration (domain-agnostic) |
 | `src/utils/` | SHARED | Logging, rate limiting, helpers |
-| `strategies/blocks/` | — | Atomic reusable conditions |
-| `strategies/plays/` | — | Proven Play configurations |
-| `strategies/systems/` | — | Deployment configurations (multiple plays) |
+| `src/utils/debug.py` | SHARED | Debug utilities with hash tracing |
+| `configs/blocks/` | — | Atomic reusable conditions |
+| `configs/plays/` | — | Proven Play configurations |
+| `configs/systems/` | — | Deployment configurations (multiple plays) |
+| `data/` | — | Local market data (DuckDB, gitignored) |
+| `backtests/` | — | Backtest artifacts (gitignored) |
+| `logs/` | — | Log files incl. play-indexed backtest logs (gitignored) |
 | `docs/todos/` | — | TODO phase documents (canonical work tracking) |
 
 ## Reference Documentation

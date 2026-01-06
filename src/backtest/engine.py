@@ -82,6 +82,9 @@ from .engine_stops import (
 # Import from engine_artifacts module
 from .engine_artifacts import calculate_drawdowns_impl, write_artifacts_impl
 
+# Import BarProcessor for decomposed run loop
+from .bar_processor import BarProcessor, BarProcessingResult
+
 # Import factory functions from engine_factory module
 # These are re-exported for backward compatibility
 from .engine_factory import (
@@ -145,6 +148,14 @@ from .rationalization import StateRationalizer, RationalizedState
 from ..core.risk_manager import Signal
 from ..data.historical_data_store import get_historical_store, TF_MINUTES
 from ..utils.logger import get_logger
+from ..utils.debug import (
+    debug_log,
+    debug_milestone,
+    debug_signal,
+    debug_trade,
+    debug_run_complete,
+    is_debug_enabled,
+)
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -245,6 +256,9 @@ class BacktestEngine:
         self._exchange: SimulatedExchange | None = None
         self._equity_curve: list[EquityPoint] = []
         self._started_at: datetime | None = None
+
+        # Debug tracing: play_hash for log correlation
+        self._play_hash: str | None = None
         
         # Phase 3: Multi-TF configuration
         # Default to single-TF mode if no explicit mapping provided
@@ -465,7 +479,11 @@ class BacktestEngine:
         Delegates to engine_data_prep.timeframe_to_timedelta().
         """
         return timeframe_to_timedelta(tf)
-    
+
+    def set_play_hash(self, play_hash: str) -> None:
+        """Set play hash for debug log correlation."""
+        self._play_hash = play_hash
+
     def prepare_backtest_frame(self) -> PreparedFrame:
         """
         Prepare the backtest DataFrame with proper warm-up.
@@ -867,507 +885,185 @@ class BacktestEngine:
     ) -> BacktestResult:
         """
         Run the backtest.
-        
+
         Args:
             strategy: Strategy function that takes (snapshot, params) and returns Signal or None
-            
+
         Returns:
             BacktestResult with structured metrics, trades, and equity curve
-            
-        Phase 3: Multi-TF mode with data-driven caching.
-        - Uses TimeframeCache.refresh_step() at each bar
-        - Readiness gate blocks trading until HTF/MTF caches are ready
-        - Cache updates are deterministic: HTF first, then MTF
-        
-        Lookahead Prevention (Phase 3):
+
+        Uses BarProcessor for per-bar processing with clear separation:
+        - Warmup bars: State updates only, no trading
+        - Trading bars: Full evaluation with stops, signals, equity
+
+        Lookahead Prevention:
         - Strategy is invoked ONLY at bar.ts_close (never mid-bar)
         - Indicators are precomputed OUTSIDE the hot loop (vectorized)
         - Snapshot.ts_close must equal bar.ts_close (asserted at runtime)
-        - HTF/MTF features are forward-filled from last closed bar (no partial candles)
+        - HTF/MTF features are forward-filled from last closed bar
         """
         self._started_at = datetime.now()
-        
-        # Phase 3: Use multi-TF preparation if in multi-TF mode
+
+        # Prepare data frames
         if self._multi_tf_mode and self._mtf_frames is None:
             self.prepare_multi_tf_frames()
         elif self._prepared_frame is None:
             self.prepare_backtest_frame()
-        
+
         prepared = self._prepared_frame
-        df = prepared.df
         sim_start_idx = prepared.sim_start_index
-        
-        # Array-backed hot loop: Build FeedStores for O(1) access
+
+        # Build FeedStores for O(1) access
         self._build_feed_stores()
         exec_feed = self._exec_feed
         num_bars = exec_feed.length
-        tf_delta = tf_duration(self.config.tf)
 
-        # Phase 6: Build incremental state for structure detection
+        # Build incremental state for structure detection
         self._incremental_state = self._build_incremental_state()
 
-        # W2: Build StateRationalizer for Layer 2 (only if incremental state exists)
+        # Build StateRationalizer for Layer 2
         if self._incremental_state is not None:
             self._rationalizer = StateRationalizer(history_depth=1000)
         else:
             self._rationalizer = None
 
-        # Get resolved risk profile values
+        # Get risk profile and initialize exchange
         risk_profile = self.config.risk_profile
         initial_equity = risk_profile.initial_equity
-        
-        # Initialize exchange with initial equity and risk profile (Bybit-aligned)
+
         self._exchange = SimulatedExchange(
             symbol=self.config.symbol,
             initial_capital=initial_equity,
             execution_config=self.execution_config,
             risk_profile=risk_profile,
         )
-        
-        # Reset risk manager
         self.risk_manager.reset()
-        
+
         self.logger.info(
-            f"Running backtest: {len(df)} bars, sim_start_idx={sim_start_idx}, "
+            f"Running backtest: {len(prepared.df)} bars, sim_start_idx={sim_start_idx}, "
             f"warmup_bars={prepared.warmup_bars}, equity=${initial_equity:,.0f}, "
-                f"leverage={risk_profile.max_leverage:.1f}x, "
-                f"mark_price_source={risk_profile.mark_price_source}"
+            f"leverage={risk_profile.max_leverage:.1f}x, "
+            f"mark_price_source={risk_profile.mark_price_source}"
         )
-        
-        # Bar-by-bar simulation
+
+        debug_log(
+            self._play_hash,
+            "Engine init",
+            symbol=self.config.symbol,
+            tf=self.config.tf,
+            bars=num_bars,
+            warmup=prepared.warmup_bars,
+            equity=initial_equity,
+        )
+
+        # Initialize processing state
         self._equity_curve = []
         self._account_curve: list[AccountCurvePoint] = []
         prev_bar: CanonicalBar | None = None
+        run_start_time = datetime.now()
 
-        # Early-stop tracking (proof-grade)
+        # Stop tracking
         stop_classification: StopReason | None = None
         stop_reason_detail: str | None = None
-        stop_reason: str | None = None  # Legacy compat
+        stop_reason: str | None = None
         stop_ts: datetime | None = None
         stop_bar_index: int | None = None
         stop_details: dict[str, Any] | None = None
-        
+
+        # Create bar processor
+        processor = BarProcessor(self, strategy, run_start_time)
+
+        # ========== MAIN BAR LOOP ==========
         for i in range(num_bars):
-            # Array-backed hot loop: O(1) access to bar data
-            # Get timestamps from FeedStore (no pandas)
-            ts_open = exec_feed.get_ts_open_datetime(i)
-            ts_close = exec_feed.get_ts_close_datetime(i)
-            
-            # Create canonical Bar with O(1) array access
-            bar = CanonicalBar(
-                symbol=self.config.symbol,
-                tf=self.config.tf,
-                ts_open=ts_open,
-                ts_close=ts_close,
-                open=float(exec_feed.open[i]),
-                high=float(exec_feed.high[i]),
-                low=float(exec_feed.low[i]),
-                close=float(exec_feed.close[i]),
-                volume=float(exec_feed.volume[i]),
-            )
+            bar = processor.build_bar(i)
 
-            # Phase 6: Update incremental state with current bar
-            # This must happen BEFORE snapshot creation so structures are current
-            if self._incremental_state is not None:
-                # Build indicator dict for BarData (O(1) dict build from arrays)
-                indicator_values: dict[str, float] = {}
-                for key in exec_feed.indicators.keys():
-                    val = exec_feed.indicators[key][i]
-                    if not np.isnan(val):
-                        indicator_values[key] = float(val)
-
-                # Create BarData for incremental update
-                bar_data = BarData(
-                    idx=i,
-                    open=bar.open,
-                    high=bar.high,
-                    low=bar.low,
-                    close=bar.close,
-                    volume=bar.volume,
-                    indicators=indicator_values,
-                )
-
-                # Update exec state every bar
-                self._incremental_state.update_exec(bar_data)
-
-                # W2: Rationalize state after structure updates (Layer 2)
-                if self._rationalizer is not None:
-                    self._rationalized_state = self._rationalizer.rationalize(
-                        bar_idx=i,
-                        incremental_state=self._incremental_state,
-                        bar=bar_data,
-                    )
-
-            # Stage 7: State tracking - bar start (record-only)
-            if self._state_tracker:
-                self._state_tracker.on_bar_start(i)
-                # Record warmup/history gate state
-                warmup_ok = i >= sim_start_idx
-                self._state_tracker.on_warmup_check(warmup_ok, sim_start_idx)
-                self._state_tracker.on_history_check(
-                    self._is_history_ready(),
-                    len(self._history_manager.bars_exec),
-                )
-
-            # Phase 4: Set bar context for artifact tracking
-            # Note: snapshot_ready starts as True, will be updated after snapshot build
-            self._exchange.set_bar_context(i, snapshot_ready=True)
-            
-            # Process bar (fills pending orders, checks TP/SL)
-            # Note: process_bar receives canonical Bar, uses ts_open for fills
-            # Phase 4: process_bar returns StepResult with unified mark_price
-            # 1m eval: Pass quote_feed and 1m range for granular TP/SL checking
-            exec_1m_range = None
-            if self._quote_feed is not None and self._quote_feed.length > 0:
-                exec_tf_minutes = TF_MINUTES.get(self.config.tf.lower(), 15)
-                start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(i, exec_tf_minutes)
-                end_1m = min(end_1m, self._quote_feed.length - 1)
-                exec_1m_range = (start_1m, end_1m)
-
-            # Phase 12: Get funding events in (prev_bar.ts_close, bar.ts_close] window
-            funding_events = get_funding_events_in_window(
-                prev_ts=prev_bar.ts_close if prev_bar else None,
-                current_ts=bar.ts_close,
-                funding_settlement_times=exec_feed.funding_settlement_times,
-                funding_df=self._funding_df,
-                symbol=self.config.symbol,
-            )
-
-            step_result = self._exchange.process_bar(
-                bar, prev_bar,
-                quote_feed=self._quote_feed,
-                exec_1m_range=exec_1m_range,
-                funding_events=funding_events,
-            )
-            # NOTE: Closed trades are in self._exchange.trades (cumulative list)
-            # Fills are in step_result.fills (per-step list) - BUG-004 fix
-
-            # Stage 7: Record fills/rejections from step_result (record-only)
-            if self._state_tracker and step_result:
-                for _fill in step_result.fills:
-                    self._state_tracker.on_order_filled()
-                for _rejection in step_result.rejections:
-                    self._state_tracker.on_order_rejected(_rejection.reason)
-
-            # Sync risk manager equity with exchange
-            self.risk_manager.sync_equity(self._exchange.equity)
-            
-            # Skip bars before simulation start (warm-up period)
             if i < sim_start_idx:
-                # Phase 3: Update HTF/MTF indices during warmup (for forward-fill)
-                htf_updated_warmup = False
-                mtf_updated_warmup = False
-                if self._multi_tf_mode:
-                    htf_updated_warmup, mtf_updated_warmup = self._update_htf_mtf_indices(bar.ts_close)
-                
-                # Array-backed: Extract features from FeedStore (O(1) access)
-                warmup_features = {}
-                for key in exec_feed.indicators.keys():
-                    val = exec_feed.indicators[key][i]
-                    if not np.isnan(val):
-                        warmup_features[key] = float(val)
-                
-                warmup_features_exec = FeatureSnapshot(
-                    tf=self.config.tf,
-                    ts_close=bar.ts_close,
-                    bar=bar,
-                    features=warmup_features,
-                    ready=True,
-                )
-                
-                self._update_history(
-                    bar=bar,
-                    features_exec=warmup_features_exec,
-                    htf_updated=htf_updated_warmup,
-                    mtf_updated=mtf_updated_warmup,
-                    features_htf=self._tf_cache.get_htf() if self._multi_tf_mode else None,
-                    features_mtf=self._tf_cache.get_mtf() if self._multi_tf_mode else None,
-                )
-                
-                prev_bar = bar
-                continue
-            
-            # Phase 3: Update HTF/MTF indices at current bar close (O(1) lookup)
-            htf_updated = False
-            mtf_updated = False
-            if self._multi_tf_mode:
-                htf_updated, mtf_updated = self._update_htf_mtf_indices(bar.ts_close)
-
-            # Phase 6: Update HTF incremental state on HTF close
-            if self._incremental_state is not None and htf_updated:
-                # Get the HTF timeframe from tf_mapping
-                htf_tf = self._tf_mapping.get("htf")
-                if htf_tf and htf_tf in self._incremental_state.htf:
-                    # Build HTF BarData from HTF feed at current HTF index
-                    htf_feed = self._htf_feed
-                    if htf_feed is not None:
-                        htf_idx = self._current_htf_idx
-                        htf_indicator_values: dict[str, float] = {}
-                        for key in htf_feed.indicators.keys():
-                            val = htf_feed.indicators[key][htf_idx]
-                            if not np.isnan(val):
-                                htf_indicator_values[key] = float(val)
-
-                        htf_bar_data = BarData(
-                            idx=htf_idx,
-                            open=float(htf_feed.open[htf_idx]),
-                            high=float(htf_feed.high[htf_idx]),
-                            low=float(htf_feed.low[htf_idx]),
-                            close=float(htf_feed.close[htf_idx]),
-                            volume=float(htf_feed.volume[htf_idx]),
-                            indicators=htf_indicator_values,
-                        )
-                        self._incremental_state.update_htf(htf_tf, htf_bar_data)
-
-            # Array-backed: Extract features from FeedStore (O(1) access)
-            features_for_history = {}
-            for key in exec_feed.indicators.keys():
-                val = exec_feed.indicators[key][i]
-                if not np.isnan(val):
-                    features_for_history[key] = float(val)
-            
-            current_features_exec = FeatureSnapshot(
-                tf=self.config.tf,
-                ts_close=bar.ts_close,
-                bar=bar,
-                features=features_for_history,
-                ready=True,
-            )
-            
-            # NOTE: _update_history is called AFTER strategy evaluation (at end of loop)
-            # to ensure crossover detection can access PREVIOUS bar's features correctly.
-            # See: history_features_exec[-1] should be bar N-1 when evaluating bar N.
-
-            # ========== STOP CHECKS (delegated to engine_stops module) ==========
-            # Phase 1: only close-as-mark supported (explicit/configurable)
-            if risk_profile.mark_price_source != "close":
-                raise ValueError(
-                    f"Unsupported mark_price_source='{risk_profile.mark_price_source}'. "
-                    "Phase 1 supports 'close' only."
+                # Warmup period: update state, no trading
+                processor.process_warmup_bar(i, bar, prev_bar, sim_start_idx)
+            else:
+                # Trading period: full evaluation
+                result = processor.process_trading_bar(
+                    i, bar, prev_bar, sim_start_idx,
+                    self._equity_curve, self._account_curve,
                 )
 
-            stop_result = check_all_stop_conditions(
-                exchange=self._exchange,
-                risk_profile=risk_profile,
-                bar_ts_close=bar.ts_close,
-                bar_index=i,
-                logger=self.logger,
-            )
-
-            if stop_result.terminal_stop:
-                # Capture stop metadata before handling
-                stop_classification = stop_result.classification
-                stop_reason_detail = stop_result.reason_detail
-                stop_reason = stop_result.reason
-
-                # Handle terminal stop (cancel orders, close position)
-                handle_terminal_stop(
-                    exchange=self._exchange,
-                    bar_close_price=bar.close,
-                    bar_ts_close=bar.ts_close,
-                    stop_reason=stop_reason,
-                )
-
-                # Capture stop metadata (full exchange snapshot)
-                stop_ts = bar.ts_close
-                stop_bar_index = i
-                stop_details = self._exchange.get_state()
-
-                # Record final equity and account curve points at ts_close
-                self._equity_curve.append(EquityPoint(
-                    timestamp=bar.ts_close,
-                    equity=self._exchange.equity,
-                ))
-                self._account_curve.append(AccountCurvePoint(
-                    timestamp=bar.ts_close,
-                    equity_usdt=self._exchange.equity_usdt,
-                    used_margin_usdt=self._exchange.used_margin_usdt,
-                    free_margin_usdt=self._exchange.free_margin_usdt,
-                    available_balance_usdt=self._exchange.available_balance_usdt,
-                    maintenance_margin_usdt=self._exchange.maintenance_margin,
-                    has_position=self._exchange.position is not None,
-                    entries_disabled=self._exchange.entries_disabled,
-                ))
-
-                self.logger.warning(
-                    f"Terminal stop: {stop_classification.value} at bar {i}, "
-                    f"equity=${self._exchange.equity_usdt:.2f}, "
-                    f"detail: {stop_reason_detail}"
-                )
-                break
-            # ========== END STOP CHECKS ==========
-
-            # Phase 3: Accumulate 1m quotes and freeze rollups at exec close
-            # This must happen BEFORE snapshot creation so rollups are available
-            self._accumulate_1m_quotes(bar.ts_close)
-            rollups = self._freeze_rollups()
-
-            # Array-backed hot loop: Build RuntimeSnapshotView (O(1) creation)
-            # No DataFrame access, no materialized feature dicts
-            snapshot = self._build_snapshot_view(i, step_result, rollups=rollups)
-            
-            # Phase 4: Invoke snapshot callback if present (audit-only, no side effects)
-            # Callback is invoked AFTER snapshot built, BEFORE strategy called
-            if self._on_snapshot is not None:
-                self._on_snapshot(snapshot, i, self._current_htf_idx, self._current_mtf_idx)
-            
-            # Phase 4: Update exchange with snapshot readiness for artifact tracking
-            self._exchange.set_bar_context(i, snapshot_ready=snapshot.ready)
-            
-            # Phase 3: Readiness gate - skip trading until all TF caches are ready
-            if self._multi_tf_mode and not snapshot.ready:
-                # Caches not ready yet - record equity but skip strategy
-                self._equity_curve.append(EquityPoint(
-                    timestamp=bar.ts_close,
-                    equity=self._exchange.equity,
-                ))
-                self._account_curve.append(AccountCurvePoint(
-                    timestamp=bar.ts_close,
-                    equity_usdt=self._exchange.equity_usdt,
-                    used_margin_usdt=self._exchange.used_margin_usdt,
-                    free_margin_usdt=self._exchange.free_margin_usdt,
-                    available_balance_usdt=self._exchange.available_balance_usdt,
-                    maintenance_margin_usdt=self._exchange.maintenance_margin,
-                    has_position=self._exchange.position is not None,
-                    entries_disabled=self._exchange.entries_disabled,
-                ))
-                prev_bar = bar
-                continue
-            
-            # Mark warmup as complete on first ready snapshot
-            if self._multi_tf_mode and not self._warmup_complete:
-                self._warmup_complete = True
-                self._first_ready_bar_index = i
-                self.logger.info(
-                    f"Multi-TF caches ready at bar {i} ({bar.ts_close})"
-                )
-            
-            # ========== LOOKAHEAD GUARD (Phase 3) ==========
-            # Assert strategy is invoked only at bar close with closed-candle data.
-            # This guard prevents future regressions that could introduce lookahead bias.
-            assert snapshot.ts_close == bar.ts_close, (
-                f"Lookahead violation: snapshot.ts_close ({snapshot.ts_close}) != "
-                f"bar.ts_close ({bar.ts_close})"
-            )
-            # RuntimeSnapshotView has exec_ctx with ts_close property
-            exec_ts_close = snapshot.exec_ctx.ts_close if hasattr(snapshot, 'exec_ctx') else snapshot.features_exec.ts_close
-            assert exec_ts_close == bar.ts_close, (
-                f"Lookahead violation: exec ts_close ({exec_ts_close}) != "
-                f"bar.ts_close ({bar.ts_close})"
-            )
-            # ========== END LOOKAHEAD GUARD ==========
-
-            # ========== 1m EVALUATION SUB-LOOP ==========
-            # Evaluate strategy at each 1m bar within the exec bar
-            # Returns on first signal (max one entry per exec bar)
-            signal, snapshot, signal_ts = self._evaluate_with_1m_subloop(
-                exec_idx=i,
-                strategy=strategy,
-                step_result=step_result,
-                rollups=rollups,
-            )
-            # ========== END 1m EVALUATION SUB-LOOP ==========
-
-            # Stage 7: State tracking - record signal (record-only)
-            if self._state_tracker:
-                signal_direction = 0
-                if signal is not None:
-                    if signal.direction == "LONG":
-                        signal_direction = 1
-                    elif signal.direction == "SHORT":
-                        signal_direction = -1
-                self._state_tracker.on_signal_evaluated(signal_direction)
-                # Record position state for gate context
-                position_count = 1 if self._exchange.position is not None else 0
-                self._state_tracker.on_position_check(position_count)
-
-            # Process signal (use signal_ts from 1m sub-loop if available)
-            if signal is not None:
-                self._process_signal(signal, bar, snapshot, signal_ts=signal_ts)
-            
-            # Record equity point and account curve point at ts_close (step time)
-            self._equity_curve.append(EquityPoint(
-                timestamp=bar.ts_close,
-                equity=self._exchange.equity,
-            ))
-            self._account_curve.append(AccountCurvePoint(
-                timestamp=bar.ts_close,
-                equity_usdt=self._exchange.equity_usdt,
-                used_margin_usdt=self._exchange.used_margin_usdt,
-                free_margin_usdt=self._exchange.free_margin_usdt,
-                available_balance_usdt=self._exchange.available_balance_usdt,
-                maintenance_margin_usdt=self._exchange.maintenance_margin,
-                has_position=self._exchange.position is not None,
-                entries_disabled=self._exchange.entries_disabled,
-            ))
-            
-            # Update history AFTER strategy evaluation
-            # This ensures crossover detection sees previous bar's features in history[-1]
-            self._update_history(
-                bar=bar,
-                features_exec=current_features_exec,
-                htf_updated=htf_updated,
-                mtf_updated=mtf_updated,
-                features_htf=self._tf_cache.get_htf() if self._multi_tf_mode else None,
-                features_mtf=self._tf_cache.get_mtf() if self._multi_tf_mode else None,
-            )
-
-            # Stage 7: State tracking - bar end (record-only)
-            if self._state_tracker:
-                self._state_tracker.on_bar_end()
+                if result.terminal_stop:
+                    stop_classification = result.stop_classification
+                    stop_reason_detail = result.stop_reason_detail
+                    stop_reason = result.stop_reason
+                    stop_ts = result.stop_ts
+                    stop_bar_index = result.stop_bar_index
+                    stop_details = result.stop_details
+                    break
 
             prev_bar = bar
-        
-        # Close any remaining position at end (if not already stopped early)
+        # ========== END MAIN BAR LOOP ==========
+
+        # Post-loop: close remaining position if not stopped early
         if stop_classification is None and self._exchange.position is not None:
-            # Array-backed: use exec_feed for O(1) access
             last_idx = exec_feed.length - 1
             self._exchange.force_close_position(
                 float(exec_feed.close[last_idx]),
-                exec_feed.get_ts_open_datetime(last_idx),  # Use ts_open for fill time
+                exec_feed.get_ts_open_datetime(last_idx),
             )
-        
-        # Capture end-of-data snapshot if not already captured from terminal stop
+
         if stop_details is None:
             stop_details = self._exchange.get_state()
-        
-        # Calculate drawdowns in equity curve
-        self._calculate_drawdowns()
-        
-        # Count bars in position for time-in-market metric
-        bars_in_position = sum(1 for a in self._account_curve if a.has_position)
 
-        # Compute margin stress metrics from account curve
+        # Build result using helper
+        return self._build_result(
+            prepared=prepared,
+            risk_profile=risk_profile,
+            initial_equity=initial_equity,
+            stop_classification=stop_classification,
+            stop_reason_detail=stop_reason_detail,
+            stop_reason=stop_reason,
+            stop_ts=stop_ts,
+            stop_bar_index=stop_bar_index,
+            stop_details=stop_details,
+        )
+
+    def _build_result(
+        self,
+        prepared: PreparedFrame,
+        risk_profile: RiskProfileConfig,
+        initial_equity: float,
+        stop_classification: StopReason | None,
+        stop_reason_detail: str | None,
+        stop_reason: str | None,
+        stop_ts: datetime | None,
+        stop_bar_index: int | None,
+        stop_details: dict[str, Any] | None,
+    ) -> BacktestResult:
+        """Build BacktestResult from run data."""
+        # Calculate drawdowns
+        self._calculate_drawdowns()
+
+        # Compute metrics from account curve
+        bars_in_position = sum(1 for a in self._account_curve if a.has_position)
         min_margin_ratio = 1.0
         margin_calls = 0
         closest_liquidation_pct = 100.0
 
         for a in self._account_curve:
-            # Margin ratio: equity / used_margin (lower = more stressed)
             if a.used_margin_usdt > 0:
                 ratio = a.equity_usdt / a.used_margin_usdt
                 if ratio < min_margin_ratio:
                     min_margin_ratio = ratio
-
-            # Margin call: free_margin < 0
             if a.free_margin_usdt < 0:
                 margin_calls += 1
-
-            # Liquidation proximity: (equity - MM) / equity * 100
             if a.equity_usdt > 0 and a.maintenance_margin_usdt > 0:
                 buffer_pct = (a.equity_usdt - a.maintenance_margin_usdt) / a.equity_usdt * 100
                 if buffer_pct < closest_liquidation_pct:
                     closest_liquidation_pct = buffer_pct
 
-        # Compute leverage/exposure metrics from account curve
-        # Leverage = position_value / equity = (used_margin / IMR) / equity
+        # Leverage metrics
         imr = risk_profile.initial_margin_rate
         leverage_values = []
         max_gross_exposure_pct = 0.0
 
         for a in self._account_curve:
             if a.has_position and a.used_margin_usdt > 0 and a.equity_usdt > 0 and imr > 0:
-                # position_value = used_margin / IMR
                 position_value = a.used_margin_usdt / imr
                 leverage = position_value / a.equity_usdt
                 leverage_values.append(leverage)
@@ -1377,62 +1073,50 @@ class BacktestEngine:
 
         avg_leverage_used = sum(leverage_values) / len(leverage_values) if leverage_values else 0.0
 
-        # Compute average MAE/MFE from trades
+        # Trade quality metrics
         trades = self._exchange.trades
-        if trades:
-            mae_avg_pct = sum(t.mae_pct for t in trades) / len(trades)
-            mfe_avg_pct = sum(t.mfe_pct for t in trades) / len(trades)
-        else:
-            mae_avg_pct = 0.0
-            mfe_avg_pct = 0.0
+        mae_avg_pct = sum(t.mae_pct for t in trades) / len(trades) if trades else 0.0
+        mfe_avg_pct = sum(t.mfe_pct for t in trades) / len(trades) if trades else 0.0
 
-        # Capture first/last price for benchmark comparison
+        # Benchmark prices
         exec_feed = self._exec_feed
-        sim_start_idx = self._prepared_frame.sim_start_index
+        sim_start_idx = prepared.sim_start_index
         first_price = float(exec_feed.close[sim_start_idx])
         last_price = float(exec_feed.close[exec_feed.length - 1])
 
-        # Phase 12: Compute funding totals from trades
+        # Funding totals
         total_funding_paid_usdt = sum(
-            max(0.0, -t.funding_pnl) for t in self._exchange.trades if t.is_closed
+            max(0.0, -t.funding_pnl) for t in trades if t.is_closed
         )
         total_funding_received_usdt = sum(
-            max(0.0, t.funding_pnl) for t in self._exchange.trades if t.is_closed
+            max(0.0, t.funding_pnl) for t in trades if t.is_closed
         )
 
-        # Compute backtest metrics
+        # Compute metrics
         metrics = compute_backtest_metrics(
             equity_curve=self._equity_curve,
-            trades=self._exchange.trades,
+            trades=trades,
             tf=self.config.tf,
             initial_equity=initial_equity,
             bars_in_position=bars_in_position,
-            # Phase 12: Funding totals
             total_funding_paid_usdt=total_funding_paid_usdt,
             total_funding_received_usdt=total_funding_received_usdt,
-            # Entry friction from exchange
             entry_attempts=self._exchange.entry_attempts_count,
             entry_rejections=self._exchange.entry_rejections_count,
-            # Margin stress from account curve
             min_margin_ratio=min_margin_ratio,
             margin_calls=margin_calls,
-            # Liquidation proximity from account curve
             closest_liquidation_pct=closest_liquidation_pct,
-            # Benchmark comparison
             first_price=first_price,
             last_price=last_price,
-            # Leverage/exposure metrics
             avg_leverage_used=avg_leverage_used,
             max_gross_exposure_pct=max_gross_exposure_pct,
-            # Trade quality (MAE/MFE from trade-level tracking)
             mae_avg_pct=mae_avg_pct,
             mfe_avg_pct=mfe_avg_pct,
         )
-        
+
         finished_at = datetime.now()
         run_id = f"run-{uuid.uuid4().hex[:12]}"
-        
-        # Build strategies summary from config
+
         strategies_summary = [
             StrategyInstanceSummary(
                 strategy_instance_id=s.strategy_instance_id,
@@ -1442,8 +1126,7 @@ class BacktestEngine:
             )
             for s in self.config.strategies
         ]
-        
-        # Build run config echo for reproducibility
+
         run_config_echo = BacktestRunConfigEcho(
             initial_margin_rate=risk_profile.initial_margin_rate,
             maintenance_margin_rate=risk_profile.maintenance_margin_rate,
@@ -1456,11 +1139,9 @@ class BacktestEngine:
             max_leverage=risk_profile.max_leverage,
             fee_mode=risk_profile.fee_mode,
         )
-        
-        # Determine if stopped early (terminal stops only)
+
         stopped_early = stop_classification is not None and stop_classification.is_terminal()
-        
-        # Build structured result with warm-up metadata
+
         result = BacktestResult(
             run_id=run_id,
             system_id=self.config.system_id,
@@ -1482,7 +1163,6 @@ class BacktestEngine:
             risk_initial_equity_used=risk_profile.initial_equity,
             risk_per_trade_pct_used=risk_profile.risk_per_trade_pct,
             risk_max_leverage_used=risk_profile.max_leverage,
-            # Warm-up and window metadata
             warmup_bars=prepared.warmup_bars,
             max_indicator_lookback=prepared.max_indicator_lookback,
             data_window_requested_start=prepared.requested_start.isoformat(),
@@ -1490,49 +1170,49 @@ class BacktestEngine:
             data_window_loaded_start=prepared.loaded_start.isoformat() if isinstance(prepared.loaded_start, datetime) else str(prepared.loaded_start),
             data_window_loaded_end=prepared.loaded_end.isoformat() if isinstance(prepared.loaded_end, datetime) else str(prepared.loaded_end),
             simulation_start_ts=prepared.simulation_start,
-            # Trades and equity
-            trades=self._exchange.trades,
+            trades=trades,
             equity_curve=self._equity_curve,
             artifact_dir=str(self.run_dir) if self.run_dir else None,
-            # Account curve (proof-grade)
             account_curve=self._account_curve,
-            # Run config echo
             run_config_echo=run_config_echo,
-            # Stop classification (proof-grade)
             stop_classification=stop_classification,
             stop_reason_detail=stop_reason_detail,
-            # Early-stop fields (legacy compat)
             stopped_early=stopped_early,
             stop_reason=stop_reason,
             stop_ts=stop_ts,
             stop_bar_index=stop_bar_index,
             stop_details=stop_details,
-            # Starvation tracking
             entries_disabled=self._exchange.entries_disabled,
             first_starved_ts=self._exchange.first_starved_ts,
             first_starved_bar_index=self._exchange.first_starved_bar_index,
             entry_attempts_count=self._exchange.entry_attempts_count,
             entry_rejections_count=self._exchange.entry_rejections_count,
         )
-        
-        # Write artifacts if run_dir is set
+
         if self.run_dir:
             self._write_artifacts(result)
-        
+
         if stopped_early:
             self.logger.info(
                 f"Backtest stopped early ({stop_classification.value}): {metrics.total_trades} trades, "
-                f"PnL=${metrics.net_profit:,.2f}, "
-                f"Win rate={metrics.win_rate:.1f}%"
+                f"PnL=${metrics.net_profit:,.2f}, Win rate={metrics.win_rate:.1f}%"
             )
         else:
             starved_msg = " (entries disabled)" if self._exchange.entries_disabled else ""
             self.logger.info(
                 f"Backtest complete{starved_msg}: {metrics.total_trades} trades, "
-                f"PnL=${metrics.net_profit:,.2f}, "
-                f"Win rate={metrics.win_rate:.1f}%"
+                f"PnL=${metrics.net_profit:,.2f}, Win rate={metrics.win_rate:.1f}%"
             )
-        
+
+        elapsed = (finished_at - self._started_at).total_seconds() if self._started_at else 0
+        debug_run_complete(
+            self._play_hash,
+            run_hash=run_id,
+            trades_count=metrics.total_trades,
+            elapsed_seconds=elapsed,
+            artifact_path=str(self.run_dir) if self.run_dir else None,
+        )
+
         return result
     
     def _refresh_tf_caches(self, ts_close: datetime, bar: CanonicalBar) -> tuple:
@@ -1794,7 +1474,17 @@ class BacktestEngine:
         # Calculate TP/SL from signal metadata if present
         stop_loss = signal.metadata.get("stop_loss") if signal.metadata else None
         take_profit = signal.metadata.get("take_profit") if signal.metadata else None
-        
+
+        # Debug: log signal before order submission
+        # Get bar_idx from snapshot if available
+        bar_idx = getattr(snapshot, "_exec_idx", None)
+        debug_signal(
+            self._play_hash,
+            bar_idx=bar_idx or 0,
+            action=f"ENTRY_{side.upper()}",
+            feature_values={"size_usdt": size_usdt, "sl": stop_loss, "tp": take_profit},
+        )
+
         # Submit order (use signal_ts if provided, else bar.ts_close)
         order_timestamp = signal_ts if signal_ts is not None else bar.ts_close
         exchange.submit_order(
@@ -1803,6 +1493,18 @@ class BacktestEngine:
             stop_loss=stop_loss,
             take_profit=take_profit,
             timestamp=order_timestamp,
+        )
+
+        # Debug: log trade opened
+        trade_count = len(exchange.trades) + 1  # Next trade number
+        debug_trade(
+            self._play_hash,
+            bar_idx=bar_idx or 0,
+            event="opened",
+            trade_num=trade_count,
+            entry=bar.close,
+            sl=stop_loss,
+            tp=take_profit,
         )
 
         # Stage 7: Record order submission (record-only)

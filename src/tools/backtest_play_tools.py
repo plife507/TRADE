@@ -314,6 +314,210 @@ def backtest_preflight_play_tool(
 
 
 # =============================================================================
+# Run Backtest Helpers
+# =============================================================================
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class ResolvedBacktestConfig:
+    """Resolved configuration for backtest run."""
+
+    starting_equity: float
+    max_leverage: float
+    min_trade: float
+    symbol: str
+    exec_tf: str
+    all_tfs: list[str]
+    warmup_by_tf: dict[str, int]
+
+
+def _resolve_backtest_config(
+    play: Play,
+    preflight_data: dict[str, Any],
+    initial_equity_override: float | None,
+    max_leverage_override: float | None,
+) -> ResolvedBacktestConfig:
+    """
+    Resolve backtest configuration from Play and overrides.
+
+    Args:
+        play: Loaded Play configuration
+        preflight_data: Data from preflight check
+        initial_equity_override: CLI override for starting equity
+        max_leverage_override: CLI override for max leverage
+
+    Returns:
+        ResolvedBacktestConfig with all resolved values
+    """
+    starting_equity = (
+        initial_equity_override
+        if initial_equity_override is not None
+        else play.account.starting_equity_usdt
+    )
+    max_leverage = (
+        max_leverage_override
+        if max_leverage_override is not None
+        else play.account.max_leverage
+    )
+    min_trade = play.account.min_trade_notional_usdt or 1.0
+    symbol = preflight_data.get("symbol") or play.symbol_universe[0]
+    exec_tf = validate_canonical_tf(play.exec_tf)
+    all_tfs = play.get_all_tfs()
+
+    # Compute warmup requirements
+    warmup_reqs = compute_warmup_requirements(play)
+    warmup_by_tf = {tf: warmup_reqs.warmup_by_role.get(tf, 0) for tf in all_tfs}
+
+    return ResolvedBacktestConfig(
+        starting_equity=starting_equity,
+        max_leverage=max_leverage,
+        min_trade=min_trade,
+        symbol=symbol,
+        exec_tf=exec_tf,
+        all_tfs=all_tfs,
+        warmup_by_tf=warmup_by_tf,
+    )
+
+
+def _log_backtest_config(config: ResolvedBacktestConfig, play: Play) -> None:
+    """
+    Log resolved backtest configuration summary.
+
+    Args:
+        config: Resolved configuration
+        play: Play for fee model and slippage info
+    """
+    logger.info("=" * 60)
+    logger.info("RESOLVED CONFIG SUMMARY")
+    logger.info("=" * 60)
+    logger.info(f"  symbol: {config.symbol}")
+    logger.info(f"  tf_exec: {config.exec_tf}")
+
+    other_tfs = sorted([tf for tf in config.all_tfs if tf != config.exec_tf])
+    if other_tfs:
+        logger.info(f"  other_tfs: {', '.join(other_tfs)}")
+
+    logger.info("-" * 40)
+    logger.info(f"  starting_equity_usdt: {config.starting_equity:,.2f}")
+    logger.info(f"  max_leverage: {config.max_leverage:.1f}x")
+    logger.info(f"  min_trade_notional_usdt: {config.min_trade:.2f}")
+
+    if play.account.fee_model:
+        logger.info(f"  taker_fee_bps: {play.account.fee_model.taker_bps}")
+        logger.info(f"  maker_fee_bps: {play.account.fee_model.maker_bps}")
+    if play.account.slippage_bps:
+        logger.info(f"  slippage_bps: {play.account.slippage_bps}")
+
+    logger.info("-" * 40)
+    for tf in sorted(config.all_tfs):
+        warmup = config.warmup_by_tf.get(tf, 0)
+        logger.info(f"  warmup_{tf}: {warmup} bars")
+    logger.info("=" * 60)
+
+
+def _compute_smoke_window(
+    smoke: bool,
+    start: datetime | None,
+    end: datetime | None,
+    exec_tf: str,
+    db_end_ts_ms: int | None,
+) -> tuple[datetime | None, datetime | None]:
+    """
+    Compute start/end window for smoke mode.
+
+    Args:
+        smoke: Whether smoke mode is enabled
+        start: User-provided start
+        end: User-provided end
+        exec_tf: Execution timeframe
+        db_end_ts_ms: Latest timestamp in DB (epoch ms)
+
+    Returns:
+        Tuple of (start, end) datetime values
+    """
+    if not smoke or not db_end_ts_ms:
+        return start, end
+
+    db_latest_dt = datetime.fromtimestamp(db_end_ts_ms / 1000)
+
+    # Use DB latest as end for smoke (not now(), which is always ahead)
+    if end is None:
+        end = db_latest_dt
+        logger.info(f"Smoke mode: using DB latest as end={end}")
+
+    # Use last 100 bars for start
+    if start is None:
+        tf_minutes = TF_MINUTES.get(exec_tf, 15)
+        start = db_latest_dt - timedelta(minutes=tf_minutes * 100)
+        logger.info(f"Smoke mode: using last 100 bars, start={start}")
+
+    return start, end
+
+
+def _validate_indicator_gate(play: Play) -> tuple[bool, dict[str, Any] | None, str | None]:
+    """
+    Validate indicator requirements gate.
+
+    Args:
+        play: Play configuration
+
+    Returns:
+        Tuple of (passed, gate_result_dict, error_message)
+        If passed is False, error_message contains the failure reason
+    """
+    from ..backtest.gates.indicator_requirements_gate import (
+        validate_indicator_requirements,
+        IndicatorGateStatus,
+    )
+
+    # Compute expanded keys from Play feature_registry
+    available_keys_by_role = {}
+    declared_keys_by_role = {}
+    registry = play.feature_registry
+
+    for tf in registry.get_all_tfs():
+        features = registry.get_for_tf(tf)
+        expanded = set()
+        for feature in features:
+            expanded.add(feature.id)
+            if feature.output_keys:
+                expanded.update(feature.output_keys)
+        available_keys_by_role[tf] = expanded
+        declared_keys_by_role[tf] = sorted(expanded)
+
+    gate_result = validate_indicator_requirements(
+        play=play,
+        available_keys_by_role=available_keys_by_role,
+    )
+
+    if gate_result.failed:
+        logger.error("INDICATOR REQUIREMENTS GATE FAILED")
+        logger.error(gate_result.format_error())
+        return False, gate_result.to_dict(), gate_result.error_message
+
+    if gate_result.status == IndicatorGateStatus.PASSED:
+        logger.info("[GATE] Indicator requirements: PASSED")
+    elif gate_result.status == IndicatorGateStatus.SKIPPED:
+        logger.info("[GATE] Indicator requirements: SKIPPED (no required_indicators declared)")
+
+    # Log declared keys
+    exec_tf = play.execution_tf
+    logger.info(f"Declared indicator keys ({exec_tf}): {declared_keys_by_role.get(exec_tf, [])}")
+
+    return True, gate_result.to_dict(), None
+
+
+def normalize_timestamp(ts: datetime) -> datetime:
+    """Normalize timestamp to be timezone-naive."""
+    if ts.tzinfo is not None:
+        return ts.replace(tzinfo=None)
+    return ts
+
+
+# =============================================================================
 # Run Backtest (tools-layer)
 # =============================================================================
 
@@ -398,72 +602,23 @@ def backtest_run_play_tool(
                 ),
             )
 
-        # Resolve config values (Play is source of truth, CLI can override)
-        resolved_starting_equity = (
-            initial_equity_override
-            if initial_equity_override is not None
-            else play.account.starting_equity_usdt
+        # Resolve configuration from Play and overrides
+        config = _resolve_backtest_config(
+            play=play,
+            preflight_data=preflight_data,
+            initial_equity_override=initial_equity_override,
+            max_leverage_override=max_leverage_override,
         )
-        resolved_max_leverage = (
-            max_leverage_override
-            if max_leverage_override is not None
-            else play.account.max_leverage
-        )
-        resolved_min_trade = play.account.min_trade_notional_usdt or 1.0
+        resolved_symbol = config.symbol
+        exec_tf = config.exec_tf
 
-        # Resolve symbol from preflight data or Play
-        resolved_symbol = preflight_data.get("symbol") or play.symbol_universe[0]
-        exec_tf = validate_canonical_tf(play.exec_tf)
+        # Log resolved configuration
+        _log_backtest_config(config, play)
 
-        # Print Resolved Config Summary (Phase 5.3 requirement)
-        logger.info("=" * 60)
-        logger.info("RESOLVED CONFIG SUMMARY")
-        logger.info("=" * 60)
-        logger.info(f"  symbol: {resolved_symbol}")
-        logger.info(f"  tf_exec: {exec_tf}")
-        # Show all unique TFs from features
-        all_tfs = play.get_all_tfs()
-        other_tfs = sorted([tf for tf in all_tfs if tf != exec_tf])
-        if other_tfs:
-            logger.info(f"  other_tfs: {', '.join(other_tfs)}")
-        logger.info("-" * 40)
-        logger.info(f"  starting_equity_usdt: {resolved_starting_equity:,.2f}")
-        logger.info(f"  max_leverage: {resolved_max_leverage:.1f}x")
-        logger.info(f"  min_trade_notional_usdt: {resolved_min_trade:.2f}")
-        if play.account.fee_model:
-            logger.info(f"  taker_fee_bps: {play.account.fee_model.taker_bps}")
-            logger.info(f"  maker_fee_bps: {play.account.fee_model.maker_bps}")
-        if play.account.slippage_bps:
-            logger.info(f"  slippage_bps: {play.account.slippage_bps}")
-        logger.info("-" * 40)
-        # Warmup spans - use feature_registry
-        from ..backtest.execution_validation import compute_warmup_requirements
-        warmup_reqs = compute_warmup_requirements(play)
-        for tf in sorted(all_tfs):
-            warmup = warmup_reqs.warmup_by_role.get(tf, 0)
-            logger.info(f"  warmup_{tf}: {warmup} bars")
-        logger.info("=" * 60)
-
-        # If smoke mode and no start/end provided, use last 100 bars from DB
-        # Get db_latest from coverage data (epoch-ms)
+        # Compute smoke window if applicable
         coverage = preflight_data.get("coverage", {})
         db_end_ts_ms = coverage.get("db_end_ts_ms")
-        db_latest_dt = None
-        if db_end_ts_ms:
-            db_latest_dt = datetime.fromtimestamp(db_end_ts_ms / 1000)
-
-        if smoke:
-            if db_latest_dt:
-                # Use DB latest as end for smoke (not now(), which is always ahead)
-                if end is None:
-                    end = db_latest_dt
-                    logger.info(f"Smoke mode: using DB latest as end={end}")
-
-                # Use last 100 bars for start
-                if start is None:
-                    tf_minutes = TF_MINUTES.get(exec_tf, 15)
-                    start = db_latest_dt - timedelta(minutes=tf_minutes * 100)
-                    logger.info(f"Smoke mode: using last 100 bars, start={start}")
+        start, end = _compute_smoke_window(smoke, start, end, exec_tf, db_end_ts_ms)
 
         # Normalize timestamps
         if start:
@@ -473,55 +628,18 @@ def backtest_run_play_tool(
         else:
             end = datetime.now().replace(tzinfo=None)
 
-        # =====================================================================
-        # GATE: Indicator Requirements Validation
-        # Validates that required indicators are declared in FeatureSpecs
-        # =====================================================================
-        from ..backtest.gates.indicator_requirements_gate import (
-            validate_indicator_requirements,
-            IndicatorGateStatus,
-        )
-
-        # Compute expanded keys from Play feature_registry
-        available_keys_by_role = {}
-        declared_keys_by_role = {}
-        registry = play.feature_registry
-        for tf in registry.get_all_tfs():
-            features = registry.get_for_tf(tf)
-            expanded = set()
-            for feature in features:
-                expanded.add(feature.id)
-                if feature.output_keys:
-                    expanded.update(feature.output_keys)
-            available_keys_by_role[tf] = expanded
-            declared_keys_by_role[tf] = sorted(expanded)
-
-        indicator_gate_result = validate_indicator_requirements(
-            play=play,
-            available_keys_by_role=available_keys_by_role,
-        )
-
-        if indicator_gate_result.failed:
-            logger.error("INDICATOR REQUIREMENTS GATE FAILED")
-            logger.error(indicator_gate_result.format_error())
+        # Validate indicator requirements gate
+        gate_passed, gate_result_dict, gate_error = _validate_indicator_gate(play)
+        if not gate_passed:
             return ToolResult(
                 success=False,
-                error=indicator_gate_result.error_message,
+                error=gate_error,
                 data={
                     "gate": "indicator_requirements",
-                    "result": indicator_gate_result.to_dict(),
+                    "result": gate_result_dict,
                     "preflight": preflight_data,
                 },
             )
-
-        if indicator_gate_result.status == IndicatorGateStatus.PASSED:
-            logger.info("[GATE] Indicator requirements: PASSED")
-        elif indicator_gate_result.status == IndicatorGateStatus.SKIPPED:
-            logger.info("[GATE] Indicator requirements: SKIPPED (no required_indicators declared)")
-
-        # Print indicator keys (Phase B requirement)
-        exec_tf = play.execution_tf
-        logger.info(f"Declared indicator keys ({exec_tf}): {declared_keys_by_role.get(exec_tf, [])}")
 
         # Use the existing runner infrastructure
         from ..backtest.runner import (

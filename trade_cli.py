@@ -19,6 +19,10 @@ Non-interactive smoke test modes:
   python trade_cli.py --smoke data_extensive  # Extensive data test (clean DB, gaps, fill, sync)
   python trade_cli.py --smoke backtest        # Backtest engine smoke test
   python trade_cli.py --smoke backtest --fresh-db  # Backtest with fresh DB
+
+Debug mode (hash-traced logging):
+  python trade_cli.py --debug                 # Enable debug logging for interactive mode
+  python trade_cli.py --debug backtest run --play V_100  # Debug a specific backtest
 """
 
 import argparse
@@ -701,7 +705,14 @@ Examples:
         default=False,
         help="For backtest smoke: wipe database before preparing data"
     )
-    
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable debug logging with hash tracing (sets TRADE_DEBUG=1)"
+    )
+
     # Add subcommands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
@@ -2413,7 +2424,14 @@ def main():
     """
     # Parse CLI arguments FIRST (before any config or logging)
     args = parse_cli_args()
-    
+
+    # Enable debug mode if --debug flag is set
+    if getattr(args, "debug", False):
+        from src.utils.debug import enable_debug
+        enable_debug(True)
+        import os
+        os.environ["TRADE_DEBUG"] = "1"
+
     # Setup logging
     setup_logger()
     
