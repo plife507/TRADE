@@ -13,7 +13,7 @@ The following terminology changes are in progress:
 | Old Term | New Term | Notes |
 |----------|----------|-------|
 | IdeaCard | Play | Complete strategy specification |
-| configs/idea_cards/ | configs/plays/ | Strategy config directory |
+| strategies/idea_cards/ | strategies/plays/ | Strategy config directory |
 | sandbox | forge | Development/validation environment |
 
 **Trading Hierarchy** (Setup → Play → Playbook → System):

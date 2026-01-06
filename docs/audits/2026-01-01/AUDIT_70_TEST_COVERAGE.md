@@ -17,7 +17,7 @@ All critical paths have smoke tests. All 42 indicators have validation Play cove
 ### What Was Reviewed
 
 - `src/cli/smoke_tests/` - All 9 smoke test modules
-- `configs/plays/_validation/` - All 24 validation Plays
+- `strategies/plays/_validation/` - All 24 validation Plays
 - `src/backtest/audits/` - All 7 audit modules
 - `src/backtest/artifacts/determinism.py` - Determinism verification
 - `src/backtest/runtime/state_tracker.py` - State tracking (Stage 7)

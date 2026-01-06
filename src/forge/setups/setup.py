@@ -24,7 +24,7 @@ import yaml
 
 
 # Default setups directory
-DEFAULT_SETUPS_DIR = Path("configs/setups")
+DEFAULT_SETUPS_DIR = Path("strategies/setups")
 
 
 class SetupNotFoundError(Exception):

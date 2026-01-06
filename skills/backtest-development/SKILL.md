@@ -86,7 +86,7 @@ Adding indicators:
 ),
 ```
 
-2. Create validation Play in `configs/plays/_validation/I_XXX_name.yml`
+2. Create validation Play in `strategies/plays/_validation/I_XXX_name.yml`
 3. Run `backtest audit-toolkit`
 
 ## STRUCTURE_REGISTRY (6 Total)
@@ -124,7 +124,7 @@ class MyDetector(BaseIncrementalDetector):
         return self._values.get(key)
 ```
 
-2. Create validation Play in `configs/plays/_validation/S_XXX_name.yml`
+2. Create validation Play in `strategies/plays/_validation/S_XXX_name.yml`
 3. Run structure smoke test
 
 ### Derived Zones (Phase 12)
@@ -176,7 +176,7 @@ The **Forge** (`src/forge/`) is where strategies are developed and validated bef
 ### Development Flow
 
 ```
-1. Create Play in configs/plays/
+1. Create Play in strategies/plays/
 2. Run normalize: backtest play-normalize-batch
 3. Validate: backtest audit-toolkit
 4. Backtest: backtest run --play <id>
@@ -207,7 +207,7 @@ BacktestMetrics includes:
 
 ```bash
 # Play normalization (validates config)
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 
 # Indicator registry audit
 python trade_cli.py backtest audit-toolkit

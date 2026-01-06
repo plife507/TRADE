@@ -289,7 +289,7 @@ def validate_feature_reference(
 
 
 # REMOVED: validate_signal_rules() - Legacy signal_rules format deprecated
-# All Plays now use blocks DSL v3.0.0. See configs/plays/README.md
+# All Plays now use blocks DSL v3.0.0. See strategies/plays/README.md
 
 
 def validate_risk_model_refs(

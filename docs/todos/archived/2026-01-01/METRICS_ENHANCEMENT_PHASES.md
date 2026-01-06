@@ -339,7 +339,7 @@ python -c "from src.backtest.types import BacktestMetrics; m = BacktestMetrics()
 
 ```bash
 # Run smoke test and verify benchmark is computed
-python trade_cli.py backtest run --idea-card configs/idea_cards/validation/BTCUSDT_15m_simple.yml --json | python -c "import sys, json; d=json.load(sys.stdin); m=d['metrics']; print(f'benchmark={m[\"benchmark_return_pct\"]}, alpha={m[\"alpha_pct\"]}')"
+python trade_cli.py backtest run --idea-card strategies/idea_cards/validation/BTCUSDT_15m_simple.yml --json | python -c "import sys, json; d=json.load(sys.stdin); m=d['metrics']; print(f'benchmark={m[\"benchmark_return_pct\"]}, alpha={m[\"alpha_pct\"]}')"
 # Expected: benchmark and alpha should be non-zero for any price movement
 ```
 
@@ -436,7 +436,7 @@ python -c "from src.backtest.types import BacktestMetrics; m = BacktestMetrics()
 
 ```bash
 # Run backtest with trades and verify duration split
-python trade_cli.py backtest run --idea-card configs/idea_cards/validation/BTCUSDT_15m_simple.yml --json | python -c "import sys, json; d=json.load(sys.stdin); m=d['metrics']; print(f'win_dur={m[\"avg_winning_trade_duration_bars\"]}, loss_dur={m[\"avg_losing_trade_duration_bars\"]}')"
+python trade_cli.py backtest run --idea-card strategies/idea_cards/validation/BTCUSDT_15m_simple.yml --json | python -c "import sys, json; d=json.load(sys.stdin); m=d['metrics']; print(f'win_dur={m[\"avg_winning_trade_duration_bars\"]}, loss_dur={m[\"avg_losing_trade_duration_bars\"]}')"
 ```
 
 ---

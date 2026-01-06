@@ -84,6 +84,6 @@ Specific violations of CLAUDE.md rules.
 ```bash
 # Run before commit
 python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 python trade_cli.py --smoke backtest
 ```

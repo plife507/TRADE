@@ -12,7 +12,7 @@ Complexity Levels:
 
 from pathlib import Path
 
-OUTPUT_DIR = Path("configs/plays/_setups")
+OUTPUT_DIR = Path("strategies/plays/_setups")
 
 # ============================================================================
 # COMPLEXITY TIER 6: Two TF - Indicators Only (051-060)

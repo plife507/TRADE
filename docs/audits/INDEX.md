@@ -22,7 +22,7 @@
 
 **NOTE**: Forge migration in progress - audit paths will change:
 - `src/backtest/audits/` → `src/forge/audits/`
-- Validation Plays: `configs/plays/_validation/V_100+`
+- Validation Plays: `strategies/plays/_validation/V_100+`
 
 ---
 
@@ -75,7 +75,7 @@ Full codebase audit conducted by 10 specialized agents. **Verdict: ALL ISSUES RE
 
 ## Validation Plays (V_100+)
 
-Location: `configs/plays/_validation/` (after migration)
+Location: `strategies/plays/_validation/` (after migration)
 
 | Play | Purpose |
 |------|---------|

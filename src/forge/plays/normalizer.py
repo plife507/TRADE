@@ -6,7 +6,7 @@ Pure function that validates Play configurations (modern v3.0.0 format) against:
 - Feature registry (indicators must exist in INDICATOR_REGISTRY)
 - DSL actions syntax (must be parseable)
 - Symbol validation (USDT-quoted only)
-- Block references (must exist in configs/blocks/)
+- Block references (must exist in strategies/blocks/)
 
 Returns NormalizationResult with errors/warnings.
 
@@ -84,13 +84,13 @@ def normalize_play_strict(
     - Required fields: version, symbol (USDT-quoted), tf, features (≥1), actions (≥1), risk.*
     - All feature indicators must exist in INDICATOR_REGISTRY
     - Actions DSL must be parseable
-    - Block references must exist in configs/blocks/
+    - Block references must exist in strategies/blocks/
     - Symbol must end with 'USDT'
 
     Args:
         raw: Raw dictionary from YAML
         fail_on_error: If True, raise NormalizationError on errors
-        blocks_dir: Directory for block references (default: configs/blocks/)
+        blocks_dir: Directory for block references (default: strategies/blocks/)
 
     Returns:
         Tuple of (Play or None, NormalizationResult)
@@ -101,7 +101,7 @@ def normalize_play_strict(
     result = NormalizationResult()
 
     if blocks_dir is None:
-        blocks_dir = Path("configs/blocks")
+        blocks_dir = Path("strategies/blocks")
     else:
         blocks_dir = Path(blocks_dir)
 

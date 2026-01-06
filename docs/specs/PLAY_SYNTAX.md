@@ -12,10 +12,10 @@ Complete syntax guide for the Play DSL - declarative strategy specification.
 
 | Level | Location | Purpose |
 |-------|----------|---------|
-| **Block** | `configs/blocks/` | Reusable atomic condition (features + DSL condition) |
-| **Play** | `configs/plays/` | Complete strategy (features + actions + account + risk) |
-| **Playbook** | `configs/playbooks/` | Collection of Plays with weights/roles |
-| **System** | `configs/systems/` | Multiple Playbooks with global risk |
+| **Block** | `strategies/blocks/` | Reusable atomic condition (features + DSL condition) |
+| **Play** | `strategies/plays/` | Complete strategy (features + actions + account + risk) |
+| **Playbook** | `strategies/playbooks/` | Collection of Plays with weights/roles |
+| **System** | `strategies/systems/` | Multiple Playbooks with global risk |
 
 ### Play Sections
 
@@ -1231,7 +1231,7 @@ risk_model:
 
 ## See Also
 
-- `configs/plays/_validation/` - Validation play examples
+- `strategies/plays/_validation/` - Validation play examples
 - `docs/specs/PLAY_VISION.md` - Play design vision
 - `docs/specs/INCREMENTAL_STATE_ARCHITECTURE.md` - Structure detectors
 - `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` - StateRationalizer and Forge

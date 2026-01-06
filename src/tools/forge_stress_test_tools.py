@@ -48,7 +48,7 @@ def forge_stress_test_tool(
 
     Args:
         validation_plays_dir: Directory containing validation plays
-            (default: configs/plays/_validation)
+            (default: strategies/plays/_validation)
         skip_audits: Skip audit steps 3-6 (default: False)
         skip_backtest: Skip backtest steps 7-8 (default: False)
         trace_hashes: Enable hash tracing (default: True)

@@ -233,7 +233,7 @@ src/backtest/
 **Files to Review:**
 - `src/backtest/idea_card.py`
 - `src/backtest/execution_validation.py` (IdeaCard evaluation)
-- `configs/idea_cards/` (example YAMLs)
+- `strategies/idea_cards/` (example YAMLs)
 
 **Edge Cases to Check:**
 - Structure features in signal rules (e.g., "if price > last_swing_high")

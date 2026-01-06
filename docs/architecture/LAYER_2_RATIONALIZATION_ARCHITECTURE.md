@@ -605,7 +605,7 @@ src/
   live/                     # NEW
     live_runner.py          # LiveRunner using WebSocketPriceSource
 
-configs/plays/_validation/
+strategies/plays/_validation/
   V_130_rationalize_basic.yml
   V_131_rationalize_transitions.yml
   V_132_rationalize_regimes.yml
@@ -716,7 +716,7 @@ VALIDATION PIPELINE
 │  │ BacktestSource                                                     │ │
 │  │ - Real market conditions                                           │ │
 │  │ - Edge cases from actual trading                                   │ │
-│  │ - Validation Plays (V_100+ in configs/plays/_validation/) │ │
+│  │ - Validation Plays (V_100+ in strategies/plays/_validation/) │ │
 │  │ PROVES: "Works correctly on real markets"                          │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                              │                                          │
@@ -845,7 +845,7 @@ src/forge/
 │
 └── results/                     # Output from forge runs
 
-configs/
+strategies/
 ├── setups/                      # PROVEN reusable setups
 │   ├── entries/
 │   ├── exits/
@@ -889,7 +889,7 @@ configs/
 ### 10.5 Seed Data Format
 
 ```yaml
-# configs/seed_data/structures/swing_basic.yml
+# strategies/seed_data/structures/swing_basic.yml
 name: swing_high_low_detection
 description: "Verify swing detection with left=2, right=2"
 component_type: structure
@@ -943,7 +943,7 @@ class StructureAuditResult:
     mismatches: list[dict]
     passed: bool
 
-def run_structure_contract_audit(seed_dir: str = "configs/seed_data/structures/") -> list[StructureAuditResult]:
+def run_structure_contract_audit(seed_dir: str = "strategies/seed_data/structures/") -> list[StructureAuditResult]:
     """
     Run all structure seed data validations.
     Returns list of results per structure type.
@@ -1026,8 +1026,8 @@ python trade_cli.py forge validate-all swing
 |-------|----------|----------|
 | **Forge (WIP)** | `src/forge/*/` | Under development |
 | **Math Proven** | `src/forge/` + passing seed tests | All seed data passes |
-| **Registered** | `src/backtest/` or `configs/` | Moved to production location |
-| **Market Tested** | + `configs/plays/_validation/V_*.yml` | Validation plays pass |
+| **Registered** | `src/backtest/` or `strategies/` | Moved to production location |
+| **Market Tested** | + `strategies/plays/_validation/V_*.yml` | Validation plays pass |
 | **Production** | Used in real plays/playbooks | Demo-proven, approved |
 
 **Promotion by component type:**
@@ -1036,10 +1036,10 @@ python trade_cli.py forge validate-all swing
 |-----------|----------------|---------------------|
 | Detectors | `src/forge/detectors/` | `src/backtest/incremental/detectors/` |
 | Forecasting | `src/forge/forecasting/` | `src/backtest/forecasting/` |
-| Setups | `src/forge/setups/` | `configs/setups/` |
-| Plays | `src/forge/plays/` | `configs/plays/` |
-| Playbooks | `src/forge/playbooks/` | `configs/playbooks/` |
-| Systems | `src/forge/systems/` | `configs/systems/` |
+| Setups | `src/forge/setups/` | `strategies/setups/` |
+| Plays | `src/forge/plays/` | `strategies/plays/` |
+| Playbooks | `src/forge/playbooks/` | `strategies/playbooks/` |
+| Systems | `src/forge/systems/` | `strategies/systems/` |
 
 ### 10.10 Separation of Concerns
 
@@ -1060,7 +1060,7 @@ Development & Validation                   Production Consumption
 │ forecasting/                │           │ rationalize/                │
 │   experimental_*.py         │ ─promotes─► (future)                    │
 │                             │           │                             │
-│ configs/seed_data/          │           │ engine.py                   │
+│ strategies/seed_data/          │           │ engine.py                   │
 │   structures/*.yml          │           │   (runs proven components)  │
 │   forecasting/*.yml         │           │                             │
 └─────────────────────────────┘           └─────────────────────────────┘

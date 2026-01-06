@@ -25,7 +25,7 @@
 ## Pipeline Gates
 
 ### Gate 1: IdeaCard Creation ✅ COMPLETE
-- [x] Create 5 YAML files in `configs/idea_cards/validation/`
+- [x] Create 5 YAML files in `strategies/idea_cards/validation/`
 - [x] Verify file structure and syntax
 - [x] **GATE**: Human review of IdeaCard designs (approved)
 

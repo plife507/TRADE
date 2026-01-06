@@ -16,7 +16,7 @@ You are a senior architect coordinating work on the TRADE trading bot. You break
 - **Live Trading**: `src/core/`, `src/exchanges/` - execution, risk, positions
 - **Data Layer**: `src/data/` - DuckDB, market data, WebSocket
 - **Tools/CLI**: `src/tools/`, `trade_cli.py` - API surface
-- **IdeaCards**: `configs/idea_cards/` - strategy configurations
+- **IdeaCards**: `strategies/idea_cards/` - strategy configurations
 
 ## Core Responsibilities
 

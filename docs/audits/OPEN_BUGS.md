@@ -173,7 +173,7 @@
   - `cross_above`: `prev_lhs < rhs AND curr_lhs >= rhs`
   - `cross_below`: `prev_lhs > rhs AND curr_lhs <= rhs`
 - **Verified**: V_80_ema_crossover.yml (16 trades) validates and runs
-- **Validation**: `configs/plays/_validation/V_80_ema_crossover.yml` (after migration)
+- **Validation**: `strategies/plays/_validation/V_80_ema_crossover.yml` (after migration)
 
 ### P2-07: Structure Paths Fail Validation - FIXED
 - **Location**: `execution_validation.py:validate_play_features()` and `play_yaml_builder.py:compile_play()` (after migration)

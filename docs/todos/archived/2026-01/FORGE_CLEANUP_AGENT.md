@@ -47,7 +47,7 @@ grep -r "import.*idea_card" src/
 
 # Path strings - should find ZERO
 grep -r "idea_cards/" src/
-grep -r "configs/idea_cards" src/
+grep -r "strategies/idea_cards" src/
 ```
 
 ### 2. File/Directory Name Checks
@@ -60,7 +60,7 @@ find src/ -name "*idea_card*"
 find . -type d -name "*idea_card*"
 
 # Old config directory should NOT exist
-ls configs/idea_cards/  # Should fail with "No such file"
+ls strategies/idea_cards/  # Should fail with "No such file"
 ```
 
 ### 3. Import Health Checks
@@ -83,8 +83,8 @@ python -c "from src.cli.menus import backtest_play_menu"
 # Verify new paths work
 python -c "
 from pathlib import Path
-plays_dir = Path('configs/plays')
-assert plays_dir.exists(), 'configs/plays/ must exist'
+plays_dir = Path('strategies/plays')
+assert plays_dir.exists(), 'strategies/plays/ must exist'
 validation_dir = plays_dir / '_validation'
 assert validation_dir.exists(), '_validation subdirectory must exist'
 stress_dir = plays_dir / '_stress_test'
@@ -99,7 +99,7 @@ print('Config paths OK')
 # Check CLAUDE.md files for old terms
 grep -l "IdeaCard" CLAUDE.md src/*/CLAUDE.md
 grep -l "idea_card" CLAUDE.md src/*/CLAUDE.md
-grep -l "configs/idea_cards" CLAUDE.md src/*/CLAUDE.md
+grep -l "strategies/idea_cards" CLAUDE.md src/*/CLAUDE.md
 
 # Should only find references in migration docs or historical context
 ```
@@ -108,7 +108,7 @@ grep -l "configs/idea_cards" CLAUDE.md src/*/CLAUDE.md
 
 ```bash
 # Check for internal references to old paths in YAML files
-grep -r "idea_card" configs/plays/
+grep -r "idea_card" strategies/plays/
 ```
 
 ---

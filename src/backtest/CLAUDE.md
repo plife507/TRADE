@@ -50,7 +50,7 @@ The TRADE system uses a 3-level hierarchical strategy model:
 | **Play** | Complete backtest-ready strategy (features + actions + account + risk) |
 | **System** | Multiple plays with regime-based weighted blending |
 
-**Play** is the primary unit for backtesting. Located in `configs/plays/`.
+**Play** is the primary unit for backtesting. Located in `strategies/plays/`.
 
 ## The Forge
 
@@ -232,7 +232,7 @@ actions:
 3. Use `@register_structure("name")` decorator
 4. Define `REQUIRED_PARAMS`, `OPTIONAL_PARAMS`, `DEPENDS_ON`
 5. Implement `update(bar_idx, bar)`, `get_output_keys()`, `get_value(key)`
-6. Add validation Play to `configs/plays/_validation/`
+6. Add validation Play to `strategies/plays/_validation/`
 
 See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 
@@ -247,7 +247,7 @@ See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 
 ## Validation Plays
 
-Location: `configs/plays/_validation/`
+Location: `strategies/plays/_validation/`
 
 | Range | Purpose |
 |-------|---------|

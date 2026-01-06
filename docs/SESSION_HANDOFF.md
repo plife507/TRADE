@@ -66,7 +66,7 @@
 
 ```bash
 # Validate Plays
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 
 # Audit indicators and rollups
 python trade_cli.py backtest audit-toolkit

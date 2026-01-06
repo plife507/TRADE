@@ -11,9 +11,9 @@ Domain knowledge for designing TRADE strategy configurations (v3.0.3).
 
 | Level | Location | Purpose |
 |-------|----------|---------|
-| **Block** | `configs/blocks/` | Reusable atomic condition (features + DSL condition) |
-| **Play** | `configs/plays/` | Complete strategy (features + actions + account + risk) |
-| **System** | `configs/systems/` | Multiple Plays with regime-based weighted blending |
+| **Block** | `strategies/blocks/` | Reusable atomic condition (features + DSL condition) |
+| **Play** | `strategies/plays/` | Complete strategy (features + actions + account + risk) |
+| **System** | `strategies/systems/` | Multiple Plays with regime-based weighted blending |
 
 **Play** is the primary unit for backtesting.
 
@@ -431,5 +431,5 @@ position_policy:
 ## See Also
 
 - `docs/specs/PLAY_SYNTAX.md` - Complete syntax reference
-- `configs/plays/_validation/` - Validation play examples
+- `strategies/plays/_validation/` - Validation play examples
 - `src/forge/CLAUDE.md` - Forge development environment

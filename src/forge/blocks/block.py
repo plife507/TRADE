@@ -44,7 +44,7 @@ import yaml
 
 
 # Default blocks directory
-DEFAULT_BLOCKS_DIR = Path("configs/blocks")
+DEFAULT_BLOCKS_DIR = Path("strategies/blocks")
 
 
 class BlockNotFoundError(Exception):
@@ -87,7 +87,7 @@ class Block:
         condition: DSL condition dict that defines when block is active
         tags: Optional categorization tags
 
-    Example YAML (configs/blocks/rsi_oversold.yml):
+    Example YAML (strategies/blocks/rsi_oversold.yml):
         version: "1.0.0"
         id: rsi_oversold
         name: "RSI Oversold"

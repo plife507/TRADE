@@ -30,9 +30,9 @@ Artifacts (preflight_report.json, result.json, trades.csv, equity.csv)
 
 ## Play Location
 
-**Canonical path**: `configs/plays/`
+**Canonical path**: `strategies/plays/`
 
-- Production Plays live in `configs/plays/*.yml`
+- Production Plays live in `strategies/plays/*.yml`
 - `src/strategies/plays/` is for examples/templates only
 - Override with `--idea-dir` flag if loading from alternate location
 

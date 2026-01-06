@@ -25,7 +25,7 @@ import yaml
 
 
 # Default systems directory
-DEFAULT_SYSTEMS_DIR = Path("configs/systems")
+DEFAULT_SYSTEMS_DIR = Path("strategies/systems")
 
 
 class SystemNotFoundError(Exception):

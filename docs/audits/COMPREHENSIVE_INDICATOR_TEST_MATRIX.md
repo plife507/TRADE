@@ -225,9 +225,9 @@ python trade_cli.py backtest metrics-audit
 python trade_cli.py backtest metadata-smoke
 
 # Tier 2: YAML normalization
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/validation
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/stress_test
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/comprehensive
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/stress_test
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/comprehensive
 
 # Tier 3: Backtest runs with explicit dates
 # (run each card with appropriate date range)

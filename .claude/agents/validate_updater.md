@@ -23,7 +23,7 @@ Keep the validation system in sync with the evolving codebase. The `validate` ag
 
 | File | Purpose |
 |------|---------|
-| `configs/idea_cards/_validation/V_*.yml` | Add/update validation IdeaCards |
+| `strategies/idea_cards/_validation/V_*.yml` | Add/update validation IdeaCards |
 | `.claude/agents/validate.md` | Update test instructions and expectations |
 | `CLAUDE.md` (validation section) | Update validation documentation |
 
@@ -68,7 +68,7 @@ When a new indicator is added to `indicator_registry.py`:
 
 1. **Check current coverage**:
 ```bash
-grep -h "indicator_type:" configs/idea_cards/_validation/*.yml | sort | uniq
+grep -h "indicator_type:" strategies/idea_cards/_validation/*.yml | sort | uniq
 ```
 
 2. **Identify appropriate coverage card** (V_31-V_37):
@@ -102,7 +102,7 @@ python trade_cli.py backtest audit-toolkit
 
 2. **Run normalize-batch** to find broken IdeaCards:
 ```bash
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 ```
 
 3. **Fix affected IdeaCards**:
@@ -122,7 +122,7 @@ When expected test results change:
 2. **Update CLAUDE.md** validation section if tier structure changes
 3. **Verify new expectations**:
 ```bash
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 ```
 
 ---
@@ -237,7 +237,7 @@ After any update, always verify:
 
 ```bash
 # 1. All cards normalize
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 
 # 2. Expected: 20/21 pass (V_E02 fails intentionally)
 

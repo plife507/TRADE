@@ -3,7 +3,7 @@ System Normalizer - Strict validation and normalization.
 
 Pure function that validates System configurations against:
 - Required fields (id, version, plays)
-- Play references must exist in configs/plays/
+- Play references must exist in strategies/plays/
 - Risk profile validation
 - Regime features validation (if used)
 
@@ -22,7 +22,7 @@ from .system import System
 
 
 # Default plays directory for reference validation
-DEFAULT_PLAYS_DIR = Path("configs/plays")
+DEFAULT_PLAYS_DIR = Path("strategies/plays")
 
 # Valid modes
 VALID_MODES = {"backtest", "demo", "live"}
@@ -40,7 +40,7 @@ def normalize_system_strict(
 
     Validation rules:
     - Required fields: id, version, plays (≥1)
-    - All play_id references must exist in configs/plays/
+    - All play_id references must exist in strategies/plays/
     - risk_profile.initial_capital_usdt must be positive (if provided)
     - risk_profile.max_drawdown_pct must be 0-100 (if provided)
     - mode must be one of: backtest, demo, live
@@ -50,7 +50,7 @@ def normalize_system_strict(
     Args:
         raw: Raw dictionary from YAML
         fail_on_error: If True, raise NormalizationError on errors
-        plays_dir: Directory for play references (default: configs/plays/)
+        plays_dir: Directory for play references (default: strategies/plays/)
 
     Returns:
         Tuple of (System or None, NormalizationResult)

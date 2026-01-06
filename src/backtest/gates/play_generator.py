@@ -47,7 +47,7 @@ class GeneratorConfig:
     num_plays: int = 5
     min_indicators: int = 2
     max_indicators: int = 4
-    output_dir: Path = field(default_factory=lambda: Path("configs/plays/_generated"))
+    output_dir: Path = field(default_factory=lambda: Path("strategies/plays/_generated"))
 
 
 @dataclass
@@ -327,7 +327,7 @@ def generate_plays(config: GeneratorConfig) -> list[GeneratedPlay]:
     return results
 
 
-def cleanup_generated_plays(output_dir: Path = Path("configs/plays/_generated")) -> None:
+def cleanup_generated_plays(output_dir: Path = Path("strategies/plays/_generated")) -> None:
     """Remove all generated Plays."""
     if output_dir.exists():
         for f in output_dir.glob("*.yml"):

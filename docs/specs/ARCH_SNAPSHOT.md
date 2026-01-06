@@ -31,7 +31,7 @@ See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete ar
 | CLI | `src/cli/` | Production | ✅ Stable |
 | Trade Execution | `src/core/` + `src/exchanges/` | Functional | Maintenance |
 | Data | `src/data/` | Production | ✅ Stable |
-| Strategy Factory | `configs/plays/` | Production | ✅ Core Complete |
+| Strategy Factory | `strategies/plays/` | Production | ✅ Core Complete |
 | Audit & Validation | `src/backtest/artifacts/` | Production | ✅ Complete |
 
 **Status:** All P0 blockers resolved (December 17-18, 2025). System is production-ready.
@@ -335,7 +335,7 @@ play = Play(
 )
 
 # Serialize to YAML
-write_play_yaml(play, Path("configs/plays/agent_generated_001.yml"))
+write_play_yaml(play, Path("strategies/plays/agent_generated_001.yml"))
 ```
 
 ### 3. Backtest Result Parsing

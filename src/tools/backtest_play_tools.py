@@ -1041,7 +1041,7 @@ def backtest_list_plays_tool(
             message=f"Found {len(cards)} Plays",
             data={
                 "plays": cards,
-                "directory": str(plays_dir) if plays_dir else "configs/plays/",
+                "directory": str(plays_dir) if plays_dir else "strategies/plays/",
             },
         )
 

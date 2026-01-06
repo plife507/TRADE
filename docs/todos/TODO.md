@@ -25,7 +25,7 @@
 
 **Legacy Cleanup (2026-01-05)** - COMPLETE:
 - ✅ Removed `src/forge/playbooks/` module (no longer needed)
-- ✅ Removed `configs/playbooks/`, `configs/setups/` directories
+- ✅ Removed `strategies/playbooks/`, `strategies/setups/` directories
 - ✅ Simplified to Block → Play → System hierarchy
 
 **Simulator Order Parity (2026-01-05)** - COMPLETE:
@@ -77,9 +77,9 @@ Block (reusable condition)
 **Config Locations**:
 | Level | Directory | Example |
 |-------|-----------|---------|
-| Block | `configs/blocks/` | ema_cross.yml |
-| Play | `configs/plays/` | I_001_ema.yml |
-| System | `configs/systems/` | (future) |
+| Block | `strategies/blocks/` | ema_cross.yml |
+| Play | `strategies/plays/` | I_001_ema.yml |
+| System | `strategies/systems/` | (future) |
 
 **Validation Play Prefixes**:
 | Prefix | Purpose | Count |
@@ -125,7 +125,7 @@ python trade_cli.py viz serve --port 3000        # Custom port
 python trade_cli.py viz serve --reload           # Dev mode with auto-reload
 
 # Validate
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 python trade_cli.py backtest audit-toolkit
 python trade_cli.py backtest audit-rollup
 

@@ -239,7 +239,7 @@ if np.isnan(value):
 - 24 validation Plays
 ```
 
-**Validate**: `ls configs/plays/_validation/ | wc -l`
+**Validate**: `ls strategies/plays/_validation/ | wc -l`
 
 ---
 

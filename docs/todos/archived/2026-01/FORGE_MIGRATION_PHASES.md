@@ -29,7 +29,7 @@
 - [x] ZERO `idea_card` references in Python files  
 - [x] ZERO `IDEACARD` references in Python files
 - [x] All imports verified working
-- [x] `configs/plays/` exists with all YAML files
+- [x] `strategies/plays/` exists with all YAML files
 - [x] `src/backtest/play.py` exports `Play` class
 
 ---

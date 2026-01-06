@@ -31,7 +31,7 @@ A **declarative, self-contained strategy specification** that defines:
 - Machine-readable: YAML format, composable
 - Decoupled from execution: Play declares intent, engine executes
 
-**Canonical Location:** `configs/plays/`
+**Canonical Location:** `strategies/plays/`
 
 ### System (Hash)
 
@@ -362,13 +362,13 @@ backtests/<play_id>/<symbol>/<hash>/
 
 | Location | Purpose | Status |
 |----------|---------|--------|
-| `configs/plays/` | Canonical production cards | ✅ Active |
-| `configs/plays/verify/` | Verification test cards | ✅ Active |
-| `configs/plays/_TEMPLATE.yml` | Template for new cards | ✅ Active |
+| `strategies/plays/` | Canonical production cards | ✅ Active |
+| `strategies/plays/verify/` | Verification test cards | ✅ Active |
+| `strategies/plays/_TEMPLATE.yml` | Template for new cards | ✅ Active |
 | `src/strategies/plays/` | Examples/templates only | ⚠️ Misplaced |
-| `src/strategies/configs/` | Legacy configs | ⚠️ Misplaced |
+| `src/strategies/strategies/` | Legacy configs | ⚠️ Misplaced |
 
-**Recommendation:** Move or delete `src/strategies/plays/` and `src/strategies/configs/`.
+**Recommendation:** Move or delete `src/strategies/plays/` and `src/strategies/strategies/`.
 
 ---
 
@@ -424,8 +424,8 @@ When the Agent module is implemented:
 
 ### Short-Term (1-2 Weeks)
 
-2. **Clean up Play locations** — Consolidate to `configs/plays/`
-   - Move or delete `src/strategies/plays/` and `src/strategies/configs/`
+2. **Clean up Play locations** — Consolidate to `strategies/plays/`
+   - Move or delete `src/strategies/plays/` and `src/strategies/strategies/`
 
 3. **Define performance thresholds** — Minimum criteria for promotion
    - Sharpe ratio minimum

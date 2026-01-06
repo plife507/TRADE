@@ -189,7 +189,7 @@
 
 ### 4.6 Validate Phase 4
 - [ ] All new files compile
-- [ ] `python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation` passes
+- [ ] `python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation` passes
 - [ ] `from src.forge.play import Play, load_play` works
 
 ---

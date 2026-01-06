@@ -25,7 +25,7 @@ python trade_cli.py --smoke backtest                 # Integration smoke
 
 ## Validation IdeaCards
 
-Location: `configs/idea_cards/_validation/`
+Location: `strategies/idea_cards/_validation/`
 
 ### Existing Cards
 | Card | Purpose |
@@ -43,7 +43,7 @@ Location: `configs/idea_cards/_validation/`
 ### Creating New Validation Cards
 
 ```yaml
-# configs/idea_cards/_validation/V_XX_feature_name.yml
+# strategies/idea_cards/_validation/V_XX_feature_name.yml
 meta:
   idea_card_id: V_XX_feature_name
   name: "Validation: Feature Name"

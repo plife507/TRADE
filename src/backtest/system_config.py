@@ -1,7 +1,7 @@
 """
 System configuration loader.
 
-Loads and validates YAML system configs from src/strategies/configs/.
+Loads and validates YAML system configs from src/strategies/strategies/.
 Resolves system_id + window_name to concrete run parameters.
 
 Terminology model:
@@ -824,7 +824,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     import warnings
     warnings.warn(
         f"YAML SystemConfig '{system_id}' is deprecated. "
-        "Migrate to Play YAML format at configs/plays/. "
+        "Migrate to Play YAML format at strategies/plays/. "
         "See docs/strategy_factory/STRATEGY_FACTORY.md for migration guide.",
         DeprecationWarning,
         stacklevel=2

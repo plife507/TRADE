@@ -122,7 +122,10 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.tradingview.com)",
       "WebFetch(domain:marketscripters.com)",
-      "WebFetch(domain:pinewizards.com)"
+      "WebFetch(domain:pinewizards.com)",
+      "Bash(git push:*)",
+      "Bash(for f in hooks/scripts/validation_reminder.py src/backtest/gates/play_generator.py src/backtest/play_yaml_builder.py src/backtest/rules/dsl_nodes.py src/backtest/runner.py src/backtest/system_config.py src/cli/menus/backtest_play_menu.py src/cli/smoke_tests/backtest.py src/forge/audits/stress_test_suite.py src/forge/blocks/block.py src/forge/generation/generate_100_setups.py src/forge/generation/generate_100_setups_part2.py src/forge/plays/normalizer.py src/forge/setups/setup.py src/forge/systems/normalizer.py src/forge/systems/system.py src/forge/validation/batch_runner.py src/forge/validation/play_validator.py src/strategies/__init__.py src/tools/backtest_play_tools.py src/tools/forge_stress_test_tools.py)",
+      "Bash(do sed -i 's|configs/|strategies/|g' \"$f\")"
     ]
   }
 }

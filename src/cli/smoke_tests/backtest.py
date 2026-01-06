@@ -303,7 +303,7 @@ def run_backtest_smoke(fresh_db: bool = False, play_id: str = None) -> int:
         return _run_backtest_smoke_play(play_id, fresh_db)
 
     # No Plays found - fail
-    console.print(f"\n[bold red]FAIL[/] No Plays found in configs/plays/")
+    console.print(f"\n[bold red]FAIL[/] No Plays found in strategies/plays/")
     console.print(f"[dim]Create a Play YAML file or set BACKTEST_SMOKE_PLAY env var[/]")
     return 1
 
@@ -312,7 +312,7 @@ def run_backtest_mixed_smoke() -> int:
     """
     Run backtest smoke test with validation Plays.
 
-    Tests all validation cards in configs/plays/_validation/:
+    Tests all validation cards in strategies/plays/_validation/:
     - V_60-V_62: 1m evaluation loop (mark_price, zone touch, entry timing)
     - V_70-V_75: Incremental state structures (swing, fibonacci, zone, trend, rolling_window, multi-TF)
 
@@ -329,7 +329,7 @@ def run_backtest_mixed_smoke() -> int:
 
     failures = 0
 
-    # Select a diverse mix of validation cards from configs/plays/_validation/
+    # Select a diverse mix of validation cards from strategies/plays/_validation/
     plays_to_test = [
         # Core validation cards (1m eval loop)
         "V_60_mark_price_basic",

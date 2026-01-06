@@ -31,7 +31,7 @@ Check the conversation context for:
 | `src/backtest/engine*.py` | normalize-batch → backtest run (1 card) |
 | `src/backtest/sim/*.py` | audit-rollup, backtest run (1 card) |
 | `src/backtest/runtime/*.py` | audit-snapshot-plumbing |
-| `configs/idea_cards/*.yml` | normalize on that specific card |
+| `strategies/idea_cards/*.yml` | normalize on that specific card |
 | `src/tools/backtest*.py` | normalize-batch, preflight |
 | `src/cli/*.py` | CLI compile check, smoke test |
 | `Any backtest code` | TIER 1 minimum (normalize + audits) |
@@ -69,7 +69,7 @@ python trade_cli.py backtest idea-card-normalize --idea-card _validation/V_01_si
 **The critical gate.** Validates configs against current engine state.
 
 ```bash
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 ```
 
 Expected: 20/21 pass (V_E02 fails intentionally with UNDECLARED_FEATURE)
@@ -98,7 +98,7 @@ Only run when explicitly requested or testing full flow.
 
 ## Validation IdeaCards
 
-**Location**: `configs/idea_cards/_validation/`
+**Location**: `strategies/idea_cards/_validation/`
 
 ### Core Validation Cards
 | ID | Card | TF | Indicators |
@@ -149,13 +149,13 @@ Only run when explicitly requested or testing full flow.
 python trade_cli.py backtest audit-toolkit
 
 # Verify IdeaCards still validate against registry
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 ```
 
 ### Example 2: Changed engine.py or engine_*.py
 ```bash
 # Normalize first
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 
 # Quick backtest run (if DB available)
 python trade_cli.py backtest run --idea-card _validation/V_01_single_5m_rsi_ema

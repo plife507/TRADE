@@ -52,7 +52,7 @@ if requires_history:
 
 ### Gate 1.1: Slippage Value Parity
 
-**Validation IdeaCard**: `configs/idea_cards/_validation/test__slippage_parity.yml`
+**Validation IdeaCard**: `strategies/idea_cards/_validation/test__slippage_parity.yml`
 
 ```yaml
 id: test__slippage_parity
@@ -123,7 +123,7 @@ risk_profile = RiskProfileConfig(
 
 ### Gate 2.1: MMR Configuration Parity
 
-**Validation IdeaCard**: `configs/idea_cards/_validation/test__mmr_config.yml`
+**Validation IdeaCard**: `strategies/idea_cards/_validation/test__mmr_config.yml`
 
 ```yaml
 id: test__mmr_config
@@ -317,7 +317,7 @@ python trade_cli.py backtest audit-value-flow --idea-card coverage_07_mtf_full_s
 | `src/backtest/idea_card.py` | 2 | Add maintenance_margin_rate field |
 | `src/backtest/audits/audit_ideacard_value_flow.py` | 4 | New audit module |
 | `src/cli/smoke_tests.py` | 4 | Add value-flow audit to smoke |
-| `configs/idea_cards/_validation/*.yml` | 1, 2, 3 | Test IdeaCards |
+| `strategies/idea_cards/_validation/*.yml` | 1, 2, 3 | Test IdeaCards |
 
 ---
 

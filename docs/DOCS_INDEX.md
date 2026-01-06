@@ -46,7 +46,7 @@ Navigation hub for all project documentation.
 ```bash
 python trade_cli.py                     # Run CLI
 python trade_cli.py --smoke full        # Full smoke test
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 python trade_cli.py backtest audit-toolkit
 ```
 
@@ -58,5 +58,5 @@ python trade_cli.py backtest audit-toolkit
 |-------|----------|
 | AI Guidance | `CLAUDE.md` |
 | Module Docs | `src/*/CLAUDE.md` |
-| Plays | `configs/plays/` |
-| Validation Plays | `configs/plays/_validation/` |
+| Plays | `strategies/plays/` |
+| Validation Plays | `strategies/plays/_validation/` |

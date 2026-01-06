@@ -5,7 +5,7 @@
 ## Folder Tree
 
 ```
-configs/
+strategies/
 └── plays/                         # ← Canonical Plays (for backtesting)
     ├── README.md                  # This file
     ├── _validation/               # Validation Plays (V_100+)
@@ -209,7 +209,7 @@ when:
 python trade_cli.py backtest play-normalize --id V_100_blocks_basic
 
 # Normalize all validation Plays
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 
 # Run smoke test
 python trade_cli.py --smoke forge

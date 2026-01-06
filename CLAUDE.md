@@ -107,21 +107,21 @@ The system uses a three-level hierarchy for organizing trading logic:
 
 | Level | Name | Description | Location |
 |-------|------|-------------|----------|
-| 1 | **Block** | Atomic reusable condition (features + DSL condition) | `configs/blocks/` |
-| 2 | **Play** | Complete backtest-ready strategy (features + actions + risk) | `configs/plays/` |
-| 3 | **System** | Multiple plays with regime-based weighted blending | `configs/systems/` |
+| 1 | **Block** | Atomic reusable condition (features + DSL condition) | `strategies/blocks/` |
+| 2 | **Play** | Complete backtest-ready strategy (features + actions + risk) | `strategies/plays/` |
+| 3 | **System** | Multiple plays with regime-based weighted blending | `strategies/systems/` |
 
 ### Promotion Path
 
 ```
-The Forge (src/forge/) → configs/plays/ (proven)
+The Forge (src/forge/) → strategies/plays/ (proven)
      ↓                          ↓
   Develop & Test            Production-ready
   Experimental              Validated
 ```
 
 - **The Forge** (`src/forge/`): Development and validation environment for experimental Plays
-- **configs/**: Proven, validated configurations ready for backtesting or live use
+- **strategies/**: Proven, validated configurations ready for backtesting or live use
 
 ## Current Objective (Backtest Engine Roadmap)
 
@@ -219,7 +219,7 @@ TRADE/
 │   ├── tools/                     # SHARED: CLI/API surface (PRIMARY INTERFACE)
 │   ├── utils/                     # SHARED: Logging, rate limiting, helpers
 │   └── risk/global_risk.py        # Account-level risk (GlobalRiskView)
-├── configs/
+├── strategies/
 │   ├── blocks/                    # Atomic reusable conditions
 │   ├── plays/                     # Proven Play configurations (strategies)
 │   │   └── _validation/           # Validation Plays (V_001+)
@@ -242,17 +242,17 @@ The Forge (`src/forge/`) is the development and validation environment for exper
 - **Develop**: Create and iterate on new Play configurations
 - **Validate**: Run validation checks before promotion
 - **Test**: Execute backtests in isolated environment
-- **Promote**: Move proven Plays to `configs/plays/`
+- **Promote**: Move proven Plays to `strategies/plays/`
 
 ### Workflow
 
 ```
-1. Create Play in Forge → 2. Validate & Test → 3. Promote to configs/
+1. Create Play in Forge → 2. Validate & Test → 3. Promote to strategies/
 ```
 
 ### Key Principle
 
-Plays in the Forge are experimental. Only after passing validation gates do they get promoted to `configs/plays/` for production use.
+Plays in the Forge are experimental. Only after passing validation gates do they get promoted to `strategies/plays/` for production use.
 
 ## Timeframe Definitions (Multi-Timeframe Trading)
 
@@ -418,7 +418,7 @@ Each major module has its own CLAUDE.md with domain rules and active TODOs:
 - Forge Plays MUST NOT be referenced by production systems.
 
 **Validation Before Promotion**
-- Plays MUST pass all validation tiers before promotion to `configs/plays/`.
+- Plays MUST pass all validation tiers before promotion to `strategies/plays/`.
 - Promotion is a manual, deliberate action—not automated.
 
 **Isolation**
@@ -649,9 +649,9 @@ See **Critical Rules → Safety & API Discipline** for enforcement requirements.
 | `src/data/` | SHARED | Market data, DuckDB storage, realtime state |
 | `src/config/` | SHARED | Configuration (domain-agnostic) |
 | `src/utils/` | SHARED | Logging, rate limiting, helpers |
-| `configs/blocks/` | — | Atomic reusable conditions |
-| `configs/plays/` | — | Proven Play configurations |
-| `configs/systems/` | — | Deployment configurations (multiple plays) |
+| `strategies/blocks/` | — | Atomic reusable conditions |
+| `strategies/plays/` | — | Proven Play configurations |
+| `strategies/systems/` | — | Deployment configurations (multiple plays) |
 | `docs/todos/` | — | TODO phase documents (canonical work tracking) |
 
 ## Reference Documentation
@@ -726,13 +726,13 @@ See `docs/todos/TODO.md` for active work tracking.
 | `src/backtest/engine*.py` | "Run normalize-batch, then one backtest run" |
 | `src/backtest/sim/*.py` | "Run audit-rollup" |
 | `src/backtest/metrics.py` | "Run metrics-audit" |
-| `configs/plays/*.yml` | "Run normalize on that Play" |
+| `strategies/plays/*.yml` | "Run normalize on that Play" |
 | `src/cli/*.py` | "Quick validate - syntax check" |
 | Any backtest code | "Run TIER 1-2 validation" |
 
 ### Validation Plays
 
-Location: `configs/plays/_validation/`
+Location: `strategies/plays/_validation/`
 
 | Play | Purpose |
 |------|---------|

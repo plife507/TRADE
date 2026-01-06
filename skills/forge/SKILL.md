@@ -40,9 +40,9 @@ def maybe_validate(play: Play, force: bool = False):
 
 | Level | Location | Purpose |
 |-------|----------|---------|
-| **Block** | `configs/blocks/` | Atomic reusable condition (features + DSL condition) |
-| **Play** | `configs/plays/` | Complete backtest-ready strategy (features + actions + account + risk) |
-| **System** | `configs/systems/` | Multiple plays with regime-based weighted blending |
+| **Block** | `strategies/blocks/` | Atomic reusable condition (features + DSL condition) |
+| **Play** | `strategies/plays/` | Complete backtest-ready strategy (features + actions + account + risk) |
+| **System** | `strategies/systems/` | Multiple plays with regime-based weighted blending |
 
 ### Hierarchy Resolution
 
@@ -59,7 +59,7 @@ for play_ref in system.get_enabled_plays():
 Systems support multiple active plays with regime-based weight adjustments:
 
 ```yaml
-# configs/systems/btc_trend_v1.yml
+# strategies/systems/btc_trend_v1.yml
 id: btc_trend_v1
 version: "1.0.0"
 
@@ -205,9 +205,9 @@ candles = generate_synthetic_candles(
 
 | Level | Location | Examples |
 |-------|----------|----------|
-| Block | `configs/blocks/_validation/` | V_B001_*, V_B002_* |
-| Play | `configs/plays/_validation/` | I_*, M_*, O_*, R_*, S_* |
-| System | `configs/systems/_validation/` | V_SYS001-V_SYS003 |
+| Block | `strategies/blocks/_validation/` | V_B001_*, V_B002_* |
+| Play | `strategies/plays/_validation/` | I_*, M_*, O_*, R_*, S_* |
+| System | `strategies/systems/_validation/` | V_SYS001-V_SYS003 |
 
 **Validation Play Prefixes**:
 | Prefix | Category |
@@ -221,7 +221,7 @@ candles = generate_synthetic_candles(
 ## Development Workflow
 
 ```
-1. Create Play in configs/plays/
+1. Create Play in strategies/plays/
 2. Run normalize: backtest play-normalize-batch
 3. Validate: backtest audit-toolkit
 4. Backtest: backtest run --play <id>
@@ -231,7 +231,7 @@ candles = generate_synthetic_candles(
 ### Promotion Path
 
 ```
-The Forge (src/forge/) → configs/plays/ (proven)
+The Forge (src/forge/) → strategies/plays/ (proven)
      ↓                          ↓
   Develop & Test            Production-ready
   Experimental              Validated
@@ -241,7 +241,7 @@ The Forge (src/forge/) → configs/plays/ (proven)
 
 ```bash
 # Play normalization
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 
 # Indicator registry audit
 python trade_cli.py backtest audit-toolkit
@@ -275,7 +275,7 @@ python trade_cli.py forge stress-test
 Play YAML → load_play() → validate_play() → ValidationResult
                                |
                        [errors] → FIX → retry
-                       [valid] → promote to configs/plays/
+                       [valid] → promote to strategies/plays/
 ```
 
 ## See Also

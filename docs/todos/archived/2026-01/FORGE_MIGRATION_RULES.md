@@ -20,7 +20,7 @@
 ### Directory Renames
 | Old Path | New Path |
 |----------|----------|
-| `configs/idea_cards/` | `configs/plays/` |
+| `strategies/idea_cards/` | `strategies/plays/` |
 | `src/strategies/idea_cards/` | `src/strategies/plays/` |
 | `src/cli/menus/backtest_ideacard_menu.py` | `src/cli/menus/backtest_play_menu.py` |
 
@@ -114,9 +114,9 @@ ImportError: cannot import name 'IdeaCard' from 'src.backtest'
 
 ### File Not Found
 ```
-FileNotFoundError: configs/idea_cards/...
+FileNotFoundError: strategies/idea_cards/...
 ```
-**Fix**: Update path to `configs/plays/...`
+**Fix**: Update path to `strategies/plays/...`
 
 ### Attribute Errors
 ```
@@ -141,11 +141,11 @@ BREAKING: <what breaks and how to fix>
 
 Example:
 ```
-refactor(forge-P1): rename configs/idea_cards/ to configs/plays/
+refactor(forge-P1): rename strategies/idea_cards/ to strategies/plays/
 
 - Moved 21 YAML files to new location
 - Updated all path references in src/
 - Updated CLI menu paths
 
-BREAKING: configs/idea_cards/ no longer exists
+BREAKING: strategies/idea_cards/ no longer exists
 ```

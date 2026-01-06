@@ -23,7 +23,7 @@ All setups use:
 
 from pathlib import Path
 
-OUTPUT_DIR = Path("configs/plays/_setups")
+OUTPUT_DIR = Path("strategies/plays/_setups")
 
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 EXEC_TFS = ["5m", "15m", "30m", "1h"]

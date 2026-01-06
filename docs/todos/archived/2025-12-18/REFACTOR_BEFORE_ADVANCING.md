@@ -132,23 +132,23 @@ These items reduce confusion and technical debt. Complete after P0.
 
 ### P1.4: Organize Test IdeaCards into Correct Folders ✅ COMPLETE
 
-- [x] **What**: Move test/validation IdeaCards to `configs/idea_cards/_validation/`; keep only real strategies in root and `strategies/`.
+- [x] **What**: Move test/validation IdeaCards to `strategies/idea_cards/_validation/`; keep only real strategies in root and `strategies/`.
 - [x] **Why**: Test IdeaCards (test__*) are mixed with real strategy cards, causing confusion about which are for validation vs production use.
 - [x] **Where**:
-  - MOVED to `configs/idea_cards/_validation/`:
+  - MOVED to `strategies/idea_cards/_validation/`:
     - `test__delay_bars_mtf__LTCUSDT_5m_1h_4h.yml`
     - `test__delay_bars_uncommon_indicators__SUIUSDT_5m_1h_4h.yml`
     - `test__phase6_mtf_alignment__BTCUSDT_5m_1h_4h.yml`
     - `test__phase6_warmup_matrix__BTCUSDT_5m.yml`
   - No path updates needed — `load_idea_card()` already searches `_validation/` subdirectory
 - [x] **Acceptance Criteria**:
-  - `configs/idea_cards/` root contains only `_TEMPLATE.yml`, `README.md`, subdirectories ✅
+  - `strategies/idea_cards/` root contains only `_TEMPLATE.yml`, `README.md`, subdirectories ✅
   - All `test__*.yml` files are in `_validation/` ✅
   - Phase 6 smoke tests still find IdeaCards ✅
 - [x] **Completed**: December 18, 2025
 - [x] **References**:
   - `docs/PROJECT_STATUS.md` — "Week 1: Fix P0 + Consolidation" table
-  - Memory [[memory:12212539]] — IdeaCard canonical location is `configs/idea_cards/`
+  - Memory [[memory:12212539]] — IdeaCard canonical location is `strategies/idea_cards/`
 
 ---
 

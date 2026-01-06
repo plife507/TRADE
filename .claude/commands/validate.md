@@ -24,7 +24,7 @@ Run the TRADE validation suite at the specified tier.
 ### TIER 1: IdeaCard Normalization
 
 ```bash
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 ```
 
 Expected: 9/9 cards pass

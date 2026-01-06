@@ -20,7 +20,7 @@ def main():
             "message": (
                 "Backtest code modified. Remember to validate:\n"
                 "  python trade_cli.py backtest audit-toolkit\n"
-                "  python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation\n"
+                "  python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation\n"
                 "  python trade_cli.py --smoke backtest"
             )
         }))

@@ -173,7 +173,7 @@ Implement incremental state architecture for O(1) market structure access in hot
 
 **Gate**: Documentation complete, CLI help updated
 
-- [x] Add validation IdeaCards to `configs/idea_cards/_validation/`
+- [x] Add validation IdeaCards to `strategies/idea_cards/_validation/`
   - [x] `V_70_swing_basic.yml` - swing detection
   - [x] `V_71_fibonacci.yml` - fib levels
   - [x] `V_72_zone_state.yml` - zone state machine

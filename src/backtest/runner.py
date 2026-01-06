@@ -553,7 +553,7 @@ def run_backtest_with_gates(
         run_hash = compute_run_hash(trades_hash, equity_hash, play_hash)
         
         # Resolve idea path (where Play was loaded from)
-        resolved_idea_path = str(config.plays_dir / f"{play.id}.yml") if config.plays_dir else f"configs/plays/{play.id}.yml"
+        resolved_idea_path = str(config.plays_dir / f"{play.id}.yml") if config.plays_dir else f"strategies/plays/{play.id}.yml"
         
         summary = compute_results_summary(
             play_id=play.id,
@@ -827,7 +827,7 @@ def main():
     parser.add_argument(
         "--idea-dir",
         default=None,
-        help="Override Play directory (default: configs/plays/)",
+        help="Override Play directory (default: strategies/plays/)",
     )
     parser.add_argument(
         "--skip-preflight",

@@ -31,7 +31,7 @@ Launch these agents simultaneously:
 | Engine Core | src/backtest/engine*.py | Lookahead, timing, snapshots |
 | Sim/Exchange | src/backtest/sim/ | Fills, fees, position sizing |
 | Runtime | src/backtest/runtime/ | State tracking, snapshots |
-| Integration | configs/idea_cards/_validation/ | End-to-end paths |
+| Integration | strategies/idea_cards/_validation/ | End-to-end paths |
 
 3. **Consolidate Findings**
 

@@ -1190,7 +1190,7 @@ python trade_cli.py backtest structure-smoke
 Smoke test YAML:
 
 ```yaml
-# configs/plays/_validation/V_90_derived_zones.yml
+# strategies/plays/_validation/V_90_derived_zones.yml
 
 id: V_90_derived_zones
 execution_tf: "1h"

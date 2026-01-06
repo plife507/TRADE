@@ -65,7 +65,7 @@ Strategies compose hierarchically (3 levels):
 | **System** | Multiple plays with regime blending | `btc_momentum_v1` |
 
 ```yaml
-# Example Play (configs/plays/T_001_ema_crossover.yml)
+# Example Play (strategies/plays/T_001_ema_crossover.yml)
 id: T_001_ema_crossover
 version: "3.0.0"
 
@@ -145,7 +145,7 @@ python trade_cli.py backtest play-normalize --play T_001_ema_crossover
 python trade_cli.py backtest run --play T_001_ema_crossover --start 2025-01-01 --end 2025-01-31
 
 # Batch validate all Plays
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 
 # Run audit suite
 python trade_cli.py backtest audit-toolkit
@@ -170,7 +170,7 @@ TRADE/
 │   ├── exchanges/          # Bybit API client
 │   ├── tools/              # 84 registered tools (CLI/API)
 │   └── data/               # DuckDB market data storage
-├── configs/
+├── strategies/
 │   ├── blocks/             # Atomic reusable conditions
 │   ├── plays/              # Strategy definitions
 │   └── systems/            # Full system configs (multiple plays)

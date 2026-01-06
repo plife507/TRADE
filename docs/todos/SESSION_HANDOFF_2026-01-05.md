@@ -44,7 +44,7 @@ New structure (26 plays with categorized prefixes):
 Removed:
 - `src/forge/playbooks/` (entire module)
 - `src/tools/forge_playbook_tools.py`
-- `configs/playbooks/`, `configs/setups/`
+- `strategies/playbooks/`, `strategies/setups/`
 - Stress test plays
 
 Simplified hierarchy: **Block → Play → System**
@@ -128,7 +128,7 @@ Visit: http://localhost:8765
 
 ```bash
 # Validate all plays
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 
 # Audit indicators
 python trade_cli.py backtest audit-toolkit

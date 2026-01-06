@@ -529,7 +529,7 @@ class CountTrue:
 @dataclass(frozen=True)
 class SetupRef:
     """
-    A reference to a Setup defined in configs/setups/.
+    A reference to a Setup defined in strategies/setups/.
 
     Setups are reusable market condition blocks that encapsulate
     common patterns (e.g., "RSI oversold", "EMA pullback").

@@ -122,7 +122,7 @@ def _select_play(prompt_text: str = "Select Play") -> str | None:
     cards = result.data.get("plays", [])
 
     if not cards:
-        console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in configs/plays/[/]")
+        console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in strategies/plays/[/]")
         return None
 
     # Display numbered list

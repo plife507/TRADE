@@ -64,9 +64,9 @@ from src.forge import (
 
 | Level | Description | Config Location | Purpose |
 |-------|-------------|-----------------|---------|
-| **Block** | Atomic reusable condition | `configs/blocks/` | Features + DSL condition (no account/risk) |
-| **Play** | Complete backtest-ready strategy | `configs/plays/` | Features + actions + account + risk |
-| **System** | Multiple plays with regime | `configs/systems/` | Weighted blending + regime conditions |
+| **Block** | Atomic reusable condition | `strategies/blocks/` | Features + DSL condition (no account/risk) |
+| **Play** | Complete backtest-ready strategy | `strategies/plays/` | Features + actions + account + risk |
+| **System** | Multiple plays with regime | `strategies/systems/` | Weighted blending + regime conditions |
 
 ### Hierarchy Resolution
 
@@ -86,7 +86,7 @@ for play_ref in system.get_enabled_plays():
 Systems support multiple active plays with regime-based weight adjustments:
 
 ```yaml
-# configs/systems/btc_trend_v1.yml
+# strategies/systems/btc_trend_v1.yml
 id: btc_trend_v1
 version: "1.0.0"
 
@@ -131,7 +131,7 @@ risk_profile:
 Play YAML -> load_play() -> validate_play() -> ValidationResult
                                 |
                         [errors] -> FIX -> retry
-                        [valid] -> promote to configs/plays/
+                        [valid] -> promote to strategies/plays/
 ```
 
 ## Normalizers
@@ -220,9 +220,9 @@ candles = generate_synthetic_candles(
 
 | Level | Location | Examples |
 |-------|----------|----------|
-| Block | `configs/blocks/_validation/` | V_B001_*, V_B002_* |
-| Play | `configs/plays/_validation/` | V_001-V_045 |
-| System | `configs/systems/_validation/` | V_SYS001-V_SYS003 |
+| Block | `strategies/blocks/_validation/` | V_B001_*, V_B002_* |
+| Play | `strategies/plays/_validation/` | V_001-V_045 |
+| System | `strategies/systems/_validation/` | V_SYS001-V_SYS003 |
 
 **System Validation Configs**:
 - `V_SYS001_minimal.yml` - Single play, minimal risk

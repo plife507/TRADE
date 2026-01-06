@@ -26,7 +26,7 @@ python -m py_compile src/backtest/engine.py
 
 ### TIER 1: Play Normalization (ALWAYS FIRST)
 ```bash
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 ```
 - Validates indicator keys match registry
 - Validates params are valid
@@ -73,7 +73,7 @@ python trade_cli.py forge stress-test
 
 ## Validation Plays
 
-Location: `configs/plays/_validation/`
+Location: `strategies/plays/_validation/`
 
 ### Indicator Plays (I_)
 
@@ -242,7 +242,7 @@ if result.needs_coverage_update:
 python -m py_compile src/backtest/engine.py
 
 # Play normalization
-python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
 
 # Single play normalize
 python trade_cli.py backtest play-normalize --play I_001_ema

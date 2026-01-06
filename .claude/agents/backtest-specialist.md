@@ -30,8 +30,8 @@ You are an expert on the TRADE backtest engine. You understand the engine archit
 - Incremental state detectors (swing, fibonacci, zone, trend, rolling_window)
 
 ### IdeaCard System
-- YAML configuration in `configs/idea_cards/`
-- Validation cards in `configs/idea_cards/_validation/`
+- YAML configuration in `strategies/idea_cards/`
+- Validation cards in `strategies/idea_cards/_validation/`
 - V_60-V_62: 1m eval loop tests
 - V_70-V_75: Incremental state tests
 
@@ -44,7 +44,7 @@ You are an expert on the TRADE backtest engine. You understand the engine archit
 python trade_cli.py backtest audit-toolkit
 
 # Validate IdeaCards
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
 
 # Run structure smoke
 python trade_cli.py backtest structure-smoke
@@ -57,7 +57,7 @@ python trade_cli.py --smoke backtest
 
 1. Add to `src/backtest/indicator_registry.py`
 2. Define in INDICATOR_REGISTRY with output_keys
-3. Create validation IdeaCard in `configs/idea_cards/_validation/`
+3. Create validation IdeaCard in `strategies/idea_cards/_validation/`
 4. Run audit-toolkit to verify
 
 ### Adding New Structures
