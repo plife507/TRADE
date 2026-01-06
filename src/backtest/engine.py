@@ -1744,7 +1744,11 @@ class BacktestEngine:
         # Handle FLAT signal (close position)
         if signal.direction == "FLAT":
             if exchange.position is not None:
-                exchange.submit_close(reason="signal")
+                # Check for partial exit percentage in metadata
+                exit_percent = 100.0
+                if signal.metadata and "exit_percent" in signal.metadata:
+                    exit_percent = signal.metadata["exit_percent"]
+                exchange.submit_close(reason="signal", percent=exit_percent)
             return
         
         # Skip if we already have a position

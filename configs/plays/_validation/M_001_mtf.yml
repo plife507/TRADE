@@ -25,19 +25,19 @@ position_policy:
   max_positions_per_symbol: 1
 
 features:
-  - id: "ema_fast"
+  - id: "ema_9"
     tf: "15m"
     type: indicator
     indicator_type: ema
     params:
       length: 9
-  - id: "ema_slow"
+  - id: "ema_21"
     tf: "15m"
     type: indicator
     indicator_type: ema
     params:
       length: 21
-  - id: "ema_htf"
+  - id: "ema_50_1h"
     tf: "1h"
     type: indicator
     indicator_type: ema
@@ -50,15 +50,15 @@ actions:
       - when:
           all:
             - lhs:
-                feature_id: "ema_fast"
+                feature_id: "ema_9"
               op: gt
               rhs:
-                feature_id: "ema_slow"
+                feature_id: "ema_21"
             - lhs:
                 feature_id: "close"
               op: gt
               rhs:
-                feature_id: "ema_htf"
+                feature_id: "ema_50_1h"
         emit:
           - action: entry_long
     else:
@@ -69,10 +69,10 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "ema_fast"
+            feature_id: "ema_9"
           op: lt
           rhs:
-            feature_id: "ema_slow"
+            feature_id: "ema_21"
         emit:
           - action: exit_long
 

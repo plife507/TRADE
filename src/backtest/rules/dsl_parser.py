@@ -304,6 +304,12 @@ def parse_intent(data: dict | str) -> Intent:
     Parse an Intent from YAML.
 
     Formats:
+        # Full format with partial exit
+        - action: exit_long
+          percent: 50
+          metadata:
+            reason: "take_profit"
+
         # Full format
         - action: entry_long
           metadata:
@@ -332,7 +338,9 @@ def parse_intent(data: dict | str) -> Intent:
         raise ValueError("Intent requires 'action'")
 
     metadata = data.get("metadata", {})
-    return Intent(action=action, metadata=metadata)
+    percent = data.get("percent", 100.0)
+
+    return Intent(action=action, metadata=metadata, percent=percent)
 
 
 def parse_case(data: dict) -> Case:

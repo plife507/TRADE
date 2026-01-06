@@ -41,9 +41,9 @@ The TRADE backtesting engine demonstrates **strong architectural discipline** wi
 - `src/backtest/rules/` rule evaluation (compile, eval)
 - `src/backtest/artifacts/` artifact writing
 - `src/backtest/indicators.py` indicator computation
-- IdeaCard parsing and validation
+- Play parsing and validation
 - CLI command implementations
-- Test/validation IdeaCards
+- Test/validation Plays
 
 ---
 

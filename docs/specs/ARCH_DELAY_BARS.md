@@ -13,7 +13,7 @@ This document uses the new trading hierarchy terminology:
 | Term | Definition |
 |------|------------|
 | **Setup** | Reusable rule blocks, filters, entry/exit logic |
-| **Play** | Complete strategy specification (formerly "IdeaCard") |
+| **Play** | Complete strategy specification |
 | **Playbook** | Collection of plays with regime routing |
 | **System** | Full trading operation with risk/execution |
 | **Forge** | Development/validation environment (src/forge/) |
@@ -78,7 +78,7 @@ Engine applies delay offset (closed-candle aligned)
 
 ### Integration Points
 
-1. **Play** (`src/backtest/idea_card.py`): Added `MarketStructureConfig` to `TFConfig`
+1. **Play** (`src/backtest/play.py`): Added `MarketStructureConfig` to `TFConfig`
 2. **Preflight** (`src/backtest/execution_validation.py`): Computes `delay_by_role` from Play
 3. **SystemConfig** (`src/backtest/system_config.py`): Added `delay_bars_by_role` to system UID
 4. **Engine** (`src/backtest/engine.py`): Applies delay offset to `simulation_start_ts` using `ceil_to_tf_close()`
@@ -235,7 +235,7 @@ delay_bars = 20      # Evaluation offset
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **MarketStructureConfig** | `src/backtest/idea_card.py` | Data structure definition (file name unchanged) |
+| **MarketStructureConfig** | `src/backtest/play.py` | Data structure definition |
 | **Delay Computation** | `src/backtest/execution_validation.py` | `compute_warmup_requirements()` extracts delay |
 | **SystemConfig** | `src/backtest/system_config.py` | Stores `delay_bars_by_role` |
 | **Engine Application** | `src/backtest/engine.py` | Applies delay offset (2 locations: single-TF, multi-TF) |
@@ -246,7 +246,7 @@ delay_bars = 20      # Evaluation offset
 
 ## References
 
-- Market Structure Config: `src/backtest/idea_card.py:638-677` (file name unchanged)
+- Market Structure Config: `src/backtest/play.py:638-677`
 - Delay Computation: `src/backtest/execution_validation.py:421-461`
 - Engine Application: `src/backtest/engine.py:460-465` (single-TF), `646-659` (multi-TF)
 - Timeframe Utils: `src/backtest/runtime/timeframe.py`

@@ -1,7 +1,7 @@
 # TRADE Data Module
 
-**STATUS:** CANONICAL  
-**PURPOSE:** Data module documentation: stores, schemas, checks, lineage, readiness  
+**STATUS:** CANONICAL
+**PURPOSE:** Data module documentation: stores, schemas, checks, lineage, readiness
 **LAST UPDATED:** December 17, 2025
 
 ---
@@ -117,11 +117,11 @@ The Data module provides historical market data storage and retrieval via DuckDB
 
 | Check | Status | Description |
 |-------|--------|-------------|
-| OHLC Sanity | ✅ PASS | high ≥ low for all rows (0 violations) |
-| Non-negative Volume | ✅ PASS | volume ≥ 0 for all rows (0 violations) |
-| No NULL in OHLCV | ✅ PASS | All open/high/low/close/volume populated |
-| No Duplicates | ✅ PASS | PK enforced, 0 duplicates |
-| No Gaps (BTCUSDT 1h) | ✅ PASS | Continuous timestamps |
+| OHLC Sanity | PASS | high >= low for all rows (0 violations) |
+| Non-negative Volume | PASS | volume >= 0 for all rows (0 violations) |
+| No NULL in OHLCV | PASS | All open/high/low/close/volume populated |
+| No Duplicates | PASS | PK enforced, 0 duplicates |
+| No Gaps (BTCUSDT 1h) | PASS | Continuous timestamps |
 
 ### Checks Run
 
@@ -247,7 +247,7 @@ warmup_bars = max(indicator_lookback) * warmup_multiplier
 load_start = sim_start - (warmup_bars * tf_duration)
 ```
 
-**Default warmup_multiplier:** 2x (configurable in IdeaCard)
+**Default warmup_multiplier:** 2x (configurable in Play)
 
 **Preflight check:** `backtest preflight` validates warmup coverage before run.
 
@@ -259,9 +259,9 @@ Multi-timeframe backtests require aligned data across TFs:
 
 | Exec TF | HTF | MTF | Alignment Check |
 |---------|-----|-----|-----------------|
-| 15m | 4h | 1h | ✅ Feasible if all TF data present |
-| 5m | 1h | 15m | ✅ Feasible |
-| 1m | 15m | 5m | ⚠️ Requires dense 1m data |
+| 15m | 4h | 1h | Feasible if all TF data present |
+| 5m | 1h | 15m | Feasible |
+| 1m | 15m | 5m | Requires dense 1m data |
 
 **MTF alignment rules:**
 1. HTF/MTF indices update only on TF close
@@ -274,10 +274,10 @@ Multi-timeframe backtests require aligned data across TFs:
 
 | Stage | Status | Blockers |
 |-------|--------|----------|
-| Backtest | 🟢 GREEN | None |
-| Sim Validation | 🟢 GREEN | None |
-| Demo Trading | 🟢 GREEN | None (uses live data) |
-| Live Trading | 🟢 GREEN | None |
+| Backtest | GREEN | None |
+| Sim Validation | GREEN | None |
+| Demo Trading | GREEN | None (uses live data) |
+| Live Trading | GREEN | None |
 
 **Overall:** Data module is production-ready for all stages.
 

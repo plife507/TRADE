@@ -2,7 +2,7 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** What runs today, what is stubbed, top risks, next steps
-**LAST UPDATED:** January 4, 2026 (Legacy IdeaCards removed, all blocks format)
+**LAST UPDATED:** January 4, 2026 (Legacy Plays removed, all blocks format)
 
 ---
 
@@ -22,12 +22,12 @@
 | 1m Price Feed | ✅ Production | QuoteState, ExecRollupBucket, px.rollup.* accessors |
 | Artifact Standards | ✅ Production | ts_ms, eval_start_ts_ms, structured exports |
 | Backtest Metrics | ✅ Production | **62 unified fields**: equity, drawdown, trade stats, risk-adjusted ratios, tail risk (skewness, kurtosis, VaR, CVaR), leverage metrics, MAE/MFE, benchmark alpha |
-| IdeaCard Value Flow | ✅ Production | Fail-loud validation, explicit declarations, all phases complete |
+| Play Value Flow | ✅ Production | Fail-loud validation, explicit declarations, all phases complete |
 | Blocks DSL | ✅ Production | v3.0.0 - nested all/any/not, 11 operators, window operators |
 | Live Trading | ⚠️ Functional | Demo API tested, live not validated |
 | Indicator System | ✅ Production | 42 indicators in registry, string-based types |
-| Validation Suite | ✅ Production | 11 validation IdeaCards (V_100+ blocks format only) |
-| Strategy Factory | ⚠️ Partial | IdeaCards work, promotion manual |
+| Validation Suite | ✅ Production | 11 validation Plays (V_100+ blocks format only) |
+| Strategy Factory | ⚠️ Partial | Plays work, promotion manual |
 | Agent Module | ❌ Planned | Not started |
 
 ---
@@ -36,7 +36,7 @@
 
 | Phase | Status | Date | Key Features |
 |-------|--------|------|--------------|
-| Legacy Cleanup | ✅ Complete | Jan 4 | All signal_rules IdeaCards removed, blocks-only format |
+| Legacy Cleanup | ✅ Complete | Jan 4 | All signal_rules Plays removed, blocks-only format |
 | Derived Zones (Phase 12) | ✅ Complete | Jan 4 | K slots + aggregates, derived_zone detector |
 | Mega-file Refactor | ✅ Complete | Jan 3 | data_tools, tool_registry, datetime_utils splits |
 | Incremental State Architecture | ✅ Complete | Jan 3 | O(1) hot loop, Structure Registry, agent-composable blocks |
@@ -47,13 +47,13 @@
 | Zone Hardening (Stage 5.1) | ✅ Complete | Jan 1 | instance_id, duplicate key validation |
 | Zones (Stage 5) | ✅ Complete | Jan 1 | Parent-scoped zones, demand/supply, state machine |
 | Rule Evaluation (Stage 4) | ✅ Complete | Jan 1 | Compiled refs, 6 operators, ReasonCode enum |
-| IdeaCard Integration (Stage 3) | ✅ Complete | Jan 1 | market_structure_blocks, enum tokens, preflight |
+| Play Integration (Stage 3) | ✅ Complete | Jan 1 | market_structure_blocks, enum tokens, preflight |
 | Structure MVP (Stage 2) | ✅ Complete | Jan 1 | SwingDetector, TrendClassifier |
 | MarkPriceEngine (Stage 1) | ✅ Complete | Jan 1 | price.mark.* implicit, SimMarkProvider |
 | Schema Lock (Stage 0) | ✅ Complete | Jan 1 | StructureType, ZoneType enums, registry |
 | Audit Swarm | ✅ Complete | Jan 1 | 12/16 P1 fixes applied, 33 open bugs tracked |
 | Metrics Consolidation | ✅ Complete | Jan 1 | 62 unified BacktestMetrics fields |
-| IdeaCard Value Flow | ✅ Complete | Jan 1 | Fail-loud validation, explicit declarations |
+| Play Value Flow | ✅ Complete | Jan 1 | Fail-loud validation, explicit declarations |
 | Legacy Cleanup | ✅ Complete | Jan 1 | ExecutionConfig simplified, dead code removed |
 
 ### December 2025 Completions
@@ -145,16 +145,16 @@ python trade_cli.py --smoke backtest       # Backtest engine validation
 $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
 
 # Backtest
-python trade_cli.py backtest run --idea-card <ID> --start <date> --end <date>
-python trade_cli.py backtest preflight --idea-card <ID> --fix-gaps
-python trade_cli.py backtest indicators --idea-card <ID> --print-keys
+python trade_cli.py backtest run --play <ID> --start <date> --end <date>
+python trade_cli.py backtest preflight --play <ID> --fix-gaps
+python trade_cli.py backtest indicators --play <ID> --print-keys
 
 # Validation & Audits
 python trade_cli.py backtest verify-determinism --run <path> --re-run
 python trade_cli.py backtest metrics-audit
 python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest math-parity --idea-card <ID> --start <date> --end <date>
-python trade_cli.py backtest audit-snapshot-plumbing --idea-card <ID> --start <date> --end <date>
+python trade_cli.py backtest math-parity --play <ID> --start <date> --end <date>
+python trade_cli.py backtest audit-snapshot-plumbing --play <ID> --start <date> --end <date>
 python trade_cli.py backtest audit-rollup
 python trade_cli.py backtest metadata-smoke
 ```
@@ -225,14 +225,14 @@ python trade_cli.py backtest metadata-smoke
 
 | Issue | Status | Date | Document |
 |-------|--------|------|----------|
-| Legacy IdeaCards removed | ✅ COMPLETE | 2026-01-04 | All signal_rules cards deleted, blocks-only |
+| Legacy Plays removed | ✅ COMPLETE | 2026-01-04 | All signal_rules cards deleted, blocks-only |
 | Derived Zones (Phase 12) | ✅ COMPLETE | 2026-01-04 | K slots + aggregates pattern |
 | Mega-file Refactor | ✅ COMPLETE | 2026-01-03 | Phases 1-3 done |
 | Market Structure Stages 0-7 | ✅ COMPLETE | 2026-01-01 | docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md |
 | Audit Swarm P1 fixes (12/16) | ✅ COMPLETE | 2026-01-01 | docs/audits/2026-01-01/FIX_PLAN.md |
 | Metrics v1/v2 consolidation | ✅ COMPLETE | 2026-01-01 | Single unified BacktestMetrics with 62 fields |
 | High-value quant metrics missing | ✅ FIXED | 2026-01-01 | Added tail risk, leverage, MAE/MFE tracking |
-| IdeaCard value flow validation | ✅ COMPLETE | 2026-01-01 | docs/todos/archived/2026-01-01/IDEACARD_VALUE_FLOW_FIX_PHASES.md |
+| Play value flow validation | ✅ COMPLETE | 2026-01-01 | docs/todos/archived/2026-01-01/PLAY_VALUE_FLOW_FIX_PHASES.md |
 | Legacy execution config remnants | ✅ CLEANED | 2026-01-01 | ExecutionConfig simplified, dead code removed |
 | Price Feed (1m) + Preflight | ✅ COMPLETE | 2025-12-31 | docs/todos/archived/2025-12-31/PRICE_FEED_1M_PREFLIGHT_PHASES.md |
 | Engine modular refactor | ✅ COMPLETE | 2025-12-30 | docs/todos/archived/2025-12-30/ENGINE_MODULAR_REFACTOR_PHASES.md |
@@ -245,13 +245,13 @@ python trade_cli.py backtest metadata-smoke
 ## Next Steps (Canonical Roadmap)
 
 **Current Status:** Backtest Engine and Market Structure complete ✅
-**IdeaCard Format:** All blocks DSL (v3.0.0), signal_rules deprecated and removed
+**Play Format:** All blocks DSL (v3.0.0), signal_rules deprecated and removed
 
 ### NEXT: Choose One
 
 | Feature | Priority | Effort | Description |
 |---------|----------|--------|-------------|
-| **Phase 4 Refactor** | Next | 2h | Split idea_card.py into focused modules |
+| **Phase 4 Refactor** | Next | 2h | Split play.py into focused modules |
 | **Streaming (Stage 8)** | High | 16h+ | Demo/Live websocket integration |
 | **BOS/CHoCH Detection** | Medium | 8h | Break of Structure / Change of Character |
 | **Advanced Operators** | Medium | 4h | crosses_up, crosses_down, within_bps |
@@ -277,7 +277,7 @@ python trade_cli.py backtest metadata-smoke
 - [x] Snapshot plumbing audit passes
 - [x] Artifact validation gates active (automatic HARD FAIL)
 - [x] Determinism verification available (`verify-determinism --re-run`)
-- [x] Production pipeline validated (5 IdeaCards, all gates passed)
+- [x] Production pipeline validated (5 Plays, all gates passed)
 - [x] No linter errors
 - [x] Documentation updated (January 4, 2026)
 - [x] Refactor cleanup complete ✅
@@ -285,13 +285,13 @@ python trade_cli.py backtest metadata-smoke
 - [x] Backtester fixes Phase 1 complete ✅ (2025-12-30)
 - [x] Price Feed (1m) + Preflight complete ✅ (2025-12-31)
 - [x] Metrics consolidation complete ✅ (2026-01-01)
-- [x] IdeaCard value flow complete ✅ (2026-01-01)
+- [x] Play value flow complete ✅ (2026-01-01)
 - [x] Market Structure Stages 0-7 complete ✅ (2026-01-01)
 - [x] Audit Swarm P1 fixes (12/16) complete ✅ (2026-01-01)
-- [x] 11 validation IdeaCards pass normalization ✅ (V_100+ blocks format only)
+- [x] 11 validation Plays pass normalization ✅ (V_100+ blocks format only)
 - [x] Incremental State Architecture complete ✅ (2026-01-03)
 - [x] Derived Zones (Phase 12) complete ✅ (2026-01-04)
-- [x] Legacy IdeaCards removed ✅ (2026-01-04)
+- [x] Legacy Plays removed ✅ (2026-01-04)
 
 ---
 
@@ -325,7 +325,7 @@ python trade_cli.py --smoke data
 | AI Guidance | `CLAUDE.md` |
 | Active TODOs | `docs/todos/TODO.md` |
 | Architecture | `docs/architecture/` |
-| IdeaCard Syntax | `docs/guides/IDEACARD_SYNTAX.md` |
+| Play Syntax | `docs/guides/PLAY_SYNTAX.md` |
 | Bugs | `docs/audits/OPEN_BUGS.md` |
 
 ---

@@ -138,7 +138,7 @@ CURRENT STATE:
 ┌─────────────────────────────────────────────────────────────────┐
 │ SIMULATOR PATH                │ LIVE PATH                      │
 ├───────────────────────────────┼────────────────────────────────┤
-│ IdeaCard.blocks               │ ??? (not connected)            │
+│ Play.blocks                   │ ??? (not connected)            │
 │ ↓                             │                                │
 │ StrategyBlocksExecutor        │ ??? (not connected)            │
 │ ↓                             │                                │
@@ -158,7 +158,7 @@ CURRENT STATE:
 UNIFIED PATH:
 
 ┌─────────────────────────────────────────────────────────────────┐
-│                        IdeaCard.blocks                          │
+│                        Play.blocks                              │
 │                              ↓                                  │
 │                   StrategyBlocksExecutor                        │
 │                              ↓                                  │
@@ -194,7 +194,7 @@ Both `SimulatedExchange` and `ExchangeManager` have these methods, but with diff
 
 These are things you wouldn't know to ask about:
 
-### 3.1 🚨 CRITICAL: Async vs Sync Mismatch
+### 3.1 CRITICAL: Async vs Sync Mismatch
 
 **Your simulator is synchronous. Your live trading needs to be async.**
 
@@ -224,7 +224,7 @@ class SimulatorBackend(ExecutionBackend):
         return result  # Immediate return, but async-compatible
 ```
 
-### 3.2 🚨 CRITICAL: State Reconciliation
+### 3.2 CRITICAL: State Reconciliation
 
 **Your simulator has perfect state. Live trading doesn't.**
 
@@ -255,7 +255,7 @@ class StateReconciler:
             self.local_position = exchange_position
 ```
 
-### 3.3 🚨 CRITICAL: Order State Machine
+### 3.3 CRITICAL: Order State Machine
 
 **Your simulator has binary order states: pending → filled.**
 
@@ -275,7 +275,7 @@ NEW → PARTIALLY_FILLED → CANCELLED
 - Expired orders (GTC timeout, IOC unfilled portion)
 - Amended orders (price change during pending)
 
-### 3.4 🚨 Rate Limiting Awareness
+### 3.4 Rate Limiting Awareness
 
 **Your simulator has no rate limits. Live does.**
 
@@ -304,7 +304,7 @@ class IntentProcessor:
         return await self.backend.submit_order(...)
 ```
 
-### 3.5 🚨 Error Recovery
+### 3.5 Error Recovery
 
 **Your simulator never fails. Live trading fails constantly.**
 
@@ -336,7 +336,7 @@ async def submit_with_retry(self, order: Order, max_retries: int = 3) -> OrderRe
             await asyncio.sleep(1)
 ```
 
-### 3.6 🚨 Clock Synchronization
+### 3.6 Clock Synchronization
 
 **Your simulator has perfect time. Live trading doesn't.**
 
@@ -400,7 +400,7 @@ Here's the unified architecture that addresses all gaps:
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                     IdeaCard YAML                                 │  │
+│  │                     Play YAML                                     │  │
 │  │                   (Same for all modes)                            │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                  │                                      │
@@ -568,15 +568,15 @@ class IntentProcessor:
 
 | Blocker | You Knew? | Severity | Fix Effort |
 |---------|-----------|----------|------------|
-| Async/sync mismatch | ❌ | 🔴 Critical | Medium |
-| State reconciliation | ❌ | 🔴 Critical | Medium |
-| Order state machine | ❌ | 🟡 High | Low |
-| Rate limiting | ❌ | 🟡 High | Low |
-| Error recovery | ❌ | 🟡 High | Medium |
-| Clock sync | ❌ | 🟢 Medium | Low |
-| WebSocket reconnection | ❌ | 🟡 High | Medium |
-| Intent → Order mapping | Partial | 🟡 High | Medium |
-| Unified backend protocol | ❌ | 🔴 Critical | Low |
+| Async/sync mismatch | No | Critical | Medium |
+| State reconciliation | No | Critical | Medium |
+| Order state machine | No | High | Low |
+| Rate limiting | No | High | Low |
+| Error recovery | No | High | Medium |
+| Clock sync | No | Medium | Low |
+| WebSocket reconnection | No | High | Medium |
+| Intent → Order mapping | Partial | High | Medium |
+| Unified backend protocol | No | Critical | Low |
 
 **The good news**: Your foundation is solid. The fixes are additive, not rewrites.
 

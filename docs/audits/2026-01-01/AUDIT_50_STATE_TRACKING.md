@@ -85,7 +85,7 @@ All state transitions are deterministic based on input parameters only. No rando
 ### P2 (Maintainability)
 
 - **P2-1**: History manager internal access (`_bars_exec`)
-- **P2-2**: Validation IdeaCard V_65 not wired to comparison test
+- **P2-2**: Validation Play V_65 not wired to comparison test
 - **P2-3**: StateTracker.reset() not called on engine init
 - **P2-4**: Missing type hints in engine hooks
 

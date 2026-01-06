@@ -730,8 +730,14 @@ class EvaluationResult:
     take_profit_price: float | None = None
     size_usdt: float | None = None
 
+    # For exit signals (partial exits)
+    exit_percent: float = 100.0  # Percentage of position to close (1-100)
+
+    # Dynamic metadata (resolved feature references from intent.metadata)
+    resolved_metadata: dict | None = None
+
     def to_dict(self) -> dict:
-        return {
+        result = {
             "decision": self.decision.value,
             "reason": self.reason,
             "matched_rule_index": self.matched_rule_index,
@@ -739,6 +745,11 @@ class EvaluationResult:
             "take_profit_price": self.take_profit_price,
             "size_usdt": self.size_usdt,
         }
+        if self.exit_percent != 100.0:
+            result["exit_percent"] = self.exit_percent
+        if self.resolved_metadata:
+            result["resolved_metadata"] = self.resolved_metadata
+        return result
 
 
 class PlaySignalEvaluator:
@@ -775,7 +786,9 @@ class PlaySignalEvaluator:
 
         # Initialize blocks executor
         from .rules.strategy_blocks import StrategyBlocksExecutor
+        from .rules.dsl_eval import ExprEvaluator
         self._blocks_executor = StrategyBlocksExecutor()
+        self._expr_evaluator = ExprEvaluator()  # For resolve_metadata()
 
     def evaluate(
         self,
@@ -803,6 +816,27 @@ class PlaySignalEvaluator:
             decision=SignalDecision.NO_ACTION,
             reason="No actions defined in Play",
         )
+
+    def _resolve_intent_metadata(
+        self,
+        intent,
+        snapshot: "SnapshotView",
+    ) -> dict | None:
+        """
+        Resolve feature references in intent metadata.
+
+        FAIL LOUD: Raises ValueError if any feature reference cannot be resolved.
+
+        Args:
+            intent: Intent with potential dynamic metadata
+            snapshot: RuntimeSnapshotView for resolution
+
+        Returns:
+            Resolved metadata dict, or None if no metadata
+        """
+        if not intent.metadata:
+            return None
+        return self._expr_evaluator.resolve_metadata(intent.metadata, snapshot)
 
     def _evaluate_actions(
         self,
@@ -833,41 +867,60 @@ class PlaySignalEvaluator:
                 if not self.play.position_policy.allows_long():
                     continue
                 sl_price, tp_price = self._compute_sl_tp(snapshot, "long")
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.ENTRY_LONG,
                     reason=f"Block emitted entry_long",
                     stop_loss_price=sl_price,
                     take_profit_price=tp_price,
+                    resolved_metadata=resolved_meta,
                 )
 
             elif action == "entry_short" and not has_position:
                 if not self.play.position_policy.allows_short():
                     continue
                 sl_price, tp_price = self._compute_sl_tp(snapshot, "short")
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.ENTRY_SHORT,
                     reason=f"Block emitted entry_short",
                     stop_loss_price=sl_price,
                     take_profit_price=tp_price,
+                    resolved_metadata=resolved_meta,
                 )
 
             # Exit signals (only when has matching position)
             elif action == "exit_long" and has_position and position_side == "long":
+                reason = f"Block emitted exit_long"
+                if intent.percent != 100.0:
+                    reason = f"Block emitted exit_long ({intent.percent}%)"
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.EXIT,
-                    reason=f"Block emitted exit_long",
+                    reason=reason,
+                    exit_percent=intent.percent,
+                    resolved_metadata=resolved_meta,
                 )
 
             elif action == "exit_short" and has_position and position_side == "short":
+                reason = f"Block emitted exit_short"
+                if intent.percent != 100.0:
+                    reason = f"Block emitted exit_short ({intent.percent}%)"
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.EXIT,
-                    reason=f"Block emitted exit_short",
+                    reason=reason,
+                    exit_percent=intent.percent,
+                    resolved_metadata=resolved_meta,
                 )
 
             elif action == "exit_all" and has_position:
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.EXIT,
                     reason=f"Block emitted exit_all",
+                    exit_percent=intent.percent,
+                    resolved_metadata=resolved_meta,
                 )
 
         return EvaluationResult(

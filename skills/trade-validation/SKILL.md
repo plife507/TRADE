@@ -1,6 +1,6 @@
 ---
 name: trade-validation
-description: Guides TRADE validation patterns. Use when running tests, creating validation cards, or verifying changes.
+description: Guides TRADE validation patterns. Use when running tests, creating validation plays, or verifying changes.
 ---
 
 # TRADE Validation Skill
@@ -11,7 +11,7 @@ Domain knowledge for validating TRADE code changes.
 
 **CLI-Only**: All tests run through CLI commands, never pytest.
 
-**IdeaCard-Driven**: Validation cards define test scenarios.
+**Play-Driven**: Validation plays define test scenarios.
 
 **Tiered Approach**: Quick checks first, integration last.
 
@@ -22,13 +22,13 @@ Domain knowledge for validating TRADE code changes.
 python -m py_compile src/backtest/engine.py
 ```
 
-### TIER 1: IdeaCard Normalization
+### TIER 1: Play Normalization
 ```bash
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
 ```
 - Validates indicator keys match registry
 - Validates params are valid
-- Validates signal rules reference declared features
+- Validates actions reference declared features
 
 ### TIER 2: Unit Audits
 ```bash
@@ -43,21 +43,17 @@ python trade_cli.py backtest metadata-smoke     # Indicator metadata
 python trade_cli.py --smoke backtest
 ```
 
-## Validation IdeaCards
+## Validation Plays
 
-Location: `configs/idea_cards/_validation/`
+Location: `configs/plays/_validation/`
 
-| Card | Tests |
-|------|-------|
-| V_60_mark_price_basic | mark_price in conditions |
-| V_61_zone_touch | mark_price vs BBands |
-| V_62_entry_timing | MTF patterns |
-| V_70_swing_basic | Swing detection |
-| V_71_fibonacci | Fib levels |
-| V_72_zone_state | Zone state machine |
-| V_73_trend_direction | Trend classification |
-| V_74_rolling_window | Rolling min/max |
-| V_75_multi_tf | Multi-TF structures |
+| Prefix | Category | Examples |
+|--------|----------|----------|
+| I_ | Indicators | I_001_ema, I_005_macd, I_010_ema_cross |
+| M_ | Multi-TF | M_001_mtf |
+| O_ | Operators | O_001_between, O_003_crossover |
+| R_ | Risk | R_001_atr_stop, R_005_long_short |
+| S_ | Structures | S_001_swing, S_006_derived_zone |
 
 ## When to Run What
 
@@ -66,31 +62,30 @@ Location: `configs/idea_cards/_validation/`
 | indicator_registry.py | TIER 1 + audit-toolkit |
 | engine*.py | TIER 1 + smoke |
 | sim/*.py | TIER 2 audits |
-| idea_cards/*.yml | TIER 1 normalize |
+| plays/*.yml | TIER 1 normalize |
 | Any backtest code | TIER 1-2 |
 
-## Creating Validation Cards
+## Creating Validation Plays
 
 ```yaml
-meta:
-  idea_card_id: V_XX_feature_name
-  tags: [validation]
+id: I_XXX_feature_name
+version: "3.0.0"
+name: "Validation: Feature Name"
+description: "Tests feature X"
 
-symbol: BTCUSDT
-exec_tf: "15m"
+account:
+  initial_equity_usdt: 10000
+  leverage: 1
+
+symbol_universe: ["BTCUSDT"]
+execution_tf: "1h"
 
 features:
-  exec:
-    - type: indicator_type
-      key: test_key
-      params: {...}
+  - id: indicator_20
+    type: indicator_type
+    params: { length: 20 }
 
-signal_rules:
-  entry_rules:
-    - direction: "long"
-      conditions:
-        - tf: "exec"
-          indicator_key: "test_key"
-          operator: "gt"
-          value: 0
+actions:
+  - action: entry_long
+    when: indicator_20 > 50
 ```

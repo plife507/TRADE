@@ -33,7 +33,7 @@ if data.get("engine_version") != CURRENT_PIPELINE_VERSION:
     )
 ```
 
-**Validate**: `python trade_cli.py backtest run --idea-card V_01_single_tf_ema_cross.yml`
+**Validate**: `python trade_cli.py backtest run --play V_01_single_tf_ema_cross.yml`
 
 ### Fix 1.2: Consolidate PIPELINE_VERSION
 **Risk**: P1-05 (Dual Constants)
@@ -89,7 +89,7 @@ if self._state_tracker:
     self._state_tracker.on_order_rejected(bar_idx, order, reason)
 ```
 
-**Validate**: `python trade_cli.py backtest run --idea-card V_65_state_tracking.yml`
+**Validate**: `python trade_cli.py backtest run --play V_65_state_tracking.yml`
 
 ### Fix 2.2: Fix GateContext Warmup Semantics
 **Risk**: P1-07 (Semantic Mismatch)
@@ -113,8 +113,8 @@ def on_warmup_check(self, bar_idx: int, warmup_end_idx: int) -> None:
 ```python
 def run_state_tracking_parity_smoke() -> bool:
     """Run same card with state tracking on/off, compare hashes."""
-    result_off = run_backtest(idea_card, record_state_tracking=False)
-    result_on = run_backtest(idea_card, record_state_tracking=True)
+    result_off = run_backtest(play, record_state_tracking=False)
+    result_on = run_backtest(play, record_state_tracking=True)
 
     assert result_off.metrics_hash == result_on.metrics_hash, \
         "State tracking must not affect trade outcomes"
@@ -134,7 +134,7 @@ def run_state_tracking_parity_smoke() -> bool:
 
 ```python
 # In engine initialization:
-for rule in idea_card.signal_rules:
+for rule in play.signal_rules:
     for cond in rule.conditions:
         if not cond.has_compiled_refs():
             raise RuntimeError(
@@ -142,11 +142,11 @@ for rule in idea_card.signal_rules:
             )
 ```
 
-**Validate**: `python trade_cli.py backtest run --idea-card V_01_single_tf_ema_cross.yml`
+**Validate**: `python trade_cli.py backtest run --play V_01_single_tf_ema_cross.yml`
 
 ### Fix 3.2: Reject Banned Operators at Parse Time
 **Risk**: P1-10 (Banned But Parseable)
-**File**: `src/backtest/idea_card.py`
+**File**: `src/backtest/play.py`
 **Lines**: ~10
 
 ```python
@@ -183,7 +183,7 @@ if atr_value is None or np.isnan(atr_value):
         )
 ```
 
-**Validate**: `python trade_cli.py backtest run --idea-card V_62_zone_interaction.yml`
+**Validate**: `python trade_cli.py backtest run --play V_62_zone_interaction.yml`
 
 ---
 
@@ -207,7 +207,7 @@ class RuntimeSnapshotView:
         }
 ```
 
-**Validate**: `python trade_cli.py backtest run --idea-card V_01_single_tf_ema_cross.yml`
+**Validate**: `python trade_cli.py backtest run --play V_01_single_tf_ema_cross.yml`
 
 ### Fix 5.2: Replace pd.isna() with np.isnan()
 **Risk**: P2-01 (Hot Path Performance)
@@ -227,19 +227,19 @@ if np.isnan(value):
 
 ## Phase 6: Documentation Updates
 
-### Fix 6.1: Update CLAUDE.md IdeaCard Count
+### Fix 6.1: Update CLAUDE.md Play Count
 **Risk**: P1-14 (Documentation Drift)
 **File**: `CLAUDE.md`
 **Lines**: 1
 
 ```markdown
 # Change:
-- 21 validation IdeaCards
+- 21 validation Plays
 # To:
-- 24 validation IdeaCards
+- 24 validation Plays
 ```
 
-**Validate**: `ls configs/idea_cards/_validation/ | wc -l`
+**Validate**: `ls configs/plays/_validation/ | wc -l`
 
 ---
 
@@ -248,7 +248,7 @@ if np.isnan(value):
 After completing all fixes, run:
 
 ```bash
-# Tier 1: IdeaCard Normalization
+# Tier 1: Play Normalization
 python trade_cli.py backtest normalize --all
 
 # Tier 2: Smoke Tests
@@ -256,8 +256,8 @@ $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"
 python trade_cli.py --smoke full
 
 # Tier 3: Specific Validations
-python trade_cli.py backtest run --idea-card V_65_state_tracking.yml
-python trade_cli.py backtest run --idea-card V_62_zone_interaction.yml
+python trade_cli.py backtest run --play V_65_state_tracking.yml
+python trade_cli.py backtest run --play V_62_zone_interaction.yml
 python trade_cli.py backtest metadata-smoke
 
 # Tier 4: Determinism Check

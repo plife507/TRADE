@@ -318,7 +318,7 @@ for i in range(num_bars):
 
 ---
 
-## 3. IdeaCard Schema: `rationalization` Section
+## 3. Play Schema: `rationalization` Section
 
 ### 3.1 Overview
 
@@ -566,11 +566,11 @@ blocks:
 - [ ] `TransitionRule` matcher
 - [ ] `ConflictRule` resolver
 
-### Phase R4: IdeaCard Schema
+### Phase R4: Play Schema
 - [ ] Schema validation for rationalization section
 - [ ] Type inference for expressions
 - [ ] Circular dependency detection
-- [ ] Validation IdeaCards (V_130+)
+- [ ] Validation Plays (V_130+)
 
 ### Phase R5: Live Integration
 - [ ] `WebSocketPriceSource` with reconnection
@@ -605,7 +605,7 @@ src/
   live/                     # NEW
     live_runner.py          # LiveRunner using WebSocketPriceSource
 
-configs/idea_cards/_validation/
+configs/plays/_validation/
   V_130_rationalize_basic.yml
   V_131_rationalize_transitions.yml
   V_132_rationalize_regimes.yml
@@ -616,7 +616,7 @@ configs/idea_cards/_validation/
 
 ## 8. Backward Compatibility
 
-**Existing IdeaCards work unchanged.** The `rationalization:` section is optional. Cards without it:
+**Existing Plays work unchanged.** The `rationalization:` section is optional. Cards without it:
 - Skip Layer 2 entirely
 - Have `snapshot._rationalized = None`
 - Cannot reference `feature_id: rationalize` (will fail validation)
@@ -716,7 +716,7 @@ VALIDATION PIPELINE
 │  │ BacktestSource                                                     │ │
 │  │ - Real market conditions                                           │ │
 │  │ - Edge cases from actual trading                                   │ │
-│  │ - Validation IdeaCards (V_100+ in configs/idea_cards/_validation/) │ │
+│  │ - Validation Plays (V_100+ in configs/plays/_validation/) │ │
 │  │ PROVES: "Works correctly on real markets"                          │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                              │                                          │
@@ -763,7 +763,7 @@ The Forge uses a **trading-native naming hierarchy**:
 | Level | Name | Trading Meaning | Contains |
 |-------|------|-----------------|----------|
 | **Setup** | Conditions that define opportunity | Reusable rule blocks, filters, entry/exit logic |
-| **Play** | A specific trade idea to execute | Complete strategy (replaces "IdeaCard") |
+| **Play** | A specific trade idea to execute | Complete strategy (replaces "Play") |
 | **Playbook** | Collection of plays for scenarios | Strategy collection with regime routing |
 | **System** | Full trading operation | Multi-playbook deployment, risk, execution |
 
@@ -851,7 +851,7 @@ configs/
 │   ├── exits/
 │   └── filters/
 │
-├── plays/                       # PROVEN strategies (was idea_cards/)
+├── plays/                       # PROVEN strategies (was plays/)
 │   ├── _validation/             # V_100+ validation plays
 │   └── production/              # Production plays
 │

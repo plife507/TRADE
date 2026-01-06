@@ -76,8 +76,8 @@ Key concepts:
 ## Archived
 
 Legacy documentation in `archived/`:
-- `IDEACARD_ENGINE_FLOW_LEGACY.md` - Legacy signal_rules format (pre-blocks)
-- `IDEACARD_OPERATORS_REFERENCE_LEGACY.md` - Legacy operators reference
-- `IDEACARD_TRIGGER_AND_STRUCTURE_FLOW_LEGACY.md` - Legacy trigger/structure flow
+- `PLAY_ENGINE_FLOW_LEGACY.md` - Legacy signal_rules format (pre-blocks)
+- `PLAY_OPERATORS_REFERENCE_LEGACY.md` - Legacy operators reference
+- `PLAY_TRIGGER_AND_STRUCTURE_FLOW_LEGACY.md` - Legacy trigger/structure flow
 - `MARKET_STRUCTURE_INTEGRATION_PROPOSAL.md` - Original market structure proposal
 - `INTRADAY_ADAPTIVE_SYSTEM_REVIEW.md` - Adaptive system review

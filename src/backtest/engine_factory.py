@@ -405,36 +405,51 @@ def run_engine_with_play(
         if result.decision == SignalDecision.NO_ACTION:
             return None
         elif result.decision == SignalDecision.ENTRY_LONG:
+            # Build metadata with SL/TP and any resolved dynamic metadata
+            metadata = {
+                "stop_loss": result.stop_loss_price,
+                "take_profit": result.take_profit_price,
+            }
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
             return Signal(
                 symbol=play.symbol_universe[0],
                 direction="LONG",
                 size_usdt=0.0,  # Engine computes from risk_profile
                 strategy=play.id,
                 confidence=1.0,
-                metadata={
-                    "stop_loss": result.stop_loss_price,
-                    "take_profit": result.take_profit_price,
-                }
+                metadata=metadata,
             )
         elif result.decision == SignalDecision.ENTRY_SHORT:
+            # Build metadata with SL/TP and any resolved dynamic metadata
+            metadata = {
+                "stop_loss": result.stop_loss_price,
+                "take_profit": result.take_profit_price,
+            }
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
             return Signal(
                 symbol=play.symbol_universe[0],
                 direction="SHORT",
                 size_usdt=0.0,
                 strategy=play.id,
                 confidence=1.0,
-                metadata={
-                    "stop_loss": result.stop_loss_price,
-                    "take_profit": result.take_profit_price,
-                }
+                metadata=metadata,
             )
         elif result.decision == SignalDecision.EXIT:
+            # Build metadata with exit_percent and any resolved dynamic metadata
+            metadata = {}
+            if result.exit_percent != 100.0:
+                metadata["exit_percent"] = result.exit_percent
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
             return Signal(
                 symbol=play.symbol_universe[0],
                 direction="FLAT",
                 size_usdt=0.0,
                 strategy=play.id,
                 confidence=1.0,
+                metadata=metadata if metadata else None,
             )
 
         return None

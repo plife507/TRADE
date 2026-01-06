@@ -113,12 +113,16 @@
       "Bash(npm run build)",
       "Bash(del \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\tailwind.config.js\" \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\postcss.config.js\")",
       "Bash(pushd:*)",
-      "Bash(.db \")",
       "Bash(popd)",
       "WebFetch(domain:tradingview.github.io)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "mcp__plugin_context7_context7__resolve-library-id",
-      "mcp__plugin_context7_context7__query-docs"
+      "mcp__plugin_context7_context7__query-docs",
+      "WebFetch(domain:jesse.trade)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.tradingview.com)",
+      "WebFetch(domain:marketscripters.com)",
+      "WebFetch(domain:pinewizards.com)"
     ]
   }
 }

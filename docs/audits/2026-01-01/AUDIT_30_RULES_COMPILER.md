@@ -21,8 +21,8 @@ The rules compiler is well-designed and correctly separates compile-time validat
 - **Rules Evaluation**: `src/backtest/rules/eval.py`
 - **Operator Registry**: `src/backtest/rules/registry.py`
 - **Rule Types**: `src/backtest/rules/types.py`
-- **IdeaCard Rule Parsing**: `src/backtest/idea_card.py`
-- **YAML Builder**: `src/backtest/idea_card_yaml_builder.py`
+- **Play Rule Parsing**: `src/backtest/play.py`
+- **YAML Builder**: `src/backtest/play_yaml_builder.py`
 - **Execution Validation**: `src/backtest/execution_validation.py`
 - **Snapshot Resolution**: `src/backtest/runtime/snapshot_view.py`
 
@@ -72,9 +72,9 @@ When `cond.has_compiled_refs()` returns False, falls back to legacy string-based
 
 #### P1.2: cross_above/cross_below Operators Banned But Present
 
-**Location**: `idea_card.py:480-481`, `registry.py:101-120`
+**Location**: `play.py:480-481`, `registry.py:101-120`
 
-IdeaCard YAML can specify these operators but they fail at compile time.
+Play YAML can specify these operators but they fail at compile time.
 
 **Recommendation**: Add YAML schema validation to reject early.
 

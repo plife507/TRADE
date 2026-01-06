@@ -136,22 +136,75 @@ position_policy:
 
 ---
 
+## Feature Naming Convention
+
+Use **parameterized names** that encode the indicator type and primary parameters. This makes DSL expressions self-documenting and enables future arithmetic expressions.
+
+### Naming Rules
+
+| Indicator Type | Pattern | Examples |
+|----------------|---------|----------|
+| Single-param | `{type}_{param}` | `ema_20`, `sma_50`, `rsi_14`, `atr_14` |
+| Single-param + TF | `{type}_{param}_{tf}` | `ema_50_1h`, `rsi_14_4h` |
+| Multi-param | `{type}_{p1}_{p2}` | `bbands_20_2`, `stoch_14_3` |
+| MACD | `macd_{fast}_{slow}_{signal}` | `macd_12_26_9` |
+| SuperTrend | `supertrend_{len}_{mult}` | `supertrend_10_3` |
+
+### Why Parameterized Names?
+
+```yaml
+# BAD: Semantic names hide parameters
+features:
+  - id: "ema_fast"      # What length? Unknown
+    params: {length: 9}
+  - id: "ema_slow"      # What length? Unknown
+    params: {length: 21}
+
+# GOOD: Parameterized names are self-documenting
+features:
+  - id: "ema_9"         # Clearly length=9
+    params: {length: 9}
+  - id: "ema_21"        # Clearly length=21
+    params: {length: 21}
+```
+
+Benefits:
+- **Self-documenting**: `ema_9 > ema_21` immediately tells you what's being compared
+- **Agent-friendly**: AI agents can parse and compose strategies more easily
+- **Future arithmetic**: `ema_9 - ema_21 > 0` is readable (when arithmetic is supported)
+
+### Multi-TF Naming
+
+For multi-timeframe features, append the timeframe when it differs from execution TF:
+
+```yaml
+features:
+  - id: "ema_9"         # Execution TF (implied)
+    tf: "15m"
+    params: {length: 9}
+  - id: "ema_50_1h"     # Higher TF (explicit in name)
+    tf: "1h"
+    params: {length: 50}
+```
+
+---
+
 ## Features (Indicators)
 
 Features define indicators with unique IDs for reference in actions.
 
-**Note**: Structure-only Plays with `features: []` are valid if `structures:` is defined.
+**Note**: Structure-only Plays with `features: []` is valid if `structures:` is defined.
 
 ### Basic Syntax
 
 ```yaml
 features:
-  - id: "ema_fast"           # Unique ID for referencing
+  - id: "ema_21"             # Parameterized name (type_param)
     tf: "1h"                 # Timeframe
     type: indicator          # "indicator" for technical indicators
     indicator_type: ema      # Indicator type from registry
     params:
-      length: 9              # Indicator-specific parameters
+      length: 21             # Indicator-specific parameters
 ```
 
 ### Common Indicators
@@ -280,15 +333,15 @@ features:
 
 ```yaml
 features:
-  # Execution TF indicator
-  - id: "ema_fast"
+  # Execution TF indicator (no TF suffix needed)
+  - id: "ema_9"
     tf: "15m"
     type: indicator
     indicator_type: ema
     params: { length: 9 }
 
-  # Higher TF indicator (forward-fills between closes)
-  - id: "ema_1h"
+  # Higher TF indicator (TF suffix for clarity)
+  - id: "ema_50_1h"
     tf: "1h"
     type: indicator
     indicator_type: ema
@@ -412,10 +465,10 @@ actions:
     cases:                    # List of cases (first-match wins)
       - when:                 # Condition expression
           lhs:
-            feature_id: "ema_fast"
+            feature_id: "ema_9"
           op: gt
           rhs:
-            feature_id: "ema_slow"
+            feature_id: "ema_21"
         emit:                 # Actions if condition is true
           - action: entry_long
     else:                     # Optional: if no case matches
@@ -426,10 +479,10 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "ema_fast"
+            feature_id: "ema_9"
           op: lt
           rhs:
-            feature_id: "ema_slow"
+            feature_id: "ema_21"
         emit:
           - action: exit_long
 ```
@@ -444,6 +497,112 @@ actions:
 | `exit_short` | Exit short position |
 | `exit_all` | Exit all positions |
 | `no_action` | Do nothing |
+
+### Partial Exit Actions (v3.0.3)
+
+Close a percentage of position instead of full exit:
+
+```yaml
+emit:
+  - action: exit_long
+    percent: 50      # Close 50% of position
+
+emit:
+  - action: exit_long
+    percent: 100     # Full close (default, same as omitting percent)
+```
+
+**Rules**:
+- `percent` must be in range (0, 100]
+- `percent: 0` is invalid (raises ValueError)
+- `percent: 100` is equivalent to a full exit
+- Partial exits reduce position size proportionally
+- PnL is realized proportionally for the closed portion
+- Position remains open with reduced size until final exit
+
+**Example: Scaling out of a position**:
+
+```yaml
+actions:
+  - id: partial_take_profit
+    cases:
+      # First target: close 50% at RSI 60
+      - when:
+          lhs: {feature_id: "rsi_14"}
+          op: gt
+          rhs: 60
+        emit:
+          - action: exit_long
+            percent: 50
+
+  - id: full_exit
+    cases:
+      # Final exit: close remaining at RSI 75
+      - when:
+          lhs: {feature_id: "rsi_14"}
+          op: gt
+          rhs: 75
+        emit:
+          - action: exit_long
+```
+
+### Dynamic Action Metadata (v3.0.3)
+
+Reference features in action metadata for dynamic values:
+
+```yaml
+emit:
+  - action: entry_long
+    metadata:
+      entry_atr: {feature_id: "atr_14"}           # Dynamic: resolved at evaluation
+      entry_ema: {feature_id: "ema_20"}           # Dynamic: resolved at evaluation
+      static_note: "captured at entry"             # Static: passed through as-is
+```
+
+**Syntax**:
+- Dynamic reference: `{feature_id: "id", field: "field"}` (field defaults to "value")
+- Static value: Any scalar (string, number, boolean)
+
+**FAIL LOUD**: If a referenced feature cannot be resolved, evaluation raises `ValueError`:
+```
+ValueError: Dynamic metadata 'entry_atr' references missing feature: atr_14.value
+```
+
+**Use cases**:
+- Capture indicator values at entry/exit time
+- Store context for trade analysis
+- Debugging and auditing signal decisions
+
+**Example: Capturing context at entry/exit**:
+
+```yaml
+actions:
+  - id: entry
+    cases:
+      - when:
+          lhs: {feature_id: "rsi_14"}
+          op: lt
+          rhs: 35
+        emit:
+          - action: entry_long
+            metadata:
+              entry_atr: {feature_id: "atr_14"}
+              entry_rsi: {feature_id: "rsi_14"}
+              entry_reason: "rsi_oversold"
+
+  - id: exit
+    cases:
+      - when:
+          lhs: {feature_id: "rsi_14"}
+          op: gt
+          rhs: 70
+        emit:
+          - action: exit_long
+            metadata:
+              exit_atr: {feature_id: "atr_14"}
+              exit_rsi: {feature_id: "rsi_14"}
+              exit_reason: "rsi_overbought"
+```
 
 ---
 
@@ -481,13 +640,13 @@ actions:
     op: lt
     rhs: 30
 
-# Feature comparison: EMA fast > EMA slow
+# Feature comparison: EMA 9 > EMA 21
 - when:
     lhs:
-      feature_id: "ema_fast"
+      feature_id: "ema_9"
     op: gt
     rhs:
-      feature_id: "ema_slow"
+      feature_id: "ema_21"
 
 # Between: RSI in neutral zone
 - when:
@@ -508,13 +667,13 @@ actions:
       field: "level_0.618"
     tolerance: 0.005
 
-# Crossover: EMA crosses above
+# Crossover: EMA 9 crosses above EMA 21
 - when:
     lhs:
-      feature_id: "ema_fast"
+      feature_id: "ema_9"
     op: cross_above
     rhs:
-      feature_id: "ema_slow"
+      feature_id: "ema_21"
 
 # Equality: Trend is up (direction = 1)
 - when:
@@ -545,10 +704,10 @@ actions:
 - when:
     all:
       - lhs:
-          feature_id: "ema_fast"
+          feature_id: "ema_9"
         op: gt
         rhs:
-          feature_id: "ema_slow"
+          feature_id: "ema_21"
       - lhs:
           feature_id: "rsi_14"
         op: lt
@@ -584,14 +743,14 @@ actions:
 ### Nested Logic
 
 ```yaml
-# (EMA fast > EMA slow) AND (RSI < 70 OR RSI > 30)
+# (EMA 9 > EMA 21) AND (RSI < 70 OR RSI > 30)
 - when:
     all:
       - lhs:
-          feature_id: "ema_fast"
+          feature_id: "ema_9"
         op: gt
         rhs:
-          feature_id: "ema_slow"
+          feature_id: "ema_21"
       - any:
           - lhs:
               feature_id: "rsi_14"
@@ -634,10 +793,10 @@ Condition was true at least once in last N bars:
       bars: 3
       expr:
         lhs:
-          feature_id: "ema_fast"
+          feature_id: "ema_9"
         op: cross_above
         rhs:
-          feature_id: "ema_slow"
+          feature_id: "ema_21"
 ```
 
 ### count_true
@@ -665,11 +824,11 @@ Condition was true at least M times in last N bars:
 ```yaml
 # Simple feature reference
 lhs:
-  feature_id: "ema_fast"
+  feature_id: "ema_21"
 
 # With field (for multi-output indicators)
 lhs:
-  feature_id: "macd"
+  feature_id: "macd_12_26_9"
   field: "signal"      # Access MACD signal line
 
 # With offset (previous bar)
@@ -817,13 +976,13 @@ symbol_universe:
 execution_tf: "1h"
 
 features:
-  - id: "ema_fast"
+  - id: "ema_9"
     tf: "1h"
     type: indicator
     indicator_type: ema
     params: { length: 9 }
 
-  - id: "ema_slow"
+  - id: "ema_21"
     tf: "1h"
     type: indicator
     indicator_type: ema
@@ -838,10 +997,10 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "ema_fast"
+            feature_id: "ema_9"
           op: cross_above
           rhs:
-            feature_id: "ema_slow"
+            feature_id: "ema_21"
         emit:
           - action: entry_long
     else:
@@ -852,10 +1011,10 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "ema_fast"
+            feature_id: "ema_9"
           op: cross_below
           rhs:
-            feature_id: "ema_slow"
+            feature_id: "ema_21"
         emit:
           - action: exit_long
 
@@ -893,19 +1052,19 @@ symbol_universe:
 execution_tf: "1h"
 
 features:
-  - id: "ema_fast"
+  - id: "ema_9"
     tf: "1h"
     type: indicator
     indicator_type: ema
     params: { length: 9 }
 
-  - id: "ema_slow"
+  - id: "ema_21"
     tf: "1h"
     type: indicator
     indicator_type: ema
     params: { length: 21 }
 
-  - id: "rsi"
+  - id: "rsi_14"
     tf: "1h"
     type: indicator
     indicator_type: rsi
@@ -921,12 +1080,12 @@ actions:
       - when:
           all:
             - lhs:
-                feature_id: "ema_fast"
+                feature_id: "ema_9"
               op: gt
               rhs:
-                feature_id: "ema_slow"
+                feature_id: "ema_21"
             - lhs:
-                feature_id: "rsi"
+                feature_id: "rsi_14"
               op: lt
               rhs: 70
         emit:
@@ -940,12 +1099,12 @@ actions:
       - when:
           any:
             - lhs:
-                feature_id: "ema_fast"
+                feature_id: "ema_9"
               op: lt
               rhs:
-                feature_id: "ema_slow"
+                feature_id: "ema_21"
             - lhs:
-                feature_id: "rsi"
+                feature_id: "rsi_14"
               op: gt
               rhs: 80
         emit:
@@ -985,21 +1144,21 @@ symbol_universe:
 execution_tf: "15m"
 
 features:
-  # Execution TF indicators
-  - id: "ema_fast_15m"
+  # Execution TF indicators (no TF suffix needed)
+  - id: "ema_9"
     tf: "15m"
     type: indicator
     indicator_type: ema
     params: { length: 9 }
 
-  - id: "ema_slow_15m"
+  - id: "ema_21"
     tf: "15m"
     type: indicator
     indicator_type: ema
     params: { length: 21 }
 
-  # HTF trend indicator
-  - id: "ema_trend_1h"
+  # HTF trend indicator (TF suffix for clarity)
+  - id: "ema_50_1h"
     tf: "1h"
     type: indicator
     indicator_type: ema
@@ -1019,13 +1178,13 @@ actions:
                 feature_id: "close"
               op: gt
               rhs:
-                feature_id: "ema_trend_1h"
+                feature_id: "ema_50_1h"
             # LTF signal: EMA crossover
             - lhs:
-                feature_id: "ema_fast_15m"
+                feature_id: "ema_9"
               op: cross_above
               rhs:
-                feature_id: "ema_slow_15m"
+                feature_id: "ema_21"
         emit:
           - action: entry_long
     else:
@@ -1036,10 +1195,10 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "ema_fast_15m"
+            feature_id: "ema_9"
           op: cross_below
           rhs:
-            feature_id: "ema_slow_15m"
+            feature_id: "ema_21"
         emit:
           - action: exit_long
 
@@ -1062,6 +1221,7 @@ risk_model:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.0.3 | 2026-01-06 | Partial exit actions (`percent` field), dynamic action metadata (feature refs in `metadata`) |
 | 3.0.2 | 2026-01-05 | Structure refs auto-resolve (both `swing` and `structure.swing` work); structure-only Plays valid; auto-infer date window |
 | 3.0.1 | 2026-01-05 | Renamed `blocks:` field to `actions:` |
 | 3.0.0 | 2026-01-04 | Actions-based DSL with nested all/any/not, window operators |
@@ -1071,7 +1231,7 @@ risk_model:
 
 ## See Also
 
-- `configs/plays/_validation/` - Validation play examples (formerly configs/idea_cards/_validation/)
+- `configs/plays/_validation/` - Validation play examples
 - `docs/specs/PLAY_VISION.md` - Play design vision
 - `docs/specs/INCREMENTAL_STATE_ARCHITECTURE.md` - Structure detectors
 - `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` - StateRationalizer and Forge

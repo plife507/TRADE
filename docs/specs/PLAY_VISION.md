@@ -13,7 +13,7 @@ This document uses the new trading hierarchy terminology:
 | Term | Definition |
 |------|------------|
 | **Setup** | Reusable rule blocks, filters, entry/exit logic |
-| **Play** | Complete strategy specification (formerly "IdeaCard") |
+| **Play** | Complete strategy specification |
 | **Playbook** | Collection of plays with regime routing |
 | **System** | Full trading operation with risk/execution |
 | **Forge** | Development/validation environment (src/forge/) |

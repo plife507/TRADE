@@ -23,11 +23,11 @@
 - [x] Move `_normalize_datetime()` from `data_tools.py:31-82`
 - [x] Move `_validate_time_range()` from `data_tools.py:84-112`
 - [x] Move `_normalize_time_range_params()` from `data_tools.py:114-148`
-- [x] Add `normalize_datetime_for_storage()` (from backtest_ideacard_tools pattern)
+- [x] Add `normalize_datetime_for_storage()` (from backtest_play_tools pattern)
 
 ### 1.2 Update Consumers
 - [x] Update `data_tools.py` to import from `datetime_utils`
-- [x] Update `backtest_ideacard_tools.py` to import from `datetime_utils`
+- [x] Update `backtest_play_tools.py` to import from `datetime_utils`
 - [x] Add backward-compat aliases in original locations
 
 ### 1.3 Validate Phase 1
@@ -155,7 +155,7 @@
 
 **Goal**: 1,705 LOC -> 5 focused modules
 
-**NOTE**: This phase depends on the Forge Migration (see TODO.md). The file will be renamed from `idea_card.py` to `play.py` as part of migration Phase F1.
+**NOTE**: This phase depends on the Forge Migration (see TODO.md). The file will be renamed from `play.py` to `play.py` as part of migration Phase F1.
 
 ### 4.1 Create risk_model.py (~150 LOC)
 - [ ] Create `src/forge/risk_model.py`
@@ -210,7 +210,7 @@
 This phase is tracked in detail in [TODO.md](TODO.md) under "Active Work: Forge Migration".
 
 Summary:
-- Phase F1: Rename paths and references (IdeaCard → Play, idea_cards → plays)
+- Phase F1: Rename paths and references (IdeaCard → Play, plays → plays)
 - Phase F2: Create `src/forge/` structure
 - Phase F3: Implement hierarchy (Setup → Play → Playbook → System)
 

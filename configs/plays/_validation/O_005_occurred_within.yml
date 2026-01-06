@@ -1,7 +1,7 @@
-id: I_010_ema_cross
+id: O_005_occurred_within
 version: "3.0.0"
-name: "Indicator Test: EMA Crossover"
-description: "Test EMA cross_above/cross_below operators"
+name: "Operator Test: Occurred Within Window"
+description: "Test occurred_within window operator"
 
 account:
   starting_equity_usdt: 10000.0
@@ -22,6 +22,12 @@ position_policy:
   max_positions_per_symbol: 1
 
 features:
+  - id: "rsi_14"
+    tf: "1h"
+    type: indicator
+    indicator_type: rsi
+    params:
+      length: 14
   - id: "ema_9"
     tf: "1h"
     type: indicator
@@ -38,12 +44,14 @@ features:
 actions:
   - id: entry
     cases:
+      # Entry: RSI crossed below 30 within last 5 bars (oversold recently)
       - when:
-          lhs:
-            feature_id: "ema_9"
-          op: cross_above
-          rhs:
-            feature_id: "ema_21"
+          occurred_within:
+            bars: 5
+            expr:
+              lhs: {feature_id: "rsi_14"}
+              op: cross_below
+              rhs: 30
         emit:
           - action: entry_long
     else:
@@ -52,12 +60,14 @@ actions:
 
   - id: exit
     cases:
+      # Exit: RSI crossed above 70 within last 3 bars (overbought recently)
       - when:
-          lhs:
-            feature_id: "ema_9"
-          op: cross_below
-          rhs:
-            feature_id: "ema_21"
+          occurred_within:
+            bars: 3
+            expr:
+              lhs: {feature_id: "rsi_14"}
+              op: cross_above
+              rhs: 70
         emit:
           - action: exit_long
 

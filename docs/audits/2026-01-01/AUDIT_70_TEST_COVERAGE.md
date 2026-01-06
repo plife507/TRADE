@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-All critical paths have smoke tests. All 42 indicators have validation IdeaCard coverage. Determinism verification exists at multiple levels. One critical gap: no test that compares state tracking on/off to verify the record-only guarantee.
+All critical paths have smoke tests. All 42 indicators have validation Play coverage. Determinism verification exists at multiple levels. One critical gap: no test that compares state tracking on/off to verify the record-only guarantee.
 
 ---
 
@@ -17,7 +17,7 @@ All critical paths have smoke tests. All 42 indicators have validation IdeaCard 
 ### What Was Reviewed
 
 - `src/cli/smoke_tests/` - All 9 smoke test modules
-- `configs/idea_cards/_validation/` - All 24 validation IdeaCards
+- `configs/plays/_validation/` - All 24 validation Plays
 - `src/backtest/audits/` - All 7 audit modules
 - `src/backtest/artifacts/determinism.py` - Determinism verification
 - `src/backtest/runtime/state_tracker.py` - State tracking (Stage 7)
@@ -39,7 +39,7 @@ Determinism verified at multiple levels:
 - Zone instance_id determinism tested
 - State tracking determinism tested
 
-### 2.3 Validation IdeaCards - PASS (24 cards)
+### 2.3 Validation Plays - PASS (24 cards)
 
 | Range | Category | Count |
 |-------|----------|-------|
@@ -58,7 +58,7 @@ All indicators covered across V_31 through V_37.
 
 ### 2.5 Record-Only Guarantee - RISK
 
-**Critical Gap**: No test runs same IdeaCard with `record_state_tracking=True/False` and compares hashes.
+**Critical Gap**: No test runs same Play with `record_state_tracking=True/False` and compares hashes.
 
 ---
 
@@ -74,7 +74,7 @@ If `record_state_tracking=True` accidentally affects trade logic, the bug would 
 
 **Recommendation**: Add explicit comparison test.
 
-#### P1-2: IdeaCard count mismatch in CLAUDE.md
+#### P1-2: Play count mismatch in CLAUDE.md
 
 CLAUDE.md says 21 cards, but 24 exist (V_61, V_62, V_65 added).
 
@@ -111,8 +111,8 @@ Structure, rules, metadata, and state tracking smoke tests are suitable for pre-
 
 ### Immediate (Before Next Release)
 
-1. **Add record-only guarantee test**: Run same IdeaCard with flag on/off, assert hash equality
-2. **Update CLAUDE.md**: Change "21 IdeaCards" to "24 IdeaCards"
+1. **Add record-only guarantee test**: Run same Play with flag on/off, assert hash equality
+2. **Update CLAUDE.md**: Change "21 Plays" to "24 Plays"
 
 ### Short-Term
 

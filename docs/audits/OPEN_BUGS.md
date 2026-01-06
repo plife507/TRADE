@@ -24,7 +24,7 @@
 - Stress test Tier 1-2: 7/7 produce trades
 - Stress test Tier 3: swing (205), zone (491) verified
 
-**NOTE**: Terminology migration COMPLETE (IdeaCard → Play, --idea-card → --play)
+**NOTE**: Terminology migration COMPLETE (IdeaCard → Play, --play → --play)
 
 ---
 
@@ -113,8 +113,8 @@
 - **Status**: FIXED in 2026-01-04 session
 
 ### P2-06: Multi-Output Indicator Reference Mismatch - FIXED
-- **Location**: `compile_idea_card()` in `idea_card_yaml_builder.py`
-- **Issue**: `compile_idea_card` used `spec.output_key` instead of `spec.output_keys_list`
+- **Location**: `compile_play()` in `play_yaml_builder.py`
+- **Issue**: `compile_play` used `spec.output_key` instead of `spec.output_keys_list`
 - **Fix**: Changed to use `spec.output_keys_list` to include all multi-output expanded keys
 - **Verified**: All 16 multi-output indicators now pass (macd, bbands, stoch, etc.)
 - **Status**: FIXED in 2026-01-03 stress test session

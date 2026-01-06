@@ -1,7 +1,7 @@
 # TRADE Strategy Factory
 
-**STATUS:** CANONICAL  
-**PURPOSE:** Strategy Factory architecture: IdeaCards, promotion loops, system hashes, playbooks  
+**STATUS:** CANONICAL
+**PURPOSE:** Strategy Factory architecture: Plays, promotion loops, system hashes, playbooks
 **LAST UPDATED:** December 18, 2025
 
 ---
@@ -10,13 +10,13 @@
 
 The Strategy Factory is the system for defining, testing, validating, and promoting trading strategies from concept to live trading.
 
-**Current State:** Production-ready core infrastructure. IdeaCard system complete with full validation gates; promotion loop automation pending (manual process works).
+**Current State:** Production-ready core infrastructure. Play system complete with full validation gates; promotion loop automation pending (manual process works).
 
 ---
 
 ## Definitions
 
-### IdeaCard
+### Play
 
 A **declarative, self-contained strategy specification** that defines:
 - What indicators/features the strategy needs (per timeframe)
@@ -29,16 +29,16 @@ A **declarative, self-contained strategy specification** that defines:
 - Explicit over implicit: No silent defaults
 - Fail-fast: Validation at load time
 - Machine-readable: YAML format, composable
-- Decoupled from execution: IdeaCard declares intent, engine executes
+- Decoupled from execution: Play declares intent, engine executes
 
-**Canonical Location:** `configs/idea_cards/`
+**Canonical Location:** `configs/plays/`
 
 ### System (Hash)
 
-A **System** is an IdeaCard at a specific version, uniquely identified by a hash.
+A **System** is a Play at a specific version, uniquely identified by a hash.
 
 **Hash Components:**
-- IdeaCard YAML content (normalized)
+- Play YAML content (normalized)
 - Symbol
 - Timeframe configuration
 - Feature specifications
@@ -53,7 +53,7 @@ A **System** is an IdeaCard at a specific version, uniquely identified by a hash
 - Determinism verification (`backtest verify-determinism --re-run`)
 - Pipeline signature validation (proves production pipeline used)
 - Result tracking in `result.json` (`trades_hash`, `equity_hash`, `run_hash`)
-- Input tracking in `run_manifest.json` (`full_hash`, `idea_hash`)
+- Input tracking in `run_manifest.json` (`full_hash`, `play_hash`)
 
 ### Block / Strategy Instance
 
@@ -64,7 +64,7 @@ A **Strategy Instance** is a specific parameterization of a Block (e.g., "EMA 9/
 **Relationship:**
 ```
 Block (family)
-  └── IdeaCard (specific parameterization)
+  └── Play (specific parameterization)
         └── System Hash (versioned snapshot)
               └── Backtest Run (execution)
                     └── Artifacts (results)
@@ -72,7 +72,7 @@ Block (family)
 
 ### Playbook
 
-A **Playbook** is a collection of Blocks/IdeaCards intended to run together as a portfolio.
+A **Playbook** is a collection of Blocks/Plays intended to run together as a portfolio.
 
 **Current Status:** Not implemented. Future feature.
 
@@ -83,7 +83,7 @@ The **Promotion Loop** is the workflow for advancing strategies through validati
 ```
 Concept
   ↓
-IdeaCard (YAML definition)
+Play (YAML definition)
   ↓
 Backtest (hygiene window)
   ↓
@@ -106,8 +106,8 @@ Live Trading (real funds)
 
 | Component | Location | Status |
 |-----------|----------|--------|
-| IdeaCard dataclass | `src/backtest/idea_card.py` | ✅ Complete |
-| IdeaCard YAML builder | `src/backtest/idea_card_yaml_builder.py` | ✅ Complete |
+| Play dataclass | `src/backtest/play.py` | ✅ Complete |
+| Play YAML builder | `src/backtest/play_yaml_builder.py` | ✅ Complete |
 | FeatureSpec | `src/backtest/features/feature_spec.py` | ✅ Complete |
 | Indicator Registry | `src/backtest/indicator_registry.py` | ✅ Complete |
 | System hash | `src/backtest/artifacts/hashes.py` | ✅ Complete (used for determinism) |
@@ -138,10 +138,10 @@ Live Trading (real funds)
 
 ---
 
-## IdeaCard Schema
+## Play Schema
 
 ```yaml
-# Minimal IdeaCard structure
+# Minimal Play structure
 id: "BTCUSDT_15m_ema_crossover"
 version: "1.0"
 
@@ -195,8 +195,8 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 
 ### Gate 1: Contract Validation (Syntax & Schema)
 
-**When**: Before any backtest execution  
-**Command**: `validate_idea_card_full()` (automatic in `backtest run`)
+**When**: Before any backtest execution
+**Command**: `validate_play_full()` (automatic in `backtest run`)
 
 **Checks**:
 - ✅ YAML parses correctly
@@ -211,8 +211,8 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 
 ### Gate 2: Preflight Gate (Data Coverage & Warmup)
 
-**When**: Before engine execution  
-**Command**: `backtest preflight --idea-card <path>` (automatic in `backtest run`)
+**When**: Before engine execution
+**Command**: `backtest preflight --play <path>` (automatic in `backtest run`)
 
 **Checks**:
 - ✅ Historical data available for date range
@@ -227,8 +227,8 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 
 ### Gate 3: Backtest Execution
 
-**When**: During engine run  
-**Command**: `backtest run --idea-card <path>`
+**When**: During engine run
+**Command**: `backtest run --play <path>`
 
 **Checks**:
 - ✅ Backtest completes without errors
@@ -241,7 +241,7 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 
 ### Gate 4: Artifact Validation (Post-Run)
 
-**When**: After successful backtest execution  
+**When**: After successful backtest execution
 **Command**: Automatic (can disable with `--no-validate`)
 
 **Checks**:
@@ -252,7 +252,7 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 - ✅ `pipeline_signature.json` exists and is valid
 
 **Pipeline Signature Validation**:
-- ✅ `config_source == "IdeaCard"` (not legacy YAML)
+- ✅ `config_source == "Play"` (not legacy YAML)
 - ✅ `uses_system_config_loader == False` (not legacy loader)
 - ✅ `placeholder_mode == False` (not test mode)
 - ✅ `feature_keys_match == True` (indicators match declaration)
@@ -261,7 +261,7 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 
 ### Gate 5: Determinism Verification (Optional)
 
-**When**: Manual verification or CI/CD  
+**When**: Manual verification or CI/CD
 **Command**: `backtest verify-determinism --run <path> --re-run`
 
 **Checks**:
@@ -269,7 +269,7 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 - ✅ `trades_hash` matches
 - ✅ `equity_hash` matches
 - ✅ `run_hash` matches
-- ✅ `idea_hash` matches
+- ✅ `play_hash` matches
 
 **Output**: PASS if identical, FAIL with diff if not
 
@@ -277,7 +277,7 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 
 ### Gate 6: Financial Metrics Audit (Optional)
 
-**When**: Manual validation or CI/CD  
+**When**: Manual validation or CI/CD
 **Command**: `backtest metrics-audit`
 
 **Checks**:
@@ -290,7 +290,7 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 
 ### Gate 7: Performance Threshold (Future)
 
-**When**: Before promotion to next stage  
+**When**: Before promotion to next stage
 **Status**: Not yet automated (manual evaluation)
 
 **Proposed Checks**:
@@ -309,11 +309,11 @@ The Strategy Factory implements a **multi-gate validation system** that ensures 
 Each backtest run produces a versioned folder with complete audit trail:
 
 ```
-backtests/<idea_card_id>/<symbol>/<hash>/
+backtests/<play_id>/<symbol>/<hash>/
 ├── result.json              # Summary metrics (with trades_hash, equity_hash, run_hash)
 ├── trades.parquet           # Trade records (structured columns)
 ├── equity.parquet           # Equity curve (with ts_ms column)
-├── run_manifest.json        # Run metadata (eval_start_ts_ms, full_hash, idea_hash)
+├── run_manifest.json        # Run metadata (eval_start_ts_ms, full_hash, play_hash)
 ├── pipeline_signature.json  # Provenance (proves production pipeline used)
 └── logs/                    # Execution logs (optional)
 ```
@@ -339,7 +339,7 @@ backtests/<idea_card_id>/<symbol>/<hash>/
 - **HARD FAIL** if missing or invalid
 
 **Run Manifest JSON**:
-- Input tracking: `full_hash` (input hash), `idea_hash` (IdeaCard hash)
+- Input tracking: `full_hash` (input hash), `play_hash` (Play hash)
 - Timing: `eval_start_ts_ms` (evaluation start timestamp)
 - Configuration: `symbol`, `timeframe`, `window_start`, `window_end`
 
@@ -349,8 +349,8 @@ backtests/<idea_card_id>/<symbol>/<hash>/
 
 | Stage | Criteria | Gate |
 |-------|----------|------|
-| Concept → IdeaCard | YAML valid, features declared | Syntax |
-| IdeaCard → Hygiene Backtest | Backtest completes, no errors | Execution |
+| Concept → Play | YAML valid, features declared | Syntax |
+| Play → Hygiene Backtest | Backtest completes, no errors | Execution |
 | Hygiene → Test Backtest | Positive expectancy, reasonable drawdown | Performance |
 | Test → Sim Validation | Consistent with backtest | Parity |
 | Sim → Demo | No execution issues | Live test |
@@ -358,17 +358,17 @@ backtests/<idea_card_id>/<symbol>/<hash>/
 
 ---
 
-## IdeaCard Locations
+## Play Locations
 
 | Location | Purpose | Status |
 |----------|---------|--------|
-| `configs/idea_cards/` | Canonical production cards | ✅ Active |
-| `configs/idea_cards/verify/` | Verification test cards | ✅ Active |
-| `configs/idea_cards/_TEMPLATE.yml` | Template for new cards | ✅ Active |
-| `src/strategies/idea_cards/` | Examples/templates only | ⚠️ Misplaced |
+| `configs/plays/` | Canonical production cards | ✅ Active |
+| `configs/plays/verify/` | Verification test cards | ✅ Active |
+| `configs/plays/_TEMPLATE.yml` | Template for new cards | ✅ Active |
+| `src/strategies/plays/` | Examples/templates only | ⚠️ Misplaced |
 | `src/strategies/configs/` | Legacy configs | ⚠️ Misplaced |
 
-**Recommendation:** Move or delete `src/strategies/idea_cards/` and `src/strategies/configs/`.
+**Recommendation:** Move or delete `src/strategies/plays/` and `src/strategies/configs/`.
 
 ---
 
@@ -378,7 +378,7 @@ When the Agent module is implemented:
 
 | Integration Point | Purpose |
 |-------------------|---------|
-| IdeaCard generation | AI generates IdeaCard from research |
+| Play generation | AI generates Play from research |
 | Backtest execution | Agent triggers backtest via ToolRegistry |
 | Result interpretation | AI analyzes BacktestResult |
 | Promotion decision | AI recommends promotion |
@@ -405,7 +405,7 @@ When the Agent module is implemented:
 - Created `backtest metrics-audit` CLI command (6/6 tests pass)
 
 ✅ **Production Pipeline Validation** (All gates passed)
-- 5 IdeaCards created and validated (4 valid, 1 intentionally invalid)
+- 5 Plays created and validated (4 valid, 1 intentionally invalid)
 - All 6 validation gates tested and verified
 - End-to-end pipeline validated
 - Schema issues discovered and documented
@@ -424,8 +424,8 @@ When the Agent module is implemented:
 
 ### Short-Term (1-2 Weeks)
 
-2. **Clean up IdeaCard locations** — Consolidate to `configs/idea_cards/`
-   - Move or delete `src/strategies/idea_cards/` and `src/strategies/configs/`
+2. **Clean up Play locations** — Consolidate to `configs/plays/`
+   - Move or delete `src/strategies/plays/` and `src/strategies/configs/`
 
 3. **Define performance thresholds** — Minimum criteria for promotion
    - Sharpe ratio minimum
@@ -435,7 +435,7 @@ When the Agent module is implemented:
 
 ### Medium-Term (Future)
 
-4. **Baseline storage for drift detection** — Store canonical results for key IdeaCards
+4. **Baseline storage for drift detection** — Store canonical results for key Plays
    - Document: `docs/todos/archived/2025-12-18/POST_BACKTEST_AUDIT_GATES.md` (Phase 5)
    - Compare new runs to stored baselines
    - Integrate with CI (GitHub Actions)
@@ -444,8 +444,8 @@ When the Agent module is implemented:
    - Automated promotion based on performance thresholds
    - Integration with validation gates
 
-6. **Add agent integration** — IdeaCard generation from research
-   - AI generates IdeaCard from research notes
+6. **Add agent integration** — Play generation from research
+   - AI generates Play from research notes
    - Automated backtest execution via ToolRegistry
    - Result interpretation and promotion recommendations
 
@@ -457,10 +457,10 @@ When the Agent module is implemented:
 
 ```bash
 # Preflight (data coverage, warmup)
-python trade_cli.py backtest preflight --idea-card <path> --fix-gaps
+python trade_cli.py backtest preflight --play <path> --fix-gaps
 
 # Run backtest (with automatic validation)
-python trade_cli.py backtest run --idea-card <path> --start <date> --end <date>
+python trade_cli.py backtest run --play <path> --start <date> --end <date>
 
 # Verify determinism
 python trade_cli.py backtest verify-determinism --run <path> --re-run

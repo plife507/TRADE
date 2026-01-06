@@ -37,9 +37,9 @@ BacktestEngine
 - Position management
 - TP/SL via intrabar path
 
-### IdeaCard
-- YAML strategy configuration
-- Features (indicators), structures, rules
+### Play
+- YAML strategy configuration (v3.0.0)
+- Features (indicators), structures, actions
 - Validation through normalization
 
 ## Development Patterns
@@ -56,7 +56,7 @@ BacktestEngine
 ),
 ```
 
-2. Create validation IdeaCard
+2. Create validation Play
 3. Run audit-toolkit
 
 ### Adding Structures
@@ -64,7 +64,7 @@ BacktestEngine
 1. Create detector in `src/backtest/incremental/detectors/`
 2. Use `@register_structure("name")` decorator
 3. Implement `update()`, `get_output_keys()`, `get_value()`
-4. Create validation IdeaCard
+4. Create validation Play
 
 ### Hot Loop Rules
 

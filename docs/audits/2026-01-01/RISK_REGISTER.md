@@ -60,7 +60,7 @@
 |-------|-------|
 | **ID** | AUDIT_70-P1-1 |
 | **Location** | Test infrastructure gap |
-| **Description** | No test runs same IdeaCard with `record_state_tracking=True/False` and compares hashes |
+| **Description** | No test runs same Play with `record_state_tracking=True/False` and compares hashes |
 | **Impact** | Record-only guarantee not runtime-verified |
 | **Likelihood** | N/A - testing gap |
 | **Mitigation** | Add explicit comparison test in validation suite |
@@ -119,7 +119,7 @@
 | Field | Value |
 |-------|-------|
 | **ID** | AUDIT_30-P1.2 |
-| **Location** | `idea_card.py:480-481`, `registry.py:101-120` |
+| **Location** | `play.py:480-481`, `registry.py:101-120` |
 | **Description** | YAML can specify these operators but they fail at compile time |
 | **Impact** | Confusing error at compile vs parse time |
 | **Likelihood** | Low - user error |
@@ -155,7 +155,7 @@
 | **Likelihood** | Low - tested extensively |
 | **Mitigation** | Consolidate to single close detection path |
 
-### P1-14: IdeaCard Count Mismatch in CLAUDE.md
+### P1-14: Play Count Mismatch in CLAUDE.md
 | Field | Value |
 |-------|-------|
 | **ID** | AUDIT_70-P1-2 |

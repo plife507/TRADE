@@ -22,7 +22,7 @@ position_policy:
   max_positions_per_symbol: 1
 
 features:
-  - id: "adx"
+  - id: "adx_14"
     tf: "1h"
     type: indicator
     indicator_type: adx
@@ -35,16 +35,16 @@ actions:
       - when:
           all:
             - lhs:
-                feature_id: "adx"
+                feature_id: "adx_14"
                 field: "adx"
               op: gt
               rhs: 25
             - lhs:
-                feature_id: "adx"
+                feature_id: "adx_14"
                 field: "dmp"
               op: gt
               rhs:
-                feature_id: "adx"
+                feature_id: "adx_14"
                 field: "dmn"
         emit:
           - action: entry_long
@@ -56,11 +56,11 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "adx"
+            feature_id: "adx_14"
             field: "dmp"
           op: lt
           rhs:
-            feature_id: "adx"
+            feature_id: "adx_14"
             field: "dmn"
         emit:
           - action: exit_long

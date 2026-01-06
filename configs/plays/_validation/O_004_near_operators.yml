@@ -1,7 +1,7 @@
-id: I_005_macd
+id: O_004_near_operators
 version: "3.0.0"
-name: "Indicator Test: MACD"
-description: "Test MACD multi-output indicator"
+name: "Operator Test: Near Absolute/Percent"
+description: "Test near_abs and near_pct for float proximity comparisons"
 
 account:
   starting_equity_usdt: 10000.0
@@ -22,24 +22,28 @@ position_policy:
   max_positions_per_symbol: 1
 
 features:
-  - id: "macd_12_26_9"
+  - id: "ema_9"
     tf: "1h"
     type: indicator
-    indicator_type: macd
+    indicator_type: ema
     params:
-      fast: 12
-      slow: 26
-      signal: 9
+      length: 9
+  - id: "ema_21"
+    tf: "1h"
+    type: indicator
+    indicator_type: ema
+    params:
+      length: 21
 
 actions:
   - id: entry
     cases:
+      # Test near_abs: EMA values within $10 of each other (consolidation)
       - when:
-          lhs:
-            feature_id: "macd_12_26_9"
-            field: "histogram"
-          op: gt
-          rhs: 0
+          lhs: {feature_id: "ema_9"}
+          op: near_abs
+          rhs: {feature_id: "ema_21"}
+          tolerance: 10.0
         emit:
           - action: entry_long
     else:
@@ -48,12 +52,13 @@ actions:
 
   - id: exit
     cases:
+      # Test near_pct: EMA values NOT within 0.5% of each other (diverging)
       - when:
-          lhs:
-            feature_id: "macd_12_26_9"
-            field: "histogram"
-          op: lt
-          rhs: 0
+          not:
+            lhs: {feature_id: "ema_9"}
+            op: near_pct
+            rhs: {feature_id: "ema_21"}
+            tolerance: 0.005
         emit:
           - action: exit_long
 

@@ -985,15 +985,15 @@ Every error includes actionable fix suggestions.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 1 | Core primitives (MonotonicDeque, RingBuffer) | ✅ Complete |
-| 2 | Base class + registry + validation | ✅ Complete |
-| 3 | Detectors (swing, fib, zone, trend, rolling_window) | ✅ Complete |
-| 4 | TFIncrementalState + MultiTFIncrementalState | ✅ Complete |
-| 5 | Play schema + parser | ✅ Complete |
-| 6 | Engine integration | ✅ Complete |
-| 7 | Remove batch code | ✅ Complete |
-| 8 | Validation + docs | ✅ Complete |
-| 12 | Derived zones (K slots + aggregates) | ✅ Complete |
+| 1 | Core primitives (MonotonicDeque, RingBuffer) | Complete |
+| 2 | Base class + registry + validation | Complete |
+| 3 | Detectors (swing, fib, zone, trend, rolling_window) | Complete |
+| 4 | TFIncrementalState + MultiTFIncrementalState | Complete |
+| 5 | Play schema + parser | Complete |
+| 6 | Engine integration | Complete |
+| 7 | Remove batch code | Complete |
+| 8 | Validation + docs | Complete |
+| 12 | Derived zones (K slots + aggregates) | Complete |
 
 ## What Gets Removed
 
@@ -1004,8 +1004,8 @@ After migration:
 
 ## Related Documents
 
-- `PLAY_VISION.md` - Vision and goals (formerly IDEACARD_VISION.md)
-- `PLAY_SYNTAX.md` - Blocks DSL v3.0.0 syntax reference (formerly IDEACARD_SYNTAX.md)
+- `PLAY_VISION.md` - Vision and goals
+- `PLAY_SYNTAX.md` - Blocks DSL v3.0.0 syntax reference
 - `DERIVATION_RULE_INVESTIGATION.md` - Phase 12 derived zones (K slots + aggregates)
 - `../architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` - StateRationalizer and Forge
 - `../project/PROJECT_OVERVIEW.md` - Project roadmap

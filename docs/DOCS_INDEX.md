@@ -21,7 +21,7 @@ Navigation hub for all project documentation.
 
 - 42 indicators in INDICATOR_REGISTRY
 - 6 structures in STRUCTURE_REGISTRY (swing, fibonacci, zone, trend, rolling_window, derived_zone)
-- 15 validation IdeaCards (V_100-V_122)
+- 15 validation Plays (V_100-V_122)
 - Blocks DSL v3.0.0 with 12 operators + 3 window operators
 - Phases 1-3 mega-file refactor complete
 
@@ -31,11 +31,11 @@ Navigation hub for all project documentation.
 
 | Folder | Index | Description |
 |--------|-------|-------------|
-| [specs/](specs/INDEX.md) | [INDEX.md](specs/INDEX.md) | 7 active specs: architecture, IdeaCard DSL, incremental state |
+| [specs/](specs/INDEX.md) | [INDEX.md](specs/INDEX.md) | 7 active specs: architecture, Play DSL, incremental state |
 | [audits/](audits/INDEX.md) | [INDEX.md](audits/INDEX.md) | Bug tracking, audit reports |
 | [todos/](todos/INDEX.md) | [INDEX.md](todos/INDEX.md) | Active and archived TODO documents |
 | [data/](data/DATA_MODULE.md) | [DATA_MODULE.md](data/DATA_MODULE.md) | DuckDB stores, schemas, data pipeline |
-| [strategy_factory/](strategy_factory/STRATEGY_FACTORY.md) | [STRATEGY_FACTORY.md](strategy_factory/STRATEGY_FACTORY.md) | IdeaCards, promotion loops |
+| [strategy_factory/](strategy_factory/STRATEGY_FACTORY.md) | [STRATEGY_FACTORY.md](strategy_factory/STRATEGY_FACTORY.md) | Plays, promotion loops |
 | [reviews/](reviews/INDEX.md) | [INDEX.md](reviews/INDEX.md) | Archived development reviews |
 | [_archived/](_archived/INDEX.md) | [INDEX.md](_archived/INDEX.md) | Historical/obsolete documentation |
 
@@ -46,7 +46,7 @@ Navigation hub for all project documentation.
 ```bash
 python trade_cli.py                     # Run CLI
 python trade_cli.py --smoke full        # Full smoke test
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
 python trade_cli.py backtest audit-toolkit
 ```
 
@@ -58,5 +58,5 @@ python trade_cli.py backtest audit-toolkit
 |-------|----------|
 | AI Guidance | `CLAUDE.md` |
 | Module Docs | `src/*/CLAUDE.md` |
-| IdeaCards | `configs/idea_cards/` |
-| Validation IdeaCards | `configs/idea_cards/_validation/` |
+| Plays | `configs/plays/` |
+| Validation Plays | `configs/plays/_validation/` |

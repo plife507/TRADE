@@ -56,28 +56,41 @@ class Intent:
     Attributes:
         action: The action name (see VALID_ACTIONS)
         metadata: Additional key-value pairs for the action
+        percent: Percentage of position for partial exits (1-100, default 100)
 
     Examples:
         Intent(action="entry_long")
         Intent(action="exit_short", metadata={"reason": "stop_loss"})
+        Intent(action="exit_long", percent=50)  # Close 50% of position
         Intent(action="adjust_stop", metadata={"price": 100.0})
     """
     action: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    percent: float = 100.0
 
     def __post_init__(self):
-        """Validate action name."""
+        """Validate action name and percent."""
         if not self.action:
             raise ValueError("Intent: action is required")
+        # FAIL LOUD: Validate percent strictly
+        if self.percent <= 0 or self.percent > 100:
+            raise ValueError(
+                f"Intent: percent must be in range (0, 100], got {self.percent}"
+            )
 
     def __repr__(self) -> str:
+        parts = [f"{self.action!r}"]
+        if self.percent != 100.0:
+            parts.append(f"percent={self.percent}")
         if self.metadata:
-            return f"Intent({self.action!r}, {self.metadata})"
-        return f"Intent({self.action!r})"
+            parts.append(f"metadata={self.metadata}")
+        return f"Intent({', '.join(parts)})"
 
     def to_dict(self) -> dict:
         """Serialize to dict."""
         result: dict = {"action": self.action}
+        if self.percent != 100.0:
+            result["percent"] = self.percent
         if self.metadata:
             result["metadata"] = dict(self.metadata)
         return result

@@ -22,7 +22,7 @@ position_policy:
   max_positions_per_symbol: 1
 
 features:
-  - id: "st"
+  - id: "supertrend_10_3"
     tf: "1h"
     type: indicator
     indicator_type: supertrend
@@ -35,7 +35,7 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "st"
+            feature_id: "supertrend_10_3"
             field: "direction"
           op: eq
           rhs: 1
@@ -49,7 +49,7 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "st"
+            feature_id: "supertrend_10_3"
             field: "direction"
           op: eq
           rhs: -1

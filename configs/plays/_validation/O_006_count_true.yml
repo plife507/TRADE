@@ -1,7 +1,7 @@
-id: I_010_ema_cross
+id: O_006_count_true
 version: "3.0.0"
-name: "Indicator Test: EMA Crossover"
-description: "Test EMA cross_above/cross_below operators"
+name: "Operator Test: Count True Window"
+description: "Test count_true window operator for counting occurrences"
 
 account:
   starting_equity_usdt: 10000.0
@@ -22,6 +22,12 @@ position_policy:
   max_positions_per_symbol: 1
 
 features:
+  - id: "rsi_14"
+    tf: "1h"
+    type: indicator
+    indicator_type: rsi
+    params:
+      length: 14
   - id: "ema_9"
     tf: "1h"
     type: indicator
@@ -38,12 +44,15 @@ features:
 actions:
   - id: entry
     cases:
+      # Entry: RSI above 50 at least 3 times in last 5 bars (bullish momentum)
       - when:
-          lhs:
-            feature_id: "ema_9"
-          op: cross_above
-          rhs:
-            feature_id: "ema_21"
+          count_true:
+            bars: 5
+            min_true: 3
+            expr:
+              lhs: {feature_id: "rsi_14"}
+              op: gt
+              rhs: 50
         emit:
           - action: entry_long
     else:
@@ -52,12 +61,15 @@ actions:
 
   - id: exit
     cases:
+      # Exit: RSI below 50 at least 4 times in last 5 bars (bearish momentum)
       - when:
-          lhs:
-            feature_id: "ema_9"
-          op: cross_below
-          rhs:
-            feature_id: "ema_21"
+          count_true:
+            bars: 5
+            min_true: 4
+            expr:
+              lhs: {feature_id: "rsi_14"}
+              op: lt
+              rhs: 50
         emit:
           - action: exit_long
 

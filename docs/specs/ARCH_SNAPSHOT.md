@@ -13,7 +13,7 @@ This document uses the new trading hierarchy terminology:
 | Term | Definition |
 |------|------------|
 | **Setup** | Reusable rule blocks, filters, entry/exit logic |
-| **Play** | Complete strategy specification (formerly "IdeaCard") |
+| **Play** | Complete strategy specification |
 | **Playbook** | Collection of plays with regime routing |
 | **System** | Full trading operation with risk/execution |
 | **Forge** | Development/validation environment (src/forge/) |
@@ -31,7 +31,7 @@ See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete ar
 | CLI | `src/cli/` | Production | ✅ Stable |
 | Trade Execution | `src/core/` + `src/exchanges/` | Functional | Maintenance |
 | Data | `src/data/` | Production | ✅ Stable |
-| Strategy Factory | `configs/plays/` (formerly idea_cards/) | Production | ✅ Core Complete |
+| Strategy Factory | `configs/plays/` | Production | ✅ Core Complete |
 | Audit & Validation | `src/backtest/artifacts/` | Production | ✅ Complete |
 
 **Status:** All P0 blockers resolved (December 17-18, 2025). System is production-ready.
@@ -131,7 +131,7 @@ Artifact Writers (src/backtest/artifacts/)
     ├── result.json (metrics + hashes: trades_hash, equity_hash, run_hash)
     ├── trades.parquet (structured trade records)
     ├── equity.parquet (equity curve with ts_ms column)
-    ├── run_manifest.json (metadata + input hashes: full_hash, idea_hash)
+    ├── run_manifest.json (metadata + input hashes: full_hash, play_hash)
     └── pipeline_signature.json (provenance: proves production pipeline used)
 ```
 
@@ -221,29 +221,29 @@ Determinism Verification (optional: verify-determinism CLI)
 def process_bar(bar, signal):
     # 1. Get prices for this bar
     prices = price_model.get_prices(bar)
-    
+
     # 2. Apply funding (if funding time)
     funding = funding_model.apply(bar.ts_open)
-    
+
     # 3. Update entry orders from previous bar
     entry_fills = execution_model.fill_entry_orders(bar)
-    
+
     # 4. Check TP/SL for existing positions
     exit_fills = execution_model.check_tp_sl(bar, prices)
-    
+
     # 5. Update ledger with fills and funding
     ledger.update(entry_fills + exit_fills, funding, prices)
-    
+
     # 6. Check liquidation
     liquidation = liquidation_model.check(ledger.state, prices)
-    
+
     # 7. Process new signal (queue for next bar)
     if signal:
         execution_model.queue_entry(signal)
-    
+
     # 8. Record metrics
     metrics.record(...)
-    
+
     return StepResult(...)
 ```
 
@@ -322,8 +322,8 @@ result = registry.execute("run_backtest", play_id="...", start="...", end="...")
 Agents can generate Plays programmatically:
 
 ```python
-from src.backtest.idea_card import Play  # Note: file still named idea_card.py
-from src.backtest.idea_card_yaml_builder import write_play_yaml
+from src.backtest.play import Play  # Note: file still named play.py
+from src.backtest.play_yaml_builder import write_play_yaml
 
 # Build Play from components
 play = Play(
@@ -488,7 +488,7 @@ backtests/<play_id>/<symbol>/<hash>/
 ├── result.json              # Summary metrics + hashes (trades_hash, equity_hash, run_hash)
 ├── trades.parquet           # Trade records (entry_ts_ms, exit_ts_ms, net_pnl_usdt, ...)
 ├── equity.parquet           # Equity curve (ts_ms, equity_usdt, cash_balance_usdt, ...)
-├── run_manifest.json        # Run metadata (eval_start_ts_ms, full_hash, idea_hash, ...)
+├── run_manifest.json        # Run metadata (eval_start_ts_ms, full_hash, play_hash, ...)
 └── pipeline_signature.json  # Provenance (config_source, uses_system_config_loader, ...)
 ```
 
@@ -576,8 +576,8 @@ snapshot.mtf_rsi  # MTF indicator (constant until next MTF close)
 | Determinism Verification | `backtest verify-determinism --run <path> --re-run` | Hashes match (identical results) |
 | Financial Metrics Audit | `backtest metrics-audit` | 6/6 test scenarios pass |
 | Toolkit Contract | `backtest audit-toolkit` | 42/42 indicators pass |
-| Math Parity | `backtest math-parity --idea-card <ID>` | max_diff < 1e-8 |
-| Snapshot Plumbing | `backtest audit-snapshot-plumbing --idea-card <ID>` | 0 failures |
+| Math Parity | `backtest math-parity --play <ID>` | max_diff < 1e-8 |
+| Snapshot Plumbing | `backtest audit-snapshot-plumbing --play <ID>` | 0 failures |
 
 **Rule:** Regression = STOP. Fix before proceeding.
 
@@ -589,7 +589,7 @@ snapshot.mtf_rsi  # MTF indicator (constant until next MTF close)
 |----------|---------|
 | **ARCH_INDICATOR_WARMUP.md** | Indicator warmup computation, variable requirements, adding new indicators |
 | **ARCH_DELAY_BARS.md** | Delay bars functionality, market structure configuration, evaluation start offset |
-| **PLAY_ENGINE_FLOW.md** | Play to engine field mappings (formerly IDEACARD_ENGINE_FLOW.md) |
+| **PLAY_ENGINE_FLOW.md** | Play to engine field mappings |
 
 **Archived:**
 - `archived/MARKET_STRUCTURE_INTEGRATION_PROPOSAL.md` - Historical proposal; superseded by implementation (Stages 0-7 complete in `docs/todos/archived/2026-01-01/MARKET_STRUCTURE_PHASES.md`)

@@ -225,15 +225,15 @@ python trade_cli.py backtest metrics-audit
 python trade_cli.py backtest metadata-smoke
 
 # Tier 2: YAML normalization
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/validation
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/stress_test
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/comprehensive
+python trade_cli.py backtest play-normalize-batch --dir configs/plays/validation
+python trade_cli.py backtest play-normalize-batch --dir configs/plays/stress_test
+python trade_cli.py backtest play-normalize-batch --dir configs/plays/comprehensive
 
 # Tier 3: Backtest runs with explicit dates
 # (run each card with appropriate date range)
 
 # Tier 4: Parity audits
-python trade_cli.py backtest math-parity --idea-card <card>
+python trade_cli.py backtest math-parity --play <card>
 ```
 
 ---

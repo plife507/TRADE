@@ -26,12 +26,12 @@ The current simulator (`SimulatedExchange`) implements **~15% of Bybit's live tr
 
 | Order Type | Live | Simulator | Notes |
 |------------|------|-----------|-------|
-| **Market** | ✅ | ✅ | Works, fills at next bar open |
-| **Market + TP/SL** | ✅ | ✅ | TP/SL attached to position |
-| **Limit** | ✅ | ❌ | `OrderType.LIMIT` defined but not implemented |
-| **Limit + TP/SL** | ✅ | ❌ | - |
-| **Stop Market** | ✅ | ❌ | `OrderType.STOP_MARKET` defined but not implemented |
-| **Stop Limit** | ✅ | ❌ | `OrderType.STOP_LIMIT` defined but not implemented |
+| **Market** | Yes | Yes | Works, fills at next bar open |
+| **Market + TP/SL** | Yes | Yes | TP/SL attached to position |
+| **Limit** | Yes | No | `OrderType.LIMIT` defined but not implemented |
+| **Limit + TP/SL** | Yes | No | - |
+| **Stop Market** | Yes | No | `OrderType.STOP_MARKET` defined but not implemented |
+| **Stop Limit** | Yes | No | `OrderType.STOP_LIMIT` defined but not implemented |
 
 **Live Code** (`order_tools.py`):
 ```python
@@ -40,12 +40,12 @@ market_buy_tool()
 market_sell_tool()
 market_buy_with_tpsl_tool()
 market_sell_with_tpsl_tool()
-limit_buy_tool()           # ❌ No simulator equivalent
-limit_sell_tool()          # ❌ No simulator equivalent
-stop_market_buy_tool()     # ❌ No simulator equivalent
-stop_market_sell_tool()    # ❌ No simulator equivalent
-stop_limit_buy_tool()      # ❌ No simulator equivalent
-stop_limit_sell_tool()     # ❌ No simulator equivalent
+limit_buy_tool()           # No simulator equivalent
+limit_sell_tool()          # No simulator equivalent
+stop_market_buy_tool()     # No simulator equivalent
+stop_market_sell_tool()    # No simulator equivalent
+stop_limit_buy_tool()      # No simulator equivalent
+stop_limit_sell_tool()     # No simulator equivalent
 ```
 
 **Simulator Code** (`exchange.py:232`):
@@ -70,10 +70,10 @@ def submit_order(
 
 | TIF | Live | Simulator | Description |
 |-----|------|-----------|-------------|
-| **GTC** | ✅ | ❌ | Good Till Cancel |
-| **IOC** | ✅ | ❌ | Immediate or Cancel |
-| **FOK** | ✅ | ❌ | Fill or Kill |
-| **PostOnly** | ✅ | ❌ | Maker only (reject if would take) |
+| **GTC** | Yes | No | Good Till Cancel |
+| **IOC** | Yes | No | Immediate or Cancel |
+| **FOK** | Yes | No | Fill or Kill |
+| **PostOnly** | Yes | No | Maker only (reject if would take) |
 
 **Impact**: Cannot simulate maker vs taker fee scenarios, cannot test IOC/FOK strategies.
 
@@ -83,14 +83,14 @@ def submit_order(
 
 | Feature | Live | Simulator | Notes |
 |---------|------|-----------|-------|
-| **Submit Order** | ✅ | ✅ (market only) | - |
-| **Cancel Order** | ✅ | ✅ | `cancel_pending_order()` |
-| **Amend Order** | ✅ | ❌ | Cannot change price/qty of pending |
-| **Get Open Orders** | ✅ | ⚠️ | Only 1 pending order tracked |
-| **Batch Create (10)** | ✅ | ❌ | - |
-| **Batch Amend (10)** | ✅ | ❌ | - |
-| **Batch Cancel (10)** | ✅ | ❌ | - |
-| **Order Link ID** | ✅ | ❌ | Custom order references |
+| **Submit Order** | Yes | Yes (market only) | - |
+| **Cancel Order** | Yes | Yes | `cancel_pending_order()` |
+| **Amend Order** | Yes | No | Cannot change price/qty of pending |
+| **Get Open Orders** | Yes | Partial | Only 1 pending order tracked |
+| **Batch Create (10)** | Yes | No | - |
+| **Batch Amend (10)** | Yes | No | - |
+| **Batch Cancel (10)** | Yes | No | - |
+| **Order Link ID** | Yes | No | Custom order references |
 
 **Live Code** (`order_tools.py`):
 ```python
@@ -111,13 +111,13 @@ batch_cancel_orders_tool(orders)   # Up to 10
 
 | Feature | Live | Simulator | Notes |
 |---------|------|-----------|-------|
-| **Single Position** | ✅ | ✅ | Current model |
-| **Position Scaling (Add)** | ✅ | ❌ | Cannot add to position |
-| **Partial Close (%)** | ✅ | ❌ | Must close 100% |
-| **Partial Close (qty)** | ✅ | ❌ | - |
-| **Position Layers** | ✅ | ❌ | No layer tracking |
-| **Avg Entry Price** | ✅ | ⚠️ | Only for single entry |
-| **Reduce Only Orders** | ✅ | ❌ | - |
+| **Single Position** | Yes | Yes | Current model |
+| **Position Scaling (Add)** | Yes | No | Cannot add to position |
+| **Partial Close (%)** | Yes | No | Must close 100% |
+| **Partial Close (qty)** | Yes | No | - |
+| **Position Layers** | Yes | No | No layer tracking |
+| **Avg Entry Price** | Yes | Partial | Only for single entry |
+| **Reduce Only Orders** | Yes | No | - |
 
 **Live Code** (`order_tools.py`):
 ```python
@@ -146,17 +146,17 @@ class Position:
 
 | Feature | Live | Simulator | Notes |
 |---------|------|-----------|-------|
-| **Basic TP/SL** | ✅ | ✅ | Attached to position |
-| **TP/SL Mode: Full** | ✅ | ✅ | Close entire position |
-| **TP/SL Mode: Partial** | ✅ | ❌ | Close portion at level |
-| **TP/SL Order Type: Market** | ✅ | ✅ | - |
-| **TP/SL Order Type: Limit** | ✅ | ❌ | `tp_limit_price`, `sl_limit_price` |
-| **Trigger By: LastPrice** | ✅ | ✅ | Default |
-| **Trigger By: MarkPrice** | ✅ | ⚠️ | Uses mark for liquidation |
-| **Trigger By: IndexPrice** | ✅ | ❌ | - |
-| **Modify TP/SL** | ✅ | ❌ | Cannot amend after entry |
-| **Trailing Stop** | ✅ | ❌ | - |
-| **Active Price (Trailing)** | ✅ | ❌ | - |
+| **Basic TP/SL** | Yes | Yes | Attached to position |
+| **TP/SL Mode: Full** | Yes | Yes | Close entire position |
+| **TP/SL Mode: Partial** | Yes | No | Close portion at level |
+| **TP/SL Order Type: Market** | Yes | Yes | - |
+| **TP/SL Order Type: Limit** | Yes | No | `tp_limit_price`, `sl_limit_price` |
+| **Trigger By: LastPrice** | Yes | Yes | Default |
+| **Trigger By: MarkPrice** | Yes | Partial | Uses mark for liquidation |
+| **Trigger By: IndexPrice** | Yes | No | - |
+| **Modify TP/SL** | Yes | No | Cannot amend after entry |
+| **Trailing Stop** | Yes | No | - |
+| **Active Price (Trailing)** | Yes | No | - |
 
 **Live Code** (`bybit_trading.py:302`):
 ```python
@@ -164,13 +164,13 @@ def set_trading_stop(
     symbol,
     take_profit=None,
     stop_loss=None,
-    trailing_stop=None,      # ❌ Not in simulator
-    active_price=None,       # ❌ Not in simulator
-    tpsl_mode="Full",        # ❌ Partial not supported
-    tp_size=None,            # ❌ Partial TP size
-    sl_size=None,            # ❌ Partial SL size
-    tp_limit_price=None,     # ❌ Limit TP
-    sl_limit_price=None,     # ❌ Limit SL
+    trailing_stop=None,      # Not in simulator
+    active_price=None,       # Not in simulator
+    tpsl_mode="Full",        # Partial not supported
+    tp_size=None,            # Partial TP size
+    sl_size=None,            # Partial SL size
+    tp_limit_price=None,     # Limit TP
+    sl_limit_price=None,     # Limit SL
     tp_order_type="Market",
     sl_order_type="Market",
 )
@@ -182,13 +182,13 @@ def set_trading_stop(
 
 | Feature | Live | Simulator | Notes |
 |---------|------|-----------|-------|
-| **Trigger Direction: Rise** | ✅ | ❌ | Buy when price rises to X |
-| **Trigger Direction: Fall** | ✅ | ❌ | Sell when price falls to X |
-| **Trigger By: LastPrice** | ✅ | ❌ | - |
-| **Trigger By: MarkPrice** | ✅ | ❌ | - |
-| **Trigger By: IndexPrice** | ✅ | ❌ | - |
-| **Stop → Market** | ✅ | ❌ | - |
-| **Stop → Limit** | ✅ | ❌ | - |
+| **Trigger Direction: Rise** | Yes | No | Buy when price rises to X |
+| **Trigger Direction: Fall** | Yes | No | Sell when price falls to X |
+| **Trigger By: LastPrice** | Yes | No | - |
+| **Trigger By: MarkPrice** | Yes | No | - |
+| **Trigger By: IndexPrice** | Yes | No | - |
+| **Stop → Market** | Yes | No | - |
+| **Stop → Limit** | Yes | No | - |
 
 **Live Code** (`bybit_trading.py:262`):
 ```python
@@ -208,14 +208,14 @@ def create_conditional_order(
 
 | Feature | Live | Simulator | Notes |
 |---------|------|-----------|-------|
-| **Set Leverage** | ✅ | ✅ | Via config |
-| **Isolated Margin** | ✅ | ✅ | Only mode supported |
-| **Cross Margin** | ✅ | ❌ | Explicitly rejected |
-| **Switch Margin Mode** | ✅ | ❌ | - |
-| **Add Position Margin** | ✅ | ❌ | - |
-| **Reduce Position Margin** | ✅ | ❌ | - |
-| **Auto Add Margin** | ✅ | ❌ | - |
-| **Risk Limit Tiers** | ✅ | ❌ | - |
+| **Set Leverage** | Yes | Yes | Via config |
+| **Isolated Margin** | Yes | Yes | Only mode supported |
+| **Cross Margin** | Yes | No | Explicitly rejected |
+| **Switch Margin Mode** | Yes | No | - |
+| **Add Position Margin** | Yes | No | - |
+| **Reduce Position Margin** | Yes | No | - |
+| **Auto Add Margin** | Yes | No | - |
+| **Risk Limit Tiers** | Yes | No | - |
 
 ---
 
@@ -223,9 +223,9 @@ def create_conditional_order(
 
 | Feature | Live | Simulator | Notes |
 |---------|------|-----------|-------|
-| **One-Way Mode** | ✅ | ✅ | Current behavior |
-| **Hedge Mode** | ✅ | ❌ | Long + Short simultaneously |
-| **Switch Position Mode** | ✅ | ❌ | - |
+| **One-Way Mode** | Yes | Yes | Current behavior |
+| **Hedge Mode** | Yes | No | Long + Short simultaneously |
+| **Switch Position Mode** | Yes | No | - |
 
 ---
 
@@ -233,10 +233,10 @@ def create_conditional_order(
 
 | Feature | Live | Simulator | Notes |
 |---------|------|-----------|-------|
-| **Disconnect Cancel All (DCP)** | ✅ | ❌ | Safety feature |
-| **Close On Trigger** | ✅ | ❌ | - |
-| **Order Link ID** | ✅ | ❌ | Custom references |
-| **Position Idx** | ✅ | ❌ | For hedge mode |
+| **Disconnect Cancel All (DCP)** | Yes | No | Safety feature |
+| **Close On Trigger** | Yes | No | - |
+| **Order Link ID** | Yes | No | Custom references |
+| **Position Idx** | Yes | No | For hedge mode |
 
 ---
 
@@ -248,16 +248,16 @@ def create_conditional_order(
 ┌─────────────────────────────────────────────────────────────────┐
 │                    SimulatedExchange                            │
 ├─────────────────────────────────────────────────────────────────┤
-│  ✅ Market order entry at next bar open                        │
-│  ✅ Slippage model (configurable BPS)                          │
-│  ✅ TP/SL checking against bar OHLC                            │
-│  ✅ 1m granular TP/SL checking (optional)                      │
-│  ✅ Funding rate application                                    │
-│  ✅ Liquidation checking                                        │
-│  ✅ Bybit-aligned margin model (IMR, MMR)                      │
-│  ✅ Fee calculation (taker)                                     │
-│  ✅ MAE/MFE tracking                                            │
-│  ✅ Trade artifact recording                                    │
+│  Yes Market order entry at next bar open                        │
+│  Yes Slippage model (configurable BPS)                          │
+│  Yes TP/SL checking against bar OHLC                            │
+│  Yes 1m granular TP/SL checking (optional)                      │
+│  Yes Funding rate application                                    │
+│  Yes Liquidation checking                                        │
+│  Yes Bybit-aligned margin model (IMR, MMR)                      │
+│  Yes Fee calculation (taker)                                     │
+│  Yes MAE/MFE tracking                                            │
+│  Yes Trade artifact recording                                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -267,17 +267,17 @@ def create_conditional_order(
 ┌─────────────────────────────────────────────────────────────────┐
 │                    GAPS                                         │
 ├─────────────────────────────────────────────────────────────────┤
-│  ❌ Limit order book (pending orders by price)                 │
-│  ❌ Stop order tracking (trigger conditions)                   │
-│  ❌ Multiple pending orders                                     │
-│  ❌ Order amendment                                             │
-│  ❌ Partial position closes                                     │
-│  ❌ Position scaling (add to position)                         │
-│  ❌ Trailing stops                                              │
-│  ❌ Time-in-force simulation                                    │
-│  ❌ Maker fee model                                             │
-│  ❌ Partial fills                                               │
-│  ❌ Order expiry (TTL)                                          │
+│  No Limit order book (pending orders by price)                 │
+│  No Stop order tracking (trigger conditions)                   │
+│  No Multiple pending orders                                     │
+│  No Order amendment                                             │
+│  No Partial position closes                                     │
+│  No Position scaling (add to position)                         │
+│  No Trailing stops                                              │
+│  No Time-in-force simulation                                    │
+│  No Maker fee model                                             │
+│  No Partial fills                                               │
+│  No Order expiry (TTL)                                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -287,14 +287,14 @@ def create_conditional_order(
 
 | Strategy Type | Can Simulate? | Gaps |
 |---------------|---------------|------|
-| Simple trend following (market orders) | ✅ Yes | None |
-| Mean reversion with limit entries | ❌ No | Limit orders |
-| Breakout with stop entries | ❌ No | Stop orders |
-| Scale-in strategies | ❌ No | Position layers |
-| Partial TP strategies | ❌ No | Partial close |
-| Grid trading | ❌ No | Multiple limits |
-| DCA strategies | ❌ No | Position scaling |
-| Trailing stop strategies | ❌ No | Trailing stops |
+| Simple trend following (market orders) | Yes | None |
+| Mean reversion with limit entries | No | Limit orders |
+| Breakout with stop entries | No | Stop orders |
+| Scale-in strategies | No | Position layers |
+| Partial TP strategies | No | Partial close |
+| Grid trading | No | Multiple limits |
+| DCA strategies | No | Position scaling |
+| Trailing stop strategies | No | Trailing stops |
 
 ---
 
@@ -505,7 +505,7 @@ class FillResult:
 
 Each new feature needs:
 
-1. **Validation IdeaCard** in `configs/idea_cards/_validation/`
+1. **Validation Play** in `configs/plays/_validation/`
 2. **Unit test scenarios** via CLI smoke tests
 3. **Parity check** vs live behavior documentation
 

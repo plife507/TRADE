@@ -554,6 +554,59 @@ class ExprEvaluator:
             return ValueType.STRING
         return ValueType.UNKNOWN
 
+    def resolve_metadata(
+        self,
+        metadata: dict[str, Any],
+        snapshot: "RuntimeSnapshotView",
+    ) -> dict[str, Any]:
+        """
+        Resolve feature references in metadata to actual values.
+
+        Allows dynamic metadata like:
+            metadata:
+              price: {feature_id: "swing", field: "low_level"}
+
+        which resolves to:
+            metadata:
+              price: 45000.0  # actual swing low value
+
+        FAIL LOUD: Raises ValueError if any feature reference cannot be resolved.
+        No fallbacks, no None defaults.
+
+        Args:
+            metadata: Dict with potential feature references
+            snapshot: RuntimeSnapshotView providing values
+
+        Returns:
+            Dict with all feature references resolved to values
+
+        Raises:
+            ValueError: If any feature reference cannot be resolved
+        """
+        if not metadata:
+            return {}
+
+        resolved: dict[str, Any] = {}
+        for key, value in metadata.items():
+            if isinstance(value, dict) and "feature_id" in value:
+                # It's a feature reference - resolve it
+                ref = FeatureRef(
+                    feature_id=value["feature_id"],
+                    field=value.get("field", "value"),
+                    offset=value.get("offset", 0),
+                )
+                ref_value = self._resolve_ref(ref, snapshot)
+                if ref_value.is_missing:
+                    raise ValueError(
+                        f"Dynamic metadata '{key}' references missing feature: "
+                        f"{ref.feature_id}.{ref.field}"
+                    )
+                resolved[key] = ref_value.value
+            else:
+                # Pass through non-reference values
+                resolved[key] = value
+        return resolved
+
 
 def evaluate_expression(
     expr: Expr,

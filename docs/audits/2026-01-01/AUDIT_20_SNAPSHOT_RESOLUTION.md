@@ -23,7 +23,7 @@ The snapshot resolution system is **well-designed** with dispatch table pattern 
 4. **Market Structure Builder** - StructureStore creation and wiring
 5. **Market Structure Types** - Output schemas, public field mappings
 6. **MarkPriceEngine** - Mark price resolution
-7. **IdeaCard** - Feature spec parsing and path construction
+7. **Play** - Feature spec parsing and path construction
 8. **Rules Compilation** - CompiledRef path validation
 9. **Rules Evaluation** - Condition evaluation against snapshot
 10. **Engine Snapshot** - Snapshot construction
@@ -84,7 +84,7 @@ Primary paths are O(1). However:
 
 #### P2-3: Zone Field Validation Deferred to Runtime
 
-IdeaCard typos in zone paths won't be caught until backtest execution.
+Play typos in zone paths won't be caught until backtest execution.
 
 ### P3 (Polish)
 

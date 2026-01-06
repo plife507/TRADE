@@ -11,9 +11,9 @@
 - Blocks DSL v3.0.0 with 12 operators, 3 window operators, nested boolean logic
 - 6 structures in STRUCTURE_REGISTRY (swing, fibonacci, zone, trend, rolling_window, derived_zone)
 - 42 indicators in INDICATOR_REGISTRY
-- 15 validation IdeaCards (V_100-V_122) - all blocks format
+- 15 validation Plays (V_100-V_122) - all blocks format
 - Phases 1-3 of mega-file refactor complete
-- Legacy signal_rules IdeaCards and docs removed
+- Legacy signal_rules Plays and docs removed
 - 72 bugs fixed across P0-P3
 - All specs docs verified current (2026-01-04)
 
@@ -25,7 +25,7 @@
 
 | Check | Result |
 |-------|--------|
-| IdeaCard normalize | 15/15 pass |
+| Play normalize | 15/15 pass |
 | Indicator audit | 42/42 pass |
 | Rollup audit | 11/11 intervals |
 | Structure smoke | 6/6 types |
@@ -37,7 +37,7 @@
 
 **Documentation Cleanup (2026-01-04)**:
 - `docs/architecture/` → `docs/specs/` - Folder renamed
-- `docs/guides/IDEACARD_SYNTAX.md` → `docs/specs/` - Moved into specs
+- `docs/guides/PLAY_SYNTAX.md` → `docs/specs/` - Moved into specs
 - 24 review files → `docs/_archived/reviews__*.md` - All development reviews archived
 - 3 legacy specs → `docs/specs/archived/` - Legacy signal_rules docs archived
 - `docs/specs/INCREMENTAL_STATE_ARCHITECTURE.md` - Phase 12 derived_zone added
@@ -54,7 +54,7 @@
 
 | Priority | Task | Document |
 |----------|------|----------|
-| Next | Phase 4: Split idea_card.py | `docs/todos/MEGA_FILE_REFACTOR.md` |
+| Next | Phase 4: Split play.py | `docs/todos/MEGA_FILE_REFACTOR.md` |
 | High | Streaming (Stage 8) | Demo/Live websocket |
 | Medium | BOS/CHoCH Detection | Break of Structure |
 | Medium | Advanced Operators | crosses_up, crosses_down |
@@ -65,8 +65,8 @@
 ## Quick Validation
 
 ```bash
-# Validate IdeaCards
-python trade_cli.py backtest idea-card-normalize-batch --dir configs/idea_cards/_validation
+# Validate Plays
+python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
 
 # Audit indicators and rollups
 python trade_cli.py backtest audit-toolkit

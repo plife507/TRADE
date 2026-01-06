@@ -22,7 +22,7 @@ position_policy:
   max_positions_per_symbol: 1
 
 features:
-  - id: "stoch"
+  - id: "stoch_14_3"
     tf: "1h"
     type: indicator
     indicator_type: stoch
@@ -36,7 +36,7 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "stoch"
+            feature_id: "stoch_14_3"
             field: "k"
           op: lt
           rhs: 20
@@ -50,7 +50,7 @@ actions:
     cases:
       - when:
           lhs:
-            feature_id: "stoch"
+            feature_id: "stoch_14_3"
             field: "k"
           op: gt
           rhs: 80

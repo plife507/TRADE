@@ -1,7 +1,7 @@
 # TRADE Audit Module
 
-**STATUS:** CANONICAL  
-**PURPOSE:** Audit module documentation: gates, checks, outcomes, classification  
+**STATUS:** CANONICAL
+**PURPOSE:** Audit module documentation: gates, checks, outcomes, classification
 **LAST UPDATED:** December 18, 2025
 
 ---
@@ -46,8 +46,8 @@ The audit system implements gates at multiple stages:
 
 | Gate | Command | Acceptance Criteria |
 |------|---------|---------------------|
-| Contract Validation | `validate_idea_card_full()` (automatic) | All schema checks pass |
-| Preflight Gate | `backtest preflight --idea-card <ID>` (automatic) | Data coverage + warmup sufficient |
+| Contract Validation | `validate_play_full()` (automatic) | All schema checks pass |
+| Preflight Gate | `backtest preflight --play <ID>` (automatic) | Data coverage + warmup sufficient |
 | Auto-Sync | `--fix-gaps` flag (default enabled) | Missing data fetched automatically |
 
 ### Post-Run Gates (Automatic After Every Backtest)
@@ -55,7 +55,7 @@ The audit system implements gates at multiple stages:
 | Gate | When | Acceptance Criteria |
 |------|------|---------------------|
 | Artifact Validation | After every `backtest run` | All required files exist with correct structure |
-| Pipeline Signature | After every `backtest run` | `config_source == "IdeaCard"`, `uses_system_config_loader == False` |
+| Pipeline Signature | After every `backtest run` | `config_source == "Play"`, `uses_system_config_loader == False` |
 | Hash Recording | After every `backtest run` | `trades_hash`, `equity_hash`, `run_hash` stored in `result.json` |
 
 **Behavior:** Missing or invalid artifacts cause **HARD FAIL** (not warning).
@@ -67,8 +67,8 @@ These gates must pass before any merge to `src/backtest/`:
 | Gate | Command | Acceptance Criteria |
 |------|---------|---------------------|
 | Toolkit Contract | `python trade_cli.py backtest audit-toolkit` | 42/42 indicators pass |
-| Math Parity | `python trade_cli.py backtest math-parity --idea-card <ID> --start <date> --end <date>` | 0 failures, max_diff < 1e-8 |
-| Snapshot Plumbing | `python trade_cli.py backtest audit-snapshot-plumbing --idea-card <ID> --start <date> --end <date>` | 0 failures |
+| Math Parity | `python trade_cli.py backtest math-parity --play <ID> --start <date> --end <date>` | 0 failures, max_diff < 1e-8 |
+| Snapshot Plumbing | `python trade_cli.py backtest audit-snapshot-plumbing --play <ID> --start <date> --end <date>` | 0 failures |
 | Financial Metrics | `python trade_cli.py backtest metrics-audit` | 6/6 test scenarios pass |
 
 **Rule:** Regression = STOP. Fix before proceeding.
@@ -221,7 +221,7 @@ These gates must pass before any merge to `src/backtest/`:
 **Trigger Point:** After successful backtest execution (automatic)
 
 **What it Checks:**
-- `config_source == "IdeaCard"` (not legacy YAML)
+- `config_source == "Play"` (not legacy YAML)
 - `uses_system_config_loader == False` (not legacy loader)
 - `placeholder_mode == False` (not test mode)
 - `feature_keys_match == True` (indicators match declaration)
@@ -247,7 +247,7 @@ These gates must pass before any merge to `src/backtest/`:
 - `trades_hash` matches
 - `equity_hash` matches
 - `run_hash` matches
-- `idea_hash` matches
+- `play_hash` matches
 
 **Pass Artifact:** Comparison report (PASS if identical, FAIL with diff if not)
 
@@ -361,7 +361,7 @@ These gates must pass before any merge to `src/backtest/`:
 | Metrics audit report | CLI output / JSON | Financial math validation (6/6 tests) |
 | Indicator metadata | `artifacts/indicator_metadata.json` | Indicator provenance |
 | Result hashes | `result.json` (trades_hash, equity_hash, run_hash) | Determinism tracking |
-| Run manifest | `run_manifest.json` (full_hash, idea_hash) | Input tracking |
+| Run manifest | `run_manifest.json` (full_hash, play_hash) | Input tracking |
 
 ---
 
@@ -370,8 +370,8 @@ These gates must pass before any merge to `src/backtest/`:
 **Rule:** Same config + same data → identical output
 
 **Verification Method:**
-1. Run backtest with IdeaCard and window
-2. Store hashes: `trades_hash`, `equity_hash`, `run_hash`, `idea_hash`
+1. Run backtest with Play and window
+2. Store hashes: `trades_hash`, `equity_hash`, `run_hash`, `play_hash`
 3. Re-run with `backtest verify-determinism --run <path> --re-run`
 4. Compare hashes (must match exactly)
 5. Report PASS if identical, FAIL with diff if not
@@ -444,7 +444,7 @@ All audit commands support `--json` flag for structured output:
 
 ```bash
 python trade_cli.py backtest audit-toolkit --json
-python trade_cli.py backtest math-parity --idea-card <ID> --start <date> --end <date> --json
+python trade_cli.py backtest math-parity --play <ID> --start <date> --end <date> --json
 ```
 
 **CI Pipeline (Recommended):**
@@ -472,7 +472,7 @@ python trade_cli.py backtest math-parity --idea-card <ID> --start <date> --end <
 - Created `backtest metrics-audit` CLI command (6/6 tests pass)
 
 ✅ **Production Pipeline Validation** (All gates passed)
-- End-to-end pipeline validated with 5 IdeaCards
+- End-to-end pipeline validated with 5 Plays
 - All 6 validation gates tested and verified
 - Schema issues discovered and documented
 
@@ -492,7 +492,7 @@ python trade_cli.py backtest math-parity --idea-card <ID> --start <date> --end <
 
 2. **Consolidate audit code** — Move to `src/backtest/audits/` (recommended structure)
 3. **Add CI integration** — Automated gate checks on PR (GitHub Actions)
-4. **Baseline storage for drift detection** — Store canonical results for key IdeaCards
+4. **Baseline storage for drift detection** — Store canonical results for key Plays
    - Document: `docs/todos/archived/2025-12-18/POST_BACKTEST_AUDIT_GATES.md` (Phase 5)
 
 ### Medium-Term (Future)

@@ -1,6 +1,6 @@
 # Core Trading Language Architecture
 
-> **The IdeaCard is the universal contract.**
+> **The Play is the universal contract.**
 > Human, Agent, or ML - all speak the same language.
 
 ---
@@ -10,7 +10,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         THREE INPUT MODES                                   │
-│                     (Same Output: IdeaCard YAML)                            │
+│                     (Same Output: Play YAML)                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
@@ -25,7 +25,7 @@
 │                                │                                            │
 │                                ▼                                            │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                         IDEACARD YAML                                 │  │
+│  │                         PLAY YAML                                 │  │
 │  │                   (The Core Trading Language)                         │  │
 │  │                                                                       │  │
 │  │   • features: [indicators, structures]                                │  │
@@ -46,18 +46,18 @@
 
 ---
 
-## Why IdeaCard is the Universal Contract
+## Why Play is the Universal Contract
 
 ### The Punch Card Analogy
 
 ```
 1960s: Punch Card → Compiler → Machine Code → Computer
-2026:  IdeaCard  → Engine   → Orders      → Exchange
+2026:  Play  → Engine   → Orders      → Exchange
 ```
 
 **The punch card abstracted hardware.** You didn't need to know the CPU architecture - you wrote your program in a standard format, and the system handled the rest.
 
-**The IdeaCard abstracts trading.** You don't need to know:
+**The Play abstracts trading.** You don't need to know:
 - How indicators are computed (vectorized vs incremental)
 - How orders are executed (simulated vs real)
 - How state is buffered (ring buffers vs deques)
@@ -69,9 +69,9 @@ You just write the trading idea in the Core Trading Language.
 
 | Author | How They Create | What They Produce |
 |--------|-----------------|-------------------|
-| **Human** | Write YAML by hand | IdeaCard |
-| **Agent Swarm** | Debate → consensus → YAML | IdeaCard |
-| **Evolution** | Mutate → test → select → YAML | IdeaCard |
+| **Human** | Write YAML by hand | Play |
+| **Agent Swarm** | Debate → consensus → YAML | Play |
+| **Evolution** | Mutate → test → select → YAML | Play |
 
 **The engine doesn't care who wrote it.** It only cares that the YAML is valid.
 
@@ -83,7 +83,7 @@ You just write the trading idea in the Core Trading Language.
 
 ```yaml
 # ============================================================
-# IDEACARD: The Core Trading Language
+# PLAY: The Core Trading Language
 # ============================================================
 
 # 1. IDENTITY
@@ -280,7 +280,7 @@ class StateBuffer:
 ### DSL Access to History
 
 ```yaml
-# IdeaCard can access history via offset
+# Play can access history via offset
 variables:
   ema_crossed_above:
     # Current EMA > Previous EMA AND Previous EMA <= 2-bars-ago EMA
@@ -300,12 +300,12 @@ variables:
     bars: 5  # Implicitly requests 5-bar depth
 ```
 
-### Auto-Registration from IdeaCard
+### Auto-Registration from Play
 
 ```python
-def build_state_buffer_from_idea_card(card: IdeaCard) -> StateBuffer:
+def build_state_buffer_from_play(card: Play) -> StateBuffer:
     """
-    Analyze IdeaCard to determine required buffer depths.
+    Analyze Play to determine required buffer depths.
 
     Scans all variables and blocks for:
     - Explicit offset references (offset: N)
@@ -336,13 +336,13 @@ def build_state_buffer_from_idea_card(card: IdeaCard) -> StateBuffer:
 
 ---
 
-## Playbooks: Composing IdeaCards
+## Playbooks: Composing Plays
 
 ### The Hierarchy
 
 ```
-IdeaCard     → Single trading idea (one entry/exit logic)
-Playbook     → Collection of IdeaCards (market regime aware)
+Play     → Single trading idea (one entry/exit logic)
+Playbook     → Collection of Plays (market regime aware)
 Strategy     → Playbook + capital allocation + risk budget
 ```
 
@@ -361,13 +361,13 @@ allocation:
   mode: "regime_switch"  # or "parallel", "sequential"
   total_capital: 100000
 
-# Regime detection (meta-IdeaCard)
+# Regime detection (meta-Play)
 regime_detector:
-  type: idea_card
+  type: play
   path: "regimes/volatility_regime.yml"
   # Emits: { regime: "low_vol" | "high_vol" | "trending" | "ranging" }
 
-# IdeaCards per regime
+# Plays per regime
 ideas:
   low_vol:
     - path: "ideas/mean_reversion_tight.yml"
@@ -405,19 +405,19 @@ risk_coordination:
 ```python
 class PlaybookExecutor:
     """
-    Executes multiple IdeaCards based on regime.
+    Executes multiple Plays based on regime.
 
     Coordinates capital allocation and risk across ideas.
     """
 
     def __init__(self, playbook: Playbook):
         self.playbook = playbook
-        self.regime_detector = load_idea_card(playbook.regime_detector.path)
-        self.ideas: dict[str, list[IdeaCard]] = {}
+        self.regime_detector = load_play(playbook.regime_detector.path)
+        self.ideas: dict[str, list[Play]] = {}
 
         for regime, idea_configs in playbook.ideas.items():
             self.ideas[regime] = [
-                load_idea_card(cfg.path) for cfg in idea_configs
+                load_play(cfg.path) for cfg in idea_configs
             ]
 
     async def on_bar(self, snapshot: RuntimeSnapshotView) -> list[Intent]:
@@ -476,7 +476,7 @@ class PlaybookExecutor:
 
 ## Agent Swarm Architecture
 
-### How Agents Create IdeaCards
+### How Agents Create Plays
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -523,7 +523,7 @@ class PlaybookExecutor:
 │  │                                                                     │    │
 │  │   Takes: Analyst reports + Debate outcome + Risk constraints        │    │
 │  │                                                                     │    │
-│  │   Produces: IdeaCard YAML                                           │    │
+│  │   Produces: Play YAML                                           │    │
 │  │                                                                     │    │
 │  │   ┌─────────────────────────────────────────────────────────────┐   │    │
 │  │   │ name: "swarm_btc_long_v1"                                   │   │    │
@@ -547,14 +547,14 @@ class PlaybookExecutor:
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                     VALIDATION (Backtest)                           │    │
 │  │                                                                     │    │
-│  │   IdeaCard → Engine → Metrics → Accept/Reject/Refine               │    │
+│  │   Play → Engine → Metrics → Accept/Reject/Refine               │    │
 │  │                                                                     │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Agent-IdeaCard Protocol
+### Agent-Play Protocol
 
 ```python
 # ============================================================
@@ -566,7 +566,7 @@ class TradingAgentTools:
     Tools available to agents for trading system interaction.
 
     These are the ONLY ways agents can affect trading.
-    All agent actions go through IdeaCards.
+    All agent actions go through Plays.
     """
 
     # ==================== READ TOOLS ====================
@@ -579,54 +579,54 @@ class TradingAgentTools:
         """List all available indicators and structures."""
         ...
 
-    def get_idea_card_template(self) -> str:
-        """Get blank IdeaCard YAML template."""
+    def get_play_template(self) -> str:
+        """Get blank Play YAML template."""
         ...
 
-    def validate_idea_card(self, yaml: str) -> ValidationResult:
-        """Validate IdeaCard syntax and semantics."""
+    def validate_play(self, yaml: str) -> ValidationResult:
+        """Validate Play syntax and semantics."""
         ...
 
     # ==================== BACKTEST TOOLS ====================
 
-    def backtest_idea_card(
+    def backtest_play(
         self,
         yaml: str,
         window: str = "hygiene",
     ) -> BacktestResult:
-        """Run backtest on IdeaCard, return metrics."""
+        """Run backtest on Play, return metrics."""
         ...
 
-    def compare_idea_cards(
+    def compare_plays(
         self,
         cards: list[str],
     ) -> ComparisonReport:
-        """Compare multiple IdeaCards on same data."""
+        """Compare multiple Plays on same data."""
         ...
 
     # ==================== WRITE TOOLS ====================
 
-    def submit_idea_card(
+    def submit_play(
         self,
         yaml: str,
         mode: Literal["demo", "live"],
     ) -> SubmissionResult:
-        """Submit validated IdeaCard for execution."""
+        """Submit validated Play for execution."""
         ...
 
-    def update_idea_card(
+    def update_play(
         self,
         card_id: str,
         yaml: str,
     ) -> UpdateResult:
-        """Update existing IdeaCard (hot-swap in demo/live)."""
+        """Update existing Play (hot-swap in demo/live)."""
         ...
 
-    def deactivate_idea_card(
+    def deactivate_play(
         self,
         card_id: str,
     ) -> DeactivationResult:
-        """Deactivate IdeaCard, close positions."""
+        """Deactivate Play, close positions."""
         ...
 ```
 
@@ -634,14 +634,14 @@ class TradingAgentTools:
 
 ## Evolution/ML Integration
 
-### Genetic Algorithm on IdeaCards
+### Genetic Algorithm on Plays
 
 ```python
-class IdeaCardEvolution:
+class PlayEvolution:
     """
-    Evolve IdeaCards via genetic algorithm.
+    Evolve Plays via genetic algorithm.
 
-    Genes: IdeaCard parameters (indicator lengths, thresholds, etc.)
+    Genes: Play parameters (indicator lengths, thresholds, etc.)
     Fitness: Backtest metrics (Sharpe, win rate, etc.)
     """
 
@@ -657,9 +657,9 @@ class IdeaCardEvolution:
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
 
-    def evolve(self, base_card: IdeaCard) -> IdeaCard:
+    def evolve(self, base_card: Play) -> Play:
         """
-        Evolve IdeaCard to optimize fitness.
+        Evolve Play to optimize fitness.
 
         1. Generate initial population (random mutations of base)
         2. Evaluate fitness (backtest each)
@@ -687,9 +687,9 @@ class IdeaCardEvolution:
         # Return best individual
         return population[np.argmax(fitness)]
 
-    def _mutate(self, card: IdeaCard) -> IdeaCard:
+    def _mutate(self, card: Play) -> Play:
         """
-        Mutate IdeaCard parameters.
+        Mutate Play parameters.
 
         Mutable genes:
         - Indicator lengths (EMA, ATR, etc.)
@@ -716,24 +716,24 @@ class IdeaCardEvolution:
         return mutated
 ```
 
-### RL Agent IdeaCard Generation
+### RL Agent Play Generation
 
 ```python
-class RLIdeaCardAgent:
+class RLPlayAgent:
     """
-    RL agent that learns to generate profitable IdeaCards.
+    RL agent that learns to generate profitable Plays.
 
     State: Market features + current position
-    Action: IdeaCard parameter adjustments
+    Action: Play parameter adjustments
     Reward: Backtest Sharpe ratio
     """
 
-    def __init__(self, base_card: IdeaCard):
+    def __init__(self, base_card: Play):
         self.base_card = base_card
         self.action_space = self._build_action_space(base_card)
         self.policy = self._init_policy()
 
-    def _build_action_space(self, card: IdeaCard) -> ActionSpace:
+    def _build_action_space(self, card: Play) -> ActionSpace:
         """
         Action space is the set of adjustable parameters.
 
@@ -751,9 +751,9 @@ class RLIdeaCardAgent:
                     ))
         return ActionSpace(actions)
 
-    def generate_card(self, market_state: MarketSnapshot) -> IdeaCard:
+    def generate_card(self, market_state: MarketSnapshot) -> Play:
         """
-        Generate IdeaCard based on current market state.
+        Generate Play based on current market state.
 
         The policy outputs parameter adjustments conditioned on market.
         """
@@ -787,7 +787,7 @@ TRADING_TOOLS = {
     "get_features": GetFeaturesTool,
     "get_structures": GetStructuresTool,
 
-    # ==================== IDEACARD TOOLS ====================
+    # ==================== PLAY TOOLS ====================
     "validate_card": ValidateCardTool,
     "normalize_card": NormalizeCardTool,
     "backtest_card": BacktestCardTool,
@@ -860,7 +860,7 @@ class TradingTool(Protocol):
 │    │                  │                   │                                 │
 │    ▼                  ▼                   ▼                                 │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                        IDEACARD YAML                                  │  │
+│  │                        PLAY YAML                                  │  │
 │  │                   (The Core Trading Language)                         │  │
 │  │                                                                       │  │
 │  │   Same format, same semantics, same validation                        │  │
@@ -899,9 +899,9 @@ class TradingTool(Protocol):
 
 **This is your true agent trading swarm.**
 
-- **IdeaCard is the contract** - human, agent, or ML all produce the same format
+- **Play is the contract** - human, agent, or ML all produce the same format
 - **Tools are the interface** - all operations go through registered tools
 - **Engine is the runtime** - same code for sim/demo/live
 - **State buffer is universal** - any feature, any depth, O(1) access
 
-The punch card analogy is perfect. **IdeaCards are the new punch cards.**
+The punch card analogy is perfect. **Plays are the new punch cards.**

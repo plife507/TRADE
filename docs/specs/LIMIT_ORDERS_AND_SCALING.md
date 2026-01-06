@@ -35,10 +35,10 @@ Institutional-style trading requires:
 **Example Flow**:
 ```
 Squeeze breakout detected
-    → Anticipate pullback to demand zone
-    → Place limit buy at zone upper (10% size)
-    → If filled, place limit buy at zone lower (15% size)
-    → Set stop below zone, TP at prior swing high
+    -> Anticipate pullback to demand zone
+    -> Place limit buy at zone upper (10% size)
+    -> If filled, place limit buy at zone lower (15% size)
+    -> Set stop below zone, TP at prior swing high
 ```
 
 This cannot be expressed with current market-order-only semantics.
@@ -51,12 +51,12 @@ This cannot be expressed with current market-order-only semantics.
 
 | Component | Status | Location |
 |-----------|--------|----------|
-| `OrderType` enum | ✅ Defined | `src/backtest/sim/types.py:33` |
-| `Order.limit_price` | ✅ Field exists | `src/backtest/sim/types.py:96` |
-| `Order.trigger_price` | ✅ Field exists | `src/backtest/sim/types.py:97` |
-| `Intent.metadata` | ✅ Extensible dict | `src/backtest/rules/strategy_blocks.py:65` |
-| Volume data | ✅ Tracked | FeedStore, Snapshot, Rollups |
-| Order book data | ❌ Not tracked | Would need L2 snapshots |
+| `OrderType` enum | Defined | `src/backtest/sim/types.py:33` |
+| `Order.limit_price` | Field exists | `src/backtest/sim/types.py:96` |
+| `Order.trigger_price` | Field exists | `src/backtest/sim/types.py:97` |
+| `Intent.metadata` | Extensible dict | `src/backtest/rules/strategy_blocks.py:65` |
+| Volume data | Tracked | FeedStore, Snapshot, Rollups |
+| Order book data | Not tracked | Would need L2 snapshots |
 
 ### Current Limitations
 
@@ -90,7 +90,7 @@ VALID_ACTIONS = frozenset({
 
 ## Design Goals
 
-1. **DSL-first**: All order semantics expressible in IdeaCard YAML
+1. **DSL-first**: All order semantics expressible in Play YAML
 2. **Backend-agnostic**: Same YAML runs in backtest and live
 3. **Incremental adoption**: Existing market-order strategies unchanged
 4. **Realistic simulation**: Fill logic accounts for liquidity constraints
@@ -176,7 +176,7 @@ emit:
       order_group: "entries"     # For group operations
 ```
 
-### Complete IdeaCard Example
+### Complete Play Example
 
 ```yaml
 name: "zone_scalper_v1"
@@ -728,7 +728,7 @@ class FillResult:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        IdeaCard YAML                            │
+│                        Play YAML                                 │
 │            (Same file for backtest and live)                    │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -1024,7 +1024,7 @@ class OrderStateSynchronizer:
 - [ ] Add scaling builtins to snapshot
 - [ ] Parser tests for new YAML syntax
 
-**Acceptance**: Can parse and validate IdeaCards with limit order syntax
+**Acceptance**: Can parse and validate Plays with limit order syntax
 
 ### Phase 3: Fill Simulation
 
@@ -1066,7 +1066,7 @@ class OrderStateSynchronizer:
 
 **Scope**: Edge cases, stress testing
 
-- [ ] Validation IdeaCards (V_200+) for limit orders
+- [ ] Validation Plays (V_200+) for limit orders
 - [ ] Conservative fill model stress tests
 - [ ] Live paper trading validation
 - [ ] Documentation and examples
@@ -1132,6 +1132,6 @@ Current design assumes isolated margin. How does scaling work with cross-margin?
 ## References
 
 - [Bybit Order Types](reference/exchanges/bybit/docs/v5/order/)
-- [Blocks DSL v3.0.0](docs/specs/IDEACARD_SYNTAX.md)
+- [Blocks DSL v3.0.0](docs/specs/PLAY_SYNTAX.md)
 - [Incremental State Architecture](docs/specs/INCREMENTAL_STATE_ARCHITECTURE.md)
 - [Simulated Exchange](docs/architecture/SIMULATED_EXCHANGE.md)

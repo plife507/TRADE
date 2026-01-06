@@ -146,6 +146,7 @@ class SimulatedExchange:
         self._order_counter: int = 0  # Sequential order ID counter (deterministic)
         self._position_counter: int = 0  # Sequential position ID counter (deterministic)
         self._pending_close_reason: str | None = None
+        self._pending_close_percent: float = 100.0  # Partial exit support
         self._current_ts: datetime | None = None
         self._current_bar_index: int = 0
 
@@ -443,9 +444,21 @@ class SimulatedExchange:
         """Get all open orders."""
         return self._order_book.get_pending_orders(symbol=self.symbol)
     
-    def submit_close(self, reason: str = "signal") -> None:
-        """Request to close position on next bar."""
+    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> None:
+        """Request to close position on next bar.
+
+        Args:
+            reason: Close reason (signal, etc.)
+            percent: Percentage of position to close (1-100, default 100 = full close)
+
+        Raises:
+            ValueError: If percent is not in (0, 100]
+        """
+        # FAIL LOUD: Validate percent strictly
+        if percent <= 0 or percent > 100:
+            raise ValueError(f"submit_close: percent must be in (0, 100], got {percent}")
         self._pending_close_reason = reason
+        self._pending_close_percent = percent
     
     def cancel_pending_order(self) -> bool:
         """Cancel pending market order (legacy compatibility)."""
@@ -539,12 +552,24 @@ class SimulatedExchange:
 
         # 4. Process pending close at bar open
         if self._pending_close_reason and self.position:
-            result = self._close_position(bar.open, ts_open, self._pending_close_reason)
-            if result:
-                trade, exit_fill = result
-                closed_trades.append(trade)
-                fills.append(exit_fill)
+            close_percent = self._pending_close_percent
+            if close_percent >= 100.0:
+                # Full close
+                result = self._close_position(bar.open, ts_open, self._pending_close_reason)
+                if result:
+                    trade, exit_fill = result
+                    closed_trades.append(trade)
+                    fills.append(exit_fill)
+            else:
+                # Partial close
+                result = self._partial_close_position(
+                    bar.open, ts_open, self._pending_close_reason, close_percent
+                )
+                if result:
+                    exit_fill = result
+                    fills.append(exit_fill)
             self._pending_close_reason = None
+            self._pending_close_percent = 100.0  # Reset to default
         
         # 5. Check TP/SL exits (1m granular or exec-bar OHLC)
         if self.position:
@@ -927,6 +952,86 @@ class SimulatedExchange:
         self.trades.append(trade)
         self.position = None
         return trade, fill  # BUG-004 FIX: Return both for fills population
+
+    def _partial_close_position(
+        self,
+        exit_price: float,
+        exit_time: datetime,
+        reason: str,
+        percent: float,
+    ) -> Fill | None:
+        """
+        Partially close position and return fill.
+
+        Unlike full close, partial closes:
+        - Do NOT create a Trade record (only on final close)
+        - DO reduce position size proportionally
+        - DO realize proportional PnL
+
+        Args:
+            exit_price: Price at which to close
+            exit_time: Timestamp of the close
+            reason: Exit reason (signal, etc.)
+            percent: Percentage of position to close (1-99)
+
+        Returns:
+            Fill if position was partially closed, None if no position.
+
+        Raises:
+            ValueError: If percent is invalid
+        """
+        pos = self.position
+        if pos is None:
+            return None
+
+        # FAIL LOUD: Validate percent
+        if percent <= 0 or percent >= 100:
+            raise ValueError(
+                f"_partial_close_position: percent must be in (0, 100), got {percent}"
+            )
+
+        # Calculate close ratio
+        close_ratio = percent / 100.0
+
+        # Create a synthetic bar for the exit fill
+        exit_bar = Bar(
+            symbol=pos.symbol,
+            tf="exit",
+            ts_open=exit_time,
+            ts_close=exit_time,
+            open=exit_price,
+            high=exit_price,
+            low=exit_price,
+            close=exit_price,
+            volume=0.0,
+        )
+
+        # Create fill for partial close
+        fill = self._execution.fill_exit(pos, exit_bar, FillReason.SIGNAL, exit_price)
+        # Adjust fill size to reflect partial close
+        fill.size = pos.size * close_ratio
+        fill.size_usdt = pos.size_usdt * close_ratio
+        fill.fee = fill.fee * close_ratio  # Proportional fee
+
+        # Calculate PnL for the closed portion
+        if pos.side == OrderSide.LONG:
+            price_diff = exit_price - pos.entry_price
+        else:
+            price_diff = pos.entry_price - exit_price
+
+        size_closed = pos.size * close_ratio
+        realized_pnl = price_diff * size_closed
+
+        # Apply partial exit to ledger
+        self._ledger.apply_partial_exit(realized_pnl, fill.fee)
+
+        # Reduce position size
+        remaining_ratio = 1.0 - close_ratio
+        pos.size = pos.size * remaining_ratio
+        pos.size_usdt = pos.size_usdt * remaining_ratio
+        pos.fees_paid += fill.fee
+
+        return fill
 
     def force_close_position(
         self,

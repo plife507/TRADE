@@ -55,7 +55,7 @@ The codebase has **modular but disconnected** structures that can be unified int
 2. **Fibonacci already implements derivation** from swing (dependency-based, O(1) updates)
 3. **No event stream or versioning currently exists** for tracking structure changes
 4. **Zone interaction metrics** are computed separately but could be extended
-5. **Feature Registry** provides clean abstraction for feature ID → TF → structure mapping
+5. **Feature Registry** provides clean abstraction for feature ID -> TF -> structure mapping
 
 The minimal path forward is **Option A: Version-Based Derivation Triggers** with support for cheap event payloads. This avoids refactoring TFIncrementalState while enabling deterministic, bounded-time derivations.
 
@@ -65,7 +65,7 @@ The minimal path forward is **Option A: Version-Based Derivation Triggers** with
 
 These decisions were finalized during review and MUST be followed in implementation:
 
-### Decision 1: K Slots (Scalar Outputs) — NOT Vector Zones
+### Decision 1: K Slots (Scalar Outputs) - NOT Vector Zones
 
 **Rationale**: Minimal diff, avoids engine changes, matches existing snapshot patterns.
 
@@ -181,8 +181,8 @@ def update(self, bar_idx: int, bar: BarData) -> None:
 ```
 
 **Why This Matters**:
-- Regen is expensive (creates new zones) → only on confirmed pivot
-- Interaction is cheap (state checks) → every bar
+- Regen is expensive (creates new zones) -> only on confirmed pivot
+- Interaction is cheap (state checks) -> every bar
 - Mixing them causes either missed breaks or excessive regen
 
 ---
@@ -215,9 +215,9 @@ def update(self, bar_idx: int, bar: BarData) -> None:
 **Key Flow**:
 ```
 Engine hot loop:
-  1. Load exec bar → create BarData
+  1. Load exec bar -> create BarData
   2. Call MultiTFIncrementalState.update_exec(bar_data)
-     → TFIncrementalState.update() on each detector
+     -> TFIncrementalState.update() on each detector
   3. On HTF close: MultiTFIncrementalState.update_htf(tf, bar_data)
   4. Build RuntimeSnapshotView with updated incremental state
   5. Conditions read via snapshot.get_structure("swing.high_level")
@@ -229,7 +229,7 @@ Engine hot loop:
 |------|-------|---------|
 | `/c/code/ai/trade/src/backtest/feature_registry.py` | `Feature` | Single feature (indicator or structure) with ID, TF, type, params, dependencies |
 | `/c/code/ai/trade/src/backtest/feature_registry.py` | `FeatureRegistry` | Maps feature ID -> Feature; supports TF-based lookups |
-| `/c/code/ai/trade/src/backtest/idea_card.py` | `Play` (IdeaCard) | Declarative strategy config with features list and signal rules |
+| `/c/code/ai/trade/src/backtest/play.py` | `Play` | Declarative strategy config with features list and signal rules |
 
 **Feature Anatomy** (structure example):
 ```python
@@ -275,44 +275,44 @@ Feature(
 
 ### 2.1 What Exists (Strengths)
 
-✅ **Incremental structure detection is already implemented** 
+- **Incremental structure detection is already implemented**
 - All structures (swing, trend, zone, fibonacci) are detectors with O(1) update/read
 - Dependencies are already modeled (`depends_on` dict in Feature)
 - Fibonacci proves the concept: it regenerates levels only when swing changes
 
-✅ **TF-based multiplexing is in place**
+- **TF-based multiplexing is in place**
 - MultiTFIncrementalState.update_exec() / update_htf() already routes by TF
 - No lookahead: HTF values forward-fill between closes (see RuntimeSnapshotView)
 - Closed-candle only semantics enforced
 
-✅ **Feature Registry provides clean abstraction**
+- **Feature Registry provides clean abstraction**
 - Features have unique IDs, TF mappings, and dependency declarations
 - No implicit defaults; all must be declared
-- Feature → detector → value path is clean
+- Feature -> detector -> value path is clean
 
-✅ **Zone interaction metrics framework exists**
+- **Zone interaction metrics framework exists**
 - `ZoneInteractionComputer` already computes touched/inside/time_in_zone
 - Separates state (from zone detector) from interaction logic
 - Can be extended to track lifecycle (ACTIVE/BROKEN/expired)
 
 ### 2.2 What's Missing (Gaps)
 
-❌ **No event stream or version counter**
+- **No event stream or version counter**
 - Fibonacci detects swing changes by comparing current vs stored levels
-- No explicit "swing changed" signal → relies on comparing `high_level`/`low_level` each bar
+- No explicit "swing changed" signal -> relies on comparing `high_level`/`low_level` each bar
 - This is workable but not explicit; hard to add derived-zone regen logic without plumbing events through
 
-❌ **Derived zones not yet a detector type**
+- **Derived zones not yet a detector type**
 - Zone detector currently creates demand/supply from swing pivots
 - No "derived_zone" type for fib-based zones, SR bands, etc.
 - Zone interaction metrics not integrated into zone detector (separate computer)
 
-❌ **No bounded active zone set**
+- **No bounded active zone set**
 - Current zone detector holds only current demand/supply per swing
 - No `max_active` limit; no TTL or supersede policy
-- Zone state machine (ACTIVE → BROKEN) exists but not lifecycle management
+- Zone state machine (ACTIVE -> BROKEN) exists but not lifecycle management
 
-❌ **Preflight/warmup doesn't account for derived zones**
+- **Preflight/warmup doesn't account for derived zones**
 - `compute_warmup_requirements()` only computes for indicators
 - No mechanism to say "I need N bars of swing history to derive fib zones"
 
@@ -334,7 +334,7 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
     # ...
     def get_output_keys(self) -> list[str]:
         return ["direction", "bars_in_trend", "strength", "version"]
-    
+
     def get_value(self, key: str) -> float | int | str:
         if key == "version":
             return self._version  # Existing field, just expose
@@ -349,17 +349,17 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
     def __init__(self, params, deps=None):
         # ... existing init ...
         self._version: int = 0  # NEW: increments on high/low change
-    
+
     def update(self, bar_idx: int, bar: BarData) -> None:
         old_high = self.high_level
         old_low = self.low_level
         # ... compute new swings ...
         if self.high_level != old_high or self.low_level != old_low:
             self._version += 1  # Trigger derivations
-    
+
     def get_output_keys(self) -> list[str]:
         return ["high_level", "high_idx", "low_level", "low_idx", "version"]
-    
+
     def get_value(self, key: str) -> float | int | str:
         if key == "version":
             return self._version  # NEW
@@ -375,10 +375,10 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
 class IncrementalDerivedZone(BaseIncrementalDetector):
     """
     Derived zones from a source structure (e.g., fib levels, SR bands).
-    
+
     Recomputes zone anchors only when source version changes.
     Maintains bounded active set with TTL and supersede policy.
-    
+
     Parameters:
         source_structure: "swing" | "trend" | "zone" | "fibonacci"  (the base)
         derivation_mode: "fibonacci_zones" | "support_resistance" | "order_blocks"
@@ -386,12 +386,12 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         max_active: int = 5  (max zones in active set)
         ttl_bars: int | None = None  (bars until zone expires, None = never)
         supersede_on: "price_break" | "time_expired" | "source_change"
-    
+
     Outputs:
         zones: List of {lower, upper, anchor_idx, instance_id, state}
         active_count: Current count of ACTIVE zones
     """
-    
+
     REQUIRED_PARAMS = ["source_structure", "derivation_mode"]
     OPTIONAL_PARAMS = {
         "levels": [0.236, 0.382, 0.618],
@@ -400,7 +400,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         "supersede_on": "price_break",
     }
     DEPENDS_ON = ["source_structure"]  # String key of dependency
-    
+
     def __init__(self, params, deps):
         self.source = deps["source_structure"]
         self.mode = params["derivation_mode"]
@@ -408,32 +408,32 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         self.max_active = params.get("max_active", 5)
         self.ttl_bars = params.get("ttl_bars")
         self.supersede_on = params.get("supersede_on", "price_break")
-        
+
         self._source_version = -1  # Track source change
         self._active_zones = []  # List of {lower, upper, anchor_idx, instance_id, created_bar}
         self._zone_counter = 0  # For instance_id hash
-    
+
     def update(self, bar_idx: int, bar: BarData) -> None:
         # Check if source changed
         source_version = self.source.get_value("version")
         if source_version != self._source_version:
             self._source_version = source_version
             self._regenerate_zones(bar_idx, bar)
-        
-        # Update zone states (ACTIVE → BROKEN if price closes beyond bounds)
+
+        # Update zone states (ACTIVE -> BROKEN if price closes beyond bounds)
         for zone in self._active_zones:
             if zone["state"] == ZoneState.ACTIVE:
                 if bar.close < zone["lower"] or bar.close > zone["upper"]:
                     zone["state"] = ZoneState.BROKEN
                 zone["bars_alive"] = bar_idx - zone["created_bar"]
-                
+
                 # TTL check
                 if self.ttl_bars and zone["bars_alive"] > self.ttl_bars:
                     zone["state"] = ZoneState.NONE
-        
+
         # Trim expired zones
         self._active_zones = [z for z in self._active_zones if z["state"] != ZoneState.NONE]
-    
+
     def _regenerate_zones(self, bar_idx: int, bar: BarData) -> None:
         """Called when source version changes."""
         if self.mode == "fibonacci_zones":
@@ -452,17 +452,17 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
                         "state": ZoneState.ACTIVE,
                         "created_bar": bar_idx,
                     })
-                
+
                 # Enforce max_active: FIFO supersede
                 self._active_zones = new_zones + self._active_zones
                 if len(self._active_zones) > self.max_active:
                     self._active_zones = self._active_zones[:self.max_active]
-        
+
         # Other modes: support_resistance, order_blocks, etc.
-    
+
     def get_output_keys(self) -> list[str]:
         return ["active_count"]  # Plus maybe zone details
-    
+
     def get_value(self, key: str) -> float | int | str:
         if key == "active_count":
             return len([z for z in self._active_zones if z["state"] == ZoneState.ACTIVE])
@@ -496,7 +496,7 @@ features:
 ```
 
 #### Pros
-- **Minimal diff**: Add version field to 2–3 detectors, create new detector type
+- **Minimal diff**: Add version field to 2-3 detectors, create new detector type
 - **Deterministic**: Version counter is monotonic; regeneration happens on defined signal
 - **O(1) hot loop**: Derivation check is `if current_version != last_version`
 - **Live-compatible**: Works identically in backtest and live (version increments same way)
@@ -515,7 +515,7 @@ features:
 
 #### Perf Considerations
 - Version check: O(1) per bar per derived detector
-- Regenerate: O(k) where k = number of levels (typically 3–8)
+- Regenerate: O(k) where k = number of levels (typically 3-8)
 - Active zone trim: O(max_active) per bar
 
 ---
@@ -538,14 +538,14 @@ class StructureEvent:
 class TFIncrementalState:
     def __init__(self, ...):
         self._event_queue: deque[StructureEvent] = deque(maxlen=100)  # Ring buffer
-    
+
     def update(self, bar):
         # Existing logic
         for struct_key in self._update_order:
             old_state = self.structures[struct_key].get_value("version")
             self.structures[struct_key].update(bar)
             new_state = self.structures[struct_key].get_value("version")
-            
+
             if old_state != new_state:
                 self._event_queue.append(StructureEvent(
                     event_type="version_change",
@@ -553,7 +553,7 @@ class TFIncrementalState:
                     bar_idx=bar.idx,
                     payload={"old_version": old_state, "new_version": new_state}
                 ))
-    
+
     def consume_events(self) -> list[StructureEvent]:
         return list(self._event_queue)
 ```
@@ -600,7 +600,7 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
     def update(self, bar_idx: int, bar: BarData) -> None:
         old_high, old_low = self.high_level, self.low_level
         # ... compute new swings ...
-        
+
         if self.high_level != old_high or self.low_level != old_low:
             self._version += 1
             self._last_event = VersionEvent(
@@ -612,7 +612,7 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
                 old_low=old_low,
                 new_low=self.low_level if self.low_level != old_low else None,
             )
-    
+
     def get_last_event(self) -> VersionEvent | None:
         return self._last_event
 ```
@@ -644,19 +644,19 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
         # ... existing ...
         self._version: int = 0  # NEW
         self._last_change_bar: int = -1  # NEW
-    
+
     def update(self, bar_idx: int, bar: BarData) -> None:
         old_high, old_low = self.high_level, self.low_level
         # ... existing swing detection logic ...
-        
+
         # NEW: Track version
         if self.high_level != old_high or self.low_level != old_low:
             self._version += 1
             self._last_change_bar = bar_idx
-    
+
     def get_output_keys(self) -> list[str]:
         return ["high_level", "high_idx", "low_level", "low_idx", "version"]  # Add "version"
-    
+
     def get_value(self, key: str) -> float | int | str:
         # ... existing logic ...
         if key == "version":
@@ -671,10 +671,10 @@ Add to `IncrementalTrendDetector`:
 ```python
 class IncrementalTrendDetector(BaseIncrementalDetector):
     # ... existing parent_version tracking ...
-    
+
     def get_output_keys(self) -> list[str]:
         return ["direction", "bars_in_trend", "strength", "version"]  # Expose existing version
-    
+
     def get_value(self, key: str) -> float | int | str:
         if key == "version":
             return self._version  # Already computed, just expose
@@ -690,18 +690,18 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
     def __init__(self, params, deps):
         # ... existing ...
         self._version: int = 0  # NEW
-    
+
     def update(self, bar_idx: int, bar: BarData) -> None:
         old_state = (self.state, self.upper, self.lower)
         # ... existing zone logic ...
-        
+
         # NEW: Increment version if state/bounds changed
         if (self.state, self.upper, self.lower) != old_state:
             self._version += 1
-    
+
     def get_output_keys(self) -> list[str]:
         return ["state", "upper", "lower", "anchor_idx", "version"]  # Add "version"
-    
+
     def get_value(self, key: str) -> float | int | str:
         if key == "version":
             return self._version  # NEW
@@ -724,7 +724,7 @@ Example Play:
         type: structure
         structure_type: swing
         params: {left: 5, right: 5}
-      
+
       - id: "fib_zones_1h"
         tf: "1h"
         type: structure
@@ -756,10 +756,10 @@ if TYPE_CHECKING:
 class IncrementalDerivedZone(BaseIncrementalDetector):
     """
     Derived zones from a source structure.
-    
+
     Recomputes zone anchors only when source version changes.
     Maintains bounded active set with optional TTL.
-    
+
     Parameters:
         mode: "fibonacci_zones" | "support_resistance" | "order_blocks"
         levels: [0.236, 0.382, ...] for fib; [width] for SR
@@ -767,11 +767,11 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         ttl_bars: Bars until zone auto-expires (default None = never)
         width_model: "atr_mult" | "percent" | "fixed" (default "fixed")
         width_params: params for width calculation
-    
+
     Outputs:
         zone_count: Number of ACTIVE zones
     """
-    
+
     REQUIRED_PARAMS = ["mode"]
     OPTIONAL_PARAMS = {
         "levels": [0.236, 0.382, 0.618, 0.786],
@@ -781,7 +781,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         "width_params": {"width": 100},
     }
     DEPENDS_ON = ["source"]  # String key: the source structure to derive from
-    
+
     @classmethod
     def _validate_params(
         cls, struct_type: str, key: str, params: dict[str, Any]
@@ -793,7 +793,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
                 f"Structure '{key}': mode must be one of "
                 f"'fibonacci_zones', 'support_resistance', 'order_blocks', got {mode!r}"
             )
-    
+
     def __init__(self, params: dict[str, Any], deps: dict[str, BaseIncrementalDetector]) -> None:
         """Initialize derived zone detector."""
         self.source = deps["source"]
@@ -803,10 +803,10 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         self.ttl_bars = params.get("ttl_bars")
         self.width_model = params.get("width_model", "fixed")
         self.width_params = params.get("width_params", {"width": 100})
-        
+
         self._source_version = -1
         self._active_zones: list[dict[str, Any]] = []
-    
+
     def update(self, bar_idx: int, bar: BarData) -> None:
         """Update derived zones."""
         # Check if source changed
@@ -815,27 +815,27 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         except KeyError:
             # Source doesn't expose version yet (backward compat)
             return
-        
+
         if source_version != self._source_version:
             self._source_version = source_version
             self._regenerate_zones(bar_idx, bar)
-        
+
         # Update zone states and TTL
         for zone in self._active_zones:
             if zone["state"] == ZoneState.ACTIVE:
                 # Check price break
                 if bar.close < zone["lower"] or bar.close > zone["upper"]:
                     zone["state"] = ZoneState.BROKEN
-                
+
                 zone["bars_alive"] = bar_idx - zone["created_bar"]
-                
+
                 # TTL check
                 if self.ttl_bars and zone["bars_alive"] >= self.ttl_bars:
                     zone["state"] = ZoneState.NONE
-        
+
         # Remove expired zones
         self._active_zones = [z for z in self._active_zones if z["state"] != ZoneState.NONE]
-    
+
     def _regenerate_zones(self, bar_idx: int, bar: BarData) -> None:
         """Regenerate zones from source structure."""
         if self.mode == "fibonacci_zones":
@@ -844,7 +844,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
             self._regenerate_sr_zones(bar_idx, bar)
         elif self.mode == "order_blocks":
             self._regenerate_ob_zones(bar_idx, bar)
-    
+
     def _regenerate_fibonacci_zones(self, bar_idx: int, bar: BarData) -> None:
         """Create fib zones from source (usually swing)."""
         try:
@@ -852,19 +852,19 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
             low = self.source.get_value("low_level")
         except (KeyError, ValueError):
             return
-        
+
         if math.isnan(high) or math.isnan(low) or high <= low:
             return
-        
+
         range_ = high - low
         new_zones = []
-        
+
         for level in self.levels:
             level_price = high - (range_ * level)
-            
+
             # Compute width
             width = self._compute_zone_width(bar)
-            
+
             zone = {
                 "lower": level_price - width / 2,
                 "upper": level_price + width / 2,
@@ -877,22 +877,22 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
                 "level": level,
             }
             new_zones.append(zone)
-        
+
         # Enforce max_active: keep oldest zones (FIFO)
         self._active_zones = new_zones + self._active_zones
         if len(self._active_zones) > self.max_active:
             self._active_zones = self._active_zones[:self.max_active]
-    
+
     def _regenerate_sr_zones(self, bar_idx: int, bar: BarData) -> None:
         """Create support/resistance zones from source."""
         # Placeholder for future implementation
         pass
-    
+
     def _regenerate_ob_zones(self, bar_idx: int, bar: BarData) -> None:
         """Create order block zones from source."""
         # Placeholder for future implementation
         pass
-    
+
     def _compute_zone_width(self, bar: BarData) -> float:
         """Compute zone width based on model."""
         if self.width_model == "fixed":
@@ -906,7 +906,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
             close = bar.close
             return close * pct
         return 100  # Fallback
-    
+
     def get_output_keys(self) -> list[str]:
         """K slots pattern: zone0_lower, zone0_upper, zone0_state, zone1_*, ..."""
         keys = ["active_count"]
@@ -990,23 +990,23 @@ Add structure warmup requirements:
 def compute_warmup_requirements(play: "Play") -> WarmupRequirements:
     """Compute warmup bars needed for all features."""
     # ... existing indicator logic ...
-    
+
     # NEW: Add structure requirements
     for feature in play.features:
         if feature.is_structure:
             tf = feature.tf
-            
+
             if feature.structure_type == "swing":
                 left = feature.params.get("left", 5)
                 right = feature.params.get("right", 5)
                 bars_needed = left + right + 1
                 # Update per-TF requirement
-            
+
             elif feature.structure_type == "derived_zone":
                 # Needs source structure + base_warmup
                 # For now: assume 100 bars (configurable in feature.params)
                 bars_needed = feature.params.get("warmup_bars", 100)
-    
+
     # ... rest ...
 ```
 
@@ -1028,7 +1028,7 @@ features:
     params:
       left: 5
       right: 5
-  
+
   - id: fib_zones_1h
     tf: "1h"
     type: structure
@@ -1066,7 +1066,7 @@ features:
     params:
       mode: high
       length: 20
-  
+
   - id: sr_zones_1h
     tf: "1h"
     type: structure
@@ -1095,7 +1095,7 @@ class IncrementalZoneInteraction(BaseIncrementalDetector):
     Computes interaction metrics for zones from a parent zone detector.
     """
     DEPENDS_ON = ["zones"]  # Parent zone detector (zone or derived_zone)
-    
+
     def update(self, bar_idx: int, bar: BarData) -> None:
         # Reuse ZoneInteractionComputer
         zone_outputs = self._extract_zone_arrays()
@@ -1108,10 +1108,10 @@ class IncrementalZoneInteraction(BaseIncrementalDetector):
         self.touched = interaction["touched"][0]
         self.inside = interaction["inside"][0]
         self.time_in_zone = interaction["time_in_zone"][0]
-    
+
     def get_output_keys(self) -> list[str]:
         return ["touched", "inside", "time_in_zone"]
-    
+
     def get_value(self, key: str) -> float | int | str:
         if key == "touched":
             return self.touched
@@ -1151,13 +1151,13 @@ def test_fib_zones_regen_on_source_version_change():
         {"mode": "fibonacci_zones", "levels": [0.382, 0.618]},
         {"source": swing}
     )
-    
+
     # Create some bars
     for idx in range(20):
         bar = make_test_bar(idx, high=50000+idx*100, low=49000+idx*100)
         swing.update(idx, bar)
         fib_zones.update(idx, bar)
-    
+
     # Verify zones were created when swing changed
     assert fib_zones.get_value("zone_count") > 0
     assert all(z["state"] == ZoneState.ACTIVE for z in fib_zones._active_zones)
@@ -1175,7 +1175,7 @@ def test_determinism_version_increments():
         bar = make_test_bar(idx, ...)
         swing.update(idx, bar)
         versions.append(swing.get_value("version"))
-    
+
     # Versions are non-decreasing
     assert all(versions[i] <= versions[i+1] for i in range(len(versions)-1))
 ```
@@ -1190,7 +1190,7 @@ python trade_cli.py backtest structure-smoke
 Smoke test YAML:
 
 ```yaml
-# configs/idea_cards/_validation/V_90_derived_zones.yml
+# configs/plays/_validation/V_90_derived_zones.yml
 
 id: V_90_derived_zones
 execution_tf: "1h"
@@ -1201,7 +1201,7 @@ features:
     type: structure
     structure_type: swing
     params: {left: 5, right: 5}
-  
+
   - id: fib_zones
     tf: "1h"
     type: structure
@@ -1245,19 +1245,19 @@ signal_rules:
 | **Version tracking** | Trend detector has `parent_version`; others lack explicit version | `/c/code/ai/trade/src/backtest/incremental/detectors/trend.py` |
 | **Zone interaction** | Already computed but separate from detectors | `/c/code/ai/trade/src/backtest/market_structure/zone_interaction.py` |
 | **Preflight warmup** | Only covers indicators; must extend for structures | `/c/code/ai/trade/src/backtest/execution_validation.py` compute_warmup_requirements |
-| **Play syntax** | Feature ID + structure_type + depends_on already supported | `/c/code/ai/trade/src/backtest/idea_card.py` Feature class |
+| **Play syntax** | Feature ID + structure_type + depends_on already supported | `/c/code/ai/trade/src/backtest/play.py` Feature class |
 | **Snapshot access** | `get_structure()` and `get_by_feature_id()` work for any detector | `/c/code/ai/trade/src/backtest/runtime/snapshot_view.py` |
 
 ---
 
 ## 7. NEXT STEPS
 
-1. **Implement version counter in swing, trend, zone detectors** (File 1–3, ~50 lines per file)
+1. **Implement version counter in swing, trend, zone detectors** (File 1-3, ~50 lines per file)
 2. **Create derived_zone detector** (File 4, ~250 lines)
 3. **Update structure registry** (File 5, ~10 lines)
 4. **Extend preflight warmup** (File 6, ~30 lines)
-5. **Add Play validation** (existing `id_card_yaml_builder.py`, ~20 lines)
+5. **Add Play validation** (existing `play_yaml_builder.py`, ~20 lines)
 6. **Create validation smoke test** (new YAML file)
 7. **Add unit + integration tests** (new test file, ~300 lines)
 
-**Estimated effort**: 750–1000 lines of production code + 300 lines of tests. No breaking changes to existing detectors; pure additive.
+**Estimated effort**: 750-1000 lines of production code + 300 lines of tests. No breaking changes to existing detectors; pure additive.

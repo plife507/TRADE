@@ -60,7 +60,7 @@ Adding new structure type requires only:
 2. Define outputs in types.py
 3. Create detector
 4. Register detector
-5. Add validation IdeaCard
+5. Add validation Play
 
 **No engine changes required**.
 

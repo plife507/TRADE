@@ -479,6 +479,36 @@ Each major module has its own CLAUDE.md with domain rules and active TODOs:
 - Use Opus for: refactoring, bug fixes, feature implementation, code review
 - Haiku acceptable only for: quick file searches, simple queries, read-only exploration
 
+**Feature Naming Convention (MANDATORY for Plays)**
+
+When creating or modifying Plays, use **parameterized feature IDs** that encode indicator type and primary parameters:
+
+| Indicator Type | Pattern | Examples |
+|----------------|---------|----------|
+| Single-param | `{type}_{param}` | `ema_20`, `sma_50`, `rsi_14`, `atr_14` |
+| Single-param + TF | `{type}_{param}_{tf}` | `ema_50_1h`, `rsi_14_4h` |
+| Multi-param | `{type}_{p1}_{p2}` | `bbands_20_2`, `stoch_14_3` |
+| MACD | `macd_{fast}_{slow}_{signal}` | `macd_12_26_9` |
+| SuperTrend | `supertrend_{len}_{mult}` | `supertrend_10_3` |
+
+**NEVER use semantic names** like `ema_fast`, `ema_slow`, `ema_htf`. These hide parameters and make DSL expressions unreadable.
+
+```yaml
+# WRONG - semantic naming
+features:
+  - id: "ema_fast"    # What length?
+    params: {length: 9}
+
+# CORRECT - parameterized naming
+features:
+  - id: "ema_9"       # Clearly length=9
+    params: {length: 9}
+```
+
+This enables readable DSL: `ema_9 > ema_21` vs opaque `ema_fast > ema_slow`.
+
+See: `docs/specs/PLAY_SYNTAX.md` for full naming convention.
+
 ## Tool Layer (SHARED — Primary API)
 
 All operations go through `src/tools/*`. Tools return `ToolResult` objects.
