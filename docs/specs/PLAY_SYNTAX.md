@@ -6,17 +6,31 @@ Complete syntax guide for the Play DSL - declarative strategy specification.
 
 ---
 
-## Terminology (2026-01-04)
+## Terminology (2026-01-05)
 
-This document uses the new trading hierarchy terminology:
+### Trading Hierarchy (Smallest → Largest)
 
-| Term | Definition |
-|------|------------|
-| **Setup** | Reusable rule blocks, filters, entry/exit logic |
-| **Play** | Complete strategy specification (formerly "IdeaCard") |
-| **Playbook** | Collection of plays with regime routing |
-| **System** | Full trading operation with risk/execution |
-| **Forge** | Development/validation environment (src/forge/) |
+| Level | Location | Purpose |
+|-------|----------|---------|
+| **Block** | `configs/blocks/` | Reusable atomic condition (features + DSL condition) |
+| **Play** | `configs/plays/` | Complete strategy (features + actions + account + risk) |
+| **Playbook** | `configs/playbooks/` | Collection of Plays with weights/roles |
+| **System** | `configs/systems/` | Multiple Playbooks with global risk |
+
+### Play Sections
+
+A Play is composed of these section types:
+
+| Section | Purpose |
+|---------|---------|
+| `features:` | Indicator declarations |
+| `structures:` | Market structure declarations |
+| `actions:` | Entry/exit rules (DSL format) |
+| `risk:` | Stop loss, take profit, sizing |
+| `account:` | Capital, leverage, fees |
+| `variables:` | Tunable parameters |
+
+**Note**: The `actions:` section was previously called `blocks:` (renamed 2026-01-05).
 
 See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete architecture.
 
@@ -28,7 +42,7 @@ See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete ar
 2. [Required Sections](#required-sections)
 3. [Features (Indicators)](#features-indicators)
 4. [Structures (Market Structure)](#structures-market-structure)
-5. [Blocks (Signal Logic)](#blocks-signal-logic)
+5. [Actions (Entry/Exit Rules)](#actions-entryexit-rules)
 6. [Operators](#operators)
 7. [Boolean Logic (all/any/not)](#boolean-logic-allanynot)
 8. [Window Operators](#window-operators)
@@ -52,7 +66,7 @@ account: { ... }          # Account configuration
 symbol_universe: [...]    # Symbols to trade
 execution_tf: "1h"        # Execution timeframe
 features: [...]           # Indicators
-blocks: [...]             # Signal logic (entry/exit rules)
+actions: [...]            # Entry/exit rules (DSL format)
 position_policy: { ... }  # Position constraints
 risk_model: { ... }       # SL/TP/sizing
 ```
@@ -100,6 +114,15 @@ execution_tf: "1h"   # Bar-by-bar stepping granularity
 
 Valid timeframes: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `8h`, `12h`, `1D`
 
+**Running Backtests**: Date ranges are auto-inferred from DB coverage:
+```bash
+# Auto-infer dates from database (uses full available range)
+python trade_cli.py backtest run --play my_strategy
+
+# Or specify explicit dates
+python trade_cli.py backtest run --play my_strategy --start 2026-01-01 --end 2026-01-05
+```
+
 ### Position Policy
 
 ```yaml
@@ -115,7 +138,9 @@ position_policy:
 
 ## Features (Indicators)
 
-Features define indicators with unique IDs for reference in blocks.
+Features define indicators with unique IDs for reference in actions.
+
+**Note**: Structure-only Plays with `features: []` are valid if `structures:` is defined.
 
 ### Basic Syntax
 
@@ -196,6 +221,60 @@ features:
     d: 3
     smooth_k: 3
 ```
+
+### Complete Indicator Registry (42 Total)
+
+**Single-Output Indicators (26)**:
+
+| Type | Params | Description |
+|------|--------|-------------|
+| `ema` | `length` | Exponential Moving Average |
+| `sma` | `length` | Simple Moving Average |
+| `rsi` | `length` | Relative Strength Index |
+| `atr` | `length` | Average True Range |
+| `cci` | `length` | Commodity Channel Index |
+| `willr` | `length` | Williams %R |
+| `roc` | `length` | Rate of Change |
+| `mom` | `length` | Momentum |
+| `kama` | `length` | Kaufman Adaptive MA |
+| `alma` | `length`, `sigma`, `offset` | Arnaud Legoux MA |
+| `wma` | `length` | Weighted Moving Average |
+| `dema` | `length` | Double EMA |
+| `tema` | `length` | Triple EMA |
+| `trima` | `length` | Triangular MA |
+| `zlma` | `length` | Zero Lag MA |
+| `natr` | `length` | Normalized ATR |
+| `mfi` | `length` | Money Flow Index |
+| `obv` | (none) | On-Balance Volume |
+| `cmf` | `length` | Chaikin Money Flow |
+| `cmo` | `length` | Chande Momentum Oscillator |
+| `linreg` | `length` | Linear Regression |
+| `midprice` | `length` | Midprice |
+| `ohlc4` | (none) | OHLC Average |
+| `trix` | `length` | Triple Exponential |
+| `uo` | `fast`, `medium`, `slow` | Ultimate Oscillator |
+| `ppo` | `fast`, `slow`, `signal` | Percentage Price Oscillator |
+
+**Multi-Output Indicators (16)**:
+
+| Type | Outputs | Params |
+|------|---------|--------|
+| `macd` | `macd`, `macd_signal`, `macd_hist` | `fast`, `slow`, `signal` |
+| `bbands` | `bbl`, `bbm`, `bbu`, `bbb`, `bbp` | `length`, `std` |
+| `stoch` | `stoch_k`, `stoch_d` | `k`, `d`, `smooth_k` |
+| `stochrsi` | `stochrsi_k`, `stochrsi_d` | `length`, `rsi_length`, `k`, `d` |
+| `adx` | `adx`, `dmp`, `dmn`, `adxr` | `length` |
+| `aroon` | `aroon_up`, `aroon_down`, `aroon_osc` | `length` |
+| `kc` | `kcl`, `kcb`, `kcu` | `length`, `scalar` |
+| `donchian` | `dcl`, `dcm`, `dcu` | `lower_length`, `upper_length` |
+| `supertrend` | `st`, `std`, `stl`, `sts` | `length`, `multiplier` |
+| `psar` | `psar_l`, `psar_s`, `psar_af`, `psar_r` | `af0`, `af`, `max_af` |
+| `squeeze` | `sqz`, `sqz_on`, `sqz_off`, `sqz_no` | `bb_length`, `bb_std`, `kc_length`, `kc_scalar` |
+| `vortex` | `vip`, `vim` | `length` |
+| `dm` | `dmp`, `dmn` | `length` |
+| `fisher` | `fisher`, `fisher_signal` | `length` |
+| `tsi` | `tsi`, `tsi_signal` | `fast`, `slow`, `signal` |
+| `kvo` | `kvo`, `kvo_signal` | `fast`, `slow`, `signal` |
 
 ### Multi-Timeframe Features
 
@@ -321,14 +400,14 @@ structures:
 
 ---
 
-## Blocks (Signal Logic)
+## Actions (Entry/Exit Rules)
 
-Blocks define entry/exit logic with nested boolean expressions.
+Actions define entry/exit logic with nested boolean expressions.
 
-### Basic Block Structure
+### Basic Action Structure
 
 ```yaml
-blocks:
+actions:
   - id: entry                 # Block identifier
     cases:                    # List of cases (first-match wins)
       - when:                 # Condition expression
@@ -601,13 +680,18 @@ lhs:
 
 ### Referencing Structures
 
-Structures are referenced by their key with field selection:
+Structures are referenced by their key with field selection. Both short and explicit prefix formats work:
 
 ```yaml
-# Swing structure
+# Short form (recommended) - auto-resolved to structure.*
 lhs:
   feature_id: "swing"
   field: "high_level"    # Swing high price
+
+# Explicit prefix form - also valid
+lhs:
+  feature_id: "structure.swing"
+  field: "high_level"    # Same as above
 
 # Trend structure
 lhs:
@@ -749,7 +833,7 @@ position_policy:
   mode: "long_only"
   max_positions_per_symbol: 1
 
-blocks:
+actions:
   - id: entry
     cases:
       - when:
@@ -831,7 +915,7 @@ position_policy:
   mode: "long_only"
   max_positions_per_symbol: 1
 
-blocks:
+actions:
   - id: entry
     cases:
       - when:
@@ -925,7 +1009,7 @@ position_policy:
   mode: "long_only"
   max_positions_per_symbol: 1
 
-blocks:
+actions:
   - id: entry
     cases:
       - when:
@@ -976,10 +1060,12 @@ risk_model:
 
 ## Version History
 
-| Version | Changes |
-|---------|---------|
-| 3.0.0 | Blocks-based DSL with nested all/any/not, window operators |
-| 2.0.0 | Legacy signal_rules format (deprecated) |
+| Version | Date | Changes |
+|---------|------|---------|
+| 3.0.2 | 2026-01-05 | Structure refs auto-resolve (both `swing` and `structure.swing` work); structure-only Plays valid; auto-infer date window |
+| 3.0.1 | 2026-01-05 | Renamed `blocks:` field to `actions:` |
+| 3.0.0 | 2026-01-04 | Actions-based DSL with nested all/any/not, window operators |
+| 2.0.0 | — | Legacy signal_rules format (deprecated) |
 
 ---
 

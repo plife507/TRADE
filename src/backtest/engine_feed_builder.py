@@ -98,10 +98,11 @@ def build_feed_stores_impl(
         mtf_tf = tf_mapping["mtf"]
         ltf_tf = tf_mapping["ltf"]
 
-        # Get indicator columns for each TF role
+        # Get indicator columns for each TF
+        # specs_by_role is keyed by TF string (e.g., "15m", "1h", "4h"), not role
         exec_cols = get_required_indicator_columns_from_specs(specs_by_role.get('exec', []))
-        htf_cols = get_required_indicator_columns_from_specs(specs_by_role.get('htf', []))
-        mtf_cols = get_required_indicator_columns_from_specs(specs_by_role.get('mtf', []))
+        htf_cols = get_required_indicator_columns_from_specs(specs_by_role.get(htf_tf, []))
+        mtf_cols = get_required_indicator_columns_from_specs(specs_by_role.get(mtf_tf, []))
 
         # Build exec/LTF feed
         ltf_df = mtf_frames.frames.get(ltf_tf)
@@ -384,3 +385,145 @@ def get_quote_at_exec_close(
         mark_source=mark_source,
         volume_1m=float(quote_feed.volume[idx]),
     )
+
+
+# =============================================================================
+# Phase 12: Funding Rate and Open Interest Array Building
+# =============================================================================
+
+
+def build_market_data_arrays_impl(
+    funding_df: pd.DataFrame | None,
+    oi_df: pd.DataFrame | None,
+    exec_feed: FeedStore,
+    logger=None,
+) -> tuple[np.ndarray | None, np.ndarray | None, set[int]]:
+    """
+    Build funding_rate and open_interest arrays aligned to exec bar timestamps.
+
+    Funding rate behavior:
+    - Value is the rate that applies at funding settlement time
+    - Between settlements: value is the last known rate (for strategy access)
+    - Settlement detection: returns set of epoch_ms for O(1) hot loop check
+
+    Open interest behavior:
+    - Forward-filled to exec bar granularity
+    - Each exec bar gets the last known OI value at or before its ts_close
+
+    Args:
+        funding_df: DataFrame with timestamp, funding_rate (or None)
+        oi_df: DataFrame with timestamp, open_interest (or None)
+        exec_feed: The exec FeedStore with ts_close array
+        logger: Optional logger instance
+
+    Returns:
+        Tuple of (funding_rate_array, open_interest_array, funding_settlement_times)
+        Arrays are np.ndarray aligned to exec_feed, or None if no data
+        funding_settlement_times is set of epoch_ms for funding settlement timestamps
+    """
+    if logger is None:
+        logger = get_logger()
+
+    funding_rate_array: np.ndarray | None = None
+    open_interest_array: np.ndarray | None = None
+    funding_settlement_times: set[int] = set()
+
+    n_bars = exec_feed.length
+
+    # Build funding rate array
+    if funding_df is not None and not funding_df.empty:
+        funding_rate_array = np.zeros(n_bars, dtype=np.float64)
+
+        # Sort funding events by timestamp
+        funding_df = funding_df.sort_values("timestamp").reset_index(drop=True)
+
+        # Convert funding timestamps to epoch ms for O(1) lookup
+        funding_ts_ms_to_rate: dict[int, float] = {}
+        for _, row in funding_df.iterrows():
+            ts = row["timestamp"]
+            if hasattr(ts, "timestamp"):
+                ts_ms = int(ts.timestamp() * 1000)
+            else:
+                ts_ms = int(pd.Timestamp(ts).timestamp() * 1000)
+            funding_ts_ms_to_rate[ts_ms] = float(row["funding_rate"])
+            funding_settlement_times.add(ts_ms)
+
+        # For each exec bar, find the last funding rate at or before ts_close
+        # Also mark which bars are funding settlement times
+        last_rate = 0.0
+        funding_idx = 0
+        funding_timestamps = funding_df["timestamp"].values
+        funding_rates = funding_df["funding_rate"].values
+
+        for i in range(n_bars):
+            # Get exec bar ts_close
+            ts_close = exec_feed.ts_close[i]
+            if isinstance(ts_close, np.datetime64):
+                ts_close_dt = pd.Timestamp(ts_close).to_pydatetime()
+            else:
+                ts_close_dt = ts_close
+
+            # Advance through funding events up to ts_close
+            while funding_idx < len(funding_timestamps):
+                funding_ts = funding_timestamps[funding_idx]
+                if hasattr(funding_ts, "to_pydatetime"):
+                    funding_ts = funding_ts.to_pydatetime()
+                elif isinstance(funding_ts, np.datetime64):
+                    funding_ts = pd.Timestamp(funding_ts).to_pydatetime()
+
+                if funding_ts <= ts_close_dt:
+                    last_rate = float(funding_rates[funding_idx])
+                    funding_idx += 1
+                else:
+                    break
+
+            funding_rate_array[i] = last_rate
+
+        logger.info(
+            f"Built funding rate array: {n_bars} bars, "
+            f"{len(funding_settlement_times)} settlement times"
+        )
+
+    # Build open interest array
+    if oi_df is not None and not oi_df.empty:
+        open_interest_array = np.zeros(n_bars, dtype=np.float64)
+
+        # Sort OI data by timestamp
+        oi_df = oi_df.sort_values("timestamp").reset_index(drop=True)
+
+        # For each exec bar, forward-fill from last OI at or before ts_close
+        last_oi = 0.0
+        oi_idx = 0
+        oi_timestamps = oi_df["timestamp"].values
+        oi_values = oi_df["open_interest"].values
+
+        for i in range(n_bars):
+            # Get exec bar ts_close
+            ts_close = exec_feed.ts_close[i]
+            if isinstance(ts_close, np.datetime64):
+                ts_close_dt = pd.Timestamp(ts_close).to_pydatetime()
+            else:
+                ts_close_dt = ts_close
+
+            # Advance through OI records up to ts_close
+            while oi_idx < len(oi_timestamps):
+                oi_ts = oi_timestamps[oi_idx]
+                if hasattr(oi_ts, "to_pydatetime"):
+                    oi_ts = oi_ts.to_pydatetime()
+                elif isinstance(oi_ts, np.datetime64):
+                    oi_ts = pd.Timestamp(oi_ts).to_pydatetime()
+
+                if oi_ts <= ts_close_dt:
+                    last_oi = float(oi_values[oi_idx])
+                    oi_idx += 1
+                else:
+                    break
+
+            open_interest_array[i] = last_oi
+
+        logger.info(
+            f"Built open interest array: {n_bars} bars, "
+            f"range [{open_interest_array.min():.0f}, {open_interest_array.max():.0f}]"
+        )
+
+    return funding_rate_array, open_interest_array, funding_settlement_times

@@ -94,7 +94,31 @@
       "Bash(src/tools/backtest_audit_tools.py )",
       "Bash(src/tools/backtest_cli_wrapper.py)",
       "Bash(git mv:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(for play in V_001_ema_basic V_002_rsi_threshold V_003_sma_cross V_004_atr_volatility)",
+      "Bash(do echo \"=== $play ===\")",
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\blocks\\\\_validation\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\blocks\\\\_validation\")",
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\playbooks\\\\_validation\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\playbooks\\\\_validation\")",
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\systems\\\\_validation\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\configs\\\\systems\\\\_validation\")",
+      "Bash(test:*)",
+      "Bash(for play in P_001_btc_ema_pct P_002_eth_rsi_pct P_003_sol_sma_pct P_010_btc_atr_stop P_011_eth_atr_stop P_012_sol_atr_stop P_020_btc_rr_1to2 P_021_eth_rr_1to3 P_022_sol_rr_2to3 P_030_btc_mtf_15m_1h P_031_eth_mtf_15m_4h P_032_sol_mtf_triple P_040_btc_swing P_041_eth_zones P_042_sol_fib)",
+      "WebFetch(domain:www.bybit.com)",
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\src\\\\renderers\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\src\\\\renderers\")",
+      "Bash(del scriptstest_liquidation_halt.py)",
+      "Bash(npm run type-check:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm install)",
+      "Bash(npm run build)",
+      "Bash(del \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\tailwind.config.js\" \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\postcss.config.js\")",
+      "Bash(pushd:*)",
+      "Bash(.db \")",
+      "Bash(popd)",
+      "WebFetch(domain:tradingview.github.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs"
     ]
   }
 }

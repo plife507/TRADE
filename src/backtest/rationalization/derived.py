@@ -12,7 +12,7 @@ The DerivedStateComputer computes:
 2. alignment: HTF/MTF/LTF trend agreement (0.0-1.0)
 3. regime: Market regime classification
 
-See: docs/architecture/IDEACARD_VISION.md
+See: docs/specs/PLAY_VISION.md
 """
 
 from __future__ import annotations

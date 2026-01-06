@@ -1,7 +1,7 @@
 # Open Bugs
 
-**Last Updated**: 2026-01-04
-**Status**: ALL BUGS FIXED or ACCEPTABLE
+**Last Updated**: 2026-01-05
+**Status**: 0 OPEN BUGS (All bugs from clean slate rebuild FIXED)
 
 ---
 
@@ -10,9 +10,9 @@
 | Priority | Open | Description |
 |----------|------|-------------|
 | P0 | 0 | Critical blockers |
-| P1 | 0 | High priority (FIXED) |
-| P2 | 0 | Medium priority (1 FIXED, 1 ACCEPTABLE) |
-| P3 | 0 | Polish (2 ACCEPTABLE) |
+| P1 | 0 | High priority |
+| P2 | 0 | Medium priority |
+| P3 | 0 | Polish |
 
 **Validation Status**: ALL TESTS PASS
 - Plays: 15/15 normalize (V_100-V_122 blocks format)
@@ -36,11 +36,65 @@
 
 ## P1 Open
 
-*None* - All P1 bugs fixed in 2026-01-03 session
+*None*
 
 ---
 
-## P2 (All Resolved)
+## P2 Open
+
+*None* - All P2 bugs fixed in 2026-01-05 session
+
+---
+
+## P3 Open
+
+*None*
+
+---
+
+## P2 Resolved
+
+### P2-09: Backtest Run Requires --smoke or Explicit --start/--end - FIXED
+- **Location**: `src/backtest/runner.py:223-250`
+- **Issue**: Running `backtest run --play X` without `--smoke` or explicit dates failed
+- **Fix**: Auto-infer window from DB coverage using `store.status(symbol)`
+- **Details**: Gets first_timestamp and last_timestamp from sync metadata
+- **Verified**: `backtest run --play I_001_ema` now runs with full DB coverage
+- **Status**: FIXED in 2026-01-05 session
+
+### P2-10: Structure-Only Plays Rejected - FIXED
+- **Location**: `src/backtest/play.py:570`
+- **Issue**: Plays with `structures:` but empty `features:` failed validation
+- **Fix**: Added `has_structures` flag, allow empty features if structures exist
+- **Details**: Validation now checks `if not self.features and not self.has_structures`
+- **Verified**: `S_007_structure_only.yml` with `features: []` runs successfully
+- **Status**: FIXED in 2026-01-05 session
+
+### P2-11: Structure References Require `structure.` Prefix - FIXED
+- **Location**: `src/backtest/rules/compile.py:388-391`, `src/backtest/execution_validation.py:398-410`
+- **Issue**: Users had to write `feature_id: "structure.swing"` instead of `feature_id: "swing"`
+- **Fix**: Auto-resolve structure keys without prefix to `structure.*` paths
+- **Details**:
+  1. Added `structure_keys` field to Play class (extracted from structures: section)
+  2. compile.py: Check if key is in available_structures before adding indicator namespace
+  3. execution_validation.py: Skip validation for known structure keys
+- **Result**: Both `feature_id: "swing"` and `feature_id: "structure.swing"` now work
+- **Status**: FIXED in 2026-01-05 session
+
+### P2-08: Windows Emoji Encoding Breaks Data Sync - FIXED
+- **Location**: `src/data/historical_data_store.py:46-80`
+- **Issue**: Spinner animation with emoji caused `UnicodeEncodeError` on Windows
+- **Root Cause**: Detection logic tested if Python could encode emoji, but didn't account for
+  console display capability on legacy terminals (cmd.exe, PowerShell 5.x with cp1252)
+- **Fix**: Rewrote `_detect_ascii_mode()` with conservative approach:
+  - Default to ASCII on Windows unless explicitly known UTF-8 terminal
+  - Check for Windows Terminal (`WT_SESSION`)
+  - Check for VS Code terminal (`TERM_PROGRAM`)
+  - Check for ConEmu/Cmder (`ConEmuANSI`)
+  - Check for explicit `PYTHONIOENCODING=utf-8`
+  - Only then check stdout encoding
+- **Investigation**: See `docs/audits/WINDOWS_ENCODING_INVESTIGATION.md`
+- **Status**: FIXED in 2026-01-05 session
 
 ### P2-02: Dynamic Attribute Access
 - **Location**: `indicator_vendor.py:193`
@@ -64,6 +118,17 @@
 - **Fix**: Changed to use `spec.output_keys_list` to include all multi-output expanded keys
 - **Verified**: All 16 multi-output indicators now pass (macd, bbands, stoch, etc.)
 - **Status**: FIXED in 2026-01-03 stress test session
+
+---
+
+## P3 Resolved
+
+### P3-05: PLAY_SYNTAX.md Documentation Mismatch - FIXED
+- **Location**: `docs/specs/PLAY_SYNTAX.md`
+- **Issue**: Docs showed `feature_id: "swing"` for structures but code required `feature_id: "structure.swing"`
+- **Fix**: Fixed the code (P2-11) to accept both formats. Will update docs to document both.
+- **Result**: Both `swing` and `structure.swing` now work - no doc mismatch
+- **Status**: FIXED in 2026-01-05 session
 
 ---
 

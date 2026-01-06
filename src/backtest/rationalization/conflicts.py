@@ -17,7 +17,7 @@ Veto Conditions:
 - trend_reversal: Trend flip vetoes continuation
 - Custom veto rules from Play config
 
-See: docs/architecture/IDEACARD_VISION.md
+See: docs/specs/PLAY_VISION.md
 """
 
 from __future__ import annotations

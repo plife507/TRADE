@@ -144,8 +144,14 @@ class SimulatedRiskManager:
                 )
         
         # Fallback: conservative notional sizing (10% of max leverage)
-        fallback_size = min(signal.size_usdt, max_size * 0.1)
-        
+        # Note: signal.size_usdt may be 0.0 for Play signals (engine computes sizing)
+        # so we use max_size * 0.1 as the base, not min(signal.size_usdt, ...)
+        if signal.size_usdt > 0:
+            fallback_size = min(signal.size_usdt, max_size * 0.1)
+        else:
+            # Play signals have size_usdt=0 - use 10% of max leverage
+            fallback_size = max_size * 0.1
+
         return SizingResult(
             size_usdt=fallback_size,
             method="fallback_notional",

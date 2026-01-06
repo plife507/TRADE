@@ -48,6 +48,7 @@ from ...tools import (
 from .data import run_data_builder_smoke
 from .backtest import run_backtest_suite_smoke
 from .structure import run_structure_smoke
+from .sim_orders import run_sim_orders_smoke
 
 console = Console()
 
@@ -326,6 +327,15 @@ def run_full_cli_smoke(smoke_config, app, config) -> int:
         failures += run_structure_smoke()
     else:
         console.print(f"\n[dim]Part 9: Structure smoke skipped (set TRADE_SMOKE_INCLUDE_BACKTEST=1)[/]")
+
+    # PART 10: Simulator Order Types (opt-in)
+    if include_backtest in ("1", "true", "True", "TRUE"):
+        console.print(f"\n[bold magenta]{'='*50}[/]")
+        console.print(f"[bold magenta]PART 10: SIMULATOR ORDER TYPES[/]")
+        console.print(f"[bold magenta]{'='*50}[/]")
+        failures += run_sim_orders_smoke()
+    else:
+        console.print(f"\n[dim]Part 10: Simulator order smoke skipped (set TRADE_SMOKE_INCLUDE_BACKTEST=1)[/]")
 
     console.print(f"\n[bold]Full CLI Smoke Test Complete[/]")
     console.print(f"  Symbols tested: {symbols}")

@@ -582,6 +582,26 @@ class RuntimeSnapshotView:
                 raise ValueError("mark_price offset not yet supported - use offset=0")
             return self.mark_price
 
+        # Handle funding_rate - market data field (Phase 12)
+        if indicator_key == "funding_rate":
+            feed = self._feeds.exec_feed
+            if feed.funding_rate is None:
+                return None
+            target_idx = self.exec_idx - offset
+            if target_idx < 0 or target_idx >= len(feed.funding_rate):
+                return None
+            return float(feed.funding_rate[target_idx])
+
+        # Handle open_interest - market data field (Phase 12)
+        if indicator_key == "open_interest":
+            feed = self._feeds.exec_feed
+            if feed.open_interest is None:
+                return None
+            target_idx = self.exec_idx - offset
+            if target_idx < 0 or target_idx >= len(feed.open_interest):
+                return None
+            return float(feed.open_interest[target_idx])
+
         # Get the appropriate context
         # In single-TF mode, htf_ctx and mtf_ctx point to exec_ctx
         # Use the context's feed directly to handle both single-TF and multi-TF modes
@@ -637,6 +657,16 @@ class RuntimeSnapshotView:
         if indicator_key in ("open", "high", "low", "close", "volume"):
             return True
 
+        # mark_price is always available
+        if indicator_key == "mark_price":
+            return True
+
+        # Market data fields (Phase 12) - check if arrays are loaded
+        if indicator_key == "funding_rate":
+            return self._feeds.exec_feed.funding_rate is not None
+        if indicator_key == "open_interest":
+            return self._feeds.exec_feed.open_interest is not None
+
         # Get context for TF role (handles single-TF mode where htf/mtf = exec)
         if tf_role in ("exec", "ltf"):
             ctx = self.exec_ctx
@@ -687,6 +717,26 @@ class RuntimeSnapshotView:
             if field is None:
                 return None
             return self.get_rationalized_value(field)
+
+        # Check if this is a structure (requires feature registry)
+        if self._feature_registry is not None:
+            feature = self._feature_registry.get_or_none(feature_id)
+            if feature is not None and feature.is_structure:
+                # Route to get_structure for incremental structure access
+                if field is None:
+                    return None  # Structures require a field
+
+                # Search for structure in incremental state
+                # 1. First check exec structures
+                # 2. Then check HTF structures by feature's declared TF
+                value = self._get_structure_value(feature_id, field, feature.tf)
+
+                # Handle NaN as None
+                if value is not None and isinstance(value, float):
+                    import math
+                    if math.isnan(value):
+                        return None
+                return value
 
         # Build the indicator key dynamically
         # - Single-output indicators: field is None/empty/"value" -> key = feature_id
@@ -846,6 +896,47 @@ class RuntimeSnapshotView:
         return dict(self._rollups)
 
     # =========================================================================
+    # Market Data Accessors (Phase 12: Funding Rate, Open Interest)
+    # =========================================================================
+
+    @property
+    def funding_rate(self) -> float | None:
+        """
+        Current funding rate (last known rate at this bar).
+
+        Returns the funding rate that will be applied at the next 8h settlement.
+        Between settlements, this is the rate from the last settlement.
+
+        Returns:
+            Funding rate as decimal (e.g., 0.0001 = 0.01%), or None if unavailable.
+        """
+        feed = self._feeds.exec_feed
+        if feed.funding_rate is None:
+            return None
+        return float(feed.funding_rate[self.exec_idx])
+
+    @property
+    def open_interest(self) -> float | None:
+        """
+        Current open interest (forward-filled from last known OI).
+
+        Returns the total open interest for the symbol at this bar.
+
+        Returns:
+            Open interest in contracts/units, or None if unavailable.
+        """
+        feed = self._feeds.exec_feed
+        if feed.open_interest is None:
+            return None
+        return float(feed.open_interest[self.exec_idx])
+
+    @property
+    def has_market_data(self) -> bool:
+        """Check if market data (funding/OI) is available."""
+        feed = self._feeds.exec_feed
+        return feed.funding_rate is not None or feed.open_interest is not None
+
+    # =========================================================================
     # Incremental Structure Accessors (Phase 6)
     # =========================================================================
 
@@ -924,6 +1015,53 @@ class RuntimeSnapshotView:
     def has_incremental_state(self) -> bool:
         """Check if incremental state is available."""
         return self._incremental_state is not None
+
+    def _get_structure_value(
+        self, feature_id: str, field: str, feature_tf: str
+    ) -> float | None:
+        """
+        Get structure value by searching in the appropriate location.
+
+        Searches based on where the structure is actually stored in incremental state,
+        determined by the feature's declared TF in the Play.
+
+        Structure storage locations:
+        - exec.structures: Structures on the execution timeframe
+        - htf[tf].structures: Structures on any non-exec TF (LTF, MTF, or HTF)
+          The "htf" dict stores ALL non-exec TFs despite the name.
+
+        Args:
+            feature_id: The structure's feature ID from the Play
+            field: The output field name (e.g., "high_level", "level_0.618")
+            feature_tf: The TF declared for this feature in the Play
+
+        Returns:
+            Structure value or None if not found
+        """
+        if self._incremental_state is None:
+            return None
+
+        # Check if structure is in exec state (feature TF matches exec TF)
+        if feature_id in self._incremental_state.exec.structures:
+            try:
+                path = f"exec.{feature_id}.{field}"
+                return self._incremental_state.get_value(path)
+            except KeyError:
+                return None
+
+        # Check if structure is in non-exec TF state (LTF, MTF, or HTF)
+        # The "htf" dict stores ALL non-exec timeframes despite the name
+        if feature_tf in self._incremental_state.htf:
+            tf_state = self._incremental_state.htf[feature_tf]
+            if feature_id in tf_state.structures:
+                try:
+                    path = f"htf_{feature_tf}.{feature_id}.{field}"
+                    return self._incremental_state.get_value(path)
+                except KeyError:
+                    return None
+
+        # Structure not found in either location
+        return None
 
     def list_structure_paths(self) -> list[str]:
         """

@@ -9,11 +9,17 @@ This module handles artifact generation and output:
 
 All functions accept data as parameters.
 The BacktestEngine delegates to these functions, maintaining the same public API.
+
+Schema Contract:
+- Field names and types defined in src/viz/schemas/artifact_schema.py
+- Timestamps stored as BOTH ISO strings AND epoch seconds for efficiency
+- Currency fields use *_usdt suffix per CLAUDE.md convention
 """
 
 import json
 import hashlib
 import pandas as pd
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +28,13 @@ from .metrics import compute_time_based_returns
 
 if TYPE_CHECKING:
     from .types import BacktestResult, EquityPoint
+
+
+def _to_epoch(dt: datetime | None) -> int | None:
+    """Convert datetime to Unix epoch seconds."""
+    if dt is None:
+        return None
+    return int(dt.timestamp())
 
 
 def calculate_drawdowns_impl(equity_curve: list["EquityPoint"]) -> None:
@@ -67,57 +80,70 @@ def write_artifacts_impl(
 
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write trades.parquet (Phase 3.2: Parquet-only)
+    # Write trades.parquet (Schema: src/viz/schemas/artifact_schema.py)
+    # Dual timestamps: ISO string for human readability, epoch for viz efficiency
     trades_path = run_dir / "trades.parquet"
     if result.trades:
         trades_df = pd.DataFrame([
             {
+                # Identity
                 "trade_id": t.trade_id,
                 "symbol": t.symbol,
-                "side": t.side.upper(),
+                "side": t.side.lower(),  # Standardized: "long"/"short"
+                # Timestamps - dual format
                 "entry_time": t.entry_time.isoformat(),
-                "exit_time": t.exit_time.isoformat() if t.exit_time else "",
+                "entry_ts": _to_epoch(t.entry_time),
+                "exit_time": t.exit_time.isoformat() if t.exit_time else None,
+                "exit_ts": _to_epoch(t.exit_time),
+                # Prices
                 "entry_price": t.entry_price,
-                "exit_price": t.exit_price or 0,
-                "qty": t.entry_size,
-                "pnl": t.net_pnl,
+                "exit_price": t.exit_price,
+                # Sizing (USDT standard per CLAUDE.md)
+                "entry_size_usdt": t.entry_size_usdt,
+                # PnL
+                "net_pnl": t.net_pnl,
                 "pnl_pct": t.pnl_pct,
-                # Phase 4: Bar indices
+                # Risk levels
+                "stop_loss": t.stop_loss,
+                "take_profit": t.take_profit,
+                # Exit metadata
+                "exit_reason": t.exit_reason,
+                "exit_price_source": t.exit_price_source,
+                # Bar indices
                 "entry_bar_index": t.entry_bar_index,
                 "exit_bar_index": t.exit_bar_index,
                 "duration_bars": t.duration_bars,
-                # Phase 4: Exit trigger classification
-                "exit_reason": t.exit_reason or "",
-                "exit_price_source": t.exit_price_source or "",
-                # Phase 4: Snapshot readiness at entry/exit
-                "entry_ready": t.entry_ready,
-                "exit_ready": t.exit_ready if t.exit_ready is not None else "",
-                # Risk levels
-                "stop_loss": t.stop_loss or "",
-                "take_profit": t.take_profit or "",
+                # Trade quality
+                "mae_pct": getattr(t, "mae_pct", 0.0),
+                "mfe_pct": getattr(t, "mfe_pct", 0.0),
+                # Funding
+                "funding_pnl": getattr(t, "funding_pnl", 0.0),
             }
             for t in result.trades
         ])
     else:
-        # Write empty file with headers
+        # Write empty file with canonical schema columns
         trades_df = pd.DataFrame(columns=[
-            "trade_id", "symbol", "side", "entry_time", "exit_time",
-            "entry_price", "exit_price", "qty", "pnl", "pnl_pct",
-            # Phase 4 fields
-            "entry_bar_index", "exit_bar_index", "duration_bars",
+            "trade_id", "symbol", "side",
+            "entry_time", "entry_ts", "exit_time", "exit_ts",
+            "entry_price", "exit_price", "entry_size_usdt",
+            "net_pnl", "pnl_pct",
+            "stop_loss", "take_profit",
             "exit_reason", "exit_price_source",
-            "entry_ready", "exit_ready",
-            "stop_loss", "take_profit"
+            "entry_bar_index", "exit_bar_index", "duration_bars",
+            "mae_pct", "mfe_pct", "funding_pnl",
         ])
     write_parquet(trades_df, trades_path)
 
-    # Write equity.parquet (Phase 3.2: Parquet-only)
+    # Write equity.parquet (Schema: src/viz/schemas/artifact_schema.py)
+    # Dual timestamps: ISO string for human readability, epoch for viz efficiency
     equity_path = run_dir / "equity.parquet"
     equity_df = pd.DataFrame([
         {
-            "ts": e.timestamp.isoformat(),
+            "timestamp": e.timestamp.isoformat(),  # ISO string for readability
+            "ts": _to_epoch(e.timestamp),  # Epoch seconds for viz efficiency
             "equity": e.equity,
-            "drawdown_abs": e.drawdown,
+            "drawdown": e.drawdown,
             "drawdown_pct": e.drawdown_pct,
         }
         for e in result.equity_curve

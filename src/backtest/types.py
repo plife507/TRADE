@@ -96,6 +96,9 @@ class Trade:
     mae_pct: float = 0.0  # Max adverse move as % of entry price
     mfe_pct: float = 0.0  # Max favorable move as % of entry price
 
+    # Phase 12: Funding PnL (cumulative from all settlements during trade)
+    funding_pnl: float = 0.0
+
     @property
     def is_closed(self) -> bool:
         return self.exit_time is not None
@@ -147,6 +150,8 @@ class Trade:
             # MAE/MFE
             "mae_pct": self.mae_pct,
             "mfe_pct": self.mfe_pct,
+            # Phase 12: Funding
+            "funding_pnl": self.funding_pnl,
         }
 
 

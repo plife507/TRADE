@@ -429,9 +429,9 @@ def parse_blocks(data: list) -> list[Block]:
 # High-Level API
 # =============================================================================
 
-def parse_play_blocks(play_dict: dict) -> list[Block]:
+def parse_play_actions(play_dict: dict) -> list[Block]:
     """
-    Parse blocks from an Play dict.
+    Parse actions (entry/exit rules) from a Play dict.
 
     Args:
         play_dict: Raw Play dictionary.
@@ -440,15 +440,21 @@ def parse_play_blocks(play_dict: dict) -> list[Block]:
         List of Block instances.
 
     Raises:
-        ValueError: If no 'blocks' key in dict.
+        ValueError: If no 'actions' or 'blocks' key in dict.
     """
-    if "blocks" not in play_dict:
+    # Support both 'actions' (new) and 'blocks' (legacy)
+    actions_data = play_dict.get("actions") or play_dict.get("blocks")
+    if not actions_data:
         raise ValueError(
-            "Play must have 'blocks' key. "
-            "Legacy signal_rules format is not supported."
+            "Play must have 'actions' key (or legacy 'blocks'). "
+            "Define entry/exit rules in the actions section."
         )
 
-    return parse_blocks(play_dict["blocks"])
+    return parse_blocks(actions_data)
+
+
+# Legacy alias for backward compatibility
+parse_play_blocks = parse_play_actions
 
 
 def validate_blocks_types(

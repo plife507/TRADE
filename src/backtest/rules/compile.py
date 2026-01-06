@@ -385,6 +385,10 @@ def compile_condition(
     elif indicator_key.startswith("price."):
         # Already a price path
         lhs_path = indicator_key
+    elif available_structures and indicator_key in available_structures:
+        # Auto-resolve structure reference without explicit prefix
+        # (allows users to write "swing" instead of "structure.swing")
+        lhs_path = f"structure.{indicator_key}"
     else:
         # Indicator path - add namespace
         lhs_path = f"indicator.{indicator_key}"

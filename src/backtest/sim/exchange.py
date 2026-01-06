@@ -28,10 +28,13 @@ from typing import TYPE_CHECKING
 from .types import (
     Bar,
     Order,
+    OrderBook,
     OrderId,
     OrderSide,
     OrderType,
     OrderStatus,
+    TimeInForce,
+    TriggerDirection,
     Position,
     Fill,
     FillReason,
@@ -50,6 +53,8 @@ from .execution import ExecutionModel, ExecutionModelConfig, SlippageConfig
 from .funding import FundingModel
 from .liquidation import LiquidationModel
 from .metrics import ExchangeMetrics
+
+from ..types import Trade
 
 if TYPE_CHECKING:
     from ..system_config import RiskProfileConfig
@@ -135,7 +140,7 @@ class SimulatedExchange:
         
         # State
         self.position: Position | None = None
-        self.pending_order: Order | None = None
+        self._order_book: OrderBook = OrderBook()  # All orders (market, limit, stop)
         self.trades: list = []  # Trade records (compatible with old interface)
         self._trade_counter: int = 0  # Sequential trade ID counter (deterministic)
         self._order_counter: int = 0  # Sequential order ID counter (deterministic)
@@ -157,7 +162,6 @@ class SimulatedExchange:
         self.last_rejection_code: str | None = None
         self.last_rejection_reason: str | None = None
         self.last_fill_rejected: bool = False
-        self.total_fees_paid: float = 0.0
     
     # ─────────────────────────────────────────────────────────────────────────
     # Properties (Bybit-aligned)
@@ -220,10 +224,15 @@ class SimulatedExchange:
     @property
     def is_liquidatable(self) -> bool:
         return self._ledger.is_liquidatable
-    
+
     @property
     def leverage(self) -> float:
         return self._leverage
+
+    @property
+    def total_fees_paid(self) -> float:
+        """Total fees paid (from ledger, single source of truth)."""
+        return self._ledger.state.total_fees_paid
 
     # ─────────────────────────────────────────────────────────────────────────
     # Order Management
@@ -237,22 +246,26 @@ class SimulatedExchange:
         take_profit: float | None = None,
         timestamp: datetime | None = None,
     ) -> OrderId | None:
-        """Submit an order to be filled on next bar."""
+        """Submit a market order to be filled on next bar."""
         self.entry_attempts_count += 1
-        
+
         if self.entries_disabled:
             self.entry_rejections_count += 1
             self.last_rejection_code = "ENTRIES_DISABLED"
             return None
-        
-        if self.position is not None or self.pending_order is not None:
+
+        # Check if position or pending market order already exists
+        if self.position is not None:
             return None
-        
+        pending_market = self._order_book.get_pending_orders(OrderType.MARKET, self.symbol)
+        if pending_market:
+            return None
+
         order_side = OrderSide.LONG if side == "long" else OrderSide.SHORT
         self._order_counter += 1
         order_id = f"order_{self._order_counter:04d}"
-        
-        self.pending_order = Order(
+
+        order = Order(
             order_id=order_id,
             symbol=self.symbol,
             side=order_side,
@@ -262,18 +275,183 @@ class SimulatedExchange:
             take_profit=take_profit,
             created_at=timestamp,
         )
-        
+
+        self._order_book.add_order(order)
         return order_id
+    
+    def submit_limit_order(
+        self,
+        side: str,
+        size_usdt: float,
+        limit_price: float,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+        time_in_force: str = "GTC",
+        reduce_only: bool = False,
+        timestamp: datetime | None = None,
+    ) -> OrderId | None:
+        """
+        Submit a limit order.
+        
+        Args:
+            side: "long" or "short"
+            size_usdt: Order size in USDT
+            limit_price: Limit price for fill
+            stop_loss: Optional stop loss price
+            take_profit: Optional take profit price
+            time_in_force: GTC, IOC, FOK, or PostOnly
+            reduce_only: If True, only reduces position
+            timestamp: Order creation timestamp
+            
+        Returns:
+            Order ID if submitted, None if rejected
+        """
+        if self.entries_disabled and not reduce_only:
+            self.entry_rejections_count += 1
+            self.last_rejection_code = "ENTRIES_DISABLED"
+            return None
+        
+        if not reduce_only and self.position is not None:
+            return None  # Cannot open new position while one is open
+        
+        order_side = OrderSide.LONG if side == "long" else OrderSide.SHORT
+        self._order_counter += 1
+        order_id = f"order_{self._order_counter:04d}"
+        
+        tif = TimeInForce(time_in_force) if isinstance(time_in_force, str) else time_in_force
+        
+        order = Order(
+            order_id=order_id,
+            symbol=self.symbol,
+            side=order_side,
+            size_usdt=size_usdt,
+            order_type=OrderType.LIMIT,
+            limit_price=limit_price,
+            time_in_force=tif,
+            reduce_only=reduce_only,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            created_at=timestamp,
+        )
+        
+        self._order_book.add_order(order)
+        return order_id
+    
+    def submit_stop_order(
+        self,
+        side: str,
+        size_usdt: float,
+        trigger_price: float,
+        trigger_direction: int = 1,
+        limit_price: float | None = None,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+        reduce_only: bool = False,
+        timestamp: datetime | None = None,
+    ) -> OrderId | None:
+        """
+        Submit a stop order (stop-market or stop-limit).
+        
+        Args:
+            side: "long" or "short"
+            size_usdt: Order size in USDT
+            trigger_price: Price that triggers the order
+            trigger_direction: 1=rises to, 2=falls to
+            limit_price: If set, creates stop-limit (otherwise stop-market)
+            stop_loss: Optional stop loss price
+            take_profit: Optional take profit price
+            reduce_only: If True, only reduces position
+            timestamp: Order creation timestamp
+            
+        Returns:
+            Order ID if submitted, None if rejected
+        """
+        if self.entries_disabled and not reduce_only:
+            self.entry_rejections_count += 1
+            self.last_rejection_code = "ENTRIES_DISABLED"
+            return None
+        
+        if not reduce_only and self.position is not None:
+            return None  # Cannot open new position while one is open
+        
+        order_side = OrderSide.LONG if side == "long" else OrderSide.SHORT
+        self._order_counter += 1
+        order_id = f"order_{self._order_counter:04d}"
+        
+        order_type = OrderType.STOP_LIMIT if limit_price else OrderType.STOP_MARKET
+        direction = TriggerDirection(trigger_direction)
+        
+        order = Order(
+            order_id=order_id,
+            symbol=self.symbol,
+            side=order_side,
+            size_usdt=size_usdt,
+            order_type=order_type,
+            limit_price=limit_price,
+            trigger_price=trigger_price,
+            trigger_direction=direction,
+            reduce_only=reduce_only,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            created_at=timestamp,
+        )
+        
+        self._order_book.add_order(order)
+        return order_id
+    
+    def cancel_order_by_id(self, order_id: str) -> bool:
+        """Cancel an order by its ID."""
+        return self._order_book.cancel_order(order_id)
+    
+    def cancel_all_orders(self) -> int:
+        """Cancel all pending orders."""
+        return self._order_book.cancel_all(self.symbol)
+
+    def amend_order(
+        self,
+        order_id: str,
+        limit_price: float | None = None,
+        trigger_price: float | None = None,
+        size_usdt: float | None = None,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+    ) -> bool:
+        """
+        Amend an existing pending order.
+
+        Args:
+            order_id: ID of order to amend
+            limit_price: New limit price (for LIMIT/STOP_LIMIT)
+            trigger_price: New trigger price (for STOP_MARKET/STOP_LIMIT)
+            size_usdt: New size in USDT
+            stop_loss: New stop loss (0 to remove)
+            take_profit: New take profit (0 to remove)
+
+        Returns:
+            True if amended, False if order not found
+        """
+        return self._order_book.amend_order(
+            order_id,
+            limit_price=limit_price,
+            trigger_price=trigger_price,
+            size_usdt=size_usdt,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+        )
+
+    def get_open_orders(self) -> list[Order]:
+        """Get all open orders."""
+        return self._order_book.get_pending_orders(symbol=self.symbol)
     
     def submit_close(self, reason: str = "signal") -> None:
         """Request to close position on next bar."""
         self._pending_close_reason = reason
     
     def cancel_pending_order(self) -> bool:
-        """Cancel pending order."""
-        if self.pending_order is not None:
-            self.pending_order = None
-            return True
+        """Cancel pending market order (legacy compatibility)."""
+        pending_market = self._order_book.get_pending_orders(OrderType.MARKET, self.symbol)
+        if pending_market:
+            return self._order_book.cancel_order(pending_market[0].order_id)
         return False
     
     def compute_required_for_entry(self, notional_usdt: float) -> float:
@@ -351,12 +529,13 @@ class SimulatedExchange:
         )
         if funding_result.funding_pnl != 0:
             self._ledger.apply_funding(funding_result.funding_pnl)
+            # Phase 12: Accumulate funding PnL on position for per-trade tracking
+            if self.position is not None:
+                self.position.funding_pnl_cumulative += funding_result.funding_pnl
         
-        # 3. Fill pending entry order at bar open
-        if self.pending_order is not None:
-            entry_fill = self._fill_pending_order(bar)
-            if entry_fill:
-                fills.append(entry_fill)
+        # 3. Process all orders from order book (market, limit, stop)
+        order_book_fills = self._process_order_book(bar)
+        fills.extend(order_book_fills)
 
         # 4. Process pending close at bar open
         if self._pending_close_reason and self.position:
@@ -444,7 +623,6 @@ class SimulatedExchange:
                     closed_trades.append(trade)
                     fills.append(exit_fill)
                     self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
-                    self.total_fees_paid += liq_result.event.liquidation_fee
 
         # Return StepResult with unified mark price
         return StepResult(
@@ -458,59 +636,190 @@ class SimulatedExchange:
             prices=prices,
         )
     
-    def _fill_pending_order(self, bar: Bar) -> Fill | None:
+    def _process_order_book(self, bar: Bar) -> list[Fill]:
         """
-        Fill pending entry order.
+        Process all orders in the order book against the current bar.
 
-        Entry fills occur at ts_open (bar open).
+        Processing order:
+        1. Fill market orders at bar open (immediate fill)
+        2. Check stop orders for trigger conditions
+        3. Fill triggered stops (market or limit)
+        4. Check limit orders for fill conditions
+        5. Fill limit orders
+
+        Args:
+            bar: Current bar OHLC
 
         Returns:
-            Fill object if order was filled, None if rejected.
-            BUG-004 FIX: Returns fill for StepResult.fills population.
+            List of fills from order book processing
         """
-        order = self.pending_order
-        self.pending_order = None
-        self.last_fill_rejected = False
+        fills: list[Fill] = []
+        to_remove: list[str] = []
 
-        result = self._execution.fill_entry_order(
-            order, bar, self.available_balance_usdt,
-            lambda n: self.compute_required_for_entry(n),
-        )
+        # 1. Process market orders first (fill at bar open)
+        market_orders = self._order_book.get_pending_orders(OrderType.MARKET, self.symbol)
+        for order in market_orders:
+            self.last_fill_rejected = False
 
-        if result.rejections:
-            self.last_fill_rejected = True
-            self.entry_rejections_count += 1
-            self.last_rejection_code = result.rejections[0].code
-            self.last_rejection_reason = result.rejections[0].reason
-            return None
-
-        if result.fills:
-            fill = result.fills[0]
-            self._ledger.apply_entry_fee(fill.fee)
-            self.total_fees_paid += fill.fee
-
-            self._position_counter += 1
-
-            # Create position with filled size and intended notional
-            # Note: size_usdt tracks intended notional, size reflects actual fill after slippage
-            self.position = Position(
-                position_id=f"pos_{self._position_counter:04d}",
-                symbol=order.symbol,
-                side=order.side,
-                entry_price=fill.price,
-                entry_time=fill.timestamp,
-                size=fill.size,
-                size_usdt=order.size_usdt,
-                stop_loss=order.stop_loss,
-                take_profit=order.take_profit,
-                fees_paid=fill.fee,
-                # Phase 4: Bar tracking and readiness
-                entry_bar_index=self._current_bar_index,
-                entry_ready=self._current_snapshot_ready,
+            result = self._execution.fill_entry_order(
+                order, bar, self.available_balance_usdt,
+                lambda n: self.compute_required_for_entry(n),
             )
-            return fill
 
-        return None
+            if result.rejections:
+                self.last_fill_rejected = True
+                self.entry_rejections_count += 1
+                self.last_rejection_code = result.rejections[0].code
+                self.last_rejection_reason = result.rejections[0].reason
+                to_remove.append(order.order_id)
+            elif result.fills:
+                fill = result.fills[0]
+                fills.append(fill)
+                to_remove.append(order.order_id)
+                self._handle_entry_fill(fill, order)
+
+        # 2. Check and process triggered stop orders
+        triggered_stops = self._order_book.check_triggers(bar)
+        for order in triggered_stops:
+            # Check reduce-only constraints
+            if order.reduce_only:
+                is_valid, clamped_size, error = self._execution.check_reduce_only(
+                    order, self.position
+                )
+                if not is_valid:
+                    to_remove.append(order.order_id)
+                    continue
+                if clamped_size and clamped_size < order.size_usdt:
+                    order.size_usdt = clamped_size
+            
+            # Fill the triggered stop
+            result = self._execution.fill_triggered_stop(
+                order, bar, self.available_balance_usdt,
+                lambda n: self.compute_required_for_entry(n),
+            )
+            
+            if result.fills:
+                fill = result.fills[0]
+                fills.append(fill)
+                to_remove.append(order.order_id)
+                
+                # Handle position creation/modification
+                if order.reduce_only and self.position:
+                    # This is a reduce-only fill - close or reduce position
+                    self._handle_reduce_only_fill(fill, order)
+                elif not order.reduce_only:
+                    # Entry fill - create position
+                    self._handle_entry_fill(fill, order)
+            elif result.rejections:
+                to_remove.append(order.order_id)
+        
+        # 2. Check and process limit orders
+        limit_orders = self._order_book.get_pending_orders(OrderType.LIMIT, self.symbol)
+        for order in limit_orders:
+            if order.order_id in to_remove:
+                continue  # Already processed
+            
+            # Check reduce-only constraints
+            if order.reduce_only:
+                is_valid, clamped_size, error = self._execution.check_reduce_only(
+                    order, self.position
+                )
+                if not is_valid:
+                    to_remove.append(order.order_id)
+                    continue
+                if clamped_size and clamped_size < order.size_usdt:
+                    order.size_usdt = clamped_size
+            
+            # Try to fill the limit order
+            result = self._execution.fill_limit_order(
+                order, bar, self.available_balance_usdt,
+                lambda n: self.compute_required_for_entry(n),
+                is_first_bar=False,  # TODO: Track first bar per order
+            )
+            
+            if result.fills:
+                fill = result.fills[0]
+                fills.append(fill)
+                to_remove.append(order.order_id)
+                
+                if order.reduce_only and self.position:
+                    self._handle_reduce_only_fill(fill, order)
+                elif not order.reduce_only:
+                    self._handle_entry_fill(fill, order)
+            elif result.rejections:
+                to_remove.append(order.order_id)
+        
+        # 3. Remove processed orders from book
+        for order_id in to_remove:
+            self._order_book.cancel_order(order_id)
+        
+        return fills
+    
+    def _handle_entry_fill(self, fill: Fill, order: Order) -> None:
+        """Handle position creation from entry fill."""
+        self._ledger.apply_entry_fee(fill.fee)
+        self._position_counter += 1
+        
+        self.position = Position(
+            position_id=f"pos_{self._position_counter:04d}",
+            symbol=order.symbol,
+            side=order.side,
+            entry_price=fill.price,
+            entry_time=fill.timestamp,
+            size=fill.size,
+            size_usdt=order.size_usdt,
+            stop_loss=order.stop_loss,
+            take_profit=order.take_profit,
+            fees_paid=fill.fee,
+            entry_bar_index=self._current_bar_index,
+            entry_ready=self._current_snapshot_ready,
+        )
+    
+    def _handle_reduce_only_fill(self, fill: Fill, order: Order) -> None:
+        """
+        Handle position reduction from reduce-only fill.
+
+        Supports both full and partial closes:
+        - Full close: order.size_usdt >= position.size_usdt
+        - Partial close: order.size_usdt < position.size_usdt
+
+        For partial closes:
+        - Calculate proportional PnL
+        - Reduce position size
+        - Margin recalculated on next update_for_mark_price call
+        """
+        pos = self.position
+        if pos is None:
+            return
+
+        # Determine if this is a full or partial close
+        close_ratio = min(1.0, order.size_usdt / pos.size_usdt)
+        is_full_close = close_ratio >= 0.9999  # Account for float precision
+
+        # Calculate PnL for the closed portion
+        # PnL = price_diff * size_closed
+        if pos.side == OrderSide.LONG:
+            price_diff = fill.price - pos.entry_price
+        else:
+            price_diff = pos.entry_price - fill.price
+
+        size_closed = pos.size * close_ratio
+        realized_pnl = price_diff * size_closed
+
+        if is_full_close:
+            # Full close - use apply_exit which clears margin state
+            self._ledger.apply_exit(realized_pnl, fill.fee)
+            self.position = None
+        else:
+            # Partial close - use apply_partial_exit which keeps margin state
+            # Margin will be recalculated on next update_for_mark_price call
+            self._ledger.apply_partial_exit(realized_pnl, fill.fee)
+
+            # Reduce position size
+            remaining_ratio = 1.0 - close_ratio
+            pos.size = pos.size * remaining_ratio
+            pos.size_usdt = pos.size_usdt * remaining_ratio
+            pos.fees_paid += fill.fee
     
     def _close_position(
         self,
@@ -570,7 +879,6 @@ class SimulatedExchange:
         
         realized_pnl = self._execution.calculate_realized_pnl(pos, fill.price)
         self._ledger.apply_exit(realized_pnl, fill.fee)
-        self.total_fees_paid += fill.fee
 
         # Compute MAE/MFE from tracked min/max prices
         mae_pct = 0.0
@@ -586,7 +894,6 @@ class SimulatedExchange:
                 mfe_pct = (pos.entry_price - pos.min_price) / pos.entry_price * 100
 
         # Create trade record with Phase 4 fields
-        from ..types import Trade
         self._trade_counter += 1
         trade = Trade(
             trade_id=f"trade_{self._trade_counter:03d}",
@@ -613,6 +920,8 @@ class SimulatedExchange:
             # MAE/MFE
             mae_pct=round(mae_pct, 4),
             mfe_pct=round(mfe_pct, 4),
+            # Phase 12: Funding PnL from position lifetime
+            funding_pnl=pos.funding_pnl_cumulative,
         )
 
         self.trades.append(trade)

@@ -17,7 +17,7 @@ Engine Integration:
     rationalized = rationalizer.rationalize(bar_idx, incremental_state, bar)
     snapshot.attach_rationalized_state(rationalized)
 
-See: docs/architecture/IDEACARD_VISION.md
+See: docs/specs/PLAY_VISION.md
 """
 
 from __future__ import annotations

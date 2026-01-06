@@ -216,7 +216,7 @@ def create_engine_from_play(
         warmup_by_tf = _compute_warmup_by_tf(registry)
 
     # Auto-detect if crossover operators require history
-    requires_history = _blocks_require_history(play.blocks)
+    requires_history = _blocks_require_history(play.actions)
 
     # Build params with history config if crossovers are used
     strategy_params: dict[str, Any] = {}
@@ -451,6 +451,11 @@ def run_engine_with_play(
         final_equity=backtest_result.metrics.final_equity,
         play_hash=play_hash,
         metrics=backtest_result.metrics,
+        # Pass through stop fields
+        stop_reason=backtest_result.stop_reason,
+        stop_classification=str(backtest_result.stop_classification) if backtest_result.stop_classification else None,
+        stop_reason_detail=backtest_result.stop_reason_detail,
+        stopped_early=backtest_result.stopped_early,
     )
 
 
@@ -462,6 +467,11 @@ class PlayBacktestResult:
     final_equity: float
     play_hash: str
     metrics: Any = None
+    # Stop reason fields from BacktestResult
+    stop_reason: str | None = None
+    stop_classification: str | None = None
+    stop_reason_detail: str | None = None
+    stopped_early: bool = False
 
 
 def _get_play_result_class():

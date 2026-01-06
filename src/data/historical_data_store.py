@@ -43,11 +43,36 @@ import sys
 import os
 
 # Detect if we're on Windows with a non-UTF8 console
-_USE_ASCII = (
-    sys.platform == "win32" 
-    and os.environ.get("PYTHONIOENCODING", "").lower() != "utf-8"
-    and not os.environ.get("WT_SESSION")  # Windows Terminal supports UTF-8
-)
+def _detect_ascii_mode() -> bool:
+    """Check if we should use ASCII fallbacks.
+
+    Conservative approach: default to ASCII on Windows unless stdout
+    can actually encode emoji characters. This avoids UnicodeEncodeError
+    on legacy consoles (cmd.exe, PowerShell 5.x with cp1252).
+
+    Note: Even Windows Terminal may have cp1252 stdout encoding depending
+    on how Python was launched, so we must test actual encoding capability.
+    """
+    if sys.platform != "win32":
+        return False
+
+    # User explicitly requested UTF-8
+    if os.environ.get("PYTHONIOENCODING", "").lower() == "utf-8":
+        return False
+
+    # Must have stdout encoding that can actually encode emoji
+    try:
+        if sys.stdout.encoding:
+            # Test if we can encode a common emoji
+            "✨".encode(sys.stdout.encoding, errors="strict")
+            return False  # Can encode - use emoji
+    except (UnicodeEncodeError, LookupError, AttributeError):
+        pass
+
+    # Default: ASCII on Windows (conservative)
+    return True
+
+_USE_ASCII = _detect_ascii_mode()
 
 
 class ActivityEmoji:
@@ -98,11 +123,22 @@ class ActivitySpinner:
     
     def _spin(self):
         """Spinner animation loop."""
-        spinners = ActivityEmoji.DOTS
+        ascii_spinners = ["|", "/", "-", "\\"]
+        unicode_spinners = ActivityEmoji.DOTS
+        use_ascii = False
+
         while self.running:
+            spinners = ascii_spinners if use_ascii else unicode_spinners
             frame = spinners[self.frame % len(spinners)]
-            sys.stdout.write(f"\r  {self.emoji} {frame} {self.message}...   ")
-            sys.stdout.flush()
+            emoji = "[*]" if use_ascii else self.emoji
+            try:
+                sys.stdout.write(f"\r  {emoji} {frame} {self.message}...   ")
+                sys.stdout.flush()
+            except UnicodeEncodeError:
+                # Switch to ASCII mode permanently for this spinner
+                use_ascii = True
+                sys.stdout.write(f"\r  [*] | {self.message}...   ")
+                sys.stdout.flush()
             self.frame += 1
             time.sleep(0.1)
     
@@ -117,11 +153,17 @@ class ActivitySpinner:
         self.running = False
         if self.thread:
             self.thread.join(timeout=0.5)
-        
+
         emoji = ActivityEmoji.SUCCESS if success else ActivityEmoji.ERROR
         msg = final_message or self.message
-        sys.stdout.write(f"\r  {emoji} {msg}                    \n")
-        sys.stdout.flush()
+        try:
+            sys.stdout.write(f"\r  {emoji} {msg}                    \n")
+            sys.stdout.flush()
+        except UnicodeEncodeError:
+            # Fallback to ASCII on encoding error (Windows terminals)
+            ascii_emoji = "[OK]" if success else "[ERR]"
+            sys.stdout.write(f"\r  {ascii_emoji} {msg}                    \n")
+            sys.stdout.flush()
     
     def update(self, message: str):
         """Update the spinner message."""

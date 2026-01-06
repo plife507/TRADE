@@ -1092,14 +1092,23 @@ def backtest_play_normalize_tool(
     )
 
     try:
-        # Resolve path
+        # Resolve path - search in base dir and subdirectories
         search_dir = plays_dir or PLAYS_DIR
+        search_paths = [
+            search_dir,
+            search_dir / "_validation",
+            search_dir / "_stress_test",
+            search_dir / "strategies",
+        ]
         yaml_path = None
 
-        for ext in (".yml", ".yaml"):
-            path = search_dir / f"{play_id}{ext}"
-            if path.exists():
-                yaml_path = path
+        for search_path in search_paths:
+            for ext in (".yml", ".yaml"):
+                path = search_path / f"{play_id}{ext}"
+                if path.exists():
+                    yaml_path = path
+                    break
+            if yaml_path:
                 break
 
         if yaml_path is None:

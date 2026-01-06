@@ -55,6 +55,10 @@ from .forge import (
     run_forge_smoke,
 )
 
+from .sim_orders import (
+    run_sim_orders_smoke,
+)
+
 __all__ = [
     # Core entry points
     "run_smoke_suite",
@@ -83,4 +87,6 @@ __all__ = [
     "run_rules_smoke",
     # Forge validation tests
     "run_forge_smoke",
+    # Simulator order tests
+    "run_sim_orders_smoke",
 ]

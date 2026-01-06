@@ -63,6 +63,28 @@ class FillReason(str, Enum):
     FORCE_CLOSE = "force_close"
 
 
+class TimeInForce(str, Enum):
+    """Time-in-force options for orders.
+
+    Bybit-aligned: https://bybit-exchange.github.io/docs/v5/order/create-order
+    """
+    GTC = "GTC"           # Good Till Cancel - stays until filled or cancelled
+    IOC = "IOC"           # Immediate or Cancel - fill what you can, cancel rest
+    FOK = "FOK"           # Fill or Kill - fill entirely or cancel entirely
+    POST_ONLY = "PostOnly" # Maker only - reject if would take liquidity
+
+
+class TriggerDirection(int, Enum):
+    """Trigger direction for conditional orders.
+
+    Bybit semantics:
+    - 1 = trigger when price RISES TO trigger_price (breakout)
+    - 2 = trigger when price FALLS TO trigger_price (breakdown)
+    """
+    RISES_TO = 1   # Trigger when bar.high >= trigger_price
+    FALLS_TO = 2   # Trigger when bar.low <= trigger_price
+
+
 # StopReason imported from canonical location (no duplication)
 from ..types import StopReason
 
@@ -83,18 +105,41 @@ from ..runtime.types import Bar
 class Order:
     """
     Order waiting to be filled.
-    
-    Unified order type (replaces PendingOrder).
+
+    Unified order type supporting all Bybit order types:
+    - MARKET: Fill immediately at market price
+    - LIMIT: Fill when price crosses limit_price
+    - STOP_MARKET: Trigger at trigger_price, then fill as market
+    - STOP_LIMIT: Trigger at trigger_price, then fill at limit_price
+
+    Attributes:
+        order_id: Unique order identifier
+        symbol: Trading symbol (e.g., "BTCUSDT")
+        side: LONG or SHORT
+        size_usdt: Position size in USDT
+        order_type: MARKET, LIMIT, STOP_MARKET, or STOP_LIMIT
+        limit_price: Price for limit orders (required for LIMIT, STOP_LIMIT)
+        trigger_price: Trigger price for stop orders (required for STOP_*)
+        trigger_direction: RISES_TO (1) or FALLS_TO (2) for stop orders
+        time_in_force: GTC, IOC, FOK, or POST_ONLY
+        reduce_only: If True, only reduces position (cannot increase)
+        stop_loss: Attached SL price for the position
+        take_profit: Attached TP price for the position
+        created_at: Order creation timestamp
+        status: PENDING, FILLED, CANCELLED, or REJECTED
     """
     order_id: OrderId
     symbol: str
     side: OrderSide
     size_usdt: float
     order_type: OrderType = OrderType.MARKET
-    stop_loss: float | None = None
-    take_profit: float | None = None
     limit_price: float | None = None
     trigger_price: float | None = None
+    trigger_direction: TriggerDirection | None = None
+    time_in_force: TimeInForce = TimeInForce.GTC
+    reduce_only: bool = False
+    stop_loss: float | None = None
+    take_profit: float | None = None
     created_at: datetime | None = None
     status: OrderStatus = OrderStatus.PENDING
 
@@ -105,13 +150,26 @@ class Order:
             "side": self.side.value,
             "size_usdt": self.size_usdt,
             "order_type": self.order_type.value,
-            "stop_loss": self.stop_loss,
-            "take_profit": self.take_profit,
             "limit_price": self.limit_price,
             "trigger_price": self.trigger_price,
+            "trigger_direction": self.trigger_direction.value if self.trigger_direction else None,
+            "time_in_force": self.time_in_force.value,
+            "reduce_only": self.reduce_only,
+            "stop_loss": self.stop_loss,
+            "take_profit": self.take_profit,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "status": self.status.value,
         }
+
+    @property
+    def is_conditional(self) -> bool:
+        """Check if this is a conditional (stop) order."""
+        return self.order_type in (OrderType.STOP_MARKET, OrderType.STOP_LIMIT)
+
+    @property
+    def is_triggered(self) -> bool:
+        """Check if stop order has been triggered (status changed)."""
+        return self.is_conditional and self.status == OrderStatus.PENDING
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,6 +203,8 @@ class Position:
     # MAE/MFE tracking: min/max price during position lifetime
     min_price: float | None = None
     max_price: float | None = None
+    # Phase 12: Cumulative funding PnL (applied at 8h settlements)
+    funding_pnl_cumulative: float = 0.0
 
     def unrealized_pnl(self, mark_price: float) -> float:
         """Calculate unrealized PnL at given mark price."""
@@ -171,6 +231,8 @@ class Position:
             # MAE/MFE tracking
             "min_price": self.min_price,
             "max_price": self.max_price,
+            # Phase 12: Funding
+            "funding_pnl_cumulative": self.funding_pnl_cumulative,
         }
 
 
@@ -562,4 +624,249 @@ class ExecutionConfig:
     def slippage_rate(self) -> float:
         """Slippage as decimal (e.g., 0.0005 for 5 bps)."""
         return self.slippage_bps / 10000.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Order Book
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class OrderBook:
+    """
+    Manages multiple pending orders for the simulated exchange.
+
+    Replaces the single `pending_order` pattern with a proper order book
+    that supports multiple concurrent orders of all types.
+
+    Design:
+    - O(1) order lookup by order_id
+    - O(n) order iteration for fill checking (n = active orders)
+    - Bounded size (max_orders) to prevent unbounded memory growth
+
+    Usage:
+        book = OrderBook()
+        book.add_order(order)
+        triggered = book.check_triggers(bar)
+        for order in triggered:
+            book.cancel_order(order.order_id)
+    """
+    max_orders: int = 100  # Safety limit
+
+    # Private fields initialized in __post_init__
+    _orders: dict[str, Order] = field(default_factory=dict, repr=False)
+    _order_counter: int = field(default=0, repr=False)
+
+    def add_order(self, order: Order) -> str:
+        """
+        Add an order to the book.
+
+        Args:
+            order: Order to add (order_id will be set if empty)
+
+        Returns:
+            The order_id
+
+        Raises:
+            ValueError: If order book is full
+        """
+        if len(self._orders) >= self.max_orders:
+            raise ValueError(f"Order book full (max {self.max_orders} orders)")
+
+        if not order.order_id:
+            self._order_counter += 1
+            order.order_id = f"order_{self._order_counter:04d}"
+
+        self._orders[order.order_id] = order
+        return order.order_id
+
+    def get_order(self, order_id: str) -> Order | None:
+        """Get order by ID."""
+        return self._orders.get(order_id)
+
+    def cancel_order(self, order_id: str) -> bool:
+        """
+        Cancel an order by ID.
+
+        Returns:
+            True if order was cancelled, False if not found
+        """
+        if order_id in self._orders:
+            order = self._orders.pop(order_id)
+            order.status = OrderStatus.CANCELLED
+            return True
+        return False
+
+    def cancel_all(self, symbol: str | None = None) -> int:
+        """
+        Cancel all orders, optionally filtered by symbol.
+
+        Args:
+            symbol: Filter by symbol (None = all symbols)
+
+        Returns:
+            Number of orders cancelled
+        """
+        to_cancel = []
+        for order_id, order in self._orders.items():
+            if symbol is None or order.symbol == symbol:
+                to_cancel.append(order_id)
+
+        for order_id in to_cancel:
+            self.cancel_order(order_id)
+
+        return len(to_cancel)
+
+    def check_triggers(self, bar: Bar) -> list[Order]:
+        """
+        Check which stop orders should trigger based on bar OHLC.
+
+        Stop order trigger logic (Bybit semantics):
+        - RISES_TO (1): Trigger if bar.high >= trigger_price
+        - FALLS_TO (2): Trigger if bar.low <= trigger_price
+
+        Args:
+            bar: Current bar to check against
+
+        Returns:
+            List of orders that triggered (still in book, caller handles)
+        """
+        triggered = []
+
+        for order in self._orders.values():
+            if not order.is_conditional:
+                continue
+
+            if order.trigger_price is None:
+                continue
+
+            direction = order.trigger_direction or TriggerDirection.RISES_TO
+
+            if direction == TriggerDirection.RISES_TO:
+                if bar.high >= order.trigger_price:
+                    triggered.append(order)
+            elif direction == TriggerDirection.FALLS_TO:
+                if bar.low <= order.trigger_price:
+                    triggered.append(order)
+
+        return triggered
+
+    def get_pending_orders(
+        self,
+        order_type: OrderType | None = None,
+        symbol: str | None = None,
+    ) -> list[Order]:
+        """
+        Get all pending orders, optionally filtered.
+
+        Args:
+            order_type: Filter by order type
+            symbol: Filter by symbol
+
+        Returns:
+            List of matching pending orders
+        """
+        result = []
+        for order in self._orders.values():
+            if order.status != OrderStatus.PENDING:
+                continue
+            if order_type is not None and order.order_type != order_type:
+                continue
+            if symbol is not None and order.symbol != symbol:
+                continue
+            result.append(order)
+        return result
+
+    def mark_filled(self, order_id: str) -> None:
+        """Mark an order as filled and remove from book."""
+        if order_id in self._orders:
+            order = self._orders.pop(order_id)
+            order.status = OrderStatus.FILLED
+
+    def mark_rejected(self, order_id: str, reason: str = "") -> None:
+        """Mark an order as rejected and remove from book."""
+        if order_id in self._orders:
+            order = self._orders.pop(order_id)
+            order.status = OrderStatus.REJECTED
+
+    @property
+    def count(self) -> int:
+        """Number of orders in book."""
+        return len(self._orders)
+
+    @property
+    def is_empty(self) -> bool:
+        """Check if book is empty."""
+        return len(self._orders) == 0
+
+    def amend_order(
+        self,
+        order_id: str,
+        limit_price: float | None = None,
+        trigger_price: float | None = None,
+        size_usdt: float | None = None,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+    ) -> bool:
+        """
+        Amend an existing order's parameters.
+
+        Only pending orders can be amended. Supports modifying:
+        - limit_price: For LIMIT and STOP_LIMIT orders
+        - trigger_price: For STOP_MARKET and STOP_LIMIT orders
+        - size_usdt: Order size
+        - stop_loss: Attached SL price
+        - take_profit: Attached TP price
+
+        Args:
+            order_id: ID of order to amend
+            limit_price: New limit price (optional)
+            trigger_price: New trigger price (optional)
+            size_usdt: New size in USDT (optional)
+            stop_loss: New stop loss price (optional, pass 0 to remove)
+            take_profit: New take profit price (optional, pass 0 to remove)
+
+        Returns:
+            True if order was amended, False if order not found or not amendable
+        """
+        order = self._orders.get(order_id)
+        if order is None:
+            return False
+
+        if order.status != OrderStatus.PENDING:
+            return False
+
+        # Amend limit price (only for LIMIT/STOP_LIMIT)
+        if limit_price is not None:
+            if order.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT):
+                order.limit_price = limit_price
+
+        # Amend trigger price (only for STOP_MARKET/STOP_LIMIT)
+        if trigger_price is not None:
+            if order.order_type in (OrderType.STOP_MARKET, OrderType.STOP_LIMIT):
+                order.trigger_price = trigger_price
+
+        # Amend size
+        if size_usdt is not None and size_usdt > 0:
+            order.size_usdt = size_usdt
+
+        # Amend TP/SL (0 = remove)
+        if stop_loss is not None:
+            order.stop_loss = stop_loss if stop_loss > 0 else None
+
+        if take_profit is not None:
+            order.take_profit = take_profit if take_profit > 0 else None
+
+        return True
+
+    def reset(self) -> None:
+        """Clear all orders. Call when starting a new backtest."""
+        self._orders.clear()
+        self._order_counter = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "order_count": self.count,
+            "max_orders": self.max_orders,
+            "orders": [o.to_dict() for o in self._orders.values()],
+        }
 

@@ -75,16 +75,24 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "version": FeatureOutputType.INT,         # Monotonic counter, increments on state change
     },
     "fibonacci": {
-        # Dynamic: level_0.236, level_0.382, level_0.5, level_0.618, level_0.786, etc.
-        # Lookup should match prefix "level_" and return FLOAT
+        # Dynamic level fields: level_<ratio> (prefix matched in get_structure_output_type)
+        # Retracement levels (between high and low)
         "level_0.236": FeatureOutputType.FLOAT,
         "level_0.382": FeatureOutputType.FLOAT,
         "level_0.5": FeatureOutputType.FLOAT,
         "level_0.618": FeatureOutputType.FLOAT,
         "level_0.786": FeatureOutputType.FLOAT,
+        # Extension levels (above high or below low)
         "level_1.0": FeatureOutputType.FLOAT,
         "level_1.272": FeatureOutputType.FLOAT,
         "level_1.618": FeatureOutputType.FLOAT,
+        "level_2.0": FeatureOutputType.FLOAT,
+        "level_2.618": FeatureOutputType.FLOAT,
+        "level_0.272": FeatureOutputType.FLOAT,  # For extension_down
+        # Anchor outputs (always available)
+        "anchor_high": FeatureOutputType.FLOAT,  # Swing high (0% reference)
+        "anchor_low": FeatureOutputType.FLOAT,   # Swing low (100% reference)
+        "range": FeatureOutputType.FLOAT,        # high - low
     },
     "rolling_window": {
         "value": FeatureOutputType.FLOAT,         # Rolling min/max value

@@ -93,7 +93,7 @@ def backtest_play_menu(cli: "TradeCLI"):
         if choice == 1:
             _list_plays(cli)
         elif choice == 2:
-            _run_ideacard_backtest(cli)
+            _run_play_backtest(cli)
         elif choice == 3:
             _preflight_check(cli)
         elif choice == 4:
@@ -101,7 +101,7 @@ def backtest_play_menu(cli: "TradeCLI"):
         elif choice == 5:
             _view_indicators(cli)
         elif choice == 6:
-            _normalize_ideacard(cli)
+            _normalize_play(cli)
         elif choice == 9:
             return
 
@@ -226,7 +226,7 @@ def _list_plays(cli: "TradeCLI"):
     Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
 
 
-def _run_ideacard_backtest(cli: "TradeCLI"):
+def _run_play_backtest(cli: "TradeCLI"):
     """Run a full Play backtest."""
     from trade_cli import run_long_action
 
@@ -441,7 +441,7 @@ def _view_indicators(cli: "TradeCLI"):
     Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
 
 
-def _normalize_ideacard(cli: "TradeCLI"):
+def _normalize_play(cli: "TradeCLI"):
     """Normalize and validate an Play YAML."""
     console.print()
 

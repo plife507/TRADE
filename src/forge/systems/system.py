@@ -2,7 +2,8 @@
 System Dataclass and Loader.
 
 A System is the top-level trading configuration that combines:
-- One or more Playbooks with allocation weights
+- One or more Plays with allocation weights
+- Regime-based weight adjustments
 - Risk profile configuration
 - Target deployment mode
 
@@ -10,6 +11,8 @@ Architecture Principle: Pure Data
 - System is an immutable dataclass
 - load_system is a pure function (id -> System)
 - No side effects, no state
+
+Hierarchy: Block → Play → System
 """
 
 from __future__ import annotations
@@ -36,43 +39,92 @@ class SystemNotFoundError(Exception):
 
 
 @dataclass(frozen=True)
-class PlaybookRef:
+class RegimeWeight:
     """
-    A reference to a Playbook within a System.
+    Regime-based weight adjustment.
+
+    When the condition is true, the base_weight is multiplied by the multiplier.
 
     Attributes:
-        playbook_id: The ID of the Playbook (without .yml extension)
-        weight: Allocation weight (0.0-1.0)
-        enabled: Whether this playbook is active (default True)
+        condition: DSL condition that triggers this adjustment
+        multiplier: Multiplier to apply when condition is true (e.g., 1.5 = boost 50%)
     """
 
-    playbook_id: str
-    weight: float = 1.0
-    enabled: bool = True
+    condition: dict[str, Any]
+    multiplier: float = 1.0
 
     def __post_init__(self):
-        """Validate the reference."""
-        if not self.playbook_id:
-            raise ValueError("PlaybookRef: playbook_id is required")
-        if not (0.0 <= self.weight <= 1.0):
-            raise ValueError(f"PlaybookRef: weight must be 0.0-1.0, got {self.weight}")
+        """Validate the regime weight."""
+        if self.multiplier <= 0:
+            raise ValueError(f"RegimeWeight: multiplier must be positive, got {self.multiplier}")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
-        d: dict[str, Any] = {"playbook_id": self.playbook_id}
-        if self.weight != 1.0:
-            d["weight"] = self.weight
+        return {
+            "condition": self.condition,
+            "multiplier": self.multiplier,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> RegimeWeight:
+        """Create RegimeWeight from dictionary."""
+        return cls(
+            condition=d["condition"],
+            multiplier=d.get("multiplier", 1.0),
+        )
+
+
+@dataclass(frozen=True)
+class PlayRef:
+    """
+    A reference to a Play within a System.
+
+    Supports weighted blending with regime-based adjustments:
+    - base_weight: Always applied allocation (0.0-1.0)
+    - regime_weight: Optional adjustment when condition is true
+
+    Attributes:
+        play_id: The ID of the Play (without .yml extension)
+        base_weight: Base allocation weight (0.0-1.0)
+        enabled: Whether this play is active (default True)
+        regime_weight: Optional regime-based weight adjustment
+    """
+
+    play_id: str
+    base_weight: float = 1.0
+    enabled: bool = True
+    regime_weight: RegimeWeight | None = None
+
+    def __post_init__(self):
+        """Validate the reference."""
+        if not self.play_id:
+            raise ValueError("PlayRef: play_id is required")
+        if not (0.0 <= self.base_weight <= 1.0):
+            raise ValueError(f"PlayRef: base_weight must be 0.0-1.0, got {self.base_weight}")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        d: dict[str, Any] = {"play_id": self.play_id}
+        if self.base_weight != 1.0:
+            d["base_weight"] = self.base_weight
         if not self.enabled:
             d["enabled"] = self.enabled
+        if self.regime_weight is not None:
+            d["regime_weight"] = self.regime_weight.to_dict()
         return d
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> PlaybookRef:
-        """Create PlaybookRef from dictionary."""
+    def from_dict(cls, d: dict[str, Any]) -> PlayRef:
+        """Create PlayRef from dictionary."""
+        regime_weight = None
+        if "regime_weight" in d:
+            regime_weight = RegimeWeight.from_dict(d["regime_weight"])
+
         return cls(
-            playbook_id=d["playbook_id"],
-            weight=d.get("weight", 1.0),
+            play_id=d["play_id"],
+            base_weight=d.get("base_weight", d.get("weight", 1.0)),  # Accept both for migration
             enabled=d.get("enabled", True),
+            regime_weight=regime_weight,
         )
 
 
@@ -83,15 +135,22 @@ class System:
 
     A System represents a production-ready trading configuration that has
     been validated through the Forge workflow. It combines one or more
-    Playbooks with risk and deployment configuration.
+    Plays with risk and deployment configuration.
+
+    Supports weighted blending:
+    - Multiple plays can be active simultaneously
+    - Each play has base_weight (always applied)
+    - Optional regime_weight.multiplier adjusts weight when condition is true
+    - Final weights are normalized to sum ≤ 1.0
 
     Attributes:
         id: Unique identifier (e.g., "btc_trend_v1")
         version: Semantic version string
         name: Human-readable name
         description: Optional description
-        playbooks: Tuple of PlaybookRef objects
+        plays: Tuple of PlayRef objects
         risk_profile: Risk configuration dict
+        regime_features: Features for regime detection (optional)
         mode: Target mode ("backtest", "demo", "live")
         tags: Tags for categorization
 
@@ -99,18 +158,24 @@ class System:
         id: btc_trend_v1
         version: "1.0.0"
         name: "BTC Trend System v1"
-        description: "Production trend following system for BTCUSDT"
         mode: backtest
-        playbooks:
-          - playbook_id: trend_following
-            weight: 0.8
-          - playbook_id: mean_reversion
-            weight: 0.2
-            enabled: false
+        plays:
+          - play_id: ema_trend_v1
+            base_weight: 0.6
+            regime_weight:
+              condition:
+                all:
+                  - ["atr_14", ">", 100]
+              multiplier: 1.5
+          - play_id: mean_reversion_v1
+            base_weight: 0.4
+        regime_features:
+          atr_14:
+            indicator: atr
+            params: { length: 14 }
         risk_profile:
-          initial_capital: 10000
+          initial_capital_usdt: 10000
           max_drawdown_pct: 20.0
-          risk_per_trade_pct: 1.0
         tags:
           - production
           - btc
@@ -122,11 +187,14 @@ class System:
     name: str | None = None
     description: str | None = None
 
-    # Playbooks in this system
-    playbooks: tuple[PlaybookRef, ...] = field(default_factory=tuple)
+    # Plays in this system (replaces playbooks)
+    plays: tuple[PlayRef, ...] = field(default_factory=tuple)
 
     # Risk profile (flexible dict for now, can be typed later)
     risk_profile: dict[str, Any] = field(default_factory=dict)
+
+    # Features for regime detection (optional)
+    regime_features: dict[str, Any] = field(default_factory=dict)
 
     # Target mode: backtest, demo, live
     mode: str = "backtest"
@@ -151,15 +219,15 @@ class System:
             errors.append("id is required")
         if not self.version:
             errors.append("version is required")
-        if not self.playbooks:
-            errors.append("at least one playbook is required")
+        if not self.plays:
+            errors.append("at least one play is required")
         if self.mode not in self._VALID_MODES:
             errors.append(f"mode must be one of {self._VALID_MODES}, got '{self.mode}'")
 
-        # Check for duplicate playbook_ids
-        playbook_ids = [r.playbook_id for r in self.playbooks]
-        if len(playbook_ids) != len(set(playbook_ids)):
-            errors.append("duplicate playbook_id entries found")
+        # Check for duplicate play_ids
+        play_ids = [r.play_id for r in self.plays]
+        if len(play_ids) != len(set(play_ids)):
+            errors.append("duplicate play_id entries found")
 
         return errors
 
@@ -169,7 +237,7 @@ class System:
             "id": self.id,
             "version": self.version,
             "mode": self.mode,
-            "playbooks": [r.to_dict() for r in self.playbooks],
+            "plays": [r.to_dict() for r in self.plays],
         }
         if self.name:
             d["name"] = self.name
@@ -177,6 +245,8 @@ class System:
             d["description"] = self.description
         if self.risk_profile:
             d["risk_profile"] = self.risk_profile
+        if self.regime_features:
+            d["regime_features"] = self.regime_features
         if self.tags:
             d["tags"] = list(self.tags)
         return d
@@ -184,31 +254,33 @@ class System:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> System:
         """Create System from dictionary."""
-        playbooks_data = d.get("playbooks", [])
-        playbooks = tuple(PlaybookRef.from_dict(r) for r in playbooks_data)
+        # Support both 'plays' (new) and 'playbooks' (legacy migration)
+        plays_data = d.get("plays", d.get("playbooks", []))
+        plays = tuple(PlayRef.from_dict(r) for r in plays_data)
 
         return cls(
             id=d["id"],
             version=d["version"],
             name=d.get("name"),
             description=d.get("description"),
-            playbooks=playbooks,
+            plays=plays,
             risk_profile=d.get("risk_profile", {}),
+            regime_features=d.get("regime_features", {}),
             mode=d.get("mode", "backtest"),
             tags=tuple(d.get("tags", [])),
         )
 
-    def get_playbook_ids(self) -> list[str]:
-        """Get list of all playbook IDs in this system."""
-        return [r.playbook_id for r in self.playbooks]
+    def get_play_ids(self) -> list[str]:
+        """Get list of all play IDs in this system."""
+        return [r.play_id for r in self.plays]
 
-    def get_enabled_playbooks(self) -> list[PlaybookRef]:
-        """Get list of enabled playbook refs."""
-        return [r for r in self.playbooks if r.enabled]
+    def get_enabled_plays(self) -> list[PlayRef]:
+        """Get list of enabled play refs."""
+        return [r for r in self.plays if r.enabled]
 
-    def get_total_weight(self) -> float:
-        """Get sum of weights for enabled playbooks."""
-        return sum(r.weight for r in self.playbooks if r.enabled)
+    def get_total_base_weight(self) -> float:
+        """Get sum of base weights for enabled plays."""
+        return sum(r.base_weight for r in self.plays if r.enabled)
 
 
 def load_system(
@@ -236,11 +308,20 @@ def load_system(
     else:
         systems_dir = Path(systems_dir)
 
-    # Try to find the system file
-    yaml_path = systems_dir / f"{system_id}.yml"
+    # Search in main dir and _validation subdirectory
+    search_paths = [
+        systems_dir / f"{system_id}.yml",
+        systems_dir / "_validation" / f"{system_id}.yml",
+    ]
 
-    if not yaml_path.exists():
-        raise SystemNotFoundError(system_id, [yaml_path])
+    yaml_path = None
+    for path in search_paths:
+        if path.exists():
+            yaml_path = path
+            break
+
+    if yaml_path is None:
+        raise SystemNotFoundError(system_id, search_paths)
 
     # Load and parse YAML
     with open(yaml_path, "r", encoding="utf-8") as f:

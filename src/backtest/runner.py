@@ -219,10 +219,35 @@ def run_backtest_with_gates(
     try:
         # Load Play
         play = config.load_play()
-        
-        # Validate window
+
+        # Auto-infer window from DB coverage if not provided
         if not config.window_start or not config.window_end:
-            raise ValueError("window_start and window_end are required")
+            from src.data.historical_data_store import get_historical_store
+
+            if not play.symbol_universe:
+                raise ValueError("Play has no symbols in symbol_universe")
+
+            symbol = play.symbol_universe[0]
+            tf = play.execution_tf
+
+            store = get_historical_store()
+            status = store.status(symbol)
+            key = f"{symbol}_{tf}"
+
+            if key in status:
+                info = status[key]
+                first_ts = info.get("first_timestamp")
+                last_ts = info.get("last_timestamp")
+                if first_ts and last_ts:
+                    config.window_start = config.window_start or first_ts
+                    config.window_end = config.window_end or last_ts
+
+            # Still check after inference attempt
+            if not config.window_start or not config.window_end:
+                raise ValueError(
+                    f"window_start and window_end are required. "
+                    f"No data found for {symbol} {tf}. Use --start/--end or sync data first."
+                )
         
         # Get first symbol (for now, only single-symbol support)
         if not play.symbol_universe:

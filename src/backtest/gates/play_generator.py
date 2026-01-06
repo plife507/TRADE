@@ -251,7 +251,7 @@ def _build_play_dict(
             "allow_scale_in": False,
             "allow_scale_out": False,
         },
-        "blocks": blocks,
+        "actions": blocks,  # Entry/exit rules (renamed from 'blocks')
         "risk_model": {
             "stop_loss": {
                 "type": "percent",

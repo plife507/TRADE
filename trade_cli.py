@@ -911,7 +911,23 @@ Examples:
     rollup_parser.add_argument("--seed", type=int, default=1337, help="Random seed (default: 1337)")
     rollup_parser.add_argument("--tolerance", type=float, default=1e-10, help="Tolerance (default: 1e-10)")
     rollup_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
-    
+
+    # ===== VIZ SUBCOMMAND =====
+    # Backtest visualization server
+    viz_parser = subparsers.add_parser("viz", help="Backtest visualization server")
+    viz_subparsers = viz_parser.add_subparsers(dest="viz_command", help="Visualization commands")
+
+    # viz serve
+    serve_parser = viz_subparsers.add_parser("serve", help="Start visualization server")
+    serve_parser.add_argument("--port", type=int, default=8765, help="Server port (default: 8765)")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
+    serve_parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
+    serve_parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+
+    # viz open
+    open_parser = viz_subparsers.add_parser("open", help="Open browser to running server")
+    open_parser.add_argument("--port", type=int, default=8765, help="Server port (default: 8765)")
+
     return parser.parse_args()
 
 
@@ -2344,6 +2360,49 @@ def handle_backtest_metrics_audit(args) -> int:
     return 0 if all_passed else 1
 
 
+# =============================================================================
+# VIZ SUBCOMMAND HANDLERS
+# =============================================================================
+
+def handle_viz_serve(args) -> int:
+    """Handle `viz serve` subcommand - start visualization server."""
+    try:
+        from src.viz.server import run_server
+
+        console.print(Panel(
+            f"[bold cyan]BACKTEST VISUALIZATION SERVER[/]\n"
+            f"Host: {args.host}:{args.port}\n"
+            f"Auto-reload: {args.reload}",
+            border_style="cyan"
+        ))
+
+        run_server(
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_browser,
+            reload=args.reload,
+        )
+        return 0
+    except ImportError as e:
+        console.print(f"[red]Error: Missing dependencies for visualization server[/]")
+        console.print(f"[dim]Run: pip install fastapi uvicorn[/]")
+        console.print(f"[dim]Details: {e}[/]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Error starting server: {e}[/]")
+        return 1
+
+
+def handle_viz_open(args) -> int:
+    """Handle `viz open` subcommand - open browser to running server."""
+    import webbrowser
+
+    url = f"http://127.0.0.1:{args.port}"
+    console.print(f"Opening browser to: {url}")
+    webbrowser.open(url)
+    return 0
+
+
 def main():
     """
     Main entry point for trade_cli.
@@ -2402,7 +2461,18 @@ def main():
         else:
             console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|play-normalize|play-normalize-batch|verify-suite|audit-toolkit|metadata-smoke|mark-price-smoke|structure-smoke|math-parity|audit-snapshot-plumbing|verify-determinism|metrics-audit|audit-rollup} --help[/]")
             sys.exit(1)
-    
+
+    # ===== VIZ SUBCOMMANDS =====
+    # Handle `viz serve/open` subcommands
+    if args.command == "viz":
+        if args.viz_command == "serve":
+            sys.exit(handle_viz_serve(args))
+        elif args.viz_command == "open":
+            sys.exit(handle_viz_open(args))
+        else:
+            console.print("[yellow]Usage: trade_cli.py viz {serve|open} --help[/]")
+            sys.exit(1)
+
     # ===== SMOKE TEST MODE =====
     # Non-interactive smoke tests - run and exit with status code
     if args.smoke:

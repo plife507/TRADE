@@ -1,0 +1,66 @@
+id: I_003_rsi
+version: "3.0.0"
+name: "Indicator Test: RSI"
+description: "Test RSI indicator computation"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 2.0
+
+symbol_universe:
+  - "ETHUSDT"
+
+execution_tf: "1h"
+
+position_policy:
+  mode: "long_only"
+  max_positions_per_symbol: 1
+
+features:
+  - id: "rsi_14"
+    tf: "1h"
+    type: indicator
+    indicator_type: rsi
+    params:
+      length: 14
+
+actions:
+  - id: entry
+    cases:
+      - when:
+          lhs:
+            feature_id: "rsi_14"
+          op: lt
+          rhs: 30
+        emit:
+          - action: entry_long
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          lhs:
+            feature_id: "rsi_14"
+          op: gt
+          rhs: 70
+        emit:
+          - action: exit_long
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 2.0
+  take_profit:
+    type: "percent"
+    value: 4.0
+  sizing:
+    model: "percent_equity"
+    value: 5.0
+    max_leverage: 3.0

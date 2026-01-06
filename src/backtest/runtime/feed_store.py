@@ -111,6 +111,14 @@ class FeedStore:
     # Warmup bars (first valid indicator index)
     warmup_bars: int = 0
 
+    # Market data arrays (optional, loaded on demand)
+    # Funding rate array aligned to exec bars (0 between settlements, rate at settlement)
+    funding_rate: np.ndarray | None = None
+    # Open interest array aligned to exec bars (forward-filled from OI data)
+    open_interest: np.ndarray | None = None
+    # Funding settlement timestamps (epoch ms) for O(1) lookup in hot loop
+    funding_settlement_times: set[int] = field(default_factory=set)
+
     def __post_init__(self):
         """Validate arrays have consistent length."""
         if self.length == 0:

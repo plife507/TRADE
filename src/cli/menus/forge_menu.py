@@ -62,7 +62,6 @@ def forge_menu(cli: "TradeCLI"):
         # Stress Tests section
         menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- Stress Tests ---[/]", "")
         menu.add_row("6", f"[bold {CLIColors.NEON_GREEN}]Stress Test Suite[/]", f"[{CLIColors.NEON_GREEN}]Full validation + backtest pipeline[/]")
-        menu.add_row("7", "Run Playbook", "Run all plays in a playbook (multi-mode)")
         menu.add_row("", "", "")
 
         # Navigation
@@ -71,7 +70,7 @@ def forge_menu(cli: "TradeCLI"):
 
         console.print(menu)
 
-        choice = get_choice(["0", "1", "2", "3", "4", "5", "6", "7"])
+        choice = get_choice(["0", "1", "2", "3", "4", "5", "6"])
 
         if choice == BACK or choice == "0":
             break
@@ -93,9 +92,6 @@ def forge_menu(cli: "TradeCLI"):
 
         elif choice == "6":
             _run_stress_test()
-
-        elif choice == "7":
-            _run_playbook()
 
 
 def _validate_single_play():
@@ -292,99 +288,5 @@ def _run_stress_test():
                 console.print(f"  {status} {step['step_name']} ({step['duration_seconds']:.2f}s)")
                 if not step["passed"] and step.get("message"):
                     console.print(f"      [{CLIColors.SELL_RED}]{step['message']}[/]")
-
-    Prompt.ask("\n[dim]Press Enter to continue[/]")
-
-
-def _run_playbook():
-    """Run all plays in a playbook with mode selection."""
-    from src.tools.forge_playbook_tools import (
-        forge_run_playbook_tool,
-        forge_list_playbooks_tool,
-    )
-
-    console.print()
-    console.print(f"[bold {CLIColors.NEON_CYAN}]Playbook Runner[/]")
-    console.print(f"[{CLIColors.DIM_TEXT}]Run all plays in a playbook with different modes[/]\n")
-
-    # List available playbooks
-    list_result = forge_list_playbooks_tool()
-    if list_result.success and list_result.data:
-        playbooks = list_result.data.get("playbooks", [])
-        if playbooks:
-            console.print(f"[{CLIColors.DIM_TEXT}]Available playbooks:[/]")
-            for pb in playbooks:
-                console.print(f"  - {pb}")
-            console.print()
-
-    # Get playbook ID
-    playbook_id = Prompt.ask(
-        f"[{CLIColors.NEON_CYAN}]Enter playbook ID[/]",
-        default="stress_test"
-    )
-
-    # Mode selection
-    console.print(f"\n[{CLIColors.DIM_TEXT}]Modes:[/]")
-    console.print(f"  1. verify-math  - Validate configs only (fast)")
-    console.print(f"  2. sequential   - Run backtests one-by-one")
-    console.print(f"  3. compare      - Compare metrics side-by-side")
-    console.print(f"  4. aggregate    - Aggregate system metrics")
-
-    mode_choice = Prompt.ask(
-        f"\n[{CLIColors.NEON_CYAN}]Select mode[/]",
-        choices=["1", "2", "3", "4"],
-        default="1"
-    )
-
-    mode_map = {
-        "1": "verify-math",
-        "2": "sequential",
-        "3": "compare",
-        "4": "aggregate",
-    }
-    mode = mode_map[mode_choice]
-
-    console.print(f"\n[{CLIColors.DIM_TEXT}]Running playbook '{playbook_id}' in {mode} mode...[/]\n")
-
-    result = forge_run_playbook_tool(
-        playbook_id=playbook_id,
-        mode=mode,
-    )
-
-    if result.success:
-        console.print(f"[bold {CLIColors.NEON_GREEN}]PASS[/] {result.message}")
-
-        # Show play results
-        if result.data and "plays_run" in result.data:
-            console.print()
-            for play in result.data["plays_run"]:
-                status = f"[{CLIColors.NEON_GREEN}]PASS[/]" if play["success"] else f"[{CLIColors.SELL_RED}]FAIL[/]"
-                hash_info = ""
-                if play.get("validation_hash"):
-                    hash_info = f" [{CLIColors.DIM_TEXT}]{play['validation_hash'][:8]}[/]"
-                elif play.get("run_hash"):
-                    hash_info = f" [{CLIColors.DIM_TEXT}]{play['run_hash'][:8]}[/]"
-                console.print(f"  {status} {play['play_id']}{hash_info} ({play['duration_seconds']:.2f}s)")
-
-        # Show hash summary
-        if result.data and result.data.get("hash_summary"):
-            console.print(f"\n[{CLIColors.DIM_TEXT}]Hash Summary:[/]")
-            for play_id, run_hash in result.data["hash_summary"].items():
-                console.print(f"  {play_id}: [{CLIColors.NEON_CYAN}]{run_hash}[/]")
-    else:
-        console.print(f"[bold {CLIColors.SELL_RED}]FAIL[/] {result.error}")
-
-        # Show play results on failure
-        if result.data and "plays_run" in result.data:
-            console.print()
-            for play in result.data["plays_run"]:
-                status = f"[{CLIColors.NEON_GREEN}]PASS[/]" if play["success"] else f"[{CLIColors.SELL_RED}]FAIL[/]"
-                console.print(f"  {status} {play['play_id']} ({play['duration_seconds']:.2f}s)")
-                if not play["success"] and play.get("error"):
-                    # Truncate long errors
-                    error = play["error"]
-                    if len(error) > 100:
-                        error = error[:100] + "..."
-                    console.print(f"      [{CLIColors.SELL_RED}]{error}[/]")
 
     Prompt.ask("\n[dim]Press Enter to continue[/]")

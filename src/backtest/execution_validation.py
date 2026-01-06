@@ -201,12 +201,12 @@ def validate_play_contract(play: "Play") -> PlayValidationResult:
     # Warmup is computed from feature registry at runtime - validation
     # happens during compute_warmup_requirements() call
     
-    # Blocks must exist for signal generation
-    if not play.blocks:
+    # Actions must exist for signal generation
+    if not play.actions:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.WARNING,
-            code="NO_BLOCKS",
-            message="No blocks defined - Play cannot generate signals",
+            code="NO_ACTIONS",
+            message="No actions defined - Play cannot generate signals",
         ))
     
     # Risk model should exist
@@ -269,7 +269,7 @@ def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
 
     refs: list[FeatureReference] = []
 
-    if not play.blocks:
+    if not play.actions:
         return refs
 
     def _extract_from_expr(expr: Expr, location: str) -> None:
@@ -278,7 +278,7 @@ def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
             # Extract LHS feature
             refs.append(FeatureReference(
                 key=expr.lhs.feature_id,
-                tf_role="exec",  # Blocks use feature_id which encodes TF
+                tf_role="exec",  # Actions use feature_id which encodes TF
                 location=f"{location}.lhs",
             ))
             # Extract RHS if it's a FeatureRef
@@ -299,10 +299,10 @@ def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
         elif isinstance(expr, (HoldsFor, OccurredWithin, CountTrue)):
             _extract_from_expr(expr.expr, f"{location}.window")
 
-    # Extract from all blocks
-    for i, block in enumerate(play.blocks):
-        for j, case in enumerate(block.cases):
-            _extract_from_expr(case.when, f"blocks[{i}].cases[{j}].when")
+    # Extract from all actions
+    for i, action in enumerate(play.actions):
+        for j, case in enumerate(action.cases):
+            _extract_from_expr(case.when, f"actions[{i}].cases[{j}].when")
 
     # Extract from risk model if ATR-based SL
     if play.risk_model and play.risk_model.stop_loss.atr_feature_id:
@@ -395,11 +395,18 @@ def validate_play_features(play: "Play") -> PlayValidationResult:
     # In new schema, all features are accessible from "exec" context
     exec_features = declared.get("exec", set())
 
+    # Get structure keys for auto-resolution (without prefix)
+    structure_keys = set(play.structure_keys)
+
     for ref in refs:
         key = ref.key
 
         # Skip structure paths - validated separately by structure block validation
         if key.startswith("structure."):
+            continue
+
+        # Skip structure keys without prefix (auto-resolved to structure.*)
+        if key in structure_keys:
             continue
 
         # Check feature exists in declared features
@@ -787,24 +794,24 @@ class PlaySignalEvaluator:
         Returns:
             EvaluationResult with decision and details
         """
-        # Use blocks (primary DSL format)
-        if self.play.blocks:
-            return self._evaluate_blocks(snapshot, has_position, position_side)
+        # Use actions (primary DSL format)
+        if self.play.actions:
+            return self._evaluate_actions(snapshot, has_position, position_side)
 
-        # No blocks defined
+        # No actions defined
         return EvaluationResult(
             decision=SignalDecision.NO_ACTION,
-            reason="No blocks defined in Play",
+            reason="No actions defined in Play",
         )
 
-    def _evaluate_blocks(
+    def _evaluate_actions(
         self,
         snapshot: "SnapshotView",
         has_position: bool,
         position_side: str | None,
     ) -> EvaluationResult:
         """
-        Evaluate blocks using StrategyBlocksExecutor.
+        Evaluate actions using StrategyBlocksExecutor.
 
         Args:
             snapshot: Current RuntimeSnapshotView
@@ -814,8 +821,8 @@ class PlaySignalEvaluator:
         Returns:
             EvaluationResult with decision and details
         """
-        # Execute all blocks
-        intents = self._blocks_executor.execute(self.play.blocks, snapshot)
+        # Execute all actions
+        intents = self._blocks_executor.execute(self.play.actions, snapshot)
 
         # Map intents to decision
         for intent in intents:

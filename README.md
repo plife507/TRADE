@@ -7,7 +7,7 @@ A production-grade backtesting and live trading platform where strategies are de
 ## Vision
 
 Build a trading system where:
-- **Strategies are data, not code** - YAML-defined Plays compose into Playbooks and Systems
+- **Strategies are data, not code** - YAML-defined Blocks compose into Plays and Systems
 - **AI agents can generate and validate strategies** - The Forge provides guardrails for automated strategy creation
 - **Every computation is traceable** - Hash chains verify determinism from data to trades
 - **Math is pure, control is separate** - Components define calculations, engine orchestrates execution
@@ -19,15 +19,17 @@ Build a trading system where:
                     │              THE FORGE                  │
                     │   Strategy Development & Validation     │
                     │                                         │
-                    │  ┌─────────┐  ┌──────────┐  ┌────────┐ │
-                    │  │ Setups  │──│  Plays   │──│Playbook│ │
-                    │  └─────────┘  └──────────┘  └────────┘ │
-                    │       │            │             │      │
-                    │       └────────────┼─────────────┘      │
-                    │                    ▼                    │
-                    │             ┌──────────┐                │
-                    │             │  System  │                │
-                    │             └──────────┘                │
+                    │     ┌─────────┐                        │
+                    │     │ Blocks  │ (atomic conditions)     │
+                    │     └────┬────┘                         │
+                    │          ▼                              │
+                    │     ┌─────────┐                         │
+                    │     │  Plays  │ (complete strategies)   │
+                    │     └────┬────┘                         │
+                    │          ▼                              │
+                    │     ┌─────────┐                         │
+                    │     │ Systems │ (regime-based blending) │
+                    │     └─────────┘                         │
                     └────────────────────┬────────────────────┘
                                          │
                     ┌────────────────────▼────────────────────┐
@@ -54,14 +56,13 @@ Build a trading system where:
 
 ## Trading Hierarchy
 
-Strategies compose hierarchically:
+Strategies compose hierarchically (3 levels):
 
 | Level | Purpose | Example |
 |-------|---------|---------|
-| **Setup** | Reusable market condition | `rsi_oversold`, `ema_pullback` |
-| **Play** | Complete tradeable strategy | `T_001_ema_crossover` |
-| **Playbook** | Collection of Plays | `trend_following` |
-| **System** | Full trading configuration | `btc_momentum_v1` |
+| **Block** | Atomic reusable condition | `rsi_oversold`, `ema_pullback` |
+| **Play** | Complete backtest-ready strategy | `V_001_ema_basic` |
+| **System** | Multiple plays with regime blending | `btc_momentum_v1` |
 
 ```yaml
 # Example Play (configs/plays/T_001_ema_crossover.yml)
@@ -108,7 +109,7 @@ blocks:
 | **Indicators** | 42 registered | EMA, RSI, MACD, Bollinger, Stochastic, ADX, etc. |
 | **Structures** | 6 registered | Swing, Fibonacci, Zone, Trend, Rolling Window, Derived Zone |
 | **The Forge** | Complete | Validation, audits, stress testing |
-| **Trading Hierarchy** | Complete | Setup/Play/Playbook/System |
+| **Trading Hierarchy** | Complete | Block/Play/System (3-level) |
 | **Live Trading** | Ready | Bybit API, demo + live modes |
 | **Bugs** | 0 open | 79 fixed, all tests passing |
 
@@ -163,17 +164,16 @@ TRADE/
 │   ├── forge/              # Strategy forge
 │   │   ├── validation/     # Play validation + synthetic data
 │   │   ├── audits/         # Math parity, plumbing checks
-│   │   ├── setups/         # Reusable setups
-│   │   └── playbooks/      # Playbook runner
+│   │   ├── blocks/         # Atomic condition blocks
+│   │   └── systems/        # System configs
 │   ├── core/               # Live trading engine
 │   ├── exchanges/          # Bybit API client
 │   ├── tools/              # 84 registered tools (CLI/API)
 │   └── data/               # DuckDB market data storage
 ├── configs/
+│   ├── blocks/             # Atomic reusable conditions
 │   ├── plays/              # Strategy definitions
-│   ├── setups/             # Reusable conditions
-│   ├── playbooks/          # Play collections
-│   └── systems/            # Full system configs
+│   └── systems/            # Full system configs (multiple plays)
 ├── docs/
 │   ├── architecture/       # Design documents
 │   ├── guides/             # Usage guides
@@ -216,14 +216,14 @@ engine = create_engine_from_play(play, data_loader=my_loader)
 result = engine.run()
 print(f"Net PnL: {result.metrics.net_pnl_usdt}")
 
-# Use the Trading Hierarchy
-from src.forge import load_system, load_playbook
+# Use the Trading Hierarchy (Block -> Play -> System)
+from src.forge import load_system
 
 system = load_system("btc_momentum_v1")
-for pb_ref in system.get_enabled_playbooks():
-    playbook = load_playbook(pb_ref.playbook_id)
-    for entry in playbook.get_enabled_plays():
-        print(f"Running: {entry.play_id}")
+for play_ref in system.get_enabled_plays():
+    print(f"Play: {play_ref.play_id} (weight={play_ref.base_weight})")
+    if play_ref.regime_weight:
+        print(f"  Regime multiplier: {play_ref.regime_weight.multiplier}")
 
 # Generate synthetic test data
 from src.forge.validation import generate_synthetic_candles

@@ -1,7 +1,7 @@
 # TODO Index
 
 Documentation index for work tracking in the TRADE project.
-**Last Updated**: 2026-01-04
+**Last Updated**: 2026-01-05
 
 ---
 
@@ -9,7 +9,8 @@ Documentation index for work tracking in the TRADE project.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [TODO.md](TODO.md) | Current focus, next steps | **Forge Structure** |
+| [TODO.md](TODO.md) | Current focus, next steps | **ICT Structures** |
+| [ICT_MARKET_STRUCTURE.md](ICT_MARKET_STRUCTURE.md) | ICT/SMC structure detectors | PLANNING |
 | [MEGA_FILE_REFACTOR.md](MEGA_FILE_REFACTOR.md) | Engine file size refactoring | Phases 1-3 COMPLETE, Phase 4 pending |
 | [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker (4 open) | Active |
 

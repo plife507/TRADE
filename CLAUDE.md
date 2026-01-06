@@ -103,14 +103,13 @@ TRADE is a **modular, production-ready** Bybit futures trading bot with complete
 
 ## Trading Hierarchy
 
-The system uses a four-level hierarchy for organizing trading logic:
+The system uses a three-level hierarchy for organizing trading logic:
 
 | Level | Name | Description | Location |
 |-------|------|-------------|----------|
-| 1 | **Setup** | Atomic trading rules (single condition or pattern) | Within Play YAML |
-| 2 | **Play** | Complete strategy (entry/exit rules, risk params) | `configs/plays/` |
-| 3 | **Playbook** | Collection of related Plays | `configs/playbooks/` |
-| 4 | **System** | Deployment configuration (capital, risk limits) | `configs/systems/` |
+| 1 | **Block** | Atomic reusable condition (features + DSL condition) | `configs/blocks/` |
+| 2 | **Play** | Complete backtest-ready strategy (features + actions + risk) | `configs/plays/` |
+| 3 | **System** | Multiple plays with regime-based weighted blending | `configs/systems/` |
 
 ### Promotion Path
 
@@ -221,10 +220,10 @@ TRADE/
 │   ├── utils/                     # SHARED: Logging, rate limiting, helpers
 │   └── risk/global_risk.py        # Account-level risk (GlobalRiskView)
 ├── configs/
+│   ├── blocks/                    # Atomic reusable conditions
 │   ├── plays/                     # Proven Play configurations (strategies)
-│   │   └── _validation/           # Validation Plays (V_100+)
-│   ├── playbooks/                 # Collections of related Plays
-│   └── systems/                   # Deployment configurations
+│   │   └── _validation/           # Validation Plays (V_001+)
+│   └── systems/                   # Deployment configurations (multiple plays)
 ├── docs/
 │   ├── todos/                     # TODO phase documents (canonical work tracking)
 │   ├── architecture/              # Architecture docs
@@ -620,9 +619,9 @@ See **Critical Rules → Safety & API Discipline** for enforcement requirements.
 | `src/data/` | SHARED | Market data, DuckDB storage, realtime state |
 | `src/config/` | SHARED | Configuration (domain-agnostic) |
 | `src/utils/` | SHARED | Logging, rate limiting, helpers |
+| `configs/blocks/` | — | Atomic reusable conditions |
 | `configs/plays/` | — | Proven Play configurations |
-| `configs/playbooks/` | — | Collections of related Plays |
-| `configs/systems/` | — | Deployment configurations |
+| `configs/systems/` | — | Deployment configurations (multiple plays) |
 | `docs/todos/` | — | TODO phase documents (canonical work tracking) |
 
 ## Reference Documentation

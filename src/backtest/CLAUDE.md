@@ -42,14 +42,13 @@ Play YAML → load_play() → Play dataclass
 
 ## Trading Hierarchy
 
-The TRADE system uses a hierarchical strategy model:
+The TRADE system uses a 3-level hierarchical strategy model:
 
 | Level | Description |
 |-------|-------------|
-| **Setup** | A single market condition or pattern (e.g., "RSI oversold + support bounce") |
-| **Play** | A complete strategy with entry/exit rules, risk params, and position sizing |
-| **Playbook** | A collection of Plays (e.g., "Trend Following Playbook") |
-| **System** | The full trading system combining multiple Playbooks |
+| **Block** | Atomic reusable condition (features + DSL condition, no account/risk) |
+| **Play** | Complete backtest-ready strategy (features + actions + account + risk) |
+| **System** | Multiple plays with regime-based weighted blending |
 
 **Play** is the primary unit for backtesting. Located in `configs/plays/`.
 
@@ -181,12 +180,12 @@ structures:
         params: { left: 3, right: 3 }
 ```
 
-### Accessing Structures in Rules (Blocks DSL v3.0.0)
+### Accessing Structures in Rules (Actions DSL v3.0.0)
 
-**IMPORTANT**: All Plays use `blocks` format. Legacy `signal_rules` is deprecated.
+**IMPORTANT**: All Plays use `actions` format (renamed from `blocks` 2026-01-05). Legacy `signal_rules` is deprecated.
 
 ```yaml
-blocks:
+actions:
   - id: entry
     cases:
       - when:
@@ -210,7 +209,7 @@ blocks:
           - action: exit_long
 ```
 
-**Blocks DSL Features**:
+**Actions DSL Features**:
 - Nested boolean logic: `all`, `any`, `not`
 - 11 operators: `gt`, `lt`, `gte`, `lte`, `eq`, `cross_above`, `cross_below`, `between`, `near_abs`, `near_pct`, `in`
 - Window operators: `holds_for`, `occurred_within`, `count_true`
@@ -243,8 +242,8 @@ See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 |--------|--------|-------|
 | `market_structure/` | DEPRECATED | Batch-based; use `incremental/` instead |
 | `gates/` | NEEDS UPDATE | Still generates legacy signal_rules format |
-| Legacy Plays | REMOVED | All V_60-V_95 deleted; only V_100+ blocks remain |
-| `signal_rules` format | DEPRECATED | Use `blocks` (v3.0.0) |
+| Legacy Plays | REMOVED | All V_60-V_95 deleted; only V_100+ actions remain |
+| `signal_rules` format | DEPRECATED | Use `actions` (v3.0.0) |
 
 ## Validation Plays
 
@@ -252,7 +251,7 @@ Location: `configs/plays/_validation/`
 
 | Range | Purpose |
 |-------|---------|
-| V_100-V_106 | Core blocks DSL (all/any/not, operators, windows) |
+| V_100-V_106 | Core actions DSL (all/any/not, operators, windows) |
 | V_115 | Type-safe operator validation |
 | V_120-V_122 | Derived zones (K slots, aggregates, empty guards) |
 

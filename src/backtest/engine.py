@@ -44,6 +44,8 @@ from .engine_data_prep import (
     prepare_multi_tf_frames_impl,
     load_data_impl,
     load_1m_data_impl,
+    load_funding_data_impl,
+    load_open_interest_data_impl,
     timeframe_to_timedelta,
     get_tf_features_at_close_impl,
 )
@@ -54,7 +56,11 @@ from .engine_feed_builder import (
     build_quote_feed_impl,
     get_quote_at_exec_close,
     build_structures_into_feed,
+    build_market_data_arrays_impl,
 )
+
+# Import funding scheduler for hot loop
+from .runtime.funding_scheduler import get_funding_events_in_window
 
 # Import from engine_snapshot module
 from .engine_snapshot import (
@@ -279,6 +285,10 @@ class BacktestEngine:
         self._rollup_bucket: ExecRollupBucket = ExecRollupBucket()
         self._current_rollups: dict[str, float] = create_empty_rollup_dict()
         self._last_1m_idx: int = -1  # Track last processed 1m bar index
+
+        # Phase 12: Funding rate and open interest data
+        self._funding_df: pd.DataFrame | None = None
+        self._oi_df: pd.DataFrame | None = None
 
         # Track forward-fill indices for all TFs slower than exec.
         # These stay constant until their respective TF bar closes.
@@ -600,6 +610,9 @@ class BacktestEngine:
         # Phase 3: Build 1m quote feed for px.last/px.mark
         self._build_quote_feed()
 
+        # Phase 12: Build market data arrays (funding rates, open interest)
+        self._build_market_data()
+
         return self._multi_tf_feed_store
 
     def _build_structures(self) -> None:
@@ -687,6 +700,70 @@ class BacktestEngine:
         except ValueError as e:
             # 1m data not available - warn but continue (preflight should have caught this)
             self.logger.warning(f"Quote feed unavailable: {e}")
+
+    def _build_market_data(self) -> None:
+        """
+        Build market data arrays (funding rates, open interest) into exec FeedStore.
+
+        Loads funding and OI data from DuckDB and builds arrays aligned to exec bar
+        timestamps. These arrays enable:
+        - funding_rate feature access in strategies
+        - open_interest feature access in strategies
+        - Funding settlement detection in hot loop
+
+        Phase 12: Called from _build_feed_stores() after quote feed is built.
+        """
+        if self._prepared_frame is None:
+            self.logger.debug("Cannot build market data: no prepared frame")
+            return
+
+        if self._exec_feed is None:
+            self.logger.warning("Cannot build market data: no exec feed")
+            return
+
+        # Load funding rate data
+        try:
+            self._funding_df = load_funding_data_impl(
+                symbol=self.config.symbol,
+                window_start=self._prepared_frame.requested_start,
+                window_end=self._prepared_frame.requested_end,
+                data_env=self.config.data_build.env,
+                logger=self.logger,
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to load funding data: {e}")
+            self._funding_df = None
+
+        # Load open interest data
+        try:
+            self._oi_df = load_open_interest_data_impl(
+                symbol=self.config.symbol,
+                window_start=self._prepared_frame.requested_start,
+                window_end=self._prepared_frame.requested_end,
+                data_env=self.config.data_build.env,
+                logger=self.logger,
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to load open interest data: {e}")
+            self._oi_df = None
+
+        # Build aligned arrays
+        funding_array, oi_array, settlement_times = build_market_data_arrays_impl(
+            funding_df=self._funding_df,
+            oi_df=self._oi_df,
+            exec_feed=self._exec_feed,
+            logger=self.logger,
+        )
+
+        # Wire into exec feed
+        self._exec_feed.funding_rate = funding_array
+        self._exec_feed.open_interest = oi_array
+        self._exec_feed.funding_settlement_times = settlement_times
+
+        # Log summary
+        funding_info = f"{len(settlement_times)} settlements" if funding_array is not None else "unavailable"
+        oi_info = "available" if oi_array is not None else "unavailable"
+        self.logger.info(f"Market data ready: funding={funding_info}, OI={oi_info}")
 
     def _accumulate_1m_quotes(self, exec_ts_close: datetime) -> None:
         """
@@ -946,10 +1023,21 @@ class BacktestEngine:
                 start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(i, exec_tf_minutes)
                 end_1m = min(end_1m, self._quote_feed.length - 1)
                 exec_1m_range = (start_1m, end_1m)
+
+            # Phase 12: Get funding events in (prev_bar.ts_close, bar.ts_close] window
+            funding_events = get_funding_events_in_window(
+                prev_ts=prev_bar.ts_close if prev_bar else None,
+                current_ts=bar.ts_close,
+                funding_settlement_times=exec_feed.funding_settlement_times,
+                funding_df=self._funding_df,
+                symbol=self.config.symbol,
+            )
+
             step_result = self._exchange.process_bar(
                 bar, prev_bar,
                 quote_feed=self._quote_feed,
                 exec_1m_range=exec_1m_range,
+                funding_events=funding_events,
             )
             # NOTE: Closed trades are in self._exchange.trades (cumulative list)
             # Fills are in step_result.fills (per-step list) - BUG-004 fix
@@ -1304,6 +1392,14 @@ class BacktestEngine:
         first_price = float(exec_feed.close[sim_start_idx])
         last_price = float(exec_feed.close[exec_feed.length - 1])
 
+        # Phase 12: Compute funding totals from trades
+        total_funding_paid_usdt = sum(
+            max(0.0, -t.funding_pnl) for t in self._exchange.trades if t.is_closed
+        )
+        total_funding_received_usdt = sum(
+            max(0.0, t.funding_pnl) for t in self._exchange.trades if t.is_closed
+        )
+
         # Compute backtest metrics
         metrics = compute_backtest_metrics(
             equity_curve=self._equity_curve,
@@ -1311,6 +1407,9 @@ class BacktestEngine:
             tf=self.config.tf,
             initial_equity=initial_equity,
             bars_in_position=bars_in_position,
+            # Phase 12: Funding totals
+            total_funding_paid_usdt=total_funding_paid_usdt,
+            total_funding_received_usdt=total_funding_received_usdt,
             # Entry friction from exchange
             entry_attempts=self._exchange.entry_attempts_count,
             entry_rejections=self._exchange.entry_rejections_count,
@@ -1651,9 +1750,9 @@ class BacktestEngine:
         # Skip if we already have a position
         if exchange.position is not None:
             return
-        
-        # Skip if we already have a pending order
-        if exchange.pending_order is not None:
+
+        # Skip if we already have pending orders
+        if exchange.get_open_orders():
             return
         
         # Determine side

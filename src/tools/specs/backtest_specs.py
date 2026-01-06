@@ -108,7 +108,7 @@ SPECS = [
     {
         "name": "backtest_list_plays",
         "description": "List all available Plays for backtesting",
-        "category": "backtest.ideacard",
+        "category": "backtest.play",
         "parameters": {
             "plays_dir": {"type": "string", "description": "Override Play directory", "optional": True},
         },
@@ -117,7 +117,7 @@ SPECS = [
     {
         "name": "backtest_preflight",
         "description": "Run preflight check for an Play backtest (data coverage, warmup)",
-        "category": "backtest.ideacard",
+        "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
@@ -131,7 +131,7 @@ SPECS = [
     {
         "name": "backtest_run_play",
         "description": "Run a backtest for an Play (Golden Path)",
-        "category": "backtest.ideacard",
+        "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
@@ -146,7 +146,7 @@ SPECS = [
     {
         "name": "backtest_data_fix",
         "description": "Fix data for an Play backtest (sync/heal)",
-        "category": "backtest.ideacard",
+        "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment", "default": "live"},
@@ -163,7 +163,7 @@ SPECS = [
     {
         "name": "backtest_indicators",
         "description": "Discover indicator keys for an Play",
-        "category": "backtest.ideacard",
+        "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "data_env": {"type": "string", "description": "Data environment", "default": "live"},
@@ -175,7 +175,7 @@ SPECS = [
     {
         "name": "backtest_normalize_play",
         "description": "Normalize and validate an Play YAML",
-        "category": "backtest.ideacard",
+        "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "plays_dir": {"type": "string", "description": "Override directory", "optional": True},

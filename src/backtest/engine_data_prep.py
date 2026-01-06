@@ -480,9 +480,10 @@ def prepare_multi_tf_frames_impl(
                 break
 
         # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
+        # Note: feature_specs_by_role is keyed by TF string (e.g., "4h") NOT role (e.g., "htf")
         if config.feature_specs_by_role:
-            # Try role-specific specs first, fallback to exec
-            specs = config.feature_specs_by_role.get(tf_role) or \
+            # Try TF-specific specs first (e.g., "4h"), then exec for non-TF-specific features
+            specs = config.feature_specs_by_role.get(tf) or \
                     config.feature_specs_by_role.get('exec', [])
             if specs:
                 df = apply_feature_spec_indicators(df, specs)
@@ -821,6 +822,127 @@ def load_1m_data_impl(
 
     logger.info(
         f"Loaded {len(df)} 1m bars for {symbol}: "
+        f"{df['timestamp'].iloc[0]} to {df['timestamp'].iloc[-1]}"
+    )
+
+    return df
+
+
+# =============================================================================
+# Phase 12: Funding Rate and Open Interest Data Loading
+# =============================================================================
+
+
+def load_funding_data_impl(
+    symbol: str,
+    window_start: datetime,
+    window_end: datetime,
+    data_env: str = "live",
+    logger=None,
+) -> pd.DataFrame:
+    """
+    Load funding rate data for the backtest window.
+
+    Funding rates are recorded at 8-hour intervals (00:00, 08:00, 16:00 UTC).
+    This function loads all funding events within the backtest window.
+
+    Args:
+        symbol: Trading symbol (e.g., "SOLUSDT")
+        window_start: Backtest window start
+        window_end: Backtest window end
+        data_env: Data environment ("live" or "demo")
+        logger: Optional logger instance
+
+    Returns:
+        DataFrame with columns: timestamp, funding_rate
+        Sorted by timestamp ascending. Empty DataFrame if no data.
+    """
+    if logger is None:
+        logger = get_logger()
+
+    store = get_historical_store(env=data_env)
+
+    logger.info(
+        f"Loading funding data: {symbol} from {window_start} to {window_end}"
+    )
+
+    df = store.get_funding(
+        symbol=symbol,
+        start=window_start,
+        end=window_end,
+    )
+
+    if df is None or df.empty:
+        logger.warning(
+            f"No funding data found for {symbol} from {window_start} to {window_end}. "
+            f"Funding settlements will be skipped. "
+            f"To sync: python trade_cli.py data sync-funding --symbol {symbol}"
+        )
+        return pd.DataFrame(columns=["timestamp", "funding_rate"])
+
+    # Ensure sorted by timestamp
+    df = df.sort_values("timestamp").reset_index(drop=True)
+
+    logger.info(
+        f"Loaded {len(df)} funding events for {symbol}: "
+        f"{df['timestamp'].iloc[0]} to {df['timestamp'].iloc[-1]}"
+    )
+
+    return df
+
+
+def load_open_interest_data_impl(
+    symbol: str,
+    window_start: datetime,
+    window_end: datetime,
+    data_env: str = "live",
+    logger=None,
+) -> pd.DataFrame:
+    """
+    Load open interest data for the backtest window.
+
+    Open interest data is recorded at various intervals (5min to 1D).
+    This function loads all OI records within the backtest window.
+
+    Args:
+        symbol: Trading symbol (e.g., "SOLUSDT")
+        window_start: Backtest window start
+        window_end: Backtest window end
+        data_env: Data environment ("live" or "demo")
+        logger: Optional logger instance
+
+    Returns:
+        DataFrame with columns: timestamp, open_interest
+        Sorted by timestamp ascending. Empty DataFrame if no data.
+    """
+    if logger is None:
+        logger = get_logger()
+
+    store = get_historical_store(env=data_env)
+
+    logger.info(
+        f"Loading open interest data: {symbol} from {window_start} to {window_end}"
+    )
+
+    df = store.get_open_interest(
+        symbol=symbol,
+        start=window_start,
+        end=window_end,
+    )
+
+    if df is None or df.empty:
+        logger.warning(
+            f"No open interest data found for {symbol} from {window_start} to {window_end}. "
+            f"Open interest features will be unavailable. "
+            f"To sync: python trade_cli.py data sync-oi --symbol {symbol}"
+        )
+        return pd.DataFrame(columns=["timestamp", "open_interest"])
+
+    # Ensure sorted by timestamp
+    df = df.sort_values("timestamp").reset_index(drop=True)
+
+    logger.info(
+        f"Loaded {len(df)} open interest records for {symbol}: "
         f"{df['timestamp'].iloc[0]} to {df['timestamp'].iloc[-1]}"
     )
 

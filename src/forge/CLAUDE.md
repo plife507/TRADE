@@ -5,7 +5,7 @@ Development and validation environment for Plays.
 ## Purpose
 
 The Forge is where strategies are:
-1. **Created** - Generated from templates or composed from Setups
+1. **Created** - Generated from templates or composed from Blocks
 2. **Validated** - Checked for correctness before use
 3. **Audited** - Verified for math parity and data flow
 4. **Promoted** - Moved to production configs when ready
@@ -13,7 +13,7 @@ The Forge is where strategies are:
 ## Architecture Principle: Pure Math
 
 All Forge components are pure functions:
-- Input → Computation → Output
+- Input -> Computation -> Output
 - No side effects
 - No control flow about when to run
 - Engine orchestrates invocation
@@ -35,63 +35,86 @@ def maybe_validate(play: Play, force: bool = False):
 
 | Submodule | Purpose | Status |
 |-----------|---------|--------|
-| `audits/` | Parity and correctness audits | ✅ Complete |
-| `validation/` | Play schema and indicator validation | ✅ Complete |
+| `audits/` | Parity and correctness audits | Complete |
+| `validation/` | Play schema and indicator validation | Complete |
 | `generation/` | Play generation from templates | Planned |
-| `setups/` | Reusable Setup blocks | ✅ Complete |
-| `playbooks/` | Playbook collections + runner | ✅ Complete |
-| `systems/` | Trading system configs | ✅ Complete |
+| `blocks/` | Reusable atomic conditions | Complete |
+| `plays/` | Play normalizer and validation | Complete |
+| `systems/` | System configs (multiple plays + regime) | Complete |
 
 ## Key Entry Points
 
 ```python
 from src.forge import (
-    # Setups (reusable market conditions)
-    Setup, load_setup, list_setups, save_setup,
+    # Blocks (reusable atomic conditions)
+    Block, load_block, list_blocks, save_block,
+    normalize_block_strict,
 
-    # Playbooks (collections of Plays)
-    Playbook, PlaybookEntry, load_playbook, list_playbooks,
+    # Plays (complete backtest-ready strategies)
+    normalize_play_strict,
 
-    # Systems (complete trading configurations)
-    System, PlaybookRef, load_system, list_systems,
+    # Systems (multiple plays with regime conditions)
+    System, PlayRef, RegimeWeight,
+    load_system, list_systems, save_system,
+    normalize_system_strict,
 )
 ```
 
-## Trading Hierarchy (W4 Complete)
+## Trading Hierarchy (3-Level)
 
-| Level | Description | Config Location | DSL Syntax |
-|-------|-------------|-----------------|------------|
-| **Setup** | Reusable market condition | `configs/setups/` | `setup: <id>` |
-| **Play** | Complete tradeable strategy | `configs/plays/` | - |
-| **Playbook** | Collection of Plays | `configs/playbooks/` | - |
-| **System** | Full trading system | `configs/systems/` | - |
+| Level | Description | Config Location | Purpose |
+|-------|-------------|-----------------|---------|
+| **Block** | Atomic reusable condition | `configs/blocks/` | Features + DSL condition (no account/risk) |
+| **Play** | Complete backtest-ready strategy | `configs/plays/` | Features + actions + account + risk |
+| **System** | Multiple plays with regime | `configs/systems/` | Weighted blending + regime conditions |
 
 ### Hierarchy Resolution
 
 ```python
-# Full resolution: System → Playbook → Plays
-from src.forge import load_system, load_playbook
+# Full resolution: System -> Plays
+from src.forge import load_system
 
 system = load_system("btc_trend_v1")
-for pb_ref in system.get_enabled_playbooks():
-    playbook = load_playbook(pb_ref.playbook_id)
-    for entry in playbook.get_enabled_plays():
-        print(f"Play: {entry.play_id} ({entry.role})")
+for play_ref in system.get_enabled_plays():
+    print(f"Play: {play_ref.play_id} (weight={play_ref.base_weight})")
+    if play_ref.regime_weight:
+        print(f"  Regime: multiplier={play_ref.regime_weight.multiplier}")
 ```
 
-### Setup in DSL Blocks
+### System Weighted Blending
+
+Systems support multiple active plays with regime-based weight adjustments:
 
 ```yaml
-# In Play blocks, reference setups by ID:
-blocks:
-  - id: entry
-    cases:
-      - when:
-          all:
-            - setup: rsi_oversold    # References configs/setups/rsi_oversold.yml
-            - setup: ema_pullback    # References configs/setups/ema_pullback.yml
-        emit:
-          - action: entry_long
+# configs/systems/btc_trend_v1.yml
+id: btc_trend_v1
+version: "1.0.0"
+
+plays:
+  - play_id: ema_trend_v1
+    base_weight: 0.6
+    regime_weight:
+      condition:
+        all:
+          - ["atr_14", ">", 100]  # High volatility
+      multiplier: 1.5  # Boost weight 50% in volatile markets
+
+  - play_id: mean_reversion_v1
+    base_weight: 0.4
+    regime_weight:
+      condition:
+        all:
+          - ["atr_14", "<", 50]   # Low volatility
+      multiplier: 2.0  # Double weight in ranging markets
+
+regime_features:
+  atr_14:
+    indicator: atr
+    params: { length: 14 }
+
+risk_profile:
+  initial_capital_usdt: 100000.0
+  max_drawdown_pct: 20.0
 ```
 
 ## Critical Rules
@@ -105,34 +128,53 @@ blocks:
 ## Validation Flow
 
 ```
-Play YAML → load_play() → validate_play() → ValidationResult
-                                ↓
-                        [errors] → FIX → retry
-                        [valid] → promote to configs/plays/
+Play YAML -> load_play() -> validate_play() -> ValidationResult
+                                |
+                        [errors] -> FIX -> retry
+                        [valid] -> promote to configs/plays/
+```
+
+## Normalizers
+
+Each hierarchy level has a strict normalizer:
+
+| Level | Function | Purpose |
+|-------|----------|---------|
+| Block | `normalize_block_strict()` | Features + condition DSL |
+| Play | `normalize_play_strict()` | Full backtest-ready strategy |
+| System | `normalize_system_strict()` | Multiple plays + regime |
+
+```python
+from src.forge import normalize_system_strict
+
+# Returns (System | None, NormalizationResult)
+system, result = normalize_system_strict(raw_yaml, fail_on_error=False)
+if not result.valid:
+    print("Errors:", result.errors)
 ```
 
 ## Audit Tools
 
 | Audit | Purpose | Pure Function |
 |-------|---------|---------------|
-| `audit_toolkit` | Indicator registry consistency | (config) → ToolkitResult |
-| `audit_math_parity` | Indicator math vs pandas_ta | (snapshots) → ParityResult |
-| `audit_plumbing` | Snapshot data flow | (play, dates) → PlumbingResult |
-| `audit_rollup` | 1m price aggregation | (config) → RollupResult |
+| `audit_toolkit` | Indicator registry consistency | (config) -> ToolkitResult |
+| `audit_math_parity` | Indicator math vs pandas_ta | (snapshots) -> ParityResult |
+| `audit_plumbing` | Snapshot data flow | (play, dates) -> PlumbingResult |
+| `audit_rollup` | 1m price aggregation | (config) -> RollupResult |
 
 ## Stress Test Suite (2026-01-04)
 
 Full validation + backtest pipeline with hash tracing for debugging flow.
 
-**8-Step Pipeline** (each produces `input_hash → output_hash`):
-1. Generate synthetic candle data (all TFs) → `synthetic_data_hash`
-2. Validate all plays (normalize-batch) → `config_hash`
-3. Run toolkit audit (registry contract) → `registry_hash`
-4. Run structure parity (synthetic data) → `structure_hash`
-5. Run indicator parity (synthetic data) → `indicator_hash`
-6. Run rollup audit (1m aggregation) → `rollup_hash`
-7. Execute validation plays as backtests → `trades_hash`, `equity_hash`
-8. Verify artifacts + determinism → `run_hash`
+**8-Step Pipeline** (each produces `input_hash -> output_hash`):
+1. Generate synthetic candle data (all TFs) -> `synthetic_data_hash`
+2. Validate all plays (normalize-batch) -> `config_hash`
+3. Run toolkit audit (registry contract) -> `registry_hash`
+4. Run structure parity (synthetic data) -> `structure_hash`
+5. Run indicator parity (synthetic data) -> `indicator_hash`
+6. Run rollup audit (1m aggregation) -> `rollup_hash`
+7. Execute validation plays as backtests -> `trades_hash`, `equity_hash`
+8. Verify artifacts + determinism -> `run_hash`
 
 **Usage**:
 ```python
@@ -146,32 +188,7 @@ result = forge_stress_test_tool(
 # result.data["hash_chain"] = ["a1b2c3d4...", "e5f6g7h8...", ...]
 ```
 
-**CLI**: Forge menu → option 6 (Stress Test Suite)
-
-## Playbook Runner (2026-01-04)
-
-Run all plays in a playbook with multiple modes and hash tracking.
-
-**Modes**:
-| Mode | Purpose | Output |
-|------|---------|--------|
-| `verify-math` | Validate configs only (fast) | validation_hash per play |
-| `sequential` | Run backtests one-by-one | run_hash + trades_hash per play |
-| `compare` | Compare metrics side-by-side | hash diffs |
-| `aggregate` | Aggregate system metrics | composite_hash |
-
-**Usage**:
-```python
-from src.tools import forge_run_playbook_tool
-
-result = forge_run_playbook_tool(
-    playbook_id="stress_test",
-    mode="verify-math",  # or sequential, compare, aggregate
-)
-# result.data["hash_summary"] = {"T_001": "abc...", "T_002": "def..."}
-```
-
-**CLI**: Forge menu → option 7 (Run Playbook)
+**CLI**: Forge menu -> option 6 (Stress Test Suite)
 
 ## Synthetic Data Generation
 
@@ -199,18 +216,18 @@ candles = generate_synthetic_candles(
 # candles.data_hash = "abc123..."  # For verification
 ```
 
-## W4 Trading Hierarchy Status
+## Validation Configs
 
-**Completed** (2026-01-04):
-- W4-P1: Setup dataclass and loader
-- W4-P2: Setup DSL integration (`setup:` syntax in blocks)
-- W4-P3: Playbook dataclass and loader
-- W4-P4: System dataclass and loader
+| Level | Location | Examples |
+|-------|----------|----------|
+| Block | `configs/blocks/_validation/` | V_B001_*, V_B002_* |
+| Play | `configs/plays/_validation/` | V_001-V_045 |
+| System | `configs/systems/_validation/` | V_SYS001-V_SYS003 |
 
-**Validation Plays**:
-- `V_300_setup_basic.yml` - Basic setup reference
-- `V_301_setup_composition.yml` - Multiple setups with all/any
-- `V_400_playbook_basic.yml` - Basic playbook loading
+**System Validation Configs**:
+- `V_SYS001_minimal.yml` - Single play, minimal risk
+- `V_SYS002_full.yml` - Multiple plays with weights
+- `V_SYS003_multi_mode.yml` - Regime-based weight adjustment
 
 ## Active TODOs
 

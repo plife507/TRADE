@@ -1,40 +1,54 @@
 # Active TODO
 
-**Last Updated**: 2026-01-04
-**Status**: STRESS TEST BASELINE COMPLETE
+**Last Updated**: 2026-01-05
+**Status**: VISUALIZATION SYSTEM COMPLETE
 
 ---
 
 ## Current State
 
-**Forge Stress Test Suite (2026-01-04)** - COMPLETE:
-- ✅ Stress Test Suite (8 steps with hash tracing)
-- ✅ Playbook Runner (4 modes: verify-math, sequential, compare, aggregate)
-- ✅ Synthetic Data Generation (trending, ranging, volatile, mtf_aligned patterns)
-- ✅ CLI Menu Integration (Forge menu options 6, 7)
-- ✅ Structure/Indicator Parity Tools
+**Visualization System (2026-01-05)** - COMPLETE:
+- ✅ FastAPI backend (`src/viz/`) with 6 API endpoints
+- ✅ React + TypeScript frontend (`ui/`) with TradingView-style charts
+- ✅ Candlestick charts, equity curves, indicator overlays, trade markers
+- ✅ CLI command: `python trade_cli.py viz serve --port 8765`
+- ✅ Dev mode with separate API/UI servers for hot reload
+
+**Validation Play Reorganization (2026-01-05)** - COMPLETE:
+- ✅ 26 validation plays with categorized prefix structure
+- ✅ **I_** (Indicators): I_001-I_010 (EMA, SMA, RSI, ATR, MACD, BBands, Stoch, ADX, SuperTrend, EMA_Cross)
+- ✅ **M_** (Multi-TF): M_001_mtf
+- ✅ **O_** (Operators): O_001-O_003 (between, all_any, holds_for)
+- ✅ **R_** (Risk): R_001-R_005 (ATR stop, RR ratio, fixed sizing, short-only, long-short)
+- ✅ **S_** (Structures): S_001-S_006 (swing, fib, trend, rolling, zone, derived_zone)
+- ✅ TEMPLATE.yml for new play creation
+
+**Legacy Cleanup (2026-01-05)** - COMPLETE:
+- ✅ Removed `src/forge/playbooks/` module (no longer needed)
+- ✅ Removed `configs/playbooks/`, `configs/setups/` directories
+- ✅ Simplified to Block → Play → System hierarchy
+
+**Simulator Order Parity (2026-01-05)** - COMPLETE:
+- ✅ Limit orders (buy/sell with time-in-force: GTC, IOC, FOK, PostOnly)
+- ✅ Stop market orders (trigger + market fill)
+- ✅ Stop limit orders (trigger + limit fill)
+- ✅ Reduce-only orders (partial position closes)
+- ✅ Order book management (cancel, cancel_all, amend)
+- ✅ Smoke test: `run_sim_orders_smoke()` in CLI suite
 
 **Architecture Evolution (5 Workstreams) - ALL COMPLETE**:
 - ✅ **W1: The Forge** (2026-01-04) - `src/forge/` with validation framework
 - ✅ **W2: StateRationalizer** (2026-01-04) - Layer 2 transitions, derived state, conflicts
 - ✅ **W3: Price Source Abstraction** (2026-01-04) - PriceSource protocol, BacktestPriceSource
-- ✅ **W4: Trading Hierarchy** (2026-01-04) - Setup/Play/Playbook/System complete
+- ✅ **W4: Trading Hierarchy** (2026-01-04) - Block/Play/System complete
 - ✅ **W5: Live/Demo Stubs** (2026-01-04) - DemoPriceSource, LivePriceSource stubs
 
-**Prior Work Complete:**
-- Forge Migration (2026-01-04) - IdeaCard -> Play rename (8 phases, 221 files)
-- Mega-file refactoring (2026-01-03) - Phases 1-3 done
-- Incremental State Architecture (2026-01-03)
-- 1m Evaluation Loop (2026-01-02)
-- Market Structure Stages 0-7 (2026-01-01)
-- 72 bugs fixed across P0-P3
-
 **Validation Status**:
-- 84 tools registered (+4 forge stress test tools)
-- 17/17 Plays normalize (V_100+ blocks format, V_300+ hierarchy)
+- 84 tools registered
+- 26 validation plays (I_, M_, O_, R_, S_ prefixes)
 - 42/42 indicators pass audit
 - 6 structures in STRUCTURE_REGISTRY
-- All smoke tests pass
+- All smoke tests pass (including sim_orders, structure, forge)
 
 **New APIs**:
 ```python
@@ -42,39 +56,39 @@
 from src.backtest import Play, load_play, create_engine_from_play
 from src.backtest.rationalization import StateRationalizer, RationalizedState
 
-# Trading Hierarchy
-from src.forge import (
-    Setup, load_setup, list_setups,
-    Playbook, load_playbook, list_playbooks,
-    System, load_system, list_systems,
-)
+# Visualization
+# python trade_cli.py viz serve --port 8765
+# Then visit http://localhost:8765
+
+# Forge
+from src.forge import Block, load_block, System, load_system
 ```
 
 ---
 
-## Trading Hierarchy (W4 Complete)
+## Trading Hierarchy (Simplified)
 
-**Full Hierarchy Operational**:
 ```
-System (btc_trend_v1)
-└── Playbook (trend_following)
-    ├── Play (T_001_ema_crossover)
-    └── Play (T_002_multi_indicator_momentum)
-        └── Setup (rsi_oversold)  ← DSL: `setup: rsi_oversold`
+Block (reusable condition)
+  └── Play (complete backtest strategy)
+        └── System (regime-weighted ensemble)
 ```
 
 **Config Locations**:
 | Level | Directory | Example |
 |-------|-----------|---------|
-| Setup | `configs/setups/` | rsi_oversold.yml |
-| Play | `configs/plays/` | T_001_ema_crossover.yml |
-| Playbook | `configs/playbooks/` | trend_following.yml |
-| System | `configs/systems/` | btc_trend_v1.yml |
+| Block | `configs/blocks/` | ema_cross.yml |
+| Play | `configs/plays/` | I_001_ema.yml |
+| System | `configs/systems/` | (future) |
 
-**Validation Plays**:
-- V_300_setup_basic.yml - Setup reference
-- V_301_setup_composition.yml - Multiple setups
-- V_400_playbook_basic.yml - Playbook loading
+**Validation Play Prefixes**:
+| Prefix | Purpose | Count |
+|--------|---------|-------|
+| I_ | Individual indicators | 10 |
+| M_ | Multi-timeframe | 1 |
+| O_ | Operators/DSL | 3 |
+| R_ | Risk/sizing | 5 |
+| S_ | Structures | 6 |
 
 ---
 
@@ -82,16 +96,34 @@ System (btc_trend_v1)
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
+| **ICT Market Structure** | **P1** | See [ICT_MARKET_STRUCTURE.md](ICT_MARKET_STRUCTURE.md) |
+| **Visualization Primitives** | P2 | Zone boxes, Fib levels, market structure overlays |
 | **W5 Full Implementation** | Future | WebSocket + live engine mode |
-| **BOS/CHoCH Detection** | Medium | Break of Structure / Change of Character |
-| **Complex Order Types** | Medium | Limit orders, stop orders in backtest |
 | **Multi-Symbol Backtests** | Future | Run multiple symbols in single backtest |
+
+### ICT/SMC Implementation (2026-01-05)
+
+New structure types planned for ICT (Inner Circle Trader) concepts:
+
+| Structure | Description | Phase |
+|-----------|-------------|-------|
+| `market_structure` | BOS/CHoCH detection | P2 (P1 priority) |
+| `order_block` | Last opposing candle before impulse | P3 |
+| `fair_value_gap` | 3-candle imbalance pattern | P4 |
+| `liquidity_zone` | Equal highs/lows (BSL/SSL) | P5 |
+
+**Full plan**: [ICT_MARKET_STRUCTURE.md](ICT_MARKET_STRUCTURE.md)
 
 ---
 
 ## Quick Reference
 
 ```bash
+# Visualization
+python trade_cli.py viz serve                    # Start viz server on :8765
+python trade_cli.py viz serve --port 3000        # Custom port
+python trade_cli.py viz serve --reload           # Dev mode with auto-reload
+
 # Validate
 python trade_cli.py backtest play-normalize-batch --dir configs/plays/_validation
 python trade_cli.py backtest audit-toolkit
@@ -100,17 +132,11 @@ python trade_cli.py backtest audit-rollup
 # Forge verification (smoke test)
 python trade_cli.py --smoke forge
 
-# Forge Stress Test (programmatic)
-python -c "from src.tools import forge_stress_test_tool; print(forge_stress_test_tool())"
-
-# Playbook Runner (programmatic)
-python -c "from src.tools import forge_run_playbook_tool; print(forge_run_playbook_tool('stress_test', mode='verify-math'))"
+# Simulator order type smoke test
+python -c "from src.cli.smoke_tests import run_sim_orders_smoke; run_sim_orders_smoke()"
 
 # Full smoke
 $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
-
-# Trading Hierarchy
-python -c "from src.forge import list_setups, list_playbooks, list_systems; print(list_setups(), list_playbooks(), list_systems())"
 ```
 
 ---
@@ -119,8 +145,12 @@ python -c "from src.forge import list_setups, list_playbooks, list_systems; prin
 
 | Phase | Date | Notes |
 |-------|------|-------|
+| **Visualization System** | 2026-01-05 | FastAPI + React, TradingView-style charts |
+| **Validation Reorganization** | 2026-01-05 | 26 plays with I_/M_/O_/R_/S_ prefixes |
+| **Legacy Cleanup** | 2026-01-05 | Removed playbooks, setups, simplified hierarchy |
+| **Simulator Order Parity** | 2026-01-05 | Limit/stop orders, order book, reduce-only |
 | **Stress Test Baseline** | 2026-01-04 | 8-step suite, playbook runner, synthetic data |
-| **W4 Trading Hierarchy** | 2026-01-04 | Setup/Playbook/System complete |
+| **W4 Trading Hierarchy** | 2026-01-04 | Block/Play/System complete |
 | **W3 Price Source** | 2026-01-04 | PriceSource protocol |
 | **W2 StateRationalizer** | 2026-01-04 | Layer 2 complete |
 | **W1 Forge** | 2026-01-04 | Forge framework |

@@ -43,6 +43,7 @@ class LedgerConfig:
     initial_margin_rate: float = 0.5  # IMR = 1/leverage
     maintenance_margin_rate: float = 0.005  # MMR (0.5% Bybit default)
     taker_fee_rate: float = 0.0006  # 0.06% default
+    debug_check_invariants: bool = False  # Check invariants after every mutation
     
     @classmethod
     def from_risk_profile(cls, risk_profile: "RiskProfileConfig") -> "LedgerConfig":
@@ -143,6 +144,12 @@ class Ledger:
         self._equity_usdt = self._cash_balance_usdt + self._unrealized_pnl_usdt
         self._free_margin_usdt = self._equity_usdt - self._used_margin_usdt
         self._available_balance_usdt = max(0.0, self._free_margin_usdt)
+
+        # Debug mode: check invariants after every mutation
+        if self._config.debug_check_invariants:
+            errors = self.check_invariants()
+            if errors:
+                raise AssertionError(f"Ledger invariant violation: {errors}")
     
     def update_for_mark_price(
         self,
@@ -204,33 +211,68 @@ class Ledger:
         exit_fee: float,
     ) -> LedgerUpdate:
         """
-        Apply position exit (realize PnL and deduct fee).
-        
+        Apply full position exit (realize PnL and deduct fee).
+
         Args:
             realized_pnl: Gross realized PnL (before fees)
             exit_fee: Exit fee in USD
-            
+
         Returns:
             LedgerUpdate with realized PnL and fees
         """
         # Realize PnL into cash
         self._cash_balance_usdt += realized_pnl - exit_fee
         self._total_fees_paid += exit_fee
-        
-        # Clear position-related state
+
+        # Clear position-related state (full close)
         self._unrealized_pnl_usdt = 0.0
         self._used_margin_usdt = 0.0
         self._maintenance_margin_usdt = 0.0
-        
+
         self._recompute_derived()
-        
+
         return LedgerUpdate(
             state=self.state,
             realized_pnl=realized_pnl,
             fees_paid=exit_fee,
             funding_paid=0.0,
         )
-    
+
+    def apply_partial_exit(
+        self,
+        realized_pnl: float,
+        exit_fee: float,
+    ) -> LedgerUpdate:
+        """
+        Apply partial position exit (realize PnL, keep margin state).
+
+        Unlike apply_exit, this does NOT clear margin/unrealized PnL state.
+        Those will be recalculated on the next update_for_mark_price call
+        based on the reduced position size.
+
+        Args:
+            realized_pnl: Gross realized PnL for closed portion (before fees)
+            exit_fee: Exit fee in USD
+
+        Returns:
+            LedgerUpdate with realized PnL and fees
+        """
+        # Realize PnL into cash (partial close)
+        self._cash_balance_usdt += realized_pnl - exit_fee
+        self._total_fees_paid += exit_fee
+
+        # Do NOT clear position-related state - position is still open
+        # update_for_mark_price will recalculate based on reduced position
+
+        self._recompute_derived()
+
+        return LedgerUpdate(
+            state=self.state,
+            realized_pnl=realized_pnl,
+            fees_paid=exit_fee,
+            funding_paid=0.0,
+        )
+
     def apply_funding(self, funding_pnl: float) -> LedgerUpdate:
         """
         Apply funding payment.
