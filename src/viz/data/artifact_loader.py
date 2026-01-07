@@ -36,6 +36,9 @@ class RunDiscovery:
     sharpe: float = 0.0
     max_drawdown_pct: float = 0.0
 
+    # Play description
+    description: str = ""
+
 
 def discover_runs(
     base_dir: Path | None = None,
@@ -160,6 +163,7 @@ def _load_run_discovery(
             win_rate=metrics.get("win_rate", 0.0),
             sharpe=metrics.get("sharpe", 0.0),
             max_drawdown_pct=metrics.get("max_drawdown_pct", 0.0),
+            description=data.get("description", ""),
         )
     except Exception:
         return None

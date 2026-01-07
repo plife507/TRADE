@@ -1,7 +1,7 @@
-id: M_001_mtf
+id: TF_002_sol_long_only
 version: "3.0.0"
-name: "MTF Test: 15m + 1h"
-description: "Test multi-timeframe with HTF filter"
+name: "Long Only: SOL EMA Trend + Crossover"
+description: "EMA 50 trend filter, EMA 9/21 crossover entry, 1:3 R:R, long only"
 
 account:
   starting_equity_usdt: 10000.0
@@ -13,16 +13,13 @@ account:
     maker_bps: 2.0
 
 symbol_universe:
-  - "ETHUSDT"
+  - "SOLUSDT"
 
 execution_tf: "15m"
 
-timeframes:
-  htf: "1h"
-
 position_policy:
   mode: "long_only"
-  exit_mode: "first_hit"
+  exit_mode: "sl_tp_only"
   max_positions_per_symbol: 1
 
 features:
@@ -38,53 +35,50 @@ features:
     indicator_type: ema
     params:
       length: 21
-  - id: "ema_50_1h"
-    tf: "1h"
+  - id: "ema_50"
+    tf: "15m"
     type: indicator
     indicator_type: ema
     params:
       length: 50
+  - id: "atr_14"
+    tf: "15m"
+    type: indicator
+    indicator_type: atr
+    params:
+      length: 14
 
 actions:
   - id: entry
     cases:
+      # Long: close > EMA 50 (uptrend) AND EMA 9 crosses above EMA 21
       - when:
           all:
-            - lhs:
-                feature_id: "ema_9"
-              op: gt
-              rhs:
-                feature_id: "ema_21"
             - lhs:
                 feature_id: "close"
               op: gt
               rhs:
-                feature_id: "ema_50_1h"
+                feature_id: "ema_50"
+            - lhs:
+                feature_id: "ema_9"
+              op: cross_above
+              rhs:
+                feature_id: "ema_21"
         emit:
           - action: entry_long
     else:
       emit:
         - action: no_action
 
-  - id: exit
-    cases:
-      - when:
-          lhs:
-            feature_id: "ema_9"
-          op: lt
-          rhs:
-            feature_id: "ema_21"
-        emit:
-          - action: exit_long
-
 risk_model:
   stop_loss:
-    type: "percent"
-    value: 2.0
+    type: "atr_multiple"
+    value: 1.5
+    atr_feature_id: "atr_14"
   take_profit:
-    type: "percent"
-    value: 4.0
+    type: "rr_ratio"
+    value: 3.0
   sizing:
     model: "percent_equity"
-    value: 5.0
+    value: 2.0
     max_leverage: 3.0

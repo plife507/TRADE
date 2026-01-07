@@ -6,6 +6,7 @@ interface SidebarProps {
   runs: RunSummary[]
   selectedRunId: string | null
   onSelectRun: (runId: string) => void
+  onDeleteRun: (runId: string) => void
   isLoading: boolean
   currentView: AppView
   onViewChange: (view: AppView) => void
@@ -38,57 +39,65 @@ function Logo() {
   )
 }
 
+function formatRelativeDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'short' })
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 function RunCard({
   run,
   isSelected,
   onClick,
+  onDelete,
   index,
 }: {
   run: RunSummary
   isSelected: boolean
   onClick: () => void
+  onDelete: () => void
   index: number
 }) {
   const isPositive = run.net_pnl_usdt >= 0
   const staggerClass = `stagger-${Math.min(index + 1, 8)}`
 
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (confirm(`Delete backtest ${run.play_id}?`)) {
+      onDelete()
+    }
+  }
+
   return (
-    <button
+    <div
       onClick={onClick}
-      className={`run-card animate-fade-in ${staggerClass} ${isSelected ? 'selected' : ''}`}
+      className={`run-item animate-fade-in ${staggerClass} ${isSelected ? 'selected' : ''}`}
       style={{ animationFillMode: 'backwards' }}
     >
-      <div className="run-card-header">
-        <span className="run-card-name">{run.play_id}</span>
-        <span className={`run-card-pnl ${isPositive ? 'positive' : 'negative'}`}>
-          {isPositive ? '+' : ''}
-          {run.net_pnl_usdt.toFixed(0)}
-        </span>
+      <div className="run-item-row">
+        <span className="run-item-name">{run.play_id}</span>
+        <div className="run-item-actions">
+          <span className={`run-item-pnl ${isPositive ? 'positive' : 'negative'}`}>
+            {isPositive ? '+' : ''}{run.net_pnl_usdt.toFixed(0)}
+          </span>
+          <button className="run-item-delete" onClick={handleDelete} title="Delete run">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" />
+            </svg>
+          </button>
+        </div>
       </div>
-
-      <div className="run-card-meta">
-        <span className="run-card-symbol">{run.symbol}</span>
-        <span className="run-card-separator">/</span>
-        <span className="run-card-tf">{run.tf_exec}</span>
+      <div className="run-item-meta">
+        {run.symbol} · {run.tf_exec} · {formatRelativeDate(run.created_at)}
       </div>
-
-      <div className="run-card-stats">
-        <span><span>{run.trades_count}</span> trades</span>
-        <span>|</span>
-        <span>
-          <span className={run.win_rate >= 50 ? 'wr-good' : 'wr-bad'}>
-            {run.win_rate.toFixed(0)}%
-          </span>{' '}
-          WR
-        </span>
-        {run.sharpe !== 0 && (
-          <>
-            <span>|</span>
-            <span><span>{run.sharpe.toFixed(1)}</span> SR</span>
-          </>
-        )}
-      </div>
-    </button>
+    </div>
   )
 }
 
@@ -156,6 +165,7 @@ export function Sidebar({
   runs,
   selectedRunId,
   onSelectRun,
+  onDeleteRun,
   isLoading,
   currentView,
   onViewChange,
@@ -169,50 +179,31 @@ export function Sidebar({
       <NavTabs currentView={currentView} onViewChange={onViewChange} />
 
       {currentView === 'backtests' && (
-        <>
-          <div className="sidebar-search">
-            <div className="search-input-wrapper">
-              <input
-                type="text"
-                placeholder="Search runs..."
-                className="search-input"
-              />
-              <svg className="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+        <div className="sidebar-runs">
+          <div className="runs-header">
+            <h2 className="runs-title">Recent Runs</h2>
+            <span className="badge">{runs.length}</span>
+          </div>
+
+          {isLoading ? (
+            <LoadingSkeleton />
+          ) : runs.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="runs-list">
+              {runs.map((run, index) => (
+                <RunCard
+                  key={run.run_id}
+                  run={run}
+                  isSelected={selectedRunId === run.run_id}
+                  onClick={() => onSelectRun(run.run_id)}
+                  onDelete={() => onDeleteRun(run.run_id)}
+                  index={index}
                 />
-              </svg>
+              ))}
             </div>
-          </div>
-
-          <div className="sidebar-runs">
-            <div className="runs-header">
-              <h2 className="runs-title">Recent Runs</h2>
-              <span className="badge">{runs.length}</span>
-            </div>
-
-            {isLoading ? (
-              <LoadingSkeleton />
-            ) : runs.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div className="runs-list">
-                {runs.map((run, index) => (
-                  <RunCard
-                    key={run.run_id}
-                    run={run}
-                    isSelected={selectedRunId === run.run_id}
-                    onClick={() => onSelectRun(run.run_id)}
-                    index={index}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </>
+          )}
+        </div>
       )}
 
       {currentView === 'indicators' && (

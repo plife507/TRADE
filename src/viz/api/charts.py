@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from ..data.artifact_loader import find_run_path
 from ..data.ohlcv_loader import (
     load_ohlcv_from_duckdb,
+    load_ohlcv_for_timeframes,
     ohlcv_df_to_chart_data,
     get_run_metadata,
 )
@@ -18,6 +19,8 @@ from ..data.indicator_loader import load_indicators_for_run
 from ..data.play_loader import (
     PlayHashMismatchError,
     PlayNotFoundError,
+    load_play_for_run,
+    get_unique_timeframes,
 )
 from ..renderers.indicators import UnsupportedIndicatorError
 from ..renderers.structures import UnsupportedStructureError
@@ -45,6 +48,7 @@ class OHLCVResponse(BaseModel):
     data: list[OHLCVBar]
     total_bars: int
     warmup_bars: int = 0
+    mark_price: float | None = None  # Last close price
 
 
 @router.get("/{run_id}/ohlcv", response_model=OHLCVResponse)
@@ -92,6 +96,10 @@ async def get_ohlcv(
 
     # Apply pagination
     total_bars = len(data)
+
+    # Mark price is the last close price before pagination
+    mark_price = data[-1]["close"] if data else None
+
     data = data[offset : offset + limit]
 
     return OHLCVResponse(
@@ -101,6 +109,7 @@ async def get_ohlcv(
         data=[OHLCVBar(**bar) for bar in data],
         total_bars=total_bars,
         warmup_bars=warmup_bars,
+        mark_price=mark_price,
     )
 
 
@@ -182,6 +191,224 @@ async def get_volume(
         )
 
     return VolumeResponse(run_id=run_id, data=volume_bars)
+
+
+# --- Multi-Timeframe OHLCV Models ---
+
+
+class TFOHLCVData(BaseModel):
+    """OHLCV data for a single timeframe."""
+
+    tf: str
+    role: str  # "exec", "mtf", or "htf"
+    data: list[OHLCVBar]
+    total_bars: int
+
+
+class TFConfig(BaseModel):
+    """Timeframe configuration from Play."""
+
+    exec: str  # Always present
+    mtf: str | None = None
+    htf: str | None = None
+
+
+class MTFOHLCVResponse(BaseModel):
+    """Response for GET /api/charts/{run_id}/ohlcv-mtf."""
+
+    run_id: str
+    symbol: str
+    exec_tf: str
+    tf_config: TFConfig
+    timeframes: dict[str, TFOHLCVData]  # role -> data
+    mark_price: float | None = None
+
+
+@router.get("/{run_id}/ohlcv-mtf", response_model=MTFOHLCVResponse)
+async def get_ohlcv_mtf(
+    run_id: str,
+    limit: int = Query(2000, ge=100, le=10000, description="Max bars per TF"),
+) -> MTFOHLCVResponse:
+    """
+    Get OHLCV data for all timeframes configured in the Play.
+
+    Returns exec TF (always), plus MTF and HTF if configured.
+    Each TF's data is loaded separately from DuckDB.
+    """
+    run_path = find_run_path(run_id)
+
+    if not run_path:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    # Get run metadata
+    metadata = get_run_metadata(run_path)
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Could not load run metadata")
+
+    symbol = metadata.get("symbol", "")
+    exec_tf = metadata.get("tf_exec", metadata.get("tf", ""))
+    window_start = metadata.get("window_start")
+    window_end = metadata.get("window_end")
+
+    # Try to load Play to get MTF/HTF config
+    mtf_tf: str | None = None
+    htf_tf: str | None = None
+
+    try:
+        play, _ = load_play_for_run(run_path, verify_hash=False)
+
+        # Extract MTF/HTF from Play.timeframes if available
+        if hasattr(play, "timeframes") and play.timeframes:
+            mtf_tf = play.timeframes.get("mtf")
+            htf_tf = play.timeframes.get("htf")
+    except Exception:
+        # Play not found or error - continue with exec TF only
+        pass
+
+    # Build TF config
+    tf_config = TFConfig(exec=exec_tf, mtf=mtf_tf, htf=htf_tf)
+
+    # Collect all unique TFs to load
+    tfs_to_load = {exec_tf}
+    if mtf_tf:
+        tfs_to_load.add(mtf_tf)
+    if htf_tf:
+        tfs_to_load.add(htf_tf)
+
+    # Load OHLCV for all timeframes
+    tf_data = load_ohlcv_for_timeframes(
+        symbol=symbol,
+        timeframes=tfs_to_load,
+        start_ts=window_start,
+        end_ts=window_end,
+    )
+
+    # Build response with role mapping
+    timeframes_response: dict[str, TFOHLCVData] = {}
+    mark_price: float | None = None
+
+    # Exec TF
+    if exec_tf in tf_data:
+        df = tf_data[exec_tf]
+        chart_data = ohlcv_df_to_chart_data(df)
+        if chart_data:
+            mark_price = chart_data[-1]["close"]
+        chart_data = chart_data[:limit]
+        timeframes_response["exec"] = TFOHLCVData(
+            tf=exec_tf,
+            role="exec",
+            data=[OHLCVBar(**bar) for bar in chart_data],
+            total_bars=len(df),
+        )
+
+    # MTF
+    if mtf_tf and mtf_tf in tf_data:
+        df = tf_data[mtf_tf]
+        chart_data = ohlcv_df_to_chart_data(df)[:limit]
+        timeframes_response["mtf"] = TFOHLCVData(
+            tf=mtf_tf,
+            role="mtf",
+            data=[OHLCVBar(**bar) for bar in chart_data],
+            total_bars=len(df),
+        )
+
+    # HTF
+    if htf_tf and htf_tf in tf_data:
+        df = tf_data[htf_tf]
+        chart_data = ohlcv_df_to_chart_data(df)[:limit]
+        timeframes_response["htf"] = TFOHLCVData(
+            tf=htf_tf,
+            role="htf",
+            data=[OHLCVBar(**bar) for bar in chart_data],
+            total_bars=len(df),
+        )
+
+    return MTFOHLCVResponse(
+        run_id=run_id,
+        symbol=symbol,
+        exec_tf=exec_tf,
+        tf_config=tf_config,
+        timeframes=timeframes_response,
+        mark_price=mark_price,
+    )
+
+
+# --- Mark Price Line ---
+
+
+class MarkPricePoint(BaseModel):
+    """Single mark price point (1m close)."""
+
+    time: int  # Unix timestamp (seconds)
+    price: float
+
+
+class MarkPriceResponse(BaseModel):
+    """Response for GET /api/charts/{run_id}/mark-price."""
+
+    run_id: str
+    symbol: str
+    data: list[MarkPricePoint]
+    total_points: int
+
+
+@router.get("/{run_id}/mark-price", response_model=MarkPriceResponse)
+async def get_mark_price_line(run_id: str) -> MarkPriceResponse:
+    """
+    Get 1m close prices for mark price line overlay.
+
+    Returns 1m close prices that can be rendered as a line
+    moving through candles on any timeframe chart.
+    """
+    run_path = find_run_path(run_id)
+
+    if not run_path:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    # Get run metadata
+    metadata = get_run_metadata(run_path)
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Could not load run metadata")
+
+    symbol = metadata.get("symbol", "")
+    window_start = metadata.get("window_start")
+    window_end = metadata.get("window_end")
+
+    # Load 1m data from DuckDB
+    df = load_ohlcv_from_duckdb(
+        symbol=symbol,
+        tf="1m",
+        start_ts=window_start,
+        end_ts=window_end,
+    )
+
+    if df is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not load 1m data for {symbol}",
+        )
+
+    # Convert to chart format
+    chart_data = ohlcv_df_to_chart_data(df)
+    total_points = len(chart_data)
+
+    # Downsample if too many points (>20000 for performance)
+    if total_points > 20000:
+        step = total_points // 20000 + 1
+        chart_data = chart_data[::step]
+
+    # Convert to MarkPricePoint (just time + close price)
+    data = [
+        MarkPricePoint(time=bar["time"], price=bar["close"])
+        for bar in chart_data
+    ]
+
+    return MarkPriceResponse(
+        run_id=run_id,
+        symbol=symbol,
+        data=data,
+        total_points=total_points,
+    )
 
 
 # --- Indicator Models ---

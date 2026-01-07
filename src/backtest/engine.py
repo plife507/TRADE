@@ -1153,6 +1153,7 @@ class BacktestEngine:
             symbol=self.config.symbol,
             tf=self.config.tf,
             window_name=self.window_name,
+            description=self.config.description,
             start_ts=self.window.start,
             end_ts=self.window.end,
             started_at=self._started_at,

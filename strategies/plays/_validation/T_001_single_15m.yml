@@ -1,7 +1,7 @@
-id: M_001_mtf
+id: T_001_single_15m
 version: "3.0.0"
-name: "MTF Test: 15m + 1h"
-description: "Test multi-timeframe with HTF filter"
+name: "Single TF: 15m EMA + RSI"
+description: "Single timeframe EMA crossover with RSI filter"
 
 account:
   starting_equity_usdt: 10000.0
@@ -17,33 +17,36 @@ symbol_universe:
 
 execution_tf: "15m"
 
-timeframes:
-  htf: "1h"
-
 position_policy:
   mode: "long_only"
   exit_mode: "first_hit"
   max_positions_per_symbol: 1
 
 features:
-  - id: "ema_9"
+  - id: "ema_12"
     tf: "15m"
     type: indicator
     indicator_type: ema
     params:
-      length: 9
-  - id: "ema_21"
+      length: 12
+  - id: "ema_26"
     tf: "15m"
     type: indicator
     indicator_type: ema
     params:
-      length: 21
-  - id: "ema_50_1h"
-    tf: "1h"
+      length: 26
+  - id: "rsi_14"
+    tf: "15m"
     type: indicator
-    indicator_type: ema
+    indicator_type: rsi
     params:
-      length: 50
+      length: 14
+  - id: "atr_14"
+    tf: "15m"
+    type: indicator
+    indicator_type: atr
+    params:
+      length: 14
 
 actions:
   - id: entry
@@ -51,15 +54,16 @@ actions:
       - when:
           all:
             - lhs:
-                feature_id: "ema_9"
-              op: gt
+                feature_id: "ema_12"
+              op: cross_above
               rhs:
-                feature_id: "ema_21"
+                feature_id: "ema_26"
             - lhs:
-                feature_id: "close"
-              op: gt
+                feature_id: "rsi_14"
+              op: between
               rhs:
-                feature_id: "ema_50_1h"
+                low: 30
+                high: 70
         emit:
           - action: entry_long
     else:
@@ -69,21 +73,28 @@ actions:
   - id: exit
     cases:
       - when:
-          lhs:
-            feature_id: "ema_9"
-          op: lt
-          rhs:
-            feature_id: "ema_21"
+          any:
+            - lhs:
+                feature_id: "ema_12"
+              op: cross_below
+              rhs:
+                feature_id: "ema_26"
+            - lhs:
+                feature_id: "rsi_14"
+              op: gt
+              rhs: 80
         emit:
           - action: exit_long
 
 risk_model:
   stop_loss:
-    type: "percent"
+    type: "atr_multiple"
     value: 2.0
+    atr_feature_id: "atr_14"
   take_profit:
-    type: "percent"
-    value: 4.0
+    type: "atr_multiple"
+    value: 3.0
+    atr_feature_id: "atr_14"
   sizing:
     model: "percent_equity"
     value: 5.0

@@ -290,6 +290,7 @@ def create_engine_from_play(
         system_id=play.id,
         symbol=symbol,
         tf=play.execution_tf,
+        description=play.description,
         strategies=[strategy_instance],
         primary_strategy_instance_id="play_strategy",
         windows={
@@ -466,6 +467,7 @@ def run_engine_with_play(
         final_equity=backtest_result.metrics.final_equity,
         play_hash=play_hash,
         metrics=backtest_result.metrics,
+        description=backtest_result.description,
         # Pass through stop fields
         stop_reason=backtest_result.stop_reason,
         stop_classification=str(backtest_result.stop_classification) if backtest_result.stop_classification else None,
@@ -482,6 +484,7 @@ class PlayBacktestResult:
     final_equity: float
     play_hash: str
     metrics: Any = None
+    description: str = ""
     # Stop reason fields from BacktestResult
     stop_reason: str | None = None
     stop_classification: str | None = None

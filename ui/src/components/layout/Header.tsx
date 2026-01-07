@@ -2,6 +2,7 @@ import type { RunSummary } from '../../api/client'
 
 interface HeaderProps {
   selectedRun: RunSummary | undefined
+  markPrice?: number
 }
 
 function EmptyHeader() {
@@ -15,7 +16,7 @@ function EmptyHeader() {
   )
 }
 
-export function Header({ selectedRun }: HeaderProps) {
+export function Header({ selectedRun, markPrice }: HeaderProps) {
   if (!selectedRun) {
     return <EmptyHeader />
   }
@@ -40,6 +41,17 @@ export function Header({ selectedRun }: HeaderProps) {
             <span className="header-symbol-name">{selectedRun.symbol}</span>
             <span className="badge">{selectedRun.tf_exec}</span>
           </div>
+
+          {/* Mark Price */}
+          {markPrice && (
+            <>
+              <div className="divider-vertical" style={{ height: 24 }} />
+              <div className="header-mark-price">
+                <span className="label">Mark</span>
+                <span className="value">${markPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </>
+          )}
 
           <div className="divider-vertical" style={{ height: 24 }} />
 

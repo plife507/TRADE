@@ -4,6 +4,7 @@ import {
   createChart,
   ColorType,
   CrosshairMode,
+  LineStyle,
   type IChartApi,
   type ISeriesApi,
   type CandlestickData,
@@ -22,6 +23,7 @@ import {
   getIndicatorRenderer,
   getStructureRenderer,
 } from '../../renderers'
+import { ChartSkeleton } from '../ui/ChartSkeleton'
 
 interface CandlestickChartProps {
   runId: string
@@ -197,6 +199,18 @@ export function CandlestickChart({
 
     candleSeriesRef.current.setData(candleData)
 
+    // Add mark price line
+    if (ohlcvData.mark_price) {
+      candleSeriesRef.current.createPriceLine({
+        price: ohlcvData.mark_price,
+        color: '#ffa726',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'Mark',
+      })
+    }
+
     // Fit content after data loads
     if (chartRef.current) {
       chartRef.current.timeScale().fitContent()
@@ -364,17 +378,11 @@ export function CandlestickChart({
       </div>
 
       {/* Chart container */}
-      <div style={{ position: 'relative' }}>
-        {isLoading && (
-          <div className="chart-loading">
-            <div className="chart-loading-content">
-              <div className="spinner" />
-              <span>Loading chart data...</span>
-            </div>
-          </div>
-        )}
+      {isLoading ? (
+        <ChartSkeleton height={height} showHeader={false} showFooter={false} />
+      ) : (
         <div ref={chartContainerRef} style={{ height }} />
-      </div>
+      )}
 
       {/* Chart footer with info */}
       {ohlcvData && (

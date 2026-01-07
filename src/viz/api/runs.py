@@ -4,6 +4,7 @@ Runs API endpoints.
 Provides endpoints for listing and retrieving backtest runs.
 """
 
+import shutil
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 
@@ -53,6 +54,7 @@ async def list_runs(
                 max_drawdown_pct=r.max_drawdown_pct,
                 artifact_path=str(r.artifact_path),
                 has_snapshots=r.has_snapshots,
+                description=r.description,
             )
             for r in runs
         ],
@@ -171,3 +173,21 @@ async def get_run(run_id: str) -> RunDetailResponse:
         artifact_path=str(run_path),
         has_snapshots=(run_path / "snapshots").exists(),
     )
+
+@router.delete("/{run_id}")
+async def delete_run(run_id: str) -> dict:
+    """
+    Delete a backtest run and its artifacts.
+    
+    Removes the entire run folder from disk.
+    """
+    run_path = find_run_path(run_id)
+    
+    if not run_path:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    
+    try:
+        shutil.rmtree(run_path)
+        return {"status": "deleted", "run_id": run_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete run: {e}")

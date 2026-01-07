@@ -167,10 +167,41 @@ class PositionMode(str, Enum):
     LONG_SHORT = "long_short"
 
 
+class ExitMode(str, Enum):
+    """
+    Exit mode defines how positions are closed.
+
+    SL_TP_ONLY: Positions exit ONLY via stop loss or take profit.
+               No signal-based exits allowed. Pure mechanical trading.
+               Requires risk_model with stop_loss and take_profit defined.
+
+    SIGNAL: Positions exit via signal (exit_long, exit_short, exit_all).
+            SL/TP in risk_model act as emergency stops only.
+            Requires exit actions defined in the actions block.
+
+    FIRST_HIT: Hybrid mode - position exits on whichever triggers first:
+               signal-based exit OR SL/TP hit. Explicitly allows both.
+    """
+    SL_TP_ONLY = "sl_tp_only"
+    SIGNAL = "signal"
+    FIRST_HIT = "first_hit"
+
+
 @dataclass(frozen=True)
 class PositionPolicy:
-    """Position policy configuration."""
+    """
+    Position policy configuration.
+
+    Attributes:
+        mode: Direction policy (long_only, short_only, long_short)
+        exit_mode: How positions are closed (sl_tp_only, signal, first_hit)
+        max_positions_per_symbol: Max concurrent positions (must be 1)
+        allow_flip: Whether to allow position reversal (not supported)
+        allow_scale_in: Whether to allow adding to position (not supported)
+        allow_scale_out: Whether to allow partial exits (not supported)
+    """
     mode: PositionMode = PositionMode.LONG_ONLY
+    exit_mode: ExitMode = ExitMode.SL_TP_ONLY
     max_positions_per_symbol: int = 1
     allow_flip: bool = False
     allow_scale_in: bool = False
@@ -193,10 +224,19 @@ class PositionPolicy:
         """Check if short positions are allowed."""
         return self.mode in (PositionMode.SHORT_ONLY, PositionMode.LONG_SHORT)
 
+    def requires_sl_tp(self) -> bool:
+        """Check if SL/TP are required (sl_tp_only or first_hit mode)."""
+        return self.exit_mode in (ExitMode.SL_TP_ONLY, ExitMode.FIRST_HIT)
+
+    def allows_signal_exit(self) -> bool:
+        """Check if signal-based exits are allowed."""
+        return self.exit_mode in (ExitMode.SIGNAL, ExitMode.FIRST_HIT)
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "mode": self.mode.value,
+            "exit_mode": self.exit_mode.value,
             "max_positions_per_symbol": self.max_positions_per_symbol,
             "allow_flip": self.allow_flip,
             "allow_scale_in": self.allow_scale_in,
@@ -208,6 +248,7 @@ class PositionPolicy:
         """Create from dict."""
         return cls(
             mode=PositionMode(d.get("mode", "long_only")),
+            exit_mode=ExitMode(d.get("exit_mode", "sl_tp_only")),
             max_positions_per_symbol=d.get("max_positions_per_symbol", 1),
             allow_flip=d.get("allow_flip", False),
             allow_scale_in=d.get("allow_scale_in", False),

@@ -27,6 +27,7 @@ export interface RunSummary {
   max_drawdown_pct: number
   artifact_path: string
   has_snapshots: boolean
+  description: string
 }
 
 export interface RunListResponse {
@@ -44,9 +45,16 @@ export interface MetricCard {
   tooltip: string | null
 }
 
+export interface MetricsCategory {
+  name: string
+  icon: string
+  cards: MetricCard[]
+}
+
 export interface MetricsSummaryResponse {
   run_id: string
   cards: MetricCard[]
+  categories: MetricsCategory[]
 }
 
 // API functions
@@ -80,6 +88,10 @@ export async function checkHealth(): Promise<{ status: string }> {
   return response.data
 }
 
+export async function deleteRun(runId: string): Promise<void> {
+  await api.delete(`/runs/${runId}`)
+}
+
 // Chart data types
 export interface OHLCVBar {
   time: number // Unix timestamp (seconds)
@@ -97,6 +109,34 @@ export interface OHLCVResponse {
   data: OHLCVBar[]
   total_bars: number
   warmup_bars: number
+  mark_price: number | null
+}
+
+// Multi-Timeframe OHLCV types
+export interface TFOHLCVData {
+  tf: string
+  role: 'exec' | 'mtf' | 'htf'
+  data: OHLCVBar[]
+  total_bars: number
+}
+
+export interface TFConfig {
+  exec: string
+  mtf: string | null
+  htf: string | null
+}
+
+export interface MTFOHLCVResponse {
+  run_id: string
+  symbol: string
+  exec_tf: string
+  tf_config: TFConfig
+  timeframes: {
+    exec?: TFOHLCVData
+    mtf?: TFOHLCVData
+    htf?: TFOHLCVData
+  }
+  mark_price: number | null
 }
 
 export interface VolumeBar {
@@ -220,6 +260,18 @@ export async function fetchOHLCV(
   return response.data
 }
 
+export async function fetchOHLCVMTF(
+  runId: string,
+  params?: {
+    limit?: number
+  }
+): Promise<MTFOHLCVResponse> {
+  const response = await api.get<MTFOHLCVResponse>(`/charts/${runId}/ohlcv-mtf`, {
+    params,
+  })
+  return response.data
+}
+
 export async function fetchVolume(
   runId: string,
   params?: {
@@ -257,6 +309,24 @@ export async function fetchIndicators(
 
 export async function fetchEquity(runId: string): Promise<EquityResponse> {
   const response = await api.get<EquityResponse>(`/equity/${runId}`)
+  return response.data
+}
+
+// Mark Price Line types (1m close prices for overlay)
+export interface MarkPricePoint {
+  time: number
+  price: number
+}
+
+export interface MarkPriceResponse {
+  run_id: string
+  symbol: string
+  data: MarkPricePoint[]
+  total_points: number
+}
+
+export async function fetchMarkPriceLine(runId: string): Promise<MarkPriceResponse> {
+  const response = await api.get<MarkPriceResponse>(`/charts/${runId}/mark-price`)
   return response.data
 }
 

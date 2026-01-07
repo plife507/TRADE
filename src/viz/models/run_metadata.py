@@ -30,6 +30,9 @@ class RunSummary(BaseModel):
     artifact_path: str = ""
     has_snapshots: bool = False
 
+    # Play description
+    description: str = ""
+
 
 class RunListResponse(BaseModel):
     """Response for GET /api/runs."""
@@ -50,11 +53,20 @@ class MetricCard(BaseModel):
     tooltip: str | None = None
 
 
+class MetricsCategory(BaseModel):
+    """Category grouping for metrics."""
+
+    name: str
+    icon: str  # Icon identifier (e.g., "profit", "risk", "trades")
+    cards: list[MetricCard]
+
+
 class MetricsSummaryResponse(BaseModel):
     """Response for GET /api/metrics/{run_id}/summary."""
 
     run_id: str
-    cards: list[MetricCard]
+    cards: list[MetricCard]  # Primary 8 for backward compat
+    categories: list[MetricsCategory] = []  # All by category
 
 
 class RunDetailResponse(BaseModel):

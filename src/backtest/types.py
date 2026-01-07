@@ -505,6 +505,7 @@ class BacktestResult:
     symbol: str = ""
     tf: str = ""
     window_name: str = ""
+    description: str = ""  # Play description for UI display
     
     # Context
     risk_mode: str = "none"
@@ -594,6 +595,7 @@ class BacktestResult:
             "symbol": self.symbol,
             "tf": self.tf,
             "window_name": self.window_name,
+            "description": self.description,
             # Timestamps
             "start_ts": self.start_ts.isoformat(),
             "end_ts": self.end_ts.isoformat(),

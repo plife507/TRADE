@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { fetchRuns, fetchIndicators } from './api/client'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchRuns, fetchIndicators, fetchOHLCVMTF, deleteRun } from './api/client'
 import { Sidebar } from './components/layout/Sidebar'
 import { Header } from './components/layout/Header'
 import { MetricsDashboard } from './components/metrics/MetricsDashboard'
-import { CandlestickChart } from './components/charts/CandlestickChart'
+import { TimeframeChartStack } from './components/charts/TimeframeChartStack'
 import { IndicatorPane } from './components/charts/IndicatorPane'
 import { EquityCurve } from './components/charts/EquityCurve'
 import { IndicatorReference } from './components/indicators/IndicatorReference'
@@ -89,6 +89,21 @@ function ErrorState() {
 function App() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<AppView>('backtests')
+  const queryClient = useQueryClient()
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteRun,
+    onSuccess: (_, deletedRunId) => {
+      queryClient.invalidateQueries({ queryKey: ['runs'] })
+      if (selectedRunId === deletedRunId) {
+        setSelectedRunId(null)
+      }
+    },
+  })
+
+  const handleDeleteRun = (runId: string) => {
+    deleteMutation.mutate(runId)
+  }
 
   const {
     data: runsData,
@@ -97,6 +112,13 @@ function App() {
   } = useQuery({
     queryKey: ['runs'],
     queryFn: () => fetchRuns(),
+  })
+
+  // Fetch MTF OHLCV for mark price
+  const { data: mtfOhlcvData } = useQuery({
+    queryKey: ['ohlcv-mtf', selectedRunId],
+    queryFn: () => fetchOHLCVMTF(selectedRunId!),
+    enabled: !!selectedRunId,
   })
 
   // Fetch indicators for panes
@@ -119,6 +141,7 @@ function App() {
           setSelectedRunId(id)
           setCurrentView('backtests')
         }}
+        onDeleteRun={handleDeleteRun}
         isLoading={isLoading}
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -127,7 +150,7 @@ function App() {
       <div className="main-area">
         {currentView === 'backtests' ? (
           <>
-            <Header selectedRun={selectedRun} />
+            <Header selectedRun={selectedRun} markPrice={mtfOhlcvData?.mark_price ?? undefined} />
             <main className="main-content">
               {error ? (
                 <ErrorState />
@@ -135,12 +158,14 @@ function App() {
                 <EmptyState runsCount={runs.length} />
               ) : (
                 <div className="content-stack animate-fade-in">
-                  <MetricsDashboard runId={selectedRunId} />
-                  <CandlestickChart runId={selectedRunId} height={450} />
+                  {/* Charts first - main focus */}
+                  <TimeframeChartStack runId={selectedRunId} description={selectedRun?.description} />
                   {indicatorPanes.map((pane) => (
                     <IndicatorPane key={pane.type} pane={pane} height={120} />
                   ))}
-                  <EquityCurve runId={selectedRunId} height={200} />
+                  <EquityCurve runId={selectedRunId} height={180} />
+                  {/* Metrics at bottom */}
+                  <MetricsDashboard runId={selectedRunId} />
                 </div>
               )}
             </main>

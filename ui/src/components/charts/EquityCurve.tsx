@@ -11,6 +11,7 @@ import {
   type Time,
 } from 'lightweight-charts'
 import { fetchEquity } from '../../api/client'
+import { EquityCurveSkeleton } from '../ui/ChartSkeleton'
 
 interface EquityCurveProps {
   runId: string
@@ -213,17 +214,11 @@ export function EquityCurve({ runId, height = 200 }: EquityCurveProps) {
       </div>
 
       {/* Chart container */}
-      <div style={{ position: 'relative' }}>
-        {isLoading && (
-          <div className="chart-loading">
-            <div className="chart-loading-content">
-              <div className="spinner info" />
-              <span>Loading equity data...</span>
-            </div>
-          </div>
-        )}
+      {isLoading ? (
+        <EquityCurveSkeleton height={height} />
+      ) : (
         <div ref={chartContainerRef} style={{ height }} />
-      </div>
+      )}
     </div>
   )
 }

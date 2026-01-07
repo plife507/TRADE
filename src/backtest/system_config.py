@@ -503,7 +503,10 @@ class SystemConfig:
     # Primary symbol/tf for the system (for routing/display)
     symbol: str = ""
     tf: str = ""
-    
+
+    # Description for UI display (from Play.description)
+    description: str = ""
+
     # Execution timeframe (master clock for stepping)
     # If None, defaults to tf (LTF)
     exec_tf: str | None = None

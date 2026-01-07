@@ -130,7 +130,12 @@
       "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\data\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\data\")",
       "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\backtests\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\backtests\")",
       "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\logs\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\logs\")",
-      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\logs\\\\backtests\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\logs\\\\backtests\")"
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\logs\\\\backtests\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\logs\\\\backtests\")",
+      "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\src\\\\components\\\\ui\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\src\\\\components\\\\ui\")",
+      "Bash(npm run build:*)",
+      "Bash(timeout /t 3 /nobreak)",
+      "Bash(ping:*)",
+      "Bash(del \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\src\\\\components\\\\charts\\\\_write_chart.py\")"
     ]
   }
 }

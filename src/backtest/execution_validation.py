@@ -22,8 +22,10 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .play import Play, TFConfig
+    from .play import Play, TFConfig, ExitMode
     from .rules.strategy_blocks import Block
+
+from .play import ExitMode
 
 # Note: IndicatorType enum removed in Registry Consolidation Phase 2
 # All indicator type handling is now via string + registry validation
@@ -122,6 +124,45 @@ class PlayValidationResult:
         }
 
 
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def _play_has_exit_actions(play: "Play") -> bool:
+    """
+    Check if Play defines any exit actions (exit_long, exit_short, exit_all).
+
+    Scans through all actions blocks looking for emit actions that are exits.
+
+    Args:
+        play: Play to check
+
+    Returns:
+        True if any exit actions are defined
+    """
+    if not play.actions:
+        return False
+
+    exit_actions = {"exit_long", "exit_short", "exit_all"}
+
+    for action_block in play.actions:
+        # Check cases
+        if hasattr(action_block, 'cases') and action_block.cases:
+            for case in action_block.cases:
+                if hasattr(case, 'emit') and case.emit:
+                    for intent in case.emit:
+                        if hasattr(intent, 'action') and intent.action in exit_actions:
+                            return True
+        # Check else clause
+        if hasattr(action_block, 'else_clause') and action_block.else_clause:
+            if hasattr(action_block.else_clause, 'emit') and action_block.else_clause.emit:
+                for intent in action_block.else_clause.emit:
+                    if hasattr(intent, 'action') and intent.action in exit_actions:
+                        return True
+
+    return False
+
+
 def validate_play_contract(play: "Play") -> PlayValidationResult:
     """
     Validate Play execution contract.
@@ -216,7 +257,59 @@ def validate_play_contract(play: "Play") -> PlayValidationResult:
             code="NO_RISK_MODEL",
             message="No risk_model defined - positions will not have SL/TP",
         ))
-    
+
+    # Exit mode validation
+    exit_mode = play.position_policy.exit_mode if play.position_policy else ExitMode.SL_TP_ONLY
+    has_exit_actions = _play_has_exit_actions(play)
+    has_sl = play.risk_model is not None and play.risk_model.stop_loss is not None
+    has_tp = play.risk_model is not None and play.risk_model.take_profit is not None
+
+    if exit_mode == ExitMode.SL_TP_ONLY:
+        # SL/TP only mode: require SL and TP, reject exit actions
+        if not has_sl or not has_tp:
+            issues.append(ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                code="EXIT_MODE_REQUIRES_SL_TP",
+                message=(
+                    f"exit_mode=sl_tp_only requires risk_model.stop_loss and risk_model.take_profit. "
+                    f"Got: stop_loss={'defined' if has_sl else 'missing'}, "
+                    f"take_profit={'defined' if has_tp else 'missing'}"
+                ),
+            ))
+        if has_exit_actions:
+            issues.append(ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                code="EXIT_MODE_NO_SIGNAL_EXIT",
+                message=(
+                    "exit_mode=sl_tp_only does not allow exit actions (exit_long, exit_short, exit_all). "
+                    "Use exit_mode=signal or exit_mode=first_hit if signal-based exits are needed."
+                ),
+            ))
+
+    elif exit_mode == ExitMode.SIGNAL:
+        # Signal mode: require exit actions, SL/TP optional (emergency only)
+        if not has_exit_actions:
+            issues.append(ValidationIssue(
+                severity=ValidationSeverity.WARNING,
+                code="EXIT_MODE_SIGNAL_NO_EXIT_ACTIONS",
+                message=(
+                    "exit_mode=signal but no exit actions defined. "
+                    "Define exit_long/exit_short/exit_all in actions, or use exit_mode=sl_tp_only."
+                ),
+            ))
+
+    elif exit_mode == ExitMode.FIRST_HIT:
+        # First hit mode: should have both
+        if not has_sl and not has_tp and not has_exit_actions:
+            issues.append(ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                code="EXIT_MODE_FIRST_HIT_NO_EXITS",
+                message=(
+                    "exit_mode=first_hit requires at least one exit mechanism: "
+                    "risk_model.stop_loss, risk_model.take_profit, or exit actions."
+                ),
+            ))
+
     # Compute hash if no critical errors
     card_hash = None
     if not any(i.severity == ValidationSeverity.ERROR for i in issues):

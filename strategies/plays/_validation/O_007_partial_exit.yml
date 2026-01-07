@@ -19,6 +19,7 @@ execution_tf: "1h"
 
 position_policy:
   mode: "long_only"
+  exit_mode: "first_hit"
   max_positions_per_symbol: 1
 
 features:

@@ -163,7 +163,7 @@ body {
    Sidebar
    ============================================================================ */
 .sidebar {
-  width: 288px;
+  width: 220px;
   background: rgba(20, 26, 34, 0.5);
   backdrop-filter: blur(12px);
   border-right: 1px solid var(--surface-border);
@@ -401,6 +401,101 @@ body {
 
 .run-card-stats .wr-good { color: var(--signal); }
 .run-card-stats .wr-bad { color: var(--danger); }
+
+/* Compact run item (flat list) */
+.run-item {
+  position: relative;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid var(--surface-border);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  font-family: inherit;
+}
+
+.run-item:hover {
+  background: rgba(36, 43, 54, 0.5);
+}
+
+.run-item.selected {
+  background: var(--signal-subtle);
+}
+
+.run-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--signal);
+}
+
+.run-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.run-item-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-item-pnl {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.run-item-pnl.positive { color: var(--signal); }
+.run-item-pnl.negative { color: var(--danger); }
+
+.run-item-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.run-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.run-item-delete {
+  opacity: 0;
+  padding: 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.run-item:hover .run-item-delete {
+  opacity: 1;
+}
+
+.run-item-delete:hover {
+  color: var(--danger);
+}
+
+.run-item-delete svg {
+  width: 14px;
+  height: 14px;
+}
 
 /* Sidebar footer */
 .sidebar-footer {
@@ -1623,4 +1718,399 @@ body {
   .indicator-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ============================================================================
+   Chart Skeleton Styles
+   ============================================================================ */
+
+/* Base skeleton with shimmer */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-overlay);
+  border-radius: var(--radius-md);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+.skeleton-text {
+  border-radius: var(--radius-sm);
+  height: 1em;
+}
+
+.skeleton-rect {
+  border-radius: var(--radius-md);
+}
+
+.skeleton-circle {
+  border-radius: var(--radius-full);
+}
+
+.skeleton-chart {
+  border-radius: var(--radius-lg);
+}
+
+.skeleton-badge {
+  border-radius: var(--radius-md);
+}
+
+/* Chart skeleton body */
+.chart-skeleton-body {
+  position: relative;
+  background: var(--void-100);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Simulated candlesticks */
+.chart-skeleton-candles {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  padding: var(--space-4);
+  padding-bottom: 0;
+}
+
+.skeleton-candle {
+  width: 8px;
+  background: linear-gradient(to top, var(--surface-overlay), var(--surface-border));
+  border-radius: 2px;
+  opacity: 0.3;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Simulated volume bars */
+.chart-skeleton-volume {
+  height: 15%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--surface-border);
+}
+
+.skeleton-volume-bar {
+  width: 8px;
+  background: var(--surface-overlay);
+  border-radius: 1px;
+  opacity: 0.2;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Metric card skeleton */
+.metric-card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface-raised);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--surface-border);
+}
+
+.metric-card-skeleton .skeleton-value {
+  margin: var(--space-2) 0;
+}
+
+/* Indicator pane skeleton */
+.indicator-pane-skeleton {
+  position: relative;
+}
+
+.skeleton-indicator-line {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--surface-border), transparent);
+  animation: shimmer 2s linear infinite;
+}
+
+.skeleton-reference-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--surface-border);
+  opacity: 0.3;
+}
+
+/* Equity curve skeleton */
+.equity-skeleton {
+  position: relative;
+}
+
+.skeleton-equity-line {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  top: 30%;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--signal-dim) 20%,
+    var(--signal-dim) 40%,
+    var(--danger-dim) 60%,
+    var(--signal-dim) 80%,
+    transparent 100%
+  );
+  opacity: 0.5;
+  animation: shimmer 2s linear infinite;
+}
+
+.skeleton-drawdown-area {
+  position: absolute;
+  bottom: 0;
+  left: 5%;
+  right: 5%;
+  height: 30%;
+  background: linear-gradient(to top, var(--danger-subtle), transparent);
+  opacity: 0.3;
+}
+
+/* ============================================================================
+   Timeframe Chart Stack Styles
+   ============================================================================ */
+.tf-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* TF-specific chart borders */
+.tf-chart-exec .chart-header { border-left: 3px solid var(--signal); }
+.tf-chart-mtf .chart-header { border-left: 3px solid var(--caution); }
+.tf-chart-htf .chart-header { border-left: 3px solid var(--info); }
+
+/* TF labels */
+.tf-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.tf-label-exec { background: var(--signal-subtle); color: var(--signal); }
+.tf-label-mtf { background: var(--caution-subtle); color: var(--caution); }
+.tf-label-htf { background: var(--info-subtle); color: var(--info); }
+
+/* ============================================================================
+   Mark Price Styles
+   ============================================================================ */
+.header-mark-price {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--caution-subtle);
+  border: 1px solid rgba(255, 167, 38, 0.3);
+  border-radius: var(--radius-md);
+}
+
+.header-mark-price .label {
+  font-size: 0.625rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--caution);
+}
+
+.header-mark-price .value {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ============================================================================
+   Metrics Categories Styles
+   ============================================================================ */
+.metrics-categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.metrics-category {
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.metrics-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  font-family: inherit;
+}
+
+.metrics-category-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.metrics-category-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.metrics-category-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+}
+
+.metrics-category-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.metrics-category-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.metrics-category-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.metrics-category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+/* Smaller metric cards for categories */
+.metrics-category-grid .stat-card {
+  padding: var(--space-3);
+}
+
+.metrics-category-grid .stat-card-value {
+  font-size: 1.125rem;
+}
+
+.metrics-category-grid .stat-card-header {
+  margin-bottom: var(--space-2);
+}
+
+/* Category-specific colors */
+.metrics-category.performance .metrics-category-icon { color: var(--signal); }
+.metrics-category.risk .metrics-category-icon { color: var(--danger); }
+.metrics-category.trade-quality .metrics-category-icon { color: var(--info); }
+.metrics-category.win-loss .metrics-category-icon { color: var(--caution); }
+.metrics-category.long-short .metrics-category-icon { color: #9c27b0; }
+.metrics-category.time .metrics-category-icon { color: #00bcd4; }
+.metrics-category.leverage .metrics-category-icon { color: #ff5722; }
+
+
+/* Compact stat cards for category grids */
+.stat-card-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  background: var(--surface-overlay);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.stat-card-compact:hover {
+  background: var(--void-400);
+}
+
+.stat-card-compact .stat-card-label {
+  font-size: 0.625rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+
+.stat-card-compact .stat-card-value {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.stat-card-compact .stat-card-value.positive { color: var(--signal); }
+.stat-card-compact .stat-card-value.negative { color: var(--danger); }
+.stat-card-compact .stat-card-value.neutral { color: var(--text-secondary); }
+
+.stat-card-compact .stat-card-change {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+}
+
+.stat-card-compact .stat-card-change.positive { color: var(--signal-dim); }
+.stat-card-compact .stat-card-change.negative { color: var(--danger-dim); }
+
+.metrics-category-count {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  margin-left: var(--space-1);
+}
+
+
+/* ============================================================================
+   OHLC Legend Styles
+   ============================================================================ */
+.ohlc-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ohlc-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ohlc-label {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.ohlc-change {
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.ohlc-legend .positive {
+  color: var(--signal);
+}
+
+.ohlc-legend .negative {
+  color: var(--danger);
 }

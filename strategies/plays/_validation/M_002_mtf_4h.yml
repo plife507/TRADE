@@ -1,7 +1,7 @@
-id: M_001_mtf
+id: M_002_mtf_4h
 version: "3.0.0"
-name: "MTF Test: 15m + 1h"
-description: "Test multi-timeframe with HTF filter"
+name: "MTF Test: 15m + 4h"
+description: "Multi-timeframe with 4h HTF filter"
 
 account:
   starting_equity_usdt: 10000.0
@@ -13,12 +13,12 @@ account:
     maker_bps: 2.0
 
 symbol_universe:
-  - "ETHUSDT"
+  - "BTCUSDT"
 
 execution_tf: "15m"
 
 timeframes:
-  htf: "1h"
+  htf: "4h"
 
 position_policy:
   mode: "long_only"
@@ -38,12 +38,18 @@ features:
     indicator_type: ema
     params:
       length: 21
-  - id: "ema_50_1h"
-    tf: "1h"
+  - id: "ema_50_4h"
+    tf: "4h"
     type: indicator
     indicator_type: ema
     params:
       length: 50
+  - id: "rsi_14_4h"
+    tf: "4h"
+    type: indicator
+    indicator_type: rsi
+    params:
+      length: 14
 
 actions:
   - id: entry
@@ -59,7 +65,11 @@ actions:
                 feature_id: "close"
               op: gt
               rhs:
-                feature_id: "ema_50_1h"
+                feature_id: "ema_50_4h"
+            - lhs:
+                feature_id: "rsi_14_4h"
+              op: gt
+              rhs: 50
         emit:
           - action: entry_long
     else:
@@ -69,11 +79,16 @@ actions:
   - id: exit
     cases:
       - when:
-          lhs:
-            feature_id: "ema_9"
-          op: lt
-          rhs:
-            feature_id: "ema_21"
+          any:
+            - lhs:
+                feature_id: "ema_9"
+              op: lt
+              rhs:
+                feature_id: "ema_21"
+            - lhs:
+                feature_id: "rsi_14_4h"
+              op: lt
+              rhs: 40
         emit:
           - action: exit_long
 
