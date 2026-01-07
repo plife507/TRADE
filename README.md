@@ -80,14 +80,13 @@ features:
     indicator_type: ema
     params: { length: 21 }
 
-blocks:
+actions:
   - id: entry
     cases:
       - when:
-          all:
-            - lhs: { feature_id: "ema_9" }
-              op: cross_above
-              rhs: { feature_id: "ema_21" }
+          lhs: { feature_id: "ema_9" }
+          op: cross_above
+          rhs: { feature_id: "ema_21" }
         emit:
           - action: entry_long
 
@@ -108,10 +107,48 @@ blocks:
 | **Backtest Engine** | Production | 62-field metrics, deterministic execution |
 | **Indicators** | 42 registered | EMA, RSI, MACD, Bollinger, Stochastic, ADX, etc. |
 | **Structures** | 6 registered | Swing, Fibonacci, Zone, Trend, Rolling Window, Derived Zone |
+| **DSL v3.0** | Complete | TradingView crossovers, window operators, anchor_tf |
 | **The Forge** | Complete | Validation, audits, stress testing |
 | **Trading Hierarchy** | Complete | Block/Play/System (3-level) |
 | **Live Trading** | Ready | Bybit API, demo + live modes |
-| **Bugs** | 0 open | 79 fixed, all tests passing |
+| **Bugs** | 0 open | 84 fixed, all tests passing |
+
+## DSL Features
+
+The Blocks DSL provides powerful operators for strategy logic:
+
+### Crossover Operators (TradingView-aligned)
+```yaml
+# cross_above: prev <= rhs AND curr > rhs
+- lhs: {feature_id: "ema_9"}
+  op: cross_above
+  rhs: {feature_id: "ema_21"}
+```
+
+### Window Operators with anchor_tf
+```yaml
+# Check condition held for 3 bars at 1h granularity
+holds_for:
+  bars: 3
+  anchor_tf: "1h"
+  expr:
+    lhs: {feature_id: "rsi_14"}
+    op: gt
+    rhs: 50
+```
+
+### Duration-Based Windows
+```yaml
+# Time-based (wall clock) - always 1m granularity
+holds_for_duration:
+  duration: "30m"
+  expr:
+    lhs: {feature_id: "rsi_14"}
+    op: gt
+    rhs: 70
+```
+
+See [DSL Strategy Patterns](docs/guides/DSL_STRATEGY_PATTERNS.md) for 7 complete strategy examples.
 
 ## Quick Start
 
@@ -200,6 +237,8 @@ Every computation step produces a hash. Determinism is verified by comparing has
 | Topic | Location |
 |-------|----------|
 | AI Assistant Guidance | `CLAUDE.md` |
+| DSL Strategy Patterns | `docs/guides/DSL_STRATEGY_PATTERNS.md` |
+| Play Best Practices | `docs/guides/PLAY_BEST_PRACTICES.md` |
 | Code Examples | `docs/guides/CODE_EXAMPLES.md` |
 | Backtest Architecture | `src/backtest/CLAUDE.md` |
 | Forge Architecture | `src/forge/CLAUDE.md` |
