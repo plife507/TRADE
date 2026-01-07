@@ -408,39 +408,49 @@ class ExecutionModel:
         bar: Bar,
         reason: FillReason,
         exit_price: float | None = None,
+        close_ratio: float = 1.0,
     ) -> Fill:
         """
         Fill an exit (close position).
-        
+
         Applies slippage to exit price.
         Exit timestamp is ts_open (exit fills at bar open).
-        
+
         Args:
             position: Position being closed
             bar: Current bar (legacy or canonical)
             reason: Exit reason
             exit_price: Override exit price (or derive from TP/SL)
-            
+            close_ratio: Fraction of position to close (0.0-1.0). Default 1.0 = full close.
+
         Returns:
             Fill record for the exit
         """
+        # Validate close_ratio
+        if not 0.0 < close_ratio <= 1.0:
+            raise ValueError(f"close_ratio must be in (0.0, 1.0], got {close_ratio}")
+
         # Get fill timestamp (ts_open for exits too)
         fill_ts = get_bar_ts_open(bar)
-        
+
         # Determine base exit price
         if exit_price is None:
             exit_price = self._get_exit_price(position, bar, reason)
-        
-        # Apply slippage
+
+        # Calculate sizes for this fill (proportional to close_ratio)
+        fill_size = position.size * close_ratio
+        fill_size_usdt = position.size_usdt * close_ratio
+
+        # Apply slippage (based on the portion being closed)
         fill_price = self._slippage.apply_exit_slippage(
             exit_price,
             position.side,
-            position.size_usdt,
+            fill_size_usdt,
             bar,
         )
-        
-        # Fee calculation: use notional value (size_usdt) for symmetry with entry fees
-        fee = position.size_usdt * self._config.taker_fee_rate
+
+        # Fee calculation: use notional value of closed portion
+        fee = fill_size_usdt * self._config.taker_fee_rate
 
         return Fill(
             fill_id=self._next_fill_id(),
@@ -448,8 +458,8 @@ class ExecutionModel:
             symbol=position.symbol,
             side=position.side,
             price=fill_price,
-            size=position.size,
-            size_usdt=position.size_usdt,
+            size=fill_size,
+            size_usdt=fill_size_usdt,
             timestamp=fill_ts,
             reason=reason,
             fee=fee,

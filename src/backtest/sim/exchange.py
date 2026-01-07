@@ -1006,12 +1006,10 @@ class SimulatedExchange:
             volume=0.0,
         )
 
-        # Create fill for partial close
-        fill = self._execution.fill_exit(pos, exit_bar, FillReason.SIGNAL, exit_price)
-        # Adjust fill size to reflect partial close
-        fill.size = pos.size * close_ratio
-        fill.size_usdt = pos.size_usdt * close_ratio
-        fill.fee = fill.fee * close_ratio  # Proportional fee
+        # Create fill for partial close (execution model handles sizing)
+        fill = self._execution.fill_exit(
+            pos, exit_bar, FillReason.SIGNAL, exit_price, close_ratio=close_ratio
+        )
 
         # Calculate PnL for the closed portion
         if pos.side == OrderSide.LONG:

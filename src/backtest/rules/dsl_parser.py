@@ -37,6 +37,7 @@ from typing import Any
 from .dsl_nodes import (
     Expr, Cond, AllExpr, AnyExpr, NotExpr,
     HoldsFor, OccurredWithin, CountTrue, SetupRef,
+    HoldsForDuration, OccurredWithinDuration, CountTrueDuration,
     FeatureRef, ScalarValue, RangeValue, ListValue, RhsValue,
     VALID_OPERATORS, WINDOW_BARS_CEILING,
     validate_expr_types,
@@ -245,7 +246,7 @@ def parse_expr(data: dict | list) -> Expr:
         child = parse_expr(data["not"])
         return NotExpr(child)
 
-    # Check for window operators
+    # Check for bar-based window operators
     if "holds_for" in data:
         window_data = data["holds_for"]
         bars = window_data.get("bars")
@@ -254,7 +255,8 @@ def parse_expr(data: dict | list) -> Expr:
         if bars > WINDOW_BARS_CEILING:
             raise ValueError(f"holds_for bars exceeds ceiling ({WINDOW_BARS_CEILING})")
         expr = parse_expr(window_data.get("expr", {}))
-        return HoldsFor(bars=bars, expr=expr)
+        anchor_tf = window_data.get("anchor_tf")  # Optional
+        return HoldsFor(bars=bars, expr=expr, anchor_tf=anchor_tf)
 
     if "occurred_within" in data:
         window_data = data["occurred_within"]
@@ -266,7 +268,8 @@ def parse_expr(data: dict | list) -> Expr:
                 f"occurred_within bars exceeds ceiling ({WINDOW_BARS_CEILING})"
             )
         expr = parse_expr(window_data.get("expr", {}))
-        return OccurredWithin(bars=bars, expr=expr)
+        anchor_tf = window_data.get("anchor_tf")  # Optional
+        return OccurredWithin(bars=bars, expr=expr, anchor_tf=anchor_tf)
 
     if "count_true" in data:
         window_data = data["count_true"]
@@ -279,7 +282,36 @@ def parse_expr(data: dict | list) -> Expr:
         if bars > WINDOW_BARS_CEILING:
             raise ValueError(f"count_true bars exceeds ceiling ({WINDOW_BARS_CEILING})")
         expr = parse_expr(window_data.get("expr", {}))
-        return CountTrue(bars=bars, min_true=min_true, expr=expr)
+        anchor_tf = window_data.get("anchor_tf")  # Optional
+        return CountTrue(bars=bars, min_true=min_true, expr=expr, anchor_tf=anchor_tf)
+
+    # Check for duration-based window operators
+    if "holds_for_duration" in data:
+        window_data = data["holds_for_duration"]
+        duration = window_data.get("duration")
+        if not duration:
+            raise ValueError("holds_for_duration requires 'duration'")
+        expr = parse_expr(window_data.get("expr", {}))
+        return HoldsForDuration(duration=duration, expr=expr)
+
+    if "occurred_within_duration" in data:
+        window_data = data["occurred_within_duration"]
+        duration = window_data.get("duration")
+        if not duration:
+            raise ValueError("occurred_within_duration requires 'duration'")
+        expr = parse_expr(window_data.get("expr", {}))
+        return OccurredWithinDuration(duration=duration, expr=expr)
+
+    if "count_true_duration" in data:
+        window_data = data["count_true_duration"]
+        duration = window_data.get("duration")
+        min_true = window_data.get("min_true")
+        if not duration:
+            raise ValueError("count_true_duration requires 'duration'")
+        if not min_true:
+            raise ValueError("count_true_duration requires 'min_true'")
+        expr = parse_expr(window_data.get("expr", {}))
+        return CountTrueDuration(duration=duration, min_true=min_true, expr=expr)
 
     # Check for setup reference
     if "setup" in data:

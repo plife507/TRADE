@@ -175,7 +175,7 @@ class RuntimeSnapshotView:
         'history_ready', '_feeds', '_rollups',
         '_resolvers', '_incremental_state',
         '_feature_registry', '_feature_id_cache',
-        '_rationalized_state',
+        '_rationalized_state', '_last_price', '_prev_last_price',
     )
     
     def __init__(
@@ -193,6 +193,8 @@ class RuntimeSnapshotView:
         incremental_state: "MultiTFIncrementalState | None" = None,
         feature_registry: "FeatureRegistry | None" = None,
         rationalized_state: "RationalizedState | None" = None,
+        last_price: float | None = None,
+        prev_last_price: float | None = None,
     ):
         """
         Initialize snapshot view.
@@ -211,6 +213,11 @@ class RuntimeSnapshotView:
             incremental_state: Optional MultiTFIncrementalState for structure access
             feature_registry: Optional FeatureRegistry for feature_id-based access
             rationalized_state: Optional RationalizedState for Layer 2 access
+            last_price: 1m action price (ticker close). If None, defaults to mark_price.
+                In backtest: 1m bar close from action loop.
+                In live: Would be WebSocket ticker price.
+            prev_last_price: Previous 1m action price (for crossover operators).
+                If None, crossovers with last_price will fail.
         """
         self._feeds = feeds
         self._incremental_state = incremental_state
@@ -255,6 +262,10 @@ class RuntimeSnapshotView:
         self.exchange = exchange
         self.mark_price = mark_price
         self.mark_price_source = mark_price_source
+        # last_price: 1m action price. Defaults to mark_price if not provided.
+        self._last_price = last_price if last_price is not None else mark_price
+        # prev_last_price: previous 1m action price (for crossover operators)
+        self._prev_last_price = prev_last_price
 
         self.history_config = history_config or DEFAULT_HISTORY_CONFIG
         self.history_ready = history_ready
@@ -316,7 +327,20 @@ class RuntimeSnapshotView:
     def close(self) -> float:
         """Current exec bar close price."""
         return self.exec_ctx.close
-    
+
+    @property
+    def last_price(self) -> float:
+        """
+        Current 1m ticker close (action price).
+
+        In backtest: 1m bar close from the action loop.
+        In live: Would be WebSocket ticker price.
+
+        This is the price used for signal evaluation and TP/SL checking
+        at action_tf (1m) granularity.
+        """
+        return self._last_price
+
     @property
     def volume(self) -> float:
         """Current exec bar volume."""
@@ -582,6 +606,17 @@ class RuntimeSnapshotView:
                 raise ValueError("mark_price offset not yet supported - use offset=0")
             return self.mark_price
 
+        # Handle last_price - 1m action price (ticker close)
+        if indicator_key == "last_price":
+            if offset == 0:
+                return self.last_price
+            elif offset == 1:
+                if self._prev_last_price is None:
+                    raise ValueError("last_price offset=1 requires prev_last_price (not available)")
+                return self._prev_last_price
+            else:
+                raise ValueError(f"last_price only supports offset 0 or 1, got {offset}")
+
         # Handle funding_rate - market data field (Phase 12)
         if indicator_key == "funding_rate":
             feed = self._feeds.exec_feed
@@ -661,6 +696,10 @@ class RuntimeSnapshotView:
         if indicator_key == "mark_price":
             return True
 
+        # last_price is always available (1m action price)
+        if indicator_key == "last_price":
+            return True
+
         # Market data fields (Phase 12) - check if arrays are loaded
         if indicator_key == "funding_rate":
             return self._feeds.exec_feed.funding_rate is not None
@@ -717,6 +756,22 @@ class RuntimeSnapshotView:
             if field is None:
                 return None
             return self.get_rationalized_value(field)
+
+        # Handle special price features (action-level, not from feeds)
+        if feature_id == "last_price":
+            if offset == 0:
+                return self.last_price
+            elif offset == 1:
+                if self._prev_last_price is None:
+                    raise ValueError("last_price offset=1 requires prev_last_price (not available)")
+                return self._prev_last_price
+            else:
+                raise ValueError(f"last_price only supports offset 0 or 1, got {offset}")
+
+        if feature_id == "mark_price":
+            if offset != 0:
+                raise ValueError("mark_price offset not yet supported - use offset=0")
+            return self.mark_price
 
         # Check if this is a structure (requires feature registry)
         if self._feature_registry is not None:

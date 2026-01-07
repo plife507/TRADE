@@ -23,9 +23,11 @@ from typing import TYPE_CHECKING, Any
 from .dsl_nodes import (
     Expr, Cond, AllExpr, AnyExpr, NotExpr,
     HoldsFor, OccurredWithin, CountTrue, SetupRef,
+    HoldsForDuration, OccurredWithinDuration, CountTrueDuration,
     FeatureRef, ScalarValue, RangeValue, ListValue, RhsValue,
-    CROSSOVER_OPERATORS, DEFAULT_MAX_WINDOW_BARS,
+    CROSSOVER_OPERATORS, DEFAULT_MAX_WINDOW_BARS, ACTION_TF_MINUTES,
 )
+from ..runtime.timeframe import tf_minutes
 from .types import EvalResult, ReasonCode, RefValue, ValueType
 from .eval import (
     eval_gt, eval_lt, eval_ge, eval_le, eval_eq,
@@ -98,6 +100,12 @@ class ExprEvaluator:
             return self._eval_occurred_within(expr, snapshot)
         elif isinstance(expr, CountTrue):
             return self._eval_count_true(expr, snapshot)
+        elif isinstance(expr, HoldsForDuration):
+            return self._eval_holds_for_duration(expr, snapshot)
+        elif isinstance(expr, OccurredWithinDuration):
+            return self._eval_occurred_within_duration(expr, snapshot)
+        elif isinstance(expr, CountTrueDuration):
+            return self._eval_count_true_duration(expr, snapshot)
         elif isinstance(expr, SetupRef):
             return self._eval_setup_ref(expr, snapshot)
         else:
@@ -340,14 +348,23 @@ class ExprEvaluator:
         Evaluate HoldsFor: expression must be true for N consecutive bars.
 
         Checks bars 0, 1, 2, ..., bars-1 (current to past).
+        If anchor_tf is specified, offsets are scaled to anchor_tf granularity.
         """
-        for offset in range(expr.bars):
+        # Compute offset scale based on anchor_tf (default: 1m)
+        offset_scale = 1
+        if expr.anchor_tf:
+            anchor_tf_mins = tf_minutes(expr.anchor_tf)
+            offset_scale = anchor_tf_mins // ACTION_TF_MINUTES
+
+        for i in range(expr.bars):
+            # Scale offset to action TF (1m) bars
+            offset = i * offset_scale
             shifted_expr = self._shift_expr(expr.expr, offset)
             result = self.evaluate(shifted_expr, snapshot)
             if not result.ok:
                 return EvalResult.failure(
                     ReasonCode.OK,
-                    f"HoldsFor failed at offset {offset}",
+                    f"HoldsFor failed at offset {i} (1m offset={offset})",
                     lhs_path=result.lhs_path,
                     operator="holds_for",
                 )
@@ -360,8 +377,17 @@ class ExprEvaluator:
         Evaluate OccurredWithin: expression was true at least once in last N bars.
 
         Checks bars 0, 1, 2, ..., bars-1 (current to past).
+        If anchor_tf is specified, offsets are scaled to anchor_tf granularity.
         """
-        for offset in range(expr.bars):
+        # Compute offset scale based on anchor_tf (default: 1m)
+        offset_scale = 1
+        if expr.anchor_tf:
+            anchor_tf_mins = tf_minutes(expr.anchor_tf)
+            offset_scale = anchor_tf_mins // ACTION_TF_MINUTES
+
+        for i in range(expr.bars):
+            # Scale offset to action TF (1m) bars
+            offset = i * offset_scale
             shifted_expr = self._shift_expr(expr.expr, offset)
             result = self.evaluate(shifted_expr, snapshot)
             if result.ok:
@@ -381,9 +407,18 @@ class ExprEvaluator:
         Evaluate CountTrue: expression must be true at least N times in M bars.
 
         Counts true occurrences across bars 0, 1, 2, ..., bars-1.
+        If anchor_tf is specified, offsets are scaled to anchor_tf granularity.
         """
+        # Compute offset scale based on anchor_tf (default: 1m)
+        offset_scale = 1
+        if expr.anchor_tf:
+            anchor_tf_mins = tf_minutes(expr.anchor_tf)
+            offset_scale = anchor_tf_mins // ACTION_TF_MINUTES
+
         count = 0
-        for offset in range(expr.bars):
+        for i in range(expr.bars):
+            # Scale offset to action TF (1m) bars
+            offset = i * offset_scale
             shifted_expr = self._shift_expr(expr.expr, offset)
             result = self.evaluate(shifted_expr, snapshot)
             if result.ok:
@@ -408,6 +443,89 @@ class ExprEvaluator:
             ReasonCode.OK,
             f"Expression was true {count} times, needed {expr.min_true}",
             operator="count_true",
+        )
+
+    def _eval_holds_for_duration(
+        self, expr: HoldsForDuration, snapshot: "RuntimeSnapshotView"
+    ) -> EvalResult:
+        """
+        Evaluate HoldsForDuration: expression must be true for specified duration.
+
+        Converts duration to 1m bars and evaluates like HoldsFor.
+        """
+        bars = expr.to_bars(ACTION_TF_MINUTES)
+        for offset in range(bars):
+            shifted_expr = self._shift_expr(expr.expr, offset)
+            result = self.evaluate(shifted_expr, snapshot)
+            if not result.ok:
+                return EvalResult.failure(
+                    ReasonCode.OK,
+                    f"HoldsForDuration({expr.duration}) failed at offset {offset}",
+                    lhs_path=result.lhs_path,
+                    operator="holds_for_duration",
+                )
+        return EvalResult.success(
+            True, "holds_for_duration", expr.duration, "holds_for_duration"
+        )
+
+    def _eval_occurred_within_duration(
+        self, expr: OccurredWithinDuration, snapshot: "RuntimeSnapshotView"
+    ) -> EvalResult:
+        """
+        Evaluate OccurredWithinDuration: expression was true at least once in duration.
+
+        Converts duration to 1m bars and evaluates like OccurredWithin.
+        """
+        bars = expr.to_bars(ACTION_TF_MINUTES)
+        for offset in range(bars):
+            shifted_expr = self._shift_expr(expr.expr, offset)
+            result = self.evaluate(shifted_expr, snapshot)
+            if result.ok:
+                return EvalResult.success(
+                    True,
+                    "occurred_within_duration",
+                    expr.duration,
+                    "occurred_within_duration",
+                )
+        return EvalResult.failure(
+            ReasonCode.OK,
+            f"Expression did not occur within {expr.duration}",
+            operator="occurred_within_duration",
+        )
+
+    def _eval_count_true_duration(
+        self, expr: CountTrueDuration, snapshot: "RuntimeSnapshotView"
+    ) -> EvalResult:
+        """
+        Evaluate CountTrueDuration: expression must be true at least N times in duration.
+
+        Converts duration to 1m bars and evaluates like CountTrue.
+        """
+        bars = expr.to_bars(ACTION_TF_MINUTES)
+        count = 0
+        for offset in range(bars):
+            shifted_expr = self._shift_expr(expr.expr, offset)
+            result = self.evaluate(shifted_expr, snapshot)
+            if result.ok:
+                count += 1
+                if count >= expr.min_true:
+                    return EvalResult.success(
+                        True,
+                        "count_true_duration",
+                        f"{count}/{expr.duration} >= {expr.min_true}",
+                        "count_true_duration",
+                    )
+        if count >= expr.min_true:
+            return EvalResult.success(
+                True,
+                "count_true_duration",
+                f"{count}/{expr.duration} >= {expr.min_true}",
+                "count_true_duration",
+            )
+        return EvalResult.failure(
+            ReasonCode.OK,
+            f"Expression was true {count} times in {expr.duration}, needed {expr.min_true}",
+            operator="count_true_duration",
         )
 
     def _eval_setup_ref(
@@ -490,14 +608,42 @@ class ExprEvaluator:
             return NotExpr(self._shift_expr(expr.child, offset))
 
         elif isinstance(expr, HoldsFor):
-            return HoldsFor(bars=expr.bars, expr=self._shift_expr(expr.expr, offset))
+            return HoldsFor(
+                bars=expr.bars,
+                expr=self._shift_expr(expr.expr, offset),
+                anchor_tf=expr.anchor_tf,
+            )
 
         elif isinstance(expr, OccurredWithin):
-            return OccurredWithin(bars=expr.bars, expr=self._shift_expr(expr.expr, offset))
+            return OccurredWithin(
+                bars=expr.bars,
+                expr=self._shift_expr(expr.expr, offset),
+                anchor_tf=expr.anchor_tf,
+            )
 
         elif isinstance(expr, CountTrue):
             return CountTrue(
                 bars=expr.bars,
+                min_true=expr.min_true,
+                expr=self._shift_expr(expr.expr, offset),
+                anchor_tf=expr.anchor_tf,
+            )
+
+        elif isinstance(expr, HoldsForDuration):
+            return HoldsForDuration(
+                duration=expr.duration,
+                expr=self._shift_expr(expr.expr, offset),
+            )
+
+        elif isinstance(expr, OccurredWithinDuration):
+            return OccurredWithinDuration(
+                duration=expr.duration,
+                expr=self._shift_expr(expr.expr, offset),
+            )
+
+        elif isinstance(expr, CountTrueDuration):
+            return CountTrueDuration(
+                duration=expr.duration,
                 min_true=expr.min_true,
                 expr=self._shift_expr(expr.expr, offset),
             )

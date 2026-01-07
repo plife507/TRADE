@@ -375,7 +375,8 @@ def eval_cross_above(
     """
     Evaluate cross_above: LHS crosses above RHS.
 
-    Definition: prev_lhs < rhs AND curr_lhs >= rhs
+    Definition (TradingView standard): prev_lhs <= rhs AND curr_lhs > rhs
+    Was at or below threshold, now strictly above.
 
     Args:
         lhs_curr: Current bar LHS value
@@ -411,8 +412,8 @@ def eval_cross_above(
             operator=op,
         )
 
-    # cross_above: prev < rhs AND curr >= rhs
-    result = lhs_prev.value < rhs.value and lhs_curr.value >= rhs.value
+    # cross_above (TradingView): prev <= rhs AND curr > rhs
+    result = lhs_prev.value <= rhs.value and lhs_curr.value > rhs.value
     return EvalResult.success(result, lhs_curr.path, str(rhs.value), op)
 
 
@@ -424,7 +425,8 @@ def eval_cross_below(
     """
     Evaluate cross_below: LHS crosses below RHS.
 
-    Definition: prev_lhs > rhs AND curr_lhs <= rhs
+    Definition (TradingView standard): prev_lhs >= rhs AND curr_lhs < rhs
+    Was at or above threshold, now strictly below.
 
     Args:
         lhs_curr: Current bar LHS value
@@ -460,8 +462,8 @@ def eval_cross_below(
             operator=op,
         )
 
-    # cross_below: prev > rhs AND curr <= rhs
-    result = lhs_prev.value > rhs.value and lhs_curr.value <= rhs.value
+    # cross_below (TradingView): prev >= rhs AND curr < rhs
+    result = lhs_prev.value >= rhs.value and lhs_curr.value < rhs.value
     return EvalResult.success(result, lhs_curr.path, str(rhs.value), op)
 
 

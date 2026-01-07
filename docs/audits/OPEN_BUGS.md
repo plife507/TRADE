@@ -1,6 +1,6 @@
 # Open Bugs
 
-**Last Updated**: 2026-01-05
+**Last Updated**: 2026-01-07
 **Status**: 0 OPEN BUGS (All bugs from clean slate rebuild FIXED)
 
 ---
@@ -15,16 +15,17 @@
 | P3 | 0 | Polish |
 
 **Validation Status**: ALL TESTS PASS
-- Plays: 15/15 normalize (V_100-V_122 blocks format)
+- Validation plays relocated to `tests/validation/plays/`
 - Indicators: **42/42 pass stress test** (all single + multi-output)
-- Crossover operators: cross_above, cross_below ENABLED
+- Crossover operators: cross_above, cross_below ENABLED (TradingView semantics)
+- Window operators: anchor_tf now properly scales offsets
 - Rollup: 11/11 intervals pass
 - Metrics: 6/6 tests pass
 - Structure smoke: All stages pass
 - Stress test Tier 1-2: 7/7 produce trades
 - Stress test Tier 3: swing (205), zone (491) verified
 
-**NOTE**: Terminology migration COMPLETE (IdeaCard → Play, --play → --play)
+**NOTE**: Terminology migration COMPLETE (IdeaCard -> Play, --play -> --play)
 
 ---
 
@@ -42,7 +43,7 @@
 
 ## P2 Open
 
-*None* - All P2 bugs fixed in 2026-01-05 session
+*None* - All P2 bugs fixed in 2026-01-07 session
 
 ---
 
@@ -52,7 +53,44 @@
 
 ---
 
-## P2 Resolved
+## Resolved This Session (2026-01-07)
+
+### P2-SIM-02: Frozen Fill Dataclass Crash - FIXED
+- **Location**: `src/backtest/sim/execution_model.py:fill_exit()`
+- **Issue**: `fill_exit()` was missing `close_ratio` parameter, causing crash with frozen dataclass
+- **Fix**: Added `close_ratio` param to `fill_exit()` function signature
+- **Status**: FIXED in 2026-01-07 session
+
+### P2-005: last_price Offset Support for Crossover - FIXED
+- **Location**: `src/backtest/rules/eval.py`
+- **Issue**: `last_price` could not be used with crossover operators (needed offset=1 for prev value)
+- **Fix**: Added `prev_last_price` tracking to enable crossover evaluation
+- **Status**: FIXED in 2026-01-07 session
+
+### P1-001: Crossover Semantics Misaligned with TradingView - FIXED
+- **Location**: `src/backtest/rules/eval.py:eval_cross_above(), eval_cross_below()`
+- **Issue**: Crossover used `prev < rhs AND curr >= rhs` instead of TradingView standard
+- **Fix**: Aligned to TradingView: `cross_above` = `prev <= rhs AND curr > rhs`
+- **Semantics**:
+  - `cross_above`: `prev_lhs <= rhs AND curr_lhs > rhs`
+  - `cross_below`: `prev_lhs >= rhs AND curr_lhs < rhs`
+- **Status**: FIXED in 2026-01-07 session
+
+### P1-002: anchor_tf Ignored in Window Operators - FIXED
+- **Location**: `src/backtest/rules/eval.py`
+- **Issue**: `anchor_tf` parameter was declared but not used - window operators always used bars=N literally
+- **Fix**: Offsets now scale by anchor_tf minutes (e.g., `bars: 3, anchor_tf: "1h"` = 180 minutes lookback)
+- **Status**: FIXED in 2026-01-07 session
+
+### P2-004: Duration Bar Ceiling Missing - FIXED
+- **Location**: `src/backtest/rules/duration.py:duration_to_bars()`
+- **Issue**: Duration to bar conversion did not handle ceiling properly
+- **Fix**: Added proper ceiling check in `duration_to_bars()`
+- **Status**: FIXED in 2026-01-07 session
+
+---
+
+## P2 Resolved (Previous Sessions)
 
 ### P2-09: Backtest Run Requires --smoke or Explicit --start/--end - FIXED
 - **Location**: `src/backtest/runner.py:223-250`
@@ -105,7 +143,7 @@
 
 ### P2-05: Silent Trade Rejection with Tight Stops + Large Sizing - FIXED
 - **Location**: `src/core/risk_manager.py:286`
-- **Issue**: `percent_equity` sizing with value=10.0 + stop_loss ≤3% produces 0 trades silently
+- **Issue**: `percent_equity` sizing with value=10.0 + stop_loss <=3% produces 0 trades silently
 - **Root Cause**: Signals created with `size_usdt=0` (engine computes later) were rejected by
   RiskManager Check 6 (min_viable_size=5.0) because `0 < 5`
 - **Fix**: Skip min_viable_size check when `signal.size_usdt == 0` (backtest engine case)
@@ -148,16 +186,6 @@
 
 ---
 
-## Resolved This Session (2026-01-04)
-
-### P2-05: Silent Trade Rejection - FIXED
-- **Location**: `src/core/risk_manager.py:286`
-- **Issue**: Backtest signals with `size_usdt=0` were rejected by min_viable_size check
-- **Fix**: Skip min_viable_size check when `signal.size_usdt == 0` (engine computes size later)
-- **Verified**: Test confirms signals pass risk checks
-
----
-
 ## Resolved Previous Session (2026-01-03)
 
 ### ENHANCEMENT: Crossover Operators Enabled
@@ -169,9 +197,9 @@
   3. Added `eval_cross_above()` and `eval_cross_below()` functions
   4. Added `get_with_offset()` to `RuntimeSnapshotView` for prev-bar access
   5. Updated `evaluate_condition()` to handle crossover operators
-- **Semantics**:
-  - `cross_above`: `prev_lhs < rhs AND curr_lhs >= rhs`
-  - `cross_below`: `prev_lhs > rhs AND curr_lhs <= rhs`
+- **Semantics** (updated 2026-01-07 to TradingView standard):
+  - `cross_above`: `prev_lhs <= rhs AND curr_lhs > rhs`
+  - `cross_below`: `prev_lhs >= rhs AND curr_lhs < rhs`
 - **Verified**: V_80_ema_crossover.yml (16 trades) validates and runs
 - **Validation**: `strategies/plays/_validation/V_80_ema_crossover.yml` (after migration)
 
@@ -242,6 +270,8 @@ When auditing, check for these patterns:
 
 | Date | Document | Bugs Fixed |
 |------|----------|------------|
+| 2026-01-07 | This session | 5 fixes (P1-001, P1-002, P2-004, P2-005, P2-SIM-02) |
+| 2026-01-05 | Previous session | 4 fixes (P2-08, P2-09, P2-10, P2-11, P3-05) |
 | 2026-01-03 | This session | 9 fixes + crossover enhancement |
 | 2026-01-03 | [archived/2026-01-03_BUGS_RESOLVED.md](archived/2026-01-03_BUGS_RESOLVED.md) | 72 (P0:7, P1:25, P2:28, P3:12) |
 | 2026-01-01 | [2026-01-01/](2026-01-01/) | Original audit reports |

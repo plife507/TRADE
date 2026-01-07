@@ -130,6 +130,8 @@ def build_snapshot_view_impl(
     step_result: StepResult | None = None,
     rollups: dict[str, float] | None = None,
     mark_price_override: float | None = None,
+    last_price: float | None = None,
+    prev_last_price: float | None = None,
     incremental_state: "MultiTFIncrementalState | None" = None,
     feature_registry: "FeatureRegistry | None" = None,
     rationalized_state: "RationalizedState | None" = None,
@@ -155,6 +157,8 @@ def build_snapshot_view_impl(
         step_result: Optional StepResult from exchange (for mark_price)
         rollups: Optional px.rollup.* values from 1m accumulation
         mark_price_override: Optional override for mark_price (1m evaluation)
+        last_price: 1m action price (ticker close). Passed to snapshot for DSL access.
+        prev_last_price: Previous 1m action price (for crossover operators).
         incremental_state: Optional MultiTFIncrementalState for structure access
         feature_registry: Optional FeatureRegistry for feature_id-based access
         rationalized_state: Optional RationalizedState for Layer 2 access
@@ -191,4 +195,6 @@ def build_snapshot_view_impl(
         incremental_state=incremental_state,
         feature_registry=feature_registry,
         rationalized_state=rationalized_state,
+        last_price=last_price,
+        prev_last_price=prev_last_price,
     )

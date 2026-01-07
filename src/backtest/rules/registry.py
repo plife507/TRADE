@@ -96,9 +96,9 @@ OPERATOR_REGISTRY = {
         needs_tolerance=True,
     ),
 
-    # Crossover operators - ENABLED
-    # cross_above: prev < rhs AND curr >= rhs
-    # cross_below: prev > rhs AND curr <= rhs
+    # Crossover operators - ENABLED (TradingView standard)
+    # cross_above: prev <= rhs AND curr > rhs (was at-or-below, now strictly above)
+    # cross_below: prev >= rhs AND curr < rhs (was at-or-above, now strictly below)
     "cross_above": OperatorSpec(
         name="cross_above",
         supported=True,

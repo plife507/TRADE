@@ -766,13 +766,74 @@ actions:
 
 ## Window Operators
 
-Window operators check conditions over multiple bars.
+Window operators check conditions over multiple bars. Two forms are available:
 
-### holds_for
+| Form | Syntax | Best For |
+|------|--------|----------|
+| **Duration-based** | `holds_for_duration: "30m"` | Cross-TF comparisons (recommended) |
+| **Bar-based** | `holds_for: {bars: 5}` | Same-TF conditions |
 
-Condition must be true for N consecutive bars:
+### Duration-Based Window Operators (Recommended for Cross-TF)
+
+Duration-based operators express time explicitly and always sample at 1m rate:
+
+#### holds_for_duration
+
+Condition must be true for the specified duration:
 
 ```yaml
+- when:
+    holds_for_duration:
+      duration: "30m"        # 30 minutes (= 30 bars at 1m)
+      expr:
+        lhs:
+          feature_id: "rsi_14_1h"   # Forward-filled from 1h
+        op: gt
+        rhs: 50
+```
+
+#### occurred_within_duration
+
+Condition was true at least once within the duration:
+
+```yaml
+- when:
+    occurred_within_duration:
+      duration: "1h"         # Within last hour
+      expr:
+        lhs:
+          feature_id: "last_price"
+        op: cross_above
+        rhs:
+          feature_id: "ema_50_4h"
+```
+
+#### count_true_duration
+
+Condition was true at least M times within the duration:
+
+```yaml
+- when:
+    count_true_duration:
+      duration: "2h"         # Within last 2 hours
+      min_true: 30           # At least 30 times
+      expr:
+        lhs:
+          feature_id: "rsi_14_1h"
+        op: lt
+        rhs: 40
+```
+
+**Duration format**: `"Nm"` (minutes) or `"Nh"` (hours). Max: 24 hours (1440 minutes).
+
+### Bar-Based Window Operators
+
+Bar-based operators use bar counts. Use `anchor_tf` for cross-TF conditions:
+
+#### holds_for
+
+```yaml
+# Same-TF: bars counted at feature's TF
 - when:
     holds_for:
       bars: 5
@@ -781,16 +842,27 @@ Condition must be true for N consecutive bars:
           feature_id: "rsi_14"
         op: gt
         rhs: 50
+
+# Cross-TF: explicit anchor_tf for correct sampling
+- when:
+    holds_for:
+      bars: 30
+      anchor_tf: "1m"        # Sample at 1m rate
+      expr:
+        lhs:
+          feature_id: "last_price"    # 1m
+        op: gt
+        rhs:
+          feature_id: "ema_50_4h"     # Forward-filled from 4h
 ```
 
-### occurred_within
-
-Condition was true at least once in last N bars:
+#### occurred_within
 
 ```yaml
 - when:
     occurred_within:
-      bars: 3
+      bars: 10
+      anchor_tf: "1m"        # Optional: explicit sampling rate
       expr:
         lhs:
           feature_id: "ema_9"
@@ -799,21 +871,48 @@ Condition was true at least once in last N bars:
           feature_id: "ema_21"
 ```
 
-### count_true
-
-Condition was true at least M times in last N bars:
+#### count_true
 
 ```yaml
 - when:
     count_true:
-      bars: 10
-      min_true: 3
+      bars: 60
+      min_true: 20
+      anchor_tf: "1m"        # Check 60 1m bars, need 20+ true
       expr:
         lhs:
-          feature_id: "rsi_14"
+          feature_id: "rsi_14_1h"
         op: gt
         rhs: 70
 ```
+
+### Why anchor_tf Matters (Cross-TF Problem)
+
+Without `anchor_tf`, bar-based windows shift features at their declared TFs, causing misalignment:
+
+```
+holds_for: 5 bars (NO anchor_tf, comparing 1m to 1h)
+
+Offset | last_price (1m) | rsi_14_1h (1h) | Problem
+-------|-----------------|----------------|--------
+0      | NOW             | NOW            | OK
+1      | 1m ago          | 1h ago         | BROKEN - wrong comparison
+2      | 2m ago          | 2h ago         | BROKEN
+```
+
+With `anchor_tf: "1m"` or duration-based operators, both sides sample at the same rate:
+
+```
+holds_for_duration: "5m" (or holds_for: {bars: 5, anchor_tf: "1m"})
+
+Offset | last_price (1m) | rsi_14_1h (forward-filled) | Result
+-------|-----------------|----------------------------|-------
+0      | NOW             | Current 1h value           | OK
+1      | 1m ago          | Same 1h value (forward-fill) | OK
+2      | 2m ago          | Same 1h value              | OK
+```
+
+**Rule of thumb**: Use duration-based operators for cross-TF conditions.
 
 ---
 
@@ -878,16 +977,27 @@ lhs:
 Available without declaration:
 
 ```yaml
-# OHLCV data
+# OHLCV data (at execution_tf)
 feature_id: "open"
 feature_id: "high"
 feature_id: "low"
 feature_id: "close"
 feature_id: "volume"
 
-# Mark price (current market price)
-feature_id: "mark_price"
+# Price features
+feature_id: "last_price"   # 1m ticker close (action price in hot loop)
+feature_id: "mark_price"   # Fair price for PnL calculation
 ```
+
+**Price Feature Semantics (1m Action Model)**:
+
+| Feature | Source | Update Rate | Use Case |
+|---------|--------|-------------|----------|
+| `last_price` | 1m bar close | Every 1m | Cross-TF comparisons, precise entries |
+| `close` | execution_tf bar close | Every exec bar | Bar-level conditions |
+| `mark_price` | Price model | Every 1m | PnL, margin calculations |
+
+The engine evaluates signals every 1m within each `execution_tf` bar. Use `last_price` when comparing price to forward-filled HTF indicators for responsive entries.
 
 ---
 
@@ -1221,6 +1331,7 @@ risk_model:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.0.4 | 2026-01-07 | 1m action model: `last_price`, duration-based windows (`holds_for_duration`, etc.), `anchor_tf` parameter |
 | 3.0.3 | 2026-01-06 | Partial exit actions (`percent` field), dynamic action metadata (feature refs in `metadata`) |
 | 3.0.2 | 2026-01-05 | Structure refs auto-resolve (both `swing` and `structure.swing` work); structure-only Plays valid; auto-infer date window |
 | 3.0.1 | 2026-01-05 | Renamed `blocks:` field to `actions:` |

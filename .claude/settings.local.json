@@ -135,7 +135,8 @@
       "Bash(npm run build:*)",
       "Bash(timeout /t 3 /nobreak)",
       "Bash(ping:*)",
-      "Bash(del \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\src\\\\components\\\\charts\\\\_write_chart.py\")"
+      "Bash(del \"C:\\\\code\\\\ai\\\\trade\\\\ui\\\\src\\\\components\\\\charts\\\\_write_chart.py\")",
+      "Skill(audit-swarm)"
     ]
   }
 }

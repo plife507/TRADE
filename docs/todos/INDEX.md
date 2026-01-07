@@ -1,7 +1,7 @@
 # TODO Index
 
 Documentation index for work tracking in the TRADE project.
-**Last Updated**: 2026-01-06
+**Last Updated**: 2026-01-07
 
 ---
 
@@ -9,11 +9,11 @@ Documentation index for work tracking in the TRADE project.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [TODO.md](TODO.md) | Current focus, next steps | **ICT Structures** |
+| [TODO.md](TODO.md) | Current focus, next steps | **DSL Bug Fixes Complete** |
 | [ICT_MARKET_STRUCTURE.md](ICT_MARKET_STRUCTURE.md) | ICT/SMC structure detectors | PLANNING |
 | [TV_WEBHOOK_MARKET_STRUCTURE_VERIFICATION.md](TV_WEBHOOK_MARKET_STRUCTURE_VERIFICATION.md) | TradingView webhook validation tool | READY |
 | [MEGA_FILE_REFACTOR.md](MEGA_FILE_REFACTOR.md) | Engine file size refactoring | Phases 1-3 COMPLETE, Phase 4 pending |
-| [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker (4 open) | Active |
+| [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker (0 open) | All Fixed |
 
 ---
 
@@ -21,15 +21,16 @@ Documentation index for work tracking in the TRADE project.
 
 | Workstream | Focus | Status |
 |------------|-------|--------|
-| **W1: Forge** | Development environment, audits | **ACTIVE** |
-| W2: Blocks DSL | Pure expression evaluation | Planned |
-| W3: Incremental | O(1) market structure detectors | ✅ Implemented |
-| W4: Hierarchy | Block/Play/System | ✅ Implemented |
+| W1: Forge | Development environment, audits | COMPLETE |
+| W2: Blocks DSL | Pure expression evaluation | COMPLETE (anchor_tf fixed) |
+| W3: Incremental | O(1) market structure detectors | COMPLETE |
+| W4: Hierarchy | Block/Play/System | COMPLETE |
 
-**W1 Goals**:
-- Move audits from `src/backtest/audits/` to `src/forge/audits/`
-- Pure function architecture (data flow, no control flow)
-- Validation and generation tooling
+**DSL Improvements (2026-01-07)**:
+- Crossover operators aligned to TradingView semantics
+- Window operators now scale by `anchor_tf`
+- Duration-based operators working correctly
+- 7 strategy patterns documented in `docs/guides/DSL_STRATEGY_PATTERNS.md`
 
 ---
 

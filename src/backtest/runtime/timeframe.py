@@ -4,11 +4,25 @@ Timeframe utilities for the backtest runtime.
 Provides timeframe duration calculation and validation.
 Uses TF_MINUTES from the data store as the source of truth.
 
-Timeframe Role Definitions:
+Timeframe Role Definitions (1m Action Model):
+
+    action_tf: Always 1m. The timeframe at which signals are evaluated and
+        TP/SL is checked. This is fixed and not configurable. In backtest,
+        we iterate every 1m bar within each eval_tf bar.
+
+    eval_tf: The declared execution_tf from Play YAML. Determines bar-stepping
+        granularity and indicator computation timing. E.g., if eval_tf="15m",
+        we process 15m bars but evaluate signals at every 1m within each.
+
+    condition_tf (LTF/MTF/HTF): Timeframes used for indicators and structures.
+        These define when indicator values update (on their TF close) and
+        forward-fill until the next close.
+
     LTF (Low Timeframe): 1m, 3m, 5m, 15m - Execution timing, micro-structure
     MTF (Mid Timeframe): 30m, 1h, 2h, 4h - Trade bias + structure context
     HTF (High Timeframe): 6h, 8h, 12h, 1D - Higher-level trend (capped at 1D)
-    exec: = LTF. The timeframe at which trading decisions are evaluated.
+
+    exec: = LTF. Legacy alias for backward compatibility.
 
 Hierarchy Rule:
     HTF >= MTF >= LTF (in minutes)
@@ -22,6 +36,17 @@ from datetime import datetime, timedelta
 
 # Import TF_MINUTES from data store (canonical source)
 from ...data.historical_data_store import TF_MINUTES
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+# Fixed action timeframe - signals are evaluated and TP/SL checked at this granularity
+ACTION_TF = "1m"
+ACTION_TF_MINUTES = 1
+
+# Maximum window duration for window operators (holds_for_duration, etc.)
+WINDOW_DURATION_CEILING_MINUTES = 1440  # 24 hours
 
 
 def tf_duration(tf: str) -> timedelta:

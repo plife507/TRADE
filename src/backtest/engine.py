@@ -1286,6 +1286,8 @@ class BacktestEngine:
         step_result: "StepResult | None" = None,
         rollups: dict[str, float] | None = None,
         mark_price_override: float | None = None,
+        last_price: float | None = None,
+        prev_last_price: float | None = None,
     ) -> RuntimeSnapshotView:
         """
         Build RuntimeSnapshotView for array-backed hot loop.
@@ -1299,6 +1301,8 @@ class BacktestEngine:
             step_result: Optional StepResult from exchange (for mark_price)
             rollups: Optional px.rollup.* values from 1m accumulation
             mark_price_override: Optional override for mark_price (1m evaluation)
+            last_price: 1m action price (ticker close) for DSL access
+            prev_last_price: Previous 1m action price (for crossover operators)
 
         Returns:
             RuntimeSnapshotView ready for strategy evaluation
@@ -1319,6 +1323,8 @@ class BacktestEngine:
             step_result=step_result,
             rollups=rollups,
             mark_price_override=mark_price_override,
+            last_price=last_price,
+            prev_last_price=prev_last_price,
             incremental_state=self._incremental_state,
             feature_registry=self._feature_registry,
             rationalized_state=self._rationalized_state,
@@ -1356,7 +1362,12 @@ class BacktestEngine:
         # Check if 1m quote feed is available
         if self._quote_feed is None or self._quote_feed.length == 0:
             # Fallback: evaluate at exec close only (no 1m sub-loop)
-            snapshot = self._build_snapshot_view(exec_idx, step_result, rollups)
+            # Note: This path runs when 1m data is unavailable. For full 1m
+            # action semantics, ensure 1m data is synced for your symbol.
+            exec_close = float(self._exec_feed.close[exec_idx])
+            snapshot = self._build_snapshot_view(
+                exec_idx, step_result, rollups, last_price=exec_close
+            )
             signal = None
             if not self._exchange.entries_disabled or self._exchange.position is not None:
                 signal = strategy(snapshot, self.config.params)
@@ -1370,20 +1381,26 @@ class BacktestEngine:
 
         # Track last snapshot for return
         last_snapshot = None
+        # Track previous 1m price for crossover operators
+        prev_price_1m: float | None = None
 
-        # Iterate through 1m bars
+        # Iterate through 1m bars (mandatory 1m action loop)
         for sub_idx in range(start_1m, end_1m + 1):
-            # Get 1m close as mark_price
-            mark_price_1m = float(self._quote_feed.close[sub_idx])
+            # Get 1m close as both mark_price and last_price
+            price_1m = float(self._quote_feed.close[sub_idx])
 
-            # Build snapshot with 1m mark_price override
+            # Build snapshot with 1m prices
             snapshot = self._build_snapshot_view(
                 exec_idx=exec_idx,
                 step_result=step_result,
                 rollups=rollups,
-                mark_price_override=mark_price_1m,
+                mark_price_override=price_1m,
+                last_price=price_1m,
+                prev_last_price=prev_price_1m,
             )
             last_snapshot = snapshot
+            # Update previous price for next iteration
+            prev_price_1m = price_1m
 
             # Skip if entries disabled and no position
             if self._exchange.entries_disabled and self._exchange.position is None:
@@ -1399,7 +1416,10 @@ class BacktestEngine:
 
         # No signal triggered - return last snapshot for consistency
         if last_snapshot is None:
-            last_snapshot = self._build_snapshot_view(exec_idx, step_result, rollups)
+            exec_close = float(self._exec_feed.close[exec_idx])
+            last_snapshot = self._build_snapshot_view(
+                exec_idx, step_result, rollups, last_price=exec_close
+            )
 
         return None, last_snapshot, None
 

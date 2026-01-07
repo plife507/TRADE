@@ -212,8 +212,29 @@ actions:
 **Actions DSL Features**:
 - Nested boolean logic: `all`, `any`, `not`
 - 11 operators: `gt`, `lt`, `gte`, `lte`, `eq`, `cross_above`, `cross_below`, `between`, `near_abs`, `near_pct`, `in`
-- Window operators: `holds_for`, `occurred_within`, `count_true`
+- Bar-based window operators: `holds_for`, `occurred_within`, `count_true` (with `anchor_tf` scaling)
+- Duration-based window operators: `holds_for_duration`, `occurred_within_duration`, `count_true_duration`
 - Type-safe: `eq` only for discrete, `near_*` only for numeric
+- Built-in price features: `last_price` (1m ticker close), `close` (eval_tf bar close), `mark_price`
+
+**Crossover Semantics (TradingView-aligned, 2026-01-07)**:
+- `cross_above`: `prev_lhs <= rhs AND curr_lhs > rhs`
+- `cross_below`: `prev_lhs >= rhs AND curr_lhs < rhs`
+- Supports `last_price` with offset=1 via `prev_last_price` tracking
+
+**Window Operators with anchor_tf (2026-01-07)**:
+- `anchor_tf` scales bar offsets: `bars: 3, anchor_tf: "1h"` = 180 minutes lookback
+- Without `anchor_tf`, bars are in 1m granularity (default)
+- Duration operators always evaluate at 1m granularity
+
+**Strategy Patterns Guide**: See `docs/guides/DSL_STRATEGY_PATTERNS.md` for 7 documented patterns
+
+**1m Action Model (2026-01-07)**:
+- Signals are evaluated every 1m within each eval_tf bar
+- `last_price` provides the 1m ticker close for cross-TF comparisons
+- Window operators default to 1m sampling (`anchor_tf="1m"`)
+- Duration-based windows convert to 1m bars (e.g., `"30m"` = 30 bars)
+- See: `docs/architecture/TIMEFRAME_SEMANTICS.md`
 
 ### How Structures Differ from Indicators
 
@@ -247,13 +268,16 @@ See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 
 ## Validation Plays
 
-Location: `strategies/plays/_validation/`
+**Location**: `tests/validation/plays/` (relocated 2026-01-07)
+
+Previous location `strategies/plays/_validation/` has been cleared.
 
 | Range | Purpose |
 |-------|---------|
 | V_100-V_106 | Core actions DSL (all/any/not, operators, windows) |
 | V_115 | Type-safe operator validation |
 | V_120-V_122 | Derived zones (K slots, aggregates, empty guards) |
+| V_130-V_133 | 1m action model (last_price, forward-fill, duration windows) |
 
 ## Metrics
 
@@ -268,4 +292,5 @@ Location: `strategies/plays/_validation/`
 | Document | Focus |
 |----------|-------|
 | `docs/todos/TODO.md` | Active work tracking |
-| `docs/audits/OPEN_BUGS.md` | Bug fixes (3 P2, 12 P3) |
+| `docs/audits/OPEN_BUGS.md` | Bug tracker (0 open - all fixed 2026-01-07) |
+| `docs/guides/DSL_STRATEGY_PATTERNS.md` | 7 DSL strategy patterns |
