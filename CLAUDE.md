@@ -131,7 +131,7 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 
 **Engine Complete**:
 - 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
-- 42 indicators in INDICATOR_REGISTRY (single source of truth)
+- 43 indicators in INDICATOR_REGISTRY (single source of truth)
 - 6 structures in STRUCTURE_REGISTRY (+derived_zone in Phase 12)
 - Play-first CLI with full menu coverage
 - 11 validation Plays (V_100+ blocks format only)

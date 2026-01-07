@@ -70,7 +70,7 @@ High risk % with percent_equity sizing causes margin exhaustion and 100% entry r
 **Validation Status**:
 - 84 tools registered
 - Validation plays relocated to `tests/validation/plays/`
-- 42/42 indicators pass audit
+- 43/43 indicators pass audit
 - 6 structures in STRUCTURE_REGISTRY
 - All smoke tests pass (including sim_orders, structure, forge)
 

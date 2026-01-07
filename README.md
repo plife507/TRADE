@@ -105,7 +105,7 @@ actions:
 | Component | Status | Details |
 |-----------|--------|---------|
 | **Backtest Engine** | Production | 62-field metrics, deterministic execution |
-| **Indicators** | 42 registered | EMA, RSI, MACD, Bollinger, Stochastic, ADX, etc. |
+| **Indicators** | 43 registered | EMA, RSI, MACD, Bollinger, Stochastic, ADX, VWAP, etc. |
 | **Structures** | 6 registered | Swing, Fibonacci, Zone, Trend, Rolling Window, Derived Zone |
 | **DSL v3.0** | Complete | TradingView crossovers, window operators, anchor_tf |
 | **The Forge** | Complete | Validation, audits, stress testing |

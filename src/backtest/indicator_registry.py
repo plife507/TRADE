@@ -494,6 +494,12 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "primary_output": "kvo",
         "warmup_formula": _warmup_kvo,
     },
+    "vwap": {
+        "inputs": {"high", "low", "close", "volume"},
+        "params": {"anchor"},  # anchor: session reset period (e.g., "D" for daily)
+        "multi_output": False,
+        "warmup_formula": _warmup_minimal,  # Cumulative from session start
+    },
 }
 
 # Common params accepted by most indicators (added to each indicator's params)
@@ -544,6 +550,7 @@ INDICATOR_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
     "trix": {"value": FeatureOutputType.FLOAT},
     "uo": {"value": FeatureOutputType.FLOAT},
     "ppo": {"value": FeatureOutputType.FLOAT},
+    "vwap": {"value": FeatureOutputType.FLOAT},
 
     # -------------------------------------------------------------------------
     # Multi-Output Indicators
