@@ -12,8 +12,9 @@ Documentation index for work tracking in the TRADE project.
 | [TODO.md](TODO.md) | Current focus, next steps | **DSL Bug Fixes Complete** |
 | [ICT_MARKET_STRUCTURE.md](ICT_MARKET_STRUCTURE.md) | ICT/SMC structure detectors | PLANNING |
 | [TV_WEBHOOK_MARKET_STRUCTURE_VERIFICATION.md](TV_WEBHOOK_MARKET_STRUCTURE_VERIFICATION.md) | TradingView webhook validation tool | READY |
-| [MEGA_FILE_REFACTOR.md](MEGA_FILE_REFACTOR.md) | Engine file size refactoring | Phases 1-3 COMPLETE, Phase 4 pending |
 | [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker (0 open) | All Fixed |
+
+**Archived**: `archived/2026-01/MEGA_FILE_REFACTOR.md` (Phases 1-3 complete)
 
 ---
 

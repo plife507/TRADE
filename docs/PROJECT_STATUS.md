@@ -2,7 +2,7 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** What runs today, what is stubbed, top risks, next steps
-**LAST UPDATED:** January 4, 2026 (Legacy Plays removed, all blocks format)
+**LAST UPDATED:** January 7, 2026 (DSL bugs fixed, validation plays relocated)
 
 ---
 
@@ -25,8 +25,8 @@
 | Play Value Flow | ✅ Production | Fail-loud validation, explicit declarations, all phases complete |
 | Blocks DSL | ✅ Production | v3.0.0 - nested all/any/not, 11 operators, window operators |
 | Live Trading | ⚠️ Functional | Demo API tested, live not validated |
-| Indicator System | ✅ Production | 42 indicators in registry, string-based types |
-| Validation Suite | ✅ Production | 11 validation Plays (V_100+ blocks format only) |
+| Indicator System | ✅ Production | 43 indicators in registry, string-based types |
+| Validation Suite | ✅ Production | Validation Plays in `tests/validation/plays/` |
 | Strategy Factory | ⚠️ Partial | Plays work, promotion manual |
 | Agent Module | ❌ Planned | Not started |
 
@@ -36,6 +36,10 @@
 
 | Phase | Status | Date | Key Features |
 |-------|--------|------|--------------|
+| DSL Bug Fixes | ✅ Complete | Jan 7 | 5 bugs fixed: crossover semantics, anchor_tf, duration |
+| Validation Play Relocation | ✅ Complete | Jan 7 | Moved to `tests/validation/plays/` |
+| ExitMode & Strategy Testing | ✅ Complete | Jan 6 | ExitMode enum, test plays, SOL short +19% |
+| Visualization System | ✅ Complete | Jan 5 | FastAPI + React, TradingView-style charts |
 | Legacy Cleanup | ✅ Complete | Jan 4 | All signal_rules Plays removed, blocks-only format |
 | Derived Zones (Phase 12) | ✅ Complete | Jan 4 | K slots + aggregates, derived_zone detector |
 | Mega-file Refactor | ✅ Complete | Jan 3 | data_tools, tool_registry, datetime_utils splits |
@@ -66,7 +70,7 @@
 | Post-Backtest Audit Gates | ✅ Complete | Dec 18 | Auto-sync (--fix-gaps), artifact validation |
 | Backtest Financial Metrics | ✅ Complete | Dec 18 | Fixed Max DD%, proper CAGR/Calmar |
 
-**See**: `docs/session_reviews/` for detailed implementation notes
+**See**: `docs/todos/TODO.md` for detailed implementation notes
 
 ---
 
@@ -195,29 +199,30 @@ python trade_cli.py backtest metadata-smoke
 | 6 | Strategy overfitting | MEDIUM | Use validation periods, multiple symbols |
 | 7 | Market regime changes | MEDIUM | Monitor performance, adjust strategies |
 | 8 | MTF alignment edge cases | LOW | Extensively tested, determinism verified |
-| 9 | Indicator registry completeness | LOW | 42 indicators covered |
+| 9 | Indicator registry completeness | LOW | 43 indicators covered |
 | 10 | DuckDB concurrency | LOW | Single-writer pattern |
 
 ---
 
-## Open Bugs (Post-Refactor Audit 2026-01-03)
+## Open Bugs (2026-01-07)
 
 | Priority | Open | Description |
 |----------|------|-------------|
 | P0 | 0 | No critical blockers |
-| P1 | 2 | Config patterns (hasattr guards, hardcoded values) |
-| P2 | 3 | Type safety (hasattr, dynamic access, type ignores) |
-| P3 | 4 | Polish (deprecated code, comments, defaults) |
+| P1 | 0 | All fixed |
+| P2 | 0 | All fixed |
+| P3 | 0 | All fixed |
 
-**Total Open**: 9 bugs (down from 72 fixed in previous audit)
+**Total Open**: 0 bugs
 
-**Previous Audit**: 72 bugs fixed (P0:7, P1:25, P2:28, P3:12) - archived
+**Resolved This Session (2026-01-07)**:
+- P1-001: Crossover semantics aligned to TradingView
+- P1-002: anchor_tf now scales window operators
+- P2-004: Duration bar ceiling check added
+- P2-005: last_price offset support for crossover
+- P2-SIM-02: Frozen Fill dataclass crash fixed
 
-**P1 Open**:
-- P1-01: Deprecated config pattern (hasattr guards) - 2h to fix
-- P1-02: Hardcoded max_exposure_pct - 30m to fix
-
-**See**: `docs/audits/OPEN_BUGS.md` for full catalog
+**See**: `docs/audits/OPEN_BUGS.md` for full history
 
 ---
 
@@ -262,8 +267,8 @@ python trade_cli.py backtest metadata-smoke
 | Document | Purpose |
 |----------|---------|
 | `docs/todos/TODO.md` | Active work tracking |
-| `docs/todos/MEGA_FILE_REFACTOR.md` | Phase 4 refactor plan |
-| `docs/audits/OPEN_BUGS.md` | Bug tracker |
+| `docs/audits/OPEN_BUGS.md` | Bug tracker (0 open) |
+| `docs/guides/DSL_STRATEGY_PATTERNS.md` | 7 DSL strategy patterns |
 
 ---
 
@@ -271,7 +276,7 @@ python trade_cli.py backtest metadata-smoke
 
 - [x] All smoke tests pass (`--smoke full`)
 - [x] Phase 6 backtest smoke tests pass (6/6 tests with determinism)
-- [x] Toolkit contract audit passes (42/42 indicators)
+- [x] Toolkit contract audit passes (43/43 indicators)
 - [x] Math parity audit passes (P0 input-source fixed 2025-12-17)
 - [x] Financial metrics audit passes (`backtest metrics-audit` 6/6)
 - [x] Snapshot plumbing audit passes
@@ -288,10 +293,12 @@ python trade_cli.py backtest metadata-smoke
 - [x] Play value flow complete ✅ (2026-01-01)
 - [x] Market Structure Stages 0-7 complete ✅ (2026-01-01)
 - [x] Audit Swarm P1 fixes (12/16) complete ✅ (2026-01-01)
-- [x] 11 validation Plays pass normalization ✅ (V_100+ blocks format only)
+- [x] Validation Plays pass normalization ✅ (relocated to tests/validation/plays/)
 - [x] Incremental State Architecture complete ✅ (2026-01-03)
 - [x] Derived Zones (Phase 12) complete ✅ (2026-01-04)
 - [x] Legacy Plays removed ✅ (2026-01-04)
+- [x] DSL bug fixes complete ✅ (2026-01-07)
+- [x] Visualization system complete ✅ (2026-01-05)
 
 ---
 

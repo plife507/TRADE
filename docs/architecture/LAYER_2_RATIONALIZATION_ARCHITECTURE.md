@@ -605,7 +605,7 @@ src/
   live/                     # NEW
     live_runner.py          # LiveRunner using WebSocketPriceSource
 
-strategies/plays/_validation/
+tests/validation/plays/
   V_130_rationalize_basic.yml
   V_131_rationalize_transitions.yml
   V_132_rationalize_regimes.yml
@@ -716,7 +716,7 @@ VALIDATION PIPELINE
 │  │ BacktestSource                                                     │ │
 │  │ - Real market conditions                                           │ │
 │  │ - Edge cases from actual trading                                   │ │
-│  │ - Validation Plays (V_100+ in strategies/plays/_validation/) │ │
+│  │ - Validation Plays (V_100+ in tests/validation/plays/)       │ │
 │  │ PROVES: "Works correctly on real markets"                          │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                              │                                          │
@@ -1027,7 +1027,7 @@ python trade_cli.py forge validate-all swing
 | **Forge (WIP)** | `src/forge/*/` | Under development |
 | **Math Proven** | `src/forge/` + passing seed tests | All seed data passes |
 | **Registered** | `src/backtest/` or `strategies/` | Moved to production location |
-| **Market Tested** | + `strategies/plays/_validation/V_*.yml` | Validation plays pass |
+| **Market Tested** | + `tests/validation/plays/V_*.yml` | Validation plays pass |
 | **Production** | Used in real plays/playbooks | Demo-proven, approved |
 
 **Promotion by component type:**

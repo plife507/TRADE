@@ -134,7 +134,7 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 - 43 indicators in INDICATOR_REGISTRY (single source of truth)
 - 6 structures in STRUCTURE_REGISTRY (+derived_zone in Phase 12)
 - Play-first CLI with full menu coverage
-- 11 validation Plays (V_100+ blocks format only)
+- Validation Plays in `tests/validation/plays/` (V_100+ blocks format)
 
 **Derived Zones - Phase 12 (2026-01-04)**:
 - K slots + aggregates pattern for derived zones from swing pivots
@@ -224,8 +224,11 @@ TRADE/
 ├── configs/
 │   ├── blocks/                    # Atomic reusable conditions
 │   ├── plays/                     # Proven Play configurations (strategies)
-│   │   └── _validation/           # Validation Plays (V_100+)
 │   └── systems/                   # Deployment configurations (multiple plays)
+├── tests/
+│   └── validation/                # Validation Plays (V_100+) - contract tests
+│       ├── plays/                 # DSL and operator validation
+│       └── blocks/                # Block validation
 ├── data/                          # Local market data (DuckDB, gitignored)
 │   └── market_data_*.duckdb       # Environment-aware databases
 ├── backtests/                     # Backtest artifacts (gitignored)
@@ -746,23 +749,16 @@ See `docs/todos/TODO.md` for active work tracking.
 
 ### Validation Plays
 
-Location: `strategies/plays/_validation/`
+Location: `tests/validation/plays/` (relocated 2026-01-07)
 
-| Play | Purpose |
-|------|---------|
-| V_100_blocks_basic.yml | Basic blocks DSL validation |
-| V_101_all_any.yml | Nested all/any boolean logic |
-| V_102_between.yml | Between operator validation |
-| V_103_crossover.yml | cross_above/cross_below operators |
-| V_104_holds_for.yml | holds_for window operator |
-| V_105_occurred_within.yml | occurred_within window operator |
-| V_106_not_operator.yml | NOT boolean operator |
-| V_115_type_safe_operators.yml | Type-safe operator validation |
-| V_120_derived_zones_basic.yml | Derived zones K slots |
-| V_121_derived_zones_aggregates.yml | Derived zones aggregate fields |
-| V_122_derived_zones_empty_slots.yml | Empty slot guard patterns |
+Validation plays provide contract testing for DSL operators, structures, and engine features.
 
-**Total**: 11 validation Plays (V_100+ blocks format only)
+| Category | Purpose |
+|----------|---------|
+| V_100-V_106 | Core blocks DSL (all/any/not, operators, windows) |
+| V_115 | Type-safe operator validation |
+| V_120-V_122 | Derived zones (K slots, aggregates, empty guards) |
+| V_130-V_133 | 1m action model (last_price, forward-fill) |
 
 ### Validation Tiers
 

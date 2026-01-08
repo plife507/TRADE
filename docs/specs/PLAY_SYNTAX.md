@@ -1342,7 +1342,7 @@ risk_model:
 
 ## See Also
 
-- `strategies/plays/_validation/` - Validation play examples
+- `tests/validation/plays/` - Validation play examples
 - `docs/specs/PLAY_VISION.md` - Play design vision
 - `docs/specs/INCREMENTAL_STATE_ARCHITECTURE.md` - Structure detectors
 - `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` - StateRationalizer and Forge

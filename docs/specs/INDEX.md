@@ -2,27 +2,27 @@
 
 Reference documentation for TRADE system architecture and specifications.
 
-**Last Updated**: 2026-01-04
+**Last Updated**: 2026-01-07
 
 ---
 
-## Terminology Update (2026-01-04)
+## Terminology (Current)
 
-The following terminology changes are in progress:
+| Term | Description |
+|------|-------------|
+| Block | Atomic reusable condition (features + DSL condition) |
+| Play | Complete backtest-ready strategy (features + actions + risk) |
+| System | Multiple plays with regime-based weighted blending |
 
-| Old Term | New Term | Notes |
-|----------|----------|-------|
-| IdeaCard | Play | Complete strategy specification |
-| strategies/idea_cards/ | strategies/plays/ | Strategy config directory |
-| sandbox | forge | Development/validation environment |
+**Trading Hierarchy**: Block → Play → System
 
-**Trading Hierarchy** (Setup → Play → Playbook → System):
-- **Setup**: Reusable rule blocks, filters, entry/exit logic
-- **Play**: Complete strategy (formerly "IdeaCard")
-- **Playbook**: Collection of plays for scenarios
-- **System**: Full trading operation with risk/execution
+| Level | Location | Example |
+|-------|----------|---------|
+| Block | `strategies/blocks/` | ema_cross.yml |
+| Play | `strategies/plays/` | I_001_ema.yml |
+| System | `strategies/systems/` | (future) |
 
-See: `docs/architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` for complete details.
+Validation Plays: `tests/validation/plays/`
 
 ---
 
@@ -73,11 +73,13 @@ Key concepts:
 
 ---
 
-## Archived
+## DSL Strategy Patterns
 
-Legacy documentation in `archived/`:
-- `PLAY_ENGINE_FLOW_LEGACY.md` - Legacy signal_rules format (pre-blocks)
-- `PLAY_OPERATORS_REFERENCE_LEGACY.md` - Legacy operators reference
-- `PLAY_TRIGGER_AND_STRUCTURE_FLOW_LEGACY.md` - Legacy trigger/structure flow
-- `MARKET_STRUCTURE_INTEGRATION_PROPOSAL.md` - Original market structure proposal
-- `INTRADAY_ADAPTIVE_SYSTEM_REVIEW.md` - Adaptive system review
+See `docs/guides/DSL_STRATEGY_PATTERNS.md` for 7 documented patterns:
+1. Momentum Confirmation (holds_for_duration)
+2. Dip Buying / Mean Reversion (occurred_within_duration)
+3. Multi-Timeframe Confirmation (anchor_tf)
+4. Breakout with Volume Confirmation (count_true_duration)
+5. Price Action Crossovers (last_price + cross_above/below)
+6. Cooldown / Anti-Chop Filter (occurred_within)
+7. Exhaustion Detection (count_true + trend)

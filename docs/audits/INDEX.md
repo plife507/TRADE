@@ -1,7 +1,7 @@
 # Audits Documentation Index
 
 **Purpose**: Centralized index for all audit reports, bug tracking, and technical reviews.
-**Last Updated**: 2026-01-04
+**Last Updated**: 2026-01-07
 
 ---
 
@@ -11,18 +11,16 @@
 |----------|---------|--------|
 | [OPEN_BUGS.md](OPEN_BUGS.md) | Prioritized bug tracker | ACTIVE |
 
-**Summary** (as of 2026-01-04):
+**Summary** (as of 2026-01-07):
 - P0: 0 open (critical)
 - P1: 0 open (high)
-- P2: 2 open (type safety)
-- P3: 2 open (polish)
-- **Total**: 4 open
+- P2: 0 open (type safety)
+- P3: 0 open (polish)
+- **Total**: 0 open
 
-**Previous Audit**: 72 bugs fixed (P0:7, P1:25, P2:28, P3:12)
+**Previous Audits**: 72+ bugs fixed across sessions
 
-**NOTE**: Forge migration in progress - audit paths will change:
-- `src/backtest/audits/` → `src/forge/audits/`
-- Validation Plays: `strategies/plays/_validation/V_100+`
+**Validation Plays**: `tests/validation/plays/` (relocated 2026-01-07)
 
 ---
 
@@ -68,36 +66,29 @@ Full codebase audit conducted by 10 specialized agents. **Verdict: ALL ISSUES RE
 
 | Document | Purpose |
 |----------|---------|
-| [COMPREHENSIVE_INDICATOR_TEST_MATRIX.md](COMPREHENSIVE_INDICATOR_TEST_MATRIX.md) | Test matrix for all 42 indicators |
+| [COMPREHENSIVE_INDICATOR_TEST_MATRIX.md](COMPREHENSIVE_INDICATOR_TEST_MATRIX.md) | Test matrix for all 43 indicators |
 | [market_structure_indicator_integration.md](market_structure_indicator_integration.md) | Market structure integration analysis |
 
 ---
 
-## Validation Plays (V_100+)
+## Validation Plays
 
-Location: `strategies/plays/_validation/` (after migration)
+Location: `tests/validation/plays/` (relocated 2026-01-07)
 
-| Play | Purpose |
-|------|---------|
-| V_100_blocks_basic.yml | Basic blocks DSL validation |
-| V_101_all_any.yml | Nested all/any boolean logic |
-| V_102_between.yml | Between operator validation |
-| V_103_crossover.yml | cross_above/cross_below operators |
-| V_104_holds_for.yml | holds_for window operator |
-| V_105_occurred_within.yml | occurred_within window operator |
-| V_106_not_operator.yml | NOT boolean operator |
-| V_115_type_safe_operators.yml | Type-safe operator validation |
-| V_120_derived_zones_basic.yml | Derived zones K slots |
-| V_121_derived_zones_aggregates.yml | Derived zones aggregate fields |
-| V_122_derived_zones_empty_slots.yml | Empty slot guard patterns |
+Validation plays provide contract testing for DSL operators, structures, and engine features.
 
-**Total**: 11 validation Plays (V_100+ blocks format only)
+| Category | Purpose |
+|----------|---------|
+| V_100-V_106 | Core blocks DSL (all/any/not, operators, windows) |
+| V_115 | Type-safe operator validation |
+| V_120-V_122 | Derived zones (K slots, aggregates, empty guards) |
+| V_130-V_133 | 1m action model (last_price, forward-fill) |
 
 ---
 
 ## Navigation
 
-- **Bug Tracking**: [OPEN_BUGS.md](OPEN_BUGS.md) - current status (4 open)
+- **Bug Tracking**: [OPEN_BUGS.md](OPEN_BUGS.md) - current status (0 open)
 - **Archived Bugs**: [archived/2026-01-03_BUGS_RESOLVED.md](archived/2026-01-03_BUGS_RESOLVED.md) - 72 fixed
 - **Audit Overview**: [2026-01-01/AUDIT_INDEX.md](2026-01-01/AUDIT_INDEX.md) - executive summary
-- **Forge Migration**: [../todos/TODO.md](../todos/TODO.md) - active work
+- **Active Work**: [../todos/TODO.md](../todos/TODO.md) - current TODO

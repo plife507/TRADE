@@ -505,7 +505,7 @@ class FillResult:
 
 Each new feature needs:
 
-1. **Validation Play** in `strategies/plays/_validation/`
+1. **Validation Play** in `tests/validation/plays/`
 2. **Unit test scenarios** via CLI smoke tests
 3. **Parity check** vs live behavior documentation
 

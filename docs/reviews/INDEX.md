@@ -1,17 +1,17 @@
 # Code Reviews Index
 
-**Last Updated**: 2026-01-04
+**Last Updated**: 2026-01-07
 
 ---
 
 ## Current Reviews
 
-The following reviews are current and relevant:
-
 | Review | Date | Status | Topic |
 |--------|------|--------|-------|
 | [ARCHITECTURE_EXPERT_REVIEW.md](ARCHITECTURE_EXPERT_REVIEW.md) | 2026-01-04 | Active | Engine design, Sim-Live parity gaps |
 | [SIMULATOR_VS_LIVE_PARITY_REVIEW.md](SIMULATOR_VS_LIVE_PARITY_REVIEW.md) | 2026-01-04 | Active | Detailed capability matrix: sim vs live |
+| [BACKTEST_VISUALIZATION_BEST_PRACTICES.md](BACKTEST_VISUALIZATION_BEST_PRACTICES.md) | 2026-01-05 | Active | Visualization system best practices |
+| [CODE_COMPLEXITY_REFACTOR_REVIEW.md](CODE_COMPLEXITY_REFACTOR_REVIEW.md) | 2026-01-04 | Active | Code complexity analysis |
 
 ---
 
@@ -35,16 +35,10 @@ Current simulator supports ~15% of Bybit live capabilities:
 
 ---
 
-## Archived Reviews
-
-See `docs/_archived/reviews__*.md` for historical reviews.
-
----
-
 ## Active Documentation
 
 For current project state, see:
 - `docs/PROJECT_STATUS.md` - Current status
 - `docs/todos/TODO.md` - Active work
-- `docs/audits/OPEN_BUGS.md` - Bug tracker
+- `docs/audits/OPEN_BUGS.md` - Bug tracker (0 open)
 - `docs/specs/` - Architecture specs

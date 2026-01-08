@@ -448,24 +448,24 @@ After all phases, `STRUCTURE_REGISTRY` will have:
 | `src/backtest/incremental/detectors/order_block.py` | 3 |
 | `src/backtest/incremental/detectors/fair_value_gap.py` | 4 |
 | `src/backtest/incremental/detectors/liquidity_zone.py` | 5 |
-| `strategies/plays/_validation/V_050_zone_enhanced.yml` | 1 |
-| `strategies/plays/_validation/V_051_market_structure.yml` | 2 |
-| `strategies/plays/_validation/V_052_bos_entry.yml` | 2 |
-| `strategies/plays/_validation/V_053_choch_reversal.yml` | 2 |
-| `strategies/plays/_validation/V_054_order_block_bullish.yml` | 3 |
-| `strategies/plays/_validation/V_055_order_block_bearish.yml` | 3 |
-| `strategies/plays/_validation/V_056_breaker_block.yml` | 3 |
-| `strategies/plays/_validation/V_057_fvg_bullish.yml` | 4 |
-| `strategies/plays/_validation/V_058_fvg_bearish.yml` | 4 |
-| `strategies/plays/_validation/V_059_fvg_ce_entry.yml` | 4 |
-| `strategies/plays/_validation/V_060_liquidity_bsl.yml` | 5 |
-| `strategies/plays/_validation/V_061_liquidity_ssl.yml` | 5 |
-| `strategies/plays/_validation/V_062_liquidity_sweep.yml` | 5 |
-| `strategies/plays/_validation/V_063_ict_ob_fvg_combo.yml` | 6 |
-| `strategies/plays/_validation/V_064_ict_bos_ob.yml` | 6 |
-| `strategies/plays/_validation/V_065_ict_choch_fvg.yml` | 6 |
-| `strategies/plays/_validation/V_066_ict_liquidity_sweep.yml` | 6 |
-| `strategies/plays/_validation/V_067_ict_premium_discount.yml` | 6 |
+| `tests/validation/plays/V_050_zone_enhanced.yml` | 1 |
+| `tests/validation/plays/V_051_market_structure.yml` | 2 |
+| `tests/validation/plays/V_052_bos_entry.yml` | 2 |
+| `tests/validation/plays/V_053_choch_reversal.yml` | 2 |
+| `tests/validation/plays/V_054_order_block_bullish.yml` | 3 |
+| `tests/validation/plays/V_055_order_block_bearish.yml` | 3 |
+| `tests/validation/plays/V_056_breaker_block.yml` | 3 |
+| `tests/validation/plays/V_057_fvg_bullish.yml` | 4 |
+| `tests/validation/plays/V_058_fvg_bearish.yml` | 4 |
+| `tests/validation/plays/V_059_fvg_ce_entry.yml` | 4 |
+| `tests/validation/plays/V_060_liquidity_bsl.yml` | 5 |
+| `tests/validation/plays/V_061_liquidity_ssl.yml` | 5 |
+| `tests/validation/plays/V_062_liquidity_sweep.yml` | 5 |
+| `tests/validation/plays/V_063_ict_ob_fvg_combo.yml` | 6 |
+| `tests/validation/plays/V_064_ict_bos_ob.yml` | 6 |
+| `tests/validation/plays/V_065_ict_choch_fvg.yml` | 6 |
+| `tests/validation/plays/V_066_ict_liquidity_sweep.yml` | 6 |
+| `tests/validation/plays/V_067_ict_premium_discount.yml` | 6 |
 | `strategies/plays/_stress_test/T_010_ict_full_model.yml` | 6 |
 
 ### Modified Files
@@ -482,7 +482,7 @@ After all phases, `STRUCTURE_REGISTRY` will have:
 
 After each phase:
 
-1. **Normalize**: `python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation`
+1. **Normalize**: `python trade_cli.py backtest play-normalize-batch --dir tests/validation/plays`
 2. **Smoke**: Run new validation Plays with synthetic data
 3. **Backtest**: Run with real DuckDB data (BTCUSDT 1h, 30 days)
 4. **Verify**: Check structure outputs match expected patterns
@@ -490,7 +490,7 @@ After each phase:
 **Final validation:**
 ```bash
 # All validation Plays
-python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation
+python trade_cli.py backtest play-normalize-batch --dir tests/validation/plays
 
 # Structure audit
 python trade_cli.py backtest structure-smoke
