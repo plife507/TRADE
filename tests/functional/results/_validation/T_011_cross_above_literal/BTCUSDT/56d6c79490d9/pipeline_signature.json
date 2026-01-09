@@ -1,0 +1,30 @@
+{
+  "computed_feature_keys": [
+    "macd_12_26_9",
+    "macd_12_26_9_histogram",
+    "macd_12_26_9_macd",
+    "macd_12_26_9_signal"
+  ],
+  "config_source": "Play",
+  "created_at": "2026-01-08T04:35:10.073982+00:00",
+  "declared_feature_keys": [
+    "macd_12_26_9",
+    "macd_12_26_9_histogram",
+    "macd_12_26_9_macd",
+    "macd_12_26_9_signal"
+  ],
+  "engine_impl": "BacktestEngine",
+  "exchange_impl": "SimulatedExchange",
+  "feature_builder_impl": "FeatureFrameBuilder",
+  "feature_keys_match": true,
+  "indicator_backend": "pandas-ta",
+  "pipeline_version": "1.0.0",
+  "placeholder_mode": false,
+  "play_hash": "5a357a07a7f1101a",
+  "play_id": "T_011_cross_above_literal",
+  "resolved_play_path": "tests\\functional\\strategies\\plays\\T_011_cross_above_literal.yml",
+  "run_id": "56d6c79490d9",
+  "snapshot_impl": "RuntimeSnapshotView",
+  "strict_indicator_access": true,
+  "uses_system_config_loader": false
+}

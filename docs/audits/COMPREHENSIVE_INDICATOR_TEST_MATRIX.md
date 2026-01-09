@@ -1,10 +1,12 @@
 # Comprehensive Indicator Test Matrix
 
-**Goal**: Test all 42 indicators across varying timeframes, date ranges, warmup requirements, and MTF configurations to catch edge cases.
+**Goal**: Test all 43 indicators across varying timeframes, date ranges, warmup requirements, and MTF configurations to catch edge cases.
 
-## Indicator Registry Summary (42 Total)
+**Status**: All 43 indicators pass functional tests (2026-01-07). See `tests/functional/` for the test suite.
 
-### Single-Output Indicators (26)
+## Indicator Registry Summary (43 Total)
+
+### Single-Output Indicators (27)
 
 | # | Indicator | Inputs | Warmup Formula | Default Warmup |
 |---|-----------|--------|----------------|----------------|
@@ -31,30 +33,31 @@
 | 21 | linreg | close | length | 14 |
 | 22 | midprice | hl | length | 14 |
 | 23 | ohlc4 | ohlc | 1 | 1 |
-| 24 | trix | close | 3x length | 45 |
-| 25 | uo | hlc | max(f,m,s) | 28 |
-| 26 | ppo | close | 3x slow + signal | 87 |
+| 24 | vwap | hlcv | 1 | 1 |
+| 25 | trix | close | 3x length | 45 |
+| 26 | uo | hlc | max(f,m,s) | 28 |
+| 27 | ppo | close | 3x slow + signal | 87 |
 
 ### Multi-Output Indicators (16)
 
 | # | Indicator | Inputs | Outputs | Mutually Exclusive | Default Warmup |
 |---|-----------|--------|---------|-------------------|----------------|
-| 27 | macd | close | macd, signal, histogram | No | 87 |
-| 28 | bbands | close | lower, middle, upper, bandwidth, percent_b | No | 20 |
-| 29 | stoch | hlc | k, d | No | 20 |
-| 30 | stochrsi | close | k, d | No | 34 |
-| 31 | adx | hlc | adx, dmp, dmn, adxr | No | 28 |
-| 32 | aroon | hl | up, down, osc | No | 26 |
-| 33 | kc | hlc | lower, basis, upper | No | 61 |
-| 34 | donchian | hl | lower, middle, upper | No | 20 |
-| 35 | supertrend | hlc | trend, direction, long, short | **YES** (long/short) | 11 |
-| 36 | psar | hlc | long, short, af, reversal | **YES** (long/short) | 2 |
-| 37 | squeeze | hlc | sqz, on, off, no_sqz | No | 20 |
-| 38 | vortex | hlc | vip, vim | No | 14 |
-| 39 | dm | hl | dmp, dmn | No | 14 |
-| 40 | fisher | hl | fisher, signal | No | 9 |
-| 41 | tsi | close | tsi, signal | No | 51 |
-| 42 | kvo | hlcv | kvo, signal | No | 102 |
+| 28 | macd | close | macd, signal, histogram | No | 87 |
+| 29 | bbands | close | lower, middle, upper, bandwidth, percent_b | No | 20 |
+| 30 | stoch | hlc | k, d | No | 20 |
+| 31 | stochrsi | close | k, d | No | 34 |
+| 32 | adx | hlc | adx, dmp, dmn, adxr | No | 28 |
+| 33 | aroon | hl | up, down, osc | No | 26 |
+| 34 | kc | hlc | lower, basis, upper | No | 61 |
+| 35 | donchian | hl | lower, middle, upper | No | 20 |
+| 36 | supertrend | hlc | trend, direction, long, short | **YES** (long/short) | 11 |
+| 37 | psar | hlc | long, short, af, reversal | **YES** (long/short) | 2 |
+| 38 | squeeze | hlc | sqz, on, off, no_sqz | No | 20 |
+| 39 | vortex | hlc | vip, vim | No | 14 |
+| 40 | dm | hl | dmp, dmn | No | 14 |
+| 41 | fisher | hl | fisher, signal | No | 9 |
+| 42 | tsi | close | tsi, signal | No | 51 |
+| 43 | kvo | hlcv | kvo, signal | No | 102 |
 
 ## Current Coverage Status
 
@@ -68,7 +71,7 @@
 | coverage_06 | bbands, kc, donchian, squeeze, kvo (5) | 1h | SOLUSDT | Tested |
 | coverage_07 | ema, rsi, atr, macd, adx, supertrend | MTF | SOLUSDT | Tested |
 
-**Total Unique Indicators Covered: 42/42**
+**Total Unique Indicators Covered: 43/43** (via functional test suite)
 
 ## Gap Analysis
 
@@ -252,7 +255,7 @@ python trade_cli.py backtest math-parity --play <card>
 
 ## Success Criteria
 
-- [ ] All 42 indicators tested at least once
+- [x] All 43 indicators tested at least once (2026-01-07)
 - [ ] All timeframes (5m, 15m, 1h, 4h) tested
 - [ ] All duration ranges (3d to 6mo) tested
 - [ ] All warmup categories (1 to 600 bars) tested

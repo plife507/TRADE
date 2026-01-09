@@ -398,7 +398,6 @@ def audit_snapshot_plumbing_parity(
     play_id: str,
     start_date: datetime,
     end_date: datetime,
-    symbol: str | None = None,
     max_samples: int = 2000,
     tolerance: float = 1e-12,
     strict: bool = True,
@@ -406,19 +405,22 @@ def audit_snapshot_plumbing_parity(
 ) -> PlumbingParityResult:
     """
     Run snapshot plumbing parity audit.
-    
+
     Args:
         play_id: Play identifier or path
         start_date: Start of audit window
         end_date: End of audit window
-        symbol: Override symbol (optional, inferred from Play)
         max_samples: Max exec bar samples (default: 2000)
         tolerance: Tolerance for float comparison (default: 1e-12)
         strict: Stop at first mismatch (default: True)
         plays_dir: Optional directory for Plays
-        
+
     Returns:
         PlumbingParityResult with audit results
+
+    Note:
+        Symbol is taken from the Play configuration (Play.symbol_universe[0]).
+        Plays are self-contained and deterministic.
     """
     import time
     from src.backtest.engine import BacktestEngine
@@ -455,18 +457,17 @@ def audit_snapshot_plumbing_parity(
         else:
             play = load_play(play_id, base_dir=plays_dir)
         
-        # Resolve symbol
-        if symbol is None:
-            if not play.symbol_universe:
-                return PlumbingParityResult(
-                    success=False,
-                    total_samples=0,
-                    total_comparisons=0,
-                    failed_comparisons=0,
-                    first_mismatch=None,
-                    error_message="Play has no symbols in symbol_universe and none provided",
-                )
-            symbol = play.symbol_universe[0]
+        # Get symbol from Play (Play is the single source of truth)
+        if not play.symbol_universe:
+            return PlumbingParityResult(
+                success=False,
+                total_samples=0,
+                total_comparisons=0,
+                failed_comparisons=0,
+                first_mismatch=None,
+                error_message="Play has no symbols in symbol_universe",
+            )
+        symbol = play.symbol_universe[0]
         
         # Validate account config is present (required - no defaults)
         if play.account is None:

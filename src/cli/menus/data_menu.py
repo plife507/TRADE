@@ -197,7 +197,7 @@ def data_menu(cli: "TradeCLI"):
             period = get_input("Period (1D, 1W, 1M, 3M, 6M, 1Y)", "1M")
             timeframes_input = get_input("OHLCV Timeframes (comma-separated, blank for all)", "")
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
-            oi_interval = get_input("Open Interest Interval (5min, 15min, 30min, 1h, 4h, 1d)", "1h")
+            oi_interval = get_input("Open Interest Interval (5min, 15min, 30min, 1h, 4h, D)", "1h")
             
             result = run_long_action(
                 "data.build_full_history", build_symbol_history_tool,
@@ -301,7 +301,7 @@ def data_menu(cli: "TradeCLI"):
             symbol = get_input("Symbol (comma-separated for multiple)")
             symbols = [s.strip().upper() for s in symbol.split(",")]
             period = get_input("Period (1D, 1W, 1M, 3M)", "1M")
-            interval = get_input("Interval (5min, 15min, 30min, 1h, 4h, 1d)", "1h")
+            interval = get_input("Interval (5min, 15min, 30min, 1h, 4h, D)", "1h")
             
             result = run_long_action(
                 "data.sync_open_interest", sync_open_interest_tool,
@@ -319,7 +319,7 @@ def data_menu(cli: "TradeCLI"):
                 Prompt.ask("\nPress Enter to continue")
                 continue
             
-            timeframe = get_input("Timeframe (1m, 5m, 15m, 1h, 4h, 1d)", "1h")
+            timeframe = get_input("Timeframe (1m, 5m, 15m, 1h, 4h, D)", "1h")
             if timeframe is BACK:
                 continue
             

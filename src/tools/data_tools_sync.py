@@ -44,7 +44,7 @@ def sync_symbols_tool(
     Args:
         symbols: List of symbols to sync
         period: Period string (e.g., "1D", "1W", "1M", "3M", "6M", "1Y")
-        timeframes: List of timeframes (e.g., ["15m", "1h", "4h", "1d"])
+        timeframes: List of timeframes (e.g., ["15m", "1h", "4h", "D"])
         progress_callback: Optional callback for progress updates
         env: Data environment ("live" or "demo"). Defaults to "live".
     
@@ -509,7 +509,7 @@ def sync_open_interest_tool(
     Args:
         symbols: List of symbols to sync
         period: Period string (e.g., "1M", "3M", "6M", "1Y")
-        interval: Data interval (5min, 15min, 30min, 1h, 4h, 1d)
+        interval: Data interval (5min, 15min, 30min, 1h, 4h, D)
         progress_callback: Optional callback for progress updates
         env: Data environment ("live" or "demo"). Defaults to "live".
     
@@ -634,7 +634,7 @@ def sync_full_from_launch_tool(
         max_history_years: Safety cap to limit how far back to sync
         sync_funding: Whether to sync funding rates
         sync_oi: Whether to sync open interest
-        oi_interval: Open interest interval (5min, 15min, 30min, 1h, 4h, 1d)
+        oi_interval: Open interest interval (5min, 15min, 30min, 1h, 4h, D)
         fill_gaps_after: Whether to run gap fill after sync
         heal_after: Whether to run heal after sync
         dry_run: If True, only estimate work without syncing
@@ -673,7 +673,7 @@ def sync_full_from_launch_tool(
         # Dry run: estimate only
         if dry_run:
             # Estimate candles per timeframe
-            tf_minutes = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
+            tf_minutes = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "D": 1440}
             estimates = {}
             total_candles = 0
             
@@ -687,7 +687,7 @@ def sync_full_from_launch_tool(
             funding_estimate = int(days_to_sync * 3) if sync_funding else 0
             
             # Estimate OI records
-            oi_intervals = {"5min": 12*24, "15min": 4*24, "30min": 2*24, "1h": 24, "4h": 6, "1d": 1}
+            oi_intervals = {"5min": 12*24, "15min": 4*24, "30min": 2*24, "1h": 24, "4h": 6, "D": 1}
             oi_estimate = int(days_to_sync * oi_intervals.get(oi_interval, 24)) if sync_oi else 0
             
             return ToolResult(

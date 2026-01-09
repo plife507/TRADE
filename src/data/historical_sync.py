@@ -4,9 +4,25 @@ Historical data sync operations.
 Contains: sync, sync_range, sync_forward, and internal sync methods.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Union, TYPE_CHECKING
 import pandas as pd
+
+
+def _normalize_to_naive_utc(dt: datetime | None) -> datetime | None:
+    """
+    Normalize datetime to naive UTC for consistent comparison.
+
+    DuckDB returns timezone-aware timestamps, CLI returns naive.
+    This ensures both can be compared by stripping timezone info
+    (assuming all datetimes are UTC).
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        # Convert to UTC then strip timezone
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 if TYPE_CHECKING:
     from .historical_data_store import HistoricalDataStore
@@ -228,15 +244,16 @@ def _sync_forward_symbol_timeframe(store: "HistoricalDataStore", symbol: str, ti
         FROM {store.table_ohlcv}
         WHERE symbol = ? AND timeframe = ?
     """, [symbol, timeframe]).fetchone()
-    
-    last_ts = existing[0] if existing and existing[0] else None
-    
+
+    # Normalize to naive UTC for consistent comparison
+    last_ts = _normalize_to_naive_utc(existing[0]) if existing and existing[0] else None
+
     if last_ts is None:
         return 0
-    
+
     start = last_ts + timedelta(minutes=tf_minutes)
-    end = datetime.now()
-    
+    end = datetime.now()  # Already naive
+
     if start >= end:
         return 0
     
@@ -269,12 +286,18 @@ def _sync_symbol_timeframe(
         FROM {store.table_ohlcv}
         WHERE symbol = ? AND timeframe = ?
     """, [symbol, timeframe]).fetchone()
-    
-    first_ts, last_ts = existing
+
+    # Normalize all datetimes to naive UTC for consistent comparison
+    # (DuckDB returns tz-aware, CLI input is naive)
+    first_ts = _normalize_to_naive_utc(existing[0])
+    last_ts = _normalize_to_naive_utc(existing[1])
+    target_start = _normalize_to_naive_utc(target_start)
+    target_end = _normalize_to_naive_utc(target_end)
+
     total_synced = 0
-    
+
     ranges_to_fetch = []
-    
+
     if first_ts is None:
         ranges_to_fetch.append((target_start, target_end))
     else:

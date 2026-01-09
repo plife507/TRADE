@@ -1,0 +1,28 @@
+{
+  "computed_feature_keys": [
+    "kvo_34_55_13",
+    "kvo_34_55_13_kvo",
+    "kvo_34_55_13_signal"
+  ],
+  "config_source": "Play",
+  "created_at": "2026-01-08T04:15:53.264789+00:00",
+  "declared_feature_keys": [
+    "kvo_34_55_13",
+    "kvo_34_55_13_kvo",
+    "kvo_34_55_13_signal"
+  ],
+  "engine_impl": "BacktestEngine",
+  "exchange_impl": "SimulatedExchange",
+  "feature_builder_impl": "FeatureFrameBuilder",
+  "feature_keys_match": true,
+  "indicator_backend": "pandas-ta",
+  "pipeline_version": "1.0.0",
+  "placeholder_mode": false,
+  "play_hash": "6d2f7fc8098107a0",
+  "play_id": "F_IND_016_kvo",
+  "resolved_play_path": "tests\\functional\\strategies\\plays\\F_IND_016_kvo.yml",
+  "run_id": "402b4ab97754",
+  "snapshot_impl": "RuntimeSnapshotView",
+  "strict_indicator_access": true,
+  "uses_system_config_loader": false
+}

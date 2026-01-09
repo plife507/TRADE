@@ -229,6 +229,6 @@ SETUP (atomic)           PLAY (strategy)         PLAYBOOK (collection)
 ## Related Documents
 
 - `INCREMENTAL_STATE_ARCHITECTURE.md` - Technical design for incremental state
-- `PLAY_SYNTAX.md` - Blocks DSL v3.0.0 syntax reference
+- `PLAY_DSL_COOKBOOK.md` - Canonical Play DSL syntax reference
 - `../architecture/LAYER_2_RATIONALIZATION_ARCHITECTURE.md` - Layer 2 StateRationalizer and Forge
 - `../project/PROJECT_OVERVIEW.md` - Project roadmap

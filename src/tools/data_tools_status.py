@@ -170,7 +170,7 @@ def list_cached_symbols_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
                     symbols_data_map[sym]["latest"] = info["last_timestamp"]
         
         # Sort timeframes in logical order and format for display
-        tf_order = {"1m": 1, "5m": 2, "15m": 3, "30m": 4, "1h": 5, "4h": 6, "1d": 7, "1D": 7}
+        tf_order = {"1m": 1, "5m": 2, "15m": 3, "30m": 4, "1h": 5, "4h": 6, "D": 7}
         
         symbols_data = []
         for sym, data in sorted(symbols_data_map.items()):
@@ -338,7 +338,7 @@ def get_symbol_timeframe_ranges_tool(symbol: str | None = None, env: DataEnv = D
             })
         
         # Sort by symbol, then timeframe
-        tf_order = {"1m": 1, "5m": 2, "15m": 3, "1h": 4, "4h": 5, "1d": 6}
+        tf_order = {"1m": 1, "5m": 2, "15m": 3, "1h": 4, "4h": 5, "D": 6}
         ranges.sort(key=lambda r: (r["symbol"], tf_order.get(r["timeframe"], 99)))
         
         symbols_count = len(set(r["symbol"] for r in ranges))

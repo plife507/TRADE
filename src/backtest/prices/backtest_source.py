@@ -269,7 +269,8 @@ class BacktestPriceSource:
 
     @staticmethod
     def _parse_timeframe_minutes(tf: str) -> int:
-        """Parse timeframe string to minutes."""
+        """Parse timeframe string to minutes (Bybit intervals only)."""
+        # Bybit intervals: 1,3,5,15,30,60,120,240,360,720,D,W,M
         tf_map = {
             "1m": 1,
             "3m": 3,
@@ -280,13 +281,13 @@ class BacktestPriceSource:
             "2h": 120,
             "4h": 240,
             "6h": 360,
-            "8h": 480,
             "12h": 720,
-            "1d": 1440,
-            "1D": 1440,
+            "D": 1440,
+            "W": 10080,
+            "M": 43200,
         }
         if tf not in tf_map:
-            raise ValueError(f"Unknown timeframe: {tf}")
+            raise ValueError(f"Unknown timeframe: {tf}. Use Bybit format.")
         return tf_map[tf]
 
 

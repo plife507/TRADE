@@ -1,0 +1,30 @@
+{
+  "computed_feature_keys": [
+    "ema_21",
+    "ema_21",
+    "ema_9",
+    "ema_9"
+  ],
+  "config_source": "Play",
+  "created_at": "2026-01-08T04:35:47.897358+00:00",
+  "declared_feature_keys": [
+    "ema_21",
+    "ema_21",
+    "ema_9",
+    "ema_9"
+  ],
+  "engine_impl": "BacktestEngine",
+  "exchange_impl": "SimulatedExchange",
+  "feature_builder_impl": "FeatureFrameBuilder",
+  "feature_keys_match": true,
+  "indicator_backend": "pandas-ta",
+  "pipeline_version": "1.0.0",
+  "placeholder_mode": false,
+  "play_hash": "b3fd3f953d419fe4",
+  "play_id": "T_003_feature_vs_feature",
+  "resolved_play_path": "tests\\functional\\strategies\\plays\\T_003_feature_vs_feature.yml",
+  "run_id": "a10a8673ca68",
+  "snapshot_impl": "RuntimeSnapshotView",
+  "strict_indicator_access": true,
+  "uses_system_config_loader": false
+}

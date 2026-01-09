@@ -149,7 +149,7 @@ def get_ohlcv_history_tool(
     
     Args:
         symbol: Trading symbol (required)
-        timeframe: Candle timeframe (e.g., "1m", "5m", "15m", "1h", "4h", "1d"). Defaults to "1h".
+        timeframe: Candle timeframe (e.g., "1m", "5m", "15m", "1h", "4h", "D"). Defaults to "1h".
         period: Relative period (e.g., "1M", "3M", "6M", "1Y") - alternative to start/end
         start: Start datetime or ISO string (e.g., "2024-01-01" or "2024-01-01T00:00:00")
         end: End datetime or ISO string (e.g., "2024-06-01" or "2024-06-01T23:59:59")
@@ -538,7 +538,7 @@ def build_symbol_history_tool(
         symbols: List of symbols to build history for (required, no default)
         period: How far back to sync ("1D", "1W", "1M", "3M", "6M", "1Y")
         timeframes: List of OHLCV timeframes (e.g., ["15m", "1h", "4h"]) or None for all
-        oi_interval: Open interest interval (5min, 15min, 30min, 1h, 4h, 1d) or None for "1h"
+        oi_interval: Open interest interval (5min, 15min, 30min, 1h, 4h, D) or None for "1h"
         env: Data environment ("live" or "demo"). Defaults to "live".
     
     Returns:
@@ -648,7 +648,7 @@ def build_symbol_history_tool(
 # Default timeframe groups for full history sync
 TF_GROUP_LOW = ["1m", "5m", "15m"]      # LTF (high-resolution)
 TF_GROUP_MID = ["1h", "4h"]             # MTF
-TF_GROUP_HIGH = ["1d"]                  # HTF
+TF_GROUP_HIGH = ["D"]                   # HTF (Bybit format)
 
 # All standard timeframes
 ALL_TIMEFRAMES = TF_GROUP_LOW + TF_GROUP_MID + TF_GROUP_HIGH

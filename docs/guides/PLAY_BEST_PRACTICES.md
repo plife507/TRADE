@@ -154,11 +154,146 @@ RSI went DOWN (more oversold) but strategy kept buying and getting stopped out.
 
 ### Operator Usage
 
-- (findings will be added here)
+#### Finding #10: Float Equality and INT Coercion (2026-01-08)
+
+**Source**: Multiple indicator functional tests, T3_03_supertrend systematic test
+
+**Issue**: The DSL's `eq` operator rejects float equality comparisons to prevent floating-point precision bugs. However, pandas/numpy stores ALL indicator values as float64, including fields declared as INT (like `supertrend.direction`).
+
+**Error**: `FLOAT_EQUALITY: Float equality not allowed with 'eq'. Use 'approx_eq' with tolerance`
+
+**Fix Applied (2026-01-08)**: INT-declared fields now automatically coerce integer-like floats (1.0, -1.0) to INT during DSL evaluation. This uses the registry's declared type information.
+
+**Current behavior by type**:
+
+| Registry Type | Runtime Storage | `eq` Works? | Example |
+|---------------|-----------------|-------------|---------|
+| INT | float64 (1.0, -1.0) | ✅ Yes (auto-coerced) | `[direction, "eq", 1]` |
+| FLOAT | float64 | ❌ No (use alternatives) | `[rsi, "cross_above", 30]` |
+| BOOL | bool | ✅ Yes | `[is_valid, "eq", true]` |
+| ENUM | string | ✅ Yes | `[state, "eq", "ACTIVE"]` |
+
+**For continuous FLOAT fields**, use these alternatives:
+
+| Use Case | Operator | Example |
+|----------|----------|---------|
+| Crossing a level | `cross_above`/`cross_below` | `[rsi, "cross_above", 30]` |
+| Above/below threshold | `gt`/`lt` | `[rsi, "gt", 70]` |
+| Near a value | `near_pct`/`near_abs` | `[price, "near_pct", level, 0.1]` |
+
+---
+
+#### Finding #11: Donchian Breakout Conditions (2026-01-07)
+
+**Source**: F_IND_031_donchian functional test
+
+**Issue**: `close > upper` rarely triggers during consolidation because new 20-bar highs are infrequent.
+
+**Better patterns**:
+```yaml
+# Trend following: cross above middle
+- ["close", "cross_above", {"feature_id": "donchian_20", "field": "middle"}]
+
+# Breakout: cross above upper (more signals)
+- ["close", "cross_above", {"feature_id": "donchian_20", "field": "upper"}]
+
+# Channel position
+- [{"feature_id": "donchian_20", "field": "percent_b"}, "gt", 0.8]  # Near upper
+```
 
 ### Multi-Output Indicators
 
-- (findings will be added here)
+#### Finding #6: TRIX and PPO are Multi-Output (2026-01-07)
+
+**Source**: Functional test suite F_IND_006_trix, F_IND_008_ppo
+
+**Issue**: TRIX and PPO indicators return multiple outputs but were incorrectly marked as single-output.
+
+**Correct declaration**:
+```yaml
+features:
+  trix_18:
+    indicator: trix
+    params:
+      length: 18
+      signal: 9  # Optional signal line period
+
+# Access fields:
+actions:
+  entry_long:
+    all:
+      - [{"feature_id": "trix_18", "field": "trix"}, "cross_above", 0]
+
+# Available fields:
+# - trix: Main TRIX value
+# - signal: Signal line (EMA of TRIX)
+```
+
+**PPO outputs**: `ppo`, `histogram`, `signal`
+
+---
+
+#### Finding #7: Squeeze Fields are INT, Not BOOL (2026-01-07)
+
+**Source**: F_IND_019_squeeze functional test
+
+**Issue**: Squeeze indicator's `on`, `off`, `no_sqz` fields output integers (0/1), not Python booleans.
+
+**Wrong** (DSL rejects `gt` for BOOL):
+```yaml
+# This fails if registry types them as BOOL
+- [{"feature_id": "squeeze_20", "field": "off"}, "eq", true]
+```
+
+**Correct**:
+```yaml
+# Registry types them as INT - use numeric comparison
+- [{"feature_id": "squeeze_20", "field": "off"}, "gt", 0]
+```
+
+**Rule**: Check `FEATURE_OUTPUT_TYPES` in `indicator_registry.py` for the actual output types.
+
+---
+
+#### Finding #8: PSAR Reversal is INT, Not BOOL (2026-01-07)
+
+**Source**: F_IND_018_psar functional test
+
+**Issue**: PSAR's `reversal` field outputs 0 or 1 as integers, but stored as float64 in FeedStore.
+
+**Wrong**:
+```yaml
+# Fails: float64 equality comparison rejected
+- [{"feature_id": "psar_0.02", "field": "reversal"}, "eq", 1]
+```
+
+**Correct**:
+```yaml
+# Use gt for integer-like comparisons
+- [{"feature_id": "psar_0.02", "field": "reversal"}, "gt", 0]
+```
+
+---
+
+#### Finding #9: VWAP Requires Timestamps (2026-01-07)
+
+**Source**: F_IND_032_vwap functional test
+
+**Issue**: pandas_ta's VWAP requires DatetimeIndex for session boundary detection.
+
+**Solution**: The engine automatically passes `ts_open` timestamps to VWAP computation. No special handling required in Plays.
+
+**Use case**: VWAP works with the `anchor` parameter for session resets:
+- `anchor: "D"` - Daily VWAP reset
+- `anchor: "W"` - Weekly VWAP reset
+
+```yaml
+features:
+  vwap_daily:
+    indicator: vwap
+    params:
+      anchor: "D"  # Reset at midnight UTC
+```
 
 ### Risk Model Interactions
 
@@ -294,6 +429,27 @@ risk_model:
 
 ---
 
+---
+
+## Indicator Output Types Quick Reference
+
+**Important**: All values stored as float64 in FeedStore. Use appropriate operators.
+
+| Indicator | Field | Registry Type | Recommended Operator |
+|-----------|-------|---------------|---------------------|
+| psar | reversal | INT | `eq 1` (fires on reversal) or `gt 0` |
+| squeeze | on, off, no_sqz | INT | `eq 1` or `gt 0` |
+| supertrend | direction | INT | `eq 1` (long) / `eq -1` (short) |
+| aroon | up, down, osc | FLOAT | `cross_above`/`cross_below` |
+| macd | histogram | FLOAT | `cross_above 0` |
+| bbands | percent_b | FLOAT | `gt 1.0` (above upper) |
+| trix | trix | FLOAT | `cross_above 0` |
+| ppo | histogram | FLOAT | `cross_above 0` |
+
+**Note**: INT-declared fields now support `eq` operator (fixed 2026-01-08). Both `eq 1` and `gt 0` work for boolean-like integers.
+
+---
+
 ## Validation Checklist
 
 Before deploying a Play, verify:
@@ -303,6 +459,8 @@ Before deploying a Play, verify:
 - [ ] TP/SL only used with transition-based entries (or re-entry is intended)
 - [ ] Feature IDs follow parameterized naming (`ema_21` not `ema_slow`)
 - [ ] All referenced features are declared in `features:` section
+- [ ] Multi-output indicators use field accessor: `{"feature_id": "...", "field": "..."}`
+- [ ] FLOAT fields use appropriate operators (`gt`, `cross_above`, not `eq`)
 - [ ] Run `normalize` to validate against engine
 
 ---

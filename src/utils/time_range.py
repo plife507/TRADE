@@ -183,12 +183,12 @@ class TimeRange:
         """
         window = window.lower().strip()
         
-        # Try preset mapping first
+        # Try preset mapping first (keys are lowercase because input is lowercased)
         preset_map = {
             "1h": TimeRangePreset.LAST_1H,
             "4h": TimeRangePreset.LAST_4H,
             "24h": TimeRangePreset.LAST_24H,
-            "1d": TimeRangePreset.LAST_24H,
+            "d": TimeRangePreset.LAST_24H,  # "D" input becomes "d" after .lower()
             "7d": TimeRangePreset.LAST_7D,
             "1w": TimeRangePreset.LAST_7D,
             "30d": TimeRangePreset.LAST_30D,

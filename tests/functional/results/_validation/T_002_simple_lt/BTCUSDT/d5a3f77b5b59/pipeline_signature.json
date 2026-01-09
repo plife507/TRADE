@@ -1,0 +1,26 @@
+{
+  "computed_feature_keys": [
+    "rsi_14",
+    "rsi_14"
+  ],
+  "config_source": "Play",
+  "created_at": "2026-01-08T04:35:45.310517+00:00",
+  "declared_feature_keys": [
+    "rsi_14",
+    "rsi_14"
+  ],
+  "engine_impl": "BacktestEngine",
+  "exchange_impl": "SimulatedExchange",
+  "feature_builder_impl": "FeatureFrameBuilder",
+  "feature_keys_match": true,
+  "indicator_backend": "pandas-ta",
+  "pipeline_version": "1.0.0",
+  "placeholder_mode": false,
+  "play_hash": "1c33f72029d8ed57",
+  "play_id": "T_002_simple_lt",
+  "resolved_play_path": "tests\\functional\\strategies\\plays\\T_002_simple_lt.yml",
+  "run_id": "d5a3f77b5b59",
+  "snapshot_impl": "RuntimeSnapshotView",
+  "strict_indicator_access": true,
+  "uses_system_config_loader": false
+}

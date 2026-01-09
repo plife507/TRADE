@@ -1,0 +1,41 @@
+version: "3.0.0"
+name: "P_013_short_supertrend_down"
+description: "Short entry when SuperTrend flips bearish (direction crosses below 0)"
+
+# Using SOL for short tests - had significant downtrends in 2025:
+# - October 2025: $16B liquidation crash (20-40% drops)
+# - Dec 1, 2025: Sharp sell-off (-9%)
+# Suggested test windows: 2025-10-01 to 2025-10-20, 2025-11-25 to 2025-12-15
+symbol: "SOLUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  supertrend_10_3:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+
+actions:
+  entry_short:
+    all:
+      - [{"feature_id": "supertrend_10_3", "field": "direction"}, "cross_below", 0]
+
+position_policy:
+  mode: short_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0

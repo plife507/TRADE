@@ -1,0 +1,54 @@
+version: "3.0.0"
+name: "T6_03b_htf_only_SOL"
+description: "TIER 6: Verify HTF indicator access only"
+
+symbol: "SOLUSDT"
+tf: "15m"
+htf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # Exec TF (15m) - entry trigger
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  # HTF (4h) - trend filter
+  ema_20_4h:
+    indicator: ema
+    tf: "4h"
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      # 15m: EMA cross
+      - ["ema_9", "cross_above", "ema_21"]
+      # 4h: Just check HTF EMA exists (gt 0)
+      - ["ema_20_4h", "gt", 0]
+  exit_long:
+    any:
+      - ["ema_9", "cross_below", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 50.0

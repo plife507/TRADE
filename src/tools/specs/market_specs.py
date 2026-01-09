@@ -31,7 +31,7 @@ SPECS = [
         "category": "market",
         "parameters": {
             "symbol": {"type": "string", "description": "Trading symbol"},
-            "interval": {"type": "string", "description": "Timeframe (1m, 5m, 15m, 1h, 4h, 1d)", "default": "15m"},
+            "interval": {"type": "string", "description": "Timeframe (1m, 5m, 15m, 1h, 4h, D)", "default": "15m"},
             "limit": {"type": "integer", "description": "Number of candles", "default": 100},
         },
         "required": ["symbol"],

@@ -725,7 +725,6 @@ Examples:
     run_parser.add_argument("--play", required=True, help="Play identifier (e.g., SOLUSDT_15m_ema_crossover)")
     run_parser.add_argument("--dir", dest="plays_dir", help="Override Play directory")
     run_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment (default: live)")
-    run_parser.add_argument("--symbol", help="Override symbol (default: from Play)")
     run_parser.add_argument("--start", help="Window start (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
     run_parser.add_argument("--end", help="Window end (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
     run_parser.add_argument("--smoke", action="store_true", help="Smoke mode: fast wiring check with small window")
@@ -744,7 +743,6 @@ Examples:
     preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")
     preflight_parser.add_argument("--play", required=True, help="Play identifier")
     preflight_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
-    preflight_parser.add_argument("--symbol", help="Override symbol")
     preflight_parser.add_argument("--start", help="Window start")
     preflight_parser.add_argument("--end", help="Window end")
     preflight_parser.add_argument("--fix-gaps", action="store_true", help="Auto-fix data gaps using existing tools")
@@ -754,7 +752,6 @@ Examples:
     indicators_parser = backtest_subparsers.add_parser("indicators", help="Discover indicator keys for an Play")
     indicators_parser.add_argument("--play", help="Play identifier (required unless --audit-math-from-snapshots)")
     indicators_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
-    indicators_parser.add_argument("--symbol", help="Override symbol")
     indicators_parser.add_argument("--print-keys", action="store_true", default=True, help="Print all indicator keys")
     indicators_parser.add_argument("--compute", action="store_true", help="Actually compute indicators (requires --start/--end)")
     indicators_parser.add_argument("--start", help="Window start (for --compute)")
@@ -777,7 +774,6 @@ Examples:
     datafix_parser = backtest_subparsers.add_parser("data-fix", help="Fix data for an Play")
     datafix_parser.add_argument("--play", required=True, help="Play identifier")
     datafix_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
-    datafix_parser.add_argument("--symbol", help="Override symbol")
     datafix_parser.add_argument("--start", help="Sync from this date")
     datafix_parser.add_argument("--sync-to-now", action="store_true", help="Sync data to current time")
     datafix_parser.add_argument("--fill-gaps", action="store_true", default=True, help="Fill gaps after sync")
@@ -983,7 +979,6 @@ def handle_backtest_run(args) -> int:
     result = backtest_run_play_tool(
         play_id=args.play,
         env=args.data_env,
-        symbol=args.symbol,
         start=start,
         end=end,
         smoke=args.smoke,
@@ -1044,7 +1039,6 @@ def handle_backtest_preflight(args) -> int:
     result = backtest_preflight_play_tool(
         play_id=args.play,
         env=args.data_env,
-        symbol=args.symbol,
         start=start,
         end=end,
         fix_gaps=args.fix_gaps,
@@ -1154,7 +1148,6 @@ def handle_backtest_indicators(args) -> int:
     result = backtest_indicators_tool(
         play_id=args.play,
         data_env=args.data_env,
-        symbol=args.symbol,
         start=start,
         end=end,
         compute_values=args.compute,
@@ -1226,7 +1219,6 @@ def handle_backtest_data_fix(args) -> int:
     result = backtest_data_fix_tool(
         play_id=args.play,
         env=args.data_env,
-        symbol=args.symbol,
         start=start,
         sync_to_now=args.sync_to_now,
         fill_gaps=args.fill_gaps,
@@ -1930,7 +1922,6 @@ def handle_backtest_audit_snapshot_plumbing(args) -> int:
         play_id=args.play,
         start_date=args.start,
         end_date=args.end,
-        symbol=args.symbol,
         max_samples=args.max_samples,
         tolerance=args.tolerance,
         strict=args.strict,
@@ -2208,7 +2199,7 @@ def handle_backtest_metrics_audit(args) -> int:
             final_equity=12100.0,
             max_dd_pct_decimal=0.10,
             total_bars=365,
-            tf="1d",
+            tf="D",  # Bybit format
             strict_tf=True,
         )
         
@@ -2272,14 +2263,14 @@ def handle_backtest_metrics_audit(args) -> int:
     # =========================================================================
     test_name = "TF Normalization (Bybit formats)"
     try:
-        # Test Bybit numeric formats
+        # Test Bybit formats only - no legacy aliases
         test_cases = [
             ("60", "1h"),
             ("240", "4h"),
-            ("D", "1d"),
-            ("1h", "1h"),  # Already normalized
+            ("D", "D"),     # D is canonical (Bybit format)
+            ("1h", "1h"),   # Already normalized
         ]
-        
+
         all_correct = True
         details = []
         for input_tf, expected in test_cases:
@@ -2289,7 +2280,15 @@ def handle_backtest_metrics_audit(args) -> int:
                 details.append(f"{input_tf}->{normalized} (expected {expected})")
             else:
                 details.append(f"{input_tf}->{normalized} OK")
-        
+
+        # Verify legacy formats are rejected
+        try:
+            normalize_tf_string("1d")
+            all_correct = False
+            details.append("1d should raise ValueError")
+        except ValueError:
+            details.append("1d rejected OK")
+
         passed = all_correct
         detail = ", ".join(details)
         
@@ -2322,7 +2321,7 @@ def handle_backtest_metrics_audit(args) -> int:
             final_equity=12100.0,
             max_dd_pct_decimal=0.0,  # No drawdown
             total_bars=365,
-            tf="1d",
+            tf="D",  # Bybit format
             strict_tf=True,
         )
         

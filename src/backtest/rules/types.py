@@ -81,9 +81,9 @@ class ValueType(IntEnum):
         if isinstance(value, int):
             return cls.INT
         if isinstance(value, float):
-            # Check for NaN
+            # Check for NaN and infinity
             import math
-            if math.isnan(value):
+            if math.isnan(value) or math.isinf(value):
                 return cls.MISSING
             return cls.FLOAT
         if isinstance(value, str):
@@ -159,6 +159,57 @@ class RefValue:
         return cls(
             value=value,
             value_type=ValueType.from_value(value),
+            path=path,
+        )
+
+    @classmethod
+    def from_resolved_with_declared_type(
+        cls,
+        value: Any,
+        path: str,
+        declared_type: "FeatureOutputType | None",
+    ) -> "RefValue":
+        """
+        Create RefValue with declared type consideration.
+
+        If the registry declares a field as INT but the runtime value is
+        an integer-like float (1.0, -1.0), treat it as INT. This handles
+        pandas/numpy storing integer columns as float64.
+
+        Args:
+            value: The resolved value
+            path: Path for error messages
+            declared_type: FeatureOutputType from registry (or None)
+
+        Returns:
+            RefValue with appropriate type
+        """
+        import math
+
+        # Get runtime type
+        runtime_type = ValueType.from_value(value)
+
+        # Check for INT coercion: declared INT + runtime FLOAT + value is integer-like
+        if (
+            declared_type is not None
+            and declared_type == FeatureOutputType.INT
+            and runtime_type == ValueType.FLOAT
+            and isinstance(value, float)
+            and not math.isnan(value)
+            and not math.isinf(value)
+            and value == int(value)  # e.g., 1.0, -1.0, 2.0
+        ):
+            # Coerce to INT
+            return cls(
+                value=int(value),
+                value_type=ValueType.INT,
+                path=path,
+            )
+
+        # Default: use runtime type
+        return cls(
+            value=value,
+            value_type=runtime_type,
             path=path,
         )
 

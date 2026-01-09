@@ -534,7 +534,7 @@ class SmokeTestConfig:
     enable_gap_testing: bool = True
 
     # Timeframes to test (subset for faster smoke tests)
-    timeframes: list[str] = field(default_factory=lambda: ["1h", "4h", "1d"])
+    timeframes: list[str] = field(default_factory=lambda: ["1h", "4h", "D"])
     
     # Open interest interval for smoke test
     oi_interval: str = "1h"
@@ -715,8 +715,8 @@ class Config:
         symbols_str = os.getenv("TRADE_SMOKE_SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT")
         symbols = [s.strip().upper() for s in symbols_str.split(",") if s.strip()]
         
-        # Parse timeframes
-        timeframes_str = os.getenv("TRADE_SMOKE_TIMEFRAMES", "1h,4h,1d")
+        # Parse timeframes (D for daily, matching Bybit format)
+        timeframes_str = os.getenv("TRADE_SMOKE_TIMEFRAMES", "1h,4h,D")
         timeframes = [t.strip() for t in timeframes_str.split(",") if t.strip()]
         
         return SmokeTestConfig(

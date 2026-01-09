@@ -1,0 +1,60 @@
+version: "3.0.0"
+name: "F_004_mtf_trend"
+description: "Functional Test: MTF Trend - Tests multi-timeframe alignment and holds_for operator"
+
+symbol: "BTCUSDT"
+tf: "15m"
+htf: "4h"
+
+features:
+  # LTF (15m) features
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  # HTF (4h) features
+  ema_50_4h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "4h"
+  ema_200_4h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "4h"
+
+# Engine components tested:
+# - Multi-timeframe indicator computation
+# - Forward-fill semantics for HTF values
+# - holds_for window operator
+# - TF alignment logic
+actions:
+  entry_long:
+    all:
+      - ["ema_50_4h", ">", "ema_200_4h"]    # HTF uptrend
+      - cross_above: ["ema_9", "ema_21"]     # LTF entry signal
+  exit_long:
+    any:
+      - ["ema_50_4h", "<", "ema_200_4h"]    # HTF trend reversal
+      - cross_below: ["ema_9", "ema_21"]     # LTF exit signal
+
+risk:
+  stop_loss_pct: 1.5
+  take_profit_pct: 3.0
+  max_position_pct: 100.0
+
+_test_metadata:
+  test_id: "F_004"
+  category: "multi_timeframe"
+  min_signals: 3
+  max_signals: 25
+  warmup_bars: 201  # HTF EMA 200 * 4h bars
+  edge_cases:
+    - "htf_ltf_conflict"
+    - "tf_boundary_conditions"
+    - "forward_fill_accuracy"

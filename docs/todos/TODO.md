@@ -1,11 +1,33 @@
 # Active TODO
 
-**Last Updated**: 2026-01-07
-**Status**: DSL BUG FIXES + STRATEGY PATTERNS
+**Last Updated**: 2026-01-09
+**Status**: STRESS TESTING - Phase 2
 
 ---
 
-## Current State
+## Current Focus: Stress Testing
+
+**Stress Testing (2026-01-08 - ongoing)** - IN_PROGRESS:
+- [x] Phase 0: Setup - tests/stress/plays/, tracking docs created
+- [x] Phase 1: Foundation (0-20%) - 5 gates PASSED, 3 bugs resolved
+- [ ] Phase 2: Basic Strategy (20-40%) - Gate 2.1 PASSED, Gate 2.2 NEXT
+- [ ] Phase 3: Intermediate (40-60%) - PENDING
+- [ ] Phase 4: Advanced (60-80%) - PENDING
+- [ ] Phase 5: Expert (80-100%) - PENDING
+
+**Next Step**: Gate 2.2 - MACD Signal Cross (30%)
+
+**Open Items Requiring Human Decision**:
+- DEBT-001: Symbol vs Word operators - 3 options documented in STRESS_TEST_BUGS.md
+- DOC-001: Cookbook BBands outputs wrong (blocked on DEBT-001)
+- DOC-002: Cookbook MACD outputs wrong (blocked on DEBT-001)
+
+See: `docs/todos/STRESS_TESTING.md` for full progress tracker
+See: `docs/audits/STRESS_TEST_BUGS.md` for bug details
+
+---
+
+## Recent Completed Work
 
 **DSL Bug Fixes & Enhancements (2026-01-07)** - COMPLETE:
 - [x] P2-SIM-02: Fixed frozen Fill dataclass crash - added `close_ratio` param to `fill_exit()`
@@ -190,6 +212,10 @@ $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
 
 | Phase | Date | Notes |
 |-------|------|-------|
+| **Stress Testing Phase 1** | 2026-01-09 | 5 gates passed, 3 bugs fixed (BUG-001/002/003) |
+| **DSL Foundation Freeze** | 2026-01-08 | 259 synthetic tests, all operators frozen |
+| **Cookbook Alignment** | 2026-01-08 | 7 phases, module extraction complete |
+| **Tiered Testing** | 2026-01-08 | 137 tests across 6 tiers |
 | **DSL Bug Fixes & Patterns** | 2026-01-07 | 5 bug fixes, DSL_STRATEGY_PATTERNS.md, validation relocated |
 | **ExitMode & Strategy Testing** | 2026-01-06 | ExitMode enum, 34 plays updated, SOL short +19% |
 | **Visualization System** | 2026-01-05 | FastAPI + React, TradingView-style charts |

@@ -65,6 +65,11 @@ from .play import (
     SizingModel,
     load_play,
     list_plays,
+    # Config models
+    ExitMode,
+    FeeModel,
+    AccountConfig,
+    PLAYS_DIR,
 )
 from .feature_registry import (
     Feature,
@@ -146,6 +151,11 @@ __all__ = [
     "SizingModel",
     "load_play",
     "list_plays",
+    # Config models
+    "ExitMode",
+    "FeeModel",
+    "AccountConfig",
+    "PLAYS_DIR",
     # Feature Registry
     "Feature",
     "FeatureType",

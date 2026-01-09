@@ -1,0 +1,41 @@
+version: "3.0.0"
+name: "F_001_ema_simple"
+description: "Simple test: EMA9 > EMA21"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0  # 1x leverage for simple validation tests
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+# Simple gt comparison - should fire frequently
+actions:
+  entry_long:
+    all:
+      - ["ema_9", ">", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0  # 10% of equity = 1000 USDT position size

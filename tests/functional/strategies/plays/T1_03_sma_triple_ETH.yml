@@ -1,0 +1,48 @@
+version: "3.0.0"
+name: "T1_03_sma_triple_ETH"
+description: "TIER 1: Test all/any conditions with triple SMA alignment"
+
+symbol: "ETHUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  sma_10:
+    indicator: sma
+    params:
+      length: 10
+  sma_20:
+    indicator: sma
+    params:
+      length: 20
+  sma_50:
+    indicator: sma
+    params:
+      length: 50
+
+actions:
+  entry_long:
+    all:
+      - ["sma_10", "gt", "sma_20"]
+      - ["sma_20", "gt", "sma_50"]
+  exit_long:
+    any:
+      - ["sma_10", "lt", "sma_20"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 50.0

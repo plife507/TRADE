@@ -1,0 +1,46 @@
+version: "3.0.0"
+name: "F_001_ema_crossover_ETH"
+description: "EMA crossover strategy on ETHUSDT"
+
+symbol: "ETHUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+actions:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - lhs: "ema_9"
+              op: cross_above
+              rhs: "ema_21"
+        emit:
+          - action: entry_long
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 20.0

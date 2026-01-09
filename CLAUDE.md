@@ -136,6 +136,14 @@ We are building the backtesting + strategy factory stack in **phases**. The cano
 - Play-first CLI with full menu coverage
 - Validation Plays in `tests/validation/plays/` (V_100+ blocks format)
 
+**DSL Language Freeze (2026-01-08)**:
+- 11 operators, 6 window operators, arithmetic DSL - all frozen
+- 259 synthetic tests validating operators, edge cases, type safety
+- Missing value handling: NaN, ±Infinity → MISSING (graceful degradation)
+- SetupRef circular reference protection (recursion guard)
+- Duration formats: m, h, d (max 24h ceiling)
+- See: `docs/specs/PLAY_DSL_COOKBOOK.md` (canonical reference)
+
 **Derived Zones - Phase 12 (2026-01-04)**:
 - K slots + aggregates pattern for derived zones from swing pivots
 - zone0_*/zone1_*/... slot fields with NONE/ACTIVE/BROKEN states
@@ -270,14 +278,27 @@ Plays in the Forge are experimental. Only after passing validation gates do they
 
 The engine supports multi-timeframe analysis with three timeframe roles. These terms are used consistently throughout the codebase.
 
-### Timeframe Roles
+**Bybit API Intervals**: `1,3,5,15,30,60,120,240,360,720,D,W,M`
+**Internal Format**: `1m,3m,5m,15m,30m,1h,2h,4h,6h,12h,D,W,M`
 
-| Role | Meaning | Typical Values | Purpose |
-|------|---------|----------------|---------|
-| **LTF** | Low Timeframe | 1m, 3m, 5m, 15m | Execution timing (entries/exits), micro-structure. Engine iterates bar-by-bar. |
-| **MTF** | Mid Timeframe | 30m, 1h, 2h, 4h | Trade bias + structure context for LTF execution. |
-| **HTF** | High Timeframe | 6h, 8h, 12h, 1D | Higher-level trend + major levels. **Capped at 1D** (no weekly/monthly). |
-| **exec** | Execution TF | = LTF | The timeframe at which trading decisions are evaluated. Defaults to LTF in Play. |
+**NOTE**: 8h is NOT a valid Bybit interval - do not use it.
+
+### Timeframe Categories
+
+| Category | Timeframes | Purpose |
+|----------|------------|---------|
+| **LTF** | 1m, 3m, 5m, 15m | Low TF - Execution timing (entries/exits), micro-structure |
+| **MTF** | 30m, 1h, 2h, 4h | Mid TF - Trade bias + structure context |
+| **HTF** | 6h, 12h, D, W, M | High TF - Trend, major levels, context |
+
+### Timeframe Roles (Play Configuration)
+
+| Role | Meaning | Valid Values | Purpose |
+|------|---------|--------------|---------|
+| **tf** (exec) | Execution TF | LTF or MTF | Bar-by-bar decision evaluation. Engine iterates at this TF. |
+| **ltf** | Low Timeframe | 1m, 3m, 5m, 15m | Execution timing, micro-structure |
+| **mtf** | Mid Timeframe | 30m, 1h, 2h, 4h | Structure, bias, swing trades |
+| **htf** | High Timeframe | 6h, 12h, D | Trend context (W, M excluded from role) |
 
 ### Hierarchy Rule
 
@@ -519,7 +540,7 @@ features:
 
 This enables readable DSL: `ema_9 > ema_21` vs opaque `ema_fast > ema_slow`.
 
-See: `docs/specs/PLAY_SYNTAX.md` for full naming convention.
+See: `docs/specs/PLAY_DSL_COOKBOOK.md` for full DSL syntax reference.
 
 ## Tool Layer (SHARED — Primary API)
 
@@ -791,7 +812,7 @@ As the engine evolves, normalization ensures Plays stay in sync. When agents gen
 | Simulated exchange | `docs/architecture/SIMULATED_EXCHANGE.md` |
 | Artifact storage format | `docs/architecture/ARTIFACT_STORAGE_FORMAT.md` |
 | Play → Engine flow | `docs/architecture/PLAY_ENGINE_FLOW.md` |
-| Play Syntax | `docs/guides/PLAY_SYNTAX.md` |
+| Play DSL Cookbook | `docs/specs/PLAY_DSL_COOKBOOK.md` |
 
 ### Vendor References (Read-Only Truth)
 

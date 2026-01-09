@@ -1,7 +1,7 @@
 # TODO Index
 
 Documentation index for work tracking in the TRADE project.
-**Last Updated**: 2026-01-07
+**Last Updated**: 2026-01-09
 
 ---
 
@@ -9,12 +9,17 @@ Documentation index for work tracking in the TRADE project.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [TODO.md](TODO.md) | Current focus, next steps | **DSL Bug Fixes Complete** |
+| [TODO.md](TODO.md) | Current focus, next steps | **Stress Testing Phase 2** |
+| [STRESS_TESTING.md](STRESS_TESTING.md) | Progressive complexity validation (0-100%) | IN_PROGRESS (Gate 2.2 next) |
+| [FUNCTIONAL_TEST_COVERAGE.md](FUNCTIONAL_TEST_COVERAGE.md) | Real-data engine validation | Phase 2 Complete (43/43 indicators) |
 | [ICT_MARKET_STRUCTURE.md](ICT_MARKET_STRUCTURE.md) | ICT/SMC structure detectors | PLANNING |
 | [TV_WEBHOOK_MARKET_STRUCTURE_VERIFICATION.md](TV_WEBHOOK_MARKET_STRUCTURE_VERIFICATION.md) | TradingView webhook validation tool | READY |
-| [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker (0 open) | All Fixed |
+| [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker | All Fixed |
+| [../audits/STRESS_TEST_BUGS.md](../audits/STRESS_TEST_BUGS.md) | Stress test bug tracker | 3 resolved, 3 open items |
 
-**Archived**: `archived/2026-01/MEGA_FILE_REFACTOR.md` (Phases 1-3 complete)
+**Open Items Requiring Decision**:
+- DEBT-001: Symbol vs Word operators - see STRESS_TEST_BUGS.md for options
+- DOC-001/DOC-002: Cookbook fixes blocked pending DEBT-001 decision
 
 ---
 
@@ -41,6 +46,7 @@ Completed work is archived by date in `archived/`:
 
 | Folder | Period | Key Work |
 |--------|--------|----------|
+| `2026-01-08/` | Jan 8, 2026 | DSL Foundation Freeze (259 tests), Cookbook Alignment, Tiered Testing |
 | `2026-01/` | Jan 2026 | Forge migration, simulator orders, incremental state, analytics |
 | `2026-01-01/` | Jan 1, 2026 | Market structure, Play value flow, metrics, legacy cleanup |
 | `2025-12-31/` | Dec 31, 2025 | Price feed 1m preflight |

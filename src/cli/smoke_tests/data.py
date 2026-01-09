@@ -67,7 +67,7 @@ def run_data_builder_smoke(smoke_config, app, config) -> int:
     console.print(f"\n[bold cyan]Step 2: Build Full History ({period}) for {symbols}[/]")
     console.print(f"  [dim]This may take several minutes for 1-year data...[/]")
 
-    smoke_timeframes = ["1h", "4h", "1d"]
+    smoke_timeframes = ["1h", "4h", "D"]
 
     result = build_symbol_history_tool(
         symbols=symbols, period=period, timeframes=smoke_timeframes, oi_interval="1h"

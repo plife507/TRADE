@@ -212,6 +212,8 @@ def apply_feature_spec_indicators(
             # Uses compute_indicator() which handles all registered indicator types
             # Pass input_col as the primary input (close parameter) for single-input indicators
             try:
+                # Get ts_open for VWAP (requires DatetimeIndex for session boundaries)
+                ts_open = df.get("ts_open") if "ts_open" in df.columns else df.get("timestamp")
                 result = vendor.compute_indicator(
                     ind_type,
                     close=df[input_col],  # Use input_col, not always "close"
@@ -219,6 +221,7 @@ def apply_feature_spec_indicators(
                     low=df["low"],
                     open_=df["open"],
                     volume=df.get("volume"),
+                    ts_open=ts_open,  # For VWAP session boundaries
                     **params
                 )
                 

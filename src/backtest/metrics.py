@@ -32,7 +32,9 @@ from .types import Trade, EquityPoint, BacktestMetrics, TimeBasedReturns
 # =============================================================================
 
 # Timeframe to approximate bars per year (crypto markets ~365 days)
-# Extended to support all common timeframes
+# Bars per year for each valid Bybit timeframe
+# Bybit intervals: 1,3,5,15,30,60,120,240,360,720,D,W,M
+# NOTE: 8h is NOT a valid Bybit interval
 TF_BARS_PER_YEAR = {
     # Minutes
     "1m": 365 * 24 * 60,      # 525,600
@@ -40,41 +42,38 @@ TF_BARS_PER_YEAR = {
     "5m": 365 * 24 * 12,      # 105,120
     "15m": 365 * 24 * 4,      # 35,040
     "30m": 365 * 24 * 2,      # 17,520
-    # Hours
+    # Hours (60, 120, 240, 360, 720)
     "1h": 365 * 24,           # 8,760
     "2h": 365 * 12,           # 4,380
     "4h": 365 * 6,            # 2,190
     "6h": 365 * 4,            # 1,460
-    "8h": 365 * 3,            # 1,095
     "12h": 365 * 2,           # 730
-    # Days/Weeks/Months
-    "1d": 365,                # 365
-    "1D": 365,                # 365 (uppercase variant)
-    "D": 365,                 # 365 (Bybit format)
-    "1w": 52,                 # 52
-    "1W": 52,                 # 52 (uppercase variant)
-    "W": 52,                  # 52 (Bybit format)
-    "1M": 12,                 # 12
-    "M": 12,                  # 12 (Bybit format)
+    # Days/Weeks/Months (D, W, M)
+    "D": 365,
+    "W": 52,
+    "M": 12,
 }
 
 
 def normalize_tf_string(tf: str) -> str:
     """
-    Normalize timeframe string to canonical format.
-    
-    Handles common variations:
-    - "60" -> "1h" (Bybit API format)
+    Normalize timeframe string to canonical Bybit format.
+
+    Handles Bybit numeric API formats:
+    - "60" -> "1h"
     - "240" -> "4h"
-    - "D" -> "1d"
-    
+
     Args:
-        tf: Timeframe string in any format
-        
+        tf: Timeframe string in Bybit format
+
     Returns:
-        Normalized timeframe string (e.g., "1h", "4h", "1d")
+        Normalized timeframe string (e.g., "1h", "4h", "D")
+
+    Raises:
+        ValueError: If timeframe is not a valid Bybit format
     """
     # Handle Bybit numeric formats (minutes)
+    # Bybit intervals: 1,3,5,15,30,60,120,240,360,720,D,W,M
     tf_numeric_map = {
         "1": "1m",
         "3": "3m",
@@ -85,26 +84,24 @@ def normalize_tf_string(tf: str) -> str:
         "120": "2h",
         "240": "4h",
         "360": "6h",
-        "480": "8h",
         "720": "12h",
     }
     if tf in tf_numeric_map:
         return tf_numeric_map[tf]
-    
-    # Handle uppercase variants
-    tf_upper_map = {
-        "1D": "1d",
-        "D": "1d",
-        "1W": "1w",
-        "W": "1w",
-        "1M": "1M",  # Keep month as-is
-        "M": "1M",
+
+    # Valid canonical formats (Bybit intervals only)
+    valid_formats = {
+        "1m", "3m", "5m", "15m", "30m",
+        "1h", "2h", "4h", "6h", "12h",
+        "D", "W", "M",
     }
-    if tf in tf_upper_map:
-        return tf_upper_map[tf]
-    
-    # Already normalized or unknown
-    return tf
+    if tf in valid_formats:
+        return tf
+
+    raise ValueError(
+        f"Invalid timeframe: '{tf}'. Use Bybit format: "
+        "1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, D, W, M"
+    )
 
 
 def get_bars_per_year(tf: str, strict: bool = True) -> int:
@@ -112,7 +109,7 @@ def get_bars_per_year(tf: str, strict: bool = True) -> int:
     Get the number of bars per year for a given timeframe.
     
     Args:
-        tf: Timeframe string (e.g., "1h", "5m", "1d")
+        tf: Timeframe string (e.g., "1h", "5m", "D")
         strict: If True, raise ValueError for unknown TF.
                 If False, warn and use 1h default (8760).
     

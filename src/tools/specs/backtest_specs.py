@@ -116,12 +116,11 @@ SPECS = [
     },
     {
         "name": "backtest_preflight",
-        "description": "Run preflight check for an Play backtest (data coverage, warmup)",
+        "description": "Run preflight check for an Play backtest (data coverage, warmup). Symbol comes from Play.",
         "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
-            "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "start": {"type": "string", "description": "Window start datetime", "optional": True},
             "end": {"type": "string", "description": "Window end datetime", "optional": True},
             "fix_gaps": {"type": "boolean", "description": "Auto-fetch missing data", "default": False},
@@ -130,12 +129,11 @@ SPECS = [
     },
     {
         "name": "backtest_run_play",
-        "description": "Run a backtest for an Play (Golden Path)",
+        "description": "Run a backtest for an Play (Golden Path). Symbol comes from Play.",
         "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
-            "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "start": {"type": "string", "description": "Window start datetime", "optional": True},
             "end": {"type": "string", "description": "Window end datetime", "optional": True},
             "smoke": {"type": "boolean", "description": "Run in smoke mode (small window)", "default": False},
@@ -145,12 +143,11 @@ SPECS = [
     },
     {
         "name": "backtest_data_fix",
-        "description": "Fix data for an Play backtest (sync/heal)",
+        "description": "Fix data for an Play backtest (sync/heal). Symbol comes from Play.",
         "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "env": {"type": "string", "description": "Data environment", "default": "live"},
-            "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "start": {"type": "string", "description": "Sync from this date", "optional": True},
             "end": {"type": "string", "description": "Sync to this date", "optional": True},
             "max_lookback_days": {"type": "integer", "description": "Max lookback days", "default": 7},
@@ -162,12 +159,11 @@ SPECS = [
     },
     {
         "name": "backtest_indicators",
-        "description": "Discover indicator keys for an Play",
+        "description": "Discover indicator keys for an Play. Symbol comes from Play.",
         "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "data_env": {"type": "string", "description": "Data environment", "default": "live"},
-            "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "compute_values": {"type": "boolean", "description": "Compute actual values", "default": False},
         },
         "required": ["play_id"],
@@ -222,13 +218,12 @@ SPECS = [
     },
     {
         "name": "backtest_audit_snapshot_plumbing",
-        "description": "Run snapshot plumbing parity audit (validates data flow)",
+        "description": "Run snapshot plumbing parity audit (validates data flow). Symbol comes from Play.",
         "category": "backtest.audit",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
             "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
             "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
-            "symbol": {"type": "string", "description": "Override symbol", "optional": True},
             "max_samples": {"type": "integer", "description": "Max samples", "default": 2000},
             "tolerance": {"type": "number", "description": "Float tolerance", "default": 1e-12},
         },

@@ -292,7 +292,7 @@ class PreflightReport:
         pf_icon = "[OK]" if self.has_1m_coverage else "[FAIL]"
         print(f"   {pf_icon} 1m coverage: {'OK' if self.has_1m_coverage else 'MISSING'} ({self.required_1m_bars} bars required)")
         map_icon = "[OK]" if self.exec_to_1m_mapping_feasible else "[FAIL]"
-        print(f"   {map_icon} exec→1m mapping: {'OK' if self.exec_to_1m_mapping_feasible else 'FAILED'}")
+        print(f"   {map_icon} exec->1m mapping: {'OK' if self.exec_to_1m_mapping_feasible else 'FAILED'}")
         print()
 
         for key, result in self.tf_results.items():
@@ -312,7 +312,7 @@ def parse_tf_to_minutes(tf: str) -> int:
     """
     Parse timeframe string to minutes.
     
-    Supports: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w
+    Supports: 1m, 5m, 15m, 30m, 1h, 4h, D (1d), W (1w)
     """
     tf = tf.lower().strip()
     
@@ -348,9 +348,9 @@ def calculate_warmup_start(
         hours = tf_minutes // 60
         tf = f"{hours}h"
     elif tf_minutes == 1440:
-        tf = "1d"
+        tf = "D"  # Bybit format
     elif tf_minutes == 10080:
-        tf = "1w"
+        tf = "W"  # Bybit format
     else:
         # Fallback: treat as minutes
         tf = f"{tf_minutes}m"
@@ -876,7 +876,12 @@ def run_preflight_gate(
     # ==========================================================================
     # STEP 0: Validate window dates (P2.2: prevent impossible data requests)
     # ==========================================================================
-    earliest_date = datetime(EARLIEST_BYBIT_DATE_YEAR, EARLIEST_BYBIT_DATE_MONTH, 1)
+    earliest_date = datetime(EARLIEST_BYBIT_DATE_YEAR, EARLIEST_BYBIT_DATE_MONTH, 1, tzinfo=timezone.utc)
+    # Ensure window dates are timezone-aware for comparison
+    if window_start.tzinfo is None:
+        window_start = window_start.replace(tzinfo=timezone.utc)
+    if window_end.tzinfo is None:
+        window_end = window_end.replace(tzinfo=timezone.utc)
     if window_start < earliest_date:
         raise ValueError(
             f"Window start ({window_start.date()}) is before earliest available Bybit data "

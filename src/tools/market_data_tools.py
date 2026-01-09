@@ -157,7 +157,7 @@ def get_open_interest_tool(
     
     Args:
         symbol: Trading symbol
-        interval: Time interval (e.g., "5min", "15min", "30min", "1h", "4h", "1d")
+        interval: Time interval (e.g., "5min", "15min", "30min", "1h", "4h", "D")
         limit: Number of records to retrieve
     
     Returns:

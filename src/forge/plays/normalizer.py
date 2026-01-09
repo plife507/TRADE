@@ -43,10 +43,12 @@ from src.backtest.play import Play
 from ..blocks import NormalizationResult, NormalizationError
 
 
-# Valid timeframes
+# Valid timeframes (Bybit intervals only)
+# Bybit intervals: 1,3,5,15,30,60,120,240,360,720,D,W,M
 VALID_TIMEFRAMES = {
     "1m", "3m", "5m", "15m", "30m",
-    "1h", "2h", "4h", "6h", "8h", "12h", "1D"
+    "1h", "2h", "4h", "6h", "12h",
+    "D", "W", "M",
 }
 
 # Required risk fields

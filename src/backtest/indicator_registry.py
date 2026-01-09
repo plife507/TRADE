@@ -340,8 +340,10 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
     },
     "trix": {
         "inputs": {"close"},
-        "params": {"length"},
-        "multi_output": False,
+        "params": {"length", "signal"},
+        "multi_output": True,
+        "output_keys": ("trix", "signal"),
+        "primary_output": "trix",
         "warmup_formula": _warmup_ema,  # Triple EMA-based
     },
     "uo": {
@@ -353,7 +355,9 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
     "ppo": {
         "inputs": {"close"},
         "params": {"fast", "slow", "signal"},
-        "multi_output": False,
+        "multi_output": True,
+        "output_keys": ("ppo", "histogram", "signal"),
+        "primary_output": "ppo",
         "warmup_formula": _warmup_ppo,
     },
 
@@ -547,14 +551,21 @@ INDICATOR_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
     "linreg": {"value": FeatureOutputType.FLOAT},
     "midprice": {"value": FeatureOutputType.FLOAT},
     "ohlc4": {"value": FeatureOutputType.FLOAT},
-    "trix": {"value": FeatureOutputType.FLOAT},
     "uo": {"value": FeatureOutputType.FLOAT},
-    "ppo": {"value": FeatureOutputType.FLOAT},
     "vwap": {"value": FeatureOutputType.FLOAT},
 
     # -------------------------------------------------------------------------
     # Multi-Output Indicators
     # -------------------------------------------------------------------------
+    "trix": {
+        "trix": FeatureOutputType.FLOAT,
+        "signal": FeatureOutputType.FLOAT,
+    },
+    "ppo": {
+        "ppo": FeatureOutputType.FLOAT,
+        "histogram": FeatureOutputType.FLOAT,
+        "signal": FeatureOutputType.FLOAT,
+    },
     "macd": {
         "macd": FeatureOutputType.FLOAT,
         "signal": FeatureOutputType.FLOAT,
@@ -610,9 +621,9 @@ INDICATOR_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
     },
     "squeeze": {
         "sqz": FeatureOutputType.FLOAT,         # Momentum value
-        "on": FeatureOutputType.BOOL,           # Squeeze is on (inside KC)
-        "off": FeatureOutputType.BOOL,          # Squeeze is off (outside KC)
-        "no_sqz": FeatureOutputType.BOOL,       # No squeeze (neutral)
+        "on": FeatureOutputType.INT,            # Squeeze is on (inside KC) - 0/1 int
+        "off": FeatureOutputType.INT,           # Squeeze is off (outside KC) - 0/1 int
+        "no_sqz": FeatureOutputType.INT,        # No squeeze (neutral) - 0/1 int
     },
     "vortex": {
         "vip": FeatureOutputType.FLOAT,         # VI+

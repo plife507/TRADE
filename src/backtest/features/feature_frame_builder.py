@@ -233,6 +233,7 @@ class IndicatorCompute:
         low: pd.Series | None = None,
         open_: pd.Series | None = None,
         volume: pd.Series | None = None,
+        ts_open: pd.Series | None = None,
         **kwargs,
     ) -> pd.Series | dict[str, pd.Series]:
         """
@@ -249,6 +250,7 @@ class IndicatorCompute:
             low: Low price series
             open_: Open price series
             volume: Volume series
+            ts_open: Bar open timestamps (required for VWAP session boundaries)
             **kwargs: Indicator-specific parameters (length, fast, slow, etc.)
 
         Returns:
@@ -269,6 +271,7 @@ class IndicatorCompute:
             low=low,
             open_=open_,
             volume=volume,
+            ts_open=ts_open,
             **kwargs,
         )
 
@@ -410,11 +413,18 @@ class FeatureFrameBuilder:
             "close": df["close"],
             "volume": df["volume"] if "volume" in df.columns else pd.Series(np.zeros(length)),
         }
-        
+
         # Compute derived sources
         ohlcv["hlc3"] = (ohlcv["high"] + ohlcv["low"] + ohlcv["close"]) / 3
         ohlcv["ohlc4"] = (ohlcv["open"] + ohlcv["high"] + ohlcv["low"] + ohlcv["close"]) / 4
-        
+
+        # Add ts_open for indicators that require DatetimeIndex (e.g., VWAP)
+        if "ts_open" in df.columns:
+            ohlcv["ts_open"] = df["ts_open"]
+        elif "timestamp" in df.columns:
+            # Use timestamp as ts_open if ts_open not available
+            ohlcv["ts_open"] = df["timestamp"]
+
         # Get timestamps for metadata (optional)
         timestamps = df["timestamp"].values if "timestamp" in df.columns else None
         
@@ -675,7 +685,7 @@ class FeatureFrameBuilder:
         
         # Get input series based on spec's input_source
         input_series = self._get_input_series(spec, ohlcv, computed)
-        
+
         # Pass input_series as the primary input - single-input indicators use it directly
         # Multi-input indicators (ATR, MACD) use their own required inputs from registry
         return self.registry.compute(
@@ -685,6 +695,7 @@ class FeatureFrameBuilder:
             low=ohlcv["low"],
             open_=ohlcv["open"],
             volume=ohlcv.get("volume"),
+            ts_open=ohlcv.get("ts_open"),  # For VWAP session boundaries
             **params,
         )
     
@@ -717,7 +728,7 @@ class FeatureFrameBuilder:
         
         # Get input series for indicators that use a primary input
         input_series = self._get_input_series(spec, ohlcv, computed)
-        
+
         # Pass input_series as the primary input - single-input indicators use it directly
         # Multi-input indicators (ATR, MACD) use their own required inputs from registry
         return self.registry.compute(
@@ -727,9 +738,10 @@ class FeatureFrameBuilder:
             low=ohlcv["low"],
             open_=ohlcv["open"],
             volume=ohlcv.get("volume"),
+            ts_open=ohlcv.get("ts_open"),  # For VWAP session boundaries
             **params,
         )
-    
+
     def _get_input_series(
         self,
         spec: FeatureSpec,

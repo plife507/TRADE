@@ -176,13 +176,15 @@ def print_activity(message: str, emoji: str = "💰", end: str = "\n") -> None:
 
 
 # Supported timeframes (Bybit format)
+# Internal: "1m", "5m", "15m", "1h", "4h", "D"
+# Bybit API: "1", "5", "15", "60", "240", "D"
 TIMEFRAMES = {
     "1m": "1",
     "5m": "5",
     "15m": "15",
     "1h": "60",
     "4h": "240",
-    "1d": "D",
+    "D": "D",
 }
 
 # Timeframe to minutes mapping for period calculations and gap detection
@@ -192,7 +194,7 @@ TF_MINUTES = {
     "15m": 15,
     "1h": 60,
     "4h": 240,
-    "1d": 1440,
+    "D": 1440,
 }
 
 # Period parsing
@@ -502,7 +504,7 @@ class HistoricalDataStore:
         total_minutes = delta.total_seconds() / 60
         
         tf_minutes = {
-            "1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440
+            "1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "D": 1440
         }
         
         interval = tf_minutes.get(timeframe, 15)
@@ -1245,7 +1247,7 @@ class HistoricalDataStore:
         symbol = symbol.upper()
         
         presets = {
-            "swing":    ("1d", "4h", "1h"),
+            "swing":    ("D", "4h", "1h"),
             "day":      ("4h", "1h", "15m"),
             "intraday": ("1h", "15m", "5m"),
             "scalp":    ("15m", "5m", "1m"),

@@ -1,0 +1,48 @@
+version: "3.0.0"
+name: "F_002_rsi_momentum"
+description: "Functional Test: RSI Momentum - Tests gt/lt operators with threshold triggers"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+# Parameterized feature naming per CLAUDE.md convention
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+# Engine components tested:
+# - RSI indicator computation
+# - gt (greater than) operator with constant
+# - lt (less than) operator with constant
+# - Trend filter using EMA
+actions:
+  entry_long:
+    all:
+      - ["rsi_14", "<", 30]        # RSI oversold
+      - ["close", ">", "ema_50"]   # Price above trend EMA
+  exit_long:
+    any:
+      - ["rsi_14", ">", 70]        # RSI overbought
+
+risk:
+  stop_loss_pct: 1.5
+  take_profit_pct: 3.0
+  max_position_pct: 100.0
+
+# Functional test metadata
+_test_metadata:
+  test_id: "F_002"
+  category: "comparison_operators"
+  min_signals: 3
+  max_signals: 20
+  warmup_bars: 51  # EMA 50 requires 50 bars warmup
+  edge_cases:
+    - "rsi_stuck_extreme"
+    - "rapid_oscillation"
+    - "no_oversold"

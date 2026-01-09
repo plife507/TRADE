@@ -92,9 +92,12 @@ class SimulatedRiskManager:
                 f"Got {type(snapshot).__name__}. Legacy RuntimeSnapshot is not supported."
             )
         
-        if self._profile.sizing_model == "percent_equity":
+        model = self._profile.sizing_model
+        if model == "percent_equity":
             return self._size_percent_equity(snapshot, signal)
-        elif self._profile.sizing_model == "fixed_notional":
+        elif model == "risk_based":
+            return self._size_risk_based(snapshot, signal)
+        elif model in ("fixed_usdt", "fixed_notional"):
             return self._size_fixed_notional(signal)
         else:
             # Default to percent_equity
@@ -106,58 +109,111 @@ class SimulatedRiskManager:
         signal: Signal,
     ) -> SizingResult:
         """
-        Size using percent of equity at risk.
-        
-        Uses stop distance for proper risk-based sizing when available.
+        Size using percentage of equity as margin, then apply leverage.
+
+        Bybit margin model:
+        - margin = equity × (risk_pct / 100)
+        - position_value = margin × leverage
+
+        Example with 10% of $10,000 equity at 10x leverage:
+        - margin = $10,000 × 10% = $1,000 (what you're putting up)
+        - position = $1,000 × 10 = $10,000 (your exposure)
+
+        Example with 10% of $10,000 equity at 1x leverage:
+        - margin = $10,000 × 10% = $1,000
+        - position = $1,000 × 1 = $1,000
+
+        The position is capped at equity × max_leverage (max borrowing).
         """
         equity = self._equity
         risk_pct = self._profile.risk_per_trade_pct
         max_lev = self._profile.max_leverage
-        
+
+        # Margin is the % of equity we're committing
+        margin = equity * (risk_pct / 100.0)
+
+        # Position size = margin × leverage (Bybit formula)
+        size_usdt = margin * max_lev
+
+        # Cap at max allowed position (equity × max_leverage)
+        max_size = equity * max_lev
+        was_capped = size_usdt > max_size
+        size_usdt = min(size_usdt, max_size)
+
+        return SizingResult(
+            size_usdt=size_usdt,
+            method="percent_equity",
+            details=f"margin=${margin:.2f}, lev={max_lev:.1f}x, position=${size_usdt:.2f}, capped={was_capped}"
+        )
+
+    def _size_risk_based(
+        self,
+        snapshot: "RuntimeSnapshotView",
+        signal: Signal,
+    ) -> SizingResult:
+        """
+        Size using risk-based calculation.
+
+        Computes position size based on account risk percentage and stop distance:
+        - risk_dollars = equity × (risk_per_trade_pct / 100)
+        - size = risk_dollars × entry_price / stop_distance
+
+        This sizes the position so that if stopped out, you lose exactly risk_pct% of equity.
+
+        Example:
+        - $10,000 equity, 1% risk = $100 at risk
+        - Entry $64,200, Stop $62,916 (2% stop) = $1,284 stop distance
+        - size = $100 × $64,200 / $1,284 = $5,000 position
+
+        If stopped out: $5,000 × 2% = $100 loss = 1% of equity
+
+        Requires stop_loss in signal metadata. Falls back to percent_equity if missing.
+        """
+        equity = self._equity
+        risk_pct = self._profile.risk_per_trade_pct
+        max_lev = self._profile.max_leverage
+
         # Maximum size based on leverage
         max_size = equity * max_lev
-        
-        # Risk dollars
+
+        # Risk dollars (what we're willing to lose)
         risk_dollars = equity * (risk_pct / 100.0)
-        
-        # Get entry price from RuntimeSnapshotView.close (O(1) array access)
+
+        # Get entry price from snapshot
         entry_price = snapshot.close
-        
-        # Try to get stop distance from signal metadata
+
+        # Get stop loss from signal metadata
         stop_loss = None
         if signal.metadata:
             stop_loss = signal.metadata.get("stop_loss")
             entry_price = signal.metadata.get("entry_price", entry_price)
-        
+
         if stop_loss is not None and entry_price > 0:
             stop_distance = abs(entry_price - stop_loss)
-            
+
             if stop_distance > 0:
-                # Risk-based sizing: size_usdt = risk$ * entry / stop_distance
+                # Risk-based sizing: size = risk$ × entry / stop_distance
                 size_usdt = risk_dollars * entry_price / stop_distance
+                was_capped = size_usdt > max_size
                 size_usdt = min(size_usdt, max_size)
-                
+
                 return SizingResult(
                     size_usdt=size_usdt,
-                    method="stop_based",
-                    details=f"risk=${risk_dollars:.2f}, stop_dist={stop_distance:.4f}, capped={size_usdt < max_size}"
+                    method="risk_based",
+                    details=f"risk=${risk_dollars:.2f}, stop_dist={stop_distance:.4f}, capped={was_capped}"
                 )
-        
-        # Fallback: conservative notional sizing (10% of max leverage)
-        # Note: signal.size_usdt may be 0.0 for Play signals (engine computes sizing)
-        # so we use max_size * 0.1 as the base, not min(signal.size_usdt, ...)
-        if signal.size_usdt > 0:
-            fallback_size = min(signal.size_usdt, max_size * 0.1)
-        else:
-            # Play signals have size_usdt=0 - use 10% of max leverage
-            fallback_size = max_size * 0.1
+
+        # Fallback to simple percent_equity if no valid stop
+        size_usdt = equity * (risk_pct / 100.0)
+        was_capped = size_usdt > max_size
+        size_usdt = min(size_usdt, max_size)
 
         return SizingResult(
-            size_usdt=fallback_size,
-            method="fallback_notional",
-            details=f"no valid stop, using fallback={fallback_size:.2f}"
+            size_usdt=size_usdt,
+            method="risk_based_fallback",
+            details=f"no stop_loss, using percent_equity fallback"
         )
-    
+
     def _size_fixed_notional(self, signal: Signal) -> SizingResult:
         """
         Size using fixed notional from signal.

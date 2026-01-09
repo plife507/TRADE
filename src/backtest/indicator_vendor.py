@@ -143,6 +143,74 @@ def canonicalize_indicator_outputs(
 
 
 # =============================================================================
+# Special Indicator Handlers
+# =============================================================================
+
+
+def _compute_vwap_with_datetime_index(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    ts_open: pd.Series | None = None,
+    **kwargs
+) -> pd.Series:
+    """
+    Compute VWAP with DatetimeIndex required by pandas_ta.
+
+    pandas_ta's vwap() requires an ordered DatetimeIndex to determine session
+    boundaries (daily reset by default). This function:
+    1. Creates a temporary DataFrame with DatetimeIndex from ts_open
+    2. Computes VWAP
+    3. Resets to original integer index
+
+    Args:
+        high, low, close, volume: Price series with integer index
+        ts_open: Bar open timestamps (int64 milliseconds or datetime)
+        **kwargs: VWAP params (anchor, etc.)
+
+    Returns:
+        VWAP Series with original integer index
+    """
+    original_index = close.index
+
+    if ts_open is None:
+        # No timestamps available - return NaN Series with warning
+        import warnings
+        warnings.warn(
+            "VWAP requires timestamps (ts_open) for session boundaries. "
+            "Returning NaN series. Pass ts_open to compute_indicator for VWAP.",
+            UserWarning
+        )
+        return pd.Series(index=original_index, dtype=float)
+
+    # Convert ts_open to DatetimeIndex
+    if pd.api.types.is_integer_dtype(ts_open):
+        # Millisecond timestamps
+        dt_index = pd.to_datetime(ts_open, unit='ms', utc=True)
+    else:
+        dt_index = pd.to_datetime(ts_open, utc=True)
+
+    # Create DataFrame with DatetimeIndex
+    df = pd.DataFrame({
+        'high': high.values,
+        'low': low.values,
+        'close': close.values,
+        'volume': volume.values,
+    }, index=dt_index)
+
+    # Compute VWAP
+    vwap_result = ta.vwap(df['high'], df['low'], df['close'], df['volume'], **kwargs)
+
+    if vwap_result is None:
+        return pd.Series(index=original_index, dtype=float)
+
+    # Reset to original integer index
+    result = pd.Series(vwap_result.values, index=original_index)
+    return result
+
+
+# =============================================================================
 # Dynamic Indicator Wrapper (handles ALL pandas_ta indicators)
 # =============================================================================
 
@@ -153,14 +221,15 @@ def compute_indicator(
     low: pd.Series | None = None,
     open_: pd.Series | None = None,
     volume: pd.Series | None = None,
+    ts_open: pd.Series | None = None,
     **kwargs
 ) -> pd.Series | dict[str, pd.Series]:
     """
     Dynamic wrapper for supported indicators (FAIL LOUD on unsupported).
-    
+
     Uses IndicatorRegistry to determine input requirements. Only indicators
     explicitly declared in the registry are allowed - no heuristic fallbacks.
-    
+
     Args:
         indicator_name: Name of the indicator (e.g., 'ema', 'macd', 'adx')
         close: Close price series
@@ -168,23 +237,24 @@ def compute_indicator(
         low: Low price series
         open_: Open price series
         volume: Volume series
+        ts_open: Bar open timestamps (required for VWAP session boundaries)
         **kwargs: Indicator-specific parameters (length, fast, slow, etc.)
-        
+
     Returns:
         pd.Series for single-output indicators
         dict[str, pd.Series] for multi-output indicators (column names normalized)
-        
+
     Raises:
         ValueError: If indicator_name is not in IndicatorRegistry (UNSUPPORTED_INDICATOR_TYPE)
-        
+
     Example:
         # Single-output
         ema_result = compute_indicator('ema', close=close, length=20)
-        
+
         # Multi-output
         macd_result = compute_indicator('macd', close=close, fast=12, slow=26, signal=9)
         # Returns: {'macd': Series, 'signal': Series, 'histogram': Series}
-        
+
         # With high/low/close
         adx_result = compute_indicator('adx', high=high, low=low, close=close, length=14)
         # Returns: {'adx': Series, 'dmp': Series, 'dmn': Series}
@@ -245,15 +315,21 @@ def compute_indicator(
         if close is None:
             raise ValueError(f"Indicator '{indicator_name}' requires at least 'close' price series")
         positional_args.append(close)
-    
-    # Compute indicator
-    result = indicator_fn(*positional_args, **kwargs)
-    
+
+    # Special handling for VWAP: requires DatetimeIndex for session boundaries
+    if indicator_name == "vwap":
+        result = _compute_vwap_with_datetime_index(
+            high=high, low=low, close=close, volume=volume, ts_open=ts_open, **kwargs
+        )
+    else:
+        # Compute indicator
+        result = indicator_fn(*positional_args, **kwargs)
+
     if result is None:
         # Return empty Series with correct index
         index = close.index if close is not None else (high.index if high is not None else pd.RangeIndex(0))
         return pd.Series(index=index, dtype=float)
-    
+
     # Handle result type
     if isinstance(result, pd.DataFrame):
         # Multi-output: normalize column names
@@ -329,6 +405,11 @@ def _extract_column_key(col_name: str, indicator_name: str) -> str:
     
     # Special mappings for common indicators
     column_mappings = {
+        # TRIX
+        'trixs': 'signal',
+        # PPO
+        'ppoh': 'histogram',
+        'ppos': 'signal',
         # MACD
         'macdh': 'histogram',
         'macds': 'signal',
@@ -612,7 +693,8 @@ def bbands(
 
     # pandas_ta returns columns like BBL_20_2.0_2.0 (length_lower_std_upper_std)
     # Format: BB{L/M/U/B/P}_{length}_{lower_std}_{upper_std}
-    std_str = f"{std}"
+    # NOTE: pandas_ta always uses float format (2.0) even if int (2) is passed
+    std_str = f"{float(std)}"
     lower_col = f"BBL_{length}_{std_str}_{std_str}"
     middle_col = f"BBM_{length}_{std_str}_{std_str}"
     upper_col = f"BBU_{length}_{std_str}_{std_str}"

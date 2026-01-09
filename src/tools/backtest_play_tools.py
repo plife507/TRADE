@@ -53,19 +53,20 @@ logger = get_logger()
 # =============================================================================
 
 # Canonical timeframes accepted by CLI (stored in DuckDB as-is)
-CANONICAL_TIMEFRAMES = {"1m", "5m", "15m", "1h", "4h", "1d"}
+# Bybit format: D for daily, W for weekly, M for monthly
+CANONICAL_TIMEFRAMES = {"1m", "5m", "15m", "1h", "4h", "D"}
 
-# Bybit API intervals (NOT accepted - user must use canonical)
+# Bybit API intervals (numeric format for sub-daily)
 BYBIT_API_INTERVALS = {"1", "5", "15", "60", "240", "D"}
 
-# Mapping from Bybit API interval to canonical
+# Mapping from Bybit API numeric interval to canonical
 BYBIT_TO_CANONICAL = {
     "1": "1m",
     "5": "5m",
     "15": "15m",
     "60": "1h",
     "240": "4h",
-    "D": "1d",
+    "D": "D",
 }
 
 
@@ -134,11 +135,9 @@ def normalize_timestamp(dt: datetime) -> datetime:
 def backtest_preflight_play_tool(
     play_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
-    symbol: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
     plays_dir: Path | None = None,
-    symbol_override: str | None = None,
     fix_gaps: bool = False,
 ) -> ToolResult:
     """
@@ -149,21 +148,19 @@ def backtest_preflight_play_tool(
     Args:
         play_id: Play identifier
         env: Data environment ("live" or "demo")
-        symbol: Override symbol (default: first in Play.symbol_universe)
         start: Window start (required)
         end: Window end (default: now)
         plays_dir: Override Play directory
-        symbol_override: Alias for symbol (Phase 6 smoke test support)
         fix_gaps: If True, auto-fetch and fix missing data (uses data tools)
 
     Returns:
         ToolResult with PreflightReport.to_dict() in data
+
+    Note:
+        Symbol is taken from the Play configuration (Play.symbol_universe[0]).
+        Plays are self-contained and deterministic.
     """
     try:
-        # Phase 6: symbol_override is an alias for symbol
-        if symbol_override and not symbol:
-            symbol = symbol_override
-
         # Validate env
         env = validate_data_env(env)
         db_path = resolve_db_path(env)
@@ -191,14 +188,13 @@ def backtest_preflight_play_tool(
                 data={"validation_errors": [i.message for i in validation.errors]},
             )
 
-        # Resolve symbol
-        if symbol is None:
-            if not play.symbol_universe:
-                return ToolResult(
-                    success=False,
-                    error="Play has no symbols in symbol_universe and none provided",
-                )
-            symbol = play.symbol_universe[0]
+        # Get symbol from Play (Play is the single source of truth)
+        if not play.symbol_universe:
+            return ToolResult(
+                success=False,
+                error="Play has no symbols in symbol_universe",
+            )
+        symbol = play.symbol_universe[0]
 
         # Validate symbol
         symbol = validate_symbol(symbol)
@@ -524,7 +520,6 @@ def normalize_timestamp(ts: datetime) -> datetime:
 def backtest_run_play_tool(
     play_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
-    symbol: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
     smoke: bool = False,
@@ -535,7 +530,6 @@ def backtest_run_play_tool(
     initial_equity_override: float | None = None,
     max_leverage_override: float | None = None,
     emit_snapshots: bool = False,
-    symbol_override: str | None = None,
     fix_gaps: bool = True,
     validate_artifacts_after: bool = True,
 ) -> ToolResult:
@@ -551,7 +545,6 @@ def backtest_run_play_tool(
     Args:
         play_id: Play identifier
         env: Data environment ("live" or "demo")
-        symbol: Override symbol
         start: Window start
         end: Window end
         smoke: If True, run fast smoke check (small window if not provided)
@@ -561,23 +554,21 @@ def backtest_run_play_tool(
         plays_dir: Override Play directory
         initial_equity_override: Override starting equity (defaults to Play.account.starting_equity_usdt)
         max_leverage_override: Override max leverage (defaults to Play.account.max_leverage)
-        symbol_override: Alias for symbol (Phase 6 smoke test support)
         fix_gaps: If True (default), auto-fetch and fix missing data during preflight
         validate_artifacts_after: If True (default), validate artifacts after run (HARD FAIL if invalid)
 
     Returns:
         ToolResult with backtest results
+
+    Note:
+        Symbol is taken from the Play configuration (Play.symbol_universe[0]).
+        Plays are self-contained and deterministic.
     """
     try:
-        # Phase 6: symbol_override is an alias for symbol
-        if symbol_override and not symbol:
-            symbol = symbol_override
-
         # Run preflight first (with auto-sync if fix_gaps=True)
         preflight_result = backtest_preflight_play_tool(
             play_id=play_id,
             env=env,
-            symbol=symbol,
             start=start,
             end=end,
             plays_dir=plays_dir,
@@ -800,7 +791,6 @@ def backtest_run_play_tool(
 def backtest_indicators_tool(
     play_id: str,
     data_env: DataEnv = DEFAULT_DATA_ENV,
-    symbol: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
     plays_dir: Path | None = None,
@@ -816,7 +806,6 @@ def backtest_indicators_tool(
     Args:
         play_id: Play identifier
         data_env: Data environment ("live" or "demo")
-        symbol: Override symbol
         start: Window start (for computing actual values)
         end: Window end
         plays_dir: Override Play directory
@@ -824,6 +813,10 @@ def backtest_indicators_tool(
 
     Returns:
         ToolResult with indicator key discovery results
+
+    Note:
+        Symbol is taken from the Play configuration (Play.symbol_universe[0]).
+        Plays are self-contained and deterministic.
     """
     try:
         # Validate env
@@ -849,16 +842,13 @@ def backtest_indicators_tool(
                 error=f"Play validation failed: {[i.message for i in validation.errors]}",
             )
 
-        # Resolve symbol
-        if symbol is None:
-            if not play.symbol_universe:
-                return ToolResult(
-                    success=False,
-                    error="Play has no symbols and none provided",
-                )
-            symbol = play.symbol_universe[0]
-
-        symbol = validate_symbol(symbol)
+        # Get symbol from Play (Play is the single source of truth)
+        if not play.symbol_universe:
+            return ToolResult(
+                success=False,
+                error="Play has no symbols in symbol_universe",
+            )
+        symbol = validate_symbol(play.symbol_universe[0])
 
         # Get all features by TF from registry
         registry = play.feature_registry
@@ -937,7 +927,6 @@ def _datetime_to_epoch_ms(dt: datetime | None) -> int | None:
 def backtest_data_fix_tool(
     play_id: str,
     env: DataEnv = DEFAULT_DATA_ENV,
-    symbol: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
     max_lookback_days: int = 7,
@@ -954,7 +943,6 @@ def backtest_data_fix_tool(
     Args:
         play_id: Play identifier
         env: Data environment
-        symbol: Override symbol
         start: Sync from this date (default: Play warmup requirements)
         end: Sync to this date (required for bounded mode)
         max_lookback_days: Max lookback days (default 7). If (end - start) > this, clamp start.
@@ -965,6 +953,10 @@ def backtest_data_fix_tool(
 
     Returns:
         ToolResult with structured data fix summary including bounds and progress
+
+    Note:
+        Symbol is taken from the Play configuration (Play.symbol_universe[0]).
+        Plays are self-contained and deterministic.
     """
     from .data_tools import (
         sync_range_tool,
@@ -981,16 +973,13 @@ def backtest_data_fix_tool(
         # Load Play to get TFs
         play = load_play(play_id, base_dir=plays_dir)
 
-        # Resolve symbol
-        if symbol is None:
-            if not play.symbol_universe:
-                return ToolResult(
-                    success=False,
-                    error="Play has no symbols and none provided",
-                )
-            symbol = play.symbol_universe[0]
-
-        symbol = validate_symbol(symbol)
+        # Get symbol from Play (Play is the single source of truth)
+        if not play.symbol_universe:
+            return ToolResult(
+                success=False,
+                error="Play has no symbols in symbol_universe",
+            )
+        symbol = validate_symbol(play.symbol_universe[0])
 
         # Get all TFs from Play + mandatory 1m for price feed
         tfs = set(play.get_all_tfs())

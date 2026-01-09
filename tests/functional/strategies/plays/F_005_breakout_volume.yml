@@ -1,0 +1,52 @@
+version: "3.0.0"
+name: "F_005_breakout_volume"
+description: "Functional Test: Breakout + Volume - Tests occurred_within and volume spike detection"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+structures:
+  rolling_high:
+    detector: rolling_window
+    params:
+      mode: max
+      size: 20
+      source: high
+
+# Engine components tested:
+# - Rolling window structure
+# - Volume indicator computation
+# - occurred_within window operator
+# - Breakout detection logic
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "rolling_high.value"]     # Breakout above resistance
+      - ["volume", ">", "volume_sma_20", 2.0]    # Volume > 2x average
+
+risk:
+  stop_loss_pct: 1.5
+  take_profit_pct: 4.0
+  max_position_pct: 100.0
+
+_test_metadata:
+  test_id: "F_005"
+  category: "window_operators"
+  min_signals: 3
+  max_signals: 20
+  warmup_bars: 21
+  edge_cases:
+    - "no_volume_data"
+    - "constant_volume"
+    - "no_breakouts"

@@ -1,0 +1,111 @@
+{
+  "computed_warmup_requirements": {
+    "bars_history_required": 0,
+    "delay_by_role": {
+      "15m": 0
+    },
+    "feature_warmup": {
+      "15m": 63
+    },
+    "max_delay_bars": 0,
+    "max_warmup_bars": 63,
+    "warmup_by_role": {
+      "15m": 63
+    }
+  },
+  "coverage": {
+    "db_end_ts_ms": 1767571200000,
+    "db_start_ts_ms": 1764913500000,
+    "ok": true
+  },
+  "overall_status": "passed",
+  "play_id": "T_050_close_vs_feature",
+  "price_feed_1m": {
+    "exec_to_1m_mapping_feasible": true,
+    "has_1m_coverage": true,
+    "required_1m_bars": 45187
+  },
+  "required_range": {
+    "end_ts_ms": 1767571200000,
+    "start_ts_ms": 1764913500000
+  },
+  "run_timestamp": "2026-01-08T04:35:20.614055+00:00",
+  "tf_results": {
+    "BTCUSDT:15m": {
+      "coverage": {
+        "bar_count": 2954,
+        "db_end_ts_ms": 1767571200000,
+        "db_start_ts_ms": 1764913500000,
+        "max_ts": "2026-01-05T00:00:00",
+        "min_ts": "2025-12-05T05:45:00",
+        "ok": true
+      },
+      "errors": [],
+      "gaps": {
+        "count": 0,
+        "details": [],
+        "max_gap_minutes": 0.0,
+        "threshold_minutes": 45.0
+      },
+      "required_range": {
+        "end": "2026-01-05T00:00:00+00:00",
+        "end_ts_ms": 1767571200000,
+        "start": "2025-12-05T05:45:00+00:00",
+        "start_ts_ms": 1764913500000,
+        "warmup_bars": 73
+      },
+      "status": "passed",
+      "symbol": "BTCUSDT",
+      "tf": "15m",
+      "validation": {
+        "alignment_ok": true,
+        "covers_range": true,
+        "data_exists": true,
+        "gaps_within_threshold": true,
+        "is_monotonic": true,
+        "is_unique": true
+      },
+      "warnings": []
+    },
+    "BTCUSDT:1m": {
+      "coverage": {
+        "bar_count": 44194,
+        "db_end_ts_ms": 1767571200000,
+        "db_start_ts_ms": 1764919620000,
+        "max_ts": "2026-01-05T00:00:00",
+        "min_ts": "2025-12-05T07:27:00",
+        "ok": true
+      },
+      "errors": [],
+      "gaps": {
+        "count": 0,
+        "details": [],
+        "max_gap_minutes": 0.0,
+        "threshold_minutes": 3.0
+      },
+      "required_range": {
+        "end": "2026-01-05T00:00:00+00:00",
+        "end_ts_ms": 1767571200000,
+        "start": "2025-12-05T07:27:00+00:00",
+        "start_ts_ms": 1764919620000,
+        "warmup_bars": 993
+      },
+      "status": "passed",
+      "symbol": "BTCUSDT",
+      "tf": "1m",
+      "validation": {
+        "alignment_ok": true,
+        "covers_range": true,
+        "data_exists": true,
+        "gaps_within_threshold": true,
+        "is_monotonic": true,
+        "is_unique": true
+      },
+      "warnings": []
+    }
+  },
+  "window": {
+    "end": "2026-01-05T00:00:00+00:00",
+    "start": "2025-12-06T00:00:00+00:00"
+  }
+}

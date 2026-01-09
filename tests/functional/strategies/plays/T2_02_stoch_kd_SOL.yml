@@ -1,0 +1,43 @@
+version: "3.0.0"
+name: "T2_02_stoch_kd_SOL"
+description: "TIER 2: Test multi-output field accessor syntax with Stochastic K/D"
+
+symbol: "SOLUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  stoch_14:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+
+actions:
+  entry_long:
+    all:
+      - [{"feature_id": "stoch_14", "field": "k"}, "cross_above", {"feature_id": "stoch_14", "field": "d"}]
+      - [{"feature_id": "stoch_14", "field": "k"}, "lt", 30]
+  exit_long:
+    any:
+      - [{"feature_id": "stoch_14", "field": "k"}, "gt", 80]
+      - [{"feature_id": "stoch_14", "field": "k"}, "cross_below", {"feature_id": "stoch_14", "field": "d"}]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 50.0

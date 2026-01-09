@@ -407,7 +407,6 @@ def backtest_audit_snapshot_plumbing_tool(
     play_id: str,
     start_date: str,
     end_date: str,
-    symbol: str | None = None,
     max_samples: int = 2000,
     tolerance: float = 1e-12,
     strict: bool = True,
@@ -422,13 +421,16 @@ def backtest_audit_snapshot_plumbing_tool(
         play_id: Play identifier or path
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
-        symbol: Override symbol (optional, inferred from Play)
         max_samples: Max exec bar samples (default: 2000)
         tolerance: Tolerance for float comparison (default: 1e-12)
         strict: Stop at first mismatch (default: True)
 
     Returns:
         ToolResult with plumbing parity audit results
+
+    Note:
+        Symbol is taken from the Play configuration (Play.symbol_universe[0]).
+        Plays are self-contained and deterministic.
     """
     from ..forge.audits.audit_snapshot_plumbing_parity import audit_snapshot_plumbing_parity
 
@@ -438,7 +440,6 @@ def backtest_audit_snapshot_plumbing_tool(
 
         result = audit_snapshot_plumbing_parity(
             play_id=play_id,
-            symbol=symbol,
             start_date=start,
             end_date=end,
             max_samples=max_samples,

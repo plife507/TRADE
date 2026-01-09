@@ -1275,6 +1275,31 @@ class RuntimeSnapshotView:
             return False
         return self._feature_registry.has(feature_id)
 
+    def get_feature_output_type(
+        self, feature_id: str, field: str = "value"
+    ) -> "FeatureOutputType | None":
+        """
+        Get the declared output type for a feature field.
+
+        Used by DSL evaluation to determine if a float value should be
+        treated as INT (e.g., supertrend.direction is declared INT but
+        stored as float64 due to pandas/numpy behavior).
+
+        Args:
+            feature_id: Feature ID (e.g., "supertrend_10_3")
+            field: Field name (e.g., "direction", "value")
+
+        Returns:
+            FeatureOutputType if found, None if registry unavailable or
+            feature/field not found.
+        """
+        if self._feature_registry is None:
+            return None
+        try:
+            return self._feature_registry.get_output_type(feature_id, field)
+        except (KeyError, ValueError):
+            return None
+
     # =========================================================================
     # Canonical Path Resolver (DSL Interface)
     # =========================================================================

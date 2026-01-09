@@ -30,7 +30,7 @@ Validation Plays: `tests/validation/plays/`
 
 | Document | Purpose |
 |----------|---------|
-| [PLAY_SYNTAX.md](PLAY_SYNTAX.md) | Blocks DSL v3.0.0 syntax reference (12 operators, window ops) |
+| [PLAY_DSL_COOKBOOK.md](PLAY_DSL_COOKBOOK.md) | **Canonical** Play DSL syntax reference (operators, arithmetic, risk, MTF) |
 | [PLAY_VISION.md](PLAY_VISION.md) | Play design vision: agent-ready, registry-based, fail-loud principles |
 
 ---

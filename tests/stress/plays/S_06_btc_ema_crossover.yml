@@ -1,0 +1,44 @@
+version: "3.0.0"
+name: "S_06_btc_ema_crossover"
+description: "Stress Test Gate 2.1: EMA Crossover - 25% complexity"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+
+actions:
+  # Entry: EMA 9 crosses above EMA 21 (golden cross)
+  entry_long:
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
+
+  # Exit: EMA 9 crosses below EMA 21 (death cross)
+  exit_long:
+    all:
+      - ["ema_9", "cross_below", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 95.0

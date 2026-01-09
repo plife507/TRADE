@@ -1,0 +1,28 @@
+{
+  "computed_feature_keys": [
+    "stochrsi_14_14_3_3",
+    "stochrsi_14_14_3_3_d",
+    "stochrsi_14_14_3_3_k"
+  ],
+  "config_source": "Play",
+  "created_at": "2026-01-08T04:15:35.981524+00:00",
+  "declared_feature_keys": [
+    "stochrsi_14_14_3_3",
+    "stochrsi_14_14_3_3_d",
+    "stochrsi_14_14_3_3_k"
+  ],
+  "engine_impl": "BacktestEngine",
+  "exchange_impl": "SimulatedExchange",
+  "feature_builder_impl": "FeatureFrameBuilder",
+  "feature_keys_match": true,
+  "indicator_backend": "pandas-ta",
+  "pipeline_version": "1.0.0",
+  "placeholder_mode": false,
+  "play_hash": "6b1521aa92f0ef9c",
+  "play_id": "F_IND_011_stochrsi",
+  "resolved_play_path": "tests\\functional\\strategies\\plays\\F_IND_011_stochrsi.yml",
+  "run_id": "07607fced83d",
+  "snapshot_impl": "RuntimeSnapshotView",
+  "strict_indicator_access": true,
+  "uses_system_config_loader": false
+}

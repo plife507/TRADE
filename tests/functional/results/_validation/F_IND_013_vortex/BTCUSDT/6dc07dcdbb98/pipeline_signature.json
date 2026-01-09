@@ -1,0 +1,28 @@
+{
+  "computed_feature_keys": [
+    "vortex_14",
+    "vortex_14_vim",
+    "vortex_14_vip"
+  ],
+  "config_source": "Play",
+  "created_at": "2026-01-08T04:15:42.711151+00:00",
+  "declared_feature_keys": [
+    "vortex_14",
+    "vortex_14_vim",
+    "vortex_14_vip"
+  ],
+  "engine_impl": "BacktestEngine",
+  "exchange_impl": "SimulatedExchange",
+  "feature_builder_impl": "FeatureFrameBuilder",
+  "feature_keys_match": true,
+  "indicator_backend": "pandas-ta",
+  "pipeline_version": "1.0.0",
+  "placeholder_mode": false,
+  "play_hash": "475be82c3bb27486",
+  "play_id": "F_IND_013_vortex",
+  "resolved_play_path": "tests\\functional\\strategies\\plays\\F_IND_013_vortex.yml",
+  "run_id": "6dc07dcdbb98",
+  "snapshot_impl": "RuntimeSnapshotView",
+  "strict_indicator_access": true,
+  "uses_system_config_loader": false
+}

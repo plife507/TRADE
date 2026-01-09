@@ -82,9 +82,14 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         max_active: Maximum number of active zones to track (K slots)
         width_pct: Zone width as percentage of level price (e.g., 0.002 = 0.2%)
         price_source: "mark_close" or "last_close" for interaction checks
+        use_paired_source: If true, only regenerate zones when a complete swing
+                          pair forms (L→H bullish or H→L bearish), using
+                          pair_high_level/pair_low_level which are guaranteed
+                          to come from the same swing sequence. Default: false.
 
     Dependencies:
-        source: A swing detector providing high_level, low_level, version
+        source: A swing detector providing high_level, low_level, version,
+               and (if use_paired_source) pair_high_level, pair_low_level, pair_version
 
     Slot Outputs (per zone 0 to max_active-1):
         zone{N}_lower: Lower boundary price (None if empty)
@@ -119,6 +124,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         "mode": "retracement",
         "width_pct": 0.002,
         "price_source": "mark_close",
+        "use_paired_source": False,
     }
     DEPENDS_ON: list[str] = ["source"]
 
@@ -192,12 +198,14 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         self.mode: str = params.get("mode", "retracement")
         self.width_pct: float = float(params.get("width_pct", 0.002))
         self.price_source: str = params.get("price_source", "mark_close")
+        self.use_paired_source: bool = params.get("use_paired_source", False)
 
         # Internal zone storage: list of dicts, most recent first
         # Each zone dict contains all zone fields
         self._zones: list[dict[str, Any]] = []
 
         # Track source version for regen detection
+        # When use_paired_source=True, tracks pair_version instead of version
         self._source_version: int = 0
 
         # Track current bar for age calculations
@@ -210,6 +218,10 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         Called on EXEC TF close. Source structure may be on a higher TF
         but its values are forward-filled.
 
+        When use_paired_source=True, regeneration triggers on pair_version changes
+        (complete L→H or H→L sequences), using pair_high_level/pair_low_level.
+        Otherwise, regeneration triggers on any pivot (version changes).
+
         Args:
             bar_idx: Current bar index.
             bar: Bar data with OHLCV and indicators.
@@ -220,7 +232,9 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         # 1. REGEN PATH: Source swing pivots changed -> regenerate all zones
         # 2. INTERACTION PATH: Check price interactions with existing zones
 
-        current_source_version = self.source.get_value("version")
+        # Choose version key based on pairing mode
+        version_key = "pair_version" if self.use_paired_source else "version"
+        current_source_version = self.source.get_value(version_key)
 
         # REGEN PATH: Only on source version change (new swing pivot confirmed)
         if current_source_version != self._source_version:
@@ -238,16 +252,27 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         New zones are prepended to maintain most-recent-first ordering.
         Excess zones beyond max_active are dropped.
 
+        When use_paired_source=True, uses pair_high_level/pair_low_level which
+        are guaranteed to come from the same swing sequence (complete L→H or H→L).
+        Otherwise, uses individual high_level/low_level which may be from
+        different swing sequences.
+
         Args:
             bar_idx: Current bar index.
             bar: Bar data.
         """
-        # Get source swing levels
+        # Get source swing levels - use paired or individual based on mode
         try:
-            high_level = self.source.get_value("high_level")
-            low_level = self.source.get_value("low_level")
-            high_idx = self.source.get_value("high_idx")
-            low_idx = self.source.get_value("low_idx")
+            if self.use_paired_source:
+                high_level = self.source.get_value("pair_high_level")
+                low_level = self.source.get_value("pair_low_level")
+                high_idx = self.source.get_value("pair_high_idx")
+                low_idx = self.source.get_value("pair_low_idx")
+            else:
+                high_level = self.source.get_value("high_level")
+                low_level = self.source.get_value("low_level")
+                high_idx = self.source.get_value("high_idx")
+                low_idx = self.source.get_value("low_idx")
         except (KeyError, AttributeError):
             return
 

@@ -1,0 +1,40 @@
+{
+  "allows_overwrite": true,
+  "attempt_id": null,
+  "candle_policy": "closed_only",
+  "category": "_validation",
+  "computed_delay_bars_by_role": {
+    "15m": 0
+  },
+  "computed_lookback_bars_by_role": {
+    "15m": 63
+  },
+  "created_at_utc": "2026-01-08T04:16:55.939583+00:00",
+  "data_source_id": "duckdb_live",
+  "data_version": null,
+  "engine_version": "1.0.0",
+  "equity_timestamp_column": "ts_ms",
+  "eval_start_ts_ms": 1764375300000,
+  "fee_model_version": "1.0.0",
+  "fill_policy_version": "1.0.0",
+  "full_hash": "6aa083c557c7f5994619878d6c9aa00a9d18327717c36c08f1db84c98b6f1a07",
+  "hash_algorithm": "sha256",
+  "is_promotable": false,
+  "play_hash": "27290c4ddd4e8cc6",
+  "play_id": "F_IND_037_adx",
+  "schema_version": "1.0.0",
+  "seed": null,
+  "short_hash": "6aa083c557c7",
+  "short_hash_length": 12,
+  "simulator_version": "1.0.0",
+  "symbols": [
+    "BTCUSDT"
+  ],
+  "tf_ctx": [
+    "15m"
+  ],
+  "tf_exec": "15m",
+  "universe_id": "BTCUSDT",
+  "window_end": "2025-12-29",
+  "window_start": "2025-11-29"
+}

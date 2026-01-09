@@ -134,7 +134,7 @@ SPECS = [
         "parameters": {
             "symbols": {"type": "array", "items": {"type": "string"}, "description": "List of symbols to sync"},
             "period": {"type": "string", "description": "Period (1D, 1W, 1M, 3M)", "default": "1M"},
-            "interval": {"type": "string", "description": "Data interval (5min, 15min, 30min, 1h, 4h, 1d)", "default": "1h"},
+            "interval": {"type": "string", "description": "Data interval (5min, 15min, 30min, 1h, 4h, D)", "default": "1h"},
             "env": DATA_ENV_PARAM,
         },
         "required": ["symbols"],
@@ -266,7 +266,7 @@ SPECS = [
         "category": "data.query",
         "parameters": {
             "symbol": {"type": "string", "description": "Trading symbol (required)"},
-            "timeframe": {"type": "string", "description": "Candle timeframe (1m, 5m, 15m, 1h, 4h, 1d)", "default": "1h"},
+            "timeframe": {"type": "string", "description": "Candle timeframe (1m, 5m, 15m, 1h, 4h, D)", "default": "1h"},
             "period": {"type": "string", "description": "Relative period (1M, 3M, 6M, 1Y) - alternative to start/end", "optional": True},
             "start": {"type": "string", "description": "Start datetime ISO string", "optional": True},
             "end": {"type": "string", "description": "End datetime ISO string", "optional": True},

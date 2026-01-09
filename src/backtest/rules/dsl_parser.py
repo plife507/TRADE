@@ -39,10 +39,114 @@ from .dsl_nodes import (
     HoldsFor, OccurredWithin, CountTrue, SetupRef,
     HoldsForDuration, OccurredWithinDuration, CountTrueDuration,
     FeatureRef, ScalarValue, RangeValue, ListValue, RhsValue,
+    ArithmeticExpr, ARITHMETIC_OPERATORS,
     VALID_OPERATORS, WINDOW_BARS_CEILING,
     validate_expr_types,
 )
 from .strategy_blocks import Block, Case, Intent
+
+
+# =============================================================================
+# Arithmetic Expression Parsing
+# =============================================================================
+
+def is_arithmetic_list(data: Any) -> bool:
+    """
+    Check if a value is an arithmetic expression list.
+
+    Arithmetic syntax: [operand, operator, operand]
+    Where operator is one of: +, -, *, /, %
+
+    Distinguishes from ListValue (for 'in' operator) by checking:
+    - Exactly 3 elements
+    - Middle element is an arithmetic operator string
+
+    Examples:
+        ["ema_9", "-", "ema_21"]  → True (arithmetic)
+        [1, 2, 3]                 → False (list for 'in')
+        ["ema_9", ">", "ema_21"] → False (not arithmetic op)
+    """
+    if not isinstance(data, list):
+        return False
+    if len(data) != 3:
+        return False
+    # Middle element must be an arithmetic operator
+    op = data[1]
+    return isinstance(op, str) and op in ARITHMETIC_OPERATORS
+
+
+def parse_arithmetic_operand(data: Any) -> FeatureRef | ScalarValue | ArithmeticExpr:
+    """
+    Parse an arithmetic operand.
+
+    Valid operand types:
+    - String: feature_id shorthand (e.g., "ema_9")
+    - Dict with feature_id: full FeatureRef
+    - Number: scalar value
+    - List with 3 elements: nested arithmetic
+
+    Args:
+        data: Operand data from YAML.
+
+    Returns:
+        FeatureRef, ScalarValue, or nested ArithmeticExpr.
+    """
+    # Nested arithmetic
+    if is_arithmetic_list(data):
+        return parse_arithmetic(data)
+
+    # String → feature_id shorthand
+    if isinstance(data, str):
+        return FeatureRef(feature_id=data)
+
+    # Dict → full FeatureRef
+    if isinstance(data, dict) and "feature_id" in data:
+        return FeatureRef(
+            feature_id=data["feature_id"],
+            field=data.get("field", "value"),
+            offset=data.get("offset", 0),
+        )
+
+    # Number → scalar
+    if isinstance(data, (int, float)):
+        return ScalarValue(data)
+
+    raise ValueError(
+        f"Invalid arithmetic operand: {data}. "
+        f"Expected feature_id string, feature dict, number, or nested arithmetic."
+    )
+
+
+def parse_arithmetic(data: list) -> ArithmeticExpr:
+    """
+    Parse an arithmetic expression from list syntax.
+
+    Format: [left, operator, right]
+
+    Args:
+        data: List of [operand, operator, operand].
+
+    Returns:
+        ArithmeticExpr node.
+
+    Examples:
+        ["ema_9", "-", "ema_21"]
+        → ArithmeticExpr(left=FeatureRef("ema_9"), op="-", right=FeatureRef("ema_21"))
+
+        [["ema_9", "-", "ema_21"], "/", "atr_14"]
+        → ArithmeticExpr(left=ArithmeticExpr(...), op="/", right=FeatureRef("atr_14"))
+    """
+    if not is_arithmetic_list(data):
+        raise ValueError(
+            f"Invalid arithmetic expression: {data}. "
+            f"Expected [operand, operator, operand] where operator is one of {sorted(ARITHMETIC_OPERATORS)}."
+        )
+
+    left_data, op, right_data = data
+    left = parse_arithmetic_operand(left_data)
+    right = parse_arithmetic_operand(right_data)
+
+    return ArithmeticExpr(left=left, op=op, right=right)
 
 
 # =============================================================================
@@ -104,18 +208,25 @@ def parse_rhs(data: Any) -> RhsValue:
         # List (for in)
         rhs: [1, -1, 0]
 
+        # Arithmetic expression
+        rhs: ["ema_9", "-", 100]
+
     Args:
         data: RHS value from YAML.
 
     Returns:
-        RhsValue (FeatureRef, ScalarValue, RangeValue, or ListValue).
+        RhsValue (FeatureRef, ScalarValue, RangeValue, ListValue, or ArithmeticExpr).
     """
     # Scalar values
     if isinstance(data, (int, float, bool, str)) and not isinstance(data, dict):
         return ScalarValue(data)
 
-    # List (for 'in' operator)
+    # List - check if arithmetic or ListValue
     if isinstance(data, list):
+        # Arithmetic: [operand, operator, operand]
+        if is_arithmetic_list(data):
+            return parse_arithmetic(data)
+        # Otherwise: list for 'in' operator
         return ListValue(tuple(data))
 
     # Dict - could be FeatureRef or RangeValue
@@ -133,6 +244,28 @@ def parse_rhs(data: Any) -> RhsValue:
     raise ValueError(f"Cannot parse RHS: {data}")
 
 
+def parse_lhs(data: Any) -> FeatureRef | ArithmeticExpr:
+    """
+    Parse LHS value from YAML.
+
+    LHS can be:
+    - Feature reference (string or dict)
+    - Arithmetic expression (list)
+
+    Args:
+        data: LHS value from YAML.
+
+    Returns:
+        FeatureRef or ArithmeticExpr.
+    """
+    # Arithmetic expression
+    if is_arithmetic_list(data):
+        return parse_arithmetic(data)
+
+    # Feature reference
+    return parse_feature_ref(data)
+
+
 def parse_cond(data: dict) -> Cond:
     """
     Parse a Cond from YAML.
@@ -142,6 +275,11 @@ def parse_cond(data: dict) -> Cond:
           op: gt
           rhs: 50.0
           tolerance: 0.01  # Optional, for near_* operators
+
+        # With arithmetic LHS
+        - lhs: ["ema_9", "-", "ema_21"]
+          op: gt
+          rhs: 100
 
     Args:
         data: Condition dict from YAML.
@@ -156,7 +294,7 @@ def parse_cond(data: dict) -> Cond:
     if "rhs" not in data:
         raise ValueError("Condition requires 'rhs'")
 
-    lhs = parse_feature_ref(data["lhs"])
+    lhs = parse_lhs(data["lhs"])
     op = data["op"]
     rhs = parse_rhs(data["rhs"])
     tolerance = data.get("tolerance")

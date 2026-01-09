@@ -1,0 +1,28 @@
+{
+  "computed_feature_keys": [
+    "stoch_14_3_3",
+    "stoch_14_3_3_d",
+    "stoch_14_3_3_k"
+  ],
+  "config_source": "Play",
+  "created_at": "2026-01-08T04:15:32.744245+00:00",
+  "declared_feature_keys": [
+    "stoch_14_3_3",
+    "stoch_14_3_3_d",
+    "stoch_14_3_3_k"
+  ],
+  "engine_impl": "BacktestEngine",
+  "exchange_impl": "SimulatedExchange",
+  "feature_builder_impl": "FeatureFrameBuilder",
+  "feature_keys_match": true,
+  "indicator_backend": "pandas-ta",
+  "pipeline_version": "1.0.0",
+  "placeholder_mode": false,
+  "play_hash": "dd945539c2b284eb",
+  "play_id": "F_IND_010_stoch",
+  "resolved_play_path": "tests\\functional\\strategies\\plays\\F_IND_010_stoch.yml",
+  "run_id": "33ab146ee5cf",
+  "snapshot_impl": "RuntimeSnapshotView",
+  "strict_indicator_access": true,
+  "uses_system_config_loader": false
+}

@@ -1,0 +1,43 @@
+version: "3.0.0"
+name: "S_05_btc_multi_output"
+description: "Stress Test Gate 1.5: Multi-Output Indicator - 20% complexity"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2
+
+actions:
+  # Entry: price below lower band (oversold)
+  entry_long:
+    all:
+      - ["close", "lt", {feature_id: "bbands_20_2", field: "lower"}]
+
+  # Exit: price above upper band (overbought)
+  exit_long:
+    all:
+      - ["close", "gt", {feature_id: "bbands_20_2", field: "upper"}]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 95.0

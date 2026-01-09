@@ -27,7 +27,7 @@ from ..utils.datetime_utils import (
 # Default timeframe groups for full history sync (aligned with backtest TF roles)
 TF_GROUP_LOW = ["1m", "5m", "15m"]      # LTF (execution timeframes)
 TF_GROUP_MID = ["1h", "4h"]             # MTF (structure/bias timeframes)
-TF_GROUP_HIGH = ["1d"]                  # HTF (trend/context, capped at 1D)
+TF_GROUP_HIGH = ["D"]                   # HTF (trend/context, capped at D)
 
 # All standard timeframes
 ALL_TIMEFRAMES = TF_GROUP_LOW + TF_GROUP_MID + TF_GROUP_HIGH

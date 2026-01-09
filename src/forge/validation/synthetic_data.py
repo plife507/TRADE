@@ -30,7 +30,8 @@ DEFAULT_VOLATILITY = 0.02  # 2% daily volatility
 DEFAULT_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h"]
 HASH_LENGTH = 12  # SHA256 prefix length
 
-# Timeframe to minutes mapping
+# Timeframe to minutes mapping (Bybit intervals only)
+# Bybit intervals: 1,3,5,15,30,60,120,240,360,720,D,W,M
 TF_TO_MINUTES: dict[str, int] = {
     "1m": 1,
     "3m": 3,
@@ -41,9 +42,10 @@ TF_TO_MINUTES: dict[str, int] = {
     "2h": 120,
     "4h": 240,
     "6h": 360,
-    "8h": 480,
     "12h": 720,
-    "1d": 1440,
+    "D": 1440,
+    "W": 10080,
+    "M": 43200,
 }
 
 

@@ -1,0 +1,48 @@
+version: "3.0.0"
+name: "T4_02_macd_bbands_BTC"
+description: "TIER 4: Test two multi-output indicators (MACD + BBands)"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  bbands_20:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+actions:
+  entry_long:
+    all:
+      - [{"feature_id": "macd_12_26_9", "field": "histogram"}, "cross_above", 0]
+      - [{"feature_id": "bbands_20", "field": "percent_b"}, "lt", 0.5]
+  exit_long:
+    any:
+      - [{"feature_id": "macd_12_26_9", "field": "histogram"}, "cross_below", 0]
+      - [{"feature_id": "bbands_20", "field": "percent_b"}, "gt", 1.0]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 50.0

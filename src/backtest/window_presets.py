@@ -27,7 +27,7 @@ from datetime import datetime
 TF_GROUPS: dict[str, list[str]] = {
     "low_tf": ["1m", "5m"],
     "mid_tf": ["15m", "1h"],
-    "high_tf": ["4h", "1d", "1D"],
+    "high_tf": ["4h", "D"],
 }
 
 

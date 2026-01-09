@@ -9,7 +9,8 @@ Simulator/backtest domain. USDT-only, isolated margin.
 | `sim/` | SimulatedExchange (pricing, execution, ledger, margin) |
 | `runtime/` | RuntimeSnapshotView, FeedStore, TFContext |
 | `features/` | FeatureSpec, FeatureFrameBuilder, indicator computation |
-| `rules/` | Signal rule compilation and evaluation |
+| `play/` | Play dataclass, config models, risk policy (extracted 2026-01-08) |
+| `rules/` | Signal rule compilation and evaluation (see submodules below) |
 | `rationalization/` | Layer 2: transitions, derived state, regime, conflicts |
 | `market_structure/` | Swing, Trend, Zone detection (batch - DEPRECATED) |
 | `incremental/` | Incremental state detectors (O(1) per bar) |
@@ -17,6 +18,23 @@ Simulator/backtest domain. USDT-only, isolated margin.
 | `prices/` | Mark price providers |
 | `gates/` | Play generation and batch verification |
 | `audits/` | Parity and validation audits (MIGRATING to `src/forge/audits/`) |
+
+### rules/ Submodules (Cookbook Alignment Refactor 2026-01-08)
+
+| Submodule | Purpose |
+|-----------|---------|
+| `dsl_nodes/` | DSL node types: FeatureRef, Cond, window operators, boolean logic |
+| `evaluation/` | ExprEvaluator: condition evaluation, crossover, window operators |
+| `dsl_parser.py` | Parse YAML → DSL nodes |
+| `compile.py` | Compile DSL into evaluable rules |
+
+### play/ Submodules (Extracted 2026-01-08)
+
+| Module | Purpose |
+|--------|---------|
+| `config_models.py` | FeeModel, AccountConfig, ExitMode |
+| `risk_model.py` | RiskModel, enums, position sizing rules |
+| `play.py` | Play dataclass, PositionPolicy, load_play() |
 
 ## Key Entry Points
 
@@ -74,14 +92,18 @@ See `src/forge/CLAUDE.md` for Forge-specific rules and architecture.
 
 ## Multi-Timeframe Forward-Fill Semantics
 
+**Bybit API Intervals**: `1,3,5,15,30,60,120,240,360,720,D,W,M`
+**Internal Format**: `1m,3m,5m,15m,30m,1h,2h,4h,6h,12h,D,W,M`
+**NOTE**: 8h is NOT a valid Bybit interval - do not use it.
+
 ### Timeframe Role Definitions
 
-| Role | Meaning | Typical Values | Purpose |
-|------|---------|----------------|---------|
+| Role | Meaning | Valid Values | Purpose |
+|------|---------|--------------|---------|
 | **LTF** | Low Timeframe | 1m, 3m, 5m, 15m | Execution timing (entries/exits), micro-structure |
 | **MTF** | Mid Timeframe | 30m, 1h, 2h, 4h | Trade bias + structure context for LTF execution |
-| **HTF** | High Timeframe | 6h, 8h, 12h, 1D | Higher-level trend + major levels (capped at 1D) |
-| **exec** | Execution TF | = LTF | The timeframe at which trading decisions are evaluated |
+| **HTF** | High Timeframe | 6h, 12h, D | Higher-level trend + major levels (W, M excluded from role) |
+| **exec** | Execution TF | LTF or MTF | The timeframe at which trading decisions are evaluated |
 
 **Hierarchy Rule**: `HTF >= MTF >= LTF` (in minutes). Enforced by `validate_tf_mapping()`.
 
@@ -209,12 +231,15 @@ actions:
           - action: exit_long
 ```
 
-**Actions DSL Features**:
+**Actions DSL Features** (FROZEN 2026-01-08):
 - Nested boolean logic: `all`, `any`, `not`
 - 11 operators: `gt`, `lt`, `gte`, `lte`, `eq`, `cross_above`, `cross_below`, `between`, `near_abs`, `near_pct`, `in`
 - Bar-based window operators: `holds_for`, `occurred_within`, `count_true` (with `anchor_tf` scaling)
 - Duration-based window operators: `holds_for_duration`, `occurred_within_duration`, `count_true_duration`
+- Duration formats: `m` (minutes), `h` (hours), `d` (days) - max 24h ceiling
 - Type-safe: `eq` only for discrete, `near_*` only for numeric
+- Missing value handling: `None`, `NaN`, `±Infinity` → MISSING (comparisons return false)
+- SetupRef circular reference protection (recursion guard)
 - Built-in price features: `last_price` (1m ticker close), `close` (eval_tf bar close), `mark_price`
 
 **Crossover Semantics (TradingView-aligned, 2026-01-07)**:
@@ -257,7 +282,7 @@ actions:
 
 See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 
-## Legacy Code Status (2026-01-04)
+## Legacy Code Status (2026-01-08)
 
 | Module | Status | Notes |
 |--------|--------|-------|
@@ -265,6 +290,9 @@ See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 | `gates/` | NEEDS UPDATE | Still generates legacy signal_rules format |
 | Legacy Plays | REMOVED | All V_60-V_95 deleted; only V_100+ actions remain |
 | `signal_rules` format | DEPRECATED | Use `actions` (v3.0.0) |
+| `blocks:` YAML key | REMOVED | Use `actions:` only (2026-01-08) |
+| `margin_mode: "isolated"` | REMOVED | Use `isolated_usdt` only (2026-01-08) |
+| `condition:` in windows | REMOVED | Use `expr:` only (2026-01-08) |
 
 ## Validation Plays
 

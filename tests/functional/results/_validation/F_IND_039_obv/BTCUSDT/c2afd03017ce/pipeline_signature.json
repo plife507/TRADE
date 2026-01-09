@@ -1,0 +1,34 @@
+{
+  "computed_feature_keys": [
+    "ema_21",
+    "ema_21",
+    "ema_9",
+    "ema_9",
+    "obv",
+    "obv"
+  ],
+  "config_source": "Play",
+  "created_at": "2026-01-08T04:17:07.135854+00:00",
+  "declared_feature_keys": [
+    "ema_21",
+    "ema_21",
+    "ema_9",
+    "ema_9",
+    "obv",
+    "obv"
+  ],
+  "engine_impl": "BacktestEngine",
+  "exchange_impl": "SimulatedExchange",
+  "feature_builder_impl": "FeatureFrameBuilder",
+  "feature_keys_match": true,
+  "indicator_backend": "pandas-ta",
+  "pipeline_version": "1.0.0",
+  "placeholder_mode": false,
+  "play_hash": "69b48c1326213c3d",
+  "play_id": "F_IND_039_obv",
+  "resolved_play_path": "tests\\functional\\strategies\\plays\\F_IND_039_obv.yml",
+  "run_id": "c2afd03017ce",
+  "snapshot_impl": "RuntimeSnapshotView",
+  "strict_indicator_access": true,
+  "uses_system_config_loader": false
+}

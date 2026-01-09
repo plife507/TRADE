@@ -662,7 +662,7 @@ def make_timeframe_mix_experiment(
     Args:
         symbol: Symbol to test on (e.g., "BTCUSDT")
         strategy_id: Strategy identifier
-        timeframes: List of timeframes to test (e.g., ["1h", "4h", "1d"])
+        timeframes: List of timeframes to test (e.g., ["1h", "4h", "D"])
         experiment_id: Optional experiment ID (generated if not provided)
         metadata: Additional metadata
     
@@ -673,7 +673,7 @@ def make_timeframe_mix_experiment(
         experiment = make_timeframe_mix_experiment(
             symbol="BTCUSDT",
             strategy_id="momentum-v1",
-            timeframes=["1h", "4h", "1d"],
+            timeframes=["1h", "4h", "D"],
         )
         exp_run_id = experiment.start()
     """

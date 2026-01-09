@@ -1,0 +1,50 @@
+version: "3.0.0"
+name: "F_003_fibonacci_zones"
+description: "Functional Test: Fibonacci Zones - Tests swing detection and near_abs operator"
+
+symbol: "BTCUSDT"
+tf: "1h"
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  ema_200:
+    indicator: ema
+    params:
+      length: 200
+
+structures:
+  swing:
+    detector: swing
+    params:
+      left: 5
+      right: 5
+
+# Engine components tested:
+# - Swing structure detection
+# - Fibonacci level computation (implicit via swing)
+# - near_abs operator
+# - ATR-based zone widths
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "ema_200"]           # Uptrend filter
+      - ["swing.fib_618", "near_abs", "close", 0.5]  # Near 61.8% fib level
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 5.0
+  max_position_pct: 100.0
+
+_test_metadata:
+  test_id: "F_003"
+  category: "structure_detection"
+  min_signals: 2
+  max_signals: 15
+  warmup_bars: 201
+  edge_cases:
+    - "no_swings_detected"
+    - "shallow_retracement"
+    - "fib_level_exact_touch"

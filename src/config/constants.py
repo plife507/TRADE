@@ -234,9 +234,14 @@ def format_symbols_prompt() -> str:
 
 
 # ==================== Timeframe Constants ====================
+#
+# Bybit API intervals: 1,3,5,15,30,60,120,240,360,720,D,W,M
+# Internal format:     1m,3m,5m,15m,30m,1h,2h,4h,6h,12h,D,W,M
+#
+# NOTE: 8h is NOT a valid Bybit interval - do not use it.
 
-# Common timeframe strings for reference
-TIMEFRAMES = {
+# Internal -> Bybit API mapping
+TIMEFRAME_TO_BYBIT = {
     "1m": "1",
     "3m": "3",
     "5m": "5",
@@ -247,27 +252,83 @@ TIMEFRAMES = {
     "4h": "240",
     "6h": "360",
     "12h": "720",
-    "1d": "D",
-    "1w": "W",
-    "1M": "M",
+    "D": "D",
+    "W": "W",
+    "M": "M",
 }
+
+# Bybit API -> Internal mapping
+BYBIT_TO_TIMEFRAME = {v: k for k, v in TIMEFRAME_TO_BYBIT.items()}
+
+# All valid timeframes (internal format)
+ALL_TIMEFRAMES = list(TIMEFRAME_TO_BYBIT.keys())
+
+# Minutes per timeframe
+TIMEFRAME_MINUTES = {
+    "1m": 1,
+    "3m": 3,
+    "5m": 5,
+    "15m": 15,
+    "30m": 30,
+    "1h": 60,
+    "2h": 120,
+    "4h": 240,
+    "6h": 360,
+    "12h": 720,
+    "D": 1440,
+    "W": 10080,
+    "M": 43200,  # ~30 days
+}
+
+# Legacy alias for backward compatibility during transition
+TIMEFRAMES = TIMEFRAME_TO_BYBIT
 
 DEFAULT_TIMEFRAME = "15m"
 
-# ==================== Timeframe Groups (for Play validation) ====================
-# These define which timeframes are valid for each role
+# ==================== Timeframe Categories ====================
+#
+# Three-tier categorization for multi-timeframe trading:
+#
+# | Category | Timeframes        | Use Case                    |
+# |----------|-------------------|-----------------------------|
+# | LTF      | 1m, 3m, 5m, 15m   | Execution, entries/exits    |
+# | MTF      | 30m, 1h, 2h, 4h   | Structure, bias, swing      |
+# | HTF      | 6h, 12h, D, W, M  | Context, trend, major S/R   |
 
-TF_GROUP_LTF = ["1m", "3m", "5m"]         # LTF (high-resolution)
-TF_GROUP_MTF = ["15m", "30m"]             # MTF (medium resolution)
-TF_GROUP_HTF = ["1h", "4h", "1d"]         # HTF (low resolution)
+TF_CATEGORY_LTF = ["1m", "3m", "5m", "15m"]      # Low TF (execution)
+TF_CATEGORY_MTF = ["30m", "1h", "2h", "4h"]      # Mid TF (structure)
+TF_CATEGORY_HTF = ["6h", "12h", "D", "W", "M"]   # High TF (context)
 
-# All valid timeframes for backtesting
-ALL_BACKTEST_TIMEFRAMES = TF_GROUP_LTF + TF_GROUP_MTF + TF_GROUP_HTF
+# ==================== Timeframe Roles (Play Configuration) ====================
+#
+# Plays define timeframe roles for multi-TF strategies:
+#
+# | Role | Meaning                              | Typical Values    |
+# |------|--------------------------------------|-------------------|
+# | exec | Bar-by-bar evaluation timeframe      | 1m, 5m, 15m       |
+# | ltf  | Low timeframe for micro-structure    | 1m, 3m, 5m, 15m   |
+# | mtf  | Mid timeframe for structure/bias     | 30m, 1h, 2h, 4h   |
+# | htf  | High timeframe for trend/context     | 6h, 12h, D        |
 
-# Mapping from role to allowed timeframe groups
+TF_ROLE_LTF = ["1m", "3m", "5m", "15m"]          # Valid for ltf role
+TF_ROLE_MTF = ["30m", "1h", "2h", "4h"]          # Valid for mtf role
+TF_ROLE_HTF = ["6h", "12h", "D"]                 # Valid for htf role (W, M excluded)
+
+# Mapping from role to allowed timeframes
 TF_ROLE_GROUPS = {
-    "ltf": TF_GROUP_LTF,    # Low timeframe: 1m, 3m, 5m
-    "mtf": TF_GROUP_MTF,    # Medium timeframe: 15m, 30m
-    "htf": TF_GROUP_HTF,    # High timeframe: 1h, 4h, 1d
-    "exec": ALL_BACKTEST_TIMEFRAMES,  # Execution can be any valid TF
+    "ltf": TF_ROLE_LTF,
+    "mtf": TF_ROLE_MTF,
+    "htf": TF_ROLE_HTF,
+    "exec": TF_ROLE_LTF + TF_ROLE_MTF,  # Execution: LTF or MTF only
 }
+
+# ==================== Common Presets ====================
+
+# Standard backtest timeframes (most commonly used)
+BACKTEST_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "D"]
+
+# Smoke test timeframes (quick validation)
+SMOKE_TEST_TIMEFRAMES = ["1h", "4h", "D"]
+
+# Data sync timeframes (full history)
+DATA_SYNC_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "D"]

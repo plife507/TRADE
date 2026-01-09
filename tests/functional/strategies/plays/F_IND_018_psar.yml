@@ -1,0 +1,38 @@
+version: "3.0.0"
+name: "F_IND_018_psar"
+description: "Functional test: psar (trigger). Parabolic SAR reversal signal. reversal > 0 means direction change."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  psar_0.02_0.02_0.2:
+    indicator: psar
+    params:
+      af0: 0.02
+      af: 0.02
+      max_af: 0.2
+
+actions:
+  entry_long:
+    all:
+      - [{"feature_id": "psar_0.02_0.02_0.2", "field": "reversal"}, "gt", 0]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
