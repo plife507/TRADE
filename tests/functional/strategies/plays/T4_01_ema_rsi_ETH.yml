@@ -33,11 +33,11 @@ actions:
   entry_long:
     all:
       - ["ema_9", "cross_above", "ema_21"]
-      - ["rsi_14", "lt", 70]
+      - ["rsi_14", "<", 70]
   exit_long:
     any:
       - ["ema_9", "cross_below", "ema_21"]
-      - ["rsi_14", "gt", 80]
+      - ["rsi_14", ">", 80]
 
 position_policy:
   mode: long_only

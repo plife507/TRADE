@@ -70,42 +70,42 @@ def _check_numeric(lhs: RefValue, rhs: RefValue, op: str) -> EvalResult | None:
 
 def eval_gt(lhs: RefValue, rhs: RefValue) -> EvalResult:
     """Evaluate lhs > rhs (numeric only)."""
-    check = _check_numeric(lhs, rhs, "gt")
+    check = _check_numeric(lhs, rhs, ">")
     if check:
         return check
 
     result = lhs.value > rhs.value
-    return EvalResult.success(result, lhs.path, str(rhs.value), "gt")
+    return EvalResult.success(result, lhs.path, str(rhs.value), ">")
 
 
 def eval_lt(lhs: RefValue, rhs: RefValue) -> EvalResult:
     """Evaluate lhs < rhs (numeric only)."""
-    check = _check_numeric(lhs, rhs, "lt")
+    check = _check_numeric(lhs, rhs, "<")
     if check:
         return check
 
     result = lhs.value < rhs.value
-    return EvalResult.success(result, lhs.path, str(rhs.value), "lt")
+    return EvalResult.success(result, lhs.path, str(rhs.value), "<")
 
 
 def eval_ge(lhs: RefValue, rhs: RefValue) -> EvalResult:
     """Evaluate lhs >= rhs (numeric only)."""
-    check = _check_numeric(lhs, rhs, "ge")
+    check = _check_numeric(lhs, rhs, ">=")
     if check:
         return check
 
     result = lhs.value >= rhs.value
-    return EvalResult.success(result, lhs.path, str(rhs.value), "ge")
+    return EvalResult.success(result, lhs.path, str(rhs.value), ">=")
 
 
 def eval_le(lhs: RefValue, rhs: RefValue) -> EvalResult:
     """Evaluate lhs <= rhs (numeric only)."""
-    check = _check_numeric(lhs, rhs, "le")
+    check = _check_numeric(lhs, rhs, "<=")
     if check:
         return check
 
     result = lhs.value <= rhs.value
-    return EvalResult.success(result, lhs.path, str(rhs.value), "le")
+    return EvalResult.success(result, lhs.path, str(rhs.value), "<=")
 
 
 def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
@@ -114,7 +114,7 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
 
     Float equality is rejected - use approx_eq with tolerance.
     """
-    op = "eq"
+    op = "=="
 
     if lhs.is_missing:
         return EvalResult.failure(
@@ -138,7 +138,7 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
     if lhs.value_type == ValueType.FLOAT or rhs.value_type == ValueType.FLOAT:
         return EvalResult.failure(
             ReasonCode.FLOAT_EQUALITY,
-            "Float equality not allowed with 'eq'. Use 'approx_eq' with tolerance",
+            "Float equality not allowed with '=='. Use 'near_abs' or 'near_pct' with tolerance",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
             operator=op,
@@ -149,14 +149,65 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
     if lhs.value_type not in allowed:
         return EvalResult.failure(
             ReasonCode.TYPE_MISMATCH,
-            f"Operator 'eq' requires bool/int/enum, got {lhs.value_type.name}",
+            f"Operator '==' requires bool/int/enum, got {lhs.value_type.name}",
             lhs_path=lhs.path,
             rhs_repr=str(rhs.value),
             operator=op,
         )
 
     result = lhs.value == rhs.value
-    return EvalResult.success(result, lhs.path, str(rhs.value), "eq")
+    return EvalResult.success(result, lhs.path, str(rhs.value), "==")
+
+
+def eval_neq(lhs: RefValue, rhs: RefValue) -> EvalResult:
+    """
+    Evaluate lhs != rhs (bool, int, enum only - NOT float).
+
+    Float inequality is rejected - use near_abs/near_pct with tolerance.
+    """
+    op = "!="
+
+    if lhs.is_missing:
+        return EvalResult.failure(
+            ReasonCode.MISSING_LHS,
+            "LHS value is missing (None/NaN)",
+            lhs_path=lhs.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    if rhs.is_missing:
+        return EvalResult.failure(
+            ReasonCode.MISSING_RHS,
+            "RHS value is missing (None/NaN)",
+            lhs_path=lhs.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    # Reject float inequality - must use near_* operators
+    if lhs.value_type == ValueType.FLOAT or rhs.value_type == ValueType.FLOAT:
+        return EvalResult.failure(
+            ReasonCode.FLOAT_EQUALITY,
+            "Float inequality not allowed with '!='. Use 'near_abs' or 'near_pct' with tolerance",
+            lhs_path=lhs.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    # Allow: bool, int, enum (normalized to int), string (enum token)
+    allowed = (ValueType.BOOL, ValueType.INT, ValueType.ENUM, ValueType.STRING)
+    if lhs.value_type not in allowed:
+        return EvalResult.failure(
+            ReasonCode.TYPE_MISMATCH,
+            f"Operator '!=' requires bool/int/enum, got {lhs.value_type.name}",
+            lhs_path=lhs.path,
+            rhs_repr=str(rhs.value),
+            operator=op,
+        )
+
+    result = lhs.value != rhs.value
+    return EvalResult.success(result, lhs.path, str(rhs.value), "!=")
 
 
 def eval_approx_eq(
@@ -470,14 +521,14 @@ def eval_cross_below(
 # Operator dispatch table
 # Note: between, near_abs, near_pct, in, cross_above, cross_below
 # are handled separately due to different call signatures
+# SYMBOLS are the canonical form (refactored 2026-01-09)
 OPERATORS: dict[str, Callable] = {
-    "gt": eval_gt,
-    "lt": eval_lt,
-    "ge": eval_ge,
-    "le": eval_le,
-    "gte": eval_ge,  # Alias
-    "lte": eval_le,  # Alias
-    "eq": eval_eq,
+    ">": eval_gt,
+    "<": eval_lt,
+    ">=": eval_ge,
+    "<=": eval_le,
+    "==": eval_eq,
+    "!=": eval_neq,
     "approx_eq": eval_approx_eq,
 }
 
@@ -502,7 +553,7 @@ def evaluate_condition(
 
     Args:
         lhs_ref: Compiled left-hand side reference
-        operator: Operator name ("gt", "lt", "eq", etc.)
+        operator: Operator symbol (">", "<", ">=", "<=", "==", "!=", etc.)
         rhs_ref: Compiled right-hand side reference
         snapshot: RuntimeSnapshotView instance
         tolerance: For approx_eq, the tolerance value

@@ -266,6 +266,99 @@ def parse_lhs(data: Any) -> FeatureRef | ArithmeticExpr:
     return parse_feature_ref(data)
 
 
+def _string_to_feature_ref_dict(s: str) -> dict:
+    """
+    Convert a string to a feature reference dict.
+
+    Handles both simple feature IDs and dotted structure.field syntax:
+    - "ema_21" -> {"feature_id": "ema_21"}
+    - "swing.low_level" -> {"feature_id": "swing", "field": "low_level"}
+
+    Args:
+        s: String to convert.
+
+    Returns:
+        Dict with feature_id (and optionally field).
+    """
+    if "." in s:
+        parts = s.split(".", 1)
+        return {"feature_id": parts[0], "field": parts[1]}
+    return {"feature_id": s}
+
+
+def _is_enum_literal(s: str) -> bool:
+    """
+    Check if a string looks like an enum literal.
+
+    Enum literals are ALL_CAPS strings used for discrete comparisons:
+    - "ACTIVE", "BROKEN", "NONE" (zone states)
+    - "BULLISH", "BEARISH", "NEUTRAL" (trend states)
+
+    Does NOT match:
+    - Feature IDs: "ema_9", "ema_21", "rsi_14"
+    - Boolean strings: "true", "false"
+
+    Args:
+        s: String to check.
+
+    Returns:
+        True if string is ALL_CAPS (enum literal).
+    """
+    # Must be non-empty and all uppercase letters (no digits, underscores between letters ok)
+    if not s:
+        return False
+    # Allow A_B pattern (ALL_CAPS with underscores between)
+    # but not ema_9 (lowercase) or EMA_9 (digits)
+    return s.isupper() and s.replace("_", "").isalpha()
+
+
+def _normalize_rhs_for_operator(rhs: any, op: str) -> any:
+    """
+    Normalize RHS value based on operator context.
+
+    For verbose format conditions like:
+        lhs: "ema_9"
+        op: cross_above
+        rhs: "ema_21"
+
+    The string "ema_21" should be treated as a feature reference, not a literal.
+
+    Rules:
+    1. Numeric operators (>, <, >=, <=, cross_above, cross_below, near_*, between):
+       String RHS MUST be a FeatureRef (convert string to dict)
+    2. Discrete operators (==, !=):
+       - ALL_CAPS strings are enum literals (keep as string)
+       - Other strings are feature refs (convert to dict)
+    3. Set operator (in):
+       Already handled correctly (list)
+
+    Args:
+        rhs: Original RHS value from YAML.
+        op: Operator string.
+
+    Returns:
+        Normalized RHS (string converted to feature ref dict if needed).
+    """
+    from .dsl_nodes import NUMERIC_OPERATORS, DISCRETE_OPERATORS
+
+    # Only normalize string RHS values
+    if not isinstance(rhs, str):
+        return rhs
+
+    # Numeric operators: string RHS is always a feature reference
+    if op in NUMERIC_OPERATORS:
+        return _string_to_feature_ref_dict(rhs)
+
+    # Discrete operators: ALL_CAPS strings are enum literals, otherwise feature ref
+    if op in DISCRETE_OPERATORS:
+        if _is_enum_literal(rhs):
+            return rhs  # Keep as scalar string (enum literal)
+        return _string_to_feature_ref_dict(rhs)
+
+    # Default: return as-is
+    return rhs
+
+
 def parse_cond(data: dict) -> Cond:
     """
     Parse a Cond from YAML.
@@ -280,6 +373,11 @@ def parse_cond(data: dict) -> Cond:
         - lhs: ["ema_9", "-", "ema_21"]
           op: gt
           rhs: 100
+
+        # Verbose with feature RHS (BUG-008 fix)
+        - lhs: "ema_9"
+          op: cross_above
+          rhs: "ema_21"    # Now correctly resolved as FeatureRef
 
     Args:
         data: Condition dict from YAML.
@@ -296,7 +394,12 @@ def parse_cond(data: dict) -> Cond:
 
     lhs = parse_lhs(data["lhs"])
     op = data["op"]
-    rhs = parse_rhs(data["rhs"])
+
+    # Normalize string RHS based on operator context (BUG-008 fix)
+    rhs_raw = data["rhs"]
+    rhs_normalized = _normalize_rhs_for_operator(rhs_raw, op)
+    rhs = parse_rhs(rhs_normalized)
+
     tolerance = data.get("tolerance")
 
     # Validate operator

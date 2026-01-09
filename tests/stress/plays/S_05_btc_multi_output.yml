@@ -26,12 +26,12 @@ actions:
   # Entry: price below lower band (oversold)
   entry_long:
     all:
-      - ["close", "lt", {feature_id: "bbands_20_2", field: "lower"}]
+      - ["close", "<", {feature_id: "bbands_20_2", field: "lower"}]
 
   # Exit: price above upper band (overbought)
   exit_long:
     all:
-      - ["close", "gt", {feature_id: "bbands_20_2", field: "upper"}]
+      - ["close", ">", {feature_id: "bbands_20_2", field: "upper"}]
 
 position_policy:
   mode: long_only

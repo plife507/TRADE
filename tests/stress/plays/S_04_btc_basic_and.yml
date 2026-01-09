@@ -29,13 +29,13 @@ actions:
   # Entry: price above EMA AND RSI not yet overbought (< 60)
   entry_long:
     all:
-      - ["close", "gt", "ema_20"]
-      - ["rsi_14", "lt", 60]
+      - ["close", ">", "ema_20"]
+      - ["rsi_14", "<", 60]
 
   # Exit: RSI overbought
   exit_long:
     all:
-      - ["rsi_14", "gt", 70]
+      - ["rsi_14", ">", 70]
 
 position_policy:
   mode: long_only

@@ -1,0 +1,88 @@
+version: "3.0.0"
+name: "S_18_btc_derived_zones"
+description: "Stress Test: Derived Zones - K-slot allocation with zone aggregates"
+
+symbol: "BTCUSDT"
+tf: "1h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: derived_zone
+      key: dz
+      depends_on:
+        source: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+        max_active: 3
+        width_pct: 0.002
+
+# Gate 5.1 (85%): Derived Zone K-slots + Aggregates
+# Tests:
+# - Derived zone computation from swing pivots
+# - K-slot allocation (max_active: 3)
+# - Aggregate field access: any_active
+# - Zone state checking (NONE, ACTIVE, BROKEN)
+actions:
+  entry_long:
+    all:
+      - ["dz.any_active", "==", true]
+      - ["close", ">", "ema_20"]
+      - ["rsi_14", "<", 60]
+
+  exit_long:
+    any:
+      - ["dz.any_active", "==", false]
+      - ["rsi_14", ">", 75]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 5.0
+  max_position_pct: 95.0
+
+_test_metadata:
+  test_id: "S_18"
+  category: "derived_structures"
+  gate: "5.1"
+  complexity_pct: 85
+  min_signals: 2
+  max_signals: 50
+  warmup_bars: 30
+  tests:
+    - "derived_zone_computation"
+    - "k_slot_allocation"
+    - "aggregate_field_access"
+    - "zone_state_management"

@@ -24,7 +24,7 @@ features:
 actions:
   entry_long:
     all:
-      - not: ["rsi_14", "gt", 70]
+      - not: ["rsi_14", ">", 70]
 
 position_policy:
   mode: long_only

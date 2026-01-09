@@ -32,11 +32,11 @@ features:
 actions:
   entry_long:
     all:
-      - ["sma_10", "gt", "sma_20"]
-      - ["sma_20", "gt", "sma_50"]
+      - ["sma_10", ">", "sma_20"]
+      - ["sma_20", ">", "sma_50"]
   exit_long:
     any:
-      - ["sma_10", "lt", "sma_20"]
+      - ["sma_10", "<", "sma_20"]
 
 position_policy:
   mode: long_only

@@ -24,11 +24,11 @@ features:
 actions:
   entry_long:
     all:
-      - ["rsi_14", "lt", 30]
+      - ["rsi_14", "<", 30]
 
   exit_long:
     all:
-      - ["rsi_14", "gt", 70]
+      - ["rsi_14", ">", 70]
 
 position_policy:
   mode: long_only

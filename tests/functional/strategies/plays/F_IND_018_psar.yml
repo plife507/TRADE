@@ -26,7 +26,7 @@ features:
 actions:
   entry_long:
     all:
-      - [{"feature_id": "psar_0.02_0.02_0.2", "field": "reversal"}, "gt", 0]
+      - [{"feature_id": "psar_0.02_0.02_0.2", "field": "reversal"}, ">", 0]
 
 position_policy:
   mode: long_only

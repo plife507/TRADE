@@ -24,7 +24,7 @@ features:
 actions:
   entry_long:
     all:
-      - ["close", "gt", "ema_21"]
+      - ["close", ">", "ema_21"]
 
 position_policy:
   mode: long_only

@@ -39,7 +39,7 @@ actions:
       # 15m: Fast EMA crosses above slow
       - ["ema_9", "cross_above", "ema_21"]
       # 1h: Price above HTF EMA (trend filter)
-      - ["close", "gt", "ema_50_1h"]
+      - ["close", ">", "ema_50_1h"]
   exit_long:
     any:
       - ["ema_9", "cross_below", "ema_21"]

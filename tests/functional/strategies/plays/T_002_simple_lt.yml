@@ -24,7 +24,7 @@ features:
 actions:
   entry_long:
     all:
-      - ["rsi_14", "lt", 30]
+      - ["rsi_14", "<", 30]
 
 position_policy:
   mode: long_only

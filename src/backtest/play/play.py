@@ -124,28 +124,25 @@ def _convert_shorthand_condition(cond: list) -> dict:
     """
     Convert shorthand condition ["a", ">", "b"] to full DSL format.
 
-    Supports:
-        ["a", ">", "b"]           -> lhs: a, op: gt, rhs: b
+    Supports symbol operators (canonical form, refactored 2026-01-09):
+        ["a", ">", "b"]           -> lhs: a, op: >, rhs: b
+        ["a", "<", "b"]           -> lhs: a, op: <, rhs: b
+        ["a", ">=", "b"]          -> lhs: a, op: >=, rhs: b
+        ["a", "<=", "b"]          -> lhs: a, op: <=, rhs: b
+        ["a", "==", 1]            -> lhs: a, op: ==, rhs: 1
+        ["a", "!=", "BROKEN"]     -> lhs: a, op: !=, rhs: BROKEN
         ["a", "cross_above", "b"] -> lhs: a, op: cross_above, rhs: b
+        ["a", "cross_below", "b"] -> lhs: a, op: cross_below, rhs: b
         ["a", "between", [lo, hi]] -> lhs: a, op: between, rhs: {low: lo, high: hi}
         ["a", "near_pct", "b", tol] -> lhs: a, op: near_pct, rhs: b, tolerance: tol
-        ["a", "==", 1]            -> lhs: a, op: eq, rhs: 1
         ["a", "in", [1, 2]]       -> lhs: a, op: in, rhs: [1, 2]
     """
     if len(cond) < 3:
         raise ValueError(f"Condition must have at least 3 elements: {cond}")
 
-    lhs_raw, op_raw, rhs_raw = cond[0], cond[1], cond[2]
+    lhs_raw, op, rhs_raw = cond[0], cond[1], cond[2]
 
-    # Map operator symbols to DSL names
-    op_map = {
-        ">": "gt", "<": "lt", ">=": "gte", "<=": "lte",
-        "==": "eq", "!=": "neq", "=": "eq",
-        "cross_above": "cross_above", "cross_below": "cross_below",
-        "between": "between", "near_pct": "near_pct", "near_abs": "near_abs",
-        "in": "in",
-    }
-    op = op_map.get(op_raw, op_raw)
+    # No conversion - symbols are the canonical form
 
     # Build lhs
     if isinstance(lhs_raw, str):
@@ -179,6 +176,21 @@ def _convert_shorthand_condition(cond: list) -> dict:
     return result
 
 
+def _convert_condition_item(item: list | dict) -> dict:
+    """
+    Convert a single condition item which can be either:
+    - A list: shorthand condition like ["rsi_14", ">", 50]
+    - A dict: window operator like {holds_for: {...}} or nested boolean logic
+    """
+    if isinstance(item, list):
+        return _convert_shorthand_condition(item)
+    elif isinstance(item, dict):
+        # Dict could be window operator, nested all/any, or already-converted
+        return _convert_shorthand_conditions(item)
+    else:
+        raise ValueError(f"Condition item must be list or dict, got: {type(item)}")
+
+
 def _convert_shorthand_conditions(block_content: dict) -> dict:
     """
     Convert shorthand block content to full DSL "when" clause.
@@ -193,39 +205,70 @@ def _convert_shorthand_conditions(block_content: dict) -> dict:
     """
     if "all" in block_content:
         conditions = block_content["all"]
-        return {"all": [_convert_shorthand_condition(c) for c in conditions]}
+        return {"all": [_convert_condition_item(c) for c in conditions]}
     elif "any" in block_content:
         conditions = block_content["any"]
-        return {"any": [_convert_shorthand_condition(c) for c in conditions]}
+        return {"any": [_convert_condition_item(c) for c in conditions]}
     elif "not" in block_content:
         inner = block_content["not"]
-        if isinstance(inner, dict):
-            return {"not": _convert_shorthand_conditions(inner)}
-        elif isinstance(inner, list):
-            return {"not": _convert_shorthand_condition(inner)}
+        return {"not": _convert_condition_item(inner)}
     elif "holds_for" in block_content:
         hf = block_content["holds_for"]
-        return {
+        result = {
             "holds_for": {
                 "bars": hf["bars"],
                 "expr": _convert_shorthand_conditions(hf.get("expr", {})),
             }
         }
+        if "anchor_tf" in hf:
+            result["holds_for"]["anchor_tf"] = hf["anchor_tf"]
+        return result
     elif "occurred_within" in block_content:
         ow = block_content["occurred_within"]
-        return {
+        result = {
             "occurred_within": {
                 "bars": ow["bars"],
                 "expr": _convert_shorthand_conditions(ow.get("expr", {})),
             }
         }
+        if "anchor_tf" in ow:
+            result["occurred_within"]["anchor_tf"] = ow["anchor_tf"]
+        return result
     elif "count_true" in block_content:
         ct = block_content["count_true"]
-        return {
+        result = {
             "count_true": {
                 "bars": ct["bars"],
                 "min_true": ct["min_true"],
                 "expr": _convert_shorthand_conditions(ct.get("expr", {})),
+            }
+        }
+        if "anchor_tf" in ct:
+            result["count_true"]["anchor_tf"] = ct["anchor_tf"]
+        return result
+    elif "holds_for_duration" in block_content:
+        hfd = block_content["holds_for_duration"]
+        return {
+            "holds_for_duration": {
+                "duration": hfd["duration"],
+                "expr": _convert_shorthand_conditions(hfd.get("expr", {})),
+            }
+        }
+    elif "occurred_within_duration" in block_content:
+        owd = block_content["occurred_within_duration"]
+        return {
+            "occurred_within_duration": {
+                "duration": owd["duration"],
+                "expr": _convert_shorthand_conditions(owd.get("expr", {})),
+            }
+        }
+    elif "count_true_duration" in block_content:
+        ctd = block_content["count_true_duration"]
+        return {
+            "count_true_duration": {
+                "duration": ctd["duration"],
+                "min_true": ctd["min_true"],
+                "expr": _convert_shorthand_conditions(ctd.get("expr", {})),
             }
         }
 
@@ -522,23 +565,65 @@ class Play:
         structures_dict = d.get("structures", {})
         has_structures = bool(structures_dict)
 
-        # Extract structure keys for auto-resolving references
+        # Extract structure keys AND convert structures to Feature objects
         structure_keys: list[str] = []
+        structure_features: list[Feature] = []
         if has_structures:
             # structures: {exec: [...], htf: {...}}
+            VALID_TF_ROLES = {"exec", "htf"}
             for tf_role, specs in structures_dict.items():
+                if tf_role not in VALID_TF_ROLES:
+                    raise ValueError(
+                        f"Invalid structures tf_role '{tf_role}'. "
+                        f"Must be one of: {sorted(VALID_TF_ROLES)}. "
+                        f"Example: structures: {{exec: [{{type: swing, key: swing, params: ...}}]}}"
+                    )
                 if isinstance(specs, list):
                     # exec: [{type: swing, key: swing}, ...]
                     for spec in specs:
                         if isinstance(spec, dict) and "key" in spec:
+                            # Validate required fields
+                            if "type" not in spec:
+                                raise ValueError(
+                                    f"Structure spec '{spec['key']}' missing required 'type' field. "
+                                    f"Example: {{type: swing, key: {spec['key']}, params: {{left: 5, right: 5}}}}"
+                                )
                             structure_keys.append(spec["key"])
+                            # Create Feature object for structure
+                            structure_features.append(Feature(
+                                id=spec["key"],
+                                tf=execution_tf,  # exec role uses execution_tf
+                                type=FeatureType.STRUCTURE,
+                                structure_type=spec["type"],
+                                params=spec.get("params", {}),
+                                depends_on=spec.get("depends_on", {}),
+                            ))
                 elif isinstance(specs, dict):
                     # htf: {"1h": [{type: swing, key: swing_1h}, ...]}
                     for tf, tf_specs in specs.items():
                         if isinstance(tf_specs, list):
                             for spec in tf_specs:
                                 if isinstance(spec, dict) and "key" in spec:
+                                    # Validate required fields
+                                    if "type" not in spec:
+                                        raise ValueError(
+                                            f"Structure spec '{spec['key']}' missing required 'type' field. "
+                                            f"Example: {{type: swing, key: {spec['key']}, params: {{left: 3, right: 3}}}}"
+                                        )
                                     structure_keys.append(spec["key"])
+                                    # Create Feature object for HTF structure
+                                    structure_features.append(Feature(
+                                        id=spec["key"],
+                                        tf=tf,  # Use the nested TF key (e.g., "1h")
+                                        type=FeatureType.STRUCTURE,
+                                        structure_type=spec["type"],
+                                        params=spec.get("params", {}),
+                                        depends_on=spec.get("depends_on", {}),
+                                    ))
+
+        # Combine indicator features with structure features
+        if structure_features:
+            features = tuple(list(features) + structure_features)
 
         # Handle symbol formats
         symbol_universe = d.get("symbol_universe", [])

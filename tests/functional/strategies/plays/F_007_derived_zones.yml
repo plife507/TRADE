@@ -16,18 +16,21 @@ features:
       length: 20
 
 structures:
-  swing:
-    detector: swing
-    params:
-      left: 5
-      right: 5
-  derived_zone:
-    detector: derived_zone
-    params:
-      source_structure: "swing"
-      max_active: 3        # K = 3 slots
-      atr_source: "atr_14"
-      width_mult: 1.0
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: derived_zone
+      key: derived_zone
+      depends_on:
+        swing: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+        max_active: 3        # K = 3 slots
+        width_pct: 0.002     # 0.2% zone width
 
 # Engine components tested:
 # - Derived zone K-slot allocation
@@ -37,9 +40,13 @@ structures:
 actions:
   entry_long:
     all:
-      - ["derived_zone.any_active", "==", true]   # At least one zone active
+      - ["derived_zone.any_active", "==", true]     # At least one zone active
       - ["derived_zone.zone0_state", "!=", "BROKEN"]  # Nearest zone not broken
-      - ["close", ">", "ema_20"]                   # Above trend
+      - ["close", ">", "ema_20"]                     # Above trend
+
+  exit_long:
+    all:
+      - ["derived_zone.any_active", "==", false]    # No zones active
 
 risk:
   stop_loss_pct: 1.5

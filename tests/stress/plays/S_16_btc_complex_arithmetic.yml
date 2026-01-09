@@ -1,0 +1,67 @@
+version: "3.0.0"
+name: "S_16_btc_complex_arithmetic"
+description: "Stress Test Gate 4.3: Complex Arithmetic - 75% complexity"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+
+actions:
+  # Entry: Multiple arithmetic conditions
+  # 1. Fast EMA above slow EMA (spread > 0)
+  # 2. Close above EMA50 (simplified)
+  # 3. RSI momentum positive (RSI - 50 > 0)
+  entry_long:
+    all:
+      - [["ema_9", "-", "ema_21"], ">", 0]
+      - [["close", "-", "ema_50"], ">", 0]
+      - [["rsi_14", "-", 50], ">", 0]
+
+  # Exit: Spread turns negative or price drops below structure support
+  exit_long:
+    any:
+      - [["ema_9", "-", "ema_21"], "<", 0]
+      - ["close", "<", "swing.low_level"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 95.0

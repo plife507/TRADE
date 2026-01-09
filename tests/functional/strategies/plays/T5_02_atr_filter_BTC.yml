@@ -35,7 +35,7 @@ actions:
       # EMA cross
       - ["ema_9", "cross_above", "ema_21"]
       # ATR filter: just check ATR exists (gt 0)
-      - ["atr_14", "gt", 0]
+      - ["atr_14", ">", 0]
   exit_long:
     any:
       - ["ema_9", "cross_below", "ema_21"]

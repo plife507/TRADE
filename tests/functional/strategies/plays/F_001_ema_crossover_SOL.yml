@@ -26,15 +26,9 @@ features:
       length: 21
 
 actions:
-  - id: entry
-    cases:
-      - when:
-          all:
-            - lhs: "ema_9"
-              op: cross_above
-              rhs: "ema_21"
-        emit:
-          - action: entry_long
+  entry_long:
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
 
 position_policy:
   mode: long_only

@@ -27,10 +27,10 @@ actions:
   entry_long:
     all:
       - [{"feature_id": "stoch_14", "field": "k"}, "cross_above", {"feature_id": "stoch_14", "field": "d"}]
-      - [{"feature_id": "stoch_14", "field": "k"}, "lt", 30]
+      - [{"feature_id": "stoch_14", "field": "k"}, "<", 30]
   exit_long:
     any:
-      - [{"feature_id": "stoch_14", "field": "k"}, "gt", 80]
+      - [{"feature_id": "stoch_14", "field": "k"}, ">", 80]
       - [{"feature_id": "stoch_14", "field": "k"}, "cross_below", {"feature_id": "stoch_14", "field": "d"}]
 
 position_policy:

@@ -1,6 +1,6 @@
 version: "3.0.0"
 name: "F_006_zone_bounce"
-description: "Functional Test: Zone Bounce - Tests zone detection and between operator"
+description: "Functional Test: Zone Bounce - Tests zone detection and structure outputs"
 
 symbol: "BTCUSDT"
 tf: "1h"
@@ -16,28 +16,27 @@ features:
       length: 14
 
 structures:
-  swing:
-    detector: swing
-    params:
-      left: 5
-      right: 5
-  zone:
-    detector: zone
-    params:
-      atr_source: "atr_14"
-      width_mult: 1.0
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
 
 # Engine components tested:
-# - Zone structure detection
-# - Zone state transitions (ACTIVE -> TOUCHED -> BROKEN)
-# - between operator for zone bounds
-# - Zone entry logic
+# - Swing structure detection
+# - Structure output access (high_level, low_level)
+# - Price vs structure level comparison
 actions:
   entry_long:
     all:
-      - ["zone.demand_active", "==", true]     # Demand zone active
-      - between: ["close", "zone.demand_lower", "zone.demand_upper"]  # In zone
-      - ["rsi_14", "<", 40]                     # Oversold confirmation
+      - ["close", ">", "swing.low_level"]   # Price above recent swing low
+      - ["close", "<", "swing.high_level"]  # Price below recent swing high
+      - ["rsi_14", "<", 40]                  # Oversold confirmation
+
+  exit_long:
+    all:
+      - ["close", ">", "swing.high_level"]  # Price breaks above resistance
 
 risk:
   stop_loss_pct: 1.0

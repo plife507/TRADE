@@ -28,7 +28,7 @@ actions:
       - [{"feature_id": "bbands_20", "field": "percent_b"}, "cross_above", 0]
   exit_long:
     all:
-      - [{"feature_id": "bbands_20", "field": "percent_b"}, "gt", 1.0]
+      - [{"feature_id": "bbands_20", "field": "percent_b"}, ">", 1.0]
 
 position_policy:
   mode: long_only

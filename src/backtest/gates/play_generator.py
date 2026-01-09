@@ -140,16 +140,17 @@ def _generate_blocks(
         feature_id = f"{feature_id}_{primary}"
 
     # Build entry condition
+    # Symbol operators are canonical (refactored 2026-01-09)
     if direction == "long_only":
         entry_action = "entry_long"
         exit_action = "exit_long"
-        entry_op = "gt"
-        exit_op = "lt"
+        entry_op = ">"
+        exit_op = "<"
     else:
         entry_action = "entry_short"
         exit_action = "exit_short"
-        entry_op = "lt"
-        exit_op = "gt"
+        entry_op = "<"
+        exit_op = ">"
 
     # Use second indicator for comparison if available, else use threshold
     if len(indicators) >= 2:

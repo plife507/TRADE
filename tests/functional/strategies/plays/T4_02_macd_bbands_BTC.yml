@@ -32,11 +32,11 @@ actions:
   entry_long:
     all:
       - [{"feature_id": "macd_12_26_9", "field": "histogram"}, "cross_above", 0]
-      - [{"feature_id": "bbands_20", "field": "percent_b"}, "lt", 0.5]
+      - [{"feature_id": "bbands_20", "field": "percent_b"}, "<", 0.5]
   exit_long:
     any:
       - [{"feature_id": "macd_12_26_9", "field": "histogram"}, "cross_below", 0]
-      - [{"feature_id": "bbands_20", "field": "percent_b"}, "gt", 1.0]
+      - [{"feature_id": "bbands_20", "field": "percent_b"}, ">", 1.0]
 
 position_policy:
   mode: long_only

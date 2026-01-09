@@ -24,6 +24,7 @@ from ..eval import (
     eval_ge,
     eval_le,
     eval_eq,
+    eval_neq,
     eval_between,
     eval_near_abs,
     eval_near_pct,
@@ -50,7 +51,7 @@ def dispatch_operator(
     Dispatch to the appropriate operator function.
 
     Args:
-        op: Operator name
+        op: Operator symbol (>, <, >=, <=, ==, !=, etc.)
         lhs: Resolved left-hand side
         rhs: Resolved right-hand side
         tolerance: For near_* operators
@@ -58,16 +59,18 @@ def dispatch_operator(
     Returns:
         EvalResult from operator
     """
-    if op == "gt":
+    if op == ">":
         return eval_gt(lhs, rhs)
-    elif op == "lt":
+    elif op == "<":
         return eval_lt(lhs, rhs)
-    elif op in ("ge", "gte"):
+    elif op == ">=":
         return eval_ge(lhs, rhs)
-    elif op in ("le", "lte"):
+    elif op == "<=":
         return eval_le(lhs, rhs)
-    elif op == "eq":
+    elif op == "==":
         return eval_eq(lhs, rhs)
+    elif op == "!=":
+        return eval_neq(lhs, rhs)
     elif op == "near_abs":
         if tolerance is None:
             return EvalResult.failure(

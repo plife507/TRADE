@@ -25,10 +25,10 @@ features:
 actions:
   entry_long:
     all:
-      - [{"feature_id": "supertrend_10_3", "field": "direction"}, "eq", 1]
+      - [{"feature_id": "supertrend_10_3", "field": "direction"}, "==", 1]
   exit_long:
     all:
-      - [{"feature_id": "supertrend_10_3", "field": "direction"}, "eq", -1]
+      - [{"feature_id": "supertrend_10_3", "field": "direction"}, "==", -1]
 
 position_policy:
   mode: long_only

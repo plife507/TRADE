@@ -234,7 +234,7 @@ features:
       fast: 12
       slow: 26
       signal: 9
-    # Outputs: macd, macd_signal, macd_hist
+    # Outputs: macd, signal, histogram
 
   # Volume-based indicator
   volume_sma_20:
@@ -249,7 +249,7 @@ features:
     params:
       length: 20
       std: 2.0
-    # Outputs: bbl (lower), bbm (middle), bbu (upper), bbb, bbp
+    # Outputs: lower, middle, upper, bandwidth, percent_b
 ```
 
 ### Complete Indicator Registry (43 Total)
@@ -290,8 +290,8 @@ features:
 
 | Indicator | Outputs | Params |
 |-----------|---------|--------|
-| `macd` | `macd`, `macd_signal`, `macd_hist` | `fast`, `slow`, `signal` |
-| `bbands` | `bbl`, `bbm`, `bbu`, `bbb`, `bbp` | `length`, `std` |
+| `macd` | `macd`, `signal`, `histogram` | `fast`, `slow`, `signal` |
+| `bbands` | `lower`, `middle`, `upper`, `bandwidth`, `percent_b` | `length`, `std` |
 | `stoch` | `stoch_k`, `stoch_d` | `k`, `d`, `smooth_k` |
 | `stochrsi` | `stochrsi_k`, `stochrsi_d` | `length`, `rsi_length`, `k`, `d` |
 | `adx` | `adx`, `dmp`, `dmn`, `adxr` | `length` |
@@ -489,15 +489,15 @@ actions:
     all:
       # Reference structure by key
       - lhs: {feature_id: "swing", field: "high_level"}
-        op: gt
+        op: ">"
         rhs: 0
       # Trend direction check
       - lhs: {feature_id: "trend", field: "direction"}
-        op: eq
+        op: "=="
         rhs: 1
       # Fibonacci level proximity
       - lhs: {feature_id: "close"}
-        op: near_pct
+        op: "near_pct"
         rhs: {feature_id: "fib", field: "level_0.618"}
         tolerance: 0.005
 ```
@@ -588,13 +588,16 @@ emit:
 
 ### Comparison Operators
 
-| Operator | Alias | Description | Example |
-|----------|-------|-------------|---------|
-| `gt` | `>` | Greater than | `["ema_9", ">", "ema_21"]` |
-| `lt` | `<` | Less than | `["rsi_14", "<", 30]` |
-| `gte` | `>=` | Greater or equal | `["volume", ">=", "volume_avg"]` |
-| `lte` | `<=` | Less or equal | `["atr_14", "<=", 50]` |
-| `eq` | `==` | Equal (discrete only!) | `{op: eq, rhs: 1}` |
+**Symbol operators are the canonical form (refactored 2026-01-09).**
+
+| Operator | Description | Type Restriction | Example |
+|----------|-------------|------------------|---------|
+| `>` | Greater than | Numeric only | `["ema_9", ">", "ema_21"]` |
+| `<` | Less than | Numeric only | `["rsi_14", "<", 30]` |
+| `>=` | Greater or equal | Numeric only | `["volume", ">=", "volume_avg"]` |
+| `<=` | Less or equal | Numeric only | `["atr_14", "<=", 50]` |
+| `==` | Equal | Discrete only (NOT float!) | `["trend.direction", "==", 1]` |
+| `!=` | Not equal | Discrete only (NOT float!) | `["zone.state", "!=", "BROKEN"]` |
 
 ### Range Operators
 
@@ -672,11 +675,11 @@ any:
 
 | Type | Allowed Operators | Notes |
 |------|-------------------|-------|
-| FLOAT | gt, lt, gte, lte, between, near_abs, near_pct, cross_above, cross_below | NOT eq (use near_*) |
-| INT | All operators | eq allowed |
-| BOOL | eq, in | True/False comparisons |
-| ENUM | eq, in | Discrete state checks |
-| STRING | eq, in | Text comparisons |
+| FLOAT | `>`, `<`, `>=`, `<=`, `between`, `near_abs`, `near_pct`, `cross_above`, `cross_below` | NOT `==`/`!=` (use `near_*`) |
+| INT | All operators | `==`/`!=` allowed |
+| BOOL | `==`, `!=`, `in` | True/False comparisons |
+| ENUM | `==`, `!=`, `in` | Discrete state checks |
+| STRING | `==`, `!=`, `in` | Text comparisons |
 
 ### Missing Value Handling
 
@@ -719,17 +722,17 @@ Inline arithmetic expressions for difference thresholds, ratios, etc.
 ```yaml
 # Basic: ema_9 - ema_21 > 100
 - lhs: ["ema_9", "-", "ema_21"]
-  op: gt
+  op: ">"
   rhs: 100
 
 # Nested: (ema_9 - ema_21) / atr_14 > 2
 - lhs: [["ema_9", "-", "ema_21"], "/", "atr_14"]
-  op: gt
+  op: ">"
   rhs: 2.0
 
 # In RHS: close > swing_high - 10
 - lhs: "close"
-  op: gt
+  op: ">"
   rhs: ["swing_high", "-", 10]
 ```
 
@@ -748,22 +751,22 @@ Inline arithmetic expressions for difference thresholds, ratios, etc.
 ```yaml
 # EMA difference threshold
 - lhs: ["ema_9", "-", "ema_21"]
-  op: gt
+  op: ">"
   rhs: 100
 
 # Volume spike ratio
 - lhs: ["volume", "/", "volume_sma_20"]
-  op: gt
+  op: ">"
   rhs: 2.0
 
 # Percent change
 - lhs: [["close", "-", "open"], "/", "open"]
-  op: gt
+  op: ">"
   rhs: 0.01    # > 1% green candle
 
 # Normalized position in range
 - lhs: [["close", "-", "low"], "/", ["high", "-", "low"]]
-  op: gt
+  op: ">"
   rhs: 0.8    # Close in top 20% of bar range
 ```
 
@@ -1340,7 +1343,7 @@ actions:
       - ["close", ">", "rolling_high.value"]
       # Volume > 2x average (using arithmetic)
       - lhs: ["volume", "/", "volume_sma_20"]
-        op: gt
+        op: ">"
         rhs: 2.0
       # Volatility filter - ATR not too high
       - ["atr_14", "<", 500]
@@ -1349,7 +1352,7 @@ actions:
     any:
       # Exit if price drops 1.5 ATR from high
       - lhs: ["high", "-", "close"]
-        op: gt
+        op: ">"
         rhs: {feature_id: "atr_14"}
 
 risk_model:
@@ -1402,7 +1405,7 @@ actions:
     all:
       # Price in an active zone
       - lhs: {feature_id: "fib_zones", field: "any_inside"}
-        op: eq
+        op: "=="
         rhs: true
       # RSI was oversold within last 10 bars
       - occurred_within:
@@ -1416,7 +1419,7 @@ actions:
     any:
       # Zone touched and bounced
       - lhs: {feature_id: "fib_zones", field: "any_touched"}
-        op: eq
+        op: "=="
         rhs: true
       # RSI overbought for 3 bars
       - holds_for:
@@ -1433,21 +1436,22 @@ risk:
 
 ## Quick Reference Card
 
-### Operators
+### Operators (Symbols Only - Refactored 2026-01-09)
 
-| Op | Alias | Types | Example |
-|----|-------|-------|---------|
-| `gt` | `>` | Numeric | `["ema_9", ">", "ema_21"]` |
-| `lt` | `<` | Numeric | `["rsi_14", "<", 30]` |
-| `gte` | `>=` | Numeric | `["volume", ">=", "vol_avg"]` |
-| `lte` | `<=` | Numeric | `["atr_14", "<=", 50]` |
-| `eq` | `==` | Discrete | `{op: eq, rhs: 1}` |
-| `between` | - | Numeric | `{op: between, rhs: {low: 30, high: 70}}` |
-| `near_abs` | - | Numeric | `{op: near_abs, tolerance: 10}` |
-| `near_pct` | - | Numeric | `{op: near_pct, tolerance: 0.005}` |
-| `in` | - | Discrete | `{op: in, rhs: [1, 0, -1]}` |
-| `cross_above` | - | Numeric | `["ema_9", "cross_above", "ema_21"]` |
-| `cross_below` | - | Numeric | `["ema_9", "cross_below", "ema_21"]` |
+| Op | Types | Example |
+|----|-------|---------|
+| `>` | Numeric | `["ema_9", ">", "ema_21"]` |
+| `<` | Numeric | `["rsi_14", "<", 30]` |
+| `>=` | Numeric | `["volume", ">=", "vol_avg"]` |
+| `<=` | Numeric | `["atr_14", "<=", 50]` |
+| `==` | Discrete | `["trend.direction", "==", 1]` |
+| `!=` | Discrete | `["zone.state", "!=", "BROKEN"]` |
+| `between` | Numeric | `{op: "between", rhs: {low: 30, high: 70}}` |
+| `near_abs` | Numeric | `{op: "near_abs", tolerance: 10}` |
+| `near_pct` | Numeric | `{op: "near_pct", tolerance: 0.005}` |
+| `in` | Discrete | `{op: "in", rhs: [1, 0, -1]}` |
+| `cross_above` | Numeric | `["ema_9", "cross_above", "ema_21"]` |
+| `cross_below` | Numeric | `["ema_9", "cross_below", "ema_21"]` |
 
 ### Arithmetic
 
@@ -1525,6 +1529,8 @@ Currently the engine still accepts `blocks:` and `margin_mode: "isolated"` for b
 | 2026-01-08 | Created as canonical source, consolidated from PLAY_SYNTAX.md + DSL_REFERENCE.md |
 | 2026-01-08 | Fixed MTF terminology (Multi-TimeFrame = capability, not role) |
 | 2026-01-08 | Added exit_mode, variables, price features deep dive, deprecation notes |
+| 2026-01-09 | Symbol operators now canonical (`>`, `<`, `>=`, `<=`, `==`, `!=`). Word forms removed. |
+| 2026-01-09 | Added `!=` operator for discrete type comparisons |
 
 ---
 

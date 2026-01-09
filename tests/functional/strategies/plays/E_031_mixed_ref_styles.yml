@@ -29,7 +29,7 @@ features:
 actions:
   entry_long:
     all:
-      - ["ema_21", "gt", {"feature_id": "bbands_20_2", "field": "middle"}]
+      - ["ema_21", ">", {"feature_id": "bbands_20_2", "field": "middle"}]
 
 position_policy:
   mode: long_only

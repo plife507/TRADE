@@ -29,12 +29,12 @@ actions:
   # Entry: price above EMA (bullish)
   entry_long:
     all:
-      - ["close", "gt", "ema_9"]
+      - ["close", ">", "ema_9"]
 
   # Exit: RSI overbought
   exit_long:
     all:
-      - ["rsi_14", "gt", 70]
+      - ["rsi_14", ">", 70]
 
 position_policy:
   mode: long_only

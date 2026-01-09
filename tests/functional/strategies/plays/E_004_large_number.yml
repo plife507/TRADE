@@ -21,7 +21,7 @@ features:
 actions:
   entry_long:
     all:
-      - ["close", "gt", 100000]
+      - ["close", ">", 100000]
 
 position_policy:
   mode: long_only

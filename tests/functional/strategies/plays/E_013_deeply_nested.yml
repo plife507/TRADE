@@ -37,11 +37,11 @@ actions:
   entry_long:
     all:
       - all:
-          - ["ema_9", "gt", "ema_21"]
+          - ["ema_9", ">", "ema_21"]
           - any:
               - all:
-                  - ["rsi_14", "lt", 30]
-                  - ["atr_14", "gt", 100]
+                  - ["rsi_14", "<", 30]
+                  - ["atr_14", ">", 100]
               - ["rsi_14", "cross_above", 50]
 
 position_policy:

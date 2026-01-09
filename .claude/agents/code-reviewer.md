@@ -34,6 +34,12 @@ You are a senior code reviewer for the TRADE trading bot. Your reviews ensure co
 - [ ] Direct array access, not binary search
 - [ ] Proper timestamp handling (epoch ms)
 
+### DSL Syntax (v3.0.0 - FROZEN)
+
+- [ ] Uses `actions:` not `blocks:` (deprecated)
+- [ ] Symbol operators only (`>`, `<`, `>=`, `<=`, `==`, `!=`)
+- [ ] Parameterized feature names (`ema_9` not `ema_fast`)
+
 ### Trading Safety
 
 - [ ] No hardcoded API keys or secrets
@@ -63,7 +69,7 @@ git log -3 --oneline
 
 3. **Analyze Changes**
 - Read all modified files
-- Check related IdeaCards if applicable
+- Check related Plays if applicable
 - Verify validation will pass
 
 ## Output Format
@@ -84,6 +90,6 @@ Specific violations of CLAUDE.md rules.
 ```bash
 # Run before commit
 python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
 python trade_cli.py --smoke backtest
 ```

@@ -357,7 +357,7 @@ def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
     """
     from .rules.dsl_nodes import (
         Expr, Cond, AllExpr, AnyExpr, NotExpr,
-        HoldsFor, OccurredWithin, CountTrue, FeatureRef,
+        HoldsFor, OccurredWithin, CountTrue, FeatureRef, ArithmeticExpr, ScalarValue,
     )
 
     refs: list[FeatureReference] = []
@@ -365,22 +365,55 @@ def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
     if not play.actions:
         return refs
 
+    def _extract_from_arithmetic(arith: ArithmeticExpr, location: str) -> None:
+        """Recursively extract feature refs from arithmetic expression.
+
+        ArithmeticExpr operands can be: FeatureRef, ScalarValue, or nested ArithmeticExpr.
+        Only FeatureRef contains feature references to extract.
+        """
+        # Extract from left operand
+        if isinstance(arith.left, FeatureRef):
+            refs.append(FeatureReference(
+                key=arith.left.feature_id,
+                tf_role="exec",
+                location=f"{location}.left",
+            ))
+        elif isinstance(arith.left, ArithmeticExpr):
+            _extract_from_arithmetic(arith.left, f"{location}.left")
+        # ScalarValue has no feature refs - skip (explicit for clarity)
+
+        # Extract from right operand
+        if isinstance(arith.right, FeatureRef):
+            refs.append(FeatureReference(
+                key=arith.right.feature_id,
+                tf_role="exec",
+                location=f"{location}.right",
+            ))
+        elif isinstance(arith.right, ArithmeticExpr):
+            _extract_from_arithmetic(arith.right, f"{location}.right")
+        # ScalarValue has no feature refs - skip (explicit for clarity)
+
     def _extract_from_expr(expr: Expr, location: str) -> None:
         """Recursively extract feature refs from expression."""
         if isinstance(expr, Cond):
-            # Extract LHS feature
-            refs.append(FeatureReference(
-                key=expr.lhs.feature_id,
-                tf_role="exec",  # Actions use feature_id which encodes TF
-                location=f"{location}.lhs",
-            ))
-            # Extract RHS if it's a FeatureRef
+            # Extract LHS feature (can be FeatureRef or ArithmeticExpr)
+            if isinstance(expr.lhs, FeatureRef):
+                refs.append(FeatureReference(
+                    key=expr.lhs.feature_id,
+                    tf_role="exec",  # Actions use feature_id which encodes TF
+                    location=f"{location}.lhs",
+                ))
+            elif isinstance(expr.lhs, ArithmeticExpr):
+                _extract_from_arithmetic(expr.lhs, f"{location}.lhs")
+            # Extract RHS if it's a FeatureRef or ArithmeticExpr
             if isinstance(expr.rhs, FeatureRef):
                 refs.append(FeatureReference(
                     key=expr.rhs.feature_id,
                     tf_role="exec",
                     location=f"{location}.rhs",
                 ))
+            elif isinstance(expr.rhs, ArithmeticExpr):
+                _extract_from_arithmetic(expr.rhs, f"{location}.rhs")
         elif isinstance(expr, AllExpr):
             for i, child in enumerate(expr.children):
                 _extract_from_expr(child, f"{location}.all[{i}]")

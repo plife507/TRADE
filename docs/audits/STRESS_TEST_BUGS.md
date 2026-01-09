@@ -14,31 +14,42 @@ Bugs discovered during progressive complexity testing.
 | BUG-001 | 1.1 | P0 | RESOLVED | Timezone-naive vs timezone-aware datetime comparison error |
 | BUG-002 | 1.1 | P2 | RESOLVED | 100% sizing with 1x leverage rejects all orders (CONFIG) |
 | BUG-003 | 1.5 | P0 | RESOLVED | BBands all NaN due to int/float column name mismatch |
-| DOC-001 | 2.1 | P3 | OPEN | Cookbook shows wrong BBands output names |
-| DOC-002 | 2.1 | P3 | OPEN | Cookbook shows wrong MACD output names |
-| DEBT-001 | 2.1 | P2 | OPEN | Symbol-to-word operator conversion is a legacy shim |
+| BUG-004 | 2.4 | P1 | RESOLVED | ArithmeticExpr not handled in execution_validation.py |
+| BUG-005 | 3.1 | P1 | RESOLVED | Window operators not handled inside all:/any: blocks |
+| BUG-006 | 3.3 | P1 | RESOLVED | Duration window operators missing from shorthand converter |
+| BUG-007 | 4.1 | P0 | RESOLVED | Structures section not converted to Feature objects |
+| BUG-008 | 5.2 | P1 | RESOLVED | Verbose action format doesn't resolve RHS feature references |
+| DOC-001 | 2.1 | P3 | RESOLVED | Cookbook shows wrong BBands output names |
+| DOC-002 | 2.1 | P3 | RESOLVED | Cookbook shows wrong MACD output names |
+| DEBT-001 | 2.1 | P2 | RESOLVED | Symbol operators now canonical - shim removed |
 
 ---
 
 ## Technical Debt
 
-### DEBT-001: Symbol-to-word operator conversion is legacy shim
+### DEBT-001: Symbol operators standardization
 
 **Gate**: 2.1 (found during Phase 1 verification)
 **Severity**: P2 (architectural inconsistency, violates ALL FORWARD directive)
-**Status**: OPEN
+**Status**: RESOLVED (2026-01-09)
 
-**Current State**:
-- `play.py` converts symbols (`>`, `<`) to words (`gt`, `lt`) during Play loading
-- DSL parser/evaluator only understand words
-- Cookbook shows both syntaxes inconsistently
-- This is a preprocessing shim that creates two valid syntaxes
+**Resolution**:
+- Symbol operators (`>`, `<`, `>=`, `<=`, `==`, `!=`) are now the ONLY valid operators
+- Word operators (`gt`, `lt`, `gte`, `lte`, `eq`) removed from engine
+- `op_map` conversion shim removed from `play.py`
+- Added `!=` operator (previously broken - mapped to non-existent "neq")
+- All Play YAML files updated to use symbols
+- 45+ files modified (engine code + test Plays + documentation)
 
-**Files Affected**:
-- `src/backtest/play/play.py` (lines 141-147) - converter location
-- `src/backtest/rules/dsl_nodes/constants.py` - operator definitions
-- `src/backtest/rules/evaluation/condition_ops.py` - operator evaluation
-- `docs/specs/PLAY_DSL_COOKBOOK.md` - documentation
+**Changes Made**:
+- `src/backtest/rules/dsl_nodes/constants.py` - Operators now symbols
+- `src/backtest/rules/evaluation/condition_ops.py` - Dispatch uses symbols
+- `src/backtest/rules/eval.py` - Added `eval_neq()`, updated OPERATORS dict
+- `src/backtest/rules/registry.py` - Registry uses symbols
+- `src/backtest/play/play.py` - Removed op_map converter
+- `tests/stress/plays/*.yml` - 6 files updated
+- `tests/functional/strategies/plays/*.yml` - 39 files updated
+- `docs/specs/PLAY_DSL_COOKBOOK.md` - Documentation updated
 
 ---
 
@@ -142,28 +153,17 @@ Bugs discovered during progressive complexity testing.
 
 **Gate**: 2.1 (found during Gate 2.2 preparation)
 **Severity**: P3 (documentation only, engine works correctly)
-**Status**: OPEN
+**Status**: RESOLVED
 **File**: `docs/specs/PLAY_DSL_COOKBOOK.md`
 
 **Issue**:
-- Cookbook Section 2 shows MACD outputs as: `macd, macd_signal, macd_hist`
+- Cookbook Section 2 showed MACD outputs as: `macd, macd_signal, macd_hist`
 - Registry canonical output names are: `macd, signal, histogram`
 
-**Correct Documentation**:
-```yaml
-# MACD (multi-output)
-macd_12_26_9:
-  indicator: macd
-  params:
-    fast: 12
-    slow: 26
-    signal: 9
-  # Outputs: macd, signal, histogram
-```
-
-**Resolution**:
-- Update cookbook Section 2 to use registry canonical names
-- Change `macd_signal` → `signal`, `macd_hist` → `histogram`
+**Resolution** (2026-01-09):
+- Updated cookbook Section 2 feature example comment
+- Updated Multi-Output table
+- Changed `macd_signal` → `signal`, `macd_hist` → `histogram`
 
 ---
 
@@ -171,28 +171,17 @@ macd_12_26_9:
 
 **Gate**: 2.1 (found during Phase 1 verification)
 **Severity**: P3 (documentation only, engine works correctly)
-**Status**: OPEN
+**Status**: RESOLVED
 **File**: `docs/specs/PLAY_DSL_COOKBOOK.md`
 
 **Issue**:
-- Cookbook Section 2 shows BBands outputs as: `bbl (lower), bbm (middle), bbu (upper), bbb, bbp`
+- Cookbook Section 2 showed BBands outputs as: `bbl (lower), bbm (middle), bbu (upper), bbb, bbp`
 - Registry canonical output names are: `lower, middle, upper, bandwidth, percent_b`
-- The parenthetical explanations are correct, but should be the PRIMARY names
 
-**Correct Documentation**:
-```yaml
-# Bollinger Bands (multi-output)
-bbands_20_2:
-  indicator: bbands
-  params:
-    length: 20
-    std: 2.0
-  # Outputs: lower, middle, upper, bandwidth, percent_b
-```
-
-**Resolution**:
-- Update cookbook Section 2 to use registry canonical names
-- Remove pandas_ta internal column names (`bbl/bbm/bbu/bbb/bbp`)
+**Resolution** (2026-01-09):
+- Updated cookbook Section 2 feature example comment
+- Updated Multi-Output table
+- Now uses registry canonical names: `lower, middle, upper, bandwidth, percent_b`
 
 ---
 
@@ -230,11 +219,68 @@ python trade_cli.py backtest run --play <ID> ...
 
 ## Open Bugs
 
-(None currently)
+(No open bugs)
 
 ---
 
 ## Resolved Bugs
+
+### BUG-008: Verbose action format doesn't resolve RHS feature references
+
+**Gate**: 5.2
+**Severity**: P1 (blocks all verbose format Plays with feature RHS)
+**Status**: RESOLVED (2026-01-09)
+**Symbol**: Any
+**Category**: Parser
+
+**Symptoms**:
+- Backtests fail with `TypeError: '<=' not supported between instances of 'float' and 'str'`
+- Verbose format conditions with feature references in RHS don't work
+- Shorthand format works fine
+
+**Root Cause**:
+- `dsl_parser.py` `parse_rhs()` function treated ALL string values as `ScalarValue`
+- The shorthand converter in `play.py` correctly handled this by converting strings to `FeatureRef` dicts
+- Verbose format bypassed the shorthand converter, so RHS strings were never resolved
+
+**Reproduction**:
+```yaml
+actions:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - lhs: "ema_9"
+              op: cross_above
+              rhs: "ema_21"    # <- Was kept as literal string "ema_21"
+        emit:
+          - action: entry_long
+```
+
+Result: `TypeError` comparing float EMA value against string "ema_21"
+
+**Resolution**:
+- Added `_normalize_rhs_for_operator()` function to `parse_cond()` in `dsl_parser.py`
+- Operator-aware heuristic determines string RHS interpretation:
+  - **Numeric operators** (`>`, `<`, `>=`, `<=`, `cross_above`, `cross_below`, `near_*`, `between`): String RHS is always a FeatureRef
+  - **Discrete operators** (`==`, `!=`): ALL_CAPS strings are enum literals (keep as ScalarValue), otherwise FeatureRef
+- Added `_string_to_feature_ref_dict()` helper to convert strings like "ema_21" or "swing.low_level" to proper FeatureRef dicts
+- Added `_is_enum_literal()` helper to identify ALL_CAPS enum strings
+
+**Files Changed**:
+- `src/backtest/rules/dsl_parser.py`
+  - Added `_string_to_feature_ref_dict()` helper
+  - Added `_is_enum_literal()` helper
+  - Added `_normalize_rhs_for_operator()` function
+  - Updated `parse_cond()` to normalize RHS before parsing
+
+**Validation**:
+- 21/21 stress tests pass normalization
+- 110/110 functional tests pass normalization
+- Verbose format works correctly with feature RHS
+- Enum literals like "ACTIVE", "BROKEN" still work correctly
+
+---
 
 ### BUG-001: Timezone-naive vs timezone-aware datetime comparison error
 
@@ -345,6 +391,197 @@ features:
 
 ---
 
+### BUG-004: ArithmeticExpr not handled in execution_validation.py
+
+**Gate**: 2.4
+**Severity**: P1 (blocks all arithmetic DSL expressions)
+**Status**: RESOLVED
+**Symbol**: BTCUSDT
+**Category**: Validation
+
+**Symptoms**:
+- Backtest fails with "AttributeError: 'ArithmeticExpr' object has no attribute 'feature_id'"
+- Plays with arithmetic expressions like `[["ema_9", "-", "ema_21"], ">", 0]` cannot run
+- Error in `extract_rule_feature_refs()` during preflight validation
+
+**Root Cause**:
+- `execution_validation.py` assumed `expr.lhs` was always a `FeatureRef`
+- For arithmetic expressions, `expr.lhs` is an `ArithmeticExpr` which doesn't have `feature_id` attribute
+- Feature ref extraction did not handle nested arithmetic structures
+
+**Reproduction**:
+```yaml
+actions:
+  entry_long:
+    all:
+      - [["ema_9", "-", "ema_21"], ">", 0]
+```
+
+**Resolution**:
+- Added `_extract_from_arithmetic()` helper function to recursively extract feature refs from `ArithmeticExpr`
+- Updated `_extract_from_expr()` to check if LHS is `FeatureRef` vs `ArithmeticExpr`
+- Also handles arithmetic expressions in RHS
+
+**Files Changed**:
+- `src/backtest/execution_validation.py`
+  - Added import for `ArithmeticExpr`
+  - Added `_extract_from_arithmetic()` function
+  - Updated `_extract_from_expr()` to handle both `FeatureRef` and `ArithmeticExpr` in LHS/RHS
+
+**Lesson Learned**:
+- DSL node types must be handled polymorphically throughout the validation chain
+- Arithmetic expressions can appear in both LHS and RHS positions
+
+---
+
+### BUG-005: Window operators not handled inside all:/any: blocks
+
+**Gate**: 3.1
+**Severity**: P1 (blocks all window operators inside boolean blocks)
+**Status**: RESOLVED
+**Symbol**: BTCUSDT
+**Category**: Parser
+
+**Symptoms**:
+- Backtest fails with "Condition must have at least 3 elements" error
+- Window operators like `holds_for` inside `all:` blocks fail to parse
+- Error in `_convert_shorthand_condition()` which expects a list
+
+**Root Cause**:
+- `_convert_shorthand_conditions()` called `_convert_shorthand_condition()` on each item in `all:`/`any:` blocks
+- `_convert_shorthand_condition()` expected a list (3-element condition)
+- Window operators are dicts, not lists, causing the error
+
+**Reproduction**:
+```yaml
+actions:
+  entry_long:
+    all:
+      - holds_for:
+          bars: 3
+          expr:
+            all:
+              - ["rsi_14", ">", 50]
+      - ["close", ">", "ema_20"]
+```
+
+**Resolution**:
+- Added `_convert_condition_item()` helper function
+- Checks if item is list (call `_convert_shorthand_condition`) or dict (call `_convert_shorthand_conditions`)
+- Updated `all:`, `any:`, `not:` handling to use the new helper
+
+**Files Changed**:
+- `src/backtest/play/play.py`
+  - Added `_convert_condition_item()` function
+  - Updated `_convert_shorthand_conditions()` to use it
+
+**Lesson Learned**:
+- Condition items in boolean blocks can be either conditions (lists) or nested structures (dicts)
+- Parser must handle polymorphic condition items
+
+---
+
+### BUG-006: Duration window operators missing from shorthand converter
+
+**Gate**: 3.3
+**Severity**: P1 (blocks all duration-based windows)
+**Status**: RESOLVED
+**Symbol**: BTCUSDT
+**Category**: Parser
+
+**Symptoms**:
+- Backtest fails with "Expression must be dict or list, got str" error
+- Duration-based window operators fail to parse
+- Error in DSL parser when encountering unconverted duration window
+
+**Root Cause**:
+- Shorthand converter only handled `holds_for`, `occurred_within`, `count_true`
+- Missing handlers for `holds_for_duration`, `occurred_within_duration`, `count_true_duration`
+- Duration windows passed through unconverted, causing parser errors downstream
+
+**Reproduction**:
+```yaml
+actions:
+  entry_long:
+    all:
+      - holds_for_duration:
+          duration: "30m"
+          expr:
+            all:
+              - ["rsi_14", ">", 50]
+```
+
+**Resolution**:
+- Added handlers for all 3 duration-based window operators
+- Each converts `expr:` recursively via `_convert_shorthand_conditions()`
+
+**Files Changed**:
+- `src/backtest/play/play.py`
+  - Added `holds_for_duration` handler
+  - Added `occurred_within_duration` handler
+  - Added `count_true_duration` handler
+
+**Lesson Learned**:
+- When adding new DSL constructs, ensure shorthand conversion handles them
+- Duration-based and bar-based windows are parallel constructs requiring parallel support
+
+---
+
+### BUG-007: Structures section not converted to Feature objects
+
+**Gate**: 4.1
+**Severity**: P0 (blocks all structure-based Plays)
+**Status**: RESOLVED
+**Symbol**: BTCUSDT
+**Category**: Parser
+
+**Symptoms**:
+- Backtests with `structures:` section always produce 0 trades
+- No structure initialization messages in logs
+- `registry.get_structures()` always returns empty list
+
+**Root Cause**:
+- `Play.from_dict()` parsed `structures:` section to extract `structure_keys` for validation
+- But structures were NOT converted to `Feature` objects with `FeatureType.STRUCTURE`
+- `FeatureRegistry.get_structures()` returned empty because no structure Features existed
+- `_build_incremental_state()` skipped structure initialization due to empty list
+
+**Reproduction**:
+```yaml
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "swing.low_level"]
+```
+Result: 0 trades (structure references evaluated as MISSING)
+
+**Resolution**:
+- Added code to `Play.from_dict()` to convert structure specs into `Feature` objects
+- Created Feature objects with `type=FeatureType.STRUCTURE`, `structure_type`, `params`, `depends_on`
+- Appended structure Features to the features tuple
+- Now `registry.get_structures()` returns proper list, incremental state initializes
+
+**Files Changed**:
+- `src/backtest/play/play.py`
+  - Added structure Feature creation in `from_dict()`
+  - Handles both exec and htf structure specs
+  - Combines indicator and structure Features
+
+**Lesson Learned**:
+- YAML sections that define entities must create corresponding internal objects
+- Validation-only parsing (extracting keys) is not sufficient for runtime use
+- Structure initialization depends on Feature Registry containing structure Features
+
+---
+
 ## Play YAML Adjustments (Non-Bug)
 
 During stress testing, some Play files were adjusted for better test coverage:
@@ -363,6 +600,7 @@ Track patterns to identify systemic issues:
 | Category | Count | Notes |
 |----------|-------|-------|
 | Indicator NaN | 1 | Warmup/computation issues |
+| Structure | 1 | Structure loading/initialization |
 | Forward-Fill | 0 | HTF/MTF alignment |
 | Cross Detection | 0 | History offset bugs |
 | Window State | 0 | Bar counting issues |
@@ -371,4 +609,6 @@ Track patterns to identify systemic issues:
 | Zone State | 0 | Detection/activation |
 | Data Sync | 1 | Timezone/datetime issues |
 | Config | 1 | Play configuration issues (not engine bugs) |
+| Validation | 1 | Preflight/execution validation bugs |
+| Parser | 4 | Shorthand condition conversion issues + verbose RHS resolution (all resolved) |
 | Other | 0 | Uncategorized |

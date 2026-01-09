@@ -29,8 +29,8 @@ actions:
   entry_long:
     all:
       - all:
-          - ["rsi_14", "lt", 30]
-          - ["close", "gt", "ema_21"]
+          - ["rsi_14", "<", 30]
+          - ["close", ">", "ema_21"]
 
 position_policy:
   mode: long_only

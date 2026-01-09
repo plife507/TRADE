@@ -28,7 +28,7 @@ features:
 actions:
   entry_short:
     all:
-      - ["rsi_14", "gt", 70]
+      - ["rsi_14", ">", 70]
 
 position_policy:
   mode: short_only

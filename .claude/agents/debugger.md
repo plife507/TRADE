@@ -39,7 +39,7 @@ You are an expert debugger for the TRADE trading bot. You systematically investi
 ```bash
 # Run the failing validation
 python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
 
 # Check smoke test
 python trade_cli.py --smoke backtest
@@ -63,7 +63,7 @@ python trade_cli.py --smoke backtest
 ```bash
 # Run validation suite
 python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
 python trade_cli.py backtest structure-smoke
 
 # Run backtest smoke

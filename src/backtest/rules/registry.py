@@ -47,43 +47,41 @@ class OperatorSpec:
 # =============================================================================
 # OPERATOR REGISTRY - Single Source of Truth
 # =============================================================================
+# SYMBOLS are the canonical form (refactored 2026-01-09)
 
 OPERATOR_REGISTRY = {
-    # Numeric comparisons (int or float)
-    "gt": OperatorSpec(
-        name="gt",
+    # Numeric comparisons (int or float) - SYMBOL OPERATORS
+    ">": OperatorSpec(
+        name=">",
         supported=True,
         category=OpCategory.NUMERIC,
     ),
-    "lt": OperatorSpec(
-        name="lt",
+    "<": OperatorSpec(
+        name="<",
         supported=True,
         category=OpCategory.NUMERIC,
     ),
-    "ge": OperatorSpec(
-        name="ge",
+    ">=": OperatorSpec(
+        name=">=",
         supported=True,
         category=OpCategory.NUMERIC,
     ),
-    "gte": OperatorSpec(  # Alias for ge
-        name="ge",
-        supported=True,
-        category=OpCategory.NUMERIC,
-    ),
-    "le": OperatorSpec(
-        name="le",
-        supported=True,
-        category=OpCategory.NUMERIC,
-    ),
-    "lte": OperatorSpec(  # Alias for le
-        name="le",
+    "<=": OperatorSpec(
+        name="<=",
         supported=True,
         category=OpCategory.NUMERIC,
     ),
 
     # Equality (bool, int, enum - NOT float)
-    "eq": OperatorSpec(
-        name="eq",
+    "==": OperatorSpec(
+        name="==",
+        supported=True,
+        category=OpCategory.BOOL_INT_ENUM,
+    ),
+
+    # Not equal (bool, int, enum - NOT float)
+    "!=": OperatorSpec(
+        name="!=",
         supported=True,
         category=OpCategory.BOOL_INT_ENUM,
     ),

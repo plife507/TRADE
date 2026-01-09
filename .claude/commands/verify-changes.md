@@ -11,7 +11,7 @@ Spawn multiple agents to verify changes are safe to commit.
 ## Usage
 
 ```
-/trade-workflow:verify-changes
+/verify-changes
 ```
 
 ## Process
@@ -36,8 +36,8 @@ Launch in parallel:
 ## Verification Report
 
 ### Validation Agent
-- IdeaCard normalize: PASS (9/9)
-- audit-toolkit: PASS (42/42)
+- play-normalize-batch: PASS (X/Y)
+- audit-toolkit: PASS (43/43)
 - structure-smoke: PASS
 
 ### Code Review Agent

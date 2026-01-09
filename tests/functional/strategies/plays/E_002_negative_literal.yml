@@ -26,7 +26,7 @@ features:
 actions:
   entry_long:
     all:
-      - [{"feature_id": "macd_12_26_9", "field": "histogram"}, "lt", -0.001]
+      - [{"feature_id": "macd_12_26_9", "field": "histogram"}, "<", -0.001]
 
 position_policy:
   mode: long_only

@@ -11,7 +11,7 @@ Launch multiple parallel agents to audit the codebase for bugs and architectural
 ## Usage
 
 ```
-/trade-workflow:audit-swarm
+/audit-swarm
 ```
 
 ## Process
@@ -31,7 +31,7 @@ Launch these agents simultaneously:
 | Engine Core | src/backtest/engine*.py | Lookahead, timing, snapshots |
 | Sim/Exchange | src/backtest/sim/ | Fills, fees, position sizing |
 | Runtime | src/backtest/runtime/ | State tracking, snapshots |
-| Integration | strategies/idea_cards/_validation/ | End-to-end paths |
+| Integration | tests/functional/strategies/plays/ | End-to-end paths |
 
 3. **Consolidate Findings**
 
@@ -64,7 +64,7 @@ Categorize by severity:
 [Prioritized action items]
 
 ### Validation Status
-- audit-toolkit: X/X
-- normalize-batch: X/X
+- audit-toolkit: 43/43
+- play-normalize-batch: X/X
 - smoke: PASS/FAIL
 ```

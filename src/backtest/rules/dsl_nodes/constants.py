@@ -31,13 +31,15 @@ ARITHMETIC_OPERATORS = frozenset({
 # Valid Operators
 # =============================================================================
 # All operators supported by the DSL expression evaluator.
+# SYMBOLS are the canonical form (refactored 2026-01-09).
 
 COMPARISON_OPERATORS = frozenset({
-    "gt",           # Greater than: lhs > rhs
-    "gte",          # Greater than or equal: lhs >= rhs
-    "lt",           # Less than: lhs < rhs
-    "lte",          # Less than or equal: lhs <= rhs
-    "eq",           # Equal (discrete types only): lhs == rhs
+    ">",            # Greater than: lhs > rhs
+    ">=",           # Greater than or equal: lhs >= rhs
+    "<",            # Less than: lhs < rhs
+    "<=",           # Less than or equal: lhs <= rhs
+    "==",           # Equal (discrete types only): lhs == rhs
+    "!=",           # Not equal (discrete types only): lhs != rhs
     "between",      # Range: low <= lhs <= high
     "near_abs",     # Near absolute: |lhs - rhs| <= tolerance
     "near_pct",     # Near percent: |lhs - rhs| / |rhs| <= tolerance
@@ -53,13 +55,13 @@ VALID_OPERATORS = COMPARISON_OPERATORS | CROSSOVER_OPERATORS
 
 # Operators that require numeric types
 NUMERIC_OPERATORS = frozenset({
-    "gt", "gte", "lt", "lte", "between", "near_abs", "near_pct",
+    ">", ">=", "<", "<=", "between", "near_abs", "near_pct",
     "cross_above", "cross_below"
 })
 
 # Operators that require discrete types (INT, BOOL, ENUM)
 DISCRETE_OPERATORS = frozenset({
-    "eq", "in"
+    "==", "!=", "in"
 })
 
 # Window operator limits (bar-based)

@@ -39,7 +39,7 @@ actions:
       # 15m: EMA cross
       - ["ema_9", "cross_above", "ema_21"]
       # 4h: Just check HTF EMA exists (gt 0)
-      - ["ema_20_4h", "gt", 0]
+      - ["ema_20_4h", ">", 0]
   exit_long:
     any:
       - ["ema_9", "cross_below", "ema_21"]

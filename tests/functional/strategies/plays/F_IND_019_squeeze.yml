@@ -27,7 +27,7 @@ features:
 actions:
   entry_long:
     all:
-      - [{"feature_id": "squeeze_20_2_20_1.5", "field": "off"}, "gt", 0]
+      - [{"feature_id": "squeeze_20_2_20_1.5", "field": "off"}, ">", 0]
 
 position_policy:
   mode: long_only

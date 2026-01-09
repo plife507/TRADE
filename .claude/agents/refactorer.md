@@ -14,7 +14,7 @@ You are a refactoring expert for the TRADE trading bot. You improve code structu
 
 ### Known Large Files (from Architecture Review)
 - `src/backtest/engine.py` (~1200 LOC) - Split run() method
-- `src/backtest/idea_card.py` (~1165 LOC) - Split into focused classes
+- `src/backtest/play/play.py` (~1165 LOC) - Split into focused classes
 - `src/tools/tool_registry.py` (~1200 LOC) - Split by category
 
 ### Structural Patterns
@@ -25,7 +25,7 @@ You are a refactoring expert for the TRADE trading bot. You improve code structu
 - Shared: `src/config/`, `src/utils/`, `src/data/`
 
 **Key Abstractions**:
-- `IdeaCard` - Strategy configuration
+- `Play` - Strategy configuration (DSL v3.0.0)
 - `RuntimeSnapshotView` - O(1) read-only data view
 - `SimulatedExchange` - Backtest execution
 - `FeedStore` - Time-series data container
@@ -70,7 +70,7 @@ def old_function():
 ```bash
 # Run full validation
 python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
 python trade_cli.py backtest structure-smoke
 python trade_cli.py --smoke backtest
 ```
@@ -87,8 +87,8 @@ python trade_cli.py --smoke backtest
    - Lines removed: X
 
 ### Validation
-- audit-toolkit: PASS
-- normalize-batch: 9/9 cards
+- audit-toolkit: PASS (43/43)
+- play-normalize-batch: X/X Plays
 - smoke test: PASS
 
 ### TODO Updates

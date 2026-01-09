@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Grep, Glob
-description: Run TRADE validation suite (IdeaCard normalize, audits, smoke tests)
+description: Run TRADE validation suite (Play normalize, audits, smoke tests)
 argument-hint: [tier: 1|2|3|full]
 ---
 
@@ -11,32 +11,28 @@ Run the TRADE validation suite at the specified tier.
 ## Usage
 
 ```
-/trade-workflow:validate [tier]
+/validate [tier]
 ```
 
-- `1` - TIER 1: IdeaCard normalization only (fastest)
+- `1` - TIER 1: Play normalization only (fastest)
 - `2` - TIER 2: Unit audits (audit-toolkit, structure-smoke)
 - `3` - TIER 3: Integration smoke tests
 - `full` - All tiers (default)
 
 ## Execution
 
-### TIER 1: IdeaCard Normalization
+### TIER 1: Play Normalization
 
 ```bash
-python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
 ```
-
-Expected: 9/9 cards pass
 
 ### TIER 2: Unit Audits
 
 ```bash
-python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest structure-smoke
+python trade_cli.py backtest audit-toolkit       # 43/43 indicators
+python trade_cli.py backtest structure-smoke     # Market structures
 ```
-
-Expected: 42/42 indicators, structure smoke pass
 
 ### TIER 3: Integration
 
@@ -44,18 +40,18 @@ Expected: 42/42 indicators, structure smoke pass
 python trade_cli.py --smoke backtest
 ```
 
-Expected: 3 trades, artifacts generated
+Expected: Trades generated, artifacts created
 
 ## Report Format
 
 ```
 ## Validation Report
 
-### TIER 1: IdeaCard Normalization
-Result: PASS/FAIL (X/Y cards)
+### TIER 1: Play Normalization
+Result: PASS/FAIL (X/Y Plays)
 
 ### TIER 2: Unit Audits
-- audit-toolkit: PASS/FAIL (X/Y indicators)
+- audit-toolkit: PASS/FAIL (43/43 indicators)
 - structure-smoke: PASS/FAIL
 
 ### TIER 3: Integration

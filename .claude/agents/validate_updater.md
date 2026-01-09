@@ -1,6 +1,6 @@
 ---
 name: validate_updater
-description: Updates the validation system as the codebase evolves. Reviews validation agent reports, adds/modifies IdeaCards, and updates validate.md instructions. Use when validation coverage needs to expand or test expectations change.
+description: Updates the validation system as the codebase evolves. Reviews validation agent reports, adds/modifies Plays, and updates validate.md instructions. Use when validation coverage needs to expand or test expectations change.
 tools: Bash, Read, Grep, Glob, Write, Edit
 model: opus
 ---
@@ -13,9 +13,9 @@ Keep the validation system in sync with the evolving codebase. The `validate` ag
 
 ## When You're Invoked
 
-1. **New indicator added** → Create coverage IdeaCard, update validate.md
-2. **Indicator params changed** → Update affected IdeaCards
-3. **New engine feature** → Add validation IdeaCard for that feature
+1. **New indicator added** → Create coverage Play, update validate.md
+2. **Indicator params changed** → Update affected Plays
+3. **New engine feature** → Add validation Play for that feature
 4. **Validation failure pattern** → Analyze and fix root cause
 5. **Test expectations changed** → Update validate.md expected results
 
@@ -23,13 +23,14 @@ Keep the validation system in sync with the evolving codebase. The `validate` ag
 
 | File | Purpose |
 |------|---------|
-| `strategies/idea_cards/_validation/V_*.yml` | Add/update validation IdeaCards |
+| `tests/functional/strategies/plays/*.yml` | Add/update validation Plays |
+| `tests/stress/plays/*.yml` | Add/update stress test Plays |
 | `.claude/agents/validate.md` | Update test instructions and expectations |
 | `CLAUDE.md` (validation section) | Update validation documentation |
 
 ## What You Should NOT Modify
 
-- Production IdeaCards outside `_validation/`
+- Production Plays in `configs/plays/`
 - Engine code (`src/backtest/`)
 - Core tools (`src/tools/`)
 
@@ -48,18 +49,6 @@ Keep the validation system in sync with the evolving codebase. The `validate` ag
    - Retry the Edit, OR
    - Fall back to Write tool with full file content
 
-**Example - Correct pattern:**
-```
-1. Read file → immediate Edit (same message or sequential)
-```
-
-**Example - Wrong pattern:**
-```
-1. Read file
-2. Do other work / call other tools
-3. Edit file  ← WILL LIKELY FAIL
-```
-
 ---
 
 ## Task 1: Adding Coverage for New Indicator
@@ -68,25 +57,54 @@ When a new indicator is added to `indicator_registry.py`:
 
 1. **Check current coverage**:
 ```bash
-grep -h "indicator_type:" strategies/idea_cards/_validation/*.yml | sort | uniq
+grep -h "indicator:" tests/functional/strategies/plays/F_IND_*.yml | sort | uniq
 ```
 
-2. **Identify appropriate coverage card** (V_31-V_37):
-   - V_31: momentum (roc, mom, cmo, uo, ppo, trix)
-   - V_32: MA variants (kama, alma, wma, dema, tema, trima, zlma, linreg)
-   - V_33: volume (obv, mfi, cmf, kvo)
-   - V_34: volatility (natr, midprice, ohlc4, stochrsi)
-   - V_35: trend (aroon, supertrend, psar, vortex, dm)
-   - V_36: bands (donchian, squeeze)
-   - V_37: oscillators (fisher, tsi)
+2. **Create new F_IND_* Play** following this template:
+```yaml
+version: "3.0.0"
+name: "F_IND_XXX_indicator_name"
+description: "Coverage: indicator_name indicator"
 
-3. **Add indicator to appropriate card** or create new V_38+ if needed
+symbol: "BTCUSDT"
+tf: "15m"
 
-4. **Update validate.md** indicator count and coverage table
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
 
-5. **Run normalize to verify**:
+features:
+  indicator_14:
+    indicator: indicator_name
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - ["indicator_14", ">", 50]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+```
+
+3. **Update validate.md** indicator count
+
+4. **Run normalize to verify**:
 ```bash
-python trade_cli.py backtest idea-card-normalize --idea-card _validation/<card>
+python trade_cli.py backtest play-normalize --play tests/functional/strategies/plays/F_IND_XXX_indicator_name.yml
 ```
 
 ---
@@ -100,15 +118,15 @@ When `indicator_registry.py` changes (params, output_keys, etc.):
 python trade_cli.py backtest audit-toolkit
 ```
 
-2. **Run normalize-batch** to find broken IdeaCards:
+2. **Run play-normalize-batch** to find broken Plays:
 ```bash
-python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
 ```
 
-3. **Fix affected IdeaCards**:
-   - Update `required_indicators` with correct output keys
-   - Update `params` with valid param names
-   - Update signal rules if indicator keys changed
+3. **Fix affected Plays**:
+   - Update `features:` with correct indicator names
+   - Update `params:` with valid param names
+   - Update action conditions if indicator keys changed
 
 4. **Update validate.md** if output key naming convention changed
 
@@ -118,103 +136,38 @@ python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_car
 
 When expected test results change:
 
-1. **Update validate.md** "Expected Pass Criteria" section
+1. **Update validate.md** indicator/audit counts
 2. **Update CLAUDE.md** validation section if tier structure changes
 3. **Verify new expectations**:
 ```bash
-python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest audit-toolkit
 ```
 
 ---
 
-## Task 4: Creating New Validation IdeaCard
+## Play Naming Convention
 
-Template for new coverage card:
-
-```yaml
-# V_XX: Coverage - [Category]
-# Purpose: [What this validates]
-# Indicators: [list] (N indicators)
-id: V_XX_coverage_[category]
-version: 1.0.0
-name: Coverage - [Category] Indicators
-description: Validates [indicators] indicators
-
-account:
-  starting_equity_usdt: 10000.0
-  max_leverage: 2.0
-  margin_mode: isolated_usdt
-  min_trade_notional_usdt: 10.0
-  fee_model:
-    taker_bps: 6.0
-    maker_bps: 2.0
-  slippage_bps: 2.0
-
-symbol_universe:
-  - BTCUSDT
-
-tf_configs:
-  exec:
-    tf: 15m
-    role: exec
-    warmup_bars: 100
-    market_structure:
-      lookback_bars: 50
-      delay_bars: 0
-    feature_specs:
-      # Add indicators here
-    required_indicators:
-      # Add output keys here
-
-position_policy:
-  mode: long_short
-  max_positions_per_symbol: 1
-  allow_flip: true
-
-signal_rules:
-  entry_rules:
-    - direction: long
-      conditions:
-        - tf: exec
-          indicator_key: [key]
-          operator: lt
-          value: 30
-  exit_rules:
-    - direction: long
-      conditions:
-        - tf: exec
-          indicator_key: [key]
-          operator: gt
-          value: 70
-
-risk_model:
-  stop_loss:
-    type: percent
-    value: 2.0
-  take_profit:
-    type: rr_ratio
-    value: 2.0
-  sizing:
-    model: percent_equity
-    value: 2.0
-    max_leverage: 2.0
-```
+| Prefix | Category | Purpose |
+|--------|----------|---------|
+| T_* | Basic/Trivial | Simple DSL tests |
+| T1-T6_* | Tiered | Increasing complexity |
+| E_* | Edge Cases | Boundary conditions |
+| F_* | Features | Specific feature tests |
+| F_IND_* | Indicators | Individual indicator tests (001-043) |
+| P_* | Position | Position/trading tests |
+| S_* | Stress | Stress/load tests (in tests/stress/plays/) |
 
 ---
 
-## IdeaCard Naming Convention
+## Current Coverage
 
-| Range | Category | Current Count |
-|-------|----------|---------------|
-| V_01-V_09 | Single-TF | 3 |
-| V_11-V_19 | MTF | 3 |
-| V_21-V_29 | Warmup | 2 |
-| V_31-V_39 | Coverage | 7 |
-| V_41-V_49 | Math Parity | 2 |
-| V_51-V_59 | 1m Drift | 1 |
-| V_E01-V_E99 | Error Cases | 3 |
+**Indicators**: 43 total in INDICATOR_REGISTRY
+- Single-output: 27 (ema, sma, rsi, atr, etc.)
+- Multi-output: 16 (macd, bbands, stoch, etc.)
 
-**Total**: 21 IdeaCards
+**Structures**: 6 total in STRUCTURE_REGISTRY
+- swing, trend, zone, fibonacci, rolling_window, derived_zone
 
 ---
 
@@ -226,8 +179,8 @@ python trade_cli.py backtest indicators --print-keys
 ```
 
 Common multi-output patterns:
-- `{output_key}_{suffix}` where suffix comes from registry `output_keys`
-- Example: `macd` with output_key `"my_macd"` → `my_macd_macd`, `my_macd_signal`, `my_macd_histogram`
+- `{feature_id}_{output}` where output comes from registry `output_keys`
+- Example: `macd_12_26_9` with outputs → `macd_12_26_9_macd`, `macd_12_26_9_signal`, `macd_12_26_9_histogram`
 
 ---
 
@@ -236,12 +189,10 @@ Common multi-output patterns:
 After any update, always verify:
 
 ```bash
-# 1. All cards normalize
-python trade_cli.py backtest idea-card-normalize-batch --dir strategies/idea_cards/_validation
+# 1. All Plays normalize
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
 
-# 2. Expected: 20/21 pass (V_E02 fails intentionally)
-
-# 3. Audit still passes
+# 2. Audit still passes
 python trade_cli.py backtest audit-toolkit
 ```
 
@@ -252,5 +203,5 @@ python trade_cli.py backtest audit-toolkit
 After completing updates, report:
 1. What was changed and why
 2. Files modified
-3. Verification results (normalize-batch output)
+3. Verification results (play-normalize-batch output)
 4. New indicator/test coverage if applicable

@@ -24,7 +24,7 @@ features:
 actions:
   entry_long:
     all:
-      - ["atr_14", "gt", 0.0001]
+      - ["atr_14", ">", 0.0001]
 
 position_policy:
   mode: long_only

@@ -26,7 +26,7 @@ features:
 actions:
   entry_long:
     all:
-      - [{"feature_id": "macd_12_26_9", "field": "histogram"}, "gt", 0]
+      - [{"feature_id": "macd_12_26_9", "field": "histogram"}, ">", 0]
 
 position_policy:
   mode: long_only
