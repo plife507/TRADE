@@ -1,0 +1,71 @@
+version: "3.0.0"
+name: "S_L_112_vwap_cmf_mfi"
+description: "Stress Gate 13: VWAP + CMF + MFI volume confluence. HTF(D) close > vwap_D, MTF(4h) cmf_20 > 0, LTF(1h) mfi cross_above 20 (long)."
+
+symbol: "DOTUSDT"
+tf: "1h"
+mtf: "4h"
+htf: "D"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # HTF (D) - Daily VWAP
+  vwap_D:
+    indicator: vwap
+    params:
+      anchor: "D"
+    tf: "D"
+
+  # MTF (4h) - Chaikin Money Flow
+  cmf_20_4h:
+    indicator: cmf
+    params: {length: 20}
+    tf: "4h"
+
+  # LTF (1h) - MFI oversold
+  mfi_14:
+    indicator: mfi
+    params: {length: 14}
+
+actions:
+  entry_long:
+    all:
+      # HTF trend: Price above daily VWAP
+      - ["close", ">", "vwap_D"]
+      # MTF confirmation: Money flow not deeply negative
+      - ["cmf_20_4h", ">", -0.15]
+      # LTF entry: MFI in buy zone (loosened from cross_above 20)
+      - ["mfi_14", "<", 70]
+      - ["mfi_14", ">", 25]
+
+  exit_long:
+    any:
+      # HTF trend breaks
+      - ["close", "<", "vwap_D"]
+      # MTF money flow reverses strongly
+      - ["cmf_20_4h", "<", -0.2]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 13
+  complexity_pct: 65
+  category: "mtf_confluence"
+  direction: "long"

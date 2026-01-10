@@ -1,0 +1,55 @@
+version: "3.0.0"
+name: "S_S_096_near_kc_upper"
+description: "Stress Gate 11: Close near Keltner Channel upper within 0.5% (short). Volatility rejection."
+
+symbol: "DOGEUSDT"
+tf: "1h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  kc_20_2:
+    indicator: kc
+    params:
+      length: 20
+      scalar: 2
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    all:
+      - lhs: {feature_id: "close"}
+        op: near_pct
+        rhs: {feature_id: "kc_20_2", field: "upper"}
+        tolerance: 0.005
+      - ["rsi_14", ">", 60]
+  exit_short:
+    all:
+      - ["close", "<", {feature_id: "kc_20_2", field: "basis"}]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 11
+  complexity_pct: 55
+  category: "proximity_operator"
+  direction: "short"

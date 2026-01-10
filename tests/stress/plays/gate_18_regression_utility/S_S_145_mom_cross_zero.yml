@@ -1,0 +1,57 @@
+version: "3.0.0"
+name: "S_S_145_mom_cross_zero"
+description: "Stress Gate 18: Momentum cross below zero entry (short). Momentum turning negative signals trend start."
+
+symbol: "SOLUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  mom_10:
+    indicator: mom
+    params:
+      length: 10
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    all:
+      - ["mom_10", "cross_below", 0]
+      - ["close", "<", "ema_21"]
+      - ["rsi_14", ">", 35]
+  exit_short:
+    any:
+      - ["mom_10", "cross_above", 0]
+      - ["rsi_14", "<", 20]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 18
+  complexity_pct: 90
+  category: "regression_utility"
+  direction: "short"

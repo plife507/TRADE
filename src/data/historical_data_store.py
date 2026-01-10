@@ -195,7 +195,44 @@ TF_MINUTES = {
     "1h": 60,
     "4h": 240,
     "D": 1440,
+    "d": 1440,  # Lowercase alias for Daily
 }
+
+
+def floor_to_bar_boundary(dt: datetime, tf_minutes: int) -> datetime:
+    """
+    Floor a datetime to the nearest bar boundary for a given timeframe.
+
+    For example, with 4h (240 min) bars that start at 00:00, 04:00, 08:00...:
+    - 23:15 → 20:00
+    - 01:30 → 00:00
+    - 05:00 → 04:00
+
+    This ensures queries for data starting at non-aligned times will include
+    the bar that CONTAINS that time, not just bars starting after it.
+
+    Args:
+        dt: Datetime to floor
+        tf_minutes: Timeframe in minutes
+
+    Returns:
+        Datetime floored to bar boundary
+    """
+    if tf_minutes >= 1440:  # Daily or larger - floor to midnight
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Calculate minutes since midnight
+    minutes_since_midnight = dt.hour * 60 + dt.minute
+
+    # Floor to nearest bar boundary
+    floored_minutes = (minutes_since_midnight // tf_minutes) * tf_minutes
+
+    # Convert back to hours and minutes
+    floored_hour = floored_minutes // 60
+    floored_minute = floored_minutes % 60
+
+    return dt.replace(hour=floored_hour, minute=floored_minute, second=0, microsecond=0)
+
 
 # Period parsing
 PERIOD_MULTIPLIERS = {
@@ -1215,6 +1252,10 @@ class HistoricalDataStore:
         if start:
             query += " AND timestamp >= ?"
             start_param = start.replace(tzinfo=None) if start.tzinfo else start
+            # Floor start to bar boundary so we get the bar CONTAINING the requested time
+            # e.g., for 4h data, requesting 23:00 should include the 20:00 bar
+            tf_minutes = TF_MINUTES.get(tf, 1)
+            start_param = floor_to_bar_boundary(start_param, tf_minutes)
             params.append(start_param)
 
         if end:

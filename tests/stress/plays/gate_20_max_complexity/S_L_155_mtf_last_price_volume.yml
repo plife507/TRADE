@@ -1,0 +1,124 @@
+version: "3.0.0"
+name: "S_L_155_mtf_last_price_volume"
+description: "Stress Gate 20: Multi-TF + last_price + proximity + volume confirmation (long). LTCUSDT."
+
+symbol: "LTCUSDT"
+tf: "15m"
+mtf: "1h"
+htf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # HTF trend (4h)
+  ema_50_4h:
+    indicator: ema
+    params: {length: 50}
+    tf: "4h"
+  ema_100_4h:
+    indicator: ema
+    params: {length: 100}
+    tf: "4h"
+
+  # MTF confirmation (1h)
+  bbands_20_2_1h:
+    indicator: bbands
+    params: {length: 20, std: 2.0}
+    tf: "1h"
+
+  # LTF signals (15m)
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  # Volume confirmation
+  cmf_20:
+    indicator: cmf
+    params: {length: 20}
+  volume_sma_20:
+    indicator: sma
+    params: {length: 20}
+    source: volume
+
+  # Support levels via VWAP
+  vwap:
+    indicator: vwap
+    params: {}
+
+actions:
+  entry_long:
+    all:
+      # HTF: 4h uptrend
+      - ["ema_50_4h", ">", "ema_100_4h"]
+      # last_price near 1h BB lower (within 0.5%)
+      - lhs: "last_price"
+        op: near_pct
+        rhs: {feature_id: "bbands_20_2_1h", field: "lower"}
+        tolerance: 0.005
+      # OR near VWAP (any bullish support)
+      - any:
+          - lhs: "last_price"
+            op: near_pct
+            rhs: "vwap"
+            tolerance: 0.003
+          - lhs: "last_price"
+            op: near_pct
+            rhs: "ema_21"
+            tolerance: 0.003
+      # Volume confirmation: CMF positive (money flowing in)
+      - ["cmf_20", ">", 0]
+      # Volume above average
+      - ["volume", ">", "volume_sma_20"]
+      # RSI not overbought
+      - ["rsi_14", "<", 60]
+
+  exit_long:
+    any:
+      # HTF trend reversal
+      - ["ema_50_4h", "<", "ema_100_4h"]
+      # Touch upper BB
+      - lhs: "last_price"
+        op: near_pct
+        rhs: {feature_id: "bbands_20_2_1h", field: "upper"}
+        tolerance: 0.003
+      # Volume drying up
+      - holds_for:
+          bars: 3
+          expr:
+            - ["cmf_20", "<", 0]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 20
+  complexity_pct: 100
+  category: "max_complexity"
+  direction: "long"
+  features_tested:
+    - "last_price"
+    - "near_pct_proximity"
+    - "vwap"
+    - "cmf_volume"
+    - "bbands_multi_output"
+    - "multi_tf"
+    - "holds_for"
+    - "any_operator"

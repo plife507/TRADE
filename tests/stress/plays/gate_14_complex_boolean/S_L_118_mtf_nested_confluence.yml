@@ -1,0 +1,87 @@
+version: "3.0.0"
+name: "S_L_118_mtf_nested_confluence"
+description: "Stress Gate 14: Complex boolean - all:[htf_trend, all:[mtf_confirm, ltf_entry]] (long). HTF trend AND (MTF+LTF confluence) using 15m+1h+4h."
+
+symbol: "DOTUSDT"
+tf: "15m"
+mtf: "1h"
+htf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # LTF (15m) - entry signals
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  # MTF (1h) - confirmation
+  ema_21_1h:
+    indicator: ema
+    params:
+      length: 21
+    tf: "1h"
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: "1h"
+
+  # HTF (4h) - trend filter
+  ema_50_4h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "4h"
+  ema_200_4h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "4h"
+
+actions:
+  entry_long:
+    all:
+      # HTF trend filter: 4h uptrend
+      - ["ema_50_4h", ">", "ema_200_4h"]
+      # Nested MTF + LTF confluence
+      - all:
+          # MTF confirm: 1h bullish momentum
+          - ["close", ">", "ema_21_1h"]
+          - ["rsi_14_1h", ">", 50]
+          # LTF entry: 15m signal
+          - ["close", ">", "ema_9"]
+          - ["rsi_14", "<", 60]
+  exit_long:
+    any:
+      - ["ema_50_4h", "<", "ema_200_4h"]
+      - ["rsi_14", ">", 75]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 14
+  complexity_pct: 70
+  category: "complex_boolean"
+  direction: "long"

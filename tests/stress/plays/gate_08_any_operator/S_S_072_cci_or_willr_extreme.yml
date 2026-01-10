@@ -1,0 +1,52 @@
+version: "3.0.0"
+name: "S_S_072_cci_or_willr_extreme"
+description: "Stress Gate 8: ANY operator - CCI OR WillR extreme overbought (short). Either momentum oscillator at extreme triggers entry."
+
+symbol: "XRPUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  cci_20:
+    indicator: cci
+    params:
+      length: 20
+  willr_14:
+    indicator: willr
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    any:
+      - ["cci_20", ">", 150]
+      - ["willr_14", ">", -10]
+  exit_short:
+    any:
+      - ["cci_20", "<", -150]
+      - ["willr_14", "<", -90]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 8
+  complexity_pct: 40
+  category: "any_operator"
+  direction: "short"

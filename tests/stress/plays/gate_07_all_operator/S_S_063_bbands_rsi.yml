@@ -1,0 +1,52 @@
+version: "3.0.0"
+name: "S_S_063_bbands_rsi"
+description: "Stress Gate 7: ALL operator - BBands overbought + RSI confirmation (short). Close > BBands upper AND RSI > 60."
+
+symbol: "XRPUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    all:
+      - ["close", ">", {feature_id: "bbands_20_2", field: "upper"}]
+      - ["rsi_14", ">", 60]
+  exit_short:
+    all:
+      - ["close", "<", {feature_id: "bbands_20_2", field: "middle"}]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 7
+  complexity_pct: 35
+  category: "all_operator"
+  direction: "short"

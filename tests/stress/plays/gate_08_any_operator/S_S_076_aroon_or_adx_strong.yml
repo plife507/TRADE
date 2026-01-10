@@ -1,0 +1,52 @@
+version: "3.0.0"
+name: "S_S_076_aroon_or_adx_strong"
+description: "Stress Gate 8: ANY operator - Aroon OR ADX strong bearish trend (short). Either trend strength indicator triggers entry."
+
+symbol: "ADAUSDT"
+tf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  aroon_25:
+    indicator: aroon
+    params:
+      length: 25
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    any:
+      - [{feature_id: "aroon_25", field: "down"}, ">", 90]
+      - [{feature_id: "adx_14", field: "adx"}, ">", 30]
+  exit_short:
+    any:
+      - [{feature_id: "aroon_25", field: "up"}, ">", 90]
+      - [{feature_id: "adx_14", field: "adx"}, "<", 20]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 8
+  complexity_pct: 40
+  category: "any_operator"
+  direction: "short"

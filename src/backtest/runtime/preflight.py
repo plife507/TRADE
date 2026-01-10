@@ -311,19 +311,22 @@ class PreflightReport:
 def parse_tf_to_minutes(tf: str) -> int:
     """
     Parse timeframe string to minutes.
-    
+
     Supports: 1m, 5m, 15m, 30m, 1h, 4h, D (1d), W (1w)
+    Also supports single-letter formats: D, W (treated as 1D, 1W)
     """
     tf = tf.lower().strip()
-    
+
     if tf.endswith("m"):
         return int(tf[:-1])
     elif tf.endswith("h"):
         return int(tf[:-1]) * 60
     elif tf.endswith("d"):
-        return int(tf[:-1]) * 60 * 24
+        prefix = tf[:-1]
+        return (int(prefix) if prefix else 1) * 60 * 24
     elif tf.endswith("w"):
-        return int(tf[:-1]) * 60 * 24 * 7
+        prefix = tf[:-1]
+        return (int(prefix) if prefix else 1) * 60 * 24 * 7
     else:
         raise ValueError(f"Unknown timeframe format: {tf}")
 
@@ -422,21 +425,25 @@ def validate_tf_data(
     # Normalize datetimes to naive for comparison (DuckDB stores as UTC naive)
     eff_start_cmp = effective_start.replace(tzinfo=None) if effective_start.tzinfo else effective_start
     req_end_cmp = required_end.replace(tzinfo=None) if required_end.tzinfo else required_end
-    
-    # Check 2: Covers required range (inclusive bounds)
+
+    # Check 2: Covers required range
     # - min_ts <= eff_start_cmp: data starts at or before required start (for warmup)
-    # - max_ts >= req_end_cmp: data ends at or after required end
-    # P2-002: Confirmed correct - inclusive coverage check
-    if min_ts <= eff_start_cmp and max_ts >= req_end_cmp:
+    # - max_ts + bar_duration >= req_end_cmp: last bar covers required end
+    # Note: max_ts is the START of the last bar, not its end. A 4h bar starting at 20:00
+    # covers data through 00:00. We add tf_minutes to get effective coverage end.
+    bar_duration = timedelta(minutes=tf_minutes)
+    effective_end_coverage = max_ts + bar_duration
+
+    if min_ts <= eff_start_cmp and effective_end_coverage >= req_end_cmp:
         result.covers_range = True
     else:
         if min_ts > eff_start_cmp:
             result.errors.append(
                 f"Data starts too late: {min_ts} > {eff_start_cmp} (need {warmup_bars} warmup bars)"
             )
-        if max_ts < req_end_cmp:
+        if effective_end_coverage < req_end_cmp:
             result.errors.append(
-                f"Data ends too early: {max_ts} < {req_end_cmp}"
+                f"Data ends too early: last bar at {max_ts} covers until {effective_end_coverage}, need {req_end_cmp}"
             )
     
     # Check 3: Timestamps are monotonic

@@ -1,0 +1,64 @@
+version: "3.0.0"
+name: "S_LO_016_long_short"
+description: "Stress Gate 25: Long/short mode. Tests bidirectional trading."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "ema_20"]
+      - ["rsi_14", "<", 50]
+      - [{"feature_id": "adx_14", "field": "adx"}, ">", 20]
+  entry_short:
+    all:
+      - ["close", "<", "ema_20"]
+      - ["rsi_14", ">", 50]
+      - [{"feature_id": "adx_14", "field": "adx"}, ">", 20]
+  exit_long:
+    all:
+      - ["rsi_14", ">", 70]
+  exit_short:
+    all:
+      - ["rsi_14", "<", 30]
+
+position_policy:
+  mode: long_short
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 25
+  complexity_pct: 90
+  category: "exit_mode"
+  direction: "both"

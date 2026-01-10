@@ -1,0 +1,69 @@
+version: "3.0.0"
+name: "S_S_131_mark_near_bbands_stoch"
+description: "Stress Gate 16: last_price near_pct BBands upper 0.5% AND Stoch K > 75 (short). Mark price near upper band with overbought stochastic."
+
+symbol: "LINKUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2
+  stoch_14_3_3:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+
+actions:
+  entry_short:
+    all:
+      # Mark price near upper Bollinger Band (within 2%)
+      - lhs: {feature_id: "last_price"}
+        op: near_pct
+        rhs: {feature_id: "bbands_20_2", field: "upper"}
+        tolerance: 0.02
+      # Stochastic K above midpoint (relaxed from 75)
+      - [{feature_id: "stoch_14_3_3", field: "k"}, ">", 50]
+  exit_short:
+    any:
+      # Mark price near lower band (oversold zone)
+      - lhs: {feature_id: "last_price"}
+        op: near_pct
+        rhs: {feature_id: "bbands_20_2", field: "lower"}
+        tolerance: 0.02
+      # Stochastic K oversold
+      - [{feature_id: "stoch_14_3_3", field: "k"}, "<", 30]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 16
+  complexity_pct: 80
+  category: "mark_price_complex"
+  direction: "short"
+  tests:
+    - "last_price_near_pct"
+    - "multi_output_bbands"
+    - "multi_output_stoch"

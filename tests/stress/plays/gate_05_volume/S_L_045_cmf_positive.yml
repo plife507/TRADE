@@ -1,0 +1,46 @@
+version: "3.0.0"
+name: "S_L_045_cmf_positive"
+description: "Stress Gate 5: CMF positive money flow entry (long). Volume accumulation signal."
+
+symbol: "LTCUSDT"
+tf: "1h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  cmf_20:
+    indicator: cmf
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      - ["cmf_20", ">", 0.1]
+  exit_long:
+    all:
+      - ["cmf_20", "<", 0]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 5
+  complexity_pct: 25
+  category: "volume"
+  direction: "long"

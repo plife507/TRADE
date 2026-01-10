@@ -1,0 +1,57 @@
+version: "3.0.0"
+name: "S_L_092_bbands_cross_occurred_within"
+description: "Stress Gate 10: occurred_within window - BBands %B crossed above 0 within 5 bars (long). Tests Bollinger Band breakout timing."
+
+symbol: "AVAXUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+actions:
+  entry_long:
+    all:
+      - occurred_within:
+          bars: 5
+          expr:
+            all:
+              - [{feature_id: "bbands_20_2", field: "percent_b"}, "cross_above", 0]
+      - [{feature_id: "bbands_20_2", field: "percent_b"}, "<", 0.5]
+  exit_long:
+    any:
+      - [{feature_id: "bbands_20_2", field: "percent_b"}, ">", 1.0]
+      - occurred_within:
+          bars: 3
+          expr:
+            all:
+              - [{feature_id: "bbands_20_2", field: "percent_b"}, "cross_below", 0.2]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 10
+  complexity_pct: 50
+  category: "occurred_within"
+  direction: "long"

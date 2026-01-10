@@ -1,0 +1,67 @@
+version: "3.0.0"
+name: "S_S_107_htf_bbands_ltf_bbands"
+description: "Stress Gate 12: HTF close<BBands middle + LTF close>BBands upper (short). Bearish trend with reversion entry."
+
+symbol: "AVAXUSDT"
+tf: "15m"
+htf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # HTF BBands (4h timeframe for trend filter)
+  bbands_20_2_4h:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2
+    tf: "4h"
+
+  # LTF BBands (15m exec timeframe for entry timing)
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2
+
+actions:
+  entry_short:
+    all:
+      # HTF trend filter: price below BBands middle (bearish bias)
+      - ["close", "<", {feature_id: "bbands_20_2_4h", field: "middle"}]
+      # LTF entry signal: price at upper band (overbought in downtrend)
+      - ["close", ">", {feature_id: "bbands_20_2", field: "upper"}]
+  exit_short:
+    any:
+      # Exit on HTF breakout above middle
+      - ["close", ">", {feature_id: "bbands_20_2_4h", field: "middle"}]
+      # Exit on LTF oversold at lower band
+      - ["close", "<", {feature_id: "bbands_20_2", field: "lower"}]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 12
+  complexity_pct: 60
+  category: "htf_filter"
+  direction: "short"
+  tests:
+    - "htf_bbands_middle_filter"
+    - "ltf_bbands_upper_entry"
+    - "multi_tf_feature_access"

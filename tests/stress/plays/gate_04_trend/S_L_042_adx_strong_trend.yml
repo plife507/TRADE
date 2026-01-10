@@ -1,0 +1,48 @@
+version: "3.0.0"
+name: "S_L_042_adx_strong_trend"
+description: "Stress Gate 4: ADX strong trend with bullish bias entry (long). ADX > 25 confirms trend strength."
+
+symbol: "SOLUSDT"
+tf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - [{"feature_id": "adx_14", "field": "adx"}, ">", 25]
+      - [{"feature_id": "adx_14", "field": "dmp"}, ">", {"feature_id": "adx_14", "field": "dmn"}]
+  exit_long:
+    any:
+      - [{"feature_id": "adx_14", "field": "adx"}, "<", 20]
+      - [{"feature_id": "adx_14", "field": "dmn"}, ">", {"feature_id": "adx_14", "field": "dmp"}]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 4.0
+  take_profit_pct: 8.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 4
+  complexity_pct: 20
+  category: "trend"
+  direction: "long"

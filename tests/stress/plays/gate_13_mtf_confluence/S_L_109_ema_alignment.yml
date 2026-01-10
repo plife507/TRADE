@@ -1,0 +1,80 @@
+version: "3.0.0"
+name: "S_L_109_ema_alignment"
+description: "Stress Gate 13: Three-TF EMA alignment. HTF(4h) ema_50 > ema_200, MTF(1h) ema_21 > ema_50, LTF(15m) ema_9 cross_above ema_21 (long)."
+
+symbol: "LINKUSDT"
+tf: "15m"
+mtf: "1h"
+htf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # HTF (4h) - Trend context
+  ema_50_4h:
+    indicator: ema
+    params: {length: 50}
+    tf: "4h"
+  ema_200_4h:
+    indicator: ema
+    params: {length: 200}
+    tf: "4h"
+
+  # MTF (1h) - Confirmation
+  ema_21_1h:
+    indicator: ema
+    params: {length: 21}
+    tf: "1h"
+  ema_50_1h:
+    indicator: ema
+    params: {length: 50}
+    tf: "1h"
+
+  # LTF (15m) - Entry timing
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+
+actions:
+  entry_long:
+    all:
+      # HTF trend: ema_50 > ema_200 (bullish structure)
+      - ["ema_50_4h", ">", "ema_200_4h"]
+      # MTF confirmation: ema_21 > ema_50 (bullish alignment)
+      - ["ema_21_1h", ">", "ema_50_1h"]
+      # LTF entry: fast EMA crosses above slow
+      - ["ema_9", "cross_above", "ema_21"]
+
+  exit_long:
+    any:
+      # HTF trend breaks
+      - ["ema_50_4h", "<", "ema_200_4h"]
+      # LTF momentum reversal
+      - ["ema_9", "cross_below", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 13
+  complexity_pct: 65
+  category: "mtf_confluence"
+  direction: "long"

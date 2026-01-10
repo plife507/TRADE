@@ -1,0 +1,52 @@
+version: "3.0.0"
+name: "S_L_095_near_vwap"
+description: "Stress Gate 11: Close near VWAP within 0.5% (long). Institutional mean reversion entry."
+
+symbol: "DOGEUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  vwap_d:
+    indicator: vwap
+    params:
+      anchor: "D"
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      - ["close", "near_pct", "vwap_d", 0.5]
+      - ["close", ">", "vwap_d"]
+      - ["close", ">", "ema_20"]
+  exit_long:
+    any:
+      - ["close", "<", "ema_20"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 11
+  complexity_pct: 55
+  category: "proximity_operator"
+  direction: "long"

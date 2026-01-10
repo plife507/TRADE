@@ -1,0 +1,60 @@
+version: "3.0.0"
+name: "S_S_151_multiple_extremes"
+description: "Stress Gate 19: Triple extreme overbought RSI > 80 AND Stoch > 80 AND CCI > 150 (short). Multi-indicator extreme confluence."
+
+symbol: "XRPUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  stoch_14_3_3:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+  cci_20:
+    indicator: cci
+    params:
+      length: 20
+
+actions:
+  entry_short:
+    all:
+      - ["rsi_14", ">", 80]
+      - [{"feature_id": "stoch_14_3_3", "field": "k"}, ">", 80]
+      - ["cci_20", ">", 150]
+  exit_short:
+    any:
+      - ["rsi_14", "<", 40]
+      - [{"feature_id": "stoch_14_3_3", "field": "k"}, "<", 40]
+      - ["cci_20", "<", 0]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 19
+  complexity_pct: 95
+  category: "edge_cases"
+  direction: "short"

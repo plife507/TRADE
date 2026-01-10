@@ -299,6 +299,7 @@ class BacktestEngine:
         self._rollup_bucket: ExecRollupBucket = ExecRollupBucket()
         self._current_rollups: dict[str, float] = create_empty_rollup_dict()
         self._last_1m_idx: int = -1  # Track last processed 1m bar index
+        self._quote_feed_fallback_warned: bool = False  # Track if fallback warning issued
 
         # Phase 12: Funding rate and open interest data
         self._funding_df: pd.DataFrame | None = None
@@ -682,17 +683,19 @@ class BacktestEngine:
             self.logger.warning("Cannot build quote feed: no prepared frame")
             return
 
-        # Compute 1m warmup: convert exec warmup to 1m bars
-        # For a 15m exec TF, 1 warmup bar = 15 1m bars
-        exec_tf_minutes = TF_MINUTES.get(self.config.tf.lower(), 15)
-        warmup_bars_exec = self._prepared_frame.warmup_bars
-        warmup_bars_1m = warmup_bars_exec * exec_tf_minutes
+        # Compute 1m warmup: use the actual loaded data start time
+        # This ensures 1m quote feed matches the exec feed data range
+        # (important for multi-TF where HTF warmup extends data start significantly)
+        loaded_start = self._prepared_frame.loaded_start
+        requested_start = self._prepared_frame.requested_start
+        warmup_span = requested_start - loaded_start
+        warmup_bars_1m = max(0, int(warmup_span.total_seconds() / 60))
 
         try:
             # Load 1m data
             df_1m = load_1m_data_impl(
                 symbol=self.config.symbol,
-                window_start=self._prepared_frame.requested_start,
+                window_start=requested_start,
                 window_end=self._prepared_frame.requested_end,
                 warmup_bars_1m=warmup_bars_1m,
                 data_env=self.config.data_build.env,
@@ -1288,6 +1291,7 @@ class BacktestEngine:
         mark_price_override: float | None = None,
         last_price: float | None = None,
         prev_last_price: float | None = None,
+        quote_idx: int | None = None,
     ) -> RuntimeSnapshotView:
         """
         Build RuntimeSnapshotView for array-backed hot loop.
@@ -1303,6 +1307,7 @@ class BacktestEngine:
             mark_price_override: Optional override for mark_price (1m evaluation)
             last_price: 1m action price (ticker close) for DSL access
             prev_last_price: Previous 1m action price (for crossover operators)
+            quote_idx: Current 1m bar index for arbitrary last_price offset lookups
 
         Returns:
             RuntimeSnapshotView ready for strategy evaluation
@@ -1328,6 +1333,8 @@ class BacktestEngine:
             incremental_state=self._incremental_state,
             feature_registry=self._feature_registry,
             rationalized_state=self._rationalized_state,
+            quote_feed=self._quote_feed,
+            quote_idx=quote_idx,
         )
 
     def _evaluate_with_1m_subloop(
@@ -1362,8 +1369,15 @@ class BacktestEngine:
         # Check if 1m quote feed is available
         if self._quote_feed is None or self._quote_feed.length == 0:
             # Fallback: evaluate at exec close only (no 1m sub-loop)
-            # Note: This path runs when 1m data is unavailable. For full 1m
-            # action semantics, ensure 1m data is synced for your symbol.
+            # Log warning once per run to avoid log spam
+            if not self._quote_feed_fallback_warned:
+                self.logger.warning(
+                    f"1m quote feed unavailable for {self.config.symbol} - "
+                    f"using exec_tf close for signal evaluation. "
+                    f"For full 1m action semantics, sync 1m data: "
+                    f"Data Builder > Sync OHLCV > interval=1"
+                )
+                self._quote_feed_fallback_warned = True
             exec_close = float(self._exec_feed.close[exec_idx])
             snapshot = self._build_snapshot_view(
                 exec_idx, step_result, rollups, last_price=exec_close
@@ -1376,20 +1390,44 @@ class BacktestEngine:
         # Get 1m bar range for this exec bar
         start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(exec_idx, exec_tf_minutes)
 
-        # Clamp to available 1m data
-        end_1m = min(end_1m, self._quote_feed.length - 1)
+        # Clamp to available 1m data (both start and end)
+        max_valid_idx = self._quote_feed.length - 1
+        start_1m = min(start_1m, max_valid_idx)
+        end_1m = min(end_1m, max_valid_idx)
+
+        # If start > end after clamping, quote feed doesn't cover this exec bar
+        # Fall back to exec close evaluation
+        if start_1m > end_1m:
+            if not self._quote_feed_fallback_warned:
+                self.logger.warning(
+                    f"1m quote feed doesn't cover exec bar {exec_idx} for {self.config.symbol} - "
+                    f"using exec_tf close. Sync more 1m data if needed."
+                )
+                self._quote_feed_fallback_warned = True
+            exec_close = float(self._exec_feed.close[exec_idx])
+            snapshot = self._build_snapshot_view(
+                exec_idx, step_result, rollups, last_price=exec_close
+            )
+            signal = None
+            if not self._exchange.entries_disabled or self._exchange.position is not None:
+                signal = strategy(snapshot, self.config.params)
+            return signal, snapshot, None
 
         # Track last snapshot for return
         last_snapshot = None
         # Track previous 1m price for crossover operators
-        prev_price_1m: float | None = None
+        # Seed with the 1m bar BEFORE start_1m to enable crossover on first iteration
+        if start_1m > 0 and start_1m - 1 <= max_valid_idx:
+            prev_price_1m: float | None = float(self._quote_feed.close[start_1m - 1])
+        else:
+            prev_price_1m = None
 
         # Iterate through 1m bars (mandatory 1m action loop)
         for sub_idx in range(start_1m, end_1m + 1):
             # Get 1m close as both mark_price and last_price
             price_1m = float(self._quote_feed.close[sub_idx])
 
-            # Build snapshot with 1m prices
+            # Build snapshot with 1m prices and quote_idx for window operators
             snapshot = self._build_snapshot_view(
                 exec_idx=exec_idx,
                 step_result=step_result,
@@ -1397,6 +1435,7 @@ class BacktestEngine:
                 mark_price_override=price_1m,
                 last_price=price_1m,
                 prev_last_price=prev_price_1m,
+                quote_idx=sub_idx,
             )
             last_snapshot = snapshot
             # Update previous price for next iteration
@@ -1467,8 +1506,8 @@ class BacktestEngine:
         # P1-004 FIX: Pass unrealized_pnl and position_count for accurate risk checks
         decision = self.risk_policy.check(
             signal=signal,
-            equity=exchange.equity,
-            available_balance=exchange.available_balance,
+            equity=exchange.equity_usdt,
+            available_balance=exchange.available_balance_usdt,
             total_exposure=exchange.position.size_usdt if exchange.position else 0,
             unrealized_pnl=exchange.unrealized_pnl_usdt,
             position_count=1 if exchange.position else 0,

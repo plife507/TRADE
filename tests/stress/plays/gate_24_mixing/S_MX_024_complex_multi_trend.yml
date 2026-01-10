@@ -1,0 +1,82 @@
+version: "3.0.0"
+name: "S_MX_024_complex_multi_trend"
+description: "Stress Gate 24: Multi-indicator confluence in trend. Tests complex mixing."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      depends_on:
+        swing: swing
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", ">", "ema_21"]
+      - ["rsi_14", "between", [40, 60]]
+      - [{"feature_id": "adx_14", "field": "adx"}, ">", 20]
+      - [{"feature_id": "adx_14", "field": "dmp"}, ">", {"feature_id": "adx_14", "field": "dmn"}]
+      - [{"feature_id": "macd_12_26_9", "field": "histogram"}, ">", 0]
+      - [{"feature_id": "trend", "field": "direction"}, "==", 1]
+  exit_long:
+    any:
+      - ["ema_9", "<", "ema_21"]
+      - [{"feature_id": "trend", "field": "direction"}, "==", -1]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 24
+  complexity_pct: 100
+  category: "mixing"
+  direction: "long"

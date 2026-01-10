@@ -1,0 +1,67 @@
+version: "3.0.0"
+name: "S_L_133_mark_vwap_holds_cmf"
+description: "Stress Gate 16: last_price > VWAP holds_for 3 bars AND CMF > 0 (long). Sustained mark price above VWAP with volume confirmation."
+
+symbol: "DOTUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  vwap:
+    indicator: vwap
+    params: {}
+  cmf_20:
+    indicator: cmf
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      # Mark price sustained above VWAP for 3 bars
+      - holds_for:
+          bars: 3
+          expr:
+            all:
+              - ["last_price", ">", "vwap"]
+      # Chaikin Money Flow positive (volume confirmation)
+      - ["cmf_20", ">", 0]
+  exit_long:
+    any:
+      # Mark price sustained below VWAP
+      - holds_for:
+          bars: 3
+          expr:
+            all:
+              - ["last_price", "<", "vwap"]
+      # CMF turns negative
+      - ["cmf_20", "<", 0]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 16
+  complexity_pct: 80
+  category: "mark_price_complex"
+  direction: "long"
+  tests:
+    - "last_price_holds_for"
+    - "vwap_interaction"
+    - "volume_confirmation"

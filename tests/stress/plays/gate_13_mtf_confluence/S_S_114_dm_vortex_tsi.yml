@@ -1,0 +1,72 @@
+version: "3.0.0"
+name: "S_S_114_dm_vortex_tsi"
+description: "Stress Gate 13: DM + Vortex + TSI confluence. HTF(4h) dm.dmn > dmp, MTF(1h) vortex.vim > vip, LTF(15m) tsi cross_below signal (short)."
+
+symbol: "DOTUSDT"
+tf: "15m"
+mtf: "1h"
+htf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # HTF (4h) - Directional Movement
+  dm_14_4h:
+    indicator: dm
+    params: {length: 14}
+    tf: "4h"
+
+  # MTF (1h) - Vortex indicator
+  vortex_14_1h:
+    indicator: vortex
+    params: {length: 14}
+    tf: "1h"
+
+  # LTF (15m) - True Strength Index
+  tsi_13_25_13:
+    indicator: tsi
+    params:
+      fast: 13
+      slow: 25
+      signal: 13
+
+actions:
+  entry_short:
+    all:
+      # HTF trend: -DM > +DM (bearish pressure)
+      - [{feature_id: "dm_14_4h", field: "dmn"}, ">", {feature_id: "dm_14_4h", field: "dmp"}]
+      # MTF confirmation: VI- > VI+ (bearish vortex)
+      - [{feature_id: "vortex_14_1h", field: "vim"}, ">", {feature_id: "vortex_14_1h", field: "vip"}]
+      # LTF entry: TSI crosses below signal
+      - [{feature_id: "tsi_13_25_13", field: "tsi"}, "cross_below", {feature_id: "tsi_13_25_13", field: "signal"}]
+
+  exit_short:
+    any:
+      # HTF trend reverses
+      - [{feature_id: "dm_14_4h", field: "dmp"}, ">", {feature_id: "dm_14_4h", field: "dmn"}]
+      # LTF momentum reversal
+      - [{feature_id: "tsi_13_25_13", field: "tsi"}, "cross_above", {feature_id: "tsi_13_25_13", field: "signal"}]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 13
+  complexity_pct: 65
+  category: "mtf_confluence"
+  direction: "short"

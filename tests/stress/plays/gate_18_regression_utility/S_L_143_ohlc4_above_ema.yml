@@ -1,0 +1,55 @@
+version: "3.0.0"
+name: "S_L_143_ohlc4_above_ema"
+description: "Stress Gate 18: OHLC4 above EMA entry (long). Trend following using average price above moving average."
+
+symbol: "ETHUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ohlc4:
+    indicator: ohlc4
+    params: {}
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+actions:
+  entry_long:
+    all:
+      - ["ohlc4", ">", "ema_21"]
+      - ["ema_21", ">", "ema_50"]
+  exit_long:
+    any:
+      - ["ohlc4", "<", "ema_21"]
+      - ["ema_21", "<", "ema_50"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 18
+  complexity_pct: 90
+  category: "regression_utility"
+  direction: "long"

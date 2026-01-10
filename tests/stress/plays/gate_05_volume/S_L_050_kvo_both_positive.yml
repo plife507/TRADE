@@ -1,0 +1,50 @@
+version: "3.0.0"
+name: "S_L_050_kvo_both_positive"
+description: "Stress Gate 5: KVO and signal both positive entry (long). Strong volume accumulation."
+
+symbol: "SOLUSDT"
+tf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  kvo_34_55_13:
+    indicator: kvo
+    params:
+      fast: 34
+      slow: 55
+      signal: 13
+
+actions:
+  entry_long:
+    all:
+      - [{"feature_id": "kvo_34_55_13", "field": "kvo"}, ">", 0]
+      - [{"feature_id": "kvo_34_55_13", "field": "signal"}, ">", 0]
+  exit_long:
+    any:
+      - [{"feature_id": "kvo_34_55_13", "field": "kvo"}, "<", 0]
+      - [{"feature_id": "kvo_34_55_13", "field": "signal"}, "<", 0]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 5
+  complexity_pct: 25
+  category: "volume"
+  direction: "long"

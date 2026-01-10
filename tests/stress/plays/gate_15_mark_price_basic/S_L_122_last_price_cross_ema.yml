@@ -1,0 +1,51 @@
+version: "3.0.0"
+name: "S_L_122_last_price_cross_ema"
+description: "Stress Gate 15: last_price cross_above ema_9 (long). Mark price crossover entry."
+
+symbol: "LINKUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+actions:
+  entry_long:
+    all:
+      - ["last_price", "cross_above", "ema_9"]
+      - ["ema_9", ">", "ema_21"]
+  exit_long:
+    all:
+      - ["last_price", "cross_below", "ema_9"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 15
+  complexity_pct: 75
+  category: "mark_price_basic"
+  direction: "long"

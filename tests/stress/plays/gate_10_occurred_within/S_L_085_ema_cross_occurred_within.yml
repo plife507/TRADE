@@ -1,0 +1,59 @@
+version: "3.0.0"
+name: "S_L_085_ema_cross_occurred_within"
+description: "Stress Gate 10: occurred_within window - EMA 9/21 cross within 5 bars + price above EMA (long). Tests recent crossover confirmation."
+
+symbol: "DOGEUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+actions:
+  entry_long:
+    all:
+      - occurred_within:
+          bars: 5
+          expr:
+            all:
+              - ["ema_9", "cross_above", "ema_21"]
+      - ["close", ">", "ema_9"]
+  exit_long:
+    all:
+      - occurred_within:
+          bars: 3
+          expr:
+            all:
+              - ["ema_9", "cross_below", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 10
+  complexity_pct: 50
+  category: "occurred_within"
+  direction: "long"

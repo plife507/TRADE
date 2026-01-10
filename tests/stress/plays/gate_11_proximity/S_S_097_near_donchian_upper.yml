@@ -1,0 +1,55 @@
+version: "3.0.0"
+name: "S_S_097_near_donchian_upper"
+description: "Stress Gate 11: Close near Donchian Channel upper within 0.5% (short). Range high rejection."
+
+symbol: "AVAXUSDT"
+tf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  donchian_20:
+    indicator: donchian
+    params:
+      lower_length: 20
+      upper_length: 20
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    all:
+      - lhs: {feature_id: "close"}
+        op: near_pct
+        rhs: {feature_id: "donchian_20", field: "upper"}
+        tolerance: 0.005
+      - ["rsi_14", ">", 65]
+  exit_short:
+    all:
+      - ["close", "<", {feature_id: "donchian_20", field: "middle"}]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 11
+  complexity_pct: 55
+  category: "proximity_operator"
+  direction: "short"

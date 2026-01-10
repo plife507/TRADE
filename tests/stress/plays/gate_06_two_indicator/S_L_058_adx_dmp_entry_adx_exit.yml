@@ -1,0 +1,46 @@
+version: "3.0.0"
+name: "S_L_058_adx_dmp_entry_adx_exit"
+description: "Stress Gate 6: DM+ cross DM- entry, ADX weakness exit (long). Trend initiation with weakness exit."
+
+symbol: "SOLUSDT"
+tf: "4h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - [{feature_id: "adx_14", field: "dmp"}, "cross_above", {feature_id: "adx_14", field: "dmn"}]
+  exit_long:
+    all:
+      - [{feature_id: "adx_14", field: "adx"}, "<", 20]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 4.0
+  take_profit_pct: 8.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 6
+  complexity_pct: 30
+  category: "two_indicator"
+  direction: "long"

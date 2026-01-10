@@ -1,0 +1,50 @@
+version: "3.0.0"
+name: "S_L_152_consecutive_extremes"
+description: "Stress Gate 19: RSI extreme < 15 holds_for 5 bars (long). Sustained extreme oversold conditions."
+
+symbol: "ADAUSDT"
+tf: "1h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - holds_for:
+          bars: 5
+          expr:
+            all:
+              - ["rsi_14", "<", 15]
+  exit_long:
+    all:
+      - ["rsi_14", ">", 50]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 19
+  complexity_pct: 95
+  category: "edge_cases"
+  direction: "long"
