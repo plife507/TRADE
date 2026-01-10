@@ -38,7 +38,7 @@ A production-grade backtesting and live trading platform where strategies are de
 │                      BACKTEST ENGINE                            │
 │                                                                 │
 │   ┌────────────┐  ┌────────────┐  ┌────────────┐               │
-│   │ Indicators │  │ Structures │  │ Blocks DSL │               │
+│   │ Indicators │  │ Structures │  │ Actions DSL│               │
 │   │    (43)    │  │    (6)     │  │  (v3.0.0)  │               │
 │   └────────────┘  └────────────┘  └────────────┘               │
 │          │              │               │                       │
@@ -153,7 +153,7 @@ System: Run Play A in        # Multiple plays, weighted by regime
 
 ## DSL Features
 
-The Blocks DSL provides powerful, readable operators:
+The Actions DSL provides powerful, readable operators:
 
 ### Comparison & Crossover
 ```yaml
