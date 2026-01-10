@@ -52,7 +52,6 @@ from .pricing.intrabar_path import check_tp_sl_1m
 from .execution import ExecutionModel, ExecutionModelConfig, SlippageConfig
 from .funding import FundingModel
 from .liquidation import LiquidationModel
-from .metrics import ExchangeMetrics
 
 from ..types import Trade
 
@@ -136,8 +135,7 @@ class SimulatedExchange:
         ))
         self._funding = FundingModel()
         self._liquidation = LiquidationModel()
-        self._metrics = ExchangeMetrics()
-        
+
         # State
         self.position: Position | None = None
         self._order_book: OrderBook = OrderBook()  # All orders (market, limit, stop)
@@ -204,23 +202,6 @@ class SimulatedExchange:
     @property
     def taker_fee_rate(self) -> float:
         return self._fee_rate
-    
-    # Legacy property aliases
-    @property
-    def equity(self) -> float:
-        return self.equity_usdt
-    
-    @property
-    def cash_balance(self) -> float:
-        return self.cash_balance_usdt
-    
-    @property
-    def available_balance(self) -> float:
-        return self.available_balance_usdt
-    
-    @property
-    def free_margin(self) -> float:
-        return self.free_margin_usdt
     
     @property
     def is_liquidatable(self) -> bool:

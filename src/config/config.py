@@ -339,7 +339,10 @@ class RiskConfig:
     
     # Per-trade risk
     max_risk_per_trade_percent: float = 2.0  # % of account per trade
-    
+
+    # Minimum viable trade size (trades below this are rejected)
+    min_viable_size_usdt: float = 5.0
+
     # Hard caps (cannot be overridden by config)
     HARD_MAX_LEVERAGE: int = 10
     HARD_MAX_POSITION_USDT: float = 1000.0

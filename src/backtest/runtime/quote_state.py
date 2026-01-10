@@ -4,10 +4,32 @@ Quote state for 1m-driven price feed.
 Provides a closed-candle "ticker-like" quote stream derived from 1m bars.
 Used as the primary price source for simulator/backtest.
 
+Price Semantics (IMPORTANT for Live Integration):
+=================================================
+
+Two distinct price fields with different purposes:
+
+| Field | Backtest Source         | Live Source (Future)      | Use Case              |
+|-------|-------------------------|---------------------------|-----------------------|
+| last  | 1m bar close            | ticker.lastPrice          | Signal evaluation     |
+| mark  | 1m close OR mark kline  | ticker.markPrice          | PnL, liquidation, risk|
+
+WHY TWO PRICES:
+- last (px.last): Actual last trade price. For signal evaluation and entry/exit
+  decisions. Reflects real orderbook activity on the exchange.
+
+- mark (px.mark): Index-derived mark price. For position valuation, unrealized PnL,
+  and liquidation triggers. Bybit calculates this from prices across multiple
+  exchanges to prevent manipulation-triggered liquidations.
+
+In backtest, both default to the same 1m close source for simplicity.
+In live trading, they come from different WebSocket fields and CAN DIVERGE
+significantly during volatile periods.
+
 Key Design:
 - QuoteState: Immutable dataclass representing the current quote at a 1m close
-- px.last: Last trade proxy (1m close price)
-- px.mark: Mark price for risk/liquidation (1m close or dedicated mark kline)
+- px.last: Last trade proxy (1m close price) - for signal evaluation
+- px.mark: Mark price for risk/liquidation - for position valuation
 
 Invariants:
 - All values from CLOSED candles only (no partial bar data)

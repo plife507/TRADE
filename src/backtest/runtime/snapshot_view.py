@@ -38,6 +38,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, TYPE_CHECKING
 
 import numpy as np
@@ -51,9 +52,12 @@ if TYPE_CHECKING:
     from ..rationalization import RationalizedState
 
 
-# Module-level cache for path tokenization (P2-07: avoid string split in hot loop)
-# Paths are static strings, so caching at module level is safe and efficient.
-_PATH_CACHE: dict[str, list] = {}
+# LRU-cached path tokenization (P2-07: avoid string split in hot loop)
+# Max 1024 unique paths is more than enough for any Play config.
+@lru_cache(maxsize=1024)
+def _tokenize_path(path: str) -> tuple[str, ...]:
+    """Tokenize a dot-separated path. Cached with LRU eviction."""
+    return tuple(path.split("."))
 
 
 @dataclass
@@ -100,7 +104,7 @@ class TFContext:
         """
         Get indicator value at current index, raising if undeclared.
         
-        Use this when the indicator MUST be present (Idea Card declared it).
+        Use this when the indicator MUST be present (Play declared it).
         Raises KeyError if indicator is not in FeedStore.
         Raises ValueError if indicator value is NaN.
         """
@@ -109,7 +113,7 @@ class TFContext:
             raise KeyError(
                 f"Indicator '{name}' not declared. "
                 f"Available indicators: {available}. "
-                f"Ensure indicator is specified in FeatureSpec/Idea Card."
+                f"Ensure indicator is specified in FeatureSpec/Play."
             )
         val = self.feed.indicators[name][self.current_idx]
         if np.isnan(val):
@@ -147,20 +151,41 @@ class TFContext:
 class RuntimeSnapshotView:
     """
     Lightweight view over cached feed data.
-    
+
     This is the strategy-facing interface. All data access is via
     accessor methods that read from precomputed numpy arrays.
-    
+
     Zero per-bar allocation for OHLCV/features.
-    
+
+    Price Field Semantics (IMPORTANT for Live Integration):
+    =========================================================
+
+    Three distinct price concepts exist at different resolutions:
+
+    | Field       | Resolution | Backtest Source    | Live Source (Future)      |
+    |-------------|------------|--------------------| --------------------------|
+    | last_price  | 1m         | 1m bar close       | ticker.lastPrice          |
+    | mark_price  | 1m         | 1m close/mark kline| ticker.markPrice          |
+    | close       | eval_tf    | eval_tf bar close  | eval_tf bar close         |
+
+    last_price vs mark_price:
+    - last_price: For SIGNAL EVALUATION. Reflects actual orderbook trades.
+    - mark_price: For POSITION VALUATION (PnL, liquidation, risk).
+      Bybit derives this from index prices across exchanges to prevent
+      manipulation-triggered liquidations.
+
+    In backtest, both default to the same 1m close source. In live trading,
+    they come from different WebSocket fields and can diverge during volatility.
+
     Attributes:
         exec_idx: Current execution bar index
         exec_ctx: Exec TF context
         htf_ctx: HTF context (may be forward-filled)
         mtf_ctx: MTF context (may be forward-filled)
         exchange: Reference to exchange (for state queries)
-        mark_price: Current mark price
-        mark_price_source: Mark price source
+        mark_price: Mark price for PnL/liquidation (index-derived in live)
+        mark_price_source: Mark price provenance ("mark_1m" | "approx_from_ohlcv_1m")
+        last_price: Property - 1m ticker close for signal evaluation
 
         # Readiness
         ready: Whether snapshot is ready for strategy
@@ -176,6 +201,7 @@ class RuntimeSnapshotView:
         '_resolvers', '_incremental_state',
         '_feature_registry', '_feature_id_cache',
         '_rationalized_state', '_last_price', '_prev_last_price',
+        '_quote_feed', '_quote_idx',  # For arbitrary last_price offset lookups
     )
     
     def __init__(
@@ -195,6 +221,8 @@ class RuntimeSnapshotView:
         rationalized_state: "RationalizedState | None" = None,
         last_price: float | None = None,
         prev_last_price: float | None = None,
+        quote_feed: "FeedStore | None" = None,
+        quote_idx: int | None = None,
     ):
         """
         Initialize snapshot view.
@@ -205,19 +233,27 @@ class RuntimeSnapshotView:
             htf_idx: Current HTF context index (last closed)
             mtf_idx: Current MTF context index (last closed)
             exchange: SimulatedExchange reference
-            mark_price: Current mark price
-            mark_price_source: Mark price source
+            mark_price: Mark price for position valuation (PnL, liquidation, risk).
+                In backtest: 1m bar close or dedicated mark kline.
+                In live: ticker.markPrice (index-based, anti-manipulation).
+            mark_price_source: Provenance ("mark_1m" | "approx_from_ohlcv_1m")
             history_config: History configuration
             history_ready: Whether history windows are filled
             rollups: Optional px.rollup.* values from 1m accumulation
             incremental_state: Optional MultiTFIncrementalState for structure access
             feature_registry: Optional FeatureRegistry for feature_id-based access
             rationalized_state: Optional RationalizedState for Layer 2 access
-            last_price: 1m action price (ticker close). If None, defaults to mark_price.
+            last_price: 1m ticker close for SIGNAL EVALUATION.
                 In backtest: 1m bar close from action loop.
-                In live: Would be WebSocket ticker price.
+                In live: ticker.lastPrice (actual last trade).
+                If None, defaults to mark_price (backtest convenience).
+                NOTE: Semantically different from mark_price in live trading!
             prev_last_price: Previous 1m action price (for crossover operators).
                 If None, crossovers with last_price will fail.
+            quote_feed: Optional 1m FeedStore for arbitrary last_price offset lookups.
+                Used by window operators (holds_for, occurred_within) that need
+                last_price history beyond offset=1.
+            quote_idx: Current 1m bar index in quote_feed. Required if quote_feed provided.
         """
         self._feeds = feeds
         self._incremental_state = incremental_state
@@ -266,6 +302,9 @@ class RuntimeSnapshotView:
         self._last_price = last_price if last_price is not None else mark_price
         # prev_last_price: previous 1m action price (for crossover operators)
         self._prev_last_price = prev_last_price
+        # quote_feed + quote_idx: for arbitrary last_price offset lookups (window operators)
+        self._quote_feed = quote_feed
+        self._quote_idx = quote_idx
 
         self.history_config = history_config or DEFAULT_HISTORY_CONFIG
         self.history_ready = history_ready
@@ -331,13 +370,22 @@ class RuntimeSnapshotView:
     @property
     def last_price(self) -> float:
         """
-        Current 1m ticker close (action price).
+        Current 1m ticker close - for SIGNAL EVALUATION.
 
-        In backtest: 1m bar close from the action loop.
-        In live: Would be WebSocket ticker price.
+        Semantics:
+        - Backtest: 1m bar close from the action loop
+        - Live (future): WebSocket ticker.lastPrice (actual last trade)
 
-        This is the price used for signal evaluation and TP/SL checking
-        at action_tf (1m) granularity.
+        Use Case:
+        - Signal evaluation at 1m granularity
+        - Entry/exit price decisions
+        - Reflects actual orderbook activity
+
+        NOTE: This is semantically different from mark_price in live trading.
+        In volatile markets, last_price reflects actual trades while mark_price
+        is index-derived and more stable. In backtest, both default to 1m close.
+
+        See also: mark_price (for PnL/liquidation), close (eval_tf bar close)
         """
         return self._last_price
 
@@ -378,7 +426,7 @@ class RuntimeSnapshotView:
         """
         Get current exec indicator by name, raising if undeclared.
         
-        Use this when the indicator MUST be present (Idea Card declared it).
+        Use this when the indicator MUST be present (Play declared it).
         Raises KeyError if indicator is not declared.
         Raises ValueError if indicator value is NaN.
         """
@@ -615,7 +663,16 @@ class RuntimeSnapshotView:
                     raise ValueError("last_price offset=1 requires prev_last_price (not available)")
                 return self._prev_last_price
             else:
-                raise ValueError(f"last_price only supports offset 0 or 1, got {offset}")
+                # For offset > 1, use quote_feed to look up historical 1m prices
+                if self._quote_feed is None or self._quote_idx is None:
+                    raise ValueError(
+                        f"last_price offset={offset} requires quote_feed (not available). "
+                        "Window operators with last_price need 1m data."
+                    )
+                target_idx = self._quote_idx - offset
+                if target_idx < 0:
+                    return None  # Not enough history
+                return float(self._quote_feed.close[target_idx])
 
         # Handle funding_rate - market data field (Phase 12)
         if indicator_key == "funding_rate":
@@ -766,7 +823,16 @@ class RuntimeSnapshotView:
                     raise ValueError("last_price offset=1 requires prev_last_price (not available)")
                 return self._prev_last_price
             else:
-                raise ValueError(f"last_price only supports offset 0 or 1, got {offset}")
+                # For offset > 1, use quote_feed to look up historical 1m prices
+                if self._quote_feed is None or self._quote_idx is None:
+                    raise ValueError(
+                        f"last_price offset={offset} requires quote_feed (not available). "
+                        "Window operators with last_price need 1m data."
+                    )
+                target_idx = self._quote_idx - offset
+                if target_idx < 0:
+                    return None  # Not enough history
+                return float(self._quote_feed.close[target_idx])
 
         if feature_id == "mark_price":
             if offset != 0:
@@ -1344,11 +1410,8 @@ class RuntimeSnapshotView:
         Raises:
             ValueError: If path is unknown (forward-only, no silent failures)
         """
-        # P2-07: Use cached path tokens to avoid string split in hot loop
-        parts = _PATH_CACHE.get(path)
-        if parts is None:
-            parts = path.split(".")
-            _PATH_CACHE[path] = parts
+        # P2-07: Use LRU-cached path tokens to avoid string split in hot loop
+        parts = _tokenize_path(path)
         namespace = parts[0]
 
         # Dispatch to namespace resolver (instance lookup, no getattr)
@@ -1379,11 +1442,7 @@ class RuntimeSnapshotView:
             Only indicator paths support offset. Price/structure paths
             return None for offset > 0.
         """
-        parts = _PATH_CACHE.get(path)
-        if parts is None:
-            parts = path.split(".")
-            _PATH_CACHE[path] = parts
-
+        parts = _tokenize_path(path)
         namespace = parts[0]
 
         if namespace == "indicator":

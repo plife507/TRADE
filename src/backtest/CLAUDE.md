@@ -90,6 +90,47 @@ See `src/forge/CLAUDE.md` for Forge-specific rules and architecture.
 
 **Explicit Indicators**: No defaults. Undeclared indicators raise KeyError.
 
+## Price Field Semantics (CRITICAL for Live Integration)
+
+Three distinct price concepts exist at different resolutions:
+
+| Field       | Resolution | Backtest Source         | Live Source (Future)      | Use Case              |
+|-------------|------------|-------------------------|---------------------------|-----------------------|
+| `last_price`| 1m         | 1m bar close            | ticker.lastPrice          | Signal evaluation     |
+| `mark_price`| 1m         | 1m close OR mark kline  | ticker.markPrice          | PnL, liquidation, risk|
+| `close`     | eval_tf    | eval_tf bar close       | eval_tf bar close         | Indicator computation |
+
+### last_price vs mark_price
+
+**These are NOT aliases. They are semantically different in live trading.**
+
+- **last_price**: Actual last trade price on the exchange. Use for:
+  - Signal evaluation at 1m granularity
+  - Entry/exit price decisions
+  - Reflects real orderbook activity (can spike during volatility)
+
+- **mark_price**: Index-derived mark price. Use for:
+  - Position valuation (unrealized PnL)
+  - Liquidation trigger calculations
+  - Risk metrics
+  - Bybit calculates from prices across multiple exchanges to prevent manipulation
+
+In backtest, both default to the same 1m close source for simplicity. In live trading, they come from different WebSocket fields and **can diverge significantly** during volatile periods.
+
+### Built-in Features (No Declaration Required)
+
+These are runtime-provided, not computed indicators:
+
+```python
+BUILTIN_FEATURES = {
+    "last_price",   # 1m ticker - for signals
+    "mark_price",   # 1m mark - for PnL/liquidation
+    "close", "open", "high", "low", "volume",  # eval_tf bar OHLCV
+}
+```
+
+See: `src/backtest/execution_validation.py` for full documentation.
+
 ## Multi-Timeframe Forward-Fill Semantics
 
 **Bybit API Intervals**: `1,3,5,15,30,60,120,240,360,720,D,W,M`
@@ -145,6 +186,35 @@ snapshot.htf_ctx.current_idx:  [0, 0, 0, 0, 1, 1, 1, 1]
 - **Indicators**: HTF EMA(50) value stays constant across 4 exec bars until next HTF close
 - **Structures**: HTF swing.high_level updates only when HTF bar closes and swing is confirmed
 - **No Lookahead**: Values reflect last CLOSED bar, never partial/forming bars
+
+### Feature Timeframe Inheritance
+
+Features inherit their timeframe from the Play's main `tf:` unless explicitly overridden.
+
+| Feature Config | Timeframe Used |
+|----------------|----------------|
+| No `tf:` field | Inherits main `tf:` (execution TF) |
+| `tf: "4h"` | Uses 4h (explicit override) |
+
+**Inheritance is flat (one level only).** No feature-to-feature inheritance.
+
+```yaml
+tf: "15m"                    # Main execution TF
+
+features:
+  ema_9:                     # No tf: → uses 15m (inherited)
+    indicator: ema
+    params: {length: 9}
+
+  ema_50_4h:                 # Explicit tf: → uses 4h
+    indicator: ema
+    params: {length: 50}
+    tf: "4h"
+```
+
+**Note:** The `source:` field (e.g., `source: volume`) changes input data, not timeframe.
+
+**See:** `docs/specs/PLAY_DSL_COOKBOOK.md` → "Feature Timeframe Inheritance" for full details.
 
 **Fail-Loud Config**: Invalid `mark_price_source`, `fee_mode`, `margin_mode`, `position_mode` raise ValueError.
 

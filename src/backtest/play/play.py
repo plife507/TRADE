@@ -191,18 +191,30 @@ def _convert_condition_item(item: list | dict) -> dict:
         raise ValueError(f"Condition item must be list or dict, got: {type(item)}")
 
 
-def _convert_shorthand_conditions(block_content: dict) -> dict:
+def _convert_shorthand_conditions(block_content: dict | list) -> dict:
     """
     Convert shorthand block content to full DSL "when" clause.
 
     Input formats:
         {"all": [conditions...]}
         {"any": [conditions...]}
+        [condition_list, ...]  # List of conditions (implicit all)
         Single condition list
 
     Output:
         Full DSL when clause dict.
     """
+    # Handle list input (e.g., expr: [["ema_9", "cross_above", "ema_21"]])
+    if isinstance(block_content, list):
+        if len(block_content) == 0:
+            return {}
+        elif len(block_content) == 1:
+            # Single condition - convert and wrap in all
+            return {"all": [_convert_condition_item(block_content[0])]}
+        else:
+            # Multiple conditions - implicit all
+            return {"all": [_convert_condition_item(c) for c in block_content]}
+
     if "all" in block_content:
         conditions = block_content["all"]
         return {"all": [_convert_condition_item(c) for c in conditions]}

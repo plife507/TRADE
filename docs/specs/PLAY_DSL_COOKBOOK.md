@@ -252,6 +252,109 @@ features:
     # Outputs: lower, middle, upper, bandwidth, percent_b
 ```
 
+### Feature Timeframe Inheritance (IMPORTANT)
+
+Every feature computes on a specific timeframe. **If a feature does not specify a `tf:` field, it inherits the Play's main `tf:` (execution timeframe).**
+
+#### Inheritance Rules
+
+| Feature `tf:` Field | Timeframe Used | Update Behavior |
+|---------------------|----------------|-----------------|
+| **Not specified** | Inherits main `tf:` | Updates every exec bar |
+| **Explicit (slower than exec)** | Uses specified TF | Forward-fills between TF closes |
+| **Explicit (faster than exec)** | Uses specified TF | Sampled at exec bar boundaries |
+
+**Important: Inheritance is flat (one level only).** There is no feature-to-feature inheritance. Each feature either:
+1. Has an explicit `tf:` → uses that value
+2. Has no `tf:` → defaults to the Play's main `tf:`
+
+The `source:` field (e.g., `source: volume`) changes the **input data**, not the timeframe.
+
+#### How It Works
+
+```yaml
+tf: "15m"                      # Main execution TF
+
+features:
+  # NO tf: specified → inherits "15m"
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+    # Computed on 15m bars, updates every 15m
+
+  # Explicit tf: "4h" → uses 4h, forward-fills
+  ema_50_4h:
+    indicator: ema
+    params: {length: 50}
+    tf: "4h"
+    # Computed on 4h bars, forward-fills for 16 exec bars (4h ÷ 15m)
+
+  # Explicit tf: "1h" → uses 1h, forward-fills
+  rsi_14_1h:
+    indicator: rsi
+    params: {length: 14}
+    tf: "1h"
+    # Computed on 1h bars, forward-fills for 4 exec bars (1h ÷ 15m)
+```
+
+#### Forward-Fill Behavior
+
+When a feature's TF is **slower** than the execution TF, its value remains constant (forward-fills) until the slower TF bar closes:
+
+```
+exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
+                  +-----+-----+-----+-----+-----+-----+-----+-----+
+1h feature:       |     1h bar 0 (v=100)  |    1h bar 1 (v=102)   |
+                  |  100   100   100  100 |  102   102   102  102 |
+                  '---- forward-fill -----'
+```
+
+**No lookahead:** Forward-filled values always reflect the **last CLOSED bar**, never partial/forming bars.
+
+#### Why This Matters
+
+```yaml
+tf: "15m"
+
+features:
+  ema_fast:           # BAD: unclear what TF
+    indicator: ema
+    params: {length: 9}
+
+  ema_9:              # GOOD: inherits 15m (clear from context)
+    indicator: ema
+    params: {length: 9}
+
+  ema_9_1h:           # GOOD: explicit 1h (clear from name + config)
+    indicator: ema
+    params: {length: 9}
+    tf: "1h"
+```
+
+**Best practice:** Include TF in feature names when using explicit `tf:` override (e.g., `ema_50_4h`, `rsi_14_1h`). This makes DSL expressions self-documenting:
+
+```yaml
+# Clear: ema_9 is 15m (exec), ema_50_4h is 4h
+- ["ema_9", ">", "ema_50_4h"]
+
+# Unclear: what TF is ema_slow?
+- ["ema_fast", ">", "ema_slow"]
+```
+
+#### Interaction with Built-in Price Features
+
+Built-in price features have **fixed resolutions** that do NOT follow inheritance:
+
+| Feature | Resolution | Inheritance |
+|---------|------------|-------------|
+| `last_price` | Always 1m | No (fixed) |
+| `mark_price` | Always 1m | No (fixed) |
+| `close`, `open`, `high`, `low`, `volume` | Always exec TF | No (fixed) |
+| Declared features without `tf:` | Exec TF | **Yes (inherits)** |
+| Declared features with `tf:` | Specified TF | No (explicit) |
+
+This means `last_price` provides 1m precision regardless of your `tf:` setting, while indicator features follow the inheritance rules above.
+
 ### Complete Indicator Registry (43 Total)
 
 **Single-Output (27):**
@@ -312,8 +415,8 @@ features:
 | Feature | Description | Update Rate | Backtest Source | Live Source (Future) |
 |---------|-------------|-------------|-----------------|----------------------|
 | `open`, `high`, `low`, `close`, `volume` | OHLCV data | Per exec bar | Historical candles | REST/WebSocket candles |
-| `last_price` | Current price (1m resolution) | Every 1m | 1m bar close | WebSocket ticker |
-| `mark_price` | Fair price for margin/PnL | Every 1m | 1m bar close | WebSocket mark price |
+| `last_price` | Current price (1m resolution) | Every 1m | 1m bar close | `ticker.lastPrice` |
+| `mark_price` | Fair price for margin/PnL | Every 1m | 1m bar close | `ticker.markPrice` |
 
 ### Price Features Deep Dive
 
@@ -336,6 +439,48 @@ mark_price:  Updated every 1m (used for margin calculations)
 | `close` | Bar-level conditions, indicators, end-of-bar decisions |
 | `last_price` | Precise entries, cross-TF comparisons, intra-bar TP/SL checks |
 | `mark_price` | Margin calculations, PnL computation, liquidation checks |
+
+### CRITICAL: last_price vs mark_price (Live Integration)
+
+> **These are NOT aliases. They are semantically different in live trading.**
+
+In backtest, both default to the same 1m close source for simplicity. In live trading, they come from **different WebSocket fields** and **can diverge significantly** during volatile periods.
+
+**Why Bybit Has Two Prices:**
+
+| Price | Source | Purpose | Behavior During Volatility |
+|-------|--------|---------|---------------------------|
+| `last_price` | Actual last trade on Bybit | Signal evaluation, entry/exit decisions | Can spike/crash with orderbook activity |
+| `mark_price` | Index across multiple exchanges | PnL, liquidation, margin | Stable (anti-manipulation design) |
+
+**Example divergence scenario:**
+```
+During a flash crash on Bybit:
+- last_price: Drops to $50,000 (actual trades happening)
+- mark_price: Stays at $51,500 (index stable across exchanges)
+
+Your strategy sees:
+- Signal evaluation uses last_price → May trigger entries
+- Position PnL uses mark_price → Won't show the full paper loss
+- Liquidation uses mark_price → Protected from manipulation wicks
+```
+
+**When to use which:**
+
+```yaml
+# CORRECT: Use last_price for signal evaluation
+actions:
+  entry_long:
+    all:
+      - ["last_price", "cross_above", "ema_50"]  # Actual trading price
+
+# CORRECT: Engine internally uses mark_price for:
+# - Unrealized PnL calculation
+# - Liquidation distance checks
+# - Margin requirement calculations
+```
+
+**Design intent:** In live trading, you want to enter/exit based on where you'll actually execute (`last_price`), but value your position based on the stable index price (`mark_price`) to avoid manipulation-triggered liquidations.
 
 **Crossover with 1m resolution:**
 

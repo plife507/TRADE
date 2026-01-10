@@ -109,8 +109,13 @@ def run_mark_price_smoke(
     console.print(f"\n[bold cyan]Step 3: Validate Mark Price Retrieval[/]")
 
     try:
-        # Test retrieval at various timestamps
-        test_indices = [0, 100, 250, sample_bars - 1]
+        # Test retrieval at various timestamps (scale with sample_bars)
+        test_indices = [
+            0,
+            sample_bars // 4,
+            sample_bars // 2,
+            sample_bars - 1,
+        ]
 
         for idx in test_indices:
             ts = int(ts_close_array[idx])
@@ -234,8 +239,8 @@ def run_mark_price_smoke(
             tf_mapping={"exec": "15m"},
         )
 
-        # Create snapshot at test index
-        test_idx = 100
+        # Create snapshot at test index (scale with sample_bars)
+        test_idx = sample_bars // 2
         test_ts = int(ts_close_array[test_idx])
         expected_mark = float(close_array[test_idx])
 

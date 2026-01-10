@@ -38,6 +38,61 @@ from .play import ExitMode
 # Maximum allowed warmup bars per TF (prevents accidental years of data requests)
 MAX_WARMUP_BARS = 1000
 
+# =============================================================================
+# Built-in Price Features (Runtime-Provided, Not Computed Indicators)
+# =============================================================================
+#
+# These features are provided by the engine runtime and do NOT need declaration
+# in the Play's `features:` section. They come from data feeds, not indicator
+# computation.
+#
+# PRICE SEMANTICS (Important for Live Integration):
+#
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  Feature      │ Backtest Source        │ Live Source (Future)              │
+# ├───────────────┼────────────────────────┼───────────────────────────────────┤
+# │  last_price   │ 1m bar close           │ WebSocket ticker.lastPrice        │
+# │               │ (actual trade proxy)   │ (actual last trade on exchange)   │
+# │               │                        │                                   │
+# │  mark_price   │ 1m bar close OR        │ WebSocket ticker.markPrice        │
+# │               │ dedicated mark kline   │ (index-based, anti-manipulation)  │
+# └─────────────────────────────────────────────────────────────────────────────┘
+#
+# WHY TWO PRICE FIELDS:
+# - last_price: For signal evaluation. Where you'd actually execute trades.
+#   In volatile markets, this reflects actual orderbook activity.
+#
+# - mark_price: For position valuation, unrealized PnL, and liquidation.
+#   Bybit calculates this from index prices across multiple exchanges to
+#   prevent manipulation-triggered liquidations.
+#
+# In backtest, both currently default to the same 1m close source, but the
+# architecture separates them for live trading where they come from different
+# WebSocket fields and can diverge significantly during volatility.
+#
+# OHLCV FEATURES:
+# - close, open, high, low, volume: Current eval_tf bar values
+#   These are the exec timeframe bar values, not 1m values.
+#
+# =============================================================================
+
+BUILTIN_FEATURES = {
+    # === 1m Ticker Prices (Action-Level Resolution) ===
+    "last_price",   # 1m ticker close - for signal evaluation
+                    # Backtest: 1m bar close | Live: ticker.lastPrice
+
+    "mark_price",   # Mark price - for PnL/liquidation/risk
+                    # Backtest: 1m close or mark kline | Live: ticker.markPrice
+                    # NOTE: Semantically different from last_price in live trading
+
+    # === Eval TF Bar OHLCV (Exec Timeframe Resolution) ===
+    "close",        # Current eval_tf bar close
+    "open",         # Current eval_tf bar open
+    "high",         # Current eval_tf bar high
+    "low",          # Current eval_tf bar low
+    "volume",       # Current eval_tf bar volume
+}
+
 # Earliest available Bybit data (linear perpetuals launched late 2018)
 # This prevents requests for data that doesn't exist
 EARLIEST_BYBIT_DATE_YEAR = 2018
@@ -533,6 +588,10 @@ def validate_play_features(play: "Play") -> PlayValidationResult:
 
         # Skip structure keys without prefix (auto-resolved to structure.*)
         if key in structure_keys:
+            continue
+
+        # Skip built-in price features (last_price, close, etc.)
+        if key in BUILTIN_FEATURES:
             continue
 
         # Check feature exists in declared features

@@ -184,9 +184,13 @@ class BybitClient:
             # Bybit allows max 1000ms ahead, recv_window behind
             # If local clock is MORE than 1 second AHEAD, authenticated requests WILL fail
             if self._time_offset_ms < -1000:
-                self.logger.error(
-                    f"CRITICAL: Your system clock is {abs(self._time_offset_ms)}ms AHEAD of Bybit server! "
-                    f"Authenticated API requests will fail. Please sync your system clock."
+                drift_ms = abs(self._time_offset_ms)
+                raise RuntimeError(
+                    f"CRITICAL CLOCK DRIFT: Your system clock is {drift_ms}ms AHEAD of Bybit server. "
+                    f"Authenticated API requests will fail with this drift. "
+                    f"Please sync your system clock before running the trading bot. "
+                    f"On Windows: Settings > Time & Language > Sync now. "
+                    f"On Linux: sudo ntpdate -s time.nist.gov"
                 )
             elif abs(self._time_offset_ms) > 5000:
                 self.logger.warning(

@@ -232,7 +232,7 @@ class BarProcessor:
         step_result = self._process_exchange_bar(i, bar, prev_bar)
 
         # Sync risk manager equity with exchange
-        engine.risk_manager.sync_equity(self._exchange.equity)
+        engine.risk_manager.sync_equity(self._exchange.equity_usdt)
 
         # Update HTF/MTF indices during warmup (for forward-fill)
         htf_updated_warmup = False
@@ -328,7 +328,7 @@ class BarProcessor:
                 self._state_tracker.on_order_rejected(_rejection.reason)
 
         # Sync risk manager equity
-        engine.risk_manager.sync_equity(self._exchange.equity)
+        engine.risk_manager.sync_equity(self._exchange.equity_usdt)
 
         # Update HTF/MTF indices
         htf_updated, mtf_updated = False, False
@@ -617,7 +617,7 @@ class BarProcessor:
 
         equity_curve.append(EquityPoint(
             timestamp=bar.ts_close,
-            equity=exchange.equity,
+            equity=exchange.equity_usdt,
         ))
 
         account_curve.append(AccountCurvePoint(

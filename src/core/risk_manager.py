@@ -282,7 +282,7 @@ class RiskManager:
         
         # Check 6: Minimum viable size
         # Skip if signal.size_usdt=0 (backtest engine computes size later)
-        min_viable_size = 5.0  # $5 minimum trade
+        min_viable_size = self.config.min_viable_size_usdt
         if signal.size_usdt > 0 and adjusted_size < min_viable_size:
             return RiskCheckResult(
                 allowed=False,

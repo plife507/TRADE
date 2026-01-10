@@ -135,6 +135,8 @@ def build_snapshot_view_impl(
     incremental_state: "MultiTFIncrementalState | None" = None,
     feature_registry: "FeatureRegistry | None" = None,
     rationalized_state: "RationalizedState | None" = None,
+    quote_feed: "FeedStore | None" = None,
+    quote_idx: int | None = None,
 ) -> RuntimeSnapshotView:
     """
     Build RuntimeSnapshotView for array-backed hot loop.
@@ -162,6 +164,8 @@ def build_snapshot_view_impl(
         incremental_state: Optional MultiTFIncrementalState for structure access
         feature_registry: Optional FeatureRegistry for feature_id-based access
         rationalized_state: Optional RationalizedState for Layer 2 access
+        quote_feed: Optional 1m FeedStore for arbitrary last_price offset lookups.
+        quote_idx: Current 1m bar index in quote_feed.
 
     Returns:
         RuntimeSnapshotView ready for strategy evaluation
@@ -197,4 +201,6 @@ def build_snapshot_view_impl(
         rationalized_state=rationalized_state,
         last_price=last_price,
         prev_last_price=prev_last_price,
+        quote_feed=quote_feed,
+        quote_idx=quote_idx,
     )

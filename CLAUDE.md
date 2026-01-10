@@ -95,6 +95,29 @@ This is enforced by `.gitattributes` (`* text=auto`, `*.py eol=lf`).
 
 ---
 
+## PRIME DIRECTIVE: SEQUENTIAL DATABASE ACCESS
+
+**DuckDB does NOT support concurrent access. NEVER run parallel agents that access the database.**
+
+- Backtest runs MUST be sequential (one at a time)
+- Data operations MUST be sequential
+- NEVER launch parallel agents for database-dependent tasks
+- If you need to run multiple backtests, run them in a single sequential loop
+
+```python
+# WRONG - parallel agents hitting DB
+for gate in gates:
+    Task(backtest_gate, run_in_background=True)  # Will cause file lock errors
+
+# CORRECT - sequential execution
+for play in plays:
+    run_backtest(play)  # One at a time
+```
+
+This applies to ALL database operations in this repository.
+
+---
+
 ## Project Overview
 
 TRADE is a **modular, production-ready** Bybit futures trading bot with complete UTA support, comprehensive order types, position management, tool registry for orchestrator/bot integration, and risk controls.
@@ -334,6 +357,31 @@ Any timeframe **slower than exec** forward-fills its values until its bar closes
 - **HTF**: Forward-fills until HTF bar closes
 
 This ensures no-lookahead: values always reflect the last **CLOSED** bar, never partial/forming bars.
+
+### Feature Timeframe Inheritance
+
+Features inherit their TF from the Play's main `tf:` unless explicitly overridden:
+
+```yaml
+tf: "15m"                    # Main execution TF
+
+features:
+  ema_9:                     # No tf: → inherits "15m"
+    indicator: ema
+    params: {length: 9}
+
+  ema_50_4h:                 # Explicit tf: → uses "4h"
+    indicator: ema
+    params: {length: 50}
+    tf: "4h"                 # Forward-fills between 4h closes
+```
+
+**Key rules:**
+- Inheritance is **flat (one level only)** — no feature-to-feature inheritance
+- `source:` field changes input data, not timeframe
+- Built-in prices (`last_price`, `mark_price`) are always 1m, `close` is always exec TF
+
+**See:** `docs/specs/PLAY_DSL_COOKBOOK.md` → "Feature Timeframe Inheritance" for full details.
 
 ## Module Documentation
 
