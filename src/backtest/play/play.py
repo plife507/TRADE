@@ -162,6 +162,8 @@ def _convert_shorthand_condition(cond: list) -> dict:
         if "." in rhs_raw:
             parts = rhs_raw.split(".", 1)
             rhs = {"feature_id": parts[0], "field": parts[1]}
+        elif rhs_raw.isupper() and rhs_raw.replace("_", "").isalpha():
+            rhs = rhs_raw
         else:
             rhs = {"feature_id": rhs_raw}
     else:

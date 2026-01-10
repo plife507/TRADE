@@ -1,0 +1,54 @@
+version: 3.0.0
+name: S3_S_018_swing_low_idx
+description: 'Struct Gate 1: Swing low_idx - Bar index of swing low (short).'
+symbol: BTCUSDT
+tf: 15m
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+structures:
+  exec:
+  - type: swing
+    key: swing
+    params:
+      left: 5
+      right: 5
+actions:
+  entry_short:
+    all:
+    - - close
+      - <
+      - ema_21
+    - - feature_id: swing
+        field: low_idx
+      - '>'
+      - 0
+  exit_short:
+    any:
+    - - close
+      - '>'
+      - ema_21
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+_test_metadata:
+  gate: 1
+  complexity_pct: 10
+  category: swing_basics
+  direction: short

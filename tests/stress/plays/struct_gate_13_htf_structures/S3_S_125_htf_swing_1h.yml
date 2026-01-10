@@ -1,0 +1,62 @@
+version: 3.0.0
+name: S3_S_125_htf_swing_1h
+description: "HTF Structure: 1h swing low breakdown entry (short). Price breaks below 1h swing low = bearish momentum."
+symbol: BTCUSDT
+tf: 15m
+htf: "1h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  htf:
+    "1h":
+      - type: swing
+        key: swing_1h
+        params:
+          left: 3
+          right: 3
+
+actions:
+  entry_short:
+    all:
+      # Price below 1h swing low = breakdown
+      - [close, "<", {feature_id: swing_1h, field: low_level}]
+      # RSI not oversold (basic filter)
+      - [rsi_14, ">", 25]
+  exit_short:
+    any:
+      # Price recovers above swing low
+      - [close, ">", {feature_id: swing_1h, field: low_level}]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 13
+  complexity_pct: 50
+  category: htf_structures
+  direction: short
+  tests:
+    - htf_swing_1h_detection
+    - htf_swing_low_breakdown

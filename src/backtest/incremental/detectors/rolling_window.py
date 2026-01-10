@@ -11,7 +11,7 @@ Usage in Play:
           key: low_20
           params:
             size: 20
-            field: low
+            source: low
             mode: min
 
 Access in rules:
@@ -28,8 +28,8 @@ from ..base import BarData, BaseIncrementalDetector
 from ..primitives import MonotonicDeque
 from ..registry import register_structure
 
-# Valid fields that can be tracked
-VALID_FIELDS = frozenset({"open", "high", "low", "close", "volume"})
+# Valid sources that can be tracked
+VALID_SOURCES = frozenset({"open", "high", "low", "close", "volume"})
 
 # Valid modes
 VALID_MODES = frozenset({"min", "max"})
@@ -41,12 +41,12 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
     Rolling min/max over N bars using MonotonicDeque.
 
     Maintains O(1) amortized sliding window min or max over a
-    configurable OHLCV field. Uses MonotonicDeque internally for
+    configurable OHLCV source. Uses MonotonicDeque internally for
     efficient incremental updates.
 
     Parameters:
         size: Window size in bars (must be integer >= 1).
-        field: Bar field to track - "open", "high", "low", "close", or "volume".
+        source: Bar source to track - "open", "high", "low", "close", or "volume".
         mode: "min" for minimum tracking, "max" for maximum tracking.
 
     Outputs:
@@ -54,20 +54,20 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
 
     Example:
         # Track 20-bar low (for support detection)
-        params = {"size": 20, "field": "low", "mode": "min"}
+        params = {"size": 20, "source": "low", "mode": "min"}
 
         # Track 10-bar high (for resistance detection)
-        params = {"size": 10, "field": "high", "mode": "max"}
+        params = {"size": 10, "source": "high", "mode": "max"}
 
         # Track 50-bar volume max (for volume spike detection)
-        params = {"size": 50, "field": "volume", "mode": "max"}
+        params = {"size": 50, "source": "volume", "mode": "max"}
 
     Performance:
         - update(): O(1) amortized
         - get_value("value"): O(1)
     """
 
-    REQUIRED_PARAMS: list[str] = ["size", "field", "mode"]
+    REQUIRED_PARAMS: list[str] = ["size", "source", "mode"]
     OPTIONAL_PARAMS: dict[str, Any] = {}
     DEPENDS_ON: list[str] = []
 
@@ -80,7 +80,7 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
 
         Raises:
             ValueError: If size is not an integer >= 1.
-            ValueError: If field is not one of open/high/low/close/volume.
+            ValueError: If source is not one of open/high/low/close/volume.
             ValueError: If mode is not min or max.
         """
         # Validate size
@@ -92,14 +92,14 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
                 f"Fix: size: 20  # Must be a positive integer"
             )
 
-        # Validate field
-        field = params.get("field")
-        if field not in VALID_FIELDS:
-            valid_list = ", ".join(sorted(VALID_FIELDS))
+        # Validate source
+        source = params.get("source")
+        if source not in VALID_SOURCES:
+            valid_list = ", ".join(sorted(VALID_SOURCES))
             raise ValueError(
-                f"Structure '{key}': 'field' must be one of {valid_list}, got {field!r}\n"
+                f"Structure '{key}': 'source' must be one of {valid_list}, got {source!r}\n"
                 f"\n"
-                f"Fix: field: low  # For 20-bar low tracking"
+                f"Fix: source: low  # For 20-bar low tracking"
             )
 
         # Validate mode
@@ -120,11 +120,11 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
         Initialize rolling window detector.
 
         Args:
-            params: Dict with size, field, and mode.
+            params: Dict with size, source, and mode.
             deps: Not used (no dependencies).
         """
         self.size: int = params["size"]
-        self.field: str = params["field"]
+        self.source: str = params["source"]
         self.mode: Literal["min", "max"] = params["mode"]
 
         # Internal monotonic deque for O(1) min/max
@@ -134,15 +134,15 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
         """
         Process one bar, updating the rolling window.
 
-        Extracts the configured field from the bar and pushes
+        Extracts the configured source from the bar and pushes
         it to the monotonic deque.
 
         Args:
             bar_idx: Current bar index.
             bar: Bar data containing OHLCV values.
         """
-        # Extract the field value from the bar
-        value = getattr(bar, self.field)
+        # Extract the source value from the bar
+        value = getattr(bar, self.source)
         self._deque.push(bar_idx, value)
 
     def get_output_keys(self) -> list[str]:
@@ -175,5 +175,5 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
         """Return string representation for debugging."""
         return (
             f"IncrementalRollingWindow("
-            f"size={self.size}, field={self.field!r}, mode={self.mode!r})"
+            f"size={self.size}, source={self.source!r}, mode={self.mode!r})"
         )

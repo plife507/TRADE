@@ -1,33 +1,44 @@
 # Active TODO
 
-**Last Updated**: 2026-01-09
-**Status**: STRESS TESTING - Phase 2
+**Last Updated**: 2026-01-10
+**Status**: STRESS TESTING - Phase 3 (Comprehensive Structure Testing)
 
 ---
 
 ## Current Focus: Stress Testing
 
-**Stress Testing (2026-01-08 - ongoing)** - IN_PROGRESS:
-- [x] Phase 0: Setup - tests/stress/plays/, tracking docs created
-- [x] Phase 1: Foundation (0-20%) - 5 gates PASSED, 3 bugs resolved
-- [ ] Phase 2: Basic Strategy (20-40%) - Gate 2.1 PASSED, Gate 2.2 NEXT
-- [ ] Phase 3: Intermediate (40-60%) - PENDING
-- [ ] Phase 4: Advanced (60-80%) - PENDING
-- [ ] Phase 5: Expert (80-100%) - PENDING
+**Stress Test 3.0: Comprehensive Structure Coverage (2026-01-09 - ongoing)** - IN_PROGRESS:
+- [x] Gate 0: Foundation (8/8 PASSED) - swing + rolling_window structures
+  - BUG-016 found and fixed: rolling_window param naming consistency
+- [ ] Gate 1: Swing Basics (20 plays) - NEXT
+- [ ] Gate 3: Trend (16 plays)
+- [ ] Gate 4: Rolling Window (16 plays)
+- [ ] Gate 6: Fib Retracement (18 plays)
+- [ ] Gate 8: DZ Slots (16 plays)
+- [ ] Gate 9: DZ Aggregates (24 plays)
+- [ ] Gate 11: Struct+Indicator (8 plays)
+- [ ] Gate 12: Multi-Structure (6 plays)
+- [ ] Gate 17: Ultimate (4 plays)
 
-**Next Step**: Gate 2.2 - MACD Signal Cross (30%)
+**Progress**: 8/136 plays PASSED (5.9%)
+**Coverage**: 2/6 structure types tested (swing, rolling_window)
 
-**Open Items Requiring Human Decision**:
-- DEBT-001: Symbol vs Word operators - 3 options documented in STRESS_TEST_BUGS.md
-- DOC-001: Cookbook BBands outputs wrong (blocked on DEBT-001)
-- DOC-002: Cookbook MACD outputs wrong (blocked on DEBT-001)
-
-See: `docs/todos/STRESS_TESTING.md` for full progress tracker
-See: `docs/audits/STRESS_TEST_BUGS.md` for bug details
+See: `docs/todos/STRESS_TEST_3_MASTER.md` for complete roadmap and bug tracking
 
 ---
 
 ## Recent Completed Work
+
+**Documentation: Backtest Engine Concepts Guide (2026-01-10)** - COMPLETE:
+- [x] Created `docs/guides/BACKTEST_ENGINE_CONCEPTS.md` - comprehensive conceptual guide
+- [x] Covers: Time machine analogy, no lookahead rule, hot loop architecture
+- [x] Deep dive: Data caching (FeedStore + RuntimeSnapshotView), O(1) lookups
+- [x] Multi-timeframe forward-fill semantics with visual timeline diagrams
+- [x] Window operators explained (holds_for, occurred_within, count_true)
+- [x] Complete ASCII flow diagram (initialization → loop → post-processing)
+- [x] Common pitfalls section (mark vs last price, warmup, window confusion, etc.)
+- [x] Self-test Q&A boxes after each major section
+- [x] Target audience: Developers new to the codebase
 
 **DSL Bug Fixes & Enhancements (2026-01-07)** - COMPLETE:
 - [x] P2-SIM-02: Fixed frozen Fill dataclass crash - added `close_ratio` param to `fill_exit()`

@@ -1,0 +1,55 @@
+version: "3.0.0"
+name: "S3_L_002_swing_low_exists"
+description: "Struct Gate 0: Foundation - Basic swing low_level field access (long)."
+
+symbol: "ETHUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "ema_21"]
+      - [{feature_id: "swing", field: "low_level"}, ">", 0]
+  exit_long:
+    any:
+      - ["close", "<", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 0
+  complexity_pct: 5
+  category: "foundation"
+  direction: "long"

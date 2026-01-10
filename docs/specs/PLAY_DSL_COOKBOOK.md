@@ -515,7 +515,7 @@ Structures provide O(1) incremental market structure detection.
 | `zone` | Demand/supply zones | `swing` |
 | `fibonacci` | Fib retracement/extension levels | `swing` |
 | `rolling_window` | O(1) rolling min/max | None |
-| `derived_zone` | Fibonacci zones from pivots | `swing` |
+| `derived_zone` | Fibonacci zones from pivots | `source` (not `swing`) |
 
 ### Structure YAML Format (Role-Based)
 
@@ -611,10 +611,11 @@ structures:
     source: high         # Field to track (open, high, low, close)
   # Outputs: value
 
-# Derived Zones (K Slots) - depends on swing
+# Derived Zones (K Slots) - depends on source (swing)
+# NOTE: Uses `source:` key, NOT `swing:` - this is different from other structures!
 - type: derived_zone
   key: fib_zones
-  depends_on: {swing: swing}
+  depends_on: {source: swing}   # CRITICAL: Must use `source:` not `swing:`
   params:
     levels: [0.382, 0.5, 0.618]
     mode: retracement
@@ -1136,6 +1137,93 @@ actions:
 
 **Why 1m resolution matters:** If exec is 15m, `close` only updates 4x per hour. But `last_price` updates 60x per hour, allowing precise entry when price crosses a level.
 
+### HTF Structures (Multi-Timeframe Structure Detection)
+
+Structures can be computed on higher timeframes for trend context:
+
+```yaml
+structures:
+  # Exec TF structures (15m)
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+    - type: trend
+      key: trend
+      depends_on: {swing: swing}
+
+  # HTF structures (4h) - forward-fill between closes
+  htf:
+    "4h":
+      - type: swing
+        key: swing_4h
+        params: {left: 5, right: 5}
+      - type: trend
+        key: trend_4h
+        depends_on: {swing: swing_4h}
+    "1h":
+      - type: swing
+        key: swing_1h
+        params: {left: 3, right: 3}
+```
+
+**Key behavior:**
+- HTF structures forward-fill until their bar closes (same as indicators)
+- Reference by key in actions: `{feature_id: "trend_4h", field: "direction"}`
+
+### MTF Confluence Patterns
+
+**Pattern 1: Exec Swing + HTF Trend Filter**
+```yaml
+actions:
+  entry_long:
+    all:
+      # HTF trend is UP
+      - [{feature_id: trend_4h, field: direction}, "==", 1]
+      # Exec swing low exists (bounce setup)
+      - [{feature_id: swing, field: low_level}, ">", 0]
+      # Price near exec swing low
+      - [close, "near_pct", {feature_id: swing, field: low_level}, 2.0]
+```
+
+**Pattern 2: Dual-Timeframe Trend Alignment**
+```yaml
+actions:
+  entry_long:
+    all:
+      # Both TFs trending UP - strongest signal
+      - [{feature_id: trend, field: direction}, "==", 1]
+      - [{feature_id: trend_4h, field: direction}, "==", 1]
+```
+
+**Pattern 3: HTF Fib + Exec Swing**
+```yaml
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+  htf:
+    "4h":
+      - type: swing
+        key: swing_4h
+        params: {left: 5, right: 5}
+      - type: fibonacci
+        key: fib_4h
+        depends_on: {swing: swing_4h}
+        params:
+          levels: [0.5, 0.618]
+          mode: retracement
+
+actions:
+  entry_long:
+    all:
+      # Price near HTF 0.618 fib level
+      - [close, "near_pct", {feature_id: fib_4h, field: level_0.618}, 1.5]
+      # Exec swing confirms support
+      - [{feature_id: swing, field: low_level}, ">", 0]
+```
+
 ---
 
 ## 9. Risk Model
@@ -1538,7 +1626,7 @@ structures:
     params: {left: 5, right: 5}
   fib_zones:
     detector: derived_zone
-    depends_on: {swing: swing}
+    depends_on: {source: swing}  # NOTE: derived_zone uses `source:` not `swing:`
     params:
       levels: [0.5, 0.618]
       mode: retracement

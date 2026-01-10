@@ -849,11 +849,28 @@ TIER 4+: Integration Tests (DB required)
 
 As the engine evolves, normalization ensures Plays stay in sync. When agents generate Plays, they MUST run normalization for validation feedback.
 
+## Learning & Onboarding
+
+**Tutor Mode**: Use `/tutor <topic>` for interactive step-by-step learning with comprehension checks.
+
+```
+/tutor backtest engine      # Hot loop, data caching, performance
+/tutor multi-timeframe      # HTF/MTF anchoring, forward-fill
+/tutor DSL syntax           # Blocks, conditions, operators
+/tutor simulated exchange   # Order fill, slippage, liquidation
+```
+
+| Guide | Purpose |
+|-------|---------|
+| `docs/guides/BACKTEST_ENGINE_CONCEPTS.md` | Visual guide to engine architecture |
+| `docs/guides/CODE_EXAMPLES.md` | Code patterns and usage examples |
+
 ## External References
 
 | Topic | File |
 |-------|------|
 | Code examples | `docs/guides/CODE_EXAMPLES.md` |
+| Engine concepts | `docs/guides/BACKTEST_ENGINE_CONCEPTS.md` |
 | Orchestrator example | `docs/examples/orchestrator_example.py` |
 | Environment variables | `env.example` |
 | Data architecture | `docs/architecture/DATA_ARCHITECTURE.md` |

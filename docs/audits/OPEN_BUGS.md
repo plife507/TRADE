@@ -1,7 +1,7 @@
 # Open Bugs
 
-**Last Updated**: 2026-01-09
-**Status**: 0 OPEN BUGS (All 8 from Senior Dev Audit FIXED)
+**Last Updated**: 2026-01-10
+**Status**: 0 OPEN BUGS (Structure Module Production Validation Complete)
 
 ---
 
@@ -17,13 +17,14 @@
 **Validation Status**: ALL TESTS PASS
 - Validation plays relocated to `tests/validation/plays/`
 - Indicators: **42/42 pass stress test** (all single + multi-output)
+- **Structures: 147/147 stress tests pass** (136 single-TF + 11 HTF/MTF)
 - Crossover operators: cross_above, cross_below ENABLED (TradingView semantics)
 - Window operators: anchor_tf now properly scales offsets
 - Rollup: 11/11 intervals pass
 - Metrics: 6/6 tests pass
 - Structure smoke: All stages pass
-- Stress test Tier 1-2: 7/7 produce trades
-- Stress test Tier 3: swing (205), zone (491) verified
+- HTF structures: 5/5 pass (1h/4h swing, trend)
+- MTF confluence: 6/6 pass (exec+HTF alignment patterns)
 
 **NOTE**: Terminology migration COMPLETE (IdeaCard -> Play, --play -> --play)
 
@@ -50,6 +51,62 @@
 ## P3 Open
 
 *None* - All P3 bugs fixed in 2026-01-09 session
+
+---
+
+## Resolved This Session (2026-01-10) - Structure Module Production
+
+### BUG-016: derived_zone Wrong Dependency Key in Plays - FIXED
+- **Location**: 40 stress test plays in `tests/stress/plays/struct_gate_08_*` and `struct_gate_09_*`
+- **Issue**: Plays used `depends_on: {swing: swing}` for derived_zone, but code expects `depends_on: {source: swing}`
+- **Root Cause**: derived_zone uses `source:` key (not `swing:`) to allow flexible source types
+- **Fix**: Changed all derived_zone plays to use `source: swing` in depends_on
+- **Verified**: All 40 plays now pass
+- **Documentation**: Updated PLAY_DSL_COOKBOOK.md with correct syntax
+- **Status**: FIXED
+
+### BUG-017: ENUM Literal Treated as Feature Reference - FIXED
+- **Location**: `src/backtest/play/play.py:161-168`
+- **Issue**: ENUM literals like `NONE`, `ACTIVE`, `BROKEN` were converted to feature references, causing "Feature 'NONE' referenced but not declared" errors
+- **Root Cause**: DSL parser converted ALL string RHS values to feature references without checking for ENUM literals
+- **Fix**: Added ENUM literal detection: ALL_CAPS strings with only letters/underscores are preserved as scalar strings
+- **Code Change**:
+  ```python
+  # Before: all strings became feature refs
+  rhs = {"feature_id": rhs_raw}
+
+  # After: check for ENUM pattern first
+  elif rhs_raw.isupper() and rhs_raw.replace("_", "").isalpha():
+      rhs = rhs_raw  # Keep ENUM literals as scalars
+  ```
+- **Verified**: All 4 affected plays in Gate 08 now pass
+- **Status**: FIXED
+
+### BUG-018: Gate 17 Plays Wrong Dependency Keys After Bulk Fix - FIXED
+- **Location**: 4 plays in `tests/stress/plays/struct_gate_17_ultimate/`
+- **Issue**: Bulk sed fix for BUG-016 incorrectly changed `swing: swing` to `source: swing` for trend/fibonacci structures
+- **Root Cause**: Sed replaced ALL occurrences, but trend/fibonacci expect `swing: swing`, only derived_zone expects `source: swing`
+- **Fix**: Manually restored correct dependency keys:
+  - `trend` and `fibonacci`: `depends_on: {swing: swing}`
+  - `derived_zone`: `depends_on: {source: swing}`
+- **Verified**: All 4 Gate 17 ultimate plays pass
+- **Status**: FIXED
+
+### COOKBOOK-001: derived_zone depends_on Documentation Wrong - FIXED
+- **Location**: `docs/specs/PLAY_DSL_COOKBOOK.md` (multiple locations)
+- **Issue**: Cookbook showed `depends_on: {swing: swing}` for derived_zone
+- **Fix**: Updated to `depends_on: {source: swing}` with NOTE explaining the difference
+- **Status**: FIXED
+
+### ENHANCEMENT: HTF Structure Documentation Added
+- **Location**: `docs/specs/PLAY_DSL_COOKBOOK.md` Section 8 (Multi-Timeframe)
+- **Feature**: Added "HTF Structures" and "MTF Confluence Patterns" subsections
+- **Content**:
+  - HTF structure YAML syntax
+  - Pattern 1: Exec Swing + HTF Trend Filter
+  - Pattern 2: Dual-Timeframe Trend Alignment
+  - Pattern 3: HTF Fib + Exec Swing
+- **Status**: COMPLETE
 
 ---
 
@@ -345,6 +402,7 @@ When auditing, check for these patterns:
 
 | Date | Document | Bugs Found/Fixed |
 |------|----------|------------------|
+| 2026-01-10 | Structure Module Production | 3 FIXED + 1 doc fix + HTF docs added |
 | 2026-01-09 | Senior Dev Audit | 8 FIXED (P2:5, P3:3) |
 | 2026-01-07 | Previous session | 5 fixes (P1-001, P1-002, P2-004, P2-005, P2-SIM-02) |
 | 2026-01-05 | Previous session | 4 fixes (P2-08, P2-09, P2-10, P2-11, P3-05) |
