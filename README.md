@@ -5,18 +5,141 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Bybit API](https://img.shields.io/badge/Exchange-Bybit-orange.svg)](https://www.bybit.com/)
+[![Status](https://img.shields.io/badge/Status-Engine%20Development-yellow.svg)]()
 
 A production-grade backtesting and live trading platform for **USDT-margined perpetual futures**. Strategies are defined as composable YAML configurations with built-in leverage controls, liquidation modeling, and comprehensive risk metrics.
 
 ---
 
-## Development Tiers & Gated Progress
+## Current Status: Engine Development
 
-TRADE enforces a **gated progression** from idea to live trading. Each tier has validation gates that must pass before advancing.
+> **Important:** TRADE is currently in **engine development phase**. The backtest engine is production-ready, but live trading with YAML-based Plays is not yet implemented.
+
+### What Works Today
+
+| Component | Status | Description |
+|-----------|:------:|-------------|
+| Backtest Engine | ✅ Complete | Full simulation with 62-field metrics |
+| Margin & Liquidation | ✅ Complete | Isolated margin, mark-based liquidation |
+| Funding Rates | ✅ Complete | 8-hour funding simulation |
+| 43 Indicators | ✅ Complete | EMA, RSI, MACD, Bollinger, ATR, etc. |
+| 6 Structures | ✅ Complete | Swing, Trend, Fibonacci, Zone, Rolling, Derived |
+| Actions DSL v3.0 | ✅ Frozen | 11 operators, 6 window operators |
+| The Forge | ✅ Complete | Validation, audits, 320+ stress tests |
+| Play YAML Schema | ✅ Frozen | Strategy-as-data format |
+
+### Current Limitations
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Live Trading via YAML | ❌ Not Started | Plays cannot execute on Bybit yet |
+| Demo Trading via YAML | ❌ Not Started | Testnet integration pending |
+| Shadow Mode | ❌ Not Started | Signal logging without execution |
+| Real-time Data Feed | ⏳ Partial | WebSocket stubs exist, not integrated |
+| Position Management | ⏳ Partial | REST API tools exist, not Play-driven |
+
+### What You Can Do Now
+
+```bash
+# Create and validate strategies
+python trade_cli.py backtest play-normalize --play T_001_ema_crossover
+
+# Run historical backtests with full margin simulation
+python trade_cli.py backtest run --play T_001 --start 2025-01-01 --end 2025-06-30
+
+# Analyze with 62-field metrics (Sharpe, VaR, MAE/MFE, etc.)
+python trade_cli.py backtest audit-toolkit --play T_001
+
+# Stress test your strategies
+python trade_cli.py backtest play-normalize-batch --dir strategies/plays/
+```
+
+---
+
+## Development Roadmap
+
+### Gated Progress: Past → Current → Future
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           DEVELOPMENT PIPELINE                              │
+│                           DEVELOPMENT ROADMAP                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ════════════════════════ COMPLETED ════════════════════════               │
+│                                                                             │
+│  GATE 1: DATA LAYER          GATE 2: INDICATORS         GATE 3: STRUCTURES │
+│  ✅ Jan 2025                 ✅ Jan 2025                ✅ Jan 2026         │
+│  ──────────────              ──────────────             ─────────────────   │
+│  DuckDB storage              43 indicators              6 structure types   │
+│  OHLCV sync                  pandas-ta parity           O(1) incremental    │
+│  Funding rates               Multi-timeframe            Swing/Trend/Fib     │
+│  Gap healing                 Forward-fill               Derived zones       │
+│                                                                             │
+│  GATE 4: SIM EXCHANGE        GATE 5: DSL v3.0           GATE 6: METRICS    │
+│  ✅ Jan 2026                 ✅ Jan 2026                ✅ Jan 2026         │
+│  ──────────────              ──────────────             ─────────────────   │
+│  Isolated margin             11 operators               62 fields           │
+│  Liquidation model           Window operators           Tail risk (VaR)     │
+│  Funding simulation          TradingView parity         MAE/MFE analysis    │
+│  Slippage/fees               Crossover semantics        Leverage metrics    │
+│                                                                             │
+│  ════════════════════════ CURRENT ══════════════════════════               │
+│                                                                             │
+│  GATE 7: THE FORGE                                                          │
+│  🔄 In Progress (Jan 2026)                                                  │
+│  ─────────────────────────                                                  │
+│  Play validation framework                                                  │
+│  Stress testing (320+ plays)                                                │
+│  Audit suite                                                                │
+│  Quality gates                                                              │
+│                                                                             │
+│  ════════════════════════ PLANNED ══════════════════════════               │
+│                                                                             │
+│  GATE 8: LIVE ENGINE         GATE 9: DEMO MODE          GATE 10: PRODUCTION│
+│  ⏳ Q1 2026                  ⏳ Q2 2026                 ⏳ Q2 2026          │
+│  ──────────────              ──────────────             ─────────────────   │
+│  WebSocket feeds             Bybit testnet              Live execution      │
+│  Play → Order bridge         Paper trading              Risk controls       │
+│  Position sync               Signal logging             Circuit breakers    │
+│  Real-time signals           7-day validation           Position limits     │
+│                                                                             │
+│  GATE 11: SHADOW MODE        GATE 12: SYSTEMS                               │
+│  ⏳ Q3 2026                  ⏳ Q3 2026                                     │
+│  ──────────────              ──────────────                                 │
+│  Signal-only mode            Multi-play configs                             │
+│  Backtest parity             Regime blending                                │
+│  Fill comparison             Portfolio allocation                           │
+│  Slippage analysis           Risk aggregation                               │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Gate Details
+
+| Gate | Status | Milestone | Key Deliverables |
+|:----:|:------:|-----------|------------------|
+| 1 | ✅ Done | Data Layer | DuckDB, OHLCV sync, funding rates |
+| 2 | ✅ Done | Indicators | 43 indicators, multi-TF, pandas-ta parity |
+| 3 | ✅ Done | Structures | 6 types, O(1) incremental, derived zones |
+| 4 | ✅ Done | Sim Exchange | Margin, liquidation, funding, fees |
+| 5 | ✅ Done | DSL v3.0 | Operators, windows, crossovers (FROZEN) |
+| 6 | ✅ Done | Metrics | 62 fields, tail risk, leverage metrics |
+| 7 | 🔄 Now | The Forge | Validation, stress tests, quality gates |
+| 8 | ⏳ Next | Live Engine | WebSocket, Play→Order bridge |
+| 9 | ⏳ Q2 | Demo Mode | Testnet trading, paper mode |
+| 10 | ⏳ Q2 | Production | Live execution, circuit breakers |
+| 11 | ⏳ Q3 | Shadow Mode | Signal logging, parity checks |
+| 12 | ⏳ Q3 | Systems | Multi-play, regime blending |
+
+---
+
+## Future: 6-Tier Trading Pipeline
+
+Once the live engine is complete (Gates 8-12), strategies will follow this gated progression:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      FUTURE: TRADING PIPELINE                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  TIER 1: FORGE              TIER 2: BACKTEST           TIER 3: VALIDATE    │
@@ -36,144 +159,26 @@ TRADE enforces a **gated progression** from idea to live trading. Each tier has 
 │         ▼                         ▼                          ▼              │
 │                                                                             │
 │  TIER 4: DEMO               TIER 5: SHADOW             TIER 6: LIVE        │
+│  (Gate 9)                   (Gate 11)                  (Gate 10)           │
 │  ───────────                ──────────────             ───────────         │
 │  Paper trade on      ──►    Live signals,      ──►    Real capital         │
 │  Bybit testnet              no execution              Full automation      │
 │  Fake funds                 Compare to sim            Risk controls        │
 │  Real market data           Validate fills            Position limits      │
 │                                                                             │
-│         │                         │                          │              │
-│         ▼                         ▼                          ▼              │
-│    ┌─────────┐              ┌─────────┐               ┌─────────┐          │
-│    │  GATE   │              │  GATE   │               │  GATE   │          │
-│    │ 7-day   │              │ Parity  │               │ Profit  │          │
-│    │ stable  │              │ Check   │               │ Target  │          │
-│    └─────────┘              └─────────┘               └─────────┘          │
-│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Tier Details
+### Tiers Available Today
 
-| Tier | Environment | Capital | Purpose | Gate Criteria |
-|:----:|-------------|---------|---------|---------------|
-| **1** | Local | None | Create & normalize Play | YAML validates, indicators exist |
-| **2** | Local | Simulated | Run backtest | Completes without errors |
-| **3** | Local | Simulated | Quality check | Meets metric thresholds |
-| **4** | Bybit Demo | Fake | Paper trading | 7+ days stable, no crashes |
-| **5** | Bybit Live | None | Signal validation | Signals match backtest |
-| **6** | Bybit Live | Real | Production | Profitable, within risk limits |
-
-### Gate Commands
-
-```bash
-# Tier 1: Normalize (validate YAML structure)
-python trade_cli.py backtest play-normalize --play T_001_ema_crossover
-
-# Tier 2: Backtest (run simulation)
-python trade_cli.py backtest run --play T_001 --start 2025-01-01 --end 2025-06-30
-
-# Tier 3: Quality gate (check metrics)
-python trade_cli.py backtest audit-toolkit --play T_001
-
-# Tier 4: Demo trading
-python trade_cli.py live run --play T_001 --mode demo
-
-# Tier 5: Shadow mode (signals only, no execution)
-python trade_cli.py live run --play T_001 --mode shadow
-
-# Tier 6: Live trading
-python trade_cli.py live run --play T_001 --mode live
-```
-
----
-
-## Demo & Live Trading
-
-### Trading Modes
-
-| Mode | API Endpoint | Funds | Execution | Use Case |
-|------|--------------|:-----:|:---------:|----------|
-| **Demo** | api-demo.bybit.com | Fake | Real orders | Paper trading, testing |
-| **Shadow** | api.bybit.com | None | Signals only | Validate before going live |
-| **Live** | api.bybit.com | Real | Real orders | Production trading |
-
-### Demo Mode (Tier 4)
-
-Demo mode connects to Bybit's testnet with fake funds:
-
-```bash
-# Start demo trading
-python trade_cli.py live run --play T_001_ema_crossover --mode demo
-
-# Monitor positions
-python trade_cli.py live positions --mode demo
-
-# View trade history
-python trade_cli.py live history --mode demo --days 7
-```
-
-**What you get:**
-- Real market data (live prices)
-- Fake capital ($10,000 USDT default)
-- Actual order execution on testnet
-- Full logging and metrics
-
-**Gate to pass:** 7 days of stable operation, no crashes, reasonable PnL
-
-### Shadow Mode (Tier 5)
-
-Shadow mode generates signals but doesn't execute:
-
-```bash
-# Run shadow mode
-python trade_cli.py live run --play T_001_ema_crossover --mode shadow
-
-# Compare signals to backtest
-python trade_cli.py live shadow-report --play T_001 --days 7
-```
-
-**What you get:**
-- Live signals logged with timestamps
-- No actual trades placed
-- Comparison to what backtest would have done
-- Fill price estimates vs. actual market
-
-**Gate to pass:** Signal parity with backtest expectations (< 5% deviation)
-
-### Live Mode (Tier 6)
-
-Live mode trades with real capital:
-
-```bash
-# Start live trading (requires confirmation)
-python trade_cli.py live run --play T_001_ema_crossover --mode live
-
-# Set position limits
-python trade_cli.py live run --play T_001 --mode live \
-  --max-position-usdt 1000 \
-  --daily-loss-limit 100
-
-# Emergency stop
-python trade_cli.py live panic --close-all
-```
-
-**Safety controls:**
-- Maximum position size limits
-- Daily loss limits (auto-pause)
-- Drawdown circuit breaker
-- Panic button (close all positions)
-
-### Environment Configuration
-
-```bash
-# .env or api_keys.env
-BYBIT_USE_DEMO=true              # true = demo, false = live
-BYBIT_DEMO_API_KEY=xxx           # Demo API key
-BYBIT_DEMO_API_SECRET=xxx        # Demo API secret
-BYBIT_LIVE_API_KEY=xxx           # Live API key (Tier 6 only)
-BYBIT_LIVE_API_SECRET=xxx        # Live API secret
-```
+| Tier | Status | What You Can Do |
+|:----:|:------:|-----------------|
+| **1** | ✅ Ready | Create and normalize Play YAML |
+| **2** | ✅ Ready | Run full backtests with margin simulation |
+| **3** | ✅ Ready | Validate against quality metrics |
+| **4** | ❌ Pending | Demo trading (Gate 9 required) |
+| **5** | ❌ Pending | Shadow mode (Gate 11 required) |
+| **6** | ❌ Pending | Live trading (Gate 10 required) |
 
 ---
 
@@ -181,11 +186,11 @@ BYBIT_LIVE_API_SECRET=xxx        # Live API secret
 
 | Problem | TRADE Solution |
 |---------|----------------|
-| No clear path to production | **6-tier gated progression** - earn your way to live |
 | Strategies are scattered code | **Strategies are YAML data** - version controlled, diffable |
 | Backtests ignore leverage reality | **Full margin simulation** - liquidation, maintenance margin |
 | Risk metrics are an afterthought | **62-field metrics** - VaR, CVaR, Sharpe, tail risk |
-| Demo/live behavior mismatch | **Shadow mode validation** - compare signals before risking capital |
+| No clear path to production | **Gated progression** - earn your way to live (when ready) |
+| Hard to compose strategies | **3-level hierarchy** - Blocks → Plays → Systems |
 
 ---
 
@@ -201,15 +206,15 @@ BYBIT_LIVE_API_SECRET=xxx        # Live API secret
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      BACKTEST ENGINE                            │
+│                      BACKTEST ENGINE ✅                         │
 │                                                                 │
 │   ┌────────────┐  ┌────────────┐  ┌────────────┐               │
 │   │ Indicators │  │ Structures │  │ Actions DSL│               │
-│   │    (43)    │  │    (6)     │  │  (v3.0.0)  │               │
+│   │  (43) ✅   │  │   (6) ✅   │  │ (v3.0) ✅  │               │
 │   └────────────┘  └────────────┘  └────────────┘               │
 │                                                                 │
 │   ┌─────────────────────────────────────────────────────────┐  │
-│   │              Simulated Exchange                         │  │
+│   │              Simulated Exchange ✅                      │  │
 │   │  ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌──────────┐ │  │
 │   │  │ Pricing  │ │Execution │ │ Margin &   │ │ Funding  │ │  │
 │   │  │  Model   │ │  Model   │ │Liquidation │ │  Rates   │ │  │
@@ -221,9 +226,13 @@ BYBIT_LIVE_API_SECRET=xxx        # Live API secret
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                       LIVE ENGINE                               │
+│                       LIVE ENGINE ⏳                            │
 │                   Bybit Futures (USDT-M)                        │
-│            Demo (Tier 4) · Shadow (Tier 5) · Live (Tier 6)     │
+│                                                                 │
+│   ┌──────────────────────────────────────────────────────────┐ │
+│   │                    NOT YET IMPLEMENTED                   │ │
+│   │          Demo (Gate 9) · Live (Gate 10)                  │ │
+│   └──────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -304,15 +313,6 @@ risk:
 
 ### Stop Loss Types
 
-```yaml
-risk:
-  stop_loss:
-    type: atr_multiple       # Dynamic stop based on ATR
-    value: 2.0               # 2× ATR distance
-    atr_feature_id: atr_14   # Reference to ATR indicator
-    buffer_pct: 0.1          # 0.1% buffer beyond level
-```
-
 | Type | Description |
 |------|-------------|
 | `percent` | Fixed percentage from entry |
@@ -322,13 +322,6 @@ risk:
 
 ### Take Profit Types
 
-```yaml
-risk:
-  take_profit:
-    type: rr_ratio           # Risk:Reward based
-    value: 2.0               # 2:1 reward to risk
-```
-
 | Type | Description |
 |------|-------------|
 | `rr_ratio` | Target = `entry + (stop_distance × ratio)` |
@@ -337,10 +330,6 @@ risk:
 | `fixed_points` | Absolute price distance |
 
 ### Exit Modes
-
-```yaml
-exit_mode: first_hit  # Which exit triggers position close
-```
 
 | Mode | Behavior |
 |------|----------|
@@ -370,15 +359,6 @@ exit_mode: first_hit  # Which exit triggers position close
 | `calmar` | Return / Max Drawdown |
 | `omega_ratio` | Probability-weighted gain/loss ratio |
 
-### Drawdown Analysis
-
-| Metric | Description |
-|--------|-------------|
-| `max_drawdown_pct` | Worst peak-to-trough decline |
-| `max_drawdown_duration_bars` | Longest time underwater |
-| `ulcer_index` | Pain-adjusted drawdown measure |
-| `recovery_factor` | Net profit / max drawdown |
-
 ### Tail Risk (Critical for Leverage)
 
 | Metric | Description |
@@ -396,20 +376,19 @@ exit_mode: first_hit  # Which exit triggers position close
 | `max_gross_exposure_pct` | Peak position_value / equity |
 | `closest_liquidation_pct` | How close you got to liquidation |
 | `margin_calls` | Number of margin warning events |
-| `min_margin_ratio` | Lowest margin ratio observed |
 
 ### Trade Quality (MAE/MFE)
 
 | Metric | Description |
 |--------|-------------|
-| `mae_avg_pct` | Avg Maximum Adverse Excursion - worst drawdown per trade |
-| `mfe_avg_pct` | Avg Maximum Favorable Excursion - best unrealized profit |
+| `mae_avg_pct` | Avg Maximum Adverse Excursion |
+| `mfe_avg_pct` | Avg Maximum Favorable Excursion |
 | `payoff_ratio` | Average win / average loss |
 | `expectancy_usdt` | Expected $ per trade |
 
 ---
 
-## Example Play (Complete)
+## Example Play
 
 ```yaml
 # strategies/plays/T_001_ema_crossover.yml
@@ -419,7 +398,6 @@ id: T_001_ema_crossover
 symbol: BTCUSDT
 tf: "15m"
 
-# Account & Leverage
 account:
   starting_equity_usdt: 10000
   max_leverage: 10
@@ -427,9 +405,7 @@ account:
   fee_model:
     taker_bps: 5.5
     maker_bps: 2.0
-  slippage_bps: 5
 
-# Indicators
 features:
   ema_9:
     indicator: ema
@@ -441,27 +417,22 @@ features:
     indicator: atr
     params: { length: 14 }
 
-# Entry/Exit Logic (Actions DSL)
 actions:
   entry_long:
     all:
       - [ema_9, cross_above, ema_21]
-
   exit_long:
     all:
       - [ema_9, cross_below, ema_21]
 
-# Risk Model
 risk:
   stop_loss:
     type: atr_multiple
     value: 2.0
     atr_feature_id: atr_14
-
   take_profit:
     type: rr_ratio
     value: 2.0
-
   sizing:
     model: percent_equity
     value: 5.0
@@ -470,34 +441,21 @@ risk:
 exit_mode: first_hit
 ```
 
-### Running Through the Tiers
+### What You Can Do Today
 
 ```bash
-# Tier 1: Validate YAML
+# Tier 1: Validate YAML ✅
 python trade_cli.py backtest play-normalize --play T_001_ema_crossover
-# ✅ Play normalized successfully
 
-# Tier 2: Run backtest
+# Tier 2: Run backtest ✅
 python trade_cli.py backtest run --play T_001_ema_crossover \
   --start 2025-01-01 --end 2025-06-30
-# ✅ 127 trades, Sharpe: 1.42, Max DD: 12.3%
 
-# Tier 3: Quality gate
+# Tier 3: Quality gate ✅
 python trade_cli.py backtest audit-toolkit --play T_001_ema_crossover
-# ✅ All quality gates passed
 
-# Tier 4: Demo trading (7 days minimum)
-python trade_cli.py live run --play T_001_ema_crossover --mode demo
-# ✅ 7 days stable, +2.3% return
-
-# Tier 5: Shadow mode
-python trade_cli.py live run --play T_001_ema_crossover --mode shadow
-# ✅ Signal parity: 97% match with backtest
-
-# Tier 6: Live trading
-python trade_cli.py live run --play T_001_ema_crossover --mode live \
-  --max-position-usdt 1000
-# 🚀 Live trading active
+# Tier 4-6: Not yet available ❌
+# python trade_cli.py live run --play T_001 --mode demo  # Future
 ```
 
 ---
@@ -515,12 +473,9 @@ venv\Scripts\activate        # Windows
 source venv/bin/activate     # Linux/Mac
 pip install -r requirements.txt
 
-# Configure (optional - for live trading)
-cp env.example api_keys.env
-# Edit api_keys.env with your Bybit API keys
-
-# Run
-python trade_cli.py          # Interactive CLI
+# Run backtest (what works today)
+python trade_cli.py backtest play-normalize --play T_001_ema_crossover
+python trade_cli.py backtest run --play T_001 --start 2025-01-01 --end 2025-06-30
 ```
 
 ---
@@ -539,13 +494,11 @@ The Actions DSL provides TradingView-aligned operators:
 
 ### Window Operators
 ```yaml
-# Condition held for N bars
 holds_for:
   bars: 3
   anchor_tf: "1h"
   expr: [rsi_14, gt, 50]
 
-# Event occurred within window
 occurred_within:
   bars: 10
   expr: [ema_9, cross_above, ema_21]
@@ -570,35 +523,19 @@ occurred_within:
 
 ---
 
-## Current Status
-
-| Component | Status | Details |
-|-----------|:------:|---------|
-| Backtest Engine | ✅ | 62-field metrics, deterministic execution |
-| Margin & Liquidation | ✅ | Isolated margin, mark-based liquidation |
-| Funding Rates | ✅ | 8-hour funding simulation |
-| Indicators | ✅ | 43 registered (EMA, RSI, MACD, Bollinger, etc.) |
-| Structures | ✅ | 6 types (Swing, Trend, Fibonacci, Zone, Rolling, Derived) |
-| DSL v3.0.0 | ✅ | 11 operators, 6 window operators, frozen spec |
-| The Forge | ✅ | Validation, audits, 320+ stress tests |
-| Demo Trading | ✅ | Bybit testnet integration |
-| Live Trading | ✅ | Bybit mainnet with safety controls |
-
----
-
 ## Project Structure
 
 ```
 TRADE/
 ├── src/
-│   ├── backtest/           # Backtest engine
-│   │   ├── sim/            # Simulated exchange (margin, liquidation)
+│   ├── backtest/           # Backtest engine ✅
+│   │   ├── sim/            # Simulated exchange
 │   │   ├── play/           # Play config, risk model
 │   │   └── incremental/    # O(1) structure detection
-│   ├── forge/              # Strategy validation
-│   ├── core/               # Live trading engine
+│   ├── forge/              # Strategy validation ✅
+│   ├── core/               # Live trading engine ⏳
 │   ├── exchanges/          # Bybit API client
-│   └── data/               # DuckDB market data
+│   └── data/               # DuckDB market data ✅
 ├── strategies/
 │   ├── blocks/             # Atomic conditions
 │   ├── plays/              # Complete strategies
@@ -628,11 +565,11 @@ TRADE/
 
 ## Philosophy
 
-### Gated Progression
-No shortcuts to live trading. Prove your strategy works at each tier.
+### Engine First
+Build a rock-solid backtest engine before touching live trading.
 
-### All Forward, No Legacy
-No backward compatibility. Delete old code, update all callers.
+### Gated Progression
+No shortcuts. Each gate must pass before advancing.
 
 ### Strategies Are Data
 YAML-defined, version controlled, AI-generatable.
