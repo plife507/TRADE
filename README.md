@@ -63,6 +63,9 @@ python trade_cli.py backtest play-normalize-batch --dir strategies/plays/
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           DEVELOPMENT ROADMAP                               │
+│                                                                             │
+│  Target: Live Trading in 2 months (Mar 2026)                                │
+│  Target: Agent Integration in 3 months (Apr 2026)                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ════════════════════════ COMPLETED ════════════════════════               │
@@ -93,49 +96,52 @@ python trade_cli.py backtest play-normalize-batch --dir strategies/plays/
 │  Audit suite                                                                │
 │  Quality gates                                                              │
 │                                                                             │
-│  ════════════════════════ PLANNED ══════════════════════════               │
+│  ════════════════════ 2 MONTHS: LIVE TRADING ═══════════════               │
 │                                                                             │
 │  GATE 8: LIVE ENGINE         GATE 9: DEMO MODE          GATE 10: PRODUCTION│
-│  ⏳ Q1 2026                  ⏳ Q2 2026                 ⏳ Q2 2026          │
+│  ⏳ Feb 2026                 ⏳ Feb 2026                ⏳ Mar 2026         │
 │  ──────────────              ──────────────             ─────────────────   │
 │  WebSocket feeds             Bybit testnet              Live execution      │
 │  Play → Order bridge         Paper trading              Risk controls       │
 │  Position sync               Signal logging             Circuit breakers    │
 │  Real-time signals           7-day validation           Position limits     │
 │                                                                             │
-│  GATE 11: SHADOW MODE        GATE 12: SYSTEMS                               │
-│  ⏳ Q3 2026                  ⏳ Q3 2026                                     │
-│  ──────────────              ──────────────                                 │
-│  Signal-only mode            Multi-play configs                             │
-│  Backtest parity             Regime blending                                │
-│  Fill comparison             Portfolio allocation                           │
-│  Slippage analysis           Risk aggregation                               │
+│  ════════════════════ 3 MONTHS: AGENT INTEGRATION ══════════               │
+│                                                                             │
+│  GATE 11: SHADOW MODE        GATE 12: AGENT API         GATE 13: SYSTEMS   │
+│  ⏳ Mar 2026                 ⏳ Apr 2026                ⏳ Apr 2026         │
+│  ──────────────              ──────────────             ─────────────────   │
+│  Signal-only mode            AI agent interface         Multi-play configs  │
+│  Backtest parity             Strategy generation        Regime blending     │
+│  Fill comparison             Auto-validation            Portfolio allocation│
+│  Slippage analysis           Prompt → Play pipeline     Risk aggregation    │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Gate Details
 
-| Gate | Status | Milestone | Key Deliverables |
-|:----:|:------:|-----------|------------------|
-| 1 | ✅ Done | Data Layer | DuckDB, OHLCV sync, funding rates |
-| 2 | ✅ Done | Indicators | 43 indicators, multi-TF, pandas-ta parity |
-| 3 | ✅ Done | Structures | 6 types, O(1) incremental, derived zones |
-| 4 | ✅ Done | Sim Exchange | Margin, liquidation, funding, fees |
-| 5 | ✅ Done | DSL v3.0 | Operators, windows, crossovers (FROZEN) |
-| 6 | ✅ Done | Metrics | 62 fields, tail risk, leverage metrics |
-| 7 | 🔄 Now | The Forge | Validation, stress tests, quality gates |
-| 8 | ⏳ Next | Live Engine | WebSocket, Play→Order bridge |
-| 9 | ⏳ Q2 | Demo Mode | Testnet trading, paper mode |
-| 10 | ⏳ Q2 | Production | Live execution, circuit breakers |
-| 11 | ⏳ Q3 | Shadow Mode | Signal logging, parity checks |
-| 12 | ⏳ Q3 | Systems | Multi-play, regime blending |
+| Gate | Status | Target | Milestone | Key Deliverables |
+|:----:|:------:|:------:|-----------|------------------|
+| 1 | ✅ Done | — | Data Layer | DuckDB, OHLCV sync, funding rates |
+| 2 | ✅ Done | — | Indicators | 43 indicators, multi-TF, pandas-ta parity |
+| 3 | ✅ Done | — | Structures | 6 types, O(1) incremental, derived zones |
+| 4 | ✅ Done | — | Sim Exchange | Margin, liquidation, funding, fees |
+| 5 | ✅ Done | — | DSL v3.0 | Operators, windows, crossovers (FROZEN) |
+| 6 | ✅ Done | — | Metrics | 62 fields, tail risk, leverage metrics |
+| 7 | 🔄 Now | Jan | The Forge | Validation, stress tests, quality gates |
+| 8 | ⏳ Next | Feb | Live Engine | WebSocket, Play→Order bridge |
+| 9 | ⏳ | Feb | Demo Mode | Testnet trading, paper mode |
+| 10 | ⏳ | **Mar** | **Production** | **Live execution, circuit breakers** |
+| 11 | ⏳ | Mar | Shadow Mode | Signal logging, parity checks |
+| 12 | ⏳ | **Apr** | **Agent API** | **AI interface, Prompt→Play pipeline** |
+| 13 | ⏳ | Apr | Systems | Multi-play, regime blending |
 
 ---
 
 ## Future: 6-Tier Trading Pipeline
 
-Once the live engine is complete (Gates 8-12), strategies will follow this gated progression:
+Once the live engine is complete (Gates 8-10, target: **March 2026**), strategies will follow this gated progression:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -159,7 +165,7 @@ Once the live engine is complete (Gates 8-12), strategies will follow this gated
 │         ▼                         ▼                          ▼              │
 │                                                                             │
 │  TIER 4: DEMO               TIER 5: SHADOW             TIER 6: LIVE        │
-│  (Gate 9)                   (Gate 11)                  (Gate 10)           │
+│  (Gate 9 - Feb)             (Gate 11 - Mar)            (Gate 10 - Mar)     │
 │  ───────────                ──────────────             ───────────         │
 │  Paper trade on      ──►    Live signals,      ──►    Real capital         │
 │  Bybit testnet              no execution              Full automation      │
@@ -171,14 +177,14 @@ Once the live engine is complete (Gates 8-12), strategies will follow this gated
 
 ### Tiers Available Today
 
-| Tier | Status | What You Can Do |
-|:----:|:------:|-----------------|
-| **1** | ✅ Ready | Create and normalize Play YAML |
-| **2** | ✅ Ready | Run full backtests with margin simulation |
-| **3** | ✅ Ready | Validate against quality metrics |
-| **4** | ❌ Pending | Demo trading (Gate 9 required) |
-| **5** | ❌ Pending | Shadow mode (Gate 11 required) |
-| **6** | ❌ Pending | Live trading (Gate 10 required) |
+| Tier | Status | What You Can Do | Target |
+|:----:|:------:|-----------------|:------:|
+| **1** | ✅ Ready | Create and normalize Play YAML | — |
+| **2** | ✅ Ready | Run full backtests with margin simulation | — |
+| **3** | ✅ Ready | Validate against quality metrics | — |
+| **4** | ⏳ Pending | Demo trading (Gate 9) | Feb 2026 |
+| **5** | ⏳ Pending | Shadow mode (Gate 11) | Mar 2026 |
+| **6** | ⏳ Pending | Live trading (Gate 10) | **Mar 2026** |
 
 ---
 
