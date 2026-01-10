@@ -10,15 +10,182 @@ A production-grade backtesting and live trading platform for **USDT-margined per
 
 ---
 
+## Development Tiers & Gated Progress
+
+TRADE enforces a **gated progression** from idea to live trading. Each tier has validation gates that must pass before advancing.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           DEVELOPMENT PIPELINE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  TIER 1: FORGE              TIER 2: BACKTEST           TIER 3: VALIDATE    │
+│  ─────────────              ────────────────           ─────────────────    │
+│  Create Play YAML    ──►    Run historical     ──►    Pass metric gates    │
+│  Define indicators          simulation                 Sharpe > 1.0         │
+│  Set risk model             62-field metrics           Max DD < 20%         │
+│  Configure account          Full margin sim            Win rate > 40%       │
+│                                                                             │
+│         │                         │                          │              │
+│         ▼                         ▼                          ▼              │
+│    ┌─────────┐              ┌─────────┐               ┌─────────┐          │
+│    │  GATE   │              │  GATE   │               │  GATE   │          │
+│    │Normalize│              │ Metrics │               │ Quality │          │
+│    └─────────┘              └─────────┘               └─────────┘          │
+│         │                         │                          │              │
+│         ▼                         ▼                          ▼              │
+│                                                                             │
+│  TIER 4: DEMO               TIER 5: SHADOW             TIER 6: LIVE        │
+│  ───────────                ──────────────             ───────────         │
+│  Paper trade on      ──►    Live signals,      ──►    Real capital         │
+│  Bybit testnet              no execution              Full automation      │
+│  Fake funds                 Compare to sim            Risk controls        │
+│  Real market data           Validate fills            Position limits      │
+│                                                                             │
+│         │                         │                          │              │
+│         ▼                         ▼                          ▼              │
+│    ┌─────────┐              ┌─────────┐               ┌─────────┐          │
+│    │  GATE   │              │  GATE   │               │  GATE   │          │
+│    │ 7-day   │              │ Parity  │               │ Profit  │          │
+│    │ stable  │              │ Check   │               │ Target  │          │
+│    └─────────┘              └─────────┘               └─────────┘          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Tier Details
+
+| Tier | Environment | Capital | Purpose | Gate Criteria |
+|:----:|-------------|---------|---------|---------------|
+| **1** | Local | None | Create & normalize Play | YAML validates, indicators exist |
+| **2** | Local | Simulated | Run backtest | Completes without errors |
+| **3** | Local | Simulated | Quality check | Meets metric thresholds |
+| **4** | Bybit Demo | Fake | Paper trading | 7+ days stable, no crashes |
+| **5** | Bybit Live | None | Signal validation | Signals match backtest |
+| **6** | Bybit Live | Real | Production | Profitable, within risk limits |
+
+### Gate Commands
+
+```bash
+# Tier 1: Normalize (validate YAML structure)
+python trade_cli.py backtest play-normalize --play T_001_ema_crossover
+
+# Tier 2: Backtest (run simulation)
+python trade_cli.py backtest run --play T_001 --start 2025-01-01 --end 2025-06-30
+
+# Tier 3: Quality gate (check metrics)
+python trade_cli.py backtest audit-toolkit --play T_001
+
+# Tier 4: Demo trading
+python trade_cli.py live run --play T_001 --mode demo
+
+# Tier 5: Shadow mode (signals only, no execution)
+python trade_cli.py live run --play T_001 --mode shadow
+
+# Tier 6: Live trading
+python trade_cli.py live run --play T_001 --mode live
+```
+
+---
+
+## Demo & Live Trading
+
+### Trading Modes
+
+| Mode | API Endpoint | Funds | Execution | Use Case |
+|------|--------------|:-----:|:---------:|----------|
+| **Demo** | api-demo.bybit.com | Fake | Real orders | Paper trading, testing |
+| **Shadow** | api.bybit.com | None | Signals only | Validate before going live |
+| **Live** | api.bybit.com | Real | Real orders | Production trading |
+
+### Demo Mode (Tier 4)
+
+Demo mode connects to Bybit's testnet with fake funds:
+
+```bash
+# Start demo trading
+python trade_cli.py live run --play T_001_ema_crossover --mode demo
+
+# Monitor positions
+python trade_cli.py live positions --mode demo
+
+# View trade history
+python trade_cli.py live history --mode demo --days 7
+```
+
+**What you get:**
+- Real market data (live prices)
+- Fake capital ($10,000 USDT default)
+- Actual order execution on testnet
+- Full logging and metrics
+
+**Gate to pass:** 7 days of stable operation, no crashes, reasonable PnL
+
+### Shadow Mode (Tier 5)
+
+Shadow mode generates signals but doesn't execute:
+
+```bash
+# Run shadow mode
+python trade_cli.py live run --play T_001_ema_crossover --mode shadow
+
+# Compare signals to backtest
+python trade_cli.py live shadow-report --play T_001 --days 7
+```
+
+**What you get:**
+- Live signals logged with timestamps
+- No actual trades placed
+- Comparison to what backtest would have done
+- Fill price estimates vs. actual market
+
+**Gate to pass:** Signal parity with backtest expectations (< 5% deviation)
+
+### Live Mode (Tier 6)
+
+Live mode trades with real capital:
+
+```bash
+# Start live trading (requires confirmation)
+python trade_cli.py live run --play T_001_ema_crossover --mode live
+
+# Set position limits
+python trade_cli.py live run --play T_001 --mode live \
+  --max-position-usdt 1000 \
+  --daily-loss-limit 100
+
+# Emergency stop
+python trade_cli.py live panic --close-all
+```
+
+**Safety controls:**
+- Maximum position size limits
+- Daily loss limits (auto-pause)
+- Drawdown circuit breaker
+- Panic button (close all positions)
+
+### Environment Configuration
+
+```bash
+# .env or api_keys.env
+BYBIT_USE_DEMO=true              # true = demo, false = live
+BYBIT_DEMO_API_KEY=xxx           # Demo API key
+BYBIT_DEMO_API_SECRET=xxx        # Demo API secret
+BYBIT_LIVE_API_KEY=xxx           # Live API key (Tier 6 only)
+BYBIT_LIVE_API_SECRET=xxx        # Live API secret
+```
+
+---
+
 ## Why TRADE?
 
 | Problem | TRADE Solution |
 |---------|----------------|
-| Strategies are scattered code | **Strategies are YAML data** - version controlled, diffable, AI-generatable |
-| Backtests ignore leverage reality | **Full margin simulation** - liquidation, maintenance margin, funding rates |
-| Risk metrics are an afterthought | **62-field metrics** - VaR, CVaR, Sharpe, Sortino, MAE/MFE, tail risk |
-| Hard to compose strategies | **3-level hierarchy** - Blocks → Plays → Systems |
-| Complex DSL learning curve | **TradingView-aligned operators** - `cross_above`, `cross_below` work as expected |
+| No clear path to production | **6-tier gated progression** - earn your way to live |
+| Strategies are scattered code | **Strategies are YAML data** - version controlled, diffable |
+| Backtests ignore leverage reality | **Full margin simulation** - liquidation, maintenance margin |
+| Risk metrics are an afterthought | **62-field metrics** - VaR, CVaR, Sharpe, tail risk |
+| Demo/live behavior mismatch | **Shadow mode validation** - compare signals before risking capital |
 
 ---
 
@@ -56,7 +223,7 @@ A production-grade backtesting and live trading platform for **USDT-margined per
 ┌─────────────────────────────────────────────────────────────────┐
 │                       LIVE ENGINE                               │
 │                   Bybit Futures (USDT-M)                        │
-│              Demo Mode (safe) · Live Mode (real)                │
+│            Demo (Tier 4) · Shadow (Tier 5) · Live (Tier 6)     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -303,10 +470,34 @@ risk:
 exit_mode: first_hit
 ```
 
-Run it:
+### Running Through the Tiers
+
 ```bash
+# Tier 1: Validate YAML
+python trade_cli.py backtest play-normalize --play T_001_ema_crossover
+# ✅ Play normalized successfully
+
+# Tier 2: Run backtest
 python trade_cli.py backtest run --play T_001_ema_crossover \
   --start 2025-01-01 --end 2025-06-30
+# ✅ 127 trades, Sharpe: 1.42, Max DD: 12.3%
+
+# Tier 3: Quality gate
+python trade_cli.py backtest audit-toolkit --play T_001_ema_crossover
+# ✅ All quality gates passed
+
+# Tier 4: Demo trading (7 days minimum)
+python trade_cli.py live run --play T_001_ema_crossover --mode demo
+# ✅ 7 days stable, +2.3% return
+
+# Tier 5: Shadow mode
+python trade_cli.py live run --play T_001_ema_crossover --mode shadow
+# ✅ Signal parity: 97% match with backtest
+
+# Tier 6: Live trading
+python trade_cli.py live run --play T_001_ema_crossover --mode live \
+  --max-position-usdt 1000
+# 🚀 Live trading active
 ```
 
 ---
@@ -390,29 +581,8 @@ occurred_within:
 | Structures | ✅ | 6 types (Swing, Trend, Fibonacci, Zone, Rolling, Derived) |
 | DSL v3.0.0 | ✅ | 11 operators, 6 window operators, frozen spec |
 | The Forge | ✅ | Validation, audits, 320+ stress tests |
-| Live Trading | ✅ | Bybit API, demo + live modes |
-
----
-
-## Key Commands
-
-```bash
-# Run backtest
-python trade_cli.py backtest run --play T_001 --start 2025-01-01 --end 2025-06-30
-
-# Validate a Play
-python trade_cli.py backtest play-normalize --play T_001_ema_crossover
-
-# Batch validate all Plays
-python trade_cli.py backtest play-normalize-batch --dir strategies/plays/
-
-# Run audit suite
-python trade_cli.py backtest audit-toolkit
-
-# Smoke tests
-python trade_cli.py --smoke full     # Full system test (demo mode)
-python trade_cli.py --smoke data     # Data pipeline only
-```
+| Demo Trading | ✅ | Bybit testnet integration |
+| Live Trading | ✅ | Bybit mainnet with safety controls |
 
 ---
 
@@ -456,18 +626,10 @@ TRADE/
 
 ---
 
-## Trading Modes
-
-| Mode | Endpoint | Funds | Use Case |
-|------|----------|:-----:|----------|
-| **Demo** | api-demo.bybit.com | Fake | Development, testing |
-| **Live** | api.bybit.com | Real | Production |
-
-Always start with Demo mode. The system defaults to safe settings.
-
----
-
 ## Philosophy
+
+### Gated Progression
+No shortcuts to live trading. Prove your strategy works at each tier.
 
 ### All Forward, No Legacy
 No backward compatibility. Delete old code, update all callers.
@@ -477,9 +639,6 @@ YAML-defined, version controlled, AI-generatable.
 
 ### Fail Loud
 Invalid configurations raise errors immediately. No silent defaults.
-
-### Hash Everything
-Every computation produces a hash. Determinism is verified.
 
 ---
 
