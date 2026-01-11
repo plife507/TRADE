@@ -35,10 +35,13 @@ phases:
     validation_passed: true
 
   phase_3_indicator_alias:
-    status: pending
-    files_updated: []
+    status: completed
+    files_updated:
+      - src/backtest/features/__init__.py
+      - src/backtest/features/feature_frame_builder.py
     files_deleted: []
-    validation_passed: null
+    note: "Removed IndicatorRegistry and get_registry aliases (no callers found)"
+    validation_passed: true
 
   phase_4_bar_compat:
     status: pending
@@ -93,12 +96,12 @@ aliases_to_remove:
   - name: IndicatorRegistry
     location: src/backtest/features/__init__.py
     phase: 3
-    removed: false
+    removed: true
 
   - name: get_registry
     location: src/backtest/features/__init__.py
     phase: 3
-    removed: false
+    removed: true
 
 market_structure_status:
   deadline: 2026-04-01

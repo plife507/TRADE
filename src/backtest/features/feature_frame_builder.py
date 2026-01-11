@@ -294,14 +294,6 @@ def get_compute() -> IndicatorCompute:
     return _default_compute
 
 
-# Backwards compatibility alias (deprecated - use get_compute() instead)
-def get_registry() -> IndicatorCompute:
-    """Get the default indicator compute adapter (deprecated - use get_compute())."""
-    return _default_compute
-
-
-# Backwards compatibility alias for import (deprecated - use IndicatorCompute instead)
-IndicatorRegistry = IndicatorCompute
 
 
 # =============================================================================

@@ -52,9 +52,7 @@ from .feature_frame_builder import (
     FeatureFrameBuilder,
     FeatureArrays,
     IndicatorCompute,
-    IndicatorRegistry,  # Deprecated alias for IndicatorCompute
     get_compute,
-    get_registry,  # Deprecated alias for get_compute
     build_features_from_play,
     PlayFeatures,
 )
@@ -72,9 +70,6 @@ __all__ = [
     "FeatureArrays",
     "IndicatorCompute",
     "get_compute",
-    # Deprecated aliases (for backwards compatibility)
-    "IndicatorRegistry",  # Use IndicatorCompute instead
-    "get_registry",  # Use get_compute instead
     # Play integration
     "build_features_from_play",
     "PlayFeatures",
