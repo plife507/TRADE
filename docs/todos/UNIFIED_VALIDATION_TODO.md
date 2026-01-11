@@ -13,15 +13,15 @@ All validation runs through BacktestEngine with injectable synthetic data. Singl
 ---
 
 ## GATE 0: Foundation - Unify Synthetic Data
-**Status**: [ ] Not Started
+**Status**: [x] Complete (2026-01-11)
 
 ### Tasks
-- [ ] Add `generate_synthetic_ohlcv_df()` to `src/forge/validation/synthetic_data.py`
-- [ ] Add `generate_synthetic_quotes()` to `src/forge/validation/synthetic_data.py`
-- [ ] Add `generate_synthetic_bars()` to `src/forge/validation/synthetic_data.py`
-- [ ] Update `src/forge/audits/toolkit_contract_audit.py` to import from canonical
-- [ ] Update `src/forge/audits/audit_rollup_parity.py` to import from canonical
-- [ ] Update `src/viz/api/indicators.py` to import from canonical (optional)
+- [x] Add `generate_synthetic_ohlcv_df()` to `src/forge/validation/synthetic_data.py`
+- [x] Add `generate_synthetic_quotes()` to `src/forge/validation/synthetic_data.py`
+- [x] Add `generate_synthetic_bars()` to `src/forge/validation/synthetic_data.py`
+- [x] Update `src/forge/audits/toolkit_contract_audit.py` to import from canonical
+- [x] Update `src/forge/audits/audit_rollup_parity.py` to import from canonical
+- [ ] Update `src/viz/api/indicators.py` to import from canonical (optional - deferred)
 
 ### Checkpoint
 ```bash

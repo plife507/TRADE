@@ -7,16 +7,16 @@ Gate 1 of the verification suite - ensures the registry is the contract:
 - No missing declared outputs
 - Extras are dropped + recorded
 
-Uses deterministic synthetic OHLCV data for reproducibility.
+Uses deterministic synthetic OHLCV data from the canonical source.
 """
 
 from dataclasses import dataclass, field
 from typing import Any
-import numpy as np
 import pandas as pd
 
 from src.backtest.indicator_vendor import compute_indicator, canonicalize_indicator_outputs
 from src.backtest.indicator_registry import get_registry
+from src.forge.validation.synthetic_data import generate_synthetic_ohlcv_df
 
 
 @dataclass
@@ -81,90 +81,6 @@ class ToolkitAuditResult:
                 for r in self.indicator_results
             ],
         }
-
-
-def generate_synthetic_ohlcv(
-    n_bars: int = 2000,
-    seed: int = 1337,
-) -> pd.DataFrame:
-    """
-    Generate deterministic synthetic OHLCV data for toolkit audits.
-    
-    Features:
-    - Valid OHLC constraints: high >= max(open, close), low <= min(open, close)
-    - Non-zero volume
-    - Regime changes (trend → range → spike → mean-revert)
-    
-    Args:
-        n_bars: Number of bars (default: 2000)
-        seed: Random seed for reproducibility (default: 1337)
-        
-    Returns:
-        DataFrame with timestamp, open, high, low, close, volume columns
-    """
-    np.random.seed(seed)
-    
-    # Generate base price with regime changes
-    # Split into 4 regimes: trend up, range, spike, mean-revert
-    regime_size = n_bars // 4
-    
-    prices = []
-    base_price = 100.0
-    
-    # Regime 1: Trend up
-    for i in range(regime_size):
-        base_price += np.random.uniform(0.01, 0.05)
-        prices.append(base_price + np.random.randn() * 0.5)
-    
-    # Regime 2: Range-bound
-    range_center = base_price
-    for i in range(regime_size):
-        prices.append(range_center + np.random.randn() * 2.0)
-    
-    # Regime 3: Spike (high volatility)
-    for i in range(regime_size):
-        spike = np.random.choice([-1, 1]) * np.random.uniform(0.5, 3.0)
-        prices.append(prices[-1] + spike)
-    
-    # Regime 4: Mean-revert back to baseline
-    target = range_center
-    for i in range(n_bars - 3 * regime_size):
-        current = prices[-1]
-        revert = (target - current) * 0.02
-        prices.append(current + revert + np.random.randn() * 0.3)
-    
-    prices = np.array(prices)
-    
-    # Generate OHLC from close prices
-    # Add random intrabar movement while maintaining constraints
-    close = prices
-    
-    # Open is close shifted by random amount
-    open_shift = np.random.uniform(-1.0, 1.0, n_bars)
-    open_ = close + open_shift
-    
-    # High >= max(open, close)
-    max_oc = np.maximum(open_, close)
-    high = max_oc + np.abs(np.random.randn(n_bars) * 0.5)
-    
-    # Low <= min(open, close)
-    min_oc = np.minimum(open_, close)
-    low = min_oc - np.abs(np.random.randn(n_bars) * 0.5)
-    
-    # Non-zero volume with some variation
-    volume = np.random.uniform(1000, 10000, n_bars) * (1 + np.abs(np.random.randn(n_bars)) * 0.5)
-    
-    # Generate timestamps
-    timestamps = pd.date_range(start="2024-01-01", periods=n_bars, freq="15min")
-    
-    return pd.DataFrame({
-        "timestamp": timestamps,
-        "open": open_,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-    })
 
 
 def audit_single_indicator(
@@ -305,9 +221,9 @@ def run_toolkit_contract_audit(
     """
     registry = get_registry()
     all_indicators = registry.list_indicators()
-    
-    # Generate synthetic data
-    df = generate_synthetic_ohlcv(n_bars=sample_bars, seed=seed)
+
+    # Generate synthetic data from canonical source
+    df = generate_synthetic_ohlcv_df(n_bars=sample_bars, seed=seed)
     
     results = []
     passed_count = 0

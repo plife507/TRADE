@@ -12,6 +12,7 @@ This is a critical audit for the simulator - rollups are used for:
 - Intrabar price movement analysis
 - Stop/limit fill simulation accuracy
 
+Uses deterministic synthetic QuoteState data from the canonical source.
 Phase: Price Feed (1m) + Preflight Gate + Packet Injection
 """
 
@@ -21,6 +22,7 @@ import numpy as np
 
 from src.backtest.runtime.rollup_bucket import ExecRollupBucket, ROLLUP_KEYS
 from src.backtest.runtime.quote_state import QuoteState
+from src.forge.validation.synthetic_data import generate_synthetic_quotes
 from src.utils.logger import get_logger
 
 
@@ -92,61 +94,6 @@ class RollupParityResult:
             "error_message": self.error_message,
             "interval_results": [r.to_dict() for r in self.interval_results],
         }
-
-
-def generate_synthetic_quotes(
-    n_quotes: int = 100,
-    seed: int = 1337,
-    base_price: float = 100.0,
-) -> list[QuoteState]:
-    """
-    Generate deterministic synthetic QuoteState data for rollup audits.
-
-    Creates quotes with realistic price movements and volume patterns.
-
-    Args:
-        n_quotes: Number of quotes to generate
-        seed: Random seed for reproducibility
-        base_price: Starting price level
-
-    Returns:
-        List of QuoteState objects
-    """
-    np.random.seed(seed)
-
-    quotes = []
-    price = base_price
-
-    for i in range(n_quotes):
-        # Random walk for price
-        price += np.random.randn() * 0.5
-
-        # Ensure price stays positive
-        price = max(price, 1.0)
-
-        # Generate intrabar high/low
-        spread = abs(np.random.randn() * 0.3)
-        high = price + spread
-        low = price - spread
-
-        # Volume with variation
-        volume = 1000 + abs(np.random.randn() * 500)
-
-        # For simplicity in tests, open_1m = close of previous bar or base_price for first
-        open_price = price if i == 0 else quotes[-1].last
-        quote = QuoteState(
-            ts_ms=1704067200000 + i * 60000,  # 1-minute intervals
-            last=price,
-            open_1m=open_price,
-            high_1m=high,
-            low_1m=low,
-            mark=price * (1 + np.random.randn() * 0.0001),  # Tiny mark deviation
-            mark_source="approx_from_ohlcv_1m",
-            volume_1m=volume,
-        )
-        quotes.append(quote)
-
-    return quotes
 
 
 def compute_expected_rollups(quotes: list[QuoteState]) -> dict[str, float]:

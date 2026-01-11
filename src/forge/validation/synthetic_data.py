@@ -7,6 +7,9 @@ Generates deterministic, reproducible OHLCV data for validating:
 - Multi-timeframe alignment
 
 NO hard coding. All values flow through parameters.
+
+This is the CANONICAL source for all synthetic data generation in TRADE.
+All audit and validation code should import from this module.
 """
 
 import hashlib
@@ -14,9 +17,13 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Literal
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
+
+# Lazy imports to avoid circular dependencies
+# QuoteState and BarData are imported in functions that need them
 
 
 # =============================================================================
@@ -622,6 +629,283 @@ def generate_synthetic_candles(
         volatility=volatility,
         data_hash=data_hash,
     )
+
+
+# =============================================================================
+# Single-TF DataFrame Generator (for toolkit audits)
+# =============================================================================
+def generate_synthetic_ohlcv_df(
+    n_bars: int = 2000,
+    seed: int = DEFAULT_SEED,
+    pattern: PatternType = "trending",
+    tf_minutes: int = 15,
+    base_price: float = 100.0,
+    volatility: float = 0.02,
+    base_timestamp: datetime | None = None,
+) -> pd.DataFrame:
+    """
+    Generate deterministic synthetic OHLCV DataFrame for toolkit audits.
+
+    This is a single-timeframe generator optimized for indicator validation.
+    Uses regime changes (trend → range → spike → mean-revert) to exercise
+    indicator behavior across different market conditions.
+
+    Args:
+        n_bars: Number of bars (default: 2000)
+        seed: Random seed for reproducibility (default: 42)
+        pattern: Price pattern type (default: "trending")
+        tf_minutes: Timeframe in minutes (default: 15)
+        base_price: Starting price level (default: 100.0)
+        volatility: Daily volatility (default: 0.02)
+        base_timestamp: Starting timestamp (default: 2024-01-01)
+
+    Returns:
+        DataFrame with timestamp, open, high, low, close, volume columns
+
+    Example:
+        >>> df = generate_synthetic_ohlcv_df(n_bars=1000, seed=42)
+        >>> print(df.columns.tolist())
+        ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+    """
+    if base_timestamp is None:
+        base_timestamp = datetime(2024, 1, 1, 0, 0, 0)
+
+    rng = np.random.default_rng(seed)
+
+    # Generate base price with regime changes
+    # Split into 4 regimes: trend up, range, spike, mean-revert
+    regime_size = n_bars // 4
+
+    prices = []
+    current_price = base_price
+
+    # Regime 1: Trend up
+    for i in range(regime_size):
+        current_price += rng.uniform(0.01, 0.05)
+        prices.append(current_price + rng.normal(0, 0.5))
+
+    # Regime 2: Range-bound
+    range_center = current_price
+    for i in range(regime_size):
+        prices.append(range_center + rng.normal(0, 2.0))
+
+    # Regime 3: Spike (high volatility)
+    for i in range(regime_size):
+        spike = rng.choice([-1, 1]) * rng.uniform(0.5, 3.0)
+        prices.append(prices[-1] + spike)
+
+    # Regime 4: Mean-revert back to baseline
+    target = range_center
+    for i in range(n_bars - 3 * regime_size):
+        current = prices[-1]
+        revert = (target - current) * 0.02
+        prices.append(current + revert + rng.normal(0, 0.3))
+
+    prices = np.array(prices)
+
+    # Generate OHLC from close prices
+    # Add random intrabar movement while maintaining constraints
+    close = prices
+
+    # Open is close shifted by random amount
+    open_shift = rng.uniform(-1.0, 1.0, n_bars)
+    open_ = close + open_shift
+
+    # High >= max(open, close)
+    max_oc = np.maximum(open_, close)
+    high = max_oc + np.abs(rng.normal(0, 0.5, n_bars))
+
+    # Low <= min(open, close)
+    min_oc = np.minimum(open_, close)
+    low = min_oc - np.abs(rng.normal(0, 0.5, n_bars))
+
+    # Non-zero volume with some variation
+    volume = rng.uniform(1000, 10000, n_bars) * (1 + np.abs(rng.normal(0, 0.5, n_bars)))
+
+    # Generate timestamps
+    timestamps = [base_timestamp + timedelta(minutes=tf_minutes * i) for i in range(n_bars)]
+
+    return pd.DataFrame({
+        "timestamp": timestamps,
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
+        "volume": volume,
+    })
+
+
+# =============================================================================
+# QuoteState List Generator (for rollup audits)
+# =============================================================================
+def generate_synthetic_quotes(
+    n_quotes: int = 100,
+    seed: int = DEFAULT_SEED,
+    base_price: float = 100.0,
+    base_ts_ms: int | None = None,
+) -> list:
+    """
+    Generate deterministic synthetic QuoteState data for rollup audits.
+
+    Creates quotes with realistic price movements and volume patterns
+    suitable for testing ExecRollupBucket accumulation and snapshot accessors.
+
+    Args:
+        n_quotes: Number of quotes to generate (default: 100)
+        seed: Random seed for reproducibility (default: 42)
+        base_price: Starting price level (default: 100.0)
+        base_ts_ms: Starting timestamp in milliseconds (default: 2024-01-01 00:00 UTC)
+
+    Returns:
+        List of QuoteState objects
+
+    Example:
+        >>> quotes = generate_synthetic_quotes(n_quotes=50, seed=42)
+        >>> print(len(quotes))
+        50
+        >>> print(quotes[0].last)  # First quote price
+    """
+    # Lazy import to avoid circular dependencies
+    from src.backtest.runtime.quote_state import QuoteState
+
+    if base_ts_ms is None:
+        base_ts_ms = 1704067200000  # 2024-01-01 00:00:00 UTC
+
+    rng = np.random.default_rng(seed)
+
+    quotes = []
+    price = base_price
+
+    for i in range(n_quotes):
+        # Random walk for price
+        price += rng.normal(0, 0.5)
+
+        # Ensure price stays positive
+        price = max(price, 1.0)
+
+        # Generate intrabar high/low
+        spread = abs(rng.normal(0, 0.3))
+        high = price + spread
+        low = price - spread
+
+        # Volume with variation
+        volume = 1000 + abs(rng.normal(0, 500))
+
+        # For simplicity in tests, open_1m = close of previous bar or base_price for first
+        open_price = price if i == 0 else quotes[-1].last
+
+        quote = QuoteState(
+            ts_ms=base_ts_ms + i * 60000,  # 1-minute intervals
+            last=price,
+            open_1m=open_price,
+            high_1m=high,
+            low_1m=low,
+            mark=price * (1 + rng.normal(0, 0.0001)),  # Tiny mark deviation
+            mark_source="approx_from_ohlcv_1m",
+            volume_1m=volume,
+        )
+        quotes.append(quote)
+
+    return quotes
+
+
+# =============================================================================
+# BarData List Generator (for structure audits)
+# =============================================================================
+def generate_synthetic_bars(
+    n_bars: int = 100,
+    seed: int = DEFAULT_SEED,
+    pattern: PatternType = "trending",
+    base_price: float = DEFAULT_BASE_PRICE,
+    volatility: float = DEFAULT_VOLATILITY,
+    indicators: dict[str, float] | None = None,
+) -> list:
+    """
+    Generate deterministic synthetic BarData for structure detection audits.
+
+    Creates BarData objects suitable for testing incremental structure detectors
+    (swing, zone, fibonacci, trend, rolling_window).
+
+    Args:
+        n_bars: Number of bars to generate (default: 100)
+        seed: Random seed for reproducibility (default: 42)
+        pattern: Price pattern type (default: "trending")
+        base_price: Starting price (default: 50000.0)
+        volatility: Daily volatility (default: 0.02)
+        indicators: Optional dict of indicator values to include (default: empty)
+
+    Returns:
+        List of BarData objects
+
+    Example:
+        >>> bars = generate_synthetic_bars(n_bars=50, pattern="trending")
+        >>> print(len(bars))
+        50
+        >>> print(bars[0].close)  # First bar close price
+    """
+    # Lazy import to avoid circular dependencies
+    from src.backtest.incremental.base import BarData
+
+    rng = np.random.default_rng(seed)
+
+    # Select pattern generator
+    pattern_generators = {
+        "trending": _generate_trending_prices,
+        "ranging": _generate_ranging_prices,
+        "volatile": _generate_volatile_prices,
+        "mtf_aligned": _generate_mtf_aligned_prices,
+    }
+
+    if pattern not in pattern_generators:
+        raise ValueError(f"Unknown pattern: {pattern}. Valid: {list(pattern_generators.keys())}")
+
+    generator = pattern_generators[pattern]
+
+    # Generate close prices
+    close_prices = generator(
+        rng=rng,
+        n_bars=n_bars,
+        base_price=base_price,
+        volatility=volatility,
+    )
+
+    # Default indicators if not provided
+    if indicators is None:
+        indicators = {}
+
+    bars = []
+    for i in range(n_bars):
+        close = close_prices[i]
+
+        # Generate OHLC from close
+        if i > 0:
+            open_price = close_prices[i - 1] * (1 + rng.normal(0, 0.001))
+        else:
+            open_price = close
+
+        # High is max of open/close plus some wick
+        base_high = max(open_price, close)
+        high = base_high * (1 + abs(rng.normal(0, 0.005)))
+
+        # Low is min of open/close minus some wick
+        base_low = min(open_price, close)
+        low = base_low * (1 - abs(rng.normal(0, 0.005)))
+
+        # Volume
+        volume = rng.lognormal(mean=10, sigma=0.8) * 1000
+
+        bar = BarData(
+            idx=i,
+            open=open_price,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            indicators=indicators.copy(),  # Will be wrapped in MappingProxyType
+        )
+        bars.append(bar)
+
+    return bars
 
 
 def verify_synthetic_hash(candles: SyntheticCandles) -> bool:
