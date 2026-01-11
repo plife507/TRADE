@@ -1,0 +1,87 @@
+version: 3.0.0
+name: S42_E_012_btc_1m_trend_cross
+description: "Trend on 1m + last_price crossover execution. EMA trend filter, RSI momentum, last_price crosses EMA for entry."
+symbol: BTCUSDT
+tf: 1m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 10.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # Trend indicators
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  # Momentum
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  # Volatility for stops
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      # Trend filter: EMAs stacked bullish
+      - [ema_9, ">", ema_21]
+      - [ema_21, ">", ema_50]
+      # Momentum not overbought
+      - [rsi_14, "<", 70]
+      # EXECUTION: last_price crosses above short EMA
+      - [last_price, "cross_above", ema_9]
+  exit_long:
+    any:
+      # last_price breaks below trend
+      - [last_price, "cross_below", ema_21]
+      # Overbought exit
+      - [rsi_14, ">", 80]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 1.5
+    atr_feature_id: atr_14
+  take_profit:
+    type: atr_multiple
+    value: 3.0
+    atr_feature_id: atr_14
+  sizing:
+    model: percent_equity
+    value: 5.0
+    max_leverage: 10.0
+
+_test_metadata:
+  gate: "edge_09"
+  category: plumbing
+  exec_tf: "1m"
+  tests:
+    - "Trend indicators (ema_9, ema_21, ema_50) on 1m"
+    - "last_price cross_above ema_9 for entry"
+    - "last_price cross_below ema_21 for exit"
+    - "RSI momentum filter"
+    - "ATR-based risk model"

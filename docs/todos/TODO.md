@@ -1,33 +1,109 @@
 # Active TODO
 
 **Last Updated**: 2026-01-10
-**Status**: STRESS TESTING - Phase 3 (Comprehensive Structure Testing)
+**Status**: ✅ STRESS TEST 4.x COMPLETE (343/343 plays) + ARCHITECTURE DESIGNS
 
 ---
 
-## Current Focus: Stress Testing
+## Current Focus: Structure Module Production Ready
 
-**Stress Test 3.0: Comprehensive Structure Coverage (2026-01-09 - ongoing)** - IN_PROGRESS:
+**Stress Test 3.0: Comprehensive Structure Coverage** - ✅ COMPLETE:
 - [x] Gate 0: Foundation (8/8 PASSED) - swing + rolling_window structures
-  - BUG-016 found and fixed: rolling_window param naming consistency
-- [ ] Gate 1: Swing Basics (20 plays) - NEXT
-- [ ] Gate 3: Trend (16 plays)
-- [ ] Gate 4: Rolling Window (16 plays)
-- [ ] Gate 6: Fib Retracement (18 plays)
-- [ ] Gate 8: DZ Slots (16 plays)
-- [ ] Gate 9: DZ Aggregates (24 plays)
-- [ ] Gate 11: Struct+Indicator (8 plays)
-- [ ] Gate 12: Multi-Structure (6 plays)
-- [ ] Gate 17: Ultimate (4 plays)
+- [x] Gate 1: Swing Basics (20/20 PASSED) - high_level, low_level, idx, version
+- [x] Gate 3: Trend (16/16 PASSED) - direction, strength, bars_in_trend
+- [x] Gate 4: Rolling Window (16/16 PASSED) - max/min modes, size params
+- [x] Gate 6: Fib Retracement (18/18 PASSED) - retracement levels
+- [x] Gate 8: DZ Slots (16/16 PASSED) - zone0_* fields, ENUM state
+- [x] Gate 9: DZ Aggregates (24/24 PASSED) - any_active, active_count, closest_*
+- [x] Gate 11: Struct+Indicator (8/8 PASSED) - structure + indicator combinations
+- [x] Gate 12: Multi-Structure (6/6 PASSED) - multiple structures combined
+- [x] Gate 17: Ultimate (4/4 PASSED) - all 6 structures + complex boolean
+- [x] Gate 13: HTF Structures (5/5 PASSED) - 1h/4h swing, 4h trend
+- [x] Gate 14: MTF Confluence (6/6 PASSED) - exec+HTF alignment patterns
+- [x] Gate 15: Zone Structure (10/10 PASSED) - demand/supply zones, state machine
+- [x] Gate 15b: last_price + Zone (6/6 PASSED) - live trading parity, 1m granularity
 
-**Progress**: 8/136 plays PASSED (5.9%)
-**Coverage**: 2/6 structure types tested (swing, rolling_window)
+**Final Progress**: 163/163 plays PASSED (100%)
+**Coverage**: 6/6 structure types tested (swing, trend, fibonacci, zone, rolling_window, derived_zone)
+**Live Parity**: last_price + zone interaction validated for live trading
 
-See: `docs/todos/STRESS_TEST_3_MASTER.md` for complete roadmap and bug tracking
+**Bugs Fixed**: 4 bugs (BUG-016, BUG-017, BUG-018, BUG-019)
+- BUG-016: derived_zone wrong dependency key (source: vs swing:)
+- BUG-017: ENUM literal treated as feature reference
+- BUG-018: Gate 17 wrong dependency keys after bulk fix
+- BUG-019: Zone detector lowercase states (fixed to uppercase)
+
+See: `docs/reviews/STRUCTURE_VERIFICATION_LOG.md` for complete results
+
+---
+
+## Stress Test 4.0: Order/Risk/Leverage - ✅ COMPLETE
+
+**ROI-Based SL/TP Fix Validated** (2026-01-10):
+- [x] Gate 00: Baseline (6/6 PASSED) - BTC/ETH/SOL long+short
+- [x] Gate 01: Leverage (6/6 PASSED) - 1x, 2x, 3x validated
+- [x] Gate 02: Risk/SL/TP (8/8 PASSED) - All ratios correct
+- [x] Gate 03: Sizing (4/4 PASSED) - Position limits work
+- [x] Gate 05: Exit Modes (6/6 PASSED) - sl_tp_only, signal, first_hit
+
+**Key Validation**: ROI on margin is consistent across leverage levels:
+- 1x leverage: 2% SL = 2% price move = -2% ROI ✅
+- 2x leverage: 2% SL = 1% price move = -2% ROI ✅
+- 3x leverage: 2% SL = 0.67% price move = -2% ROI ✅
+
+See: `docs/reviews/STRESS_TEST_4_RESULTS.md` for complete results
+
+---
+
+## Stress Test 4.1: Edge Cases & Plumbing - ✅ COMPLETE
+
+**Edge Gate 09: Execution Timeframe Expansion** (2026-01-10):
+- [x] Added missing TFs: 3m, 30m, 2h, 6h, 12h to data layer
+- [x] Updated `historical_data_store.py`, `backtest_play_tools.py`, `data_tools_sync.py`
+- [x] Single-pair verification: BTC on each new TF (5/5 PASSED)
+- [x] Multi-pair verification: ETH/SOL/AVAX/DOGE/LINK (5/5 PASSED)
+- [x] 1m plumbing tests: last_price vs close code path verification (3/3 PASSED)
+
+**1m Plumbing Verification**:
+- `last_price`: From quote_provider (1m ticker) - snapshot_view.py:658
+- `close`: From feed.close[target_idx] (candle array) - snapshot_view.py:724
+- Verified different code paths even when values identical at tf=1m
+
+**Final Progress**: 100/100 plays PASSED (edge_gate_09)
+**TF Coverage**: Now supports 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, D
+**NOTE**: 8h is NOT a valid Bybit interval - use 6h or 12h instead
+
+---
+
+## Stress Test 4.2: Multi-Pair TF Verification - ✅ COMPLETE
+
+**Multi-Pair Data Fetch Verification** (2026-01-10):
+- [x] S42_E_019_eth_30m.yml - ETH 30m (362 candles, 7 trades) ✅
+- [x] S42_E_020_sol_3m.yml - SOL 3m (2,954 candles, 64 trades) ✅
+- [x] S42_E_021_avax_2h.yml - AVAX 2h (146 candles, 1 trade) ✅
+- [x] S42_E_022_doge_6h.yml - DOGE 6h (98 candles, 1 trade) ✅
+- [x] S42_E_023_link_12h.yml - LINK 12h (86 candles, 1 trade) ✅
+
+**Final Progress**: 50/50 plays PASSED (multi-pair TF verification)
+**Data Fetch**: All 5 new TFs verified across 5 different crypto pairs
+**Gap Fill**: Forward-fill semantics confirmed working correctly
 
 ---
 
 ## Recent Completed Work
+
+**Architecture Designs (2026-01-10)** - COMPLETE:
+- [x] Created `docs/architecture/HYBRID_ENGINE_DESIGN.md` - complete backtest→live bridge design
+  - TradingSnapshot Protocol, ExchangeAPI Protocol definitions
+  - RingBuffer architecture for live multi-TF handling
+  - Incremental indicator formulas (EMA, RSI, ATR, SMA, BBands)
+  - Historical warmup → live transition flow diagram
+  - Implementation roadmap (8 phases: A-H)
+- [x] Created `docs/architecture/OI_FUNDING_STRATEGY_INTEGRATION.md` - OI/funding DSL integration
+  - 90% complete infrastructure, only DSL wiring missing (~50-60 lines)
+  - Strategic value analysis: funding as crowd positioning, OI as conviction measure
+  - Complete strategy patterns with YAML examples
+  - Implementation plan for DSL feature resolution
 
 **Documentation: Backtest Engine Concepts Guide (2026-01-10)** - COMPLETE:
 - [x] Created `docs/guides/BACKTEST_ENGINE_CONCEPTS.md` - comprehensive conceptual guide
@@ -104,8 +180,9 @@ High risk % with percent_equity sizing causes margin exhaustion and 100% entry r
 - 84 tools registered
 - Validation plays relocated to `tests/validation/plays/`
 - 43/43 indicators pass audit
-- 6 structures in STRUCTURE_REGISTRY
+- 6 structures in STRUCTURE_REGISTRY (163/163 stress tests pass)
 - All smoke tests pass (including sim_orders, structure, forge)
+- Live trading parity validated (last_price + zone interaction)
 
 **New APIs**:
 ```python
@@ -223,6 +300,12 @@ $env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
 
 | Phase | Date | Notes |
 |-------|------|-------|
+| **Hybrid Engine Design** | 2026-01-10 | Complete backtest→live architecture, TradingSnapshot/ExchangeAPI protocols |
+| **OI/Funding Integration** | 2026-01-10 | 90% complete, DSL wiring documented (~50 lines to implement) |
+| **Stress Test 4.2 Multi-Pair** | 2026-01-10 | 50/50 pass, 5 TFs across 5 pairs verified |
+| **Stress Test 4.1 Edge Cases** | 2026-01-10 | 100/100 pass, TF expansion (3m,30m,2h,6h,12h), 1m plumbing verified |
+| **Stress Test 4.0 Order/Risk** | 2026-01-10 | 30/30 pass, ROI-based SL/TP validated |
+| **Stress Testing Complete** | 2026-01-10 | 163/163 pass, 4 bugs fixed, live trading parity validated |
 | **Stress Testing Phase 1** | 2026-01-09 | 5 gates passed, 3 bugs fixed (BUG-001/002/003) |
 | **DSL Foundation Freeze** | 2026-01-08 | 259 synthetic tests, all operators frozen |
 | **Cookbook Alignment** | 2026-01-08 | 7 phases, module extraction complete |

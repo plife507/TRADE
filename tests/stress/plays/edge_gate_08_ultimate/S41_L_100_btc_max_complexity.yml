@@ -1,0 +1,136 @@
+version: 3.0.0
+name: S41_L_100_btc_max_complexity
+description: "Complexity 100%: BTC maximum complexity - everything combined."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 100.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_5:
+    indicator: ema
+    params:
+      length: 5
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  ema_200:
+    indicator: ema
+    params:
+      length: 200
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+  supertrend_10_3:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+  stoch_14_3:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: "1h"
+  ema_200_4h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "4h"
+
+actions:
+  entry_long:
+    all:
+      - [ema_5, "cross_above", ema_9]
+      - [ema_9, ">", ema_21]
+      - [ema_21, ">", ema_50]
+      - [supertrend_10_3.direction, "==", 1]
+      - [rsi_7, "<", 60]
+      - [rsi_14, "<", 65]
+      - [macd_12_26_9.histogram, ">", 0]
+      - [stoch_14_3.k, "<", 80]
+      - [close, ">", ema_50_1h]
+      - [rsi_14_1h, ">", 40]
+      - [close, ">", ema_200_4h]
+  exit_long:
+    any:
+      - [supertrend_10_3.direction, "==", -1]
+      - [rsi_7, ">", 90]
+      - [rsi_14, ">", 80]
+      - [macd_12_26_9.histogram, "<", 0]
+      - [stoch_14_3.k, ">", 95]
+      - [rsi_14_1h, ">", 80]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 0.2
+    atr_feature_id: atr_14
+  take_profit:
+    type: atr_multiple
+    value: 0.4
+    atr_feature_id: atr_14
+  sizing:
+    model: percent_equity
+    value: 1.0
+    max_leverage: 100.0
+
+_test_metadata:
+  gate: "edge_08"
+  complexity_pct: 100
+  category: max_complexity
+  leverage: 100
+  indicators: 15
+  htf: ["1h", "4h"]
+  tests: [btc_max_complexity]

@@ -317,21 +317,37 @@ risk:
 | `fixed_usdt` | Fixed size regardless of equity |
 | `risk_based` | Size based on stop distance: `risk_amount / stop_distance` |
 
-### Stop Loss Types
+### Stop Loss & Take Profit Types
+
+**Percentage values are ROI-based** (percentage of margin), not price-based.
+With 10x leverage and 2% SL, you lose 2% of margin when price moves 0.2% against you.
+
+```
+Formula: price_distance = entry × (roi_pct / 100) / leverage
+```
+
+| Leverage | 2% SL (ROI) | Price Move | 4% TP (ROI) | Price Move |
+|----------|-------------|------------|-------------|------------|
+| 1x | 2% loss | 2.0% | 4% gain | 4.0% |
+| 5x | 2% loss | 0.4% | 4% gain | 0.8% |
+| 10x | 2% loss | 0.2% | 4% gain | 0.4% |
+| 20x | 2% loss | 0.1% | 4% gain | 0.2% |
+
+#### Stop Loss Types
 
 | Type | Description |
 |------|-------------|
-| `percent` | Fixed percentage from entry |
+| `percent` | ROI-based percentage (2% = 2% margin loss) |
 | `atr_multiple` | Dynamic: `entry ± (ATR × multiplier)` |
 | `structure` | Based on swing high/low levels |
 | `fixed_points` | Absolute price distance |
 
-### Take Profit Types
+#### Take Profit Types
 
 | Type | Description |
 |------|-------------|
 | `rr_ratio` | Target = `entry + (stop_distance × ratio)` |
-| `percent` | Fixed percentage from entry |
+| `percent` | ROI-based percentage (4% = 4% margin gain) |
 | `atr_multiple` | Dynamic: `entry ± (ATR × multiplier)` |
 | `fixed_points` | Absolute price distance |
 
@@ -347,50 +363,114 @@ risk:
 
 ## Backtest Metrics (62 Fields)
 
-### Core Performance
+Complete performance analytics computed for every backtest run.
+
+### Equity Metrics (6)
 
 | Metric | Description |
 |--------|-------------|
-| `net_profit` | Final equity - starting equity |
-| `net_return_pct` | Percentage return |
+| `initial_equity` | Starting account balance |
+| `final_equity` | Ending account balance |
+| `net_profit` | Final - initial equity |
+| `net_return_pct` | Total percentage return |
 | `benchmark_return_pct` | Buy-and-hold return (same period) |
 | `alpha_pct` | Strategy return - benchmark return |
 
-### Risk-Adjusted Returns
+### Drawdown Metrics (4)
 
 | Metric | Description |
 |--------|-------------|
-| `sharpe` | Risk-adjusted return (annualized) |
-| `sortino` | Downside-only risk adjustment |
-| `calmar` | Return / Max Drawdown |
+| `max_drawdown_abs` | Peak-to-trough drawdown in USDT |
+| `max_drawdown_pct` | Peak-to-trough drawdown as % |
+| `max_drawdown_duration_bars` | Longest time spent in drawdown |
+| `ulcer_index` | Pain-adjusted drawdown (penalizes depth + duration) |
+
+### Risk-Adjusted Returns (5)
+
+| Metric | Description |
+|--------|-------------|
+| `sharpe` | Annualized Sharpe ratio |
+| `sortino` | Sharpe with downside-only volatility |
+| `calmar` | CAGR / Max Drawdown |
 | `omega_ratio` | Probability-weighted gain/loss ratio |
+| `recovery_factor` | Net profit / max drawdown |
 
-### Tail Risk (Critical for Leverage)
+### Tail Risk (Critical for Leverage) (4)
 
 | Metric | Description |
 |--------|-------------|
-| `var_95_pct` | 95% Value at Risk - worst 5% daily loss |
+| `var_95_pct` | 95% Value at Risk - worst 5% loss |
 | `cvar_95_pct` | Expected Shortfall - avg loss beyond VaR |
 | `skewness` | Return asymmetry (negative = blowup risk) |
 | `kurtosis` | Fat tails measure (>3 = extreme moves) |
 
-### Leverage-Specific Metrics
+### Trade Summary (12)
+
+| Metric | Description |
+|--------|-------------|
+| `total_trades` | Number of completed trades |
+| `win_count` / `loss_count` | Win/loss breakdown |
+| `win_rate` | Win percentage |
+| `avg_trade_return_pct` | Average trade ROI |
+| `profit_factor` | Gross profit / gross loss |
+| `avg_win_usdt` / `avg_loss_usdt` | Average win/loss size |
+| `largest_win_usdt` / `largest_loss_usdt` | Best/worst trades |
+| `max_consecutive_wins` / `max_consecutive_losses` | Streaks |
+| `expectancy_usdt` | Expected $ per trade |
+| `payoff_ratio` | Average win / average loss |
+
+### Trade Duration (5)
+
+| Metric | Description |
+|--------|-------------|
+| `avg_trade_duration_bars` | Average trade length (all trades) |
+| `avg_winning_trade_duration_bars` | Average duration of winners |
+| `avg_losing_trade_duration_bars` | Average duration of losers |
+| `bars_in_position` | Total bars with open position |
+| `time_in_market_pct` | Percentage of time in market |
+
+### Long/Short Breakdown (6)
+
+| Metric | Description |
+|--------|-------------|
+| `long_trades` / `short_trades` | Trade count by direction |
+| `long_win_rate` / `short_win_rate` | Win rates by direction |
+| `long_pnl` / `short_pnl` | PnL by direction |
+
+### Leverage Metrics (6)
 
 | Metric | Description |
 |--------|-------------|
 | `avg_leverage_used` | Average actual leverage during backtest |
 | `max_gross_exposure_pct` | Peak position_value / equity |
-| `closest_liquidation_pct` | How close you got to liquidation |
+| `closest_liquidation_pct` | How close to liquidation (100 = never) |
 | `margin_calls` | Number of margin warning events |
+| `entry_attempts` / `entry_rejections` | Entry signal attempts vs rejections |
+| `entry_rejection_rate` | Rejection percentage |
 
-### Trade Quality (MAE/MFE)
+### Trade Quality - MAE/MFE (3)
 
 | Metric | Description |
 |--------|-------------|
-| `mae_avg_pct` | Avg Maximum Adverse Excursion |
-| `mfe_avg_pct` | Avg Maximum Favorable Excursion |
-| `payoff_ratio` | Average win / average loss |
-| `expectancy_usdt` | Expected $ per trade |
+| `mae_avg_pct` | Avg Maximum Adverse Excursion (worst intratrade drawdown) |
+| `mfe_avg_pct` | Avg Maximum Favorable Excursion (best intratrade profit) |
+| `min_margin_ratio` | Lowest margin ratio during backtest |
+
+### Funding Metrics (3)
+
+| Metric | Description |
+|--------|-------------|
+| `total_funding_paid_usdt` | Funding paid (longs in positive funding) |
+| `total_funding_received_usdt` | Funding received (shorts in positive funding) |
+| `net_funding_usdt` | Net funding impact on PnL |
+
+### Fees & Costs (3)
+
+| Metric | Description |
+|--------|-------------|
+| `total_fees` | Total trading fees |
+| `gross_profit` | Total profit before fees |
+| `gross_loss` | Total losses before fees |
 
 ---
 

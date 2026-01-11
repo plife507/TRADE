@@ -1,0 +1,47 @@
+version: 3.0.0
+name: S42_M_044_sol_macd
+description: "Indicator: MACD histogram crossover."
+symbol: SOLUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 25.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+
+actions:
+  entry_long:
+    all:
+      - [macd_12_26_9.macd, "cross_above", macd_12_26_9.signal]
+  exit_long:
+    any:
+      - [macd_12_26_9.macd, "cross_below", macd_12_26_9.signal]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_12"
+  category: indicator
+  note: "MACD line cross signal line."
+  tests: [sol_macd_cross]

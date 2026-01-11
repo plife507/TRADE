@@ -1,0 +1,63 @@
+version: 3.0.0
+name: S41_L_029_atr_rr
+description: "Complexity 29%: ATR SL + RR ratio TP - hybrid risk management."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - [ema_9, "cross_above", ema_21]
+  exit_long:
+    any:
+      - [ema_9, "cross_below", ema_21]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 2.0
+    atr_feature_id: atr_14
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+  sizing:
+    model: percent_equity
+    value: 10.0
+    max_leverage: 1.0
+
+_test_metadata:
+  gate: "edge_03"
+  complexity_pct: 29
+  category: atr_stops
+  atr_sl_mult: 2.0
+  rr_ratio: 2.0
+  tests: [atr_sl_rr_tp]

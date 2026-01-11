@@ -1,0 +1,56 @@
+version: 3.0.0
+name: S42_M_048_doge_5m_short
+description: "Short: DOGE 5m short at 20x."
+symbol: DOGEUSDT
+tf: 5m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 20.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    all:
+      - [ema_9, "cross_below", ema_21]
+      - [rsi_14, ">", 40]
+  exit_short:
+    any:
+      - [ema_9, "cross_above", ema_21]
+      - [rsi_14, "<", 20]
+
+position_policy:
+  mode: short_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_12"
+  category: short
+  exec_tf: "5m"
+  leverage: 20
+  tests: [doge_5m_short]

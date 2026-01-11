@@ -1,0 +1,46 @@
+version: 3.0.0
+name: S41_L_013_bbands_bounce
+description: "Complexity 13%: Bollinger Band lower bounce - volatility mean reversion."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+actions:
+  entry_long:
+    all:
+      - [close, "cross_above", bbands_20_2.lower]
+  exit_long:
+    any:
+      - [close, ">", bbands_20_2.mid]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_01"
+  complexity_pct: 13
+  category: indicators
+  tests: [bbands_bounce]

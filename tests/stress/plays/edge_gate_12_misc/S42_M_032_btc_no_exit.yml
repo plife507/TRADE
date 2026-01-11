@@ -1,0 +1,46 @@
+version: 3.0.0
+name: S42_M_032_btc_no_exit
+description: "Exit edge: sl_tp_only mode - no signal exit."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 10.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+actions:
+  entry_long:
+    all:
+      - [ema_9, "cross_above", ema_21]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_12"
+  category: exit_mode
+  exit_mode: sl_tp_only
+  tests: [btc_sltp_only]

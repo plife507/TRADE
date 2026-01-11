@@ -1,0 +1,52 @@
+version: 3.0.0
+name: S42_M_045_xrp_stoch
+description: "Indicator: Stochastic oversold/overbought."
+symbol: XRPUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 15.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  stoch_14_3:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+actions:
+  entry_long:
+    all:
+      - [stoch_14_3.k, "cross_above", stoch_14_3.d]
+      - [stoch_14_3.k, "<", 30]
+      - [close, ">", ema_21]
+  exit_long:
+    any:
+      - [stoch_14_3.k, ">", 80]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_12"
+  category: indicator
+  note: "Stochastic %K cross %D in oversold."
+  tests: [xrp_stoch_oversold]

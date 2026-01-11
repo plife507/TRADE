@@ -53,19 +53,25 @@ logger = get_logger()
 # =============================================================================
 
 # Canonical timeframes accepted by CLI (stored in DuckDB as-is)
-# Bybit format: D for daily, W for weekly, M for monthly
-CANONICAL_TIMEFRAMES = {"1m", "5m", "15m", "1h", "4h", "D"}
+# Full Bybit-supported set: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, D
+# NOTE: 8h is NOT a valid Bybit interval - use 6h or 12h instead
+CANONICAL_TIMEFRAMES = {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "D"}
 
 # Bybit API intervals (numeric format for sub-daily)
-BYBIT_API_INTERVALS = {"1", "5", "15", "60", "240", "D"}
+BYBIT_API_INTERVALS = {"1", "3", "5", "15", "30", "60", "120", "240", "360", "720", "D"}
 
 # Mapping from Bybit API numeric interval to canonical
 BYBIT_TO_CANONICAL = {
     "1": "1m",
+    "3": "3m",
     "5": "5m",
     "15": "15m",
+    "30": "30m",
     "60": "1h",
+    "120": "2h",
     "240": "4h",
+    "360": "6h",
+    "720": "12h",
     "D": "D",
 }
 

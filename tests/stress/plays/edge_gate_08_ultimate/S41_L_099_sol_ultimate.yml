@@ -1,0 +1,106 @@
+version: 3.0.0
+name: S41_L_099_sol_ultimate
+description: "Complexity 99%: SOL ultimate - all features at 50x."
+symbol: SOLUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 50.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+  supertrend_10_3:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: "1h"
+
+actions:
+  entry_long:
+    all:
+      - [ema_9, "cross_above", ema_21]
+      - [ema_21, ">", ema_50]
+      - [supertrend_10_3.direction, "==", 1]
+      - [rsi_14, "<", 55]
+      - [macd_12_26_9.histogram, ">", 0]
+      - [close, ">", ema_50_1h]
+      - [rsi_14_1h, ">", 40]
+  exit_long:
+    any:
+      - [supertrend_10_3.direction, "==", -1]
+      - [rsi_14, ">", 80]
+      - [macd_12_26_9.histogram, "<", 0]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 0.5
+    atr_feature_id: atr_14
+  take_profit:
+    type: atr_multiple
+    value: 1.0
+    atr_feature_id: atr_14
+  sizing:
+    model: percent_equity
+    value: 4.0
+    max_leverage: 50.0
+
+_test_metadata:
+  gate: "edge_08"
+  complexity_pct: 99
+  category: ultimate
+  leverage: 50
+  indicators: 10
+  tests: [sol_ultimate]

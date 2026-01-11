@@ -1251,11 +1251,16 @@ risk_model:
 
 ### Stop Loss Types
 
+**Percentage values are ROI-based** (percentage of margin), not price-based.
+With 10x leverage and 2% SL, price moves 0.2% against you = 2% margin loss.
+
+Formula: `price_distance = entry × (roi_pct / 100) / leverage`
+
 ```yaml
-# Percentage-based stop
+# ROI-based percentage stop (RECOMMENDED)
 stop_loss:
   type: "percent"
-  value: 2.0               # 2% from entry
+  value: 2.0               # 2% ROI loss (at 10x lev = 0.2% price move)
 
 # ATR-based stop
 stop_loss:
@@ -1272,10 +1277,13 @@ stop_loss:
 # Fixed points stop
 stop_loss:
   type: "fixed_points"
-  value: 100               # $100 from entry
+  value: 100               # $100 from entry (price-based)
 ```
 
 ### Take Profit Types
+
+**Percentage values are ROI-based** (percentage of margin gain).
+With 10x leverage and 4% TP, price moves 0.4% in your favor = 4% margin gain.
 
 ```yaml
 # Risk-reward ratio
@@ -1283,10 +1291,10 @@ take_profit:
   type: "rr_ratio"
   value: 2.0               # 2R target (2x stop distance)
 
-# Percentage
+# ROI-based percentage (RECOMMENDED)
 take_profit:
   type: "percent"
-  value: 4.0               # 4% from entry
+  value: 4.0               # 4% ROI gain (at 10x lev = 0.4% price move)
 
 # ATR-based
 take_profit:
@@ -1297,7 +1305,7 @@ take_profit:
 # Fixed points
 take_profit:
   type: "fixed_points"
-  value: 200               # $200 from entry
+  value: 200               # $200 from entry (price-based)
 ```
 
 ### Sizing Models
@@ -1324,12 +1332,21 @@ sizing:
 ### Simplified Risk Config
 
 ```yaml
-# Shorthand (most common)
+# Shorthand (most common) - percentages are ROI-based
 risk:
-  stop_loss_pct: 2.0       # 2% stop
-  take_profit_pct: 4.0     # 4% TP (or 2R if using rr_ratio)
+  stop_loss_pct: 2.0       # 2% ROI loss (2% of margin at risk)
+  take_profit_pct: 4.0     # 4% ROI gain (4% margin profit)
   max_position_pct: 100.0  # Max position as % of equity x leverage
 ```
+
+**ROI vs Price Movement (critical for leveraged trading):**
+
+| Leverage | 2% SL (ROI) | Price Move | 4% TP (ROI) | Price Move |
+|----------|-------------|------------|-------------|------------|
+| 1x | 2% loss | 2.0% | 4% gain | 4.0% |
+| 5x | 2% loss | 0.4% | 4% gain | 0.8% |
+| 10x | 2% loss | 0.2% | 4% gain | 0.4% |
+| 20x | 2% loss | 0.1% | 4% gain | 0.2% |
 
 ---
 

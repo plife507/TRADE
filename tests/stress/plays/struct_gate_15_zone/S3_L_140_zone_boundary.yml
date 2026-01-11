@@ -1,0 +1,73 @@
+version: 3.0.0
+name: S3_L_140_zone_boundary
+description: "Zone Structure: Test zone upper/lower boundary fields (long)."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: zone
+      key: demand
+      depends_on:
+        swing: swing
+      params:
+        zone_type: demand
+        width_atr: 1.5
+
+actions:
+  entry_long:
+    all:
+      # Zone has valid boundaries (lower > 0 means zone exists)
+      - [{feature_id: demand, field: lower}, ">", 0]
+      # Price between zone lower and upper (inside zone)
+      - [close, ">", {feature_id: demand, field: lower}]
+      - [close, "<", {feature_id: demand, field: upper}]
+      # RSI filter
+      - [rsi_14, "<", 50]
+  exit_long:
+    any:
+      # Price breaks below zone lower
+      - [close, "<", {feature_id: demand, field: lower}]
+      # RSI overbought
+      - [rsi_14, ">", 70]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 15
+  complexity_pct: 65
+  category: zone
+  direction: long
+  tests:
+    - zone_lower_field
+    - zone_upper_field
+    - zone_boundary_comparison

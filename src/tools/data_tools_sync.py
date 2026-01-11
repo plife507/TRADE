@@ -673,7 +673,7 @@ def sync_full_from_launch_tool(
         # Dry run: estimate only
         if dry_run:
             # Estimate candles per timeframe
-            tf_minutes = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "D": 1440}
+            tf_minutes = {"1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720, "D": 1440}
             estimates = {}
             total_candles = 0
             

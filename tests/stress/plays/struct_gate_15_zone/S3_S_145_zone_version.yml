@@ -1,0 +1,71 @@
+version: 3.0.0
+name: S3_S_145_zone_version
+description: "Zone Structure: Test zone version field (increments on state change)."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: zone
+      key: supply
+      depends_on:
+        swing: swing
+      params:
+        zone_type: supply
+        width_atr: 1.5
+
+actions:
+  entry_short:
+    all:
+      # Zone version > 0 means at least one zone has formed
+      - [{feature_id: supply, field: version}, ">", 0]
+      # Zone is active
+      - [{feature_id: supply, field: state}, "==", "ACTIVE"]
+      # Price below EMA
+      - [close, "<", ema_21]
+  exit_short:
+    any:
+      # Zone state changes
+      - [{feature_id: supply, field: state}, "==", "BROKEN"]
+      # Price above EMA
+      - [close, ">", ema_21]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 15
+  complexity_pct: 55
+  category: zone
+  direction: short
+  tests:
+    - zone_version_field
+    - zone_formation_tracking

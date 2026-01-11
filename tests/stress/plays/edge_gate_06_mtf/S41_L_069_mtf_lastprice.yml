@@ -1,0 +1,53 @@
+version: 3.0.0
+name: S41_L_069_mtf_lastprice
+description: "Complexity 69%: MTF with last_price entry (1m granularity)."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  ema_200_1h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "1h"
+
+actions:
+  entry_long:
+    all:
+      - [last_price, "cross_above", ema_50]
+      - [close, ">", ema_200_1h]
+  exit_long:
+    any:
+      - [last_price, "cross_below", ema_50]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_06"
+  complexity_pct: 69
+  category: multi_tf
+  htf: "1h"
+  ltf: "15m"
+  tests: [mtf_last_price]

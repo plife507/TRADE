@@ -1,0 +1,75 @@
+version: 3.0.0
+name: S3_S_143_zone_trend_confluence
+description: "Zone Structure: Supply zone + downtrend confluence (short)."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      depends_on:
+        swing: swing
+    - type: zone
+      key: supply
+      depends_on:
+        swing: swing
+      params:
+        zone_type: supply
+        width_atr: 1.5
+
+actions:
+  entry_short:
+    all:
+      # Trend is DOWN
+      - [{feature_id: trend, field: direction}, "==", -1]
+      # Supply zone is active
+      - [{feature_id: supply, field: state}, "==", "ACTIVE"]
+      # Price near zone (within 2%)
+      - [close, "near_pct", {feature_id: supply, field: upper}, 2.0]
+  exit_short:
+    any:
+      # Trend reverses
+      - [{feature_id: trend, field: direction}, "==", 1]
+      # Zone broken
+      - [{feature_id: supply, field: state}, "==", "BROKEN"]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: 15
+  complexity_pct: 75
+  category: zone
+  direction: short
+  tests:
+    - zone_trend_confluence
+    - multi_structure_dependency

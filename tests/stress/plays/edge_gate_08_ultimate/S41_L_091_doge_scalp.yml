@@ -1,0 +1,79 @@
+version: 3.0.0
+name: S41_L_091_doge_scalp
+description: "Complexity 91%: DOGE scalp - tight stops, high leverage."
+symbol: DOGEUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 30.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_5:
+    indicator: ema
+    params:
+      length: 5
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  bbands_10_2:
+    indicator: bbands
+    params:
+      length: 10
+      std: 2.0
+
+actions:
+  entry_long:
+    all:
+      - [ema_5, "cross_above", ema_9]
+      - [ema_9, ">", ema_21]
+      - [rsi_7, "<", 60]
+      - [close, ">", bbands_10_2.lower]
+  exit_long:
+    any:
+      - [ema_5, "cross_below", ema_9]
+      - [rsi_7, ">", 85]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 0.7
+    atr_feature_id: atr_14
+  take_profit:
+    type: atr_multiple
+    value: 1.4
+    atr_feature_id: atr_14
+  sizing:
+    model: percent_equity
+    value: 5.0
+    max_leverage: 30.0
+
+_test_metadata:
+  gate: "edge_08"
+  complexity_pct: 91
+  category: scalp
+  tests: [doge_scalp]

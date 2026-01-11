@@ -1,0 +1,64 @@
+version: 3.0.0
+name: S41_L_064_dual_htf
+description: "Complexity 64%: Dual HTF (1h + 4h) alignment + 15m entry."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_20_1h:
+    indicator: ema
+    params:
+      length: 20
+    tf: "1h"
+  ema_50_4h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "4h"
+
+actions:
+  entry_long:
+    all:
+      - [ema_9, "cross_above", ema_21]
+      - [close, ">", ema_20_1h]
+      - [close, ">", ema_50_4h]
+  exit_long:
+    any:
+      - [ema_9, "cross_below", ema_21]
+      - [close, "<", ema_20_1h]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_06"
+  complexity_pct: 64
+  category: multi_tf
+  htf: ["1h", "4h"]
+  ltf: "15m"
+  tests: [dual_htf_alignment]

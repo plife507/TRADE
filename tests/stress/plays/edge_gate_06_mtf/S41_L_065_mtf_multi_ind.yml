@@ -1,0 +1,62 @@
+version: 3.0.0
+name: S41_L_065_mtf_multi_ind
+description: "Complexity 65%: HTF EMA+RSI + LTF MACD entry."
+symbol: BTCUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: "1h"
+
+actions:
+  entry_long:
+    all:
+      - [macd_12_26_9.macd, "cross_above", macd_12_26_9.signal]
+      - [close, ">", ema_50_1h]
+      - [rsi_14_1h, "<", 70]
+  exit_long:
+    any:
+      - [macd_12_26_9.macd, "cross_below", macd_12_26_9.signal]
+      - [rsi_14_1h, ">", 80]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_06"
+  complexity_pct: 65
+  category: multi_tf
+  htf: "1h"
+  ltf: "15m"
+  tests: [mtf_multi_indicator]

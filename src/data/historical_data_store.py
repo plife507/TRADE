@@ -176,24 +176,35 @@ def print_activity(message: str, emoji: str = "💰", end: str = "\n") -> None:
 
 
 # Supported timeframes (Bybit format)
-# Internal: "1m", "5m", "15m", "1h", "4h", "D"
-# Bybit API: "1", "5", "15", "60", "240", "D"
+# Internal: "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "D"
+# Bybit API: "1", "3", "5", "15", "30", "60", "120", "240", "360", "720", "D"
+# NOTE: 8h is NOT a valid Bybit interval - use 6h or 12h instead
 TIMEFRAMES = {
     "1m": "1",
+    "3m": "3",
     "5m": "5",
     "15m": "15",
+    "30m": "30",
     "1h": "60",
+    "2h": "120",
     "4h": "240",
+    "6h": "360",
+    "12h": "720",
     "D": "D",
 }
 
 # Timeframe to minutes mapping for period calculations and gap detection
 TF_MINUTES = {
     "1m": 1,
+    "3m": 3,
     "5m": 5,
     "15m": 15,
+    "30m": 30,
     "1h": 60,
+    "2h": 120,
     "4h": 240,
+    "6h": 360,
+    "12h": 720,
     "D": 1440,
     "d": 1440,  # Lowercase alias for Daily
 }

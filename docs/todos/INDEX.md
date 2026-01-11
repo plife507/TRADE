@@ -1,7 +1,7 @@
 # TODO Index
 
 Documentation index for work tracking in the TRADE project.
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-01-10
 
 ---
 
@@ -9,17 +9,19 @@ Documentation index for work tracking in the TRADE project.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [TODO.md](TODO.md) | Current focus, next steps | **Stress Testing Phase 2** |
-| [STRESS_TESTING.md](STRESS_TESTING.md) | Progressive complexity validation (0-100%) | IN_PROGRESS (Gate 2.2 next) |
-| [FUNCTIONAL_TEST_COVERAGE.md](FUNCTIONAL_TEST_COVERAGE.md) | Real-data engine validation | Phase 2 Complete (43/43 indicators) |
+| [TODO.md](TODO.md) | Current focus, next steps | **STRESS TEST 4.x COMPLETE (343/343)** |
+| [STRESS_TESTING.md](STRESS_TESTING.md) | Progressive complexity validation | COMPLETE (163/163 plays) |
+| [STRESS_TEST_2_TODO.md](STRESS_TEST_2_TODO.md) | Stress Test 2.0 (320 plays) | COMPLETE |
+| [STRESS_TEST_3_TODO.md](STRESS_TEST_3_TODO.md) | Stress Test 3.0 (163 plays) | COMPLETE |
+| [FUNCTIONAL_TEST_COVERAGE.md](FUNCTIONAL_TEST_COVERAGE.md) | Real-data engine validation | Complete (43/43 indicators) |
 | [ICT_MARKET_STRUCTURE.md](ICT_MARKET_STRUCTURE.md) | ICT/SMC structure detectors | PLANNING |
-| [TV_WEBHOOK_MARKET_STRUCTURE_VERIFICATION.md](TV_WEBHOOK_MARKET_STRUCTURE_VERIFICATION.md) | TradingView webhook validation tool | READY |
 | [../audits/OPEN_BUGS.md](../audits/OPEN_BUGS.md) | Bug tracker | All Fixed |
-| [../audits/STRESS_TEST_BUGS.md](../audits/STRESS_TEST_BUGS.md) | Stress test bug tracker | 3 resolved, 3 open items |
 
-**Open Items Requiring Decision**:
-- DEBT-001: Symbol vs Word operators - see STRESS_TEST_BUGS.md for options
-- DOC-001/DOC-002: Cookbook fixes blocked pending DEBT-001 decision
+**Recent Completions (2026-01-10)**:
+- Stress Test 4.0: Order/risk/leverage (30/30)
+- Stress Test 4.1: Edge cases, TF expansion (100/100)
+- Stress Test 4.2: Multi-pair TF verification (50/50)
+- Architecture docs: Hybrid Engine Design, OI/Funding Integration
 
 ---
 
@@ -46,6 +48,8 @@ Completed work is archived by date in `archived/`:
 
 | Folder | Period | Key Work |
 |--------|--------|----------|
+| `2026-01-10` | Jan 10, 2026 | Stress Test 4.x (343 plays), Hybrid Engine Design, OI/Funding Integration |
+| `2026-01-09` | Jan 9, 2026 | Stress Test 3.0 (163 plays), Structure module production |
 | `2026-01-08/` | Jan 8, 2026 | DSL Foundation Freeze (259 tests), Cookbook Alignment, Tiered Testing |
 | `2026-01/` | Jan 2026 | Forge migration, simulator orders, incremental state, analytics |
 | `2026-01-01/` | Jan 1, 2026 | Market structure, Play value flow, metrics, legacy cleanup |

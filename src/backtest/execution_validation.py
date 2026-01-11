@@ -1147,6 +1147,12 @@ class PlaySignalEvaluator:
         """
         Compute stop loss and take profit prices from risk model.
 
+        SL/TP percentages are ROI-based (percentage of margin), not price-based.
+        This means with 10x leverage and 2% SL, you lose 2% of your margin when
+        the price moves 0.2% against you.
+
+        Formula: price_distance = entry_price × (roi_pct / 100) / leverage
+
         Args:
             snapshot: Runtime snapshot
             direction: "long" or "short"
@@ -1163,6 +1169,11 @@ class PlaySignalEvaluator:
         if entry_price is None:
             return None, None
 
+        # Get leverage from account config (required for ROI-based SL/TP)
+        leverage = 1.0
+        if self.play.account is not None:
+            leverage = max(1.0, self.play.account.max_leverage)
+
         sl_price = None
         sl_distance = None
 
@@ -1178,7 +1189,9 @@ class PlaySignalEvaluator:
                 else:
                     sl_price = entry_price + sl_distance + buffer
         elif sl_rule.type.value == "percent":
-            sl_distance = entry_price * (sl_rule.value / 100.0)
+            # ROI-based: sl_pct is percentage of margin loss, not price movement
+            # price_distance = entry × (roi_pct / 100) / leverage
+            sl_distance = entry_price * (sl_rule.value / 100.0) / leverage
             if direction == "long":
                 sl_price = entry_price - sl_distance
             else:
@@ -1209,7 +1222,9 @@ class PlaySignalEvaluator:
                 else:
                     tp_price = entry_price - tp_distance
         elif tp_rule.type.value == "percent":
-            tp_distance = entry_price * (tp_rule.value / 100.0)
+            # ROI-based: tp_pct is percentage of margin gain, not price movement
+            # price_distance = entry × (roi_pct / 100) / leverage
+            tp_distance = entry_price * (tp_rule.value / 100.0) / leverage
             if direction == "long":
                 tp_price = entry_price + tp_distance
             else:

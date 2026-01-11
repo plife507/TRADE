@@ -1,0 +1,55 @@
+version: 3.0.0
+name: S42_M_041_dot_warmup
+description: "Warmup: Long indicator requiring extra warmup."
+symbol: DOTUSDT
+tf: 15m
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 10.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_200:
+    indicator: ema
+    params:
+      length: 200
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - [ema_50, "cross_above", ema_200]
+      - [rsi_14, "<", 70]
+  exit_long:
+    any:
+      - [ema_50, "cross_below", ema_200]
+      - [rsi_14, ">", 80]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  gate: "edge_12"
+  category: warmup
+  note: "EMA 200 needs 200 bars warmup."
+  tests: [dot_long_warmup]

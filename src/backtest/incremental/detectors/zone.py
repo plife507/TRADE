@@ -46,12 +46,12 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
     Zone width is calculated using ATR from bar.indicators.
 
     State values:
-        - "none": No zone active (initial state)
-        - "active": Zone is active and being tracked
-        - "broken": Zone has been broken by price
+        - "NONE": No zone active (initial state)
+        - "ACTIVE": Zone is active and being tracked
+        - "BROKEN": Zone has been broken by price
 
     Outputs:
-        - state: Current zone state ("none", "active", "broken")
+        - state: Current zone state ("NONE", "ACTIVE", "BROKEN")
         - upper: Upper boundary of the zone
         - lower: Lower boundary of the zone
         - anchor_idx: Bar index where the zone was anchored (swing pivot bar)
@@ -152,8 +152,8 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
         self.zone_type: str = params["zone_type"]
         self.width_atr: float = float(params["width_atr"])
 
-        # State machine
-        self.state: str = "none"
+        # State machine (uppercase for DSL ENUM compatibility)
+        self.state: str = "NONE"
         self.upper: float = np.nan
         self.lower: float = np.nan
         self.anchor_idx: int = -1
@@ -201,20 +201,20 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
                 self.lower = swing_level
                 self.upper = swing_level + width
 
-            self.state = "active"
+            self.state = "ACTIVE"
             self.anchor_idx = int(swing_idx)
             self._last_swing_idx = int(swing_idx)
             self._version += 1
 
-        # Check for zone break (only when active)
-        if self.state == "active":
+        # Check for zone break (only when ACTIVE)
+        if self.state == "ACTIVE":
             if self.zone_type == "demand" and bar.close < self.lower:
                 # Demand zone broken: price closed below lower boundary
-                self.state = "broken"
+                self.state = "BROKEN"
                 self._version += 1
             elif self.zone_type == "supply" and bar.close > self.upper:
                 # Supply zone broken: price closed above upper boundary
-                self.state = "broken"
+                self.state = "BROKEN"
                 self._version += 1
 
     def get_output_keys(self) -> list[str]:

@@ -17,7 +17,7 @@
 **Validation Status**: ALL TESTS PASS
 - Validation plays relocated to `tests/validation/plays/`
 - Indicators: **42/42 pass stress test** (all single + multi-output)
-- **Structures: 147/147 stress tests pass** (136 single-TF + 11 HTF/MTF)
+- **Structures: 163/163 stress tests pass** (136 single-TF + 11 HTF/MTF + 16 zone)
 - Crossover operators: cross_above, cross_below ENABLED (TradingView semantics)
 - Window operators: anchor_tf now properly scales offsets
 - Rollup: 11/11 intervals pass
@@ -25,6 +25,7 @@
 - Structure smoke: All stages pass
 - HTF structures: 5/5 pass (1h/4h swing, trend)
 - MTF confluence: 6/6 pass (exec+HTF alignment patterns)
+- Zone structures: 16/16 pass (demand/supply zones, state machine, last_price interaction)
 
 **NOTE**: Terminology migration COMPLETE (IdeaCard -> Play, --play -> --play)
 
@@ -97,6 +98,30 @@
 - **Issue**: Cookbook showed `depends_on: {swing: swing}` for derived_zone
 - **Fix**: Updated to `depends_on: {source: swing}` with NOTE explaining the difference
 - **Status**: FIXED
+
+### BUG-019: Zone Detector Used Lowercase States - FIXED
+- **Location**: `src/backtest/incremental/detectors/zone.py`
+- **Issue**: Zone detector used lowercase states ("none", "active", "broken") while DSL ENUM literal check only preserves uppercase strings
+- **Root Cause**: Inconsistency between zone (lowercase) and derived_zone (uppercase) state values
+- **Fix**: Changed zone.py to use uppercase states ("NONE", "ACTIVE", "BROKEN") for consistency
+- **Code Change**: Updated all state assignments from lowercase to uppercase
+- **Verified**: All 10 zone stress tests now pass
+- **Status**: FIXED
+
+### ENHANCEMENT: Zone Structure Test Coverage Added
+- **Location**: `tests/stress/plays/struct_gate_15_zone/` (16 plays)
+- **Feature**: Comprehensive zone structure testing with real market patterns
+- **Content**:
+  - Demand zone bounce (long), Supply zone rejection (short)
+  - Zone state ACTIVE/BROKEN detection
+  - Zone boundary field access (upper, lower)
+  - Zone + trend confluence patterns
+  - Zone version field tracking
+  - **last_price + zone interaction** (6 plays for live trading parity)
+    - last_price near_pct zone boundaries
+    - last_price cross_above/cross_below zone boundaries
+    - last_price inside zone detection
+- **Status**: COMPLETE (16/16 pass)
 
 ### ENHANCEMENT: HTF Structure Documentation Added
 - **Location**: `docs/specs/PLAY_DSL_COOKBOOK.md` Section 8 (Multi-Timeframe)
@@ -402,7 +427,7 @@ When auditing, check for these patterns:
 
 | Date | Document | Bugs Found/Fixed |
 |------|----------|------------------|
-| 2026-01-10 | Structure Module Production | 3 FIXED + 1 doc fix + HTF docs added |
+| 2026-01-10 | Structure Module Production | 4 FIXED (BUG-016,017,018,019) + 2 doc fixes + zone tests |
 | 2026-01-09 | Senior Dev Audit | 8 FIXED (P2:5, P3:3) |
 | 2026-01-07 | Previous session | 5 fixes (P1-001, P1-002, P2-004, P2-005, P2-SIM-02) |
 | 2026-01-05 | Previous session | 4 fixes (P2-08, P2-09, P2-10, P2-11, P3-05) |

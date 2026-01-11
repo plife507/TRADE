@@ -874,6 +874,7 @@ As the engine evolves, normalization ensures Plays stay in sync. When agents gen
 | Orchestrator example | `docs/examples/orchestrator_example.py` |
 | Environment variables | `env.example` |
 | Data architecture | `docs/architecture/DATA_ARCHITECTURE.md` |
+| Hybrid engine (future) | `docs/architecture/HYBRID_ENGINE_DESIGN.md` |
 | Simulated exchange | `docs/architecture/SIMULATED_EXCHANGE.md` |
 | Artifact storage format | `docs/architecture/ARTIFACT_STORAGE_FORMAT.md` |
 | Play → Engine flow | `docs/architecture/PLAY_ENGINE_FLOW.md` |

@@ -2,7 +2,7 @@
 
 **STATUS:** CANONICAL
 **PURPOSE:** What runs today, what is stubbed, top risks, next steps
-**LAST UPDATED:** January 7, 2026 (DSL bugs fixed, validation plays relocated)
+**LAST UPDATED:** January 10, 2026 (Stress Test 4.x complete, Architecture docs)
 
 ---
 
@@ -36,6 +36,13 @@
 
 | Phase | Status | Date | Key Features |
 |-------|--------|------|--------------|
+| Hybrid Engine Design | ✅ Complete | Jan 10 | Backtest→live architecture, TradingSnapshot/ExchangeAPI protocols |
+| OI/Funding Integration | ✅ Complete | Jan 10 | 90% infrastructure complete, DSL wiring documented |
+| Stress Test 4.2 | ✅ Complete | Jan 10 | Multi-pair TF verification (50/50 plays) |
+| Stress Test 4.1 | ✅ Complete | Jan 10 | Edge cases, TF expansion 3m,30m,2h,6h,12h (100/100 plays) |
+| Stress Test 4.0 | ✅ Complete | Jan 10 | Order/risk/leverage validation (30/30 plays) |
+| Stress Test 3.0 | ✅ Complete | Jan 9 | Structure stress testing (163/163 plays) |
+| DSL Foundation Freeze | ✅ Complete | Jan 8 | 259 synthetic tests, all operators frozen |
 | DSL Bug Fixes | ✅ Complete | Jan 7 | 5 bugs fixed: crossover semantics, anchor_tf, duration |
 | Validation Play Relocation | ✅ Complete | Jan 7 | Moved to `tests/validation/plays/` |
 | ExitMode & Strategy Testing | ✅ Complete | Jan 6 | ExitMode enum, test plays, SOL short +19% |
@@ -298,6 +305,13 @@ python trade_cli.py backtest metadata-smoke
 - [x] Derived Zones (Phase 12) complete ✅ (2026-01-04)
 - [x] Legacy Plays removed ✅ (2026-01-04)
 - [x] DSL bug fixes complete ✅ (2026-01-07)
+- [x] DSL Foundation Freeze ✅ (2026-01-08) - 259 synthetic tests
+- [x] Stress Test 3.0 complete ✅ (2026-01-09) - 163/163 structure plays
+- [x] Stress Test 4.0 complete ✅ (2026-01-10) - 30/30 order/risk/leverage
+- [x] Stress Test 4.1 complete ✅ (2026-01-10) - 100/100 edge cases, TF expansion
+- [x] Stress Test 4.2 complete ✅ (2026-01-10) - 50/50 multi-pair TF verification
+- [x] Hybrid Engine Design ✅ (2026-01-10) - Backtest→live architecture
+- [x] OI/Funding Integration ✅ (2026-01-10) - 90% complete, DSL wiring documented
 - [x] Visualization system complete ✅ (2026-01-05)
 
 ---
@@ -332,7 +346,11 @@ python trade_cli.py --smoke data
 | AI Guidance | `CLAUDE.md` |
 | Active TODOs | `docs/todos/TODO.md` |
 | Architecture | `docs/architecture/` |
-| Play Syntax | `docs/guides/PLAY_SYNTAX.md` |
+| **Hybrid Engine** | `docs/architecture/HYBRID_ENGINE_DESIGN.md` |
+| **OI/Funding** | `docs/architecture/OI_FUNDING_STRATEGY_INTEGRATION.md` |
+| Play DSL Cookbook | `docs/specs/PLAY_DSL_COOKBOOK.md` |
+| DSL Patterns | `docs/guides/DSL_STRATEGY_PATTERNS.md` |
+| Engine Concepts | `docs/guides/BACKTEST_ENGINE_CONCEPTS.md` |
 | Bugs | `docs/audits/OPEN_BUGS.md` |
 
 ---
