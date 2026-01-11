@@ -599,6 +599,192 @@ occurred_within:
 
 ---
 
+## Structure Detection
+
+TRADE provides 6 incremental structure detectors that maintain state with O(1) updates per bar. Structures detect market patterns like swing points, trends, and support/resistance zones.
+
+### Structure Types
+
+| Type | Purpose | Key Fields |
+|------|---------|------------|
+| `swing` | Swing high/low detection | `high_level`, `low_level`, `high_idx`, `low_idx`, `version` |
+| `trend` | Trend classification | `direction` (-1/0/1), `strength`, `bars_in_trend` |
+| `fibonacci` | Fib retracement levels | `level_0.382`, `level_0.5`, `level_0.618`, `level_0.786` |
+| `zone` | Demand/supply zones | `state` (NONE/ACTIVE/BROKEN), `upper`, `lower`, `anchor_idx` |
+| `rolling_window` | O(1) rolling min/max | `value`, `idx` |
+| `derived_zone` | Fib zones from pivots | K slots (`zone0_*`, `zone1_*`), aggregates (`any_active`, `closest_*`) |
+
+### Declaring Structures
+
+```yaml
+structures:
+  # Swing detection - finds pivots for HH/HL/LH/LL analysis
+  swing:
+    type: swing
+    params:
+      lookback: 5              # Bars to confirm swing
+
+  # Trend classification - direction and strength
+  trend:
+    type: trend
+    params:
+      lookback: 20
+
+  # Demand/supply zones - auto-detected S/R
+  demand_zone:
+    type: zone
+    params:
+      zone_type: demand        # or "supply"
+      min_touches: 2
+
+  # Derived zones from Fibonacci levels
+  fib_zones:
+    type: derived_zone
+    params:
+      swing: swing             # Reference to swing structure
+      fib_levels: [0.382, 0.5, 0.618, 0.786]
+      k_slots: 3               # Track up to 3 active zones
+```
+
+### Using Structures in Actions
+
+Structure fields are accessed with the `{feature_id, field}` syntax:
+
+```yaml
+actions:
+  # Enter long when price bounces off demand zone
+  entry_long:
+    all:
+      - [{feature_id: trend, field: direction}, eq, 1]           # Uptrend
+      - [{feature_id: demand_zone, field: state}, eq, "ACTIVE"]  # Zone active
+      - [last_price, near_pct, {feature_id: demand_zone, field: lower}, 0.5]
+
+  # Exit when trend reverses or zone breaks
+  exit_long:
+    any:
+      - [{feature_id: trend, field: direction}, eq, -1]          # Downtrend
+      - [{feature_id: demand_zone, field: state}, eq, "BROKEN"]  # Zone broken
+```
+
+### Structure Field Reference
+
+#### Swing Structure
+```yaml
+high_level    # Price level of most recent swing high
+low_level     # Price level of most recent swing low
+high_idx      # Bar index of swing high
+low_idx       # Bar index of swing low
+version       # Increments when new swing detected
+```
+
+#### Trend Structure
+```yaml
+direction     # -1 (down), 0 (neutral), 1 (up)
+strength      # 0.0-1.0 trend strength score
+bars_in_trend # Consecutive bars in current direction
+```
+
+#### Zone Structure
+```yaml
+state         # "NONE", "ACTIVE", or "BROKEN"
+upper         # Upper boundary of zone
+lower         # Lower boundary of zone
+anchor_idx    # Bar index where zone was created
+touched       # Whether price has touched zone
+time_in_zone  # Bars spent inside zone
+```
+
+#### Derived Zone (K-Slot Pattern)
+```yaml
+# Per-slot fields (zone0_*, zone1_*, zone2_*)
+zone0_state   # "NONE", "ACTIVE", "BROKEN"
+zone0_upper   # Upper boundary
+zone0_lower   # Lower boundary
+
+# Aggregate fields
+any_active         # True if any slot is ACTIVE
+active_count       # Number of active zones
+any_touched        # True if any zone was touched
+closest_active_upper  # Nearest active zone upper
+closest_active_lower  # Nearest active zone lower
+```
+
+### Example: Structure-Based Strategy
+
+```yaml
+version: "3.0.0"
+id: S_001_swing_trend_zones
+
+symbol: BTCUSDT
+tf: "15m"
+
+structures:
+  swing:
+    type: swing
+    params: { lookback: 5 }
+  trend:
+    type: trend
+    params: { lookback: 20 }
+  demand:
+    type: zone
+    params: { zone_type: demand, min_touches: 2 }
+
+features:
+  ema_50:
+    indicator: ema
+    params: { length: 50 }
+
+actions:
+  entry_long:
+    all:
+      # Trend filter: uptrend confirmed
+      - [{feature_id: trend, field: direction}, eq, 1]
+      # Structure: price above EMA and near demand zone
+      - [close, gt, ema_50]
+      - [{feature_id: demand, field: state}, eq, "ACTIVE"]
+      - [last_price, lt, {feature_id: demand, field: upper}]
+
+  entry_short:
+    all:
+      - [{feature_id: trend, field: direction}, eq, -1]
+      # Use swing high as resistance
+      - [close, near_pct, {feature_id: swing, field: high_level}, 1.0]
+
+  exit_long:
+    any:
+      - [{feature_id: trend, field: direction}, lt, 0]
+      - [{feature_id: demand, field: state}, eq, "BROKEN"]
+
+risk:
+  stop_loss:
+    type: structure
+    structure_id: swing
+    field: low_level
+    offset_pct: 0.5
+  take_profit:
+    type: rr_ratio
+    value: 2.0
+```
+
+### Multi-Structure Combinations
+
+Combine multiple structures for confluence:
+
+```yaml
+actions:
+  high_confluence_long:
+    all:
+      # Trend + Swing + Zone alignment
+      - [{feature_id: trend, field: direction}, eq, 1]
+      - [{feature_id: swing, field: version}, gt, 0]  # Swing exists
+      - [{feature_id: fib_zones, field: any_active}, eq, true]
+      - [last_price, between,
+         {feature_id: fib_zones, field: closest_active_lower},
+         {feature_id: fib_zones, field: closest_active_upper}]
+```
+
+---
+
 ## Trading Hierarchy
 
 | Level | Purpose | Location |
