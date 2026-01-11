@@ -37,8 +37,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .dsl_nodes import Expr
-from .dsl_eval import ExprEvaluator, DEFAULT_MAX_WINDOW_BARS
+from .dsl_nodes import Expr, DEFAULT_MAX_WINDOW_BARS
+from .evaluation import ExprEvaluator
 
 if TYPE_CHECKING:
     from ..runtime.snapshot import RuntimeSnapshotView

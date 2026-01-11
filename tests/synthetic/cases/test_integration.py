@@ -12,7 +12,7 @@ Tests combined DSL conditions that use multiple features together:
 import pytest
 
 from tests.synthetic.harness.snapshot import SyntheticSnapshot
-from src.backtest.rules.dsl_eval import ExprEvaluator
+from src.backtest.rules.evaluation import ExprEvaluator
 from src.backtest.rules.dsl_parser import parse_expr
 
 

@@ -1,0 +1,97 @@
+# Plumbing tests for legacy cleanup refactor
+# Created: 2026-01-11
+# Checkpoint commit: 83c3670
+
+refactor_id: legacy_cleanup_2026_01_11
+checkpoint_commit: 83c3670
+
+phases:
+  phase_0_preflight:
+    status: in_progress
+    baseline_passed: null
+    timestamp: null
+
+  phase_1_dsl_eval:
+    status: pending
+    files_updated: []
+    files_deleted: []
+    validation_passed: null
+
+  phase_2_dsl_nodes:
+    status: pending
+    files_updated: []
+    files_deleted: []
+    validation_passed: null
+
+  phase_3_indicator_alias:
+    status: pending
+    files_updated: []
+    files_deleted: []
+    validation_passed: null
+
+  phase_4_bar_compat:
+    status: pending
+    files_updated: []
+    files_deleted: []
+    validation_passed: null
+
+  phase_5_postflight:
+    status: pending
+    docs_updated: []
+    final_validation_passed: null
+
+validations:
+  # Phase 1: dsl_eval shim removal
+  phase_1_dsl_eval:
+    test: import_from_evaluation
+    command: "python -c 'from src.backtest.rules.evaluation import ExprEvaluator'"
+    expect: success
+
+  # Phase 2: dsl_nodes shim removal
+  phase_2_dsl_nodes:
+    test: import_from_dsl_nodes_dir
+    command: "python -c 'from src.backtest.rules.dsl_nodes import FeatureRef, Cond'"
+    expect: success
+
+  # Phase 3: IndicatorRegistry alias removal
+  phase_3_indicator_alias:
+    test: import_indicator_compute
+    command: "python -c 'from src.backtest.features import IndicatorCompute, get_compute'"
+    expect: success
+
+  # Phase 4: bar_compat inlining
+  phase_4_bar_compat:
+    test: sim_exchange_works
+    command: "python trade_cli.py backtest audit-rollup"
+    expect: success
+
+shims_to_remove:
+  - file: src/backtest/rules/dsl_eval.py
+    phase: 1
+    removed: false
+
+  - file: src/backtest/rules/dsl_nodes.py
+    phase: 2
+    removed: false
+
+  - file: src/backtest/sim/bar_compat.py
+    phase: 4
+    removed: false
+
+aliases_to_remove:
+  - name: IndicatorRegistry
+    location: src/backtest/features/__init__.py
+    phase: 3
+    removed: false
+
+  - name: get_registry
+    location: src/backtest/features/__init__.py
+    phase: 3
+    removed: false
+
+market_structure_status:
+  deadline: 2026-04-01
+  current_action: deferred
+  reason: "Active callers exist, scheduled for later removal"
+
+last_updated: null

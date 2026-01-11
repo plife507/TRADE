@@ -13,7 +13,7 @@ Per TEST COVERAGE RULE: Tests cover anchor_tf scaling and duration conversions.
 import pytest
 
 from tests.synthetic.harness.snapshot import SyntheticSnapshot
-from src.backtest.rules.dsl_eval import ExprEvaluator
+from src.backtest.rules.evaluation import ExprEvaluator
 from src.backtest.rules.dsl_nodes import (
     Cond,
     FeatureRef,

@@ -28,7 +28,7 @@ from src.backtest.rules.dsl_parser import (
     parse_rhs,
     parse_cond,
 )
-from src.backtest.rules.dsl_eval import ExprEvaluator
+from src.backtest.rules.evaluation import ExprEvaluator
 from tests.synthetic.harness.snapshot import SyntheticSnapshot
 
 

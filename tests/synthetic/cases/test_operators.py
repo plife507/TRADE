@@ -14,7 +14,7 @@ Per TEST COVERAGE RULE: Tests symmetric behavior for crossover operators.
 import pytest
 
 from tests.synthetic.harness.snapshot import SyntheticSnapshot
-from src.backtest.rules.dsl_eval import ExprEvaluator
+from src.backtest.rules.evaluation import ExprEvaluator
 from src.backtest.rules.dsl_nodes import (
     Cond,
     FeatureRef,

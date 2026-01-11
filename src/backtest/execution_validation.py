@@ -971,7 +971,7 @@ class PlaySignalEvaluator:
 
         # Initialize blocks executor
         from .rules.strategy_blocks import StrategyBlocksExecutor
-        from .rules.dsl_eval import ExprEvaluator
+        from .rules.evaluation import ExprEvaluator
         self._blocks_executor = StrategyBlocksExecutor()
         self._expr_evaluator = ExprEvaluator()  # For resolve_metadata()
 
