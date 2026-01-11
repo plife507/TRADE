@@ -7,21 +7,32 @@ checkpoint_commit: 83c3670
 
 phases:
   phase_0_preflight:
-    status: in_progress
-    baseline_passed: null
-    timestamp: null
+    status: completed
+    baseline_passed: true
+    timestamp: 2026-01-11T00:00:00
 
   phase_1_dsl_eval:
-    status: pending
-    files_updated: []
-    files_deleted: []
-    validation_passed: null
+    status: completed
+    files_updated:
+      - src/backtest/execution_validation.py
+      - src/backtest/rules/strategy_blocks.py
+      - tests/synthetic/cases/test_arithmetic.py
+      - tests/synthetic/cases/test_integration.py
+      - tests/synthetic/cases/test_operators.py
+      - tests/synthetic/cases/test_price_features.py
+      - tests/synthetic/cases/test_timeframe_windows.py
+    files_deleted:
+      - src/backtest/rules/dsl_eval.py
+    validation_passed: true
+    commit: aa3fb2d
 
   phase_2_dsl_nodes:
-    status: pending
-    files_updated: []
+    status: skipped
+    reason: "Shim file dsl_nodes.py never existed - only directory dsl_nodes/"
+    files_updated:
+      - src/backtest/rules/CLAUDE.md  # Updated stale documentation
     files_deleted: []
-    validation_passed: null
+    validation_passed: true
 
   phase_3_indicator_alias:
     status: pending
@@ -68,11 +79,11 @@ validations:
 shims_to_remove:
   - file: src/backtest/rules/dsl_eval.py
     phase: 1
-    removed: false
+    removed: true
 
   - file: src/backtest/rules/dsl_nodes.py
     phase: 2
-    removed: false
+    removed: true  # Never existed - only dsl_nodes/ directory
 
   - file: src/backtest/sim/bar_compat.py
     phase: 4

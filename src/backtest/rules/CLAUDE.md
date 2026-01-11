@@ -27,25 +27,24 @@ rules/
 │   └── __init__.py      # Re-exports ExprEvaluator
 │
 ├── dsl_parser.py        # Parse YAML → DSL nodes
-├── dsl_eval.py          # Re-export shim for backward compatibility
-├── dsl_nodes.py         # Re-export shim for backward compatibility
-└── compile.py           # Compile DSL into evaluable rules
+├── compile.py           # Compile DSL into evaluable rules
+├── strategy_blocks.py   # StrategyBlocksExecutor for action evaluation
+└── eval.py              # Legacy eval helpers
 ```
 
 ## Import Patterns
 
-All public types are re-exported via `__init__.py` for backward compatibility:
+All public types are re-exported via `__init__.py`:
 
 ```python
-# Both work identically:
+# DSL nodes (both work identically):
 from src.backtest.rules.dsl_nodes import FeatureRef, Cond, HoldsFor
 from src.backtest.rules.dsl_nodes.base import FeatureRef
 from src.backtest.rules.dsl_nodes.condition import Cond
 from src.backtest.rules.dsl_nodes.windows import HoldsFor
 
 # Evaluator:
-from src.backtest.rules.dsl_eval import ExprEvaluator  # Re-export shim
-from src.backtest.rules.evaluation import ExprEvaluator  # Direct import
+from src.backtest.rules.evaluation import ExprEvaluator
 ```
 
 ## Key Types
