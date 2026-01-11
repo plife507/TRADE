@@ -17,7 +17,7 @@ Simulator/backtest domain. USDT-only, isolated margin.
 | `artifacts/` | Run artifacts (manifest, events, equity) |
 | `prices/` | Mark price providers |
 | `gates/` | Play generation and batch verification |
-| `audits/` | Parity and validation audits (MIGRATING to `src/forge/audits/`) |
+| `audits/` | Parity and validation audits (MIGRATED to `src/forge/audits/`) |
 
 ### rules/ Submodules (Cookbook Alignment Refactor 2026-01-08)
 
@@ -76,7 +76,7 @@ The **Forge** (`src/forge/`) is the development and validation environment for P
 - Play generation and validation
 - Batch testing across multiple symbols/timeframes
 - Performance comparison and analysis
-- **Audits** (migrating from `src/backtest/audits/`)
+- **Audits** (migrated from `src/backtest/audits/`)
 
 See `src/forge/CLAUDE.md` for Forge-specific rules and architecture.
 
@@ -348,7 +348,7 @@ actions:
 3. Use `@register_structure("name")` decorator
 4. Define `REQUIRED_PARAMS`, `OPTIONAL_PARAMS`, `DEPENDS_ON`
 5. Implement `update(bar_idx, bar)`, `get_output_keys()`, `get_value(key)`
-6. Add validation Play to `strategies/plays/_validation/`
+6. Add validation Play to `tests/validation/plays/`
 
 See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
 

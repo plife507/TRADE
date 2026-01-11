@@ -1,7 +1,31 @@
 # Active TODO
 
 **Last Updated**: 2026-01-10
-**Status**: ✅ STRESS TEST 4.x COMPLETE (343/343 plays) + ARCHITECTURE DESIGNS
+**Status**: ALL VALIDATION PASSING (343 stress tests + tier0-tier4)
+
+---
+
+## Session Notes (2026-01-10)
+
+### Deprecation Refactor - ABANDONED
+
+A "Legacy Code Removal & Modernization Plan" was attempted to remove deprecated type aliases and shims. The refactor was partially executed but caused widespread breakage across the codebase. After evaluation, the refactor was fully rewound via `git checkout HEAD -- .` to restore the working state.
+
+**Lesson learned**: The deprecated aliases (e.g., `Candle`, type shims) are deeply embedded and their removal requires a more careful, phased approach than attempted.
+
+### Validation Fixes Applied
+
+- Fixed operator naming in validation plays: `gt` -> `>`, `eq` -> `==`
+- Updated `V_104_operators.yml` and related files to use standard comparison operators
+
+### Verification Status
+
+- All 343 stress test plays: PASSING
+- Tier 0 (Quick Check): PASSING
+- Tier 1 (Normalization): PASSING
+- Tier 2 (Unit Audits): PASSING
+- Tier 3 (Error Cases): PASSING
+- Tier 4 (Integration): PASSING
 
 ---
 
