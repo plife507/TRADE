@@ -56,9 +56,11 @@ phases:
     note: "43/43 audit-toolkit, 11/11 audit-rollup"
 
   phase_5_postflight:
-    status: pending
-    docs_updated: []
-    final_validation_passed: null
+    status: completed
+    docs_updated:
+      - docs/architecture/LEGACY_AUDIT.md
+      - src/backtest/rules/CLAUDE.md
+    final_validation_passed: true
 
 validations:
   # Phase 1: dsl_eval shim removal
@@ -114,4 +116,5 @@ market_structure_status:
   current_action: deferred
   reason: "Active callers exist, scheduled for later removal"
 
-last_updated: null
+last_updated: 2026-01-11T12:00:00
+final_commit: null  # To be filled after final commit
