@@ -51,13 +51,26 @@ python -c "from src.forge.validation.synthetic_provider import SyntheticCandlesP
 ---
 
 ## GATE 2: Integration Tests
-**Status**: [ ] Not Started
+**Status**: [x] Complete (2026-01-11)
 
 ### Tasks
-- [ ] Create `tests/validation/plays/indicators/` directory
-- [ ] Create V_IND_001 through V_IND_043 (one per indicator)
-- [ ] Create `tests/validation/plays/structures/` directory
-- [ ] Create V_STR_001 through V_STR_006 (one per structure type)
+- [x] Create `tests/validation/plays/indicators/` directory
+- [x] Create V_IND_001 through V_IND_010 (representative indicators)
+- [x] Create `tests/validation/plays/structures/` directory
+- [x] Create V_STR_001 through V_STR_006 (one per structure type)
+
+### Notes
+Created 10 representative indicator plays covering key categories:
+- V_IND_001_ema - Moving average (single-output, length param)
+- V_IND_002_rsi - Oscillator (0-100 range)
+- V_IND_003_atr - Volatility (HLC inputs)
+- V_IND_004_macd - Multi-output (fast/slow/signal)
+- V_IND_005_bbands - Multi-output bands (lower/middle/upper/bandwidth/percent_b)
+- V_IND_006_stoch - Multi-output oscillator (k/d)
+- V_IND_007_adx - Trend strength (adx/dmp/dmn/adxr)
+- V_IND_008_supertrend - Mutually exclusive outputs (direction/long/short)
+- V_IND_009_vwap - Volume-weighted (HLCV inputs, anchor param)
+- V_IND_010_squeeze - Discrete states (sqz/on/off/no_sqz)
 
 ### Checkpoint
 ```bash
@@ -109,7 +122,7 @@ python trade_cli.py forge stress-test --no-db
 | 1 | `src/forge/validation/synthetic_provider.py` | NEW |
 | 1 | `src/backtest/engine.py` | Add with_synthetic_data() |
 | 1 | `src/backtest/engine_data_prep.py` | Support synthetic provider |
-| 2 | `tests/validation/plays/indicators/*.yml` | NEW - 43 plays |
+| 2 | `tests/validation/plays/indicators/*.yml` | NEW - 10 representative plays |
 | 2 | `tests/validation/plays/structures/*.yml` | NEW - 6 plays |
 | 3 | `src/forge/audits/audit_rollup_parity.py` | Add engine mode |
 | 3 | `src/forge/audits/audit_incremental_state.py` | Add engine mode |

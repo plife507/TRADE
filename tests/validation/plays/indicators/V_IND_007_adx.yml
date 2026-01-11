@@ -1,0 +1,59 @@
+version: "3.0.0"
+name: "V_IND_007_adx"
+description: "Validation: ADX trend strength indicator with directional movement."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+actions:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - ["adx_14_adx", ">", 25]
+            - ["adx_14_dmp", ">", "adx_14_dmn"]
+        emit:
+          - action: entry_long
+  - id: exit
+    cases:
+      - when:
+          any:
+            - ["adx_14_adx", "<", 20]
+            - ["adx_14_dmp", "<", "adx_14_dmn"]
+        emit:
+          - action: exit_long
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_IND_007"
+  category: "indicator_contract"
+  indicator: "adx"
+  tests:
+    - "ADX expands to _adx, _dmp, _dmn, _adxr"
+    - "ADX trend strength above 25 detection"
+    - "Directional movement comparison"

@@ -1,0 +1,72 @@
+version: "3.0.0"
+name: "V_STR_002_trend"
+description: "Validation: Trend structure produces direction, strength, bars_in_trend."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      depends_on:
+        swing: swing
+
+actions:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - [{feature_id: "trend", field: "direction"}, "eq", 1]
+            - [{feature_id: "trend", field: "strength"}, ">", 0]
+            - ["close", ">", "ema_21"]
+        emit:
+          - action: entry_long
+  - id: exit
+    cases:
+      - when:
+          any:
+            - [{feature_id: "trend", field: "direction"}, "eq", -1]
+            - ["close", "<", "ema_21"]
+        emit:
+          - action: exit_long
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_STR_002"
+  category: "structure_contract"
+  structure: "trend"
+  tests:
+    - "Trend produces direction (1/-1/0), strength, bars_in_trend, version"
+    - "Trend depends on swing structure"
+    - "Trend direction is discrete type (eq operator)"

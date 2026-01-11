@@ -1,0 +1,63 @@
+version: "3.0.0"
+name: "V_IND_001_ema"
+description: "Validation: EMA indicator produces valid output after warmup."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_14:
+    indicator: ema
+    params:
+      length: 14
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+actions:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - ["ema_14", ">", 0]
+            - ["ema_50", ">", 0]
+            - ["ema_14", "cross_above", "ema_50"]
+        emit:
+          - action: entry_long
+  - id: exit
+    cases:
+      - when:
+          all:
+            - ["ema_14", "cross_below", "ema_50"]
+        emit:
+          - action: exit_long
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_IND_001"
+  category: "indicator_contract"
+  indicator: "ema"
+  tests:
+    - "EMA produces non-zero output after warmup"
+    - "EMA crossover detection works"
+    - "Single-output indicator with length param"
