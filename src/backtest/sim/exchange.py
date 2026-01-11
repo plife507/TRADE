@@ -45,7 +45,6 @@ from .types import (
     ExecutionConfig,
     FundingResult,
 )
-from .bar_compat import get_bar_ts_open, get_bar_timestamp
 from .ledger import Ledger, LedgerConfig
 from .pricing import PriceModel, PriceModelConfig, SpreadModel, SpreadConfig, IntrabarPath
 from .pricing.intrabar_path import check_tp_sl_1m
@@ -503,9 +502,9 @@ class SimulatedExchange:
         Returns:
             StepResult with mark_price, fills, and all step events
         """
-        # Get timestamps from bar (supports both legacy and canonical)
-        ts_open = get_bar_ts_open(bar)
-        step_time = get_bar_timestamp(bar)  # ts_close for canonical, timestamp for legacy
+        # Get timestamps from bar
+        ts_open = bar.ts_open
+        step_time = bar.ts_close
         
         self._current_ts = step_time
         fills: list[Fill] = []
@@ -517,7 +516,7 @@ class SimulatedExchange:
         mark_price = prices.mark_price
 
         # 2. Apply funding events (uses mark_price, not entry_price per Bybit semantics)
-        prev_ts = get_bar_timestamp(prev_bar) if prev_bar else None
+        prev_ts = prev_bar.ts_close if prev_bar else None
         funding_result = self._funding.apply_events(
             funding_events or [], prev_ts, step_time, self.position, mark_price
         )

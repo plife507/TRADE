@@ -30,7 +30,6 @@ from ..types import (
     Position,
     PriceSnapshot,
 )
-from ..bar_compat import get_bar_ts_open
 from .slippage_model import SlippageModel, SlippageConfig
 from .impact_model import ImpactModel, ImpactConfig
 from .liquidity_model import LiquidityModel, LiquidityConfig
@@ -108,7 +107,7 @@ class ExecutionModel:
         result = FillResult()
         
         # Get fill timestamp (ts_open for entries)
-        fill_ts = get_bar_ts_open(bar)
+        fill_ts = bar.ts_open
         
         # Calculate fill price with slippage
         fill_price = self._slippage.apply_slippage(
@@ -252,7 +251,7 @@ class ExecutionModel:
             FillResult with fill or rejection (or empty if not fillable)
         """
         result = FillResult()
-        fill_ts = get_bar_ts_open(bar)
+        fill_ts = bar.ts_open
 
         # Check if order can fill on this bar
         can_fill, fill_price = self.check_limit_fill(order, bar)
@@ -373,7 +372,7 @@ class ExecutionModel:
                 order_id=order.order_id,
                 reason=f"Invalid order type for stop fill: {order.order_type}",
                 code="INVALID_ORDER_TYPE",
-                timestamp=get_bar_ts_open(bar),
+                timestamp=bar.ts_open,
             ))
             return result
 
@@ -431,7 +430,7 @@ class ExecutionModel:
             raise ValueError(f"close_ratio must be in (0.0, 1.0], got {close_ratio}")
 
         # Get fill timestamp (ts_open for exits too)
-        fill_ts = get_bar_ts_open(bar)
+        fill_ts = bar.ts_open
 
         # Determine base exit price
         if exit_price is None:

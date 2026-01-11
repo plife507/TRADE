@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from ..types import Bar, PricePoint, OrderSide, FillReason
-from ..bar_compat import get_bar_ts_open
 
 
 @dataclass
@@ -70,7 +69,7 @@ class IntrabarPath:
         Returns:
             List of PricePoint representing intrabar path
         """
-        ts = get_bar_ts_open(bar)
+        ts = bar.ts_open
         
         # For time interpolation within the bar
         # Assume 1-minute increments (actual TF doesn't matter for ordering)
@@ -106,7 +105,7 @@ class IntrabarPath:
         Returns:
             List of PricePoint representing intrabar path
         """
-        ts = get_bar_ts_open(bar)
+        ts = bar.ts_open
         delta = timedelta(seconds=15)
         
         if side == OrderSide.LONG:

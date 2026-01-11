@@ -44,10 +44,16 @@ phases:
     validation_passed: true
 
   phase_4_bar_compat:
-    status: pending
-    files_updated: []
-    files_deleted: []
-    validation_passed: null
+    status: completed
+    files_updated:
+      - src/backtest/sim/exchange.py
+      - src/backtest/sim/execution/execution_model.py
+      - src/backtest/sim/pricing/price_model.py
+      - src/backtest/sim/pricing/intrabar_path.py
+    files_deleted:
+      - src/backtest/sim/bar_compat.py
+    validation_passed: true
+    note: "43/43 audit-toolkit, 11/11 audit-rollup"
 
   phase_5_postflight:
     status: pending
@@ -90,7 +96,7 @@ shims_to_remove:
 
   - file: src/backtest/sim/bar_compat.py
     phase: 4
-    removed: false
+    removed: true
 
 aliases_to_remove:
   - name: IndicatorRegistry

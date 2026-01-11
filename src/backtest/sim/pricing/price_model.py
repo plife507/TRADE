@@ -15,7 +15,6 @@ Mark price sources:
 from dataclasses import dataclass
 
 from ..types import Bar, PriceSnapshot
-from ..bar_compat import get_bar_timestamp
 
 
 @dataclass
@@ -123,7 +122,7 @@ class PriceModel:
         ask = mid + half_spread
         
         # Get timestamp (ts_close for step time)
-        timestamp = get_bar_timestamp(bar)
+        timestamp = bar.ts_close
         
         return PriceSnapshot(
             timestamp=timestamp,
