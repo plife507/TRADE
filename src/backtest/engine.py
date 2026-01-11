@@ -161,6 +161,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .feature_registry import FeatureRegistry
     from .play import Play
+    from src.forge.validation.synthetic_provider import SyntheticDataProvider
 
 
 class BacktestEngine:
@@ -191,6 +192,7 @@ class BacktestEngine:
         on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
         record_state_tracking: bool = False,
         feature_registry: "FeatureRegistry | None" = None,
+        synthetic_provider: "SyntheticDataProvider | None" = None,
     ):
         """
         Initialize backtest engine.
@@ -210,6 +212,9 @@ class BacktestEngine:
             feature_registry: Optional FeatureRegistry from Play.
                         When set, provides unified access to features on any TF.
                         Replaces role-based tf_mapping approach.
+            synthetic_provider: Optional synthetic data provider for validation.
+                        When set, bypasses DuckDB and uses synthetic data.
+                        Used for DB-free validation runs.
         """
         self.config = config
 
@@ -334,6 +339,10 @@ class BacktestEngine:
         # Must be initialized here to avoid AttributeError in _build_structures_into_exec_feed()
         self._play: "Play | None" = None
 
+        # Synthetic data provider for DB-free validation (Gate 1: Unified Validation)
+        # When set, bypasses DuckDB and uses synthetic data for all data loading
+        self._synthetic_provider: "SyntheticDataProvider | None" = synthetic_provider
+
         # Phase 6: Incremental state for structure detection (swing, trend, zone, etc.)
         # Built from Play structure specs after engine creation
         self._incremental_state: MultiTFIncrementalState | None = None
@@ -344,12 +353,68 @@ class BacktestEngine:
         self._rationalized_state: RationalizedState | None = None
 
         tf_mode_str = "multi-TF" if self._multi_tf_mode else "single-TF"
+        synthetic_mode_str = " [SYNTHETIC]" if synthetic_provider else ""
         self.logger.info(
-            f"BacktestEngine initialized: {config.system_id} / {window_name} / "
+            f"BacktestEngine initialized{synthetic_mode_str}: {config.system_id} / {window_name} / "
             f"risk_mode={config.risk_mode} / initial_equity={config.risk_profile.initial_equity} / "
             f"mode={tf_mode_str} / tf_mapping={self._tf_mapping}"
         )
-    
+
+    @classmethod
+    def with_synthetic_data(
+        cls,
+        config: SystemConfig,
+        provider: "SyntheticDataProvider",
+        window_name: str = "hygiene",
+        run_dir: Path | None = None,
+        tf_mapping: dict[str, str] | None = None,
+        on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
+        record_state_tracking: bool = False,
+        feature_registry: "FeatureRegistry | None" = None,
+    ) -> "BacktestEngine":
+        """
+        Create engine with synthetic data provider (no DB access).
+
+        This is the recommended way to create an engine for validation runs
+        that don't need real historical data.
+
+        Args:
+            config: System configuration
+            provider: Synthetic data provider (from SyntheticCandlesProvider)
+            window_name: Window to use ("hygiene" or "test")
+            run_dir: Optional directory for writing artifacts
+            tf_mapping: Optional dict mapping htf/mtf/ltf to timeframe strings
+            on_snapshot: Optional snapshot callback
+            record_state_tracking: Enable state tracking
+            feature_registry: Optional FeatureRegistry from Play
+
+        Returns:
+            BacktestEngine configured to use synthetic data
+
+        Example:
+            >>> from src.forge.validation.synthetic_data import generate_synthetic_candles
+            >>> from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+            >>>
+            >>> candles = generate_synthetic_candles(symbol="BTCUSDT", timeframes=["1m", "15m"])
+            >>> provider = SyntheticCandlesProvider(candles)
+            >>> engine = BacktestEngine.with_synthetic_data(config, provider)
+        """
+        return cls(
+            config=config,
+            window_name=window_name,
+            run_dir=run_dir,
+            tf_mapping=tf_mapping,
+            on_snapshot=on_snapshot,
+            record_state_tracking=record_state_tracking,
+            feature_registry=feature_registry,
+            synthetic_provider=provider,
+        )
+
+    @property
+    def is_synthetic_mode(self) -> bool:
+        """Return True if engine is using synthetic data provider."""
+        return self._synthetic_provider is not None
+
     def _update_history(
         self,
         bar: CanonicalBar,

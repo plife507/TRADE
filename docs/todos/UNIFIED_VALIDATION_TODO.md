@@ -32,14 +32,15 @@ python trade_cli.py backtest audit-toolkit
 ---
 
 ## GATE 1: Engine Injection
-**Status**: [ ] Not Started
+**Status**: [x] Complete (2026-01-11)
 
 ### Tasks
-- [ ] Create `src/forge/validation/synthetic_provider.py` with `SyntheticDataProvider` protocol
-- [ ] Create `SyntheticCandlesProvider` adapter class
-- [ ] Add `BacktestEngine.with_synthetic_data()` classmethod to `src/backtest/engine.py`
-- [ ] Modify `prepare_backtest_frame_impl()` to accept `synthetic_provider` param
-- [ ] Modify `prepare_multi_tf_frames_impl()` to accept `synthetic_provider` param
+- [x] Create `src/forge/validation/synthetic_provider.py` with `SyntheticDataProvider` protocol
+- [x] Create `SyntheticCandlesProvider` adapter class
+- [x] Add `BacktestEngine.with_synthetic_data()` classmethod to `src/backtest/engine.py`
+- [x] Modify `prepare_backtest_frame_impl()` to accept `synthetic_provider` param
+- [x] Modify `prepare_multi_tf_frames_impl()` to accept `synthetic_provider` param
+- [x] Modify `load_1m_data_impl()` to accept `synthetic_provider` param
 
 ### Checkpoint
 ```bash

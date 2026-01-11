@@ -11,12 +11,15 @@ This module handles all data loading and preparation logic:
 
 All functions accept engine state/config as parameters and return prepared data.
 The BacktestEngine delegates to these functions, maintaining the same public API.
+
+Gate 1 (Unified Validation): Functions accept optional synthetic_provider parameter
+to enable DB-free validation runs using synthetic data.
 """
 
 import pandas as pd
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from .runtime.types import FeatureSnapshot, create_not_ready_feature_snapshot
 from .runtime.types import Bar as CanonicalBar
@@ -41,6 +44,7 @@ from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
     from .types import WindowConfig
+    from src.forge.validation.synthetic_provider import SyntheticDataProvider
 
 
 @dataclass
@@ -119,6 +123,7 @@ def prepare_backtest_frame_impl(
     config: SystemConfig,
     window: "WindowConfig",
     logger=None,
+    synthetic_provider: "SyntheticDataProvider | None" = None,
 ) -> PreparedFrame:
     """
     Prepare the backtest DataFrame with proper warm-up.
@@ -127,7 +132,7 @@ def prepare_backtest_frame_impl(
     1. Validates symbol and mode locks (fail fast before data fetch)
     2. Computes warmup_bars based on strategy params and multiplier
     3. Extends the query range by warmup_span before window_start
-    4. Loads extended DataFrame from DuckDB
+    4. Loads extended DataFrame from DuckDB (or synthetic provider)
     5. Applies indicators to the full extended DataFrame
     6. Finds the first bar where all required indicators are valid
     7. Sets simulation start to max(first_valid_bar, window_start)
@@ -137,6 +142,7 @@ def prepare_backtest_frame_impl(
         config: System configuration
         window: Window configuration with start/end dates
         logger: Optional logger instance
+        synthetic_provider: Optional synthetic data provider for DB-free validation
 
     Returns:
         PreparedFrame with DataFrame and metadata
@@ -159,7 +165,8 @@ def prepare_backtest_frame_impl(
         config.risk_profile.instrument_type,
     )
 
-    store = get_historical_store(env=config.data_build.env)
+    # Only initialize DB store if not using synthetic provider
+    store = None if synthetic_provider else get_historical_store(env=config.data_build.env)
 
     # Use Preflight-computed warmup (CANONICAL source via warmup_bars_by_role)
     # Engine MUST NOT compute warmup - it reads only from SystemConfig (set by Runner from Preflight)
@@ -190,28 +197,44 @@ def prepare_backtest_frame_impl(
     requested_start = window.start
     requested_end = window.end
 
+    data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
     logger.info(
-        f"Loading data: {config.symbol} {config.tf} "
+        f"Loading data [{data_source}]: {config.symbol} {config.tf} "
         f"from {extended_start} to {requested_end} "
         f"(warm-up: {warmup_bars} bars = {warmup_span})"
     )
 
-    # Load extended data
-    df = store.get_ohlcv(
-        symbol=config.symbol,
-        tf=config.tf,
-        start=extended_start,
-        end=requested_end,
-    )
+    # Load extended data (from synthetic provider or DuckDB)
+    if synthetic_provider is not None:
+        df = synthetic_provider.get_ohlcv(
+            symbol=config.symbol,
+            tf=config.tf,
+            start=extended_start,
+            end=requested_end,
+        )
+    else:
+        df = store.get_ohlcv(
+            symbol=config.symbol,
+            tf=config.tf,
+            start=extended_start,
+            end=requested_end,
+        )
 
     # Validate data exists
     if df.empty:
-        raise ValueError(
-            f"No data found for {config.symbol} {config.tf} "
-            f"from {extended_start} to {requested_end}. "
-            f"Run data sync first: sync_symbols(['{config.symbol}'], "
-            f"period='{config.data_build.period}')"
-        )
+        if synthetic_provider:
+            raise ValueError(
+                f"No synthetic data found for {config.symbol} {config.tf} "
+                f"from {extended_start} to {requested_end}. "
+                f"Generate synthetic data with correct timeframes and date range."
+            )
+        else:
+            raise ValueError(
+                f"No data found for {config.symbol} {config.tf} "
+                f"from {extended_start} to {requested_end}. "
+                f"Run data sync first: sync_symbols(['{config.symbol}'], "
+                f"period='{config.data_build.period}')"
+            )
 
     # Ensure sorted by timestamp
     df = df.sort_values("timestamp").reset_index(drop=True)
@@ -356,6 +379,7 @@ def prepare_multi_tf_frames_impl(
     tf_mapping: dict[str, str],
     multi_tf_mode: bool,
     logger=None,
+    synthetic_provider: "SyntheticDataProvider | None" = None,
 ) -> MultiTFPreparedFrames:
     """
     Prepare multi-TF DataFrames with indicators and close_ts maps.
@@ -370,6 +394,7 @@ def prepare_multi_tf_frames_impl(
         tf_mapping: Dict mapping htf/mtf/ltf to timeframe strings
         multi_tf_mode: Whether this is true multi-TF mode
         logger: Optional logger instance
+        synthetic_provider: Optional synthetic data provider for DB-free validation
 
     Returns:
         MultiTFPreparedFrames with all TF data and metadata
@@ -380,7 +405,8 @@ def prepare_multi_tf_frames_impl(
     if logger is None:
         logger = get_logger()
 
-    store = get_historical_store(env=config.data_build.env)
+    # Only initialize DB store if not using synthetic provider
+    store = None if synthetic_provider else get_historical_store(env=config.data_build.env)
 
     # Get TF mapping
     ltf_tf = tf_mapping["ltf"]
@@ -417,7 +443,8 @@ def prepare_multi_tf_frames_impl(
             )
         else:
             # Single-TF mode: all roles map to same TF, use exec warmup
-            pass  # htf_warmup_bars will be computed below
+            # No htf key needed - compute_data_window uses warmup_bars_by_role directly
+            pass
 
     # max_lookback is the raw max warmup from specs (for indicator validation only)
     # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
@@ -441,8 +468,9 @@ def prepare_multi_tf_frames_impl(
     requested_start = window.start
     requested_end = window.end
 
+    data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
     logger.info(
-        f"Loading multi-TF data: {config.symbol} "
+        f"Loading multi-TF data [{data_source}]: {config.symbol} "
         f"HTF={htf_tf}, MTF={tf_mapping['mtf']}, LTF={ltf_tf} "
         f"from {data_start} to {requested_end} "
         f"(warmup: {warmup_bars} LTF bars)"
@@ -454,19 +482,35 @@ def prepare_multi_tf_frames_impl(
     close_ts_maps: dict[str, set[datetime]] = {}
 
     for tf in unique_tfs:
-        df = store.get_ohlcv(
-            symbol=config.symbol,
-            tf=tf,
-            start=data_start,
-            end=requested_end,
-        )
+        # Load from synthetic provider or DuckDB
+        if synthetic_provider is not None:
+            df = synthetic_provider.get_ohlcv(
+                symbol=config.symbol,
+                tf=tf,
+                start=data_start,
+                end=requested_end,
+            )
+        else:
+            df = store.get_ohlcv(
+                symbol=config.symbol,
+                tf=tf,
+                start=data_start,
+                end=requested_end,
+            )
 
         if df.empty:
-            raise ValueError(
-                f"No data found for {config.symbol} {tf} "
-                f"from {data_start} to {requested_end}. "
-                f"Run data sync first."
-            )
+            if synthetic_provider:
+                raise ValueError(
+                    f"No synthetic data found for {config.symbol} {tf} "
+                    f"from {data_start} to {requested_end}. "
+                    f"Generate synthetic data with required timeframes."
+                )
+            else:
+                raise ValueError(
+                    f"No data found for {config.symbol} {tf} "
+                    f"from {data_start} to {requested_end}. "
+                    f"Run data sync first."
+                )
 
         # Ensure sorted by timestamp
         df = df.sort_values("timestamp").reset_index(drop=True)
@@ -766,6 +810,7 @@ def load_1m_data_impl(
     warmup_bars_1m: int,
     data_env: str = "live",
     logger=None,
+    synthetic_provider: "SyntheticDataProvider | None" = None,
 ) -> pd.DataFrame:
     """
     Load 1m OHLCV data for quote feed.
@@ -780,6 +825,7 @@ def load_1m_data_impl(
         warmup_bars_1m: Number of 1m warmup bars to load before window_start
         data_env: Data environment ("live" or "demo")
         logger: Optional logger instance
+        synthetic_provider: Optional synthetic data provider for DB-free validation
 
     Returns:
         DataFrame with 1m OHLCV data
@@ -790,32 +836,47 @@ def load_1m_data_impl(
     if logger is None:
         logger = get_logger()
 
-    store = get_historical_store(env=data_env)
+    # Only initialize DB store if not using synthetic provider
+    store = None if synthetic_provider else get_historical_store(env=data_env)
 
     # Calculate extended start with warmup
     warmup_span = timedelta(minutes=warmup_bars_1m)
     extended_start = window_start - warmup_span
 
+    data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
     logger.info(
-        f"Loading 1m quote data: {symbol} "
+        f"Loading 1m quote data [{data_source}]: {symbol} "
         f"from {extended_start} to {window_end} "
         f"(warmup: {warmup_bars_1m} bars)"
     )
 
-    # Load 1m data
-    df = store.get_ohlcv(
-        symbol=symbol,
-        tf="1m",
-        start=extended_start,
-        end=window_end,
-    )
+    # Load 1m data (from synthetic provider or DuckDB)
+    if synthetic_provider is not None:
+        df = synthetic_provider.get_1m_quotes(
+            symbol=symbol,
+            start=extended_start,
+            end=window_end,
+        )
+    else:
+        df = store.get_ohlcv(
+            symbol=symbol,
+            tf="1m",
+            start=extended_start,
+            end=window_end,
+        )
 
     if df is None or df.empty:
-        raise ValueError(
-            f"No 1m data found for {symbol} from {extended_start} to {window_end}. "
-            f"Run: python trade_cli.py data sync-range --symbol {symbol} --tf 1m "
-            f"--start {extended_start.strftime('%Y-%m-%d')} --end {window_end.strftime('%Y-%m-%d')}"
-        )
+        if synthetic_provider:
+            raise ValueError(
+                f"No synthetic 1m data found for {symbol} from {extended_start} to {window_end}. "
+                f"Generate synthetic data with '1m' timeframe."
+            )
+        else:
+            raise ValueError(
+                f"No 1m data found for {symbol} from {extended_start} to {window_end}. "
+                f"Run: python trade_cli.py data sync-range --symbol {symbol} --tf 1m "
+                f"--start {extended_start.strftime('%Y-%m-%d')} --end {window_end.strftime('%Y-%m-%d')}"
+            )
 
     # Ensure sorted by timestamp
     df = df.sort_values("timestamp").reset_index(drop=True)
