@@ -76,11 +76,13 @@ def _compute_warmup_by_tf(registry: "FeatureRegistry") -> dict[str, int]:
 
 def create_engine_from_play(
     play: "Play",
-    window_start: datetime,
-    window_end: datetime,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
     warmup_by_tf: dict[str, int] | None = None,
     run_dir: Path | None = None,
     on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
+    synthetic_provider: "SyntheticDataProvider | None" = None,
+    window_name: str = "run",
 ) -> "BacktestEngine":
     """
     Create a BacktestEngine from an Play.
@@ -90,11 +92,13 @@ def create_engine_from_play(
 
     Args:
         play: Source Play with all strategy/feature specs
-        window_start: Backtest window start
-        window_end: Backtest window end
+        window_start: Backtest window start (optional if synthetic_provider used)
+        window_end: Backtest window end (optional if synthetic_provider used)
         warmup_by_tf: Warmup bars per TF (auto-computed from registry if None)
         run_dir: Optional output directory for artifacts
         on_snapshot: Optional snapshot callback for auditing
+        synthetic_provider: Optional SyntheticDataProvider for DB-free validation
+        window_name: Window name for engine config (default: "run")
 
     Returns:
         BacktestEngine configured from Play
@@ -102,6 +106,9 @@ def create_engine_from_play(
     Raises:
         ValueError: If Play is missing required sections (account)
     """
+    from typing import TYPE_CHECKING
+    if TYPE_CHECKING:
+        from src.forge.validation.synthetic_provider import SyntheticDataProvider
     from .engine import BacktestEngine
     from .system_config import (
         SystemConfig,
@@ -241,23 +248,27 @@ def create_engine_from_play(
         params=strategy_params,
     )
 
+    # Handle window defaults for synthetic provider mode
+    if synthetic_provider is not None and (window_start is None or window_end is None):
+        # Get data range from synthetic provider
+        exec_tf = play.execution_tf
+        data_start, data_end = synthetic_provider.get_data_range(exec_tf)
+        if window_start is None:
+            window_start = data_start
+        if window_end is None:
+            window_end = data_end
+
+    # Validate we have window bounds
+    if window_start is None or window_end is None:
+        raise ValueError(
+            "window_start and window_end are required unless synthetic_provider is used"
+        )
+
     # Strip timezone for engine compatibility (DuckDB stores naive UTC)
     window_start_naive = window_start.replace(tzinfo=None) if window_start.tzinfo else window_start
     window_end_naive = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
 
-    # Build warmup_bars_by_role from warmup_by_tf for backward compatibility
-    # Engine data prep still uses role-based warmup
-    warmup_bars_by_role = {
-        "exec": warmup_by_tf.get(play.execution_tf, 0),
-        "ltf": warmup_by_tf.get(play.execution_tf, 0),  # LTF = exec in single-TF
-        "mtf": warmup_by_tf.get(play.execution_tf, 0),  # MTF = exec in single-TF
-        "htf": warmup_by_tf.get(play.execution_tf, 0),  # HTF = exec in single-TF
-    }
-    # Override with actual TF values if multi-TF
-    for tf, warmup in warmup_by_tf.items():
-        warmup_bars_by_role[tf] = warmup
-
-    # Build tf_mapping from feature registry TFs
+    # Build tf_mapping from feature registry TFs FIRST (needed for warmup_bars_by_role)
     # Sort TFs by minutes to determine htf/mtf/ltf roles
     from .runtime.timeframe import tf_minutes
     all_tfs = sorted(registry.get_all_tfs(), key=lambda tf: tf_minutes(tf))
@@ -284,6 +295,19 @@ def create_engine_from_play(
         else:
             tf_mapping["mtf"] = exec_tf
             tf_mapping["htf"] = exec_tf
+
+    # Build warmup_bars_by_role from warmup_by_tf using tf_mapping
+    # CRITICAL: Use tf_mapping to get correct TF for each role
+    # Previously this used exec_tf warmup for ALL roles (bug!)
+    warmup_bars_by_role = {
+        "exec": warmup_by_tf.get(tf_mapping.get("ltf", exec_tf), 0),
+        "ltf": warmup_by_tf.get(tf_mapping.get("ltf", exec_tf), 0),
+        "mtf": warmup_by_tf.get(tf_mapping.get("mtf", exec_tf), 0),
+        "htf": warmup_by_tf.get(tf_mapping.get("htf", exec_tf), 0),
+    }
+    # Also include TF-keyed values for flexibility
+    for tf, warmup in warmup_by_tf.items():
+        warmup_bars_by_role[tf] = warmup
 
     # Create SystemConfig
     system_config = SystemConfig(
@@ -312,11 +336,12 @@ def create_engine_from_play(
     # Create engine
     engine = BacktestEngine(
         config=system_config,
-        window_name="run",
+        window_name=window_name,
         run_dir=run_dir,
         feature_registry=registry,
         on_snapshot=on_snapshot,
         tf_mapping=tf_mapping,
+        synthetic_provider=synthetic_provider,
     )
 
     # Store Play reference for run_with_play()

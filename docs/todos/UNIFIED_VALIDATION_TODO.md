@@ -81,17 +81,29 @@ python trade_cli.py backtest play-normalize-batch --dir tests/validation/plays/s
 ---
 
 ## GATE 3: Migrate Hybrid Audits
-**Status**: [ ] Not Started
+**Status**: [x] Complete (2026-01-11)
 
 ### Tasks
-- [ ] Add `run_rollup_parity_via_engine()` to `audit_rollup_parity.py`
-- [ ] Add `run_incremental_state_via_play()` to `audit_incremental_state.py`
-- [ ] Add `--mode engine` flag to CLI commands
+- [x] Add `run_rollup_parity_via_engine()` to `audit_rollup_parity.py`
+- [x] Add `run_incremental_state_via_engine()` to `audit_incremental_state.py`
+- [x] Update `create_engine_from_play()` to support `synthetic_provider` parameter
+- [ ] Add `--mode engine` flag to CLI commands (deferred - functions available for programmatic use)
 
-### Checkpoint
-```bash
-python trade_cli.py forge audit-rollup --mode engine
-python trade_cli.py forge audit-state --mode engine
+### Notes
+Engine mode functions added to both audits:
+- `run_rollup_parity_via_engine()`: Uses on_snapshot callback to validate rollups during engine execution
+- `run_incremental_state_via_engine()`: Runs a Play with structures through the engine
+- `create_engine_from_play()`: Now accepts `synthetic_provider` parameter for DB-free execution
+
+### Checkpoint (Programmatic)
+```python
+from src.forge.audits.audit_rollup_parity import run_rollup_parity_via_engine
+result = run_rollup_parity_via_engine()
+print(f"Rollup engine mode: {'PASS' if result.success else 'FAIL'}")
+
+from src.forge.audits.audit_incremental_state import run_incremental_state_via_engine
+result = run_incremental_state_via_engine()
+print(f"State engine mode: {'PASS' if result['success'] else 'FAIL'}")
 ```
 
 ---
