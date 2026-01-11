@@ -116,7 +116,11 @@ def audit_math_parity_from_snapshots(run_dir: Path) -> MathParityAuditResult:
                         compute_kwargs["open_"] = df_snapshot["open"]
                     if "volume" in required_inputs:
                         compute_kwargs["volume"] = df_snapshot["volume"]
-                    
+
+                    # Pass ts_open for indicators that need timestamps (e.g., VWAP)
+                    if "timestamp" in df_snapshot.columns:
+                        compute_kwargs["ts_open"] = df_snapshot["timestamp"]
+
                     recomputed = compute_indicator(indicator_type, **compute_kwargs)
 
                     # Handle the result format

@@ -41,7 +41,9 @@ from ..backtest.runtime.windowing import (
 )
 from ..backtest.runtime.data_health import DataHealthCheck, DataHealthReport
 from ..backtest.indicators import get_max_warmup_from_specs_by_role
-from ..strategies.registry import get_strategy, list_strategies, list_strategies_with_metadata, strategy_exists
+# Legacy strategy registry imports removed (2026-01-11)
+# The Play-based system replaces the old strategy registry
+# Use CLI: python trade_cli.py backtest run --play <play_id>
 from ..utils.epoch_tracking import StrategyEpochTracker, StrategyEpoch, get_artifact_writer
 from ..utils.logger import get_logger
 from ..config.constants import DataEnv
@@ -419,198 +421,38 @@ def backtest_run_tool(
     heal_if_needed: bool = True,
 ) -> ToolResult:
     """
-    Run a backtest for a system configuration.
-    
-    Loads the system config, optionally applies risk overrides, gets the strategy,
-    and runs the backtest engine. Optionally writes artifacts.
-    
-    Phase -1 preflight gate is run first (unless disabled) to ensure data health.
-    
-    Args:
-        system_id: System configuration ID
-        window_name: Window to run ("hygiene" or "test")
-        write_artifacts: Whether to write run artifacts
-        risk_overrides: Optional dict with overrides for risk profile:
-            - initial_equity: Starting equity
-            - risk_per_trade_pct: Risk per trade percentage
-            - max_leverage: Maximum leverage
-        run_preflight: If True (default), run Phase -1 preflight data health check
-        heal_if_needed: If True (default), attempt to heal data gaps during preflight
-        
+    DEPRECATED: Use Play-based CLI instead.
+
+    The old SystemConfig + Strategy registry pattern has been replaced by Plays.
+    Use: python trade_cli.py backtest run --play <play_id>
+
     Returns:
-        ToolResult with backtest results including metrics, trades summary, and artifact path
+        ToolResult with deprecation notice
     """
-    try:
-        # Phase -1: Preflight data health gate
-        if run_preflight:
-            preflight_result = backtest_preflight_check_tool(
-                system_id=system_id,
-                window_name=window_name,
-                heal_if_needed=heal_if_needed,
-            )
-            
-            if not preflight_result.success:
-                return ToolResult(
-                    success=False,
-                    error=f"Preflight check failed: {preflight_result.error}",
-                    data={
-                        "system_id": system_id,
-                        "window_name": window_name,
-                        "preflight": preflight_result.data,
-                        "suggestion": "Run data sync or check data coverage for required window",
-                    },
-                )
-            
-            logger.info(f"Preflight check passed for {system_id}/{window_name}")
-        
-        # Load system config
-        config = load_system_config(system_id, window_name)
-        
-        # Apply risk overrides if provided
-        if risk_overrides:
-            resolved_risk = resolve_risk_profile(config.risk_profile, risk_overrides)
-            # Create a new config with the resolved risk profile
-            # We need to rebuild the config to update system_uid
-            config = SystemConfig(
-                system_id=config.system_id,
-                symbol=config.symbol,
-                tf=config.tf,
-                strategies=config.strategies,
-                primary_strategy_instance_id=config.primary_strategy_instance_id,
-                windows=config.windows,
-                risk_profile=resolved_risk,
-                risk_mode=config.risk_mode,
-                data_build=config.data_build,
-                warmup_bars_by_role=config.warmup_bars_by_role,
-            )
-            logger.info(f"Applied risk overrides: {risk_overrides}")
-        
-        # Get strategy from primary instance
-        primary = config.get_primary_strategy()
-        try:
-            strategy = get_strategy(primary.strategy_id, primary.strategy_version)
-        except ValueError as e:
-            return ToolResult(
-                success=False,
-                error=f"Strategy not found: {e}",
-            )
-        
-        # Determine run directory for artifacts (system-first layout)
-        run_dir = None
-        if write_artifacts:
-            writer = get_artifact_writer()
-            run_id = f"run-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            run_dir = writer.get_backtest_run_dir(
-                system_id=config.system_id,
-                symbol=config.symbol,
-                tf=config.tf,
-                window_name=window_name,
-                run_id=run_id,
-            )
-        
-        # Create engine and run
-        engine = BacktestEngine(config, window_name, run_dir=run_dir)
-        
-        # Load data first to catch data errors early
-        try:
-            engine.load_data()
-        except ValueError as e:
-            return ToolResult(
-                success=False,
-                error=f"Data error: {e}",
-                data={
-                    "system_id": system_id,
-                    "symbol": config.symbol,
-                    "tf": config.tf,
-                    "window": window_name,
-                    "suggestion": "Run data sync for this symbol/tf",
-                },
-            )
-        
-        # Run backtest
-        result = engine.run(strategy)
-        
-        # Write manifest and eventlog (Phase 5 requirement)
-        manifest_eventlog_paths = {}
-        if write_artifacts and run_dir:
-            preflight_data = preflight_result.data if run_preflight and preflight_result.success else None
-            manifest_eventlog_paths = _write_manifest_and_eventlog(
-                run_dir=run_dir,
-                config=config,
-                window_name=window_name,
-                result=result,
-                preflight_data=preflight_data,
-            )
-            logger.info(f"Wrote manifest and eventlog to {run_dir}")
-        
-        # Also write via epoch tracker if artifacts enabled (for lineage)
-        if write_artifacts:
-            _write_epoch_artifacts(config, window_name, result)
-        
-        # Get metrics (now a BacktestMetrics object)
-        metrics = result.metrics
-        
-        # Build message based on early-stop status
-        if result.stopped_early:
-            msg = (f"Backtest stopped early ({result.stop_reason}): "
-                   f"{metrics.total_trades} trades, PnL=${metrics.net_profit:,.2f}")
-        else:
-            msg = f"Backtest complete: {metrics.total_trades} trades, PnL=${metrics.net_profit:,.2f}"
-        
-        # Build response with new contract
-        return ToolResult(
-            success=True,
-            message=msg,
-            symbol=config.symbol,
-            data={
-                "run_id": result.run_id,
-                # Identity (global)
-                "system_id": result.system_id,
-                "system_uid": result.system_uid,
-                "strategy_id": result.strategy_id,
-                "strategy_version": result.strategy_version,
-                # Run context
-                "window_name": result.window_name,
-                "symbol": result.symbol,
-                "tf": result.tf,
-                "risk_mode": result.risk_mode,
-                # Metrics (key fields for quick view)
-                "metrics": metrics.to_dict(),
-                "net_return_pct": metrics.net_return_pct,
-                "max_drawdown_pct": metrics.max_drawdown_pct,
-                "total_trades": metrics.total_trades,
-                "sharpe": metrics.sharpe,
-                # Resolved risk used
-                "risk_initial_equity_used": result.risk_initial_equity_used,
-                "risk_per_trade_pct_used": result.risk_per_trade_pct_used,
-                "risk_max_leverage_used": result.risk_max_leverage_used,
-                # Artifact paths
-                "artifact_dir": result.artifact_dir,
-                "trades_path": result.trades_path,
-                "equity_path": result.equity_path,
-                "result_path": result.result_path,
-                "manifest_path": str(manifest_eventlog_paths.get("run_manifest.json", "")) if manifest_eventlog_paths else None,
-                "eventlog_path": str(manifest_eventlog_paths.get("events.jsonl", "")) if manifest_eventlog_paths else None,
-                # Trade summary
-                "trade_count": len(result.trades),
-                "trades_summary": {
-                    "total": len(result.trades),
-                    "winners": metrics.win_count,
-                    "losers": metrics.loss_count,
-                },
-                # Early-stop fields
-                "stopped_early": result.stopped_early,
-                "stop_reason": result.stop_reason,
-                "stop_details": result.stop_details,
-            },
-        )
-        
-    except Exception as e:
-        logger.error(f"Backtest failed for {system_id}/{window_name}: {e}")
-        return ToolResult(
-            success=False,
-            error=f"Backtest failed: {e}",
-        )
+    return ToolResult(
+        success=False,
+        error="DEPRECATED: backtest_run_tool uses legacy strategy registry (removed 2026-01-11)",
+        data={
+            "migration": "Use Play-based CLI instead",
+            "command": f"python trade_cli.py backtest run --play <play_id> --start <date> --end <date>",
+            "docs": "See strategies/plays/README.md for Play format",
+        },
+    )
+
+
+def _backtest_run_tool_legacy(
+    system_id: str,
+    window_name: str = "hygiene",
+    write_artifacts: bool = True,
+    risk_overrides: dict[str, Any] | None = None,
+    run_preflight: bool = True,
+    heal_if_needed: bool = True,
+) -> ToolResult:
+    """
+    LEGACY: Preserved for reference only. Do not call.
+    """
+    # This entire function is legacy code and should not be called
+    raise NotImplementedError("Legacy backtest_run_tool removed - use Play CLI")
 
 
 def _write_manifest_and_eventlog(
@@ -990,30 +832,20 @@ def backtest_verify_data_tool(
 
 def backtest_list_strategies_tool() -> ToolResult:
     """
-    List all available strategies with metadata.
-    
-    Strategies are code implementations. System configs select which strategy to use.
-    
+    DEPRECATED: Strategy registry removed 2026-01-11.
+
+    The legacy strategy registry has been replaced by Plays.
+    Use: python trade_cli.py backtest play-normalize-batch --dir tests/stress/plays
+
     Returns:
-        ToolResult with list of strategies including:
-        - strategy_id: Stable identifier
-        - description: Human-readable description
-        - default_version: Default version if not specified in system YAML
+        ToolResult with deprecation notice
     """
-    try:
-        strategies = list_strategies_with_metadata()
-        
-        return ToolResult(
-            success=True,
-            message=f"Found {len(strategies)} strategies",
-            data={
-                "strategies": strategies,
-                "note": "Strategies are code. System configs select which to use.",
-            },
-        )
-    
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            error=f"Failed to list strategies: {e}",
-        )
+    return ToolResult(
+        success=False,
+        error="DEPRECATED: Strategy registry removed 2026-01-11",
+        data={
+            "migration": "Use Play-based system instead",
+            "command": "python trade_cli.py backtest play-normalize-batch --dir <dir>",
+            "docs": "See strategies/plays/README.md",
+        },
+    )

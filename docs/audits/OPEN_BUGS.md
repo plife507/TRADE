@@ -1,7 +1,7 @@
 # Open Bugs
 
-**Last Updated**: 2026-01-10
-**Status**: 0 OPEN BUGS (Structure Module Production Validation Complete)
+**Last Updated**: 2026-01-11
+**Status**: 0 OPEN BUGS (Audit Swarm Fixes Complete)
 
 ---
 
@@ -16,7 +16,7 @@
 
 **Validation Status**: ALL TESTS PASS
 - Validation plays relocated to `tests/validation/plays/`
-- Indicators: **42/42 pass stress test** (all single + multi-output)
+- Indicators: **43/43 pass stress test** (all single + multi-output, including VWAP)
 - **Structures: 163/163 stress tests pass** (136 single-TF + 11 HTF/MTF + 16 zone)
 - Crossover operators: cross_above, cross_below ENABLED (TradingView semantics)
 - Window operators: anchor_tf now properly scales offsets
@@ -52,6 +52,112 @@
 ## P3 Open
 
 *None* - All P3 bugs fixed in 2026-01-09 session
+
+---
+
+## Resolved This Session (2026-01-11) - Audit Swarm Fixes
+
+### P0-001: Unbound Variable exec_tf in Preflight Error Path - FIXED
+- **Location**: `src/backtest/runtime/preflight.py:1137`
+- **Issue**: Error path referenced `exec_tf.tf` but variable was undefined in that scope
+- **Root Cause**: Used `exec_tf` (object) instead of `exec_tf_str` (string)
+- **Fix**: Changed to `exec_tf_str or "unknown"`
+- **Status**: FIXED
+
+### P0-002: Exit Fee Uses Entry Notional Instead of Exit Notional - FIXED
+- **Location**: `src/backtest/sim/execution/execution_model.py:451-452`
+- **Issue**: Exit fee calculated using `fill_size_usdt` (entry notional) instead of exit notional
+- **Root Cause**: `fill_size_usdt` is based on `position.size_usdt * close_ratio` which reflects entry price
+- **Fix**: Changed to `exit_notional = fill_size * fill_price; fee = exit_notional * taker_fee_rate`
+- **Impact**: 10-50%+ fee calculation error on high-volatility trades
+- **Status**: FIXED
+
+### P1-003: MTF Warmup Not Included in Data Window Calculation - FIXED
+- **Location**: `src/backtest/runtime/windowing.py:352-357`
+- **Issue**: Only exec and HTF warmup considered, MTF ignored
+- **Fix**: Added MTF warmup span calculation parallel to HTF
+- **Code Change**: Added `mtf_data_start = window_start - mtf_warmup_span` and included in `min()` calculation
+- **Status**: FIXED
+
+### P1-004: No Bounds Check for HTF/MTF Index - FIXED
+- **Location**: `src/backtest/engine_snapshot.py:63-77`
+- **Issue**: `get_idx_at_ts_close()` result not bounds-checked before use
+- **Fix**: Added `0 <= htf_idx < len(htf_feed.ts_close)` check before using index
+- **Status**: FIXED
+
+### P1-005: --skip-preflight Bypasses Validation Without Warning - FIXED
+- **Location**: `src/backtest/runner.py:378`
+- **Issue**: Flag bypasses all data validation silently
+- **Fix**: Added warning: `"[WARN] ⚠️  --skip-preflight bypasses ALL data validation!"`
+- **Status**: FIXED
+
+### P1-006: risk_mode="none" Has No User Warning - FIXED
+- **Location**: `src/backtest/runner.py:751-757`
+- **Issue**: No indication that risk limits were disabled
+- **Fix**: Added warning when `risk_mode="none"` before summary output
+- **Status**: FIXED
+
+### P2-012: IOC/FOK is_first_bar Hardcoded to False - FIXED
+- **Location**: `src/backtest/sim/exchange.py:742`
+- **Issue**: `is_first_bar=False` hardcoded, breaking IOC/FOK semantics
+- **Fix**:
+  1. Added `submission_bar_index: int | None` to Order dataclass
+  2. Set submission_bar_index in all submit_* functions
+  3. Compute `is_first_bar = (order.submission_bar_index == self._current_bar_index)`
+- **Status**: FIXED
+
+### P2-013: Partial Close Entry Fee Not Pro-rated - FIXED
+- **Location**: `src/backtest/sim/exchange.py:994-1019`
+- **Issue**: Entry fees not allocated proportionally when doing partial closes
+- **Fix**:
+  1. Added `entry_fee: float = 0.0` to Position dataclass
+  2. Track original entry fee at position creation
+  3. Pro-rate `pos.entry_fee *= remaining_ratio` on partial close
+- **Status**: FIXED
+
+### P2-014: Misleading Comment "htf_warmup_bars will be computed below" - FIXED
+- **Location**: `src/backtest/engine_data_prep.py:420`
+- **Issue**: Comment was inaccurate - no explicit computation below
+- **Fix**: Updated comment to: `"# No htf key needed - compute_data_window uses warmup_bars_by_role directly"`
+- **Status**: FIXED
+
+### P2-015: No Upper Bounds Validation for SL/TP Values - FIXED
+- **Location**: `src/backtest/play/risk_model.py:46-58, 89-103`
+- **Issue**: SL/TP could be set to unreasonable values (e.g., 10000% SL)
+- **Fix**:
+  - StopLoss: max 100.0 (100% or 100x ATR)
+  - TakeProfit: max 10000.0 for PERCENT, 100.0 for other types
+- **Status**: FIXED
+
+### P2-016: VWAP Validation Missing ts_open Timestamps - FIXED
+- **Location**: `src/forge/audits/toolkit_contract_audit.py:211-213`
+- **Issue**: VWAP indicator failed validation with warning "VWAP requires timestamps (ts_open)"
+- **Root Cause**: `audit_single_indicator()` didn't pass `ts_open` to `compute_indicator()`
+- **Fix**: Added timestamp passthrough when available:
+  ```python
+  if "timestamp" in df.columns:
+      compute_kwargs["ts_open"] = df["timestamp"]
+  ```
+- **Verified**: audit-toolkit now passes 43/43 indicators
+- **Status**: FIXED
+
+### P2-017: Math Parity Audit Missing ts_open - FIXED
+- **Location**: `src/forge/audits/audit_math_parity.py:120-122`
+- **Issue**: Same ts_open bug as P2-016, discovered during architecture investigation
+- **Fix**: Added same timestamp passthrough pattern
+- **Status**: FIXED
+
+### P2-018: In-Memory Parity Audit Missing ts_open - FIXED
+- **Location**: `src/forge/audits/audit_in_memory_parity.py:225-229`
+- **Issue**: Same ts_open bug, also checks `ts_open` column name (engine uses this)
+- **Fix**: Added dual-column check: `ts_open` OR `timestamp`
+- **Status**: FIXED
+
+### Validation Status
+- audit-toolkit: 43/43 PASS
+- audit-rollup: 11/11 PASS
+- play-normalize-batch (validation): 4/4 PASS
+- play-normalize-batch (stress): 21/21 PASS
 
 ---
 
@@ -427,6 +533,7 @@ When auditing, check for these patterns:
 
 | Date | Document | Bugs Found/Fixed |
 |------|----------|------------------|
+| 2026-01-11 | Audit Swarm Fixes + Architecture Investigation | 13 FIXED (2 P0, 4 P1, 7 P2) |
 | 2026-01-10 | Structure Module Production | 4 FIXED (BUG-016,017,018,019) + 2 doc fixes + zone tests |
 | 2026-01-09 | Senior Dev Audit | 8 FIXED (P2:5, P3:3) |
 | 2026-01-07 | Previous session | 5 fixes (P1-001, P1-002, P2-004, P2-005, P2-SIM-02) |

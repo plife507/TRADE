@@ -221,7 +221,13 @@ def audit_in_memory_parity_from_feeds(
                         compute_kwargs["open_"] = df["open"]
                     if "volume" in required_inputs:
                         compute_kwargs["volume"] = df["volume"]
-                    
+
+                    # Pass ts_open for indicators that need timestamps (e.g., VWAP)
+                    if "ts_open" in df.columns:
+                        compute_kwargs["ts_open"] = df["ts_open"]
+                    elif "timestamp" in df.columns:
+                        compute_kwargs["ts_open"] = df["timestamp"]
+
                     recomputed = compute_indicator(indicator_type, **compute_kwargs)
                     
                     

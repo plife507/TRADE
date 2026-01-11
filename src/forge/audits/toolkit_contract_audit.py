@@ -196,7 +196,7 @@ def audit_single_indicator(
         
         # Build compute kwargs based on registry requirements
         compute_kwargs = {}
-        
+
         if "high" in required_inputs:
             compute_kwargs["high"] = df["high"]
         if "low" in required_inputs:
@@ -207,6 +207,10 @@ def audit_single_indicator(
             compute_kwargs["open_"] = df["open"]
         if "volume" in required_inputs:
             compute_kwargs["volume"] = df["volume"]
+
+        # Pass ts_open for indicators that need timestamps (e.g., VWAP)
+        if "timestamp" in df.columns:
+            compute_kwargs["ts_open"] = df["timestamp"]
         
         # FAIL LOUD if registry has no required_inputs - this is a registry bug
         if not compute_kwargs:
