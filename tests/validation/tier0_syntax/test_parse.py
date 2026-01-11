@@ -65,7 +65,7 @@ def test_valid_minimal_play() -> TestResult:
                         {
                             "when": {
                                 "lhs": {"feature_id": "ema_9"},
-                                "op": "gt",
+                                "op": ">",
                                 "rhs": 100,
                             },
                             "emit": [{"action": "entry_long"}],

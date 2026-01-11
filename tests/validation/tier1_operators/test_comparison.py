@@ -275,7 +275,7 @@ def test_eq_float_rejection() -> TestResult:
     try:
         from src.backtest.rules.registry import OpCategory, get_operator_spec
 
-        spec = get_operator_spec("eq")
+        spec = get_operator_spec("==")
         if spec is None:
             return TestResult(
                 test_id=test_id,
