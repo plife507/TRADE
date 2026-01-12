@@ -5,7 +5,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Bybit API](https://img.shields.io/badge/Exchange-Bybit-orange.svg)](https://www.bybit.com/)
-[![Status](https://img.shields.io/badge/Status-Engine%20Development-yellow.svg)]()
+[![Status](https://img.shields.io/badge/Status-Gate%207b%20Cleanup-yellow.svg)]()
 
 A backtesting and live trading platform for **USDT-margined perpetual futures**. Strategies are defined as composable YAML configurations with built-in leverage controls, liquidation modeling, and comprehensive risk metrics.
 
@@ -14,6 +14,16 @@ A backtesting and live trading platform for **USDT-margined perpetual futures**.
 ## Current Status: Engine Development
 
 > **Important:** TRADE is currently in **engine development phase**. The backtest engine is production-ready, but live trading with YAML-based Plays is not yet implemented.
+
+### 🔄 Current Work: Gate 7b - Legacy Cleanup (Jan 2026)
+
+Comprehensive codebase audit and cleanup in progress:
+- **9 files** with legacy typing imports (`Optional`, `Dict`, `List` → modern `X | None`, `dict`, `list`)
+- **11 locations** with backward compatibility aliases to remove
+- **3 large files** (>1500 lines) identified for modular refactoring
+- Gated execution with backtest validation between each change
+
+See: [`docs/todos/LEGACY_CLEANUP_TODO.md`](docs/todos/LEGACY_CLEANUP_TODO.md)
 
 ### What Works Today
 
@@ -25,8 +35,9 @@ A backtesting and live trading platform for **USDT-margined perpetual futures**.
 | 43 Indicators | ✅ Complete | EMA, RSI, MACD, Bollinger, ATR, etc. |
 | 6 Structures | ✅ Complete | Swing, Trend, Fibonacci, Zone, Rolling, Derived |
 | Actions DSL v3.0 | ✅ Frozen | 11 operators, 6 window operators |
-| The Forge | ✅ Complete | Validation, audits, 320+ stress tests |
+| The Forge | ✅ Complete | Validation, audits, 343+ stress tests |
 | Play YAML Schema | ✅ Frozen | Strategy-as-data format |
+| Stress Testing | ✅ Complete | 163 structure tests, 100 edge cases, multi-TF verified |
 
 ### Current Limitations
 
@@ -86,15 +97,13 @@ python trade_cli.py backtest play-normalize-batch --dir strategies/plays/
 │  Funding simulation          TradingView parity         MAE/MFE analysis    │
 │  Slippage/fees               Crossover semantics        Leverage metrics    │
 │                                                                             │
-│  ════════════════════════ CURRENT ══════════════════════════               │
-│                                                                             │
-│  GATE 7: THE FORGE                                                          │
-│  🔄 In Progress (Jan 2026)                                                  │
-│  ─────────────────────────                                                  │
-│  Play validation framework                                                  │
-│  Stress testing (320+ plays)                                                │
-│  Audit suite                                                                │
-│  Quality gates                                                              │
+│  GATE 7: THE FORGE          GATE 7b: CLEANUP                                │
+│  ✅ Jan 2026                🔄 In Progress                                  │
+│  ─────────────────────      ─────────────────                               │
+│  Play validation            Legacy code audit                               │
+│  Stress testing (343+)      Typing modernization                            │
+│  Audit suite                Backward compat removal                         │
+│  Quality gates              Modular refactoring                             │
 │                                                                             │
 │  ════════════════════ 2 MONTHS: LIVE TRADING ═══════════════               │
 │                                                                             │
@@ -129,7 +138,8 @@ python trade_cli.py backtest play-normalize-batch --dir strategies/plays/
 | 4 | ✅ Done | — | Sim Exchange | Margin, liquidation, funding, fees |
 | 5 | ✅ Done | — | DSL v3.0 | Operators, windows, crossovers (FROZEN) |
 | 6 | ✅ Done | — | Metrics | 62 fields, tail risk, leverage metrics |
-| 7 | 🔄 Now | Jan | The Forge | Validation, stress tests, quality gates |
+| 7 | ✅ Done | Jan | The Forge | Validation, 343+ stress tests, quality gates |
+| 7b | 🔄 Now | Jan | Cleanup | Legacy code removal, typing modernization |
 | 8 | ⏳ Next | Feb | Live Engine | WebSocket, Play→Order bridge |
 | 9 | ⏳ | Feb | Demo Mode | Testnet trading, paper mode |
 | 10 | ⏳ | **Mar** | **Production** | **Live execution, circuit breakers** |
