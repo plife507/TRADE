@@ -86,7 +86,7 @@ class InMemoryParityResult:
             writer.writerow([])
             
             # Mismatch details
-            writer.writerow(["# First Mismatches (max {})".format(max_mismatches)])
+            writer.writerow([f"# First Mismatches (max {max_mismatches})"])
             writer.writerow(["column", "tf_role", "index", "feedstore_value", "recomputed_value", "abs_diff"])
             
             mismatch_count = 0

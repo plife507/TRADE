@@ -3,8 +3,8 @@ Indicator Stress Test - Tests all 42 indicators with simple triggers.
 Run: python scripts/indicator_stress_test.py
 """
 import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import tempfile
 import yaml
