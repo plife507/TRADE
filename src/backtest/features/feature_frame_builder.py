@@ -332,7 +332,6 @@ class FeatureFrameBuilder:
         self,
         prefer_float32: bool = True,
         compute: IndicatorCompute | None = None,
-        registry: IndicatorCompute | None = None,  # Deprecated alias for compute
     ):
         """
         Initialize builder.
@@ -340,13 +339,9 @@ class FeatureFrameBuilder:
         Args:
             prefer_float32: If True, convert arrays to float32 (default: True)
             compute: Custom indicator compute adapter (default: global adapter)
-            registry: Deprecated alias for compute (use compute instead)
         """
         self.prefer_float32 = prefer_float32
-        # Support both 'compute' and legacy 'registry' parameter
-        self.compute = compute or registry or get_compute()
-        # Backwards compatibility: keep registry attribute pointing to compute
-        self.registry = self.compute
+        self.compute = compute or get_compute()
     
     def build(
         self,

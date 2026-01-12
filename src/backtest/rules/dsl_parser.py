@@ -75,6 +75,52 @@ def is_arithmetic_list(data: Any) -> bool:
     return isinstance(op, str) and op in ARITHMETIC_OPERATORS
 
 
+PROXIMITY_OPERATORS = {"near_abs", "near_pct"}
+
+
+def is_condition_list(data: Any) -> bool:
+    """
+    Check if a value is a condition shorthand list.
+
+    Condition shorthand:
+        - 3-element: [lhs, operator, rhs]
+        - 4-element: [lhs, proximity_op, rhs, tolerance] (for near_abs, near_pct)
+
+    Where operator is one of the VALID_OPERATORS (>, <, ==, cross_above, etc.)
+
+    This enables the cookbook syntax:
+        - ["ema_9", ">", "ema_21"]
+        - ["rsi_14", "<", 30]
+        - ["ema_9", "cross_above", "ema_21"]
+        - ["close", "near_pct", {feature_id: "fib", field: "level_0.618"}, 0.5]
+
+    Distinguishes from:
+    - Arithmetic lists: middle element is +, -, *, /, %
+    - ListValue (for 'in' operator): not 3 or 4 elements with valid operator
+
+    Examples:
+        ["ema_9", ">", "ema_21"]      → True (condition)
+        ["rsi_14", "cross_above", 50] → True (condition)
+        ["close", "near_pct", rhs, 0.5] → True (4-element proximity)
+        ["ema_9", "-", "ema_21"]      → False (arithmetic)
+        [1, 2, 3]                     → False (list values)
+    """
+    if not isinstance(data, list):
+        return False
+
+    # 4-element format only valid for proximity operators
+    if len(data) == 4:
+        op = data[1]
+        return isinstance(op, str) and op in PROXIMITY_OPERATORS
+
+    # 3-element format for all other operators
+    if len(data) == 3:
+        op = data[1]
+        return isinstance(op, str) and op in VALID_OPERATORS and op not in ARITHMETIC_OPERATORS
+
+    return False
+
+
 def parse_arithmetic_operand(data: Any) -> FeatureRef | ScalarValue | ArithmeticExpr:
     """
     Parse an arithmetic operand.
@@ -411,6 +457,63 @@ def parse_cond(data: dict) -> Cond:
     return Cond(lhs=lhs, op=op, rhs=rhs, tolerance=tolerance)
 
 
+def parse_condition_shorthand(data: list) -> Cond:
+    """
+    Parse a condition from shorthand list syntax.
+
+    Shorthand formats:
+        - 3-element: [lhs, operator, rhs]
+        - 4-element: [lhs, proximity_op, rhs, tolerance] (for near_abs, near_pct)
+
+    This enables the cookbook syntax:
+        - ["ema_9", ">", "ema_21"]
+        - ["rsi_14", "<", 30]
+        - ["ema_9", "cross_above", "ema_21"]
+        - ["zone.state", "==", "ACTIVE"]
+        - ["rsi_14", "between", [30, 70]]
+        - ["close", "near_pct", {feature_id: "fib", field: "level_0.618"}, 0.5]
+
+    Args:
+        data: List of [lhs, operator, rhs] or [lhs, proximity_op, rhs, tolerance].
+
+    Returns:
+        Cond node.
+
+    Raises:
+        ValueError: If list format is invalid or operator is unknown.
+    """
+    tolerance = None
+
+    # Handle 4-element format for proximity operators
+    if len(data) == 4:
+        lhs_raw, op, rhs_raw, tolerance = data
+        if op not in PROXIMITY_OPERATORS:
+            raise ValueError(
+                f"4-element shorthand only valid for proximity operators {PROXIMITY_OPERATORS}, got '{op}'"
+            )
+    elif len(data) == 3:
+        lhs_raw, op, rhs_raw = data
+    else:
+        raise ValueError(
+            f"Condition shorthand requires 3 or 4 elements, got {len(data)}"
+        )
+
+    # Validate operator
+    if op not in VALID_OPERATORS:
+        raise ValueError(
+            f"Unknown operator '{op}' in shorthand. Valid operators: {sorted(VALID_OPERATORS)}"
+        )
+
+    # Parse LHS
+    lhs = parse_lhs(lhs_raw)
+
+    # Normalize and parse RHS based on operator context
+    rhs_normalized = _normalize_rhs_for_operator(rhs_raw, op)
+    rhs = parse_rhs(rhs_normalized)
+
+    return Cond(lhs=lhs, op=op, rhs=rhs, tolerance=tolerance)
+
+
 def parse_expr(data: dict | list) -> Expr:
     """
     Parse an expression from YAML.
@@ -452,16 +555,25 @@ def parse_expr(data: dict | list) -> Expr:
           expr:
             lhs: ...
 
+        # Condition shorthand (cookbook syntax)
+        - ["ema_9", ">", "ema_21"]
+        - ["rsi_14", "cross_above", 50]
+
     Args:
         data: Expression dict from YAML.
 
     Returns:
         Expr node.
     """
-    # Handle list as implicit AllExpr
+    # Handle list - check for condition shorthand first
     if isinstance(data, list):
+        # Condition shorthand: ["lhs", "op", "rhs"]
+        if is_condition_list(data):
+            return parse_condition_shorthand(data)
+        # Single-element list: unwrap
         if len(data) == 1:
             return parse_expr(data[0])
+        # Multi-element list: implicit AllExpr
         children = tuple(parse_expr(item) for item in data)
         return AllExpr(children)
 
@@ -732,10 +844,6 @@ def parse_play_actions(play_dict: dict) -> list[Block]:
         )
 
     return parse_blocks(actions_data)
-
-
-# Legacy alias for backward compatibility
-parse_play_blocks = parse_play_actions
 
 
 def validate_blocks_types(

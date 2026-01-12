@@ -280,9 +280,6 @@ TIMEFRAME_MINUTES = {
     "M": 43200,  # ~30 days
 }
 
-# Legacy alias for backward compatibility during transition
-TIMEFRAMES = TIMEFRAME_TO_BYBIT
-
 DEFAULT_TIMEFRAME = "15m"
 
 # ==================== Timeframe Categories ====================
