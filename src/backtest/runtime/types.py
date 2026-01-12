@@ -320,22 +320,6 @@ class RuntimeSnapshot:
     history_config: HistoryConfig | None = None
     history_ready: bool = True  # True if no history required or history is filled
     
-    # Backward compatibility aliases
-    @property
-    def ltf_tf(self) -> str:
-        """Alias for exec_tf (backward compatibility)."""
-        return self.exec_tf
-    
-    @property
-    def bar_ltf(self) -> Bar:
-        """Alias for bar_exec (backward compatibility)."""
-        return self.bar_exec
-    
-    @property
-    def features_ltf(self) -> FeatureSnapshot:
-        """Alias for features_exec (backward compatibility)."""
-        return self.features_exec
-    
     @property
     def ready(self) -> bool:
         """Check if all required TF features are ready AND history is ready."""

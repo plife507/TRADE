@@ -565,15 +565,6 @@ class BacktestResult:
     entry_attempts_count: int = 0
     entry_rejections_count: int = 0
     
-    # Backward compat property aliases
-    @property
-    def start_time(self) -> datetime:
-        return self.start_ts
-    
-    @property
-    def end_time(self) -> datetime:
-        return self.end_ts
-
     def to_dict(self) -> dict[str, Any]:
         """
         Convert to dict for JSON serialization.
