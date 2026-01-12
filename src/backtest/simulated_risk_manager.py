@@ -12,7 +12,7 @@ REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
 """
 
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ..core.risk_manager import Signal
 from .system_config import RiskProfileConfig

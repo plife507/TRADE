@@ -14,7 +14,6 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.align import Align
 from rich.table import Table
-from typing import Optional
 import shutil
 
 

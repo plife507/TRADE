@@ -6,7 +6,6 @@ These tools provide exchange connection testing, health checks, and status repor
 
 import sys
 import os
-from typing import Optional, Dict, Any
 from .shared import ToolResult, _get_exchange_manager, _get_realtime_state
 from src.config.config import get_config
 

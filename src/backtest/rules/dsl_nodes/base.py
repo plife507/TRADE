@@ -12,7 +12,6 @@ This module defines the foundational AST node types:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Union
 
 from .constants import ARITHMETIC_OPERATORS
 
@@ -215,7 +214,7 @@ ArithmeticOperand = FeatureRef | ScalarValue | ArithmeticExpr
 
 
 # RHS type for conditions (now includes ArithmeticExpr)
-RhsValue = Union[FeatureRef, ScalarValue, RangeValue, ListValue, ArithmeticExpr]
+RhsValue = FeatureRef | ScalarValue | RangeValue | ListValue | ArithmeticExpr
 
 
 __all__ = [

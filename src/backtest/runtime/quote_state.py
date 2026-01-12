@@ -40,7 +40,6 @@ Phase 2: Simulator Quote Stream (PRICE_FEED_1M_PREFLIGHT_PHASES.md)
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)

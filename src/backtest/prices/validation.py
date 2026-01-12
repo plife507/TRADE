@@ -7,7 +7,6 @@ MARK is always required (not conditional on Play).
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 from src.backtest.prices.engine import MarkPriceEngine
 from src.backtest.prices.types import HealthCheckResult

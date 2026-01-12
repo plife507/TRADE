@@ -11,7 +11,6 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.align import Align
 from rich.table import Table
-from typing import Optional, List, Dict, Any
 
 # Import art wrapper for easy access (all art lives in art_stylesheet.py)
 from .art_stylesheet import (

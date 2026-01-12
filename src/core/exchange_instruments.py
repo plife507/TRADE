@@ -9,7 +9,7 @@ Handles:
 """
 
 import time
-from typing import Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
 if TYPE_CHECKING:
