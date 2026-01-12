@@ -275,6 +275,7 @@ See: `docs/guides/DSL_STRATEGY_PATTERNS.md` for 7 documented patterns:
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
+| **Legacy Cleanup** | **P1** | See [LEGACY_CLEANUP_TODO.md](LEGACY_CLEANUP_TODO.md) - 9 files with legacy typing, 11 backward compat aliases |
 | **ICT Market Structure** | **P1** | See [ICT_MARKET_STRUCTURE.md](ICT_MARKET_STRUCTURE.md) |
 | **Visualization Primitives** | P2 | Zone boxes, Fib levels, market structure overlays |
 | **W5 Full Implementation** | Future | WebSocket + live engine mode |
