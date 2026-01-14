@@ -1,0 +1,41 @@
+version: "3.0.0"
+name: "V_GATE_001_ema_cross"
+description: "Gate validation Play - EMA crossover for cleanup regression testing"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  initial_capital_usdt: 10000
+  leverage: 1
+  fee_rate_pct: 0.04
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
+      - ["rsi_14", "lt", 70]
+
+  entry_short:
+    all:
+      - ["ema_9", "cross_below", "ema_21"]
+      - ["rsi_14", "gt", 30]
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0

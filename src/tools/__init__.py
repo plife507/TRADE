@@ -182,10 +182,8 @@ from .data_tools import (
 from .backtest_tools import (
     backtest_list_systems_tool,
     backtest_get_system_tool,
-    backtest_run_tool,
     backtest_prepare_data_tool,
     backtest_verify_data_tool,
-    backtest_list_strategies_tool,
 )
 
 # Backtest CLI wrapper tools (Play-based, golden path)
@@ -330,10 +328,8 @@ __all__ = [
     # Backtest tools (SystemConfig-based, legacy)
     "backtest_list_systems_tool",
     "backtest_get_system_tool",
-    "backtest_run_tool",
     "backtest_prepare_data_tool",
     "backtest_verify_data_tool",
-    "backtest_list_strategies_tool",
     
     # Backtest CLI wrapper tools (Play-based, golden path)
     "backtest_preflight_play_tool",

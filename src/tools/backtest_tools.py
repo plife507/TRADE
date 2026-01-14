@@ -44,16 +44,13 @@ from ..backtest.indicators import get_max_warmup_from_specs_by_role
 # Legacy strategy registry imports removed (2026-01-11)
 # The Play-based system replaces the old strategy registry
 # Use CLI: python trade_cli.py backtest run --play <play_id>
-from ..utils.epoch_tracking import StrategyEpochTracker, StrategyEpoch, get_artifact_writer
 from ..utils.logger import get_logger
 from ..config.constants import DataEnv
-
 
 logger = get_logger()
 
 # Phase -1: Maximum heal attempts before hard-fail
 MAX_HEAL_ATTEMPTS = 3
-
 
 # =============================================================================
 # System Config Tools
@@ -116,7 +113,6 @@ def backtest_list_systems_tool() -> ToolResult:
             error=f"Failed to list systems: {e}",
         )
 
-
 def backtest_get_system_tool(system_id: str) -> ToolResult:
     """
     Get detailed information about a system configuration.
@@ -163,7 +159,6 @@ def backtest_get_system_tool(system_id: str) -> ToolResult:
             success=False,
             error=f"Failed to load system: {e}",
         )
-
 
 # =============================================================================
 # Phase -1: Preflight Data Health Gate
@@ -407,257 +402,9 @@ def backtest_preflight_check_tool(
             error=f"Preflight check error: {e}",
         )
 
-
 # =============================================================================
 # Backtest Run Tool
 # =============================================================================
-
-def backtest_run_tool(
-    system_id: str,
-    window_name: str = "hygiene",
-    write_artifacts: bool = True,
-    risk_overrides: dict[str, Any] | None = None,
-    run_preflight: bool = True,
-    heal_if_needed: bool = True,
-) -> ToolResult:
-    """
-    DEPRECATED: Use Play-based CLI instead.
-
-    The old SystemConfig + Strategy registry pattern has been replaced by Plays.
-    Use: python trade_cli.py backtest run --play <play_id>
-
-    Returns:
-        ToolResult with deprecation notice
-    """
-    return ToolResult(
-        success=False,
-        error="DEPRECATED: backtest_run_tool uses legacy strategy registry (removed 2026-01-11)",
-        data={
-            "migration": "Use Play-based CLI instead",
-            "command": f"python trade_cli.py backtest run --play <play_id> --start <date> --end <date>",
-            "docs": "See strategies/plays/README.md for Play format",
-        },
-    )
-
-
-def _backtest_run_tool_legacy(
-    system_id: str,
-    window_name: str = "hygiene",
-    write_artifacts: bool = True,
-    risk_overrides: dict[str, Any] | None = None,
-    run_preflight: bool = True,
-    heal_if_needed: bool = True,
-) -> ToolResult:
-    """
-    LEGACY: Preserved for reference only. Do not call.
-    """
-    # This entire function is legacy code and should not be called
-    raise NotImplementedError("Legacy backtest_run_tool removed - use Play CLI")
-
-
-def _write_manifest_and_eventlog(
-    run_dir: Path,
-    config: SystemConfig,
-    window_name: str,
-    result,
-    preflight_data: dict[str, Any] | None = None,
-) -> dict[str, Path]:
-    """
-    Write run_manifest.json and events.jsonl to run_dir.
-
-    Called from backtest_run_tool after engine.run() completes.
-    This respects the isolation rule (artifacts wired from tools layer).
-
-    Pattern: Tools layer is responsible for artifact I/O. Engine produces data structures,
-    tools write them to disk. This keeps the engine testable without filesystem dependencies.
-
-    Args:
-        run_dir: Directory for artifacts
-        config: System configuration
-        window_name: Window name
-        result: BacktestResult from engine
-        preflight_data: Optional preflight health report data
-
-    Returns:
-        Dict mapping artifact names to paths
-    """
-    artifacts = {}
-
-    # 1. Write run_manifest.json (run metadata and config snapshot)
-    manifest_writer = ManifestWriter(run_dir, artifact_version=ARTIFACT_VERSION)
-    manifest_writer.set_run_info(
-        run_id=result.run_id,
-        system_id=result.system_id,
-        symbol=result.symbol,
-        tf_mapping={"htf": result.tf, "mtf": result.tf, "ltf": result.tf},  # Single-TF for now
-    )
-    manifest_writer.set_data_window(
-        load_start=datetime.fromisoformat(result.data_window_loaded_start) if result.data_window_loaded_start else result.start_ts,
-        load_end=datetime.fromisoformat(result.data_window_loaded_end) if result.data_window_loaded_end else result.end_ts,
-        test_start=result.start_ts,
-        test_end=result.end_ts,
-    )
-    manifest_writer.set_config(config.to_dict())
-    if preflight_data and "health_report" in preflight_data:
-        manifest_writer.set_health_report(preflight_data["health_report"])
-    manifest_writer.set_git_info()
-    manifest_writer.add_metadata("window_name", window_name)
-    manifest_writer.add_metadata("risk_mode", result.risk_mode)
-    manifest_writer.add_metadata("system_uid", result.system_uid)
-    if result.stop_classification:
-        manifest_writer.add_metadata("stop_classification", result.stop_classification.value)
-    manifest_path = manifest_writer.write()
-    artifacts["run_manifest.json"] = manifest_path
-    
-    # 2. Write events.jsonl (reconstruct from result data)
-    with EventLogWriter(run_dir) as event_log:
-        # Log equity curve as step events
-        for eq_point in result.equity_curve:
-            event_log.log_event("equity", {
-                "ts": eq_point.timestamp.isoformat(),
-                "equity": eq_point.equity,
-                "drawdown": eq_point.drawdown,
-                "drawdown_pct": eq_point.drawdown_pct,
-            }, timestamp=eq_point.timestamp)
-        
-        # Log trades as fill events
-        for trade in result.trades:
-            # Entry fill
-            event_log.log_fill({
-                "trade_id": trade.trade_id,
-                "symbol": trade.symbol,
-                "side": trade.side,
-                "type": "entry",
-                "price": trade.entry_price,
-                "qty": trade.entry_size,
-                "size_usdt": trade.entry_size_usdt,
-            }, timestamp=trade.entry_time)
-            
-            # Exit fill (if closed)
-            if trade.exit_time:
-                event_log.log_fill({
-                    "trade_id": trade.trade_id,
-                    "symbol": trade.symbol,
-                    "side": trade.side,
-                    "type": "exit",
-                    "price": trade.exit_price,
-                    "qty": trade.exit_size,
-                    "pnl": trade.net_pnl,
-                    "pnl_pct": trade.pnl_pct,
-                }, timestamp=trade.exit_time)
-        
-        # Log stop event if applicable
-        if result.stop_classification:
-            event_log.log_event("stop", {
-                "classification": result.stop_classification.value,
-                "reason": result.stop_reason_detail,
-                "bar_index": result.stop_bar_index,
-            }, timestamp=result.stop_ts)
-        
-        # Log starvation event if applicable
-        if result.first_starved_ts:
-            event_log.log_entries_disabled(
-                reason=f"Starvation at bar {result.first_starved_bar_index}",
-                timestamp=result.first_starved_ts,
-            )
-    
-    artifacts["events.jsonl"] = event_log.get_path()
-    
-    return artifacts
-
-
-def _write_epoch_artifacts(
-    config: SystemConfig,
-    window_name: str,
-    result,
-) -> str | None:
-    """Write epoch tracking metadata for lineage (separate from engine artifacts)."""
-    try:
-        tracker = StrategyEpochTracker(
-            strategy_id=config.strategy_id,
-            strategy_name=f"{config.system_id} ({config.strategy_id})",
-        )
-        
-        # Build metadata including early-stop info
-        metadata = {
-            # Global identifiers (stable)
-            "system_id": result.system_id,
-            "system_uid": result.system_uid,
-            "strategy_id": result.strategy_id,
-            "strategy_version": result.strategy_version,
-            # Run context
-            "window_name": window_name,
-            "risk_mode": result.risk_mode,
-            "tf": result.tf,
-            # Data context
-            "data_env": result.data_env,
-            # Risk used
-            "risk_initial_equity_used": result.risk_initial_equity_used,
-            "risk_per_trade_pct_used": result.risk_per_trade_pct_used,
-            "risk_max_leverage_used": result.risk_max_leverage_used,
-        }
-        
-        # Include early-stop info in metadata if applicable
-        if result.stopped_early:
-            metadata["stopped_early"] = result.stopped_early
-            metadata["stop_reason"] = result.stop_reason
-            metadata["stop_details"] = result.stop_details
-        
-        # Start epoch with full lineage metadata
-        run_id = tracker.epoch_start(
-            epoch=StrategyEpoch.BACKTEST,
-            symbol=config.symbol,
-            tfs=[config.tf],
-            metadata=metadata,
-            write_artifacts=True,
-        )
-        
-        # Log trades
-        for trade in result.trades:
-            tracker.log_trade(
-                run_id=run_id,
-                symbol=trade.symbol,
-                side=trade.side.upper(),
-                size_usdt=trade.entry_size_usdt,
-                price=trade.entry_price,
-                pnl=trade.net_pnl,
-            )
-        
-        # Determine passed/promotion_reason based on stop_reason or profitability
-        metrics = result.metrics
-        stop_reason = result.stop_reason
-        
-        # Early-stop terminal states always fail
-        if stop_reason == "account_blown":
-            passed = False
-            promotion_reason = "Account blown"
-        elif stop_reason == "insufficient_free_margin":
-            passed = False
-            promotion_reason = "Insufficient free margin"
-        else:
-            # Normal completion - pass if profitable
-            passed = metrics.net_profit > 0
-            promotion_reason = "Profitable" if passed else "Not profitable"
-        
-        # Complete epoch with BacktestMetrics as dict
-        tracker.epoch_complete(
-            run_id=run_id,
-            epoch=StrategyEpoch.BACKTEST,
-            symbol=config.symbol,
-            metrics=metrics.to_dict(),
-            passed=passed,
-            promotion_reason=promotion_reason,
-            write_artifacts=True,
-        )
-        
-        # Return artifact directory
-        writer = get_artifact_writer()
-        return str(writer.get_run_dir(run_id))
-        
-    except Exception as e:
-        logger.warning(f"Failed to write epoch artifacts: {e}")
-        return None
-
 
 # =============================================================================
 # Data Preparation Tools (for backtest)
@@ -737,7 +484,6 @@ def backtest_prepare_data_tool(
             success=False,
             error=f"Data preparation failed: {e}",
         )
-
 
 def backtest_verify_data_tool(
     system_id: str,
@@ -825,27 +571,3 @@ def backtest_verify_data_tool(
             error=f"Data verification failed: {e}",
         )
 
-
-# =============================================================================
-# Strategy Tools
-# =============================================================================
-
-def backtest_list_strategies_tool() -> ToolResult:
-    """
-    DEPRECATED: Strategy registry removed 2026-01-11.
-
-    The legacy strategy registry has been replaced by Plays.
-    Use: python trade_cli.py backtest play-normalize-batch --dir tests/stress/plays
-
-    Returns:
-        ToolResult with deprecation notice
-    """
-    return ToolResult(
-        success=False,
-        error="DEPRECATED: Strategy registry removed 2026-01-11",
-        data={
-            "migration": "Use Play-based system instead",
-            "command": "python trade_cli.py backtest play-normalize-batch --dir <dir>",
-            "docs": "See strategies/plays/README.md",
-        },
-    )

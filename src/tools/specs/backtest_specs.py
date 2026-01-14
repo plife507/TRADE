@@ -10,10 +10,8 @@ def get_imports():
     from .. import (
         backtest_list_systems_tool,
         backtest_get_system_tool,
-        backtest_run_tool,
         backtest_prepare_data_tool,
         backtest_verify_data_tool,
-        backtest_list_strategies_tool,
         backtest_preflight_play_tool,
         backtest_run_play_tool,
         backtest_data_fix_tool,
@@ -29,10 +27,8 @@ def get_imports():
     return {
         "backtest_list_systems": backtest_list_systems_tool,
         "backtest_get_system": backtest_get_system_tool,
-        "backtest_run": backtest_run_tool,
         "backtest_prepare_data": backtest_prepare_data_tool,
         "backtest_verify_data": backtest_verify_data_tool,
-        "backtest_list_strategies": backtest_list_strategies_tool,
         "backtest_list_plays": backtest_list_plays_tool,
         "backtest_preflight": backtest_preflight_play_tool,
         "backtest_run_play": backtest_run_play_tool,
@@ -66,17 +62,6 @@ SPECS = [
         "required": ["system_id"],
     },
     {
-        "name": "backtest_run",
-        "description": "Run a backtest for a system configuration",
-        "category": "backtest.run",
-        "parameters": {
-            "system_id": {"type": "string", "description": "System configuration ID"},
-            "window_name": {"type": "string", "description": "Window to run (hygiene or test)", "default": "hygiene"},
-            "write_artifacts": {"type": "boolean", "description": "Whether to write run artifacts", "default": True},
-        },
-        "required": ["system_id"],
-    },
-    {
         "name": "backtest_prepare_data",
         "description": "Prepare data for backtesting based on system config",
         "category": "backtest.data",
@@ -96,13 +81,6 @@ SPECS = [
             "heal_gaps": {"type": "boolean", "description": "If true, attempt to heal gaps", "default": True},
         },
         "required": ["system_id"],
-    },
-    {
-        "name": "backtest_list_strategies",
-        "description": "List all available strategies",
-        "category": "backtest.strategies",
-        "parameters": {},
-        "required": [],
     },
     # Play tools (Golden Path)
     {
