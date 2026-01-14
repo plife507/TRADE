@@ -38,7 +38,7 @@ actions:
     cases:
       - when:
           all:
-            - [{feature_id: "trend", field: "direction"}, "eq", 1]
+            - [{feature_id: "trend", field: "direction"}, "==", 1]
             - [{feature_id: "trend", field: "strength"}, ">", 0]
             - ["close", ">", "ema_21"]
         emit:
@@ -47,7 +47,7 @@ actions:
     cases:
       - when:
           any:
-            - [{feature_id: "trend", field: "direction"}, "eq", -1]
+            - [{feature_id: "trend", field: "direction"}, "==", -1]
             - ["close", "<", "ema_21"]
         emit:
           - action: exit_long

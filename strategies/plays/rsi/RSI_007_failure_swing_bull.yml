@@ -1,0 +1,88 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RSI_007: Bullish Failure Swing Strategy
+# ═══════════════════════════════════════════════════════════════════════════════
+# Pattern: After RSI crosses above 30, it fails to cross back below 30 and
+#          breaks its prior high - strong bullish reversal signal
+# From: RSI Cheat Sheet - Failure Swings section
+#
+# Implementation Note: Since DSL doesn't track RSI swing highs directly, we use:
+# 1. RSI was oversold recently (occurred_within)
+# 2. RSI recovered and staying above oversold zone
+# 3. RSI showing upward momentum (cross above threshold)
+# 4. Price confirmation via swing/trend structure
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: "3.0.0"
+name: "RSI_007_failure_swing_bull"
+description: "Bullish failure swing: RSI recovers from oversold without retesting"
+
+symbol: "ETHUSDT"
+tf: "1h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+
+actions:
+  entry_long:
+    all:
+      # RSI was oversold recently (within 10 bars)
+      - occurred_within:
+          bars: 10
+          expr:
+            - ["rsi_14", "<", 30]
+      # RSI has recovered and is now above the danger zone (35+)
+      - ["rsi_14", ">", 35]
+      # RSI staying in bullish zone (not retesting oversold)
+      - ["rsi_14", "<", 60]
+      # RSI showing upward momentum (cross above 40)
+      - ["rsi_14", "cross_above", 40]
+      # Price confirmation: recent swing low exists
+      - lhs: {feature_id: "swing", field: "low_level"}
+        op: ">"
+        rhs: 0
+
+  exit_long:
+    any:
+      # RSI reaches overbought
+      - ["rsi_14", ">", 70]
+      # RSI falls back below 35 (failed pattern)
+      - ["rsi_14", "<", 35]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+  max_position_pct: 30.0

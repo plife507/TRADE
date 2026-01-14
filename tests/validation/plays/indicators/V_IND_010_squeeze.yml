@@ -29,7 +29,7 @@ actions:
     cases:
       - when:
           all:
-            - ["squeeze_20_off", "eq", 1]
+            - ["squeeze_20_off", "==", 1]
             - ["squeeze_20_sqz", ">", 0]
         emit:
           - action: entry_long
@@ -38,7 +38,7 @@ actions:
       - when:
           any:
             - ["squeeze_20_sqz", "<", 0]
-            - ["squeeze_20_on", "eq", 1]
+            - ["squeeze_20_on", "==", 1]
         emit:
           - action: exit_long
 

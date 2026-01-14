@@ -576,6 +576,7 @@ class BacktestEngine:
             config=self.config,
             window=self.window,
             logger=self.logger,
+            synthetic_provider=self._synthetic_provider,
         )
 
         self._prepared_frame = prepared
@@ -623,6 +624,7 @@ class BacktestEngine:
             tf_mapping=self._tf_mapping,
             multi_tf_mode=self._multi_tf_mode,
             logger=self.logger,
+            synthetic_provider=self._synthetic_provider,
         )
 
         # Configure TimeframeCache with close_ts maps
@@ -765,6 +767,7 @@ class BacktestEngine:
                 warmup_bars_1m=warmup_bars_1m,
                 data_env=self.config.data_build.env,
                 logger=self.logger,
+                synthetic_provider=self._synthetic_provider,
             )
 
             # Build quote FeedStore

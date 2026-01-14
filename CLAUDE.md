@@ -2,899 +2,184 @@
 
 Guidance for Claude when working with the TRADE trading bot.
 
-> **Code examples**: See `docs/guides/CODE_EXAMPLES.md` | **Env vars**: See `env.example`
+## Prime Directives
 
----
+**ALL FORWARD, NO LEGACY** - Delete old code, don't wrap it. No backward compatibility.
 
-## PRIME DIRECTIVE: ALL FORWARD, NO LEGACY
+**MODERN PYTHON ONLY (3.12+)** - Type hints always, f-strings, pathlib, dataclasses, `X | None` not `Optional[X]`, `dict[str, int]` not `Dict`.
 
-**NO backward compatibility. NO legacy fallbacks. NO shims. EVER.**
+**LF LINE ENDINGS ONLY** - Use `open(file, 'w', newline='\n')` on Windows. Never CRLF.
 
-- Delete old code, don't wrap it
-- Update all callers, don't add aliases
-- Break changes are expected and welcomed
-- If something breaks, fix it forward
+**SEQUENTIAL DATABASE ACCESS** - DuckDB has no concurrent access. Run backtests sequentially.
 
-This applies to ALL code changes in this repository.
+**TODO-DRIVEN EXECUTION** - No code before TODO exists in `docs/todos/`. Every change maps to a checkbox.
 
----
-
-## PRIME DIRECTIVE: MODERN PYTHON ONLY
-
-**Use ONLY modern Python syntax and patterns. NO legacy compatibility.**
-
-- Type hints: `def foo(x: str) -> int:` (always)
-- f-strings: `f"{name}"` (never `%` or `.format()`)
-- Pathlib: `Path()` (never `os.path`)
-- Dataclasses: `@dataclass` for data containers
-- Match statements: `match x:` where cleaner than if/elif
-- Walrus operator: `:=` where it improves readability
-- Union types: `X | None` (never `Optional[X]`)
-- Dict/list syntax: `dict[str, int]` (never `Dict[str, int]`)
-
-Minimum Python version: **3.12**
-
----
-
-## PRIME DIRECTIVE: LF LINE ENDINGS ONLY
-
-**ALL files MUST use LF (`\n`) line endings. NEVER CRLF (`\r\n`).**
-
-When writing files with Python on Windows:
-```python
-# CORRECT - explicit LF
-open(file, 'w', newline='\n').write(content)
-
-# CORRECT - binary mode
-open(file, 'wb').write(content.encode('utf-8'))
-
-# WRONG - will write CRLF on Windows
-open(file, 'w').write(content)
-```
-
-This is enforced by `.gitattributes` (`* text=auto`, `*.py eol=lf`).
-
-### "File Unexpectedly Modified" Error (Windows Edit Tool Issue)
-
-**Why this happens**: The Edit tool compares file signatures between read and write. On Windows, several factors cause the signature to change unexpectedly:
-
-1. **Line ending normalization** - Git or editors may convert LF to CRLF between read and write
-2. **External tool modifications** - VS Code auto-formatters, linters (black, ruff), or git hooks may modify files
-3. **Stale reads** - If too much time passes between reading and editing, another process may modify the file
-
-**Decision Tree - Edit vs Write:**
-
-| Scenario | Tool to Use |
-|----------|-------------|
-| New file | Write |
-| Changing >50% of file | Write |
-| Surgical change (1-20 lines) | Edit (with fresh Read) |
-| Edit failed once | Re-read → retry Edit |
-| Edit failed twice | Use Write |
-| Untracked file | Write (preferred) |
-
-**Troubleshooting steps (in order)**:
-
-1. **Read immediately before editing** - This resolves most cases. The file must be freshly read right before the Edit call.
-   ```
-   Read file → Edit file (no delay, no other operations between)
-   ```
-
-2. **Use smaller, more targeted edits** - Large edits spanning many lines are more likely to hit timing issues.
-
-3. **Check for CRLF contamination**:
-   ```bash
-   git ls-files --eol | grep "w/crlf"  # Find CRLF files in working tree
-   ```
-
-4. **For untracked files** - The issue is more persistent because git normalization does not apply. Options:
-   - Use the Write tool to overwrite the entire file
-   - Use bash: `cat > file.py << 'EOF' ... EOF`
-
-**CRITICAL for Agents**: Any agent with Write+Edit tools MUST follow the decision tree above. When in doubt, use Write.
-
----
-
-## PRIME DIRECTIVE: SEQUENTIAL DATABASE ACCESS
-
-**DuckDB does NOT support concurrent access. NEVER run parallel agents that access the database.**
-
-- Backtest runs MUST be sequential (one at a time)
-- Data operations MUST be sequential
-- NEVER launch parallel agents for database-dependent tasks
-- If you need to run multiple backtests, run them in a single sequential loop
-
-```python
-# WRONG - parallel agents hitting DB
-for gate in gates:
-    Task(backtest_gate, run_in_background=True)  # Will cause file lock errors
-
-# CORRECT - sequential execution
-for play in plays:
-    run_backtest(play)  # One at a time
-```
-
-This applies to ALL database operations in this repository.
-
----
+**CLI-BASED VALIDATION** - Prefer CLI commands for validation. Python test infrastructure belongs in `src/forge/` modules. The `tests/` folder contains only Play YAML files for validation/stress testing.
 
 ## Project Overview
 
-TRADE is a **modular, production-ready** Bybit futures trading bot with complete UTA support, comprehensive order types, position management, tool registry for orchestrator/bot integration, and risk controls.
+TRADE is a modular Bybit futures trading bot with backtest engine, USDT-only isolated margin.
 
-**Key Philosophy**: Safety first, modular always, tools as the API surface, ALL FORWARD.
+**Trading Hierarchy:**
+| Level | Name | Location |
+|-------|------|----------|
+| Block | Atomic reusable condition | `strategies/blocks/` |
+| Play | Complete backtest-ready strategy | `strategies/plays/` |
+| System | Multiple plays with regime blending | `strategies/systems/` |
 
-## Trading Hierarchy
-
-The system uses a three-level hierarchy for organizing trading logic:
-
-| Level | Name | Description | Location |
-|-------|------|-------------|----------|
-| 1 | **Block** | Atomic reusable condition (features + DSL condition) | `strategies/blocks/` |
-| 2 | **Play** | Complete backtest-ready strategy (features + actions + risk) | `strategies/plays/` |
-| 3 | **System** | Multiple plays with regime-based weighted blending | `strategies/systems/` |
-
-### Promotion Path
-
-```
-The Forge (src/forge/) → strategies/plays/ (proven)
-     ↓                          ↓
-  Develop & Test            Production-ready
-  Experimental              Validated
-```
-
-- **The Forge** (`src/forge/`): Development and validation environment for experimental Plays
-- **strategies/**: Proven, validated configurations ready for backtesting or live use
-
-## Current Objective (Backtest Engine Roadmap)
-
-We are building the backtesting + strategy factory stack in **phases**. The canonical roadmap lives in `docs/project/PROJECT_OVERVIEW.md` under **"Project Roadmap – TRADE Backtest Engine & Strategy Factory"**.
-
-### Current State (January 2026)
-
-**Engine Complete**:
-- 62-field BacktestMetrics (tail risk, leverage, MAE/MFE, benchmark alpha)
-- 43 indicators in INDICATOR_REGISTRY (single source of truth)
-- 6 structures in STRUCTURE_REGISTRY (+derived_zone in Phase 12)
-- Play-first CLI with full menu coverage
-- Validation Plays in `tests/validation/plays/` (V_100+ blocks format)
-
-**DSL Language Freeze (2026-01-08)**:
-- 11 operators, 6 window operators, arithmetic DSL - all frozen
-- 259 synthetic tests validating operators, edge cases, type safety
-- Missing value handling: NaN, ±Infinity → MISSING (graceful degradation)
-- SetupRef circular reference protection (recursion guard)
-- Duration formats: m, h, d (max 24h ceiling)
-- See: `docs/specs/PLAY_DSL_COOKBOOK.md` (canonical reference)
-
-**Derived Zones - Phase 12 (2026-01-04)**:
-- K slots + aggregates pattern for derived zones from swing pivots
-- zone0_*/zone1_*/... slot fields with NONE/ACTIVE/BROKEN states
-- Aggregate fields: any_active, any_touched, active_count, closest_active_*
-- See: `docs/architecture/DERIVATION_RULE_INVESTIGATION.md`
-
-**Incremental State Architecture (2026-01-03)**:
-- O(1) hot loop access via MonotonicDeque/RingBuffer
-- STRUCTURE_REGISTRY parallel to INDICATOR_REGISTRY
-- Agent-composable Play blocks (variables, features, structures, rules)
-- See: `docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md`
-- See: `docs/architecture/PLAY_VISION.md`
-
-**1m Evaluation Loop (2026-01-02)**:
-- mark_price resolution in snapshot
-- 1m TP/SL checking in hot loop
-- See: `docs/todos/1M_EVAL_LOOP_REFACTOR.md`
-
-**Audit Swarm (2026-01-01)**:
-- 12 P1 fixes implemented (critical blockers resolved)
-- P1-09 (O(n) hot loop) fixed by Incremental State
-- See: `docs/audits/OPEN_BUGS.md`
-
-**Active Workstream: W1 - The Forge (2026-01-04)**:
-- Directory structure complete (`src/forge/`)
-- Audits migration complete (`src/forge/audits/`)
-- Pure function architecture for all Forge components
-- See: `docs/todos/INDEX.md` for workstream status
-
-### Explicitly off-limits until later phases
-
-- Forecasting models / ML, composite strategies, strategy selection policies
-- "Factory" orchestration beyond "run this system" (no automated promotions yet)
-- Demo/live automation for backtested strategies
-
-### Intended module placement (high-level)
-
-- Core backtest engine: `src/backtest/`
-  - Modular exchange: `src/backtest/sim/` (pricing, execution, funding, liquidation, ledger, metrics, constraints)
-  - Engine orchestrator: `src/backtest/engine.py`
-- The Forge: `src/forge/` (development & validation environment)
-- Backtest API surface (tools): `src/tools/backtest_tools.py`
-- Historical candles source of truth: DuckDB via `src/data/historical_data_store.py`
-- Concrete strategies: `research/strategies/{pending|final|archived}/` (not `src/strategies/`)
-
-## Quick Reference
-
-```bash
-python trade_cli.py                     # Run interactive CLI
-python trade_cli.py --smoke full        # Full smoke test (data + trading)
-python trade_cli.py --smoke data_extensive  # Extensive data test (clean DB, gaps, sync)
-python trade_cli.py backtest metadata-smoke  # Indicator Metadata v1 smoke test
-
-# Phase 6 backtest smoke (opt-in)
-$env:TRADE_SMOKE_INCLUDE_BACKTEST="1"; python trade_cli.py --smoke full
-
-pip install -r requirements.txt         # Dependencies
-```
+**Promotion Path:** `src/forge/` (experimental) -> `strategies/plays/` (production)
 
 ## Architecture
 
 ```
 TRADE/
 ├── src/
-│   ├── backtest/                  # DOMAIN: Simulator/Backtest (USDT-only, isolated margin)
-│   │   ├── engine.py              # Backtest orchestrator
-│   │   ├── sim/                   # Simulated exchange (pricing, execution, ledger)
-│   │   ├── runtime/               # Snapshot, FeedStore, TFContext
-│   │   ├── features/              # FeatureSpec, FeatureFrameBuilder
-│   │   ├── incremental/           # O(1) structure detection (STRUCTURE_REGISTRY)
-│   │   └── logging/               # Per-run logging with hash tracing
-│   ├── forge/                     # DOMAIN: Development & Validation Environment
-│   │   └── ...                    # Play development, testing, promotion tools
-│   ├── core/                      # DOMAIN: Live Trading (exchange-native semantics)
-│   │   ├── risk_manager.py        # Live risk checks (Signal.size_usdt)
-│   │   ├── position_manager.py    # Position tracking
-│   │   └── order_executor.py      # Order execution
-│   ├── exchanges/                 # DOMAIN: Live Trading (Bybit API)
-│   │   └── bybit_client.py        # Bybit API wrapper
-│   ├── config/                    # SHARED: Configuration (domain-agnostic)
-│   ├── data/                      # SHARED: Market data, DuckDB, WebSocket state
-│   ├── tools/                     # SHARED: CLI/API surface (PRIMARY INTERFACE)
-│   ├── utils/                     # SHARED: Logging, rate limiting, helpers
-│   │   └── debug.py               # Debug utilities with hash tracing
-│   └── risk/global_risk.py        # Account-level risk (GlobalRiskView)
-├── configs/
-│   ├── blocks/                    # Atomic reusable conditions
-│   ├── plays/                     # Proven Play configurations (strategies)
-│   └── systems/                   # Deployment configurations (multiple plays)
-├── tests/
-│   └── validation/                # Validation Plays (V_100+) - contract tests
-│       ├── plays/                 # DSL and operator validation
-│       └── blocks/                # Block validation
-├── data/                          # Local market data (DuckDB, gitignored)
-│   └── market_data_*.duckdb       # Environment-aware databases
-├── backtests/                     # Backtest artifacts (gitignored)
-│   └── {category}/{play_id}/...   # Hash-based deterministic paths
-├── logs/                          # Log files (gitignored)
-│   ├── backtests/{play_hash}/     # Play-indexed backtest logs
-│   └── *.log                      # Global logs
-├── docs/
-│   ├── todos/                     # TODO phase documents (canonical work tracking)
-│   ├── architecture/              # Architecture docs
-│   ├── project/                   # Project documentation
-│   └── guides/                    # Setup/development guides
-├── CLAUDE.md                      # AI assistant guidance (this file)
-└── trade_cli.py                   # CLI entry point
+│   ├── backtest/          # Simulator engine (USDT-only, isolated margin)
+│   │   ├── engine.py      # Backtest orchestrator
+│   │   ├── sim/           # SimulatedExchange (pricing, execution, ledger)
+│   │   ├── runtime/       # Snapshot, FeedStore, TFContext
+│   │   ├── features/      # FeatureSpec, indicator computation
+│   │   ├── incremental/   # O(1) structure detection
+│   │   ├── rules/         # DSL compilation and evaluation
+│   │   ├── rationalization/ # Layer 2: transitions, derived state
+│   │   └── play/          # Play dataclass, config models
+│   ├── forge/             # Development & validation environment
+│   │   ├── validation/    # Test runners, fixtures, tier tests
+│   │   ├── functional/    # Functional test infrastructure
+│   │   ├── synthetic/     # Synthetic data harness and cases
+│   │   └── audits/        # Audit tooling
+│   ├── core/              # Live trading (risk, positions, orders)
+│   ├── exchanges/         # Bybit API client
+│   ├── data/              # DuckDB, market data
+│   ├── tools/             # CLI/API surface (primary interface)
+│   ├── viz/               # Backtest visualization (FastAPI + React)
+│   └── utils/             # Logging, rate limiting, helpers
+├── strategies/               # Blocks, Plays, Systems
+├── tests/                 # Play YAML files ONLY (no Python)
+│   ├── validation/plays/  # Validation Plays (V_100+)
+│   ├── functional/plays/  # Functional test Plays
+│   └── stress/plays/      # Stress test Plays
+├── docs/todos/            # Work tracking (canonical)
+└── trade_cli.py           # CLI entry point
 ```
 
-## The Forge (Development Environment)
+## Quick Commands
 
-The Forge (`src/forge/`) is the development and validation environment for experimental Plays before promotion to production configs.
-
-### Purpose
-
-- **Develop**: Create and iterate on new Play configurations
-- **Validate**: Run validation checks before promotion
-- **Test**: Execute backtests in isolated environment
-- **Promote**: Move proven Plays to `strategies/plays/`
-
-### Workflow
-
-```
-1. Create Play in Forge → 2. Validate & Test → 3. Promote to strategies/
+```bash
+python trade_cli.py                     # Interactive CLI
+python trade_cli.py --smoke full        # Full smoke test
+python trade_cli.py --smoke data_extensive  # Extensive data test
+python trade_cli.py backtest metadata-smoke  # Indicator metadata test
 ```
 
-### Key Principle
+## Domain Rules
 
-Plays in the Forge are experimental. Only after passing validation gates do they get promoted to `strategies/plays/` for production use.
+### Backtest (`src/backtest/`)
+- **USDT only**: Use `size_usdt`, never `size_usd`
+- **Isolated margin only**: Reject `margin_mode="cross"`
+- **Explicit indicators**: Undeclared indicators raise KeyError
+- **Closed-candle only**: Indicators compute on closed bars, slower TFs forward-fill
+- **O(1) hot loop**: Snapshot access must be O(1), no DataFrame ops
 
-## Timeframe Definitions (Multi-Timeframe Trading)
+### Live Trading (`src/core/`, `src/exchanges/`)
+- **API boundary**: All trades go through `src/tools/`, never `bybit_client` directly
+- **Demo first**: Test in demo before live
+- **Domain isolation**: Do NOT import from `src/backtest/`
 
-The engine supports multi-timeframe analysis with three timeframe roles. These terms are used consistently throughout the codebase.
+### Data (`src/data/`)
+- **Source of truth**: DuckDB for all historical data
+- **Domain agnostic**: No trading logic, no execution semantics
 
-**Bybit API Intervals**: `1,3,5,15,30,60,120,240,360,720,D,W,M`
-**Internal Format**: `1m,3m,5m,15m,30m,1h,2h,4h,6h,12h,D,W,M`
+### Tools (`src/tools/`)
+- **Single entry point**: External callers use tools, not internal modules
+- **ToolResult**: All tools return ToolResult with success/error
 
-**NOTE**: 8h is NOT a valid Bybit interval - do not use it.
+## Timeframe Definitions
 
-### Timeframe Categories
+**Valid Intervals:** `1m,3m,5m,15m,30m,1h,2h,4h,6h,12h,D,W,M` (8h is NOT valid)
 
 | Category | Timeframes | Purpose |
 |----------|------------|---------|
-| **LTF** | 1m, 3m, 5m, 15m | Low TF - Execution timing (entries/exits), micro-structure |
-| **MTF** | 30m, 1h, 2h, 4h | Mid TF - Trade bias + structure context |
-| **HTF** | 6h, 12h, D, W, M | High TF - Trend, major levels, context |
+| LTF | 1m, 3m, 5m, 15m | Execution timing |
+| MTF | 30m, 1h, 2h, 4h | Trade bias + structure |
+| HTF | 6h, 12h, D | Trend, major levels |
 
-### Timeframe Roles (Play Configuration)
+**Hierarchy:** `HTF >= MTF >= LTF` (enforced by `validate_tf_mapping()`)
 
-| Role | Meaning | Valid Values | Purpose |
-|------|---------|--------------|---------|
-| **tf** (exec) | Execution TF | LTF or MTF | Bar-by-bar decision evaluation. Engine iterates at this TF. |
-| **ltf** | Low Timeframe | 1m, 3m, 5m, 15m | Execution timing, micro-structure |
-| **mtf** | Mid Timeframe | 30m, 1h, 2h, 4h | Structure, bias, swing trades |
-| **htf** | High Timeframe | 6h, 12h, D | Trend context (W, M excluded from role) |
+**Forward-Fill:** Slower TFs forward-fill until bar closes. No lookahead.
 
-### Hierarchy Rule
+## Price Fields
 
-```
-HTF >= MTF >= LTF (in minutes)
-```
+| Field | Resolution | Use Case |
+|-------|------------|----------|
+| `last_price` | 1m | Signal evaluation |
+| `mark_price` | 1m | PnL, liquidation, risk |
+| `close` | exec_tf | Indicator computation |
 
-This is enforced by `validate_tf_mapping()` in `src/backtest/runtime/timeframe.py`.
+## DSL Reference
 
-### Example Configuration
+**Canonical spec:** `docs/specs/PLAY_DSL_COOKBOOK.md`
 
-```yaml
-# Play timeframes
-tf: "15m"           # exec/LTF - bar-by-bar stepping
-mtf: "1h"           # Optional intermediate TF
-htf: "4h"           # Optional higher TF for context
-```
+**Operators:** `gt`, `lt`, `gte`, `lte`, `eq`, `cross_above`, `cross_below`, `between`, `near_abs`, `near_pct`, `in`
 
-Internally maps to:
-```python
-tf_mapping = {
-    "ltf": "15m",   # = tf (exec)
-    "mtf": "1h",    # or defaults to ltf if not specified
-    "htf": "4h",    # or defaults to ltf if not specified
-}
-```
+**Window operators:** `holds_for`, `occurred_within`, `count_true` (+ duration variants)
 
-### Forward-Fill Behavior
+**Feature naming:** Use parameterized IDs (`ema_9`, `rsi_14`), never semantic (`ema_fast`)
 
-Any timeframe **slower than exec** forward-fills its values until its bar closes:
-- **exec** (LTF): Updates every bar (no forward-fill)
-- **MTF**: Forward-fills until MTF bar closes
-- **HTF**: Forward-fills until HTF bar closes
+## Structure Registry
 
-This ensures no-lookahead: values always reflect the last **CLOSED** bar, never partial/forming bars.
+| Type | Purpose | Key Outputs |
+|------|---------|-------------|
+| `swing` | Swing high/low | `high_level`, `low_level`, `version` |
+| `fibonacci` | Fib levels | `level_<ratio>` |
+| `zone` | Demand/supply | `state`, `upper`, `lower` |
+| `trend` | Trend class | `direction`, `strength` |
+| `derived_zone` | Fib zones from pivots | K slots + aggregates |
 
-### Feature Timeframe Inheritance
+## Module Index
 
-Features inherit their TF from the Play's main `tf:` unless explicitly overridden:
+| Module | Purpose |
+|--------|---------|
+| `src/backtest/` | Simulator engine, 62-field metrics, 43 indicators |
+| `src/forge/` | Play development, validation, audits, test infrastructure |
+| `src/core/` | Live risk, positions, order execution |
+| `src/exchanges/` | Bybit API wrapper |
+| `src/data/` | DuckDB historical data store |
+| `src/tools/` | CLI/API surface, ToolRegistry |
+| `src/viz/` | TradingView-style visualization |
 
-```yaml
-tf: "15m"                    # Main execution TF
+## Validation
 
-features:
-  ema_9:                     # No tf: → inherits "15m"
-    indicator: ema
-    params: {length: 9}
-
-  ema_50_4h:                 # Explicit tf: → uses "4h"
-    indicator: ema
-    params: {length: 50}
-    tf: "4h"                 # Forward-fills between 4h closes
-```
-
-**Key rules:**
-- Inheritance is **flat (one level only)** — no feature-to-feature inheritance
-- `source:` field changes input data, not timeframe
-- Built-in prices (`last_price`, `mark_price`) are always 1m, `close` is always exec TF
-
-**See:** `docs/specs/PLAY_DSL_COOKBOOK.md` → "Feature Timeframe Inheritance" for full details.
-
-## Module Documentation
-
-Each major module has its own CLAUDE.md with domain rules and active TODOs:
-
-| Module | Path | Domain |
-|--------|------|--------|
-| Backtest | `src/backtest/CLAUDE.md` | Simulator, engine, market structure |
-| Forge | `src/forge/CLAUDE.md` | Development & validation environment |
-| Core | `src/core/CLAUDE.md` | Live trading execution |
-| Data | `src/data/CLAUDE.md` | DuckDB, market data |
-| Tools | `src/tools/CLAUDE.md` | CLI/API surface |
-| Exchanges | `src/exchanges/CLAUDE.md` | Bybit API client |
-
-## Critical Rules
-
-### GLOBAL RULES (Entire Repository)
-
-**Build-Forward Only**
-- MUST NOT preserve backward compatibility unless explicitly stated.
-- MUST remove legacy shims rather than maintain parallel paths.
-- MUST delete obsolete code paths (e.g., `build_exchange_state_from_dict()`, `Candle` alias, `MarketSnapshot`).
-
-**TODO-Driven Execution (MANDATORY)**
-- MUST NOT write code before TODO markdown exists for the work.
-- Every code change MUST map to a TODO checkbox.
-- If new work is discovered mid-implementation: STOP → update TODOs → continue.
-- Work is NOT complete until TODOs are checked.
-- Example: Phase 6.1 added mid-plan to remove implicit indicator defaults.
-
-**Phase Discipline**
-- Completed phases are FROZEN. MUST NOT rewrite earlier phases unless explicitly instructed.
-- New requirements MUST be added as new phases or explicit mid-plan inserts.
-- Example: Phases 6–9 were added after Phase 3 completion without modifying Phases 1–3.
-
-**No Implicit Defaults (Fail Loud)**
-- MUST NOT use implicit or silent defaults for required inputs.
-- Missing declarations MUST raise errors, not infer behavior.
-- Example (GLOBAL): `FeedStore.from_dataframe()` with `indicator_columns=None` → empty dict, not default list.
-- Example (GLOBAL): `REQUIRED_INDICATOR_COLUMNS` constant was deleted—indicators MUST be declared via FeatureSpec/Play.
-
-**Closed-Candle Only + TradingView-Style MTF**
-- All indicator computation MUST use closed candles only (never partial).
-- HTF/MTF indicators MUST compute only on TF close.
-- Between closes, last-closed values MUST forward-fill unchanged.
-- MUST match TradingView `lookahead_off` semantics.
-- Example (GLOBAL): HTF EMA values remain constant across exec steps until next HTF close.
-
-**Assumptions Must Be Declared**
-- Any assumption MUST be stated before implementation.
-- Architectural assumptions MUST be confirmed before proceeding.
-- MUST NOT guess missing requirements—surface them explicitly.
-
-**CLI-Only Validation (HARD RULE — No pytest Files)**
-- ALL validation MUST run through CLI commands—no `tests/test_*.py` files exist.
-- NEVER create pytest files for backtest/data/indicator/pipeline validation.
-- CLI commands replace all tests:
-  - `backtest preflight` — data coverage + warmup validation
-  - `backtest indicators --print-keys` — available keys per scope
-  - `backtest run --smoke --strict` — full pipeline validation
-  - `--smoke full/data_extensive/orders` — integration validation
-- CLI returns actionable fix commands on failure.
-- Use `--json` flag for CI/agent consumption.
-
-**Safety & API Discipline (LIVE Domain)**
-- LIVE trades MUST go through `src/tools/*`—never call `bybit_client` directly.
-- SIMULATOR trades use `SimulatedExchange.submit_order()` directly—MUST NOT depend on live tools.
-- Risk manager checks MUST occur before every order (live or simulated).
-- Demo mode MUST be tested before live.
-- Reference docs (`reference/exchanges/`) MUST be checked before implementing exchange logic.
-
----
-
-### DOMAIN RULES — SIMULATOR / BACKTEST (`src/backtest/`)
-
-**Currency Model: USDT Only (Global Standard)**
-- **ALL sizing fields use `size_usdt` globally** — both simulator and live domains.
-- MUST NOT use `size_usd` or `size` anywhere — use `size_usdt`.
-- Example: `Signal.size_usdt`, `Position.size_usdt`, `Trade.entry_size_usdt`.
-
-**Symbol Validation: USDT Pairs Only (Current Iteration)**
-- Simulator MUST reject symbols not ending in "USDT" (e.g., `BTCUSD`, `BTCUSDC`) in the current iteration.
-- `validate_usdt_pair()` MUST be called at config load, engine init, and before data fetch.
-- Future iterations MAY support USDC perps or inverse contracts via config/version—this is not a permanent restriction.
-- Example (SIMULATOR-ONLY): `symbol="BTCUSD"` → raises `ValueError` before any data download.
-
-**Margin Mode: Isolated Only**
-- Simulator supports only isolated margin mode.
-- MUST reject `margin_mode="cross"` at config validation.
-
-**Indicator Declaration: Explicit Only**
-- Simulator MUST NOT compute indicators unless declared in FeatureSpec/Play.
-- `TFContext.get_indicator_strict()` raises `KeyError` for undeclared indicators.
-- Strategies MUST NOT assume any indicator exists by default.
-
-**Indicator Metadata System v1**
-- All indicators MUST have provenance metadata captured at computation time.
-- Metadata stored in-memory only (no DB persistence).
-- `feature_spec_id`: Stable hash identifying indicator computation (type, params, input_source).
-- Multi-output indicators: SAME `feature_spec_id` for all outputs; `indicator_key` distinguishes outputs.
-- Export available via `backtest metadata-smoke` CLI command.
-- See: `docs/todos/INDICATOR_METADATA_SYSTEM_PHASES.md`
-
-**Snapshot Architecture**
-- `RuntimeSnapshotView` is a read-only view over cached data—MUST NOT deep copy.
-- Snapshot access MUST be O(1)—no DataFrame operations in hot loop.
-- History access via index offset (`prev_ema_fast(1)`, `bars_exec_low(20)`).
-
----
-
-### DOMAIN RULES — THE FORGE (`src/forge/`)
-
-**Experimental by Default**
-- All Plays in the Forge are considered experimental until promoted.
-- Forge Plays MUST NOT be referenced by production systems.
-
-**Validation Before Promotion**
-- Plays MUST pass all validation tiers before promotion to `strategies/plays/`.
-- Promotion is a manual, deliberate action—not automated.
-
-**Isolation**
-- Forge has its own configuration namespace—no collision with production configs.
-- Test data and artifacts stay within Forge scope.
-
----
-
-### DOMAIN RULES — LIVE TRADING / EXCHANGE (`src/core/`, `src/exchanges/`)
-
-**Currency Semantics: USDT Global Standard**
-- **ALL sizing fields use `size_usdt` globally** — unified across live and simulator domains.
-- MUST NOT use `size_usd` anywhere — use `size_usdt`.
-- Example: `Signal.size_usdt`, `Position.size_usdt`, `RiskConfig.max_position_size_usdt`.
-
-**Domain Isolation**
-- Simulator-only assumptions MUST NOT leak into live execution paths.
-
-**API Boundaries**
-- All trading operations MUST go through `src/tools/*` for proper orchestration.
-- WebSocket is ONLY for `GlobalRiskView` real-time monitoring—position queries use REST.
-
----
-
-### DOMAIN RULES — SHARED / CORE (`src/config/`, `src/utils/`, `src/data/`)
-
-**Domain Agnosticism**
-- Shared utilities MUST NOT embed simulator-only or live-only assumptions.
-- If a rule differs by domain, enforcement MUST occur at the domain boundary.
-
-**No Leaking Domain Logic**
-- `src/utils/` MUST NOT contain trading logic.
-- `src/config/` MUST NOT contain execution logic.
-- `src/data/` provides data—MUST NOT enforce trading semantics.
-
-**Example**: `TimeRange` abstraction is domain-agnostic—used by both live and simulator.
-
-## Agent Planning Rules
-
-**TODO-Driven Work (See Critical Rules)**
-- All work MUST have corresponding TODO markdown in `docs/todos/` before coding starts.
-- Each code change MUST map to a TODO checkbox.
-- New discoveries mid-work: STOP → update TODOs → continue.
-
-**TODO Document Format:**
-- Phase-based structure with checkboxes (`- [x]` / `- [ ]`)
-- Acceptance criteria per phase
-- Completed phases are FROZEN
-
-**In-Context Todo Lists:**
-- Keep items short (<70 chars) - high-level goals only
-- Never include operational steps (linting, searching, reading) as todos
-- Reference external files instead of inlining code
-- As context fills: consolidate completed todos, drop verbose history
-
-**Agent Model Selection:**
-- **ALWAYS use `model="opus"` for coding agents** (Task tool with code implementation)
-- Use Opus for: refactoring, bug fixes, feature implementation, code review
-- Haiku acceptable only for: quick file searches, simple queries, read-only exploration
-
-**Feature Naming Convention (MANDATORY for Plays)**
-
-When creating or modifying Plays, use **parameterized feature IDs** that encode indicator type and primary parameters:
-
-| Indicator Type | Pattern | Examples |
-|----------------|---------|----------|
-| Single-param | `{type}_{param}` | `ema_20`, `sma_50`, `rsi_14`, `atr_14` |
-| Single-param + TF | `{type}_{param}_{tf}` | `ema_50_1h`, `rsi_14_4h` |
-| Multi-param | `{type}_{p1}_{p2}` | `bbands_20_2`, `stoch_14_3` |
-| MACD | `macd_{fast}_{slow}_{signal}` | `macd_12_26_9` |
-| SuperTrend | `supertrend_{len}_{mult}` | `supertrend_10_3` |
-
-**NEVER use semantic names** like `ema_fast`, `ema_slow`, `ema_htf`. These hide parameters and make DSL expressions unreadable.
-
-```yaml
-# WRONG - semantic naming
-features:
-  - id: "ema_fast"    # What length?
-    params: {length: 9}
-
-# CORRECT - parameterized naming
-features:
-  - id: "ema_9"       # Clearly length=9
-    params: {length: 9}
-```
-
-This enables readable DSL: `ema_9 > ema_21` vs opaque `ema_fast > ema_slow`.
-
-See: `docs/specs/PLAY_DSL_COOKBOOK.md` for full DSL syntax reference.
-
-## Tool Layer (SHARED — Primary API)
-
-All operations go through `src/tools/*`. Tools return `ToolResult` objects.
-
-| Tool Category | Domain | Examples |
-|---------------|--------|----------|
-| Order tools | LIVE | `market_buy`, `limit_sell`, `cancel_order` |
-| Position tools | LIVE | `list_open_positions`, `close_position` |
-| Data tools | SHARED | `sync_ohlcv`, `query_funding_rates` |
-| Backtest tools | SIMULATOR | `run_backtest_tool` |
-
-For orchestrators/bots, use `ToolRegistry` for dynamic discovery:
-- `registry.list_tools(category="orders")` — List tools
-- `registry.execute("market_buy", symbol="SOLUSDT", usd_amount=100)` — Execute
-- `registry.get_tool_info("market_buy")` — Get specs for AI agents
-
-**See**: `docs/guides/CODE_EXAMPLES.md` for complete usage patterns
-
-## Available Order Types (LIVE Domain)
-
-| Category | Tools |
-|----------|-------|
-| Market | `market_buy`, `market_sell`, `market_buy_with_tpsl`, `market_sell_with_tpsl` |
-| Limit | `limit_buy`, `limit_sell`, `partial_close` |
-| Stop | `stop_market_buy`, `stop_market_sell`, `stop_limit_buy`, `stop_limit_sell` |
-| Management | `get_open_orders`, `cancel_order`, `amend_order`, `cancel_all_orders` |
-| Batch | `batch_market_orders`, `batch_limit_orders`, `batch_cancel_orders` |
-
-**Simulator**: Uses `SimulatedExchange.submit_order()` via strategy signals—not the tools layer.
-
-## Time-Range Queries (LIVE Domain)
-
-**All live API history endpoints require explicit time ranges.** Never rely on Bybit's implicit defaults.
-
-| Endpoint | Default | Max Range |
-|----------|---------|-----------|
-| Transaction Log | 24h | 7 days |
-| Order/Trade History | 7d | 7 days |
-| Closed PnL | 7d | 7 days |
-| Borrow History | 30d | 30 days |
-
-Use `TimeRange` abstraction: `TimeRange.last_24h()`, `TimeRange.from_window_string("4h")`
-
-**Note**: Simulator uses explicit windows from config YAML—no implicit defaults allowed (see Critical Rules).
-
-## Four-Leg API Architecture (LIVE + Data Domains)
-
-The system has 4 independent API "legs" with strict separation:
-
-| Leg | Purpose | Endpoint | Key Variable |
-|-----|---------|----------|--------------|
-| Trade LIVE | Real money trading | api.bybit.com | `BYBIT_LIVE_API_KEY` |
-| Trade DEMO | Fake money trading | api-demo.bybit.com | `BYBIT_DEMO_API_KEY` |
-| Data LIVE | Backtest/research data | api.bybit.com | `BYBIT_LIVE_DATA_API_KEY` |
-| Data DEMO | Demo validation data | api-demo.bybit.com | `BYBIT_DEMO_DATA_API_KEY` |
-
-**Selection:**
-- Trading env: Set via `BYBIT_USE_DEMO` (true=demo, false=live) in env
-- Data env: CLI Data Builder menu option 23 toggles LIVE/DEMO, or pass `env="demo"` to tools
-
-**Simulator Note**: Backtest engine uses DuckDB historical data (fetched via Data legs)—no trading API calls.
-
-**Smoke Tests:**
-- `--smoke data/full/data_extensive/orders`: Force DEMO trading + LIVE data (safe)
-- `--smoke live_check`: Uses LIVE credentials (opt-in, needs LIVE keys)
-
-## REST vs WebSocket (LIVE Domain Only)
-
-See **Critical Rules → Domain Rules — Live Trading** for WebSocket usage policy.
-
-| Use Case | REST | WebSocket |
-|----------|------|-----------|
-| Current state | Yes Primary | No |
-| Execute trades | Yes Always | No |
-| Position queries | Yes Always | No |
-| Risk monitoring | Yes Basic | Yes GlobalRiskView only |
-
-**Note**: Simulator/backtest does NOT use WebSocket—all data is historical.
-
-## API Rate Limits (LIVE Domain)
-
-| Endpoint Type | Limit | Bot Uses |
-|---------------|-------|----------|
-| IP (public) | 600/5sec | 100/sec |
-| Account/Position | 50/sec | 40/sec |
-| Orders | 10/sec/symbol | 8/sec |
-
-Rate limiter: `src/utils/rate_limiter.py`
-
-**Simulator**: No rate limits—runs as fast as data allows.
-
-## DEMO vs LIVE API (LIVE Domain — CRITICAL SAFETY)
-
-| Environment | Endpoint | Money | Purpose |
-|-------------|----------|-------|---------|
-| **DEMO** | api-demo.bybit.com | FAKE | Testing |
-| **LIVE** | api.bybit.com | REAL | Production |
-
-### Strict Mode Mapping
-
-```
-TRADING_MODE=paper + BYBIT_USE_DEMO=true   → Demo (fake funds)
-TRADING_MODE=real  + BYBIT_USE_DEMO=false  → Live (real funds)
-All other combinations → BLOCKED at startup
-```
-
-### Data vs Trading Separation
-
-| Operation | API Used |
-|-----------|----------|
-| Historical/market data | **ALWAYS LIVE** |
-| Trading (orders, positions) | **Configured** (demo or live) |
-| Simulator/backtest | **No API** (uses DuckDB historical data) |
-
-**Configuration**: See `env.example` for all environment variables
-
-## Safety Features
-
-See **Critical Rules → Safety & API Discipline** for enforcement requirements.
-
-| Feature | Description |
-|---------|-------------|
-| Panic button | `panic_close_all_tool()` closes all positions |
-| Risk limits | Enforced by `RiskManager` (live) or `RiskPolicy` (simulator) |
-| Demo mode | Default safe testing environment |
-| Mode validation | Blocks invalid TRADING_MODE/BYBIT_USE_DEMO combinations |
-| Fail-fast validation | Simulator rejects invalid configs before data fetch |
-
-## File Organization
-
-| Directory | Domain | Contents |
-|-----------|--------|----------|
-| `src/backtest/` | SIMULATOR | Backtest engine, simulated exchange, snapshots, features |
-| `src/backtest/logging/` | SIMULATOR | Per-run logging with hash tracing |
-| `src/forge/` | DEVELOPMENT | Play development, validation, promotion tools |
-| `src/core/` | LIVE | Exchange manager, position, risk, order execution |
-| `src/exchanges/` | LIVE | Bybit API client |
-| `src/tools/` | SHARED | Public API surface for CLI/agents |
-| `src/data/` | SHARED | Market data, DuckDB storage, realtime state |
-| `src/config/` | SHARED | Configuration (domain-agnostic) |
-| `src/utils/` | SHARED | Logging, rate limiting, helpers |
-| `src/utils/debug.py` | SHARED | Debug utilities with hash tracing |
-| `configs/blocks/` | — | Atomic reusable conditions |
-| `configs/plays/` | — | Proven Play configurations |
-| `configs/systems/` | — | Deployment configurations (multiple plays) |
-| `data/` | — | Local market data (DuckDB, gitignored) |
-| `backtests/` | — | Backtest artifacts (gitignored) |
-| `logs/` | — | Log files incl. play-indexed backtest logs (gitignored) |
-| `docs/todos/` | — | TODO phase documents (canonical work tracking) |
-
-## Reference Documentation
-
-See **Critical Rules → Safety & API Discipline** for the requirement to check reference docs.
-
-| Topic | Location |
-|-------|----------|
-| Bybit API | `reference/exchanges/bybit/docs/v5/` |
-| pybit SDK | `reference/exchanges/pybit/` |
-
-## Smoke Tests
-
-| Mode | Command | Domain | Description |
-|------|---------|--------|-------------|
-| Full | `--smoke full` | LIVE (DEMO) | All CLI features (data + trading + diagnostics) |
-| Data | `--smoke data` | DATA | Data builder only |
-| Data Extensive | `--smoke data_extensive` | DATA | Clean DB, build sparse history, fill gaps, sync |
-| Orders | `--smoke orders` | LIVE (DEMO) | All order types: market, limit, stop, TP/SL, trailing |
-| Live Check | `--smoke live_check` | LIVE (LIVE) | Opt-in connectivity test (requires LIVE keys) |
-| Metadata | `backtest metadata-smoke` | SIMULATOR | Indicator Metadata v1 validation (synthetic data, no DB) |
-
-**Note**: ALL validation runs through CLI commands. No pytest files exist in this codebase.
-
-The `data_extensive` test:
-1. Deletes ALL existing data (clean slate)
-2. Builds sparse OHLCV history with intentional date gaps
-3. Syncs funding rates and open interest
-4. Fills gaps and syncs to current
-5. Queries all data types
-6. Runs maintenance tools (heal, cleanup, vacuum)
-7. Verifies final database state
-
-**WARNING**: `delete_all_data_tool` permanently deletes all historical data.
-
-## Audit & Bug Tracking
-
-See `docs/audits/OPEN_BUGS.md` for:
-- Audit checklist (common bug patterns)
-- P0-P3 prioritized bugs with status
-
-See `docs/todos/TODO.md` for active work tracking.
-
-## Proactive Validation During Refactoring
-
-**MANDATORY**: Use the `validate` agent proactively during refactoring to catch breaking changes early.
-
-### Two-Agent Validation System
-
-| Agent | Model | Role | Can Modify |
-|-------|-------|------|------------|
-| `validate` | Sonnet | Runs tests, reports results | Nothing (read-only) |
-| `validate-updater` | Opus | Updates validation system | Plays, validate.md, CLAUDE.md |
-
-**Flow**:
-1. `validate` runs tests, reports failures/coverage gaps
-2. If validation system needs updating → invoke `validate-updater`
-3. `validate-updater` adds Plays, updates expectations, fixes coverage
-
-**When to invoke `validate-updater`**:
-- New indicator added to registry
-- Indicator params/output_keys changed
-- New engine feature needs test coverage
-- Test expectations changed
-- Coverage gap identified
-
-### When to Invoke Validation
-
-| After Changing... | Invoke Validation With |
-|-------------------|------------------------|
-| `indicator_registry.py` | "Run audit-toolkit and normalize-batch" |
-| `src/backtest/engine*.py` | "Run normalize-batch, then one backtest run" |
-| `src/backtest/sim/*.py` | "Run audit-rollup" |
-| `src/backtest/metrics.py` | "Run metrics-audit" |
-| `strategies/plays/*.yml` | "Run normalize on that Play" |
-| `src/cli/*.py` | "Quick validate - syntax check" |
-| Any backtest code | "Run TIER 1-2 validation" |
-
-### Validation Plays
-
-Location: `tests/validation/plays/` (relocated 2026-01-07)
-
-Validation plays provide contract testing for DSL operators, structures, and engine features.
+**Validation Plays:** `tests/validation/plays/` (V_100+ format)
 
 | Category | Purpose |
 |----------|---------|
-| V_100-V_106 | Core blocks DSL (all/any/not, operators, windows) |
+| V_100-V_106 | Core DSL (all/any/not, operators, windows) |
 | V_115 | Type-safe operator validation |
-| V_120-V_122 | Derived zones (K slots, aggregates, empty guards) |
-| V_130-V_133 | 1m action model (last_price, forward-fill) |
+| V_120-V_122 | Derived zones |
+| V_130-V_133 | 1m action model |
 
-### Validation Tiers
+**Tiers:**
+- TIER 0: Quick check (<10 sec)
+- TIER 1: Play normalization (ALWAYS FIRST)
+- TIER 2: Audits (toolkit, rollup, metrics)
+- TIER 3: Error case validation
 
-```
-TIER 0: Quick Check (<10 sec) - For tight refactoring loops
-TIER 1: Play Normalization - ALWAYS FIRST (validates configs against engine)
-TIER 2: Unit Audits - audit-toolkit, audit-rollup, metrics-audit, metadata-smoke
-TIER 3: Error Case Validation - Verify broken Plays fail correctly
-TIER 4+: Integration Tests (DB required)
-```
+## Agent Rules
 
-### Key Principle
-
-**Play normalization is the critical gate.** It validates that:
-- Indicator keys match the registry
-- Params are valid for each indicator type
-- Blocks DSL references declared features
-- Schema is correct
-
-As the engine evolves, normalization ensures Plays stay in sync. When agents generate Plays, they MUST run normalization for validation feedback.
-
-## Learning & Onboarding
-
-**Tutor Mode**: Use `/tutor <topic>` for interactive step-by-step learning with comprehension checks.
-
-```
-/tutor backtest engine      # Hot loop, data caching, performance
-/tutor multi-timeframe      # HTF/MTF anchoring, forward-fill
-/tutor DSL syntax           # Blocks, conditions, operators
-/tutor simulated exchange   # Order fill, slippage, liquidation
-```
-
-| Guide | Purpose |
-|-------|---------|
-| `docs/guides/BACKTEST_ENGINE_CONCEPTS.md` | Visual guide to engine architecture |
-| `docs/guides/CODE_EXAMPLES.md` | Code patterns and usage examples |
+- **Model selection**: Use `model="opus"` for coding agents
+- **TODO-driven**: All work maps to `docs/todos/` checkboxes
+- **Validation**: Run `validate` agent proactively during refactoring
 
 ## External References
 
-| Topic | File |
-|-------|------|
+| Topic | Location |
+|-------|----------|
+| DSL Cookbook | `docs/specs/PLAY_DSL_COOKBOOK.md` |
 | Code examples | `docs/guides/CODE_EXAMPLES.md` |
 | Engine concepts | `docs/guides/BACKTEST_ENGINE_CONCEPTS.md` |
-| Orchestrator example | `docs/examples/orchestrator_example.py` |
-| Environment variables | `env.example` |
-| Data architecture | `docs/architecture/DATA_ARCHITECTURE.md` |
-| Hybrid engine (future) | `docs/architecture/HYBRID_ENGINE_DESIGN.md` |
-| Simulated exchange | `docs/architecture/SIMULATED_EXCHANGE.md` |
-| Artifact storage format | `docs/architecture/ARTIFACT_STORAGE_FORMAT.md` |
-| Play → Engine flow | `docs/architecture/PLAY_ENGINE_FLOW.md` |
-| Play DSL Cookbook | `docs/specs/PLAY_DSL_COOKBOOK.md` |
+| Environment vars | `env.example` |
+| Work tracking | `docs/todos/TODO.md` |
+| Bug tracker | `docs/audits/OPEN_BUGS.md` |
 
-### Vendor References (Read-Only Truth)
-
-| Topic | Path |
-|-------|------|
-| Bybit V5 API docs | `reference/exchanges/bybit/docs/v5/` |
-| pybit SDK source | `reference/exchanges/pybit/` |
-| DuckDB docs | `reference/duckdb/` |
-| pandas-ta source | `reference/pandas_ta_repo/` |
-
-**Rule**: Check vendor references before guessing API params, indicator formulas, or DB syntax.
-
-### Work Tracking
-
-| Document | Purpose |
-|----------|---------|
-| `docs/todos/TODO.md` | Active work tracking |
-| `docs/audits/OPEN_BUGS.md` | Bug tracker with audit checklist |
-| `docs/todos/archived/` | Completed phase documents |
+**Vendor refs:** `reference/exchanges/bybit/docs/v5/`, `reference/pandas_ta_repo/`

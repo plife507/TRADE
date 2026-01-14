@@ -27,7 +27,7 @@ actions:
     cases:
       - when:
           all:
-            - ["supertrend_10_3_direction", "eq", 1]
+            - ["supertrend_10_3_direction", "==", 1]
             - ["close", ">", "supertrend_10_3_trend"]
         emit:
           - action: entry_long
@@ -35,7 +35,7 @@ actions:
     cases:
       - when:
           all:
-            - ["supertrend_10_3_direction", "eq", -1]
+            - ["supertrend_10_3_direction", "==", -1]
         emit:
           - action: exit_long
 

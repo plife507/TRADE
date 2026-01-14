@@ -49,19 +49,19 @@
       "Bash(git -C \"C:/code/ai/trade\" log --oneline -10)",
       "Bash(git -C \"C:/code/ai/trade\" diff --stat)",
       "Bash(git -C \"C:/code/ai/trade\" add -A)",
-      "Bash(git -C \"C:/code/ai/trade\" commit -m \"$\\(cat <<''EOF''\nfeat: blocks DSL v3, derived zones, validation IdeaCards V_100+\n\nMajor changes:\n- Blocks DSL v3.0.0: nested all/any/not, 12 operators, window operators\n- Derived zones \\(Phase 12\\): K slots + aggregates from swing pivots\n- 15 validation IdeaCards \\(V_100-V_122\\) blocks format only\n- 6 structures in STRUCTURE_REGISTRY \\(swing, fib, zone, trend, rolling, derived_zone\\)\n\nNew files:\n- src/backtest/rules/dsl_*.py: DSL parser, evaluator, warmup\n- src/backtest/rules/strategy_blocks.py: blocks compilation\n- src/backtest/incremental/detectors/derived_zone.py: derived zone detector\n- src/backtest/feature_registry.py: feature registry\n- docs/specs/: architecture specs \\(moved from docs/architecture/\\)\n\nCleanup:\n- Removed legacy V_60-V_75 validation cards \\(signal_rules format\\)\n- Archived 24 review docs to docs/_archived/\n- Archived completed todos to docs/todos/archived/2026-01/\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"C:/code/ai/trade\" commit -m \"$\\(cat <<''EOF''\nfeat: blocks DSL v3, derived zones, validation IdeaCards V_100+\n\nMajor changes:\n- Blocks DSL v3.0.0: nested all/any/not, 12 operators, window operators\n- Derived zones \\(Phase 12\\): K slots + aggregates from swing pivots\n- 15 validation IdeaCards \\(V_100-V_122\\) blocks format only\n- 6 structures in STRUCTURE_REGISTRY \\(swing, fib, zone, trend, rolling, derived_zone\\)\n\nNew files:\n- src/backtest/rules/dsl_*.py: DSL parser, evaluator, warmup\n- src/backtest/rules/strategy_blocks.py: blocks compilation\n- src/backtest/incremental/detectors/derived_zone.py: derived zone detector\n- src/backtest/feature_registry.py: feature registry\n- docs/specs/: architecture specs \\(moved from docs/architecture/\\)\n\nCleanup:\n- Removed legacy V_60-V_75 validation cards \\(signal_rules format\\)\n- Archived 24 review docs to docs/_archived/\n- Archived completed todos to docs/todos/archived/2026-01/\n\nðŸ¤– Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C \"C:/code/ai/trade\" log --oneline -3)",
       "Bash(git -C \"C:/code/ai/trade\" add docs/audits/OPEN_BUGS.md src/core/risk_manager.py)",
-      "Bash(git -C \"C:/code/ai/trade\" commit -m \"$\\(cat <<''EOF''\nfix\\(P2-05\\): allow backtest signals with size_usdt=0 through risk check\n\nRoot cause: Backtest signals are created with size_usdt=0 because the\nengine computes sizing later. RiskManager Check 6 \\(min_viable_size=5\\)\nrejected these signals since 0 < 5.\n\nFix: Skip min_viable_size check when signal.size_usdt == 0, as this\nindicates the backtest engine will compute the actual size after the\nrisk policy check.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"C:/code/ai/trade\" commit -m \"$\\(cat <<''EOF''\nfix\\(P2-05\\): allow backtest signals with size_usdt=0 through risk check\n\nRoot cause: Backtest signals are created with size_usdt=0 because the\nengine computes sizing later. RiskManager Check 6 \\(min_viable_size=5\\)\nrejected these signals since 0 < 5.\n\nFix: Skip min_viable_size check when signal.size_usdt == 0, as this\nindicates the backtest engine will compute the actual size after the\nrisk policy check.\n\nðŸ¤– Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C \"C:/code/ai/trade\" add src/backtest/engine.py src/backtest/incremental/detectors/derived_zone.py src/backtest/incremental/registry.py src/backtest/rules/eval.py src/backtest/runtime/snapshot_view.py src/backtest/sim/exchange.py src/backtest/sim/execution/execution_model.py src/cli/menus/backtest_menu.py src/cli/smoke_tests/backtest.py src/cli/smoke_tests/rules.py src/config/config.py src/data/historical_data_store.py src/exchanges/bybit_client.py src/tools/backtest_tools.py src/tools/data_tools.py src/tools/data_tools_common.py src/tools/shared.py src/tools/specs/orders_specs.py src/tools/tool_registry.py trade_cli.py)",
-      "Bash(git -C \"C:/code/ai/trade\" commit -m \"$\\(cat <<''EOF''\nchore: remove dead code comments and unused code\n\nCleanup across 20 files:\n- src/backtest/: Removed \"LEGACY REMOVED\", \"DELETED\" comment blocks\n- src/exchanges/: Removed 4 unused legacy method aliases from bybit_client.py\n- src/tools/: Removed 17 lines of backward compat re-exports\n- src/config/: Removed deprecated API key fields from BybitConfig\n- src/data/: Simplified error handling, improved docstrings\n- src/cli/: Removed unused logging import, cleaned smoke test comments\n- sim/exchange.py: Removed 15+ BUG-004/P1-005 reference comments\n\nNo functional changes - only comment cleanup and documentation improvements.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"C:/code/ai/trade\" commit -m \"$\\(cat <<''EOF''\nchore: remove dead code comments and unused code\n\nCleanup across 20 files:\n- src/backtest/: Removed \"LEGACY REMOVED\", \"DELETED\" comment blocks\n- src/exchanges/: Removed 4 unused legacy method aliases from bybit_client.py\n- src/tools/: Removed 17 lines of backward compat re-exports\n- src/config/: Removed deprecated API key fields from BybitConfig\n- src/data/: Simplified error handling, improved docstrings\n- src/cli/: Removed unused logging import, cleaned smoke test comments\n- sim/exchange.py: Removed 15+ BUG-004/P1-005 reference comments\n\nNo functional changes - only comment cleanup and documentation improvements.\n\nðŸ¤– Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "WebSearch",
       "Bash(for card in T_001_ema_crossover T_002_multi_indicator_momentum T_003_bollinger_mean_reversion)",
       "Bash(do echo \"=== $card ===\")",
       "Bash(git -C \"C:/code/ai/trade\" log --oneline -5)",
       "Bash(git -C \"C:/code/ai/trade\" push)",
       "Bash(git -C \"C:/code/ai/trade\" add docs/todos/FORGE_MIGRATION_RULES.md docs/todos/FORGE_MIGRATION_PHASES.md docs/todos/FORGE_CLEANUP_AGENT.md docs/todos/TODO.md docs/todos/INDEX.md)",
-      "Bash(git -C \"C:/code/ai/trade\" commit -m \"$\\(cat <<''EOF''\ndocs: add Forge migration rules and 8-phase plan\n\nMigration documentation for IdeaCard→Play rename:\n\nNew files:\n- FORGE_MIGRATION_RULES.md: Forward-only rules \\(NO legacy fallbacks\\)\n- FORGE_MIGRATION_PHASES.md: 8 phases with detailed checkboxes\n  - P1: Directory renames \\(configs/idea_cards/ → configs/plays/\\)\n  - P2: Core file renames \\(idea_card.py → play.py\\)\n  - P3: Class/type renames \\(IdeaCard → Play\\)\n  - P4: Function renames\n  - P5: Variable/param renames\n  - P6: CLI menu updates\n  - P7: Config/constant updates\n  - P8: Cleanup agent sweep\n- FORGE_CLEANUP_AGENT.md: Final verification checklist\n\nUpdated:\n- TODO.md: References migration docs\n- INDEX.md: Links to new documents\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"C:/code/ai/trade\" commit -m \"$\\(cat <<''EOF''\ndocs: add Forge migration rules and 8-phase plan\n\nMigration documentation for IdeaCardâ†’Play rename:\n\nNew files:\n- FORGE_MIGRATION_RULES.md: Forward-only rules \\(NO legacy fallbacks\\)\n- FORGE_MIGRATION_PHASES.md: 8 phases with detailed checkboxes\n  - P1: Directory renames \\(configs/idea_cards/ â†’ configs/plays/\\)\n  - P2: Core file renames \\(idea_card.py â†’ play.py\\)\n  - P3: Class/type renames \\(IdeaCard â†’ Play\\)\n  - P4: Function renames\n  - P5: Variable/param renames\n  - P6: CLI menu updates\n  - P7: Config/constant updates\n  - P8: Cleanup agent sweep\n- FORGE_CLEANUP_AGENT.md: Final verification checklist\n\nUpdated:\n- TODO.md: References migration docs\n- INDEX.md: Links to new documents\n\nðŸ¤– Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C \"C:/code/ai/trade\" mv configs/idea_cards configs/plays)",
       "Bash(git -C \"C:/code/ai/trade\" mv src/strategies/idea_cards src/strategies/plays)",
       "Bash(git -C:*)",
@@ -124,7 +124,7 @@
       "WebFetch(domain:marketscripters.com)",
       "WebFetch(domain:pinewizards.com)",
       "Bash(git push:*)",
-      "Bash(for f in hooks/scripts/validation_reminder.py src/backtest/gates/play_generator.py src/backtest/play_yaml_builder.py src/backtest/rules/dsl_nodes.py src/backtest/runner.py src/backtest/system_config.py src/cli/menus/backtest_play_menu.py src/cli/smoke_tests/backtest.py src/forge/audits/stress_test_suite.py src/forge/blocks/block.py src/forge/generation/generate_100_setups.py src/forge/generation/generate_100_setups_part2.py src/forge/plays/normalizer.py src/forge/setups/setup.py src/forge/systems/normalizer.py src/forge/systems/system.py src/forge/validation/batch_runner.py src/forge/validation/play_validator.py src/strategies/__init__.py src/tools/backtest_play_tools.py src/tools/forge_stress_test_tools.py)",
+      "Bash(for f in .claude/hooks/scripts/validation_reminder.py src/backtest/gates/play_generator.py src/backtest/play_yaml_builder.py src/backtest/rules/dsl_nodes.py src/backtest/runner.py src/backtest/system_config.py src/cli/menus/backtest_play_menu.py src/cli/smoke_tests/backtest.py src/forge/audits/stress_test_suite.py src/forge/blocks/block.py src/forge/generation/generate_100_setups.py src/forge/generation/generate_100_setups_part2.py src/forge/plays/normalizer.py src/forge/setups/setup.py src/forge/systems/normalizer.py src/forge/systems/system.py src/forge/validation/batch_runner.py src/forge/validation/play_validator.py src/strategies/__init__.py src/tools/backtest_play_tools.py src/tools/forge_stress_test_tools.py)",
       "Bash(do sed -i 's|configs/|strategies/|g' \"$f\")",
       "Bash(python3:*)",
       "Bash(if not exist \"C:\\\\code\\\\ai\\\\trade\\\\data\" mkdir \"C:\\\\code\\\\ai\\\\trade\\\\data\")",
@@ -186,7 +186,51 @@
       "Bash(for play in S41_L_098_eth_bidir_full S41_L_099_sol_ultimate S41_L_100_btc_max_complexity)",
       "Bash(for play in S42_E_001_btc_1m S42_E_002_eth_3m S42_E_003_sol_5m S42_E_004_btc_30m S42_E_005_eth_1h)",
       "Bash(Get-Content \"C:\\\\Users\\\\507pl\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--code-ai-trade\\\\tasks\\\\acc1bfc.output\" -Raw)",
-      "Bash(cmd /c \"type C:\\\\Users\\\\507pl\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--code-ai-trade\\\\tasks\\\\ae742e3.output\")"
+      "Bash(cmd /c \"type C:\\\\Users\\\\507pl\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--code-ai-trade\\\\tasks\\\\ae742e3.output\")",
+      "Bash(for play in S_10_btc_holds_for S_14_btc_swing_structure S_18_btc_derived_zones S_21_btc_full_complexity)",
+      "Bash(for play in gate_00_foundation/S_L_001_rsi_threshold gate_02_crossover/S_L_019_ema_crossover gate_09_holds_for/S_L_077_ema_holds_for gate_11_proximity/S_L_095_ema_near_abs)",
+      "Bash(for play in edge_gate_00_foundation/S41_L_001_ema_baseline edge_gate_03_atr_stops/S41_L_021_atr_ratio_entry struct_gate_01_swing_basics/S3_L_005_swing_high_level struct_gate_08_dz_slots/S3_L_075_dz_slot_upper)",
+      "Bash(for play in edge_gate_03_atr_stops/S41_L_026_atr_1x struct_gate_08_dz_slots/S3_L_070_dz_zone0_lower order_gate_00_baseline/S4_L_001_btc_baseline order_gate_02_risk/S4_L_017_50pct_risk)",
+      "Bash(for play in order_gate_02_risk/S4_L_020_sl1_tp2 gate_14_complex_boolean/S_L_125_all_or_hybrid gate_20_max_complexity/S_L_175_max_complexity struct_gate_03_trend/S3_L_029_trend_direction struct_gate_17_ultimate/S3_L_167_ultimate_struct gate_06_two_indicator/S_L_037_ema_rsi_long)",
+      "Bash(for play in gate_14_complex_boolean/S_L_115_trend_any_oversold gate_20_max_complexity/S_L_153_htf_mtf_ltf_full struct_gate_03_trend/S3_L_020_trend_direction_up gate_06_two_indicator/S_L_037_ema_rsi struct_gate_17_ultimate/S3_L_165_ultimate_struct)",
+      "Bash(for play in gate_06_two_indicator/S_L_035_ema_rsi struct_gate_17_ultimate/S3_L_159_ultimate_struct gate_05_volume/S_L_033_vwap_cross gate_07_all_operator/S_L_041_ema_rsi_all)",
+      "Bash(for play in gate_06_two_indicator/S_L_053_rsi_entry_ema_exit struct_gate_17_ultimate/S3_L_150_ultimate_6_struct gate_05_volume/S_L_045_cmf_positive gate_07_all_operator/S_L_061_rsi_trend_filter)",
+      "Bash(for play in S_L_048_mfi_rsi_divergence S_L_049_kvo_signal_cross S_L_050_kvo_both_positive S_L_051_vwap_above S_L_052_obv_trend)",
+      "Bash(for play in S_S_045_cmf_negative S_S_046_cmf_zero_cross S_S_047_mfi_overbought S_S_048_mfi_rsi_divergence S_S_049_kvo_signal_cross S_S_050_kvo_both_negative S_S_051_vwap_below S_S_052_obv_trend)",
+      "Bash(for play in S_L_053_rsi_entry_ema_exit S_L_054_stoch_entry_rsi_exit S_L_055_macd_entry_bbands_exit S_L_056_supertrend_entry_rsi_exit S_L_057_ema_cross_sl_tp_only S_L_058_adx_dmp_entry_adx_exit S_L_059_cci_extreme_entry_recovery_exit S_L_060_fisher_entry_fisher_exit)",
+      "Bash(for play in RSI_004_centerline_bearish RSI_005_uptrend_zone RSI_006_downtrend_zone)",
+      "Bash(do echo \"=== Running $play ===\")",
+      "Bash(for play in RSI_007_failure_swing_bull RSI_008_failure_swing_bear RSI_002_overbought_fade)",
+      "Bash(git tag:*)",
+      "Bash(shuf)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/scripts/todo_check.py"
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/scripts/security_scan.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/scripts/validation_reminder.py"
+          }
+        ]
+      }
     ]
   }
 }

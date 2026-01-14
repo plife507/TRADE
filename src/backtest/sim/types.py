@@ -127,6 +127,7 @@ class Order:
         take_profit: Attached TP price for the position
         created_at: Order creation timestamp
         status: PENDING, FILLED, CANCELLED, or REJECTED
+        submission_bar_index: Bar index when order was submitted (for IOC/FOK first-bar tracking)
     """
     order_id: OrderId
     symbol: str
@@ -142,6 +143,7 @@ class Order:
     take_profit: float | None = None
     created_at: datetime | None = None
     status: OrderStatus = OrderStatus.PENDING
+    submission_bar_index: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -197,6 +199,8 @@ class Position:
     stop_loss: float | None = None
     take_profit: float | None = None
     fees_paid: float = 0.0
+    # Original entry fee (for partial close pro-rating)
+    entry_fee: float = 0.0
     # Phase 4: Bar tracking and readiness
     entry_bar_index: int | None = None
     entry_ready: bool = True
@@ -225,6 +229,7 @@ class Position:
             "stop_loss": self.stop_loss,
             "take_profit": self.take_profit,
             "fees_paid": self.fees_paid,
+            "entry_fee": self.entry_fee,
             # Phase 4
             "entry_bar_index": self.entry_bar_index,
             "entry_ready": self.entry_ready,

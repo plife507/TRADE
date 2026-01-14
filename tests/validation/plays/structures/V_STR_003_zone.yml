@@ -41,7 +41,7 @@ actions:
     cases:
       - when:
           all:
-            - [{feature_id: "demand_zone", field: "state"}, "eq", "ACTIVE"]
+            - [{feature_id: "demand_zone", field: "state"}, "==", "ACTIVE"]
             - [{feature_id: "demand_zone", field: "lower"}, ">", 0]
             - ["rsi_14", "<", 40]
         emit:
@@ -50,7 +50,7 @@ actions:
     cases:
       - when:
           any:
-            - [{feature_id: "demand_zone", field: "state"}, "eq", "BROKEN"]
+            - [{feature_id: "demand_zone", field: "state"}, "==", "BROKEN"]
             - ["rsi_14", ">", 70]
         emit:
           - action: exit_long

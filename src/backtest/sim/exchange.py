@@ -255,6 +255,7 @@ class SimulatedExchange:
             stop_loss=stop_loss,
             take_profit=take_profit,
             created_at=timestamp,
+            submission_bar_index=self._current_bar_index,
         )
 
         self._order_book.add_order(order)
@@ -313,6 +314,7 @@ class SimulatedExchange:
             stop_loss=stop_loss,
             take_profit=take_profit,
             created_at=timestamp,
+            submission_bar_index=self._current_bar_index,
         )
         
         self._order_book.add_order(order)
@@ -375,6 +377,7 @@ class SimulatedExchange:
             stop_loss=stop_loss,
             take_profit=take_profit,
             created_at=timestamp,
+            submission_bar_index=self._current_bar_index,
         )
         
         self._order_book.add_order(order)
@@ -736,10 +739,15 @@ class SimulatedExchange:
                     order.size_usdt = clamped_size
             
             # Try to fill the limit order
+            # Compute is_first_bar for IOC/FOK handling
+            is_first_bar = (
+                order.submission_bar_index is not None
+                and order.submission_bar_index == self._current_bar_index
+            )
             result = self._execution.fill_limit_order(
                 order, bar, self.available_balance_usdt,
                 lambda n: self.compute_required_for_entry(n),
-                is_first_bar=False,  # TODO: Track first bar per order
+                is_first_bar=is_first_bar,
             )
             
             if result.fills:
@@ -776,6 +784,7 @@ class SimulatedExchange:
             stop_loss=order.stop_loss,
             take_profit=order.take_profit,
             fees_paid=fill.fee,
+            entry_fee=fill.fee,  # Track original entry fee for partial close pro-rating
             entry_bar_index=self._current_bar_index,
             entry_ready=self._current_snapshot_ready,
         )
@@ -1000,13 +1009,21 @@ class SimulatedExchange:
         size_closed = pos.size * close_ratio
         realized_pnl = price_diff * size_closed
 
-        # Apply partial exit to ledger
+        # Pro-rate entry fee for this partial close
+        # Entry fee was already deducted from equity at entry, so we're just
+        # tracking the allocation for accurate trade-level accounting
+        entry_fee_portion = pos.entry_fee * close_ratio
+        total_fees_this_close = entry_fee_portion + fill.fee
+
+        # Apply partial exit to ledger (entry fee portion already deducted at entry,
+        # so we only apply the exit fee; the entry_fee_portion is for tracking only)
         self._ledger.apply_partial_exit(realized_pnl, fill.fee)
 
-        # Reduce position size
+        # Reduce position size and adjust remaining entry fee
         remaining_ratio = 1.0 - close_ratio
         pos.size = pos.size * remaining_ratio
         pos.size_usdt = pos.size_usdt * remaining_ratio
+        pos.entry_fee = pos.entry_fee * remaining_ratio  # Remaining entry fee
         pos.fees_paid += fill.fee
 
         return fill

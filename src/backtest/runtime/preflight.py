@@ -445,7 +445,21 @@ def validate_tf_data(
             result.errors.append(
                 f"Data ends too early: last bar at {max_ts} covers until {effective_end_coverage}, need {req_end_cmp}"
             )
-    
+
+    # Check 2.5: Bar count sufficient for warmup + evaluation
+    # Date range checks can pass if min/max timestamps look OK, but actual bar count
+    # may be insufficient due to data gaps. This catches that case.
+    # Require at least 1 bar for evaluation after warmup is consumed.
+    MIN_EVAL_BARS = 1
+    required_bars = warmup_bars + MIN_EVAL_BARS
+    if result.bar_count < required_bars:
+        result.errors.append(
+            f"Insufficient bar count for warmup: have {result.bar_count} bars, "
+            f"need {warmup_bars} warmup + {MIN_EVAL_BARS} eval = {required_bars} minimum"
+        )
+        # This is a critical failure - date range may look OK but we don't have enough bars
+        result.covers_range = False
+
     # Check 3: Timestamps are monotonic
     ts_diff = df["timestamp"].diff().dropna()
     if (ts_diff <= pd.Timedelta(0)).any():
@@ -1120,7 +1134,7 @@ def run_preflight_gate(
             error_code = "EXEC_1M_MAPPING_FAILED"
             error_details = {
                 "reason": mapping_error or "Unknown mapping error",
-                "exec_tf": exec_tf.tf if exec_tf else "unknown",
+                "exec_tf": exec_tf_str or "unknown",
             }
         else:
             # Analyze other failures

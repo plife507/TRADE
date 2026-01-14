@@ -62,6 +62,7 @@ def forge_menu(cli: "TradeCLI"):
         # Stress Tests section
         menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- Stress Tests ---[/]", "")
         menu.add_row("6", f"[bold {CLIColors.NEON_GREEN}]Stress Test Suite[/]", f"[{CLIColors.NEON_GREEN}]Full validation + backtest pipeline[/]")
+        menu.add_row("7", "Run Play (Synthetic)", "Run a single Play with synthetic data (no DB)")
         menu.add_row("", "", "")
 
         # Navigation
@@ -70,7 +71,7 @@ def forge_menu(cli: "TradeCLI"):
 
         console.print(menu)
 
-        choice = get_choice(["0", "1", "2", "3", "4", "5", "6"])
+        choice = get_choice(["0", "1", "2", "3", "4", "5", "6", "7"])
 
         if choice == BACK or choice == "0":
             break
@@ -92,6 +93,9 @@ def forge_menu(cli: "TradeCLI"):
 
         elif choice == "6":
             _run_stress_test()
+
+        elif choice == "7":
+            _run_synthetic_backtest()
 
 
 def _validate_single_play():
@@ -227,6 +231,134 @@ def _run_rollup_audit():
         console.print(f"[bold {CLIColors.NEON_GREEN}]PASS[/] {result.message}")
     else:
         console.print(f"[bold {CLIColors.SELL_RED}]FAIL[/] {result.error}")
+
+    Prompt.ask("\n[dim]Press Enter to continue[/]")
+
+
+def _run_synthetic_backtest():
+    """Run a single Play with synthetic data (no DB required)."""
+    from src.backtest.play import PLAYS_DIR, load_play
+    from src.forge.validation import generate_synthetic_candles
+    from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+    from src.backtest.engine_factory import create_engine_from_play
+    from src.backtest.engine import run_engine_with_play
+    from pathlib import Path
+
+    console.print()
+    console.print(f"[bold {CLIColors.NEON_CYAN}]Run Play with Synthetic Data[/]")
+    console.print(f"[{CLIColors.DIM_TEXT}]No database connection required[/]\n")
+
+    # Get Play ID
+    play_id = Prompt.ask(
+        f"[{CLIColors.NEON_CYAN}]Enter Play ID[/]",
+        default="V_IND_001_ema"
+    )
+
+    # Get synthetic data parameters
+    bars = Prompt.ask(
+        f"[{CLIColors.DIM_TEXT}]Bars per timeframe[/]",
+        default="500"
+    )
+    try:
+        bars = int(bars)
+    except ValueError:
+        bars = 500
+
+    seed = Prompt.ask(
+        f"[{CLIColors.DIM_TEXT}]Random seed[/]",
+        default="42"
+    )
+    try:
+        seed = int(seed)
+    except ValueError:
+        seed = 42
+
+    pattern = Prompt.ask(
+        f"[{CLIColors.DIM_TEXT}]Data pattern[/]",
+        choices=["trending", "ranging", "volatile"],
+        default="trending"
+    )
+
+    console.print(f"\n[{CLIColors.DIM_TEXT}]Loading Play: {play_id}[/]")
+
+    try:
+        # Try to find the play in various locations
+        play = None
+        for base_dir in [
+            Path("tests/validation/plays/indicators"),
+            Path("tests/validation/plays/structures"),
+            Path("tests/validation/plays"),
+            PLAYS_DIR / "_validation",
+            PLAYS_DIR,
+        ]:
+            try:
+                play = load_play(play_id, base_dir=base_dir)
+                console.print(f"[{CLIColors.DIM_TEXT}]Found in: {base_dir}[/]")
+                break
+            except FileNotFoundError:
+                continue
+
+        if play is None:
+            console.print(f"[{CLIColors.SELL_RED}]Play not found: {play_id}[/]")
+            Prompt.ask("\n[dim]Press Enter to continue[/]")
+            return
+
+        # Determine required timeframes
+        exec_tf = play.execution_tf
+        required_tfs = {exec_tf, "1m"}
+        for tf in play.feature_registry.get_all_tfs():
+            required_tfs.add(tf)
+
+        console.print(f"[{CLIColors.DIM_TEXT}]Generating synthetic data for TFs: {sorted(required_tfs)}[/]")
+
+        # Generate synthetic candles
+        candles = generate_synthetic_candles(
+            symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
+            timeframes=list(required_tfs),
+            bars_per_tf=bars,
+            seed=seed,
+            pattern=pattern,
+        )
+
+        console.print(f"[{CLIColors.DIM_TEXT}]Data hash: {candles.data_hash}[/]")
+
+        # Create provider and get window bounds
+        provider = SyntheticCandlesProvider(candles)
+        window_start, window_end = provider.get_data_range(exec_tf)
+
+        console.print(f"[{CLIColors.DIM_TEXT}]Window: {window_start} -> {window_end}[/]")
+        console.print(f"\n[{CLIColors.DIM_TEXT}]Running backtest...[/]")
+
+        # Create engine and run
+        engine = create_engine_from_play(
+            play=play,
+            window_start=window_start,
+            window_end=window_end,
+            synthetic_provider=provider,
+        )
+
+        result = run_engine_with_play(engine, play)
+
+        # Display results
+        trades_count = len(result.trades) if result.trades else 0
+        equity_points = len(result.equity_curve) if result.equity_curve else 0
+
+        console.print()
+        console.print(f"[bold {CLIColors.NEON_GREEN}]COMPLETED[/]")
+        console.print(f"  Trades: {trades_count}")
+        console.print(f"  Equity points: {equity_points}")
+
+        if result.metrics:
+            console.print(f"\n[{CLIColors.DIM_TEXT}]Metrics:[/]")
+            console.print(f"  Net PnL: {result.metrics.net_pnl:.2f} USDT")
+            console.print(f"  Win Rate: {result.metrics.win_rate * 100:.1f}%")
+            console.print(f"  Profit Factor: {result.metrics.profit_factor:.2f}")
+            console.print(f"  Max Drawdown: {result.metrics.max_drawdown_pct:.1f}%")
+
+    except Exception as e:
+        import traceback
+        console.print(f"[{CLIColors.SELL_RED}]Error: {e}[/]")
+        console.print(f"[{CLIColors.DIM_TEXT}]{traceback.format_exc()}[/]")
 
     Prompt.ask("\n[dim]Press Enter to continue[/]")
 

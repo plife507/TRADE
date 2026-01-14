@@ -738,7 +738,12 @@ Examples:
     run_parser.add_argument("--validate", action="store_true", default=True, help="Validate artifacts after run (default: True)")
     run_parser.add_argument("--no-validate", action="store_false", dest="validate", help="Skip artifact validation (faster, less safe)")
     run_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
-    
+    # Synthetic data mode (for validation without DB)
+    run_parser.add_argument("--synthetic", action="store_true", help="Use synthetic data instead of DB (for validation runs)")
+    run_parser.add_argument("--synthetic-bars", type=int, default=1000, help="Number of bars per timeframe for synthetic data (default: 1000)")
+    run_parser.add_argument("--synthetic-seed", type=int, default=42, help="Random seed for synthetic data generation (default: 42)")
+    run_parser.add_argument("--synthetic-pattern", choices=["trending", "ranging", "volatile"], default="trending", help="Pattern for synthetic data (default: trending)")
+
     # backtest preflight
     preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")
     preflight_parser.add_argument("--play", required=True, help="Play identifier")
@@ -956,17 +961,122 @@ def _parse_datetime(dt_str: str) -> "datetime":
     raise ValueError(f"Cannot parse datetime: '{dt_str}'. Use YYYY-MM-DD or YYYY-MM-DD HH:MM")
 
 
+def _handle_synthetic_backtest_run(args) -> int:
+    """Handle synthetic backtest run (no DB access)."""
+    import json
+    import yaml
+    from pathlib import Path
+    from src.backtest.play import load_play, Play
+    from src.backtest.runner import run_backtest_with_gates, RunnerConfig
+    from src.forge.validation import generate_synthetic_candles
+    from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+
+    plays_dir = Path(args.plays_dir) if getattr(args, "plays_dir", None) else None
+    synthetic_bars = getattr(args, "synthetic_bars", 1000)
+    synthetic_seed = getattr(args, "synthetic_seed", 42)
+    synthetic_pattern = getattr(args, "synthetic_pattern", "trending")
+
+    # Load Play - check if it's a file path first
+    play_path = Path(args.play)
+    if play_path.exists() and play_path.is_file():
+        # Direct file path
+        with open(play_path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f)
+        play = Play.from_dict(raw)
+    else:
+        # Treat as play ID
+        play = load_play(args.play, base_dir=plays_dir)
+    exec_tf = play.execution_tf
+    required_tfs = {exec_tf, "1m"}  # Always need 1m for intrabar
+    # Collect TFs from features
+    for f in play.features or []:
+        if hasattr(f, "tf") and f.tf:
+            required_tfs.add(f.tf)
+
+    if not getattr(args, "json_output", False):
+        console.print(Panel(
+            f"[bold cyan]BACKTEST RUN (SYNTHETIC)[/]\n"
+            f"Play: {args.play}\n"
+            f"Bars: {synthetic_bars} | Seed: {synthetic_seed} | Pattern: {synthetic_pattern}\n"
+            f"TFs: {sorted(required_tfs)}",
+            border_style="cyan"
+        ))
+
+    # Generate synthetic candles
+    candles = generate_synthetic_candles(
+        symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
+        timeframes=list(required_tfs),
+        bars_per_tf=synthetic_bars,
+        seed=synthetic_seed,
+        pattern=synthetic_pattern,
+    )
+
+    # Create provider
+    provider = SyntheticCandlesProvider(candles)
+
+    # Get window bounds from synthetic data
+    data_start, data_end = provider.get_data_range(exec_tf)
+
+    # Create config
+    config = RunnerConfig(
+        play_id=args.play,
+        play=play,  # Pass pre-loaded Play
+        window_start=data_start,
+        window_end=data_end,
+        data_loader=None,  # No DB access in synthetic mode
+        base_output_dir=Path("backtests"),
+        plays_dir=plays_dir,
+        skip_preflight=True,  # Skip preflight in synthetic mode
+        auto_sync_missing_data=False,
+    )
+
+    # Run backtest
+    result = run_backtest_with_gates(config, synthetic_provider=provider)
+
+    # Output
+    if getattr(args, "json_output", False):
+        output = {
+            "status": "pass" if result.success else "fail",
+            "error": result.error_message,
+            "mode": "synthetic",
+            "bars": synthetic_bars,
+            "seed": synthetic_seed,
+        }
+        if result.summary:
+            output["metrics"] = {
+                "trades_count": result.summary.trades_count,
+                "win_rate": result.summary.win_rate,
+                "net_pnl_usdt": result.summary.net_pnl_usdt,
+            }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+
+    if result.success:
+        console.print(f"\n[bold green]OK Synthetic backtest complete[/]")
+        if result.summary:
+            console.print(f"[dim]Trades: {result.summary.trades_count} | PnL: {result.summary.net_pnl_usdt:.2f} USDT[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error_message}[/]")
+        return 1
+
+
 def handle_backtest_run(args) -> int:
     """Handle `backtest run` subcommand."""
     import json
     from pathlib import Path
     from src.tools.backtest_cli_wrapper import backtest_run_play_tool
-    
+    from src.tools.shared import ToolResult
+
     # Parse dates
     start = _parse_datetime(args.start) if args.start else None
     end = _parse_datetime(args.end) if args.end else None
     artifacts_dir = Path(args.artifacts_dir) if args.artifacts_dir else None
     plays_dir = Path(args.plays_dir) if args.plays_dir else None
+
+    # Handle synthetic mode
+    if getattr(args, "synthetic", False):
+        return _handle_synthetic_backtest_run(args)
 
     if not args.json_output:
         console.print(Panel(
@@ -1282,64 +1392,80 @@ def handle_backtest_list(args) -> int:
 
 
 def _print_preflight_diagnostics(diag: dict):
-    """Print preflight diagnostics in a formatted way."""
+    """Print preflight diagnostics in a formatted way.
+
+    Reads from PreflightReport.to_dict() structure:
+    - play_id, window, overall_status, tf_results, coverage, etc.
+    """
     table = Table(title="Preflight Diagnostics", show_header=False, box=None)
     table.add_column("Key", style="dim", width=25)
     table.add_column("Value", style="bold")
-    
-    table.add_row("Environment", diag.get("env", "N/A"))
-    table.add_row("Database", diag.get("db_path", "N/A"))
-    table.add_row("OHLCV Table", diag.get("ohlcv_table", "N/A"))
-    table.add_row("Symbol", diag.get("symbol", "N/A"))
-    table.add_row("Exec TF", diag.get("exec_tf", "N/A"))
-    
-    if diag.get("htf"):
-        table.add_row("HTF", diag["htf"])
-    if diag.get("mtf"):
-        table.add_row("MTF", diag["mtf"])
-    
+
+    # Extract info from PreflightReport structure
+    play_id = diag.get("play_id", "N/A")
+    overall_status = diag.get("overall_status", "N/A")
+
+    # Get first TF result for symbol/tf info
+    tf_results = diag.get("tf_results", {})
+    first_tf_result = next(iter(tf_results.values()), {}) if tf_results else {}
+    symbol = first_tf_result.get("symbol", "N/A")
+    exec_tf = first_tf_result.get("tf", "N/A")
+
+    table.add_row("Play", play_id)
+    table.add_row("Symbol", symbol)
+    table.add_row("Exec TF", exec_tf)
+    table.add_row("Status", overall_status)
+
     console.print(table)
-    
+
     # Window info
     console.print("\n[bold]Window:[/]")
-    if diag.get("requested_start"):
-        console.print(f"  Requested: {diag['requested_start']} -> {diag.get('requested_end', 'now')}")
-    if diag.get("effective_start"):
-        console.print(f"  Effective (with warmup): {diag['effective_start']} -> {diag.get('effective_end', 'now')}")
-    console.print(f"  Warmup: {diag.get('warmup_bars', 0)} bars ({diag.get('warmup_span_minutes', 0)} minutes)")
-    
-    # Coverage
+    window = diag.get("window", {})
+    if window.get("start"):
+        console.print(f"  Requested: {window['start']} -> {window.get('end', 'now')}")
+
+    # Get warmup from computed_warmup_requirements or first tf_result
+    warmup_req = diag.get("computed_warmup_requirements", {})
+    warmup_bars = warmup_req.get("warmup_bars_exec", 0) if warmup_req else 0
+    if not warmup_bars and first_tf_result:
+        req_range = first_tf_result.get("required_range", {})
+        warmup_bars = req_range.get("warmup_bars", 0)
+    console.print(f"  Warmup: {warmup_bars} bars")
+
+    # Coverage from first TF result
     console.print("\n[bold]DB Coverage:[/]")
-    if diag.get("db_earliest") and diag.get("db_latest"):
-        console.print(f"  Range: {diag['db_earliest']} -> {diag['db_latest']}")
-        console.print(f"  Bars: {diag.get('db_bar_count', 0):,}")
+    coverage = first_tf_result.get("coverage", {})
+    min_ts = coverage.get("min_ts")
+    max_ts = coverage.get("max_ts")
+    bar_count = coverage.get("bar_count", 0)
+
+    if min_ts and max_ts:
+        console.print(f"  Range: {min_ts} -> {max_ts}")
+        console.print(f"  Bars: {bar_count:,}")
     else:
         console.print("  [yellow]No data found[/]")
-    
-    coverage_ok = diag.get("has_sufficient_coverage", False)
+
+    coverage_ok = coverage.get("ok", False)
     coverage_style = "green" if coverage_ok else "red"
     console.print(f"  Sufficient: [{coverage_style}]{'Yes' if coverage_ok else 'No'}[/]")
-    
-    if diag.get("coverage_issue"):
-        console.print(f"  [yellow]Issue: {diag['coverage_issue']}[/]")
-    
-    # Indicator keys
-    console.print("\n[bold]Declared Indicator Keys:[/]")
-    exec_keys = diag.get("declared_keys_exec", [])
-    htf_keys = diag.get("declared_keys_htf", [])
-    mtf_keys = diag.get("declared_keys_mtf", [])
-    
-    console.print(f"  exec: {exec_keys or '(none)'}")
-    if htf_keys:
-        console.print(f"  htf: {htf_keys}")
-    if mtf_keys:
-        console.print(f"  mtf: {mtf_keys}")
-    
-    # Validation
-    if diag.get("validation_errors"):
+
+    # Error details
+    if diag.get("error_code"):
+        console.print(f"  [yellow]Error: {diag['error_code']}[/]")
+
+    # Validation errors from first TF result
+    errors = first_tf_result.get("errors", [])
+    if errors:
         console.print("\n[bold red]Validation Errors:[/]")
-        for err in diag["validation_errors"]:
+        for err in errors:
             console.print(f"  [red]• {err}[/]")
+
+    # Warnings
+    warnings = first_tf_result.get("warnings", [])
+    if warnings:
+        console.print("\n[bold yellow]Warnings:[/]")
+        for warn in warnings:
+            console.print(f"  [yellow]• {warn}[/]")
 
 
 def handle_backtest_normalize(args) -> int:

@@ -448,8 +448,10 @@ class ExecutionModel:
             bar,
         )
 
-        # Fee calculation: use notional value of closed portion
-        fee = fill_size_usdt * self._config.taker_fee_rate
+        # Fee calculation: use EXIT notional (qty * exit price), not entry notional
+        # This is critical for accuracy when price has moved significantly since entry
+        exit_notional = fill_size * fill_price
+        fee = exit_notional * self._config.taker_fee_rate
 
         return Fill(
             fill_id=self._next_fill_id(),

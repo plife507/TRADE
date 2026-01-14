@@ -49,6 +49,13 @@ class StopLossRule:
             raise ValueError("atr_feature_id is required when type=atr_multiple")
         if self.value <= 0:
             raise ValueError(f"Stop loss value must be positive. Got: {self.value}")
+        # Upper bounds check: prevent unreasonable SL values
+        max_value = 100.0  # 100% SL or 100x ATR
+        if self.value > max_value:
+            raise ValueError(
+                f"Stop loss value {self.value} exceeds maximum allowed ({max_value}). "
+                f"For type={self.type.value}, this would result in unreasonable risk."
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
@@ -85,6 +92,15 @@ class TakeProfitRule:
             raise ValueError("atr_feature_id is required when type=atr_multiple")
         if self.value <= 0:
             raise ValueError(f"Take profit value must be positive. Got: {self.value}")
+        # Upper bounds check: prevent unreasonable TP values
+        # For percent: 10000% (100x return) is a sanity upper bound
+        # For ATR/RR: 100x is a reasonable upper bound
+        max_value = 10000.0 if self.type == TakeProfitType.PERCENT else 100.0
+        if self.value > max_value:
+            raise ValueError(
+                f"Take profit value {self.value} exceeds maximum allowed ({max_value}). "
+                f"For type={self.type.value}, this would result in unreasonable targets."
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""

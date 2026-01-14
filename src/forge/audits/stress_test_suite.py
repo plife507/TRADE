@@ -581,9 +581,10 @@ def _step_rollup_audit(
 
 def _step_backtest_execution(
     validation_plays_dir: Path,
+    candles: SyntheticCandles | None,
     previous_hash: str | None,
 ) -> tuple[dict | None, StressTestStepResult]:
-    """Step 7: Execute validation plays as backtests (placeholder)."""
+    """Step 7: Execute validation plays as backtests with synthetic data."""
     step_name = "backtest_execution"
     step_number = 7
     start = time.time()
@@ -591,35 +592,133 @@ def _step_backtest_execution(
     input_hash = _compute_step_input_hash(
         step_name,
         previous_hash,
-        {"validation_plays_dir": str(validation_plays_dir)},
+        {
+            "validation_plays_dir": str(validation_plays_dir),
+            "data_hash": candles.data_hash if candles else None,
+        },
     )
 
     try:
-        # TODO: Implement actual backtest execution
-        # For now, this is a placeholder that verifies the plays exist
-        plays_exist = validation_plays_dir.exists()
-
-        if not plays_exist:
+        # Verify plays exist
+        if not validation_plays_dir.exists():
             raise FileNotFoundError(f"Validation plays directory not found: {validation_plays_dir}")
 
         play_files = list(validation_plays_dir.glob("*.yml"))
+        if not play_files:
+            raise FileNotFoundError(f"No .yml files found in {validation_plays_dir}")
+
+        # Import required modules
+        from src.backtest.play import load_play
+        from src.backtest.engine_factory import create_engine_from_play
+        from src.backtest.engine import run_engine_with_play
+        from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+
+        # Create synthetic provider if candles available
+        provider = SyntheticCandlesProvider(candles) if candles else None
+
+        # Execute each play
+        plays_executed = 0
+        plays_passed = 0
+        plays_failed = 0
+        all_trades_hashes = []
+        all_equity_hashes = []
+        play_results = []
+
+        for play_file in play_files:
+            play_id = play_file.stem
+            try:
+                # Load play
+                play = load_play(play_id, base_dir=validation_plays_dir.parent)
+
+                # Verify required TFs are in synthetic data
+                if provider:
+                    exec_tf = play.execution_tf
+                    if not provider.has_tf(exec_tf):
+                        # Skip plays that require TFs not in synthetic data
+                        play_results.append({
+                            "play_id": play_id,
+                            "status": "skipped",
+                            "reason": f"TF {exec_tf} not in synthetic data",
+                        })
+                        continue
+
+                    # Get window from synthetic data
+                    window_start, window_end = provider.get_data_range(exec_tf)
+
+                    # Create engine with synthetic provider
+                    engine = create_engine_from_play(
+                        play=play,
+                        window_start=window_start,
+                        window_end=window_end,
+                        synthetic_provider=provider,
+                    )
+
+                    # Run backtest
+                    result = run_engine_with_play(engine, play)
+
+                    # Collect hashes
+                    trades_count = len(result.trades) if result.trades else 0
+                    equity_count = len(result.equity_curve) if result.equity_curve else 0
+
+                    # Compute hashes for determinism tracking
+                    if result.trades:
+                        trades_data = [t.to_dict() if hasattr(t, 'to_dict') else t for t in result.trades]
+                        trades_hash = _compute_hash(trades_data)
+                        all_trades_hashes.append(trades_hash)
+                    if result.equity_curve:
+                        equity_data = [e.to_dict() if hasattr(e, 'to_dict') else e for e in result.equity_curve]
+                        equity_hash = _compute_hash(equity_data)
+                        all_equity_hashes.append(equity_hash)
+
+                    play_results.append({
+                        "play_id": play_id,
+                        "status": "passed",
+                        "trades_count": trades_count,
+                        "equity_points": equity_count,
+                    })
+                    plays_executed += 1
+                    plays_passed += 1
+                else:
+                    # No synthetic data - skip execution
+                    play_results.append({
+                        "play_id": play_id,
+                        "status": "skipped",
+                        "reason": "No synthetic data provider",
+                    })
+
+            except Exception as e:
+                play_results.append({
+                    "play_id": play_id,
+                    "status": "failed",
+                    "error": str(e),
+                })
+                plays_failed += 1
 
         duration = time.time() - start
 
+        # Compute combined hashes
+        combined_trades_hash = _compute_hash(all_trades_hashes) if all_trades_hashes else None
+        combined_equity_hash = _compute_hash(all_equity_hashes) if all_equity_hashes else None
+
         output_data = {
             "plays_found": len(play_files),
-            "plays_executed": 0,  # TODO: Will be updated when backtest execution is implemented
-            "trades_hash": None,
-            "equity_hash": None,
+            "plays_executed": plays_executed,
+            "plays_passed": plays_passed,
+            "plays_failed": plays_failed,
+            "trades_hash": combined_trades_hash,
+            "equity_hash": combined_equity_hash,
+            "play_results": play_results,
         }
         output_hash = _compute_hash(output_data)
+
+        passed = plays_failed == 0 and plays_executed > 0
 
         return output_data, StressTestStepResult(
             step_name=step_name,
             step_number=step_number,
-            passed=True,
+            passed=passed,
             duration_seconds=duration,
-            message=f"Found {len(play_files)} plays (execution pending implementation)",
+            message=f"Executed {plays_executed}/{len(play_files)} plays ({plays_passed} passed, {plays_failed} failed)",
             input_hash=input_hash,
             output_hash=output_hash,
             data=output_data,
@@ -815,9 +914,10 @@ def run_stress_test_suite(
             previous_hash = step_result.output_hash
 
     if not skip_backtest:
-        # Step 7: Backtest execution
+        # Step 7: Backtest execution with synthetic data
         _, step_result = _step_backtest_execution(
             validation_plays_dir=validation_plays_dir,
+            candles=synthetic_candles,  # Pass synthetic data for engine execution
             previous_hash=previous_hash,
         )
         steps.append(step_result)

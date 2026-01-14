@@ -1,0 +1,62 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RSI_003: Bullish Centerline Crossover Strategy
+# ═══════════════════════════════════════════════════════════════════════════════
+# Pattern: RSI crossing above 50 signals formation of uptrend
+# From: RSI Cheat Sheet - Centerline Crossovers section
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: "3.0.0"
+name: "RSI_003_centerline_bullish"
+description: "Long entry when RSI crosses above 50, signaling uptrend formation"
+
+symbol: "ETHUSDT"
+tf: "1h"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+actions:
+  entry_long:
+    all:
+      # RSI crosses above 50 (centerline bullish crossover)
+      - ["rsi_14", "cross_above", 50]
+      # Confirmation: price action (optional but adds confluence)
+      - ["ema_20", ">", "ema_50"]
+
+  exit_long:
+    any:
+      # RSI crosses back below 50 (trend reversal)
+      - ["rsi_14", "cross_below", 50]
+      # Overbought extreme
+      - ["rsi_14", ">", 80]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+  max_position_pct: 30.0

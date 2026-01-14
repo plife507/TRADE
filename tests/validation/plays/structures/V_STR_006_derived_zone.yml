@@ -43,7 +43,7 @@ actions:
     cases:
       - when:
           all:
-            - [{feature_id: "fib_zones", field: "any_active"}, "eq", true]
+            - [{feature_id: "fib_zones", field: "any_active"}, "==", true]
             - [{feature_id: "fib_zones", field: "active_count"}, ">", 0]
             - [{feature_id: "fib_zones", field: "zone0_lower"}, ">", 0]
             - ["rsi_14", "<", 40]
@@ -53,7 +53,7 @@ actions:
     cases:
       - when:
           any:
-            - [{feature_id: "fib_zones", field: "any_touched"}, "eq", true]
+            - [{feature_id: "fib_zones", field: "any_touched"}, "==", true]
             - ["rsi_14", ">", 70]
         emit:
           - action: exit_long

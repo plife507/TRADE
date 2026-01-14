@@ -63,14 +63,16 @@ def update_htf_mtf_indices_impl(
     if htf_feed is not None and htf_feed is not exec_feed:
         # Check if this exec ts_close aligns with an HTF close
         htf_idx = htf_feed.get_idx_at_ts_close(exec_ts_close)
-        if htf_idx is not None:
+        # Bounds check: index must be valid within feed data
+        if htf_idx is not None and 0 <= htf_idx < len(htf_feed.ts_close):
             new_htf_idx = htf_idx
             htf_updated = True
 
     if mtf_feed is not None and mtf_feed is not exec_feed:
         # Check if this exec ts_close aligns with an MTF close
         mtf_idx = mtf_feed.get_idx_at_ts_close(exec_ts_close)
-        if mtf_idx is not None:
+        # Bounds check: index must be valid within feed data
+        if mtf_idx is not None and 0 <= mtf_idx < len(mtf_feed.ts_close):
             new_mtf_idx = mtf_idx
             mtf_updated = True
 

@@ -345,10 +345,22 @@ def compute_data_window(
     exec_warmup_span = exec_tf_delta * (exec_warmup_bars + safety_buffer_bars)
     exec_data_start = window_start - exec_warmup_span
     
+    # Compute MTF warmup span if present
+    mtf_warmup_span = None
+    mtf_data_start = exec_data_start
+
+    mtf_tf = tf_by_role.get('mtf')
+    if mtf_tf and mtf_tf != exec_tf:
+        mtf_warmup_bars = warmup_bars_by_role.get('mtf', 0)
+        if mtf_warmup_bars > 0:
+            mtf_tf_delta = tf_duration(mtf_tf)
+            mtf_warmup_span = mtf_tf_delta * (mtf_warmup_bars + safety_buffer_bars)
+            mtf_data_start = window_start - mtf_warmup_span
+
     # Compute HTF warmup span if present
     htf_warmup_span = None
     htf_data_start = exec_data_start
-    
+
     htf_tf = tf_by_role.get('htf')
     if htf_tf and htf_tf != exec_tf:
         htf_warmup_bars = warmup_bars_by_role.get('htf', 0)
@@ -356,9 +368,9 @@ def compute_data_window(
             htf_tf_delta = tf_duration(htf_tf)
             htf_warmup_span = htf_tf_delta * (htf_warmup_bars + safety_buffer_bars)
             htf_data_start = window_start - htf_warmup_span
-    
-    # Use the earlier start (larger warmup wins)
-    data_start = min(exec_data_start, htf_data_start)
+
+    # Use the earliest start (largest warmup wins across all TFs)
+    data_start = min(exec_data_start, mtf_data_start, htf_data_start)
     
     return DataWindow(
         test_start=window_start,
