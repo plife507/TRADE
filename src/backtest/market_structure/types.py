@@ -3,10 +3,13 @@ Market Structure Type Definitions.
 
 Enums for structure and zone types with per-type output schemas.
 
+CANONICAL LOCATION for enums: src/backtest/structure_types.py
+This module re-exports enums for backward compatibility.
+
 NAMING CONVENTION:
 - Internal outputs: Used by detectors (e.g., "high_level", "recency")
 - Public outputs: Exposed via snapshot.get() (e.g., "swing_high_level", "swing_recency_bars")
-- Builder maps internal → public
+- Builder maps internal -> public
 
 SCHEMA VERSION:
 - STRUCTURE_SCHEMA_VERSION tracks the public contract version.
@@ -14,8 +17,13 @@ SCHEMA VERSION:
 - Increment PATCH for documentation changes, MINOR for new fields, MAJOR for breaking changes.
 """
 
-from enum import Enum
-
+# Re-export enums from canonical location
+from src.backtest.structure_types import (
+    StructureType,
+    ZoneType,
+    ZoneState,
+    TrendState,
+)
 
 # =============================================================================
 # SCHEMA VERSION (Stage 3.2+)
@@ -27,49 +35,6 @@ from enum import Enum
 # - MINOR: New fields added
 # - PATCH: Documentation or internal changes
 STRUCTURE_SCHEMA_VERSION = "1.2.0"  # 1.2.0: Added zone interaction fields (Stage 6)
-
-
-class StructureType(str, Enum):
-    """
-    Supported market structure types.
-
-    Each type has a specific output schema defined in STRUCTURE_REGISTRY.
-    """
-
-    SWING = "swing"  # Swing high/low detection
-    TREND = "trend"  # HH/HL vs LL/LH classification
-
-
-class ZoneType(str, Enum):
-    """
-    Supported zone types.
-
-    Zones are children of structure blocks.
-    """
-
-    DEMAND = "demand"  # Demand zone (below swing low)
-    SUPPLY = "supply"  # Supply zone (above swing high)
-
-
-class ZoneState(int, Enum):
-    """Zone state values."""
-
-    NONE = 0
-    ACTIVE = 1
-    BROKEN = 2
-
-
-class TrendState(int, Enum):
-    """Trend classification values for market structure.
-
-    Note: UP/DOWN refer to structural trend (HH/HL vs LL/LH).
-    BULL/BEAR are reserved for future sentiment/regime layer.
-    """
-
-    UNKNOWN = 0  # No clear trend established
-    UP = 1       # HH + HL pattern (structural uptrend)
-    DOWN = 2     # LL + LH pattern (structural downtrend)
-
 
 # =============================================================================
 # INTERNAL OUTPUT SCHEMAS (detector outputs)

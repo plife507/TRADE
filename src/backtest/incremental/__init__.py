@@ -1,6 +1,14 @@
 """
 Incremental state module for bar-by-bar market structure computation.
 
+Architecture: O(1) per-bar stateful detection for PRODUCTION USE.
+Use Case: Backtest engine, live trading, real-time signals.
+
+For batch analysis (smoke tests, visualization), see:
+    src/backtest/market_structure/
+
+Type definitions (canonical location): src/backtest/structure_types.py
+
 Provides O(1) hot-loop operations for:
 - Rolling window min/max (via MonotonicDeque)
 - Fixed-window lookback (via RingBuffer)

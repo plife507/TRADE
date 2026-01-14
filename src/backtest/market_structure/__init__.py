@@ -1,8 +1,16 @@
 """
-Market Structure Engine.
+Market Structure Engine - BATCH PROCESSING.
 
 Provides structure detection (swing, trend) and zone computation
 for logic-based trading strategies.
+
+Architecture: Batch-oriented, processes entire DataFrame using numpy arrays.
+Use Case: Smoke tests, offline analysis, visualization.
+
+For O(1) per-bar detection (live trading / backtest engine), see:
+    src/backtest/incremental/
+
+Type definitions (canonical location): src/backtest/structure_types.py
 """
 
 from src.backtest.market_structure.types import (

@@ -356,7 +356,7 @@ STRUCTURE_PUBLIC_FIELDS = {
 # =============================================================================
 
 # Import structure enums and zone fields from source of truth
-from src.backtest.market_structure.types import TrendState, ZoneState
+from src.backtest.structure_types import TrendState, ZoneState
 from src.backtest.market_structure.detectors import ZONE_PUBLIC_FIELDS
 from enum import Enum as EnumType
 
