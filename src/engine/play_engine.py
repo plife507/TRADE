@@ -704,6 +704,12 @@ class PlayEngine:
 
         # Iterate through 1m bars (mandatory 1m action loop)
         for sub_idx in range(start_1m, end_1m + 1):
+            # Skip if entries disabled and no position
+            # (allows exits when entries disabled, but blocks new entries)
+            entries_disabled = getattr(self._exchange, 'entries_disabled', False)
+            if entries_disabled and position is None:
+                continue
+
             # Get 1m close as last_price
             price_1m = float(self._quote_feed.close[sub_idx])
 

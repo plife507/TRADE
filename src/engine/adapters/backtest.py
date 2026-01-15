@@ -477,6 +477,13 @@ class BacktestExchange:
         return self._sim_exchange.position is not None
 
     @property
+    def entries_disabled(self) -> bool:
+        """Check if entries are disabled (e.g., due to starvation)."""
+        if self._sim_exchange is None:
+            return False
+        return self._sim_exchange.entries_disabled
+
+    @property
     def trades(self) -> list:
         """Get completed trades from SimulatedExchange."""
         if self._sim_exchange is None:

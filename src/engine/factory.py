@@ -165,21 +165,25 @@ class PlayEngineFactory:
         # Get account config from Play
         account = play.account
 
-        # Extract SL/TP from risk_model if present and percent-based
+        # Extract SL/TP and sizing from risk_model if present
         stop_loss_pct = None
         take_profit_pct = None
+        max_position_pct = 95.0  # Default
         if play.risk_model:
             from ..backtest.play.risk_model import StopLossType, TakeProfitType
             if play.risk_model.stop_loss.type == StopLossType.PERCENT:
                 stop_loss_pct = play.risk_model.stop_loss.value
             if play.risk_model.take_profit.type == TakeProfitType.PERCENT:
                 take_profit_pct = play.risk_model.take_profit.value
+            # Get max_position_pct from sizing rule
+            if play.risk_model.sizing:
+                max_position_pct = play.risk_model.sizing.value
 
         # Create config
         config = PlayEngineConfig(
             mode="backtest",
             initial_equity=account.starting_equity_usdt,
-            max_position_pct=95.0,  # Default max position
+            max_position_pct=max_position_pct,
             stop_loss_pct=stop_loss_pct,
             take_profit_pct=take_profit_pct,
             min_trade_usdt=account.min_trade_notional_usdt,
@@ -227,21 +231,25 @@ class PlayEngineFactory:
         # Get account config from Play
         account = play.account
 
-        # Extract SL/TP from risk_model if present and percent-based
+        # Extract SL/TP and sizing from risk_model if present
         stop_loss_pct = None
         take_profit_pct = None
+        max_position_pct = 95.0  # Default
         if play.risk_model:
             from ..backtest.play.risk_model import StopLossType, TakeProfitType
             if play.risk_model.stop_loss.type == StopLossType.PERCENT:
                 stop_loss_pct = play.risk_model.stop_loss.value
             if play.risk_model.take_profit.type == TakeProfitType.PERCENT:
                 take_profit_pct = play.risk_model.take_profit.value
+            # Get max_position_pct from sizing rule
+            if play.risk_model.sizing:
+                max_position_pct = play.risk_model.sizing.value
 
         # Create config
         config = PlayEngineConfig(
             mode=mode,
             initial_equity=account.starting_equity_usdt,
-            max_position_pct=95.0,  # Default max position
+            max_position_pct=max_position_pct,
             stop_loss_pct=stop_loss_pct,
             take_profit_pct=take_profit_pct,
             min_trade_usdt=account.min_trade_notional_usdt,
@@ -294,11 +302,16 @@ class PlayEngineFactory:
         # Get account config from Play
         account = play.account
 
+        # Get max_position_pct from risk_model if present
+        max_position_pct = 95.0  # Default
+        if play.risk_model and play.risk_model.sizing:
+            max_position_pct = play.risk_model.sizing.value
+
         # Create config (shadow mode doesn't need SL/TP - no execution)
         config = PlayEngineConfig(
             mode="shadow",
             initial_equity=account.starting_equity_usdt,
-            max_position_pct=95.0,  # Default max position
+            max_position_pct=max_position_pct,
             min_trade_usdt=account.min_trade_notional_usdt,
             persist_state=False,  # Shadow doesn't need state persistence
         )
