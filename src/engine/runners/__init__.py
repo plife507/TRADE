@@ -23,10 +23,13 @@ Usage:
 """
 
 from .backtest_runner import BacktestRunner, BacktestResult
+from .shadow_runner import ShadowRunner, ShadowStats, ShadowSignal
 
 __all__ = [
     "BacktestRunner",
     "BacktestResult",
-    # "LiveRunner",      # Phase 5
-    # "ShadowRunner",    # Phase 5
+    "ShadowRunner",
+    "ShadowStats",
+    "ShadowSignal",
+    # "LiveRunner",      # Phase 5.2
 ]
