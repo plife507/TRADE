@@ -65,8 +65,8 @@ def connect_public_ws(
         testnet=False,
         demo=ws_demo,
         channel_type=channel_type,
-        retries=2,
-        restart_on_error=False,
+        retries=5,
+        restart_on_error=True,
         ping_interval=20,
         ping_timeout=10,
     )
@@ -89,8 +89,8 @@ def connect_private_ws(client: "BybitClient") -> WebSocket:
         channel_type="private",
         api_key=client.api_key,
         api_secret=client.api_secret,
-        retries=2,
-        restart_on_error=False,
+        retries=5,
+        restart_on_error=True,
         ping_interval=20,
         ping_timeout=10,
     )
