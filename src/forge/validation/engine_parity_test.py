@@ -119,6 +119,10 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
     # Build incremental state (for structure detection: swing, trend, zones)
     incremental_state = old_engine._build_incremental_state()
 
+    # Build 1m quote feed for action model (enables granular 1m evaluation)
+    old_engine._build_quote_feed()
+    quote_feed = old_engine._quote_feed
+
     # Extract FeedStores and sim_start_idx from prepared frame
     feed_store = old_engine._exec_feed
     htf_feed = old_engine._htf_feed
@@ -141,6 +145,9 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
     engine._htf_feed = htf_feed
     engine._mtf_feed = mtf_feed
     engine._tf_mapping = tf_mapping
+
+    # Wire 1m quote feed for action model (enables 1m sub-loop evaluation)
+    engine._quote_feed = quote_feed
 
     # Create SimulatedExchange (use same config as old engine)
     from ...backtest.sim.exchange import SimulatedExchange

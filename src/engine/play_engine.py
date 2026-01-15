@@ -162,6 +162,11 @@ class PlayEngine:
         self._current_htf_idx: int = 0
         self._current_mtf_idx: int = 0
 
+        # 1m quote feed for action model (set by parity test or runner)
+        # This enables granular 1m evaluation within exec_tf bars
+        self._quote_feed = None  # FeedStore for 1m OHLCV
+        self._quote_feed_fallback_warned: bool = False  # Track if fallback warning issued
+
         # Snapshot view for rule evaluation (built per bar)
         self._snapshot_view: RuntimeSnapshotView | None = None
 
@@ -504,92 +509,21 @@ class PlayEngine:
         """
         Evaluate entry/exit rules and generate signal.
 
-        Uses PlaySignalEvaluator to evaluate the Play's action blocks
-        against current market state.
+        When 1m quote feed is available, uses 1m sub-loop for granular
+        evaluation. Otherwise falls back to single evaluation at exec close.
 
         Returns:
             Signal if rule triggered, None otherwise
         """
-        from ..core.risk_manager import Signal
-        from ..backtest.execution_validation import (
-            PlaySignalEvaluator,
-            SignalDecision,
-        )
+        # Use 1m sub-loop when quote_feed is available (matches old engine behavior)
+        if self._quote_feed is not None:
+            signal, signal_ts = self._evaluate_with_1m_subloop(bar_index, candle, position)
+            # Note: signal_ts is available for logging but signal execution
+            # happens at bar close (order submitted for next bar fill)
+            return signal
 
-        # Lazy initialize signal evaluator
-        if self._signal_evaluator is None:
-            try:
-                self._signal_evaluator = PlaySignalEvaluator(self.play)
-            except ValueError as e:
-                self.logger.error(f"Failed to create signal evaluator: {e}")
-                return None
-
-        # Build snapshot view for evaluation
-        snapshot = self._build_snapshot_view(bar_index, candle)
-        if snapshot is None:
-            if bar_index % 500 == 0:  # Debug periodically
-                self.logger.debug(f"Snapshot is None at bar {bar_index}")
-            return None
-
-        # Determine position state
-        has_position = position is not None
-        position_side = position.side.lower() if position else None
-
-        # Evaluate using PlaySignalEvaluator
-        result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
-
-        # Convert evaluation result to Signal
-        if result.decision == SignalDecision.NO_ACTION:
-            return None
-
-        elif result.decision == SignalDecision.ENTRY_LONG:
-            metadata = {
-                "stop_loss": result.stop_loss_price,
-                "take_profit": result.take_profit_price,
-            }
-            if result.resolved_metadata:
-                metadata.update(result.resolved_metadata)
-            return Signal(
-                symbol=self.symbol,
-                direction="LONG",
-                size_usdt=0.0,  # Sized by execute_signal
-                strategy=self.play.name,
-                confidence=1.0,
-                metadata=metadata,
-            )
-
-        elif result.decision == SignalDecision.ENTRY_SHORT:
-            metadata = {
-                "stop_loss": result.stop_loss_price,
-                "take_profit": result.take_profit_price,
-            }
-            if result.resolved_metadata:
-                metadata.update(result.resolved_metadata)
-            return Signal(
-                symbol=self.symbol,
-                direction="SHORT",
-                size_usdt=0.0,
-                strategy=self.play.name,
-                confidence=1.0,
-                metadata=metadata,
-            )
-
-        elif result.decision == SignalDecision.EXIT:
-            metadata = {}
-            if result.exit_percent != 100.0:
-                metadata["exit_percent"] = result.exit_percent
-            if result.resolved_metadata:
-                metadata.update(result.resolved_metadata)
-            return Signal(
-                symbol=self.symbol,
-                direction="FLAT",
-                size_usdt=position.size_usdt if position else 0.0,
-                strategy=self.play.name,
-                confidence=1.0,
-                metadata=metadata if metadata else None,
-            )
-
-        return None
+        # Fallback: single evaluation at exec bar close
+        return self._evaluate_rules_single(bar_index, candle, position)
 
     def _build_snapshot_view(self, bar_index: int, candle: Candle):
         """
@@ -691,3 +625,290 @@ class PlayEngine:
         """Save current state to store."""
         state = self.get_state()
         self.state_store.save_state(self.engine_id, state)
+
+    def _evaluate_with_1m_subloop(
+        self,
+        bar_index: int,
+        candle: Candle,
+        position: "Position | None",
+    ) -> tuple["Signal | None", datetime | None]:
+        """
+        Evaluate rules with 1m granularity within the exec_tf bar.
+
+        This mirrors the old BacktestEngine's _evaluate_with_1m_subloop method.
+        It iterates through all 1m bars within the current exec bar and
+        evaluates the strategy at each 1m price point.
+
+        Args:
+            bar_index: Current exec bar index
+            candle: Current exec candle data
+            position: Current position (if any)
+
+        Returns:
+            Tuple of (Signal or None, signal_ts or None)
+        """
+        from ..core.risk_manager import Signal
+        from ..backtest.execution_validation import (
+            PlaySignalEvaluator,
+            SignalDecision,
+        )
+        from ..data.historical_data_store import TF_MINUTES
+
+        # Get exec TF minutes for 1m mapping
+        exec_tf_minutes = TF_MINUTES.get(self.timeframe.lower(), 15)
+
+        # Check if 1m quote feed is available
+        if self._quote_feed is None or self._quote_feed.length == 0:
+            # Fallback: evaluate at exec close only (no 1m sub-loop)
+            if not self._quote_feed_fallback_warned:
+                self.logger.warning(
+                    f"1m quote feed unavailable - using exec_tf close for signal evaluation. "
+                    f"For full 1m action semantics, wire _quote_feed from old engine."
+                )
+                self._quote_feed_fallback_warned = True
+            signal = self._evaluate_rules_single(bar_index, candle, position)
+            return signal, None
+
+        # Get 1m bar range for this exec bar
+        start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(bar_index, exec_tf_minutes)
+
+        # Clamp to available 1m data (both start and end)
+        max_valid_idx = self._quote_feed.length - 1
+        start_1m = min(start_1m, max_valid_idx)
+        end_1m = min(end_1m, max_valid_idx)
+
+        # If start > end after clamping, quote feed doesn't cover this exec bar
+        if start_1m > end_1m:
+            if not self._quote_feed_fallback_warned:
+                self.logger.warning(
+                    f"1m quote feed doesn't cover exec bar {bar_index} - using exec_tf close."
+                )
+                self._quote_feed_fallback_warned = True
+            signal = self._evaluate_rules_single(bar_index, candle, position)
+            return signal, None
+
+        # Lazy initialize signal evaluator
+        if self._signal_evaluator is None:
+            try:
+                self._signal_evaluator = PlaySignalEvaluator(self.play)
+            except ValueError as e:
+                self.logger.error(f"Failed to create signal evaluator: {e}")
+                return None, None
+
+        # Track previous 1m price for crossover operators
+        # Seed with the 1m bar BEFORE start_1m to enable crossover on first iteration
+        if start_1m > 0 and start_1m - 1 <= max_valid_idx:
+            prev_price_1m: float | None = float(self._quote_feed.close[start_1m - 1])
+        else:
+            prev_price_1m = None
+
+        # Iterate through 1m bars (mandatory 1m action loop)
+        for sub_idx in range(start_1m, end_1m + 1):
+            # Get 1m close as last_price
+            price_1m = float(self._quote_feed.close[sub_idx])
+
+            # Build snapshot with 1m prices and quote_idx for window operators
+            snapshot = self._build_snapshot_view_1m(
+                bar_index=bar_index,
+                candle=candle,
+                last_price=price_1m,
+                prev_last_price=prev_price_1m,
+                quote_idx=sub_idx,
+            )
+
+            # Update previous price for next iteration
+            prev_price_1m = price_1m
+
+            if snapshot is None:
+                continue
+
+            # Determine position state
+            has_position = position is not None
+            position_side = position.side.lower() if position else None
+
+            # Evaluate using PlaySignalEvaluator
+            result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
+
+            # Convert evaluation result to Signal
+            signal = self._result_to_signal(result, position)
+            if signal is not None:
+                # Get 1m close timestamp for order submission
+                signal_ts = self._quote_feed.get_ts_close_datetime(sub_idx)
+                return signal, signal_ts
+
+        # No signal triggered
+        return None, None
+
+    def _evaluate_rules_single(
+        self,
+        bar_index: int,
+        candle: Candle,
+        position: "Position | None",
+    ) -> "Signal | None":
+        """
+        Evaluate rules at a single point (exec bar close).
+
+        This is the fallback when no 1m quote feed is available.
+        """
+        from ..core.risk_manager import Signal
+        from ..backtest.execution_validation import (
+            PlaySignalEvaluator,
+            SignalDecision,
+        )
+
+        # Lazy initialize signal evaluator
+        if self._signal_evaluator is None:
+            try:
+                self._signal_evaluator = PlaySignalEvaluator(self.play)
+            except ValueError as e:
+                self.logger.error(f"Failed to create signal evaluator: {e}")
+                return None
+
+        # Build snapshot view for evaluation
+        snapshot = self._build_snapshot_view(bar_index, candle)
+        if snapshot is None:
+            return None
+
+        # Determine position state
+        has_position = position is not None
+        position_side = position.side.lower() if position else None
+
+        # Evaluate using PlaySignalEvaluator
+        result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
+
+        # Convert evaluation result to Signal
+        return self._result_to_signal(result, position)
+
+    def _result_to_signal(
+        self,
+        result: "EvaluationResult",
+        position: "Position | None",
+    ) -> "Signal | None":
+        """Convert EvaluationResult to Signal."""
+        from ..core.risk_manager import Signal
+        from ..backtest.execution_validation import SignalDecision
+
+        if result.decision == SignalDecision.NO_ACTION:
+            return None
+
+        elif result.decision == SignalDecision.ENTRY_LONG:
+            metadata = {
+                "stop_loss": result.stop_loss_price,
+                "take_profit": result.take_profit_price,
+            }
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
+            return Signal(
+                symbol=self.symbol,
+                direction="LONG",
+                size_usdt=0.0,  # Sized by execute_signal
+                strategy=self.play.name,
+                confidence=1.0,
+                metadata=metadata,
+            )
+
+        elif result.decision == SignalDecision.ENTRY_SHORT:
+            metadata = {
+                "stop_loss": result.stop_loss_price,
+                "take_profit": result.take_profit_price,
+            }
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
+            return Signal(
+                symbol=self.symbol,
+                direction="SHORT",
+                size_usdt=0.0,
+                strategy=self.play.name,
+                confidence=1.0,
+                metadata=metadata,
+            )
+
+        elif result.decision == SignalDecision.EXIT:
+            metadata = {}
+            if result.exit_percent != 100.0:
+                metadata["exit_percent"] = result.exit_percent
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
+            return Signal(
+                symbol=self.symbol,
+                direction="FLAT",
+                size_usdt=position.size_usdt if position else 0.0,
+                strategy=self.play.name,
+                confidence=1.0,
+                metadata=metadata if metadata else None,
+            )
+
+        return None
+
+    def _build_snapshot_view_1m(
+        self,
+        bar_index: int,
+        candle: Candle,
+        last_price: float,
+        prev_last_price: float | None,
+        quote_idx: int,
+    ):
+        """
+        Build RuntimeSnapshotView for 1m sub-loop evaluation.
+
+        This is similar to _build_snapshot_view but passes the 1m-specific
+        prices and quote_idx for proper window operator support.
+
+        Args:
+            bar_index: Current exec bar index
+            candle: Current exec candle data
+            last_price: 1m close price for signal evaluation
+            prev_last_price: Previous 1m close price for crossover operators
+            quote_idx: Current 1m bar index in quote_feed
+
+        Returns:
+            RuntimeSnapshotView or None if not ready
+        """
+        from .adapters.backtest import BacktestDataProvider
+
+        if isinstance(self._data_provider, BacktestDataProvider):
+            if self._data_provider._feed_store is None:
+                return None
+
+            from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
+            from ..backtest.runtime.feed_store import MultiTFFeedStore
+
+            feed_store = self._data_provider._feed_store
+
+            # Create MultiTFFeedStore with HTF/MTF feeds if available
+            feeds = MultiTFFeedStore(
+                exec_feed=feed_store,
+                htf_feed=self._htf_feed,
+                mtf_feed=self._mtf_feed,
+                tf_mapping=self._tf_mapping,
+            )
+
+            # Use dynamically tracked HTF/MTF indices
+            htf_idx = None
+            mtf_idx = None
+            if self._htf_feed is not None and self._htf_feed is not feed_store:
+                htf_idx = self._current_htf_idx
+            if self._mtf_feed is not None and self._mtf_feed is not feed_store:
+                mtf_idx = self._current_mtf_idx
+
+            # Create snapshot view with 1m prices and quote_feed for window operators
+            snapshot = RuntimeSnapshotView(
+                feeds=feeds,
+                exec_idx=bar_index,
+                htf_idx=htf_idx,
+                mtf_idx=mtf_idx,
+                exchange=self._exchange._sim_exchange if hasattr(self._exchange, '_sim_exchange') else None,
+                mark_price=last_price,  # Use 1m close as mark_price
+                mark_price_source="1m_quote",
+                history_config=None,
+                history_ready=True,
+                incremental_state=self._incremental_state,
+                feature_registry=self._feature_registry,
+                last_price=last_price,  # 1m close for signal evaluation
+                prev_last_price=prev_last_price,  # For crossover operators
+                quote_feed=self._quote_feed,  # For window operators
+                quote_idx=quote_idx,  # Current 1m index
+            )
+            return snapshot
+
+        return None
