@@ -108,7 +108,12 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
         window_start=window_start,
         window_end=window_end,
     )
-    old_engine.prepare_backtest_frame()
+
+    # Use correct preparation method based on TF mode
+    if old_engine._multi_tf_mode:
+        old_engine.prepare_multi_tf_frames()
+    else:
+        old_engine.prepare_backtest_frame()
     old_engine._build_feed_stores()
 
     # Build incremental state (for structure detection: swing, trend, zones)
