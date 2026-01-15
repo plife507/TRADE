@@ -444,6 +444,8 @@ class PlayEngine:
 
         This ensures that HTF/MTF indicator values are properly forward-filled
         until their bar closes, preventing lookahead.
+
+        Also updates HTF incremental state when HTF bar closes (for structures).
         """
         # Skip if no HTF/MTF feeds
         if self._htf_feed is None and self._mtf_feed is None:
@@ -459,11 +461,15 @@ class PlayEngine:
             return
 
         exec_ts_close = candle.ts_close
+        htf_updated = False
 
         # Check if HTF bar closed at this exec bar close
         if self._htf_feed is not None and self._htf_feed is not exec_feed:
             htf_idx = self._htf_feed.get_idx_at_ts_close(exec_ts_close)
             if htf_idx is not None and 0 <= htf_idx < self._htf_feed.length:
+                # Check if this is a NEW HTF bar (index changed)
+                if htf_idx != self._current_htf_idx:
+                    htf_updated = True
                 self._current_htf_idx = htf_idx
 
         # Check if MTF bar closed at this exec bar close
@@ -471,6 +477,47 @@ class PlayEngine:
             mtf_idx = self._mtf_feed.get_idx_at_ts_close(exec_ts_close)
             if mtf_idx is not None and 0 <= mtf_idx < self._mtf_feed.length:
                 self._current_mtf_idx = mtf_idx
+
+        # Update HTF incremental state when HTF bar closes (for structures)
+        if htf_updated:
+            self._update_htf_incremental_state()
+
+    def _update_htf_incremental_state(self) -> None:
+        """Update HTF incremental state when HTF bar closes."""
+        import numpy as np
+        from ..backtest.incremental.base import BarData
+
+        if self._incremental_state is None:
+            return
+
+        htf_tf = self._tf_mapping.get("htf")
+        if not htf_tf or htf_tf not in self._incremental_state.htf:
+            return
+
+        htf_feed = self._htf_feed
+        if htf_feed is None:
+            return
+
+        htf_idx = self._current_htf_idx
+
+        # Build HTF BarData
+        htf_indicator_values: dict[str, float] = {}
+        for key in htf_feed.indicators.keys():
+            val = htf_feed.indicators[key][htf_idx]
+            if not np.isnan(val):
+                htf_indicator_values[key] = float(val)
+
+        htf_bar_data = BarData(
+            idx=htf_idx,
+            open=float(htf_feed.open[htf_idx]),
+            high=float(htf_feed.high[htf_idx]),
+            low=float(htf_feed.low[htf_idx]),
+            close=float(htf_feed.close[htf_idx]),
+            volume=float(htf_feed.volume[htf_idx]),
+            indicators=htf_indicator_values,
+        )
+
+        self._incremental_state.update_htf(htf_tf, htf_bar_data)
 
     def _update_incremental_state(self, bar_index: int, candle: Candle) -> None:
         """Update incremental structure state with new bar data."""
