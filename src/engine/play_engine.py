@@ -153,6 +153,11 @@ class PlayEngine:
         # This is shared with data_provider in backtest mode
         self._incremental_state: MultiTFIncrementalState | None = None
 
+        # HTF/MTF feeds for multi-timeframe indicators (set by parity test or runner)
+        self._htf_feed = None  # FeedStore for HTF indicators
+        self._mtf_feed = None  # FeedStore for MTF indicators
+        self._tf_mapping: dict[str, str] = {}  # TF mapping from Play config
+
         # Snapshot view for rule evaluation (built per bar)
         self._snapshot_view: RuntimeSnapshotView | None = None
 
@@ -566,13 +571,23 @@ class PlayEngine:
 
             feed_store = self._data_provider._feed_store
 
-            # Create MultiTFFeedStore wrapping the single FeedStore
+            # Create MultiTFFeedStore with HTF/MTF feeds if available
             feeds = MultiTFFeedStore(
                 exec_feed=feed_store,
-                htf_feed=None,
-                mtf_feed=None,
-                tf_mapping={},
+                htf_feed=self._htf_feed,
+                mtf_feed=self._mtf_feed,
+                tf_mapping=self._tf_mapping,
             )
+
+            # Compute HTF/MTF indices from bar_index using alignment arrays
+            htf_idx = None
+            mtf_idx = None
+            if self._htf_feed is not None and hasattr(feed_store, 'htf_alignment'):
+                if feed_store.htf_alignment is not None and bar_index < len(feed_store.htf_alignment):
+                    htf_idx = int(feed_store.htf_alignment[bar_index])
+            if self._mtf_feed is not None and hasattr(feed_store, 'mtf_alignment'):
+                if feed_store.mtf_alignment is not None and bar_index < len(feed_store.mtf_alignment):
+                    mtf_idx = int(feed_store.mtf_alignment[bar_index])
 
             # Get prev_last_price for crossover operators
             prev_last_price = None
@@ -588,8 +603,8 @@ class PlayEngine:
             snapshot = RuntimeSnapshotView(
                 feeds=feeds,
                 exec_idx=bar_index,
-                htf_idx=None,
-                mtf_idx=None,
+                htf_idx=htf_idx,
+                mtf_idx=mtf_idx,
                 exchange=self._exchange._sim_exchange if hasattr(self._exchange, '_sim_exchange') else None,
                 mark_price=candle.close,
                 mark_price_source="approx_from_ohlcv",

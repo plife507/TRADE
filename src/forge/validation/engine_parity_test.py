@@ -114,8 +114,11 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
     # Build incremental state (for structure detection: swing, trend, zones)
     incremental_state = old_engine._build_incremental_state()
 
-    # Extract FeedStore and sim_start_idx from prepared frame
+    # Extract FeedStores and sim_start_idx from prepared frame
     feed_store = old_engine._exec_feed
+    htf_feed = old_engine._htf_feed
+    mtf_feed = old_engine._mtf_feed
+    tf_mapping = old_engine._tf_mapping
     sim_start_idx = old_engine._prepared_frame.sim_start_index
 
     if feed_store is None:
@@ -128,6 +131,11 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
 
     # Wire incremental state to PlayEngine (for structure-based Plays)
     engine._incremental_state = incremental_state
+
+    # Wire HTF/MTF feeds for multi-timeframe indicators
+    engine._htf_feed = htf_feed
+    engine._mtf_feed = mtf_feed
+    engine._tf_mapping = tf_mapping
 
     # Create SimulatedExchange (use same config as old engine)
     from ...backtest.sim.exchange import SimulatedExchange
