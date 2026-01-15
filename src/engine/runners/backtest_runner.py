@@ -105,6 +105,7 @@ class BacktestRunner:
         engine: PlayEngine,
         feed_store: "FeedStore | None" = None,
         sim_exchange: "SimulatedExchange | None" = None,
+        sim_start_idx: int | None = None,
     ):
         """
         Initialize backtest runner.
@@ -113,10 +114,12 @@ class BacktestRunner:
             engine: PlayEngine instance (must be in backtest mode)
             feed_store: Optional pre-built FeedStore (for testing)
             sim_exchange: Optional pre-built SimulatedExchange (for testing)
+            sim_start_idx: Optional simulation start index (skips warmup period)
         """
         self._engine = engine
         self._pre_built_feed_store = feed_store
         self._pre_built_sim_exchange = sim_exchange
+        self._sim_start_idx_override = sim_start_idx
 
         # Validate adapters are backtest type
         if not isinstance(engine._data_provider, BacktestDataProvider):
@@ -155,9 +158,13 @@ class BacktestRunner:
 
         # Get data bounds
         num_bars = self._data_provider.num_bars
-        warmup_bars = self._data_provider.warmup_bars
-        start_idx = warmup_bars
+        # Use override if provided, otherwise fall back to data provider's warmup_bars
+        if self._sim_start_idx_override is not None:
+            start_idx = self._sim_start_idx_override
+        else:
+            start_idx = self._data_provider.warmup_bars
         end_idx = num_bars
+        warmup_bars = start_idx  # For result metadata
 
         # Get timing from data
         first_candle = self._data_provider.get_candle(start_idx)
@@ -170,6 +177,10 @@ class BacktestRunner:
         initial_equity = self._exchange_adapter.get_equity()
 
         # Main bar loop
+        # Execution model:
+        # 1. Orders submitted at bar N-1 close fill at bar N open
+        # 2. Strategy evaluates at bar N close -> generates signal
+        # 3. Signal submits order (to fill at bar N+1 open)
         for bar_idx in range(start_idx, end_idx):
             # Update current bar index in data provider
             self._data_provider.current_bar_index = bar_idx
@@ -177,15 +188,18 @@ class BacktestRunner:
             # Get candle for this bar
             candle = self._data_provider.get_candle(bar_idx)
 
-            # Process bar through engine (signal generation)
+            # Set bar context on exchange BEFORE processing
+            self._set_bar_context(bar_idx)
+
+            # 1. Process fills from previous bar's orders (fill at THIS bar's open)
+            self._process_bar_fills(bar_idx)
+
+            # 2. Process bar through engine (signal generation at bar close)
             signal = self._engine.process_bar(bar_idx)
 
-            # Execute signal if any
+            # 3. Execute signal if any (submits order for NEXT bar's fill)
             if signal is not None:
                 self._engine.execute_signal(signal)
-
-            # Step exchange (process fills, TP/SL)
-            self._step_exchange(bar_idx)
 
             # Record equity
             equity = self._exchange_adapter.get_equity()
@@ -204,7 +218,7 @@ class BacktestRunner:
         trades = self._exchange_adapter.trades
 
         return self._build_result(
-            play_id=self._engine._play.play_id,
+            play_id=self._engine._play.name,
             symbol=self._data_provider.symbol,
             timeframe=self._data_provider.timeframe,
             start_ts=actual_start_ts,
@@ -302,11 +316,27 @@ class BacktestRunner:
 
         self._exchange_adapter.set_simulated_exchange(sim_exchange)
 
-    def _step_exchange(self, bar_idx: int) -> None:
+    def _set_bar_context(self, bar_idx: int) -> None:
         """
-        Step the exchange for a bar.
+        Set the bar context on the exchange before signal processing.
 
-        Processes order fills, TP/SL checks, etc.
+        This allows orders to be submitted with proper price context.
+
+        Args:
+            bar_idx: Current bar index
+        """
+        sim_exchange = self._exchange_adapter._sim_exchange
+        if sim_exchange is None:
+            return
+
+        sim_exchange.set_bar_context(bar_idx)
+
+    def _process_bar_fills(self, bar_idx: int) -> None:
+        """
+        Process order fills and TP/SL for a bar.
+
+        Called after signal execution to process any new orders
+        and check existing positions for TP/SL.
 
         Args:
             bar_idx: Current bar index
@@ -347,8 +377,7 @@ class BacktestRunner:
                 volume=prev_candle.volume,
             )
 
-        # Process bar
-        sim_exchange.set_bar_context(bar_idx)
+        # Process bar for fills
         sim_exchange.process_bar(bar, prev_bar)
 
     def _close_remaining_position(self, last_bar_idx: int) -> None:

@@ -50,7 +50,7 @@ class ParityResult:
     message: str = ""
 
     def __str__(self) -> str:
-        status = "✓ PASSED" if self.passed else "✗ FAILED"
+        status = "[PASS]" if self.passed else "[FAIL]"
         return (
             f"{status}: {self.play_id}\n"
             f"  Old: {self.old_trade_count} trades, ${self.old_final_equity:,.2f}\n"
@@ -111,8 +111,13 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
     old_engine.prepare_backtest_frame()
     old_engine._build_feed_stores()
 
-    # Extract FeedStore and pass to BacktestRunner
+    # Build incremental state (for structure detection: swing, trend, zones)
+    incremental_state = old_engine._build_incremental_state()
+
+    # Extract FeedStore and sim_start_idx from prepared frame
     feed_store = old_engine._exec_feed
+    sim_start_idx = old_engine._prepared_frame.sim_start_index
+
     if feed_store is None:
         return {
             "trade_count": 0,
@@ -120,6 +125,9 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
             "trades": [],
             "error": "Failed to build FeedStore",
         }
+
+    # Wire incremental state to PlayEngine (for structure-based Plays)
+    engine._incremental_state = incremental_state
 
     # Create SimulatedExchange (use same config as old engine)
     from ...backtest.sim.exchange import SimulatedExchange
@@ -138,6 +146,7 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
         engine=engine,
         feed_store=feed_store,
         sim_exchange=sim_exchange,
+        sim_start_idx=sim_start_idx,
     )
 
     try:

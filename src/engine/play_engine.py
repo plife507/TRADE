@@ -265,10 +265,12 @@ class PlayEngine:
         Execute a signal through the exchange adapter.
 
         This method:
-        1. Applies risk sizing
-        2. Validates minimum size
-        3. Creates order with TP/SL
-        4. Submits to exchange
+        1. For FLAT (exit) signals: Calls submit_close()
+        2. For LONG/SHORT (entry) signals:
+           - Applies risk sizing
+           - Validates minimum size
+           - Creates order with TP/SL
+           - Submits to exchange
 
         Args:
             signal: Signal to execute (from process_bar)
@@ -293,6 +295,25 @@ class PlayEngine:
                 metadata={"shadow": True, "signal": signal},
             )
 
+        # Handle exit signals (FLAT) differently - submit close request
+        if signal.direction.upper() == "FLAT":
+            # Get exit percent from metadata (default 100%)
+            exit_percent = 100.0
+            if signal.metadata and "exit_percent" in signal.metadata:
+                exit_percent = signal.metadata["exit_percent"]
+
+            # Submit close request (will be processed on next bar)
+            self.exchange.submit_close(reason="signal", percent=exit_percent)
+            self.logger.info(
+                f"Exit signal: {self.symbol} close {exit_percent}%"
+            )
+            return OrderResult(
+                success=True,
+                order_id=f"close_{uuid.uuid4().hex[:8]}",
+                metadata={"close": True, "percent": exit_percent},
+            )
+
+        # Entry signals (LONG/SHORT)
         # Apply risk sizing
         sized_usdt = self._size_position(signal)
 
@@ -319,9 +340,11 @@ class PlayEngine:
 
         if result.success:
             self._total_trades += 1
+            price_str = f"{result.fill_price:.2f}" if result.fill_price else "N/A"
+            size_str = f"{result.fill_usdt:.2f}" if result.fill_usdt else "N/A"
             self.logger.info(
                 f"Order filled: {signal.direction} {self.symbol} "
-                f"price={result.fill_price:.2f} size={result.fill_usdt:.2f} USDT"
+                f"price={price_str} size={size_str} USDT"
             )
         else:
             self.logger.warning(f"Order failed: {result.error}")
@@ -397,16 +420,29 @@ class PlayEngine:
         """Update incremental structure state with new bar data."""
         from ..backtest.incremental.base import BarData
 
+        # Build indicators dict from feed store if available
+        indicators: dict[str, float] = {}
+        from .adapters.backtest import BacktestDataProvider
+        if isinstance(self._data_provider, BacktestDataProvider):
+            feed_store = self._data_provider._feed_store
+            if feed_store is not None:
+                # Copy indicator values for this bar
+                for name, arr in feed_store.indicators.items():
+                    if bar_index < len(arr):
+                        indicators[name] = float(arr[bar_index])
+
         bar_data = BarData(
-            timestamp=candle.ts_close,
+            idx=bar_index,
             open=candle.open,
             high=candle.high,
             low=candle.low,
             close=candle.close,
             volume=candle.volume,
+            indicators=indicators,
         )
 
-        self._incremental_state.update(bar_index, bar_data)
+        # MultiTFIncrementalState uses update_exec() for exec timeframe updates
+        self._incremental_state.update_exec(bar_data)
 
     def _evaluate_rules(
         self,
@@ -526,25 +562,43 @@ class PlayEngine:
 
             # Import snapshot view builder
             from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
+            from ..backtest.runtime.feed_store import MultiTFFeedStore
 
-            # Build minimal snapshot for rule evaluation
-            # Full implementation would use engine_snapshot.build_snapshot_view_impl
             feed_store = self._data_provider._feed_store
 
-            # Create snapshot view
-            snapshot = RuntimeSnapshotView(
+            # Create MultiTFFeedStore wrapping the single FeedStore
+            feeds = MultiTFFeedStore(
                 exec_feed=feed_store,
                 htf_feed=None,
                 mtf_feed=None,
+                tf_mapping={},
+            )
+
+            # Get prev_last_price for crossover operators
+            prev_last_price = None
+            if bar_index > 0:
+                try:
+                    prev_candle = self.data.get_candle(bar_index - 1)
+                    prev_last_price = prev_candle.close
+                except IndexError as e:
+                    self.logger.warning(f"Could not get prev candle at {bar_index-1}: {e}")
+                    prev_last_price = candle.close  # Fallback to current close
+
+            # Create snapshot view with correct parameters
+            snapshot = RuntimeSnapshotView(
+                feeds=feeds,
                 exec_idx=bar_index,
-                htf_idx=0,
-                mtf_idx=0,
-                history_config=None,
-                is_history_ready=True,
+                htf_idx=None,
+                mtf_idx=None,
                 exchange=self._exchange._sim_exchange if hasattr(self._exchange, '_sim_exchange') else None,
-                risk_profile=None,
-                feature_registry=self._feature_registry,
+                mark_price=candle.close,
+                mark_price_source="approx_from_ohlcv",
+                history_config=None,
+                history_ready=True,
                 incremental_state=self._incremental_state,
+                feature_registry=self._feature_registry,
+                last_price=candle.close,
+                prev_last_price=prev_last_price,
             )
             return snapshot
 
