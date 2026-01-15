@@ -165,13 +165,23 @@ class PlayEngineFactory:
         # Get account config from Play
         account = play.account
 
+        # Extract SL/TP from risk_model if present and percent-based
+        stop_loss_pct = None
+        take_profit_pct = None
+        if play.risk_model:
+            from ..backtest.play.risk_model import StopLossType, TakeProfitType
+            if play.risk_model.stop_loss.type == StopLossType.PERCENT:
+                stop_loss_pct = play.risk_model.stop_loss.value
+            if play.risk_model.take_profit.type == TakeProfitType.PERCENT:
+                take_profit_pct = play.risk_model.take_profit.value
+
         # Create config
         config = PlayEngineConfig(
             mode="backtest",
             initial_equity=account.starting_equity_usdt,
-            max_position_pct=play.risk.max_position_pct if play.risk else 95.0,
-            stop_loss_pct=play.risk.stop_loss_pct if play.risk else None,
-            take_profit_pct=play.risk.take_profit_pct if play.risk else None,
+            max_position_pct=95.0,  # Default max position
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
             min_trade_usdt=account.min_trade_notional_usdt,
             taker_fee_bps=account.fee_model.taker_bps,
             maker_fee_bps=account.fee_model.maker_bps,
@@ -217,13 +227,23 @@ class PlayEngineFactory:
         # Get account config from Play
         account = play.account
 
+        # Extract SL/TP from risk_model if present and percent-based
+        stop_loss_pct = None
+        take_profit_pct = None
+        if play.risk_model:
+            from ..backtest.play.risk_model import StopLossType, TakeProfitType
+            if play.risk_model.stop_loss.type == StopLossType.PERCENT:
+                stop_loss_pct = play.risk_model.stop_loss.value
+            if play.risk_model.take_profit.type == TakeProfitType.PERCENT:
+                take_profit_pct = play.risk_model.take_profit.value
+
         # Create config
         config = PlayEngineConfig(
             mode=mode,
             initial_equity=account.starting_equity_usdt,
-            max_position_pct=play.risk.max_position_pct if play.risk else 95.0,
-            stop_loss_pct=play.risk.stop_loss_pct if play.risk else None,
-            take_profit_pct=play.risk.take_profit_pct if play.risk else None,
+            max_position_pct=95.0,  # Default max position
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
             min_trade_usdt=account.min_trade_notional_usdt,
             taker_fee_bps=account.fee_model.taker_bps,
             maker_fee_bps=account.fee_model.maker_bps,
@@ -274,11 +294,11 @@ class PlayEngineFactory:
         # Get account config from Play
         account = play.account
 
-        # Create config
+        # Create config (shadow mode doesn't need SL/TP - no execution)
         config = PlayEngineConfig(
             mode="shadow",
             initial_equity=account.starting_equity_usdt,
-            max_position_pct=play.risk.max_position_pct if play.risk else 95.0,
+            max_position_pct=95.0,  # Default max position
             min_trade_usdt=account.min_trade_notional_usdt,
             persist_state=False,  # Shadow doesn't need state persistence
         )

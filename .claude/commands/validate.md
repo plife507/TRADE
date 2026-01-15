@@ -24,7 +24,7 @@ Run the TRADE validation suite at the specified tier.
 ### TIER 1: Play Normalization
 
 ```bash
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 ```
 
 ### TIER 2: Unit Audits

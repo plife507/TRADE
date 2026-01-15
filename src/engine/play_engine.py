@@ -163,18 +163,18 @@ class PlayEngine:
 
         self.logger.info(
             f"PlayEngine initialized: {self.engine_id} "
-            f"mode={config.mode} symbol={play.symbol}"
+            f"mode={config.mode} symbol={play.symbol_universe[0]}"
         )
 
     @property
     def symbol(self) -> str:
         """Trading symbol."""
-        return self.play.symbol
+        return self.play.symbol_universe[0]
 
     @property
     def timeframe(self) -> str:
         """Execution timeframe."""
-        return self.play.tf
+        return self.play.execution_tf
 
     @property
     def mode(self) -> str:

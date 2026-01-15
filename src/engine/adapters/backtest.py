@@ -56,8 +56,8 @@ class BacktestDataProvider:
         self._current_bar_index: int = -1
 
         # These will be populated during engine initialization
-        self._symbol = play.symbol
-        self._timeframe = play.tf
+        self._symbol = play.symbol_universe[0]
+        self._timeframe = play.execution_tf
 
     @property
     def num_bars(self) -> int:
@@ -253,7 +253,7 @@ class BacktestExchange:
         self._play = play
         self._config = config
         self._sim_exchange = None  # Set by runner
-        self._symbol = play.symbol
+        self._symbol = play.symbol_universe[0]
 
         # Order ID mapping (unified -> sim)
         self._order_id_map: dict[str, str] = {}

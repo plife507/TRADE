@@ -245,21 +245,38 @@ class BacktestRunner:
 
         Loads historical data, computes indicators, and creates
         the FeedStore for O(1) access in the hot loop.
+
+        Uses the existing BacktestEngine infrastructure for data loading.
         """
-        # Import here to avoid circular imports
-        from ...backtest.engine_data_prep import prepare_backtest_frame_impl
-        from ...backtest.engine_feed_builder import build_feed_stores_impl
-        from ...backtest.runtime.feed_store import FeedStore
-
         play = self._engine._play
-        config = self._engine._config
 
-        # For now, raise NotImplementedError - full implementation
-        # requires integrating with BacktestEngine data loading
-        raise NotImplementedError(
-            "Full FeedStore building requires BacktestEngine integration. "
-            "Use pre-built FeedStore for now."
+        # Import here to avoid circular imports
+        from ...backtest.engine_factory import create_engine_from_play
+        from datetime import timedelta
+
+        # Get window from Play or default to last 30 days
+        window_end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        window_start = window_end - timedelta(days=30)
+
+        # Create BacktestEngine to load data
+        # This leverages the existing data loading pipeline
+        old_engine = create_engine_from_play(
+            play,
+            window_start=window_start,
+            window_end=window_end,
         )
+
+        # Run data preparation (loads and computes indicators)
+        old_engine.prepare_backtest_frame()
+        old_engine.build_feed_stores()
+
+        # Extract FeedStore from old engine
+        feed_store = old_engine._exec_feed
+        if feed_store is None:
+            raise RuntimeError("Failed to build FeedStore from Play")
+
+        # Set feed store on data provider
+        self._data_provider.set_feed_store(feed_store)
 
     def _build_sim_exchange(self) -> None:
         """
@@ -276,7 +293,7 @@ class BacktestRunner:
 
         # Create exchange with config
         sim_exchange = SimulatedExchange(
-            symbol=play.symbol,
+            symbol=play.symbol_universe[0],
             initial_capital=config.initial_equity,
             execution_config=ExecutionConfig(
                 slippage_bps=config.slippage_bps,

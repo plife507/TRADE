@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Post-edit hook: Remind to run validation after editing backtest code.
+PostToolUse hook: Remind to run validation after editing backtest code.
+
+Non-blocking reminder (exit 0 with stdout message).
 """
 
 import sys
@@ -8,24 +10,21 @@ import json
 
 
 def main():
-    # Read hook input from stdin
     input_data = json.load(sys.stdin)
 
-    file_path = input_data.get("file_path", "")
+    tool_input = input_data.get("tool_input", {})
+    file_path = tool_input.get("file_path", "")
 
     # Check if this is backtest-related code
     if "src/backtest" in file_path or "src/tools/backtest" in file_path:
-        print(json.dumps({
-            "status": "continue",
-            "message": (
-                "Backtest code modified. Remember to validate:\n"
-                "  python trade_cli.py backtest audit-toolkit\n"
-                "  python trade_cli.py backtest play-normalize-batch --dir strategies/plays/_validation\n"
-                "  python trade_cli.py --smoke backtest"
-            )
-        }))
-    else:
-        print(json.dumps({"status": "continue"}))
+        print(
+            "Backtest code modified. Run /validate or:\n"
+            "  python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays\n"
+            "  python trade_cli.py backtest audit-toolkit\n"
+            "  python trade_cli.py --smoke backtest"
+        )
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":

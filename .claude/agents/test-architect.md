@@ -26,7 +26,7 @@ python trade_cli.py --smoke backtest                 # Integration smoke
 ## Validation Plays
 
 **Locations**:
-- `tests/functional/strategies/plays/` - Functional tests
+- `tests/functional/plays/` - Functional tests
 - `tests/stress/plays/` - Stress tests
 
 ### Play Categories
@@ -146,4 +146,4 @@ Key paths tested by smoke tests:
 - All validation through CLI commands
 - Plays are the test configuration
 - Use DSL v3.0.0 syntax (`actions:`, not `blocks:`)
-- Use tests/functional/strategies/plays/ for test Plays
+- Use tests/functional/plays/ for test Plays

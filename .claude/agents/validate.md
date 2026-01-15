@@ -58,7 +58,7 @@ python -c "from src.backtest import engine" && echo "Engine OK"
 python -c "from src.backtest.indicator_registry import IndicatorRegistry" && echo "Registry OK"
 
 # Quick Play check (just a simple one)
-python trade_cli.py backtest play-normalize --play tests/functional/strategies/plays/T_001_simple_gt.yml
+python trade_cli.py backtest play-normalize --play tests/functional/plays/T_001_simple_gt.yml
 ```
 
 ---
@@ -69,7 +69,7 @@ python trade_cli.py backtest play-normalize --play tests/functional/strategies/p
 **The critical gate.** Validates configs against current engine state.
 
 ```bash
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 ```
 
 ### TIER 2: Unit Audits (No DB)
@@ -83,7 +83,7 @@ python trade_cli.py backtest metadata-smoke     # Metadata invariants
 ### TIER 3: Error Case Validation (No DB)
 ```bash
 # Run error case Plays to verify they fail correctly
-python trade_cli.py backtest preflight --play tests/functional/strategies/plays/E_001_zero_literal.yml
+python trade_cli.py backtest preflight --play tests/functional/plays/E_001_zero_literal.yml
 ```
 
 ### TIER 4+: Integration Tests (DB Required)
@@ -91,20 +91,38 @@ Only run when explicitly requested or testing full flow.
 
 ---
 
-## Validation Plays
+## Test Play Locations (~940 Plays)
 
-**Location**: `tests/functional/strategies/plays/`
+| Directory | Count | Purpose |
+|-----------|-------|---------|
+| `tests/functional/plays/` | ~110 | Core functional tests |
+| `tests/stress/plays/` | ~810 | Stress tests (25+ gate subdirs) |
+| `tests/validation/plays/` | ~20 | Validation Plays (V_100+) |
+
+### Stress Test Gates (`tests/stress/plays/`)
+
+| Gate | Purpose |
+|------|---------|
+| `gate_00_foundation` - `gate_24_*` | DSL feature gates (indicators, operators, windows) |
+| `edge_gate_00_*` - `edge_gate_12_*` | Edge case gates (risk, leverage, sizing) |
+| `struct_gate_*` | Structure tests (swing, fib, zone, trend) |
+| `order_gate_*` | Order/execution tests |
 
 ### Naming Convention
-| Prefix | Category | Examples |
+
+| Prefix | Category | Location |
 |--------|----------|----------|
-| T_* | Basic/trivial DSL tests | T_001_simple_gt, T_030_all_two_conditions |
-| T1-T6_* | Tiered complexity tests | T1_01_ema_level_SOL, T6_03_triple_tf_SOL |
-| E_* | Edge case tests | E_001_zero_literal, E_040_holds_for |
-| F_* | Feature tests | F_001_ema_crossover, F_003_fibonacci_zones |
-| F_IND_* | Indicator coverage | F_IND_001_rsi, F_IND_043_ohlc4 |
-| P_* | Position/trading tests | P_010_short_rsi_overbought |
-| S_* | Stress tests (in tests/stress/plays/) | S_01_btc_single_ema |
+| T_* | Basic/trivial DSL tests | `tests/functional/plays/` |
+| T1-T6_* | Tiered complexity | `tests/functional/plays/` |
+| E_* | Edge cases | `tests/functional/plays/` |
+| F_* | Feature tests | `tests/functional/plays/` |
+| F_IND_* | Indicator coverage (001-043) | `tests/functional/plays/` |
+| P_* | Position/trading tests | `tests/functional/plays/` |
+| V_* | Validation Plays (100+) | `tests/validation/plays/` |
+| S_* | Stress tests | `tests/stress/plays/<gate>/` |
+| S3_* | Structure stress tests | `tests/stress/plays/struct_gate_*/` |
+| S4_* | Order stress tests | `tests/stress/plays/order_gate_*/` |
+| S41_* | Edge stress tests | `tests/stress/plays/edge_gate_*/` |
 
 ---
 
@@ -116,16 +134,16 @@ Only run when explicitly requested or testing full flow.
 python trade_cli.py backtest audit-toolkit
 
 # Verify Plays still validate against registry
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 ```
 
 ### Example 2: Changed engine.py or engine_*.py
 ```bash
 # Normalize first
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 
 # Quick backtest run (if DB available)
-python trade_cli.py backtest run --play tests/functional/strategies/plays/T_001_simple_gt.yml
+python trade_cli.py backtest run --play tests/functional/plays/T_001_simple_gt.yml
 ```
 
 ### Example 3: Changed metrics.py

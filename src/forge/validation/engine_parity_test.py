@@ -92,32 +92,69 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
 
     Returns dict with trade_count, signal_count, final_equity.
 
-    NOTE: This is currently a placeholder. Full parity testing requires:
-    1. Data loading integration (FeedStore -> BacktestDataProvider)
-    2. BacktestRunner wiring with loaded data
-    3. Signal evaluation through PlayEngine.process_bar()
-
-    The framework is in place, but the data pipeline integration is pending.
-    Once integrated, this will validate that the new engine produces
-    identical results to the old BacktestEngine.
+    Uses BacktestRunner to execute the PlayEngine with data loaded
+    via the existing BacktestEngine infrastructure.
     """
-    from ...engine import PlayEngineFactory, BacktestRunner
+    from ...engine import PlayEngineFactory
+    from ...engine.runners import BacktestRunner
+    from ...backtest.engine_factory import create_engine_from_play
 
-    # Create engine with factory
+    # Create PlayEngine with factory
     engine = PlayEngineFactory.create(play, mode="backtest")
 
-    # TODO: Integrate data loading pipeline
-    # 1. Use engine_data_prep to load OHLCV data into FeedStore
-    # 2. Create BacktestDataProvider wrapping FeedStore
-    # 3. Inject into PlayEngine
-    # 4. Run BacktestRunner and collect results
+    # Use BacktestEngine to load data (same as old engine)
+    old_engine = create_engine_from_play(
+        play,
+        window_start=window_start,
+        window_end=window_end,
+    )
+    old_engine.prepare_backtest_frame()
+    old_engine._build_feed_stores()
 
-    # Placeholder until data integration is complete
-    return {
-        "trade_count": 0,  # Placeholder - will match old engine
-        "final_equity": 10000.0,  # Placeholder - will match old engine
-        "trades": [],
-    }
+    # Extract FeedStore and pass to BacktestRunner
+    feed_store = old_engine._exec_feed
+    if feed_store is None:
+        return {
+            "trade_count": 0,
+            "final_equity": play.account.starting_equity_usdt,
+            "trades": [],
+            "error": "Failed to build FeedStore",
+        }
+
+    # Create SimulatedExchange (use same config as old engine)
+    from ...backtest.sim.exchange import SimulatedExchange
+    from ...backtest.sim.types import ExecutionConfig
+
+    sim_exchange = SimulatedExchange(
+        symbol=play.symbol_universe[0],
+        initial_capital=play.account.starting_equity_usdt,
+        execution_config=ExecutionConfig(
+            slippage_bps=play.account.slippage_bps or 5.0,
+        ),
+    )
+
+    # Run with BacktestRunner using pre-built components
+    runner = BacktestRunner(
+        engine=engine,
+        feed_store=feed_store,
+        sim_exchange=sim_exchange,
+    )
+
+    try:
+        result = runner.run()
+        return {
+            "trade_count": result.total_trades,
+            "final_equity": result.final_equity,
+            "trades": result.trades,
+        }
+    except Exception as e:
+        logger.error(f"New engine failed: {e}")
+        return {
+            "trade_count": 0,
+            "final_equity": play.account.starting_equity_usdt,
+            "trades": [],
+            "error": str(e),
+        }
 
 
 def run_parity_test(play_path: str | Path) -> ParityResult:
@@ -130,9 +167,10 @@ def run_parity_test(play_path: str | Path) -> ParityResult:
     Returns:
         ParityResult with comparison
     """
+    import yaml
     from ...backtest.play import Play
 
-    # Load Play
+    # Load Play from file
     play_path = Path(play_path)
     if not play_path.exists():
         return ParityResult(
@@ -149,7 +187,10 @@ def run_parity_test(play_path: str | Path) -> ParityResult:
             message=f"Play file not found: {play_path}",
         )
 
-    play = Play.from_file(play_path)
+    # Load YAML and create Play
+    with open(play_path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+    play = Play.from_dict(raw)
 
     # Define test window (1 month of data)
     window_end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)

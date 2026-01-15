@@ -90,6 +90,6 @@ Specific violations of CLAUDE.md rules.
 ```bash
 # Run before commit
 python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 python trade_cli.py --smoke backtest
 ```

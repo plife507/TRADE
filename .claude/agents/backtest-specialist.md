@@ -31,8 +31,8 @@ You are an expert on the TRADE backtest engine. You understand the engine archit
 
 ### Play System
 - **DSL v3.0.0** - FROZEN as of 2026-01-08
-- YAML configuration in `configs/plays/` (production)
-- Test Plays in `tests/functional/strategies/plays/`
+- YAML configuration in `strategies/plays/` (production)
+- Test Plays in `tests/functional/plays/`
 - Stress test Plays in `tests/stress/plays/`
 
 ## Current Registry Counts
@@ -51,7 +51,7 @@ You are an expert on the TRADE backtest engine. You understand the engine archit
 python trade_cli.py backtest audit-toolkit
 
 # Validate Plays
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 
 # Run structure smoke
 python trade_cli.py backtest structure-smoke
@@ -64,7 +64,7 @@ python trade_cli.py --smoke backtest
 
 1. Add to `src/backtest/indicator_registry.py`
 2. Define in INDICATOR_REGISTRY with output_keys
-3. Create F_IND_* Play in `tests/functional/strategies/plays/`
+3. Create F_IND_* Play in `tests/functional/plays/`
 4. Run audit-toolkit to verify
 
 ### Adding New Structures

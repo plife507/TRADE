@@ -54,8 +54,8 @@ class LiveDataProvider:
         """
         self._play = play
         self._demo = demo
-        self._symbol = play.symbol
-        self._timeframe = play.tf
+        self._symbol = play.symbol_universe[0]
+        self._timeframe = play.execution_tf
 
         # These will be initialized during startup
         self._ws_client = None
@@ -185,7 +185,7 @@ class LiveExchange:
         self._exchange_manager = None
 
         logger.info(
-            f"LiveExchange initialized: {play.symbol} demo={demo}"
+            f"LiveExchange initialized: {play.symbol_universe[0]} demo={demo}"
         )
 
     async def connect(self) -> None:

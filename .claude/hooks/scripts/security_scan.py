@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Pre-edit hook: Block potential secrets in code.
+PreToolUse hook: Block potential secrets in code.
+
+Uses exit code 2 to block tool execution when secrets detected.
 """
 
 import sys
@@ -21,24 +23,27 @@ SECRET_PATTERNS = [
 def main():
     input_data = json.load(sys.stdin)
 
-    content = input_data.get("content", "")
-    file_path = input_data.get("file_path", "")
+    # Get content from Edit or Write tool input
+    tool_input = input_data.get("tool_input", {})
+    content = tool_input.get("content", "") or tool_input.get("new_string", "")
+    file_path = tool_input.get("file_path", "")
 
     # Skip .env files (they're supposed to have secrets)
     if ".env" in file_path:
-        print(json.dumps({"status": "continue"}))
-        return
+        sys.exit(0)
 
     # Check for secret patterns
     for pattern, description in SECRET_PATTERNS:
         if re.search(pattern, content, re.IGNORECASE):
-            print(json.dumps({
-                "status": "block",
-                "reason": f"SECURITY: {description} detected in {file_path}. Use environment variables instead."
-            }))
-            return
+            # Exit code 2 = blocking error, stderr shown to Claude
+            print(
+                f"SECURITY BLOCK: {description} detected in {file_path}. "
+                "Use environment variables instead.",
+                file=sys.stderr
+            )
+            sys.exit(2)
 
-    print(json.dumps({"status": "continue"}))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

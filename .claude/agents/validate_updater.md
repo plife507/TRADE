@@ -23,14 +23,14 @@ Keep the validation system in sync with the evolving codebase. The `validate` ag
 
 | File | Purpose |
 |------|---------|
-| `tests/functional/strategies/plays/*.yml` | Add/update validation Plays |
+| `tests/functional/plays/*.yml` | Add/update validation Plays |
 | `tests/stress/plays/*.yml` | Add/update stress test Plays |
 | `.claude/agents/validate.md` | Update test instructions and expectations |
 | `CLAUDE.md` (validation section) | Update validation documentation |
 
 ## What You Should NOT Modify
 
-- Production Plays in `configs/plays/`
+- Production Plays in `strategies/plays/`
 - Engine code (`src/backtest/`)
 - Core tools (`src/tools/`)
 
@@ -57,7 +57,7 @@ When a new indicator is added to `indicator_registry.py`:
 
 1. **Check current coverage**:
 ```bash
-grep -h "indicator:" tests/functional/strategies/plays/F_IND_*.yml | sort | uniq
+grep -h "indicator:" tests/functional/plays/F_IND_*.yml | sort | uniq
 ```
 
 2. **Create new F_IND_* Play** following this template:
@@ -104,7 +104,7 @@ risk:
 
 4. **Run normalize to verify**:
 ```bash
-python trade_cli.py backtest play-normalize --play tests/functional/strategies/plays/F_IND_XXX_indicator_name.yml
+python trade_cli.py backtest play-normalize --play tests/functional/plays/F_IND_XXX_indicator_name.yml
 ```
 
 ---
@@ -120,7 +120,7 @@ python trade_cli.py backtest audit-toolkit
 
 2. **Run play-normalize-batch** to find broken Plays:
 ```bash
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 ```
 
 3. **Fix affected Plays**:
@@ -140,7 +140,7 @@ When expected test results change:
 2. **Update CLAUDE.md** validation section if tier structure changes
 3. **Verify new expectations**:
 ```bash
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 python trade_cli.py backtest audit-toolkit
 ```
 
@@ -190,7 +190,7 @@ After any update, always verify:
 
 ```bash
 # 1. All Plays normalize
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/strategies/plays
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 
 # 2. Audit still passes
 python trade_cli.py backtest audit-toolkit
