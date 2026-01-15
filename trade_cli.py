@@ -859,12 +859,11 @@ Examples:
     mark_price_parser.add_argument("--sample-bars", type=int, default=500, help="Number of synthetic bars (default: 500)")
     mark_price_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
 
-    # backtest structure-smoke (Market Structure smoke test)
+    # backtest structure-smoke (Structure smoke test via production engine)
     structure_parser = backtest_subparsers.add_parser(
         "structure-smoke",
-        help="Run Market Structure smoke test (validates SwingDetector and TrendClassifier)"
+        help="Run structure smoke test (validates swing, trend, fibonacci, derived_zone via engine)"
     )
-    structure_parser.add_argument("--sample-bars", type=int, default=500, help="Number of synthetic bars (default: 500)")
     structure_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
 
     # backtest math-parity (contract audit + in-memory math parity)
@@ -939,6 +938,37 @@ Examples:
     # viz open
     open_parser = viz_subparsers.add_parser("open", help="Open browser to running server")
     open_parser.add_argument("--port", type=int, default=8765, help="Server port (default: 8765)")
+
+    # ==========================================================================
+    # play subcommand - Unified engine (backtest/demo/live/shadow)
+    # ==========================================================================
+    play_parser = subparsers.add_parser("play", help="Unified Play engine (all modes)")
+    play_subparsers = play_parser.add_subparsers(dest="play_command", help="Play commands")
+
+    # play run - Run Play in any mode
+    play_run_parser = play_subparsers.add_parser("run", help="Run Play in specified mode")
+    play_run_parser.add_argument("--play", required=True, help="Play identifier or YAML path")
+    play_run_parser.add_argument(
+        "--mode",
+        choices=["backtest", "demo", "live", "shadow"],
+        default="backtest",
+        help="Execution mode (default: backtest)"
+    )
+    play_run_parser.add_argument("--dir", dest="plays_dir", help="Override Plays directory")
+    play_run_parser.add_argument("--start", help="Window start (YYYY-MM-DD) for backtest")
+    play_run_parser.add_argument("--end", help="Window end (YYYY-MM-DD) for backtest")
+    play_run_parser.add_argument("--confirm", action="store_true", help="Confirm live trading (required for --mode live)")
+    play_run_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+
+    # play status - Check running instances (future)
+    play_status_parser = play_subparsers.add_parser("status", help="Check running Play instances")
+    play_status_parser.add_argument("--play", help="Filter by Play ID")
+    play_status_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # play stop - Stop running instance (future)
+    play_stop_parser = play_subparsers.add_parser("stop", help="Stop a running Play instance")
+    play_stop_parser.add_argument("--play", required=True, help="Play ID to stop")
+    play_stop_parser.add_argument("--force", action="store_true", help="Force stop (may leave positions open)")
 
     return parser.parse_args()
 
@@ -2021,13 +2051,9 @@ def handle_backtest_mark_price_smoke(args) -> int:
 
 
 def handle_backtest_structure_smoke(args) -> int:
-    """Handle `backtest structure-smoke` subcommand - Market Structure smoke test."""
+    """Handle `backtest structure-smoke` subcommand - Structure smoke test."""
     from src.cli.smoke_tests import run_structure_smoke
-
-    return run_structure_smoke(
-        sample_bars=args.sample_bars,
-        seed=args.seed,
-    )
+    return run_structure_smoke(seed=args.seed)
 
 
 def handle_backtest_audit_snapshot_plumbing(args) -> int:
@@ -2539,6 +2565,179 @@ def handle_viz_open(args) -> int:
     return 0
 
 
+# =============================================================================
+# PLAY SUBCOMMAND HANDLERS (Unified Engine)
+# =============================================================================
+
+def handle_play_run(args) -> int:
+    """
+    Handle `play run` subcommand - run Play in specified mode.
+
+    Modes:
+        backtest: Historical data simulation
+        demo: Real-time data with Bybit demo API (fake money)
+        live: Real-time data with Bybit live API (real money)
+        shadow: Real-time data with signal logging only (no execution)
+    """
+    import json
+    import yaml
+    from pathlib import Path
+    from datetime import datetime, timedelta
+
+    mode = args.mode
+
+    # Safety check for live mode
+    if mode == "live" and not args.confirm:
+        console.print(Panel(
+            "[bold red]⚠️  LIVE TRADING REQUIRES CONFIRMATION ⚠️[/]\n"
+            "[red]You are about to trade with REAL MONEY.[/]\n"
+            "[dim]Add --confirm to proceed.[/]",
+            border_style="red"
+        ))
+        return 1
+
+    # Load Play
+    from src.backtest.play import Play, load_play
+
+    plays_dir = Path(args.plays_dir) if getattr(args, "plays_dir", None) else None
+    play_path = Path(args.play)
+
+    try:
+        if play_path.exists() and play_path.is_file():
+            with open(play_path, "r", encoding="utf-8") as f:
+                raw = yaml.safe_load(f)
+            play = Play.from_dict(raw)
+        else:
+            play = load_play(args.play, base_dir=plays_dir)
+    except Exception as e:
+        console.print(f"[red]Failed to load Play: {e}[/]")
+        return 1
+
+    console.print(Panel(
+        f"[bold cyan]Play: {play.name}[/]\n"
+        f"[dim]Mode: {mode.upper()}[/]\n"
+        f"[dim]Symbol: {play.symbol} | TF: {play.tf}[/]",
+        border_style="cyan"
+    ))
+
+    # Create engine via factory
+    from src.engine import PlayEngineFactory
+
+    try:
+        engine = PlayEngineFactory.create(play, mode=mode)
+    except Exception as e:
+        console.print(f"[red]Failed to create engine: {e}[/]")
+        return 1
+
+    # Mode-specific execution
+    if mode == "backtest":
+        return _run_play_backtest(engine, play, args)
+    elif mode == "shadow":
+        return _run_play_shadow(engine, play, args)
+    elif mode in ("demo", "live"):
+        return _run_play_live(engine, play, args)
+
+    return 0
+
+
+def _run_play_backtest(engine, play, args) -> int:
+    """Run Play in backtest mode."""
+    from datetime import datetime, timedelta
+
+    # Parse dates
+    if args.start:
+        start_ts = _parse_datetime(args.start)
+    else:
+        start_ts = datetime.now() - timedelta(days=30)
+
+    if args.end:
+        end_ts = _parse_datetime(args.end)
+    else:
+        end_ts = datetime.now()
+
+    console.print(f"[dim]Window: {start_ts.date()} to {end_ts.date()}[/]")
+    console.print("[yellow]Note: Backtest mode requires full data loading integration.[/]")
+    console.print("[yellow]Use 'backtest run' for full backtest functionality for now.[/]")
+
+    # BacktestRunner requires FeedStore integration which is pending
+    # For now, return placeholder
+    return 0
+
+
+def _run_play_shadow(engine, play, args) -> int:
+    """Run Play in shadow mode (signals only, no execution)."""
+    import asyncio
+    from src.engine.runners import ShadowRunner
+
+    runner = ShadowRunner(engine)
+
+    console.print("[cyan]Starting shadow mode...[/]")
+    console.print("[dim]Press Ctrl+C to stop[/]")
+
+    try:
+        # Run replay over last N bars (placeholder)
+        stats = asyncio.run(runner.run_replay(start_idx=0, end_idx=100))
+        console.print(f"\n[green]Shadow run complete:[/]")
+        console.print(f"  Bars: {stats.bars_processed}")
+        console.print(f"  Signals: {stats.signals_generated}")
+        console.print(f"  Long: {stats.long_signals} | Short: {stats.short_signals}")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shadow mode stopped by user[/]")
+    except Exception as e:
+        console.print(f"\n[red]Shadow mode error: {e}[/]")
+        return 1
+
+    return 0
+
+
+def _run_play_live(engine, play, args) -> int:
+    """Run Play in live or demo mode."""
+    import asyncio
+    from src.engine.runners import LiveRunner
+
+    mode = args.mode
+    runner = LiveRunner(engine)
+
+    console.print(f"[cyan]Starting {mode.upper()} mode...[/]")
+    console.print("[dim]Press Ctrl+C to stop[/]")
+
+    if mode == "live":
+        console.print("[bold red]⚠️  LIVE TRADING ACTIVE - REAL MONEY ⚠️[/]")
+
+    try:
+        asyncio.run(runner.start())
+        asyncio.run(runner.wait_until_stopped())
+    except KeyboardInterrupt:
+        console.print(f"\n[yellow]{mode.upper()} mode stopped by user[/]")
+        asyncio.run(runner.stop())
+    except Exception as e:
+        console.print(f"\n[red]{mode.upper()} mode error: {e}[/]")
+        return 1
+
+    # Print stats
+    stats = runner.stats
+    console.print(f"\n[green]{mode.upper()} run complete:[/]")
+    console.print(f"  Bars: {stats.bars_processed}")
+    console.print(f"  Signals: {stats.signals_generated}")
+    console.print(f"  Orders: {stats.orders_filled} filled / {stats.orders_failed} failed")
+
+    return 0
+
+
+def handle_play_status(args) -> int:
+    """Handle `play status` subcommand - show running instances."""
+    console.print("[yellow]Play status tracking not yet implemented.[/]")
+    console.print("[dim]This will show running Play instances in future.[/]")
+    return 0
+
+
+def handle_play_stop(args) -> int:
+    """Handle `play stop` subcommand - stop a running instance."""
+    console.print(f"[yellow]Stopping Play '{args.play}' not yet implemented.[/]")
+    console.print("[dim]This will stop running instances in future.[/]")
+    return 0
+
+
 def main():
     """
     Main entry point for trade_cli.
@@ -2614,6 +2813,19 @@ def main():
             sys.exit(handle_viz_open(args))
         else:
             console.print("[yellow]Usage: trade_cli.py viz {serve|open} --help[/]")
+            sys.exit(1)
+
+    # ===== PLAY SUBCOMMANDS =====
+    # Handle unified Play engine commands
+    if args.command == "play":
+        if args.play_command == "run":
+            sys.exit(handle_play_run(args))
+        elif args.play_command == "status":
+            sys.exit(handle_play_status(args))
+        elif args.play_command == "stop":
+            sys.exit(handle_play_stop(args))
+        else:
+            console.print("[yellow]Usage: trade_cli.py play {run|status|stop} --help[/]")
             sys.exit(1)
 
     # ===== SMOKE TEST MODE =====
