@@ -54,6 +54,8 @@ if TYPE_CHECKING:
     from ..backtest.feature_registry import FeatureRegistry
     from ..backtest.incremental.state import MultiTFIncrementalState
     from ..backtest.rules.types import CompiledBlock
+    from ..backtest.execution_validation import PlaySignalEvaluator, EvaluationResult, SignalDecision
+    from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
     from ..core.risk_manager import Signal
 
 
@@ -135,16 +137,24 @@ class PlayEngine:
         self._warmup_complete: bool = False
         self._last_signal_ts: datetime | None = None
 
+        # Store Play and config as private attributes for adapters
+        self._play = play
+        self._data_provider = data_provider
+        self._exchange = exchange
+        self._config = config
+
         # Feature registry from Play
         self._feature_registry: FeatureRegistry | None = play.feature_registry
 
-        # Compiled rules (lazy loaded)
-        self._entry_rules: list[CompiledBlock] | None = None
-        self._exit_rules: list[CompiledBlock] | None = None
+        # Signal evaluator (lazy initialized)
+        self._signal_evaluator: PlaySignalEvaluator | None = None
 
         # Incremental state for structures (swing, trend, zones)
         # This is shared with data_provider in backtest mode
         self._incremental_state: MultiTFIncrementalState | None = None
+
+        # Snapshot view for rule evaluation (built per bar)
+        self._snapshot_view: RuntimeSnapshotView | None = None
 
         # Performance tracking
         self._total_signals: int = 0
@@ -407,70 +417,140 @@ class PlayEngine:
         """
         Evaluate entry/exit rules and generate signal.
 
+        Uses PlaySignalEvaluator to evaluate the Play's action blocks
+        against current market state.
+
         Returns:
             Signal if rule triggered, None otherwise
         """
         from ..core.risk_manager import Signal
+        from ..backtest.execution_validation import (
+            PlaySignalEvaluator,
+            SignalDecision,
+        )
 
-        # No position: evaluate entry rules
-        if position is None:
-            entry_signal = self._evaluate_entry_rules(bar_index, candle)
-            if entry_signal:
-                return entry_signal
+        # Lazy initialize signal evaluator
+        if self._signal_evaluator is None:
+            try:
+                self._signal_evaluator = PlaySignalEvaluator(self.play)
+            except ValueError as e:
+                self.logger.error(f"Failed to create signal evaluator: {e}")
+                return None
 
-        # Has position: evaluate exit rules
-        else:
-            exit_signal = self._evaluate_exit_rules(bar_index, candle, position)
-            if exit_signal:
-                return Signal(
-                    symbol=self.symbol,
-                    direction="FLAT",
-                    size_usdt=position.size_usdt,
-                    confidence=1.0,
-                    metadata={"reason": "exit_rule", "position": position},
-                )
+        # Build snapshot view for evaluation
+        snapshot = self._build_snapshot_view(bar_index, candle)
+        if snapshot is None:
+            return None
+
+        # Determine position state
+        has_position = position is not None
+        position_side = position.side.lower() if position else None
+
+        # Evaluate using PlaySignalEvaluator
+        result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
+
+        # Convert evaluation result to Signal
+        if result.decision == SignalDecision.NO_ACTION:
+            return None
+
+        elif result.decision == SignalDecision.ENTRY_LONG:
+            metadata = {
+                "stop_loss": result.stop_loss_price,
+                "take_profit": result.take_profit_price,
+            }
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
+            return Signal(
+                symbol=self.symbol,
+                direction="LONG",
+                size_usdt=0.0,  # Sized by execute_signal
+                strategy=self.play.name,
+                confidence=1.0,
+                metadata=metadata,
+            )
+
+        elif result.decision == SignalDecision.ENTRY_SHORT:
+            metadata = {
+                "stop_loss": result.stop_loss_price,
+                "take_profit": result.take_profit_price,
+            }
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
+            return Signal(
+                symbol=self.symbol,
+                direction="SHORT",
+                size_usdt=0.0,
+                strategy=self.play.name,
+                confidence=1.0,
+                metadata=metadata,
+            )
+
+        elif result.decision == SignalDecision.EXIT:
+            metadata = {}
+            if result.exit_percent != 100.0:
+                metadata["exit_percent"] = result.exit_percent
+            if result.resolved_metadata:
+                metadata.update(result.resolved_metadata)
+            return Signal(
+                symbol=self.symbol,
+                direction="FLAT",
+                size_usdt=position.size_usdt if position else 0.0,
+                strategy=self.play.name,
+                confidence=1.0,
+                metadata=metadata if metadata else None,
+            )
 
         return None
 
-    def _evaluate_entry_rules(self, bar_index: int, candle: Candle) -> "Signal | None":
+    def _build_snapshot_view(self, bar_index: int, candle: Candle):
         """
-        Evaluate entry rules from Play.
+        Build RuntimeSnapshotView for rule evaluation.
 
-        This is where the Play's compiled rules are evaluated against
-        current market state via the data provider.
-        """
-        # TODO: Implement full rule evaluation using Play's compiled rules
-        # For now, return None (no entry signal)
-        #
-        # The implementation will:
-        # 1. Get snapshot view from data provider
-        # 2. Evaluate entry_long and entry_short rules
-        # 3. Apply position policy (long_only, short_only, long_short)
-        # 4. Return Signal if rules pass
+        This creates a snapshot that PlaySignalEvaluator can use to
+        evaluate rules. In backtest mode, this wraps the FeedStore.
 
-        return None
-
-    def _evaluate_exit_rules(
-        self,
-        bar_index: int,
-        candle: Candle,
-        position: Position,
-    ) -> bool:
-        """
-        Evaluate exit rules from Play.
+        Args:
+            bar_index: Current bar index
+            candle: Current candle data
 
         Returns:
-            True if exit rule triggered
+            RuntimeSnapshotView or compatible snapshot object
         """
-        # TODO: Implement full rule evaluation using Play's compiled rules
-        # For now, return False (no exit signal)
-        #
-        # The implementation will:
-        # 1. Get snapshot view from data provider
-        # 2. Evaluate exit_long or exit_short rules based on position
-        # 3. Return True if rules pass
+        # In backtest mode, we need to build a proper RuntimeSnapshotView
+        # For now, this requires the BacktestDataProvider to have FeedStore set
+        from .adapters.backtest import BacktestDataProvider
 
-        return False
+        if isinstance(self._data_provider, BacktestDataProvider):
+            if self._data_provider._feed_store is None:
+                return None
+
+            # Import snapshot view builder
+            from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
+
+            # Build minimal snapshot for rule evaluation
+            # Full implementation would use engine_snapshot.build_snapshot_view_impl
+            feed_store = self._data_provider._feed_store
+
+            # Create snapshot view
+            snapshot = RuntimeSnapshotView(
+                exec_feed=feed_store,
+                htf_feed=None,
+                mtf_feed=None,
+                exec_idx=bar_index,
+                htf_idx=0,
+                mtf_idx=0,
+                history_config=None,
+                is_history_ready=True,
+                exchange=self._exchange._sim_exchange if hasattr(self._exchange, '_sim_exchange') else None,
+                risk_profile=None,
+                feature_registry=self._feature_registry,
+                incremental_state=self._incremental_state,
+            )
+            return snapshot
+
+        # Live mode would build from LiveDataProvider
+        # For now, return None (not implemented)
+        return None
 
     def _size_position(self, signal: "Signal") -> float:
         """
