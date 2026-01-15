@@ -9,6 +9,7 @@ Handles:
 from typing import TYPE_CHECKING
 
 from ..exchanges.bybit_client import BybitAPIError
+from . import exchange_instruments as inst
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager, OrderResult
@@ -25,18 +26,14 @@ def limit_buy(
 ) -> "OrderResult":
     """Place a limit buy order."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
     from . import exchange_websocket as ws
-    
+
     try:
         manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
-        
+
         price = inst.round_price(manager, symbol, price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
-        
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
         
         result = manager.bybit.create_order(
             symbol=symbol, side="Buy", order_type="Limit", qty=qty,
@@ -55,6 +52,9 @@ def limit_buy(
             raw_response=result,
         )
         
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Limit buy failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -74,18 +74,14 @@ def limit_sell(
 ) -> "OrderResult":
     """Place a limit sell order (short or close long)."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
     from . import exchange_websocket as ws
-    
+
     try:
         manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
-        
+
         price = inst.round_price(manager, symbol, price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
-        
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
         
         result = manager.bybit.create_order(
             symbol=symbol, side="Sell", order_type="Limit", qty=qty,
@@ -104,6 +100,9 @@ def limit_sell(
             raw_response=result,
         )
         
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Limit sell failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -127,16 +126,12 @@ def limit_buy_with_tpsl(
 ) -> "OrderResult":
     """Place a limit buy order with TP/SL."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
-    
+
     try:
         manager._validate_trading_operation()
-        
+
         price = inst.round_price(manager, symbol, price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
-        
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
         
         result = manager.bybit.create_order(
             symbol=symbol, side="Buy", order_type="Limit", qty=qty,
@@ -161,6 +156,9 @@ def limit_buy_with_tpsl(
             stop_loss=stop_loss, raw_response=result,
         )
         
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Limit buy with TP/SL failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -184,16 +182,12 @@ def limit_sell_with_tpsl(
 ) -> "OrderResult":
     """Place a limit sell order with TP/SL (short)."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
-    
+
     try:
         manager._validate_trading_operation()
-        
+
         price = inst.round_price(manager, symbol, price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
-        
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
         
         result = manager.bybit.create_order(
             symbol=symbol, side="Sell", order_type="Limit", qty=qty,
@@ -218,6 +212,9 @@ def limit_sell_with_tpsl(
             stop_loss=stop_loss, raw_response=result,
         )
         
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Limit sell with TP/SL failed: {e}")
         return OrderResult(success=False, error=str(e))

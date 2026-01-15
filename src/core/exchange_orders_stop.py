@@ -11,6 +11,7 @@ from typing import Any, TYPE_CHECKING
 from decimal import Decimal, ROUND_DOWN
 
 from ..exchanges.bybit_client import BybitAPIError
+from . import exchange_instruments as inst
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager, OrderResult, TriggerDirection
@@ -28,17 +29,13 @@ def stop_market_buy(
 ) -> "OrderResult":
     """Place a conditional market buy order (triggers at price)."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
-    
+
     try:
         manager._validate_trading_operation()
-        
+
         price = manager.get_price(symbol)
         trigger_price = inst.round_price(manager, symbol, trigger_price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
-        
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
         
         result = manager.bybit.session.place_order(
             category="linear", symbol=symbol, side="Buy", orderType="Market",
@@ -60,6 +57,9 @@ def stop_market_buy(
             raw_response=result_data,
         )
         
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Stop market buy failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -80,17 +80,13 @@ def stop_market_sell(
 ) -> "OrderResult":
     """Place a conditional market sell order (triggers at price)."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
-    
+
     try:
         manager._validate_trading_operation()
-        
+
         price = manager.get_price(symbol)
         trigger_price = inst.round_price(manager, symbol, trigger_price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
-        
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
         
         result = manager.bybit.session.place_order(
             category="linear", symbol=symbol, side="Sell", orderType="Market",
@@ -112,6 +108,9 @@ def stop_market_sell(
             raw_response=result_data,
         )
         
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Stop market sell failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -134,17 +133,13 @@ def stop_limit_buy(
 ) -> "OrderResult":
     """Place a conditional limit buy order."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
-    
+
     try:
         manager._validate_trading_operation()
-        
+
         trigger_price = inst.round_price(manager, symbol, trigger_price)
         limit_price = inst.round_price(manager, symbol, limit_price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, limit_price)
-        
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
         
         result = manager.bybit.session.place_order(
             category="linear", symbol=symbol, side="Buy", orderType="Limit",
@@ -166,6 +161,9 @@ def stop_limit_buy(
             reduce_only=reduce_only, raw_response=result_data,
         )
         
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Stop limit buy failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -188,17 +186,13 @@ def stop_limit_sell(
 ) -> "OrderResult":
     """Place a conditional limit sell order."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
-    
+
     try:
         manager._validate_trading_operation()
-        
+
         trigger_price = inst.round_price(manager, symbol, trigger_price)
         limit_price = inst.round_price(manager, symbol, limit_price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, limit_price)
-        
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
         
         result = manager.bybit.session.place_order(
             category="linear", symbol=symbol, side="Sell", orderType="Limit",
@@ -220,6 +214,9 @@ def stop_limit_sell(
             reduce_only=reduce_only, raw_response=result_data,
         )
         
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Stop limit sell failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -286,28 +283,24 @@ def open_position_with_rr(
 ) -> dict[str, Any]:
     """Open a position with RR-based stop loss and multiple take profits."""
     from .exchange_manager import TriggerDirection
-    from . import exchange_instruments as inst
     from . import exchange_orders_market as market
     import time
-    
+
     result = {"success": False, "position_order": None, "tp_orders": [], "levels": {}, "error": None}
-    
+
     try:
         try:
             manager.set_leverage(symbol, leverage)
         except Exception as e:
             if "not modified" not in str(e).lower():
                 manager.logger.warning(f"Leverage set warning: {e}")
-        
+
         entry_price = manager.get_price(symbol)
         is_long = side == "Buy"
-        
+
         notional_usd = margin_usd * leverage
+        # OrderSizeError from calculate_qty will be caught and detailed message used
         qty = inst.calculate_qty(manager, symbol, notional_usd, entry_price)
-        
-        if qty <= 0:
-            result["error"] = f"Order size too small for {symbol}"
-            return result
         
         # Calculate stop loss price
         sl_price_pct = stop_loss_roi_pct / leverage / 100

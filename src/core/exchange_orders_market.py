@@ -9,6 +9,7 @@ Handles:
 from typing import TYPE_CHECKING
 
 from ..exchanges.bybit_client import BybitAPIError
+from . import exchange_instruments as inst
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager, OrderResult
@@ -40,7 +41,6 @@ def _extract_fill_price(result: dict, fallback_price: float) -> float:
 def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "OrderResult":
     """Place a market buy order."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
     from . import exchange_websocket as ws
 
     try:
@@ -49,9 +49,6 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "O
 
         quote_price = manager.get_price(symbol)
         qty = inst.calculate_qty(manager, symbol, usd_amount, quote_price)
-
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
 
         result = manager.bybit.create_order(
             symbol=symbol, side="Buy", order_type="Market", qty=qty,
@@ -69,6 +66,9 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "O
             raw_response=result,
         )
 
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Market buy failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -80,7 +80,6 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "O
 def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "OrderResult":
     """Place a market sell order (short)."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
     from . import exchange_websocket as ws
 
     try:
@@ -89,9 +88,6 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "
 
         quote_price = manager.get_price(symbol)
         qty = inst.calculate_qty(manager, symbol, usd_amount, quote_price)
-
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
 
         result = manager.bybit.create_order(
             symbol=symbol, side="Sell", order_type="Market", qty=qty,
@@ -109,6 +105,9 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "
             raw_response=result,
         )
 
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Market sell failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -127,7 +126,6 @@ def market_buy_with_tpsl(
 ) -> "OrderResult":
     """Place a market buy order with TP/SL."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
     from . import exchange_websocket as ws
 
     try:
@@ -136,9 +134,6 @@ def market_buy_with_tpsl(
 
         quote_price = manager.get_price(symbol)
         qty = inst.calculate_qty(manager, symbol, usd_amount, quote_price)
-
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
 
         result = manager.bybit.create_order(
             symbol=symbol, side="Buy", order_type="Market", qty=qty,
@@ -162,6 +157,9 @@ def market_buy_with_tpsl(
             raw_response=result,
         )
 
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Market buy with TP/SL failed: {e}")
         return OrderResult(success=False, error=str(e))
@@ -180,7 +178,6 @@ def market_sell_with_tpsl(
 ) -> "OrderResult":
     """Place a market sell order with TP/SL (short)."""
     from .exchange_manager import OrderResult
-    from . import exchange_instruments as inst
     from . import exchange_websocket as ws
 
     try:
@@ -189,9 +186,6 @@ def market_sell_with_tpsl(
 
         quote_price = manager.get_price(symbol)
         qty = inst.calculate_qty(manager, symbol, usd_amount, quote_price)
-
-        if qty <= 0:
-            return OrderResult(success=False, error=f"Order size too small for {symbol}")
 
         result = manager.bybit.create_order(
             symbol=symbol, side="Sell", order_type="Market", qty=qty,
@@ -215,6 +209,9 @@ def market_sell_with_tpsl(
             raw_response=result,
         )
 
+    except inst.OrderSizeError as e:
+        manager.logger.warning(str(e))
+        return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
         manager.logger.error(f"Market sell with TP/SL failed: {e}")
         return OrderResult(success=False, error=str(e))

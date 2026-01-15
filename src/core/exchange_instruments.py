@@ -91,6 +91,22 @@ def get_min_qty(manager: "ExchangeManager", symbol: str) -> float:
     return float(lot_size.get("minOrderQty", "0.001"))
 
 
+class OrderSizeError(Exception):
+    """Exception raised when order size is below minimum."""
+
+    def __init__(self, symbol: str, requested_usd: float, min_qty: float, min_usd: float, price: float):
+        self.symbol = symbol
+        self.requested_usd = requested_usd
+        self.min_qty = min_qty
+        self.min_usd = min_usd
+        self.price = price
+        super().__init__(
+            f"Order size too small for {symbol}: "
+            f"requested ${requested_usd:.2f}, minimum is ${min_usd:.2f} "
+            f"({min_qty} units @ ${price:.2f})"
+        )
+
+
 def calculate_qty(
     manager: "ExchangeManager",
     symbol: str,
@@ -99,40 +115,47 @@ def calculate_qty(
 ) -> float:
     """
     Calculate order quantity from USD amount.
-    
+
     Args:
         manager: ExchangeManager instance
         symbol: Trading symbol
         usd_amount: Amount in USD
         price: Price to use (None = current market price)
-    
+
     Returns:
         Quantity in contracts/coins, rounded to valid precision
+
+    Raises:
+        OrderSizeError: If USD amount results in qty below minimum
     """
     if price is None:
         price = manager.get_price(symbol)
-    
+
     if price <= 0:
         raise ValueError(f"Invalid price for {symbol}: {price}")
-    
+
     # Get instrument info for precision
     info = get_instrument_info(manager, symbol)
     lot_size = info.get("lotSizeFilter", {})
-    
+
     qty_step = float(lot_size.get("qtyStep", "0.001"))
     min_qty = float(lot_size.get("minOrderQty", "0.001"))
-    
+
     # Calculate base quantity
     qty = usd_amount / price
-    
+
     # Round down to step size
     qty = float(Decimal(str(qty)).quantize(Decimal(str(qty_step)), rounding=ROUND_DOWN))
-    
-    # Ensure minimum
+
+    # Ensure minimum - raise detailed error
     if qty < min_qty:
-        manager.logger.warning(f"Order size {qty} below minimum {min_qty} for {symbol}")
-        return 0.0
-    
+        min_usd = min_qty * price
+        manager.logger.warning(
+            f"Order size {qty} below minimum {min_qty} for {symbol} "
+            f"(min ${min_usd:.2f} at price ${price:.2f})"
+        )
+        raise OrderSizeError(symbol, usd_amount, min_qty, min_usd, price)
+
     return qty
 
 
