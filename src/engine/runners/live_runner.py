@@ -93,14 +93,13 @@ class LiveRunner:
     Runner that executes PlayEngine in live/demo mode.
 
     Responsibilities:
-    - Subscribe to WebSocket candle stream
+    - Subscribe to WebSocket candle stream via RealtimeState
     - Process candles through engine on close
     - Execute signals through exchange adapter
     - Handle reconnection on WebSocket disconnect
     - Report status and statistics
 
-    The runner maintains connection to the exchange and
-    processes events in an async event loop.
+    Integrates with RealtimeBootstrap/RealtimeState for candle events.
     """
 
     def __init__(
@@ -140,9 +139,12 @@ class LiveRunner:
         self._stop_event = asyncio.Event()
         self._reconnect_attempts = 0
 
-        # WebSocket client (will be initialized on start)
-        self._ws_client = None
+        # RealtimeState integration
+        self._realtime_state = None
+        self._bootstrap = None
+        self._candle_queue: asyncio.Queue = asyncio.Queue()
         self._subscription_task: asyncio.Task | None = None
+        self._kline_callback_registered = False
 
     @property
     def state(self) -> RunnerState:
@@ -233,13 +235,35 @@ class LiveRunner:
 
     async def _connect(self) -> None:
         """
-        Connect to data provider (WebSocket).
+        Connect to data provider (WebSocket) and RealtimeState.
 
-        This will be implemented when LiveDataProvider is complete.
+        Sets up candle close callbacks for processing through the engine.
         """
-        # Import live data provider
         from ..adapters.live import LiveDataProvider
+        from ...data.realtime_state import get_realtime_state, EventType
+        from ...data.realtime_bootstrap import get_realtime_bootstrap
 
+        # Connect to RealtimeState for events
+        self._realtime_state = get_realtime_state()
+        self._bootstrap = get_realtime_bootstrap()
+
+        # Start RealtimeBootstrap if not already running
+        if not self._bootstrap.is_running:
+            self._bootstrap.start(
+                symbols=[self._engine.symbol],
+                include_private=True,  # Need private for position tracking
+            )
+
+        # Ensure our symbol is subscribed
+        self._bootstrap.ensure_symbol_subscribed(self._engine.symbol)
+
+        # Register callback for candle closes
+        if not self._kline_callback_registered:
+            self._realtime_state.on_kline_update(self._on_kline_update)
+            self._kline_callback_registered = True
+            logger.info(f"Registered kline callback for {self._engine.symbol}")
+
+        # Connect LiveDataProvider
         data_provider = self._engine._data_provider
         if isinstance(data_provider, LiveDataProvider):
             await data_provider.connect()
@@ -250,13 +274,78 @@ class LiveRunner:
                 "not LiveDataProvider. WebSocket connection skipped."
             )
 
+        # Connect LiveExchange
+        from ..adapters.live import LiveExchange
+        exchange = self._engine._exchange
+        if isinstance(exchange, LiveExchange):
+            await exchange.connect()
+
+    def _on_kline_update(self, kline_data) -> None:
+        """
+        Handle kline update from RealtimeState.
+
+        Only processes closed candles matching our symbol and timeframe.
+        """
+        # Filter for our symbol and timeframe
+        if kline_data.symbol != self._engine.symbol:
+            return
+
+        # Map timeframe (Bybit uses minutes for most TFs)
+        expected_tf = self._engine.timeframe.lower()
+        kline_tf = kline_data.interval.lower() if kline_data.interval else ""
+
+        # Convert to comparable format
+        tf_map = {
+            "1": "1m", "3": "3m", "5": "5m", "15": "15m", "30": "30m",
+            "60": "1h", "120": "2h", "240": "4h", "360": "6h",
+            "720": "12h", "d": "d", "w": "w", "m": "m",
+        }
+        kline_tf_norm = tf_map.get(kline_tf, kline_tf)
+
+        if kline_tf_norm != expected_tf:
+            return
+
+        # Only process closed candles
+        if not kline_data.is_closed:
+            return
+
+        # Convert to Candle and enqueue
+        from ..interfaces import Candle
+        from datetime import datetime
+
+        try:
+            candle = Candle(
+                ts_open=datetime.fromtimestamp(kline_data.start_time / 1000.0),
+                ts_close=datetime.fromtimestamp(kline_data.end_time / 1000.0) if kline_data.end_time else datetime.now(),
+                open=kline_data.open,
+                high=kline_data.high,
+                low=kline_data.low,
+                close=kline_data.close,
+                volume=kline_data.volume,
+            )
+
+            # Add to queue (non-blocking)
+            try:
+                self._candle_queue.put_nowait(candle)
+            except asyncio.QueueFull:
+                logger.warning("Candle queue full, dropping oldest")
+
+        except Exception as e:
+            logger.warning(f"Failed to convert kline to candle: {e}")
+
     async def _disconnect(self) -> None:
         """Disconnect from data provider."""
-        from ..adapters.live import LiveDataProvider
+        from ..adapters.live import LiveDataProvider, LiveExchange
 
+        # Disconnect LiveDataProvider
         data_provider = self._engine._data_provider
         if isinstance(data_provider, LiveDataProvider):
             await data_provider.disconnect()
+
+        # Disconnect LiveExchange
+        exchange = self._engine._exchange
+        if isinstance(exchange, LiveExchange):
+            await exchange.disconnect()
 
     async def _process_loop(self) -> None:
         """
@@ -295,12 +384,29 @@ class LiveRunner:
         """
         Wait for next candle close.
 
-        Returns candle data when available, None on timeout/error.
+        Returns candle data when available, None on timeout.
         """
-        # This will integrate with LiveDataProvider's candle stream
-        # For now, return None (placeholder)
-        await asyncio.sleep(1.0)  # Placeholder wait
-        return None
+        try:
+            # Wait for candle from queue with timeout
+            # Use timeout to allow periodic health checks
+            candle = await asyncio.wait_for(
+                self._candle_queue.get(),
+                timeout=60.0,  # 1 minute timeout
+            )
+            return candle
+
+        except asyncio.TimeoutError:
+            # No candle received in timeout period
+            # This is normal during quiet periods
+            return None
+
+        except asyncio.CancelledError:
+            # Runner is stopping
+            raise
+
+        except Exception as e:
+            logger.warning(f"Error waiting for candle: {e}")
+            return None
 
     async def _process_candle(self, candle) -> None:
         """
@@ -309,15 +415,40 @@ class LiveRunner:
         Args:
             candle: Candle data from WebSocket
         """
+        from ..adapters.live import LiveDataProvider
+
         self._stats.bars_processed += 1
-        self._stats.last_candle_ts = datetime.now()
+        self._stats.last_candle_ts = candle.ts_close
+
+        # Update data provider with new candle
+        data_provider = self._engine._data_provider
+        if isinstance(data_provider, LiveDataProvider):
+            data_provider.on_candle_close(candle)
+
+        # Check if data provider is ready (warmup complete)
+        if not data_provider.is_ready():
+            logger.debug(
+                f"Data provider not ready (warmup), skipping signal evaluation. "
+                f"Bars: {data_provider.num_bars}"
+            )
+            return
 
         # Process through engine (use -1 for latest in live mode)
-        signal = self._engine.process_bar(-1)
+        try:
+            signal = self._engine.process_bar(-1)
+        except Exception as e:
+            logger.error(f"Error processing bar: {e}")
+            self._stats.errors.append(f"Process error: {e}")
+            return
 
         if signal is not None:
             self._stats.signals_generated += 1
             self._stats.last_signal_ts = datetime.now()
+
+            logger.info(
+                f"Signal generated: {signal.direction} {self._engine.symbol} "
+                f"at {candle.ts_close}"
+            )
 
             # Notify callback
             if self._on_signal:

@@ -259,6 +259,19 @@ class BacktestExchange:
         self._order_id_map: dict[str, str] = {}
         self._order_counter: int = 0
 
+        # Deterministic timestamp for backtest (set by runner each bar)
+        self._current_bar_ts: datetime | None = None
+
+    def set_current_bar_timestamp(self, ts: datetime) -> None:
+        """Set current bar timestamp for deterministic order submission."""
+        self._current_bar_ts = ts
+
+    def _get_order_timestamp(self) -> datetime:
+        """Get timestamp for order submission (deterministic in backtest)."""
+        if self._current_bar_ts is not None:
+            return self._current_bar_ts
+        return datetime.now()  # Fallback for cases where ts not set
+
     def set_simulated_exchange(self, sim_exchange) -> None:
         """
         Set the SimulatedExchange after initialization.
@@ -300,7 +313,7 @@ class BacktestExchange:
                     size_usdt=order.size_usdt,
                     stop_loss=order.stop_loss,
                     take_profit=order.take_profit,
-                    timestamp=datetime.now(),
+                    timestamp=self._get_order_timestamp(),
                 )
             elif order.order_type.upper() == "LIMIT":
                 if order.limit_price is None:
@@ -314,7 +327,7 @@ class BacktestExchange:
                     limit_price=order.limit_price,
                     stop_loss=order.stop_loss,
                     take_profit=order.take_profit,
-                    timestamp=datetime.now(),
+                    timestamp=self._get_order_timestamp(),
                 )
             elif order.order_type.upper() in ("STOP", "STOP_MARKET"):
                 if order.trigger_price is None:
@@ -329,7 +342,7 @@ class BacktestExchange:
                     limit_price=order.limit_price,
                     stop_loss=order.stop_loss,
                     take_profit=order.take_profit,
-                    timestamp=datetime.now(),
+                    timestamp=self._get_order_timestamp(),
                 )
             else:
                 return OrderResult(

@@ -320,7 +320,8 @@ class BacktestRunner:
         """
         Set the bar context on the exchange before signal processing.
 
-        This allows orders to be submitted with proper price context.
+        This allows orders to be submitted with proper price context
+        and ensures deterministic timestamps.
 
         Args:
             bar_idx: Current bar index
@@ -330,6 +331,10 @@ class BacktestRunner:
             return
 
         sim_exchange.set_bar_context(bar_idx)
+
+        # Set deterministic timestamp on exchange adapter
+        candle = self._data_provider.get_candle(bar_idx)
+        self._exchange_adapter.set_current_bar_timestamp(candle.ts_close)
 
     def _process_bar_fills(self, bar_idx: int) -> None:
         """
