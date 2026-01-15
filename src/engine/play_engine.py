@@ -158,6 +158,10 @@ class PlayEngine:
         self._mtf_feed = None  # FeedStore for MTF indicators
         self._tf_mapping: dict[str, str] = {}  # TF mapping from Play config
 
+        # HTF/MTF forward-fill indices (tracked dynamically like old engine)
+        self._current_htf_idx: int = 0
+        self._current_mtf_idx: int = 0
+
         # Snapshot view for rule evaluation (built per bar)
         self._snapshot_view: RuntimeSnapshotView | None = None
 
@@ -237,12 +241,17 @@ class PlayEngine:
             self.logger.warning(f"Bar index {bar_index} out of bounds")
             return None
 
+        # Update HTF/MTF indices (forward-fill logic)
+        self._update_htf_mtf_indices(candle)
+
         # 1. Update incremental state (structures)
         if self._incremental_state is not None:
             self._update_incremental_state(bar_index, candle)
 
         # 2. Check readiness (warmup complete, data available)
         if not self._is_ready():
+            if bar_index == 100:  # Debug: log early on why not ready
+                self.logger.debug(f"Not ready at bar {bar_index}: data.is_ready={self.data.is_ready()}")
             return None
 
         # 3. Step exchange (process pending orders, check TP/SL)
@@ -421,6 +430,43 @@ class PlayEngine:
         self.logger.debug(f"Warmup complete at bar {self._current_bar_index}")
         return True
 
+    def _update_htf_mtf_indices(self, candle: Candle) -> None:
+        """
+        Update HTF/MTF forward-fill indices based on current candle.
+
+        Uses the same logic as the old BacktestEngine to determine when
+        HTF/MTF bars have closed and update the forward-fill indices.
+
+        This ensures that HTF/MTF indicator values are properly forward-filled
+        until their bar closes, preventing lookahead.
+        """
+        # Skip if no HTF/MTF feeds
+        if self._htf_feed is None and self._mtf_feed is None:
+            return
+
+        # Get exec feed for comparison
+        from .adapters.backtest import BacktestDataProvider
+        if not isinstance(self._data_provider, BacktestDataProvider):
+            return
+
+        exec_feed = self._data_provider._feed_store
+        if exec_feed is None:
+            return
+
+        exec_ts_close = candle.ts_close
+
+        # Check if HTF bar closed at this exec bar close
+        if self._htf_feed is not None and self._htf_feed is not exec_feed:
+            htf_idx = self._htf_feed.get_idx_at_ts_close(exec_ts_close)
+            if htf_idx is not None and 0 <= htf_idx < self._htf_feed.length:
+                self._current_htf_idx = htf_idx
+
+        # Check if MTF bar closed at this exec bar close
+        if self._mtf_feed is not None and self._mtf_feed is not exec_feed:
+            mtf_idx = self._mtf_feed.get_idx_at_ts_close(exec_ts_close)
+            if mtf_idx is not None and 0 <= mtf_idx < self._mtf_feed.length:
+                self._current_mtf_idx = mtf_idx
+
     def _update_incremental_state(self, bar_index: int, candle: Candle) -> None:
         """Update incremental structure state with new bar data."""
         from ..backtest.incremental.base import BarData
@@ -481,6 +527,8 @@ class PlayEngine:
         # Build snapshot view for evaluation
         snapshot = self._build_snapshot_view(bar_index, candle)
         if snapshot is None:
+            if bar_index % 500 == 0:  # Debug periodically
+                self.logger.debug(f"Snapshot is None at bar {bar_index}")
             return None
 
         # Determine position state
@@ -579,15 +627,16 @@ class PlayEngine:
                 tf_mapping=self._tf_mapping,
             )
 
-            # Compute HTF/MTF indices from bar_index using alignment arrays
+            # Use dynamically tracked HTF/MTF indices (updated by _update_htf_mtf_indices)
+            # These are forward-fill indices - they hold the last HTF/MTF bar that closed
+            # IMPORTANT: In single-TF mode where htf_feed IS exec_feed, pass None
+            # so RuntimeSnapshotView uses exec_ctx instead of creating a separate context
             htf_idx = None
             mtf_idx = None
-            if self._htf_feed is not None and hasattr(feed_store, 'htf_alignment'):
-                if feed_store.htf_alignment is not None and bar_index < len(feed_store.htf_alignment):
-                    htf_idx = int(feed_store.htf_alignment[bar_index])
-            if self._mtf_feed is not None and hasattr(feed_store, 'mtf_alignment'):
-                if feed_store.mtf_alignment is not None and bar_index < len(feed_store.mtf_alignment):
-                    mtf_idx = int(feed_store.mtf_alignment[bar_index])
+            if self._htf_feed is not None and self._htf_feed is not feed_store:
+                htf_idx = self._current_htf_idx
+            if self._mtf_feed is not None and self._mtf_feed is not feed_store:
+                mtf_idx = self._current_mtf_idx
 
             # Get prev_last_price for crossover operators
             prev_last_price = None
