@@ -355,9 +355,8 @@ STRUCTURE_PUBLIC_FIELDS = {
 # Enum Token Maps (Stage 3.3)
 # =============================================================================
 
-# Import structure enums and zone fields from source of truth
+# Import structure enums from source of truth
 from src.backtest.structure_types import TrendState, ZoneState
-from src.backtest.market_structure.detectors import ZONE_PUBLIC_FIELDS
 from enum import Enum as EnumType
 
 # Map field names to their enum classes

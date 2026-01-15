@@ -55,7 +55,6 @@ from .engine_feed_builder import (
     build_feed_stores_impl,
     build_quote_feed_impl,
     get_quote_at_exec_close,
-    build_structures_into_feed,
     build_market_data_arrays_impl,
 )
 
@@ -703,39 +702,27 @@ class BacktestEngine:
 
     def _build_structures(self) -> None:
         """
-        Build market structures into exec FeedStore.
+        Initialize structure detection state.
 
-        Checks if Play uses the Feature Registry with structures section.
-        If so, incremental state is used (built in run()) and batch building is skipped.
-        Otherwise, falls back to deprecated batch structure building with warning.
+        Structures are now always handled via incremental state (built in run()).
+        This method logs whether structures are configured in the Play.
 
         Called from _build_feed_stores() after exec/htf/mtf feeds are built.
         """
         if self._play is None:
             return
 
-        if self._exec_feed is None:
-            self.logger.warning("Cannot build structures: no exec feed")
-            return
-
         # Check if Play uses the Feature Registry with structures
-        # If so, skip batch build - incremental state is built in run()
         registry = self._feature_registry
         if registry is None and self._play is not None:
             registry = self._play.feature_registry
 
-        has_incremental_structures = registry is not None and len(registry.get_structures()) > 0
+        has_structures = registry is not None and len(registry.get_structures()) > 0
 
-        if has_incremental_structures:
+        if has_structures:
             self.logger.debug("Play uses 'structures:' section - using incremental state")
-            return
-
-        # Fallback: use batch structure building (emits deprecation warning if present)
-        build_structures_into_feed(
-            exec_feed=self._exec_feed,
-            play=self._play,
-            logger=self.logger,
-        )
+        else:
+            self.logger.debug("No structures configured in Play")
 
     def _build_quote_feed(self) -> None:
         """
