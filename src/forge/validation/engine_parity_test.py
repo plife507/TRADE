@@ -91,21 +91,31 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
     Run Play with the new unified PlayEngine.
 
     Returns dict with trade_count, signal_count, final_equity.
+
+    NOTE: This is currently a placeholder. Full parity testing requires:
+    1. Data loading integration (FeedStore -> BacktestDataProvider)
+    2. BacktestRunner wiring with loaded data
+    3. Signal evaluation through PlayEngine.process_bar()
+
+    The framework is in place, but the data pipeline integration is pending.
+    Once integrated, this will validate that the new engine produces
+    identical results to the old BacktestEngine.
     """
     from ...engine import PlayEngineFactory, BacktestRunner
 
     # Create engine with factory
     engine = PlayEngineFactory.create(play, mode="backtest")
 
-    # For now, we need to manually set up the adapters
-    # This will be cleaner once BacktestRunner is fully integrated
-    # with the data loading pipeline
+    # TODO: Integrate data loading pipeline
+    # 1. Use engine_data_prep to load OHLCV data into FeedStore
+    # 2. Create BacktestDataProvider wrapping FeedStore
+    # 3. Inject into PlayEngine
+    # 4. Run BacktestRunner and collect results
 
-    # Note: The new engine is not fully integrated yet
-    # This test currently validates the interface, not full parity
+    # Placeholder until data integration is complete
     return {
-        "trade_count": 0,  # Placeholder
-        "final_equity": 10000.0,  # Placeholder
+        "trade_count": 0,  # Placeholder - will match old engine
+        "final_equity": 10000.0,  # Placeholder - will match old engine
         "trades": [],
     }
 
