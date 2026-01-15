@@ -24,6 +24,7 @@ Usage:
 
 from .backtest_runner import BacktestRunner, BacktestResult
 from .shadow_runner import ShadowRunner, ShadowStats, ShadowSignal
+from .live_runner import LiveRunner, LiveRunnerStats, RunnerState
 
 __all__ = [
     "BacktestRunner",
@@ -31,5 +32,7 @@ __all__ = [
     "ShadowRunner",
     "ShadowStats",
     "ShadowSignal",
-    # "LiveRunner",      # Phase 5.2
+    "LiveRunner",
+    "LiveRunnerStats",
+    "RunnerState",
 ]
