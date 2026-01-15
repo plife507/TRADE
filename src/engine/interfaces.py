@@ -72,6 +72,7 @@ class OrderResult:
 
     success: bool
     order_id: str | None = None
+    exchange_order_id: str | None = None  # Exchange-native order ID
     fill_price: float | None = None
     fill_qty: float | None = None
     fill_usdt: float | None = None

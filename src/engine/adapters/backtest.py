@@ -6,13 +6,15 @@ These adapters wrap existing backtest infrastructure:
 - BacktestExchange: Wraps SimulatedExchange for order execution
 - ShadowExchange: No-op exchange for shadow mode
 
-Phase 2 will fully implement these adapters.
+Fully integrated with existing backtest engine infrastructure.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 from ..interfaces import (
     Candle,
@@ -36,9 +38,9 @@ class BacktestDataProvider:
     Provides O(1) access to:
     - OHLCV candles
     - Precomputed indicators
-    - Incremental structure state
+    - Structure state from FeedStore.structures
 
-    Phase 2: Full implementation with FeedStore integration.
+    All data is precomputed; this adapter provides unified access.
     """
 
     def __init__(self, play: "Play"):
@@ -51,6 +53,7 @@ class BacktestDataProvider:
         self._play = play
         self._feed_store: FeedStore | None = None
         self._ready = False
+        self._current_bar_index: int = -1
 
         # These will be populated during engine initialization
         self._symbol = play.symbol
@@ -70,6 +73,23 @@ class BacktestDataProvider:
     @property
     def timeframe(self) -> str:
         return self._timeframe
+
+    @property
+    def warmup_bars(self) -> int:
+        """Number of warmup bars required before indicators are valid."""
+        if self._feed_store is None:
+            return 0
+        return self._feed_store.warmup_bars
+
+    @property
+    def current_bar_index(self) -> int:
+        """Current bar index for structure access."""
+        return self._current_bar_index
+
+    @current_bar_index.setter
+    def current_bar_index(self, value: int) -> None:
+        """Set current bar index (called by runner each bar)."""
+        self._current_bar_index = value
 
     def set_feed_store(self, feed_store: "FeedStore") -> None:
         """
@@ -99,24 +119,111 @@ class BacktestDataProvider:
         )
 
     def get_indicator(self, name: str, index: int) -> float:
-        """Get indicator value at index."""
+        """
+        Get indicator value at index.
+
+        Args:
+            name: Indicator name (e.g., "ema_9", "rsi_14", "atr_14")
+            index: Bar index
+
+        Returns:
+            Indicator value as float
+
+        Raises:
+            RuntimeError: If FeedStore not initialized
+            KeyError: If indicator not found
+            IndexError: If index out of bounds
+        """
         if self._feed_store is None:
             raise RuntimeError("FeedStore not initialized")
 
-        # TODO: Implement indicator access from FeedStore
-        # FeedStore.get_indicator(name) returns the array
-        # Return value at index
-        raise NotImplementedError("Phase 2: Implement indicator access")
+        if name not in self._feed_store.indicators:
+            available = list(self._feed_store.indicators.keys())
+            raise KeyError(
+                f"Indicator '{name}' not found. "
+                f"Available: {available[:10]}{'...' if len(available) > 10 else ''}"
+            )
+
+        arr = self._feed_store.indicators[name]
+        if index < 0 or index >= len(arr):
+            raise IndexError(f"Index {index} out of bounds for indicator '{name}'")
+
+        value = arr[index]
+        # Handle NaN values (warmup period)
+        if np.isnan(value):
+            return float("nan")
+        return float(value)
 
     def get_structure(self, key: str, field: str) -> float:
-        """Get current structure field value."""
-        # TODO: Implement structure access from incremental state
-        raise NotImplementedError("Phase 2: Implement structure access")
+        """
+        Get current structure field value.
+
+        Uses current_bar_index for "current" access.
+
+        Args:
+            key: Structure block key (e.g., "ms_5m", "swing")
+            field: Field name (e.g., "swing_high_level", "direction")
+
+        Returns:
+            Structure field value
+
+        Raises:
+            RuntimeError: If no current bar index set
+        """
+        if self._current_bar_index < 0:
+            raise RuntimeError(
+                "No current bar index set. "
+                "Use get_structure_at() or set current_bar_index first."
+            )
+        return self.get_structure_at(key, field, self._current_bar_index)
 
     def get_structure_at(self, key: str, field: str, index: int) -> float:
-        """Get structure field at specific index."""
-        # TODO: Implement historical structure access
-        raise NotImplementedError("Phase 2: Implement historical structure access")
+        """
+        Get structure field at specific index.
+
+        Args:
+            key: Structure block key (e.g., "ms_5m", "swing")
+            field: Field name (e.g., "swing_high_level", "direction")
+            index: Bar index
+
+        Returns:
+            Structure field value
+
+        Raises:
+            RuntimeError: If FeedStore not initialized
+            ValueError: If structure key or field not found
+        """
+        if self._feed_store is None:
+            raise RuntimeError("FeedStore not initialized")
+
+        value = self._feed_store.get_structure_field(key, field, index)
+        if value is None:
+            return float("nan")
+        return float(value)
+
+    def has_indicator(self, name: str) -> bool:
+        """Check if indicator exists in FeedStore."""
+        if self._feed_store is None:
+            return False
+        return name in self._feed_store.indicators
+
+    def has_structure(self, key: str) -> bool:
+        """Check if structure block exists."""
+        if self._feed_store is None:
+            return False
+        return self._feed_store.has_structure(key)
+
+    def get_indicator_keys(self) -> list[str]:
+        """Get all available indicator names."""
+        if self._feed_store is None:
+            return []
+        return list(self._feed_store.indicators.keys())
+
+    def get_structure_keys(self) -> list[str]:
+        """Get all available structure block keys."""
+        if self._feed_store is None:
+            return []
+        return list(self._feed_store.structure_key_map.keys())
 
     def is_ready(self) -> bool:
         """Check if data provider is ready."""
@@ -132,7 +239,7 @@ class BacktestExchange:
     - Position management
     - Balance and equity queries
 
-    Phase 2: Full implementation with SimulatedExchange integration.
+    Translates between unified Order/Position types and SimulatedExchange types.
     """
 
     def __init__(self, play: "Play", config: PlayEngineConfig):
@@ -146,11 +253,11 @@ class BacktestExchange:
         self._play = play
         self._config = config
         self._sim_exchange = None  # Set by runner
+        self._symbol = play.symbol
 
-        # Track state
-        self._balance = config.initial_equity
-        self._position: Position | None = None
-        self._pending_orders: list[Order] = []
+        # Order ID mapping (unified -> sim)
+        self._order_id_map: dict[str, str] = {}
+        self._order_counter: int = 0
 
     def set_simulated_exchange(self, sim_exchange) -> None:
         """
@@ -161,56 +268,220 @@ class BacktestExchange:
         self._sim_exchange = sim_exchange
 
     def submit_order(self, order: Order) -> OrderResult:
-        """Submit order for execution."""
-        if self._sim_exchange is None:
-            raise RuntimeError("SimulatedExchange not initialized")
+        """
+        Submit order for execution.
 
-        # TODO: Translate Order to SimulatedExchange format and submit
-        raise NotImplementedError("Phase 2: Implement order submission")
+        Translates unified Order to SimulatedExchange format.
+
+        Args:
+            order: Unified Order object
+
+        Returns:
+            OrderResult with success status and order ID
+        """
+        if self._sim_exchange is None:
+            return OrderResult(
+                success=False,
+                error="SimulatedExchange not initialized",
+            )
+
+        # Generate unified order ID if not provided
+        if not order.client_order_id:
+            self._order_counter += 1
+            order.client_order_id = f"unified_{self._order_counter:04d}"
+
+        # Translate to SimulatedExchange format
+        side = "long" if order.side.lower() == "long" else "short"
+
+        try:
+            if order.order_type.upper() == "MARKET":
+                sim_order_id = self._sim_exchange.submit_order(
+                    side=side,
+                    size_usdt=order.size_usdt,
+                    stop_loss=order.stop_loss,
+                    take_profit=order.take_profit,
+                    timestamp=datetime.now(),
+                )
+            elif order.order_type.upper() == "LIMIT":
+                if order.limit_price is None:
+                    return OrderResult(
+                        success=False,
+                        error="Limit price required for LIMIT orders",
+                    )
+                sim_order_id = self._sim_exchange.submit_limit_order(
+                    side=side,
+                    size_usdt=order.size_usdt,
+                    limit_price=order.limit_price,
+                    stop_loss=order.stop_loss,
+                    take_profit=order.take_profit,
+                    timestamp=datetime.now(),
+                )
+            elif order.order_type.upper() in ("STOP", "STOP_MARKET"):
+                if order.trigger_price is None:
+                    return OrderResult(
+                        success=False,
+                        error="Trigger price required for STOP orders",
+                    )
+                sim_order_id = self._sim_exchange.submit_stop_order(
+                    side=side,
+                    size_usdt=order.size_usdt,
+                    trigger_price=order.trigger_price,
+                    limit_price=order.limit_price,
+                    stop_loss=order.stop_loss,
+                    take_profit=order.take_profit,
+                    timestamp=datetime.now(),
+                )
+            else:
+                return OrderResult(
+                    success=False,
+                    error=f"Unknown order type: {order.order_type}",
+                )
+
+            if sim_order_id is None:
+                return OrderResult(
+                    success=False,
+                    error="Order rejected by exchange",
+                )
+
+            # Map IDs
+            self._order_id_map[order.client_order_id] = sim_order_id
+
+            return OrderResult(
+                success=True,
+                order_id=order.client_order_id,
+                exchange_order_id=sim_order_id,
+            )
+
+        except Exception as e:
+            return OrderResult(
+                success=False,
+                error=str(e),
+            )
 
     def cancel_order(self, order_id: str) -> bool:
         """Cancel pending order."""
         if self._sim_exchange is None:
             return False
 
-        # TODO: Implement order cancellation
-        raise NotImplementedError("Phase 2: Implement order cancellation")
+        # Try to find in mapping first
+        sim_order_id = self._order_id_map.get(order_id, order_id)
+
+        try:
+            return self._sim_exchange.cancel_order_by_id(sim_order_id)
+        except Exception:
+            return False
 
     def get_position(self, symbol: str) -> Position | None:
-        """Get current position."""
+        """
+        Get current position.
+
+        Translates SimulatedExchange position to unified Position.
+        """
         if self._sim_exchange is None:
             return None
 
-        # TODO: Translate SimulatedExchange position to Position
-        raise NotImplementedError("Phase 2: Implement position access")
+        sim_pos = self._sim_exchange.position
+        if sim_pos is None:
+            return None
+
+        # Translate to unified Position
+        return Position(
+            symbol=sim_pos.symbol,
+            side=sim_pos.side.value if hasattr(sim_pos.side, "value") else str(sim_pos.side),
+            size_usdt=sim_pos.size_usdt,
+            size_qty=sim_pos.size,
+            entry_price=sim_pos.entry_price,
+            mark_price=sim_pos.entry_price,  # Will be updated by step()
+            unrealized_pnl=0.0,  # Calculated by SimulatedExchange
+            leverage=self._sim_exchange.leverage,
+            stop_loss=sim_pos.stop_loss,
+            take_profit=sim_pos.take_profit,
+            liquidation_price=None,  # TODO: Calculate from margin
+            metadata={
+                "entry_time": sim_pos.entry_time.isoformat() if sim_pos.entry_time else None,
+                "position_id": sim_pos.position_id,
+            },
+        )
 
     def get_balance(self) -> float:
-        """Get available balance."""
+        """Get available balance in USDT."""
         if self._sim_exchange is None:
-            return self._balance
-
-        # TODO: Get from SimulatedExchange
-        raise NotImplementedError("Phase 2: Implement balance access")
+            return self._config.initial_equity
+        return self._sim_exchange.available_balance_usdt
 
     def get_equity(self) -> float:
-        """Get total equity."""
+        """Get total equity in USDT."""
         if self._sim_exchange is None:
-            return self._balance
-
-        # TODO: Get from SimulatedExchange
-        raise NotImplementedError("Phase 2: Implement equity access")
+            return self._config.initial_equity
+        return self._sim_exchange.equity_usdt
 
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
-        """Get pending orders."""
-        return self._pending_orders
+        """
+        Get pending orders.
+
+        Translates SimulatedExchange orders to unified Order format.
+        """
+        if self._sim_exchange is None:
+            return []
+
+        sim_orders = self._sim_exchange.get_open_orders()
+        unified_orders = []
+
+        for sim_order in sim_orders:
+            if symbol is not None and sim_order.symbol != symbol:
+                continue
+
+            unified_orders.append(Order(
+                symbol=sim_order.symbol,
+                side=sim_order.side.value if hasattr(sim_order.side, "value") else str(sim_order.side),
+                size_usdt=sim_order.size_usdt,
+                order_type=sim_order.order_type.value if hasattr(sim_order.order_type, "value") else str(sim_order.order_type),
+                limit_price=sim_order.limit_price,
+                trigger_price=sim_order.trigger_price,
+                stop_loss=sim_order.stop_loss,
+                take_profit=sim_order.take_profit,
+                client_order_id=sim_order.order_id,
+            ))
+
+        return unified_orders
 
     def step(self, candle: Candle) -> None:
-        """Process new candle (fills, TP/SL)."""
+        """
+        Process new candle (fills, TP/SL).
+
+        Called each bar to process order fills and position updates.
+        Note: In backtest mode, process_bar is called by the runner,
+        not by step(). This is here for interface compliance.
+        """
+        # In backtest mode, the runner calls sim_exchange.process_bar() directly
+        # This method is mainly for interface compliance and live mode
+        pass
+
+    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> None:
+        """
+        Request to close position on next bar.
+
+        Args:
+            reason: Close reason
+            percent: Percentage to close (1-100)
+        """
         if self._sim_exchange is None:
             return
+        self._sim_exchange.submit_close(reason=reason, percent=percent)
 
-        # TODO: Step SimulatedExchange with candle data
-        raise NotImplementedError("Phase 2: Implement exchange step")
+    @property
+    def has_position(self) -> bool:
+        """Check if there's an open position."""
+        if self._sim_exchange is None:
+            return False
+        return self._sim_exchange.position is not None
+
+    @property
+    def trades(self) -> list:
+        """Get completed trades from SimulatedExchange."""
+        if self._sim_exchange is None:
+            return []
+        return self._sim_exchange.trades
 
 
 class ShadowExchange:

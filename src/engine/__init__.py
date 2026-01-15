@@ -54,6 +54,8 @@ from .play_engine import PlayEngine
 
 from .factory import PlayEngineFactory
 
+from .runners import BacktestRunner, BacktestResult
+
 __all__ = [
     # Protocols
     "DataProvider",
@@ -69,4 +71,7 @@ __all__ = [
     "PlayEngine",
     # Factory
     "PlayEngineFactory",
+    # Runners
+    "BacktestRunner",
+    "BacktestResult",
 ]

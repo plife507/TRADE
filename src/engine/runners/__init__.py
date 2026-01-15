@@ -3,30 +3,30 @@ Runners package for PlayEngine.
 
 Runners drive the PlayEngine in different modes:
 - BacktestRunner: Loop over historical bars
-- LiveRunner: WebSocket event loop
-- ShadowRunner: Log signals without executing
+- LiveRunner: WebSocket event loop (Phase 5)
+- ShadowRunner: Log signals without executing (Phase 5)
 
 Usage:
     # Backtest
     runner = BacktestRunner(engine)
     result = runner.run()
 
-    # Live (async)
+    # Live (async) - Phase 5
     runner = LiveRunner(engine)
     await runner.start()
     # ... runs until stopped
     await runner.stop()
 
-    # Shadow
+    # Shadow - Phase 5
     runner = ShadowRunner(engine)
     await runner.start()
 """
 
-# Runners will be implemented in Phase 5
-# For now, just define the package
+from .backtest_runner import BacktestRunner, BacktestResult
 
 __all__ = [
-    # "BacktestRunner",  # Phase 5
+    "BacktestRunner",
+    "BacktestResult",
     # "LiveRunner",      # Phase 5
     # "ShadowRunner",    # Phase 5
 ]
