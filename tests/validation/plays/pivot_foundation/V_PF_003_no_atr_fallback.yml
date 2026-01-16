@@ -3,7 +3,11 @@ name: "V_PF_003_no_atr_fallback"
 description: "Validation: Graceful degradation when no ATR configured for significance."
 
 symbol: "BTCUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

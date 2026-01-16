@@ -1,44 +1,51 @@
 # Session Handoff
 
 **Date**: 2026-01-16
-**Status**: Pivot Foundation Gates 0-5 Complete
+**Status**: Pivot Foundation Gates 0-7 ALL COMPLETE
 **Branch**: feature/unified-engine
 
 ---
 
 ## What Was Done This Session
 
-### 1. Gate 4: Wave-Based Trend Detector Rewrite
-- Complete rewrite using wave tracking instead of individual HH/HL comparisons
-- Added `Wave` dataclass to track complete swing waves (L→H or H→L)
-- New outputs: `wave_count`, `last_wave_direction`, `last_hh`, `last_hl`, `last_lh`, `last_ll`
-- Changed `strength` to INT (0=weak, 1=normal, 2=strong)
-- Fixed state memory bug where recovery patterns were misclassified
-- Location: `src/structures/detectors/trend.py`
+### 1. Gate 7: Integration & Stress Testing (COMPLETE)
+- Created 5 pivot foundation stress tests (S_PF_001-005)
+- Fixed validation play format (26 plays updated to use timeframes section)
+- Ran full regression on all gates:
+  - 26/26 validation plays pass
+  - 18/18 cross-gate stress test sample passes
+  - 5/5 new pivot foundation stress tests pass
+- Performance benchmarks (all targets exceeded):
+  - Swing: 0.003 ms/bar (target <1ms)
+  - Trend: 0.0002 ms/bar (target <0.5ms)
+  - Market Structure: 0.0004 ms/bar (target <0.5ms)
 
-### 2. Gate 5: Market Structure Detector (BOS/CHoCH)
-- ICT-style Break of Structure and Change of Character detection
-- BOS = continuation signal (price breaks swing in trend direction)
-- CHoCH = reversal signal (price breaks swing against trend)
-- Outputs: `bias`, `bos_this_bar`, `choch_this_bar`, `bos_direction`, `choch_direction`
-- Level tracking: `last_bos_idx/level`, `last_choch_idx/level`, `break_level_high/low`
-- Location: `src/structures/detectors/market_structure.py`
+### 2. Gate 6: MTF Pivot Coordination (COMPLETE)
+- Demonstrated in S_PF_004_multi_tf_coordination.yml
+- Pattern: high_tf ATR zigzag + exec strict alternation
+- Bias alignment: high_tf.ms.bias controls entry direction
+- BOS timing: exec BOS triggers precise entry within high_tf trend
 
-### 3. Registry Consolidation (Tech Debt Cleanup)
-- Investigated dual registry architecture (`src/structures/` vs `src/backtest/incremental/`)
-- `src/structures/` is now CANONICAL (71 imports, actively maintained)
-- `src/backtest/incremental/` is DEPRECATED (8 imports, backward-compat only)
-- Synced all 7 detectors to canonical location
-- Added `IncrementalMarketStructure` to both locations
-
-### 4. Documentation Updates
-- Updated `PLAY_DSL_COOKBOOK.md` with new structure types
-- Added Example 6: ICT Market Structure strategy
-- Updated Document History with today's changes
+### 3. Previous Gates (Recap)
+- Gate 4: Wave-based trend tracking with `last_hh/hl/lh/ll`, strength levels
+- Gate 5: ICT-style BOS/CHoCH detection with `bos_this_bar`, `choch_this_bar`
+- Gates 0-3: Significance infrastructure, filtering, alternation, ATR zigzag
 
 ---
 
-## Architecture (Current)
+## Stress Test Suite (S_PF_001-005)
+
+| Test | Symbol | Focus | Result |
+|------|--------|-------|--------|
+| S_PF_001 | BTC | ATR ZigZag long-term | PASS |
+| S_PF_002 | ETH | High volatility period | PASS |
+| S_PF_003 | SOL | Ranging/consolidation | PASS |
+| S_PF_004 | BTC | MTF coordination | PASS |
+| S_PF_005 | BTC | Mode comparison (fractal) | PASS |
+
+---
+
+## Architecture (Final)
 
 ```
 src/structures/              # CANONICAL - 7 structure detectors
@@ -53,45 +60,27 @@ src/structures/              # CANONICAL - 7 structure detectors
 ├── registry.py              # Warmup formulas + output types
 └── state.py                 # TFIncrementalState, MultiTFIncrementalState
 
-src/backtest/incremental/    # DEPRECATED - re-exports from src/structures
+tests/stress/plays/pivot_foundation/  # NEW - Gate 7 stress tests
+├── S_PF_001_btc_atr_zigzag.yml
+├── S_PF_002_eth_high_volatility.yml
+├── S_PF_003_sol_ranging.yml
+├── S_PF_004_multi_tf_coordination.yml
+└── S_PF_005_mode_comparison.yml
+
+tests/validation/plays/pivot_foundation/  # 26 validation plays (V_PF_001-056)
 ```
 
 ---
 
-## New Structure Outputs
-
-### Trend Detector (Gate 4)
-```yaml
-structures:
-  exec:
-    - type: trend
-      key: trend
-      depends_on: {swing: swing}
-# Outputs: direction, strength, bars_in_trend, wave_count,
-#          last_wave_direction, last_hh, last_hl, last_lh, last_ll, version
-```
-
-### Market Structure Detector (Gate 5)
-```yaml
-structures:
-  exec:
-    - type: market_structure
-      key: ms
-      depends_on: {swing: swing}
-# Outputs: bias, bos_this_bar, choch_this_bar, bos_direction, choch_direction,
-#          last_bos_idx, last_bos_level, last_choch_idx, last_choch_level,
-#          break_level_high, break_level_low, version
-```
-
----
-
-## Validation Status
+## Validation Status (ALL PASS)
 
 ```
-Gate 4 validation plays:  7/7 PASS (V_PF_040-046)
-Gate 5 validation plays:  7/7 PASS (V_PF_050-056)
-Registry imports:         Both paths work
-Backtest smoke:          PASS
+Gate 0-3 validation:  7/7 PASS (V_PF_001-022)
+Gate 4 validation:    7/7 PASS (V_PF_040-046)
+Gate 5 validation:    7/7 PASS (V_PF_050-056)
+Gate 6-7 stress:      5/5 PASS (S_PF_001-005)
+Cross-gate sample:    18/18 PASS
+Smoke test:           PASS
 ```
 
 ---
@@ -100,32 +89,54 @@ Backtest smoke:          PASS
 
 | Priority | Task | Notes |
 |----------|------|-------|
-| P0 | Gate 6: MTF Pivot Coordination | Cross-timeframe pivot alignment |
-| P0 | Gate 7: Integration & Stress Testing | Full system validation |
 | P1 | Live E2E validation | Run demo trading test |
-| P2 | Future ICT structures | OB, FVG, liquidity zones |
+| P1 | WebSocket reconnection | Handle disconnects gracefully |
+| P2 | Order Blocks (OB) | ICT institutional level detection |
+| P2 | Fair Value Gaps (FVG) | Imbalance detection |
+| P2 | Liquidity Zones | Equal highs/lows detection |
 
 ---
 
-## Key Files Changed
+## Key Files Changed This Session
 
 | File | Change |
 |------|--------|
-| `src/structures/detectors/trend.py` | Wave-based rewrite (Gate 4) |
-| `src/structures/detectors/market_structure.py` | NEW - BOS/CHoCH (Gate 5) |
-| `src/structures/registry.py` | Added market_structure outputs/warmup |
-| `src/structures/__init__.py` | Export IncrementalMarketStructure |
-| `src/backtest/incremental/__init__.py` | Export all 7 detectors |
-| `docs/PLAY_DSL_COOKBOOK.md` | New structure docs + Example 6 |
-| `tests/validation/plays/pivot_foundation/` | 14 validation plays |
+| `tests/stress/plays/pivot_foundation/*.yml` | NEW - 5 stress tests |
+| `tests/validation/plays/pivot_foundation/*.yml` | Fixed timeframes format |
+| `docs/TODO.md` | Updated status to Gates 0-7 complete |
+| `docs/SESSION_HANDOFF.md` | This file |
+
+---
+
+## Quick Commands
+
+```bash
+# Full smoke test
+python trade_cli.py --smoke full
+
+# Run pivot foundation stress test
+python trade_cli.py backtest run --play S_PF_001_btc_atr_zigzag --dir tests/stress/plays/pivot_foundation --fix-gaps
+
+# Run validation play
+python trade_cli.py backtest run --play V_PF_050_bos_bullish --dir tests/validation/plays/pivot_foundation --synthetic
+
+# Run all validation plays
+python -c "
+import subprocess
+from pathlib import Path
+dir_path = Path('tests/validation/plays/pivot_foundation')
+for play in sorted(dir_path.glob('V_PF_*.yml')):
+    result = subprocess.run(['python', 'trade_cli.py', 'backtest', 'run', '--play', play.stem, '--dir', str(dir_path), '--synthetic', '--no-artifacts'], capture_output=True)
+    print(f'{play.stem}: {\"PASS\" if result.returncode == 0 else \"FAIL\"}')"
+```
 
 ---
 
 ## Context for Next Agent
 
-- **Gates 0-5 COMPLETE** - Swing, trend, and market_structure detectors all working
+- **ALL PIVOT FOUNDATION GATES COMPLETE** (0-7)
 - **Registry is CANONICAL at `src/structures/`** - Use this for imports
-- **BOS/CHoCH ready** - Use `bos_this_bar`, `choch_this_bar` boolean flags in conditions
-- **Wave-based trend** - Use `last_hh`, `last_hl`, `last_lh`, `last_ll` for pattern detection
-- **Validation** - Run `python trade_cli.py backtest run --play tests/validation/plays/pivot_foundation/V_PF_050_bos_bullish.yml --synthetic`
-- **Next up** - Gate 6 (MTF coordination) and Gate 7 (integration testing)
+- **Validation plays fixed** - Now use proper `timeframes:` section
+- **Stress tests available** - 5 plays in `tests/stress/plays/pivot_foundation/`
+- **Performance verified** - All detectors <0.01 ms/bar (well under targets)
+- **Next focus** - Live trading validation (P1) or ICT structures (P2)

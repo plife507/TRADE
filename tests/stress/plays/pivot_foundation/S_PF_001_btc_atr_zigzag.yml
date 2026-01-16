@@ -1,0 +1,101 @@
+version: "3.0.0"
+name: "S_PF_001_btc_atr_zigzag"
+description: "Stress: BTC long-term backtest with ATR ZigZag mode. Tests stability of ATR-based pivot detection over extended period."
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 1.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        mode: atr_zigzag
+        atr_key: atr_14
+        atr_multiplier: 2.0
+
+    - type: trend
+      key: trend
+      depends_on:
+        swing: swing
+
+    - type: market_structure
+      key: ms
+      depends_on:
+        swing: swing
+
+actions:
+  entry_long:
+    all:
+      - [{feature_id: "ms", field: "bos_this_bar"}, "==", true]
+      - [{feature_id: "ms", field: "bias"}, "==", 1]
+      - ["rsi_14", "<", 70]
+      - ["close", ">", "ema_21"]
+
+  entry_short:
+    all:
+      - [{feature_id: "ms", field: "bos_this_bar"}, "==", true]
+      - [{feature_id: "ms", field: "bias"}, "==", -1]
+      - ["rsi_14", ">", 30]
+      - ["close", "<", "ema_21"]
+
+  exit_long:
+    any:
+      - [{feature_id: "ms", field: "choch_this_bar"}, "==", true]
+      - ["rsi_14", ">", 80]
+
+  exit_short:
+    any:
+      - [{feature_id: "ms", field: "choch_this_bar"}, "==", true]
+      - ["rsi_14", "<", 20]
+
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 15.0
+
+_test_metadata:
+  gate: 7
+  complexity_pct: 80
+  category: "pivot_foundation"
+  direction: "bidirectional"
+  stress_type: "long_term_atr_zigzag"
+  tests:
+    - "ATR ZigZag produces stable pivots over extended periods"
+    - "BOS/CHoCH detection works with ATR-based swings"
+    - "Trend tracking maintains state correctly"

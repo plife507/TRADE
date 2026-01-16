@@ -1,0 +1,129 @@
+version: "3.0.0"
+name: "S_PF_004_multi_tf_coordination"
+description: "Stress: Multi-timeframe pivot coordination. Tests high_tf structure with exec_tf execution."
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 1.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  atr_14_high:
+    indicator: atr
+    params:
+      length: 14
+    timeframe: high_tf
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_50_high:
+    indicator: ema
+    params:
+      length: 50
+    timeframe: high_tf
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  high_tf:
+    - type: swing
+      key: swing_htf
+      params:
+        left: 10
+        right: 10
+        mode: atr_zigzag
+        atr_key: atr_14_high
+        atr_multiplier: 2.0
+
+    - type: trend
+      key: trend_htf
+      depends_on:
+        swing: swing_htf
+
+    - type: market_structure
+      key: ms_htf
+      depends_on:
+        swing: swing_htf
+
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 3
+        right: 3
+        strict_alternation: true
+
+    - type: market_structure
+      key: ms
+      depends_on:
+        swing: swing
+
+actions:
+  entry_long:
+    all:
+      - [{feature_id: "ms_htf", field: "bias"}, "==", 1]
+      - [{feature_id: "trend_htf", field: "direction"}, "==", 1]
+      - [{feature_id: "ms", field: "bos_this_bar"}, "==", true]
+      - ["close", ">", "ema_21"]
+      - ["rsi_14", "<", 70]
+
+  entry_short:
+    all:
+      - [{feature_id: "ms_htf", field: "bias"}, "==", -1]
+      - [{feature_id: "trend_htf", field: "direction"}, "==", -1]
+      - [{feature_id: "ms", field: "bos_this_bar"}, "==", true]
+      - ["close", "<", "ema_21"]
+      - ["rsi_14", ">", 30]
+
+  exit_long:
+    any:
+      - [{feature_id: "ms_htf", field: "choch_this_bar"}, "==", true]
+      - [{feature_id: "ms", field: "choch_this_bar"}, "==", true]
+      - ["rsi_14", ">", 80]
+
+  exit_short:
+    any:
+      - [{feature_id: "ms_htf", field: "choch_this_bar"}, "==", true]
+      - [{feature_id: "ms", field: "choch_this_bar"}, "==", true]
+      - ["rsi_14", "<", 20]
+
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 15.0
+
+_test_metadata:
+  gate: 7
+  complexity_pct: 90
+  category: "pivot_foundation"
+  direction: "bidirectional"
+  stress_type: "mtf_coordination"
+  tests:
+    - "high_tf ATR zigzag produces stable structure pivots"
+    - "exec strict alternation gives precise entries"
+    - "high_tf bias aligns with exec BOS for entries"
+    - "MTF coordination: high_tf direction + exec timing"

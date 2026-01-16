@@ -3,7 +3,11 @@ name: "V_PF_001_significance_calc"
 description: "Validation: Swing significance calculation with ATR dependency."
 
 symbol: "BTCUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0
