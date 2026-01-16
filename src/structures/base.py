@@ -20,7 +20,7 @@ See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Mapping
 

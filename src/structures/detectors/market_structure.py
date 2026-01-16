@@ -14,7 +14,7 @@ Change of Character (CHoCH): Reversal signal
 Requires a swing detector as a dependency to provide swing high/low levels.
 
 Outputs:
-- bias: str ("bullish", "bearish", "ranging")
+- bias: int (1 = bullish, -1 = bearish, 0 = ranging) - matches trend detector convention
 - bos_this_bar: bool (True if BOS occurred this bar)
 - choch_this_bar: bool (True if CHoCH occurred this bar)
 - bos_direction: str ("bullish", "bearish", "none") - direction of last BOS
@@ -96,8 +96,9 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         self.swing = deps["swing"]
         self._confirmation_close = params.get("confirmation_close", False)
 
-        # Current market bias
-        self.bias: str = "ranging"  # "bullish", "bearish", "ranging"
+        # Current market bias (integer to match trend detector convention)
+        # 1 = bullish, -1 = bearish, 0 = ranging
+        self.bias: int = 0
 
         # Break tracking - levels to watch
         self._break_level_high: float = float("nan")  # Level to break for bullish BOS (in uptrend) or CHoCH (in downtrend)
@@ -112,6 +113,11 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         self._prev_swing_low: float = float("nan")
         self._prev_prev_swing_high: float = float("nan")
         self._prev_prev_swing_low: float = float("nan")
+
+        # Track which swing indices we've already broken through
+        # This prevents re-triggering BOS when the same level is re-used
+        self._broken_high_idx: int = -1
+        self._broken_low_idx: int = -1
 
         # Last BOS event
         self._last_bos_idx: int = -1
@@ -169,14 +175,22 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         self._check_breaks(bar_idx, bar)
 
     def _update_break_levels(self) -> None:
-        """Update the break levels based on current swing structure."""
-        # High to break: use the most recent confirmed swing high
-        if not math.isnan(self._prev_swing_high):
-            self._break_level_high = self._prev_swing_high
+        """Update the break levels based on current swing structure.
 
-        # Low to break: use the most recent confirmed swing low
+        Only updates if the swing is NEWER than the one we already broke.
+        This prevents re-triggering BOS on the same level.
+        """
+        # High to break: only update if this is a new swing we haven't broken
+        if not math.isnan(self._prev_swing_high):
+            # Only set break level if this swing is newer than the one we broke
+            if self._last_high_idx > self._broken_high_idx:
+                self._break_level_high = self._prev_swing_high
+
+        # Low to break: only update if this is a new swing we haven't broken
         if not math.isnan(self._prev_swing_low):
-            self._break_level_low = self._prev_swing_low
+            # Only set break level if this swing is newer than the one we broke
+            if self._last_low_idx > self._broken_low_idx:
+                self._break_level_low = self._prev_swing_low
 
     def _check_breaks(self, bar_idx: int, bar: "BarData") -> None:
         """
@@ -190,9 +204,9 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         check_high = bar.close if self._confirmation_close else bar.high
         check_low = bar.close if self._confirmation_close else bar.low
 
-        if self.bias == "bullish":
+        if self.bias == 1:
             self._check_bullish_bias_breaks(bar_idx, check_high, check_low)
-        elif self.bias == "bearish":
+        elif self.bias == -1:
             self._check_bearish_bias_breaks(bar_idx, check_high, check_low)
         else:  # ranging
             self._check_ranging_breaks(bar_idx, check_high, check_low)
@@ -212,9 +226,10 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._last_bos_level = self._break_level_high
             self._bos_direction = "bullish"
             self._version += 1
-            # Update break level to the level just broken (or use prev_prev if available)
-            if not math.isnan(self._prev_prev_swing_high):
-                self._break_level_high = self._prev_prev_swing_high
+            # Mark this swing as broken to prevent re-triggering
+            self._broken_high_idx = self._last_high_idx
+            # Clear break level - require NEW swing to form before next BOS
+            self._break_level_high = float("nan")
 
         # Check for CHoCH (reversal)
         if not math.isnan(self._break_level_low) and check_low < self._break_level_low:
@@ -222,7 +237,7 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._last_choch_idx = bar_idx
             self._last_choch_level = self._break_level_low
             self._choch_direction = "bearish"
-            self.bias = "bearish"
+            self.bias = -1
             self._version += 1
 
     def _check_bearish_bias_breaks(self, bar_idx: int, check_high: float, check_low: float) -> None:
@@ -240,9 +255,10 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._last_bos_level = self._break_level_low
             self._bos_direction = "bearish"
             self._version += 1
-            # Update break level
-            if not math.isnan(self._prev_prev_swing_low):
-                self._break_level_low = self._prev_prev_swing_low
+            # Mark this swing as broken to prevent re-triggering
+            self._broken_low_idx = self._last_low_idx
+            # Clear break level - require NEW swing to form before next BOS
+            self._break_level_low = float("nan")
 
         # Check for CHoCH (reversal)
         if not math.isnan(self._break_level_high) and check_high > self._break_level_high:
@@ -250,7 +266,7 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._last_choch_idx = bar_idx
             self._last_choch_level = self._break_level_high
             self._choch_direction = "bullish"
-            self.bias = "bullish"
+            self.bias = 1
             self._version += 1
 
     def _check_ranging_breaks(self, bar_idx: int, check_high: float, check_low: float) -> None:
@@ -268,8 +284,12 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._last_bos_idx = bar_idx
             self._last_bos_level = self._break_level_high
             self._bos_direction = "bullish"
-            self.bias = "bullish"
+            self.bias = 1
             self._version += 1
+            # Mark this swing as broken to prevent re-triggering
+            self._broken_high_idx = self._last_high_idx
+            # Clear break level - require NEW swing to form before next BOS
+            self._break_level_high = float("nan")
             return
 
         # Check for bearish break to establish bias
@@ -278,8 +298,12 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._last_bos_idx = bar_idx
             self._last_bos_level = self._break_level_low
             self._bos_direction = "bearish"
-            self.bias = "bearish"
+            self.bias = -1
             self._version += 1
+            # Mark this swing as broken to prevent re-triggering
+            self._broken_low_idx = self._last_low_idx
+            # Clear break level - require NEW swing to form before next BOS
+            self._break_level_low = float("nan")
 
     def get_output_keys(self) -> list[str]:
         """
