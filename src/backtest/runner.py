@@ -151,6 +151,9 @@ class RunnerConfig:
 
     # Snapshot emission
     emit_snapshots: bool = False
+
+    # Data environment (backtest, live, demo) - determines which DuckDB to use
+    data_env: str = "backtest"
     
     def load_play(self) -> Play:
         """Load the Play if not already loaded."""
@@ -198,7 +201,6 @@ class RunnerResult:
 
 def run_backtest_with_gates(
     config: RunnerConfig,
-    engine_factory: Callable | None = None,
     synthetic_provider: "SyntheticDataProvider | None" = None,
 ) -> RunnerResult:
     """
@@ -206,8 +208,6 @@ def run_backtest_with_gates(
 
     Args:
         config: Runner configuration
-        engine_factory: Optional factory to create the backtest engine
-                       (for testing/dependency injection)
         synthetic_provider: Optional synthetic data provider (bypasses DB access)
 
     Returns:
@@ -500,26 +500,21 @@ def run_backtest_with_gates(
         # =====================================================================
         print("\n[RUN] Running Backtest...")
         
-        # Import engine factory functions (P1.2 Refactor)
+        # Import engine factory functions (unified PlayEngine path)
         from .engine import create_engine_from_play, run_engine_with_play
 
-        # Create engine directly from Play (no adapter layer)
-        if engine_factory is not None:
-            # Custom factory provided (for testing/DI) - use legacy path
-            engine = engine_factory(play, config)
-            engine_result = engine.run()
-        else:
-            # Standard path: use new Play-native engine factory
-            engine = create_engine_from_play(
-                play=play,
-                window_start=config.window_start,
-                window_end=config.window_end,
-                warmup_by_tf=preflight_warmup_by_role,
-                synthetic_provider=synthetic_provider,  # Gate 4: Support synthetic data
-            )
-            # Set play_hash for debug logging (hash tracing)
-            engine.set_play_hash(play_hash)
-            engine_result = run_engine_with_play(engine, play)
+        # Create engine from Play and run via unified path
+        engine = create_engine_from_play(
+            play=play,
+            window_start=config.window_start,
+            window_end=config.window_end,
+            warmup_by_tf=preflight_warmup_by_role,
+            synthetic_provider=synthetic_provider,
+            data_env=config.data_env,
+        )
+        # Set play_hash for debug logging (hash tracing)
+        engine.set_play_hash(play_hash)
+        engine_result = run_engine_with_play(engine, play)
         
         # Extract trades and equity
         trades: list[dict[str, Any]] = []
@@ -568,8 +563,11 @@ def run_backtest_with_gates(
                     elif isinstance(sim_start, (int, float)):
                         eval_start_ts_ms = int(sim_start)
         # Fallback: use first equity timestamp if available
+        # Fallback: use first equity timestamp if available (check for NaN)
         if eval_start_ts_ms is None and not equity_df.empty and "ts_ms" in equity_df.columns:
-            eval_start_ts_ms = int(equity_df["ts_ms"].iloc[0])
+            first_ts = equity_df["ts_ms"].iloc[0]
+            if pd.notna(first_ts):
+                eval_start_ts_ms = int(first_ts)
         
         # Compute and write results summary
         run_duration = time.time() - run_start_time
@@ -581,6 +579,10 @@ def run_backtest_with_gates(
         # Resolve idea path (where Play was loaded from)
         resolved_idea_path = str(config.plays_dir / f"{play.id}.yml") if config.plays_dir else f"strategies/plays/{play.id}.yml"
         
+        # Extract leverage and initial equity from Play's account config
+        play_leverage = int(play.account.max_leverage) if play.account else 1
+        play_initial_equity = play.account.starting_equity_usdt if play.account else 10000.0
+
         summary = compute_results_summary(
             play_id=play.id,
             symbol=symbol,
@@ -602,6 +604,9 @@ def run_backtest_with_gates(
             run_hash=run_hash,
             # Pass pre-computed metrics for comprehensive analytics
             metrics=engine_result.metrics,
+            # Risk/Position Config from Play
+            leverage=play_leverage,
+            initial_equity=play_initial_equity,
         )
         
         result.summary = summary

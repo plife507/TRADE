@@ -41,8 +41,9 @@ class LiveIndicatorCache:
     """
     Incremental indicator cache for live trading.
 
-    Maintains rolling arrays of indicator values computed incrementally
-    as new candles arrive. Uses the same indicator functions as backtest.
+    Maintains rolling arrays of indicator values. Uses O(1) incremental
+    computation for supported indicators (EMA, SMA, RSI, ATR, MACD, BBands)
+    and falls back to vectorized computation for others.
     """
 
     def __init__(self, play: "Play", buffer_size: int = 500):
@@ -59,7 +60,13 @@ class LiveIndicatorCache:
         # Indicator arrays (name -> numpy array)
         self._indicators: dict[str, np.ndarray] = {}
 
-        # OHLCV arrays for indicator computation
+        # Incremental indicator instances (name -> IncrementalIndicator)
+        self._incremental: dict[str, Any] = {}
+
+        # Specs that don't support incremental computation
+        self._vectorized_specs: list[dict] = []
+
+        # OHLCV arrays for vectorized computation fallback
         self._open: np.ndarray = np.array([], dtype=np.float64)
         self._high: np.ndarray = np.array([], dtype=np.float64)
         self._low: np.ndarray = np.array([], dtype=np.float64)
@@ -81,6 +88,8 @@ class LiveIndicatorCache:
             candles: List of historical candles (BarRecord or Candle)
             indicator_specs: Feature specs from Play
         """
+        from ...indicators import FeatureSpec, create_incremental_indicator, supports_incremental
+
         if not candles:
             return
 
@@ -101,15 +110,47 @@ class LiveIndicatorCache:
 
         self._bar_count = n
 
-        # Compute initial indicators
-        self._compute_indicators(indicator_specs)
+        # Classify indicators: incremental vs vectorized
+        self._vectorized_specs = []
+        self._incremental = {}
+
+        for spec in indicator_specs:
+            try:
+                feature = FeatureSpec.from_dict(spec)
+                ind_type = feature.indicator_type.lower()
+
+                if supports_incremental(ind_type):
+                    # Create incremental indicator
+                    inc_ind = create_incremental_indicator(ind_type, feature.params)
+                    if inc_ind is not None:
+                        self._incremental[feature.indicator_id] = (inc_ind, feature)
+                        # Initialize with historical data
+                        self._indicators[feature.indicator_id] = np.full(n, np.nan)
+                        for i in range(n):
+                            if ind_type in ("atr",):
+                                inc_ind.update(
+                                    high=self._high[i],
+                                    low=self._low[i],
+                                    close=self._close[i],
+                                )
+                            else:
+                                inc_ind.update(close=self._close[i])
+                            self._indicators[feature.indicator_id][i] = inc_ind.value
+                    else:
+                        self._vectorized_specs.append(spec)
+                else:
+                    self._vectorized_specs.append(spec)
+            except Exception as e:
+                logger.warning(f"Failed to initialize indicator {spec}: {e}")
+
+        # Compute vectorized indicators
+        self._compute_vectorized()
 
     def update(self, candle: Candle) -> None:
         """
         Add new closed candle and update indicators.
 
-        Args:
-            candle: New closed candle
+        Uses O(1) incremental computation for supported indicators.
         """
         # Append to arrays
         self._open = np.append(self._open, candle.open)
@@ -133,15 +174,30 @@ class LiveIndicatorCache:
 
         self._bar_count = len(self._close)
 
-        # Recompute indicators (incremental would be more efficient)
-        # TODO: Implement truly incremental computation
-        self._compute_indicators(self._play.features if self._play.features else [])
+        # Update incremental indicators (O(1) per indicator)
+        for name, (inc_ind, feature) in self._incremental.items():
+            ind_type = feature.indicator_type.lower()
+            if ind_type in ("atr",):
+                inc_ind.update(
+                    high=float(candle.high),
+                    low=float(candle.low),
+                    close=float(candle.close),
+                )
+            else:
+                inc_ind.update(close=float(candle.close))
 
-    def _compute_indicators(self, indicator_specs: list[dict]) -> None:
-        """Compute all indicators from specs."""
+            # Append new value
+            self._indicators[name] = np.append(self._indicators[name], inc_ind.value)
+
+        # Recompute vectorized indicators (still O(n) but only for non-incremental)
+        if self._vectorized_specs:
+            self._compute_vectorized()
+
+    def _compute_vectorized(self) -> None:
+        """Compute vectorized indicators (fallback for non-incremental)."""
         from ...indicators import FeatureSpec
 
-        for spec in indicator_specs:
+        for spec in self._vectorized_specs:
             try:
                 feature = FeatureSpec.from_dict(spec)
                 values = feature.compute(
@@ -462,7 +518,7 @@ class LiveDataProvider:
             raise RuntimeError("Structure state not initialized")
 
         # For now, just return current value (full history not tracked in live)
-        # TODO: Track structure history for lookback
+        # P3: Track structure history for lookback (ring buffer per structure field)
         return self._structure_state.get_value(key, field)
 
     def has_indicator(self, name: str) -> bool:
@@ -804,7 +860,7 @@ class LiveExchange:
         """
         Get total realized PnL since start.
 
-        TODO: Track from exchange trade history or accumulate locally.
+        P3: Track from exchange trade history or accumulate locally.
         For now returns 0.0 - requires integration with position close events.
         """
         # Future: Could accumulate from closed position history

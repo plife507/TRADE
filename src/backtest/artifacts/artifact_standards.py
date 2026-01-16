@@ -988,7 +988,11 @@ class ResultsSummary:
     total_bars: int = 0
     bars_in_position: int = 0
     time_in_market_pct: float = 0.0
-    
+
+    # Risk/Position Config
+    leverage: int = 1
+    initial_equity: float = 10000.0
+
     # Metadata
     artifact_path: str = ""
     run_duration_seconds: float = 0.0
@@ -1053,6 +1057,9 @@ class ResultsSummary:
             "total_bars": self.total_bars,
             "bars_in_position": self.bars_in_position,
             "time_in_market_pct": round(self.time_in_market_pct, 2),
+            # Risk/Position Config
+            "leverage": self.leverage,
+            "initial_equity": round(self.initial_equity, 2),
             # Metadata
             "artifact_path": self.artifact_path,
             "run_duration_seconds": round(self.run_duration_seconds, 2),
@@ -1076,7 +1083,7 @@ class ResultsSummary:
         """Print comprehensive summary to console."""
         window_days = (self.window_end - self.window_start).days
         pnl_icon = "[+]" if self.net_pnl_usdt >= 0 else "[-]"
-        
+
         print("\n" + "=" * 60)
         print("  BACKTEST RESULTS SUMMARY")
         print("=" * 60)
@@ -1084,6 +1091,7 @@ class ResultsSummary:
         print(f"  Symbol:      {self.symbol}")
         print(f"  Timeframe:   {self.tf_exec}")
         print(f"  Window:      {self.window_start.date()} -> {self.window_end.date()} ({window_days}d)")
+        print(f"  Leverage:    {self.leverage}x | Equity: ${self.initial_equity:,.0f}")
         print("-" * 60)
         
         # Trade Summary
@@ -1143,6 +1151,9 @@ def compute_results_summary(
     run_hash: str = "",
     # Optional pre-computed metrics from BacktestMetrics
     metrics: Any | None = None,  # BacktestMetrics type hint avoided for circular import
+    # Risk/Position Config from Play
+    leverage: int = 1,
+    initial_equity: float = 10000.0,
 ) -> ResultsSummary:
     """
     Compute results summary from trades and equity curve.
@@ -1184,6 +1195,8 @@ def compute_results_summary(
         trades_hash=trades_hash,
         equity_hash=equity_hash,
         run_hash=run_hash,
+        leverage=leverage,
+        initial_equity=initial_equity,
     )
     
     # If pre-computed metrics provided, use them directly
