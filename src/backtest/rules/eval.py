@@ -155,7 +155,14 @@ def eval_eq(lhs: RefValue, rhs: RefValue) -> EvalResult:
             operator=op,
         )
 
-    result = lhs.value == rhs.value
+    # Case-insensitive comparison for string/enum values
+    # Structures may output lowercase ("bullish") while DSL uses uppercase ("BULLISH")
+    lhs_val = lhs.value
+    rhs_val = rhs.value
+    if isinstance(lhs_val, str) and isinstance(rhs_val, str):
+        result = lhs_val.upper() == rhs_val.upper()
+    else:
+        result = lhs_val == rhs_val
     return EvalResult.success(result, lhs.path, str(rhs.value), "==")
 
 
@@ -206,7 +213,14 @@ def eval_neq(lhs: RefValue, rhs: RefValue) -> EvalResult:
             operator=op,
         )
 
-    result = lhs.value != rhs.value
+    # Case-insensitive comparison for string/enum values
+    # Structures may output lowercase ("bullish") while DSL uses uppercase ("BULLISH")
+    lhs_val = lhs.value
+    rhs_val = rhs.value
+    if isinstance(lhs_val, str) and isinstance(rhs_val, str):
+        result = lhs_val.upper() != rhs_val.upper()
+    else:
+        result = lhs_val != rhs_val
     return EvalResult.success(result, lhs.path, str(rhs.value), "!=")
 
 

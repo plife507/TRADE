@@ -1,0 +1,114 @@
+version: "3.0.0"
+name: "S_FIB_004_sol_paired_extension"
+description: "Stress: Paired Anchor + Extension - 4h fib with extension targets for take profit"
+
+symbol: "SOLUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 1.0
+  slippage_bps: 2.0
+
+features:
+  atr_14_4h:
+    indicator: atr
+    tf: "4h"
+    params:
+      length: 14
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+structures:
+  high_tf:
+    "4h":
+      - type: swing
+        key: swing_htf
+        params:
+          left: 8
+          right: 8
+          mode: atr_zigzag
+          atr_key: atr_14_4h
+          atr_multiplier: 2.0
+      - type: fibonacci
+        key: fib_ret
+        depends_on:
+          swing: swing_htf
+        params:
+          levels: [0.5, 0.618, 0.786]
+          mode: retracement
+          use_paired_anchor: true
+      - type: fibonacci
+        key: fib_ext
+        depends_on:
+          swing: swing_htf
+        params:
+          levels: [1.272, 1.618]
+          mode: extension
+          use_paired_anchor: true
+
+actions:
+  entry_long:
+    all:
+      - [{feature_id: "fib_ret", field: "anchor_direction"}, "==", "BULLISH"]
+      - ["close", "near_pct", {feature_id: "fib_ret", field: "level_0.618"}, 2.0]
+      - ["rsi_14", "<", 45]
+      - [{feature_id: "adx_14", field: "adx"}, ">", 20]
+
+  exit_long:
+    any:
+      - ["close", "near_pct", {feature_id: "fib_ext", field: "level_1.272"}, 1.0]
+      - [{feature_id: "fib_ret", field: "anchor_direction"}, "==", "BEARISH"]
+
+  entry_short:
+    all:
+      - [{feature_id: "fib_ret", field: "anchor_direction"}, "==", "BEARISH"]
+      - ["close", "near_pct", {feature_id: "fib_ret", field: "level_0.618"}, 2.0]
+      - ["rsi_14", ">", 55]
+      - [{feature_id: "adx_14", field: "adx"}, ">", 20]
+
+  exit_short:
+    any:
+      - ["close", "near_pct", {feature_id: "fib_ext", field: "level_1.272"}, 1.0]
+      - [{feature_id: "fib_ret", field: "anchor_direction"}, "==", "BULLISH"]
+
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 4.0
+  take_profit_pct: 12.0
+  max_position_pct: 15.0
+
+_test_metadata:
+  gate: 24
+  complexity_pct: 90
+  category: "fib_htf_anchor"
+  direction: "bidirectional"
+  stress_type: "paired_extension"
+  tests:
+    - "Two fibonacci structures share same swing dependency"
+    - "Retracement for entry, extension for targets"
+    - "1.272 extension used as take profit zone"
+    - "ADX filter ensures trending market"

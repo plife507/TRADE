@@ -1,0 +1,104 @@
+version: "3.0.0"
+name: "S_FIB_002_eth_ict_ote"
+description: "Stress: ICT OTE Entry - Entry within 0.62-0.79 optimal trade entry zone"
+
+symbol: "ETHUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 1.0
+  slippage_bps: 2.0
+
+features:
+  atr_14_4h:
+    indicator: atr
+    tf: "4h"
+    params:
+      length: 14
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+structures:
+  high_tf:
+    "4h":
+      - type: swing
+        key: swing_htf
+        params:
+          left: 10
+          right: 10
+          mode: atr_zigzag
+          atr_key: atr_14_4h
+          atr_multiplier: 2.0
+      - type: fibonacci
+        key: fib_ote
+        depends_on:
+          swing: swing_htf
+        params:
+          levels: [0.62, 0.705, 0.79]
+          mode: retracement
+          use_paired_anchor: true
+
+actions:
+  # Long: Price in OTE zone (between 62% and 79% retracement) in BULLISH context
+  entry_long:
+    all:
+      - [{feature_id: "fib_ote", field: "anchor_direction"}, "==", "BULLISH"]
+      - ["close", ">", {feature_id: "fib_ote", field: "level_0.79"}]
+      - ["close", "<", {feature_id: "fib_ote", field: "level_0.62"}]
+      - ["rsi_14", "<", 50]
+
+  exit_long:
+    any:
+      - ["close", ">", {feature_id: "fib_ote", field: "anchor_high"}]
+      - ["close", "<", {feature_id: "fib_ote", field: "anchor_low"}]
+
+  # Short: Price in OTE zone in BEARISH context
+  entry_short:
+    all:
+      - [{feature_id: "fib_ote", field: "anchor_direction"}, "==", "BEARISH"]
+      - ["close", "<", {feature_id: "fib_ote", field: "level_0.79"}]
+      - ["close", ">", {feature_id: "fib_ote", field: "level_0.62"}]
+      - ["rsi_14", ">", 50]
+
+  exit_short:
+    any:
+      - ["close", "<", {feature_id: "fib_ote", field: "anchor_low"}]
+      - ["close", ">", {feature_id: "fib_ote", field: "anchor_high"}]
+
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 4.0
+  take_profit_pct: 8.0
+  max_position_pct: 15.0
+
+_test_metadata:
+  gate: 24
+  complexity_pct: 85
+  category: "fib_htf_anchor"
+  direction: "bidirectional"
+  stress_type: "ict_ote"
+  tests:
+    - "ICT OTE levels 0.62, 0.705, 0.79 compute correctly"
+    - "Entry triggers only when price is WITHIN OTE zone"
+    - "Paired anchoring gives correct BULLISH/BEARISH direction"
+    - "OTE zone validates classic ICT methodology"

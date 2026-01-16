@@ -1,0 +1,102 @@
+version: "3.0.0"
+name: "S_FIB_001_btc_htf_retracement"
+description: "Stress: HTF Fib Retracement - 4h swing with paired anchor, entry near 0.618 level"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 6.0
+    maker_bps: 1.0
+  slippage_bps: 2.0
+
+features:
+  atr_14_4h:
+    indicator: atr
+    tf: "4h"
+    params:
+      length: 14
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  high_tf:
+    "4h":
+      - type: swing
+        key: swing_htf
+        params:
+          left: 10
+          right: 10
+          mode: atr_zigzag
+          atr_key: atr_14_4h
+          atr_multiplier: 2.0
+      - type: fibonacci
+        key: fib_htf
+        depends_on:
+          swing: swing_htf
+        params:
+          levels: [0.382, 0.5, 0.618, 0.786]
+          mode: retracement
+          use_paired_anchor: true
+
+actions:
+  entry_long:
+    all:
+      - [{feature_id: "fib_htf", field: "anchor_direction"}, "==", "BULLISH"]
+      - ["close", "near_pct", {feature_id: "fib_htf", field: "level_0.618"}, 2.0]
+      - ["rsi_14", "<", 45]
+      - ["close", ">", "ema_21"]
+
+  exit_long:
+    any:
+      - ["close", ">", {feature_id: "fib_htf", field: "anchor_high"}]
+      - [{feature_id: "fib_htf", field: "anchor_direction"}, "==", "BEARISH"]
+
+  entry_short:
+    all:
+      - [{feature_id: "fib_htf", field: "anchor_direction"}, "==", "BEARISH"]
+      - ["close", "near_pct", {feature_id: "fib_htf", field: "level_0.618"}, 2.0]
+      - ["rsi_14", ">", 55]
+      - ["close", "<", "ema_21"]
+
+  exit_short:
+    any:
+      - ["close", "<", {feature_id: "fib_htf", field: "anchor_low"}]
+      - [{feature_id: "fib_htf", field: "anchor_direction"}, "==", "BULLISH"]
+
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 15.0
+
+_test_metadata:
+  gate: 24
+  complexity_pct: 80
+  category: "fib_htf_anchor"
+  direction: "bidirectional"
+  stress_type: "htf_fib_retracement"
+  tests:
+    - "4h swing with ATR zigzag mode produces valid anchors"
+    - "use_paired_anchor gives BULLISH/BEARISH anchor_direction"
+    - "Entry triggers near 0.618 retracement level"
+    - "Exit at anchor_high/low target"
