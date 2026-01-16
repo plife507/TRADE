@@ -1,0 +1,11 @@
+=== PARALLEL BACKTEST RESULTS ===
+Passed: 2/2
+
+PASS: V_STRUCT_001_swing_detection (5.4s)
+  Trades: N/A
+  Net PnL: N/A
+
+PASS: V_STRUCT_002_trend_classification (5.3s)
+  Trades: N/A
+  Net PnL: N/A
+

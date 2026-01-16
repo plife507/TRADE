@@ -675,7 +675,7 @@ def _compute_structure_warmup(play: "Play") -> int:
     Raises:
         KeyError: If structure type has no warmup formula in registry
     """
-    from src.backtest.incremental.registry import get_structure_warmup
+    from src.structures import get_structure_warmup
 
     registry = play.feature_registry
     structures = registry.get_structures()

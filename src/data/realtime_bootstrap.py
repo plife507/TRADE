@@ -42,7 +42,7 @@ from .realtime_state import (
     OrderbookLevel,
     TradeData,
     KlineData,
-    MTFCandle,
+    BarRecord,
     PositionData,
     OrderData,
     ExecutionData,
@@ -226,9 +226,15 @@ class RealtimeBootstrap:
         self._public_connected = False
         self._private_connected = False
 
-        # MTF buffer configuration
-        # When a closed kline is received, append to the appropriate MTF buffer
-        self._persist_closed_klines_to_mtf: bool = True
+        # Real-time bar persistence configuration
+        # When a closed bar is received:
+        # 1. Append to in-memory buffer for hot-path access
+        # 2. Persist to DuckDB for warm-up/recovery/history
+        self._persist_closed_bars_to_memory: bool = True
+        self._persist_closed_bars_to_db: bool = True
+
+        # Database store for persistence (lazy initialized)
+        self._db_store: "HistoricalDataStore | None" = None
 
         # Thread management
         self._lock = threading.Lock()
@@ -557,50 +563,107 @@ class RealtimeBootstrap:
         try:
             topic = msg.get("topic", "")
             data = msg.get("data", [])
-            
+
             if not data:
                 return
-            
+
             # Handle list of klines
             if isinstance(data, list):
                 for kline_data in data:
                     kline = KlineData.from_bybit(kline_data, topic)
                     self.state.update_kline(kline)
-                    # Append closed klines to MTF buffer
-                    self._maybe_append_to_mtf_buffer(kline)
+                    # Persist closed bars to memory and DB
+                    if kline.is_closed:
+                        self._on_bar_closed(kline)
             else:
                 kline = KlineData.from_bybit(data, topic)
                 self.state.update_kline(kline)
-                # Append closed klines to MTF buffer
-                self._maybe_append_to_mtf_buffer(kline)
-            
+                # Persist closed bars to memory and DB
+                if kline.is_closed:
+                    self._on_bar_closed(kline)
+
         except Exception as e:
             self.logger.warning(f"Error processing kline: {e}")
     
-    def _maybe_append_to_mtf_buffer(self, kline: KlineData):
+    def _get_db_store(self) -> "HistoricalDataStore":
+        """Lazy-initialize the database store for real-time persistence."""
+        if self._db_store is None:
+            from .historical_data_store import get_historical_store
+            # Use env to get correct store (live or demo)
+            self._db_store = get_historical_store(env=self.env)
+        return self._db_store
+
+    def _on_bar_closed(self, kline: KlineData):
         """
-        Append a closed kline to the MTF buffer if configured.
-        
-        This ensures the MTF ring buffer stays up-to-date with new candles
-        as they close during live execution.
+        Handle a closed bar - persist to memory and DuckDB.
+
+        When a kline closes:
+        1. Append to in-memory buffer for hot-path access
+        2. Persist to DuckDB for warm-up/recovery/history
         """
-        if not self._persist_closed_klines_to_mtf:
-            return
-        
         if not kline.is_closed:
             return
-        
+
+        # 1. Persist to in-memory buffer
+        self._persist_bar_to_memory(kline)
+
+        # 2. Persist to DuckDB
+        self._persist_bar_to_db(kline)
+
+    def _persist_bar_to_memory(self, kline: KlineData):
+        """
+        Append a closed bar to the in-memory buffer.
+
+        This ensures the ring buffer stays up-to-date with new bars
+        as they close during live execution.
+        """
+        if not self._persist_closed_bars_to_memory:
+            return
+
+        if not kline.is_closed:
+            return
+
         try:
-            # Convert to MTFCandle and append
-            mtf_candle = MTFCandle.from_kline_data(kline)
-            self.state.append_mtf_candle(
+            # Convert to BarRecord and append
+            bar = BarRecord.from_kline_data(kline)
+            self.state.append_bar(
                 env=self.env,
                 symbol=kline.symbol,
                 timeframe=kline.interval,
-                candle=mtf_candle,
+                bar=bar,
             )
         except Exception as e:
-            self.logger.debug(f"Error appending to MTF buffer: {e}")
+            self.logger.debug(f"Error appending to memory buffer: {e}")
+
+    def _persist_bar_to_db(self, kline: KlineData):
+        """
+        Persist a closed bar to DuckDB.
+
+        This enables:
+        - Data recovery when moving out of active window
+        - Warm-up on bot restart
+        - Historical analysis of live execution
+        """
+        if not self._persist_closed_bars_to_db:
+            return
+
+        if not kline.is_closed:
+            return
+
+        try:
+            store = self._get_db_store()
+            store.upsert_candle(
+                symbol=kline.symbol,
+                timeframe=kline.interval,
+                timestamp=kline.start_time,
+                open_price=kline.open,
+                high=kline.high,
+                low=kline.low,
+                close=kline.close,
+                volume=kline.volume,
+            )
+        except Exception as e:
+            self.logger.warning(f"Error persisting bar to DB: {e}")
     
     # ==========================================================================
     # Private Streams

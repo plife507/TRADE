@@ -4,7 +4,7 @@ description: "Stress Test Gate 5.4: Full Complexity - 100% DSL coverage"
 
 symbol: "BTCUSDT"
 tf: "15m"
-htf: "1h"
+high_tf: "1h"
 
 account:
   starting_equity_usdt: 10000.0
@@ -12,8 +12,8 @@ account:
   margin_mode: isolated_usdt
   min_trade_notional_usdt: 10.0
   fee_model:
-    taker_bps: 5.5
-    maker_bps: 2.0
+    taker_bps: 6.0
+    maker_bps: 1.0
   slippage_bps: 2.0
 
 features:
@@ -53,7 +53,7 @@ structures:
         mode: retracement
         max_active: 3
         width_pct: 0.002
-  htf:
+  high_tf:
     "1h":
       - type: swing
         key: swing_1h

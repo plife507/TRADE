@@ -3,7 +3,7 @@ name: S42_E_013_btc_1m_htf_trend
 description: "HTF trend (4h) with 1m last_price execution. Tests forward-fill + crossover."
 symbol: BTCUSDT
 tf: 1m
-htf: "4h"
+high_tf: "4h"
 
 account:
   starting_equity_usdt: 10000.0
@@ -11,8 +11,8 @@ account:
   margin_mode: isolated_usdt
   min_trade_notional_usdt: 10.0
   fee_model:
-    taker_bps: 5.5
-    maker_bps: 2.0
+    taker_bps: 6.0
+    maker_bps: 1.0
   slippage_bps: 2.0
 
 features:
@@ -84,7 +84,7 @@ _test_metadata:
   gate: "edge_09"
   category: plumbing
   exec_tf: "1m"
-  htf: "4h"
+  high_tf: "4h"
   tests:
     - "HTF trend (ema_20_4h > ema_50_4h) forward-filled"
     - "last_price cross_above ema_9 for 1m entry"

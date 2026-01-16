@@ -304,7 +304,7 @@ def forge_indicator_parity_tool(
     """
     try:
         from ..forge.validation.synthetic_data import generate_synthetic_candles
-        from ..backtest.indicator_registry import get_registry
+        from ..indicators import get_registry
 
         # Generate synthetic data
         candles = generate_synthetic_candles(

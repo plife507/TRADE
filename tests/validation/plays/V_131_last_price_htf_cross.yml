@@ -4,7 +4,7 @@ description: "Validation: last_price (1m) crossing HTF indicator. Tests precise 
 
 symbol: "BTCUSDT"
 tf: "15m"
-htf: "4h"
+high_tf: "4h"
 
 account:
   starting_equity_usdt: 10000.0

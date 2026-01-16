@@ -1,0 +1,79 @@
+version: "3.0.0"
+name: "V_PF_002_major_minor_threshold"
+description: "Validation: Major/minor pivot classification based on ATR threshold."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        atr_key: atr_14
+        major_threshold: 2.0   # Higher threshold: 2.0x ATR for major
+
+actions:
+  - id: entry
+    cases:
+      # Only enter on MAJOR pivots (high_is_major = true)
+      - when:
+          all:
+            - [{feature_id: "swing", field: "high_is_major"}, "==", true]
+            - ["close", ">", "ema_21"]
+        emit:
+          - action: entry_long
+  - id: exit
+    cases:
+      # Exit on any low pivot detection
+      - when:
+          all:
+            - [{feature_id: "swing", field: "low_level"}, ">", 0]
+            - ["close", "<", "ema_21"]
+        emit:
+          - action: exit_long
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_PF_002"
+  category: "pivot_foundation"
+  gate: 0
+  structure: "swing"
+  tests:
+    - "major_threshold param is accepted"
+    - "high_is_major output is boolean"
+    - "low_is_major output is boolean"
+    - "is_major = true when significance >= major_threshold"
+    - "is_major = false when significance < major_threshold"
+    - "is_major = false when significance is NaN"

@@ -27,29 +27,31 @@ if TYPE_CHECKING:
 
 
 def run_backtest(
-    system_id: str,
-    window_name: str,
-    strategy: Callable[["RuntimeSnapshot", dict[str, Any]], "Signal | None"],
-    run_dir: Path | None = None,
+    system_id: str = "",
+    window_name: str = "",
+    strategy: "Callable | None" = None,
+    run_dir: "Path | None" = None,
 ) -> "BacktestResult":
     """
-    Convenience function to run a backtest.
+    DEPRECATED: Use create_engine_from_play() + run_engine_with_play() instead.
 
-    Args:
-        system_id: System configuration ID
-        window_name: Window to use ("hygiene" or "test")
-        strategy: Strategy function
-        run_dir: Optional directory for artifacts
+    The system_id-based backtest runner has been removed in favor of
+    Play-native execution. Use:
 
-    Returns:
-        BacktestResult
+        from src.backtest import create_engine_from_play, run_engine_with_play
+        from src.backtest.play import load_play
+
+        play = load_play("my_strategy")
+        engine = create_engine_from_play(play, window_start, window_end)
+        result = run_engine_with_play(engine, play)
+
+    Raises:
+        RuntimeError: Always - this function is deprecated.
     """
-    from .engine import BacktestEngine
-    from .system_config import load_system_config
-
-    config = load_system_config(system_id, window_name)
-    engine = BacktestEngine(config, window_name, run_dir)
-    return engine.run(strategy)
+    raise RuntimeError(
+        "run_backtest() is deprecated. Use create_engine_from_play() + run_engine_with_play() "
+        "with a Play file instead. See: from src.backtest import create_engine_from_play, run_engine_with_play"
+    )
 
 
 # =============================================================================
@@ -83,12 +85,17 @@ def create_engine_from_play(
     on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None,
     synthetic_provider: "SyntheticDataProvider | None" = None,
     window_name: str = "run",
-) -> "BacktestEngine":
+    data_env: str = "backtest",
+):
     """
-    Create a BacktestEngine from an Play.
+    Create a PlayEngine from a Play with pre-built backtest components.
 
     This is the canonical factory for Play-native backtest execution.
-    Uses the FeatureRegistry for unified indicator/structure access on any TF.
+    Uses BacktestEngine internally for data loading and preparation,
+    then returns a unified PlayEngine with all pre-built components.
+
+    The returned engine can be run via run_engine_with_play() or
+    via BacktestRunner for the unified execution path.
 
     Args:
         play: Source Play with all strategy/feature specs
@@ -99,9 +106,10 @@ def create_engine_from_play(
         on_snapshot: Optional snapshot callback for auditing
         synthetic_provider: Optional SyntheticDataProvider for DB-free validation
         window_name: Window name for engine config (default: "run")
+        data_env: Data environment ("backtest", "live", "demo") - determines DuckDB file
 
     Returns:
-        BacktestEngine configured from Play
+        PlayEngine with pre-built FeedStores, SimulatedExchange, and incremental state
 
     Raises:
         ValueError: If Play is missing required sections (account)
@@ -115,6 +123,7 @@ def create_engine_from_play(
         RiskProfileConfig,
         StrategyInstanceConfig,
         StrategyInstanceInputs,
+        DataBuildConfig,
     )
     from .features.feature_spec import FeatureSpec, InputSource as FSInputSource
     from .feature_registry import FeatureType
@@ -132,7 +141,7 @@ def create_engine_from_play(
     # Get feature registry
     registry = play.feature_registry
 
-    # Build feature_specs_by_role from registry (for backward compat with engine_data_prep)
+    # Build feature_specs_by_role from registry for engine_data_prep
     def _feature_to_spec(feature) -> FeatureSpec | None:
         """Convert Feature to FeatureSpec (indicators only)."""
         if feature.type != FeatureType.INDICATOR:
@@ -269,41 +278,41 @@ def create_engine_from_play(
     window_end_naive = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
 
     # Build tf_mapping from feature registry TFs FIRST (needed for warmup_bars_by_role)
-    # Sort TFs by minutes to determine htf/mtf/ltf roles
+    # Sort TFs by minutes to determine high_tf/med_tf/low_tf roles
     from .runtime.timeframe import tf_minutes
     all_tfs = sorted(registry.get_all_tfs(), key=lambda tf: tf_minutes(tf))
     exec_tf = play.execution_tf
 
     if len(all_tfs) == 1:
         # Single-TF mode
-        tf_mapping = {"htf": exec_tf, "mtf": exec_tf, "ltf": exec_tf}
+        tf_mapping = {"high_tf": exec_tf, "med_tf": exec_tf, "low_tf": exec_tf}
     else:
         # Multi-TF mode: map TFs to roles
-        # ltf = execution_tf, mtf = next higher, htf = highest
-        tf_mapping = {"ltf": exec_tf}
+        # low_tf = execution_tf, med_tf = next higher, high_tf = highest
+        tf_mapping = {"low_tf": exec_tf}
         non_exec_tfs = [tf for tf in all_tfs if tf != exec_tf]
         if non_exec_tfs:
             # Sort remaining TFs by minutes (ascending)
             non_exec_sorted = sorted(non_exec_tfs, key=lambda tf: tf_minutes(tf))
             if len(non_exec_sorted) >= 2:
-                tf_mapping["mtf"] = non_exec_sorted[0]  # Lowest non-exec
-                tf_mapping["htf"] = non_exec_sorted[-1]  # Highest non-exec
+                tf_mapping["med_tf"] = non_exec_sorted[0]  # Lowest non-exec
+                tf_mapping["high_tf"] = non_exec_sorted[-1]  # Highest non-exec
             elif len(non_exec_sorted) == 1:
-                # Only one other TF - use it as both mtf and htf
-                tf_mapping["mtf"] = non_exec_sorted[0]
-                tf_mapping["htf"] = non_exec_sorted[0]
+                # Only one other TF - use it as both med_tf and high_tf
+                tf_mapping["med_tf"] = non_exec_sorted[0]
+                tf_mapping["high_tf"] = non_exec_sorted[0]
         else:
-            tf_mapping["mtf"] = exec_tf
-            tf_mapping["htf"] = exec_tf
+            tf_mapping["med_tf"] = exec_tf
+            tf_mapping["high_tf"] = exec_tf
 
     # Build warmup_bars_by_role from warmup_by_tf using tf_mapping
     # CRITICAL: Use tf_mapping to get correct TF for each role
     # Previously this used exec_tf warmup for ALL roles (bug!)
     warmup_bars_by_role = {
-        "exec": warmup_by_tf.get(tf_mapping.get("ltf", exec_tf), 0),
-        "ltf": warmup_by_tf.get(tf_mapping.get("ltf", exec_tf), 0),
-        "mtf": warmup_by_tf.get(tf_mapping.get("mtf", exec_tf), 0),
-        "htf": warmup_by_tf.get(tf_mapping.get("htf", exec_tf), 0),
+        "exec": warmup_by_tf.get(tf_mapping.get("low_tf", exec_tf), 0),
+        "low_tf": warmup_by_tf.get(tf_mapping.get("low_tf", exec_tf), 0),
+        "med_tf": warmup_by_tf.get(tf_mapping.get("med_tf", exec_tf), 0),
+        "high_tf": warmup_by_tf.get(tf_mapping.get("high_tf", exec_tf), 0),
     }
     # Also include TF-keyed values for flexibility
     for tf, warmup in warmup_by_tf.items():
@@ -325,16 +334,18 @@ def create_engine_from_play(
         },
         risk_profile=risk_profile,
         risk_mode="none",
-        # New fields for Feature Registry architecture
+        # Feature Registry architecture
         feature_registry=registry,
         warmup_by_tf=warmup_by_tf,
-        # Backward compat for engine_data_prep
         warmup_bars_by_role=warmup_bars_by_role,
         feature_specs_by_role=feature_specs_by_role,
+        # Data environment (backtest, live, demo) - determines which DuckDB to use
+        data_build=DataBuildConfig(env=data_env),
     )
 
-    # Create engine
-    engine = BacktestEngine(
+    # Create BacktestEngine for data preparation
+    # Handles data loading, indicator computation, and feed store building
+    data_builder = BacktestEngine(
         config=system_config,
         window_name=window_name,
         run_dir=run_dir,
@@ -344,8 +355,48 @@ def create_engine_from_play(
         synthetic_provider=synthetic_provider,
     )
 
-    # Store Play reference for run_with_play()
+    # Store Play reference
+    data_builder._play = play
+
+    # Prepare data frames (loads data, computes indicators)
+    multi_tf_mode = tf_mapping["high_tf"] != tf_mapping["low_tf"] or tf_mapping["med_tf"] != tf_mapping["low_tf"]
+    if multi_tf_mode:
+        data_builder.prepare_multi_tf_frames()
+    else:
+        data_builder.prepare_backtest_frame()
+
+    # Build FeedStores for O(1) access
+    data_builder._build_feed_stores()
+
+    # Build incremental state for structure detection
+    incremental_state = data_builder._build_incremental_state()
+
+    # Extract all pre-built components
+    feed_store = data_builder._exec_feed
+    htf_feed = data_builder._htf_feed
+    mtf_feed = data_builder._mtf_feed
+    quote_feed = data_builder._quote_feed
+    sim_exchange = data_builder._exchange
+
+    # Create unified PlayEngine with pre-built components via GATE 4 factory
+    from src.engine.factory import create_backtest_engine as create_unified_engine
+
+    engine = create_unified_engine(
+        play=play,
+        feed_store=feed_store,
+        sim_exchange=sim_exchange,
+        htf_feed=htf_feed,
+        mtf_feed=mtf_feed,
+        quote_feed=quote_feed,
+        tf_mapping=tf_mapping,
+        incremental_state=incremental_state,
+        on_snapshot=on_snapshot,
+    )
+
+    # Store Play and config references for run_engine_with_play()
     engine._play = play
+    engine._prepared_frame = data_builder._prepared_frame  # For sim_start_idx access
+    engine._multi_tf_mode = multi_tf_mode
 
     return engine
 
@@ -388,116 +439,71 @@ def _blocks_require_history(blocks: list) -> bool:
 
 
 def run_engine_with_play(
-    engine: "BacktestEngine",
+    engine,
     play: "Play",
 ) -> "PlayBacktestResult":
     """
-    Run a BacktestEngine using Play signal evaluation.
+    Run a PlayEngine using Play signal evaluation.
 
-    This consolidates signal evaluation into the engine execution flow.
+    This runs the unified PlayEngine through BacktestRunner, which handles
+    the bar-by-bar execution loop using the pre-built FeedStores and
+    SimulatedExchange.
 
     Args:
-        engine: BacktestEngine (created via create_engine_from_play)
+        engine: PlayEngine (created via create_engine_from_play)
         play: Play with signal rules
 
     Returns:
         PlayBacktestResult with trades, equity curve, and metrics
     """
-    from .execution_validation import (
-        PlaySignalEvaluator,
-        SignalDecision,
-        compute_play_hash,
-    )
-    from ..core.risk_manager import Signal
+    from .execution_validation import compute_play_hash
+    from ..engine.runners import BacktestRunner
+    from ..engine.adapters.backtest import BacktestDataProvider
 
     # Import here to avoid circular import
     PlayBacktestResult = _get_play_result_class()
 
-    # Note: Block validation happens at Play construction via _validate_block_types()
+    # Extract pre-built components from engine
+    # FeedStore and SimulatedExchange were set up in create_engine_from_play()
+    data_provider = engine._data_provider
+    feed_store = data_provider._feed_store if isinstance(data_provider, BacktestDataProvider) else None
+    sim_exchange = engine._exchange._sim_exchange if hasattr(engine._exchange, '_sim_exchange') else None
 
-    # Create signal evaluator
-    evaluator = PlaySignalEvaluator(play)
+    # Get simulation start index from prepared frame
+    sim_start_idx = None
+    if hasattr(engine, '_prepared_frame') and engine._prepared_frame is not None:
+        sim_start_idx = engine._prepared_frame.sim_start_index
 
-    def play_strategy(snapshot, params) -> Signal | None:
-        """Strategy function that uses Play signal evaluator."""
-        # Check if we have a position
-        has_position = snapshot.has_position
-        position_side = snapshot.position_side
+    # Create BacktestRunner with pre-built components
+    runner = BacktestRunner(
+        engine=engine,
+        feed_store=feed_store,
+        sim_exchange=sim_exchange,
+        sim_start_idx=sim_start_idx,
+    )
 
-        # Evaluate signal rules
-        result = evaluator.evaluate(snapshot, has_position, position_side)
-
-        # Convert to Signal
-        if result.decision == SignalDecision.NO_ACTION:
-            return None
-        elif result.decision == SignalDecision.ENTRY_LONG:
-            # Build metadata with SL/TP and any resolved dynamic metadata
-            metadata = {
-                "stop_loss": result.stop_loss_price,
-                "take_profit": result.take_profit_price,
-            }
-            if result.resolved_metadata:
-                metadata.update(result.resolved_metadata)
-            return Signal(
-                symbol=play.symbol_universe[0],
-                direction="LONG",
-                size_usdt=0.0,  # Engine computes from risk_profile
-                strategy=play.id,
-                confidence=1.0,
-                metadata=metadata,
-            )
-        elif result.decision == SignalDecision.ENTRY_SHORT:
-            # Build metadata with SL/TP and any resolved dynamic metadata
-            metadata = {
-                "stop_loss": result.stop_loss_price,
-                "take_profit": result.take_profit_price,
-            }
-            if result.resolved_metadata:
-                metadata.update(result.resolved_metadata)
-            return Signal(
-                symbol=play.symbol_universe[0],
-                direction="SHORT",
-                size_usdt=0.0,
-                strategy=play.id,
-                confidence=1.0,
-                metadata=metadata,
-            )
-        elif result.decision == SignalDecision.EXIT:
-            # Build metadata with exit_percent and any resolved dynamic metadata
-            metadata = {}
-            if result.exit_percent != 100.0:
-                metadata["exit_percent"] = result.exit_percent
-            if result.resolved_metadata:
-                metadata.update(result.resolved_metadata)
-            return Signal(
-                symbol=play.symbol_universe[0],
-                direction="FLAT",
-                size_usdt=0.0,
-                strategy=play.id,
-                confidence=1.0,
-                metadata=metadata if metadata else None,
-            )
-
-        return None
-
-    # Run the engine
-    backtest_result = engine.run(play_strategy)
+    # Run the backtest via unified runner
+    backtest_result = runner.run()
 
     # Compute Play hash
     play_hash = compute_play_hash(play)
 
+    # Use metrics from BacktestResult (has compatibility mapping via .metrics property)
+    metrics = backtest_result.metrics
+
+    # Convert BacktestResult to PlayBacktestResult
     return PlayBacktestResult(
         trades=backtest_result.trades,
         equity_curve=backtest_result.equity_curve,
-        final_equity=backtest_result.metrics.final_equity,
+        final_equity=backtest_result.final_equity,
         play_hash=play_hash,
-        metrics=backtest_result.metrics,
-        description=backtest_result.description,
-        # Pass through stop fields
-        stop_reason=backtest_result.stop_reason,
-        stop_classification=str(backtest_result.stop_classification) if backtest_result.stop_classification else None,
-        stop_reason_detail=backtest_result.stop_reason_detail,
-        stopped_early=backtest_result.stopped_early,
+        metrics=metrics,
+        description=f"{play.id} backtest",
+        # BacktestRunner result doesn't have stop fields yet
+        stop_reason=None,
+        stop_classification=None,
+        stop_reason_detail=None,
+        stopped_early=False,
     )
 
 
@@ -525,3 +531,13 @@ def _get_play_result_class():
     without circular imports.
     """
     return PlayBacktestResult
+
+
+# =============================================================================
+# PROFESSIONAL NAMING ALIASES
+# See docs/specs/ENGINE_NAMING_CONVENTION.md for full naming standards
+# =============================================================================
+
+# Canonical factory function names
+create_backtest_engine = create_engine_from_play  # Preferred name
+PlayRunResult = PlayBacktestResult  # Play-native result wrapper

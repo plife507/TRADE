@@ -614,23 +614,36 @@ class SimulatedExchange:
             if pos.max_price is None or bar.high > pos.max_price:
                 pos.max_price = bar.high
 
-        # 7. Update ledger with current mark price
-        self._ledger.update_for_mark_price(self.position, mark_price)
-
-        # 8. Check for liquidation after balance update
+        # 7. Check liquidation BEFORE MTM update (prevents negative equity)
+        # This simulates exchange behavior where liquidation is triggered
+        # before losses exceed available capital
         if self.position:
-            liq_result = self._liquidation.check_liquidation(
-                self._ledger.state, prices, self.position
-            )
-            if liq_result.liquidated and liq_result.event:
-                result = self._close_position(
-                    mark_price, step_time, "liquidation", "mark_price"
+            # Temporarily compute what equity would be at this mark price
+            # without actually updating the ledger yet
+            projected_unrealized_pnl = self.position.unrealized_pnl(mark_price)
+            projected_equity = self._ledger.state.cash_balance_usdt + projected_unrealized_pnl
+
+            # If projected equity <= maintenance margin, trigger liquidation
+            # before the MTM update makes equity negative
+            position_value = self.position.size * mark_price
+            maintenance_margin = position_value * self._ledger._config.maintenance_margin_rate
+
+            if projected_equity <= maintenance_margin:
+                liq_result = self._liquidation.check_liquidation(
+                    self._ledger.state, prices, self.position
                 )
-                if result:
-                    trade, exit_fill = result
-                    closed_trades.append(trade)
-                    fills.append(exit_fill)
-                    self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
+                if liq_result.liquidated and liq_result.event:
+                    result = self._close_position(
+                        mark_price, step_time, "liquidation", "mark_price"
+                    )
+                    if result:
+                        trade, exit_fill = result
+                        closed_trades.append(trade)
+                        fills.append(exit_fill)
+                        self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
+
+        # 8. Update ledger with current mark price (now safe from negative equity)
+        self._ledger.update_for_mark_price(self.position, mark_price)
 
         # Return StepResult with unified mark price
         return StepResult(

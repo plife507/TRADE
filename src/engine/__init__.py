@@ -25,17 +25,30 @@ Architecture:
                 +-- InMemoryStateStore (backtest)
                 +-- FileStateStore (live recovery)
 
-Usage:
-    from src.engine import PlayEngineFactory
+GATE 4 - Unified Backtest Path:
+    The create_backtest_engine() factory enables BacktestRunner to drive
+    PlayEngine with pre-built FeedStore and SimulatedExchange components.
+    This ensures trade hash parity with the old BacktestEngine during
+    the transition to fully unified execution.
 
-    # Create engine for any mode
+Usage:
+    from src.engine import PlayEngineFactory, create_backtest_engine
+
+    # Create engine for any mode (auto-configures adapters)
     engine = PlayEngineFactory.create(play, mode="backtest")
     engine = PlayEngineFactory.create(play, mode="demo")
     engine = PlayEngineFactory.create(play, mode="live")
 
+    # GATE 4: Create backtest engine with pre-built components
+    engine = create_backtest_engine(
+        play=play,
+        feed_store=feed_store,
+        sim_exchange=sim_exchange,
+    )
+
     # Run with appropriate runner
     from src.engine.runners import BacktestRunner, LiveRunner
-    runner = BacktestRunner(engine)
+    runner = BacktestRunner(engine, feed_store, sim_exchange)
     result = runner.run()
 """
 
@@ -52,9 +65,27 @@ from .interfaces import (
 
 from .play_engine import PlayEngine
 
-from .factory import PlayEngineFactory
+from .factory import (
+    PlayEngineFactory,
+    CorePlayEngine,
+    create_unified_engine,
+    create_backtest_engine,
+    create_engine,
+)
 
-from .runners import BacktestRunner, BacktestResult
+from .runners import BacktestRunner, BacktestResult, SimRunner, SimRunResult
+
+from .adapters.backtest import (
+    BacktestDataProvider,
+    BacktestExchange,
+    ShadowExchange,
+    # Professional aliases
+    SimDataAdapter,
+    SimExchangeAdapter,
+    ShadowExchangeAdapter,
+)
+
+from .sizing import SizingModel, SizingConfig, SizingResult
 
 __all__ = [
     # Protocols
@@ -69,9 +100,26 @@ __all__ = [
     "EngineState",
     # Core engine
     "PlayEngine",
+    "CorePlayEngine",  # Professional alias
     # Factory
     "PlayEngineFactory",
+    "create_engine",
+    "create_backtest_engine",  # GATE 4: Unified backtest factory
+    "create_unified_engine",  # Professional alias
     # Runners
     "BacktestRunner",
     "BacktestResult",
+    "SimRunner",  # Professional alias
+    "SimRunResult",  # Professional alias
+    # Adapters
+    "BacktestDataProvider",
+    "BacktestExchange",
+    "ShadowExchange",
+    "SimDataAdapter",  # Professional alias
+    "SimExchangeAdapter",  # Professional alias
+    "ShadowExchangeAdapter",  # Professional alias
+    # Unified sizing (GATE 3)
+    "SizingModel",
+    "SizingConfig",
+    "SizingResult",
 ]

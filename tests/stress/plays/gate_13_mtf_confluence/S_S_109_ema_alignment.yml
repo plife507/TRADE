@@ -4,8 +4,8 @@ description: "Stress Gate 13: Three-TF EMA alignment. HTF(4h) ema_50 < ema_200, 
 
 symbol: "LINKUSDT"
 tf: "15m"
-mtf: "1h"
-htf: "4h"
+med_tf: "1h"
+high_tf: "4h"
 
 account:
   starting_equity_usdt: 10000.0
@@ -13,8 +13,8 @@ account:
   margin_mode: isolated_usdt
   min_trade_notional_usdt: 10.0
   fee_model:
-    taker_bps: 5.5
-    maker_bps: 2.0
+    taker_bps: 6.0
+    maker_bps: 1.0
   slippage_bps: 2.0
 
 features:

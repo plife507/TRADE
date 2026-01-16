@@ -14,8 +14,7 @@ import pytest
 import math
 from dataclasses import dataclass
 
-from src.backtest.incremental.base import BarData
-from src.backtest.incremental.detectors.swing import IncrementalSwingDetector
+from src.structures import BarData, IncrementalSwingDetector
 
 
 # =============================================================================
@@ -268,7 +267,7 @@ class TestFibonacciDetector:
 
     def test_fib_retracement_levels(self, swing_detector):
         """Calculate fib retracement levels from swing range."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         params = {
             "levels": [0.236, 0.382, 0.5, 0.618, 0.786],
@@ -290,7 +289,7 @@ class TestFibonacciDetector:
 
     def test_fib_extension_levels(self, swing_detector):
         """Calculate fib extension levels from swing range using explicit extension_up mode."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         # Note: "extension" mode requires use_paired_anchor (auto-direction).
         # For explicit direction without pairing, use "extension_up" or "extension_down".
@@ -313,7 +312,7 @@ class TestFibonacciDetector:
 
     def test_fib_no_swing_returns_nan(self):
         """Fib levels are NaN when no swing is available."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         # Empty swing detector
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
@@ -348,7 +347,7 @@ class TestZoneDetector:
 
     def test_zone_lifecycle_none_to_active(self, swing_detector_with_low):
         """Zone transitions from none to active when swing detected."""
-        from src.backtest.incremental.detectors.zone import IncrementalZoneDetector
+        from src.structures import IncrementalZoneDetector
 
         params = {"zone_type": "demand", "width_atr": 0.5}
         deps = {"swing": swing_detector_with_low}
@@ -363,7 +362,7 @@ class TestZoneDetector:
 
     def test_zone_touched_but_not_broken(self, swing_detector_with_low):
         """Zone touched when price enters but doesn't break through."""
-        from src.backtest.incremental.detectors.zone import IncrementalZoneDetector
+        from src.structures import IncrementalZoneDetector
 
         params = {"zone_type": "demand", "width_atr": 0.5}
         deps = {"swing": swing_detector_with_low}
@@ -385,7 +384,7 @@ class TestZoneDetector:
 
     def test_zone_broken(self, swing_detector_with_low):
         """Zone broken when price breaks through."""
-        from src.backtest.incremental.detectors.zone import IncrementalZoneDetector
+        from src.structures import IncrementalZoneDetector
 
         params = {"zone_type": "demand", "width_atr": 0.5}
         deps = {"swing": swing_detector_with_low}
@@ -425,7 +424,7 @@ class TestDerivedZoneDetector:
 
     def test_derived_zones_created_at_fib_levels(self, swing_detector_with_pivots):
         """Derived zones created at specified fib levels."""
-        from src.backtest.incremental.detectors.derived_zone import IncrementalDerivedZone
+        from src.structures import IncrementalDerivedZone
 
         params = {
             "levels": [0.5, 0.618],
@@ -457,7 +456,7 @@ class TestDerivedZoneDetector:
 
     def test_derived_zone_aggregate_fields(self, swing_detector_with_pivots):
         """Aggregate fields computed correctly when price inside zone."""
-        from src.backtest.incremental.detectors.derived_zone import IncrementalDerivedZone
+        from src.structures import IncrementalDerivedZone
 
         params = {
             "levels": [0.5],  # Single zone for simpler test
@@ -479,7 +478,7 @@ class TestDerivedZoneDetector:
 
     def test_derived_zone_touched_this_bar(self, swing_detector_with_pivots):
         """touched_this_bar resets each bar, true only when price in zone."""
-        from src.backtest.incremental.detectors.derived_zone import IncrementalDerivedZone
+        from src.structures import IncrementalDerivedZone
 
         params = {
             "levels": [0.5],  # 50% retracement = 90.0
@@ -508,7 +507,7 @@ class TestDerivedZoneDetector:
 
     def test_derived_zone_empty_guards(self):
         """Empty derived zones have safe default values."""
-        from src.backtest.incremental.detectors.derived_zone import IncrementalDerivedZone
+        from src.structures import IncrementalDerivedZone
 
         # No swing pivots
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
@@ -752,7 +751,7 @@ class TestPairedFibonacci:
 
     def test_fib_unpaired_mode_default(self):
         """Default mode uses individual pivots (may be from different sequences)."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         fib = IncrementalFibonacci(
@@ -794,7 +793,7 @@ class TestPairedFibonacci:
 
     def test_fib_paired_mode_waits_for_pair(self):
         """Paired mode only calculates levels when a complete pair forms."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         fib = IncrementalFibonacci(
@@ -836,7 +835,7 @@ class TestPairedFibonacci:
 
     def test_fib_paired_mode_bullish_direction(self):
         """Paired mode tracks bullish direction for L→H swings."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         fib = IncrementalFibonacci(
@@ -866,7 +865,7 @@ class TestPairedFibonacci:
 
     def test_fib_extension_with_paired_anchor(self):
         """Extension mode works with paired anchors."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         fib = IncrementalFibonacci(
@@ -894,7 +893,7 @@ class TestPairedFibonacci:
 
     def test_fib_negative_levels_above_high(self):
         """Negative levels project ABOVE the swing high (long targets)."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         fib = IncrementalFibonacci(
@@ -930,7 +929,7 @@ class TestPairedFibonacci:
 
     def test_fib_levels_above_100_below_low(self):
         """Levels > 1 project BELOW the swing low (short targets)."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         fib = IncrementalFibonacci(
@@ -961,7 +960,7 @@ class TestPairedFibonacci:
 
     def test_fib_extension_mode_bullish_auto_direction(self):
         """Extension mode auto-projects ABOVE high for bullish pairs."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         fib = IncrementalFibonacci(
@@ -998,7 +997,7 @@ class TestPairedFibonacci:
 
     def test_fib_extension_mode_bearish_auto_direction(self):
         """Extension mode auto-projects BELOW low for bearish pairs."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         fib = IncrementalFibonacci(
@@ -1035,7 +1034,7 @@ class TestPairedFibonacci:
 
     def test_fib_extension_mode_requires_paired_anchor(self):
         """Extension mode validation requires use_paired_anchor=true."""
-        from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+        from src.structures import IncrementalFibonacci
 
         # Mock swing dependency to satisfy dependency check
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
@@ -1059,7 +1058,7 @@ class TestDerivedZonePairedSource:
         Individual pivots (high OR low alone) don't trigger zone regeneration.
         Only when pair_version increments (complete L→H or H→L) do zones update.
         """
-        from src.backtest.incremental.detectors.derived_zone import IncrementalDerivedZone
+        from src.structures import IncrementalDerivedZone
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         params = {
@@ -1121,7 +1120,7 @@ class TestDerivedZonePairedSource:
 
         The zone levels should match the paired pivot values, not individual pivots.
         """
-        from src.backtest.incremental.detectors.derived_zone import IncrementalDerivedZone
+        from src.structures import IncrementalDerivedZone
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         params = {
@@ -1169,7 +1168,7 @@ class TestDerivedZonePairedSource:
 
         Even without a complete pair, zones are created from individual high/low.
         """
-        from src.backtest.incremental.detectors.derived_zone import IncrementalDerivedZone
+        from src.structures import IncrementalDerivedZone
 
         swing = IncrementalSwingDetector({"left": 2, "right": 2}, None)
         params = {

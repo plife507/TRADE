@@ -639,10 +639,10 @@ class RuntimeSnapshotView:
         
         Supports both OHLCV and indicator keys across all TF roles.
         Used by PlaySignalEvaluator for condition evaluation.
-        
+
         Args:
             indicator_key: Key to look up (e.g., "close", "ema_20", "rsi")
-            tf_role: TF role ("exec", "htf", "mtf")
+            tf_role: TF role ("exec", "high_tf", "med_tf")
             offset: Bar offset (0 = current, 1 = previous, etc.)
             
         Returns:
@@ -697,16 +697,16 @@ class RuntimeSnapshotView:
         # Get the appropriate context
         # In single-TF mode, htf_ctx and mtf_ctx point to exec_ctx
         # Use the context's feed directly to handle both single-TF and multi-TF modes
-        if tf_role in ("exec", "ltf"):
+        if tf_role in ("exec", "low_tf"):
             ctx = self.exec_ctx
-        elif tf_role == "htf":
+        elif tf_role == "high_tf":
             ctx = self.htf_ctx
-        elif tf_role == "mtf":
+        elif tf_role == "med_tf":
             ctx = self.mtf_ctx
         else:
             return None
 
-        # Get feed from context (handles single-TF mode where htf/mtf ctx = exec_ctx)
+        # Get feed from context (handles single-TF mode where high_tf/med_tf ctx = exec_ctx)
         feed = ctx.feed
         
         # Compute target index
@@ -737,11 +737,11 @@ class RuntimeSnapshotView:
     def has_feature(self, indicator_key: str, tf_role: str = "exec") -> bool:
         """
         Check if a feature is declared for a TF role.
-        
+
         Args:
             indicator_key: Key to check
-            tf_role: TF role ("exec", "htf", "mtf")
-            
+            tf_role: TF role ("exec", "high_tf", "med_tf")
+
         Returns:
             True if feature is available
         """
@@ -763,12 +763,12 @@ class RuntimeSnapshotView:
         if indicator_key == "open_interest":
             return self._feeds.exec_feed.open_interest is not None
 
-        # Get context for TF role (handles single-TF mode where htf/mtf = exec)
-        if tf_role in ("exec", "ltf"):
+        # Get context for TF role (handles single-TF mode where high_tf/med_tf = exec)
+        if tf_role in ("exec", "low_tf"):
             ctx = self.exec_ctx
-        elif tf_role == "htf":
+        elif tf_role == "high_tf":
             ctx = self.htf_ctx
-        elif tf_role == "mtf":
+        elif tf_role == "med_tf":
             ctx = self.mtf_ctx
         else:
             return False
@@ -876,11 +876,11 @@ class RuntimeSnapshotView:
             if feature is not None:
                 feature_tf = feature.tf
                 # Map TF to role via tf_mapping
-                if feature_tf == self.tf_mapping.get("htf"):
-                    tf_role = "htf"
-                elif feature_tf == self.tf_mapping.get("mtf"):
-                    tf_role = "mtf"
-                elif feature_tf == self.tf_mapping.get("ltf"):
+                if feature_tf == self.tf_mapping.get("high_tf"):
+                    tf_role = "high_tf"
+                elif feature_tf == self.tf_mapping.get("med_tf"):
+                    tf_role = "med_tf"
+                elif feature_tf == self.tf_mapping.get("low_tf"):
                     tf_role = "exec"
                 # else: fallback to exec
 
@@ -1148,7 +1148,7 @@ class RuntimeSnapshotView:
 
         Structure storage locations:
         - exec.structures: Structures on the execution timeframe
-        - htf[tf].structures: Structures on any non-exec TF (LTF, MTF, or HTF)
+        - htf[tf].structures: Structures on any non-exec TF (LowTF, MedTF, or HighTF)
           The "htf" dict stores ALL non-exec TFs despite the name.
 
         Args:
@@ -1170,7 +1170,7 @@ class RuntimeSnapshotView:
             except KeyError:
                 return None
 
-        # Check if structure is in non-exec TF state (LTF, MTF, or HTF)
+        # Check if structure is in non-exec TF state (LowTF, MedTF, or HighTF)
         # The "htf" dict stores ALL non-exec timeframes despite the name
         if feature_tf in self._incremental_state.htf:
             tf_state = self._incremental_state.htf[feature_tf]
@@ -1469,7 +1469,7 @@ class RuntimeSnapshotView:
         - indicator.<key>.<tf_role> -> specific TF indicator
 
         Args:
-            parts: Path parts after "indicator." (e.g., ["rsi_14"] or ["rsi_14", "htf"])
+            parts: Path parts after "indicator." (e.g., ["rsi_14"] or ["rsi_14", "high_tf"])
             full_path: Full original path for error messages
 
         Returns:

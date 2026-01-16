@@ -29,8 +29,7 @@ from .transitions import TransitionManager
 from .derived import DerivedStateComputer
 
 if TYPE_CHECKING:
-    from src.backtest.incremental.state import MultiTFIncrementalState
-    from src.backtest.incremental.base import BarData
+    from src.structures import MultiTFIncrementalState, BarData
 
 
 class StateRationalizer:

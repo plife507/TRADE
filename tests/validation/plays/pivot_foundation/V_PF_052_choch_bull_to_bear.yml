@@ -1,0 +1,74 @@
+version: "3.0.0"
+name: "V_PF_052_choch_bull_to_bear"
+description: "Validation: CHoCH detection - structure reversal."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        atr_key: atr_14
+
+    - type: market_structure
+      key: ms
+      depends_on:
+        swing: swing
+
+actions:
+  - id: entry
+    cases:
+      # Entry on CHoCH event
+      - when:
+          all:
+            - [{feature_id: "ms", field: "choch_this_bar"}, "==", true]
+        emit:
+          - action: entry_short
+  - id: exit
+    cases:
+      # Exit on another CHoCH
+      - when:
+          all:
+            - [{feature_id: "ms", field: "choch_this_bar"}, "==", true]
+        emit:
+          - action: exit_short
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_PF_052"
+  category: "pivot_foundation"
+  gate: 5
+  structure: "market_structure"
+  tests:
+    - "CHoCH detected when structure breaks in opposite direction"
+    - "choch_this_bar flag set only on break bar"
+    - "Bias flips on CHoCH event"

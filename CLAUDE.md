@@ -24,9 +24,26 @@ src/tools/         # CLI/API surface
 | Pattern | Rule |
 |---------|------|
 | Engine | Always use `create_engine_from_play()` + `run_engine_with_play()` |
-| TF roles | Use `high_tf/med_tf/low_tf` (NOT htf/mtf/ltf) |
 | Indicators | Declare in Play YAML, access via snapshot |
 | Database | Sequential access only (DuckDB limitation) |
+
+## Timeframe Naming (ENFORCED)
+
+**ALWAYS use these terms - in code, YAML, docs, and conversation:**
+
+| Role | Correct | WRONG |
+|------|---------|-------|
+| Structure/trend timeframe | `high_tf` | ~~htf~~, ~~HTF~~, ~~higher timeframe~~ |
+| Intermediate filter | `med_tf` | ~~mtf~~, ~~MTF~~, ~~medium timeframe~~ |
+| Execution/entry timeframe | `exec_tf` | ~~ltf~~, ~~LTF~~, ~~lower timeframe~~ |
+
+```yaml
+# Correct Play structure:
+timeframes:
+  high_tf: 4h     # Structure: swings, fib, trend
+  med_tf: 1h      # Filter: RSI, momentum confirmation
+  exec_tf: 15m    # Entry: precise triggers, tight stops
+```
 
 ## Quick Commands
 

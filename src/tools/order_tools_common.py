@@ -161,7 +161,8 @@ def execute_order(
         ToolResult with order details or error
     """
     try:
-        result = operation(**kwargs)
+        # Ensure symbol is passed to operation (it may not be in kwargs)
+        result = operation(symbol=symbol, **kwargs)
 
         if result.success:
             # Format message with result values if placeholders present
@@ -235,8 +236,8 @@ def execute_simple_order(
         exchange = _get_exchange_manager()
         operation = getattr(exchange, exchange_method)
 
-        # Build operation kwargs
-        op_kwargs = {"symbol": symbol}
+        # Build operation kwargs (symbol passed separately to execute_order)
+        op_kwargs: dict[str, Any] = {}
         if usd_amount is not None:
             op_kwargs["usd_amount"] = usd_amount
         if price is not None:

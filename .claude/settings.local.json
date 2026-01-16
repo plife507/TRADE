@@ -207,7 +207,17 @@
       "Bash(cmd /c \"type C:\\\\Users\\\\507pl\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--code-ai-trade\\\\tasks\\\\aa03440.output\")",
       "Bash(cmd /c \"powershell -Command \"\"\\(Get-Content ''.claude/settings.local.json'' -Raw\\) -replace ''\\\\$CLAUDE_PROJECT_DIR/'', '''' | Set-Content ''.claude/settings.local.json'' -NoNewline\"\"\")",
       "Bash(cmd /c \"type .claude\\\\settings.local.json | findstr /C:security_scan\")",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(del /s /q \"C:\\\\code\\\\ai\\\\trade\\\\src\\\\engine\\\\__pycache__\\\\*\")",
+      "Bash(del /s /q \"C:\\\\code\\\\ai\\\\trade\\\\src\\\\engine\\\\runners\\\\__pycache__\\\\*\")",
+      "Bash(del /s /q \"C:\\\\code\\\\ai\\\\trade\\\\src\\\\engine\\\\adapters\\\\__pycache__\\\\*\")",
+      "Bash(for play in S_01_btc_single_ema S_02_btc_rsi_threshold S_03_btc_two_indicators S_04_btc_basic_and S_05_btc_multi_output S_06_btc_ema_crossover)",
+      "Bash(ruff check:*)",
+      "Bash(TRADE_SMOKE_INCLUDE_BACKTEST=1 python trade_cli.py:*)",
+      "Bash(del parallel_test_results.txt)",
+      "Bash(for play in V_PF_040_wave_tracking V_PF_041_hh_hl_uptrend V_PF_042_lh_ll_downtrend V_PF_043_mixed_ranging V_PF_044_strength_levels V_PF_045_recovery_scenario V_PF_046_trend_flip)",
+      "Bash(for play in V_PF_050_bos_bullish V_PF_051_bos_bearish V_PF_052_choch_bull_to_bear V_PF_053_choch_bear_to_bull V_PF_054_event_flags_reset V_PF_055_version_increment V_PF_056_initial_bias)",
+      "Bash(cmp:*)"
     ]
   },
   "hooks": {

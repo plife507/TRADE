@@ -20,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from typing import Callable
 
-from src.backtest.incremental.primitives import MonotonicDeque, RingBuffer
+from src.structures import MonotonicDeque, RingBuffer
 
 
 @dataclass

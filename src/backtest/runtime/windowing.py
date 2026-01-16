@@ -21,11 +21,11 @@ from .timeframe import tf_duration, tf_minutes
 
 
 # Default safety buffer in number of closes per TF
-DEFAULT_HTF_SAFETY_CLOSES = 10
-DEFAULT_MTF_SAFETY_CLOSES = 20
+DEFAULT_HIGH_TF_SAFETY_CLOSES = 10
+DEFAULT_MED_TF_SAFETY_CLOSES = 20
 
 # Default tail buffer
-DEFAULT_TAIL_LTF_BARS = 2
+DEFAULT_TAIL_LOW_TF_BARS = 2
 DEFAULT_TAIL_FUNDING_INTERVALS = 1
 FUNDING_INTERVAL_HOURS = 8  # Bybit funding every 8 hours
 
@@ -35,11 +35,11 @@ class WarmupConfig:
     """Configuration for warmup and buffer calculations."""
 
     # Safety buffer: extra closed candles per TF
-    htf_safety_closes: int = DEFAULT_HTF_SAFETY_CLOSES
-    mtf_safety_closes: int = DEFAULT_MTF_SAFETY_CLOSES
+    high_tf_safety_closes: int = DEFAULT_HIGH_TF_SAFETY_CLOSES
+    med_tf_safety_closes: int = DEFAULT_MED_TF_SAFETY_CLOSES
 
     # Tail buffer
-    tail_ltf_bars: int = DEFAULT_TAIL_LTF_BARS
+    tail_low_tf_bars: int = DEFAULT_TAIL_LOW_TF_BARS
     tail_funding_intervals: int = DEFAULT_TAIL_FUNDING_INTERVALS
 
 
@@ -104,14 +104,14 @@ def compute_warmup_span(
 ) -> timedelta:
     """
     Compute total warmup span from TF mapping and indicator lookbacks.
-    
+
     Formula: warmup_span = max(warmup_bars_tf * tf_duration(tf) for each TF)
-    
+
     Args:
-        tf_mapping: Dict with htf, mtf, ltf -> tf string
+        tf_mapping: Dict with high_tf, med_tf, low_tf -> tf string
         indicator_lookbacks: Dict with tf -> max lookback bars for that TF
         warmup_config: Optional warmup configuration
-        
+
     Returns:
         Maximum warmup span as timedelta
     """
@@ -136,21 +136,21 @@ def compute_safety_buffer_span(
 ) -> timedelta:
     """
     Compute safety buffer span (extra closes to ensure cache readiness).
-    
+
     Args:
-        tf_mapping: Dict with htf, mtf, ltf -> tf string
+        tf_mapping: Dict with high_tf, med_tf, low_tf -> tf string
         warmup_config: Optional warmup configuration
-        
+
     Returns:
         Safety buffer as timedelta
     """
     config = warmup_config or WarmupConfig()
-    
-    htf_buffer = config.htf_safety_closes * tf_duration(tf_mapping["htf"])
-    mtf_buffer = config.mtf_safety_closes * tf_duration(tf_mapping["mtf"])
-    
+
+    high_tf_buffer = config.high_tf_safety_closes * tf_duration(tf_mapping["high_tf"])
+    med_tf_buffer = config.med_tf_safety_closes * tf_duration(tf_mapping["med_tf"])
+
     # Use the larger buffer
-    return max(htf_buffer, mtf_buffer)
+    return max(high_tf_buffer, med_tf_buffer)
 
 
 def compute_tail_buffer_span(
@@ -159,20 +159,20 @@ def compute_tail_buffer_span(
 ) -> timedelta:
     """
     Compute tail buffer span (extra bars at end for funding).
-    
+
     Args:
-        tf_mapping: Dict with htf, mtf, ltf -> tf string
+        tf_mapping: Dict with high_tf, med_tf, low_tf -> tf string
         warmup_config: Optional warmup configuration
-        
+
     Returns:
         Tail buffer as timedelta
     """
     config = warmup_config or WarmupConfig()
-    
-    ltf_buffer = config.tail_ltf_bars * tf_duration(tf_mapping["ltf"])
+
+    low_tf_buffer = config.tail_low_tf_bars * tf_duration(tf_mapping["low_tf"])
     funding_buffer = config.tail_funding_intervals * timedelta(hours=FUNDING_INTERVAL_HOURS)
     
-    return ltf_buffer + funding_buffer
+    return low_tf_buffer + funding_buffer
 
 
 def compute_load_window(
@@ -192,10 +192,10 @@ def compute_load_window(
     Args:
         test_start: Test window start (from config)
         test_end: Test window end (from config)
-        tf_mapping: Dict with htf, mtf, ltf -> tf string
+        tf_mapping: Dict with high_tf, med_tf, low_tf -> tf string
         indicator_lookbacks: Dict with tf -> max lookback bars
         warmup_config: Optional warmup configuration
-        
+
     Returns:
         LoadWindow with computed boundaries and metadata
     """
@@ -253,11 +253,11 @@ def compute_simple_load_window(
     Returns:
         LoadWindow with computed boundaries
     """
-    tf_mapping = {"htf": tf, "mtf": tf, "ltf": tf}
+    tf_mapping = {"high_tf": tf, "med_tf": tf, "low_tf": tf}
     indicator_lookbacks = {tf: max_lookback}
     config = WarmupConfig(
-        htf_safety_closes=0,  # No HTF/MTF safety for single TF
-        mtf_safety_closes=0,
+        high_tf_safety_closes=0,  # No HighTF/MedTF safety for single TF
+        med_tf_safety_closes=0,
     )
 
     return compute_load_window(

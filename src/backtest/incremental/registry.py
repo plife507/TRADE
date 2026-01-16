@@ -62,10 +62,16 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "last_confirmed_pivot_type": FeatureOutputType.ENUM, # "high" or "low"
     },
     "trend": {
-        "direction": FeatureOutputType.INT,       # 1 (up), -1 (down), 0 (neutral)
-        "strength": FeatureOutputType.FLOAT,      # Trend strength metric
-        "bars_in_trend": FeatureOutputType.INT,   # Bars since trend started
-        "version": FeatureOutputType.INT,         # Monotonic counter, increments on direction change
+        "direction": FeatureOutputType.INT,           # 1 (up), -1 (down), 0 (ranging)
+        "strength": FeatureOutputType.INT,            # 0 (weak), 1 (normal), 2 (strong)
+        "bars_in_trend": FeatureOutputType.INT,       # Bars since trend started
+        "wave_count": FeatureOutputType.INT,          # Consecutive waves in same direction
+        "last_wave_direction": FeatureOutputType.ENUM,  # "bullish", "bearish", "none"
+        "last_hh": FeatureOutputType.BOOL,            # Was last high a higher high?
+        "last_hl": FeatureOutputType.BOOL,            # Was last low a higher low?
+        "last_lh": FeatureOutputType.BOOL,            # Was last high a lower high?
+        "last_ll": FeatureOutputType.BOOL,            # Was last low a lower low?
+        "version": FeatureOutputType.INT,             # Monotonic counter, increments on direction change
     },
     "zone": {
         "state": FeatureOutputType.ENUM,          # "active", "broken", "none"
@@ -121,6 +127,20 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "newest_active_idx": FeatureOutputType.INT,
         "source_version": FeatureOutputType.INT,
     },
+    "market_structure": {
+        "bias": FeatureOutputType.ENUM,              # "bullish", "bearish", "ranging"
+        "bos_this_bar": FeatureOutputType.BOOL,      # True if BOS occurred this bar
+        "choch_this_bar": FeatureOutputType.BOOL,    # True if CHoCH occurred this bar
+        "bos_direction": FeatureOutputType.ENUM,     # "bullish", "bearish", "none"
+        "choch_direction": FeatureOutputType.ENUM,   # "bullish", "bearish", "none"
+        "last_bos_idx": FeatureOutputType.INT,       # Bar index of last BOS
+        "last_bos_level": FeatureOutputType.FLOAT,   # Price level of last BOS
+        "last_choch_idx": FeatureOutputType.INT,     # Bar index of last CHoCH
+        "last_choch_level": FeatureOutputType.FLOAT, # Price level of last CHoCH
+        "break_level_high": FeatureOutputType.FLOAT, # Level to watch for bullish break
+        "break_level_low": FeatureOutputType.FLOAT,  # Level to watch for bearish break
+        "version": FeatureOutputType.INT,            # Monotonic counter, increments on structure event
+    },
 }
 
 
@@ -155,6 +175,10 @@ STRUCTURE_WARMUP_FORMULAS: dict[str, callable] = {
 
     # ROLLING_WINDOW: needs its size parameter
     "rolling_window": lambda params, swing_params: params.get("size", 20),
+
+    # MARKET_STRUCTURE: needs multiple swings for structure detection
+    # Conservative heuristic: (left + right) * 3
+    "market_structure": lambda params, swing_params: (swing_params["left"] + swing_params["right"]) * 3,
 }
 
 

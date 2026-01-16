@@ -303,24 +303,30 @@ class HistoricalDataStore:
         table_oi_metadata: Name of open interest metadata table
     """
     
-    def __init__(self, env: DataEnv = DEFAULT_DATA_ENV, db_path: str = None):
+    def __init__(self, env: DataEnv = DEFAULT_DATA_ENV, db_path: str = None, read_only: bool = False):
         """
         Initialize the data store.
-        
+
         Args:
             env: Data environment ("live" or "demo"). Defaults to "live".
             db_path: Optional explicit DB path (overrides env-based resolution).
+            read_only: If True, open database in read-only mode. Enables concurrent
+                      readers for parallel backtest execution. Default is False.
         """
         # Validate and store environment
         self.env: DataEnv = validate_data_env(env)
-        
+        self.read_only = read_only
+
         # Resolve DB path based on environment (or use explicit path)
         if db_path:
             self.db_path = Path(db_path)
         else:
             self.db_path = resolve_db_path(self.env)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
+        # Only create directories if not read-only
+        if not read_only:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
         # Resolve table names for this environment
         self.table_ohlcv = resolve_table_name("ohlcv", self.env)
         self.table_sync_metadata = resolve_table_name("sync_metadata", self.env)
@@ -328,25 +334,28 @@ class HistoricalDataStore:
         self.table_funding_metadata = resolve_table_name("funding_metadata", self.env)
         self.table_oi = resolve_table_name("open_interest", self.env)
         self.table_oi_metadata = resolve_table_name("open_interest_metadata", self.env)
-        
-        self.conn = duckdb.connect(str(self.db_path))
+
+        # Open connection - read_only mode enables concurrent readers
+        self.conn = duckdb.connect(str(self.db_path), read_only=read_only)
         self.config = get_config()
         self.logger = get_logger()
         
         # Select API and credentials based on data environment
-        # - live: Use LIVE API with LIVE data keys (canonical backtest history)
-        # - demo: Use DEMO API with DEMO data keys (demo-only history)
-        if self.env == "live":
-            # LIVE environment: use LIVE API with dedicated data credentials
+        # - backtest: Use LIVE API (most accurate historical data for backtests)
+        # - live: Use LIVE API (real-time warm-up for live trading)
+        # - demo: Use DEMO API (paper trading data feed)
+        if self.env in ("live", "backtest"):
+            # LIVE/BACKTEST environment: use LIVE API with dedicated data credentials
+            # Backtest uses live data because it's more accurate for historical analysis
             api_key, api_secret = self.config.bybit.get_live_data_credentials()
             use_demo_api = False
             api_name = "LIVE"
             api_url = "api.bybit.com"
-            
+
             if not api_key or not api_secret:
                 self.logger.error(
                     "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY/SECRET not configured! "
-                    "Historical LIVE data sync requires LIVE data API access. "
+                    f"Historical {self.env.upper()} data sync requires LIVE data API access. "
                     "No fallback to trading keys."
                 )
             key_source = "BYBIT_LIVE_DATA_API_KEY" if api_key else "MISSING"
@@ -356,7 +365,7 @@ class HistoricalDataStore:
             use_demo_api = True
             api_name = "DEMO"
             api_url = "api-demo.bybit.com"
-            
+
             if not api_key or not api_secret:
                 self.logger.error(
                     "MISSING REQUIRED KEY: BYBIT_DEMO_DATA_API_KEY/SECRET not configured! "
@@ -386,8 +395,10 @@ class HistoricalDataStore:
             f"auth={key_status}, "
             f"key_source={key_source}"
         )
-        
-        self._init_schema()
+
+        # Skip schema initialization in read-only mode (schema must already exist)
+        if not self.read_only:
+            self._init_schema()
     
     def _init_schema(self):
         """Initialize database schema with env-specific table names."""
@@ -682,10 +693,98 @@ class HistoricalDataStore:
         """, [symbol, timeframe]).fetchone()
         
         self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_sync_metadata} 
+            INSERT OR REPLACE INTO {self.table_sync_metadata}
             VALUES (?, ?, ?, ?, ?, ?)
         """, [symbol, timeframe, stats[0], stats[1], stats[2], datetime.now()])
-    
+
+    # ==================== REAL-TIME CANDLE PERSISTENCE ====================
+
+    def upsert_candle(
+        self,
+        symbol: str,
+        timeframe: str,
+        timestamp: datetime,
+        open_price: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: float,
+    ) -> None:
+        """
+        Insert or update a single candle (for real-time persistence).
+
+        Called by RealtimeBootstrap when a bar closes during live/demo trading.
+        This ensures closed bars are persisted to DuckDB for:
+        - Warm-up data on restart
+        - Moving out of active window without data loss
+        - Historical analysis
+
+        Args:
+            symbol: Trading pair (e.g., "BTCUSDT")
+            timeframe: Timeframe (e.g., "1m", "15m")
+            timestamp: Bar open timestamp (UTC-naive)
+            open_price: Open price
+            high: High price
+            low: Low price
+            close: Close price
+            volume: Volume
+
+        Note:
+            Timestamps must be UTC-naive. If tz-aware, they are converted.
+            Uses INSERT OR REPLACE for idempotent upserts.
+        """
+        symbol = symbol.upper()
+
+        # Ensure timestamp is UTC-naive
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.replace(tzinfo=None)
+
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_ohlcv}
+            (symbol, timeframe, timestamp, open, high, low, close, volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, [symbol, timeframe, timestamp, open_price, high, low, close, volume])
+
+    def upsert_candles_batch(
+        self,
+        symbol: str,
+        timeframe: str,
+        candles: list[tuple[datetime, float, float, float, float, float]],
+    ) -> int:
+        """
+        Insert or update multiple candles in a batch (efficient for catch-up).
+
+        Args:
+            symbol: Trading pair
+            timeframe: Timeframe
+            candles: List of (timestamp, open, high, low, close, volume) tuples
+
+        Returns:
+            Number of candles upserted
+        """
+        if not candles:
+            return 0
+
+        symbol = symbol.upper()
+
+        # Build DataFrame for batch insert
+        df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["symbol"] = symbol
+        df["timeframe"] = timeframe
+
+        # Ensure timestamps are UTC-naive
+        if df["timestamp"].dt.tz is not None:
+            df["timestamp"] = df["timestamp"].dt.tz_localize(None)
+
+        df = df[["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"]]
+
+        self.conn.execute(f"""
+            INSERT OR REPLACE INTO {self.table_ohlcv}
+            SELECT * FROM df
+        """)
+
+        return len(candles)
+
     # ==================== FUNDING RATE SYNC ====================
     
     def sync_funding(
@@ -1671,34 +1770,121 @@ class HistoricalDataStore:
 # ==============================================================================
 # Env-aware Singleton Instances
 # ==============================================================================
+#
+# Three separate stores for concurrent operations:
+#
+# | Store            | DB File                      | API Source         | Purpose              |
+# |------------------|------------------------------|--------------------|--------------------- |
+# | _store_backtest  | market_data_backtest.duckdb  | api.bybit.com      | Parallel backtests   |
+# | _store_live      | market_data_live.duckdb      | api.bybit.com      | Live trading warm-up |
+# | _store_demo      | market_data_demo.duckdb      | api-demo.bybit.com | Paper trading        |
+#
+# This allows: backtest + live + demo to run in separate processes simultaneously
 
 # Cached instances per environment
+_store_backtest: HistoricalDataStore | None = None
 _store_live: HistoricalDataStore | None = None
 _store_demo: HistoricalDataStore | None = None
 
+# Process-level flag to force read-only mode for all database access
+# Set to True in child processes for parallel backtest execution
+_force_read_only: bool = False
 
-def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV) -> HistoricalDataStore:
+
+def reset_stores(force_read_only: bool = False) -> None:
+    """
+    Reset all HistoricalDataStore singletons.
+
+    IMPORTANT: Call this at the start of child processes to ensure each process
+    gets its own fresh DuckDB connection. Required for parallel backtest execution.
+
+    Args:
+        force_read_only: If True, all subsequent get_historical_store() calls will
+                        use read-only mode. This enables concurrent readers for
+                        parallel backtest execution (DuckDB allows multiple readers).
+
+    Usage in parallel.py:
+        from src.data.historical_data_store import reset_stores
+        reset_stores(force_read_only=True)  # Must be first thing in child process
+    """
+    global _store_backtest, _store_live, _store_demo, _force_read_only
+
+    # Set process-level read-only flag
+    _force_read_only = force_read_only
+
+    # Close existing connections if any
+    if _store_backtest is not None:
+        try:
+            _store_backtest.conn.close()
+        except Exception:
+            pass
+        _store_backtest = None
+
+    if _store_live is not None:
+        try:
+            _store_live.conn.close()
+        except Exception:
+            pass
+        _store_live = None
+
+    if _store_demo is not None:
+        try:
+            _store_demo.conn.close()
+        except Exception:
+            pass
+        _store_demo = None
+
+
+def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV, read_only: bool = False) -> HistoricalDataStore:
     """
     Get or create the HistoricalDataStore instance for a given environment.
-    
+
     Args:
-        env: Data environment ("live" or "demo"). Defaults to "live".
-        
+        env: Data environment ("backtest", "live", or "demo"). Defaults to "backtest".
+        read_only: If True, create a fresh read-only instance instead of using singleton.
+                  This enables concurrent readers for parallel backtest execution.
+
     Returns:
         HistoricalDataStore instance for the specified environment.
+
+    Note:
+        Each environment uses a separate DuckDB file to allow concurrent operations
+        across different processes (backtest + live + demo simultaneously).
+
+        When read_only=True or _force_read_only is set (by reset_stores), a NEW
+        instance is created in read-only mode. This allows multiple parallel
+        processes to read simultaneously.
     """
-    global _store_live, _store_demo
-    
+    global _store_backtest, _store_live, _store_demo, _force_read_only
+
     env = validate_data_env(env)
-    
-    if env == "live":
+
+    # Use read-only mode if explicitly requested OR if process-level flag is set
+    # (set by reset_stores(force_read_only=True) in child processes)
+    use_read_only = read_only or _force_read_only
+
+    # Read-only mode: create fresh instance for parallel access
+    if use_read_only:
+        return HistoricalDataStore(env=env, read_only=True)
+
+    # Standard singleton mode
+    if env == "backtest":
+        if _store_backtest is None:
+            _store_backtest = HistoricalDataStore(env="backtest")
+        return _store_backtest
+    elif env == "live":
         if _store_live is None:
             _store_live = HistoricalDataStore(env="live")
         return _store_live
-    else:
+    else:  # demo
         if _store_demo is None:
             _store_demo = HistoricalDataStore(env="demo")
         return _store_demo
+
+
+def get_backtest_historical_store() -> HistoricalDataStore:
+    """Get the backtest environment HistoricalDataStore (convenience function)."""
+    return get_historical_store(env="backtest")
 
 
 def get_live_historical_store() -> HistoricalDataStore:

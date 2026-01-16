@@ -21,8 +21,7 @@ from datetime import datetime
 import numpy as np
 import json
 
-from src.backtest.indicator_vendor import compute_indicator
-from src.backtest.indicator_registry import get_registry
+from src.indicators import compute_indicator, get_registry
 
 
 @dataclass

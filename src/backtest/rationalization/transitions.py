@@ -27,8 +27,7 @@ from typing import TYPE_CHECKING, Any
 from .types import Transition, TransitionFilter
 
 if TYPE_CHECKING:
-    from src.backtest.incremental.state import MultiTFIncrementalState, TFIncrementalState
-    from src.backtest.incremental.base import BaseIncrementalDetector
+    from src.structures import MultiTFIncrementalState, TFIncrementalState, BaseIncrementalDetector
 
 
 # Key fields to track for each detector type

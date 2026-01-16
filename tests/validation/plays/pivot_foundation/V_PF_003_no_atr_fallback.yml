@@ -1,0 +1,75 @@
+version: "3.0.0"
+name: "V_PF_003_no_atr_fallback"
+description: "Validation: Graceful degradation when no ATR configured for significance."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+# Swing WITHOUT atr_key - significance outputs should gracefully degrade
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        # NO atr_key - intentionally omitted
+
+actions:
+  - id: entry
+    cases:
+      # Should still work - use basic pivot detection
+      - when:
+          all:
+            - [{feature_id: "swing", field: "high_level"}, ">", 0]
+            - [{feature_id: "swing", field: "low_level"}, ">", 0]
+            - ["close", ">", "ema_21"]
+        emit:
+          - action: entry_long
+  - id: exit
+    cases:
+      - when:
+          all:
+            - ["close", "<", "ema_21"]
+        emit:
+          - action: exit_long
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_PF_003"
+  category: "pivot_foundation"
+  gate: 0
+  structure: "swing"
+  tests:
+    - "atr_key param is optional"
+    - "Without atr_key, high_significance = NaN"
+    - "Without atr_key, low_significance = NaN"
+    - "Without atr_key, high_is_major = false"
+    - "Without atr_key, low_is_major = false"
+    - "Basic pivot detection still works without ATR"
+    - "Backward compatibility: existing Plays unaffected"

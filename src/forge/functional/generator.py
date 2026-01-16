@@ -120,7 +120,7 @@ class PlayGenerator:
         declared_features = set()
 
         # Get indicator info for multi-output detection
-        from src.backtest.indicator_registry import get_registry
+        from src.indicators import get_registry
         registry = get_registry()
         info = registry.get_indicator_info(indicator_name)
 

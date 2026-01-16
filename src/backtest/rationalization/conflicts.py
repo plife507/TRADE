@@ -27,7 +27,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from src.backtest.incremental.state import MultiTFIncrementalState
+    from src.structures import MultiTFIncrementalState
 
 
 class ResolutionStrategy(Enum):
@@ -93,15 +93,15 @@ class ResolutionConfig:
     Example YAML:
         rationalization:
           strategy: priority
-          priority_order: [htf, mtf, exec]
+          priority_order: [high_tf, med_tf, exec]
           veto_on: [zone_broken, trend_reversal]
           min_confluence: 0.5
     """
     strategy: ResolutionStrategy = ResolutionStrategy.PRIORITY
-    priority_order: tuple[str, ...] = ("htf", "mtf", "exec")
+    priority_order: tuple[str, ...] = ("high_tf", "med_tf", "exec")
     veto_on: tuple[VetoCondition, ...] = field(default_factory=tuple)
     min_confluence: float = 0.0
-    require_htf_alignment: bool = False
+    require_high_tf_alignment: bool = False
 
     @classmethod
     def from_dict(cls, config: dict[str, Any]) -> "ResolutionConfig":
@@ -109,7 +109,7 @@ class ResolutionConfig:
         strategy_str = config.get("strategy", "priority")
         strategy = ResolutionStrategy(strategy_str)
 
-        priority_order = tuple(config.get("priority_order", ["htf", "mtf", "exec"]))
+        priority_order = tuple(config.get("priority_order", ["high_tf", "med_tf", "exec"]))
 
         veto_strs = config.get("veto_on", [])
         veto_on = tuple(VetoCondition(v) for v in veto_strs)

@@ -15,8 +15,8 @@ import math
 
 def test_tf_state_basic() -> None:
     """Test basic TFIncrementalState creation and updates."""
-    from src.backtest.incremental.base import BarData
-    from src.backtest.incremental.state import TFIncrementalState
+    from src.structures import BarData
+    from src.structures import TFIncrementalState
 
     print("Testing TFIncrementalState basic operations...")
     print("-" * 60)
@@ -60,8 +60,8 @@ def test_tf_state_basic() -> None:
 
 def test_tf_state_dependency_chain() -> None:
     """Test TFIncrementalState with swing -> fib -> trend dependency chain."""
-    from src.backtest.incremental.base import BarData
-    from .state import TFIncrementalState
+    from src.structures import BarData
+    from src.backtest.incremental.state import TFIncrementalState
 
     print("Testing TFIncrementalState with dependency chain...")
     print("-" * 60)
@@ -148,8 +148,8 @@ def test_tf_state_dependency_chain() -> None:
 
 def test_multi_tf_state_basic() -> None:
     """Test basic MultiTFIncrementalState creation and path access."""
-    from src.backtest.incremental.base import BarData
-    from .state import MultiTFIncrementalState
+    from src.structures import BarData
+    from src.backtest.incremental.state import MultiTFIncrementalState
 
     print("Testing MultiTFIncrementalState basic operations...")
     print("-" * 60)
@@ -219,8 +219,8 @@ def test_multi_tf_state_basic() -> None:
 
 def test_multi_tf_full_chain() -> None:
     """Test MultiTFIncrementalState with full swing + fib + trend chain."""
-    from src.backtest.incremental.base import BarData
-    from .state import MultiTFIncrementalState
+    from src.structures import BarData
+    from src.backtest.incremental.state import MultiTFIncrementalState
 
     print("Testing MultiTFIncrementalState with full dependency chain...")
     print("-" * 60)
@@ -357,8 +357,8 @@ def test_multi_tf_full_chain() -> None:
 
 def test_error_handling() -> None:
     """Test fail-loud error handling with actionable suggestions."""
-    from src.backtest.incremental.base import BarData
-    from .state import MultiTFIncrementalState, TFIncrementalState
+    from src.structures import BarData
+    from src.backtest.incremental.state import MultiTFIncrementalState, TFIncrementalState
 
     print("Testing error handling...")
     print("-" * 60)
@@ -501,7 +501,7 @@ def run_incremental_state_via_engine(
     """
     from src.forge.validation.synthetic_data import generate_synthetic_candles
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
-    from src.backtest import create_engine_from_play
+    from src.backtest import create_engine_from_play, run_engine_with_play
     from src.backtest.play import load_play
     import tempfile
     import os
@@ -633,8 +633,8 @@ risk:
                 on_snapshot=on_snapshot_callback,
             )
 
-            # Run engine
-            result = engine.run()
+            # Run engine via unified path
+            result = run_engine_with_play(engine, play)
 
             # Validate results
             # Test 1: Engine completed successfully

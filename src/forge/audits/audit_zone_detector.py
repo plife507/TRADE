@@ -20,9 +20,14 @@ from typing import Any
 
 import numpy as np
 
-from src.backtest.incremental.base import BarData, BaseIncrementalDetector
-from src.backtest.incremental.registry import STRUCTURE_REGISTRY, get_structure_info, unregister_structure
-from src.backtest.incremental.detectors.zone import IncrementalZoneDetector
+from src.structures import (
+    BarData,
+    BaseIncrementalDetector,
+    STRUCTURE_REGISTRY,
+    get_structure_info,
+    unregister_structure,
+    IncrementalZoneDetector,
+)
 
 
 class MockSwingDetector(BaseIncrementalDetector):

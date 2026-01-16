@@ -32,12 +32,12 @@ from src.forge.audits.audit_rollup_parity import (
     run_rollup_parity_audit,
     RollupParityResult,
 )
-from src.backtest.incremental.registry import (
+from src.structures import (
     STRUCTURE_REGISTRY,
     list_structure_types,
     get_structure_info,
 )
-from src.backtest.indicator_registry import get_registry
+from src.indicators import get_registry
 
 
 # =============================================================================

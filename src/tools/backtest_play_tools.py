@@ -22,7 +22,7 @@ import pandas as pd
 from .shared import ToolResult
 from ..config.constants import (
     DataEnv,
-    DEFAULT_DATA_ENV,
+    DEFAULT_BACKTEST_ENV,
     validate_data_env,
     validate_symbol,
     resolve_db_path,
@@ -39,7 +39,7 @@ from ..backtest.execution_validation import (
     compute_warmup_requirements,
     get_declared_features_by_role,
 )
-from ..backtest.indicators import get_required_indicator_columns_from_specs
+from ..indicators import get_required_indicator_columns_from_specs
 from ..backtest.system_config import validate_usdt_pair
 from ..backtest.runtime.preflight import run_preflight_gate, PreflightReport, AutoSyncConfig
 from ..utils.logger import get_logger
@@ -140,7 +140,7 @@ def normalize_timestamp(dt: datetime) -> datetime:
 
 def backtest_preflight_play_tool(
     play_id: str,
-    env: DataEnv = DEFAULT_DATA_ENV,
+    env: DataEnv = DEFAULT_BACKTEST_ENV,
     start: datetime | None = None,
     end: datetime | None = None,
     plays_dir: Path | None = None,
@@ -525,7 +525,7 @@ def normalize_timestamp(ts: datetime) -> datetime:
 
 def backtest_run_play_tool(
     play_id: str,
-    env: DataEnv = DEFAULT_DATA_ENV,
+    env: DataEnv = DEFAULT_BACKTEST_ENV,
     start: datetime | None = None,
     end: datetime | None = None,
     smoke: bool = False,
@@ -538,6 +538,7 @@ def backtest_run_play_tool(
     emit_snapshots: bool = False,
     fix_gaps: bool = True,
     validate_artifacts_after: bool = True,
+    skip_preflight: bool = False,
 ) -> ToolResult:
     """
     Run a backtest for an Play.
@@ -562,6 +563,8 @@ def backtest_run_play_tool(
         max_leverage_override: Override max leverage (defaults to Play.account.max_leverage)
         fix_gaps: If True (default), auto-fetch and fix missing data during preflight
         validate_artifacts_after: If True (default), validate artifacts after run (HARD FAIL if invalid)
+        skip_preflight: If True, skip preflight checks. Use for parallel execution where
+                       data was already synced by the parent process.
 
     Returns:
         ToolResult with backtest results
@@ -571,20 +574,26 @@ def backtest_run_play_tool(
         Plays are self-contained and deterministic.
     """
     try:
-        # Run preflight first (with auto-sync if fix_gaps=True)
-        preflight_result = backtest_preflight_play_tool(
-            play_id=play_id,
-            env=env,
-            start=start,
-            end=end,
-            plays_dir=plays_dir,
-            fix_gaps=fix_gaps,
-        )
+        # Skip preflight if requested (for parallel execution)
+        if skip_preflight:
+            logger.warning("[WARN] --skip-preflight bypasses ALL data validation!")
+            logger.warning("[WARN] Use only for testing. Production runs MUST use preflight gate.")
+            preflight_data = {}
+        else:
+            # Run preflight first (with auto-sync if fix_gaps=True)
+            preflight_result = backtest_preflight_play_tool(
+                play_id=play_id,
+                env=env,
+                start=start,
+                end=end,
+                plays_dir=plays_dir,
+                fix_gaps=fix_gaps,
+            )
 
-        if not preflight_result.success:
-            return preflight_result
+            if not preflight_result.success:
+                return preflight_result
 
-        preflight_data = preflight_result.data
+            preflight_data = preflight_result.data
 
         # Load Play
         play = load_play(play_id, base_dir=plays_dir)
@@ -650,6 +659,8 @@ def backtest_run_play_tool(
             artifacts_dir = Path("backtests")
 
         # Create data_loader from HistoricalDataStore
+        # Note: For parallel execution, each process has isolated store singletons
+        # after reset_stores() is called in parallel.py
         store = get_historical_store(env=env)
 
         def data_loader(symbol: str, tf: str, start_dt: datetime, end_dt: datetime) -> pd.DataFrame:
@@ -675,6 +686,7 @@ def backtest_run_play_tool(
             skip_artifact_validation=True,  # Skip because preflight is skipped (no preflight_report.json)
             data_loader=data_loader,
             emit_snapshots=emit_snapshots,
+            data_env=env,  # Pass data environment for correct DB selection
         )
 
         # Run backtest with gates
@@ -796,7 +808,7 @@ def backtest_run_play_tool(
 
 def backtest_indicators_tool(
     play_id: str,
-    data_env: DataEnv = DEFAULT_DATA_ENV,
+    data_env: DataEnv = DEFAULT_BACKTEST_ENV,
     start: datetime | None = None,
     end: datetime | None = None,
     plays_dir: Path | None = None,
@@ -932,7 +944,7 @@ def _datetime_to_epoch_ms(dt: datetime | None) -> int | None:
 
 def backtest_data_fix_tool(
     play_id: str,
-    env: DataEnv = DEFAULT_DATA_ENV,
+    env: DataEnv = DEFAULT_BACKTEST_ENV,
     start: datetime | None = None,
     end: datetime | None = None,
     max_lookback_days: int = 7,

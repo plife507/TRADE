@@ -14,8 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 import pandas as pd
 
-from src.backtest.indicator_vendor import compute_indicator, canonicalize_indicator_outputs
-from src.backtest.indicator_registry import get_registry
+from src.indicators import compute_indicator, canonicalize_indicator_outputs, get_registry
 from src.forge.validation.synthetic_data import generate_synthetic_ohlcv_df
 
 

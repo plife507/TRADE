@@ -169,6 +169,7 @@ class FunctionalTestRunner:
                 data_loader=data_loader,
                 base_output_dir=self.output_dir,
                 plays_dir=self.plays_dir,
+                data_env=self.data_env,
             )
 
             backtest_result = run_backtest_with_gates(config)

@@ -4,9 +4,16 @@ Data modules for market data and historical data storage.
 Environment-aware data layer supporting live and demo trading:
 - MarketData: Live market data with caching (env-aware)
 - HistoricalDataStore: DuckDB-backed historical data (env-aware: live/demo)
-- RealtimeState/RealtimeBootstrap: WebSocket real-time data with MTF buffers
+- RealtimeState/RealtimeBootstrap: WebSocket real-time data with bar buffers
 - Sessions: DemoSession/LiveSession for isolated trading environments
 - Backend Protocol: Interface for future MongoDB backend support
+
+Timeframe Terminology:
+- LowTF: 1m, 3m, 5m, 15m (execution timing)
+- MedTF: 30m, 1h, 2h, 4h (trade bias)
+- HighTF: 6h, 12h, D, W (trend direction)
+- ExecTF: Play's execution timeframe
+- MultiTF: Cross-timeframe analysis (comparing LowTF/MedTF/HighTF)
 """
 
 from .market_data import (
@@ -37,7 +44,7 @@ from .realtime_state import (
     OrderbookData,
     TradeData,
     KlineData,
-    MTFCandle,
+    BarRecord,
     PositionData,
     OrderData,
     ExecutionData,
@@ -94,7 +101,7 @@ __all__ = [
     "OrderbookData",
     "TradeData",
     "KlineData",
-    "MTFCandle",
+    "BarRecord",
     "PositionData",
     "OrderData",
     "ExecutionData",

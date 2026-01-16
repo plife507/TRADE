@@ -37,7 +37,7 @@ When tests reveal behavior differs from this doc:
 5. [Operators](#5-operators)
 6. [Arithmetic DSL](#6-arithmetic-dsl)
 7. [Window Operators](#7-window-operators)
-8. [Multi-Timeframe (MTF)](#8-multi-timeframe-mtf)
+8. [Multi-Timeframe (MultiTF)](#8-multi-timeframe-multitf)
 9. [Risk Model](#9-risk-model)
 10. [Order Sizing & Execution](#10-order-sizing--execution)
 11. [Complete Examples](#11-complete-examples)
@@ -48,6 +48,32 @@ When tests reveal behavior differs from this doc:
 ## 1. Play Structure
 
 A Play is the complete backtest-ready strategy unit.
+
+### Default Values Reference
+
+These are the system defaults. When not specified in a Play, these values apply:
+
+| Field | Default | Source | Notes |
+|-------|---------|--------|-------|
+| **Account Configuration** ||||
+| `taker_bps` | 6.0 | Bybit API | 0.06% taker fee |
+| `maker_bps` | 1.0 | Bybit API | 0.01% maker fee |
+| `slippage_bps` | 2.0 | - | Conservative estimate |
+| `margin_mode` | `isolated_usdt` | - | Only supported mode |
+| `min_trade_notional_usdt` | 10.0 | - | Minimum trade size |
+| **Risk Model** ||||
+| `sizing.model` | `percent_equity` | - | Margin-based sizing |
+| `sizing.max_leverage` | 1.0 | - | Conservative default |
+| **Position Policy** ||||
+| `mode` | `long_only` | - | Conservative default |
+| `exit_mode` | `sl_tp_only` | - | Mechanical exits |
+| `max_positions_per_symbol` | 1 | - | Single position |
+
+**IMPORTANT: No implicit defaults for capital or risk.** These MUST be explicitly specified:
+- `starting_equity_usdt` - Required
+- `max_leverage` - Required
+- `stop_loss` - Required for sl_tp_only/first_hit modes
+- `take_profit` - Required for sl_tp_only/first_hit modes
 
 ```yaml
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -62,8 +88,8 @@ description: "Description"     # What it does
 # ═══════════════════════════════════════════════════════════════════════════════
 symbol: "BTCUSDT"              # Trading pair (USDT pairs only)
 tf: "15m"                      # Execution timeframe (ANY tf works: 1m, 5m, 15m, 1h, 4h, etc.)
-mtf: "1h"                      # Optional: mid timeframe for context
-htf: "4h"                      # Optional: higher timeframe for trend/levels
+med_tf: "1h"                   # Optional: mid timeframe for context
+high_tf: "4h"                  # Optional: higher timeframe for trend/levels
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ACCOUNT CONFIGURATION
@@ -74,8 +100,8 @@ account:
   margin_mode: "isolated_usdt"  # Must be isolated_usdt
   min_trade_notional_usdt: 10.0
   fee_model:
-    taker_bps: 6.0             # 0.06% taker fee
-    maker_bps: 2.0             # 0.02% maker fee
+    taker_bps: 6.0             # 0.06% taker fee (Bybit default)
+    maker_bps: 1.0             # 0.01% maker fee (Bybit default)
   slippage_bps: 2.0            # Slippage estimate
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -511,7 +537,8 @@ Structures provide O(1) incremental market structure detection.
 | Type | Description | Depends On |
 |------|-------------|------------|
 | `swing` | Swing high/low pivot detection | None |
-| `trend` | Trend direction (HH/HL/LH/LL) | `swing` |
+| `trend` | Wave-based trend tracking (HH/HL/LH/LL) | `swing` |
+| `market_structure` | ICT-style BOS/CHoCH detection | `swing` |
 | `zone` | Demand/supply zones | `swing` |
 | `fibonacci` | Fib retracement/extension levels | `swing` |
 | `rolling_window` | O(1) rolling min/max | None |
@@ -519,7 +546,7 @@ Structures provide O(1) incremental market structure detection.
 
 ### Structure YAML Format (Role-Based)
 
-The engine expects structures organized by timeframe role (`exec`, `htf`, `mtf`):
+The engine expects structures organized by timeframe role (`exec`, `high_tf`, `med_tf`):
 
 ```yaml
 structures:
@@ -530,6 +557,7 @@ structures:
       params:
         left: 5
         right: 5
+        atr_key: atr_14      # Optional: ATR feature for significance filtering
       # Outputs: high_level, high_idx, low_level, low_idx, version
       #          pair_high_level, pair_low_level, pair_direction, pair_version
 
@@ -537,7 +565,16 @@ structures:
       key: trend
       depends_on:
         swing: swing         # References the swing key above
-      # Outputs: direction (1=up, -1=down, 0=neutral), strength, bars_in_trend
+      # Outputs: direction, strength, bars_in_trend, wave_count,
+      #          last_wave_direction, last_hh, last_hl, last_lh, last_ll, version
+
+    - type: market_structure
+      key: ms
+      depends_on:
+        swing: swing
+      # Outputs: bias, bos_this_bar, choch_this_bar, bos_direction, choch_direction,
+      #          last_bos_idx, last_bos_level, last_choch_idx, last_choch_level,
+      #          break_level_high, break_level_low, version
 
     - type: fibonacci
       key: fib
@@ -548,8 +585,8 @@ structures:
         mode: retracement    # or "extension", "extension_up", "extension_down"
       # Outputs: level_0.382, level_0.5, level_0.618
 
-  # HTF structures (nested by timeframe)
-  htf:
+  # HighTF structures (nested by timeframe)
+  high_tf:
     "4h":
       - type: swing
         key: swing_4h
@@ -578,11 +615,56 @@ structures:
   # Outputs: high_level, high_idx, low_level, low_idx, version
   #          pair_high_level, pair_low_level, pair_direction, pair_version
 
-# Trend Detector (depends on swing)
+# Trend Detector (wave-based, depends on swing)
 - type: trend
   key: trend
   depends_on: {swing: swing}
-  # Outputs: direction (1=up, -1=down, 0=neutral), strength, bars_in_trend
+  params:
+    wave_history_size: 4     # Number of waves to track (default: 4)
+  # Core outputs:
+  #   direction: 1=bullish, -1=bearish, 0=ranging
+  #   strength: 0=weak, 1=normal, 2=strong (based on HH/HL or LL/LH patterns)
+  #   bars_in_trend: bars since last direction change
+  # Wave outputs:
+  #   wave_count: total completed waves
+  #   last_wave_direction: 1=bullish (L→H), -1=bearish (H→L)
+  # Comparison flags (from last 4 waves):
+  #   last_hh: true if most recent high was higher than previous high
+  #   last_hl: true if most recent low was higher than previous low
+  #   last_lh: true if most recent high was lower than previous high
+  #   last_ll: true if most recent low was lower than previous low
+  #   version: increments on each wave completion
+
+# Market Structure Detector (ICT BOS/CHoCH, depends on swing)
+- type: market_structure
+  key: ms
+  depends_on: {swing: swing}
+  params:
+    confirmation_close: false  # Require candle close beyond level (default: false)
+  # Bias output:
+  #   bias: 1=bullish, -1=bearish, 0=ranging (initial state)
+  # Event flags (true only on the bar they occur, reset each bar):
+  #   bos_this_bar: true when Break of Structure occurs this bar
+  #   choch_this_bar: true when Change of Character occurs this bar
+  # Event directions (set when event occurs, persist until next event):
+  #   bos_direction: 1=bullish BOS, -1=bearish BOS
+  #   choch_direction: 1=bearish-to-bullish CHoCH, -1=bullish-to-bearish CHoCH
+  # Level tracking:
+  #   last_bos_idx: bar index of most recent BOS
+  #   last_bos_level: price level of most recent BOS
+  #   last_choch_idx: bar index of most recent CHoCH
+  #   last_choch_level: price level of most recent CHoCH
+  #   break_level_high: current swing high being watched for breaks
+  #   break_level_low: current swing low being watched for breaks
+  #   version: increments on each BOS or CHoCH event
+
+# BOS vs CHoCH explanation:
+# - BOS (Break of Structure): Continuation signal - price breaks swing level in trend direction
+#   - In uptrend: price breaks above previous swing high → bullish BOS
+#   - In downtrend: price breaks below previous swing low → bearish BOS
+# - CHoCH (Change of Character): Reversal signal - price breaks swing level against trend
+#   - In uptrend: price breaks below previous swing low → bearish CHoCH (trend reversal)
+#   - In downtrend: price breaks above previous swing high → bullish CHoCH (trend reversal)
 
 # Fibonacci Levels (depends on swing)
 - type: fibonacci
@@ -1046,9 +1128,9 @@ holds_for_duration:
 
 ---
 
-## 8. Multi-Timeframe (MTF)
+## 8. Multi-Timeframe (MultiTF)
 
-**MTF = Multi-TimeFrame** - The capability to use features from multiple timeframes in a single strategy.
+**MultiTF = Multi-TimeFrame** - The capability to use features from multiple timeframes in a single strategy.
 
 ### Valid Timeframes (Bybit API)
 
@@ -1058,28 +1140,30 @@ holds_for_duration:
 **NOTE**: 8h is NOT a valid Bybit interval. Use 6h or 12h instead.
 
 **IMPORTANT - Timeframe vs Duration:**
-- **Timeframe** (`tf:`, `htf:`): Bybit candle interval → use `D` (not `1d`)
+- **Timeframe** (`tf:`, `high_tf:`): Bybit candle interval → use `D` (not `1d`)
 - **Duration** (window operators): Time period → use `"1d"` or `"8h"` (any hour/minute/day value)
 
 ### Terminology Clarification
 
 | Term | Meaning |
 |------|---------|
-| **MTF** (Multi-TimeFrame) | The capability to use multiple timeframes |
-| **exec** / `tf` | Execution timeframe - can be ANY value (1m, 5m, 15m, 1h, 4h, etc.) |
-| **HTF** (Higher TimeFrame) | Any timeframe higher than exec for context |
+| **MultiTF** (Multi-TimeFrame) | The capability to use multiple timeframes |
+| **ExecTF** / `tf` | Execution timeframe - can be ANY value (1m, 5m, 15m, 1h, 4h, etc.) |
+| **HighTF** / `high_tf` | Any timeframe higher than ExecTF for context (6h, 12h, D) |
+| **MedTF** / `med_tf` | 30m, 1h, 2h, 4h - trade bias + structure |
+| **LowTF** / `low_tf` | 1m, 3m, 5m, 15m - execution timing |
 
-**Key insight:** `tf` (exec) can be any timeframe you choose. There's no fixed "LTF/MTF/HTF" role hierarchy - it's all relative to your chosen execution timeframe.
+**Key insight:** `tf` (ExecTF) can be any timeframe you choose. There's no fixed role hierarchy - it's all relative to your chosen execution timeframe.
 
 ### Config Fields (Optional Higher TFs)
 
 ```yaml
-tf: "15m"        # Execution TF - engine steps bar-by-bar at this TF
-mtf: "1h"        # Optional: intermediate TF for context (unused if not needed)
-htf: "4h"        # Optional: higher TF for trend/levels
+tf: "15m"           # Execution TF - engine steps bar-by-bar at this TF
+med_tf: "1h"        # Optional: intermediate TF for context (unused if not needed)
+high_tf: "4h"       # Optional: higher TF for trend/levels
 ```
 
-**Note:** The `mtf:` and `htf:` config fields are optional convenience aliases. You can also specify TF directly on features via the `tf:` field.
+**Note:** The `med_tf:` and `high_tf:` config fields are optional convenience aliases. You can also specify TF directly on features via the `tf:` field.
 
 ### Feature TF Assignment
 
@@ -1124,12 +1208,12 @@ exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
 
 ```yaml
 version: "3.0.0"
-name: "mtf_trend_strategy"
+name: "multi_tf_trend_strategy"
 description: "Trade with 4h trend, execute on 15m"
 
 symbol: "BTCUSDT"
-tf: "15m"         # Execution TF
-htf: "4h"         # Higher TF for trend context
+tf: "15m"            # Execution TF
+high_tf: "4h"        # Higher TF for trend context
 
 features:
   # Exec TF (15m) - entry/exit signals
@@ -1187,7 +1271,7 @@ actions:
 
 **Why 1m resolution matters:** If exec is 15m, `close` only updates 4x per hour. But `last_price` updates 60x per hour, allowing precise entry when price crosses a level.
 
-### HTF Structures (Multi-Timeframe Structure Detection)
+### HighTF Structures (Multi-Timeframe Structure Detection)
 
 Structures can be computed on higher timeframes for trend context:
 
@@ -1202,8 +1286,8 @@ structures:
       key: trend
       depends_on: {swing: swing}
 
-  # HTF structures (4h) - forward-fill between closes
-  htf:
+  # HighTF structures (4h) - forward-fill between closes
+  high_tf:
     "4h":
       - type: swing
         key: swing_4h
@@ -1218,17 +1302,17 @@ structures:
 ```
 
 **Key behavior:**
-- HTF structures forward-fill until their bar closes (same as indicators)
+- HighTF structures forward-fill until their bar closes (same as indicators)
 - Reference by key in actions: `{feature_id: "trend_4h", field: "direction"}`
 
-### MTF Confluence Patterns
+### MultiTF Confluence Patterns
 
-**Pattern 1: Exec Swing + HTF Trend Filter**
+**Pattern 1: Exec Swing + HighTF Trend Filter**
 ```yaml
 actions:
   entry_long:
     all:
-      # HTF trend is UP
+      # HighTF trend is UP
       - [{feature_id: trend_4h, field: direction}, "==", 1]
       # Exec swing low exists (bounce setup)
       - [{feature_id: swing, field: low_level}, ">", 0]
@@ -1246,14 +1330,14 @@ actions:
       - [{feature_id: trend_4h, field: direction}, "==", 1]
 ```
 
-**Pattern 3: HTF Fib + Exec Swing**
+**Pattern 3: HighTF Fib + Exec Swing**
 ```yaml
 structures:
   exec:
     - type: swing
       key: swing
       params: {left: 5, right: 5}
-  htf:
+  high_tf:
     "4h":
       - type: swing
         key: swing_4h
@@ -1268,7 +1352,7 @@ structures:
 actions:
   entry_long:
     all:
-      # Price near HTF 0.618 fib level
+      # Price near HighTF 0.618 fib level
       - [close, "near_pct", {feature_id: fib_4h, field: level_0.618}, 1.5]
       # Exec swing confirms support
       - [{feature_id: swing, field: low_level}, ">", 0]
@@ -1553,12 +1637,12 @@ risk:
 
 ```yaml
 version: "3.0.0"
-name: "mtf_fib_zones"
+name: "multi_tf_fib_zones"
 description: "Trade 4h trend pullbacks to fib zones on 15m"
 
 symbol: "BTCUSDT"
 tf: "15m"
-htf: "4h"
+high_tf: "4h"
 
 features:
   # Exec TF (15m)
@@ -1589,7 +1673,7 @@ structures:
 actions:
   entry_long:
     all:
-      # HTF trend filter
+      # HighTF trend filter
       - ["close", ">", "ema_50_4h"]
       # Near fib level
       - lhs: {feature_id: "close"}
@@ -1732,6 +1816,95 @@ risk:
   take_profit_pct: 4.0
 ```
 
+### Example 6: ICT Market Structure (BOS/CHoCH)
+
+```yaml
+version: "3.0.0"
+name: "ict_market_structure"
+description: "Trade BOS continuations, exit on CHoCH reversals"
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        atr_key: atr_14      # Filter insignificant swings
+
+    - type: market_structure
+      key: ms
+      depends_on:
+        swing: swing
+
+actions:
+  - id: entry
+    cases:
+      # Bullish BOS with RSI confirmation (not overbought)
+      - when:
+          all:
+            - [{feature_id: "ms", field: "bos_this_bar"}, "==", true]
+            - [{feature_id: "ms", field: "bias"}, "==", 1]
+            - ["rsi_14", "<", 70]
+        emit:
+          - action: entry_long
+      # Bearish BOS with RSI confirmation (not oversold)
+      - when:
+          all:
+            - [{feature_id: "ms", field: "bos_this_bar"}, "==", true]
+            - [{feature_id: "ms", field: "bias"}, "==", -1]
+            - ["rsi_14", ">", 30]
+        emit:
+          - action: entry_short
+
+  - id: exit
+    cases:
+      # Exit long on bearish CHoCH (trend reversal)
+      - when:
+          all:
+            - [{feature_id: "ms", field: "choch_this_bar"}, "==", true]
+            - [{feature_id: "ms", field: "choch_direction"}, "==", -1]
+        emit:
+          - action: exit_long
+      # Exit short on bullish CHoCH (trend reversal)
+      - when:
+          all:
+            - [{feature_id: "ms", field: "choch_this_bar"}, "==", true]
+            - [{feature_id: "ms", field: "choch_direction"}, "==", 1]
+        emit:
+          - action: exit_short
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 50.0
+```
+
 ---
 
 ## Quick Reference Card
@@ -1827,10 +2000,14 @@ Currently the engine still accepts `blocks:` and `margin_mode: "isolated"` for b
 | Date | Change |
 |------|--------|
 | 2026-01-08 | Created as canonical source, consolidated from PLAY_SYNTAX.md + DSL_REFERENCE.md |
-| 2026-01-08 | Fixed MTF terminology (Multi-TimeFrame = capability, not role) |
+| 2026-01-08 | Fixed MultiTF terminology (Multi-TimeFrame = capability, not role) |
 | 2026-01-08 | Added exit_mode, variables, price features deep dive, deprecation notes |
 | 2026-01-09 | Symbol operators now canonical (`>`, `<`, `>=`, `<=`, `==`, `!=`). Word forms removed. |
 | 2026-01-09 | Added `!=` operator for discrete type comparisons |
+| 2026-01-15 | Updated terminology: LowTF, MedTF, HighTF, ExecTF, MultiTF |
+| 2026-01-16 | Added wave-based trend detector with strength, wave_count, last_hh/hl/lh/ll outputs |
+| 2026-01-16 | Added market_structure detector (ICT BOS/CHoCH) with bias, bos_this_bar, choch_this_bar outputs |
+| 2026-01-16 | Added Example 6: ICT Market Structure strategy |
 
 ---
 

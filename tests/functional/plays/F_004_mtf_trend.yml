@@ -4,7 +4,7 @@ description: "Functional Test: MTF Trend - Tests multi-timeframe alignment and h
 
 symbol: "BTCUSDT"
 tf: "15m"
-htf: "4h"
+high_tf: "4h"
 
 features:
   # LTF (15m) features

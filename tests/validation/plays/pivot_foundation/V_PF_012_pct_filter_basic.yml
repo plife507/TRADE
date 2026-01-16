@@ -1,0 +1,70 @@
+version: "3.0.0"
+name: "V_PF_012_pct_filter_basic"
+description: "Validation: Percentage-based pivot filtering."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+# Swing with min_pct_move filter - only accept pivots moving >= 2.0%
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        min_pct_move: 2.0  # Filter out pivots with < 2% move
+
+actions:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - [{feature_id: "swing", field: "high_level"}, ">", 0]
+            - ["close", ">", "ema_21"]
+        emit:
+          - action: entry_long
+  - id: exit
+    cases:
+      - when:
+          all:
+            - ["close", "<", "ema_21"]
+        emit:
+          - action: exit_long
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_PF_012"
+  category: "pivot_foundation"
+  gate: 1
+  structure: "swing"
+  tests:
+    - "min_pct_move param is accepted"
+    - "Pivots moving less than threshold% are filtered out"
+    - "Pivots moving >= threshold% are accepted"
+    - "Works independently of ATR (no atr_key needed)"

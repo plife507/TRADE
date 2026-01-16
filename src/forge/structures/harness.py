@@ -8,8 +8,7 @@ market structure detectors in a controlled environment.
 import numpy as np
 from typing import Any
 
-from src.backtest.incremental.batch_wrapper import run_detector_batch
-from src.backtest.incremental.registry import STRUCTURE_REGISTRY, list_structure_types
+from src.structures import run_detector_batch, STRUCTURE_REGISTRY, list_structure_types
 
 
 class StructureDevelopmentHarness:

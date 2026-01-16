@@ -1,0 +1,77 @@
+version: "3.0.0"
+name: "V_PF_046_trend_flip"
+description: "Validation: Direction change increments version and resets bars_in_trend."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        atr_key: atr_14
+
+    - type: trend
+      key: trend
+      depends_on:
+        swing: swing
+
+actions:
+  - id: entry
+    cases:
+      # Entry on any trend direction change (version increment)
+      # Use version > 1 to indicate at least one direction change occurred
+      - when:
+          all:
+            - [{feature_id: "trend", field: "version"}, ">", 0]
+            - [{feature_id: "trend", field: "direction"}, "!=", 0]
+        emit:
+          - action: entry_long
+  - id: exit
+    cases:
+      # Exit when ranging
+      - when:
+          all:
+            - [{feature_id: "trend", field: "direction"}, "==", 0]
+        emit:
+          - action: exit_long
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_PF_046"
+  category: "pivot_foundation"
+  gate: 4
+  structure: "trend"
+  tests:
+    - "Version increments on direction change"
+    - "bars_in_trend resets to 0 on direction change"
+    - "bars_in_trend increments each bar while direction unchanged"
+    - "Version does not increment when direction stays same"

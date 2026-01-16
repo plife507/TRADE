@@ -22,8 +22,7 @@ from typing import TYPE_CHECKING, Any
 from .types import MarketRegime
 
 if TYPE_CHECKING:
-    from src.backtest.incremental.state import MultiTFIncrementalState, TFIncrementalState
-    from src.backtest.incremental.base import BarData
+    from src.structures import MultiTFIncrementalState, TFIncrementalState, BarData
 
 
 # Trend direction values (from trend detector)

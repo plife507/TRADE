@@ -844,7 +844,7 @@ def generate_synthetic_bars(
         >>> print(bars[0].close)  # First bar close price
     """
     # Lazy import to avoid circular dependencies
-    from src.backtest.incremental.base import BarData
+    from src.structures import BarData
 
     rng = np.random.default_rng(seed)
 

@@ -423,14 +423,8 @@ def audit_snapshot_plumbing_parity(
         Plays are self-contained and deterministic.
     """
     import time
-    from src.backtest.engine import BacktestEngine
-    from src.backtest.system_config import (
-        SystemConfig,
-        RiskProfileConfig,
-        StrategyInstanceConfig,
-        StrategyInstanceInputs,
-    )
-    from src.backtest.indicators import get_required_indicator_columns_from_specs
+    from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
+    from src.indicators import get_required_indicator_columns_from_specs
     
     start_time = time.perf_counter()
     
@@ -480,113 +474,38 @@ def audit_snapshot_plumbing_parity(
                 error_message=f"Play '{play_id}' is missing account section.",
             )
         
-        # Get declared keys by role
+        # Get declared keys by role from feature registry
         declared_keys_by_role: dict[str, set[str]] = {}
-        for role, tf_config in play.tf_configs.items():
-            specs = list(tf_config.feature_specs)
-            expanded_keys = get_required_indicator_columns_from_specs(specs)
-            declared_keys_by_role[role] = set(expanded_keys)
-        
-        # Extract params from Play
-        initial_equity = play.account.starting_equity_usdt
-        max_leverage = play.account.max_leverage
-        
-        taker_fee_rate = 0.0006
-        if play.account.fee_model:
-            taker_fee_rate = play.account.fee_model.taker_rate
-        
-        min_trade_usdt = 1.0
-        if play.account.min_trade_notional_usdt is not None:
-            min_trade_usdt = play.account.min_trade_notional_usdt
-        
-        risk_per_trade_pct = 1.0
-        if play.risk_model:
-            if play.risk_model.sizing.model.value == "percent_equity":
-                risk_per_trade_pct = play.risk_model.sizing.value
-            if play.risk_model.sizing.max_leverage:
-                max_leverage = play.risk_model.sizing.max_leverage
-        
-        # Build minimal SystemConfig for engine (same pattern as runner.py)
-        risk_profile = RiskProfileConfig(
-            initial_equity=initial_equity,
-            max_leverage=max_leverage,
-            risk_per_trade_pct=risk_per_trade_pct,
-            taker_fee_rate=taker_fee_rate,
-            min_trade_usdt=min_trade_usdt,
+        registry = play.feature_registry
+        for tf in registry.get_all_tfs():
+            keys = set()
+            for feature in registry.get_for_tf(tf):
+                keys.add(feature.id)
+            declared_keys_by_role[tf] = keys
+        # Map exec TF keys to "exec" role for compatibility
+        declared_keys_by_role["exec"] = declared_keys_by_role.get(play.execution_tf, set())
+
+        # Create audit callback placeholder (will be set after engine creation)
+        callback_holder = {"callback": None}
+
+        def audit_callback(snapshot, exec_idx, htf_idx, mtf_idx):
+            """Callback invoked during backtest for plumbing audit."""
+            if callback_holder["callback"] is not None:
+                callback_holder["callback"](snapshot, exec_idx, htf_idx, mtf_idx)
+
+        # Create engine using factory function
+        engine = create_engine_from_play(
+            play=play,
+            window_start=start_date,
+            window_end=end_date,
+            on_snapshot=audit_callback,
         )
-        
-        # Extract feature specs from Play for engine
-        feature_specs_by_role = {}
-        for role, tf_config in play.tf_configs.items():
-            feature_specs_by_role[role] = list(tf_config.feature_specs)
-        
-        # Compute warmup requirements from Play (P0.2 fix)
-        warmup_reqs = compute_warmup_requirements(play)
-        warmup_bars_by_role = warmup_reqs.warmup_by_role
-        delay_bars_by_role = warmup_reqs.delay_by_role
-        
-        # Build params with history config
-        strategy_params = {
-            "history": {
-                "bars_exec_count": 2,
-                "features_exec_count": 2,
-                "features_htf_count": 2,
-                "features_mtf_count": 2,
-            }
-        }
-        
-        # Create strategy instance
-        strategy_instance = StrategyInstanceConfig(
-            strategy_instance_id="audit_strategy",
-            strategy_id=play.id,
-            strategy_version=play.version,
-            inputs=StrategyInstanceInputs(symbol=symbol, tf=play.exec_tf),
-            params=strategy_params,
-        )
-        
-        # Create SystemConfig
-        system_config = SystemConfig(
-            system_id=play.id,
-            symbol=symbol,
-            tf=play.exec_tf,
-            strategies=[strategy_instance],
-            primary_strategy_instance_id="audit_strategy",
-            windows={
-                "audit": {
-                    "start": start_date.replace(tzinfo=None).isoformat() if start_date.tzinfo else start_date.isoformat(),
-                    "end": end_date.replace(tzinfo=None).isoformat() if end_date.tzinfo else end_date.isoformat(),
-                }
-            },
-            risk_profile=risk_profile,
-            risk_mode="none",
-            feature_specs_by_role=feature_specs_by_role,
-            warmup_bars_by_role=warmup_bars_by_role,
-            delay_bars_by_role=delay_bars_by_role,
-        )
-        
-        # Build tf_mapping
-        tf_mapping = {
-            "htf": play.htf or play.exec_tf,
-            "mtf": play.mtf or play.exec_tf,
-            "ltf": play.exec_tf,
-        }
-        
-        # Create engine with callback placeholder
-        engine = BacktestEngine(
-            config=system_config,
-            window_name="audit",
-            tf_mapping=tf_mapping,
-        )
-        
+
         # Prepare frames (this builds FeedStores)
-        if tf_mapping["htf"] != tf_mapping["ltf"] or tf_mapping["mtf"] != tf_mapping["ltf"]:
-            engine.prepare_multi_tf_frames()
-        else:
-            engine.prepare_backtest_frame()
-        
+        engine.prepare_multi_tf_frames()
         engine._build_feed_stores()
-        
-        # Create audit callback
+
+        # Create audit callback now that feeds are available
         callback = PlumbingAuditCallback(
             exec_feed=engine._exec_feed,
             htf_feed=engine._htf_feed if engine._htf_feed is not engine._exec_feed else None,
@@ -596,16 +515,10 @@ def audit_snapshot_plumbing_parity(
             tolerance=tolerance,
             strict=strict,
         )
-        
-        # Set callback on engine
-        engine._on_snapshot = callback
-        
-        # Define dummy strategy that does nothing (we only care about the callback)
-        def dummy_strategy(snapshot, params):
-            return None
-        
-        # Run backtest (callback will be invoked at each bar close)
-        engine.run(dummy_strategy)
+        callback_holder["callback"] = callback
+
+        # Run backtest using factory function with Play-native evaluation
+        run_engine_with_play(engine, play)
         
         runtime = time.perf_counter() - start_time
         return callback.get_result(runtime)

@@ -11,28 +11,28 @@ Architecture:
 
 Each session:
 - Has its own data environment (live or demo historical data)
-- Manages warm-up by loading history into MTF ring buffers
+- Manages warm-up by loading history into bar ring buffers
 - Connects to appropriate WebSocket streams
 - Logs with session_id and env for clear isolation
 
 Usage:
     from src.data.sessions import DemoSession, LiveSession
-    
+
     # Create a demo session
     session = DemoSession(
         session_id="demo_1",
         symbols=["BTCUSDT"],
         timeframes=["15m", "1h", "4h"],
-        warmup_candles=200,
+        warmup_bars=200,
     )
-    
+
     # Initialize and warm up
     await session.initialize()
     await session.warm_up()
-    
-    # Get MTF data for strategy
-    df_15m = session.get_mtf_buffer("BTCUSDT", "15m")
-    
+
+    # Get bar data for strategy
+    df_15m = session.get_bar_buffer("BTCUSDT", "15m")
+
     # Shutdown
     await session.shutdown()
 """
@@ -99,27 +99,27 @@ class SessionConfig:
 class BaseSession:
     """
     Base class for trading sessions.
-    
+
     Provides common functionality for both demo and live sessions:
     - Configuration management
     - State access
-    - MTF buffer initialization
+    - Bar buffer initialization
     - Warm-up from historical data
     - Logging with session context
     """
-    
+
     def __init__(self, config: SessionConfig):
         """
         Initialize session.
-        
+
         Args:
             config: Session configuration
         """
         self.config = config
         self.app_config = get_config()
         self.logger = get_logger()
-        
-        # State (shared across sessions, but MTF buffers are env-scoped)
+
+        # State (shared across sessions, but bar buffers are env-scoped)
         self.state: RealtimeState = get_realtime_state()
         
         # Session state
@@ -221,24 +221,24 @@ class BaseSession:
     
     def warm_up(self) -> dict[str, int]:
         """
-        Warm up MTF buffers with historical data.
-        
-        Loads historical candles into MTF ring buffers for each symbol/timeframe
+        Warm up bar buffers with historical data.
+
+        Loads historical bars into ring buffers for each symbol/timeframe
         combination. This provides lookback data for strategy calculations.
-        
+
         Returns:
-            Dict mapping "SYMBOL_TF" to number of candles loaded
+            Dict mapping "SYMBOL_TF" to number of bars loaded
         """
         if not self._initialized:
             raise RuntimeError("Session must be initialized before warm-up")
-        
+
         if self._warmed_up:
             self._log_warning("Session already warmed up")
             return {}
-        
+
         self._log_info(
-            f"Warming up MTF buffers: {len(self.symbols)} symbols x "
-            f"{len(self.timeframes)} timeframes x {self.config.warmup_candles} candles"
+            f"Warming up bar buffers: {len(self.symbols)} symbols x "
+            f"{len(self.timeframes)} timeframes x {self.config.warmup_candles} bars"
         )
         
         results = {}
@@ -260,16 +260,16 @@ class BaseSession:
                         results[key] = 0
                         continue
                     
-                    # Initialize MTF buffer
-                    count = self.state.init_mtf_buffer(
+                    # Initialize bar buffer
+                    count = self.state.init_bar_buffer(
                         env=self.env,
                         symbol=symbol,
                         timeframe=tf,
-                        candles_df=df,
+                        bars_df=df,
                     )
-                    
+
                     results[key] = count
-                    self._log_debug(f"Warmed up {key}: {count} candles")
+                    self._log_debug(f"Warmed up {key}: {count} bars")
                     
                 except Exception as e:
                     self._log_error(f"Failed to warm up {key}: {e}")
@@ -277,46 +277,46 @@ class BaseSession:
         
         total = sum(results.values())
         self._warmed_up = True
-        self._log_info(f"Warm-up complete: {total} total candles loaded")
-        
+        self._log_info(f"Warm-up complete: {total} total bars loaded")
+
         return results
-    
+
     # ==========================================================================
-    # MTF Buffer Access
+    # Bar Buffer Access
     # ==========================================================================
-    
-    def get_mtf_buffer(self, symbol: str, timeframe: str, limit: int | None = None):
+
+    def get_bar_buffer(self, symbol: str, timeframe: str, limit: int | None = None):
         """
-        Get MTF buffer as a list of candles.
-        
+        Get bar buffer as a list of bars.
+
         Args:
             symbol: Trading symbol
-            timeframe: Candle timeframe
-            limit: Maximum candles to return (None = all)
-            
+            timeframe: Bar timeframe
+            limit: Maximum bars to return (None = all)
+
         Returns:
-            List of MTFCandle objects
+            List of BarRecord objects
         """
-        return self.state.get_mtf_buffer(
+        return self.state.get_bar_buffer(
             env=self.env,
             symbol=symbol.upper(),
             timeframe=timeframe,
             limit=limit,
         )
-    
-    def get_mtf_buffer_df(self, symbol: str, timeframe: str, limit: int | None = None):
+
+    def get_bar_buffer_df(self, symbol: str, timeframe: str, limit: int | None = None):
         """
-        Get MTF buffer as a pandas DataFrame.
-        
+        Get bar buffer as a pandas DataFrame.
+
         Args:
             symbol: Trading symbol
-            timeframe: Candle timeframe
+            timeframe: Bar timeframe
             limit: Maximum rows to return
-            
+
         Returns:
             DataFrame with OHLCV columns
         """
-        return self.state.get_mtf_buffer_as_df(
+        return self.state.get_bar_buffer_as_df(
             env=self.env,
             symbol=symbol.upper(),
             timeframe=timeframe,
@@ -372,7 +372,7 @@ class BaseSession:
             "stopped_at": self._stopped_at,
             "symbols": self.symbols,
             "timeframes": self.timeframes,
-            "mtf_buffer_stats": self.state.get_mtf_buffer_stats(env=self.env),
+            "bar_buffer_stats": self.state.get_bar_buffer_stats(env=self.env),
         }
 
 
@@ -382,7 +382,7 @@ class DemoSession(BaseSession):
 
     Uses env="demo" for:
     - Historical data from demo DuckDB file
-    - MTF buffers scoped to demo environment
+    - Bar buffers scoped to demo environment
     - All logs tagged with [DEMO]
 
     Demo sessions use fake money and are isolated from live data.
@@ -436,7 +436,7 @@ class LiveSession(BaseSession):
 
     Uses env="live" for:
     - Historical data from canonical live DuckDB file
-    - MTF buffers scoped to live environment
+    - Bar buffers scoped to live environment
     - All logs tagged with [LIVE]
 
     Live sessions use real money and should have stricter risk controls.

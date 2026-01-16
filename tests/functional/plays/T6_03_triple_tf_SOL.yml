@@ -4,8 +4,8 @@ description: "TIER 6: Test triple timeframe (15m exec + 1h MTF + 4h HTF)"
 
 symbol: "SOLUSDT"
 tf: "15m"
-mtf: "1h"
-htf: "4h"
+med_tf: "1h"
+high_tf: "4h"
 
 account:
   starting_equity_usdt: 10000.0

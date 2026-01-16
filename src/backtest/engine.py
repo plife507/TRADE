@@ -15,16 +15,17 @@ ARCHITECTURE (Array-Backed Hot Loop):
 - No pandas ops in hot loop (no df.iloc, no row scanning)
 - All feature access via get_feature(tf_role, indicator_key, offset)
 
-MODULAR STRUCTURE (Phase 1 Refactor):
+MODULAR STRUCTURE:
 - engine_data_prep.py: Data loading and preparation
 - engine.py: Main orchestrator (this file)
+- engine_factory.py: Factory functions (entry point)
 
-Usage:
-    from src.backtest import BacktestEngine, load_system_config
+USAGE (Play-native factory):
+    from src.backtest import load_play, create_engine_from_play, run_engine_with_play
 
-    config = load_system_config("SOLUSDT_5m_ema_rsi_atr_pure", "hygiene")
-    engine = BacktestEngine(config, "hygiene")
-    result = engine.run(strategy)
+    play = load_play("my_strategy")
+    engine = create_engine_from_play(play, window_start, window_end)
+    result = run_engine_with_play(engine, play)
 """
 
 from collections.abc import Callable
@@ -81,11 +82,9 @@ from .engine_stops import (
 # Import from engine_artifacts module
 from .engine_artifacts import calculate_drawdowns_impl, write_artifacts_impl
 
-# Import BarProcessor for decomposed run loop
-from .bar_processor import BarProcessor, BarProcessingResult
+# BarProcessor REMOVED - use run_engine_with_play() instead of engine.run()
 
 # Import factory functions from engine_factory module
-# These are re-exported for backward compatibility
 from .engine_factory import (
     run_backtest,
     create_engine_from_play,
@@ -267,13 +266,13 @@ class BacktestEngine:
         # Phase 3: Multi-TF configuration
         # Default to single-TF mode if no explicit mapping provided
         if tf_mapping is None:
-            self._tf_mapping = {"htf": config.tf, "mtf": config.tf, "ltf": config.tf}
+            self._tf_mapping = {"high_tf": config.tf, "med_tf": config.tf, "low_tf": config.tf}
             self._multi_tf_mode = False
         else:
             # Validate the mapping
             validate_tf_mapping(tf_mapping)
             self._tf_mapping = tf_mapping
-            self._multi_tf_mode = tf_mapping["htf"] != tf_mapping["ltf"] or tf_mapping["mtf"] != tf_mapping["ltf"]
+            self._multi_tf_mode = tf_mapping["high_tf"] != tf_mapping["low_tf"] or tf_mapping["med_tf"] != tf_mapping["low_tf"]
         
         # Phase 1: History management (delegated to HistoryManager)
         # Parse history config from system config (if present)
@@ -627,39 +626,39 @@ class BacktestEngine:
         )
 
         # Configure TimeframeCache with close_ts maps
-        htf_tf = self._tf_mapping["htf"]
-        htf_close_ts = result.close_ts_maps.get(htf_tf, set())
-        mtf_close_ts = result.close_ts_maps.get(self._tf_mapping["mtf"], set())
+        high_tf = self._tf_mapping["high_tf"]
+        high_tf_close_ts = result.close_ts_maps.get(high_tf, set())
+        med_tf_close_ts = result.close_ts_maps.get(self._tf_mapping["med_tf"], set())
 
         self._tf_cache.set_close_ts_maps(
-            htf_close_ts=htf_close_ts,
-            mtf_close_ts=mtf_close_ts,
-            htf_tf=htf_tf,
-            mtf_tf=self._tf_mapping["mtf"],
+            htf_close_ts=high_tf_close_ts,
+            mtf_close_ts=med_tf_close_ts,
+            htf_tf=high_tf,
+            mtf_tf=self._tf_mapping["med_tf"],
         )
 
         # Store TF DataFrames for feature lookup
-        self._htf_df = result.frames.get(htf_tf)
-        self._mtf_df = result.frames.get(self._tf_mapping["mtf"])
-        self._ltf_df = result.ltf_frame
+        self._htf_df = result.frames.get(high_tf)
+        self._mtf_df = result.frames.get(self._tf_mapping["med_tf"])
+        self._ltf_df = result.low_tf_frame
 
         self._mtf_frames = result
 
-        # Also set _prepared_frame for backward compatibility
-        ltf_frame = result.ltf_frame
+        # Also set _prepared_frame for single-TF API consistency
+        low_tf_frame = result.low_tf_frame
         self._prepared_frame = PreparedFrame(
-            df=ltf_frame,
-            full_df=ltf_frame,
+            df=low_tf_frame,
+            full_df=low_tf_frame,
             warmup_bars=result.warmup_bars,
             max_indicator_lookback=result.max_indicator_lookback,
             requested_start=result.requested_start,
             requested_end=result.requested_end,
-            loaded_start=ltf_frame["timestamp"].iloc[0],
-            loaded_end=ltf_frame["timestamp"].iloc[-1],
+            loaded_start=low_tf_frame["timestamp"].iloc[0],
+            loaded_end=low_tf_frame["timestamp"].iloc[-1],
             simulation_start=result.simulation_start,
-            sim_start_index=result.ltf_sim_start_index,
+            sim_start_index=result.low_tf_sim_start_index,
         )
-        self._data = ltf_frame
+        self._data = low_tf_frame
 
         return result
     
@@ -939,146 +938,26 @@ class BacktestEngine:
     
     def run(
         self,
-        strategy: Callable[[RuntimeSnapshot, dict[str, Any]], Signal | None],
-    ) -> BacktestResult:
+        strategy: Callable[[RuntimeSnapshot, dict[str, Any]], Signal | None] | None = None,
+    ) -> "BacktestResult":
         """
-        Run the backtest.
+        DEPRECATED: Use run_engine_with_play() instead.
 
-        Args:
-            strategy: Strategy function that takes (snapshot, params) and returns Signal or None
+        The BacktestEngine.run() method has been removed in favor of the unified
+        PlayEngine path. Use the following pattern:
 
-        Returns:
-            BacktestResult with structured metrics, trades, and equity curve
+            from src.backtest import create_engine_from_play, run_engine_with_play
 
-        Uses BarProcessor for per-bar processing with clear separation:
-        - Warmup bars: State updates only, no trading
-        - Trading bars: Full evaluation with stops, signals, equity
+            engine = create_engine_from_play(play, window_start, window_end)
+            result = run_engine_with_play(engine, play)
 
-        Lookahead Prevention:
-        - Strategy is invoked ONLY at bar.ts_close (never mid-bar)
-        - Indicators are precomputed OUTSIDE the hot loop (vectorized)
-        - Snapshot.ts_close must equal bar.ts_close (asserted at runtime)
-        - HTF/MTF features are forward-filled from last closed bar
+        Raises:
+            RuntimeError: Always - this method is deprecated.
         """
-        self._started_at = datetime.now()
-
-        # Prepare data frames
-        if self._multi_tf_mode and self._mtf_frames is None:
-            self.prepare_multi_tf_frames()
-        elif self._prepared_frame is None:
-            self.prepare_backtest_frame()
-
-        prepared = self._prepared_frame
-        sim_start_idx = prepared.sim_start_index
-
-        # Build FeedStores for O(1) access
-        self._build_feed_stores()
-        exec_feed = self._exec_feed
-        num_bars = exec_feed.length
-
-        # Build incremental state for structure detection
-        self._incremental_state = self._build_incremental_state()
-
-        # Build StateRationalizer for Layer 2
-        if self._incremental_state is not None:
-            self._rationalizer = StateRationalizer(history_depth=1000)
-        else:
-            self._rationalizer = None
-
-        # Get risk profile and initialize exchange
-        risk_profile = self.config.risk_profile
-        initial_equity = risk_profile.initial_equity
-
-        self._exchange = SimulatedExchange(
-            symbol=self.config.symbol,
-            initial_capital=initial_equity,
-            execution_config=self.execution_config,
-            risk_profile=risk_profile,
-        )
-        self.risk_manager.reset()
-
-        self.logger.info(
-            f"Running backtest: {len(prepared.df)} bars, sim_start_idx={sim_start_idx}, "
-            f"warmup_bars={prepared.warmup_bars}, equity=${initial_equity:,.0f}, "
-            f"leverage={risk_profile.max_leverage:.1f}x, "
-            f"mark_price_source={risk_profile.mark_price_source}"
-        )
-
-        debug_log(
-            self._play_hash,
-            "Engine init",
-            symbol=self.config.symbol,
-            tf=self.config.tf,
-            bars=num_bars,
-            warmup=prepared.warmup_bars,
-            equity=initial_equity,
-        )
-
-        # Initialize processing state
-        self._equity_curve = []
-        self._account_curve: list[AccountCurvePoint] = []
-        prev_bar: CanonicalBar | None = None
-        run_start_time = datetime.now()
-
-        # Stop tracking
-        stop_classification: StopReason | None = None
-        stop_reason_detail: str | None = None
-        stop_reason: str | None = None
-        stop_ts: datetime | None = None
-        stop_bar_index: int | None = None
-        stop_details: dict[str, Any] | None = None
-
-        # Create bar processor
-        processor = BarProcessor(self, strategy, run_start_time)
-
-        # ========== MAIN BAR LOOP ==========
-        for i in range(num_bars):
-            bar = processor.build_bar(i)
-
-            if i < sim_start_idx:
-                # Warmup period: update state, no trading
-                processor.process_warmup_bar(i, bar, prev_bar, sim_start_idx)
-            else:
-                # Trading period: full evaluation
-                result = processor.process_trading_bar(
-                    i, bar, prev_bar, sim_start_idx,
-                    self._equity_curve, self._account_curve,
-                )
-
-                if result.terminal_stop:
-                    stop_classification = result.stop_classification
-                    stop_reason_detail = result.stop_reason_detail
-                    stop_reason = result.stop_reason
-                    stop_ts = result.stop_ts
-                    stop_bar_index = result.stop_bar_index
-                    stop_details = result.stop_details
-                    break
-
-            prev_bar = bar
-        # ========== END MAIN BAR LOOP ==========
-
-        # Post-loop: close remaining position if not stopped early
-        if stop_classification is None and self._exchange.position is not None:
-            last_idx = exec_feed.length - 1
-            self._exchange.force_close_position(
-                float(exec_feed.close[last_idx]),
-                exec_feed.get_ts_open_datetime(last_idx),
-            )
-
-        if stop_details is None:
-            stop_details = self._exchange.get_state()
-
-        # Build result using helper
-        return self._build_result(
-            prepared=prepared,
-            risk_profile=risk_profile,
-            initial_equity=initial_equity,
-            stop_classification=stop_classification,
-            stop_reason_detail=stop_reason_detail,
-            stop_reason=stop_reason,
-            stop_ts=stop_ts,
-            stop_bar_index=stop_bar_index,
-            stop_details=stop_details,
+        raise RuntimeError(
+            "BacktestEngine.run() is deprecated. "
+            "Use run_engine_with_play(engine, play) instead. "
+            "See: from src.backtest import create_engine_from_play, run_engine_with_play"
         )
 
     def _build_result(
@@ -1392,130 +1271,7 @@ class BacktestEngine:
             quote_idx=quote_idx,
         )
 
-    def _evaluate_with_1m_subloop(
-        self,
-        exec_idx: int,
-        strategy: "StrategyFn",
-        step_result: "StepResult | None",
-        rollups: dict[str, float] | None,
-    ) -> tuple["Signal | None", "RuntimeSnapshotView", datetime | None]:
-        """
-        Evaluate strategy at 1m granularity within an exec bar.
-
-        Iterates through 1m bars within the current exec bar and evaluates
-        the strategy at each 1m close. Returns on first signal (max one
-        entry per exec bar).
-
-        Args:
-            exec_idx: Current exec bar index
-            strategy: Strategy function to evaluate
-            step_result: StepResult from exchange
-            rollups: px.rollup.* values from 1m accumulation
-
-        Returns:
-            Tuple of (signal, snapshot, signal_ts):
-            - signal: Signal if triggered, None otherwise
-            - snapshot: The snapshot used for evaluation (last evaluated)
-            - signal_ts: Timestamp of signal (1m close) if triggered, None otherwise
-        """
-        # Get exec TF minutes for 1m mapping
-        exec_tf_minutes = TF_MINUTES.get(self.config.tf.lower(), 15)
-
-        # Check if 1m quote feed is available
-        if self._quote_feed is None or self._quote_feed.length == 0:
-            # Fallback: evaluate at exec close only (no 1m sub-loop)
-            # Log warning once per run to avoid log spam
-            if not self._quote_feed_fallback_warned:
-                self.logger.warning(
-                    f"1m quote feed unavailable for {self.config.symbol} - "
-                    f"using exec_tf close for signal evaluation. "
-                    f"For full 1m action semantics, sync 1m data: "
-                    f"Data Builder > Sync OHLCV > interval=1"
-                )
-                self._quote_feed_fallback_warned = True
-            exec_close = float(self._exec_feed.close[exec_idx])
-            snapshot = self._build_snapshot_view(
-                exec_idx, step_result, rollups, last_price=exec_close
-            )
-            signal = None
-            if not self._exchange.entries_disabled or self._exchange.position is not None:
-                signal = strategy(snapshot, self.config.params)
-            return signal, snapshot, None
-
-        # Get 1m bar range for this exec bar
-        start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(exec_idx, exec_tf_minutes)
-
-        # Clamp to available 1m data (both start and end)
-        max_valid_idx = self._quote_feed.length - 1
-        start_1m = min(start_1m, max_valid_idx)
-        end_1m = min(end_1m, max_valid_idx)
-
-        # If start > end after clamping, quote feed doesn't cover this exec bar
-        # Fall back to exec close evaluation
-        if start_1m > end_1m:
-            if not self._quote_feed_fallback_warned:
-                self.logger.warning(
-                    f"1m quote feed doesn't cover exec bar {exec_idx} for {self.config.symbol} - "
-                    f"using exec_tf close. Sync more 1m data if needed."
-                )
-                self._quote_feed_fallback_warned = True
-            exec_close = float(self._exec_feed.close[exec_idx])
-            snapshot = self._build_snapshot_view(
-                exec_idx, step_result, rollups, last_price=exec_close
-            )
-            signal = None
-            if not self._exchange.entries_disabled or self._exchange.position is not None:
-                signal = strategy(snapshot, self.config.params)
-            return signal, snapshot, None
-
-        # Track last snapshot for return
-        last_snapshot = None
-        # Track previous 1m price for crossover operators
-        # Seed with the 1m bar BEFORE start_1m to enable crossover on first iteration
-        if start_1m > 0 and start_1m - 1 <= max_valid_idx:
-            prev_price_1m: float | None = float(self._quote_feed.close[start_1m - 1])
-        else:
-            prev_price_1m = None
-
-        # Iterate through 1m bars (mandatory 1m action loop)
-        for sub_idx in range(start_1m, end_1m + 1):
-            # Get 1m close as both mark_price and last_price
-            price_1m = float(self._quote_feed.close[sub_idx])
-
-            # Build snapshot with 1m prices and quote_idx for window operators
-            snapshot = self._build_snapshot_view(
-                exec_idx=exec_idx,
-                step_result=step_result,
-                rollups=rollups,
-                mark_price_override=price_1m,
-                last_price=price_1m,
-                prev_last_price=prev_price_1m,
-                quote_idx=sub_idx,
-            )
-            last_snapshot = snapshot
-            # Update previous price for next iteration
-            prev_price_1m = price_1m
-
-            # Skip if entries disabled and no position
-            if self._exchange.entries_disabled and self._exchange.position is None:
-                continue
-
-            # Evaluate strategy
-            signal = strategy(snapshot, self.config.params)
-
-            if signal is not None:
-                # Get 1m close timestamp for order submission
-                signal_ts = self._quote_feed.get_ts_close_datetime(sub_idx)
-                return signal, snapshot, signal_ts
-
-        # No signal triggered - return last snapshot for consistency
-        if last_snapshot is None:
-            exec_close = float(self._exec_feed.close[exec_idx])
-            last_snapshot = self._build_snapshot_view(
-                exec_idx, step_result, rollups, last_price=exec_close
-            )
-
-        return None, last_snapshot, None
+    # _evaluate_with_1m_subloop REMOVED - now in PlayEngine only
 
     def _process_signal(
         self,
@@ -1668,5 +1424,10 @@ class BacktestEngine:
         return self._state_tracker.summary_stats()
 
 
-# NOTE: Factory functions (run_backtest, create_engine_from_play, run_engine_with_play)
-# are now in engine_factory.py and imported at the top of this module for backward compatibility.
+# =============================================================================
+# PROFESSIONAL NAMING ALIASES
+# See docs/specs/ENGINE_NAMING_CONVENTION.md for full naming standards
+# =============================================================================
+
+# CoreBacktestEngine is the canonical name for the backtest orchestrator
+CoreBacktestEngine = BacktestEngine

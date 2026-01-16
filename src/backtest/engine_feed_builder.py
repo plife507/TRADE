@@ -94,46 +94,46 @@ def build_feed_stores_impl(
 
     if multi_tf_mode and mtf_frames is not None:
         # Multi-TF mode: build feeds for each TF
-        htf_tf = tf_mapping["htf"]
-        mtf_tf = tf_mapping["mtf"]
-        ltf_tf = tf_mapping["ltf"]
+        high_tf = tf_mapping["high_tf"]
+        med_tf = tf_mapping["med_tf"]
+        low_tf = tf_mapping["low_tf"]
 
         # Get indicator columns for each TF
         # specs_by_role is keyed by TF string (e.g., "15m", "1h", "4h"), not role
         exec_cols = get_required_indicator_columns_from_specs(specs_by_role.get('exec', []))
-        htf_cols = get_required_indicator_columns_from_specs(specs_by_role.get(htf_tf, []))
-        mtf_cols = get_required_indicator_columns_from_specs(specs_by_role.get(mtf_tf, []))
+        high_tf_cols = get_required_indicator_columns_from_specs(specs_by_role.get(high_tf, []))
+        med_tf_cols = get_required_indicator_columns_from_specs(specs_by_role.get(med_tf, []))
 
-        # Build exec/LTF feed
-        ltf_df = mtf_frames.frames.get(ltf_tf)
-        if ltf_df is not None:
+        # Build exec/LowTF feed
+        low_tf_df = mtf_frames.frames.get(low_tf)
+        if low_tf_df is not None:
             exec_feed = FeedStore.from_dataframe(
-                df=ltf_df,
-                tf=ltf_tf,
+                df=low_tf_df,
+                tf=low_tf,
                 symbol=config.symbol,
                 indicator_columns=exec_cols,
             )
 
-        # Build HTF feed (may be same as exec in single-TF)
-        htf_df = mtf_frames.frames.get(htf_tf)
-        if htf_df is not None and htf_tf != ltf_tf:
+        # Build HighTF feed (may be same as exec in single-TF)
+        high_tf_df = mtf_frames.frames.get(high_tf)
+        if high_tf_df is not None and high_tf != low_tf:
             htf_feed = FeedStore.from_dataframe(
-                df=htf_df,
-                tf=htf_tf,
+                df=high_tf_df,
+                tf=high_tf,
                 symbol=config.symbol,
-                indicator_columns=htf_cols,
+                indicator_columns=high_tf_cols,
             )
         else:
             htf_feed = exec_feed  # Same as exec
 
-        # Build MTF feed (may be same as exec in single-TF)
-        mtf_df = mtf_frames.frames.get(mtf_tf)
-        if mtf_df is not None and mtf_tf != ltf_tf:
+        # Build MedTF feed (may be same as exec in single-TF)
+        med_tf_df = mtf_frames.frames.get(med_tf)
+        if med_tf_df is not None and med_tf != low_tf:
             mtf_feed = FeedStore.from_dataframe(
-                df=mtf_df,
-                tf=mtf_tf,
+                df=med_tf_df,
+                tf=med_tf,
                 symbol=config.symbol,
-                indicator_columns=mtf_cols,
+                indicator_columns=med_tf_cols,
             )
         else:
             mtf_feed = exec_feed  # Same as exec
@@ -161,8 +161,8 @@ def build_feed_stores_impl(
 
     logger.info(
         f"Built FeedStores: exec={exec_feed.length} bars, "
-        f"htf={htf_feed.length if htf_feed else 0} bars, "
-        f"mtf={mtf_feed.length if mtf_feed else 0} bars"
+        f"high_tf={htf_feed.length if htf_feed else 0} bars, "
+        f"med_tf={mtf_feed.length if mtf_feed else 0} bars"
     )
 
     return multi_tf_feed_store, exec_feed, htf_feed, mtf_feed

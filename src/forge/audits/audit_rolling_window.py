@@ -19,12 +19,10 @@ import sys
 
 def test_registration():
     """Test that rolling_window is registered in the structure registry."""
-    from src.backtest.incremental.registry import STRUCTURE_REGISTRY, get_structure_info
+    from src.structures import STRUCTURE_REGISTRY, get_structure_info
 
     # Import triggers registration
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import IncrementalRollingWindow
 
     assert "rolling_window" in STRUCTURE_REGISTRY, "rolling_window not registered"
     assert STRUCTURE_REGISTRY["rolling_window"] is IncrementalRollingWindow
@@ -41,9 +39,7 @@ def test_registration():
 
 def test_param_validation_size():
     """Test size parameter validation."""
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import IncrementalRollingWindow
 
     # Valid size
     detector = IncrementalRollingWindow.validate_and_create(
@@ -85,9 +81,7 @@ def test_param_validation_size():
 
 def test_param_validation_field():
     """Test field parameter validation."""
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import IncrementalRollingWindow
 
     # Valid fields
     for field in ["open", "high", "low", "close", "volume"]:
@@ -117,9 +111,7 @@ def test_param_validation_field():
 
 def test_param_validation_mode():
     """Test mode parameter validation."""
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import IncrementalRollingWindow
 
     # Valid modes
     for mode in ["min", "max"]:
@@ -149,9 +141,7 @@ def test_param_validation_mode():
 
 def test_missing_params():
     """Test error when required params are missing."""
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import IncrementalRollingWindow
 
     # Missing size
     try:
@@ -183,10 +173,8 @@ def test_missing_params():
 
 def test_rolling_min():
     """Test rolling minimum calculation."""
-    from src.backtest.incremental.base import BarData
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import BarData
+    from src.structures import IncrementalRollingWindow
 
     detector = IncrementalRollingWindow.validate_and_create(
         struct_type="rolling_window",
@@ -233,10 +221,8 @@ def test_rolling_min():
 
 def test_rolling_max():
     """Test rolling maximum calculation."""
-    from src.backtest.incremental.base import BarData
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import BarData
+    from src.structures import IncrementalRollingWindow
 
     detector = IncrementalRollingWindow.validate_and_create(
         struct_type="rolling_window",
@@ -278,9 +264,7 @@ def test_rolling_max():
 
 def test_output_keys():
     """Test get_output_keys returns correct keys."""
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import IncrementalRollingWindow
 
     detector = IncrementalRollingWindow.validate_and_create(
         struct_type="rolling_window",
@@ -296,9 +280,7 @@ def test_output_keys():
 
 def test_get_value_safe():
     """Test get_value_safe validates key and provides helpful errors."""
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import IncrementalRollingWindow
 
     detector = IncrementalRollingWindow.validate_and_create(
         struct_type="rolling_window",
@@ -326,10 +308,8 @@ def test_get_value_safe():
 
 def test_all_fields():
     """Test that all OHLCV fields can be tracked."""
-    from src.backtest.incremental.base import BarData
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import BarData
+    from src.structures import IncrementalRollingWindow
 
     bar = BarData(
         idx=0,
@@ -362,9 +342,7 @@ def test_all_fields():
 
 def test_repr():
     """Test string representation."""
-    from src.backtest.incremental.detectors.rolling_window import (
-        IncrementalRollingWindow,
-    )
+    from src.structures import IncrementalRollingWindow
 
     detector = IncrementalRollingWindow.validate_and_create(
         struct_type="rolling_window",

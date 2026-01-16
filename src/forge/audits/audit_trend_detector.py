@@ -39,7 +39,7 @@ def run_tests() -> None:
 
 def test_registration() -> None:
     """Test that trend detector is registered."""
-    from src.backtest.incremental.registry import STRUCTURE_REGISTRY, get_structure_info
+    from src.structures import STRUCTURE_REGISTRY, get_structure_info
 
     assert "trend" in STRUCTURE_REGISTRY, "trend not registered"
 
@@ -72,7 +72,7 @@ def create_trend_detector(swing: MockSwingDetector) -> Any:
 
 def test_uptrend_detection() -> None:
     """Test uptrend detection: higher highs + higher lows."""
-    from src.backtest.incremental.base import BarData
+    from src.structures import BarData
 
     swing = MockSwingDetector()
     detector = create_trend_detector(swing)
@@ -122,7 +122,7 @@ def test_uptrend_detection() -> None:
 
 def test_downtrend_detection() -> None:
     """Test downtrend detection: lower highs + lower lows."""
-    from src.backtest.incremental.base import BarData
+    from src.structures import BarData
 
     swing = MockSwingDetector()
     detector = create_trend_detector(swing)
@@ -159,7 +159,7 @@ def test_downtrend_detection() -> None:
 
 def test_ranging_detection() -> None:
     """Test ranging detection: mixed signals (HH but LL, or LH but HL)."""
-    from src.backtest.incremental.base import BarData
+    from src.structures import BarData
 
     swing = MockSwingDetector()
     detector = create_trend_detector(swing)
@@ -196,7 +196,7 @@ def test_ranging_detection() -> None:
 
 def test_bars_in_trend_tracking() -> None:
     """Test bars_in_trend increments and resets correctly."""
-    from src.backtest.incremental.base import BarData
+    from src.structures import BarData
 
     swing = MockSwingDetector()
     detector = create_trend_detector(swing)

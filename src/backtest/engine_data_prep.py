@@ -78,9 +78,9 @@ class MultiTFPreparedFrames:
     # Close timestamp sets per TF (for data-driven close detection)
     close_ts_maps: dict[str, set[datetime]] = field(default_factory=dict)
 
-    # LTF is the primary (simulation stepping)
-    ltf_frame: pd.DataFrame | None = None
-    ltf_sim_start_index: int = 0
+    # LowTF is the primary (simulation stepping)
+    low_tf_frame: pd.DataFrame | None = None
+    low_tf_sim_start_index: int = 0
 
     # Warmup metadata
     warmup_bars: int = 0
@@ -91,8 +91,8 @@ class MultiTFPreparedFrames:
     requested_end: datetime | None = None
     simulation_start: datetime | None = None
 
-    # Note: HTF/MTF/LTF close timestamps are accessed directly via close_ts_maps.get(tf, set())
-    # Dead helper methods (get_htf_close_ts, get_mtf_close_ts, get_ltf_close_ts) removed 2025-12-31
+    # Note: HighTF/MedTF/LowTF close timestamps are accessed directly via close_ts_maps.get(tf, set())
+    # Dead helper methods (get_high_tf_close_ts, get_med_tf_close_ts, get_low_tf_close_ts) removed 2025-12-31
 
 
 def timeframe_to_timedelta(tf: str) -> timedelta:
@@ -409,8 +409,8 @@ def prepare_multi_tf_frames_impl(
     store = None if synthetic_provider else get_historical_store(env=config.data_build.env)
 
     # Get TF mapping
-    ltf_tf = tf_mapping["ltf"]
-    htf_tf = tf_mapping["htf"]
+    low_tf = tf_mapping["low_tf"]
+    high_tf = tf_mapping["high_tf"]
 
     # Use Preflight-computed warmup (CANONICAL source via warmup_bars_by_role)
     # Engine MUST NOT compute warmup - FAIL LOUD if not set
@@ -423,27 +423,27 @@ def prepare_multi_tf_frames_impl(
         )
     warmup_bars = warmup_bars_by_role['exec']
 
-    # HTF warmup - required for multi-TF mode, optional for single-TF
+    # HighTF warmup - required for multi-TF mode, optional for single-TF
     #
     # FIX: Single-TF strategies only define warmup_bars_by_role['exec'].
-    # They don't have separate HTF/MTF roles, so 'htf' key won't exist.
+    # They don't have separate HighTF/MedTF roles, so 'high_tf' key won't exist.
     # However, multi_tf_mode is False for single-TF, and all TF mappings
-    # point to the same timeframe (e.g., {'htf': '15m', 'mtf': '15m', 'ltf': '15m'}).
+    # point to the same timeframe (e.g., {'high_tf': '15m', 'med_tf': '15m', 'low_tf': '15m'}).
     #
-    # Solution: Only require 'htf' warmup when actually in multi-TF mode.
+    # Solution: Only require 'high_tf' warmup when actually in multi-TF mode.
     # For single-TF, fall back to exec warmup (which covers all roles since
     # they're all the same timeframe).
-    if 'htf' not in warmup_bars_by_role:
+    if 'high_tf' not in warmup_bars_by_role:
         if multi_tf_mode:
-            # True multi-TF mode: htf warmup is required
+            # True multi-TF mode: high_tf warmup is required
             raise ValueError(
-                "MISSING_WARMUP_CONFIG: warmup_bars_by_role['htf'] not set for multi-TF mode. "
-                "Preflight gate must compute warmup for HTF role. "
-                "Check Play has htf TF config with warmup declared."
+                "MISSING_WARMUP_CONFIG: warmup_bars_by_role['high_tf'] not set for multi-TF mode. "
+                "Preflight gate must compute warmup for HighTF role. "
+                "Check Play has high_tf TF config with warmup declared."
             )
         else:
             # Single-TF mode: all roles map to same TF, use exec warmup
-            # No htf key needed - compute_data_window uses warmup_bars_by_role directly
+            # No high_tf key needed - compute_data_window uses warmup_bars_by_role directly
             pass
 
     # max_lookback is the raw max warmup from specs (for indicator validation only)
@@ -453,9 +453,9 @@ def prepare_multi_tf_frames_impl(
 
     # Compute data window using centralized utility
     tf_by_role = {
-        'exec': ltf_tf,
-        'htf': htf_tf,
-        'mtf': tf_mapping.get('mtf', ltf_tf),
+        'exec': low_tf,
+        'high_tf': high_tf,
+        'med_tf': tf_mapping.get('med_tf', low_tf),
     }
     data_window = compute_data_window(
         window_start=window.start,
@@ -471,9 +471,9 @@ def prepare_multi_tf_frames_impl(
     data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
     logger.info(
         f"Loading multi-TF data [{data_source}]: {config.symbol} "
-        f"HTF={htf_tf}, MTF={tf_mapping['mtf']}, LTF={ltf_tf} "
+        f"HighTF={high_tf}, MedTF={tf_mapping['med_tf']}, LowTF={low_tf} "
         f"from {data_start} to {requested_end} "
-        f"(warmup: {warmup_bars} LTF bars)"
+        f"(warmup: {warmup_bars} LowTF bars)"
     )
 
     # Load data for each unique TF
@@ -524,7 +524,7 @@ def prepare_multi_tf_frames_impl(
                 break
 
         # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
-        # Note: feature_specs_by_role is keyed by TF string (e.g., "4h") NOT role (e.g., "htf")
+        # Note: feature_specs_by_role is keyed by TF string (e.g., "4h") NOT role (e.g., "high_tf")
         if config.feature_specs_by_role:
             # Try TF-specific specs first (e.g., "4h"), then exec for non-TF-specific features
             specs = config.feature_specs_by_role.get(tf) or \
@@ -551,8 +551,8 @@ def prepare_multi_tf_frames_impl(
             f"{len(close_ts_maps[tf])} close timestamps"
         )
 
-    # Get the LTF frame for simulation stepping
-    ltf_frame = frames[ltf_tf]
+    # Get the LowTF frame for simulation stepping
+    low_tf_frame = frames[low_tf]
 
     # Find first valid bar in LTF where all indicators are ready
     # Use required_indicators from YAML (not all expanded outputs) to avoid
@@ -567,28 +567,28 @@ def prepare_multi_tf_frames_impl(
     else:
         required_cols = []  # Will fail validation
 
-    first_valid_idx = find_first_valid_bar(ltf_frame, required_cols)
+    first_valid_idx = find_first_valid_bar(low_tf_frame, required_cols)
 
     if first_valid_idx < 0:
         raise ValueError(
-            f"No valid bars found for {config.symbol} {ltf_tf}. "
+            f"No valid bars found for {config.symbol} {low_tf}. "
             f"All indicator columns have NaN values."
         )
 
-    first_valid_ts = ltf_frame.iloc[first_valid_idx]["timestamp"]
+    first_valid_ts = low_tf_frame.iloc[first_valid_idx]["timestamp"]
 
     # Simulation starts at max(first_valid_bar, requested_start)
     if first_valid_ts >= requested_start:
         sim_start_ts = first_valid_ts
         sim_start_idx = first_valid_idx
     else:
-        mask = ltf_frame["timestamp"] >= requested_start
+        mask = low_tf_frame["timestamp"] >= requested_start
         if not mask.any():
             raise ValueError(
                 f"No data found at or after requested window start {requested_start}."
             )
         sim_start_idx = mask.idxmax()
-        sim_start_ts = ltf_frame.iloc[sim_start_idx]["timestamp"]
+        sim_start_ts = low_tf_frame.iloc[sim_start_idx]["timestamp"]
 
     # =====================================================================
     # DELAY BARS: Apply delay-only evaluation offset (closed-candle aligned)
@@ -598,7 +598,7 @@ def prepare_multi_tf_frames_impl(
 
     # Compute eval_start per role and take max
     max_eval_start_ts = sim_start_ts
-    for role, role_tf in [("exec", ltf_tf), ("htf", htf_tf), ("mtf", tf_mapping.get("mtf", ltf_tf))]:
+    for role, role_tf in [("exec", low_tf), ("high_tf", high_tf), ("med_tf", tf_mapping.get("med_tf", low_tf))]:
         delay_bars = delay_bars_by_role.get(role, 0)
         if delay_bars > 0:
             aligned_start = ceil_to_tf_close(sim_start_ts, role_tf)
@@ -609,14 +609,14 @@ def prepare_multi_tf_frames_impl(
 
     if max_eval_start_ts > sim_start_ts:
         # Find the bar index at or after max_eval_start_ts
-        eval_mask = ltf_frame["timestamp"] >= max_eval_start_ts
+        eval_mask = low_tf_frame["timestamp"] >= max_eval_start_ts
         if not eval_mask.any():
             raise ValueError(
                 f"Not enough data for delay offset: eval would start at {max_eval_start_ts}, "
-                f"but data ends at {ltf_frame['timestamp'].iloc[-1]}."
+                f"but data ends at {low_tf_frame['timestamp'].iloc[-1]}."
             )
         eval_start_idx = eval_mask.idxmax()
-        eval_start_ts_actual = ltf_frame.iloc[eval_start_idx]["timestamp"]
+        eval_start_ts_actual = low_tf_frame.iloc[eval_start_idx]["timestamp"]
 
         logger.info(
             f"Delay offset applied (multi-TF): "
@@ -627,7 +627,7 @@ def prepare_multi_tf_frames_impl(
         sim_start_idx = eval_start_idx
 
     # Validate enough data for simulation
-    sim_bars = len(ltf_frame) - sim_start_idx
+    sim_bars = len(low_tf_frame) - sim_start_idx
     if sim_bars < 10:
         raise ValueError(
             f"Insufficient simulation bars: got {sim_bars} bars after warm-up."
@@ -635,7 +635,7 @@ def prepare_multi_tf_frames_impl(
 
     logger.info(
         f"Multi-TF simulation start: {sim_start_ts} (bar {sim_start_idx}), "
-        f"{sim_bars} LTF bars available"
+        f"{sim_bars} LowTF bars available"
     )
 
     # Create and return result
@@ -643,8 +643,8 @@ def prepare_multi_tf_frames_impl(
         tf_mapping=dict(tf_mapping),
         frames=frames,
         close_ts_maps=close_ts_maps,
-        ltf_frame=ltf_frame,
-        ltf_sim_start_index=sim_start_idx,
+        low_tf_frame=low_tf_frame,
+        low_tf_sim_start_index=sim_start_idx,
         warmup_bars=warmup_bars,
         max_indicator_lookback=max_lookback,
         requested_start=requested_start,

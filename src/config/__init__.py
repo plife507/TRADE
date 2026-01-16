@@ -21,6 +21,9 @@ from .constants import (
     DataEnv,
     DATA_ENVS,
     DEFAULT_DATA_ENV,
+    DEFAULT_BACKTEST_ENV,
+    DEFAULT_LIVE_ENV,
+    DEFAULT_DEMO_ENV,
     validate_data_env,
 )
 
@@ -43,5 +46,8 @@ __all__ = [
     "DataEnv",
     "DATA_ENVS",
     "DEFAULT_DATA_ENV",
+    "DEFAULT_BACKTEST_ENV",
+    "DEFAULT_LIVE_ENV",
+    "DEFAULT_DEMO_ENV",
     "validate_data_env",
 ]

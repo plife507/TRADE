@@ -1,0 +1,77 @@
+version: "3.0.0"
+name: "V_PF_042_lh_ll_downtrend"
+description: "Validation: LH+LL wave sequence correctly classifies downtrend."
+
+symbol: "BTCUSDT"
+tf: "15m"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: isolated_usdt
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        atr_key: atr_14
+
+    - type: trend
+      key: trend
+      depends_on:
+        swing: swing
+
+actions:
+  - id: entry
+    cases:
+      # Entry when downtrend confirmed with LH + LL pattern
+      - when:
+          all:
+            - [{feature_id: "trend", field: "direction"}, "==", -1]
+            - [{feature_id: "trend", field: "last_lh"}, "==", true]
+            - [{feature_id: "trend", field: "last_ll"}, "==", true]
+        emit:
+          - action: entry_short
+  - id: exit
+    cases:
+      # Exit when trend direction changes
+      - when:
+          all:
+            - [{feature_id: "trend", field: "direction"}, "!=", -1]
+        emit:
+          - action: exit_short
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 10.0
+
+_test_metadata:
+  validation_id: "V_PF_042"
+  category: "pivot_foundation"
+  gate: 4
+  structure: "trend"
+  tests:
+    - "Lower High (LH) detected when new high < previous high"
+    - "Lower Low (LL) detected when new low < previous low"
+    - "Downtrend (direction=-1) classified when LH+LL pattern present"
+    - "last_lh and last_ll flags correctly set"

@@ -553,11 +553,11 @@ class MultiTFFeedStore:
     tf_mapping: dict[str, str] = field(default_factory=dict)
 
     def get_feed(self, role: str) -> FeedStore | None:
-        """Get feed by role (htf, mtf, ltf/exec)."""
-        if role in ("ltf", "exec"):
+        """Get feed by role (high_tf, med_tf, low_tf/exec)."""
+        if role in ("low_tf", "exec"):
             return self.exec_feed
-        elif role == "htf":
+        elif role == "high_tf":
             return self.htf_feed
-        elif role == "mtf":
+        elif role == "med_tf":
             return self.mtf_feed
         return None

@@ -2,17 +2,17 @@
 Backtest engine module.
 
 Provides deterministic backtesting for trading strategies with:
-- Config-driven system definitions (YAML)
+- Play-native engine creation via factory functions
 - Pluggable risk policies (none vs rules)
 - Simulated exchange with deterministic execution
 - Metrics calculation and artifact writing
 
-Usage:
-    from src.backtest import BacktestEngine, load_system_config
-    
-    config = load_system_config("SOLUSDT_5m_ema_rsi_atr_pure", "hygiene")
-    engine = BacktestEngine(config)
-    result = engine.run()
+USAGE (Play-native):
+    from src.backtest import load_play, create_engine_from_play, run_engine_with_play
+
+    play = load_play("my_strategy")
+    engine = create_engine_from_play(play, window_start, window_end)
+    result = run_engine_with_play(engine, play)
 """
 
 from .types import (
@@ -38,12 +38,15 @@ from .window_presets import (
     list_available_presets,
     has_preset,
 )
-from .engine import BacktestEngine
+from .engine import BacktestEngine, CoreBacktestEngine
 from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
 from .engine_factory import (
     run_backtest,
     create_engine_from_play,
     run_engine_with_play,
+    # Professional naming aliases
+    create_backtest_engine,
+    PlayRunResult,
 )
 from .risk_policy import (
     RiskPolicy,
@@ -126,10 +129,13 @@ __all__ = [
     "has_preset",
     # Engine
     "BacktestEngine",
+    "CoreBacktestEngine",  # Professional alias
     "PreparedFrame",
     "MultiTFPreparedFrames",
     # Factory functions
     "run_backtest",
+    "create_backtest_engine",  # Professional alias
+    "PlayRunResult",  # Professional alias
     # Risk policies
     "RiskPolicy",
     "NoneRiskPolicy",

@@ -232,7 +232,7 @@ def _validate_indicator_path(
     tf_role = tokens[1] if len(tokens) > 1 else "exec"
 
     # Validate tf_role
-    valid_roles = ("exec", "htf", "mtf", "ltf")
+    valid_roles = ("exec", "high_tf", "med_tf", "low_tf")
     if tf_role not in valid_roles:
         raise CompileError(
             path,

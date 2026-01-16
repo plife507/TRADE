@@ -134,12 +134,12 @@ def run_metadata_smoke(
     console.print(f"\n[bold cyan]Step 2: Build Features with Metadata[/]")
 
     try:
-        from ...backtest.features.feature_spec import (
+        from ...indicators import (
             FeatureSpec,
             FeatureSpecSet,
             InputSource,
+            FeatureFrameBuilder,
         )
-        from ...backtest.features.feature_frame_builder import FeatureFrameBuilder
 
         # Create a diverse set of FeatureSpecs (single + multi-output)
         # Using string indicator types (registry-based, as of Phase 2)
@@ -231,7 +231,7 @@ def run_metadata_smoke(
     console.print(f"\n[bold cyan]Step 4: Validate Metadata Invariants[/]")
 
     try:
-        from ...backtest.runtime.indicator_metadata import (
+        from ...indicators import (
             validate_metadata_coverage,
             validate_feature_spec_ids,
         )
@@ -311,7 +311,7 @@ def run_metadata_smoke(
     console.print(f"\n[bold cyan]Step 5: Export Metadata[/]")
 
     try:
-        from ...backtest.runtime.indicator_metadata import (
+        from ...indicators import (
             export_metadata_jsonl,
             export_metadata_json,
             export_metadata_csv,

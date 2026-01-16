@@ -190,8 +190,15 @@ def validate_quote_ccy_and_instrument_type(quote_ccy: str, instrument_type: str)
 
 @dataclass
 class DataBuildConfig:
-    """Dataset build configuration."""
-    env: str = "live"
+    """
+    Dataset build configuration.
+
+    The env field determines which DuckDB file is used:
+    - "backtest": market_data_backtest.duckdb (default for backtests, uses live API data)
+    - "live": market_data_live.duckdb (for live trading warm-up)
+    - "demo": market_data_demo.duckdb (for paper trading)
+    """
+    env: str = "backtest"  # Default to backtest DB for historical simulations
     period: str = "3M"
     tfs: list[str] = field(default_factory=lambda: ["1h"])
 
@@ -806,33 +813,26 @@ def _parse_strategy_instance(raw: dict[str, Any]) -> StrategyInstanceConfig:
 
 def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     """
-    Load a system configuration from YAML.
-    
-    DEPRECATED: YAML SystemConfig is deprecated. Use Play for backtesting.
-    
-    This function exists for legacy compatibility. New backtests should use:
-        python trade_cli.py backtest run --play <play_id> --start <date> --end <date>
-    
-    Args:
-        system_id: System identifier (filename without .yml)
-        window_name: Optional window to validate exists
-        
-    Returns:
-        SystemConfig instance
-        
+    REMOVED: YAML SystemConfig is no longer supported.
+
     Raises:
-        FileNotFoundError: If config file not found
-        ValueError: If config is invalid
+        RuntimeError: Always. This function is deprecated.
+
+    Migration Guide:
+        Use Play YAML format instead:
+            python trade_cli.py backtest run --play <play_id> --start <date> --end <date>
+
+        Play files are located in strategies/plays/ or tests/validation/plays/
+        See docs/specs/PLAY_DSL_COOKBOOK.md for Play YAML format documentation.
     """
-    import warnings
-    warnings.warn(
-        f"YAML SystemConfig '{system_id}' is deprecated. "
-        "Migrate to Play YAML format at strategies/plays/. "
-        "See docs/strategy_factory/STRATEGY_FACTORY.md for migration guide.",
-        DeprecationWarning,
-        stacklevel=2
+    raise RuntimeError(
+        f"REMOVED: load_system_config('{system_id}') is no longer supported.\n\n"
+        f"YAML SystemConfig format is deprecated. Use Play YAML format instead:\n"
+        f"  python trade_cli.py backtest run --play <play_id> --start <date> --end <date>\n\n"
+        f"See docs/specs/PLAY_DSL_COOKBOOK.md for Play YAML format documentation."
     )
-    
+
+    # DEAD CODE BELOW - kept for reference during migration
     config_path = CONFIGS_DIR / f"{system_id}.yml"
     
     if not config_path.exists():
@@ -900,7 +900,7 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
     # Parse data build config
     data_build_raw = raw.get("data_build", {})
     data_build = DataBuildConfig(
-        env=data_build_raw.get("env", "live"),
+        env=data_build_raw.get("env", "backtest"),  # Default to backtest DB
         period=data_build_raw.get("period", "3M"),
         tfs=data_build_raw.get("tfs", ["1h"]),
     )

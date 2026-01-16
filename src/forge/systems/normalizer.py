@@ -181,7 +181,7 @@ def normalize_system_strict(
     # Validate regime_features if provided
     regime_features = raw.get("regime_features", {})
     if regime_features:
-        from src.backtest.indicator_registry import get_registry
+        from src.indicators import get_registry
         registry = get_registry()
 
         for feature_id, feature_config in regime_features.items():

@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.backtest.indicator_registry import get_registry
+from src.indicators import get_registry
 from src.backtest.rules.dsl_parser import parse_expr
 
 from .block import Block

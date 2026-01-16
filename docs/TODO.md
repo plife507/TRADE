@@ -20,6 +20,26 @@
 
 ## Next Steps
 
+### P0 - Pivot Foundation (CRITICAL)
+
+> **Full spec**: `docs/todos/PIVOT_FOUNDATION_GATES.md`
+
+The pivot/swing system is the foundation for ALL structure-based trading.
+Current issues: noise in choppy markets, trend detector state memory bug, no BOS/CHoCH.
+
+| Gate | Description | Status |
+|------|-------------|--------|
+| Gate 0 | Significance Infrastructure (ATR dependency) | [ ] |
+| Gate 1 | Significance Filtering (min_atr_move) | [ ] |
+| Gate 2 | Strict Alternation (H-L-H-L) | [ ] |
+| Gate 3 | ATR ZigZag Mode (TradingView-style) | [ ] |
+| Gate 4 | Trend Detector Rewrite (wave-based) | [ ] |
+| Gate 5 | Market Structure (BOS/CHoCH) | [ ] |
+| Gate 6 | MTF Pivot Coordination | [ ] |
+| Gate 7 | Integration & Stress Testing | [ ] |
+
+**Impact**: Unlocks clean Fib anchors, accurate trend, BOS/CHoCH events, future ICT structures (OB, FVG, liquidity zones).
+
 ### P1 - Live Trading Validation
 - [ ] End-to-end demo trading test
 - [ ] WebSocket reconnection handling
@@ -30,8 +50,10 @@
 - [ ] Structure history for lookback queries
 - [ ] Multi-symbol backtest support
 
-### P3 - Future
-- [ ] ICT Market Structure (BOS/CHoCH)
+### P3 - Future (after Pivot Foundation)
+- [ ] Order Blocks (OB)
+- [ ] Fair Value Gaps (FVG)
+- [ ] Liquidity Zones (equal H/L)
 - [ ] Agent module for automated strategy generation
 
 ---

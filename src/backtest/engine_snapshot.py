@@ -100,18 +100,18 @@ def refresh_tf_caches_impl(
         get_tf_features_func: Function to get features at close (tf, ts_close) -> FeatureSnapshot
 
     Returns:
-        Tuple of (htf_updated, mtf_updated) booleans
+        Tuple of (high_tf_updated, med_tf_updated) booleans
     """
-    htf_tf = tf_mapping["htf"]
-    mtf_tf = tf_mapping["mtf"]
+    high_tf = tf_mapping["high_tf"]
+    med_tf = tf_mapping["med_tf"]
 
-    # Factory function for HTF snapshot
+    # Factory function for HighTF snapshot
     def htf_factory() -> FeatureSnapshot:
-        return get_tf_features_func(htf_tf, ts_close)
+        return get_tf_features_func(high_tf, ts_close)
 
-    # Factory function for MTF snapshot
+    # Factory function for MedTF snapshot
     def mtf_factory() -> FeatureSnapshot:
-        return get_tf_features_func(mtf_tf, ts_close)
+        return get_tf_features_func(med_tf, ts_close)
 
     return tf_cache.refresh_step(ts_close, htf_factory, mtf_factory)
 

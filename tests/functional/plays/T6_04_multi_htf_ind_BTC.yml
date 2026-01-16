@@ -4,7 +4,7 @@ description: "TIER 6: Test multiple HTF indicators on same timeframe"
 
 symbol: "BTCUSDT"
 tf: "15m"
-htf: "4h"
+high_tf: "4h"
 
 account:
   starting_equity_usdt: 10000.0

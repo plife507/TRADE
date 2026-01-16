@@ -44,8 +44,8 @@ class RuntimeConfig:
     margin_mode: str
     
     # Fee model (from Play.account.fee_model - optional)
-    taker_fee_rate: float = 0.0006  # Default Bybit rate
-    maker_fee_rate: float = 0.0002  # Default Bybit rate
+    taker_fee_rate: float = 0.0006  # Default Bybit rate (0.06%)
+    maker_fee_rate: float = 0.0001  # Default Bybit rate (0.01%)
     
     # Slippage (from Play.account.slippage_bps - optional)
     slippage_bps: float | None = None
@@ -58,13 +58,13 @@ class RuntimeConfig:
     # Symbol and timeframe config (from Play)
     symbol: str = ""
     exec_tf: str = ""
-    htf: str | None = None
-    mtf: str | None = None
-    
+    high_tf: str | None = None
+    med_tf: str | None = None
+
     # Warmup requirements (from Play tf_configs)
     warmup_bars_exec: int = 0
-    warmup_bars_htf: int = 0
-    warmup_bars_mtf: int = 0
+    warmup_bars_high_tf: int = 0
+    warmup_bars_med_tf: int = 0
     
     # Window dates (from CLI/runner)
     window_start: datetime | None = None
@@ -79,8 +79,8 @@ class RuntimeConfig:
     
     # Required indicators by role (from Play.tf_configs[role].required_indicators)
     required_indicators_exec: tuple = field(default_factory=tuple)
-    required_indicators_htf: tuple = field(default_factory=tuple)
-    required_indicators_mtf: tuple = field(default_factory=tuple)
+    required_indicators_high_tf: tuple = field(default_factory=tuple)
+    required_indicators_med_tf: tuple = field(default_factory=tuple)
     
     def __post_init__(self):
         """Validate runtime config."""
@@ -143,9 +143,9 @@ class RuntimeConfig:
             else account.max_leverage
         )
         
-        # Extract fee rates from fee model
-        taker_fee_rate = 0.0006  # Default
-        maker_fee_rate = 0.0002  # Default
+        # Extract fee rates from fee model (Bybit defaults)
+        taker_fee_rate = 0.0006  # Default (0.06%)
+        maker_fee_rate = 0.0001  # Default (0.01%)
         if account.fee_model:
             taker_fee_rate = account.fee_model.taker_rate
             maker_fee_rate = account.fee_model.maker_rate
@@ -169,14 +169,14 @@ class RuntimeConfig:
         
         # Extract warmup requirements
         warmup_exec = play.get_required_warmup_bars("exec")
-        warmup_htf = play.get_required_warmup_bars("htf")
-        warmup_mtf = play.get_required_warmup_bars("mtf")
-        
+        warmup_high_tf = play.get_required_warmup_bars("high_tf")
+        warmup_med_tf = play.get_required_warmup_bars("med_tf")
+
         # Extract required indicators
         required_exec = tuple(play.tf_configs.get("exec", None).required_indicators) if "exec" in play.tf_configs else ()
-        required_htf = tuple(play.tf_configs.get("htf", None).required_indicators) if "htf" in play.tf_configs else ()
-        required_mtf = tuple(play.tf_configs.get("mtf", None).required_indicators) if "mtf" in play.tf_configs else ()
-        
+        required_high_tf = tuple(play.tf_configs.get("high_tf", None).required_indicators) if "high_tf" in play.tf_configs else ()
+        required_med_tf = tuple(play.tf_configs.get("med_tf", None).required_indicators) if "med_tf" in play.tf_configs else ()
+
         return cls(
             play_id=play.id,
             play_version=play.version,
@@ -191,19 +191,19 @@ class RuntimeConfig:
             max_margin_usdt=account.max_margin_usdt,
             symbol=symbol,
             exec_tf=play.exec_tf,
-            htf=play.htf,
-            mtf=play.mtf,
+            high_tf=play.high_tf,
+            med_tf=play.med_tf,
             warmup_bars_exec=warmup_exec,
-            warmup_bars_htf=warmup_htf,
-            warmup_bars_mtf=warmup_mtf,
+            warmup_bars_high_tf=warmup_high_tf,
+            warmup_bars_med_tf=warmup_med_tf,
             window_start=window_start,
             window_end=window_end,
             data_env=data_env,
             sizing_model=sizing_model,
             sizing_value=sizing_value,
             required_indicators_exec=required_exec,
-            required_indicators_htf=required_htf,
-            required_indicators_mtf=required_mtf,
+            required_indicators_high_tf=required_high_tf,
+            required_indicators_med_tf=required_med_tf,
         )
     
     def to_dict(self) -> dict[str, Any]:
@@ -222,30 +222,30 @@ class RuntimeConfig:
             "max_margin_usdt": self.max_margin_usdt,
             "symbol": self.symbol,
             "exec_tf": self.exec_tf,
-            "htf": self.htf,
-            "mtf": self.mtf,
+            "high_tf": self.high_tf,
+            "med_tf": self.med_tf,
             "warmup_bars_exec": self.warmup_bars_exec,
-            "warmup_bars_htf": self.warmup_bars_htf,
-            "warmup_bars_mtf": self.warmup_bars_mtf,
+            "warmup_bars_high_tf": self.warmup_bars_high_tf,
+            "warmup_bars_med_tf": self.warmup_bars_med_tf,
             "window_start": self.window_start.isoformat() if self.window_start else None,
             "window_end": self.window_end.isoformat() if self.window_end else None,
             "data_env": self.data_env,
             "sizing_model": self.sizing_model,
             "sizing_value": self.sizing_value,
             "required_indicators_exec": list(self.required_indicators_exec),
-            "required_indicators_htf": list(self.required_indicators_htf),
-            "required_indicators_mtf": list(self.required_indicators_mtf),
+            "required_indicators_high_tf": list(self.required_indicators_high_tf),
+            "required_indicators_med_tf": list(self.required_indicators_med_tf),
         }
-    
+
     def get_required_indicators_by_role(self) -> dict[str, list[str]]:
         """Get required indicators grouped by TF role."""
         result = {}
         if self.required_indicators_exec:
             result["exec"] = list(self.required_indicators_exec)
-        if self.required_indicators_htf:
-            result["htf"] = list(self.required_indicators_htf)
-        if self.required_indicators_mtf:
-            result["mtf"] = list(self.required_indicators_mtf)
+        if self.required_indicators_high_tf:
+            result["high_tf"] = list(self.required_indicators_high_tf)
+        if self.required_indicators_med_tf:
+            result["med_tf"] = list(self.required_indicators_med_tf)
         return result
     
     def print_summary(self, logger=None) -> None:

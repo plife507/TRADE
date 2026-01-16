@@ -583,8 +583,8 @@ class Play:
         structure_keys: list[str] = []
         structure_features: list[Feature] = []
         if has_structures:
-            # structures: {exec: [...], htf: {...}}
-            VALID_TF_ROLES = {"exec", "htf"}
+            # structures: {exec: [...], high_tf: {...}}
+            VALID_TF_ROLES = {"exec", "high_tf"}
             for tf_role, specs in structures_dict.items():
                 if tf_role not in VALID_TF_ROLES:
                     raise ValueError(

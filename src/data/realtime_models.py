@@ -3,10 +3,17 @@ Real-time data models for WebSocket-driven state.
 
 Contains all normalized data types used by RealtimeState:
 - EventType, ConnectionState enums
-- Market data: TickerData, OrderbookData, TradeData, KlineData, MTFCandle
+- Market data: TickerData, OrderbookData, TradeData, KlineData, BarRecord
 - Account data: PositionData, OrderData, ExecutionData, WalletData, AccountMetrics
 - Risk data: PortfolioRiskSnapshot
 - Utility: RealtimeEvent, ConnectionStatus
+
+Timeframe Terminology:
+- LowTF: 1m, 3m, 5m, 15m (execution timing)
+- MedTF: 30m, 1h, 2h, 4h (trade bias)
+- HighTF: 6h, 12h, D, W (trend direction)
+- ExecTF: Play's execution timeframe
+- MultiTF: Cross-timeframe analysis (comparing LowTF/MedTF/HighTF)
 """
 
 import time
@@ -280,25 +287,30 @@ class KlineData:
 
 
 @dataclass
-class MTFCandle:
-    """Multi-timeframe candle for ring buffer storage."""
+class BarRecord:
+    """
+    Bar data record for ring buffer storage.
+
+    Used for storing closed bars in memory buffers during live/demo trading.
+    Works with any timeframe (LowTF, MedTF, HighTF).
+    """
     timestamp: datetime
     open: float
     high: float
     low: float
     close: float
     volume: float
-    
+
     @classmethod
-    def from_kline_data(cls, kline: 'KlineData') -> 'MTFCandle':
+    def from_kline_data(cls, kline: 'KlineData') -> 'BarRecord':
         return cls(
             timestamp=datetime.fromtimestamp(kline.start_time / 1000),
             open=kline.open, high=kline.high, low=kline.low,
             close=kline.close, volume=kline.volume,
         )
-    
+
     @classmethod
-    def from_df_row(cls, row) -> 'MTFCandle':
+    def from_df_row(cls, row) -> 'BarRecord':
         ts = row.get("timestamp") or row.get("ts")
         return cls(
             timestamp=ts if isinstance(ts, datetime) else pd.Timestamp(ts).to_pydatetime(),
@@ -306,7 +318,7 @@ class MTFCandle:
             low=float(row.get("low", 0)), close=float(row.get("close", 0)),
             volume=float(row.get("volume", 0)),
         )
-    
+
     def to_dict(self) -> dict:
         return {
             "timestamp": self.timestamp.isoformat() if hasattr(self.timestamp, "isoformat") else str(self.timestamp),
@@ -315,15 +327,16 @@ class MTFCandle:
         }
 
 
-MTF_BUFFER_SIZES = {
+BAR_BUFFER_SIZES = {
     "1m": 500, "3m": 400, "5m": 300, "15m": 200, "30m": 200,
     "1h": 168, "2h": 84, "4h": 180, "6h": 120, "12h": 60,
     "1d": 90, "D": 90, "1w": 52, "W": 52, "1M": 24, "M": 24,
 }
 
 
-def get_mtf_buffer_size(timeframe: str) -> int:
-    return MTF_BUFFER_SIZES.get(timeframe, 200)
+def get_bar_buffer_size(timeframe: str) -> int:
+    """Get default buffer size for a timeframe."""
+    return BAR_BUFFER_SIZES.get(timeframe, 200)
 
 
 # ==============================================================================

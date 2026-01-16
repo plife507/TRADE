@@ -37,7 +37,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from src.backtest.indicator_registry import get_registry
+from src.indicators import get_registry
 from src.backtest.play import Play
 
 from ..blocks import NormalizationResult, NormalizationError

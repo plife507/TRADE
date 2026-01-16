@@ -50,9 +50,9 @@ from .realtime_models import (
     OrderbookData,
     TradeData,
     KlineData,
-    MTFCandle,
-    MTF_BUFFER_SIZES,
-    get_mtf_buffer_size,
+    BarRecord,
+    BAR_BUFFER_SIZES,
+    get_bar_buffer_size,
     # Account data models
     PositionData,
     OrderData,
@@ -65,7 +65,6 @@ from .realtime_models import (
     ConnectionStatus,
 )
 
-# Re-export models for backward compatibility
 __all__ = [
     # Main class
     "RealtimeState",
@@ -81,9 +80,9 @@ __all__ = [
     "OrderbookData",
     "TradeData",
     "KlineData",
-    "MTFCandle",
-    "MTF_BUFFER_SIZES",
-    "get_mtf_buffer_size",
+    "BarRecord",
+    "BAR_BUFFER_SIZES",
+    "get_bar_buffer_size",
     # Account data models
     "PositionData",
     "OrderData",
@@ -181,11 +180,11 @@ class RealtimeState:
         self._max_executions = 500
         
         # ==============================================================================
-        # MTF Ring Buffers - Environment-scoped multi-timeframe candle storage
+        # Bar Buffers - Environment-scoped bar storage for any timeframe
         # ==============================================================================
-        # Structure: env -> symbol -> timeframe -> deque[MTFCandle]
+        # Structure: env -> symbol -> timeframe -> deque[BarRecord]
         # Used for strategy warm-up and lookback during live execution
-        self._mtf_buffers: dict[str, dict[str, dict[str, deque[MTFCandle]]]] = {
+        self._bar_buffers: dict[str, dict[str, dict[str, deque[BarRecord]]]] = {
             "live": defaultdict(lambda: defaultdict(deque)),
             "demo": defaultdict(lambda: defaultdict(deque)),
         }
@@ -322,136 +321,136 @@ class RealtimeState:
             self._kline_callbacks.append(callback)
     
     # ==========================================================================
-    # MTF Ring Buffers - Environment-scoped multi-timeframe candle storage
+    # Bar Buffers - Environment-scoped bar storage for any timeframe
     # ==========================================================================
-    
-    def init_mtf_buffer(
+
+    def init_bar_buffer(
         self,
         env: DataEnv,
         symbol: str,
         timeframe: str,
-        candles_df: pd.DataFrame,
+        bars_df: pd.DataFrame,
         max_size: int | None = None,
     ) -> int:
         """
-        Initialize an MTF ring buffer from historical DataFrame.
-        
+        Initialize a bar ring buffer from historical DataFrame.
+
         Args:
             env: Data environment ("live" or "demo")
             symbol: Trading symbol (e.g., "BTCUSDT")
-            timeframe: Candle timeframe (e.g., "15m", "1h", "4h")
-            candles_df: DataFrame with OHLCV data
+            timeframe: Bar timeframe (e.g., "15m", "1h", "4h")
+            bars_df: DataFrame with OHLCV data
             max_size: Maximum buffer size (default: auto-sized based on timeframe)
-            
+
         Returns:
-            Number of candles loaded into the buffer
+            Number of bars loaded into the buffer
         """
         env = validate_data_env(env)
         symbol = symbol.upper()
-        
+
         if max_size is None:
-            max_size = get_mtf_buffer_size(timeframe)
-        
+            max_size = get_bar_buffer_size(timeframe)
+
         with self._lock:
-            buffer: deque[MTFCandle] = deque(maxlen=max_size)
-            
+            buffer: deque[BarRecord] = deque(maxlen=max_size)
+
             count = 0
-            for _, row in candles_df.iterrows():
+            for _, row in bars_df.iterrows():
                 try:
-                    candle = MTFCandle.from_df_row(row)
-                    buffer.append(candle)
+                    bar = BarRecord.from_df_row(row)
+                    buffer.append(bar)
                     count += 1
                 except Exception:
                     continue
-            
-            self._mtf_buffers[env][symbol][timeframe] = buffer
-            
+
+            self._bar_buffers[env][symbol][timeframe] = buffer
+
             self.logger.debug(
-                f"Initialized MTF buffer: env={env}, symbol={symbol}, "
-                f"tf={timeframe}, candles={count}, max_size={max_size}"
+                f"Initialized bar buffer: env={env}, symbol={symbol}, "
+                f"tf={timeframe}, bars={count}, max_size={max_size}"
             )
-            
+
             return count
-    
-    def append_mtf_candle(
+
+    def append_bar(
         self,
         env: DataEnv,
         symbol: str,
         timeframe: str,
-        candle: MTFCandle,
+        bar: BarRecord,
     ) -> bool:
-        """Append a closed candle to an MTF ring buffer."""
+        """Append a closed bar to a ring buffer."""
         env = validate_data_env(env)
         symbol = symbol.upper()
-        
+
         with self._lock:
-            if symbol not in self._mtf_buffers[env]:
+            if symbol not in self._bar_buffers[env]:
                 return False
-            if timeframe not in self._mtf_buffers[env][symbol]:
+            if timeframe not in self._bar_buffers[env][symbol]:
                 return False
-            
-            buffer = self._mtf_buffers[env][symbol][timeframe]
-            buffer.append(candle)
-            
+
+            buffer = self._bar_buffers[env][symbol][timeframe]
+            buffer.append(bar)
+
             return True
-    
-    def get_mtf_buffer(
+
+    def get_bar_buffer(
         self,
         env: DataEnv,
         symbol: str,
         timeframe: str,
         limit: int | None = None,
-    ) -> list[MTFCandle]:
-        """Get candles from an MTF ring buffer."""
+    ) -> list[BarRecord]:
+        """Get bars from a ring buffer."""
         env = validate_data_env(env)
         symbol = symbol.upper()
-        
+
         with self._lock:
-            if symbol not in self._mtf_buffers[env]:
+            if symbol not in self._bar_buffers[env]:
                 return []
-            if timeframe not in self._mtf_buffers[env][symbol]:
+            if timeframe not in self._bar_buffers[env][symbol]:
                 return []
-            
-            buffer = self._mtf_buffers[env][symbol][timeframe]
-            
+
+            buffer = self._bar_buffers[env][symbol][timeframe]
+
             if limit is None:
                 return list(buffer)
             else:
                 return list(buffer)[-limit:]
-    
-    def get_mtf_buffer_as_df(
+
+    def get_bar_buffer_as_df(
         self,
         env: DataEnv,
         symbol: str,
         timeframe: str,
         limit: int | None = None,
     ) -> pd.DataFrame:
-        """Get MTF buffer as a pandas DataFrame (OHLCV format)."""
-        candles = self.get_mtf_buffer(env, symbol, timeframe, limit)
-        
-        if not candles:
+        """Get bar buffer as a pandas DataFrame (OHLCV format)."""
+        bars = self.get_bar_buffer(env, symbol, timeframe, limit)
+
+        if not bars:
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
-        
+
         data = [
             {
-                "timestamp": c.timestamp,
-                "open": c.open, "high": c.high, "low": c.low,
-                "close": c.close, "volume": c.volume,
+                "timestamp": b.timestamp,
+                "open": b.open, "high": b.high, "low": b.low,
+                "close": b.close, "volume": b.volume,
             }
-            for c in candles
+            for b in bars
         ]
-        
+
         return pd.DataFrame(data)
-    
-    def get_mtf_buffer_stats(self, env: DataEnv = None) -> dict[str, Any]:
-        """Get statistics about MTF buffers."""
+
+    def get_bar_buffer_stats(self, env: DataEnv = None) -> dict[str, Any]:
+        """Get statistics about bar buffers."""
         with self._lock:
             stats = {}
             envs = [env] if env else ["live", "demo"]
-            
+
             for e in envs:
                 stats[e] = {}
-                for symbol, tf_buffers in self._mtf_buffers[e].items():
+                for symbol, tf_buffers in self._bar_buffers[e].items():
                     stats[e][symbol] = {}
                     for tf, buffer in tf_buffers.items():
                         if len(buffer) > 0:
@@ -461,23 +460,23 @@ class RealtimeState:
                                 "oldest": buffer[0].timestamp.isoformat() if buffer else None,
                                 "newest": buffer[-1].timestamp.isoformat() if buffer else None,
                             }
-            
+
             return stats
-    
-    def clear_mtf_buffers(self, env: DataEnv = None, symbol: str = None):
-        """Clear MTF buffers."""
+
+    def clear_bar_buffers(self, env: DataEnv = None, symbol: str = None):
+        """Clear bar buffers."""
         with self._lock:
             if env is None:
-                self._mtf_buffers = {
+                self._bar_buffers = {
                     "live": defaultdict(lambda: defaultdict(deque)),
                     "demo": defaultdict(lambda: defaultdict(deque)),
                 }
             elif symbol is None:
-                self._mtf_buffers[env] = defaultdict(lambda: defaultdict(deque))
+                self._bar_buffers[env] = defaultdict(lambda: defaultdict(deque))
             else:
                 symbol = symbol.upper()
-                if symbol in self._mtf_buffers[env]:
-                    del self._mtf_buffers[env][symbol]
+                if symbol in self._bar_buffers[env]:
+                    del self._bar_buffers[env][symbol]
     
     # ==========================================================================
     # Public Data - Trades

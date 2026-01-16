@@ -6,10 +6,18 @@ Runners drive the PlayEngine in different modes:
 - LiveRunner: WebSocket event loop (Phase 5)
 - ShadowRunner: Log signals without executing (Phase 5)
 
+Parallel execution:
+- run_backtests_parallel: Run multiple backtests in separate processes
+- run_backtest_isolated: Run single backtest in isolated process
+
 Usage:
-    # Backtest
+    # Single backtest
     runner = BacktestRunner(engine)
     result = runner.run()
+
+    # Parallel backtests (separate processes, no DuckDB conflicts)
+    from src.engine.runners import run_backtests_parallel
+    results = run_backtests_parallel(["S_01", "S_02", "S_03"], max_workers=3)
 
     # Live (async) - Phase 5
     runner = LiveRunner(engine)
@@ -22,16 +30,36 @@ Usage:
     await runner.start()
 """
 
-from .backtest_runner import BacktestRunner, BacktestResult
+from .backtest_runner import (
+    BacktestRunner,
+    BacktestResult,
+    # Professional aliases
+    SimRunner,
+    SimRunResult,
+)
 from .shadow_runner import ShadowRunner, ShadowStats, ShadowSignal
 from .live_runner import LiveRunner, LiveRunnerStats, RunnerState
+from .parallel import (
+    run_backtests_parallel,
+    run_backtest_isolated,
+    ParallelBacktestResult,
+)
 
 __all__ = [
+    # Backtest/Simulation
     "BacktestRunner",
     "BacktestResult",
+    "SimRunner",  # Professional alias
+    "SimRunResult",  # Professional alias
+    # Parallel execution
+    "run_backtests_parallel",
+    "run_backtest_isolated",
+    "ParallelBacktestResult",
+    # Shadow
     "ShadowRunner",
     "ShadowStats",
     "ShadowSignal",
+    # Live
     "LiveRunner",
     "LiveRunnerStats",
     "RunnerState",

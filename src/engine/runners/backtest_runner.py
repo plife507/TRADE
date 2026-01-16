@@ -17,6 +17,7 @@ Usage:
 """
 
 from __future__ import annotations
+from types import SimpleNamespace
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,11 +26,15 @@ from typing import TYPE_CHECKING, Any
 from ..adapters.backtest import BacktestDataProvider, BacktestExchange
 from ..play_engine import PlayEngine
 
+# Import metrics calculation for proper Sharpe/Sortino/etc computation
+from ...backtest.metrics import compute_backtest_metrics
+from ...backtest.types import EquityPoint
+
 if TYPE_CHECKING:
     from ...backtest.play import Play
     from ...backtest.runtime.feed_store import FeedStore
     from ...backtest.sim.exchange import SimulatedExchange
-    from ...backtest.types import Trade, EquityPoint
+    from ...backtest.types import Trade
 
 
 @dataclass
@@ -84,6 +89,113 @@ class BacktestResult:
     # Metadata
     metadata: dict[str, Any] = field(default_factory=dict)
 
+
+    @property
+    def metrics(self):
+        """
+        Compatibility property for legacy metrics access.
+
+        Returns a SimpleNamespace with field names matching the old BacktestResult.metrics format.
+        Uses computed_metrics from metadata when available (properly computed Sharpe/Sortino/etc).
+        """
+        # Get computed metrics from metadata if available
+        computed = self.metadata.get("computed_metrics")
+
+        if computed is not None:
+            # Use fully computed metrics
+            return SimpleNamespace(
+                # Core trade metrics
+                total_trades=computed.total_trades,
+                win_count=computed.win_count,
+                loss_count=computed.loss_count,
+                win_rate=computed.win_rate,
+
+                # PnL metrics
+                net_profit=computed.net_profit,
+                gross_profit=computed.gross_profit,
+                gross_loss=computed.gross_loss,
+                net_return_pct=computed.net_return_pct,
+
+                # Drawdown
+                max_drawdown_abs=computed.max_drawdown_abs,
+                max_drawdown_pct=computed.max_drawdown_pct,
+                max_drawdown_duration_bars=computed.max_drawdown_duration_bars,
+
+                # Risk-adjusted returns (NOW PROPERLY COMPUTED)
+                sharpe=computed.sharpe,
+                sortino=computed.sortino,
+                calmar=computed.calmar,
+                profit_factor=computed.profit_factor,
+
+                # Trade analytics (NOW PROPERLY COMPUTED)
+                avg_win_usdt=computed.avg_win_usdt,
+                avg_loss_usdt=computed.avg_loss_usdt,
+                largest_win_usdt=computed.largest_win_usdt,
+                largest_loss_usdt=computed.largest_loss_usdt,
+                avg_trade_duration_bars=computed.avg_trade_duration_bars,
+                max_consecutive_wins=computed.max_consecutive_wins,
+                max_consecutive_losses=computed.max_consecutive_losses,
+                expectancy_usdt=computed.expectancy_usdt,
+                payoff_ratio=computed.payoff_ratio,
+                recovery_factor=computed.recovery_factor,
+                total_fees=computed.total_fees,
+
+                # Long/short breakdown
+                long_trades=computed.long_trades,
+                short_trades=computed.short_trades,
+                long_win_rate=computed.long_win_rate,
+                short_win_rate=computed.short_win_rate,
+                long_pnl=computed.long_pnl,
+                short_pnl=computed.short_pnl,
+
+                # Time metrics
+                total_bars=computed.total_bars,
+                bars_in_position=computed.bars_in_position,
+                time_in_market_pct=computed.time_in_market_pct,
+
+                # Timing (for eval_start_ts_ms extraction)
+                simulation_start=self.start_ts,
+            )
+
+        # Fallback to basic metrics if computed_metrics not available
+        return SimpleNamespace(
+            total_trades=self.total_trades,
+            win_count=self.winning_trades,
+            loss_count=self.losing_trades,
+            win_rate=self.win_rate,
+            net_profit=self.net_profit,
+            gross_profit=self.gross_profit,
+            gross_loss=abs(self.gross_loss),
+            net_return_pct=((self.final_equity - self.initial_equity) / self.initial_equity * 100.0) if self.initial_equity > 0 else 0.0,
+            max_drawdown_abs=self.max_drawdown_usdt,
+            max_drawdown_pct=self.max_drawdown_pct,
+            max_drawdown_duration_bars=0,
+            sharpe=self.sharpe_ratio,
+            sortino=0.0,
+            calmar=0.0,
+            profit_factor=self.profit_factor,
+            avg_win_usdt=0.0,
+            avg_loss_usdt=0.0,
+            largest_win_usdt=0.0,
+            largest_loss_usdt=0.0,
+            avg_trade_duration_bars=0,
+            max_consecutive_wins=0,
+            max_consecutive_losses=0,
+            expectancy_usdt=0.0,
+            payoff_ratio=0.0,
+            recovery_factor=0.0,
+            total_fees=self.total_fees,
+            long_trades=0,
+            short_trades=0,
+            long_win_rate=0.0,
+            short_win_rate=0.0,
+            long_pnl=0.0,
+            short_pnl=0.0,
+            total_bars=self.bars_processed,
+            bars_in_position=0,
+            time_in_market_pct=0.0,
+            simulation_start=self.start_ts,
+        )
 
 class BacktestRunner:
     """
@@ -176,6 +288,9 @@ class BacktestRunner:
         equity_curve = []
         initial_equity = self._exchange_adapter.get_equity()
 
+        # Track time in market
+        bars_in_position = 0
+
         # Main bar loop
         # Execution model:
         # 1. Orders submitted at bar N-1 close fill at bar N open
@@ -201,11 +316,15 @@ class BacktestRunner:
             if signal is not None:
                 self._engine.execute_signal(signal)
 
+            # Track time in market (check position after fills and signals)
+            if self._exchange_adapter.has_position:
+                bars_in_position += 1
+
             # Record equity
             equity = self._exchange_adapter.get_equity()
             equity_curve.append({
                 "bar_idx": bar_idx,
-                "ts": candle.ts_close,
+                "timestamp": candle.ts_close,
                 "equity": equity,
             })
 
@@ -231,6 +350,7 @@ class BacktestRunner:
             equity_curve=equity_curve,
             bars_processed=end_idx - start_idx,
             warmup_bars=warmup_bars,
+            bars_in_position=bars_in_position,
         )
 
     def _setup(self) -> None:
@@ -282,7 +402,7 @@ class BacktestRunner:
 
         # Run data preparation (loads and computes indicators)
         old_engine.prepare_backtest_frame()
-        old_engine.build_feed_stores()
+        old_engine._build_feed_stores()
 
         # Extract FeedStore from old engine
         feed_store = old_engine._exec_feed
@@ -418,39 +538,32 @@ class BacktestRunner:
         equity_curve: list,
         bars_processed: int,
         warmup_bars: int,
+        bars_in_position: int = 0,
     ) -> BacktestResult:
         """
         Build BacktestResult from run data.
 
-        Computes metrics from trades and equity curve.
+        Uses compute_backtest_metrics() for proper Sharpe/Sortino/Calmar calculation.
         """
-        # Compute basic metrics
-        total_trades = len(trades)
-        winning_trades = sum(1 for t in trades if t.net_pnl > 0)
-        losing_trades = sum(1 for t in trades if t.net_pnl <= 0)
-        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+        # Convert equity_curve dicts to EquityPoint objects for metrics calculation
+        equity_points = [
+            EquityPoint(
+                timestamp=point["timestamp"],
+                equity=point["equity"],
+            )
+            for point in equity_curve
+        ]
 
-        # Compute PnL
-        gross_profit = sum(t.net_pnl for t in trades if t.net_pnl > 0)
-        gross_loss = abs(sum(t.net_pnl for t in trades if t.net_pnl < 0))
-        net_profit = final_equity - initial_equity
-        total_fees = sum(t.fees_paid for t in trades)
-
-        # Compute profit factor
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else float("inf")
-
-        # Compute max drawdown
-        max_equity = initial_equity
-        max_drawdown_usdt = 0.0
-        for point in equity_curve:
-            equity = point["equity"]
-            if equity > max_equity:
-                max_equity = equity
-            drawdown = max_equity - equity
-            if drawdown > max_drawdown_usdt:
-                max_drawdown_usdt = drawdown
-
-        max_drawdown_pct = (max_drawdown_usdt / initial_equity * 100) if initial_equity > 0 else 0.0
+        # Use the full metrics calculation from src/backtest/metrics.py
+        # This properly computes Sharpe, Sortino, Calmar, avg win/loss, etc.
+        metrics = compute_backtest_metrics(
+            equity_curve=equity_points,
+            trades=trades,
+            tf=timeframe,
+            initial_equity=initial_equity,
+            bars_in_position=bars_in_position,
+            strict_tf=False,  # Don't raise on unknown TF, use default
+        )
 
         return BacktestResult(
             play_id=play_id,
@@ -460,21 +573,42 @@ class BacktestRunner:
             end_ts=end_ts,
             started_at=started_at,
             finished_at=finished_at,
-            total_trades=total_trades,
-            winning_trades=winning_trades,
-            losing_trades=losing_trades,
-            win_rate=win_rate,
-            gross_profit=gross_profit,
-            gross_loss=gross_loss,
-            net_profit=net_profit,
-            total_fees=total_fees,
-            max_drawdown_pct=max_drawdown_pct,
-            max_drawdown_usdt=max_drawdown_usdt,
-            profit_factor=profit_factor,
+            # Core trade metrics from computed metrics
+            total_trades=metrics.total_trades,
+            winning_trades=metrics.win_count,
+            losing_trades=metrics.loss_count,
+            win_rate=metrics.win_rate,
+            # PnL metrics
+            gross_profit=metrics.gross_profit,
+            gross_loss=metrics.gross_loss,
+            net_profit=metrics.net_profit,
+            total_fees=metrics.total_fees,
+            # Drawdown
+            max_drawdown_pct=metrics.max_drawdown_pct,
+            max_drawdown_usdt=metrics.max_drawdown_abs,
+            # Risk-adjusted (NOW PROPERLY COMPUTED)
+            sharpe_ratio=metrics.sharpe,
+            profit_factor=metrics.profit_factor,
+            # Equity
             initial_equity=initial_equity,
-            final_equity=final_equity,
+            final_equity=metrics.final_equity,
+            # Raw data
             trades=trades,
             equity_curve=equity_curve,
             bars_processed=bars_processed,
             warmup_bars=warmup_bars,
+            # Store full metrics in metadata for access via .metrics property
+            metadata={
+                "computed_metrics": metrics,
+            },
         )
+
+
+# =============================================================================
+# PROFESSIONAL NAMING ALIASES
+# See docs/specs/ENGINE_NAMING_CONVENTION.md for full naming standards
+# =============================================================================
+
+# SimRunner is the canonical name for backtest execution loop
+SimRunner = BacktestRunner
+SimRunResult = BacktestResult

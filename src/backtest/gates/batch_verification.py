@@ -130,6 +130,7 @@ def run_batch_verification(
                 window_end=window_end,
                 data_loader=data_loader,
                 base_output_dir=output_dir,
+                data_env=env,
             )
 
             run_result = run_backtest_with_gates(config)

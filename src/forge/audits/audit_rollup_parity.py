@@ -533,7 +533,7 @@ def run_rollup_parity_via_engine(
     """
     from src.forge.validation.synthetic_data import generate_synthetic_candles
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
-    from src.backtest import create_engine_from_play
+    from src.backtest import create_engine_from_play, run_engine_with_play
     from src.backtest.play import load_play
     import tempfile
     import os
@@ -643,8 +643,8 @@ risk:
                 on_snapshot=on_snapshot_callback,
             )
 
-            # Run engine
-            result = engine.run()
+            # Run engine via unified path
+            result = run_engine_with_play(engine, play)
 
             # Validate captured rollups
             for i, (rollups, exec_idx) in enumerate(

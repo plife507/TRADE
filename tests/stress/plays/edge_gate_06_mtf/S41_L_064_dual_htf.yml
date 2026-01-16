@@ -10,8 +10,8 @@ account:
   margin_mode: isolated_usdt
   min_trade_notional_usdt: 10.0
   fee_model:
-    taker_bps: 5.5
-    maker_bps: 2.0
+    taker_bps: 6.0
+    maker_bps: 1.0
   slippage_bps: 2.0
 
 features:
@@ -59,6 +59,6 @@ _test_metadata:
   gate: "edge_06"
   complexity_pct: 64
   category: multi_tf
-  htf: ["1h", "4h"]
+  high_tf: ["1h", "4h"]
   ltf: "15m"
   tests: [dual_htf_alignment]

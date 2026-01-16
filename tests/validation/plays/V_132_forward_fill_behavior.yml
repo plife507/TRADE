@@ -4,7 +4,7 @@ description: "Validation: Forward-fill behavior - HTF indicators hold value unti
 
 symbol: "BTCUSDT"
 tf: "15m"
-htf: "1h"
+high_tf: "1h"
 
 account:
   starting_equity_usdt: 10000.0

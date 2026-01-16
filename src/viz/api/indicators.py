@@ -13,7 +13,7 @@ import numpy as np
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from src.backtest.indicator_registry import (
+from src.indicators import (
     INDICATOR_OUTPUT_TYPES,
     SUPPORTED_INDICATORS,
     get_registry,

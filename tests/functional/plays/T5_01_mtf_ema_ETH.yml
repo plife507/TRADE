@@ -4,7 +4,7 @@ description: "TIER 5: Test multi-timeframe with 15m exec + 1h HTF EMA filter"
 
 symbol: "ETHUSDT"
 tf: "15m"
-htf: "1h"
+high_tf: "1h"
 
 account:
   starting_equity_usdt: 10000.0

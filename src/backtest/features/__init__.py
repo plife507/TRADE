@@ -1,34 +1,10 @@
 """
 Feature specification and computation pipeline.
 
-This module provides:
-- FeatureSpec: Declarative indicator specification (string-based indicator types)
-- FeatureFrameBuilder: Vectorized indicator computation
-- IndicatorCompute: Backend-swappable compute adapter for indicator calculation
+DEPRECATED: Use src.indicators instead. This module remains for internal
+backtest engine dependencies only.
 
-All indicators are computed outside the hot loop, vectorized,
-and stored in FeedStore-compatible arrays.
-
-**Registry vs Compute (2026-01-02):**
-- IndicatorRegistry (in indicator_registry.py): SINGLE SOURCE OF TRUTH for indicator
-  metadata and validation. Use this for checking supported indicators, params, etc.
-- IndicatorCompute (in this module): Compute adapter that wraps pandas_ta calls and
-  delegates validation to the main registry.
-
-**Registry Consolidation (2025-12-31):**
-- Indicator types are now STRINGS validated against IndicatorRegistry
-- IndicatorType enum has been REMOVED
-- MULTI_OUTPUT_KEYS dict has been REMOVED
-- All metadata lives in SUPPORTED_INDICATORS dict in indicator_registry.py
-- Use registry.is_multi_output() and registry.get_output_suffixes() for queries
-
-**Indicator Availability:**
-- Registered: 42 indicators with warmup formulas in indicator_registry.py
-- Available from pandas_ta: 189 indicators total
-- See `reference/pandas_ta/INDICATORS_REFERENCE.md` for complete list
-
-Multi-output indicators (MACD, BBANDS, STOCH, STOCHRSI) produce multiple
-output arrays with automatic key naming based on output_key prefix.
+See: src/indicators/__init__.py for the canonical API.
 """
 
 from .feature_spec import (

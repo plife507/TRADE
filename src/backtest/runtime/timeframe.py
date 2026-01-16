@@ -105,16 +105,16 @@ def validate_tf_mapping(tf_mapping: dict[str, str]) -> None:
     Ensures all specified timeframes are valid and HTF >= MTF >= LTF.
     
     Args:
-        tf_mapping: Dict with keys htf, mtf, ltf and tf string values
-        
+        tf_mapping: Dict with keys high_tf, med_tf, low_tf and tf string values
+
     Raises:
         ValueError: If mapping is invalid or timeframes don't follow hierarchy
     """
-    required_keys = {"htf", "mtf", "ltf"}
+    required_keys = {"high_tf", "med_tf", "low_tf"}
     missing = required_keys - set(tf_mapping.keys())
     if missing:
         raise ValueError(f"Missing required tf_mapping keys: {missing}")
-    
+
     # Validate each timeframe exists
     for role, tf in tf_mapping.items():
         if tf.lower() not in TF_MINUTES:
@@ -122,17 +122,17 @@ def validate_tf_mapping(tf_mapping: dict[str, str]) -> None:
                 f"Unknown timeframe '{tf}' for role '{role}'. "
                 f"Supported: {list(TF_MINUTES.keys())}"
             )
-    
-    # Validate hierarchy: HTF >= MTF >= LTF (in minutes)
-    htf_min = tf_minutes(tf_mapping["htf"])
-    mtf_min = tf_minutes(tf_mapping["mtf"])
-    ltf_min = tf_minutes(tf_mapping["ltf"])
-    
-    if not (htf_min >= mtf_min >= ltf_min):
+
+    # Validate hierarchy: HighTF >= MedTF >= LowTF (in minutes)
+    high_tf_min = tf_minutes(tf_mapping["high_tf"])
+    med_tf_min = tf_minutes(tf_mapping["med_tf"])
+    low_tf_min = tf_minutes(tf_mapping["low_tf"])
+
+    if not (high_tf_min >= med_tf_min >= low_tf_min):
         raise ValueError(
-            f"Invalid tf_mapping hierarchy: HTF ({tf_mapping['htf']}={htf_min}m) "
-            f"must be >= MTF ({tf_mapping['mtf']}={mtf_min}m) "
-            f"must be >= LTF ({tf_mapping['ltf']}={ltf_min}m)"
+            f"Invalid tf_mapping hierarchy: HighTF ({tf_mapping['high_tf']}={high_tf_min}m) "
+            f"must be >= MedTF ({tf_mapping['med_tf']}={med_tf_min}m) "
+            f"must be >= LowTF ({tf_mapping['low_tf']}={low_tf_min}m)"
         )
 
 

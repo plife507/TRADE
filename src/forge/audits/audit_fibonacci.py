@@ -18,9 +18,12 @@ import math
 import sys
 from typing import Any
 
-from src.backtest.incremental.base import BarData, BaseIncrementalDetector
-from src.backtest.incremental.registry import unregister_structure
-from src.backtest.incremental.detectors.fibonacci import IncrementalFibonacci
+from src.structures import (
+    BarData,
+    BaseIncrementalDetector,
+    unregister_structure,
+    IncrementalFibonacci,
+)
 
 
 class MockSwingDetector(BaseIncrementalDetector):
