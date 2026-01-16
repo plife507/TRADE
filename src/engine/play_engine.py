@@ -46,8 +46,11 @@ from .interfaces import (
     StateStore,
     EngineState,
 )
+from .signal import SubLoopEvaluator, SubLoopResult
+from .sizing import SizingModel, SizingConfig
 
 from ..utils.logger import get_logger
+from .timeframe import HTFIndexManager
 
 if TYPE_CHECKING:
     from ..backtest.play import Play
@@ -66,17 +69,23 @@ class PlayEngineConfig:
     # Mode
     mode: Literal["backtest", "demo", "live", "shadow"]
 
-    # Risk parameters
+    # Risk parameters (unified with BacktestEngine)
     initial_equity: float = 10000.0
-    max_position_pct: float = 95.0
-    stop_loss_pct: float | None = None
-    take_profit_pct: float | None = None
+    sizing_model: str = "percent_equity"  # "percent_equity", "risk_based", "fixed_notional"
+    risk_per_trade_pct: float = 1.0
+    max_leverage: float = 2.0
     min_trade_usdt: float = 10.0
 
+    # Risk policy (matches BacktestEngine)
+    risk_mode: str = "none"  # "none" or "rules"
+
     # Fee model
-    taker_fee_bps: float = 5.5
-    maker_fee_bps: float = 2.0
+    taker_fee_rate: float = 0.0006  # 0.06% (Bybit typical)
+    maker_fee_rate: float = 0.0001  # 0.01% (Bybit typical)
     slippage_bps: float = 2.0
+
+    # Entry gate behavior (matches RiskProfileConfig)
+    include_est_close_fee_in_entry_gate: bool = False
 
     # State persistence
     persist_state: bool = False
@@ -131,6 +140,7 @@ class PlayEngine:
 
         # Engine identity
         self.engine_id = f"{play.name}_{config.mode}_{uuid.uuid4().hex[:8]}"
+        self._play_hash: str = ""  # Set by runner for debug correlation
 
         # Core state
         self._current_bar_index: int = -1
@@ -158,9 +168,9 @@ class PlayEngine:
         self._mtf_feed = None  # FeedStore for MTF indicators
         self._tf_mapping: dict[str, str] = {}  # TF mapping from Play config
 
-        # HTF/MTF forward-fill indices (tracked dynamically like old engine)
-        self._current_htf_idx: int = 0
-        self._current_mtf_idx: int = 0
+        # HTF/MTF index manager (shared module: src/engine/timeframe/)
+        # Single source of truth for HTF/MTF indices - NO duplicate state
+        self._htf_index_manager: HTFIndexManager | None = None
 
         # 1m quote feed for action model (set by parity test or runner)
         # This enables granular 1m evaluation within exec_tf bars
@@ -170,10 +180,29 @@ class PlayEngine:
         # Snapshot view for rule evaluation (built per bar)
         self._snapshot_view: RuntimeSnapshotView | None = None
 
+        # Unified sizing model (matches BacktestEngine behavior)
+        sizing_config = SizingConfig(
+            initial_equity=config.initial_equity,
+            sizing_model=config.sizing_model,
+            risk_per_trade_pct=config.risk_per_trade_pct,
+            max_leverage=config.max_leverage,
+            min_trade_usdt=config.min_trade_usdt,
+            taker_fee_rate=config.taker_fee_rate,
+            include_est_close_fee_in_entry_gate=config.include_est_close_fee_in_entry_gate,
+        )
+        self._sizing_model = SizingModel(sizing_config)
+
+        # Risk policy for signal filtering (matches BacktestEngine)
+        # Lazy initialized when first signal is evaluated
+        self._risk_policy = None
+
         # Performance tracking
         self._total_signals: int = 0
         self._total_trades: int = 0
         self._bars_processed: int = 0
+
+        # Optional snapshot callback for auditing (set via set_on_snapshot)
+        self._on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None
 
         self.logger.info(
             f"PlayEngine initialized: {self.engine_id} "
@@ -214,6 +243,39 @@ class PlayEngine:
     def is_backtest(self) -> bool:
         """True if running in backtest mode."""
         return self.config.mode == "backtest"
+
+    @property
+    def _current_htf_idx(self) -> int:
+        """Current HTF forward-fill index (from HTFIndexManager)."""
+        if self._htf_index_manager is None:
+            return 0
+        return self._htf_index_manager.htf_idx
+
+    @property
+    def _current_mtf_idx(self) -> int:
+        """Current MTF forward-fill index (from HTFIndexManager)."""
+        if self._htf_index_manager is None:
+            return 0
+        return self._htf_index_manager.mtf_idx
+
+    def set_play_hash(self, play_hash: str) -> None:
+        """Set play hash for debug log correlation (compatibility with BacktestEngine)."""
+        self._play_hash = play_hash
+
+    def set_on_snapshot(
+        self,
+        callback: "Callable[[RuntimeSnapshotView, int, int, int], None] | None"
+    ) -> None:
+        """
+        Set callback invoked after snapshot build, before rule evaluation.
+
+        This is used by audits to capture snapshot values during backtest runs.
+        The callback receives (snapshot, exec_idx, htf_idx, mtf_idx).
+
+        Args:
+            callback: Function to call with snapshot data, or None to disable
+        """
+        self._on_snapshot = callback
 
     def process_bar(self, bar_index: int) -> "Signal | None":
         """
@@ -333,11 +395,25 @@ class PlayEngine:
             )
 
         # Entry signals (LONG/SHORT)
-        # Apply risk sizing
+        # Apply risk policy filtering (if risk_mode=rules)
+        # This matches BacktestEngine behavior (lines 1559-1573)
+        if self.config.risk_mode == "rules":
+            decision = self._check_risk_policy(signal)
+            if not decision.allowed:
+                self.logger.debug(f"Signal blocked by risk policy: {decision.reason}")
+                return OrderResult(
+                    success=False,
+                    error=f"Risk policy blocked: {decision.reason}",
+                )
+
+        # Apply risk sizing using unified SizingModel
         sized_usdt = self._size_position(signal)
 
-        # Validate minimum size
+        # Validate minimum size (matches BacktestEngine line 1583-1587)
         if sized_usdt < self.config.min_trade_usdt:
+            self.logger.debug(
+                f"Size too small ({sized_usdt:.2f} < {self.config.min_trade_usdt}), skipping"
+            )
             return OrderResult(
                 success=False,
                 error=f"Position size {sized_usdt:.2f} below minimum {self.config.min_trade_usdt}",
@@ -387,7 +463,7 @@ class PlayEngine:
             position=position,
             pending_orders=self.exchange.get_pending_orders(self.symbol),
             equity_usdt=self.exchange.get_equity(),
-            realized_pnl=0.0,  # TODO: Track realized PnL
+            realized_pnl=self.exchange.get_realized_pnl(),
             total_trades=self._total_trades,
             last_bar_ts=self.data.get_candle(self._current_bar_index).ts_close
             if self._current_bar_index >= 0
@@ -439,11 +515,8 @@ class PlayEngine:
         """
         Update HTF/MTF forward-fill indices based on current candle.
 
-        Uses the same logic as the old BacktestEngine to determine when
-        HTF/MTF bars have closed and update the forward-fill indices.
-
-        This ensures that HTF/MTF indicator values are properly forward-filled
-        until their bar closes, preventing lookahead.
+        Delegates to shared HTFIndexManager (src/engine/timeframe/).
+        This ensures identical forward-fill behavior with BacktestEngine.
 
         Also updates HTF incremental state when HTF bar closes (for structures).
         """
@@ -460,26 +533,19 @@ class PlayEngine:
         if exec_feed is None:
             return
 
-        exec_ts_close = candle.ts_close
-        htf_updated = False
+        # Lazy-initialize HTFIndexManager on first use
+        if self._htf_index_manager is None:
+            self._htf_index_manager = HTFIndexManager(
+                htf_feed=self._htf_feed,
+                mtf_feed=self._mtf_feed,
+                exec_feed=exec_feed,
+            )
 
-        # Check if HTF bar closed at this exec bar close
-        if self._htf_feed is not None and self._htf_feed is not exec_feed:
-            htf_idx = self._htf_feed.get_idx_at_ts_close(exec_ts_close)
-            if htf_idx is not None and 0 <= htf_idx < self._htf_feed.length:
-                # Check if this is a NEW HTF bar (index changed)
-                if htf_idx != self._current_htf_idx:
-                    htf_updated = True
-                self._current_htf_idx = htf_idx
-
-        # Check if MTF bar closed at this exec bar close
-        if self._mtf_feed is not None and self._mtf_feed is not exec_feed:
-            mtf_idx = self._mtf_feed.get_idx_at_ts_close(exec_ts_close)
-            if mtf_idx is not None and 0 <= mtf_idx < self._mtf_feed.length:
-                self._current_mtf_idx = mtf_idx
+        # Update indices via shared manager (single source of truth)
+        update = self._htf_index_manager.update_indices(candle.ts_close)
 
         # Update HTF incremental state when HTF bar closes (for structures)
-        if htf_updated:
+        if update.htf_changed:
             self._update_htf_incremental_state()
 
     def _update_htf_incremental_state(self) -> None:
@@ -490,8 +556,8 @@ class PlayEngine:
         if self._incremental_state is None:
             return
 
-        htf_tf = self._tf_mapping.get("htf")
-        if not htf_tf or htf_tf not in self._incremental_state.htf:
+        high_tf = self._tf_mapping.get("high_tf")
+        if not high_tf or high_tf not in self._incremental_state.htf:
             return
 
         htf_feed = self._htf_feed
@@ -653,20 +719,128 @@ class PlayEngine:
 
     def _size_position(self, signal: "Signal") -> float:
         """
-        Apply risk sizing to signal.
+        Apply unified risk sizing to signal.
+
+        Uses the shared SizingModel to ensure identical position sizing
+        behavior between PlayEngine and BacktestEngine.
+
+        The sizing model supports:
+            - percent_equity: Bybit margin model (margin * leverage)
+            - risk_based: Size to lose risk_pct if stopped out
+            - fixed_notional: Use requested size (capped by leverage)
 
         Returns:
             Position size in USDT
         """
+        # Get current equity from exchange
+        equity = self.exchange.get_equity()
+
+        # Sync sizing model equity with exchange
+        self._sizing_model.update_equity(equity)
+
+        # Extract stop_loss from signal metadata for risk_based sizing
+        stop_loss = None
+        entry_price = None
+        if signal.metadata:
+            stop_loss = signal.metadata.get("stop_loss")
+            entry_price = signal.metadata.get("entry_price")
+
+        # If no entry_price in metadata, try to get from current candle
+        if entry_price is None and self._current_bar_index >= 0:
+            try:
+                candle = self.data.get_candle(self._current_bar_index)
+                entry_price = candle.close
+            except (IndexError, AttributeError):
+                pass
+
+        # Use unified sizing model
+        result = self._sizing_model.size_order(
+            equity=equity,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            requested_size=signal.size_usdt if signal.size_usdt else None,
+        )
+
+        self.logger.debug(
+            f"Sizing: {result.method} -> {result.size_usdt:.2f} USDT ({result.details})"
+        )
+
+        return result.size_usdt
+
+    def _get_risk_policy(self):
+        """
+        Get or create the risk policy instance.
+
+        Lazy initialization to avoid import at module level.
+        Uses the same RiskPolicy abstraction as BacktestEngine.
+
+        Returns:
+            RiskPolicy instance (NoneRiskPolicy or RulesRiskPolicy)
+        """
+        if self._risk_policy is None:
+            from ..backtest.risk_policy import create_risk_policy
+            from ..backtest.system_config import RiskProfileConfig
+
+            # Create a RiskProfileConfig from PlayEngineConfig
+            # This bridges the config models
+            risk_profile = RiskProfileConfig(
+                initial_equity=self.config.initial_equity,
+                sizing_model=self.config.sizing_model,
+                risk_per_trade_pct=self.config.risk_per_trade_pct,
+                max_leverage=self.config.max_leverage,
+                min_trade_usdt=self.config.min_trade_usdt,
+                taker_fee_rate=self.config.taker_fee_rate,
+            )
+
+            self._risk_policy = create_risk_policy(
+                risk_mode=self.config.risk_mode,
+                risk_profile=risk_profile,
+            )
+
+        return self._risk_policy
+
+    def _check_risk_policy(self, signal: "Signal"):
+        """
+        Check if a signal passes risk policy rules.
+
+        This mirrors BacktestEngine's risk policy check (lines 1559-1573).
+        The check uses current exchange state for accurate risk evaluation.
+
+        Args:
+            signal: Trading signal to check
+
+        Returns:
+            RiskDecision with allowed/denied status and reason
+        """
+        policy = self._get_risk_policy()
+
+        # Get current portfolio state from exchange
+        equity = self.exchange.get_equity()
         balance = self.exchange.get_balance()
-        max_size = balance * (self.config.max_position_pct / 100.0)
+        position = self.exchange.get_position(self.symbol)
 
-        # Use signal's requested size, capped at max
-        if signal.size_usdt:
-            return min(signal.size_usdt, max_size)
+        # Calculate exposure and unrealized PnL
+        total_exposure = position.size_usdt if position else 0.0
+        unrealized_pnl = 0.0
+        position_count = 0
 
-        # Default to max position
-        return max_size
+        if position:
+            position_count = 1
+            # Try to get unrealized PnL if exchange supports it
+            if hasattr(self.exchange, 'get_unrealized_pnl'):
+                unrealized_pnl = self.exchange.get_unrealized_pnl(self.symbol)
+
+        # Check signal against policy
+        decision = policy.check(
+            signal=signal,
+            equity=equity,
+            available_balance=balance,
+            total_exposure=total_exposure,
+            unrealized_pnl=unrealized_pnl,
+            position_count=position_count,
+        )
+
+        return decision
 
     def _save_state(self) -> None:
         """Save current state to store."""
@@ -682,9 +856,8 @@ class PlayEngine:
         """
         Evaluate rules with 1m granularity within the exec_tf bar.
 
-        This mirrors the old BacktestEngine's _evaluate_with_1m_subloop method.
-        It iterates through all 1m bars within the current exec bar and
-        evaluates the strategy at each 1m price point.
+        Delegates to shared SubLoopEvaluator for the actual iteration.
+        This ensures identical 1m sub-loop behavior across all engines.
 
         Args:
             bar_index: Current exec bar index
@@ -694,103 +867,29 @@ class PlayEngine:
         Returns:
             Tuple of (Signal or None, signal_ts or None)
         """
-        from ..core.risk_manager import Signal
-        from ..backtest.execution_validation import (
-            PlaySignalEvaluator,
-            SignalDecision,
+        # Create evaluator (could cache, but overhead is minimal)
+        evaluator = SubLoopEvaluator(
+            quote_feed=self._quote_feed,
+            exec_tf=self.timeframe,
+            logger=self.logger,
         )
-        from ..data.historical_data_store import TF_MINUTES
 
-        # Get exec TF minutes for 1m mapping
-        exec_tf_minutes = TF_MINUTES.get(self.timeframe.lower(), 15)
+        # Create context for this evaluation
+        context = _PlayEngineSubLoopContext(
+            engine=self,
+            bar_index=bar_index,
+            candle=candle,
+            position=position,
+        )
 
-        # Check if 1m quote feed is available
-        if self._quote_feed is None or self._quote_feed.length == 0:
-            # Fallback: evaluate at exec close only (no 1m sub-loop)
-            if not self._quote_feed_fallback_warned:
-                self.logger.warning(
-                    f"1m quote feed unavailable - using exec_tf close for signal evaluation. "
-                    f"For full 1m action semantics, wire _quote_feed from old engine."
-                )
-                self._quote_feed_fallback_warned = True
-            signal = self._evaluate_rules_single(bar_index, candle, position)
-            return signal, None
+        # Delegate to shared evaluator
+        result = evaluator.evaluate(
+            exec_idx=bar_index,
+            context=context,
+            exec_close=candle.close,
+        )
 
-        # Get 1m bar range for this exec bar
-        start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(bar_index, exec_tf_minutes)
-
-        # Clamp to available 1m data (both start and end)
-        max_valid_idx = self._quote_feed.length - 1
-        start_1m = min(start_1m, max_valid_idx)
-        end_1m = min(end_1m, max_valid_idx)
-
-        # If start > end after clamping, quote feed doesn't cover this exec bar
-        if start_1m > end_1m:
-            if not self._quote_feed_fallback_warned:
-                self.logger.warning(
-                    f"1m quote feed doesn't cover exec bar {bar_index} - using exec_tf close."
-                )
-                self._quote_feed_fallback_warned = True
-            signal = self._evaluate_rules_single(bar_index, candle, position)
-            return signal, None
-
-        # Lazy initialize signal evaluator
-        if self._signal_evaluator is None:
-            try:
-                self._signal_evaluator = PlaySignalEvaluator(self.play)
-            except ValueError as e:
-                self.logger.error(f"Failed to create signal evaluator: {e}")
-                return None, None
-
-        # Track previous 1m price for crossover operators
-        # Seed with the 1m bar BEFORE start_1m to enable crossover on first iteration
-        if start_1m > 0 and start_1m - 1 <= max_valid_idx:
-            prev_price_1m: float | None = float(self._quote_feed.close[start_1m - 1])
-        else:
-            prev_price_1m = None
-
-        # Iterate through 1m bars (mandatory 1m action loop)
-        for sub_idx in range(start_1m, end_1m + 1):
-            # Skip if entries disabled and no position
-            # (allows exits when entries disabled, but blocks new entries)
-            entries_disabled = getattr(self._exchange, 'entries_disabled', False)
-            if entries_disabled and position is None:
-                continue
-
-            # Get 1m close as last_price
-            price_1m = float(self._quote_feed.close[sub_idx])
-
-            # Build snapshot with 1m prices and quote_idx for window operators
-            snapshot = self._build_snapshot_view_1m(
-                bar_index=bar_index,
-                candle=candle,
-                last_price=price_1m,
-                prev_last_price=prev_price_1m,
-                quote_idx=sub_idx,
-            )
-
-            # Update previous price for next iteration
-            prev_price_1m = price_1m
-
-            if snapshot is None:
-                continue
-
-            # Determine position state
-            has_position = position is not None
-            position_side = position.side.lower() if position else None
-
-            # Evaluate using PlaySignalEvaluator
-            result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
-
-            # Convert evaluation result to Signal
-            signal = self._result_to_signal(result, position)
-            if signal is not None:
-                # Get 1m close timestamp for order submission
-                signal_ts = self._quote_feed.get_ts_close_datetime(sub_idx)
-                return signal, signal_ts
-
-        # No signal triggered
-        return None, None
+        return result.signal, result.signal_ts
 
     def _evaluate_rules_single(
         self,
@@ -821,6 +920,10 @@ class PlayEngine:
         snapshot = self._build_snapshot_view(bar_index, candle)
         if snapshot is None:
             return None
+
+        # Call audit callback if registered
+        if self._on_snapshot is not None:
+            self._on_snapshot(snapshot, bar_index, self._current_htf_idx, self._current_mtf_idx)
 
         # Determine position state
         has_position = position is not None
@@ -965,3 +1068,87 @@ class PlayEngine:
             return snapshot
 
         return None
+
+
+class _PlayEngineSubLoopContext:
+    """SubLoopContext implementation for PlayEngine.
+
+    Provides the engine-specific snapshot building and signal evaluation
+    for the shared SubLoopEvaluator.
+    """
+
+    def __init__(
+        self,
+        engine: PlayEngine,
+        bar_index: int,
+        candle: Candle,
+        position: "Position | None",
+    ):
+        self._engine = engine
+        self._bar_index = bar_index
+        self._candle = candle
+        self._position = position
+
+        # Lazy initialize signal evaluator if needed
+        if engine._signal_evaluator is None:
+            from ..backtest.execution_validation import PlaySignalEvaluator
+            try:
+                engine._signal_evaluator = PlaySignalEvaluator(engine.play)
+            except ValueError as e:
+                engine.logger.error(f"Failed to create signal evaluator: {e}")
+
+    def build_snapshot_1m(
+        self,
+        exec_idx: int,
+        price_1m: float,
+        prev_price_1m: float | None,
+        quote_idx: int,
+    ) -> Any:
+        """Build snapshot with 1m prices for signal evaluation."""
+        snapshot = self._engine._build_snapshot_view_1m(
+            bar_index=exec_idx,
+            candle=self._candle,
+            last_price=price_1m,
+            prev_last_price=prev_price_1m,
+            quote_idx=quote_idx,
+        )
+        # Call audit callback if registered
+        if self._engine._on_snapshot is not None:
+            self._engine._on_snapshot(
+                snapshot, exec_idx,
+                self._engine._current_htf_idx, self._engine._current_mtf_idx
+            )
+        return snapshot
+
+    def evaluate_signal(self, snapshot: Any) -> "Signal | None":
+        """Evaluate rules and convert to Signal."""
+        if self._engine._signal_evaluator is None:
+            return None
+
+        # Determine position state
+        has_position = self._position is not None
+        position_side = self._position.side.lower() if self._position else None
+
+        # Evaluate using PlaySignalEvaluator
+        result = self._engine._signal_evaluator.evaluate(
+            snapshot, has_position, position_side
+        )
+
+        # Convert to Signal
+        return self._engine._result_to_signal(result, self._position)
+
+    def should_skip_entry(self) -> bool:
+        """Check if entries are disabled and no position exists."""
+        entries_disabled = getattr(self._engine._exchange, 'entries_disabled', False)
+        return entries_disabled and self._position is None
+
+    def build_fallback_snapshot(self, exec_idx: int, exec_close: float) -> Any:
+        """Build snapshot for fallback evaluation."""
+        snapshot = self._engine._build_snapshot_view(exec_idx, self._candle)
+        # Call audit callback if registered
+        if self._engine._on_snapshot is not None:
+            self._engine._on_snapshot(
+                snapshot, exec_idx,
+                self._engine._current_htf_idx, self._engine._current_mtf_idx
+            )
+        return snapshot

@@ -397,6 +397,13 @@ class BacktestExchange:
         if sim_pos is None:
             return None
 
+        # Calculate liquidation price using LiquidationModel
+        cash_balance = self._sim_exchange._ledger.state.cash_balance_usdt
+        mmr = self._sim_exchange._ledger._config.maintenance_margin_rate
+        liq_price = self._sim_exchange._liquidation.calculate_liquidation_price(
+            sim_pos, cash_balance, mmr
+        )
+
         # Translate to unified Position
         return Position(
             symbol=sim_pos.symbol,
@@ -409,7 +416,7 @@ class BacktestExchange:
             leverage=self._sim_exchange.leverage,
             stop_loss=sim_pos.stop_loss,
             take_profit=sim_pos.take_profit,
-            liquidation_price=None,  # TODO: Calculate from margin
+            liquidation_price=liq_price,
             metadata={
                 "entry_time": sim_pos.entry_time.isoformat() if sim_pos.entry_time else None,
                 "position_id": sim_pos.position_id,
@@ -427,6 +434,20 @@ class BacktestExchange:
         if self._sim_exchange is None:
             return self._config.initial_equity
         return self._sim_exchange.equity_usdt
+
+    def get_realized_pnl(self) -> float:
+        """
+        Get total realized PnL since start.
+
+        Calculated from: cash_balance - initial_capital + total_fees_paid
+        """
+        if self._sim_exchange is None:
+            return 0.0
+        ledger = self._sim_exchange._ledger
+        initial = ledger._initial_capital
+        cash = ledger.state.cash_balance_usdt
+        fees = ledger.state.total_fees_paid
+        return cash - initial + fees
 
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
         """
@@ -549,3 +570,14 @@ class ShadowExchange:
     def recorded_signals(self) -> list[Order]:
         """Get all recorded signals."""
         return self._signals.copy()
+
+
+# =============================================================================
+# PROFESSIONAL NAMING ALIASES
+# See docs/specs/ENGINE_NAMING_CONVENTION.md for full naming standards
+# =============================================================================
+
+# Sim* prefix for simulation/backtest adapters
+SimDataAdapter = BacktestDataProvider
+SimExchangeAdapter = BacktestExchange
+ShadowExchangeAdapter = ShadowExchange

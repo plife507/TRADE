@@ -78,7 +78,7 @@ class LiveIndicatorCache:
         Initialize cache from historical candles.
 
         Args:
-            candles: List of historical candles (MTFCandle or Candle)
+            candles: List of historical candles (BarRecord or Candle)
             indicator_specs: Feature specs from Play
         """
         if not candles:
@@ -139,7 +139,7 @@ class LiveIndicatorCache:
 
     def _compute_indicators(self, indicator_specs: list[dict]) -> None:
         """Compute all indicators from specs."""
-        from ...backtest.features.feature_spec import FeatureSpec
+        from ...indicators import FeatureSpec
 
         for spec in indicator_specs:
             try:
@@ -214,7 +214,7 @@ class LiveDataProvider:
         # Structure state (incremental detection)
         self._structure_state: "TFIncrementalState | None" = None
 
-        # Candle buffer (use MTFCandle from RealtimeState)
+        # Candle buffer (use BarRecord from RealtimeState)
         self._candle_buffer: list[Candle] = []
         self._buffer_size = 500
 
@@ -278,8 +278,8 @@ class LiveDataProvider:
             # Ensure our symbol is tracked
             self._bootstrap.ensure_symbol_subscribed(self._symbol)
 
-            # Load historical candles from MTF buffer
-            await self._load_initial_candles()
+            # Load historical bars from bar buffer
+            await self._load_initial_bars()
 
             logger.info(f"LiveDataProvider connected: {self._symbol}")
 
@@ -293,40 +293,44 @@ class LiveDataProvider:
         self._ready = False
         logger.info(f"LiveDataProvider disconnected: {self._symbol}")
 
-    async def _load_initial_candles(self) -> None:
-        """Load initial candles from MTF buffer or REST API."""
+    async def _load_initial_bars(self) -> None:
+        """Load initial bars from bar buffer, DuckDB, or REST API."""
         if self._realtime_state is None:
             return
 
-        # Try to get from MTF buffer first
-        candles = self._realtime_state.get_mtf_buffer(
+        # Try to get from bar buffer first (hot in-memory cache)
+        bars = self._realtime_state.get_bar_buffer(
             env=self._env,
             symbol=self._symbol,
             timeframe=self._timeframe,
             limit=self._buffer_size,
         )
 
-        if candles:
-            # Convert MTFCandles to interface Candles
-            for mtf_candle in candles:
+        # Fall back to DuckDB if bar buffer is empty
+        if not bars:
+            bars = await self._load_bars_from_db()
+
+        if bars:
+            # Convert BarRecords to interface Candles
+            for bar_record in bars:
                 candle = Candle(
-                    ts_open=mtf_candle.timestamp,
-                    ts_close=mtf_candle.timestamp,  # Approximate
-                    open=mtf_candle.open,
-                    high=mtf_candle.high,
-                    low=mtf_candle.low,
-                    close=mtf_candle.close,
-                    volume=mtf_candle.volume,
+                    ts_open=bar_record.timestamp,
+                    ts_close=bar_record.timestamp,  # Approximate
+                    open=bar_record.open,
+                    high=bar_record.high,
+                    low=bar_record.low,
+                    close=bar_record.close,
+                    volume=bar_record.volume,
                 )
                 self._candle_buffer.append(candle)
 
             # Initialize indicators from historical data
             self._indicator_cache.initialize_from_history(
-                candles,
+                bars,
                 self._play.features if self._play.features else [],
             )
 
-            logger.info(f"Loaded {len(candles)} candles from MTF buffer")
+            logger.info(f"Loaded {len(bars)} bars for warm-up")
 
         # Initialize structure state if Play has structures
         if self._play.structures:
@@ -336,6 +340,65 @@ class LiveDataProvider:
         if len(self._candle_buffer) >= self._warmup_bars:
             self._ready = True
             logger.info("LiveDataProvider ready (warmup complete)")
+
+    async def _load_bars_from_db(self) -> list:
+        """
+        Load bars from DuckDB for warm-up.
+
+        Fallback when in-memory buffer is empty (e.g., bot restart).
+        """
+        from ...data.historical_data_store import get_historical_store
+        from ...data.realtime_state import BarRecord
+        from datetime import datetime, timedelta
+
+        try:
+            store = get_historical_store(env=self._env)
+
+            # Calculate time range (last N bars based on timeframe)
+            end = datetime.utcnow()
+            tf_minutes = self._parse_timeframe_minutes(self._timeframe)
+            start = end - timedelta(minutes=tf_minutes * self._buffer_size)
+
+            # Query DuckDB
+            df = store.query_ohlcv(
+                symbol=self._symbol,
+                timeframe=self._timeframe,
+                start=start,
+                end=end,
+            )
+
+            if df is None or df.empty:
+                logger.info(f"No bars in DuckDB for {self._symbol} {self._timeframe}")
+                return []
+
+            # Convert DataFrame rows to BarRecord objects
+            bars = []
+            for _, row in df.iterrows():
+                bar = BarRecord(
+                    timestamp=row['timestamp'],
+                    open=float(row['open']),
+                    high=float(row['high']),
+                    low=float(row['low']),
+                    close=float(row['close']),
+                    volume=float(row['volume']),
+                )
+                bars.append(bar)
+
+            logger.info(f"Loaded {len(bars)} bars from DuckDB ({self._env})")
+            return bars
+
+        except Exception as e:
+            logger.warning(f"Failed to load bars from DuckDB: {e}")
+            return []
+
+    def _parse_timeframe_minutes(self, tf: str) -> int:
+        """Parse timeframe string to minutes."""
+        tf_map = {
+            "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
+            "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720,
+            "D": 1440, "W": 10080, "M": 43200,
+        }
+        return tf_map.get(tf, 60)  # Default to 1h
 
     def _init_structure_state(self) -> None:
         """Initialize incremental structure state from Play specs."""
@@ -736,6 +799,17 @@ class LiveExchange:
                 pass
 
         return self._config.initial_equity
+
+    def get_realized_pnl(self) -> float:
+        """
+        Get total realized PnL since start.
+
+        TODO: Track from exchange trade history or accumulate locally.
+        For now returns 0.0 - requires integration with position close events.
+        """
+        # Future: Could accumulate from closed position history
+        # or query exchange for session realized PnL
+        return 0.0
 
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
         """Get pending orders."""

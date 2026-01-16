@@ -322,6 +322,15 @@ class ExchangeAdapter(Protocol):
         """
         ...
 
+    def get_realized_pnl(self) -> float:
+        """
+        Get total realized PnL since start.
+
+        Returns:
+            Cumulative realized profit/loss in USDT
+        """
+        ...
+
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
         """
         Get pending orders.
