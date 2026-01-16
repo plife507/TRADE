@@ -1,7 +1,7 @@
 # TODO
 
-**Last Updated**: 2026-01-15
-**Status**: Unified Engine Complete, Live Trading Ready
+**Last Updated**: 2026-01-16
+**Status**: Pivot Foundation Gates 0-5 Complete
 
 ---
 
@@ -13,48 +13,43 @@
 | Backtest Infrastructure | ✅ Production |
 | Incremental Indicators | ✅ Complete (O(1) for live) |
 | Live Trading Adapters | ✅ Complete |
-| Stress Tests | ✅ 50 plays validated with real data |
+| Pivot Foundation | ✅ Gates 0-5 Complete |
+| Market Structure (BOS/CHoCH) | ✅ Complete |
 | Documentation | ✅ Updated |
 
 ---
 
 ## Next Steps
 
-### P0 - Pivot Foundation (CRITICAL)
+### P0 - Pivot Foundation (Gates 6-7 Remaining)
 
 > **Full spec**: `docs/todos/PIVOT_FOUNDATION_GATES.md`
 
-The pivot/swing system is the foundation for ALL structure-based trading.
-Current issues: noise in choppy markets, trend detector state memory bug, no BOS/CHoCH.
-
 | Gate | Description | Status |
 |------|-------------|--------|
-| Gate 0 | Significance Infrastructure (ATR dependency) | [ ] |
-| Gate 1 | Significance Filtering (min_atr_move) | [ ] |
-| Gate 2 | Strict Alternation (H-L-H-L) | [ ] |
-| Gate 3 | ATR ZigZag Mode (TradingView-style) | [ ] |
-| Gate 4 | Trend Detector Rewrite (wave-based) | [ ] |
-| Gate 5 | Market Structure (BOS/CHoCH) | [ ] |
+| Gate 0 | Significance Infrastructure (ATR dependency) | ✅ |
+| Gate 1 | Significance Filtering (min_atr_move) | ✅ |
+| Gate 2 | Strict Alternation (H-L-H-L) | ✅ |
+| Gate 3 | ATR ZigZag Mode (TradingView-style) | ✅ |
+| Gate 4 | Trend Detector Rewrite (wave-based) | ✅ |
+| Gate 5 | Market Structure (BOS/CHoCH) | ✅ |
 | Gate 6 | MTF Pivot Coordination | [ ] |
 | Gate 7 | Integration & Stress Testing | [ ] |
 
-**Impact**: Unlocks clean Fib anchors, accurate trend, BOS/CHoCH events, future ICT structures (OB, FVG, liquidity zones).
+**Completed this session:**
+- Gate 4: Wave-based trend tracking with `last_hh/hl/lh/ll`, strength levels
+- Gate 5: ICT-style BOS/CHoCH detection with `bos_this_bar`, `choch_this_bar`
+- Registry consolidation: `src/structures/` is canonical (7 detectors)
 
 ### P1 - Live Trading Validation
 - [ ] End-to-end demo trading test
 - [ ] WebSocket reconnection handling
 - [ ] Order fill confirmation flow
 
-### P2 - Enhancements
-- [ ] Additional incremental indicators (Supertrend, Stochastic)
-- [ ] Structure history for lookback queries
-- [ ] Multi-symbol backtest support
-
-### P3 - Future (after Pivot Foundation)
+### P2 - Future ICT Structures
 - [ ] Order Blocks (OB)
 - [ ] Fair Value Gaps (FVG)
 - [ ] Liquidity Zones (equal H/L)
-- [ ] Agent module for automated strategy generation
 
 ---
 
@@ -62,10 +57,12 @@ Current issues: noise in choppy markets, trend detector state memory bug, no BOS
 
 | Date | Feature |
 |------|---------|
+| 2026-01-16 | Gate 5: Market structure detector (BOS/CHoCH) |
+| 2026-01-16 | Gate 4: Wave-based trend detector rewrite |
+| 2026-01-16 | Registry consolidation (src/structures/ canonical) |
+| 2026-01-16 | PLAY_DSL_COOKBOOK updated with new structures |
 | 2026-01-15 | Incremental indicators (EMA, SMA, RSI, ATR, MACD, BBands) |
 | 2026-01-15 | 50 stress tests with real data (7 symbols) |
-| 2026-01-15 | Leverage display in backtest summary |
-| 2026-01-15 | Liquidation price + realized PnL tracking |
 | 2026-01-14 | Live trading infrastructure (adapters, runners) |
 | 2026-01-13 | Unified engine gates 0-6 complete |
 
@@ -77,8 +74,8 @@ Current issues: noise in choppy markets, trend detector state memory bug, no BOS
 # Smoke test
 python trade_cli.py --smoke full
 
-# Backtest with real data
-python trade_cli.py backtest run --play S_01_btc_single_ema --dir tests/stress/plays --start 2025-12-01 --end 2026-01-10 --fix-gaps
+# Test market structure
+python trade_cli.py backtest run --play tests/validation/plays/pivot_foundation/V_PF_050_bos_bullish.yml --synthetic
 
 # Audit indicators
 python trade_cli.py backtest audit-toolkit
@@ -94,4 +91,5 @@ python trade_cli.py backtest audit-toolkit
 | `docs/SESSION_HANDOFF.md` | Session context for continuity |
 | `docs/PROJECT_STATUS.md` | What runs, what's stubbed |
 | `docs/INCREMENTAL_INDICATORS.md` | O(1) indicator usage |
-| `docs/PLAY_DSL_COOKBOOK.md` | DSL reference |
+| `docs/PLAY_DSL_COOKBOOK.md` | DSL reference (updated with BOS/CHoCH) |
+| `docs/todos/PIVOT_FOUNDATION_GATES.md` | Pivot gates spec |

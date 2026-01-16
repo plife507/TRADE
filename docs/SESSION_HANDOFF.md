@@ -1,50 +1,86 @@
 # Session Handoff
 
-**Date**: 2026-01-15
-**Status**: Unified Engine Complete, Live Trading Ready
+**Date**: 2026-01-16
+**Status**: Pivot Foundation Gates 0-5 Complete
 **Branch**: feature/unified-engine
 
 ---
 
 ## What Was Done This Session
 
-### 1. Incremental Indicators (P2 Complete)
-- Added O(1) computation for live trading: EMA, SMA, RSI, ATR, MACD, BBands
-- Location: `src/indicators/incremental.py`
-- Documentation: `docs/INCREMENTAL_INDICATORS.md`
-- `LiveIndicatorCache` now auto-uses incremental for supported indicators
+### 1. Gate 4: Wave-Based Trend Detector Rewrite
+- Complete rewrite using wave tracking instead of individual HH/HL comparisons
+- Added `Wave` dataclass to track complete swing waves (L→H or H→L)
+- New outputs: `wave_count`, `last_wave_direction`, `last_hh`, `last_hl`, `last_lh`, `last_ll`
+- Changed `strength` to INT (0=weak, 1=normal, 2=strong)
+- Fixed state memory bug where recovery patterns were misclassified
+- Location: `src/structures/detectors/trend.py`
 
-### 2. Stress Tests with Real Data
-- Ran 50 mixed-complexity plays across 7 symbols
-- Symbols: BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, DOGEUSDT, LINKUSDT, LTCUSDT
-- All tests passed, several profitable strategies identified
+### 2. Gate 5: Market Structure Detector (BOS/CHoCH)
+- ICT-style Break of Structure and Change of Character detection
+- BOS = continuation signal (price breaks swing in trend direction)
+- CHoCH = reversal signal (price breaks swing against trend)
+- Outputs: `bias`, `bos_this_bar`, `choch_this_bar`, `bos_direction`, `choch_direction`
+- Level tracking: `last_bos_idx/level`, `last_choch_idx/level`, `break_level_high/low`
+- Location: `src/structures/detectors/market_structure.py`
 
-### 3. Leverage Display
-- Backtest summary now shows: `Leverage: 5x | Equity: $10,000`
-- Files: `artifact_standards.py`, `runner.py`
+### 3. Registry Consolidation (Tech Debt Cleanup)
+- Investigated dual registry architecture (`src/structures/` vs `src/backtest/incremental/`)
+- `src/structures/` is now CANONICAL (71 imports, actively maintained)
+- `src/backtest/incremental/` is DEPRECATED (8 imports, backward-compat only)
+- Synced all 7 detectors to canonical location
+- Added `IncrementalMarketStructure` to both locations
 
-### 4. Documentation Cleanup
-- Simplified TODO.md (444 → 76 lines)
-- Updated PROJECT_STATUS.md with current state
-- All docs now reflect unified engine completion
+### 4. Documentation Updates
+- Updated `PLAY_DSL_COOKBOOK.md` with new structure types
+- Added Example 6: ICT Market Structure strategy
+- Updated Document History with today's changes
 
 ---
 
 ## Architecture (Current)
 
 ```
-src/engine/              # ONE engine for backtest/live
-├── play_engine.py       # Core signal logic
-├── adapters/            # backtest.py, live.py
-└── runners/             # backtest_runner.py, live_runner.py
+src/structures/              # CANONICAL - 7 structure detectors
+├── detectors/
+│   ├── swing.py             # Pivot detection (Gates 0-3)
+│   ├── trend.py             # Wave-based trend (Gate 4)
+│   ├── market_structure.py  # BOS/CHoCH (Gate 5)
+│   ├── fibonacci.py
+│   ├── zone.py
+│   ├── rolling_window.py
+│   └── derived_zone.py
+├── registry.py              # Warmup formulas + output types
+└── state.py                 # TFIncrementalState, MultiTFIncrementalState
 
-src/indicators/          # Shared computation
-├── registry.py          # 43 indicators
-└── incremental.py       # 6 O(1) indicators for live
+src/backtest/incremental/    # DEPRECATED - re-exports from src/structures
+```
 
-src/backtest/            # Infrastructure only (NOT an engine)
-├── sim/                 # SimulatedExchange
-└── runtime/             # FeedStore, Snapshot
+---
+
+## New Structure Outputs
+
+### Trend Detector (Gate 4)
+```yaml
+structures:
+  exec:
+    - type: trend
+      key: trend
+      depends_on: {swing: swing}
+# Outputs: direction, strength, bars_in_trend, wave_count,
+#          last_wave_direction, last_hh, last_hl, last_lh, last_ll, version
+```
+
+### Market Structure Detector (Gate 5)
+```yaml
+structures:
+  exec:
+    - type: market_structure
+      key: ms
+      depends_on: {swing: swing}
+# Outputs: bias, bos_this_bar, choch_this_bar, bos_direction, choch_direction,
+#          last_bos_idx, last_bos_level, last_choch_idx, last_choch_level,
+#          break_level_high, break_level_low, version
 ```
 
 ---
@@ -52,10 +88,10 @@ src/backtest/            # Infrastructure only (NOT an engine)
 ## Validation Status
 
 ```
-Smoke tests:        PASS
-Toolkit audit:      43/43 indicators PASS
-Stress tests:       50/50 plays PASS (real data)
-Structure tests:    163/163 plays PASS
+Gate 4 validation plays:  7/7 PASS (V_PF_040-046)
+Gate 5 validation plays:  7/7 PASS (V_PF_050-056)
+Registry imports:         Both paths work
+Backtest smoke:          PASS
 ```
 
 ---
@@ -64,9 +100,10 @@ Structure tests:    163/163 plays PASS
 
 | Priority | Task | Notes |
 |----------|------|-------|
+| P0 | Gate 6: MTF Pivot Coordination | Cross-timeframe pivot alignment |
+| P0 | Gate 7: Integration & Stress Testing | Full system validation |
 | P1 | Live E2E validation | Run demo trading test |
-| P2 | More incremental indicators | Supertrend, Stochastic |
-| P3 | ICT structures | BOS/CHoCH detection |
+| P2 | Future ICT structures | OB, FVG, liquidity zones |
 
 ---
 
@@ -74,19 +111,21 @@ Structure tests:    163/163 plays PASS
 
 | File | Change |
 |------|--------|
-| `src/indicators/incremental.py` | NEW - O(1) indicators |
-| `src/indicators/__init__.py` | Added incremental exports |
-| `src/engine/adapters/live.py` | Integrated incremental computation |
-| `src/backtest/artifacts/artifact_standards.py` | Added leverage display |
-| `src/backtest/runner.py` | Extract leverage for summary |
-| `docs/INCREMENTAL_INDICATORS.md` | NEW - Usage documentation |
+| `src/structures/detectors/trend.py` | Wave-based rewrite (Gate 4) |
+| `src/structures/detectors/market_structure.py` | NEW - BOS/CHoCH (Gate 5) |
+| `src/structures/registry.py` | Added market_structure outputs/warmup |
+| `src/structures/__init__.py` | Export IncrementalMarketStructure |
+| `src/backtest/incremental/__init__.py` | Export all 7 detectors |
+| `docs/PLAY_DSL_COOKBOOK.md` | New structure docs + Example 6 |
+| `tests/validation/plays/pivot_foundation/` | 14 validation plays |
 
 ---
 
 ## Context for Next Agent
 
-- **Unified engine is COMPLETE** - Use `create_engine_from_play()` + `run_engine_with_play()`
-- **Incremental indicators READY** - O(1) updates for EMA, SMA, RSI, ATR, MACD, BBands
-- **Live adapters COMPLETE** - WebSocket + Bybit API wired, needs E2E test
-- **Use new TF names** - `high_tf/med_tf/low_tf` (not htf/mtf/ltf)
-- **Validation** - Run `python trade_cli.py --smoke full` to verify
+- **Gates 0-5 COMPLETE** - Swing, trend, and market_structure detectors all working
+- **Registry is CANONICAL at `src/structures/`** - Use this for imports
+- **BOS/CHoCH ready** - Use `bos_this_bar`, `choch_this_bar` boolean flags in conditions
+- **Wave-based trend** - Use `last_hh`, `last_hl`, `last_lh`, `last_ll` for pattern detection
+- **Validation** - Run `python trade_cli.py backtest run --play tests/validation/plays/pivot_foundation/V_PF_050_bos_bullish.yml --synthetic`
+- **Next up** - Gate 6 (MTF coordination) and Gate 7 (integration testing)
