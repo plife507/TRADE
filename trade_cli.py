@@ -34,7 +34,6 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.align import Align
-from rich.text import Text
 
 # Add src to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

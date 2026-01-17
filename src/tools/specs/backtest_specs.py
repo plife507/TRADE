@@ -8,10 +8,6 @@ NO LEGACY FALLBACKS - Forward coding only.
 def get_imports():
     """Return dict of function_name -> import path."""
     from .. import (
-        backtest_list_systems_tool,
-        backtest_get_system_tool,
-        backtest_prepare_data_tool,
-        backtest_verify_data_tool,
         backtest_preflight_play_tool,
         backtest_run_play_tool,
         backtest_data_fix_tool,
@@ -25,10 +21,6 @@ def get_imports():
         verify_artifact_parity_tool,
     )
     return {
-        "backtest_list_systems": backtest_list_systems_tool,
-        "backtest_get_system": backtest_get_system_tool,
-        "backtest_prepare_data": backtest_prepare_data_tool,
-        "backtest_verify_data": backtest_verify_data_tool,
         "backtest_list_plays": backtest_list_plays_tool,
         "backtest_preflight": backtest_preflight_play_tool,
         "backtest_run_play": backtest_run_play_tool,
@@ -44,44 +36,6 @@ def get_imports():
 
 
 SPECS = [
-    # System tools
-    {
-        "name": "backtest_list_systems",
-        "description": "List all available backtest system configurations",
-        "category": "backtest.systems",
-        "parameters": {},
-        "required": [],
-    },
-    {
-        "name": "backtest_get_system",
-        "description": "Get detailed information about a system configuration",
-        "category": "backtest.systems",
-        "parameters": {
-            "system_id": {"type": "string", "description": "System configuration ID"},
-        },
-        "required": ["system_id"],
-    },
-    {
-        "name": "backtest_prepare_data",
-        "description": "Prepare data for backtesting based on system config",
-        "category": "backtest.data",
-        "parameters": {
-            "system_id": {"type": "string", "description": "System configuration ID"},
-            "fresh_db": {"type": "boolean", "description": "If true, delete all data first (opt-in reset)", "default": False},
-        },
-        "required": ["system_id"],
-    },
-    {
-        "name": "backtest_verify_data",
-        "description": "Verify data quality for a backtest run",
-        "category": "backtest.data",
-        "parameters": {
-            "system_id": {"type": "string", "description": "System configuration ID"},
-            "window_name": {"type": "string", "description": "Window to verify data for", "default": "hygiene"},
-            "heal_gaps": {"type": "boolean", "description": "If true, attempt to heal gaps", "default": True},
-        },
-        "required": ["system_id"],
-    },
     # Play tools (Golden Path)
     {
         "name": "backtest_list_plays",

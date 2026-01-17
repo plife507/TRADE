@@ -18,6 +18,8 @@ from typing import Any
 from dataclasses import dataclass
 from enum import Enum
 
+import threading
+
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config, TradingMode
 from ..utils.logger import get_logger
@@ -186,7 +188,8 @@ class ExchangeManager:
         
         self._instruments: dict[str, dict] = {}
         self._previous_positions: dict[str, bool] = {}
-        
+        self._position_tracking_lock = threading.Lock()  # Protects _previous_positions
+
         # Setup WebSocket cleanup
         from . import exchange_websocket as ws
         ws.setup_websocket_cleanup(self)
@@ -508,7 +511,8 @@ class ExchangeManager:
         """Get time offset from server in ms."""
         try:
             return self.bybit.get_time_offset()
-        except Exception:
+        except Exception as e:
+            self.logger.debug(f"Failed to get server time offset: {e}, using 0")
             return 0
     
     def test_connection(self) -> dict[str, Any]:
