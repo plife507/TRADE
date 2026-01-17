@@ -3,13 +3,13 @@ Incremental state containers for single and multi-timeframe structure management
 
 Provides:
 - TFIncrementalState: Container for all structures on a single timeframe
-- MultiTFIncrementalState: Unified container for exec + HTF states
+- MultiTFIncrementalState: Unified container for exec + high_tf states
 
 These containers manage structure creation, dependency resolution, and
 bar-by-bar updates. All errors include actionable fix suggestions.
 
 Example:
-    # Create exec TF state with swing -> fib -> trend chain
+    # Create exec_tf state with swing -> fib -> trend chain
     exec_specs = [
         {"type": "swing", "key": "swing", "params": {"left": 5, "right": 5}},
         {"type": "fibonacci", "key": "fib", "depends_on": {"swing": "swing"},
@@ -266,37 +266,37 @@ class MultiTFIncrementalState:
     """
     Unified container for all timeframe states.
 
-    Manages an exec (execution) timeframe state plus optional HTF (higher
-    timeframe) states. Provides path-based access to structure values.
+    Manages an exec_tf (execution) timeframe state plus optional high_tf (structure)
+    timeframe states. Provides path-based access to structure values.
 
     Path Format:
         - "exec.<struct_key>.<output_key>" - Exec TF structure value
-        - "htf_<tf>.<struct_key>.<output_key>" - HTF structure value
+        - "high_tf_<tf>.<struct_key>.<output_key>" - High TF structure value
 
     Example:
         >>> multi = MultiTFIncrementalState(
         ...     exec_tf="15m",
         ...     exec_specs=[{"type": "swing", "key": "swing", "params": {...}}],
-        ...     htf_configs={"1h": [{"type": "swing", "key": "swing_1h", "params": {...}}]}
+        ...     high_tf_configs={"1h": [{"type": "swing", "key": "swing_1h", "params": {...}}]}
         ... )
         >>> multi.update_exec(bar_15m)
-        >>> multi.update_htf("1h", bar_1h)
+        >>> multi.update_high_tf("1h", bar_1h)
         >>> multi.get_value("exec.swing.high_level")
         50000.0
-        >>> multi.get_value("htf_1h.swing_1h.high_level")
+        >>> multi.get_value("high_tf_1h.swing_1h.high_level")
         50500.0
 
     Attributes:
         exec_tf: The execution timeframe identifier.
         exec: TFIncrementalState for the exec timeframe.
-        htf: Dict mapping HTF names to TFIncrementalState instances.
+        high_tf: Dict mapping high_tf names to TFIncrementalState instances.
     """
 
     def __init__(
         self,
         exec_tf: str,
         exec_specs: list[dict[str, Any]],
-        htf_configs: dict[str, list[dict[str, Any]]] | None = None,
+        high_tf_configs: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
         """
         Initialize multi-TF state container.
@@ -304,7 +304,7 @@ class MultiTFIncrementalState:
         Args:
             exec_tf: The execution timeframe identifier (e.g., "15m").
             exec_specs: List of structure specs for the exec timeframe.
-            htf_configs: Dict mapping HTF names to their structure specs.
+            high_tf_configs: Dict mapping high_tf names to their structure specs.
                          Keys are timeframe names (e.g., "1h", "4h").
 
         Raises:
@@ -313,10 +313,10 @@ class MultiTFIncrementalState:
         self.exec_tf = exec_tf
         self.exec = TFIncrementalState(exec_tf, exec_specs)
 
-        self.htf: dict[str, TFIncrementalState] = {}
-        if htf_configs:
-            for tf, specs in htf_configs.items():
-                self.htf[tf] = TFIncrementalState(tf, specs)
+        self.high_tf: dict[str, TFIncrementalState] = {}
+        if high_tf_configs:
+            for tf, specs in high_tf_configs.items():
+                self.high_tf[tf] = TFIncrementalState(tf, specs)
 
     def update_exec(self, bar: "BarData") -> None:
         """
@@ -332,31 +332,31 @@ class MultiTFIncrementalState:
         """
         self.exec.update(bar)
 
-    def update_htf(self, timeframe: str, bar: "BarData") -> None:
+    def update_high_tf(self, timeframe: str, bar: "BarData") -> None:
         """
-        Update HTF structures with new bar.
+        Update high_tf structures with new bar.
 
-        Called only when an HTF bar closes.
+        Called only when a high_tf bar closes.
 
         Args:
-            timeframe: The HTF name (must match a key in htf_configs).
-            bar: Bar data for the HTF.
+            timeframe: The high_tf name (must match a key in high_tf_configs).
+            bar: Bar data for the high_tf.
 
         Raises:
             KeyError: If timeframe not configured.
             ValueError: If bar index doesn't increase.
         """
-        if timeframe not in self.htf:
-            available = list(self.htf.keys())
+        if timeframe not in self.high_tf:
+            available = list(self.high_tf.keys())
             available_str = ", ".join(available) if available else "(none configured)"
             raise KeyError(
-                f"HTF '{timeframe}' not configured.\n"
+                f"High TF '{timeframe}' not configured.\n"
                 f"\n"
-                f"Available HTFs: {available_str}\n"
+                f"Available high_tfs: {available_str}\n"
                 f"\n"
-                f"Fix: Add HTF configuration to your Play:\n"
+                f"Fix: Add high_tf configuration to your Play:\n"
                 f"  structures:\n"
-                f"    htf:\n"
+                f"    high_tf:\n"
                 f"      \"{timeframe}\":\n"
                 f"        - type: swing\n"
                 f"          key: swing_{timeframe.replace('h', 'H')}\n"
@@ -364,20 +364,20 @@ class MultiTFIncrementalState:
                 f"            left: 3\n"
                 f"            right: 3"
             )
-        self.htf[timeframe].update(bar)
+        self.high_tf[timeframe].update(bar)
 
     def get_value(self, path: str) -> float | int | str:
         """
         Get structure value by path.
 
         Path format:
-            - "exec.<struct_key>.<output_key>" for exec TF
-            - "htf_<tf>.<struct_key>.<output_key>" for HTF
+            - "exec.<struct_key>.<output_key>" for exec_tf
+            - "high_tf_<tf>.<struct_key>.<output_key>" for high_tf
 
         Examples:
-            - "exec.swing.high_level" - Swing high from exec TF
-            - "htf_1h.trend.direction" - Trend direction from 1h TF
-            - "htf_4h.fib.level_0.618" - Fib level from 4h TF
+            - "exec.swing.high_level" - Swing high from exec_tf
+            - "high_tf_1h.trend.direction" - Trend direction from 1h high_tf
+            - "high_tf_4h.fib.level_0.618" - Fib level from 4h high_tf
 
         Args:
             path: Dot-separated path to the value.
@@ -399,8 +399,8 @@ class MultiTFIncrementalState:
                 f"\n"
                 f"Examples:\n"
                 f"  - exec.swing.high_level\n"
-                f"  - htf_1h.trend.direction\n"
-                f"  - htf_4h.fib.level_0.618"
+                f"  - high_tf_1h.trend.direction\n"
+                f"  - high_tf_4h.fib.level_0.618"
             )
 
         tf_role = parts[0]
@@ -411,51 +411,51 @@ class MultiTFIncrementalState:
         if tf_role == "exec":
             return self.exec.get_value(struct_key, output_key)
 
-        elif tf_role.startswith("htf_"):
-            tf_name = tf_role[4:]  # Strip "htf_" prefix
+        elif tf_role.startswith("high_tf_"):
+            tf_name = tf_role[8:]  # Strip "high_tf_" prefix
 
-            if tf_name not in self.htf:
-                available = list(self.htf.keys())
+            if tf_name not in self.high_tf:
+                available = list(self.high_tf.keys())
                 available_str = ", ".join(available) if available else "(none configured)"
 
                 # Provide suggestions
                 suggestions = []
                 suggestions.append(f"  - exec.{struct_key}.{output_key}")
-                for htf_name in available:
-                    suggestions.append(f"  - htf_{htf_name}.{struct_key}.{output_key}")
+                for high_tf_name in available:
+                    suggestions.append(f"  - high_tf_{high_tf_name}.{struct_key}.{output_key}")
 
                 raise KeyError(
-                    f"HTF '{tf_name}' not configured.\n"
+                    f"High TF '{tf_name}' not configured.\n"
                     f"\n"
-                    f"Available HTFs: {available_str}\n"
+                    f"Available high_tfs: {available_str}\n"
                     f"\n"
                     f"Valid paths might be:\n"
                     + "\n".join(suggestions)
                 )
 
-            return self.htf[tf_name].get_value(struct_key, output_key)
+            return self.high_tf[tf_name].get_value(struct_key, output_key)
 
         else:
             # Provide helpful suggestions
-            available_htfs = list(self.htf.keys())
-            valid_prefixes = ["exec"] + [f"htf_{tf}" for tf in available_htfs]
+            available_high_tfs = list(self.high_tf.keys())
+            valid_prefixes = ["exec"] + [f"high_tf_{tf}" for tf in available_high_tfs]
             prefixes_str = ", ".join(valid_prefixes) if valid_prefixes else "exec"
 
             raise ValueError(
                 f"Invalid tf_role in path: '{tf_role}'\n"
                 f"\n"
-                f"Path must start with 'exec' or 'htf_<tf>'.\n"
+                f"Path must start with 'exec' or 'high_tf_<tf>'.\n"
                 f"\n"
                 f"Valid prefixes for this configuration: {prefixes_str}\n"
                 f"\n"
                 f"Examples:\n"
                 f"  - exec.swing.high_level\n"
-                + ("\n".join(f"  - htf_{tf}.swing.high_level" for tf in available_htfs) if available_htfs else "")
+                + ("\n".join(f"  - high_tf_{tf}.swing.high_level" for tf in available_high_tfs) if available_high_tfs else "")
             )
 
-    def list_htfs(self) -> list[str]:
-        """Return list of configured HTF names."""
-        return list(self.htf.keys())
+    def list_high_tfs(self) -> list[str]:
+        """Return list of configured high_tf names."""
+        return list(self.high_tf.keys())
 
     def list_all_paths(self) -> list[str]:
         """
@@ -473,19 +473,19 @@ class MultiTFIncrementalState:
             for output_key in self.exec.list_outputs(struct_key):
                 paths.append(f"exec.{struct_key}.{output_key}")
 
-        # HTF paths
-        for tf_name, tf_state in self.htf.items():
+        # High TF paths
+        for tf_name, tf_state in self.high_tf.items():
             for struct_key in tf_state.list_structures():
                 for output_key in tf_state.list_outputs(struct_key):
-                    paths.append(f"htf_{tf_name}.{struct_key}.{output_key}")
+                    paths.append(f"high_tf_{tf_name}.{struct_key}.{output_key}")
 
         return paths
 
     def __repr__(self) -> str:
         """Return string representation."""
-        htf_names = ", ".join(self.htf.keys()) if self.htf else "(none)"
+        high_tf_names = ", ".join(self.high_tf.keys()) if self.high_tf else "(none)"
         return (
             f"MultiTFIncrementalState("
             f"exec_tf={self.exec_tf!r}, "
-            f"htfs=[{htf_names}])"
+            f"high_tfs=[{high_tf_names}])"
         )

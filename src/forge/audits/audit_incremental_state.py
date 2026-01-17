@@ -160,22 +160,22 @@ def test_multi_tf_state_basic() -> None:
         {"type": "trend", "key": "trend", "depends_on": {"swing": "swing"}},
     ]
 
-    htf_configs = {
+    high_tf_configs = {
         "1h": [
             {"type": "swing", "key": "swing_1h", "params": {"left": 3, "right": 3}},
             {"type": "trend", "key": "trend_1h", "depends_on": {"swing": "swing_1h"}},
         ],
     }
 
-    multi = MultiTFIncrementalState("15m", exec_specs, htf_configs)
+    multi = MultiTFIncrementalState("15m", exec_specs, high_tf_configs)
 
     # Verify structure
     assert multi.exec_tf == "15m"
     assert "swing" in multi.exec.structures
     assert "trend" in multi.exec.structures
-    assert "1h" in multi.htf
-    assert "swing_1h" in multi.htf["1h"].structures
-    assert "trend_1h" in multi.htf["1h"].structures
+    assert "1h" in multi.high_tf
+    assert "swing_1h" in multi.high_tf["1h"].structures
+    assert "trend_1h" in multi.high_tf["1h"].structures
 
     print(f"Multi-TF state: {multi}")
     print(f"All paths: {multi.list_all_paths()}")
@@ -200,7 +200,7 @@ def test_multi_tf_state_basic() -> None:
 
     # Update HTF
     for bar in htf_bars:
-        multi.update_htf("1h", bar)
+        multi.update_high_tf("1h", bar)
 
     # Access via paths
     exec_high = multi.get_value("exec.swing.high_level")
@@ -210,7 +210,7 @@ def test_multi_tf_state_basic() -> None:
     print(f"Exec trend direction: {exec_dir}")
 
     # Note: 1h swing won't be confirmed yet with just 1 bar
-    htf_high = multi.get_value("htf_1h.swing_1h.high_level")
+    htf_high = multi.get_value("high_tf_1h.swing_1h.high_level")
     print(f"HTF 1h swing high: {htf_high} (NaN expected with insufficient bars)")
 
     print("MultiTFIncrementalState basic test PASSED")
@@ -238,7 +238,7 @@ def test_multi_tf_full_chain() -> None:
     ]
 
     # Create 1h HTF with same chain
-    htf_configs = {
+    high_tf_configs = {
         "1h": [
             {"type": "swing", "key": "swing", "params": {"left": 2, "right": 2}},
             {
@@ -251,7 +251,7 @@ def test_multi_tf_full_chain() -> None:
         ],
     }
 
-    multi = MultiTFIncrementalState("15m", exec_specs, htf_configs)
+    multi = MultiTFIncrementalState("15m", exec_specs, high_tf_configs)
 
     print(f"Created: {multi}")
     print(f"All paths ({len(multi.list_all_paths())}): {multi.list_all_paths()}")
@@ -304,7 +304,7 @@ def test_multi_tf_full_chain() -> None:
         multi.update_exec(bar)
 
     for bar in htf_bars:
-        multi.update_htf("1h", bar)
+        multi.update_high_tf("1h", bar)
 
     # Read values via path API
     print("\n--- Reading values via get_value(path) ---")
@@ -321,10 +321,10 @@ def test_multi_tf_full_chain() -> None:
     print(f"Exec fib 0.618: {exec_fib_618}")
     print(f"Exec trend: {exec_trend}")
 
-    htf_swing_high = multi.get_value("htf_1h.swing.high_level")
-    htf_swing_low = multi.get_value("htf_1h.swing.low_level")
-    htf_fib_50 = multi.get_value("htf_1h.fib.level_0.5")
-    htf_trend = multi.get_value("htf_1h.trend.direction")
+    htf_swing_high = multi.get_value("high_tf_1h.swing.high_level")
+    htf_swing_low = multi.get_value("high_tf_1h.swing.low_level")
+    htf_fib_50 = multi.get_value("high_tf_1h.fib.level_0.5")
+    htf_trend = multi.get_value("high_tf_1h.trend.direction")
 
     print(f"HTF 1h swing high: {htf_swing_high}")
     print(f"HTF 1h swing low: {htf_swing_low}")
@@ -442,9 +442,9 @@ def test_error_handling() -> None:
         print(f"  OK: Raised KeyError with available outputs")
 
     # Test 8: Unknown HTF
-    print("Test 8: Unknown HTF in update_htf...")
+    print("Test 8: Unknown HTF in update_high_tf...")
     try:
-        multi.update_htf("4h", BarData(idx=0, open=100.0, high=102.0, low=99.0, close=101.0, volume=100.0, indicators={}))
+        multi.update_high_tf("4h", BarData(idx=0, open=100.0, high=102.0, low=99.0, close=101.0, volume=100.0, indicators={}))
         assert False, "Should have raised KeyError"
     except KeyError as e:
         assert "not configured" in str(e)
@@ -607,7 +607,7 @@ risk:
             captured_swing_highs = []
             captured_trend_dirs = []
 
-            def on_snapshot_callback(snapshot, exec_idx, htf_idx, mtf_idx):
+            def on_snapshot_callback(snapshot, exec_idx, high_tf_idx, med_tf_idx):
                 """Capture structure values from each snapshot."""
                 # Access structures via snapshot's incremental state
                 if hasattr(snapshot, '_incremental_state') and snapshot._incremental_state:

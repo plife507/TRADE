@@ -169,6 +169,100 @@ class ExecutionModel:
 
         return result
 
+    def fill_entry_order_1m(
+        self,
+        order: Order,
+        exec_bar: Bar,
+        quote_feed,
+        exec_1m_range: tuple[int, int],
+        available_balance_usdt: float,
+        compute_required_fn,
+    ) -> FillResult:
+        """
+        Fill a pending entry order using 1m granularity.
+
+        Uses the first 1m bar's open price for more realistic fill timing.
+        Fill timestamp is the first 1m bar's open time within the exec bar.
+
+        Args:
+            order: Pending order to fill
+            exec_bar: Current exec-timeframe bar (for fallback/context)
+            quote_feed: 1m FeedStore
+            exec_1m_range: (start_idx, end_idx) of 1m bars within exec bar
+            available_balance_usdt: Available balance for margin check
+            compute_required_fn: Function to compute required margin
+
+        Returns:
+            FillResult with fill or rejection
+        """
+        result = FillResult()
+        start_1m, end_1m = exec_1m_range
+
+        # Get first 1m bar data
+        try:
+            first_1m_open = float(quote_feed.open[start_1m])
+            fill_ts = quote_feed.get_ts_open_datetime(start_1m)
+        except (IndexError, AttributeError):
+            # Fall back to exec bar if 1m data not available
+            first_1m_open = exec_bar.open
+            fill_ts = exec_bar.ts_open
+
+        # Calculate fill price with slippage (using 1m open price)
+        fill_price = self._slippage.apply_slippage(
+            first_1m_open,
+            order.side,
+            order.size_usdt,
+            exec_bar,  # Still use exec_bar for slippage context
+        )
+
+        # Calculate required margin
+        required = compute_required_fn(order.size_usdt)
+
+        # Check margin
+        if available_balance_usdt < required:
+            result.rejections.append(Rejection(
+                order_id=order.order_id,
+                reason=f"Insufficient margin: available={available_balance_usdt:.2f} < required={required:.2f}",
+                code="INSUFFICIENT_ENTRY_GATE",
+                timestamp=fill_ts,
+            ))
+            return result
+
+        # Check liquidity constraint
+        fillable_usdt = self._liquidity.get_max_fillable(order.size_usdt, exec_bar)
+        if fillable_usdt < order.size_usdt:
+            result.rejections.append(Rejection(
+                order_id=order.order_id,
+                reason=f"Exceeds liquidity: requested={order.size_usdt:.2f} > available={fillable_usdt:.2f}",
+                code="LIQUIDITY_EXCEEDED",
+                timestamp=fill_ts,
+            ))
+            return result
+
+        # Calculate size in base units
+        size = order.size_usdt / fill_price
+
+        # Calculate fee
+        fee = order.size_usdt * self._config.taker_fee_rate
+
+        # Create fill (timestamp = 1m bar open time)
+        fill = Fill(
+            fill_id=self._next_fill_id(),
+            order_id=order.order_id,
+            symbol=order.symbol,
+            side=order.side,
+            price=fill_price,
+            size=size,
+            size_usdt=order.size_usdt,
+            timestamp=fill_ts,
+            reason=FillReason.ENTRY,
+            fee=fee,
+            slippage=abs(fill_price - first_1m_open),
+        )
+
+        result.fills.append(fill)
+        return result
+
     def check_limit_fill(
         self,
         order: Order,

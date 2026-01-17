@@ -3,8 +3,11 @@ name: "S_S_152_consecutive_extremes"
 description: "Stress Gate 19: RSI extreme > 85 holds_for 5 bars (short). Sustained extreme overbought conditions."
 
 symbol: "ADAUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

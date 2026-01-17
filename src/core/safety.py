@@ -20,6 +20,7 @@ class PanicState:
         self._trigger_time: datetime | None = None
         self._reason: str | None = None
         self._lock = threading.Lock()
+        self._callback_lock = threading.Lock()  # Protects _callbacks list
         self._callbacks: list[Callable] = []
 
     @property
@@ -43,24 +44,27 @@ class PanicState:
             self._triggered = True
             self._trigger_time = datetime.now()
             self._reason = reason
-        
-        # Execute callbacks
-        for callback in self._callbacks:
+
+        # Execute callbacks (copy-under-lock for thread safety)
+        with self._callback_lock:
+            callbacks_copy = list(self._callbacks)
+        for callback in callbacks_copy:
             try:
                 callback(reason)
             except Exception:
                 pass
-    
+
     def reset(self):
         """Reset panic state (use with caution)."""
         with self._lock:
             self._triggered = False
             self._trigger_time = None
             self._reason = None
-    
+
     def add_callback(self, callback: Callable):
         """Add a callback to be called when panic is triggered."""
-        self._callbacks.append(callback)
+        with self._callback_lock:
+            self._callbacks.append(callback)
 
 
 # Global panic state

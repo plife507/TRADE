@@ -3,8 +3,11 @@ name: "S_S_082_supertrend_holds_for"
 description: "Stress Gate 9: SuperTrend direction == -1 holds_for 5 bars (short). Tests bearish trend persistence."
 
 symbol: "ADAUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

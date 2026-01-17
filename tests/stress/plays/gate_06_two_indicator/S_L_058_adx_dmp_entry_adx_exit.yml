@@ -3,8 +3,11 @@ name: "S_L_058_adx_dmp_entry_adx_exit"
 description: "Stress Gate 6: DM+ cross DM- entry, ADX weakness exit (long). Trend initiation with weakness exit."
 
 symbol: "SOLUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

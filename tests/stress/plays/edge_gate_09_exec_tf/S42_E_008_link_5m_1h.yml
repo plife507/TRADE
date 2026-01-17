@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_008_link_5m_1h
 description: "Exec TF: 5m with 1h HTF filter."
 symbol: LINKUSDT
-tf: 5m
+timeframes:
+  low_tf: "5m"
+  med_tf: "5m"
+  high_tf: "1h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_020_sol_3m
 description: "Verify 3m on SOLUSDT - multi-pair TF test."
 symbol: SOLUSDT
-tf: 3m
+timeframes:
+  low_tf: "3m"
+  med_tf: "3m"
+  high_tf: "3m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

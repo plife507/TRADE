@@ -3,8 +3,11 @@ name: "S_L_049_kvo_signal_cross"
 description: "Stress Gate 5: KVO crosses above signal entry (long). Klinger Volume Oscillator bullish signal."
 
 symbol: "SOLUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

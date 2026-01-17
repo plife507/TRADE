@@ -3,8 +3,11 @@ name: "S_L_090_adx_cross_occurred_within"
 description: "Stress Gate 10: occurred_within window - ADX crossed above 25 within 5 bars + DM+ > DM- (long). Tests trend strength emergence timing."
 
 symbol: "AVAXUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

@@ -3,7 +3,11 @@ name: "S_18_btc_derived_zones"
 description: "Stress Test: Derived Zones - K-slot allocation with zone aggregates"
 
 symbol: "BTCUSDT"
-tf: "1h"
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

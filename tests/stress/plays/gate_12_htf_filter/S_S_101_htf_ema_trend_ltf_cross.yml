@@ -3,7 +3,11 @@ name: "S_S_101_htf_ema_trend_ltf_cross"
 description: "Stress Gate 12: HTF EMA50<EMA200 trend filter + LTF EMA9 cross_below EMA21 (short). Professional multi-TF approach."
 
 symbol: "DOGEUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 high_tf: "4h"
 
 account:

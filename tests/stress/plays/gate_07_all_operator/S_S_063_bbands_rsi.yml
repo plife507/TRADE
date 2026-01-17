@@ -3,8 +3,11 @@ name: "S_S_063_bbands_rsi"
 description: "Stress Gate 7: ALL operator - BBands overbought + RSI confirmation (short). Close > BBands upper AND RSI > 60."
 
 symbol: "XRPUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

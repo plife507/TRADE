@@ -3,7 +3,11 @@ name: "S_S_102_htf_supertrend_ltf_rsi"
 description: "Stress Gate 12: HTF SuperTrend bearish + LTF RSI overbought (short). Trend-following with mean reversion entry."
 
 symbol: "DOGEUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 high_tf: "4h"
 
 account:

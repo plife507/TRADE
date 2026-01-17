@@ -217,7 +217,14 @@
       "Bash(del parallel_test_results.txt)",
       "Bash(for play in V_PF_040_wave_tracking V_PF_041_hh_hl_uptrend V_PF_042_lh_ll_downtrend V_PF_043_mixed_ranging V_PF_044_strength_levels V_PF_045_recovery_scenario V_PF_046_trend_flip)",
       "Bash(for play in V_PF_050_bos_bullish V_PF_051_bos_bearish V_PF_052_choch_bull_to_bear V_PF_053_choch_bear_to_bull V_PF_054_event_flags_reset V_PF_055_version_increment V_PF_056_initial_bias)",
-      "Bash(cmp:*)"
+      "Bash(cmp:*)",
+      "Bash(for play in S_03_btc_two_indicators S_04_btc_basic_and S_05_btc_multi_output S_06_btc_ema_crossover)",
+      "Bash(do echo \"Testing $play...\")",
+      "Bash(for play in S_07_btc_macd_cross S_08_btc_or_conditions S_09_btc_arithmetic S_10_btc_holds_for S_11_btc_occurred_within)",
+      "Bash(for:*)",
+      "WebFetch(domain:innercircletrader.net)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)"
     ]
   },
   "hooks": {

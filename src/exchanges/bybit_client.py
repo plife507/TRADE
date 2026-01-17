@@ -74,6 +74,62 @@ def handle_pybit_errors(func):
     return wrapper
 
 
+def with_retry(max_retries: int = 3, backoff_base: float = 1.0):
+    """
+    Decorator for exponential backoff retry on transient failures.
+
+    Retries on ConnectionError, TimeoutError, and rate limit errors.
+    Does NOT retry on authentication or validation errors.
+
+    Args:
+        max_retries: Maximum number of retry attempts (default 3)
+        backoff_base: Base delay in seconds (doubled each retry)
+
+    Usage:
+        @with_retry(max_retries=3, backoff_base=1.0)
+        def create_order(self, ...):
+            ...
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except (ConnectionError, TimeoutError, OSError) as e:
+                    last_exception = e
+                    if attempt == max_retries - 1:
+                        raise
+                    delay = backoff_base * (2 ** attempt)
+                    logger = get_logger()
+                    logger.warning(
+                        f"Retry {attempt + 1}/{max_retries} for {func.__name__} "
+                        f"after {type(e).__name__}: {e}. Waiting {delay}s..."
+                    )
+                    time.sleep(delay)
+                except BybitAPIError as e:
+                    # Retry on rate limit errors (429) and server errors (5xx)
+                    if e.code in (429, 500, 502, 503, 504, 10006):
+                        last_exception = e
+                        if attempt == max_retries - 1:
+                            raise
+                        delay = backoff_base * (2 ** attempt)
+                        logger = get_logger()
+                        logger.warning(
+                            f"Retry {attempt + 1}/{max_retries} for {func.__name__} "
+                            f"after API error {e.code}. Waiting {delay}s..."
+                        )
+                        time.sleep(delay)
+                    else:
+                        # Don't retry auth or validation errors
+                        raise
+            # Should not reach here, but return last attempt result
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 class BybitClient:
     """
     Bybit API client using the official pybit library.
@@ -290,12 +346,14 @@ class BybitClient:
         return mkt.get_instrument_launch_time(self, symbol, category)
     
     # ==================== Account (delegated) ====================
-    
+
+    @with_retry(max_retries=3, backoff_base=1.0)
     @handle_pybit_errors
     def get_balance(self, account_type: str = "UNIFIED") -> dict:
         from . import bybit_account as acct
         return acct.get_balance(self, account_type)
-    
+
+    @with_retry(max_retries=3, backoff_base=1.0)
     @handle_pybit_errors
     def get_positions(self, symbol: str | None = None, settle_coin: str = "USDT", category: str = "linear") -> list[dict]:
         from . import bybit_account as acct
@@ -387,17 +445,19 @@ class BybitClient:
         return acct.get_borrow_quota(self, category, symbol, side)
     
     # ==================== Trading (delegated) ====================
-    
+
+    @with_retry(max_retries=3, backoff_base=1.0)
     @handle_pybit_errors
     def create_order(self, symbol: str, side: str, order_type: str, qty: float, **kwargs) -> dict:
         from . import bybit_trading as trd
         return trd.create_order(self, symbol, side, order_type, qty, **kwargs)
-    
+
     @handle_pybit_errors
     def amend_order(self, symbol: str, order_id: str | None = None, order_link_id: str | None = None, **kwargs) -> dict:
         from . import bybit_trading as trd
         return trd.amend_order(self, symbol, order_id, order_link_id, **kwargs)
-    
+
+    @with_retry(max_retries=3, backoff_base=1.0)
     @handle_pybit_errors
     def cancel_order(self, symbol: str, order_id: str | None = None, order_link_id: str | None = None,
                      category: str = "linear") -> dict:

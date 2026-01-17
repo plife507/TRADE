@@ -3,8 +3,11 @@ name: "S_21_btc_full_complexity"
 description: "Stress Test Gate 5.4: Full Complexity - 100% DSL coverage"
 
 symbol: "BTCUSDT"
-tf: "15m"
-high_tf: "1h"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "1h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

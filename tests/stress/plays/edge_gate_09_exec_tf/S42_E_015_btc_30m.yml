@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_015_btc_30m
 description: "Verify 30m timeframe support - newly added TF."
 symbol: BTCUSDT
-tf: 30m
+timeframes:
+  low_tf: "30m"
+  med_tf: "30m"
+  high_tf: "30m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

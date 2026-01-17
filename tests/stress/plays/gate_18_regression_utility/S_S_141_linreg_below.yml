@@ -3,8 +3,11 @@ name: "S_S_141_linreg_below"
 description: "Stress Gate 18: Price below linear regression entry (short). Momentum continuation when close < linreg."
 
 symbol: "BTCUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

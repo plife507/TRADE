@@ -9,9 +9,9 @@ engine callback and compares snapshot feature access against direct FeedStore
 array reads.
 
 What this audit validates:
-- TF routing: get_feature(..., tf_role="exec"|"htf"|"mtf") returns values from correct feed
+- TF routing: get_feature(..., tf_role="exec"|"high_tf"|"med_tf") returns values from correct feed
 - Offset semantics: get_feature(..., offset=0|1|2|...) correctly computes target index
-- Forward-fill behavior: HTF/MTF indices remain constant between TF closes
+- Forward-fill behavior: high_tf/med_tf indices remain constant between TF closes
 - Closed-candle only: snapshot.ts_close equals exec_feed.ts_close[exec_idx]
 
 What this audit does NOT validate:
@@ -54,8 +54,8 @@ class ComparisonMismatch:
     abs_diff: float
     tolerance: float
     exec_idx: int
-    htf_idx: int | None
-    mtf_idx: int | None
+    high_tf_idx: int | None
+    med_tf_idx: int | None
     target_idx: int
 
     def to_dict(self) -> dict[str, Any]:
@@ -69,8 +69,8 @@ class ComparisonMismatch:
             "abs_diff": self.abs_diff,
             "tolerance": self.tolerance,
             "exec_idx": self.exec_idx,
-            "htf_idx": self.htf_idx,
-            "mtf_idx": self.mtf_idx,
+            "high_tf_idx": self.high_tf_idx,
+            "med_tf_idx": self.med_tf_idx,
             "target_idx": self.target_idx,
         }
 
@@ -168,29 +168,29 @@ def compare_values(
 class PlumbingAuditCallback:
     """
     Callback for plumbing audit during backtest execution.
-    
+
     Collects samples at exec bar closes and TF boundaries,
     then compares snapshot.get_feature() against direct FeedStore reads.
     """
-    
+
     def __init__(
         self,
         exec_feed: FeedStore,
-        htf_feed: FeedStore | None,
-        mtf_feed: FeedStore | None,
+        high_tf_feed: FeedStore | None,
+        med_tf_feed: FeedStore | None,
         declared_keys_by_role: dict[str, set[str]],
         max_samples: int = 2000,
         tolerance: float = 1e-12,
         strict: bool = True,
     ):
         self.exec_feed = exec_feed
-        self.htf_feed = htf_feed
-        self.mtf_feed = mtf_feed
+        self.high_tf_feed = high_tf_feed
+        self.med_tf_feed = med_tf_feed
         self.declared_keys_by_role = declared_keys_by_role
         self.max_samples = max_samples
         self.tolerance = tolerance
         self.strict = strict
-        
+
         # State
         self.samples_count = 0
         self.comparisons_count = 0
@@ -198,10 +198,10 @@ class PlumbingAuditCallback:
         self.first_mismatch: ComparisonMismatch | None = None
         self.stop_early = False
 
-        # Track HTF/MTF index changes for boundary sampling
-        self._prev_htf_idx: int | None = None
-        self._prev_mtf_idx: int | None = None
-        
+        # Track high_tf/med_tf index changes for boundary sampling
+        self._prev_high_tf_idx: int | None = None
+        self._prev_med_tf_idx: int | None = None
+
         # Offsets to test
         self._offsets = [0, 1, 2, 5]
     
@@ -209,48 +209,48 @@ class PlumbingAuditCallback:
         self,
         snapshot: RuntimeSnapshotView,
         exec_idx: int,
-        htf_idx: int,
-        mtf_idx: int,
+        high_tf_idx: int,
+        med_tf_idx: int,
     ) -> None:
         """
         Audit callback invoked at each exec bar close.
-        
+
         Args:
             snapshot: Current RuntimeSnapshotView
             exec_idx: Current exec bar index
-            htf_idx: Current HTF forward-fill index
-            mtf_idx: Current MTF forward-fill index
+            high_tf_idx: Current high_tf forward-fill index
+            med_tf_idx: Current med_tf forward-fill index
         """
         if self.stop_early:
             return
-        
+
         # Determine if we should sample this point
         should_sample = False
-        
+
         # Sample first N exec bar closes
         if self.samples_count < self.max_samples:
             should_sample = True
-        
-        # Always sample at HTF boundary (when htf_idx changes)
-        if self._prev_htf_idx is not None and htf_idx != self._prev_htf_idx:
+
+        # Always sample at high_tf boundary (when high_tf_idx changes)
+        if self._prev_high_tf_idx is not None and high_tf_idx != self._prev_high_tf_idx:
             should_sample = True
-        
-        # Always sample at MTF boundary (when mtf_idx changes)
-        if self._prev_mtf_idx is not None and mtf_idx != self._prev_mtf_idx:
+
+        # Always sample at med_tf boundary (when med_tf_idx changes)
+        if self._prev_med_tf_idx is not None and med_tf_idx != self._prev_med_tf_idx:
             should_sample = True
-        
+
         # Update previous indices
-        self._prev_htf_idx = htf_idx
-        self._prev_mtf_idx = mtf_idx
-        
+        self._prev_high_tf_idx = high_tf_idx
+        self._prev_med_tf_idx = med_tf_idx
+
         if not should_sample:
             return
-        
+
         self.samples_count += 1
-        
+
         # Run comparisons for this sample point
-        self._run_comparisons(snapshot, exec_idx, htf_idx, mtf_idx)
-        
+        self._run_comparisons(snapshot, exec_idx, high_tf_idx, med_tf_idx)
+
         # Check for early stop
         if self.strict and self.first_mismatch is not None:
             self.stop_early = True
@@ -259,13 +259,13 @@ class PlumbingAuditCallback:
         self,
         snapshot: RuntimeSnapshotView,
         exec_idx: int,
-        htf_idx: int,
-        mtf_idx: int,
+        high_tf_idx: int,
+        med_tf_idx: int,
     ) -> None:
         """Run all comparisons for a sample point."""
         # Get ts_close for mismatch reporting
         ts_close = snapshot.ts_close
-        
+
         # Compare exec TF
         self._compare_tf(
             snapshot=snapshot,
@@ -274,36 +274,36 @@ class PlumbingAuditCallback:
             ctx_idx=exec_idx,
             ts_close=ts_close,
             exec_idx=exec_idx,
-            htf_idx=htf_idx,
-            mtf_idx=mtf_idx,
+            high_tf_idx=high_tf_idx,
+            med_tf_idx=med_tf_idx,
         )
-        
-        # Compare HTF (if different from exec)
-        if self.htf_feed is not None and self.htf_feed is not self.exec_feed:
+
+        # Compare high_tf (if different from exec)
+        if self.high_tf_feed is not None and self.high_tf_feed is not self.exec_feed:
             self._compare_tf(
                 snapshot=snapshot,
-                tf_role="htf",
-                feed=self.htf_feed,
-                ctx_idx=htf_idx,
+                tf_role="high_tf",
+                feed=self.high_tf_feed,
+                ctx_idx=high_tf_idx,
                 ts_close=ts_close,
                 exec_idx=exec_idx,
-                htf_idx=htf_idx,
-                mtf_idx=mtf_idx,
+                high_tf_idx=high_tf_idx,
+                med_tf_idx=med_tf_idx,
             )
-        
-        # Compare MTF (if different from exec)
-        if self.mtf_feed is not None and self.mtf_feed is not self.exec_feed:
+
+        # Compare med_tf (if different from exec)
+        if self.med_tf_feed is not None and self.med_tf_feed is not self.exec_feed:
             self._compare_tf(
                 snapshot=snapshot,
-                tf_role="mtf",
-                feed=self.mtf_feed,
-                ctx_idx=mtf_idx,
+                tf_role="med_tf",
+                feed=self.med_tf_feed,
+                ctx_idx=med_tf_idx,
                 ts_close=ts_close,
                 exec_idx=exec_idx,
-                htf_idx=htf_idx,
-                mtf_idx=mtf_idx,
+                high_tf_idx=high_tf_idx,
+                med_tf_idx=med_tf_idx,
             )
-        
+
         # Assert: snapshot.ts_close == exec_feed.ts_close[exec_idx]
         expected_ts_close = self.exec_feed.get_ts_close_datetime(exec_idx)
         if ts_close != expected_ts_close:
@@ -319,8 +319,8 @@ class PlumbingAuditCallback:
                     abs_diff=float('inf'),
                     tolerance=0,
                     exec_idx=exec_idx,
-                    htf_idx=htf_idx,
-                    mtf_idx=mtf_idx,
+                    high_tf_idx=high_tf_idx,
+                    med_tf_idx=med_tf_idx,
                     target_idx=exec_idx,
                 )
     
@@ -332,35 +332,35 @@ class PlumbingAuditCallback:
         ctx_idx: int,
         ts_close: datetime,
         exec_idx: int,
-        htf_idx: int,
-        mtf_idx: int,
+        high_tf_idx: int,
+        med_tf_idx: int,
     ) -> None:
         """Compare all keys for a TF role."""
         # Get declared keys for this TF role
         declared_keys = self.declared_keys_by_role.get(tf_role, set())
-        
+
         # Always include OHLCV keys
         all_keys = OHLCV_KEYS | declared_keys
-        
+
         for key in all_keys:
             for offset in self._offsets:
                 target_idx = ctx_idx - offset
-                
+
                 # Skip if out of bounds for feed
                 if target_idx < 0 or target_idx >= feed.length:
                     continue
-                
+
                 self.comparisons_count += 1
-                
+
                 # Get observed value from snapshot
                 observed = snapshot.get_feature(key, tf_role=tf_role, offset=offset)
-                
+
                 # Get expected value from direct feed read
                 expected = direct_feed_read(feed, target_idx, key)
-                
+
                 # Compare
                 matches, abs_diff = compare_values(observed, expected, self.tolerance)
-                
+
                 if not matches:
                     self.failed_comparisons += 1
                     if self.first_mismatch is None:
@@ -374,8 +374,8 @@ class PlumbingAuditCallback:
                             abs_diff=abs_diff,
                             tolerance=self.tolerance,
                             exec_idx=exec_idx,
-                            htf_idx=htf_idx,
-                            mtf_idx=mtf_idx,
+                            high_tf_idx=high_tf_idx,
+                            med_tf_idx=med_tf_idx,
                             target_idx=target_idx,
                         )
     
@@ -508,8 +508,8 @@ def audit_snapshot_plumbing_parity(
         # Create audit callback now that feeds are available
         callback = PlumbingAuditCallback(
             exec_feed=engine._exec_feed,
-            htf_feed=engine._htf_feed if engine._htf_feed is not engine._exec_feed else None,
-            mtf_feed=engine._mtf_feed if engine._mtf_feed is not engine._exec_feed else None,
+            high_tf_feed=engine._high_tf_feed if engine._high_tf_feed is not engine._exec_feed else None,
+            med_tf_feed=engine._med_tf_feed if engine._med_tf_feed is not engine._exec_feed else None,
             declared_keys_by_role=declared_keys_by_role,
             max_samples=max_samples,
             tolerance=tolerance,

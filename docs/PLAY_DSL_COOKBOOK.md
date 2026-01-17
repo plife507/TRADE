@@ -84,12 +84,19 @@ name: "my_strategy"            # Strategy name
 description: "Description"     # What it does
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MARKET & TIMEFRAMES
+# MARKET & TIMEFRAMES (3-Feed + Exec Role System)
 # ═══════════════════════════════════════════════════════════════════════════════
 symbol: "BTCUSDT"              # Trading pair (USDT pairs only)
-tf: "15m"                      # Execution timeframe (ANY tf works: 1m, 5m, 15m, 1h, 4h, etc.)
-med_tf: "1h"                   # Optional: mid timeframe for context
-high_tf: "4h"                  # Optional: higher timeframe for trend/levels
+
+# REQUIRED: Explicit timeframes section (all 4 keys required)
+timeframes:
+  low_tf: "15m"                # Lowest analysis TF (1m, 3m, 5m, 15m)
+  med_tf: "1h"                 # Medium TF for context (30m, 1h, 2h, 4h)
+  high_tf: "4h"                # Highest TF for trend/levels (6h, 12h, D)
+  exec: "low_tf"               # Which TF to step on: "low_tf", "med_tf", or "high_tf"
+
+# Hierarchy rule: high_tf >= med_tf >= low_tf (in minutes)
+# exec is a ROLE POINTER, not a 4th feed - it points to one of the 3 feeds
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ACCOUNT CONFIGURATION
@@ -1132,6 +1139,19 @@ holds_for_duration:
 
 **MultiTF = Multi-TimeFrame** - The capability to use features from multiple timeframes in a single strategy.
 
+### 3-Feed + Exec Role Architecture
+
+The TF system uses **3 feeds** with an **exec role pointer**:
+
+| Feed | Role | Typical Values |
+|------|------|----------------|
+| `low_tf` | Lowest analysis TF | 1m, 3m, 5m, 15m |
+| `med_tf` | Medium TF for context | 30m, 1h, 2h, 4h |
+| `high_tf` | Highest TF for trend/levels | 6h, 12h, D |
+| `exec` | **Pointer** to which feed we step on | `"low_tf"`, `"med_tf"`, or `"high_tf"` |
+
+**Key insight:** `exec` is NOT a 4th feed - it's an alias that points to one of the 3 feeds. This determines which TF's bar-close triggers signal evaluation.
+
 ### Valid Timeframes (Bybit API)
 
 **Bybit intervals**: `1,3,5,15,30,60,120,240,360,720,D,W,M`
@@ -1140,30 +1160,49 @@ holds_for_duration:
 **NOTE**: 8h is NOT a valid Bybit interval. Use 6h or 12h instead.
 
 **IMPORTANT - Timeframe vs Duration:**
-- **Timeframe** (`tf:`, `high_tf:`): Bybit candle interval → use `D` (not `1d`)
+- **Timeframe** (`timeframes.low_tf:`): Bybit candle interval → use `D` (not `1d`)
 - **Duration** (window operators): Time period → use `"1d"` or `"8h"` (any hour/minute/day value)
 
-### Terminology Clarification
-
-| Term | Meaning |
-|------|---------|
-| **MultiTF** (Multi-TimeFrame) | The capability to use multiple timeframes |
-| **ExecTF** / `tf` | Execution timeframe - can be ANY value (1m, 5m, 15m, 1h, 4h, etc.) |
-| **HighTF** / `high_tf` | Any timeframe higher than ExecTF for context (6h, 12h, D) |
-| **MedTF** / `med_tf` | 30m, 1h, 2h, 4h - trade bias + structure |
-| **LowTF** / `low_tf` | 1m, 3m, 5m, 15m - execution timing |
-
-**Key insight:** `tf` (ExecTF) can be any timeframe you choose. There's no fixed role hierarchy - it's all relative to your chosen execution timeframe.
-
-### Config Fields (Optional Higher TFs)
+### Config Fields (REQUIRED)
 
 ```yaml
-tf: "15m"           # Execution TF - engine steps bar-by-bar at this TF
-med_tf: "1h"        # Optional: intermediate TF for context (unused if not needed)
-high_tf: "4h"       # Optional: higher TF for trend/levels
+# REQUIRED: Explicit timeframes section (all 4 keys required)
+timeframes:
+  low_tf: "15m"      # Lowest analysis TF - engine always loads this data
+  med_tf: "1h"       # Medium TF for context (same as low_tf if single-TF)
+  high_tf: "4h"      # Highest TF for trend/levels (same as med_tf if dual-TF)
+  exec: "low_tf"     # Which feed to step on: "low_tf", "med_tf", or "high_tf"
 ```
 
-**Note:** The `med_tf:` and `high_tf:` config fields are optional convenience aliases. You can also specify TF directly on features via the `tf:` field.
+**Hierarchy rule:** `high_tf >= med_tf >= low_tf` (in minutes)
+
+### Exec Role Examples
+
+```yaml
+# Example 1: Standard (exec on low_tf) - most common
+timeframes:
+  low_tf: "15m"     # ← exec points here
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+# Steps on 15m bars, forward-fills 1h and 4h
+
+# Example 2: Swing (exec on med_tf)
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"      # ← exec points here
+  high_tf: "4h"
+  exec: "med_tf"
+# Steps on 1h bars, looks up 15m at close, forward-fills 4h
+
+# Example 3: Single-TF (all same)
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
+# All feeds are the same 15m data
+```
 
 ### Feature TF Assignment
 
@@ -1187,11 +1226,19 @@ features:
     tf: "4h"              # Higher than 15m exec -> forward-fills
 ```
 
-### Forward-Fill Behavior
+### Forward-Fill Semantics
 
-**Key Concept:** Any TF slower than exec forward-fills until its bar closes.
+Forward-fill behavior depends on whether a TF is faster or slower than exec:
+
+| TF Relationship | Behavior |
+|-----------------|----------|
+| **Slower than exec** | Forward-fill (hold last closed bar value) |
+| **Faster than exec** | Lookup most recent closed bar at exec close |
+| **Equal to exec** | Direct access (no fill needed) |
 
 ```
+Example: exec=low_tf (15m), med_tf=1h, high_tf=4h
+
 exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
                   +-----+-----+-----+-----+-----+-----+-----+-----+
 1h bars:          |          1h bar 0           |      1h bar 1    ...
@@ -1199,10 +1246,16 @@ exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
                         (forward-filled)
 ```
 
-- **exec features:** Update every exec bar (no forward-fill)
-- **Higher TF features:** Forward-fill until their bar closes
-
 **No lookahead:** Values always reflect the last CLOSED bar, never partial/forming bars.
+
+### Execution Semantics
+
+```
+Signal evaluation: At exec TF bar close
+Order execution:   At next 1m candle open (backtest) or live ticker (live)
+```
+
+The 1m quote feed (separate from the 3 analysis feeds) provides execution prices (`px.last`, `px.mark`).
 
 ### Multi-Timeframe Strategy Example
 
@@ -1212,8 +1265,11 @@ name: "multi_tf_trend_strategy"
 description: "Trade with 4h trend, execute on 15m"
 
 symbol: "BTCUSDT"
-tf: "15m"            # Execution TF
-high_tf: "4h"        # Higher TF for trend context
+timeframes:
+  low_tf: "15m"     # Execution TF
+  med_tf: "1h"      # Intermediate TF (not used in this example)
+  high_tf: "4h"     # Trend TF
+  exec: "low_tf"    # Step on 15m bars
 
 features:
   # Exec TF (15m) - entry/exit signals
@@ -1566,7 +1622,11 @@ name: "ema_crossover"
 description: "Classic EMA 9/21 crossover"
 
 symbol: "BTCUSDT"
-tf: "1h"
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 
 features:
   ema_9:
@@ -1602,7 +1662,11 @@ name: "rsi_volume_strategy"
 description: "RSI oversold with volume confirmation"
 
 symbol: "ETHUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 features:
   rsi_14:
@@ -1641,8 +1705,11 @@ name: "multi_tf_fib_zones"
 description: "Trade 4h trend pullbacks to fib zones on 15m"
 
 symbol: "BTCUSDT"
-tf: "15m"
-high_tf: "4h"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
 
 features:
   # Exec TF (15m)
@@ -1701,7 +1768,11 @@ name: "breakout_volume"
 description: "Breakout above rolling high with volume spike"
 
 symbol: "BTCUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 features:
   atr_14:
@@ -1761,7 +1832,11 @@ name: "zone_momentum"
 description: "Enter zones only after recent RSI recovery"
 
 symbol: "BTCUSDT"
-tf: "1h"
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 
 features:
   rsi_14:
@@ -1824,7 +1899,11 @@ name: "ict_market_structure"
 description: "Trade BOS continuations, exit on CHoCH reversals"
 
 symbol: "BTCUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

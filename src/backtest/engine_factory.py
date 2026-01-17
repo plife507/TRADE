@@ -277,37 +277,21 @@ def create_engine_from_play(
     window_start_naive = window_start.replace(tzinfo=None) if window_start.tzinfo else window_start
     window_end_naive = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
 
-    # Build tf_mapping from feature registry TFs FIRST (needed for warmup_bars_by_role)
-    # Sort TFs by minutes to determine high_tf/med_tf/low_tf roles
-    from .runtime.timeframe import tf_minutes
-    all_tfs = sorted(registry.get_all_tfs(), key=lambda tf: tf_minutes(tf))
+    # Use Play's tf_mapping (new 3-feed + exec role system)
     exec_tf = play.execution_tf
+    tf_mapping = play.tf_mapping
 
-    if len(all_tfs) == 1:
-        # Single-TF mode
-        tf_mapping = {"high_tf": exec_tf, "med_tf": exec_tf, "low_tf": exec_tf}
-    else:
-        # Multi-TF mode: map TFs to roles
-        # low_tf = execution_tf, med_tf = next higher, high_tf = highest
-        tf_mapping = {"low_tf": exec_tf}
-        non_exec_tfs = [tf for tf in all_tfs if tf != exec_tf]
-        if non_exec_tfs:
-            # Sort remaining TFs by minutes (ascending)
-            non_exec_sorted = sorted(non_exec_tfs, key=lambda tf: tf_minutes(tf))
-            if len(non_exec_sorted) >= 2:
-                tf_mapping["med_tf"] = non_exec_sorted[0]  # Lowest non-exec
-                tf_mapping["high_tf"] = non_exec_sorted[-1]  # Highest non-exec
-            elif len(non_exec_sorted) == 1:
-                # Only one other TF - use it as both med_tf and high_tf
-                tf_mapping["med_tf"] = non_exec_sorted[0]
-                tf_mapping["high_tf"] = non_exec_sorted[0]
-        else:
-            tf_mapping["med_tf"] = exec_tf
-            tf_mapping["high_tf"] = exec_tf
+    if not tf_mapping:
+        # Fallback: build tf_mapping from execution_tf (single-TF mode)
+        tf_mapping = {
+            "low_tf": exec_tf,
+            "med_tf": exec_tf,
+            "high_tf": exec_tf,
+            "exec": "low_tf",
+        }
 
     # Build warmup_bars_by_role from warmup_by_tf using tf_mapping
     # CRITICAL: Use tf_mapping to get correct TF for each role
-    # Previously this used exec_tf warmup for ALL roles (bug!)
     warmup_bars_by_role = {
         "exec": warmup_by_tf.get(tf_mapping.get("low_tf", exec_tf), 0),
         "low_tf": warmup_by_tf.get(tf_mapping.get("low_tf", exec_tf), 0),
@@ -359,7 +343,9 @@ def create_engine_from_play(
     data_builder._play = play
 
     # Prepare data frames (loads data, computes indicators)
-    multi_tf_mode = tf_mapping["high_tf"] != tf_mapping["low_tf"] or tf_mapping["med_tf"] != tf_mapping["low_tf"]
+    # Determine multi-TF mode: any TF differs from low_tf
+    low_tf_str = tf_mapping["low_tf"]
+    multi_tf_mode = tf_mapping["high_tf"] != low_tf_str or tf_mapping["med_tf"] != low_tf_str
     if multi_tf_mode:
         data_builder.prepare_multi_tf_frames()
     else:
@@ -373,8 +359,8 @@ def create_engine_from_play(
 
     # Extract all pre-built components
     feed_store = data_builder._exec_feed
-    htf_feed = data_builder._htf_feed
-    mtf_feed = data_builder._mtf_feed
+    high_tf_feed = data_builder._high_tf_feed
+    med_tf_feed = data_builder._med_tf_feed
     quote_feed = data_builder._quote_feed
     sim_exchange = data_builder._exchange
 
@@ -385,8 +371,8 @@ def create_engine_from_play(
         play=play,
         feed_store=feed_store,
         sim_exchange=sim_exchange,
-        htf_feed=htf_feed,
-        mtf_feed=mtf_feed,
+        high_tf_feed=high_tf_feed,
+        med_tf_feed=med_tf_feed,
         quote_feed=quote_feed,
         tf_mapping=tf_mapping,
         incremental_state=incremental_state,

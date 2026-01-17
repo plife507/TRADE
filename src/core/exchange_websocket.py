@@ -38,38 +38,40 @@ def setup_websocket_cleanup(manager: "ExchangeManager"):
 def on_position_update_cleanup(manager: "ExchangeManager", position_data):
     """
     Callback triggered when position updates via WebSocket.
-    
+
     Automatically cancels conditional TP orders when position closes.
     Also handles symbol unsubscription when positions close.
     Only cancels orders with bot-generated order_link_id pattern.
     """
     try:
         symbol = position_data.symbol
-        was_open = manager._previous_positions.get(symbol, False)
         is_open = position_data.is_open if hasattr(position_data, 'is_open') else position_data.size > 0
-        
-        # Detect position closure (was open, now closed)
-        if was_open and not is_open:
+
+        # Check and update tracking with lock
+        with manager._position_tracking_lock:
+            was_open = manager._previous_positions.get(symbol, False)
+            manager._previous_positions[symbol] = is_open
+            position_just_closed = was_open and not is_open
+
+        # Detect position closure (was open, now closed) - do cleanup outside lock
+        if position_just_closed:
             manager.logger.info(
                 f"Position closed for {symbol} (detected via WebSocket) - "
                 f"cleaning up conditional orders"
             )
-            
+
             # Cancel all bot-generated conditional reduce-only orders for this symbol
             cancelled = cancel_conditional_orders_for_symbol(manager, symbol)
-            
+
             if cancelled:
                 manager.logger.info(
                     f"Auto-cancelled {len(cancelled)} conditional orders for {symbol}"
                 )
-            
+
             # Remove symbol from websocket tracking (no longer needed)
             # Note: pybit doesn't support dynamic unsubscription, but we stop tracking it
             remove_symbol_from_websocket(manager, symbol)
-        
-        # Update tracking
-        manager._previous_positions[symbol] = is_open
-    
+
     except Exception as e:
         # Don't let callback errors break WebSocket processing
         manager.logger.warning(f"Error in position cleanup callback for {position_data.symbol}: {e}")

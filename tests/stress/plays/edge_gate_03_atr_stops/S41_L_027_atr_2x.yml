@@ -2,7 +2,11 @@ version: 3.0.0
 name: S41_L_027_atr_2x
 description: "Complexity 27%: 2x ATR stop loss - standard volatility stop."
 symbol: BTCUSDT
-tf: 15m
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

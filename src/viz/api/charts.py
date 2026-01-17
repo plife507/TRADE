@@ -200,7 +200,7 @@ class TFOHLCVData(BaseModel):
     """OHLCV data for a single timeframe."""
 
     tf: str
-    role: str  # "exec", "mtf", or "htf"
+    role: str  # "exec", "med_tf", or "high_tf"
     data: list[OHLCVBar]
     total_bars: int
 
@@ -209,8 +209,8 @@ class TFConfig(BaseModel):
     """Timeframe configuration from Play."""
 
     exec: str  # Always present
-    mtf: str | None = None
-    htf: str | None = None
+    med_tf: str | None = None
+    high_tf: str | None = None
 
 
 class MTFOHLCVResponse(BaseModel):
@@ -250,30 +250,30 @@ async def get_ohlcv_mtf(
     window_start = metadata.get("window_start")
     window_end = metadata.get("window_end")
 
-    # Try to load Play to get MTF/HTF config
-    mtf_tf: str | None = None
-    htf_tf: str | None = None
+    # Try to load Play to get med_tf/high_tf config
+    med_tf_val: str | None = None
+    high_tf_val: str | None = None
 
     try:
         play, _ = load_play_for_run(run_path, verify_hash=False)
 
-        # Extract MTF/HTF from Play.timeframes if available
+        # Extract med_tf/high_tf from Play.timeframes if available
         if hasattr(play, "timeframes") and play.timeframes:
-            mtf_tf = play.timeframes.get("mtf")
-            htf_tf = play.timeframes.get("htf")
-    except Exception:
+            med_tf_val = play.timeframes.get("med_tf")
+            high_tf_val = play.timeframes.get("high_tf")
+    except Exception as e:
         # Play not found or error - continue with exec TF only
-        pass
+        logger.debug(f"Could not load play for med_tf/high_tf: {e}")
 
     # Build TF config
-    tf_config = TFConfig(exec=exec_tf, mtf=mtf_tf, htf=htf_tf)
+    tf_config = TFConfig(exec=exec_tf, med_tf=med_tf_val, high_tf=high_tf_val)
 
     # Collect all unique TFs to load
     tfs_to_load = {exec_tf}
-    if mtf_tf:
-        tfs_to_load.add(mtf_tf)
-    if htf_tf:
-        tfs_to_load.add(htf_tf)
+    if med_tf_val:
+        tfs_to_load.add(med_tf_val)
+    if high_tf_val:
+        tfs_to_load.add(high_tf_val)
 
     # Load OHLCV for all timeframes
     tf_data = load_ohlcv_for_timeframes(
@@ -301,24 +301,24 @@ async def get_ohlcv_mtf(
             total_bars=len(df),
         )
 
-    # MTF
-    if mtf_tf and mtf_tf in tf_data:
-        df = tf_data[mtf_tf]
+    # med_tf
+    if med_tf_val and med_tf_val in tf_data:
+        df = tf_data[med_tf_val]
         chart_data = ohlcv_df_to_chart_data(df)[:limit]
-        timeframes_response["mtf"] = TFOHLCVData(
-            tf=mtf_tf,
-            role="mtf",
+        timeframes_response["med_tf"] = TFOHLCVData(
+            tf=med_tf_val,
+            role="med_tf",
             data=[OHLCVBar(**bar) for bar in chart_data],
             total_bars=len(df),
         )
 
-    # HTF
-    if htf_tf and htf_tf in tf_data:
-        df = tf_data[htf_tf]
+    # high_tf
+    if high_tf_val and high_tf_val in tf_data:
+        df = tf_data[high_tf_val]
         chart_data = ohlcv_df_to_chart_data(df)[:limit]
-        timeframes_response["htf"] = TFOHLCVData(
-            tf=htf_tf,
-            role="htf",
+        timeframes_response["high_tf"] = TFOHLCVData(
+            tf=high_tf_val,
+            role="high_tf",
             data=[OHLCVBar(**bar) for bar in chart_data],
             total_bars=len(df),
         )

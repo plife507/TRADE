@@ -3,8 +3,11 @@ name: "S_L_056_supertrend_entry_rsi_exit"
 description: "Stress Gate 6: SuperTrend bullish entry, RSI extreme exit (long). Different indicators for entry vs exit."
 
 symbol: "SOLUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

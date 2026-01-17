@@ -2,7 +2,11 @@ version: 3.0.0
 name: S41_L_065_mtf_multi_ind
 description: "Complexity 65%: HTF EMA+RSI + LTF MACD entry."
 symbol: BTCUSDT
-tf: 15m
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "1h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

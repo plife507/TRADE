@@ -785,8 +785,10 @@ class RealtimeState:
     # ==========================================================================
     
     def _invoke_callbacks(self, callbacks: list[Callable], data):
-        """Invoke all registered callbacks."""
-        for callback in callbacks:
+        """Invoke all registered callbacks (copy-under-lock for thread safety)."""
+        with self._callback_lock:
+            callbacks_copy = list(callbacks)
+        for callback in callbacks_copy:
             try:
                 callback(data)
             except Exception as e:

@@ -50,7 +50,7 @@ from .signal import SubLoopEvaluator, SubLoopResult
 from .sizing import SizingModel, SizingConfig
 
 from ..utils.logger import get_logger
-from .timeframe import HTFIndexManager
+from .timeframe import TFIndexManager
 
 if TYPE_CHECKING:
     from ..backtest.play import Play
@@ -163,14 +163,16 @@ class PlayEngine:
         # This is shared with data_provider in backtest mode
         self._incremental_state: MultiTFIncrementalState | None = None
 
-        # HTF/MTF feeds for multi-timeframe indicators (set by parity test or runner)
-        self._htf_feed = None  # FeedStore for HTF indicators
-        self._mtf_feed = None  # FeedStore for MTF indicators
+        # 3-feed system for multi-timeframe indicators (set by parity test or runner)
+        self._low_tf_feed = None   # FeedStore for low_tf (always present)
+        self._med_tf_feed = None   # FeedStore for med_tf (None if same as low_tf)
+        self._high_tf_feed = None  # FeedStore for high_tf (None if same as med_tf)
+        self._exec_role: str = "low_tf"  # Which feed exec points to
         self._tf_mapping: dict[str, str] = {}  # TF mapping from Play config
 
-        # HTF/MTF index manager (shared module: src/engine/timeframe/)
-        # Single source of truth for HTF/MTF indices - NO duplicate state
-        self._htf_index_manager: HTFIndexManager | None = None
+        # TF index manager (shared module: src/engine/timeframe/)
+        # Manages indices for all 3 TFs relative to exec role
+        self._tf_index_manager: TFIndexManager | None = None
 
         # 1m quote feed for action model (set by parity test or runner)
         # This enables granular 1m evaluation within exec_tf bars
@@ -245,18 +247,18 @@ class PlayEngine:
         return self.config.mode == "backtest"
 
     @property
-    def _current_htf_idx(self) -> int:
-        """Current HTF forward-fill index (from HTFIndexManager)."""
-        if self._htf_index_manager is None:
+    def _current_high_tf_idx(self) -> int:
+        """Current high_tf forward-fill index (from TFIndexManager)."""
+        if self._tf_index_manager is None:
             return 0
-        return self._htf_index_manager.htf_idx
+        return self._tf_index_manager.high_tf_idx
 
     @property
-    def _current_mtf_idx(self) -> int:
-        """Current MTF forward-fill index (from HTFIndexManager)."""
-        if self._htf_index_manager is None:
+    def _current_med_tf_idx(self) -> int:
+        """Current med_tf forward-fill index (from TFIndexManager)."""
+        if self._tf_index_manager is None:
             return 0
-        return self._htf_index_manager.mtf_idx
+        return self._tf_index_manager.med_tf_idx
 
     def set_play_hash(self, play_hash: str) -> None:
         """Set play hash for debug log correlation (compatibility with BacktestEngine)."""
@@ -270,7 +272,7 @@ class PlayEngine:
         Set callback invoked after snapshot build, before rule evaluation.
 
         This is used by audits to capture snapshot values during backtest runs.
-        The callback receives (snapshot, exec_idx, htf_idx, mtf_idx).
+        The callback receives (snapshot, exec_idx, high_tf_idx, med_tf_idx).
 
         Args:
             callback: Function to call with snapshot data, or None to disable
@@ -308,8 +310,8 @@ class PlayEngine:
             self.logger.warning(f"Bar index {bar_index} out of bounds")
             return None
 
-        # Update HTF/MTF indices (forward-fill logic)
-        self._update_htf_mtf_indices(candle)
+        # Update high_tf/med_tf indices (forward-fill logic)
+        self._update_high_tf_med_tf_indices(candle)
 
         # 1. Update incremental state (structures)
         if self._incremental_state is not None:
@@ -511,17 +513,17 @@ class PlayEngine:
         self.logger.debug(f"Warmup complete at bar {self._current_bar_index}")
         return True
 
-    def _update_htf_mtf_indices(self, candle: Candle) -> None:
+    def _update_high_tf_med_tf_indices(self, candle: Candle) -> None:
         """
-        Update HTF/MTF forward-fill indices based on current candle.
+        Update high_tf/med_tf forward-fill indices based on current candle.
 
         Delegates to shared HTFIndexManager (src/engine/timeframe/).
         This ensures identical forward-fill behavior with BacktestEngine.
 
-        Also updates HTF incremental state when HTF bar closes (for structures).
+        Also updates high_tf incremental state when high_tf bar closes (for structures).
         """
-        # Skip if no HTF/MTF feeds
-        if self._htf_feed is None and self._mtf_feed is None:
+        # Skip if no high_tf/med_tf feeds
+        if self._high_tf_feed is None and self._med_tf_feed is None:
             return
 
         # Get exec feed for comparison
@@ -529,27 +531,29 @@ class PlayEngine:
         if not isinstance(self._data_provider, BacktestDataProvider):
             return
 
-        exec_feed = self._data_provider._feed_store
-        if exec_feed is None:
+        low_tf_feed = self._data_provider._feed_store
+        if low_tf_feed is None:
             return
 
-        # Lazy-initialize HTFIndexManager on first use
-        if self._htf_index_manager is None:
-            self._htf_index_manager = HTFIndexManager(
-                htf_feed=self._htf_feed,
-                mtf_feed=self._mtf_feed,
-                exec_feed=exec_feed,
+        # Lazy-initialize TFIndexManager on first use
+        if self._tf_index_manager is None:
+            from .timeframe import TFIndexManager
+            self._tf_index_manager = TFIndexManager(
+                low_tf_feed=low_tf_feed,
+                med_tf_feed=self._med_tf_feed,
+                high_tf_feed=self._high_tf_feed,
+                exec_role=self._tf_mapping.get("exec", "low_tf"),
             )
 
         # Update indices via shared manager (single source of truth)
-        update = self._htf_index_manager.update_indices(candle.ts_close)
+        update = self._tf_index_manager.update_indices(candle.ts_close)
 
-        # Update HTF incremental state when HTF bar closes (for structures)
-        if update.htf_changed:
-            self._update_htf_incremental_state()
+        # Update high_tf incremental state when high_tf bar closes (for structures)
+        if update.high_tf_changed:
+            self._update_high_tf_incremental_state()
 
-    def _update_htf_incremental_state(self) -> None:
-        """Update HTF incremental state when HTF bar closes."""
+    def _update_high_tf_incremental_state(self) -> None:
+        """Update high_tf incremental state when high_tf bar closes."""
         import numpy as np
         from ..backtest.incremental.base import BarData
 
@@ -557,33 +561,33 @@ class PlayEngine:
             return
 
         high_tf = self._tf_mapping.get("high_tf")
-        if not high_tf or high_tf not in self._incremental_state.htf:
+        if not high_tf or high_tf not in self._incremental_state.high_tf:
             return
 
-        htf_feed = self._htf_feed
-        if htf_feed is None:
+        high_tf_feed = self._high_tf_feed
+        if high_tf_feed is None:
             return
 
-        htf_idx = self._current_htf_idx
+        high_tf_idx = self._current_high_tf_idx
 
-        # Build HTF BarData
-        htf_indicator_values: dict[str, float] = {}
-        for key in htf_feed.indicators.keys():
-            val = htf_feed.indicators[key][htf_idx]
+        # Build high_tf BarData
+        high_tf_indicator_values: dict[str, float] = {}
+        for key in high_tf_feed.indicators.keys():
+            val = high_tf_feed.indicators[key][high_tf_idx]
             if not np.isnan(val):
-                htf_indicator_values[key] = float(val)
+                high_tf_indicator_values[key] = float(val)
 
-        htf_bar_data = BarData(
-            idx=htf_idx,
-            open=float(htf_feed.open[htf_idx]),
-            high=float(htf_feed.high[htf_idx]),
-            low=float(htf_feed.low[htf_idx]),
-            close=float(htf_feed.close[htf_idx]),
-            volume=float(htf_feed.volume[htf_idx]),
-            indicators=htf_indicator_values,
+        high_tf_bar_data = BarData(
+            idx=high_tf_idx,
+            open=float(high_tf_feed.open[high_tf_idx]),
+            high=float(high_tf_feed.high[high_tf_idx]),
+            low=float(high_tf_feed.low[high_tf_idx]),
+            close=float(high_tf_feed.close[high_tf_idx]),
+            volume=float(high_tf_feed.volume[high_tf_idx]),
+            indicators=high_tf_indicator_values,
         )
 
-        self._incremental_state.update_htf(htf_tf, htf_bar_data)
+        self._incremental_state.update_high_tf(high_tf, high_tf_bar_data)
 
     def _update_incremental_state(self, bar_index: int, candle: Candle) -> None:
         """Update incremental structure state with new bar data."""
@@ -666,24 +670,25 @@ class PlayEngine:
 
             feed_store = self._data_provider._feed_store
 
-            # Create MultiTFFeedStore with HTF/MTF feeds if available
+            # Create MultiTFFeedStore with 3-feed structure
             feeds = MultiTFFeedStore(
-                exec_feed=feed_store,
-                htf_feed=self._htf_feed,
-                mtf_feed=self._mtf_feed,
+                low_tf_feed=feed_store,
+                high_tf_feed=self._high_tf_feed,
+                med_tf_feed=self._med_tf_feed,
                 tf_mapping=self._tf_mapping,
+                exec_role=self._tf_mapping.get("exec", "low_tf"),
             )
 
-            # Use dynamically tracked HTF/MTF indices (updated by _update_htf_mtf_indices)
-            # These are forward-fill indices - they hold the last HTF/MTF bar that closed
-            # IMPORTANT: In single-TF mode where htf_feed IS exec_feed, pass None
+            # Use dynamically tracked high_tf/med_tf indices (updated by _update_high_tf_med_tf_indices)
+            # These are forward-fill indices - they hold the last high_tf/med_tf bar that closed
+            # IMPORTANT: In single-TF mode where high_tf_feed IS exec_feed, pass None
             # so RuntimeSnapshotView uses exec_ctx instead of creating a separate context
-            htf_idx = None
-            mtf_idx = None
-            if self._htf_feed is not None and self._htf_feed is not feed_store:
-                htf_idx = self._current_htf_idx
-            if self._mtf_feed is not None and self._mtf_feed is not feed_store:
-                mtf_idx = self._current_mtf_idx
+            high_tf_idx = None
+            med_tf_idx = None
+            if self._high_tf_feed is not None and self._high_tf_feed is not feed_store:
+                high_tf_idx = self._current_high_tf_idx
+            if self._med_tf_feed is not None and self._med_tf_feed is not feed_store:
+                med_tf_idx = self._current_med_tf_idx
 
             # Get prev_last_price for crossover operators
             prev_last_price = None
@@ -699,8 +704,8 @@ class PlayEngine:
             snapshot = RuntimeSnapshotView(
                 feeds=feeds,
                 exec_idx=bar_index,
-                htf_idx=htf_idx,
-                mtf_idx=mtf_idx,
+                high_tf_idx=high_tf_idx,
+                med_tf_idx=med_tf_idx,
                 exchange=self._exchange._sim_exchange if hasattr(self._exchange, '_sim_exchange') else None,
                 mark_price=candle.close,
                 mark_price_source="approx_from_ohlcv",
@@ -923,7 +928,7 @@ class PlayEngine:
 
         # Call audit callback if registered
         if self._on_snapshot is not None:
-            self._on_snapshot(snapshot, bar_index, self._current_htf_idx, self._current_mtf_idx)
+            self._on_snapshot(snapshot, bar_index, self._current_high_tf_idx, self._current_med_tf_idx)
 
         # Determine position state
         has_position = position is not None
@@ -1031,28 +1036,29 @@ class PlayEngine:
 
             feed_store = self._data_provider._feed_store
 
-            # Create MultiTFFeedStore with HTF/MTF feeds if available
+            # Create MultiTFFeedStore with 3-feed structure
             feeds = MultiTFFeedStore(
-                exec_feed=feed_store,
-                htf_feed=self._htf_feed,
-                mtf_feed=self._mtf_feed,
+                low_tf_feed=feed_store,
+                high_tf_feed=self._high_tf_feed,
+                med_tf_feed=self._med_tf_feed,
                 tf_mapping=self._tf_mapping,
+                exec_role=self._tf_mapping.get("exec", "low_tf"),
             )
 
-            # Use dynamically tracked HTF/MTF indices
-            htf_idx = None
-            mtf_idx = None
-            if self._htf_feed is not None and self._htf_feed is not feed_store:
-                htf_idx = self._current_htf_idx
-            if self._mtf_feed is not None and self._mtf_feed is not feed_store:
-                mtf_idx = self._current_mtf_idx
+            # Use dynamically tracked high_tf/med_tf indices
+            high_tf_idx = None
+            med_tf_idx = None
+            if self._high_tf_feed is not None and self._high_tf_feed is not feed_store:
+                high_tf_idx = self._current_high_tf_idx
+            if self._med_tf_feed is not None and self._med_tf_feed is not feed_store:
+                med_tf_idx = self._current_med_tf_idx
 
             # Create snapshot view with 1m prices and quote_feed for window operators
             snapshot = RuntimeSnapshotView(
                 feeds=feeds,
                 exec_idx=bar_index,
-                htf_idx=htf_idx,
-                mtf_idx=mtf_idx,
+                high_tf_idx=high_tf_idx,
+                med_tf_idx=med_tf_idx,
                 exchange=self._exchange._sim_exchange if hasattr(self._exchange, '_sim_exchange') else None,
                 mark_price=last_price,  # Use 1m close as mark_price
                 mark_price_source="1m_quote",
@@ -1116,7 +1122,7 @@ class _PlayEngineSubLoopContext:
         if self._engine._on_snapshot is not None:
             self._engine._on_snapshot(
                 snapshot, exec_idx,
-                self._engine._current_htf_idx, self._engine._current_mtf_idx
+                self._engine._current_high_tf_idx, self._engine._current_med_tf_idx
             )
         return snapshot
 
@@ -1149,6 +1155,6 @@ class _PlayEngineSubLoopContext:
         if self._engine._on_snapshot is not None:
             self._engine._on_snapshot(
                 snapshot, exec_idx,
-                self._engine._current_htf_idx, self._engine._current_mtf_idx
+                self._engine._current_high_tf_idx, self._engine._current_med_tf_idx
             )
         return snapshot

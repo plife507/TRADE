@@ -3,7 +3,11 @@ name: "S_L_162_last_price_htf_comparison"
 description: "Stress Gate 21: last_price vs HTF forward-filled indicator (long). Tests 1m price vs 4h EMA comparison."
 
 symbol: "BTCUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 high_tf: "4h"
 
 account:

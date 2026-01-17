@@ -3,8 +3,11 @@ name: "S_S_135_squeeze_release_bearish"
 description: "Stress Gate 17: Squeeze release bearish - squeeze was on, now off with negative momentum (short). TTM Squeeze release with momentum direction."
 
 symbol: "BTCUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

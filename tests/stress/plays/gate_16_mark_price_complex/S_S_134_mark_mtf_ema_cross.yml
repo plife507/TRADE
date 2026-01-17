@@ -3,7 +3,11 @@ name: "S_S_134_mark_mtf_ema_cross"
 description: "Stress Gate 16: Close < EMA50 AND LTF last_price cross_below EMA9 (short). Trend with precise mark price entry."
 
 symbol: "DOTUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 # Note: HTF removed due to 1m index alignment issue (BUG-014)
 
 account:

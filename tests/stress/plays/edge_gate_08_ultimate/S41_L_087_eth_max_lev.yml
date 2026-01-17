@@ -2,7 +2,11 @@ version: 3.0.0
 name: S41_L_087_eth_max_lev
 description: "Complexity 87%: ETH 50x leverage with tight ATR stops."
 symbol: ETHUSDT
-tf: 15m
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

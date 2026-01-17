@@ -3,7 +3,11 @@ name: "S_S_109_ema_alignment"
 description: "Stress Gate 13: Three-TF EMA alignment. HTF(4h) ema_50 < ema_200, MTF(1h) ema_21 < ema_50, LTF(15m) ema_9 cross_below ema_21 (short)."
 
 symbol: "LINKUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 med_tf: "1h"
 high_tf: "4h"
 

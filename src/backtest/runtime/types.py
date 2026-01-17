@@ -35,31 +35,31 @@ class HistoryConfig:
     Attributes:
         bars_exec_count: Number of previous exec-TF bars to keep
         features_exec_count: Number of previous exec-TF feature snapshots
-        features_htf_count: Number of previous *closed* HTF feature snapshots
-        features_mtf_count: Number of previous *closed* MTF feature snapshots
-    
+        features_high_tf_count: Number of previous *closed* high_tf feature snapshots
+        features_med_tf_count: Number of previous *closed* med_tf feature snapshots
+
     Example YAML config:
         history:
           bars_exec_count: 20
           features_exec_count: 2
-          features_htf_count: 2
-          features_mtf_count: 2
+          features_high_tf_count: 2
+          features_med_tf_count: 2
     """
-    bars_exec_count: int = 0      # Previous exec-TF bars (for structure SL)
-    features_exec_count: int = 0  # Previous exec-TF feature snapshots (for crossovers)
-    features_htf_count: int = 0   # Previous *closed* HTF feature snapshots
-    features_mtf_count: int = 0   # Previous *closed* MTF feature snapshots
-    
+    bars_exec_count: int = 0         # Previous exec-TF bars (for structure SL)
+    features_exec_count: int = 0     # Previous exec-TF feature snapshots (for crossovers)
+    features_high_tf_count: int = 0  # Previous *closed* high_tf feature snapshots
+    features_med_tf_count: int = 0   # Previous *closed* med_tf feature snapshots
+
     def __post_init__(self):
         """Validate all counts are non-negative."""
         if self.bars_exec_count < 0:
             raise ValueError(f"bars_exec_count must be >= 0, got {self.bars_exec_count}")
         if self.features_exec_count < 0:
             raise ValueError(f"features_exec_count must be >= 0, got {self.features_exec_count}")
-        if self.features_htf_count < 0:
-            raise ValueError(f"features_htf_count must be >= 0, got {self.features_htf_count}")
-        if self.features_mtf_count < 0:
-            raise ValueError(f"features_mtf_count must be >= 0, got {self.features_mtf_count}")
+        if self.features_high_tf_count < 0:
+            raise ValueError(f"features_high_tf_count must be >= 0, got {self.features_high_tf_count}")
+        if self.features_med_tf_count < 0:
+            raise ValueError(f"features_med_tf_count must be >= 0, got {self.features_med_tf_count}")
     
     @property
     def requires_history(self) -> bool:
@@ -67,17 +67,17 @@ class HistoryConfig:
         return (
             self.bars_exec_count > 0 or
             self.features_exec_count > 0 or
-            self.features_htf_count > 0 or
-            self.features_mtf_count > 0
+            self.features_high_tf_count > 0 or
+            self.features_med_tf_count > 0
         )
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
             "bars_exec_count": self.bars_exec_count,
             "features_exec_count": self.features_exec_count,
-            "features_htf_count": self.features_htf_count,
-            "features_mtf_count": self.features_mtf_count,
+            "features_high_tf_count": self.features_high_tf_count,
+            "features_med_tf_count": self.features_med_tf_count,
         }
 
 
@@ -276,9 +276,8 @@ class RuntimeSnapshot:
     
     Naming convention:
     - bar_exec / features_exec: Current execution timeframe data
-    - bar_ltf / features_ltf: Aliases for backward compatibility (ltf = exec TF by default)
     - history_*: Previous bars/features for crossover/structure analysis
-    
+
     Attributes:
         ts_close: Engine step time (exec candle close)
         symbol: Trading symbol
@@ -287,16 +286,16 @@ class RuntimeSnapshot:
         mark_price_source: How mark was computed (close|hlc3|ohlc4)
         bar_exec: Current exec-TF bar
         exchange_state: Immutable exchange state snapshot
-        features_htf: HTF feature snapshot (carry-forward between closes)
-        features_mtf: MTF feature snapshot (carry-forward between closes)
+        features_high_tf: high_tf feature snapshot (carry-forward between closes)
+        features_med_tf: med_tf feature snapshot (carry-forward between closes)
         features_exec: Exec-TF feature snapshot (updated each exec close)
-        tf_mapping: Dict mapping role -> tf (htf, mtf, ltf/exec keys)
-        
+        tf_mapping: Dict mapping role -> tf (high_tf, med_tf, low_tf keys + exec -> role)
+
         # History fields (bounded by HistoryConfig)
         history_bars_exec: Previous exec-TF bars (oldest first)
         history_features_exec: Previous exec-TF feature snapshots (oldest first)
-        history_features_htf: Previous *closed* HTF feature snapshots (oldest first)
-        history_features_mtf: Previous *closed* MTF feature snapshots (oldest first)
+        history_features_high_tf: Previous *closed* high_tf feature snapshots (oldest first)
+        history_features_med_tf: Previous *closed* med_tf feature snapshots (oldest first)
         history_config: The HistoryConfig that bounds these windows
         history_ready: Whether required history windows are filled
     """
@@ -307,69 +306,69 @@ class RuntimeSnapshot:
     mark_price_source: str
     bar_exec: Bar
     exchange_state: ExchangeState
-    features_htf: FeatureSnapshot
-    features_mtf: FeatureSnapshot
+    features_high_tf: FeatureSnapshot
+    features_med_tf: FeatureSnapshot
     features_exec: FeatureSnapshot
     tf_mapping: dict[str, str] = field(default_factory=dict)
 
     # History fields (tuples are immutable, preventing accidental mutation)
     history_bars_exec: tuple[Bar, ...] = field(default_factory=tuple)
     history_features_exec: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
-    history_features_htf: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
-    history_features_mtf: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
+    history_features_high_tf: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
+    history_features_med_tf: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
     history_config: HistoryConfig | None = None
     history_ready: bool = True  # True if no history required or history is filled
-    
+
     @property
     def ready(self) -> bool:
         """Check if all required TF features are ready AND history is ready."""
         return (
-            self.features_htf.ready and
-            self.features_mtf.ready and
+            self.features_high_tf.ready and
+            self.features_med_tf.ready and
             self.features_exec.ready and
             self.history_ready
         )
-    
+
     @property
     def not_ready_reasons(self) -> list:
         """Get list of reasons why snapshot is not ready."""
         reasons = []
-        if not self.features_htf.ready:
-            reasons.append(f"HTF: {self.features_htf.not_ready_reason}")
-        if not self.features_mtf.ready:
-            reasons.append(f"MTF: {self.features_mtf.not_ready_reason}")
+        if not self.features_high_tf.ready:
+            reasons.append(f"high_tf: {self.features_high_tf.not_ready_reason}")
+        if not self.features_med_tf.ready:
+            reasons.append(f"med_tf: {self.features_med_tf.not_ready_reason}")
         if not self.features_exec.ready:
-            reasons.append(f"Exec: {self.features_exec.not_ready_reason}")
+            reasons.append(f"exec_tf: {self.features_exec.not_ready_reason}")
         if not self.history_ready:
             reasons.append("History: required windows not yet filled")
         return reasons
-    
-    # Staleness properties (for MTF forward-fill validation)
+
+    # Staleness properties (for med_tf forward-fill validation)
     @property
-    def htf_is_stale(self) -> bool:
-        """Check if HTF features are stale (forward-filled from previous close)."""
-        return self.features_htf.is_stale_at(self.ts_close)
-    
+    def high_tf_is_stale(self) -> bool:
+        """Check if high_tf features are stale (forward-filled from previous close)."""
+        return self.features_high_tf.is_stale_at(self.ts_close)
+
     @property
-    def mtf_is_stale(self) -> bool:
-        """Check if MTF features are stale (forward-filled from previous close)."""
-        return self.features_mtf.is_stale_at(self.ts_close)
-    
+    def med_tf_is_stale(self) -> bool:
+        """Check if med_tf features are stale (forward-filled from previous close)."""
+        return self.features_med_tf.is_stale_at(self.ts_close)
+
     @property
     def exec_is_stale(self) -> bool:
         """Check if exec features are stale (should always be False)."""
         return self.features_exec.is_stale_at(self.ts_close)
-    
+
     @property
-    def htf_ctx_ts_close(self) -> datetime:
-        """Get HTF context timestamp (when HTF features were computed)."""
-        return self.features_htf.ts_close
-    
+    def high_tf_ctx_ts_close(self) -> datetime:
+        """Get high_tf context timestamp (when high_tf features were computed)."""
+        return self.features_high_tf.ts_close
+
     @property
-    def mtf_ctx_ts_close(self) -> datetime:
-        """Get MTF context timestamp (when MTF features were computed)."""
-        return self.features_mtf.ts_close
-    
+    def med_tf_ctx_ts_close(self) -> datetime:
+        """Get med_tf context timestamp (when med_tf features were computed)."""
+        return self.features_med_tf.ts_close
+
     @property
     def exec_ctx_ts_close(self) -> datetime:
         """Get exec context timestamp (should equal ts_close)."""
@@ -410,24 +409,24 @@ class RuntimeSnapshot:
             return None
         return self.history_bars_exec[idx]
     
-    def prev_features_htf(self, lookback: int = 1) -> FeatureSnapshot | None:
-        """Get previous HTF feature snapshot."""
+    def prev_features_high_tf(self, lookback: int = 1) -> FeatureSnapshot | None:
+        """Get previous high_tf feature snapshot."""
         if lookback < 1:
             raise ValueError("lookback must be >= 1")
-        idx = len(self.history_features_htf) - lookback
+        idx = len(self.history_features_high_tf) - lookback
         if idx < 0:
             return None
-        return self.history_features_htf[idx]
+        return self.history_features_high_tf[idx]
 
-    def prev_features_mtf(self, lookback: int = 1) -> FeatureSnapshot | None:
-        """Get previous MTF feature snapshot."""
+    def prev_features_med_tf(self, lookback: int = 1) -> FeatureSnapshot | None:
+        """Get previous med_tf feature snapshot."""
         if lookback < 1:
             raise ValueError("lookback must be >= 1")
-        idx = len(self.history_features_mtf) - lookback
+        idx = len(self.history_features_med_tf) - lookback
         if idx < 0:
             return None
-        return self.history_features_mtf[idx]
-    
+        return self.history_features_med_tf[idx]
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         result = {
@@ -438,25 +437,25 @@ class RuntimeSnapshot:
             "mark_price_source": self.mark_price_source,
             "bar_exec": self.bar_exec.to_dict(),
             "exchange_state": self.exchange_state.to_dict(),
-            "features_htf": self.features_htf.to_dict(),
-            "features_mtf": self.features_mtf.to_dict(),
+            "features_high_tf": self.features_high_tf.to_dict(),
+            "features_med_tf": self.features_med_tf.to_dict(),
             "features_exec": self.features_exec.to_dict(),
             "tf_mapping": self.tf_mapping,
             "ready": self.ready,
             "history_ready": self.history_ready,
-            # Per-TF staleness info (Phase 2)
-            "htf_ctx_ts_close": self.htf_ctx_ts_close.isoformat(),
-            "mtf_ctx_ts_close": self.mtf_ctx_ts_close.isoformat(),
+            # Per-TF staleness info
+            "high_tf_ctx_ts_close": self.high_tf_ctx_ts_close.isoformat(),
+            "med_tf_ctx_ts_close": self.med_tf_ctx_ts_close.isoformat(),
             "exec_ctx_ts_close": self.exec_ctx_ts_close.isoformat(),
-            "htf_is_stale": self.htf_is_stale,
-            "mtf_is_stale": self.mtf_is_stale,
+            "high_tf_is_stale": self.high_tf_is_stale,
+            "med_tf_is_stale": self.med_tf_is_stale,
             "exec_is_stale": self.exec_is_stale,
         }
         # Include history counts (not full data) for debugging
         result["history_bars_exec_count"] = len(self.history_bars_exec)
         result["history_features_exec_count"] = len(self.history_features_exec)
-        result["history_features_htf_count"] = len(self.history_features_htf)
-        result["history_features_mtf_count"] = len(self.history_features_mtf)
+        result["history_features_high_tf_count"] = len(self.history_features_high_tf)
+        result["history_features_med_tf_count"] = len(self.history_features_med_tf)
         if self.history_config:
             result["history_config"] = self.history_config.to_dict()
         return result

@@ -3,8 +3,11 @@ name: "S_S_130_mark_cross_macd_window"
 description: "Stress Gate 16: last_price cross_below EMA9 occurred_within 3 bars AND MACD histogram < 0 (short). Recent mark price cross with negative momentum."
 
 symbol: "LINKUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

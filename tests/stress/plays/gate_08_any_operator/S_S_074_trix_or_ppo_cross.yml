@@ -3,8 +3,11 @@ name: "S_S_074_trix_or_ppo_cross"
 description: "Stress Gate 8: ANY operator - TRIX OR PPO signal cross (short). Either triple-smoothed momentum crossover triggers entry."
 
 symbol: "ADAUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

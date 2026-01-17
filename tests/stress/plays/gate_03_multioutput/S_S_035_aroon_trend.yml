@@ -3,8 +3,11 @@ name: "S_S_035_aroon_trend"
 description: "Stress Gate 3: Aroon down > up AND down > 70 (short). Strong downtrend identification."
 
 symbol: "ETHUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

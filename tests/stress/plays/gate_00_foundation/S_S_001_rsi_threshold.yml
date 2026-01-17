@@ -3,8 +3,11 @@ name: "S_S_001_rsi_threshold"
 description: "Stress Gate 0: RSI overbought threshold entry (short). Classic momentum mean reversion."
 
 symbol: "BTCUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

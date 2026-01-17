@@ -689,37 +689,37 @@ def run_backtest_with_gates(
 
                 # Collect DataFrames and specs from the engine
                 exec_df = None
-                htf_df = None
-                mtf_df = None
+                high_tf_df = None
+                med_tf_df = None
                 exec_specs = None
-                htf_specs = None
-                mtf_specs = None
+                high_tf_specs = None
+                med_tf_specs = None
 
                 # Get DataFrames from engine
                 # The engine is actually an PlayEngineWrapper, so access the real engine
                 real_engine = getattr(engine, 'engine', engine)
 
                 # For single-TF mode, use _prepared_frame.full_df (includes computed indicators)
-                # For multi-TF mode, use _ltf_df, _htf_df, etc. (these include indicators)
+                # For multi-TF mode, use _low_tf_df, _high_tf_df, etc. (these include indicators)
                 if hasattr(real_engine, '_prepared_frame') and real_engine._prepared_frame is not None:
                     # Use full_df which includes warmup data and computed indicators
                     exec_df = real_engine._prepared_frame.full_df
-                elif hasattr(real_engine, '_ltf_df') and real_engine._ltf_df is not None:
-                    exec_df = real_engine._ltf_df
+                elif hasattr(real_engine, '_low_tf_df') and real_engine._low_tf_df is not None:
+                    exec_df = real_engine._low_tf_df
 
-                if hasattr(real_engine, '_htf_df') and real_engine._htf_df is not None:
-                    htf_df = real_engine._htf_df
+                if hasattr(real_engine, '_high_tf_df') and real_engine._high_tf_df is not None:
+                    high_tf_df = real_engine._high_tf_df
 
-                if hasattr(real_engine, '_mtf_df') and real_engine._mtf_df is not None:
-                    mtf_df = real_engine._mtf_df
+                if hasattr(real_engine, '_med_tf_df') and real_engine._med_tf_df is not None:
+                    med_tf_df = real_engine._med_tf_df
 
                 # Get feature specs from the engine's config
                 # The real engine has the SystemConfig with feature_specs_by_role
                 if hasattr(real_engine, 'config') and hasattr(real_engine.config, 'feature_specs_by_role'):
                     engine_config = real_engine.config
-                    exec_specs = engine_config.feature_specs_by_role.get('exec', [])
-                    htf_specs = engine_config.feature_specs_by_role.get('htf', [])
-                    mtf_specs = engine_config.feature_specs_by_role.get('mtf', [])
+                    exec_specs = engine_config.feature_specs_by_role.get('low_tf', [])
+                    high_tf_specs = engine_config.feature_specs_by_role.get('high_tf', [])
+                    med_tf_specs = engine_config.feature_specs_by_role.get('med_tf', [])
 
 
                 # Emit snapshots
@@ -730,14 +730,14 @@ def run_backtest_with_gates(
                     window_start=config.window_start,
                     window_end=config.window_end,
                     exec_tf=exec_tf,
-                    htf=play.htf,
-                    mtf=play.mtf,
+                    high_tf=play.high_tf,
+                    med_tf=play.med_tf,
                     exec_df=exec_df,
-                    htf_df=htf_df,
-                    mtf_df=mtf_df,
+                    high_tf_df=high_tf_df,
+                    med_tf_df=med_tf_df,
                     exec_feature_specs=exec_specs,
-                    htf_feature_specs=htf_specs,
-                    mtf_feature_specs=mtf_specs,
+                    high_tf_feature_specs=high_tf_specs,
+                    med_tf_feature_specs=med_tf_specs,
                 )
 
                 print(f"\n[SNAPSHOTS] Emitted to {snapshots_dir}")

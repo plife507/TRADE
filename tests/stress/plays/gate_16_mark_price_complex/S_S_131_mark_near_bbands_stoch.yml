@@ -3,8 +3,11 @@ name: "S_S_131_mark_near_bbands_stoch"
 description: "Stress Gate 16: last_price near_pct BBands upper 0.5% AND Stoch K > 75 (short). Mark price near upper band with overbought stochastic."
 
 symbol: "LINKUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

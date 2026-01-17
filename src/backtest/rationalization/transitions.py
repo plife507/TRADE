@@ -113,7 +113,7 @@ class TransitionManager:
         transitions.extend(exec_transitions)
 
         # Process HTF timeframes
-        for tf_name, tf_state in incremental_state.htf.items():
+        for tf_name, tf_state in incremental_state.high_tf.items():
             htf_transitions = self._detect_tf_transitions(
                 bar_idx=bar_idx,
                 timeframe=tf_name,

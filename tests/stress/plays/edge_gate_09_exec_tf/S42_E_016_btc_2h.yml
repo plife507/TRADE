@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_016_btc_2h
 description: "Verify 2h timeframe support - newly added TF."
 symbol: BTCUSDT
-tf: 2h
+timeframes:
+  low_tf: "2h"
+  med_tf: "2h"
+  high_tf: "2h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

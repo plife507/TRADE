@@ -3,8 +3,11 @@ name: "S_13_btc_multi_tf"
 description: "Stress Test Gate 3.4: Multi-TF Features - 60% complexity"
 
 symbol: "BTCUSDT"
-tf: "15m"
-high_tf: "1h"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "1h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

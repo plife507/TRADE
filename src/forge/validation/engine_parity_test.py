@@ -125,8 +125,8 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
 
     # Extract FeedStores and sim_start_idx from prepared frame
     feed_store = old_engine._exec_feed
-    htf_feed = old_engine._htf_feed
-    mtf_feed = old_engine._mtf_feed
+    high_tf_feed = old_engine._high_tf_feed
+    med_tf_feed = old_engine._med_tf_feed
     tf_mapping = old_engine._tf_mapping
     sim_start_idx = old_engine._prepared_frame.sim_start_index
 
@@ -141,9 +141,9 @@ def run_with_new_engine(play, window_start: datetime, window_end: datetime) -> d
     # Wire incremental state to PlayEngine (for structure-based Plays)
     engine._incremental_state = incremental_state
 
-    # Wire HTF/MTF feeds for multi-timeframe indicators
-    engine._htf_feed = htf_feed
-    engine._mtf_feed = mtf_feed
+    # Wire high_tf/med_tf feeds for multi-timeframe indicators
+    engine._high_tf_feed = high_tf_feed
+    engine._med_tf_feed = med_tf_feed
     engine._tf_mapping = tf_mapping
 
     # Wire 1m quote feed for action model (enables 1m sub-loop evaluation)

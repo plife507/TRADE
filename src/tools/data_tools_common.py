@@ -11,8 +11,11 @@ prefixed with '_' to indicate they're internal utilities, not public tools.
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
+import logging
 
 from .shared import ToolResult, _get_historical_store
+
+_logger = logging.getLogger(__name__)
 from ..config.constants import DataEnv, DEFAULT_DATA_ENV
 from ..utils.datetime_utils import (
     MAX_QUERY_RANGE_DAYS,
@@ -135,48 +138,48 @@ def _build_extremes_metadata(store, symbol: str, timeframes: list[str]) -> dict[
                     "latest_ts": stats[1].isoformat() if stats[1] else None,
                     "row_count": stats[2],
                 }
-        except Exception:
-            pass
-    
+        except (KeyError, AttributeError) as e:
+            _logger.debug(f"OHLCV stats query failed for {symbol}/{tf}: {e}")
+
     # Funding
     try:
         stats = store.conn.execute(f"""
-            SELECT 
+            SELECT
                 MIN(timestamp) as earliest_ts,
                 MAX(timestamp) as latest_ts,
                 COUNT(*) as record_count
             FROM {store.table_funding}
             WHERE symbol = ?
         """, [symbol]).fetchone()
-        
+
         if stats and stats[2] > 0:
             extremes["funding"] = {
                 "earliest_ts": stats[0].isoformat() if stats[0] else None,
                 "latest_ts": stats[1].isoformat() if stats[1] else None,
                 "record_count": stats[2],
             }
-    except Exception:
-        pass
-    
+    except (KeyError, AttributeError) as e:
+        _logger.debug(f"Funding stats query failed for {symbol}: {e}")
+
     # Open Interest
     try:
         stats = store.conn.execute(f"""
-            SELECT 
+            SELECT
                 MIN(timestamp) as earliest_ts,
                 MAX(timestamp) as latest_ts,
                 COUNT(*) as record_count
             FROM {store.table_oi}
             WHERE symbol = ?
         """, [symbol]).fetchone()
-        
+
         if stats and stats[2] > 0:
             extremes["open_interest"] = {
                 "earliest_ts": stats[0].isoformat() if stats[0] else None,
                 "latest_ts": stats[1].isoformat() if stats[1] else None,
                 "record_count": stats[2],
             }
-    except Exception:
-        pass
+    except (KeyError, AttributeError) as e:
+        _logger.debug(f"OI stats query failed for {symbol}: {e}")
     
     return extremes
 

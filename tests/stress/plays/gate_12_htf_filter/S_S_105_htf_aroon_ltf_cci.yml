@@ -3,7 +3,11 @@ name: "S_S_105_htf_aroon_ltf_cci"
 description: "Stress Gate 12: HTF Aroon osc<-50 + LTF CCI overbought (short). Trend identification with momentum entry."
 
 symbol: "AVAXUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 high_tf: "4h"
 
 account:

@@ -541,23 +541,43 @@ class FeedStore:
 @dataclass
 class MultiTFFeedStore:
     """
-    Container for multiple FeedStores (HTF, MTF, Exec).
+    Container for 3 FeedStores (low_tf, med_tf, high_tf) with exec role pointer.
 
-    Provides unified access to all timeframe data.
+    The exec role is NOT a 4th feed - it's an alias that points to one of the 3 feeds.
+
+    Example configurations:
+        - exec on low_tf (common): Step on 15m bars, forward-fill 1h and 4h
+        - exec on med_tf (swing): Step on 1h bars, lookup 15m, forward-fill 4h
     """
-    exec_feed: FeedStore
-    htf_feed: FeedStore | None = None
-    mtf_feed: FeedStore | None = None
+    # 3 actual feeds (low_tf always present, others optional if same TF)
+    low_tf_feed: FeedStore
+    med_tf_feed: FeedStore | None = None
+    high_tf_feed: FeedStore | None = None
 
-    # TF mapping
+    # TF mapping (low_tf, med_tf, high_tf, exec)
     tf_mapping: dict[str, str] = field(default_factory=dict)
+    exec_role: str = "low_tf"  # Which feed exec points to
 
     def get_feed(self, role: str) -> FeedStore | None:
-        """Get feed by role (high_tf, med_tf, low_tf/exec)."""
-        if role in ("low_tf", "exec"):
-            return self.exec_feed
-        elif role == "high_tf":
-            return self.htf_feed
+        """Get feed by role (low_tf, med_tf, high_tf, exec)."""
+        if role == "low_tf":
+            return self.low_tf_feed
         elif role == "med_tf":
-            return self.mtf_feed
+            return self.med_tf_feed if self.med_tf_feed else self.low_tf_feed
+        elif role == "high_tf":
+            if self.high_tf_feed:
+                return self.high_tf_feed
+            elif self.med_tf_feed:
+                return self.med_tf_feed
+            return self.low_tf_feed
+        elif role == "exec":
+            # Resolve exec to actual feed
+            return self.get_feed(self.exec_role)
         return None
+
+    @property
+    def exec_feed(self) -> FeedStore:
+        """Convenience: get the execution feed."""
+        feed = self.get_feed(self.exec_role)
+        assert feed is not None, f"exec_role '{self.exec_role}' resolved to None"
+        return feed

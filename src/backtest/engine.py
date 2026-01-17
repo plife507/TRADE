@@ -65,7 +65,7 @@ from .runtime.funding_scheduler import get_funding_events_in_window
 # Import from engine_snapshot module
 from .engine_snapshot import (
     build_snapshot_view_impl,
-    update_htf_mtf_indices_impl,
+    update_high_tf_med_tf_indices_impl,
     refresh_tf_caches_impl,
 )
 
@@ -255,7 +255,7 @@ class BacktestEngine:
         # State
         self._data: pd.DataFrame | None = None
         self._prepared_frame: PreparedFrame | None = None
-        self._mtf_frames: MultiTFPreparedFrames | None = None  # Phase 3
+        self._med_tf_frames: MultiTFPreparedFrames | None = None  # Phase 3
         self._exchange: SimulatedExchange | None = None
         self._equity_curve: list[EquityPoint] = []
         self._started_at: datetime | None = None
@@ -263,39 +263,42 @@ class BacktestEngine:
         # Debug tracing: play_hash for log correlation
         self._play_hash: str | None = None
         
-        # Phase 3: Multi-TF configuration
+        # Phase 3: Multi-TF configuration (3-feed + exec role system)
         # Default to single-TF mode if no explicit mapping provided
         if tf_mapping is None:
-            self._tf_mapping = {"high_tf": config.tf, "med_tf": config.tf, "low_tf": config.tf}
+            self._tf_mapping = {"low_tf": config.tf, "med_tf": config.tf, "high_tf": config.tf, "exec": "low_tf"}
             self._multi_tf_mode = False
         else:
             # Validate the mapping
             validate_tf_mapping(tf_mapping)
             self._tf_mapping = tf_mapping
-            self._multi_tf_mode = tf_mapping["high_tf"] != tf_mapping["low_tf"] or tf_mapping["med_tf"] != tf_mapping["low_tf"]
+            low_tf_str = tf_mapping["low_tf"]
+            self._multi_tf_mode = tf_mapping["high_tf"] != low_tf_str or tf_mapping["med_tf"] != low_tf_str
         
         # Phase 1: History management (delegated to HistoryManager)
         # Parse history config from system config (if present)
         self._history_config = parse_history_config_impl(config)
         self._history_manager = HistoryManager(self._history_config)
 
-        # Phase 3: TimeframeCache for HTF/MTF carry-forward
+        # Phase 3: TimeframeCache for high_tf/med_tf carry-forward
         self._tf_cache = TimeframeCache()
 
         # Phase 3: Indicator DataFrames per TF (populated in prepare_multi_tf_frames)
-        self._htf_df: pd.DataFrame | None = None
-        self._mtf_df: pd.DataFrame | None = None
-        self._ltf_df: pd.DataFrame | None = None
+        self._high_tf_df: pd.DataFrame | None = None
+        self._med_tf_df: pd.DataFrame | None = None
+        self._low_tf_df: pd.DataFrame | None = None
 
         # Phase 3: Readiness gate tracking
         self._warmup_complete = False
         self._first_ready_bar_index: int | None = None
 
         # Array-backed hot loop: FeedStores for O(1) array access
+        # 3-feed system: low_tf always present, med_tf/high_tf may be None if same TF
         self._multi_tf_feed_store: MultiTFFeedStore | None = None
-        self._exec_feed: FeedStore | None = None
-        self._htf_feed: FeedStore | None = None
-        self._mtf_feed: FeedStore | None = None
+        self._low_tf_feed: FeedStore | None = None
+        self._med_tf_feed: FeedStore | None = None
+        self._high_tf_feed: FeedStore | None = None
+        self._exec_role: str = "low_tf"  # Which feed exec points to
 
         # Phase 3: 1m Quote Feed + Rollup Bucket
         self._quote_feed: FeedStore | None = None
@@ -308,11 +311,12 @@ class BacktestEngine:
         self._funding_df: pd.DataFrame | None = None
         self._oi_df: pd.DataFrame | None = None
 
-        # Track forward-fill indices for all TFs slower than exec.
-        # These stay constant until their respective TF bar closes.
-        # See _update_htf_mtf_indices() for forward-fill semantics.
-        self._current_htf_idx: int = 0
-        self._current_mtf_idx: int = 0
+        # Track indices for all 3 TFs relative to exec
+        # Forward-fill semantics: TFs slower than exec stay constant until bar closes
+        # TFs faster than exec lookup most recent closed bar at exec close
+        self._current_low_tf_idx: int = 0
+        self._current_med_tf_idx: int = 0
+        self._current_high_tf_idx: int = 0
         
         # Phase 4: Optional snapshot callback for plumbing parity audit
         # Invoked after snapshot build, before strategy evaluation
@@ -413,14 +417,21 @@ class BacktestEngine:
         """Return True if engine is using synthetic data provider."""
         return self._synthetic_provider is not None
 
+    @property
+    def _exec_feed(self) -> "FeedStore | None":
+        """Get the exec feed (backward compat, resolved from exec_role)."""
+        if self._multi_tf_feed_store is None:
+            return None
+        return self._multi_tf_feed_store.exec_feed
+
     def _update_history(
         self,
         bar: CanonicalBar,
         features_exec: FeatureSnapshot,
-        htf_updated: bool,
-        mtf_updated: bool,
-        features_htf: FeatureSnapshot | None,
-        features_mtf: FeatureSnapshot | None,
+        high_tf_updated: bool,
+        med_tf_updated: bool,
+        features_high_tf: FeatureSnapshot | None,
+        features_med_tf: FeatureSnapshot | None,
     ) -> None:
         """
         Update rolling history windows.
@@ -430,18 +441,18 @@ class BacktestEngine:
         Args:
             bar: Current exec-TF bar
             features_exec: Current exec-TF features
-            htf_updated: Whether HTF cache was updated this step
-            mtf_updated: Whether MTF cache was updated this step
-            features_htf: Current HTF features (if updated)
-            features_mtf: Current MTF features (if updated)
+            high_tf_updated: Whether high_tf cache was updated this step
+            med_tf_updated: Whether med_tf cache was updated this step
+            features_high_tf: Current high_tf features (if updated)
+            features_med_tf: Current med_tf features (if updated)
         """
         self._history_manager.update(
             bar=bar,
             features_exec=features_exec,
-            htf_updated=htf_updated,
-            mtf_updated=mtf_updated,
-            features_htf=features_htf,
-            features_mtf=features_mtf,
+            high_tf_updated=high_tf_updated,
+            med_tf_updated=med_tf_updated,
+            features_high_tf=features_high_tf,
+            features_med_tf=features_med_tf,
         )
 
     def _is_history_ready(self) -> bool:
@@ -489,7 +500,7 @@ class BacktestEngine:
 
         # Group structures by TF
         exec_specs: list[dict] = []
-        htf_configs: dict[str, list[dict]] = {}
+        high_tf_configs: dict[str, list[dict]] = {}
 
         for feature in structures:
             spec_dict = {
@@ -504,21 +515,21 @@ class BacktestEngine:
                 exec_specs.append(spec_dict)
             else:
                 # HTF structure
-                if feature.tf not in htf_configs:
-                    htf_configs[feature.tf] = []
-                htf_configs[feature.tf].append(spec_dict)
+                if feature.tf not in high_tf_configs:
+                    high_tf_configs[feature.tf] = []
+                high_tf_configs[feature.tf].append(spec_dict)
 
         # Create incremental state
         state = MultiTFIncrementalState(
             exec_tf=exec_tf,
             exec_specs=exec_specs,
-            htf_configs=htf_configs if htf_configs else None,
+            high_tf_configs=high_tf_configs if high_tf_configs else None,
         )
 
         self.logger.info(
             f"Built incremental state: "
             f"exec_structures={state.exec.list_structures()}, "
-            f"htfs={state.list_htfs()}"
+            f"htfs={state.list_high_tfs()}"
         )
 
         return state
@@ -631,21 +642,21 @@ class BacktestEngine:
         med_tf_close_ts = result.close_ts_maps.get(self._tf_mapping["med_tf"], set())
 
         self._tf_cache.set_close_ts_maps(
-            htf_close_ts=high_tf_close_ts,
-            mtf_close_ts=med_tf_close_ts,
-            htf_tf=high_tf,
-            mtf_tf=self._tf_mapping["med_tf"],
+            high_tf_close_ts=high_tf_close_ts,
+            med_tf_close_ts=med_tf_close_ts,
+            high_tf=high_tf,
+            med_tf=self._tf_mapping["med_tf"],
         )
 
         # Store TF DataFrames for feature lookup
-        self._htf_df = result.frames.get(high_tf)
-        self._mtf_df = result.frames.get(self._tf_mapping["med_tf"])
-        self._ltf_df = result.low_tf_frame
+        self._high_tf_df = result.frames.get(high_tf)
+        self._med_tf_df = result.frames.get(self._tf_mapping["med_tf"])
+        self._low_tf_df = result.exec_frame
 
-        self._mtf_frames = result
+        self._med_tf_frames = result
 
         # Also set _prepared_frame for single-TF API consistency
-        low_tf_frame = result.low_tf_frame
+        low_tf_frame = result.exec_frame
         self._prepared_frame = PreparedFrame(
             df=low_tf_frame,
             full_df=low_tf_frame,
@@ -656,7 +667,7 @@ class BacktestEngine:
             loaded_start=low_tf_frame["timestamp"].iloc[0],
             loaded_end=low_tf_frame["timestamp"].iloc[-1],
             simulation_start=result.simulation_start,
-            sim_start_index=result.low_tf_sim_start_index,
+            sim_start_index=result.exec_sim_start_index,
         )
         self._data = low_tf_frame
 
@@ -680,13 +691,17 @@ class BacktestEngine:
             config=self.config,
             tf_mapping=self._tf_mapping,
             multi_tf_mode=self._multi_tf_mode,
-            mtf_frames=self._mtf_frames,
+            mtf_frames=self._med_tf_frames,
             prepared_frame=self._prepared_frame,
             data=self._data,
             logger=self.logger,
         )
 
-        self._multi_tf_feed_store, self._exec_feed, self._htf_feed, self._mtf_feed = result
+        self._multi_tf_feed_store, exec_feed, self._high_tf_feed, self._med_tf_feed = result
+
+        # Store the low_tf feed and exec_role from multi_tf_feed_store
+        self._low_tf_feed = self._multi_tf_feed_store.low_tf_feed
+        self._exec_role = self._multi_tf_feed_store.exec_role
 
         # Stage 3: Build market structures into exec feed
         self._build_structures()
@@ -792,7 +807,8 @@ class BacktestEngine:
             self.logger.debug("Cannot build market data: no prepared frame")
             return
 
-        if self._exec_feed is None:
+        exec_feed = self._multi_tf_feed_store.exec_feed if self._multi_tf_feed_store else None
+        if exec_feed is None:
             self.logger.warning("Cannot build market data: no exec feed")
             return
 
@@ -826,14 +842,14 @@ class BacktestEngine:
         funding_array, oi_array, settlement_times = build_market_data_arrays_impl(
             funding_df=self._funding_df,
             oi_df=self._oi_df,
-            exec_feed=self._exec_feed,
+            exec_feed=exec_feed,
             logger=self.logger,
         )
 
         # Wire into exec feed
-        self._exec_feed.funding_rate = funding_array
-        self._exec_feed.open_interest = oi_array
-        self._exec_feed.funding_settlement_times = settlement_times
+        exec_feed.funding_rate = funding_array
+        exec_feed.open_interest = oi_array
+        exec_feed.funding_settlement_times = settlement_times
 
         # Log summary
         funding_info = f"{len(settlement_times)} settlements" if funding_array is not None else "unavailable"
@@ -931,7 +947,7 @@ class BacktestEngine:
             tf=tf,
             ts_close=ts_close,
             bar=bar,
-            mtf_frames=self._mtf_frames,
+            mtf_frames=self._med_tf_frames,
             tf_mapping=self._tf_mapping,
             config=self.config,
         )
@@ -1181,18 +1197,18 @@ class BacktestEngine:
             get_tf_features_func=get_tf_features,
         )
     
-    def _update_htf_mtf_indices(self, exec_ts_close: datetime) -> tuple:
+    def _update_high_tf_med_tf_indices(self, exec_ts_close: datetime) -> tuple:
         """
-        Update HTF/MTF forward-fill indices for RuntimeSnapshotView.
+        Update high_tf/med_tf forward-fill indices for RuntimeSnapshotView.
 
         Forward-fill principle: Any TF slower than exec keeps its index constant
         until its bar closes. This ensures no-lookahead (values reflect last
         CLOSED bar only, never partial/forming bars).
 
-        Example (exec=15m, HTF=1h):
-            exec bars:      |  1  |  2  |  3  |  4  |  5  |  ...
-            htf_ctx.idx:    [  0     0     0     0  ] [  1  ...
-            htf_updated:       F     F     F     T      F  ...
+        Example (exec=15m, high_tf=1h):
+            exec bars:         |  1  |  2  |  3  |  4  |  5  |  ...
+            high_tf_ctx.idx:   [  0     0     0     0  ] [  1  ...
+            high_tf_updated:      F     F     F     T      F  ...
 
         Uses O(1) ts_close_ms_to_idx mapping from FeedStore.
         Called at each exec bar close. Index only changes when TF bar closes.
@@ -1201,21 +1217,21 @@ class BacktestEngine:
             exec_ts_close: Current exec bar's ts_close
 
         Returns:
-            Tuple of (htf_updated, mtf_updated) booleans indicating if index changed
+            Tuple of (high_tf_updated, med_tf_updated) booleans indicating if index changed
         """
-        htf_updated, mtf_updated, new_htf_idx, new_mtf_idx = update_htf_mtf_indices_impl(
+        high_tf_updated, med_tf_updated, new_high_tf_idx, new_med_tf_idx = update_high_tf_med_tf_indices_impl(
             exec_ts_close=exec_ts_close,
-            htf_feed=self._htf_feed,
-            mtf_feed=self._mtf_feed,
+            high_tf_feed=self._high_tf_feed,
+            med_tf_feed=self._med_tf_feed,
             exec_feed=self._exec_feed,
-            current_htf_idx=self._current_htf_idx,
-            current_mtf_idx=self._current_mtf_idx,
+            current_high_tf_idx=self._current_high_tf_idx,
+            current_med_tf_idx=self._current_med_tf_idx,
         )
 
-        self._current_htf_idx = new_htf_idx
-        self._current_mtf_idx = new_mtf_idx
+        self._current_high_tf_idx = new_high_tf_idx
+        self._current_med_tf_idx = new_med_tf_idx
 
-        return htf_updated, mtf_updated
+        return high_tf_updated, med_tf_updated
     
     def _build_snapshot_view(
         self,
@@ -1250,12 +1266,12 @@ class BacktestEngine:
             exec_idx=exec_idx,
             multi_tf_feed_store=self._multi_tf_feed_store,
             exec_feed=self._exec_feed,
-            htf_feed=self._htf_feed,
-            mtf_feed=self._mtf_feed,
+            high_tf_feed=self._high_tf_feed,
+            med_tf_feed=self._med_tf_feed,
             exchange=self._exchange,
             multi_tf_mode=self._multi_tf_mode,
-            current_htf_idx=self._current_htf_idx,
-            current_mtf_idx=self._current_mtf_idx,
+            current_htf_idx=self._current_high_tf_idx,
+            current_mtf_idx=self._current_med_tf_idx,
             history_config=self._history_config,
             is_history_ready=self._is_history_ready(),
             risk_profile=self.config.risk_profile,

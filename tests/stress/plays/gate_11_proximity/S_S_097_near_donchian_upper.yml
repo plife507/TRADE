@@ -3,8 +3,11 @@ name: "S_S_097_near_donchian_upper"
 description: "Stress Gate 11: Close near Donchian Channel upper within 0.5% (short). Range high rejection."
 
 symbol: "AVAXUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

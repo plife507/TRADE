@@ -28,6 +28,7 @@ from ..play_engine import PlayEngine
 
 # Import metrics calculation for proper Sharpe/Sortino/etc computation
 from ...backtest.metrics import compute_backtest_metrics
+from ...backtest.runtime.timeframe import tf_minutes
 from ...backtest.types import EquityPoint
 
 if TYPE_CHECKING:
@@ -463,6 +464,8 @@ class BacktestRunner:
         Called after signal execution to process any new orders
         and check existing positions for TP/SL.
 
+        Uses 1m granularity for entry fills when quote_feed is available.
+
         Args:
             bar_idx: Current bar index
         """
@@ -502,8 +505,20 @@ class BacktestRunner:
                 volume=prev_candle.volume,
             )
 
-        # Process bar for fills
-        sim_exchange.process_bar(bar, prev_bar)
+        # Get 1m quote feed from engine for granular entry fills
+        quote_feed = self._engine._quote_feed
+        exec_1m_range = None
+        if quote_feed is not None and quote_feed.length > 0:
+            exec_tf_minutes = tf_minutes(self._data_provider.timeframe)
+            if exec_tf_minutes > 1:
+                try:
+                    exec_1m_range = quote_feed.get_1m_indices_for_exec(bar_idx, exec_tf_minutes)
+                except (ValueError, IndexError):
+                    # Fall back to exec-bar granularity if 1m mapping fails
+                    exec_1m_range = None
+
+        # Process bar for fills (with 1m granularity when available)
+        sim_exchange.process_bar(bar, prev_bar, quote_feed=quote_feed, exec_1m_range=exec_1m_range)
 
     def _close_remaining_position(self, last_bar_idx: int) -> None:
         """

@@ -3,8 +3,11 @@ name: "S_L_119_extreme_or_mild_combo"
 description: "Stress Gate 14: Complex boolean - any:[extreme_oversold, all:[mild_oversold_1, mild_oversold_2]] (long). RSI < 15 OR (RSI < 35 AND Stoch < 30)."
 
 symbol: "DOTUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

@@ -331,35 +331,34 @@ DEFAULT_TIMEFRAME = "15m"
 #
 # | Category | Timeframes        | Use Case                    |
 # |----------|-------------------|-----------------------------|
-# | LTF      | 1m, 3m, 5m, 15m   | Execution, entries/exits    |
-# | MTF      | 30m, 1h, 2h, 4h   | Structure, bias, swing      |
-# | HTF      | 6h, 12h, D, W, M  | Context, trend, major S/R   |
+# | exec_tf  | 1m, 3m, 5m, 15m   | Execution, entries/exits    |
+# | med_tf   | 30m, 1h, 2h, 4h   | Structure, bias, swing      |
+# | high_tf  | 6h, 12h, D, W, M  | Context, trend, major S/R   |
 
-TF_CATEGORY_LTF = ["1m", "3m", "5m", "15m"]      # Low TF (execution)
-TF_CATEGORY_MTF = ["30m", "1h", "2h", "4h"]      # Mid TF (structure)
-TF_CATEGORY_HTF = ["6h", "12h", "D", "W", "M"]   # High TF (context)
+TF_CATEGORY_EXEC = ["1m", "3m", "5m", "15m"]     # exec_tf (execution)
+TF_CATEGORY_MED = ["30m", "1h", "2h", "4h"]      # med_tf (structure)
+TF_CATEGORY_HIGH = ["6h", "12h", "D", "W", "M"]  # high_tf (context)
 
 # ==================== Timeframe Roles (Play Configuration) ====================
 #
 # Plays define timeframe roles for multi-TF strategies:
 #
-# | Role | Meaning                              | Typical Values    |
-# |------|--------------------------------------|-------------------|
-# | exec | Bar-by-bar evaluation timeframe      | 1m, 5m, 15m       |
-# | ltf  | Low timeframe for micro-structure    | 1m, 3m, 5m, 15m   |
-# | mtf  | Mid timeframe for structure/bias     | 30m, 1h, 2h, 4h   |
-# | htf  | High timeframe for trend/context     | 6h, 12h, D        |
+# | Role    | Meaning                              | Typical Values    |
+# |---------|--------------------------------------|-------------------|
+# | exec_tf | Bar-by-bar evaluation timeframe      | 1m, 5m, 15m       |
+# | med_tf  | Mid timeframe for structure/bias     | 30m, 1h, 2h, 4h   |
+# | high_tf | High timeframe for trend/context     | 6h, 12h, D        |
 
-TF_ROLE_LTF = ["1m", "3m", "5m", "15m"]          # Valid for ltf role
-TF_ROLE_MTF = ["30m", "1h", "2h", "4h"]          # Valid for mtf role
-TF_ROLE_HTF = ["6h", "12h", "D"]                 # Valid for htf role (W, M excluded)
+TF_ROLE_EXEC = ["1m", "3m", "5m", "15m"]         # Valid for exec_tf role
+TF_ROLE_MED = ["30m", "1h", "2h", "4h"]          # Valid for med_tf role
+TF_ROLE_HIGH = ["6h", "12h", "D"]                # Valid for high_tf role (W, M excluded)
 
 # Mapping from role to allowed timeframes
+# Note: "exec" is a role pointer (points to low_tf/med_tf/high_tf), not a TF category
 TF_ROLE_GROUPS = {
-    "low_tf": TF_ROLE_LTF,
-    "med_tf": TF_ROLE_MTF,
-    "high_tf": TF_ROLE_HTF,
-    "exec": TF_ROLE_LTF + TF_ROLE_MTF,  # Execution: LTF or MTF only
+    "low_tf": TF_ROLE_EXEC,   # low_tf uses exec TF category
+    "med_tf": TF_ROLE_MED,
+    "high_tf": TF_ROLE_HIGH,
 }
 
 # ==================== Common Presets ====================

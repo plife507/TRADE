@@ -3,8 +3,11 @@ name: "S_L_136_bbands_low_vol_breakout"
 description: "Stress Gate 17: BBands low volatility breakout - bandwidth < 0.05 then close > middle (long). Consolidation breakout strategy."
 
 symbol: "BTCUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

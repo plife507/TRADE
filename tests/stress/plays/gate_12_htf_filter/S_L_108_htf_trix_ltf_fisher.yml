@@ -3,7 +3,11 @@ name: "S_L_108_htf_trix_ltf_fisher"
 description: "Stress Gate 12: HTF TRIX>signal + LTF Fisher oversold (long). Smoothed momentum with reversal entry."
 
 symbol: "AVAXUSDT"
-tf: "1h"
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 high_tf: "4h"
 
 account:

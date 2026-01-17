@@ -3,7 +3,11 @@ name: "S_S_157_eight_indicator_complex"
 description: "Stress Gate 20: Maximum indicator count (8+) with complex boolean logic (short). XRPUSDT."
 
 symbol: "XRPUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 med_tf: "1h"
 high_tf: "4h"
 

@@ -1,29 +1,48 @@
 """
-Shared timeframe management module for unified engine.
+Shared timeframe management module for 3-feed + exec role system.
 
-This module provides the HTFIndexManager for managing HTF/MTF forward-fill
-indices across both BacktestEngine and PlayEngine, ensuring identical
-forward-fill behavior without duplicate code.
+This module provides TFIndexManager for managing low_tf/med_tf/high_tf indices
+relative to the exec role. Works identically for BacktestEngine and PlayEngine.
 
 Key Classes:
-    HTFIndexManager: Manages HTF/MTF index tracking with forward-fill logic
+    TFIndexManager: Manages TF index tracking for 3-feed system
+    TFIndexUpdate: Result dataclass with change flags and indices
+
+Backward Compat:
+    HTFIndexManager = TFIndexManager (alias)
+    HTFIndexUpdate = TFIndexUpdate (alias)
 
 Usage:
-    from src.engine.timeframe import HTFIndexManager, HTFIndexUpdate
+    from src.engine.timeframe import TFIndexManager, TFIndexUpdate
 
-    manager = HTFIndexManager(
-        htf_feed=htf_feed,
-        mtf_feed=mtf_feed,
-        exec_feed=exec_feed,
+    manager = TFIndexManager(
+        low_tf_feed=low_tf_feed,
+        med_tf_feed=med_tf_feed,
+        high_tf_feed=high_tf_feed,
+        exec_role="low_tf",  # or "med_tf" or "high_tf"
     )
 
     # Each bar close:
-    update = manager.update_indices(exec_ts_close)
-    if update.htf_changed:
-        # HTF bar just closed - update incremental state
+    update = manager.update_indices(exec_ts_close, exec_idx)
+    if update.high_tf_changed:
+        # high_tf bar just closed - update incremental state
         ...
 """
 
-from .index_manager import HTFIndexManager, HTFIndexUpdate
+from .index_manager import (
+    TFIndexManager,
+    TFIndexUpdate,
+    HTFIndexManager,  # Backward compat alias
+    HTFIndexUpdate,   # Backward compat alias
+    update_tf_indices_impl,
+    update_high_tf_med_tf_indices_impl,  # Backward compat
+)
 
-__all__ = ["HTFIndexManager", "HTFIndexUpdate"]
+__all__ = [
+    "TFIndexManager",
+    "TFIndexUpdate",
+    "HTFIndexManager",
+    "HTFIndexUpdate",
+    "update_tf_indices_impl",
+    "update_high_tf_med_tf_indices_impl",
+]

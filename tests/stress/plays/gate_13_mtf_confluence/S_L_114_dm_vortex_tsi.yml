@@ -3,7 +3,11 @@ name: "S_L_114_dm_vortex_tsi"
 description: "Stress Gate 13: DM + Vortex + TSI confluence. HTF(4h) dm.dmp > dmn, MTF(1h) vortex.vip > vim, LTF(15m) tsi cross_above signal (long)."
 
 symbol: "DOTUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 med_tf: "1h"
 high_tf: "4h"
 

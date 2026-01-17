@@ -2,7 +2,11 @@ version: 3.0.0
 name: S41_S_025_short_risk
 description: "Complexity 25%: Short with tight SL and wide TP."
 symbol: BTCUSDT
-tf: 15m
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

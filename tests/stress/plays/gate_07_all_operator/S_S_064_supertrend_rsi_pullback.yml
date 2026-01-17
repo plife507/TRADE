@@ -3,8 +3,11 @@ name: "S_S_064_supertrend_rsi_pullback"
 description: "Stress Gate 7: ALL operator - SuperTrend bearish + RSI pullback (short). Direction == -1 AND RSI > 65."
 
 symbol: "XRPUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

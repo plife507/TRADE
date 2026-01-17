@@ -14,18 +14,16 @@ Timeframe Role Definitions (1m Action Model):
         granularity and indicator computation timing. E.g., if eval_tf="15m",
         we process 15m bars but evaluate signals at every 1m within each.
 
-    condition_tf (LTF/MTF/HTF): Timeframes used for indicators and structures.
-        These define when indicator values update (on their TF close) and
-        forward-fill until the next close.
+    condition_tf (exec_tf/med_tf/high_tf): Timeframes used for indicators and
+        structures. These define when indicator values update (on their TF close)
+        and forward-fill until the next close.
 
-    LTF (Low Timeframe): 1m, 3m, 5m, 15m - Execution timing, micro-structure
-    MTF (Mid Timeframe): 30m, 1h, 2h, 4h - Trade bias + structure context
-    HTF (High Timeframe): 6h, 8h, 12h, 1D - Higher-level trend (capped at 1D)
-
-    exec: = LTF. Legacy alias for backward compatibility.
+    exec_tf (Execution Timeframe): 1m, 3m, 5m, 15m - Execution timing, micro-structure
+    med_tf (Medium Timeframe): 30m, 1h, 2h, 4h - Trade bias + structure context
+    high_tf (High Timeframe): 6h, 12h, 1D - Higher-level trend (capped at 1D)
 
 Hierarchy Rule:
-    HTF >= MTF >= LTF (in minutes)
+    high_tf >= med_tf >= exec_tf (in minutes)
     Enforced by validate_tf_mapping()
 
 Note: Close detection is data-driven (via close_ts maps), not modulo-based.
@@ -100,39 +98,52 @@ def tf_minutes(tf: str) -> int:
 
 def validate_tf_mapping(tf_mapping: dict[str, str]) -> None:
     """
-    Validate a timeframe mapping (htf/mtf/ltf -> tf string).
-    
-    Ensures all specified timeframes are valid and HTF >= MTF >= LTF.
-    
+    Validate a 3-feed + exec role timeframe mapping.
+
+    Required keys: low_tf, med_tf, high_tf, exec
+    - low_tf, med_tf, high_tf: actual timeframe strings (e.g., "15m", "1h", "4h")
+    - exec: role pointer, must be one of "low_tf", "med_tf", "high_tf"
+
+    Hierarchy rule: high_tf >= med_tf >= low_tf (in minutes)
+
     Args:
-        tf_mapping: Dict with keys high_tf, med_tf, low_tf and tf string values
+        tf_mapping: Dict with keys low_tf, med_tf, high_tf, exec
 
     Raises:
         ValueError: If mapping is invalid or timeframes don't follow hierarchy
     """
-    required_keys = {"high_tf", "med_tf", "low_tf"}
+    required_keys = {"low_tf", "med_tf", "high_tf", "exec"}
     missing = required_keys - set(tf_mapping.keys())
     if missing:
         raise ValueError(f"Missing required tf_mapping keys: {missing}")
 
-    # Validate each timeframe exists
+    # Validate exec points to valid role
+    exec_role = tf_mapping["exec"]
+    if exec_role not in ("low_tf", "med_tf", "high_tf"):
+        raise ValueError(
+            f"exec must be one of low_tf/med_tf/high_tf, got: {exec_role}"
+        )
+
+    # Validate each timeframe string exists (skip 'exec' which is a role pointer)
     for role, tf in tf_mapping.items():
+        if role == "exec":
+            continue  # exec is a role pointer, not a TF string
         if tf.lower() not in TF_MINUTES:
             raise ValueError(
                 f"Unknown timeframe '{tf}' for role '{role}'. "
                 f"Supported: {list(TF_MINUTES.keys())}"
             )
 
-    # Validate hierarchy: HighTF >= MedTF >= LowTF (in minutes)
-    high_tf_min = tf_minutes(tf_mapping["high_tf"])
-    med_tf_min = tf_minutes(tf_mapping["med_tf"])
+    # Validate hierarchy: high_tf >= med_tf >= low_tf (in minutes)
     low_tf_min = tf_minutes(tf_mapping["low_tf"])
+    med_tf_min = tf_minutes(tf_mapping["med_tf"])
+    high_tf_min = tf_minutes(tf_mapping["high_tf"])
 
     if not (high_tf_min >= med_tf_min >= low_tf_min):
         raise ValueError(
-            f"Invalid tf_mapping hierarchy: HighTF ({tf_mapping['high_tf']}={high_tf_min}m) "
-            f"must be >= MedTF ({tf_mapping['med_tf']}={med_tf_min}m) "
-            f"must be >= LowTF ({tf_mapping['low_tf']}={low_tf_min}m)"
+            f"Invalid tf_mapping hierarchy: high_tf ({tf_mapping['high_tf']}={high_tf_min}m) "
+            f"must be >= med_tf ({tf_mapping['med_tf']}={med_tf_min}m) "
+            f"must be >= low_tf ({tf_mapping['low_tf']}={low_tf_min}m)"
         )
 
 

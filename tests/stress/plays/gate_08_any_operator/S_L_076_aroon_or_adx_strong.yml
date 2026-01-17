@@ -3,8 +3,11 @@ name: "S_L_076_aroon_or_adx_strong"
 description: "Stress Gate 8: ANY operator - Aroon OR ADX strong bullish trend (long). Either trend strength indicator triggers entry."
 
 symbol: "ADAUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

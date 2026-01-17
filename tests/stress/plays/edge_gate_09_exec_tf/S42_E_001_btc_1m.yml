@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_001_btc_1m
 description: "Exec TF: 1m scalp - fastest execution timeframe."
 symbol: BTCUSDT
-tf: 1m
+timeframes:
+  low_tf: "1m"
+  med_tf: "1m"
+  high_tf: "1m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

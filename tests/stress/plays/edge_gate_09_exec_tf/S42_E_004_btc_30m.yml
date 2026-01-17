@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_004_btc_30m
 description: "Exec TF: 30m swing with 100x leverage."
 symbol: BTCUSDT
-tf: 1h
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

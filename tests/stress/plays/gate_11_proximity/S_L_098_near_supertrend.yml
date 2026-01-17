@@ -3,8 +3,11 @@ name: "S_L_098_near_supertrend"
 description: "Stress Gate 11: Low near SuperTrend line within 0.3% (long). Trend pullback entry."
 
 symbol: "AVAXUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

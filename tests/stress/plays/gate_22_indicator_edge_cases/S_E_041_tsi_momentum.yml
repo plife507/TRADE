@@ -3,8 +3,11 @@ name: "S_E_041_tsi_momentum"
 description: "Stress Gate 22: TSI/signal cross edge case. Tests true strength index."
 
 symbol: "BTCUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

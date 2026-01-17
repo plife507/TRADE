@@ -146,6 +146,7 @@ class SimulatedExchange:
         self._pending_close_percent: float = 100.0  # Partial exit support
         self._current_ts: datetime | None = None
         self._current_bar_index: int = 0
+        self._last_mark_price: float | None = None  # Track last mark price for position queries
 
         # Phase 4: Snapshot readiness context (set by engine each bar)
         self._current_snapshot_ready: bool = True
@@ -214,6 +215,11 @@ class SimulatedExchange:
     def total_fees_paid(self) -> float:
         """Total fees paid (from ledger, single source of truth)."""
         return self._ledger.state.total_fees_paid
+
+    @property
+    def last_mark_price(self) -> float | None:
+        """Last mark price computed during process_bar."""
+        return self._last_mark_price
 
     # ─────────────────────────────────────────────────────────────────────────
     # Order Management
@@ -517,6 +523,7 @@ class SimulatedExchange:
         spread = self._spread_model.get_spread(bar)
         prices = self._price_model.get_prices(bar, spread)
         mark_price = prices.mark_price
+        self._last_mark_price = mark_price  # Track for position queries
 
         # 2. Apply funding events (uses mark_price, not entry_price per Bybit semantics)
         prev_ts = prev_bar.ts_close if prev_bar else None
@@ -530,7 +537,8 @@ class SimulatedExchange:
                 self.position.funding_pnl_cumulative += funding_result.funding_pnl
         
         # 3. Process all orders from order book (market, limit, stop)
-        order_book_fills = self._process_order_book(bar)
+        # Pass 1m data for granular entry fill timing when available
+        order_book_fills = self._process_order_book(bar, quote_feed, exec_1m_range)
         fills.extend(order_book_fills)
 
         # 4. Process pending close at bar open
@@ -657,12 +665,18 @@ class SimulatedExchange:
             prices=prices,
         )
     
-    def _process_order_book(self, bar: Bar) -> list[Fill]:
+    def _process_order_book(
+        self,
+        bar: Bar,
+        quote_feed: "FeedStore | None" = None,
+        exec_1m_range: tuple[int, int] | None = None,
+    ) -> list[Fill]:
         """
         Process all orders in the order book against the current bar.
 
         Processing order:
         1. Fill market orders at bar open (immediate fill)
+           - Uses 1m granularity when quote_feed/exec_1m_range available
         2. Check stop orders for trigger conditions
         3. Fill triggered stops (market or limit)
         4. Check limit orders for fill conditions
@@ -670,6 +684,8 @@ class SimulatedExchange:
 
         Args:
             bar: Current bar OHLC
+            quote_feed: Optional 1m FeedStore for granular entry fills
+            exec_1m_range: Optional (start_idx, end_idx) of 1m bars within this exec bar
 
         Returns:
             List of fills from order book processing
@@ -677,15 +693,23 @@ class SimulatedExchange:
         fills: list[Fill] = []
         to_remove: list[str] = []
 
-        # 1. Process market orders first (fill at bar open)
+        # 1. Process market orders first (fill at bar open or first 1m open)
         market_orders = self._order_book.get_pending_orders(OrderType.MARKET, self.symbol)
         for order in market_orders:
             self.last_fill_rejected = False
 
-            result = self._execution.fill_entry_order(
-                order, bar, self.available_balance_usdt,
-                lambda n: self.compute_required_for_entry(n),
-            )
+            # Use 1m granularity for entry fills when available
+            if quote_feed is not None and exec_1m_range is not None:
+                result = self._execution.fill_entry_order_1m(
+                    order, bar, quote_feed, exec_1m_range,
+                    self.available_balance_usdt,
+                    lambda n: self.compute_required_for_entry(n),
+                )
+            else:
+                result = self._execution.fill_entry_order(
+                    order, bar, self.available_balance_usdt,
+                    lambda n: self.compute_required_for_entry(n),
+                )
 
             if result.rejections:
                 self.last_fill_rejected = True

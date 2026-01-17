@@ -3,8 +3,11 @@ name: "S_L_017_kama_baseline"
 description: "Stress Gate 1: KAMA baseline - price above KAMA entry (long). Kaufman adaptive moving average."
 
 symbol: "ETHUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_010_ada_1m_4h
 description: "Exec TF: 1m with 4h filter - extreme 240x TF ratio."
 symbol: ADAUSDT
-tf: 1m
+timeframes:
+  low_tf: "1m"
+  med_tf: "1m"
+  high_tf: "4h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

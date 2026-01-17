@@ -3,8 +3,11 @@ name: "S_L_145_mom_cross_zero"
 description: "Stress Gate 18: Momentum cross above zero entry (long). Momentum turning positive signals trend start."
 
 symbol: "SOLUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

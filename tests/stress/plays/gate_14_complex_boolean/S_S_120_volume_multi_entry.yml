@@ -3,8 +3,11 @@ name: "S_S_120_volume_multi_entry"
 description: "Stress Gate 14: Complex boolean - all:[volume_confirm, any:[entry1, entry2, entry3]] (short). CMF < 0 AND (EMA death cross OR MACD bearish cross OR SuperTrend flip)."
 
 symbol: "DOTUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

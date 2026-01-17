@@ -3,8 +3,11 @@ name: "S_L_078_rsi_holds_for"
 description: "Stress Gate 9: RSI 14 > 50 holds_for 5 bars (long). Tests sustained bullish momentum."
 
 symbol: "XRPUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

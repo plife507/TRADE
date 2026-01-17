@@ -3,8 +3,11 @@ name: "S_S_042_adx_strong_trend"
 description: "Stress Gate 4: ADX strong trend with bearish bias entry (short). ADX > 25 confirms trend strength."
 
 symbol: "SOLUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

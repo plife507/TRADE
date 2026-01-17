@@ -3,8 +3,11 @@ name: "S_L_096_near_kc_lower"
 description: "Stress Gate 11: Close near Keltner Channel lower within 0.5% (long). Volatility squeeze bounce."
 
 symbol: "DOGEUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

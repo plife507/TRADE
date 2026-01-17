@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_007_doge_1m_mtf
 description: "Exec TF: 1m with 15m HTF filter - extreme MTF ratio."
 symbol: DOGEUSDT
-tf: 1m
+timeframes:
+  low_tf: "1m"
+  med_tf: "1m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

@@ -3,8 +3,11 @@ name: "S_L_138_natr_expansion"
 description: "Stress Gate 17: NATR volatility expansion - NATR < 2% then NATR > 3% entry (long). Normalized ATR breakout from low volatility."
 
 symbol: "ETHUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

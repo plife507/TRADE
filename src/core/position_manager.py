@@ -12,6 +12,7 @@ Features:
 - Performance metrics
 """
 
+import threading
 import time
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -148,7 +149,10 @@ class PositionManager:
         self._daily_realized_pnl = 0.0
         self._daily_trades = 0
         self._last_reset_date = datetime.now().date()
-        
+
+        # Thread safety for trade recording
+        self._trade_lock = threading.Lock()
+
         # Source tracking for diagnostics
         self._last_source = "rest"
         
@@ -367,26 +371,27 @@ class PositionManager:
             order_id: Exchange order ID
             strategy: Strategy that generated the trade
         """
-        self._check_daily_reset()
+        with self._trade_lock:
+            self._check_daily_reset()
 
-        trade = TradeRecord(
-            timestamp=datetime.now(),
-            symbol=symbol,
-            side=side.upper(),
-            size_usdt=size_usdt,
-            price=price,
-            realized_pnl=realized_pnl,
-            fees=fees,
-            order_id=order_id,
-            strategy=strategy,
-        )
-        
-        self._trades.append(trade)
-        self._daily_trades += 1
-        
-        if realized_pnl is not None:
-            self._daily_realized_pnl += realized_pnl
-        
+            trade = TradeRecord(
+                timestamp=datetime.now(),
+                symbol=symbol,
+                side=side.upper(),
+                size_usdt=size_usdt,
+                price=price,
+                realized_pnl=realized_pnl,
+                fees=fees,
+                order_id=order_id,
+                strategy=strategy,
+            )
+
+            self._trades.append(trade)
+            self._daily_trades += 1
+
+            if realized_pnl is not None:
+                self._daily_realized_pnl += realized_pnl
+
         self.logger.trade(
             "TRADE_RECORDED",
             symbol=symbol,
@@ -395,20 +400,20 @@ class PositionManager:
             price=price,
             pnl=realized_pnl,
         )
-    
+
     def record_execution_from_ws(self, exec_data) -> TradeRecord | None:
         """
         Record a trade from WebSocket execution event.
-        
+
         Args:
             exec_data: ExecutionData from RealtimeState
-        
+
         Returns:
             TradeRecord if recorded, None otherwise
         """
         if not hasattr(exec_data, 'symbol'):
             return None
-        
+
         # Calculate approximate USDT size
         size_usdt = exec_data.qty * exec_data.price
 
@@ -420,51 +425,56 @@ class PositionManager:
             fees=exec_data.exec_fee,
             order_id=exec_data.order_id,
         )
-        
-        return self._trades[-1] if self._trades else None
-    
+
+        with self._trade_lock:
+            return self._trades[-1] if self._trades else None
+
     # ==================== Statistics ====================
-    
+
     def get_daily_stats(self) -> dict:
         """Get daily trading statistics."""
-        self._check_daily_reset()
-        
-        return {
-            "date": self._last_reset_date.isoformat(),
-            "trades": self._daily_trades,
-            "realized_pnl": self._daily_realized_pnl,
-        }
-    
+        with self._trade_lock:
+            self._check_daily_reset()
+            return {
+                "date": self._last_reset_date.isoformat(),
+                "trades": self._daily_trades,
+                "realized_pnl": self._daily_realized_pnl,
+            }
+
     def get_trade_history(self, limit: int = 100) -> list[dict]:
         """Get recent trade history."""
-        trades = self._trades[-limit:] if limit else self._trades
+        with self._trade_lock:
+            trades = self._trades[-limit:] if limit else list(self._trades)
         return [t.to_dict() for t in trades]
-    
+
     def get_performance_summary(self) -> dict:
         """
         Get overall performance summary.
-        
+
         Returns:
             Dict with performance metrics
         """
-        if not self._trades:
-            return {
-                "total_trades": 0,
-                "total_pnl": 0,
-                "win_count": 0,
-                "loss_count": 0,
-                "win_rate": 0,
-            }
-        
-        # Calculate metrics
-        total_pnl = sum(t.realized_pnl or 0 for t in self._trades)
-        winning = [t for t in self._trades if t.realized_pnl and t.realized_pnl > 0]
-        losing = [t for t in self._trades if t.realized_pnl and t.realized_pnl < 0]
-        
-        win_rate = len(winning) / len(self._trades) * 100 if self._trades else 0
-        
+        with self._trade_lock:
+            if not self._trades:
+                return {
+                    "total_trades": 0,
+                    "total_pnl": 0,
+                    "win_count": 0,
+                    "loss_count": 0,
+                    "win_rate": 0,
+                }
+
+            # Calculate metrics (copy list for processing outside lock)
+            trades_copy = list(self._trades)
+
+        total_pnl = sum(t.realized_pnl or 0 for t in trades_copy)
+        winning = [t for t in trades_copy if t.realized_pnl and t.realized_pnl > 0]
+        losing = [t for t in trades_copy if t.realized_pnl and t.realized_pnl < 0]
+
+        win_rate = len(winning) / len(trades_copy) * 100 if trades_copy else 0
+
         return {
-            "total_trades": len(self._trades),
+            "total_trades": len(trades_copy),
             "total_pnl": total_pnl,
             "win_count": len(winning),
             "loss_count": len(losing),

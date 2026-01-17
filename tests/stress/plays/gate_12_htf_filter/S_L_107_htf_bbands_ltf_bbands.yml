@@ -3,7 +3,11 @@ name: "S_L_107_htf_bbands_ltf_bbands"
 description: "Stress Gate 12: HTF close>BBands middle + LTF close<BBands lower (long). Trend with reversion entry."
 
 symbol: "AVAXUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 high_tf: "4h"
 
 account:

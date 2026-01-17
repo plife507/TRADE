@@ -3,8 +3,11 @@ name: "S_S_065_adx_trend_confirm"
 description: "Stress Gate 7: ALL operator - ADX trend strength + bearish direction (short). ADX > 25 AND DM- > DM+."
 
 symbol: "ADAUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

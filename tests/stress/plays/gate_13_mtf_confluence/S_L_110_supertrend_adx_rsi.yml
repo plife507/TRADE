@@ -3,7 +3,11 @@ name: "S_L_110_supertrend_adx_rsi"
 description: "Stress Gate 13: SuperTrend + ADX + RSI confluence. HTF(4h) supertrend.dir == 1, MTF(1h) adx > 25, LTF(15m) rsi cross_above 30 (long)."
 
 symbol: "LINKUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 med_tf: "1h"
 high_tf: "4h"
 

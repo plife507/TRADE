@@ -3,8 +3,11 @@ name: "S_L_151_multiple_extremes"
 description: "Stress Gate 19: Triple extreme oversold RSI < 20 AND Stoch < 20 AND CCI < -150 (long). Multi-indicator extreme confluence."
 
 symbol: "XRPUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

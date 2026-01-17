@@ -3,7 +3,7 @@ Snapshot building module for BacktestEngine.
 
 This module handles snapshot construction for the array-backed hot loop:
 - build_snapshot_view_impl: Build RuntimeSnapshotView (O(1) creation)
-- update_htf_mtf_indices_impl: Update HTF/MTF forward-fill indices
+- update_high_tf_med_tf_indices_impl: Update high_tf/med_tf forward-fill indices
 - refresh_tf_caches_impl: Refresh TF caches with factory functions
 
 All functions accept engine state as parameters and return snapshot-related results.
@@ -30,53 +30,53 @@ if TYPE_CHECKING:
     from .rationalization import RationalizedState
 
 
-def update_htf_mtf_indices_impl(
+def update_high_tf_med_tf_indices_impl(
     exec_ts_close: datetime,
-    htf_feed: FeedStore | None,
-    mtf_feed: FeedStore | None,
+    high_tf_feed: FeedStore | None,
+    med_tf_feed: FeedStore | None,
     exec_feed: FeedStore,
-    current_htf_idx: int,
-    current_mtf_idx: int,
+    current_high_tf_idx: int,
+    current_med_tf_idx: int,
 ) -> tuple[bool, bool, int, int]:
     """
-    Update HTF/MTF forward-fill indices for RuntimeSnapshotView.
+    Update high_tf/med_tf forward-fill indices for RuntimeSnapshotView.
 
     Uses O(1) ts_close_ms_to_idx mapping from FeedStore.
     Called at each exec bar close to update forward-filled indices.
 
     Args:
         exec_ts_close: Current exec bar's ts_close
-        htf_feed: HTF FeedStore (may be None or same as exec_feed)
-        mtf_feed: MTF FeedStore (may be None or same as exec_feed)
+        high_tf_feed: high_tf FeedStore (may be None or same as exec_feed)
+        med_tf_feed: med_tf FeedStore (may be None or same as exec_feed)
         exec_feed: Exec FeedStore
-        current_htf_idx: Current HTF index
-        current_mtf_idx: Current MTF index
+        current_high_tf_idx: Current high_tf index
+        current_med_tf_idx: Current med_tf index
 
     Returns:
-        Tuple of (htf_updated, mtf_updated, new_htf_idx, new_mtf_idx)
+        Tuple of (high_tf_updated, med_tf_updated, new_high_tf_idx, new_med_tf_idx)
     """
-    htf_updated = False
-    mtf_updated = False
-    new_htf_idx = current_htf_idx
-    new_mtf_idx = current_mtf_idx
+    high_tf_updated = False
+    med_tf_updated = False
+    new_high_tf_idx = current_high_tf_idx
+    new_med_tf_idx = current_med_tf_idx
 
-    if htf_feed is not None and htf_feed is not exec_feed:
-        # Check if this exec ts_close aligns with an HTF close
-        htf_idx = htf_feed.get_idx_at_ts_close(exec_ts_close)
+    if high_tf_feed is not None and high_tf_feed is not exec_feed:
+        # Check if this exec ts_close aligns with a high_tf close
+        high_tf_idx = high_tf_feed.get_idx_at_ts_close(exec_ts_close)
         # Bounds check: index must be valid within feed data
-        if htf_idx is not None and 0 <= htf_idx < len(htf_feed.ts_close):
-            new_htf_idx = htf_idx
-            htf_updated = True
+        if high_tf_idx is not None and 0 <= high_tf_idx < len(high_tf_feed.ts_close):
+            new_high_tf_idx = high_tf_idx
+            high_tf_updated = True
 
-    if mtf_feed is not None and mtf_feed is not exec_feed:
-        # Check if this exec ts_close aligns with an MTF close
-        mtf_idx = mtf_feed.get_idx_at_ts_close(exec_ts_close)
+    if med_tf_feed is not None and med_tf_feed is not exec_feed:
+        # Check if this exec ts_close aligns with a med_tf close
+        med_tf_idx = med_tf_feed.get_idx_at_ts_close(exec_ts_close)
         # Bounds check: index must be valid within feed data
-        if mtf_idx is not None and 0 <= mtf_idx < len(mtf_feed.ts_close):
-            new_mtf_idx = mtf_idx
-            mtf_updated = True
+        if med_tf_idx is not None and 0 <= med_tf_idx < len(med_tf_feed.ts_close):
+            new_med_tf_idx = med_tf_idx
+            med_tf_updated = True
 
-    return htf_updated, mtf_updated, new_htf_idx, new_mtf_idx
+    return high_tf_updated, med_tf_updated, new_high_tf_idx, new_med_tf_idx
 
 
 def refresh_tf_caches_impl(
@@ -86,16 +86,16 @@ def refresh_tf_caches_impl(
     get_tf_features_func: Callable[[str, datetime], FeatureSnapshot],
 ) -> tuple[bool, bool]:
     """
-    Refresh HTF/MTF caches at current bar close.
+    Refresh high_tf/med_tf caches at current bar close.
 
     Phase 3: Uses TimeframeCache.refresh_step() with factory functions
     that build FeatureSnapshots from the precomputed TF DataFrames.
 
-    Updates are deterministic: HTF first, then MTF.
+    Updates are deterministic: high_tf first, then med_tf.
 
     Args:
-        ts_close: Current LTF close timestamp
-        tf_mapping: Dict mapping htf/mtf/ltf to timeframe strings
+        ts_close: Current exec_tf close timestamp
+        tf_mapping: Dict mapping high_tf/med_tf/low_tf to timeframe strings + exec -> role
         tf_cache: TimeframeCache instance
         get_tf_features_func: Function to get features at close (tf, ts_close) -> FeatureSnapshot
 
@@ -105,27 +105,27 @@ def refresh_tf_caches_impl(
     high_tf = tf_mapping["high_tf"]
     med_tf = tf_mapping["med_tf"]
 
-    # Factory function for HighTF snapshot
-    def htf_factory() -> FeatureSnapshot:
+    # Factory function for high_tf snapshot
+    def high_tf_factory() -> FeatureSnapshot:
         return get_tf_features_func(high_tf, ts_close)
 
-    # Factory function for MedTF snapshot
-    def mtf_factory() -> FeatureSnapshot:
+    # Factory function for med_tf snapshot
+    def med_tf_factory() -> FeatureSnapshot:
         return get_tf_features_func(med_tf, ts_close)
 
-    return tf_cache.refresh_step(ts_close, htf_factory, mtf_factory)
+    return tf_cache.refresh_step(ts_close, high_tf_factory, med_tf_factory)
 
 
 def build_snapshot_view_impl(
     exec_idx: int,
     multi_tf_feed_store: MultiTFFeedStore,
     exec_feed: FeedStore,
-    htf_feed: FeedStore | None,
-    mtf_feed: FeedStore | None,
+    high_tf_feed: FeedStore | None,
+    med_tf_feed: FeedStore | None,
     exchange: SimulatedExchange,
     multi_tf_mode: bool,
-    current_htf_idx: int,
-    current_mtf_idx: int,
+    current_high_tf_idx: int,
+    current_med_tf_idx: int,
     history_config: HistoryConfig,
     is_history_ready: bool,
     risk_profile: RiskProfileConfig,
@@ -149,12 +149,12 @@ def build_snapshot_view_impl(
         exec_idx: Current exec bar index
         multi_tf_feed_store: MultiTFFeedStore with all feeds
         exec_feed: Exec FeedStore
-        htf_feed: HTF FeedStore (may be None or same as exec_feed)
-        mtf_feed: MTF FeedStore (may be None or same as exec_feed)
+        high_tf_feed: high_tf FeedStore (may be None or same as exec_feed)
+        med_tf_feed: med_tf FeedStore (may be None or same as exec_feed)
         exchange: SimulatedExchange instance
         multi_tf_mode: Whether this is true multi-TF mode
-        current_htf_idx: Current HTF forward-fill index
-        current_mtf_idx: Current MTF forward-fill index
+        current_high_tf_idx: Current high_tf forward-fill index
+        current_med_tf_idx: Current med_tf forward-fill index
         history_config: HistoryConfig for snapshot
         is_history_ready: Whether history is ready
         risk_profile: RiskProfileConfig for mark_price_source
@@ -183,15 +183,15 @@ def build_snapshot_view_impl(
         mark_price = float(exec_feed.close[exec_idx])
         mark_price_source = risk_profile.mark_price_source
 
-    # For single-TF mode, HTF/MTF indices = exec index
-    htf_idx = current_htf_idx if multi_tf_mode else exec_idx
-    mtf_idx = current_mtf_idx if multi_tf_mode else exec_idx
+    # For single-TF mode, high_tf/med_tf indices = exec index
+    high_tf_idx = current_high_tf_idx if multi_tf_mode else exec_idx
+    med_tf_idx = current_med_tf_idx if multi_tf_mode else exec_idx
 
     return RuntimeSnapshotView(
         feeds=multi_tf_feed_store,
         exec_idx=exec_idx,
-        htf_idx=htf_idx if htf_feed is not exec_feed else None,
-        mtf_idx=mtf_idx if mtf_feed is not exec_feed else None,
+        htf_idx=high_tf_idx if high_tf_feed is not exec_feed else None,
+        mtf_idx=med_tf_idx if med_tf_feed is not exec_feed else None,
         exchange=exchange,
         mark_price=mark_price,
         mark_price_source=mark_price_source,

@@ -404,6 +404,9 @@ class BacktestExchange:
             sim_pos, cash_balance, mmr
         )
 
+        # Get mark price from exchange (last computed during process_bar)
+        mark_price = self._sim_exchange.last_mark_price or sim_pos.entry_price
+
         # Translate to unified Position
         return Position(
             symbol=sim_pos.symbol,
@@ -411,7 +414,7 @@ class BacktestExchange:
             size_usdt=sim_pos.size_usdt,
             size_qty=sim_pos.size,
             entry_price=sim_pos.entry_price,
-            mark_price=sim_pos.entry_price,  # Will be updated by step()
+            mark_price=mark_price,
             unrealized_pnl=0.0,  # Calculated by SimulatedExchange
             leverage=self._sim_exchange.leverage,
             stop_loss=sim_pos.stop_loss,

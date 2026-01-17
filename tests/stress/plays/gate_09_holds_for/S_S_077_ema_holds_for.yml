@@ -3,8 +3,11 @@ name: "S_S_077_ema_holds_for"
 description: "Stress Gate 9: EMA 9 < EMA 21 holds_for 3 bars (short). Tests bearish trend persistence."
 
 symbol: "XRPUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

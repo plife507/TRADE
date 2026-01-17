@@ -3,7 +3,7 @@ RuntimeSnapshotView — Array-backed snapshot for hot-loop performance.
 
 RuntimeSnapshotView is the ONLY snapshot implementation:
 - Holds references to FeedStores (not copies)
-- Stores current exec index + HTF/MTF context indices
+- Stores current exec index + high_tf/med_tf context indices
 - Provides accessor methods for data (no deep copies)
 
 PERFORMANCE CONTRACT:
@@ -18,20 +18,20 @@ SNAPSHOT VIEW CONTRACT:
 - close: Current exec bar close price (float)
 - get_feature(indicator_key, tf_role, offset): Unified feature lookup
 - has_feature(indicator_key, tf_role): Check feature availability
-- exec_ctx, htf_ctx, mtf_ctx: TF contexts for direct access
+- exec_ctx, high_tf_ctx, med_tf_ctx: TF contexts for direct access
 
 MULTI-TIMEFRAME FORWARD-FILL:
 All timeframes slower than exec forward-fill their values until their bar closes.
 - exec_ctx: Updates every bar (current exec index)
-- mtf_ctx: Forward-fills until MTF bar closes (same index across multiple exec bars)
-- htf_ctx: Forward-fills until HTF bar closes (same index across multiple exec bars)
+- med_tf_ctx: Forward-fills until med_tf bar closes (same index across multiple exec bars)
+- high_tf_ctx: Forward-fills until high_tf bar closes (same index across multiple exec bars)
 
-Example (exec=15m, HTF=1h):
-    exec bars:    |  1  |  2  |  3  |  4  |  5  |  ...
-    htf_ctx.idx:  [  0     0     0     0  ] [  1  ...
-                  ^--- same HTF index until 1h bar closes
+Example (exec=15m, high_tf=1h):
+    exec bars:     |  1  |  2  |  3  |  4  |  5  |  ...
+    high_tf_ctx.idx: [  0     0     0     0  ] [  1  ...
+                     ^--- same high_tf index until 1h bar closes
 
-This ensures no-lookahead: HTF/MTF values reflect last CLOSED bar only.
+This ensures no-lookahead: high_tf/med_tf values reflect last CLOSED bar only.
 """
 
 import math
@@ -180,8 +180,8 @@ class RuntimeSnapshotView:
     Attributes:
         exec_idx: Current execution bar index
         exec_ctx: Exec TF context
-        htf_ctx: HTF context (may be forward-filled)
-        mtf_ctx: MTF context (may be forward-filled)
+        high_tf_ctx: high_tf context (may be forward-filled)
+        med_tf_ctx: med_tf context (may be forward-filled)
         exchange: Reference to exchange (for state queries)
         mark_price: Mark price for PnL/liquidation (index-derived in live)
         mark_price_source: Mark price provenance ("mark_1m" | "approx_from_ohlcv_1m")
@@ -194,7 +194,8 @@ class RuntimeSnapshotView:
 
     __slots__ = (
         'symbol', 'exec_tf', 'ts_close', 'exec_idx',
-        'exec_ctx', 'htf_ctx', 'mtf_ctx',
+        'low_tf_ctx', 'med_tf_ctx', 'high_tf_ctx',  # 3 TF contexts
+        'exec_ctx',  # Alias to one of the 3 contexts (based on exec_role)
         'exchange', 'mark_price', 'mark_price_source',
         'tf_mapping', 'history_config',
         'history_ready', '_feeds', '_rollups',
@@ -208,8 +209,8 @@ class RuntimeSnapshotView:
         self,
         feeds: MultiTFFeedStore,
         exec_idx: int,
-        htf_idx: int | None,
-        mtf_idx: int | None,
+        high_tf_idx: int | None,
+        med_tf_idx: int | None,
         exchange,  # SimulatedExchange reference
         mark_price: float,
         mark_price_source: str,
@@ -223,19 +224,18 @@ class RuntimeSnapshotView:
         prev_last_price: float | None = None,
         quote_feed: "FeedStore | None" = None,
         quote_idx: int | None = None,
+        low_tf_idx: int | None = None,
     ):
         """
-        Initialize snapshot view.
+        Initialize snapshot view for 3-feed + exec role system.
 
         Args:
             feeds: MultiTFFeedStore with all precomputed data
-            exec_idx: Current exec bar index
-            htf_idx: Current HTF context index (last closed)
-            mtf_idx: Current MTF context index (last closed)
+            exec_idx: Current exec bar index (on the exec_role feed)
+            high_tf_idx: Current high_tf context index
+            med_tf_idx: Current med_tf context index
             exchange: SimulatedExchange reference
             mark_price: Mark price for position valuation (PnL, liquidation, risk).
-                In backtest: 1m bar close or dedicated mark kline.
-                In live: ticker.markPrice (index-based, anti-manipulation).
             mark_price_source: Provenance ("mark_1m" | "approx_from_ohlcv_1m")
             history_config: History configuration
             history_ready: Whether history windows are filled
@@ -244,16 +244,10 @@ class RuntimeSnapshotView:
             feature_registry: Optional FeatureRegistry for feature_id-based access
             rationalized_state: Optional RationalizedState for Layer 2 access
             last_price: 1m ticker close for SIGNAL EVALUATION.
-                In backtest: 1m bar close from action loop.
-                In live: ticker.lastPrice (actual last trade).
-                If None, defaults to mark_price (backtest convenience).
-                NOTE: Semantically different from mark_price in live trading!
             prev_last_price: Previous 1m action price (for crossover operators).
-                If None, crossovers with last_price will fail.
             quote_feed: Optional 1m FeedStore for arbitrary last_price offset lookups.
-                Used by window operators (holds_for, occurred_within) that need
-                last_price history beyond offset=1.
-            quote_idx: Current 1m bar index in quote_feed. Required if quote_feed provided.
+            quote_idx: Current 1m bar index in quote_feed.
+            low_tf_idx: Current low_tf context index (if not same as exec)
         """
         self._feeds = feeds
         self._incremental_state = incremental_state
@@ -264,36 +258,78 @@ class RuntimeSnapshotView:
         self.exec_tf = feeds.exec_feed.tf
         self.exec_idx = exec_idx
         self.tf_mapping = feeds.tf_mapping
-        
-        # Exec context (always current)
-        self.exec_ctx = TFContext(
-            feed=feeds.exec_feed,
-            current_idx=exec_idx,
-            ready=True,
-        )
+
+        # Resolve exec_role
+        exec_role = getattr(feeds, 'exec_role', 'low_tf')
+
+        # Build low_tf context (always present)
+        if exec_role == "low_tf":
+            # Exec is low_tf: use exec_idx
+            self.low_tf_ctx = TFContext(
+                feed=feeds.low_tf_feed,
+                current_idx=exec_idx,
+                ready=True,
+            )
+        else:
+            # Exec is not low_tf: use low_tf_idx if provided
+            low_idx = low_tf_idx if low_tf_idx is not None else 0
+            self.low_tf_ctx = TFContext(
+                feed=feeds.low_tf_feed,
+                current_idx=low_idx,
+                ready=True,
+            )
+
+        # Build med_tf context
+        if feeds.med_tf_feed is not None:
+            if exec_role == "med_tf":
+                # Exec is med_tf: use exec_idx
+                self.med_tf_ctx = TFContext(
+                    feed=feeds.med_tf_feed,
+                    current_idx=exec_idx,
+                    ready=True,
+                )
+            else:
+                # Use provided med_tf_idx
+                med_idx = med_tf_idx if med_tf_idx is not None else 0
+                self.med_tf_ctx = TFContext(
+                    feed=feeds.med_tf_feed,
+                    current_idx=med_idx,
+                    ready=True,
+                )
+        else:
+            # No separate med_tf feed: alias to low_tf
+            self.med_tf_ctx = self.low_tf_ctx
+
+        # Build high_tf context
+        if feeds.high_tf_feed is not None:
+            if exec_role == "high_tf":
+                # Exec is high_tf: use exec_idx
+                self.high_tf_ctx = TFContext(
+                    feed=feeds.high_tf_feed,
+                    current_idx=exec_idx,
+                    ready=True,
+                )
+            else:
+                # Use provided high_tf_idx
+                high_idx = high_tf_idx if high_tf_idx is not None else 0
+                self.high_tf_ctx = TFContext(
+                    feed=feeds.high_tf_feed,
+                    current_idx=high_idx,
+                    ready=True,
+                )
+        else:
+            # No separate high_tf feed: alias to med_tf
+            self.high_tf_ctx = self.med_tf_ctx
+
+        # Set exec_ctx as alias to the appropriate context
+        if exec_role == "low_tf":
+            self.exec_ctx = self.low_tf_ctx
+        elif exec_role == "med_tf":
+            self.exec_ctx = self.med_tf_ctx
+        else:  # "high_tf"
+            self.exec_ctx = self.high_tf_ctx
+
         self.ts_close = self.exec_ctx.ts_close
-        
-        # HTF context (forward-filled)
-        if feeds.htf_feed is not None and htf_idx is not None:
-            self.htf_ctx = TFContext(
-                feed=feeds.htf_feed,
-                current_idx=htf_idx,
-                ready=True,
-            )
-        else:
-            # Single-TF mode: HTF = Exec
-            self.htf_ctx = self.exec_ctx
-        
-        # MTF context (forward-filled)
-        if feeds.mtf_feed is not None and mtf_idx is not None:
-            self.mtf_ctx = TFContext(
-                feed=feeds.mtf_feed,
-                current_idx=mtf_idx,
-                ready=True,
-            )
-        else:
-            # Single-TF mode: MTF = Exec
-            self.mtf_ctx = self.exec_ctx
         
         self.exchange = exchange
         self.mark_price = mark_price
@@ -323,22 +359,22 @@ class RuntimeSnapshotView:
     def ready(self) -> bool:
         """Check if snapshot is ready for strategy evaluation."""
         return (
-            self.exec_ctx.ready and
-            self.htf_ctx.ready and
-            self.mtf_ctx.ready and
+            self.low_tf_ctx.ready and
+            self.med_tf_ctx.ready and
+            self.high_tf_ctx.ready and
             self.history_ready
         )
-    
+
     @property
     def not_ready_reasons(self) -> list:
         """Get list of reasons why snapshot is not ready."""
         reasons = []
-        if not self.exec_ctx.ready:
-            reasons.append(f"Exec: {self.exec_ctx.not_ready_reason}")
-        if not self.htf_ctx.ready:
-            reasons.append(f"HTF: {self.htf_ctx.not_ready_reason}")
-        if not self.mtf_ctx.ready:
-            reasons.append(f"MTF: {self.mtf_ctx.not_ready_reason}")
+        if not self.low_tf_ctx.ready:
+            reasons.append(f"low_tf: {self.low_tf_ctx.not_ready_reason}")
+        if not self.med_tf_ctx.ready:
+            reasons.append(f"med_tf: {self.med_tf_ctx.not_ready_reason}")
+        if not self.high_tf_ctx.ready:
+            reasons.append(f"high_tf: {self.high_tf_ctx.not_ready_reason}")
         if not self.history_ready:
             reasons.append("History: required windows not yet filled")
         return reasons
@@ -527,46 +563,50 @@ class RuntimeSnapshotView:
         return float(self._feeds.exec_feed.low[prev_idx])
     
     # =========================================================================
-    # HTF/MTF Accessors (forward-filled context)
+    # high_tf/med_tf Accessors (forward-filled context)
     # =========================================================================
-    
+
     @property
-    def htf_ema_fast(self) -> float | None:
-        """HTF EMA fast (forward-filled from last close)."""
-        return self.htf_ctx.get_indicator("ema_fast")
-    
+    def high_tf_ema_fast(self) -> float | None:
+        """high_tf EMA fast (forward-filled from last close)."""
+        return self.high_tf_ctx.get_indicator("ema_fast")
+
     @property
-    def htf_ema_slow(self) -> float | None:
-        """HTF EMA slow (forward-filled from last close)."""
-        return self.htf_ctx.get_indicator("ema_slow")
-    
+    def high_tf_ema_slow(self) -> float | None:
+        """high_tf EMA slow (forward-filled from last close)."""
+        return self.high_tf_ctx.get_indicator("ema_slow")
+
     @property
-    def htf_rsi(self) -> float | None:
-        """HTF RSI (forward-filled from last close)."""
-        return self.htf_ctx.get_indicator("rsi")
-    
+    def high_tf_rsi(self) -> float | None:
+        """high_tf RSI (forward-filled from last close)."""
+        return self.high_tf_ctx.get_indicator("rsi")
+
     @property
-    def mtf_ema_fast(self) -> float | None:
-        """MTF EMA fast (forward-filled from last close)."""
-        return self.mtf_ctx.get_indicator("ema_fast")
-    
+    def med_tf_ema_fast(self) -> float | None:
+        """med_tf EMA fast (forward-filled from last close)."""
+        return self.med_tf_ctx.get_indicator("ema_fast")
+
     @property
-    def mtf_ema_slow(self) -> float | None:
-        """MTF EMA slow (forward-filled from last close)."""
-        return self.mtf_ctx.get_indicator("ema_slow")
-    
+    def med_tf_ema_slow(self) -> float | None:
+        """med_tf EMA slow (forward-filled from last close)."""
+        return self.med_tf_ctx.get_indicator("ema_slow")
+
     @property
-    def mtf_rsi(self) -> float | None:
-        """MTF RSI (forward-filled from last close)."""
-        return self.mtf_ctx.get_indicator("rsi")
-    
-    def htf_indicator(self, name: str) -> float | None:
-        """Get HTF indicator by name."""
-        return self.htf_ctx.get_indicator(name)
-    
-    def mtf_indicator(self, name: str) -> float | None:
-        """Get MTF indicator by name."""
-        return self.mtf_ctx.get_indicator(name)
+    def med_tf_rsi(self) -> float | None:
+        """med_tf RSI (forward-filled from last close)."""
+        return self.med_tf_ctx.get_indicator("rsi")
+
+    def low_tf_indicator(self, name: str) -> float | None:
+        """Get low_tf indicator by name."""
+        return self.low_tf_ctx.get_indicator(name)
+
+    def med_tf_indicator(self, name: str) -> float | None:
+        """Get med_tf indicator by name."""
+        return self.med_tf_ctx.get_indicator(name)
+
+    def high_tf_indicator(self, name: str) -> float | None:
+        """Get high_tf indicator by name."""
+        return self.high_tf_ctx.get_indicator(name)
 
     # =========================================================================
     # Layer 2: Rationalized State Access (W2)
@@ -611,18 +651,23 @@ class RuntimeSnapshotView:
                 return None
 
     @property
-    def available_htf_indicators(self) -> list:
-        """Get list of available HTF indicator keys."""
-        if self._feeds.htf_feed is None:
-            return []
-        return list(self._feeds.htf_feed.indicators.keys())
-    
+    def available_low_tf_indicators(self) -> list:
+        """Get list of available low_tf indicator keys."""
+        return list(self._feeds.low_tf_feed.indicators.keys())
+
     @property
-    def available_mtf_indicators(self) -> list:
-        """Get list of available MTF indicator keys."""
-        if self._feeds.mtf_feed is None:
-            return []
-        return list(self._feeds.mtf_feed.indicators.keys())
+    def available_med_tf_indicators(self) -> list:
+        """Get list of available med_tf indicator keys."""
+        if self._feeds.med_tf_feed is None:
+            return self.available_low_tf_indicators  # Alias
+        return list(self._feeds.med_tf_feed.indicators.keys())
+
+    @property
+    def available_high_tf_indicators(self) -> list:
+        """Get list of available high_tf indicator keys."""
+        if self._feeds.high_tf_feed is None:
+            return self.available_med_tf_indicators  # Alias
+        return list(self._feeds.high_tf_feed.indicators.keys())
     
     # =========================================================================
     # Unified Feature Lookup API (for PlaySignalEvaluator)
@@ -636,7 +681,7 @@ class RuntimeSnapshotView:
     ) -> float | None:
         """
         Unified feature lookup API for strategy evaluation.
-        
+
         Supports both OHLCV and indicator keys across all TF roles.
         Used by PlaySignalEvaluator for condition evaluation.
 
@@ -644,7 +689,7 @@ class RuntimeSnapshotView:
             indicator_key: Key to look up (e.g., "close", "ema_20", "rsi")
             tf_role: TF role ("exec", "high_tf", "med_tf")
             offset: Bar offset (0 = current, 1 = previous, etc.)
-            
+
         Returns:
             Feature value or None if not available
         """
@@ -695,14 +740,15 @@ class RuntimeSnapshotView:
             return float(feed.open_interest[target_idx])
 
         # Get the appropriate context
-        # In single-TF mode, htf_ctx and mtf_ctx point to exec_ctx
-        # Use the context's feed directly to handle both single-TF and multi-TF modes
-        if tf_role in ("exec", "low_tf"):
+        # In single-TF mode, contexts may alias to each other
+        if tf_role == "exec":
             ctx = self.exec_ctx
-        elif tf_role == "high_tf":
-            ctx = self.htf_ctx
+        elif tf_role == "low_tf":
+            ctx = self.low_tf_ctx
         elif tf_role == "med_tf":
-            ctx = self.mtf_ctx
+            ctx = self.med_tf_ctx
+        elif tf_role == "high_tf":
+            ctx = self.high_tf_ctx
         else:
             return None
 
@@ -763,13 +809,15 @@ class RuntimeSnapshotView:
         if indicator_key == "open_interest":
             return self._feeds.exec_feed.open_interest is not None
 
-        # Get context for TF role (handles single-TF mode where high_tf/med_tf = exec)
-        if tf_role in ("exec", "low_tf"):
+        # Get context for TF role (handles single-TF mode where contexts alias)
+        if tf_role == "exec":
             ctx = self.exec_ctx
-        elif tf_role == "high_tf":
-            ctx = self.htf_ctx
+        elif tf_role == "low_tf":
+            ctx = self.low_tf_ctx
         elif tf_role == "med_tf":
-            ctx = self.mtf_ctx
+            ctx = self.med_tf_ctx
+        elif tf_role == "high_tf":
+            ctx = self.high_tf_ctx
         else:
             return False
 
@@ -881,34 +929,34 @@ class RuntimeSnapshotView:
                 elif feature_tf == self.tf_mapping.get("med_tf"):
                     tf_role = "med_tf"
                 elif feature_tf == self.tf_mapping.get("low_tf"):
-                    tf_role = "exec"
-                # else: fallback to exec
+                    tf_role = "low_tf"
+                # else: fallback to exec (which is alias to one of the above)
 
         return self.get_feature(indicator_key, tf_role=tf_role, offset=offset)
 
     # =========================================================================
-    # Staleness (for MTF forward-fill validation)
+    # Staleness (for multi-TF forward-fill validation)
     # =========================================================================
-    
+
     @property
-    def htf_is_stale(self) -> bool:
-        """Check if HTF features are stale (forward-filled)."""
-        return self.ts_close > self.htf_ctx.ts_close
-    
+    def high_tf_is_stale(self) -> bool:
+        """Check if high_tf features are stale (forward-filled)."""
+        return self.ts_close > self.high_tf_ctx.ts_close
+
     @property
-    def mtf_is_stale(self) -> bool:
-        """Check if MTF features are stale (forward-filled)."""
-        return self.ts_close > self.mtf_ctx.ts_close
-    
+    def med_tf_is_stale(self) -> bool:
+        """Check if med_tf features are stale (forward-filled)."""
+        return self.ts_close > self.med_tf_ctx.ts_close
+
     @property
-    def htf_ctx_ts_close(self) -> datetime:
-        """Get HTF context timestamp."""
-        return self.htf_ctx.ts_close
-    
+    def high_tf_ctx_ts_close(self) -> datetime:
+        """Get high_tf context timestamp."""
+        return self.high_tf_ctx.ts_close
+
     @property
-    def mtf_ctx_ts_close(self) -> datetime:
-        """Get MTF context timestamp."""
-        return self.mtf_ctx.ts_close
+    def med_tf_ctx_ts_close(self) -> datetime:
+        """Get med_tf context timestamp."""
+        return self.med_tf_ctx.ts_close
     
     # =========================================================================
     # Exchange State Accessors
@@ -1071,7 +1119,7 @@ class RuntimeSnapshotView:
         Args:
             path: Dot-separated path like "swing.high_level" or "trend.direction"
                   For exec TF: "swing.high_level"
-                  For HTF: "htf_1h.swing.high_level"
+                  For HTF: "high_tf_1h.swing.high_level"
 
         Returns:
             The structure value
@@ -1102,28 +1150,28 @@ class RuntimeSnapshotView:
             internal_path = f"exec.{struct_key}.{output_key}"
             return self._incremental_state.get_value(internal_path)
 
-        # Check if it's an HTF path (starts with htf_)
-        if struct_key.startswith("htf_"):
-            # Path format: "htf_<tf>.<struct_key>.<output_key>"
-            tf_name = parts[0][4:]  # Remove "htf_" prefix
+        # Check if it's an HTF path (starts with high_tf_)
+        if struct_key.startswith("high_tf_"):
+            # Path format: "high_tf_<tf>.<struct_key>.<output_key>"
+            tf_name = parts[0][4:]  # Remove "high_tf_" prefix
             # P2-005 FIX: Validate HTF path has enough parts before accessing
             if len(parts) < 3:
                 raise KeyError(
                     f"Invalid HTF structure path: '{path}'. "
-                    f"Expected format: 'htf_<tf>.<struct_key>.<output_key>'"
+                    f"Expected format: 'high_tf_<tf>.<struct_key>.<output_key>'"
                 )
-            if tf_name in self._incremental_state.htf:
+            if tf_name in self._incremental_state.high_tf:
                 actual_struct_key = parts[1]
                 actual_output_key = ".".join(parts[2:])
-                internal_path = f"htf_{tf_name}.{actual_struct_key}.{actual_output_key}"
+                internal_path = f"high_tf_{tf_name}.{actual_struct_key}.{actual_output_key}"
                 return self._incremental_state.get_value(internal_path)
 
         # Structure not found
         available_exec = self._incremental_state.exec.list_structures()
         available_htf = []
-        for htf_name in self._incremental_state.list_htfs():
-            for s_key in self._incremental_state.htf[htf_name].list_structures():
-                available_htf.append(f"htf_{htf_name}.{s_key}")
+        for high_tf_name in self._incremental_state.list_high_tfs():
+            for s_key in self._incremental_state.high_tf[high_tf_name].list_structures():
+                available_htf.append(f"high_tf_{high_tf_name}.{s_key}")
 
         all_available = available_exec + available_htf
         raise KeyError(
@@ -1172,11 +1220,11 @@ class RuntimeSnapshotView:
 
         # Check if structure is in non-exec TF state (LowTF, MedTF, or HighTF)
         # The "htf" dict stores ALL non-exec timeframes despite the name
-        if feature_tf in self._incremental_state.htf:
-            tf_state = self._incremental_state.htf[feature_tf]
+        if feature_tf in self._incremental_state.high_tf:
+            tf_state = self._incremental_state.high_tf[feature_tf]
             if feature_id in tf_state.structures:
                 try:
-                    path = f"htf_{feature_tf}.{feature_id}.{field}"
+                    path = f"high_tf_{feature_tf}.{feature_id}.{field}"
                     return self._incremental_state.get_value(path)
                 except KeyError:
                     return None
@@ -1307,13 +1355,13 @@ class RuntimeSnapshotView:
         if tf == exec_tf:
             return self._feeds.exec_feed
 
-        # Check HTF
-        if self._feeds.htf_feed is not None and self._feeds.htf_feed.tf == tf:
-            return self._feeds.htf_feed
+        # Check high_tf
+        if self._feeds.high_tf_feed is not None and self._feeds.high_tf_feed.tf == tf:
+            return self._feeds.high_tf_feed
 
-        # Check MTF
-        if self._feeds.mtf_feed is not None and self._feeds.mtf_feed.tf == tf:
-            return self._feeds.mtf_feed
+        # Check med_tf
+        if self._feeds.med_tf_feed is not None and self._feeds.med_tf_feed.tf == tf:
+            return self._feeds.med_tf_feed
 
         # TF not found in feeds
         return None
@@ -1325,13 +1373,13 @@ class RuntimeSnapshotView:
         if tf == exec_tf:
             return self.exec_ctx.current_idx
 
-        # Check HTF
-        if self._feeds.htf_feed is not None and self._feeds.htf_feed.tf == tf:
-            return self.htf_ctx.current_idx
+        # Check high_tf
+        if self._feeds.high_tf_feed is not None and self._feeds.high_tf_feed.tf == tf:
+            return self.high_tf_ctx.current_idx
 
-        # Check MTF
-        if self._feeds.mtf_feed is not None and self._feeds.mtf_feed.tf == tf:
-            return self.mtf_ctx.current_idx
+        # Check med_tf
+        if self._feeds.med_tf_feed is not None and self._feeds.med_tf_feed.tf == tf:
+            return self.med_tf_ctx.current_idx
 
         return None
 
@@ -1432,7 +1480,7 @@ class RuntimeSnapshotView:
         Used by crossover operators to get previous bar values.
 
         Args:
-            path: Dot-separated path (e.g., "indicator.rsi" or "indicator.ema.htf")
+            path: Dot-separated path (e.g., "indicator.rsi" or "indicator.ema.high_tf")
             offset: Bar offset (0 = current, 1 = previous bar, etc.)
 
         Returns:
@@ -1555,7 +1603,7 @@ class RuntimeSnapshotView:
 
         Incremental state paths use MultiTFIncrementalState format internally:
         - "exec.<struct_key>.<output_key>" for exec TF
-        - "htf_<tf>.<struct_key>.<output_key>" for HTF
+        - "high_tf_<tf>.<struct_key>.<output_key>" for HTF
 
         Args:
             parts: Path parts after "structure." (e.g., ["swing", "high_level"])
@@ -1598,11 +1646,11 @@ class RuntimeSnapshotView:
                     pass
 
             # Check if this is an HTF structure
-            for htf_name, htf_state in self._incremental_state.htf.items():
-                if block_key in htf_state.structures:
+            for high_tf_name, high_tf_state in self._incremental_state.high_tf.items():
+                if block_key in high_tf_state.structures:
                     try:
                         output_key = ".".join(parts[1:])
-                        internal_path = f"htf_{htf_name}.{block_key}.{output_key}"
+                        internal_path = f"high_tf_{high_tf_name}.{block_key}.{output_key}"
                         value = self._incremental_state.get_value(internal_path)
                         if isinstance(value, str):
                             return None
@@ -1619,9 +1667,9 @@ class RuntimeSnapshotView:
             available_incremental = []
             if self._incremental_state is not None:
                 available_incremental.extend(self._incremental_state.exec.list_structures())
-                for htf_name, htf_state in self._incremental_state.htf.items():
-                    for struct_key in htf_state.list_structures():
-                        available_incremental.append(f"{struct_key} (htf_{htf_name})")
+                for high_tf_name, high_tf_state in self._incremental_state.high_tf.items():
+                    for struct_key in high_tf_state.list_structures():
+                        available_incremental.append(f"{struct_key} (high_tf_{high_tf_name})")
 
             all_available = available_feedstore + available_incremental
             available_str = ", ".join(all_available) if all_available else "(none defined)"
@@ -1738,10 +1786,10 @@ class RuntimeSnapshotView:
             "rsi": self.rsi,
             "atr": self.atr,
             # Staleness
-            "htf_is_stale": self.htf_is_stale,
-            "mtf_is_stale": self.mtf_is_stale,
-            "htf_ctx_ts_close": self.htf_ctx_ts_close.isoformat(),
-            "mtf_ctx_ts_close": self.mtf_ctx_ts_close.isoformat(),
+            "high_tf_is_stale": self.high_tf_is_stale,
+            "med_tf_is_stale": self.med_tf_is_stale,
+            "high_tf_ctx_ts_close": self.high_tf_ctx_ts_close.isoformat(),
+            "med_tf_ctx_ts_close": self.med_tf_ctx_ts_close.isoformat(),
             # 1m Rollups (Phase 3)
             "rollups": self.rollups,
             "has_rollups": self.has_rollups,

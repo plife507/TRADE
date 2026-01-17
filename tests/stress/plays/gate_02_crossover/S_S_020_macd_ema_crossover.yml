@@ -3,8 +3,11 @@ name: "S_S_020_macd_ema_crossover"
 description: "Stress Gate 2: EMA 12/26 crossover entry (short). MACD standard periods."
 
 symbol: "BTCUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

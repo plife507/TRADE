@@ -1,17 +1,22 @@
 """
-HTF/MTF index management for forward-fill behavior.
+TF index management for 3-feed + exec role system.
 
-This module provides a unified implementation of HTF/MTF index tracking
-that works identically for both BacktestEngine and PlayEngine.
+This module provides unified implementation of TF index tracking
+for low_tf, med_tf, high_tf feeds relative to the exec role.
 
-Forward-Fill Principle:
-    Any TF slower than exec keeps its index constant until its bar closes.
-    This ensures no-lookahead (values reflect last CLOSED bar only).
+The exec role is NOT a 4th feed - it's a pointer to one of the 3 feeds.
+This determines which feed we "step on" during simulation.
 
-Example (exec=15m, HTF=1h):
-    exec bars:      |  1  |  2  |  3  |  4  |  5  |  ...
-    htf_idx:        [  0     0     0     0  ] [  1  ...
-    htf_changed:       F     F     F     T      F  ...
+Forward-Fill Semantics:
+    - TFs SLOWER than exec: forward-fill (hold last closed bar)
+    - TFs FASTER than exec: lookup most recent closed bar at exec close
+    - TF EQUAL to exec: direct access (index from exec stepping)
+
+Example (exec=med_tf, low_tf=15m, med_tf=1h, high_tf=4h):
+    When stepping on 1h bars:
+    - low_tf (15m): lookup most recent 15m close at 1h close
+    - med_tf (1h): direct access (current bar)
+    - high_tf (4h): forward-fill until 4h closes
 
 Uses O(1) ts_close_ms_to_idx mapping from FeedStore.
 """
@@ -27,38 +32,55 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True, frozen=True)
-class HTFIndexUpdate:
-    """Result of an HTF/MTF index update operation.
+class TFIndexUpdate:
+    """Result of TF index update for all 3 feeds.
 
     Attributes:
-        htf_changed: True if HTF index changed (new HTF bar closed)
-        mtf_changed: True if MTF index changed (new MTF bar closed)
-        htf_idx: Current HTF forward-fill index
-        mtf_idx: Current MTF forward-fill index
+        low_tf_changed: True if low_tf index changed
+        med_tf_changed: True if med_tf index changed
+        high_tf_changed: True if high_tf index changed
+        low_tf_idx: Current low_tf index
+        med_tf_idx: Current med_tf index
+        high_tf_idx: Current high_tf index
     """
 
-    htf_changed: bool
-    mtf_changed: bool
-    htf_idx: int
-    mtf_idx: int
+    low_tf_changed: bool
+    med_tf_changed: bool
+    high_tf_changed: bool
+    low_tf_idx: int
+    med_tf_idx: int
+    high_tf_idx: int
 
 
-class HTFIndexManager:
+# Backward compat alias
+HTFIndexUpdate = TFIndexUpdate
+
+
+class TFIndexManager:
     """
-    Manages HTF/MTF forward-fill indices for multi-timeframe backtesting.
+    Manages TF indices for 3-feed + exec role system.
 
-    This class tracks which bar index to use for HTF/MTF indicators at any
-    given exec bar. The indices are "forward-filled" meaning they stay
-    constant until the slower TF's bar actually closes.
+    This class tracks which bar index to use for each TF at any given
+    exec bar. The behavior depends on whether a TF is faster or slower
+    than exec:
+
+    - SLOWER than exec: Forward-fill (stays constant until bar closes)
+    - FASTER than exec: Lookup most recent closed bar at exec close
+    - EQUAL to exec: Direct access (index from exec stepping)
 
     Usage:
-        manager = HTFIndexManager(htf_feed, mtf_feed, exec_feed)
+        manager = TFIndexManager(
+            low_tf_feed=low_tf_feed,
+            med_tf_feed=med_tf_feed,
+            high_tf_feed=high_tf_feed,
+            exec_role="low_tf",  # or "med_tf" or "high_tf"
+        )
 
         for exec_bar in bars:
-            update = manager.update_indices(exec_bar.ts_close)
-            if update.htf_changed:
-                # New HTF bar closed - update incremental structures
-                update_htf_incremental_state()
+            update = manager.update_indices(exec_bar.ts_close, exec_idx)
+            if update.high_tf_changed:
+                # New high_tf bar closed - update incremental structures
+                ...
 
     Thread Safety:
         NOT thread-safe. Use one manager per engine instance.
@@ -66,146 +88,275 @@ class HTFIndexManager:
 
     def __init__(
         self,
-        htf_feed: "FeedStore | None",
-        mtf_feed: "FeedStore | None",
-        exec_feed: "FeedStore | None",
+        low_tf_feed: "FeedStore",
+        med_tf_feed: "FeedStore | None",
+        high_tf_feed: "FeedStore | None",
+        exec_role: str,
     ) -> None:
         """
-        Initialize HTFIndexManager.
+        Initialize TFIndexManager.
 
         Args:
-            htf_feed: HTF FeedStore (may be None if no HTF)
-            mtf_feed: MTF FeedStore (may be None if no MTF)
-            exec_feed: Exec FeedStore (required for comparison)
+            low_tf_feed: LowTF FeedStore (always required)
+            med_tf_feed: MedTF FeedStore (None if same as low_tf)
+            high_tf_feed: HighTF FeedStore (None if same as med_tf or low_tf)
+            exec_role: Which feed we step on ("low_tf", "med_tf", "high_tf")
         """
-        self._htf_feed = htf_feed
-        self._mtf_feed = mtf_feed
-        self._exec_feed = exec_feed
+        self._low_tf_feed = low_tf_feed
+        self._med_tf_feed = med_tf_feed
+        self._high_tf_feed = high_tf_feed
+        self._exec_role = exec_role
 
-        # Current forward-fill indices
-        self._current_htf_idx: int = 0
-        self._current_mtf_idx: int = 0
+        # Resolve exec feed
+        if exec_role == "low_tf":
+            self._exec_feed = low_tf_feed
+        elif exec_role == "med_tf":
+            self._exec_feed = med_tf_feed or low_tf_feed
+        elif exec_role == "high_tf":
+            self._exec_feed = high_tf_feed or med_tf_feed or low_tf_feed
+        else:
+            raise ValueError(f"Invalid exec_role: {exec_role}")
+
+        # Current indices
+        self._current_low_tf_idx: int = 0
+        self._current_med_tf_idx: int = 0
+        self._current_high_tf_idx: int = 0
 
     @property
+    def low_tf_idx(self) -> int:
+        """Current low_tf index."""
+        return self._current_low_tf_idx
+
+    @property
+    def med_tf_idx(self) -> int:
+        """Current med_tf index."""
+        return self._current_med_tf_idx
+
+    @property
+    def high_tf_idx(self) -> int:
+        """Current high_tf index."""
+        return self._current_high_tf_idx
+
+    # Backward compat aliases
+    @property
     def htf_idx(self) -> int:
-        """Current HTF forward-fill index."""
-        return self._current_htf_idx
+        """Current high_tf forward-fill index (backward compat)."""
+        return self._current_high_tf_idx
 
     @property
     def mtf_idx(self) -> int:
-        """Current MTF forward-fill index."""
-        return self._current_mtf_idx
+        """Current med_tf forward-fill index (backward compat)."""
+        return self._current_med_tf_idx
 
     def reset(self) -> None:
         """Reset indices to initial state."""
-        self._current_htf_idx = 0
-        self._current_mtf_idx = 0
+        self._current_low_tf_idx = 0
+        self._current_med_tf_idx = 0
+        self._current_high_tf_idx = 0
 
-    def update_indices(self, exec_ts_close: datetime) -> HTFIndexUpdate:
+    def update_indices(self, exec_ts_close: datetime, exec_idx: int | None = None) -> TFIndexUpdate:
         """
-        Update HTF/MTF indices based on exec bar close timestamp.
+        Update all TF indices based on exec bar close timestamp.
 
         Uses O(1) lookup via FeedStore.get_idx_at_ts_close() to determine
-        if the exec bar's ts_close aligns with an HTF/MTF bar close.
+        indices for TFs that aren't the exec TF.
 
         Args:
             exec_ts_close: Current exec bar's close timestamp
+            exec_idx: Current exec bar index (optional, for direct assignment)
 
         Returns:
-            HTFIndexUpdate with change flags and current indices
+            TFIndexUpdate with change flags and current indices
         """
-        htf_changed = False
-        mtf_changed = False
+        low_tf_changed = False
+        med_tf_changed = False
+        high_tf_changed = False
 
-        # Check if HTF bar closed at this exec bar close
-        if self._htf_feed is not None and self._htf_feed is not self._exec_feed:
-            htf_idx = self._htf_feed.get_idx_at_ts_close(exec_ts_close)
-            if htf_idx is not None and 0 <= htf_idx < self._htf_feed.length:
-                # Check if this is a NEW HTF bar (index actually changed)
-                if htf_idx != self._current_htf_idx:
-                    htf_changed = True
-                self._current_htf_idx = htf_idx
+        # Update indices based on exec role
+        if self._exec_role == "low_tf":
+            # Exec is low_tf: direct access for low_tf, forward-fill for med/high
+            if exec_idx is not None:
+                if exec_idx != self._current_low_tf_idx:
+                    low_tf_changed = True
+                self._current_low_tf_idx = exec_idx
 
-        # Check if MTF bar closed at this exec bar close
-        if self._mtf_feed is not None and self._mtf_feed is not self._exec_feed:
-            mtf_idx = self._mtf_feed.get_idx_at_ts_close(exec_ts_close)
-            if mtf_idx is not None and 0 <= mtf_idx < self._mtf_feed.length:
-                # Check if this is a NEW MTF bar (index actually changed)
-                if mtf_idx != self._current_mtf_idx:
-                    mtf_changed = True
-                self._current_mtf_idx = mtf_idx
+            # Forward-fill med_tf (slower than exec)
+            if self._med_tf_feed is not None:
+                med_idx = self._med_tf_feed.get_idx_at_ts_close(exec_ts_close)
+                if med_idx is not None and 0 <= med_idx < self._med_tf_feed.length:
+                    if med_idx != self._current_med_tf_idx:
+                        med_tf_changed = True
+                    self._current_med_tf_idx = med_idx
 
-        return HTFIndexUpdate(
-            htf_changed=htf_changed,
-            mtf_changed=mtf_changed,
-            htf_idx=self._current_htf_idx,
-            mtf_idx=self._current_mtf_idx,
+            # Forward-fill high_tf (slower than exec)
+            if self._high_tf_feed is not None:
+                high_idx = self._high_tf_feed.get_idx_at_ts_close(exec_ts_close)
+                if high_idx is not None and 0 <= high_idx < self._high_tf_feed.length:
+                    if high_idx != self._current_high_tf_idx:
+                        high_tf_changed = True
+                    self._current_high_tf_idx = high_idx
+
+        elif self._exec_role == "med_tf":
+            # Exec is med_tf: lookup low_tf, direct for med_tf, forward-fill high_tf
+            if exec_idx is not None:
+                if exec_idx != self._current_med_tf_idx:
+                    med_tf_changed = True
+                self._current_med_tf_idx = exec_idx
+
+            # Lookup low_tf (faster than exec)
+            low_idx = self._low_tf_feed.get_idx_at_ts_close(exec_ts_close)
+            if low_idx is not None and 0 <= low_idx < self._low_tf_feed.length:
+                if low_idx != self._current_low_tf_idx:
+                    low_tf_changed = True
+                self._current_low_tf_idx = low_idx
+
+            # Forward-fill high_tf (slower than exec)
+            if self._high_tf_feed is not None:
+                high_idx = self._high_tf_feed.get_idx_at_ts_close(exec_ts_close)
+                if high_idx is not None and 0 <= high_idx < self._high_tf_feed.length:
+                    if high_idx != self._current_high_tf_idx:
+                        high_tf_changed = True
+                    self._current_high_tf_idx = high_idx
+
+        elif self._exec_role == "high_tf":
+            # Exec is high_tf: lookup low_tf and med_tf, direct for high_tf
+            if exec_idx is not None:
+                if exec_idx != self._current_high_tf_idx:
+                    high_tf_changed = True
+                self._current_high_tf_idx = exec_idx
+
+            # Lookup low_tf (faster than exec)
+            low_idx = self._low_tf_feed.get_idx_at_ts_close(exec_ts_close)
+            if low_idx is not None and 0 <= low_idx < self._low_tf_feed.length:
+                if low_idx != self._current_low_tf_idx:
+                    low_tf_changed = True
+                self._current_low_tf_idx = low_idx
+
+            # Lookup med_tf (faster than exec if distinct)
+            if self._med_tf_feed is not None:
+                med_idx = self._med_tf_feed.get_idx_at_ts_close(exec_ts_close)
+                if med_idx is not None and 0 <= med_idx < self._med_tf_feed.length:
+                    if med_idx != self._current_med_tf_idx:
+                        med_tf_changed = True
+                    self._current_med_tf_idx = med_idx
+
+        return TFIndexUpdate(
+            low_tf_changed=low_tf_changed,
+            med_tf_changed=med_tf_changed,
+            high_tf_changed=high_tf_changed,
+            low_tf_idx=self._current_low_tf_idx,
+            med_tf_idx=self._current_med_tf_idx,
+            high_tf_idx=self._current_high_tf_idx,
         )
 
-    def set_indices(self, htf_idx: int, mtf_idx: int) -> None:
+    def set_indices(self, low_tf_idx: int, med_tf_idx: int, high_tf_idx: int) -> None:
         """
-        Directly set HTF/MTF indices (for state restoration).
+        Directly set TF indices (for state restoration).
 
         Args:
-            htf_idx: HTF index to set
-            mtf_idx: MTF index to set
+            low_tf_idx: low_tf index to set
+            med_tf_idx: med_tf index to set
+            high_tf_idx: high_tf index to set
         """
-        self._current_htf_idx = htf_idx
-        self._current_mtf_idx = mtf_idx
+        self._current_low_tf_idx = low_tf_idx
+        self._current_med_tf_idx = med_tf_idx
+        self._current_high_tf_idx = high_tf_idx
 
 
-def update_htf_mtf_indices_impl(
+# Backward compat alias
+HTFIndexManager = TFIndexManager
+
+
+def update_tf_indices_impl(
     exec_ts_close: datetime,
-    htf_feed: "FeedStore | None",
-    mtf_feed: "FeedStore | None",
+    low_tf_feed: "FeedStore",
+    med_tf_feed: "FeedStore | None",
+    high_tf_feed: "FeedStore | None",
     exec_feed: "FeedStore",
-    current_htf_idx: int,
-    current_mtf_idx: int,
-) -> tuple[bool, bool, int, int]:
+    current_low_tf_idx: int,
+    current_med_tf_idx: int,
+    current_high_tf_idx: int,
+) -> tuple[bool, bool, bool, int, int, int]:
     """
-    Functional implementation of HTF/MTF index update.
+    Functional implementation of TF index update.
 
-    This is the stateless version used by BacktestEngine via engine_snapshot.py.
-    Returns tuple format for backward compatibility.
-
-    Note: The "changed" semantics differ from HTFIndexManager:
-    - This returns htf_updated=True when a valid alignment is found
-    - HTFIndexManager returns htf_changed=True only when index CHANGES
-
-    The BacktestEngine doesn't need "changed" semantics since it doesn't
-    track incremental state per HTF bar. PlayEngine uses HTFIndexManager
-    which provides proper "changed" detection.
+    This is the stateless version for backward compatibility.
 
     Args:
         exec_ts_close: Current exec bar's ts_close
-        htf_feed: HTF FeedStore (may be None or same as exec_feed)
-        mtf_feed: MTF FeedStore (may be None or same as exec_feed)
-        exec_feed: Exec FeedStore
-        current_htf_idx: Current HTF index
-        current_mtf_idx: Current MTF index
+        low_tf_feed: LowTF FeedStore
+        med_tf_feed: MedTF FeedStore (may be None)
+        high_tf_feed: HighTF FeedStore (may be None)
+        exec_feed: Exec FeedStore (determines which TF is exec)
+        current_low_tf_idx: Current low_tf index
+        current_med_tf_idx: Current med_tf index
+        current_high_tf_idx: Current high_tf index
 
     Returns:
-        Tuple of (htf_updated, mtf_updated, new_htf_idx, new_mtf_idx)
+        Tuple of (low_tf_updated, med_tf_updated, high_tf_updated,
+                  new_low_tf_idx, new_med_tf_idx, new_high_tf_idx)
     """
-    htf_updated = False
-    mtf_updated = False
-    new_htf_idx = current_htf_idx
-    new_mtf_idx = current_mtf_idx
+    low_tf_updated = False
+    med_tf_updated = False
+    high_tf_updated = False
+    new_low_tf_idx = current_low_tf_idx
+    new_med_tf_idx = current_med_tf_idx
+    new_high_tf_idx = current_high_tf_idx
 
-    if htf_feed is not None and htf_feed is not exec_feed:
-        # Check if this exec ts_close aligns with an HTF close
-        htf_idx = htf_feed.get_idx_at_ts_close(exec_ts_close)
-        # Bounds check: index must be valid within feed data
-        if htf_idx is not None and 0 <= htf_idx < len(htf_feed.ts_close):
-            new_htf_idx = htf_idx
-            htf_updated = True
+    # Low TF index (if distinct from exec)
+    if low_tf_feed is not exec_feed:
+        low_idx = low_tf_feed.get_idx_at_ts_close(exec_ts_close)
+        if low_idx is not None and 0 <= low_idx < low_tf_feed.length:
+            new_low_tf_idx = low_idx
+            low_tf_updated = True
 
-    if mtf_feed is not None and mtf_feed is not exec_feed:
-        # Check if this exec ts_close aligns with an MTF close
-        mtf_idx = mtf_feed.get_idx_at_ts_close(exec_ts_close)
-        # Bounds check: index must be valid within feed data
-        if mtf_idx is not None and 0 <= mtf_idx < len(mtf_feed.ts_close):
-            new_mtf_idx = mtf_idx
-            mtf_updated = True
+    # Med TF index (if distinct from exec)
+    if med_tf_feed is not None and med_tf_feed is not exec_feed:
+        med_idx = med_tf_feed.get_idx_at_ts_close(exec_ts_close)
+        if med_idx is not None and 0 <= med_idx < med_tf_feed.length:
+            new_med_tf_idx = med_idx
+            med_tf_updated = True
 
-    return htf_updated, mtf_updated, new_htf_idx, new_mtf_idx
+    # High TF index (if distinct from exec)
+    if high_tf_feed is not None and high_tf_feed is not exec_feed:
+        high_idx = high_tf_feed.get_idx_at_ts_close(exec_ts_close)
+        if high_idx is not None and 0 <= high_idx < high_tf_feed.length:
+            new_high_tf_idx = high_idx
+            high_tf_updated = True
+
+    return (
+        low_tf_updated,
+        med_tf_updated,
+        high_tf_updated,
+        new_low_tf_idx,
+        new_med_tf_idx,
+        new_high_tf_idx,
+    )
+
+
+# Backward compat wrapper
+def update_high_tf_med_tf_indices_impl(
+    exec_ts_close: datetime,
+    high_tf_feed: "FeedStore | None",
+    med_tf_feed: "FeedStore | None",
+    exec_feed: "FeedStore",
+    current_high_tf_idx: int,
+    current_med_tf_idx: int,
+) -> tuple[bool, bool, int, int]:
+    """
+    Backward compat wrapper for high_tf/med_tf index update.
+
+    Returns tuple format for backward compatibility with existing callers.
+    """
+    # Use new impl with dummy low_tf
+    _, med_updated, high_updated, _, new_med_idx, new_high_idx = update_tf_indices_impl(
+        exec_ts_close=exec_ts_close,
+        low_tf_feed=exec_feed,  # Dummy, not used since same as exec
+        med_tf_feed=med_tf_feed,
+        high_tf_feed=high_tf_feed,
+        exec_feed=exec_feed,
+        current_low_tf_idx=0,
+        current_med_tf_idx=current_med_tf_idx,
+        current_high_tf_idx=current_high_tf_idx,
+    )
+    return high_updated, med_updated, new_high_idx, new_med_idx

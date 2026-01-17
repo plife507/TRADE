@@ -2,8 +2,11 @@ version: 3.0.0
 name: S42_E_013_btc_1m_htf_trend
 description: "HTF trend (4h) with 1m last_price execution. Tests forward-fill + crossover."
 symbol: BTCUSDT
-tf: 1m
-high_tf: "4h"
+timeframes:
+  low_tf: "1m"
+  med_tf: "1m"
+  high_tf: "4h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

@@ -371,8 +371,8 @@ def create_backtest_engine(
     play: "Play",
     feed_store: "FeedStore | None" = None,
     sim_exchange: "SimulatedExchange | None" = None,
-    htf_feed: "FeedStore | None" = None,
-    mtf_feed: "FeedStore | None" = None,
+    high_tf_feed: "FeedStore | None" = None,
+    med_tf_feed: "FeedStore | None" = None,
     quote_feed: "FeedStore | None" = None,
     tf_mapping: dict[str, str] | None = None,
     incremental_state: "MultiTFIncrementalState | None" = None,
@@ -394,13 +394,13 @@ def create_backtest_engine(
         play: Play instance with strategy definition
         feed_store: Pre-built FeedStore for exec timeframe data
         sim_exchange: Pre-built SimulatedExchange for order execution
-        htf_feed: Optional pre-built FeedStore for HTF data
-        mtf_feed: Optional pre-built FeedStore for MTF data
+        high_tf_feed: Optional pre-built FeedStore for high_tf data
+        med_tf_feed: Optional pre-built FeedStore for med_tf data
         quote_feed: Optional pre-built FeedStore for 1m quote data
-        tf_mapping: Optional TF mapping (htf/mtf/ltf -> TF strings)
+        tf_mapping: Optional TF mapping (high_tf/med_tf/low_tf -> TF strings + exec -> role)
         incremental_state: Optional pre-built incremental state for structures
         config_override: Optional config overrides
-        on_snapshot: Optional callback(snapshot, exec_idx, htf_idx, mtf_idx) for audits
+        on_snapshot: Optional callback(snapshot, exec_idx, high_tf_idx, med_tf_idx) for audits
 
     Returns:
         PlayEngine configured for backtest with injected components
@@ -416,8 +416,8 @@ def create_backtest_engine(
             play=play,
             feed_store=old_engine._exec_feed,
             sim_exchange=old_engine._exchange,
-            htf_feed=old_engine._htf_feed,
-            mtf_feed=old_engine._mtf_feed,
+            high_tf_feed=old_engine._high_tf_feed,
+            med_tf_feed=old_engine._med_tf_feed,
             quote_feed=old_engine._quote_feed,
             tf_mapping=old_engine._tf_mapping,
             incremental_state=old_engine._incremental_state,
@@ -491,11 +491,11 @@ def create_backtest_engine(
         config=config,
     )
 
-    # Wire HTF/MTF feeds for multi-timeframe support
-    if htf_feed is not None:
-        engine._htf_feed = htf_feed
-    if mtf_feed is not None:
-        engine._mtf_feed = mtf_feed
+    # Wire high_tf/med_tf feeds for multi-timeframe support
+    if high_tf_feed is not None:
+        engine._high_tf_feed = high_tf_feed
+    if med_tf_feed is not None:
+        engine._med_tf_feed = med_tf_feed
     if quote_feed is not None:
         engine._quote_feed = quote_feed
     if tf_mapping is not None:

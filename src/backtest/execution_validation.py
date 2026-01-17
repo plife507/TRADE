@@ -540,9 +540,10 @@ def get_declared_features_by_role(play: "Play") -> dict[str, set[str]]:
             # Also add output_keys for multi-output indicators
             if feature.output_keys:
                 keys.update(feature.output_keys)
-    except Exception:
+    except Exception as e:
         # If registry fails to build, return just OHLCV/builtin
-        pass
+        import logging
+        logging.getLogger(__name__).debug(f"Registry build failed, using OHLCV only: {e}")
 
     # All features are accessible from "exec" context in new schema
     return {"exec": keys}
@@ -751,8 +752,10 @@ def compute_warmup_requirements(play: "Play") -> WarmupRequirements:
             delay_by_role[play.execution_tf] = 0
             feature_warmup[play.execution_tf] = 0
 
-    except Exception:
+    except Exception as e:
         # Fallback if registry fails
+        import logging
+        logging.getLogger(__name__).debug(f"Warmup calculation failed, using defaults: {e}")
         if play.execution_tf:
             warmup_by_role[play.execution_tf] = structure_warmup
             delay_by_role[play.execution_tf] = 0

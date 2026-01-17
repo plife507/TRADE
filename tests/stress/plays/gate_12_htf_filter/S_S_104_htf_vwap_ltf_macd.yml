@@ -3,7 +3,11 @@ name: "S_S_104_htf_vwap_ltf_macd"
 description: "Stress Gate 12: HTF close<VWAP + LTF MACD cross below signal (short). Institutional bias with momentum entry."
 
 symbol: "DOGEUSDT"
-tf: "1h"
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 high_tf: "D"
 
 account:

@@ -2,7 +2,11 @@ version: 3.0.0
 name: S41_L_062_htf_rsi
 description: "Complexity 62%: 1h RSI filter + 15m entry."
 symbol: BTCUSDT
-tf: 15m
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "1h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

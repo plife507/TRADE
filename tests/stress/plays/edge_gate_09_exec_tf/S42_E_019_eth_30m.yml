@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_019_eth_30m
 description: "Verify 30m on ETHUSDT - multi-pair TF test."
 symbol: ETHUSDT
-tf: 30m
+timeframes:
+  low_tf: "30m"
+  med_tf: "30m"
+  high_tf: "30m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

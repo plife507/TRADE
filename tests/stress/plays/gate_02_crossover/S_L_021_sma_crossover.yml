@@ -3,8 +3,11 @@ name: "S_L_021_sma_crossover"
 description: "Stress Gate 2: SMA 9/21 crossover entry (long). Short-term trend-following."
 
 symbol: "BTCUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

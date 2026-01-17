@@ -341,7 +341,13 @@ def run_rules_smoke(
         length=sample_bars,
     )
 
-    multi_feed = MultiTFFeedStore(exec_feed=feed)
+    multi_feed = MultiTFFeedStore(
+        low_tf_feed=feed,
+        med_tf_feed=None,
+        high_tf_feed=None,
+        tf_mapping={"low_tf": "15m", "med_tf": "15m", "high_tf": "15m", "exec": "low_tf"},
+        exec_role="low_tf",
+    )
 
     class MockExchange:
         equity_usdt = 10000.0
@@ -355,8 +361,8 @@ def run_rules_smoke(
     snapshot = RuntimeSnapshotView(
         feeds=multi_feed,
         exec_idx=bar_idx,
-        htf_idx=None,
-        mtf_idx=None,
+        high_tf_idx=None,
+        med_tf_idx=None,
         exchange=MockExchange(),
         mark_price=close[bar_idx],
         mark_price_source="close",

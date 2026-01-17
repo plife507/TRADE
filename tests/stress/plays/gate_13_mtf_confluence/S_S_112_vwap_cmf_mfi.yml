@@ -3,7 +3,11 @@ name: "S_S_112_vwap_cmf_mfi"
 description: "Stress Gate 13: VWAP + CMF + MFI volume confluence. HTF(D) close < vwap_D, MTF(4h) cmf_20 < 0, LTF(1h) mfi cross_below 80 (short)."
 
 symbol: "DOTUSDT"
-tf: "1h"
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 med_tf: "4h"
 high_tf: "D"
 

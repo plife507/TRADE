@@ -3,8 +3,11 @@ name: "S_L_075_fisher_or_tsi_extreme"
 description: "Stress Gate 8: ANY operator - Fisher OR TSI extreme oversold (long). Either momentum indicator at extreme triggers entry."
 
 symbol: "ADAUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

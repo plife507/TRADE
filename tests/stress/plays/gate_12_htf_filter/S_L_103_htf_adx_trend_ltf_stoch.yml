@@ -3,7 +3,11 @@ name: "S_L_103_htf_adx_trend_ltf_stoch"
 description: "Stress Gate 12: HTF ADX>25 with DM+>DM- + LTF Stoch K cross 20 (long). Strong trend with momentum entry."
 
 symbol: "DOGEUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 high_tf: "4h"
 
 account:

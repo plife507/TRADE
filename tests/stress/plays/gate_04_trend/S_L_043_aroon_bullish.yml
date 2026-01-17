@@ -3,8 +3,11 @@ name: "S_L_043_aroon_bullish"
 description: "Stress Gate 4: Aroon oscillator bullish entry (long). Osc > 50 indicates bullish momentum."
 
 symbol: "SOLUSDT"
-tf: "4h"
-
+timeframes:
+  low_tf: "4h"
+  med_tf: "4h"
+  high_tf: "4h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

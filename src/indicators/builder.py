@@ -601,7 +601,7 @@ class FeatureFrameBuilder:
                             end_ts = pd.Timestamp(ts_val).to_pydatetime()
                         elif isinstance(ts_val, datetime):
                             end_ts = ts_val
-                except Exception:
+                except (IndexError, TypeError, ValueError):
                     pass  # Timestamps are optional, don't fail
 
             return IndicatorMetadata(

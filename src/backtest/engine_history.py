@@ -48,8 +48,8 @@ def parse_history_config_impl(config: "SystemConfig") -> HistoryConfig:
     return HistoryConfig(
         bars_exec_count=int(history_raw.get("bars_exec_count", 0)),
         features_exec_count=int(history_raw.get("features_exec_count", 0)),
-        features_htf_count=int(history_raw.get("features_htf_count", 0)),
-        features_mtf_count=int(history_raw.get("features_mtf_count", 0)),
+        features_high_tf_count=int(history_raw.get("features_high_tf_count", 0)),
+        features_med_tf_count=int(history_raw.get("features_med_tf_count", 0)),
     )
 
 
@@ -140,16 +140,16 @@ class HistoryManager:
                 self._history_features_exec = self._history_features_exec[-config.features_exec_count:]
 
         # Update HTF feature history (only on HTF close)
-        if config.features_htf_count > 0 and htf_updated and features_htf and features_htf.ready:
+        if config.features_high_tf_count > 0 and htf_updated and features_htf and features_htf.ready:
             self._history_features_htf.append(features_htf)
-            if len(self._history_features_htf) > config.features_htf_count:
-                self._history_features_htf = self._history_features_htf[-config.features_htf_count:]
+            if len(self._history_features_htf) > config.features_high_tf_count:
+                self._history_features_htf = self._history_features_htf[-config.features_high_tf_count:]
 
         # Update MTF feature history (only on MTF close)
-        if config.features_mtf_count > 0 and mtf_updated and features_mtf and features_mtf.ready:
+        if config.features_med_tf_count > 0 and mtf_updated and features_mtf and features_mtf.ready:
             self._history_features_mtf.append(features_mtf)
-            if len(self._history_features_mtf) > config.features_mtf_count:
-                self._history_features_mtf = self._history_features_mtf[-config.features_mtf_count:]
+            if len(self._history_features_mtf) > config.features_med_tf_count:
+                self._history_features_mtf = self._history_features_mtf[-config.features_med_tf_count:]
 
     def is_ready(self) -> bool:
         """
@@ -173,12 +173,12 @@ class HistoryManager:
             if len(self._history_features_exec) < config.features_exec_count:
                 return False
 
-        if config.features_htf_count > 0:
-            if len(self._history_features_htf) < config.features_htf_count:
+        if config.features_high_tf_count > 0:
+            if len(self._history_features_htf) < config.features_high_tf_count:
                 return False
 
-        if config.features_mtf_count > 0:
-            if len(self._history_features_mtf) < config.features_mtf_count:
+        if config.features_med_tf_count > 0:
+            if len(self._history_features_mtf) < config.features_med_tf_count:
                 return False
 
         return True

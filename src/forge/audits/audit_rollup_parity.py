@@ -281,10 +281,11 @@ def validate_snapshot_accessors(
     )
 
     multi_tf = MultiTFFeedStore(
-        exec_feed=exec_feed,
-        htf_feed=exec_feed,
-        mtf_feed=exec_feed,
-        tf_mapping={"ltf": "15m", "htf": "15m", "mtf": "15m"},
+        low_tf_feed=exec_feed,
+        med_tf_feed=None,   # Same as low_tf
+        high_tf_feed=None,  # Same as low_tf
+        tf_mapping={"low_tf": "15m", "med_tf": "15m", "high_tf": "15m", "exec": "low_tf"},
+        exec_role="low_tf",
     )
 
     # Create minimal exchange
@@ -298,8 +299,8 @@ def validate_snapshot_accessors(
     snapshot = RuntimeSnapshotView(
         feeds=multi_tf,
         exec_idx=5,
-        htf_idx=None,
-        mtf_idx=None,
+        high_tf_idx=None,
+        med_tf_idx=None,
         exchange=exchange,
         mark_price=100.0,
         mark_price_source="close",
@@ -621,7 +622,7 @@ risk:
             captured_rollups: list[dict[str, float]] = []
             captured_intervals: list[int] = []
 
-            def on_snapshot_callback(snapshot, exec_idx, htf_idx, mtf_idx):
+            def on_snapshot_callback(snapshot, exec_idx, high_tf_idx, med_tf_idx):
                 """Capture rollup values from each snapshot."""
                 if snapshot.has_rollups:
                     rollups = {

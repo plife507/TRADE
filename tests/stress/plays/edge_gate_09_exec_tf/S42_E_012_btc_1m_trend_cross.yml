@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_012_btc_1m_trend_cross
 description: "Trend on 1m + last_price crossover execution. EMA trend filter, RSI momentum, last_price crosses EMA for entry."
 symbol: BTCUSDT
-tf: 1m
+timeframes:
+  low_tf: "1m"
+  med_tf: "1m"
+  high_tf: "1m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

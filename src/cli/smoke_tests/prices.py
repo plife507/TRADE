@@ -231,12 +231,13 @@ def run_mark_price_smoke(
             symbol="BTCUSDT",
         )
 
-        # Create MultiTFFeedStore (exec-only for this test)
+        # Create MultiTFFeedStore (single-TF for this test)
         multi_feed = MultiTFFeedStore(
-            exec_feed=feed_store,
-            htf_feed=None,
-            mtf_feed=None,
-            tf_mapping={"exec": "15m"},
+            low_tf_feed=feed_store,
+            med_tf_feed=None,
+            high_tf_feed=None,
+            tf_mapping={"low_tf": "15m", "med_tf": "15m", "high_tf": "15m", "exec": "low_tf"},
+            exec_role="low_tf",
         )
 
         # Create snapshot at test index (scale with sample_bars)
@@ -251,8 +252,8 @@ def run_mark_price_smoke(
         snapshot = RuntimeSnapshotView(
             feeds=multi_feed,
             exec_idx=test_idx,
-            htf_idx=None,
-            mtf_idx=None,
+            high_tf_idx=None,
+            med_tf_idx=None,
             exchange=None,
             mark_price=mark_price,
             mark_price_source=mark_source,

@@ -3,7 +3,11 @@ name: "S_01_btc_single_ema"
 description: "Stress Test Gate 1.1: Single EMA - 0% complexity"
 
 symbol: "BTCUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

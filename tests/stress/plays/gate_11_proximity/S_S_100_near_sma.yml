@@ -3,8 +3,11 @@ name: "S_S_100_near_sma"
 description: "Stress Gate 11: Close near SMA 50 within 1.0% (short). Classic MA resistance test."
 
 symbol: "AVAXUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

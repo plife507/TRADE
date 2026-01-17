@@ -1,13 +1,13 @@
 """
 Multi-timeframe feature caching.
 
-Caches the last closed FeatureSnapshot for HTF and MTF timeframes.
+Caches the last closed FeatureSnapshot for high_tf and med_tf timeframes.
 Updates are triggered only when current_ts_close is in the respective close-ts map.
 
-Ordering at each LTF step:
-1. Refresh HTF (if closed)
-2. Refresh MTF (if closed)
-3. Compute/select LTF features
+Ordering at each exec_tf step:
+1. Refresh high_tf (if closed)
+2. Refresh med_tf (if closed)
+3. Compute/select exec_tf features
 4. Build snapshot
 5. Evaluate strategy
 
@@ -22,179 +22,179 @@ from .types import Bar, FeatureSnapshot
 
 class TimeframeCache:
     """
-    Caches FeatureSnapshots for HTF and MTF timeframes.
-    
+    Caches FeatureSnapshots for high_tf and med_tf timeframes.
+
     Uses data-driven close detection via close_ts maps.
     Carry-forward semantics: between closes, cached value is returned unchanged.
     """
-    
+
     def __init__(self):
         """Initialize empty cache."""
-        self._htf_snapshot: FeatureSnapshot | None = None
-        self._mtf_snapshot: FeatureSnapshot | None = None
+        self._high_tf_snapshot: FeatureSnapshot | None = None
+        self._med_tf_snapshot: FeatureSnapshot | None = None
 
         # Close timestamp lookup sets (populated during data loading)
-        self._htf_close_ts: set[datetime] = set()
-        self._mtf_close_ts: set[datetime] = set()
+        self._high_tf_close_ts: set[datetime] = set()
+        self._med_tf_close_ts: set[datetime] = set()
 
         # Tracking
-        self._htf_tf: str | None = None
-        self._mtf_tf: str | None = None
-        self._last_htf_update_ts: datetime | None = None
-        self._last_mtf_update_ts: datetime | None = None
-    
+        self._high_tf: str | None = None
+        self._med_tf: str | None = None
+        self._last_high_tf_update_ts: datetime | None = None
+        self._last_med_tf_update_ts: datetime | None = None
+
     def set_close_ts_maps(
         self,
-        htf_close_ts: set[datetime],
-        mtf_close_ts: set[datetime],
-        htf_tf: str,
-        mtf_tf: str,
+        high_tf_close_ts: set[datetime],
+        med_tf_close_ts: set[datetime],
+        high_tf: str,
+        med_tf: str,
     ) -> None:
         """
         Set the close timestamp lookup sets from data loading.
-        
-        Args:
-            htf_close_ts: Set of HTF close timestamps
-            mtf_close_ts: Set of MTF close timestamps
-            htf_tf: HTF timeframe string
-            mtf_tf: MTF timeframe string
-        """
-        self._htf_close_ts = htf_close_ts
-        self._mtf_close_ts = mtf_close_ts
-        self._htf_tf = htf_tf
-        self._mtf_tf = mtf_tf
-    
-    def is_htf_close(self, current_ts_close: datetime) -> bool:
-        """Check if current step is an HTF close."""
-        return current_ts_close in self._htf_close_ts
-    
-    def is_mtf_close(self, current_ts_close: datetime) -> bool:
-        """Check if current step is an MTF close."""
-        return current_ts_close in self._mtf_close_ts
-    
-    def update_htf(self, snapshot: FeatureSnapshot) -> None:
-        """
-        Update HTF cache with new snapshot.
-        
-        Should only be called when is_htf_close() returns True.
-        
-        Args:
-            snapshot: New HTF feature snapshot
-        """
-        self._htf_snapshot = snapshot
-        self._last_htf_update_ts = snapshot.ts_close
-    
-    def update_mtf(self, snapshot: FeatureSnapshot) -> None:
-        """
-        Update MTF cache with new snapshot.
-        
-        Should only be called when is_mtf_close() returns True.
-        
-        Args:
-            snapshot: New MTF feature snapshot
-        """
-        self._mtf_snapshot = snapshot
-        self._last_mtf_update_ts = snapshot.ts_close
-    
-    def get_htf(self) -> FeatureSnapshot | None:
-        """Get cached HTF snapshot (carry-forward)."""
-        return self._htf_snapshot
 
-    def get_mtf(self) -> FeatureSnapshot | None:
-        """Get cached MTF snapshot (carry-forward)."""
-        return self._mtf_snapshot
-    
+        Args:
+            high_tf_close_ts: Set of high_tf close timestamps
+            med_tf_close_ts: Set of med_tf close timestamps
+            high_tf: high_tf timeframe string
+            med_tf: med_tf timeframe string
+        """
+        self._high_tf_close_ts = high_tf_close_ts
+        self._med_tf_close_ts = med_tf_close_ts
+        self._high_tf = high_tf
+        self._med_tf = med_tf
+
+    def is_high_tf_close(self, current_ts_close: datetime) -> bool:
+        """Check if current step is a high_tf close."""
+        return current_ts_close in self._high_tf_close_ts
+
+    def is_med_tf_close(self, current_ts_close: datetime) -> bool:
+        """Check if current step is a med_tf close."""
+        return current_ts_close in self._med_tf_close_ts
+
+    def update_high_tf(self, snapshot: FeatureSnapshot) -> None:
+        """
+        Update high_tf cache with new snapshot.
+
+        Should only be called when is_high_tf_close() returns True.
+
+        Args:
+            snapshot: New high_tf feature snapshot
+        """
+        self._high_tf_snapshot = snapshot
+        self._last_high_tf_update_ts = snapshot.ts_close
+
+    def update_med_tf(self, snapshot: FeatureSnapshot) -> None:
+        """
+        Update med_tf cache with new snapshot.
+
+        Should only be called when is_med_tf_close() returns True.
+
+        Args:
+            snapshot: New med_tf feature snapshot
+        """
+        self._med_tf_snapshot = snapshot
+        self._last_med_tf_update_ts = snapshot.ts_close
+
+    def get_high_tf(self) -> FeatureSnapshot | None:
+        """Get cached high_tf snapshot (carry-forward)."""
+        return self._high_tf_snapshot
+
+    def get_med_tf(self) -> FeatureSnapshot | None:
+        """Get cached med_tf snapshot (carry-forward)."""
+        return self._med_tf_snapshot
+
     @property
-    def htf_ready(self) -> bool:
-        """Check if HTF cache has a valid snapshot."""
-        return self._htf_snapshot is not None and self._htf_snapshot.ready
-    
+    def high_tf_ready(self) -> bool:
+        """Check if high_tf cache has a valid snapshot."""
+        return self._high_tf_snapshot is not None and self._high_tf_snapshot.ready
+
     @property
-    def mtf_ready(self) -> bool:
-        """Check if MTF cache has a valid snapshot."""
-        return self._mtf_snapshot is not None and self._mtf_snapshot.ready
-    
+    def med_tf_ready(self) -> bool:
+        """Check if med_tf cache has a valid snapshot."""
+        return self._med_tf_snapshot is not None and self._med_tf_snapshot.ready
+
     @property
     def all_ready(self) -> bool:
-        """Check if both HTF and MTF caches are ready."""
-        return self.htf_ready and self.mtf_ready
-    
+        """Check if both high_tf and med_tf caches are ready."""
+        return self.high_tf_ready and self.med_tf_ready
+
     def get_not_ready_reasons(self) -> list:
         """Get list of reasons why caches are not ready."""
         reasons = []
-        if not self.htf_ready:
-            if self._htf_snapshot is None:
-                reasons.append(f"HTF ({self._htf_tf}): no snapshot yet")
-            elif not self._htf_snapshot.ready:
-                reasons.append(f"HTF ({self._htf_tf}): {self._htf_snapshot.not_ready_reason}")
-        if not self.mtf_ready:
-            if self._mtf_snapshot is None:
-                reasons.append(f"MTF ({self._mtf_tf}): no snapshot yet")
-            elif not self._mtf_snapshot.ready:
-                reasons.append(f"MTF ({self._mtf_tf}): {self._mtf_snapshot.not_ready_reason}")
+        if not self.high_tf_ready:
+            if self._high_tf_snapshot is None:
+                reasons.append(f"high_tf ({self._high_tf}): no snapshot yet")
+            elif not self._high_tf_snapshot.ready:
+                reasons.append(f"high_tf ({self._high_tf}): {self._high_tf_snapshot.not_ready_reason}")
+        if not self.med_tf_ready:
+            if self._med_tf_snapshot is None:
+                reasons.append(f"med_tf ({self._med_tf}): no snapshot yet")
+            elif not self._med_tf_snapshot.ready:
+                reasons.append(f"med_tf ({self._med_tf}): {self._med_tf_snapshot.not_ready_reason}")
         return reasons
-    
+
     def refresh_step(
         self,
         current_ts_close: datetime,
-        htf_snapshot_factory: Callable[[], FeatureSnapshot],
-        mtf_snapshot_factory: Callable[[], FeatureSnapshot],
+        high_tf_snapshot_factory: Callable[[], FeatureSnapshot],
+        med_tf_snapshot_factory: Callable[[], FeatureSnapshot],
     ) -> tuple[bool, bool]:
         """
         Refresh caches for current step.
-        
-        Applies updates in order: HTF first, then MTF.
-        Returns (htf_updated, mtf_updated) booleans.
-        
+
+        Applies updates in order: high_tf first, then med_tf.
+        Returns (high_tf_updated, med_tf_updated) booleans.
+
         Args:
-            current_ts_close: Current LTF close timestamp
-            htf_snapshot_factory: Callable returning HTF FeatureSnapshot
-            mtf_snapshot_factory: Callable returning MTF FeatureSnapshot
-            
+            current_ts_close: Current exec_tf close timestamp
+            high_tf_snapshot_factory: Callable returning high_tf FeatureSnapshot
+            med_tf_snapshot_factory: Callable returning med_tf FeatureSnapshot
+
         Returns:
-            Tuple of (htf_updated, mtf_updated)
+            Tuple of (high_tf_updated, med_tf_updated)
         """
-        htf_updated = False
-        mtf_updated = False
-        
-        # 1. Refresh HTF (if closed)
-        if self.is_htf_close(current_ts_close):
-            snapshot = htf_snapshot_factory()
-            self.update_htf(snapshot)
-            htf_updated = True
-        
-        # 2. Refresh MTF (if closed)
-        if self.is_mtf_close(current_ts_close):
-            snapshot = mtf_snapshot_factory()
-            self.update_mtf(snapshot)
-            mtf_updated = True
-        
-        return (htf_updated, mtf_updated)
-    
+        high_tf_updated = False
+        med_tf_updated = False
+
+        # 1. Refresh high_tf (if closed)
+        if self.is_high_tf_close(current_ts_close):
+            snapshot = high_tf_snapshot_factory()
+            self.update_high_tf(snapshot)
+            high_tf_updated = True
+
+        # 2. Refresh med_tf (if closed)
+        if self.is_med_tf_close(current_ts_close):
+            snapshot = med_tf_snapshot_factory()
+            self.update_med_tf(snapshot)
+            med_tf_updated = True
+
+        return (high_tf_updated, med_tf_updated)
+
     def reset(self) -> None:
         """Reset cache to initial state."""
-        self._htf_snapshot = None
-        self._mtf_snapshot = None
-        self._last_htf_update_ts = None
-        self._last_mtf_update_ts = None
-    
+        self._high_tf_snapshot = None
+        self._med_tf_snapshot = None
+        self._last_high_tf_update_ts = None
+        self._last_med_tf_update_ts = None
+
     def to_dict(self) -> dict:
         """Get cache state as dict for debugging."""
         return {
-            "htf_tf": self._htf_tf,
-            "mtf_tf": self._mtf_tf,
-            "htf_ready": self.htf_ready,
-            "mtf_ready": self.mtf_ready,
-            "last_htf_update_ts": (
-                self._last_htf_update_ts.isoformat()
-                if self._last_htf_update_ts else None
+            "high_tf": self._high_tf,
+            "med_tf": self._med_tf,
+            "high_tf_ready": self.high_tf_ready,
+            "med_tf_ready": self.med_tf_ready,
+            "last_high_tf_update_ts": (
+                self._last_high_tf_update_ts.isoformat()
+                if self._last_high_tf_update_ts else None
             ),
-            "last_mtf_update_ts": (
-                self._last_mtf_update_ts.isoformat()
-                if self._last_mtf_update_ts else None
+            "last_med_tf_update_ts": (
+                self._last_med_tf_update_ts.isoformat()
+                if self._last_med_tf_update_ts else None
             ),
-            "htf_close_count": len(self._htf_close_ts),
-            "mtf_close_count": len(self._mtf_close_ts),
+            "high_tf_close_count": len(self._high_tf_close_ts),
+            "med_tf_close_count": len(self._med_tf_close_ts),
         }
 
 

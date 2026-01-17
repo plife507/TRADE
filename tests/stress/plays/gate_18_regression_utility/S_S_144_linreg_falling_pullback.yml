@@ -3,8 +3,11 @@ name: "S_S_144_linreg_falling_pullback"
 description: "Stress Gate 18: Falling linreg with pullback entry (short). Sell rally when linreg slope negative and price near regression."
 
 symbol: "ETHUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

@@ -3,7 +3,11 @@ name: "S_S_106_htf_ema_stack_ltf_rsi_cross"
 description: "Stress Gate 12: HTF EMA21<EMA50 stack + LTF RSI cross 70 (short). Bearish trend with momentum entry."
 
 symbol: "AVAXUSDT"
-tf: "5m"
+timeframes:
+  low_tf: "5m"
+  med_tf: "5m"
+  high_tf: "5m"
+  exec: "low_tf"
 high_tf: "1h"
 
 account:

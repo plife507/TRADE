@@ -3,8 +3,11 @@ name: "S_L_060_fisher_entry_fisher_exit"
 description: "Stress Gate 6: Fisher crossup entry, Fisher extreme exit (long). Same indicator different conditions."
 
 symbol: "SOLUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

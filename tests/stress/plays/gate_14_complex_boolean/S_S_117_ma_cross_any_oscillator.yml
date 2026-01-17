@@ -3,8 +3,11 @@ name: "S_S_117_ma_cross_any_oscillator"
 description: "Stress Gate 14: Complex boolean - all:[any:[ema_cross, sma_cross], any:[rsi_overbought, cci_overbought]] (short). MA death cross type AND oscillator overbought."
 
 symbol: "LINKUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

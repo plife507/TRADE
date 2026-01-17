@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_002_eth_3m
 description: "Exec TF: 3m - uncommon timeframe test."
 symbol: ETHUSDT
-tf: 5m
+timeframes:
+  low_tf: "5m"
+  med_tf: "5m"
+  high_tf: "5m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

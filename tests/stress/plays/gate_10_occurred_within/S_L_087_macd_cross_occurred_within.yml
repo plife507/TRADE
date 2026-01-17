@@ -3,8 +3,11 @@ name: "S_L_087_macd_cross_occurred_within"
 description: "Stress Gate 10: occurred_within window - MACD crossed above signal within 5 bars + histogram > 0 (long). Tests MACD momentum confirmation."
 
 symbol: "DOGEUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

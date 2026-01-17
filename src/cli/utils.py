@@ -535,8 +535,8 @@ def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, 
                     from ..data.historical_data_store import get_historical_store
                     store = get_historical_store()
                     store.cancel()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Could not cancel data store: {e}")
             
             # Emit tool.call.cancelled event
             logger.event(

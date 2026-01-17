@@ -3,8 +3,11 @@ name: "S_S_089_supertrend_flip_occurred_within"
 description: "Stress Gate 10: occurred_within window - SuperTrend direction flipped bearish within 5 bars (short). Tests trend direction change timing."
 
 symbol: "AVAXUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

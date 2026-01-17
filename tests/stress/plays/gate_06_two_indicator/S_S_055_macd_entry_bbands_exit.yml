@@ -3,8 +3,11 @@ name: "S_S_055_macd_entry_bbands_exit"
 description: "Stress Gate 6: MACD histogram bearish entry, BBands lower exit (short). Different indicators for entry vs exit."
 
 symbol: "LTCUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

@@ -3,8 +3,11 @@ name: "S_L_067_volume_divergence"
 description: "Stress Gate 7: ALL operator - Volume divergence (long). MFI < 30 AND CMF > 0."
 
 symbol: "ADAUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

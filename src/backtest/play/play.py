@@ -11,7 +11,7 @@ Design principles:
 - Explicit over implicit: No silent defaults
 - Fail-fast: Validation at load time
 - Feature-based: All features referenced by unique ID
-- Any timeframe: No fixed exec/mtf/htf roles - use any TF
+- Any timeframe: No fixed exec_tf/med_tf/high_tf roles - use any TF
 """
 
 from dataclasses import dataclass, field
@@ -324,6 +324,10 @@ class Play:
     # Execution timeframe (bar stepping granularity)
     execution_tf: str = ""
 
+    # Timeframe mapping (3-feed + exec role system)
+    # Keys: low_tf, med_tf, high_tf, exec (role pointer)
+    tf_mapping: dict[str, str] = field(default_factory=dict)
+
     # Features (indicators + structures on any TF)
     features: tuple = field(default_factory=tuple)  # Tuple[Feature, ...]
 
@@ -443,6 +447,8 @@ class Play:
             "position_policy": self.position_policy.to_dict(),
             "risk_model": self.risk_model.to_dict() if self.risk_model else None,
         }
+        if self.tf_mapping:
+            result["tf_mapping"] = dict(self.tf_mapping)
         if self.account:
             result["account"] = self.account.to_dict()
         if self.variables:
@@ -466,7 +472,64 @@ class Play:
 
         # Parse features - handle both dict (YAML) and list (internal) formats
         features_raw = d.get("features", [])
-        execution_tf = d.get("execution_tf") or d.get("tf", "")
+
+        # Resolve execution_tf from timeframes section (required)
+        # Internal format uses execution_tf + tf_mapping directly
+        execution_tf = d.get("execution_tf")
+        tf_mapping: dict[str, str] = d.get("tf_mapping", {})
+        timeframes_section = d.get("timeframes")
+
+        if not execution_tf:
+            # Must have timeframes section (no legacy tf: support)
+            if not timeframes_section:
+                raise ValueError(
+                    "Missing 'timeframes' section. Example:\n"
+                    "timeframes:\n"
+                    "  low_tf: \"15m\"\n"
+                    "  med_tf: \"15m\"\n"
+                    "  high_tf: \"15m\"\n"
+                    "  exec: \"low_tf\""
+                )
+
+            # Parse timeframes section
+            low_tf = timeframes_section.get("low_tf")
+            med_tf = timeframes_section.get("med_tf")
+            high_tf = timeframes_section.get("high_tf")
+            exec_role = timeframes_section.get("exec")
+
+            # Validate all required keys
+            missing = []
+            if not low_tf:
+                missing.append("low_tf")
+            if not med_tf:
+                missing.append("med_tf")
+            if not high_tf:
+                missing.append("high_tf")
+            if not exec_role:
+                missing.append("exec")
+            if missing:
+                raise ValueError(f"timeframes section missing required keys: {missing}")
+
+            # Validate exec role
+            if exec_role not in ("low_tf", "med_tf", "high_tf"):
+                raise ValueError(
+                    f"timeframes.exec must be 'low_tf', 'med_tf', or 'high_tf', got: {exec_role}"
+                )
+
+            tf_mapping = {
+                "low_tf": low_tf,
+                "med_tf": med_tf,
+                "high_tf": high_tf,
+                "exec": exec_role,
+            }
+
+            # Resolve exec role to actual TF string
+            if exec_role == "low_tf":
+                execution_tf = low_tf
+            elif exec_role == "med_tf":
+                execution_tf = med_tf
+            else:  # high_tf
+                execution_tf = high_tf
 
         if isinstance(features_raw, dict):
             # YAML format: {feature_id: {indicator: ..., params: ...}}
@@ -584,7 +647,7 @@ class Play:
         structure_features: list[Feature] = []
         if has_structures:
             # structures: {exec: [...], high_tf: {...}}
-            VALID_TF_ROLES = {"exec", "high_tf"}
+            VALID_TF_ROLES = {"exec", "low_tf", "med_tf", "high_tf"}
             for tf_role, specs in structures_dict.items():
                 if tf_role not in VALID_TF_ROLES:
                     raise ValueError(
@@ -613,7 +676,7 @@ class Play:
                                 depends_on=spec.get("depends_on", {}),
                             ))
                 elif isinstance(specs, dict):
-                    # htf: {"1h": [{type: swing, key: swing_1h}, ...]}
+                    # high_tf: {"1h": [{type: swing, key: swing_1h}, ...]}
                     for tf, tf_specs in specs.items():
                         if isinstance(tf_specs, list):
                             for spec in tf_specs:
@@ -625,7 +688,7 @@ class Play:
                                             f"Example: {{type: swing, key: {spec['key']}, params: {{left: 3, right: 3}}}}"
                                         )
                                     structure_keys.append(spec["key"])
-                                    # Create Feature object for HTF structure
+                                    # Create Feature object for high_tf structure
                                     structure_features.append(Feature(
                                         id=spec["key"],
                                         tf=tf,  # Use the nested TF key (e.g., "1h")
@@ -654,6 +717,7 @@ class Play:
             account=account,
             symbol_universe=tuple(symbol_universe),
             execution_tf=execution_tf,
+            tf_mapping=tf_mapping,
             features=features,
             position_policy=position_policy,
             actions=actions,

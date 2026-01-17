@@ -171,7 +171,7 @@ def compute_tail_buffer_span(
 
     low_tf_buffer = config.tail_low_tf_bars * tf_duration(tf_mapping["low_tf"])
     funding_buffer = config.tail_funding_intervals * timedelta(hours=FUNDING_INTERVAL_HOURS)
-    
+
     return low_tf_buffer + funding_buffer
 
 
@@ -278,18 +278,18 @@ def compute_simple_load_window(
 @dataclass
 class DataWindow:
     """Simple data window computed from Preflight warmup requirements."""
-    
+
     # Requested test window
     test_start: datetime
     test_end: datetime
-    
+
     # Computed data window (extended for warmup)
     data_start: datetime
     data_end: datetime
-    
+
     # Component spans (for debugging)
     warmup_span: timedelta
-    htf_warmup_span: timedelta | None = None
+    high_tf_warmup_span: timedelta | None = None
     
     def to_dict(self) -> dict:
         """Convert to dict for serialization."""
@@ -300,8 +300,8 @@ class DataWindow:
             "data_end": self.data_end.isoformat(),
             "warmup_span_seconds": self.warmup_span.total_seconds(),
         }
-        if self.htf_warmup_span:
-            result["htf_warmup_span_seconds"] = self.htf_warmup_span.total_seconds()
+        if self.high_tf_warmup_span:
+            result["high_tf_warmup_span_seconds"] = self.high_tf_warmup_span.total_seconds()
         return result
 
 
@@ -321,7 +321,7 @@ def compute_data_window(
     Formula:
         data_start = min(
             window_start - (exec_warmup_bars + safety_buffer) * exec_tf_duration,
-            window_start - (htf_warmup_bars + safety_buffer) * htf_tf_duration,  # if HTF exists
+            window_start - (high_tf_warmup_bars + safety_buffer) * high_tf_tf_duration,  # if high_tf exists
         )
         data_end = window_end
     
@@ -336,49 +336,49 @@ def compute_data_window(
         DataWindow with computed boundaries
     """
     # Compute exec TF warmup span
-    exec_tf = tf_by_role.get('exec') or tf_by_role.get('ltf')
+    exec_tf = tf_by_role.get('exec')
     if not exec_tf:
-        raise ValueError("tf_by_role must contain 'exec' or 'ltf' key")
+        raise ValueError("tf_by_role must contain 'exec' key")
     
     exec_warmup_bars = warmup_bars_by_role.get('exec', 0)
     exec_tf_delta = tf_duration(exec_tf)
     exec_warmup_span = exec_tf_delta * (exec_warmup_bars + safety_buffer_bars)
     exec_data_start = window_start - exec_warmup_span
     
-    # Compute MTF warmup span if present
-    mtf_warmup_span = None
-    mtf_data_start = exec_data_start
+    # Compute med TF warmup span if present
+    med_tf_warmup_span = None
+    med_tf_data_start = exec_data_start
 
-    mtf_tf = tf_by_role.get('mtf')
-    if mtf_tf and mtf_tf != exec_tf:
-        mtf_warmup_bars = warmup_bars_by_role.get('mtf', 0)
-        if mtf_warmup_bars > 0:
-            mtf_tf_delta = tf_duration(mtf_tf)
-            mtf_warmup_span = mtf_tf_delta * (mtf_warmup_bars + safety_buffer_bars)
-            mtf_data_start = window_start - mtf_warmup_span
+    med_tf_tf = tf_by_role.get('med_tf')
+    if med_tf_tf and med_tf_tf != exec_tf:
+        med_tf_warmup_bars = warmup_bars_by_role.get('med_tf', 0)
+        if med_tf_warmup_bars > 0:
+            med_tf_tf_delta = tf_duration(med_tf_tf)
+            med_tf_warmup_span = med_tf_tf_delta * (med_tf_warmup_bars + safety_buffer_bars)
+            med_tf_data_start = window_start - med_tf_warmup_span
 
-    # Compute HTF warmup span if present
-    htf_warmup_span = None
-    htf_data_start = exec_data_start
+    # Compute high TF warmup span if present
+    high_tf_warmup_span = None
+    high_tf_data_start = exec_data_start
 
-    htf_tf = tf_by_role.get('htf')
-    if htf_tf and htf_tf != exec_tf:
-        htf_warmup_bars = warmup_bars_by_role.get('htf', 0)
-        if htf_warmup_bars > 0:
-            htf_tf_delta = tf_duration(htf_tf)
-            htf_warmup_span = htf_tf_delta * (htf_warmup_bars + safety_buffer_bars)
-            htf_data_start = window_start - htf_warmup_span
+    high_tf_tf = tf_by_role.get('high_tf')
+    if high_tf_tf and high_tf_tf != exec_tf:
+        high_tf_warmup_bars = warmup_bars_by_role.get('high_tf', 0)
+        if high_tf_warmup_bars > 0:
+            high_tf_tf_delta = tf_duration(high_tf_tf)
+            high_tf_warmup_span = high_tf_tf_delta * (high_tf_warmup_bars + safety_buffer_bars)
+            high_tf_data_start = window_start - high_tf_warmup_span
 
     # Use the earliest start (largest warmup wins across all TFs)
-    data_start = min(exec_data_start, mtf_data_start, htf_data_start)
-    
+    data_start = min(exec_data_start, med_tf_data_start, high_tf_data_start)
+
     return DataWindow(
         test_start=window_start,
         test_end=window_end,
         data_start=data_start,
         data_end=window_end,
         warmup_span=exec_warmup_span,
-        htf_warmup_span=htf_warmup_span,
+        high_tf_warmup_span=high_tf_warmup_span,
     )
 
 

@@ -2,7 +2,11 @@ version: 3.0.0
 name: S42_E_017_btc_6h
 description: "Verify 6h timeframe support - newly added TF."
 symbol: BTCUSDT
-tf: 6h
+timeframes:
+  low_tf: "6h"
+  med_tf: "6h"
+  high_tf: "6h"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

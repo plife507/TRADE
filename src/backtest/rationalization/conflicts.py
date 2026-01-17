@@ -319,7 +319,7 @@ class ConflictResolver:
         try:
             exec_trend = self._get_trend_direction(incremental_state.exec)
 
-            for tf_name, tf_state in incremental_state.htf.items():
+            for tf_name, tf_state in incremental_state.high_tf.items():
                 htf_trend = self._get_trend_direction(tf_state)
                 if htf_trend is not None and exec_trend is not None:
                     if htf_trend != exec_trend and htf_trend != 0 and exec_trend != 0:

@@ -306,6 +306,9 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
         )
 
         # Calculate comparisons against previous levels
+        # Only compare the END of the wave to previous same-type level.
+        # The START was already compared as the END of the previous wave,
+        # so comparing it again would be redundant and buggy (compares to itself).
         if end_type == "high" and not math.isnan(self._prev_high):
             wave.is_higher_high = end_level > self._prev_high
             wave.is_lower_high = end_level < self._prev_high
@@ -314,44 +317,27 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
             wave.is_lower_low = end_level < self._prev_low
             wave.is_higher_low = end_level > self._prev_low
 
-        # Also check start of wave for full picture
-        if start_type == "high" and not math.isnan(self._prev_high):
-            wave.is_higher_high = start_level > self._prev_high
-            wave.is_lower_high = start_level < self._prev_high
-
-        if start_type == "low" and not math.isnan(self._prev_low):
-            wave.is_lower_low = start_level < self._prev_low
-            wave.is_higher_low = start_level > self._prev_low
-
         return wave
 
     def _update_comparison_outputs(self, wave: Wave) -> None:
         """
         Update the individual comparison output flags from a wave.
 
+        Only updates from wave END, not START (START was already processed
+        as the END of the previous wave).
+
         Args:
             wave: The most recent completed wave.
         """
         self.last_wave_direction = wave.direction
 
-        # Update comparison flags based on wave endpoint
+        # Update comparison flags based on wave endpoint only
         if wave.end_type == "high":
             if wave.is_higher_high is not None:
                 self.last_hh = wave.is_higher_high
                 self.last_lh = wave.is_lower_high if wave.is_lower_high is not None else not wave.is_higher_high
 
         if wave.end_type == "low":
-            if wave.is_lower_low is not None:
-                self.last_ll = wave.is_lower_low
-                self.last_hl = wave.is_higher_low if wave.is_higher_low is not None else not wave.is_lower_low
-
-        # Also update from wave start
-        if wave.start_type == "high":
-            if wave.is_higher_high is not None:
-                self.last_hh = wave.is_higher_high
-                self.last_lh = wave.is_lower_high if wave.is_lower_high is not None else not wave.is_higher_high
-
-        if wave.start_type == "low":
             if wave.is_lower_low is not None:
                 self.last_ll = wave.is_lower_low
                 self.last_hl = wave.is_higher_low if wave.is_higher_low is not None else not wave.is_lower_low
@@ -396,29 +382,71 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
         """
         Analyze wave sequence for trend direction and strength.
 
+        Trend classification requires looking at PAIRS of consecutive waves:
+        - Bullish wave (L->H) provides HH/LH info (high comparison)
+        - Bearish wave (H->L) provides HL/LL info (low comparison)
+
+        Uptrend = HH (from bullish wave) + HL (from bearish wave)
+        Downtrend = LH (from bullish wave) + LL (from bearish wave)
+
         Returns:
             Tuple of (direction, strength, wave_count).
         """
-        # Start from most recent and work back
-        recent = self._waves[-1]
-
-        # Check most recent wave for HH+HL or LH+LL pattern
-        recent_bullish = self._is_bullish_wave(recent)
-        recent_bearish = self._is_bearish_wave(recent)
-
-        if not recent_bullish and not recent_bearish:
-            # Mixed signals in most recent wave - ranging
+        if len(self._waves) < 2:
+            # Need at least 2 waves to classify trend
             return (0, 0, 0)
 
-        # Count consecutive waves in same direction
-        consecutive = 1
-        target_dir = 1 if recent_bullish else -1
+        # Get the most recent two waves
+        recent = self._waves[-1]
+        prev = self._waves[-2]
 
-        for i in range(len(self._waves) - 2, -1, -1):
-            wave = self._waves[i]
-            if target_dir == 1 and self._is_bullish_wave(wave):
-                consecutive += 1
-            elif target_dir == -1 and self._is_bearish_wave(wave):
+        # Determine which wave provides high info and which provides low info
+        # A bullish wave (L->H) ends in high -> provides HH/LH
+        # A bearish wave (H->L) ends in low -> provides HL/LL
+        if recent.direction == "bullish":
+            high_wave = recent
+            low_wave = prev if prev.direction == "bearish" else None
+        else:
+            low_wave = recent
+            high_wave = prev if prev.direction == "bullish" else None
+
+        # Classify based on combined info
+        has_hh = high_wave is not None and high_wave.is_higher_high is True
+        has_lh = high_wave is not None and high_wave.is_lower_high is True
+        has_hl = low_wave is not None and low_wave.is_higher_low is True
+        has_ll = low_wave is not None and low_wave.is_lower_low is True
+
+        # Uptrend: HH + HL
+        if has_hh and has_hl:
+            target_dir = 1
+        # Downtrend: LH + LL
+        elif has_lh and has_ll:
+            target_dir = -1
+        # Partial bullish: HH but no HL confirmation yet
+        elif has_hh and not has_ll:
+            target_dir = 1
+        # Partial bearish: LH but no LL confirmation yet
+        elif has_lh and not has_hl:
+            target_dir = -1
+        # Partial bullish: HL but no LH (continuation)
+        elif has_hl and not has_lh:
+            target_dir = 1
+        # Partial bearish: LL but no HH (continuation)
+        elif has_ll and not has_hh:
+            target_dir = -1
+        else:
+            # Mixed or insufficient data
+            return (0, 0, 0)
+
+        # Count consecutive wave pairs showing same trend
+        consecutive = 1
+        for i in range(len(self._waves) - 3, -1, -2):
+            if i < 0:
+                break
+            pair_recent = self._waves[i + 1]
+            pair_prev = self._waves[i]
+            pair_dir = self._classify_wave_pair(pair_recent, pair_prev)
+            if pair_dir == target_dir:
                 consecutive += 1
             else:
                 break
@@ -433,13 +461,46 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
 
         return (target_dir, strength, consecutive)
 
+    def _classify_wave_pair(self, recent: Wave, prev: Wave) -> int:
+        """
+        Classify a pair of consecutive waves.
+
+        Args:
+            recent: More recent wave.
+            prev: Previous wave.
+
+        Returns:
+            1 for bullish, -1 for bearish, 0 for mixed/neutral.
+        """
+        if recent.direction == "bullish":
+            high_wave, low_wave = recent, prev
+        else:
+            low_wave, high_wave = recent, prev
+
+        has_hh = high_wave.is_higher_high is True if high_wave else False
+        has_lh = high_wave.is_lower_high is True if high_wave else False
+        has_hl = low_wave.is_higher_low is True if low_wave else False
+        has_ll = low_wave.is_lower_low is True if low_wave else False
+
+        if has_hh and has_hl:
+            return 1
+        if has_lh and has_ll:
+            return -1
+        if has_hh and not has_ll:
+            return 1
+        if has_lh and not has_hl:
+            return -1
+        if has_hl and not has_lh:
+            return 1
+        if has_ll and not has_hh:
+            return -1
+        return 0
+
     def _is_bullish_wave(self, wave: Wave) -> bool:
         """
-        Check if a wave represents bullish structure (HH + HL).
+        Check if a single wave shows bullish characteristics.
 
-        For a bullish classification, we need both:
-        - The high endpoint is a higher high (or wave contains HH)
-        - The low endpoint is a higher low (or wave contains HL)
+        A bullish wave (L->H) with HH, or a bearish wave (H->L) with HL.
 
         Args:
             wave: Wave to analyze.
@@ -447,29 +508,16 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
         Returns:
             True if wave shows bullish structure.
         """
-        # Check for HH (higher high)
-        has_hh = wave.is_higher_high is True
-
-        # Check for HL (higher low)
-        has_hl = wave.is_higher_low is True
-
-        # Both conditions must be met, or at least one with neutral other
-        if has_hh and has_hl:
-            return True
-        if has_hh and wave.is_higher_low is None:
-            return True
-        if has_hl and wave.is_higher_high is None:
-            return True
-
-        return False
+        if wave.direction == "bullish":
+            return wave.is_higher_high is True
+        else:
+            return wave.is_higher_low is True
 
     def _is_bearish_wave(self, wave: Wave) -> bool:
         """
-        Check if a wave represents bearish structure (LH + LL).
+        Check if a single wave shows bearish characteristics.
 
-        For a bearish classification, we need both:
-        - The high endpoint is a lower high (or wave contains LH)
-        - The low endpoint is a lower low (or wave contains LL)
+        A bullish wave (L->H) with LH, or a bearish wave (H->L) with LL.
 
         Args:
             wave: Wave to analyze.
@@ -477,21 +525,10 @@ class IncrementalTrendDetector(BaseIncrementalDetector):
         Returns:
             True if wave shows bearish structure.
         """
-        # Check for LH (lower high)
-        has_lh = wave.is_lower_high is True
-
-        # Check for LL (lower low)
-        has_ll = wave.is_lower_low is True
-
-        # Both conditions must be met, or at least one with neutral other
-        if has_lh and has_ll:
-            return True
-        if has_lh and wave.is_lower_low is None:
-            return True
-        if has_ll and wave.is_lower_high is None:
-            return True
-
-        return False
+        if wave.direction == "bullish":
+            return wave.is_lower_high is True
+        else:
+            return wave.is_lower_low is True
 
     def get_output_keys(self) -> list[str]:
         """

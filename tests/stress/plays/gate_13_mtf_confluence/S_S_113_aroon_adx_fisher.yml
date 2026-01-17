@@ -3,7 +3,11 @@ name: "S_S_113_aroon_adx_fisher"
 description: "Stress Gate 13: Aroon + ADX + Fisher confluence. HTF(4h) aroon.down > 70, MTF(1h) adx > 20, LTF(15m) fisher cross_below 1 (short)."
 
 symbol: "DOTUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 med_tf: "1h"
 high_tf: "4h"
 

@@ -2,7 +2,11 @@ version: 3.0.0
 name: S41_L_015_adx_trend
 description: "Complexity 15%: ADX trend strength + EMA direction filter."
 symbol: BTCUSDT
-tf: 15m
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0

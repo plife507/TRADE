@@ -3,8 +3,11 @@ name: "S_L_072_cci_or_willr_extreme"
 description: "Stress Gate 8: ANY operator - CCI OR WillR extreme oversold (long). Either momentum oscillator at extreme triggers entry."
 
 symbol: "XRPUSDT"
-tf: "15m"
-
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

@@ -3,8 +3,11 @@ name: "S_L_073_supertrend_or_psar_flip"
 description: "Stress Gate 8: ANY operator - SuperTrend OR PSAR bullish flip (long). Either trend indicator reversal triggers entry."
 
 symbol: "ADAUSDT"
-tf: "1h"
-
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0

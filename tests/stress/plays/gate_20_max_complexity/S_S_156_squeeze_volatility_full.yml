@@ -3,7 +3,11 @@ name: "S_S_156_squeeze_volatility_full"
 description: "Stress Gate 20: Squeeze release + trend confirm + oscillator + mark price (short). SOLUSDT."
 
 symbol: "SOLUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
 med_tf: "1h"
 high_tf: "4h"
 
