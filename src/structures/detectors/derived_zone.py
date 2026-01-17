@@ -127,6 +127,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         "use_paired_source": False,
     }
     DEPENDS_ON: list[str] = ["source"]
+    STRUCTURE_TYPE: str = "derived_zone"
 
     @classmethod
     def _validate_params(
@@ -359,7 +360,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
 
         # Build deterministic byte string
         data = (
-            f"{self._type}|"
+            f"{self.STRUCTURE_TYPE}|"
             f"{source_version}|"
             f"{pivot_high_idx}|"
             f"{pivot_low_idx}|"

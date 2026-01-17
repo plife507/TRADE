@@ -203,15 +203,16 @@ class SimulatedRiskManager:
                     details=f"risk=${risk_dollars:.2f}, stop_dist={stop_distance:.4f}, capped={was_capped}"
                 )
 
-        # Fallback to simple percent_equity if no valid stop
-        size_usdt = equity * (risk_pct / 100.0)
+        # Fallback to percent_equity with leverage if no valid stop
+        margin = equity * (risk_pct / 100.0)
+        size_usdt = margin * max_lev
         was_capped = size_usdt > max_size
         size_usdt = min(size_usdt, max_size)
 
         return SizingResult(
             size_usdt=size_usdt,
             method="risk_based_fallback",
-            details=f"no stop_loss, using percent_equity fallback"
+            details=f"no stop_loss, using percent_equity fallback (lev={max_lev}x)"
         )
 
     def _size_fixed_notional(self, signal: Signal) -> SizingResult:

@@ -64,17 +64,23 @@ def update_high_tf_med_tf_indices_impl(
         # Check if this exec ts_close aligns with a high_tf close
         high_tf_idx = high_tf_feed.get_idx_at_ts_close(exec_ts_close)
         # Bounds check: index must be valid within feed data
+        # Lookahead check: high_tf bar must have closed at or before exec close
         if high_tf_idx is not None and 0 <= high_tf_idx < len(high_tf_feed.ts_close):
-            new_high_tf_idx = high_tf_idx
-            high_tf_updated = True
+            high_tf_close_ts = high_tf_feed.get_ts_close_datetime(high_tf_idx)
+            if high_tf_close_ts <= exec_ts_close:
+                new_high_tf_idx = high_tf_idx
+                high_tf_updated = True
 
     if med_tf_feed is not None and med_tf_feed is not exec_feed:
         # Check if this exec ts_close aligns with a med_tf close
         med_tf_idx = med_tf_feed.get_idx_at_ts_close(exec_ts_close)
         # Bounds check: index must be valid within feed data
+        # Lookahead check: med_tf bar must have closed at or before exec close
         if med_tf_idx is not None and 0 <= med_tf_idx < len(med_tf_feed.ts_close):
-            new_med_tf_idx = med_tf_idx
-            med_tf_updated = True
+            med_tf_close_ts = med_tf_feed.get_ts_close_datetime(med_tf_idx)
+            if med_tf_close_ts <= exec_ts_close:
+                new_med_tf_idx = med_tf_idx
+                med_tf_updated = True
 
     return high_tf_updated, med_tf_updated, new_high_tf_idx, new_med_tf_idx
 

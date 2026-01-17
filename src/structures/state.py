@@ -256,6 +256,13 @@ class TFIncrementalState:
             )
         return self.structures[struct_key].get_output_keys()
 
+    def reset(self) -> None:
+        """Reset state for new backtest run."""
+        self._bar_idx = -1
+        for struct in self.structures.values():
+            if hasattr(struct, 'reset'):
+                struct.reset()
+
     def __repr__(self) -> str:
         """Return string representation."""
         struct_keys = ", ".join(self._update_order)
@@ -480,6 +487,12 @@ class MultiTFIncrementalState:
                     paths.append(f"high_tf_{tf_name}.{struct_key}.{output_key}")
 
         return paths
+
+    def reset(self) -> None:
+        """Reset all TF states for new backtest run."""
+        self.exec.reset()
+        for tf_state in self.high_tf.values():
+            tf_state.reset()
 
     def __repr__(self) -> str:
         """Return string representation."""

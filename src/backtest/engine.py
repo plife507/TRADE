@@ -256,6 +256,7 @@ class BacktestEngine:
         self._med_tf_frames: MultiTFPreparedFrames | None = None  # Phase 3
         self._exchange: SimulatedExchange | None = None
         self._equity_curve: list[EquityPoint] = []
+        self._account_curve: list[AccountCurvePoint] = []
         self._started_at: datetime | None = None
 
         # Debug tracing: play_hash for log correlation
