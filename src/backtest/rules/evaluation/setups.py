@@ -53,26 +53,15 @@ def eval_setup_ref(
 
     # Check cache first
     if setup_id not in setup_expr_cache:
-        # Load and parse the setup
-        try:
-            from src.forge.setups import load_setup, SetupNotFoundError
-            from ..dsl_parser import parse_expr
-
-            setup = load_setup(setup_id)
-            condition_expr = parse_expr(setup.condition)
-            setup_expr_cache[setup_id] = condition_expr
-        except SetupNotFoundError:
-            return EvalResult.failure(
-                ReasonCode.INTERNAL_ERROR,
-                f"Setup not found: {setup_id}",
-                operator="setup",
-            )
-        except ValueError as e:
-            return EvalResult.failure(
-                ReasonCode.INTERNAL_ERROR,
-                f"Invalid setup condition: {setup_id}: {e}",
-                operator="setup",
-            )
+        # SetupRef evaluation is not currently supported
+        # The src.forge.setups module was removed during cleanup
+        # TODO: Re-implement SetupRef if needed, or remove SetupRef from DSL
+        return EvalResult.failure(
+            ReasonCode.INTERNAL_ERROR,
+            f"SetupRef evaluation not supported: '{setup_id}'. "
+            "Define conditions inline in Play actions instead.",
+            operator="setup",
+        )
 
     # Evaluate the cached expression with recursion tracking
     cached_expr = setup_expr_cache[setup_id]

@@ -93,29 +93,10 @@ from .artifacts.pipeline_signature import PIPELINE_VERSION
 
 
 # =============================================================================
-# Play-Native Backtest Execution
+# DELETED: create_default_engine_factory, PlayEngineWrapper, PlayBacktestResult
 # =============================================================================
-
-class PlayBacktestResult:
-    """Result from Play-native backtest execution."""
-
-    def __init__(
-        self,
-        trades: list[Any],
-        equity_curve: list[Any],
-        final_equity: float,
-        play_hash: str,
-        metrics: Any = None,  # BacktestMetrics from engine
-    ):
-        self.trades = trades
-        self.equity_curve = equity_curve
-        self.final_equity = final_equity
-        self.play_hash = play_hash
-        self.metrics = metrics
-
-
-# =============================================================================
-# DELETED: create_default_engine_factory and PlayEngineWrapper
+# P1.2 Refactor: PlayBacktestResult moved to engine_factory.py (single definition)
+# Use from src.backtest.engine_factory import PlayBacktestResult if needed
 # =============================================================================
 # P1.2 Refactor: These adapter classes have been deleted.
 # Use engine.create_engine_from_play() and engine.run_engine_with_play()

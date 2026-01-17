@@ -34,7 +34,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from .interfaces import (
     Candle,
@@ -517,7 +517,7 @@ class PlayEngine:
         """
         Update high_tf/med_tf forward-fill indices based on current candle.
 
-        Delegates to shared HTFIndexManager (src/engine/timeframe/).
+        Delegates to shared TFIndexManager (src/engine/timeframe/).
         This ensures identical forward-fill behavior with BacktestEngine.
 
         Also updates high_tf incremental state when high_tf bar closes (for structures).

@@ -15,6 +15,7 @@ Usage:
 
 import json
 import re
+from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
@@ -56,14 +57,14 @@ def _test_synthetic_data_generation() -> int:
             PatternType,
         )
 
-        # Test 1: Generate with trending pattern (align_mtf=False for speed)
+        # Test 1: Generate with trending pattern (align_multi_tf=False for speed)
         candles = generate_synthetic_candles(
             symbol="BTCUSDT",
             timeframes=["1m", "5m"],
             bars_per_tf=100,
             seed=42,
             pattern="trending",
-            align_mtf=False,  # Fast mode: same bars per TF
+            align_multi_tf=False,  # Fast mode: same bars per TF
         )
         if candles is not None and candles.data_hash:
             console.print(f"  [green]OK[/] generate_synthetic_candles() trending pattern")
@@ -72,7 +73,7 @@ def _test_synthetic_data_generation() -> int:
             failures += 1
 
         # Test 2-4: All 4 patterns work
-        patterns: list[PatternType] = ["trending", "ranging", "volatile", "mtf_aligned"]
+        patterns: list[PatternType] = ["trending", "ranging", "volatile", "multi_tf_aligned"]
         for pattern in patterns:
             try:
                 c = generate_synthetic_candles(
@@ -80,7 +81,7 @@ def _test_synthetic_data_generation() -> int:
                     bars_per_tf=50,
                     seed=42,
                     pattern=pattern,
-                    align_mtf=False,
+                    align_multi_tf=False,
                 )
                 if c is not None:
                     console.print(f"  [green]OK[/] Pattern '{pattern}' generates data")
@@ -92,8 +93,8 @@ def _test_synthetic_data_generation() -> int:
                 failures += 1
 
         # Test 5: Determinism - same seed -> same hash
-        c1 = generate_synthetic_candles(timeframes=["1m"], bars_per_tf=100, seed=42, pattern="trending", align_mtf=False)
-        c2 = generate_synthetic_candles(timeframes=["1m"], bars_per_tf=100, seed=42, pattern="trending", align_mtf=False)
+        c1 = generate_synthetic_candles(timeframes=["1m"], bars_per_tf=100, seed=42, pattern="trending", align_multi_tf=False)
+        c2 = generate_synthetic_candles(timeframes=["1m"], bars_per_tf=100, seed=42, pattern="trending", align_multi_tf=False)
         if c1.data_hash == c2.data_hash:
             console.print(f"  [green]OK[/] Determinism: same seed -> same hash ({c1.data_hash})")
         else:
@@ -101,7 +102,7 @@ def _test_synthetic_data_generation() -> int:
             failures += 1
 
         # Test 6: Different seed -> different hash
-        c3 = generate_synthetic_candles(timeframes=["1m"], bars_per_tf=100, seed=99, pattern="trending", align_mtf=False)
+        c3 = generate_synthetic_candles(timeframes=["1m"], bars_per_tf=100, seed=99, pattern="trending", align_multi_tf=False)
         if c1.data_hash != c3.data_hash:
             console.print(f"  [green]OK[/] Different seed -> different hash")
         else:
@@ -401,7 +402,7 @@ def _test_volume_correlation() -> int:
             bars_per_tf=500,
             seed=42,
             pattern="volatile",  # Most likely to have big moves
-            align_mtf=False,
+            align_multi_tf=False,
         )
 
         df = candles.get_tf("1m")
@@ -436,24 +437,24 @@ def _test_volume_correlation() -> int:
 
 
 # =============================================================================
-# Section 7: MTF Alignment Test
+# Section 7: Multi-TF Alignment Test
 # =============================================================================
-def _test_mtf_alignment() -> int:
+def _test_multi_tf_alignment() -> int:
     """Test multi-timeframe bar count alignment."""
-    console.print(f"\n[bold cyan]Section 7: MTF Alignment[/]")
+    console.print(f"\n[bold cyan]Section 7: Multi-TF Alignment[/]")
 
     failures = 0
 
     try:
         from src.forge.validation.synthetic_data import generate_synthetic_candles, TF_TO_MINUTES
 
-        # Test 1: MTF-aligned data - slower TF gets bars_per_tf, faster TFs get more
+        # Test 1: Multi-TF aligned data - slower TF gets bars_per_tf, faster TFs get more
         candles = generate_synthetic_candles(
             timeframes=["1m", "1h"],
             bars_per_tf=100,
             seed=42,
             pattern="trending",
-            align_mtf=True,
+            align_multi_tf=True,
         )
 
         # Verify bar counts
@@ -482,18 +483,18 @@ def _test_mtf_alignment() -> int:
             console.print(f"  [red]FAIL[/] bar_counts mismatch: {candles.bar_counts}")
             failures += 1
 
-        # Test 3: align_mtf=False gives same bar count for all TFs
+        # Test 3: align_multi_tf=False gives same bar count for all TFs
         candles_unaligned = generate_synthetic_candles(
             timeframes=["1m", "1h"],
             bars_per_tf=100,
             seed=42,
             pattern="trending",
-            align_mtf=False,
+            align_multi_tf=False,
         )
         if candles_unaligned.bar_counts["1m"] == 100 and candles_unaligned.bar_counts["1h"] == 100:
-            console.print(f"  [green]OK[/] align_mtf=False gives 100 bars each")
+            console.print(f"  [green]OK[/] align_multi_tf=False gives 100 bars each")
         else:
-            console.print(f"  [red]FAIL[/] align_mtf=False bar counts wrong: {candles_unaligned.bar_counts}")
+            console.print(f"  [red]FAIL[/] align_multi_tf=False bar counts wrong: {candles_unaligned.bar_counts}")
             failures += 1
 
     except Exception as e:
@@ -518,12 +519,13 @@ def _test_warmup_aware_generation() -> int:
             generate_synthetic_for_play,
         )
 
-        # Use a validation Play with features for testing
-        test_play_id = "V_001_ema_basic"
+        # Use a test Play from tests/stress/plays/ (not strategies/plays/)
+        test_plays_dir = Path(__file__).parent.parent.parent.parent / "tests" / "stress" / "plays"
+        test_play_id = "sma_simple_test"
 
         # Test 1: Calculate warmup for a known Play
         try:
-            warmup = calculate_warmup_for_play(test_play_id)
+            warmup = calculate_warmup_for_play(test_play_id, base_dir=test_plays_dir)
             if warmup is not None:
                 if len(warmup) > 0:
                     console.print(f"  [green]OK[/] calculate_warmup_for_play() returns warmup dict: {warmup}")
@@ -542,6 +544,7 @@ def _test_warmup_aware_generation() -> int:
                 play_id=test_play_id,
                 extra_bars=100,
                 seed=42,
+                base_dir=test_plays_dir,
             )
             if candles is not None and candles.data_hash:
                 # Verify enough bars for warmup
@@ -597,7 +600,7 @@ def run_forge_smoke(verbose: bool = False) -> int:
     total_failures += _test_hash_chain_determinism()
     total_failures += _test_full_connection()
     total_failures += _test_volume_correlation()
-    total_failures += _test_mtf_alignment()
+    total_failures += _test_multi_tf_alignment()
     total_failures += _test_warmup_aware_generation()
 
     # Summary

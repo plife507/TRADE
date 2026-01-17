@@ -119,10 +119,14 @@ class SnapshotBuilder:
                 f"but config allows max {config.features_med_tf_count}"
             )
 
+        # Resolve exec_tf: exec role points to low_tf/med_tf/high_tf, then get concrete TF
+        exec_role = self.tf_mapping.get("exec", "low_tf")
+        exec_tf = self.tf_mapping.get(exec_role, bar_exec.tf)
+
         return RuntimeSnapshot(
             ts_close=ts_close,
             symbol=self.symbol,
-            exec_tf=self.tf_mapping.get(self.tf_mapping.get("exec", "low_tf"), bar_exec.tf),
+            exec_tf=exec_tf,
             mark_price=mark_price,
             mark_price_source=mark_price_source,
             bar_exec=bar_exec,

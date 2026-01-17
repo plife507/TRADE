@@ -16,6 +16,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Literal
 from types import MappingProxyType
 
@@ -359,7 +360,7 @@ def _prices_to_ohlcv(
 # =============================================================================
 # Warmup Calculation from Play
 # =============================================================================
-def calculate_warmup_for_play(play_id: str) -> dict[str, int]:
+def calculate_warmup_for_play(play_id: str, base_dir: Path | None = None) -> dict[str, int]:
     """
     Calculate warmup bars needed per timeframe for a Play.
 
@@ -368,6 +369,7 @@ def calculate_warmup_for_play(play_id: str) -> dict[str, int]:
 
     Args:
         play_id: Play identifier (e.g., "V_100_blocks_basic")
+        base_dir: Optional base directory for Play files
 
     Returns:
         Dict mapping timeframe -> warmup bars needed
@@ -380,7 +382,7 @@ def calculate_warmup_for_play(play_id: str) -> dict[str, int]:
     from src.backtest.feature_registry import FeatureRegistry
 
     # Load the play
-    play = load_play(play_id)
+    play = load_play(play_id, base_dir=base_dir)
 
     # Build feature registry from play's existing features
     # The Play already has a features tuple of Feature objects
@@ -407,6 +409,7 @@ def generate_synthetic_for_play(
     volatility: float = DEFAULT_VOLATILITY,
     base_timestamp: datetime | None = None,
     correlate_volume: bool = True,
+    base_dir: Path | None = None,
 ) -> SyntheticCandles:
     """
     Generate synthetic data sized for a specific Play's warmup requirements.
@@ -423,6 +426,7 @@ def generate_synthetic_for_play(
         volatility: Daily volatility
         base_timestamp: Starting timestamp
         correlate_volume: If True, volume correlates with price moves
+        base_dir: Optional base directory for Play files
 
     Returns:
         SyntheticCandles with enough data for the Play's warmup + extra_bars
@@ -437,7 +441,7 @@ def generate_synthetic_for_play(
     from src.backtest import load_play
 
     # Load play to get timeframes
-    play = load_play(play_id)
+    play = load_play(play_id, base_dir=base_dir)
 
     # Collect all TFs used by the play from features
     timeframes = set()
@@ -451,7 +455,7 @@ def generate_synthetic_for_play(
     timeframes_list = sorted(timeframes, key=lambda tf: TF_TO_MINUTES.get(tf, 0))
 
     # Get warmup requirements
-    warmup_by_tf = calculate_warmup_for_play(play_id)
+    warmup_by_tf = calculate_warmup_for_play(play_id, base_dir=base_dir)
 
     # Find slowest TF for alignment
     slowest_tf = max(timeframes_list, key=lambda tf: TF_TO_MINUTES[tf])
