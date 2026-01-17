@@ -13,6 +13,7 @@ SAFETY GUARD RAILS:
 - Blocks any other combination as invalid configuration
 """
 
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -113,9 +114,15 @@ class OrderExecutor:
         self._use_ws_feedback = use_ws_feedback
         self._realtime_state = None
         self._pending_orders: dict[str, PendingOrder] = {}
-        
+        self._pending_lock = threading.RLock()  # Protects _pending_orders access
+
+        # Idempotency: track recorded order IDs to prevent duplicate trade recording
+        self._recorded_orders: set[str] = set()
+        self._recorded_orders_lock = threading.Lock()
+
         # Callbacks
         self._execution_callbacks: list[Callable[[ExecutionResult], None]] = []
+        self._callback_lock = threading.Lock()  # Protects callback list access
         
         # Setup WebSocket callbacks if enabled
         if use_ws_feedback:
@@ -150,48 +157,57 @@ class OrderExecutor:
     def _on_order_update(self, order_data):
         """Handle order update from WebSocket."""
         order_id = order_data.order_id
-        
-        # Check if this is a pending order we're tracking
-        pending = self._pending_orders.get(order_id)
-        if not pending:
-            return
-        
-        # Update pending order state
-        if order_data.status in ("New", "PartiallyFilled"):
-            pending.confirmed = True
-        elif order_data.status == "Filled":
-            pending.filled = True
-            pending.confirmed = True
-        elif order_data.status in ("Cancelled", "Rejected"):
-            pending.error = f"Order {order_data.status}"
-            # Auto-cleanup failed orders to prevent memory leak
-            self._cleanup_completed_order(order_id)
+
+        with self._pending_lock:
+            # Check if this is a pending order we're tracking
+            pending = self._pending_orders.get(order_id)
+            if not pending:
+                return
+
+            # Update pending order state
+            if order_data.status in ("New", "PartiallyFilled"):
+                pending.confirmed = True
+            elif order_data.status == "Filled":
+                pending.filled = True
+                pending.confirmed = True
+            elif order_data.status in ("Cancelled", "Rejected"):
+                pending.error = f"Order {order_data.status}"
+                # Auto-cleanup failed orders to prevent memory leak
+                del self._pending_orders[order_id]
 
         self.logger.debug(f"Order {order_id} status: {order_data.status}")
     
     def _on_execution(self, exec_data):
         """Handle execution update from WebSocket."""
         order_id = exec_data.order_id
-        
-        # Check if this is a pending order we're tracking
-        pending = self._pending_orders.get(order_id)
-        if not pending:
-            return
-        
-        # Update fill info
-        pending.fill_price = exec_data.price
-        pending.filled = True
 
-        # Record the trade via position manager
+        with self._pending_lock:
+            # Check if this is a pending order we're tracking
+            pending = self._pending_orders.get(order_id)
+            if not pending:
+                return
+
+            # Update fill info
+            pending.fill_price = exec_data.price
+            pending.filled = True
+
+            # Auto-cleanup completed orders to prevent memory leak
+            del self._pending_orders[order_id]
+
+        # Record the trade via position manager (outside lock to avoid deadlock)
+        # Idempotency check: skip if already recorded via REST
+        with self._recorded_orders_lock:
+            if order_id in self._recorded_orders:
+                self.logger.debug(f"Order {order_id} already recorded via REST, skipping WS recording")
+                return
+            self._recorded_orders.add(order_id)
+
         self.position.record_execution_from_ws(exec_data)
 
         self.logger.info(
             f"Execution received via WS: {exec_data.symbol} "
             f"{exec_data.side} {exec_data.qty} @ {exec_data.price}"
         )
-
-        # Auto-cleanup completed orders to prevent memory leak
-        self._cleanup_completed_order(order_id)
     
     # ==================== Core Execution ====================
     
@@ -338,26 +354,51 @@ class OrderExecutor:
         
         # Track pending order for WebSocket confirmation
         if order_result and order_result.order_id and self._use_ws_feedback:
-            self._pending_orders[order_result.order_id] = PendingOrder(
-                order_id=order_result.order_id,
-                symbol=signal.symbol,
-                direction=signal.direction,
-                size_usdt=exec_size,
-            )
-            # Periodic cleanup of stale orders (every 50 orders, 5 minute timeout)
-            if len(self._pending_orders) > 50:
+            with self._pending_lock:
+                self._pending_orders[order_result.order_id] = PendingOrder(
+                    order_id=order_result.order_id,
+                    symbol=signal.symbol,
+                    direction=signal.direction,
+                    size_usdt=exec_size,
+                )
+                # Periodic cleanup of stale orders (every 50 orders, 5 minute timeout)
+                pending_count = len(self._pending_orders)
+            if pending_count > 50:
                 self.cleanup_old_pending_orders(max_age_seconds=300)
         
         # Step 3: Record trade (immediate REST feedback)
         if order_result and order_result.success:
-            self.position.record_trade(
-                symbol=signal.symbol,
-                side="BUY" if signal.direction == "LONG" else "SELL",
-                size_usdt=exec_size,
-                price=order_result.price or 0,
-                order_id=order_result.order_id,
-                strategy=signal.strategy,
-            )
+            # Validate price before recording
+            if not order_result.price or order_result.price <= 0:
+                self.logger.warning(
+                    f"Order {order_result.order_id} has invalid price ({order_result.price}), "
+                    "skipping REST recording - WebSocket callback will handle it"
+                )
+            elif order_result.order_id:
+                # Idempotency: mark as recorded before recording
+                with self._recorded_orders_lock:
+                    if order_result.order_id in self._recorded_orders:
+                        self.logger.debug(f"Order {order_result.order_id} already recorded, skipping")
+                    else:
+                        self._recorded_orders.add(order_result.order_id)
+                        self.position.record_trade(
+                            symbol=signal.symbol,
+                            side="BUY" if signal.direction == "LONG" else "SELL",
+                            size_usdt=exec_size,
+                            price=order_result.price,
+                            order_id=order_result.order_id,
+                            strategy=signal.strategy,
+                        )
+            else:
+                # No order_id - can't track idempotency, just record
+                self.position.record_trade(
+                    symbol=signal.symbol,
+                    side="BUY" if signal.direction == "LONG" else "SELL",
+                    size_usdt=exec_size,
+                    price=order_result.price,
+                    order_id=order_result.order_id,
+                    strategy=signal.strategy,
+                )
             
             self.logger.info(
                 f"Order executed: {signal.symbol} {signal.direction} "
@@ -437,30 +478,33 @@ class OrderExecutor:
     
     def get_pending_order(self, order_id: str) -> PendingOrder | None:
         """Get a pending order by ID."""
-        return self._pending_orders.get(order_id)
-    
+        with self._pending_lock:
+            return self._pending_orders.get(order_id)
+
     def get_all_pending_orders(self) -> dict[str, PendingOrder]:
-        """Get all pending orders."""
-        return dict(self._pending_orders)
-    
+        """Get all pending orders (returns a copy)."""
+        with self._pending_lock:
+            return dict(self._pending_orders)
+
     def cleanup_old_pending_orders(self, max_age_seconds: float = 300):
         """
         Clean up old pending orders.
-        
+
         Args:
             max_age_seconds: Maximum age before removal
         """
         now = time.time()
         to_remove = []
-        
-        for order_id, pending in self._pending_orders.items():
-            age = now - pending.submitted_at
-            if age > max_age_seconds or pending.filled or pending.error:
-                to_remove.append(order_id)
-        
-        for order_id in to_remove:
-            del self._pending_orders[order_id]
-        
+
+        with self._pending_lock:
+            for order_id, pending in self._pending_orders.items():
+                age = now - pending.submitted_at
+                if age > max_age_seconds or pending.filled or pending.error:
+                    to_remove.append(order_id)
+
+            for order_id in to_remove:
+                del self._pending_orders[order_id]
+
         if to_remove:
             self.logger.debug(f"Cleaned up {len(to_remove)} old pending orders")
 
@@ -473,9 +517,10 @@ class OrderExecutor:
         Args:
             order_id: Order ID to remove
         """
-        if order_id in self._pending_orders:
-            del self._pending_orders[order_id]
-    
+        with self._pending_lock:
+            if order_id in self._pending_orders:
+                del self._pending_orders[order_id]
+
     def wait_for_fill(
         self,
         order_id: str,
@@ -484,51 +529,61 @@ class OrderExecutor:
     ) -> PendingOrder | None:
         """
         Wait for an order to be filled via WebSocket.
-        
+
         Args:
             order_id: Order ID to wait for
             timeout: Maximum wait time in seconds
             poll_interval: Polling interval in seconds
-        
+
         Returns:
-            PendingOrder if filled, None if timeout
+            PendingOrder if filled, None if timeout or order not found
         """
-        pending = self._pending_orders.get(order_id)
-        if not pending:
-            return None
-        
         start = time.time()
         while time.time() - start < timeout:
-            if pending.filled or pending.error:
-                return pending
+            # Re-check dict inside lock each iteration to avoid race conditions
+            with self._pending_lock:
+                pending = self._pending_orders.get(order_id)
+                if not pending:
+                    return None
+                if pending.filled or pending.error:
+                    return pending
             time.sleep(poll_interval)
-        
-        return pending if pending.filled else None
+
+        # Final check after timeout
+        with self._pending_lock:
+            return self._pending_orders.get(order_id)
     
     # ==================== Callbacks ====================
-    
+
     def on_execution(self, callback: Callable[[ExecutionResult], None]):
         """Register callback for execution results."""
-        self._execution_callbacks.append(callback)
-    
+        with self._callback_lock:
+            self._execution_callbacks.append(callback)
+
     def _invoke_callbacks(self, result: ExecutionResult):
-        """Invoke all registered callbacks."""
-        for callback in self._execution_callbacks:
+        """Invoke all registered callbacks (copy-under-lock for thread safety)."""
+        with self._callback_lock:
+            callbacks_copy = list(self._execution_callbacks)
+        for callback in callbacks_copy:
             try:
                 callback(result)
             except Exception as e:
                 self.logger.error(f"Execution callback error: {e}")
-    
+
     # ==================== Diagnostics ====================
-    
+
     def get_status(self) -> dict:
         """Get executor status."""
+        with self._pending_lock:
+            pending_count = len(self._pending_orders)
+        with self._callback_lock:
+            callback_count = len(self._execution_callbacks)
         return {
             "use_ws_feedback": self._use_ws_feedback,
             "ws_connected": (
                 self.realtime_state.is_private_ws_connected
                 if self.realtime_state else False
             ),
-            "pending_orders": len(self._pending_orders),
-            "callback_count": len(self._execution_callbacks),
+            "pending_orders": pending_count,
+            "callback_count": callback_count,
         }

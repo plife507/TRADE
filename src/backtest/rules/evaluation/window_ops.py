@@ -56,7 +56,7 @@ def eval_holds_for(
         result = evaluator.evaluate(shifted_expr, snapshot)
         if not result.ok:
             return EvalResult.failure(
-                ReasonCode.OK,
+                ReasonCode.WINDOW_CONDITION_FAILED,
                 f"HoldsFor failed at offset {i} (1m offset={offset})",
                 lhs_path=result.lhs_path,
                 operator="holds_for",
@@ -91,7 +91,7 @@ def eval_occurred_within(
                 True, "occurred_within", str(expr.bars), "occurred_within"
             )
     return EvalResult.failure(
-        ReasonCode.OK,
+        ReasonCode.WINDOW_CONDITION_FAILED,
         f"Expression did not occur within {expr.bars} bars",
         operator="occurred_within",
     )
@@ -139,7 +139,7 @@ def eval_count_true(
             "count_true",
         )
     return EvalResult.failure(
-        ReasonCode.OK,
+        ReasonCode.WINDOW_CONDITION_FAILED,
         f"Expression was true {count} times, needed {expr.min_true}",
         operator="count_true",
     )
@@ -161,7 +161,7 @@ def eval_holds_for_duration(
         result = evaluator.evaluate(shifted_expr, snapshot)
         if not result.ok:
             return EvalResult.failure(
-                ReasonCode.OK,
+                ReasonCode.WINDOW_CONDITION_FAILED,
                 f"HoldsForDuration({expr.duration}) failed at offset {offset}",
                 lhs_path=result.lhs_path,
                 operator="holds_for_duration",
@@ -193,7 +193,7 @@ def eval_occurred_within_duration(
                 "occurred_within_duration",
             )
     return EvalResult.failure(
-        ReasonCode.OK,
+        ReasonCode.WINDOW_CONDITION_FAILED,
         f"Expression did not occur within {expr.duration}",
         operator="occurred_within_duration",
     )
@@ -231,7 +231,7 @@ def eval_count_true_duration(
             "count_true_duration",
         )
     return EvalResult.failure(
-        ReasonCode.OK,
+        ReasonCode.WINDOW_CONDITION_FAILED,
         f"Expression was true {count} times in {expr.duration}, needed {expr.min_true}",
         operator="count_true_duration",
     )

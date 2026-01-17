@@ -273,7 +273,7 @@ class GlobalRiskView:
             )
         
         # Check 3: Available balance
-        if snapshot.total_available_balance < self.limits.min_available_balance_usd:
+        if snapshot.total_available_balance <= self.limits.min_available_balance_usd:
             return RiskDecision.deny(
                 RiskVeto.MARGIN_EXCEEDED,
                 f"Insufficient available balance: ${snapshot.total_available_balance:.2f}",
@@ -300,7 +300,7 @@ class GlobalRiskView:
             )
         
         # Check 6: Daily loss limit
-        if self._daily_realized_pnl < -self.limits.max_daily_loss_usd:
+        if self._daily_realized_pnl <= -self.limits.max_daily_loss_usd:
             return RiskDecision.deny(
                 RiskVeto.DAILY_LOSS_LIMIT,
                 f"Daily loss limit reached: ${self._daily_realized_pnl:.2f}",
@@ -381,16 +381,18 @@ class GlobalRiskView:
     def record_realized_pnl(self, pnl: float):
         """
         Record realized PnL for daily tracking.
-        
+
         Should be called by OrderExecutor when trades are closed.
+        Thread-safe: uses _cache_lock to prevent race conditions.
         """
-        # Reset daily PnL if new day
-        now = time.time()
-        if now - self._daily_pnl_reset_time > 86400:  # 24 hours
-            self._daily_realized_pnl = 0.0
-            self._daily_pnl_reset_time = now
-        
-        self._daily_realized_pnl += pnl
+        with self._cache_lock:
+            # Reset daily PnL if new day
+            now = time.time()
+            if now - self._daily_pnl_reset_time > 86400:  # 24 hours
+                self._daily_realized_pnl = 0.0
+                self._daily_pnl_reset_time = now
+
+            self._daily_realized_pnl += pnl
     
     def get_daily_pnl(self) -> dict[str, float]:
         """Get daily realized PnL info."""

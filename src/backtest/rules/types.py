@@ -43,6 +43,9 @@ class ReasonCode(IntEnum):
     UNKNOWN_NAMESPACE = auto()  # Path namespace not recognized
     UNKNOWN_FIELD = auto()  # Field not found in namespace
 
+    # Window operator failures (NOT an error - condition simply not met)
+    WINDOW_CONDITION_FAILED = auto()  # Window operator condition not met (HoldsFor, OccurredWithin, etc.)
+
     # Internal
     INTERNAL_ERROR = auto()  # Unexpected internal error
 

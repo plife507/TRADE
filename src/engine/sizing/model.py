@@ -153,6 +153,7 @@ class SizingModel:
         entry_price: float | None = None,
         stop_loss: float | None = None,
         requested_size: float | None = None,
+        used_margin: float = 0.0,
     ) -> SizingResult:
         """
         Compute position size based on configured sizing model.
@@ -166,6 +167,7 @@ class SizingModel:
             entry_price: Entry price for risk-based sizing
             stop_loss: Stop loss price for risk-based sizing
             requested_size: Requested size for fixed_notional model
+            used_margin: Margin already used by existing positions (default 0)
 
         Returns:
             SizingResult with computed size and metadata
@@ -194,47 +196,55 @@ class SizingModel:
         model = self._config.sizing_model
 
         if model == "percent_equity":
-            return self._size_percent_equity(equity)
+            return self._size_percent_equity(equity, used_margin)
         elif model == "risk_based":
-            return self._size_risk_based(equity, entry_price, stop_loss)
+            return self._size_risk_based(equity, entry_price, stop_loss, used_margin)
         elif model in ("fixed_usdt", "fixed_notional"):
             return self._size_fixed_notional(equity, requested_size)
         else:
             # Default to percent_equity for unknown models
-            return self._size_percent_equity(equity)
+            return self._size_percent_equity(equity, used_margin)
 
-    def _size_percent_equity(self, equity: float) -> SizingResult:
+    def _size_percent_equity(self, equity: float, used_margin: float = 0.0) -> SizingResult:
         """
-        Size using percentage of equity as margin, then apply leverage.
+        Size using percentage of FREE equity as margin, then apply leverage.
 
         Bybit margin model:
-            - margin = equity * (risk_pct / 100)
+            - free_margin = equity - used_margin (accounts for existing positions)
+            - margin = free_margin * (risk_pct / 100)
             - position_value = margin * leverage
 
         Example with 10% of $10,000 equity at 10x leverage:
             - margin = $10,000 * 10% = $1,000 (what you're putting up)
             - position = $1,000 * 10 = $10,000 (your exposure)
 
-        The position is capped at equity * max_leverage (max borrowing).
+        The position is capped at free_margin * max_leverage (max borrowing).
+
+        Args:
+            equity: Total account equity
+            used_margin: Margin already used by existing positions (default 0)
         """
         risk_pct = self._config.risk_per_trade_pct
         max_lev = self._config.max_leverage
 
-        # Margin is the % of equity we're committing
-        margin = equity * (risk_pct / 100.0)
+        # Calculate free margin (what's available for new positions)
+        free_margin = equity - used_margin
+
+        # Margin is the % of FREE equity we're committing
+        margin = free_margin * (risk_pct / 100.0)
 
         # Position size = margin * leverage (Bybit formula)
         size_usdt = margin * max_lev
 
-        # Cap at max allowed position (equity * max_leverage)
-        max_size = equity * max_lev
+        # Cap at max allowed position based on FREE margin (not total equity)
+        max_size = free_margin * max_lev
         was_capped = size_usdt > max_size
         size_usdt = min(size_usdt, max_size)
 
         return SizingResult(
             size_usdt=size_usdt,
             method="percent_equity",
-            details=f"margin=${margin:.2f}, lev={max_lev:.1f}x, position=${size_usdt:.2f}",
+            details=f"free_margin=${free_margin:.2f}, margin=${margin:.2f}, lev={max_lev:.1f}x, position=${size_usdt:.2f}",
             was_capped=was_capped,
         )
 
@@ -243,6 +253,7 @@ class SizingModel:
         equity: float,
         entry_price: float | None,
         stop_loss: float | None,
+        used_margin: float = 0.0,
     ) -> SizingResult:
         """
         Size using risk-based calculation.
@@ -262,12 +273,21 @@ class SizingModel:
         If stopped out: $5,000 * 2% = $100 loss = 1% of equity
 
         Falls back to percent_equity if stop_loss is not provided.
+
+        Args:
+            equity: Total account equity
+            entry_price: Entry price for the trade
+            stop_loss: Stop loss price
+            used_margin: Margin already used by existing positions (default 0)
         """
         risk_pct = self._config.risk_per_trade_pct
         max_lev = self._config.max_leverage
 
-        # Maximum size based on leverage
-        max_size = equity * max_lev
+        # Calculate free margin for position cap
+        free_margin = equity - used_margin
+
+        # Maximum size based on leverage (capped by free margin)
+        max_size = free_margin * max_lev
 
         # Risk dollars (what we're willing to lose)
         risk_dollars = equity * (risk_pct / 100.0)
@@ -289,15 +309,17 @@ class SizingModel:
                     was_capped=was_capped,
                 )
 
-        # Fallback to simple percent_equity if no valid stop
-        size_usdt = equity * (risk_pct / 100.0)
+        # Fallback to percent_equity formula if no valid stop
+        # BUG FIX: Include leverage multiplier for consistency with percent_equity
+        margin = free_margin * (risk_pct / 100.0)
+        size_usdt = margin * max_lev
         was_capped = size_usdt > max_size
         size_usdt = min(size_usdt, max_size)
 
         return SizingResult(
             size_usdt=size_usdt,
             method="risk_based_fallback",
-            details="no stop_loss, using percent_equity fallback",
+            details=f"no stop_loss, using percent_equity fallback (margin=${margin:.2f}, lev={max_lev:.1f}x)",
             was_capped=was_capped,
         )
 

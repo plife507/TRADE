@@ -374,12 +374,17 @@ def eval_near_pct(lhs: RefValue, rhs: RefValue, tolerance: float) -> EvalResult:
     if check:
         return check
 
-    # Avoid division by zero
+    # Division by zero: cannot compute percentage when reference is zero
     if rhs.value == 0:
-        # If both are zero, they're equal
-        result = lhs.value == 0
-    else:
-        result = abs(lhs.value - rhs.value) / abs(rhs.value) <= tolerance
+        return EvalResult.failure(
+            ReasonCode.INVALID_TOLERANCE,
+            f"Cannot compute percentage with zero reference (rhs=0)",
+            lhs_path=lhs.path,
+            rhs_repr="0",
+            operator=op,
+        )
+
+    result = abs(lhs.value - rhs.value) / abs(rhs.value) <= tolerance
 
     pct_str = f"{tolerance * 100:.2f}%"
     return EvalResult.success(result, lhs.path, f"{rhs.value} ± {pct_str}", op)
