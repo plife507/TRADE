@@ -488,10 +488,10 @@ def audit_snapshot_plumbing_parity(
         # Create audit callback placeholder (will be set after engine creation)
         callback_holder = {"callback": None}
 
-        def audit_callback(snapshot, exec_idx, htf_idx, mtf_idx):
+        def audit_callback(snapshot, exec_idx, high_tf_idx, med_tf_idx):
             """Callback invoked during backtest for plumbing audit."""
             if callback_holder["callback"] is not None:
-                callback_holder["callback"](snapshot, exec_idx, htf_idx, mtf_idx)
+                callback_holder["callback"](snapshot, exec_idx, high_tf_idx, med_tf_idx)
 
         # Create engine using factory function
         engine = create_engine_from_play(

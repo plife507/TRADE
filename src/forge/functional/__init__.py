@@ -1,5 +1,5 @@
 """
-Tier 5: Functional Tests - Real Data Engine Validation.
+Functional Tests - Real Data Engine Validation.
 
 Uses real historical data from DuckDB to validate engine functionality.
 Tests strategy concepts with auto-adjusting date ranges.
@@ -9,6 +9,6 @@ Key Principle:
     change the DATE RANGE, not the strategy.
 """
 
-from .runner import run_functional_tests, FunctionalTestResult
+from .engine_validator import EngineValidator, ValidationResult
 
-__all__ = ["run_functional_tests", "FunctionalTestResult"]
+__all__ = ["EngineValidator", "ValidationResult"]

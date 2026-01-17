@@ -66,7 +66,7 @@ def audit_math_parity_from_snapshots(run_dir: Path) -> MathParityAuditResult:
         total_columns = 0
         passed_columns = 0
 
-        # Process each frame by ROLE (exec/htf/mtf), not TF
+        # Process each frame by ROLE (exec/high_tf/med_tf), not TF
         for role, frame_info in manifest["frames"].items():
             if role not in frames:
                 continue

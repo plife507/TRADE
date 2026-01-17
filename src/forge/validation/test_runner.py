@@ -1,9 +1,9 @@
 """
-Validation Runner - CLI runner for all validation tiers.
+Validation Runner - CLI runner for syntax validation.
 
-This module provides the main entry point for running validation tests
-across all tiers. Each tier has specific test functions that return
-ValidationResult objects.
+This module provides the main entry point for running syntax validation tests.
+Only tier0 (syntax & parse) is supported - higher tiers were removed as they
+tested divergent code paths.
 """
 
 from __future__ import annotations
@@ -19,10 +19,6 @@ from typing import Any, Callable
 class TierName(Enum):
     """Validation tier identifiers."""
     TIER0 = "tier0"
-    TIER1 = "tier1"
-    TIER2 = "tier2"
-    TIER3 = "tier3"
-    TIER4 = "tier4"
 
 
 @dataclass
@@ -118,36 +114,8 @@ def run_tier0() -> TierResult:
     return test_parse.run_all()
 
 
-def run_tier1() -> TierResult:
-    """Run Tier 1: Operator unit tests."""
-    from .tier1_operators import run_all_operator_tests
-    return run_all_operator_tests()
-
-
-def run_tier2() -> TierResult:
-    """Run Tier 2: Structure math tests."""
-    from .tier2_structures import run_all_structure_tests
-    return run_all_structure_tests()
-
-
-def run_tier3() -> TierResult:
-    """Run Tier 3: Integration tests."""
-    from .tier3_integration import run_all_integration_tests
-    return run_all_integration_tests()
-
-
-def run_tier4() -> TierResult:
-    """Run Tier 4: Strategy smoke tests."""
-    from .tier4_smoke import run_all_smoke_tests
-    return run_all_smoke_tests()
-
-
 TIER_RUNNERS: dict[TierName, Callable[[], TierResult]] = {
     TierName.TIER0: run_tier0,
-    TierName.TIER1: run_tier1,
-    TierName.TIER2: run_tier2,
-    TierName.TIER3: run_tier3,
-    TierName.TIER4: run_tier4,
 }
 
 
@@ -156,7 +124,7 @@ def run_tier(tier: str | TierName) -> TierResult:
     Run a single validation tier.
 
     Args:
-        tier: Tier name (e.g., "tier0", "tier1", or TierName enum)
+        tier: Tier name (e.g., "tier0" or TierName enum)
 
     Returns:
         TierResult with test outcomes
@@ -266,10 +234,6 @@ def main(args: list[str] | None = None) -> int:
         print("Usage: python -m tests.validation.runner <tier|all> [--json]")
         print("\nTiers:")
         print("  tier0  - Syntax & Parse (<5 sec)")
-        print("  tier1  - Operator Unit Tests (<30 sec)")
-        print("  tier2  - Structure Math Tests (<1 min)")
-        print("  tier3  - Integration Tests (<2 min)")
-        print("  tier4  - Strategy Smoke Tests (<5 min)")
         print("  all    - Run all tiers")
         print("\nOptions:")
         print("  --json - Output results as JSON")

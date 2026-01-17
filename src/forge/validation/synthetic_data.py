@@ -59,7 +59,7 @@ TF_TO_MINUTES: dict[str, int] = {
 # =============================================================================
 # Pattern Types
 # =============================================================================
-PatternType = Literal["trending", "ranging", "volatile", "mtf_aligned"]
+PatternType = Literal["trending", "ranging", "volatile", "multi_tf_aligned"]
 
 
 # =============================================================================
@@ -75,9 +75,9 @@ class SyntheticCandles:
         timeframes: Mapping of timeframe -> DataFrame with OHLCV columns
         seed: Random seed used for reproducibility
         pattern: Pattern type used for generation
-        bars_per_tf: Number of bars for slowest TF (or all TFs if align_mtf=False)
-        bar_counts: Actual bar count per timeframe (differs when align_mtf=True)
-        align_mtf: Whether MTF alignment was used
+        bars_per_tf: Number of bars for slowest TF (or all TFs if align_multi_tf=False)
+        bar_counts: Actual bar count per timeframe (differs when align_multi_tf=True)
+        align_multi_tf: Whether multi-TF alignment was used
         total_minutes: Total time range covered in minutes
         base_price: Starting price
         volatility: Volatility parameter
@@ -89,7 +89,7 @@ class SyntheticCandles:
     pattern: PatternType
     bars_per_tf: int
     bar_counts: dict[str, int]  # Actual bars per TF
-    align_mtf: bool
+    align_multi_tf: bool
     total_minutes: int  # Time range covered
     base_price: float
     volatility: float
@@ -113,7 +113,7 @@ class SyntheticCandles:
             "pattern": self.pattern,
             "bars_per_tf": self.bars_per_tf,
             "bar_counts": self.bar_counts,
-            "align_mtf": self.align_mtf,
+            "align_multi_tf": self.align_multi_tf,
             "total_minutes": self.total_minutes,
             "base_price": self.base_price,
             "volatility": self.volatility,
@@ -251,7 +251,7 @@ def _generate_volatile_prices(
     return prices
 
 
-def _generate_mtf_aligned_prices(
+def _generate_multi_tf_aligned_prices(
     rng: np.random.Generator,
     n_bars: int,
     base_price: float,
@@ -260,21 +260,21 @@ def _generate_mtf_aligned_prices(
     """
     Generate prices with clear multi-timeframe structure.
 
-    Creates aligned HTF/MTF/LTF structure for correlation testing.
+    Creates aligned high_tf/med_tf/low_tf structure for correlation testing.
     """
-    # Create HTF structure (large waves)
-    htf_period = n_bars // 4
-    htf_wave = np.sin(np.linspace(0, 4 * np.pi, n_bars)) * base_price * 0.15
+    # Create high_tf structure (large waves)
+    high_tf_period = n_bars // 4
+    high_tf_wave = np.sin(np.linspace(0, 4 * np.pi, n_bars)) * base_price * 0.15
 
-    # Add MTF structure (medium waves)
-    mtf_period = n_bars // 16
-    mtf_wave = np.sin(np.linspace(0, 16 * np.pi, n_bars)) * base_price * 0.05
+    # Add med_tf structure (medium waves)
+    med_tf_period = n_bars // 16
+    med_tf_wave = np.sin(np.linspace(0, 16 * np.pi, n_bars)) * base_price * 0.05
 
-    # Add LTF noise
-    ltf_noise = rng.normal(0, volatility * base_price, n_bars)
+    # Add low_tf noise
+    low_tf_noise = rng.normal(0, volatility * base_price, n_bars)
 
     # Combine
-    prices = base_price + htf_wave + mtf_wave + ltf_noise
+    prices = base_price + high_tf_wave + med_tf_wave + low_tf_noise
 
     return prices
 
@@ -463,7 +463,7 @@ def generate_synthetic_for_play(
     # Get symbol from play (first in symbol_universe or default)
     symbol = play.symbol_universe[0] if play.symbol_universe else DEFAULT_SYMBOL
 
-    # Generate with MTF alignment
+    # Generate with multi-TF alignment
     return generate_synthetic_candles(
         symbol=symbol,
         timeframes=timeframes_list,
@@ -474,7 +474,7 @@ def generate_synthetic_for_play(
         volatility=volatility,
         base_timestamp=base_timestamp,
         correlate_volume=correlate_volume,
-        align_mtf=True,
+        align_multi_tf=True,
     )
 
 
@@ -491,7 +491,7 @@ def generate_synthetic_candles(
     volatility: float = DEFAULT_VOLATILITY,
     base_timestamp: datetime | None = None,
     correlate_volume: bool = True,
-    align_mtf: bool = True,
+    align_multi_tf: bool = True,
 ) -> SyntheticCandles:
     """
     Generate synthetic OHLCV data for all timeframes.
@@ -499,21 +499,21 @@ def generate_synthetic_candles(
     Args:
         symbol: Trading symbol (default: "BTCUSDT")
         timeframes: List of timeframes to generate (default: ["1m", "5m", "15m", "1h", "4h"])
-        bars_per_tf: Number of bars for slowest TF (default: 1000). When align_mtf=True,
+        bars_per_tf: Number of bars for slowest TF (default: 1000). When align_multi_tf=True,
             faster TFs get proportionally more bars to cover the same time range.
         seed: Random seed for reproducibility (default: 42)
         pattern: Price pattern type:
             - "trending": Clear directional move (swing highs/lows)
             - "ranging": Sideways consolidation (zone detection)
             - "volatile": High volatility spikes (breakout detection)
-            - "mtf_aligned": Multi-TF alignment (HTF/MTF/LTF correlation)
+            - "multi_tf_aligned": Multi-TF alignment (high_tf/med_tf/low_tf correlation)
         base_price: Starting price (default: 50000.0)
         volatility: Daily volatility (default: 0.02 = 2%)
         base_timestamp: Starting timestamp (default: 2025-01-01 00:00 UTC)
         correlate_volume: If True (default), volume correlates with price moves.
             Larger price changes produce higher volume for realistic testing
             of volume-based indicators and structures.
-        align_mtf: If True (default), all timeframes cover the same time range.
+        align_multi_tf: If True (default), all timeframes cover the same time range.
             Slowest TF gets bars_per_tf bars, faster TFs get proportionally more.
             Example: bars_per_tf=100, timeframes=["1m","1h"] -> 1h=100 bars, 1m=6000 bars.
             If False, all TFs get exactly bars_per_tf bars (misaligned time ranges).
@@ -522,11 +522,11 @@ def generate_synthetic_candles(
         SyntheticCandles with OHLCV DataFrames for each timeframe
 
     Example:
-        >>> # MTF-aligned: 1h gets 100 bars, 1m gets 6000 bars (same time range)
+        >>> # Multi-TF aligned: 1h gets 100 bars, 1m gets 6000 bars (same time range)
         >>> candles = generate_synthetic_candles(
         ...     timeframes=["1m", "1h"],
         ...     bars_per_tf=100,
-        ...     align_mtf=True,
+        ...     align_multi_tf=True,
         ... )
         >>> print(candles.bar_counts)  # {"1m": 6000, "1h": 100}
         >>> print(candles.total_minutes)  # 6000
@@ -550,7 +550,7 @@ def generate_synthetic_candles(
         "trending": _generate_trending_prices,
         "ranging": _generate_ranging_prices,
         "volatile": _generate_volatile_prices,
-        "mtf_aligned": _generate_mtf_aligned_prices,
+        "multi_tf_aligned": _generate_multi_tf_aligned_prices,
     }
 
     if pattern not in pattern_generators:
@@ -561,7 +561,7 @@ def generate_synthetic_candles(
     # Calculate bar counts per timeframe
     bar_counts: dict[str, int] = {}
 
-    if align_mtf:
+    if align_multi_tf:
         # Find slowest TF (most minutes per bar)
         slowest_tf = max(timeframes, key=lambda tf: TF_TO_MINUTES[tf])
         slowest_minutes = TF_TO_MINUTES[slowest_tf]
@@ -623,7 +623,7 @@ def generate_synthetic_candles(
         pattern=pattern,
         bars_per_tf=bars_per_tf,
         bar_counts=bar_counts,
-        align_mtf=align_mtf,
+        align_multi_tf=align_multi_tf,
         total_minutes=total_minutes,
         base_price=base_price,
         volatility=volatility,
@@ -853,7 +853,7 @@ def generate_synthetic_bars(
         "trending": _generate_trending_prices,
         "ranging": _generate_ranging_prices,
         "volatile": _generate_volatile_prices,
-        "mtf_aligned": _generate_mtf_aligned_prices,
+        "multi_tf_aligned": _generate_multi_tf_aligned_prices,
     }
 
     if pattern not in pattern_generators:

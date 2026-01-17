@@ -28,7 +28,7 @@ from src.indicators import compute_indicator, get_registry
 class ColumnParityResult:
     """Result of comparing a single indicator column."""
     column: str
-    tf_role: str  # "exec", "htf", "mtf"
+    tf_role: str  # "exec", "high_tf", "med_tf"
     passed: bool
     max_abs_diff: float
     mean_abs_diff: float
@@ -109,24 +109,24 @@ class InMemoryParityResult:
 
 def audit_in_memory_parity_from_feeds(
     exec_df: pd.DataFrame,
-    htf_df: pd.DataFrame | None,
-    mtf_df: pd.DataFrame | None,
+    high_tf_df: pd.DataFrame | None,
+    med_tf_df: pd.DataFrame | None,
     feature_specs: list[dict[str, Any]],
     tolerance: float = 1e-8,
 ) -> InMemoryParityResult:
     """
     Audit math parity by comparing in-memory FeedStore data against fresh pandas_ta computation.
-    
+
     This is the core parity check — compares the FeatureFrameBuilder output (already computed)
     against a fresh recomputation of the same indicators using pandas_ta.
-    
+
     Args:
         exec_df: Exec TF DataFrame with OHLCV + computed indicators
-        htf_df: Optional HTF DataFrame with OHLCV + computed indicators
-        mtf_df: Optional MTF DataFrame with OHLCV + computed indicators
+        high_tf_df: Optional high_tf DataFrame with OHLCV + computed indicators
+        med_tf_df: Optional med_tf DataFrame with OHLCV + computed indicators
         feature_specs: List of feature spec dicts (from Play or manifest)
         tolerance: Max allowed absolute difference (default: 1e-8)
-        
+
     Returns:
         InMemoryParityResult with detailed comparison results
     """
@@ -137,8 +137,8 @@ def audit_in_memory_parity_from_feeds(
         # Process each TF role
         tf_frames = [
             ("exec", exec_df),
-            ("htf", htf_df),
-            ("mtf", mtf_df),
+            ("high_tf", high_tf_df),
+            ("med_tf", med_tf_df),
         ]
         
         for tf_role, df in tf_frames:
@@ -433,12 +433,12 @@ def run_in_memory_parity_for_play(
         
         # Get the feature spec sets using the correct API
         exec_spec_set = play.get_feature_spec_set("exec", symbol)
-        htf_spec_set = play.get_feature_spec_set("htf", symbol)
-        mtf_spec_set = play.get_feature_spec_set("mtf", symbol)
-        
+        high_tf_spec_set = play.get_feature_spec_set("high_tf", symbol)
+        med_tf_spec_set = play.get_feature_spec_set("med_tf", symbol)
+
         # Collect all feature specs across TFs
         all_feature_specs = []
-        
+
         if exec_spec_set:
             for spec in exec_spec_set.specs:
                 all_feature_specs.append({
@@ -448,25 +448,25 @@ def run_in_memory_parity_for_play(
                     "input_source": spec.input_source,
                     "tf_roles": ["exec"],
                 })
-        
-        if htf_spec_set:
-            for spec in htf_spec_set.specs:
+
+        if high_tf_spec_set:
+            for spec in high_tf_spec_set.specs:
                 all_feature_specs.append({
                     "indicator_type": spec.indicator_type,
                     "output_key": spec.output_key,
                     "params": spec.params,
                     "input_source": spec.input_source,
-                    "tf_roles": ["htf"],
+                    "tf_roles": ["high_tf"],
                 })
-        
-        if mtf_spec_set:
-            for spec in mtf_spec_set.specs:
+
+        if med_tf_spec_set:
+            for spec in med_tf_spec_set.specs:
                 all_feature_specs.append({
                     "indicator_type": spec.indicator_type,
                     "output_key": spec.output_key,
                     "params": spec.params,
                     "input_source": spec.input_source,
-                    "tf_roles": ["mtf"],
+                    "tf_roles": ["med_tf"],
                 })
         
         # Build the backtest engine using the Play-native engine factory
@@ -488,17 +488,27 @@ def run_in_memory_parity_for_play(
         
         # Prepare multi-TF frames (triggers FeatureFrameBuilder)
         engine.prepare_multi_tf_frames()
-        
+
         # Extract DataFrames from engine's internal state
-        exec_df = engine._ltf_df if hasattr(engine, '_ltf_df') and engine._ltf_df is not None else None
-        htf_df = engine._htf_df if hasattr(engine, '_htf_df') and engine._htf_df is not None else None
-        mtf_df = engine._mtf_df if hasattr(engine, '_mtf_df') and engine._mtf_df is not None else None
-        
+        # Resolve exec_df based on play's exec role (not hardcoded to low_tf)
+        exec_role = play.timeframes.get("exec", "low_tf") if hasattr(play, 'timeframes') else "low_tf"
+        if exec_role == "low_tf":
+            exec_df = engine._low_tf_df if hasattr(engine, '_low_tf_df') else None
+        elif exec_role == "med_tf":
+            exec_df = engine._med_tf_df if hasattr(engine, '_med_tf_df') else None
+        elif exec_role == "high_tf":
+            exec_df = engine._high_tf_df if hasattr(engine, '_high_tf_df') else None
+        else:
+            exec_df = engine._low_tf_df if hasattr(engine, '_low_tf_df') else None
+
+        high_tf_df = engine._high_tf_df if hasattr(engine, '_high_tf_df') and engine._high_tf_df is not None else None
+        med_tf_df = engine._med_tf_df if hasattr(engine, '_med_tf_df') and engine._med_tf_df is not None else None
+
         # Run parity check
         result = audit_in_memory_parity_from_feeds(
             exec_df=exec_df,
-            htf_df=htf_df,
-            mtf_df=mtf_df,
+            high_tf_df=high_tf_df,
+            med_tf_df=med_tf_df,
             feature_specs=all_feature_specs,
         )
         

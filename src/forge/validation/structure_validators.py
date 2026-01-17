@@ -226,7 +226,7 @@ def run_play_with_synthetic(
         bars_per_tf=extra_bars,
         seed=seed,
         pattern=pattern,
-        align_mtf=True,
+        align_multi_tf=True,
     )
 
     provider = SyntheticCandlesProvider(candles)

@@ -154,7 +154,7 @@ def test_multi_tf_state_basic() -> None:
     print("Testing MultiTFIncrementalState basic operations...")
     print("-" * 60)
 
-    # Create multi-TF state with exec and one HTF
+    # Create multi-TF state with exec and one high_tf
     exec_specs = [
         {"type": "swing", "key": "swing", "params": {"left": 2, "right": 2}},
         {"type": "trend", "key": "trend", "depends_on": {"swing": "swing"}},
@@ -190,7 +190,7 @@ def test_multi_tf_state_basic() -> None:
     ]
 
     # Create sample bars for 1h TF
-    htf_bars = [
+    high_tf_bars = [
         BarData(idx=0, open=100.0, high=110.0, low=95.0, close=105.0, volume=400.0, indicators={}),
     ]
 
@@ -198,8 +198,8 @@ def test_multi_tf_state_basic() -> None:
     for bar in exec_bars:
         multi.update_exec(bar)
 
-    # Update HTF
-    for bar in htf_bars:
+    # Update high_tf
+    for bar in high_tf_bars:
         multi.update_high_tf("1h", bar)
 
     # Access via paths
@@ -210,8 +210,8 @@ def test_multi_tf_state_basic() -> None:
     print(f"Exec trend direction: {exec_dir}")
 
     # Note: 1h swing won't be confirmed yet with just 1 bar
-    htf_high = multi.get_value("high_tf_1h.swing_1h.high_level")
-    print(f"HTF 1h swing high: {htf_high} (NaN expected with insufficient bars)")
+    high_tf_high = multi.get_value("high_tf_1h.swing_1h.high_level")
+    print(f"high_tf 1h swing high: {high_tf_high} (NaN expected with insufficient bars)")
 
     print("MultiTFIncrementalState basic test PASSED")
     print()
@@ -237,7 +237,7 @@ def test_multi_tf_full_chain() -> None:
         {"type": "trend", "key": "trend", "depends_on": {"swing": "swing"}},
     ]
 
-    # Create 1h HTF with same chain
+    # Create 1h high_tf with same chain
     high_tf_configs = {
         "1h": [
             {"type": "swing", "key": "swing", "params": {"left": 2, "right": 2}},
@@ -286,8 +286,8 @@ def test_multi_tf_full_chain() -> None:
         BarData(idx=8, open=95.0, high=100.0, low=91.0, close=98.0, volume=100.0, indicators={}),     # Confirms low
     ]
 
-    # HTF bars (1h): same pattern
-    htf_bars = [
+    # high_tf bars (1h): same pattern
+    high_tf_bars = [
         BarData(idx=0, open=100.0, high=102.0, low=99.0, close=101.0, volume=400.0, indicators={}),
         BarData(idx=1, open=101.0, high=105.0, low=100.0, close=104.0, volume=400.0, indicators={}),
         BarData(idx=2, open=104.0, high=115.0, low=103.0, close=112.0, volume=400.0, indicators={}),  # Swing high=115
@@ -303,7 +303,7 @@ def test_multi_tf_full_chain() -> None:
     for bar in exec_bars:
         multi.update_exec(bar)
 
-    for bar in htf_bars:
+    for bar in high_tf_bars:
         multi.update_high_tf("1h", bar)
 
     # Read values via path API
@@ -321,15 +321,15 @@ def test_multi_tf_full_chain() -> None:
     print(f"Exec fib 0.618: {exec_fib_618}")
     print(f"Exec trend: {exec_trend}")
 
-    htf_swing_high = multi.get_value("high_tf_1h.swing.high_level")
-    htf_swing_low = multi.get_value("high_tf_1h.swing.low_level")
-    htf_fib_50 = multi.get_value("high_tf_1h.fib.level_0.5")
-    htf_trend = multi.get_value("high_tf_1h.trend.direction")
+    high_tf_swing_high = multi.get_value("high_tf_1h.swing.high_level")
+    high_tf_swing_low = multi.get_value("high_tf_1h.swing.low_level")
+    high_tf_fib_50 = multi.get_value("high_tf_1h.fib.level_0.5")
+    high_tf_trend = multi.get_value("high_tf_1h.trend.direction")
 
-    print(f"HTF 1h swing high: {htf_swing_high}")
-    print(f"HTF 1h swing low: {htf_swing_low}")
-    print(f"HTF 1h fib 0.5: {htf_fib_50}")
-    print(f"HTF 1h trend: {htf_trend}")
+    print(f"high_tf 1h swing high: {high_tf_swing_high}")
+    print(f"high_tf 1h swing low: {high_tf_swing_low}")
+    print(f"high_tf 1h fib 0.5: {high_tf_fib_50}")
+    print(f"high_tf 1h trend: {high_tf_trend}")
 
     # Verify exec values
     assert exec_swing_high == 115.0, f"Expected exec swing high 115.0, got {exec_swing_high}"
@@ -347,9 +347,9 @@ def test_multi_tf_full_chain() -> None:
         assert abs(exec_fib_382 - expected_382) < 0.001, f"Exec fib 0.382 mismatch: got {exec_fib_382}"
         assert abs(exec_fib_618 - expected_618) < 0.001, f"Exec fib 0.618 mismatch: got {exec_fib_618}"
 
-    # Verify HTF values
-    assert htf_swing_high == 115.0, f"Expected HTF swing high 115.0, got {htf_swing_high}"
-    assert htf_swing_low == 88.0, f"Expected HTF swing low 88.0, got {htf_swing_low}"
+    # Verify high_tf values
+    assert high_tf_swing_high == 115.0, f"Expected high_tf swing high 115.0, got {high_tf_swing_high}"
+    assert high_tf_swing_low == 88.0, f"Expected high_tf swing low 88.0, got {high_tf_swing_low}"
 
     print("\nMultiTFIncrementalState full chain test PASSED")
     print()
@@ -419,7 +419,7 @@ def test_error_handling() -> None:
         assert False, "Should have raised ValueError"
     except ValueError as e:
         assert "Invalid tf_role" in str(e)
-        assert "exec" in str(e) or "htf_" in str(e)
+        assert "exec" in str(e) or "high_tf_" in str(e)
         print(f"  OK: Raised ValueError with valid prefixes")
 
     # Test 6: Unknown structure key
@@ -441,14 +441,14 @@ def test_error_handling() -> None:
         assert "Available outputs" in str(e)
         print(f"  OK: Raised KeyError with available outputs")
 
-    # Test 8: Unknown HTF
-    print("Test 8: Unknown HTF in update_high_tf...")
+    # Test 8: Unknown high_tf
+    print("Test 8: Unknown high_tf in update_high_tf...")
     try:
         multi.update_high_tf("4h", BarData(idx=0, open=100.0, high=102.0, low=99.0, close=101.0, volume=100.0, indicators={}))
         assert False, "Should have raised KeyError"
     except KeyError as e:
         assert "not configured" in str(e)
-        print(f"  OK: Raised KeyError for unknown HTF")
+        print(f"  OK: Raised KeyError for unknown high_tf")
 
     # Test 9: Non-monotonic bar index
     print("Test 9: Non-monotonic bar index...")
