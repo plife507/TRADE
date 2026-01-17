@@ -583,7 +583,13 @@ class SimulatorExchangeState:
     leverage: float = 1.0
     initial_margin_rate: float = 1.0
     maintenance_margin_rate: float = 0.005
-    taker_fee_rate: float = 0.0006
+    taker_fee_rate: float | None = None  # Loaded from DEFAULTS if None
+
+    def __post_init__(self) -> None:
+        """Load defaults from config/defaults.yml if not specified."""
+        if self.taker_fee_rate is None:
+            from src.config.constants import DEFAULTS
+            self.taker_fee_rate = DEFAULTS.fees.taker_rate
 
     def to_dict(self) -> dict[str, Any]:
         return {

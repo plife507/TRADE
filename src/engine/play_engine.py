@@ -79,10 +79,10 @@ class PlayEngineConfig:
     # Risk policy (matches BacktestEngine)
     risk_mode: str = "none"  # "none" or "rules"
 
-    # Fee model
-    taker_fee_rate: float = 0.0006  # 0.06% (Bybit typical)
-    maker_fee_rate: float = 0.0001  # 0.01% (Bybit typical)
-    slippage_bps: float = 2.0
+    # Fee model (loaded from DEFAULTS if None)
+    taker_fee_rate: float | None = None
+    maker_fee_rate: float | None = None
+    slippage_bps: float | None = None
 
     # Entry gate behavior (matches RiskProfileConfig)
     include_est_close_fee_in_entry_gate: bool = False
@@ -90,6 +90,16 @@ class PlayEngineConfig:
     # State persistence
     persist_state: bool = False
     state_save_interval: int = 100  # Save every N bars
+
+    def __post_init__(self) -> None:
+        """Load defaults from config/defaults.yml if not specified."""
+        from src.config.constants import DEFAULTS
+        if self.taker_fee_rate is None:
+            self.taker_fee_rate = DEFAULTS.fees.taker_rate
+        if self.maker_fee_rate is None:
+            self.maker_fee_rate = DEFAULTS.fees.maker_rate
+        if self.slippage_bps is None:
+            self.slippage_bps = DEFAULTS.execution.slippage_bps
 
 
 class PlayEngine:

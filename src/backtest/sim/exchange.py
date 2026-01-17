@@ -116,7 +116,8 @@ class SimulatedExchange:
             self._leverage = max(1.0, leverage)
             self._imr = 1.0 / self._leverage
             self._mmr = 0.005
-            self._fee_rate = 0.0006
+            from src.config.constants import DEFAULTS
+            self._fee_rate = DEFAULTS.fees.taker_rate
             self._include_close_fee = False
             self._mark_source = "close"
         

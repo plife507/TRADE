@@ -42,8 +42,13 @@ class LedgerConfig:
     """Configuration for ledger accounting."""
     initial_margin_rate: float = 0.5  # IMR = 1/leverage
     maintenance_margin_rate: float = 0.005  # MMR (0.5% Bybit default)
-    taker_fee_rate: float = 0.0006  # 0.06% default
+    taker_fee_rate: float | None = None  # Loaded from DEFAULTS if None
     debug_check_invariants: bool = False  # Check invariants after every mutation
+
+    def __post_init__(self) -> None:
+        if self.taker_fee_rate is None:
+            from src.config.constants import DEFAULTS
+            object.__setattr__(self, 'taker_fee_rate', DEFAULTS.fees.taker_rate)
     
     @classmethod
     def from_risk_profile(cls, risk_profile: "RiskProfileConfig") -> "LedgerConfig":

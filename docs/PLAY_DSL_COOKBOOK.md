@@ -37,7 +37,7 @@ When tests reveal behavior differs from this doc:
 5. [Operators](#5-operators)
 6. [Arithmetic DSL](#6-arithmetic-dsl)
 7. [Window Operators](#7-window-operators)
-8. [Multi-Timeframe (MultiTF)](#8-multi-timeframe-multitf)
+8. [Multi-Timeframe (Multi-TF)](#8-multi-timeframe-multitf)
 9. [Risk Model](#9-risk-model)
 10. [Order Sizing & Execution](#10-order-sizing--execution)
 11. [Complete Examples](#11-complete-examples)
@@ -56,8 +56,8 @@ These are the system defaults. When not specified in a Play, these values apply:
 | Field | Default | Source | Notes |
 |-------|---------|--------|-------|
 | **Account Configuration** ||||
-| `taker_bps` | 6.0 | Bybit API | 0.06% taker fee |
-| `maker_bps` | 1.0 | Bybit API | 0.01% maker fee |
+| `taker_bps` | 5.5 | Bybit API | 0.055% taker fee |
+| `maker_bps` | 2.0 | Bybit API | 0.02% maker fee |
 | `slippage_bps` | 2.0 | - | Conservative estimate |
 | `margin_mode` | `isolated_usdt` | - | Only supported mode |
 | `min_trade_notional_usdt` | 10.0 | - | Minimum trade size |
@@ -107,8 +107,8 @@ account:
   margin_mode: "isolated_usdt"  # Must be isolated_usdt
   min_trade_notional_usdt: 10.0
   fee_model:
-    taker_bps: 6.0             # 0.06% taker fee (Bybit default)
-    maker_bps: 1.0             # 0.01% maker fee (Bybit default)
+    taker_bps: 5.5             # 0.055% taker fee (Bybit perpetuals)
+    maker_bps: 2.0             # 0.02% maker fee (Bybit perpetuals)
   slippage_bps: 2.0            # Slippage estimate
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -592,7 +592,7 @@ structures:
         mode: retracement    # or "extension", "extension_up", "extension_down"
       # Outputs: level_0.382, level_0.5, level_0.618
 
-  # HighTF structures (nested by timeframe)
+  # high_tf structures (nested by timeframe)
   high_tf:
     "4h":
       - type: swing
@@ -1135,9 +1135,9 @@ holds_for_duration:
 
 ---
 
-## 8. Multi-Timeframe (MultiTF)
+## 8. Multi-Timeframe (Multi-TF)
 
-**MultiTF = Multi-TimeFrame** - The capability to use features from multiple timeframes in a single strategy.
+**Multi-TF = Multi-TimeFrame** - The capability to use features from multiple timeframes in a single strategy.
 
 ### 3-Feed + Exec Role Architecture
 
@@ -1327,7 +1327,7 @@ actions:
 
 **Why 1m resolution matters:** If exec is 15m, `close` only updates 4x per hour. But `last_price` updates 60x per hour, allowing precise entry when price crosses a level.
 
-### HighTF Structures (Multi-Timeframe Structure Detection)
+### high_tf Structures (Multi-Timeframe Structure Detection)
 
 Structures can be computed on higher timeframes for trend context:
 
@@ -1342,7 +1342,7 @@ structures:
       key: trend
       depends_on: {swing: swing}
 
-  # HighTF structures (4h) - forward-fill between closes
+  # high_tf structures (4h) - forward-fill between closes
   high_tf:
     "4h":
       - type: swing
@@ -1358,17 +1358,17 @@ structures:
 ```
 
 **Key behavior:**
-- HighTF structures forward-fill until their bar closes (same as indicators)
+- high_tf structures forward-fill until their bar closes (same as indicators)
 - Reference by key in actions: `{feature_id: "trend_4h", field: "direction"}`
 
-### MultiTF Confluence Patterns
+### Multi-TF Confluence Patterns
 
-**Pattern 1: Exec Swing + HighTF Trend Filter**
+**Pattern 1: Exec Swing + high_tf Trend Filter**
 ```yaml
 actions:
   entry_long:
     all:
-      # HighTF trend is UP
+      # high_tf trend is UP
       - [{feature_id: trend_4h, field: direction}, "==", 1]
       # Exec swing low exists (bounce setup)
       - [{feature_id: swing, field: low_level}, ">", 0]
@@ -1386,7 +1386,7 @@ actions:
       - [{feature_id: trend_4h, field: direction}, "==", 1]
 ```
 
-**Pattern 3: HighTF Fib + Exec Swing**
+**Pattern 3: high_tf Fib + Exec Swing**
 ```yaml
 structures:
   exec:
@@ -1408,7 +1408,7 @@ structures:
 actions:
   entry_long:
     all:
-      # Price near HighTF 0.618 fib level
+      # Price near high_tf 0.618 fib level
       - [close, "near_pct", {feature_id: fib_4h, field: level_0.618}, 1.5]
       # Exec swing confirms support
       - [{feature_id: swing, field: low_level}, ">", 0]
@@ -1591,23 +1591,23 @@ Example: fixed $1000, max 10x leverage on $10,000
 
 | Component | Default | Description |
 |-----------|---------|-------------|
-| Taker Fee | 0.06% | Market order fee |
-| Maker Fee | 0.01% | Limit order fee |
+| Taker Fee | 0.055% | Market order fee (Bybit perpetuals) |
+| Maker Fee | 0.02% | Limit order fee (Bybit perpetuals) |
 | Slippage | Configurable | Applied to fill price |
 
 ### Fee Calculation
 
 ```python
-# Entry fee (taker)
-entry_fee = notional x taker_fee_rate  # e.g., $10,000 x 0.0006 = $6
+# Entry fee (taker) - Bybit perpetuals: 0.055%
+entry_fee = notional x taker_fee_rate  # e.g., $10,000 x 0.00055 = $5.50
 
 # Required margin (Bybit formula)
 required = (notional x IMR) + (notional x taker_fee_rate)
-# At 2x leverage (IMR=50%): $10,000 x 0.5 + $6 = $5,006
+# At 2x leverage (IMR=50%): $10,000 x 0.5 + $5.50 = $5,005.50
 
 # Max fillable at 100% equity
 max_notional = equity / (IMR + fee_rate)
-# $10,000 / (0.5 + 0.0006) = $9,988
+# $10,000 / (0.5 + 0.00055) = $9,989
 ```
 
 ---
@@ -1740,7 +1740,7 @@ structures:
 actions:
   entry_long:
     all:
-      # HighTF trend filter
+      # high_tf trend filter
       - ["close", ">", "ema_50_4h"]
       # Near fib level
       - lhs: {feature_id: "close"}
@@ -2079,11 +2079,11 @@ Currently the engine still accepts `blocks:` and `margin_mode: "isolated"` for b
 | Date | Change |
 |------|--------|
 | 2026-01-08 | Created as canonical source, consolidated from PLAY_SYNTAX.md + DSL_REFERENCE.md |
-| 2026-01-08 | Fixed MultiTF terminology (Multi-TimeFrame = capability, not role) |
+| 2026-01-08 | Fixed Multi-TF terminology (Multi-TimeFrame = capability, not role) |
 | 2026-01-08 | Added exit_mode, variables, price features deep dive, deprecation notes |
 | 2026-01-09 | Symbol operators now canonical (`>`, `<`, `>=`, `<=`, `==`, `!=`). Word forms removed. |
 | 2026-01-09 | Added `!=` operator for discrete type comparisons |
-| 2026-01-15 | Updated terminology: LowTF, MedTF, HighTF, ExecTF, MultiTF |
+| 2026-01-15 | Updated terminology: low_tf, med_tf, high_tf, exec_tf, Multi-TF |
 | 2026-01-16 | Added wave-based trend detector with strength, wave_count, last_hh/hl/lh/ll outputs |
 | 2026-01-16 | Added market_structure detector (ICT BOS/CHoCH) with bias, bos_this_bar, choch_this_bar outputs |
 | 2026-01-16 | Added Example 6: ICT Market Structure strategy |

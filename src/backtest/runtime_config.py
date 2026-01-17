@@ -43,9 +43,9 @@ class RuntimeConfig:
     max_leverage: float
     margin_mode: str
     
-    # Fee model (from Play.account.fee_model - optional)
-    taker_fee_rate: float = 0.0006  # Default Bybit rate (0.06%)
-    maker_fee_rate: float = 0.0001  # Default Bybit rate (0.01%)
+    # Fee model (from Play.account.fee_model - loaded from DEFAULTS if not specified)
+    taker_fee_rate: float | None = None
+    maker_fee_rate: float | None = None
     
     # Slippage (from Play.account.slippage_bps - optional)
     slippage_bps: float | None = None
@@ -143,9 +143,10 @@ class RuntimeConfig:
             else account.max_leverage
         )
         
-        # Extract fee rates from fee model (Bybit defaults)
-        taker_fee_rate = 0.0006  # Default (0.06%)
-        maker_fee_rate = 0.0001  # Default (0.01%)
+        # Extract fee rates from fee model (use DEFAULTS if not specified)
+        from src.config.constants import DEFAULTS
+        taker_fee_rate = DEFAULTS.fees.taker_rate
+        maker_fee_rate = DEFAULTS.fees.maker_rate
         if account.fee_model:
             taker_fee_rate = account.fee_model.taker_rate
             maker_fee_rate = account.fee_model.maker_rate
@@ -167,15 +168,17 @@ class RuntimeConfig:
             if play.risk_model.sizing.max_leverage:
                 max_leverage = play.risk_model.sizing.max_leverage
         
-        # Extract warmup requirements
-        warmup_exec = play.get_required_warmup_bars("exec")
-        warmup_high_tf = play.get_required_warmup_bars("high_tf")
-        warmup_med_tf = play.get_required_warmup_bars("med_tf")
+        # Warmup is calculated elsewhere - Play doesn't have these methods
+        # The backtest engine calculates warmup based on indicator requirements
+        warmup_exec = 0
+        warmup_high_tf = 0
+        warmup_med_tf = 0
 
-        # Extract required indicators
-        required_exec = tuple(play.tf_configs.get("exec", None).required_indicators) if "exec" in play.tf_configs else ()
-        required_high_tf = tuple(play.tf_configs.get("high_tf", None).required_indicators) if "high_tf" in play.tf_configs else ()
-        required_med_tf = tuple(play.tf_configs.get("med_tf", None).required_indicators) if "med_tf" in play.tf_configs else ()
+        # Required indicators are extracted from features, not tf_configs
+        # Play uses feature_registry to track indicators per timeframe
+        required_exec = ()
+        required_high_tf = ()
+        required_med_tf = ()
 
         return cls(
             play_id=play.id,
@@ -258,10 +261,10 @@ class RuntimeConfig:
             f"  symbol: {self.symbol}",
             f"  tf_exec: {self.exec_tf}",
         ]
-        if self.htf:
-            lines.append(f"  tf_htf: {self.htf}")
-        if self.mtf:
-            lines.append(f"  tf_mtf: {self.mtf}")
+        if self.high_tf:
+            lines.append(f"  tf_high: {self.high_tf}")
+        if self.med_tf:
+            lines.append(f"  tf_med: {self.med_tf}")
         lines.append("-" * 40)
         lines.append(f"  starting_equity_usdt: {self.starting_equity_usdt:,.2f}")
         lines.append(f"  max_leverage: {self.max_leverage:.1f}x")
@@ -271,10 +274,10 @@ class RuntimeConfig:
             lines.append(f"  slippage_bps: {self.slippage_bps}")
         lines.append("-" * 40)
         lines.append(f"  warmup_exec: {self.warmup_bars_exec} bars")
-        if self.warmup_bars_htf:
-            lines.append(f"  warmup_htf: {self.warmup_bars_htf} bars")
-        if self.warmup_bars_mtf:
-            lines.append(f"  warmup_mtf: {self.warmup_bars_mtf} bars")
+        if self.warmup_bars_high_tf:
+            lines.append(f"  warmup_high_tf: {self.warmup_bars_high_tf} bars")
+        if self.warmup_bars_med_tf:
+            lines.append(f"  warmup_med_tf: {self.warmup_bars_med_tf} bars")
         lines.append("=" * 60)
         
         text = "\n".join(lines)

@@ -1,0 +1,68 @@
+# =============================================================================
+# TRADE System Defaults
+# =============================================================================
+# Single source of truth for all default values.
+# All code references this file - no hardcoding in .py files.
+#
+# These defaults are used when a Play doesn't specify a value.
+# For production, Plays should explicitly set all values.
+# =============================================================================
+
+version: "1.0.0"
+
+# -----------------------------------------------------------------------------
+# Exchange: Bybit Perpetuals
+# -----------------------------------------------------------------------------
+# Source: https://www.bybit.com/en/help-center/article/Trading-Fee-Structure/
+# Last verified: 2025-01
+exchange:
+  name: "bybit"
+  instrument_type: "perp"  # Perpetual contracts only
+  quote_ccy: "USDT"
+
+# -----------------------------------------------------------------------------
+# Fee Model (Bybit Perpetuals - Non-VIP)
+# -----------------------------------------------------------------------------
+fees:
+  taker_bps: 5.5          # 0.055% - market orders
+  maker_bps: 2.0          # 0.02% - limit orders
+  liquidation_bps: 5.5    # Same as taker (Bybit uses taker fee for liquidations)
+
+# -----------------------------------------------------------------------------
+# Margin Model (Bybit Perpetuals)
+# -----------------------------------------------------------------------------
+margin:
+  mode: "isolated"        # isolated only (no cross-margin)
+  position_mode: "oneway" # one-way only (no hedge mode)
+  maintenance_margin_rate: 0.005  # 0.5% MMR - Bybit lowest tier
+  mark_price_source: "close"      # Use close as mark proxy in backtest
+
+# -----------------------------------------------------------------------------
+# Execution Model
+# -----------------------------------------------------------------------------
+execution:
+  slippage_bps: 2.0       # Conservative slippage estimate
+  min_trade_notional_usdt: 10.0   # Minimum trade size
+
+# -----------------------------------------------------------------------------
+# Risk Defaults
+# -----------------------------------------------------------------------------
+risk:
+  max_leverage: 1.0       # Conservative default
+  risk_per_trade_pct: 1.0 # 1% risk per trade
+  max_drawdown_pct: 0.20  # 20% max drawdown stop
+  stop_equity_usdt: 0.0   # No equity floor by default
+
+# -----------------------------------------------------------------------------
+# Account Defaults
+# -----------------------------------------------------------------------------
+account:
+  starting_equity_usdt: 10000.0  # Default starting capital
+
+# -----------------------------------------------------------------------------
+# Position Policy Defaults
+# -----------------------------------------------------------------------------
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1

@@ -28,7 +28,12 @@ from ..types import (
 @dataclass
 class LiquidationModelConfig:
     """Configuration for liquidation model."""
-    liquidation_fee_rate: float = 0.0006  # 0.06% liquidation fee
+    liquidation_fee_rate: float | None = None  # From DEFAULTS if None
+
+    def __post_init__(self) -> None:
+        if self.liquidation_fee_rate is None:
+            from src.config.constants import DEFAULTS
+            object.__setattr__(self, 'liquidation_fee_rate', DEFAULTS.fees.liquidation_rate)
     # No ADL in Phase 1
 
 

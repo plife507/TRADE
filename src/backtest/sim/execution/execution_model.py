@@ -46,8 +46,17 @@ class ExecutionModelConfig:
     impact: ImpactConfig = field(default_factory=ImpactConfig)
     liquidity: LiquidityConfig = field(default_factory=LiquidityConfig)
     intrabar: IntrabarPathConfig = field(default_factory=IntrabarPathConfig)
-    taker_fee_rate: float = 0.0006  # 0.06% default (market orders)
-    maker_fee_rate: float = 0.0001  # 0.01% default (limit orders)
+    # Fee rates - defaults loaded from config/defaults.yml
+    # These should be overridden by Play config in normal operation
+    taker_fee_rate: float | None = None  # Set from DEFAULTS if None
+    maker_fee_rate: float | None = None  # Set from DEFAULTS if None
+
+    def __post_init__(self) -> None:
+        from src.config.constants import DEFAULTS
+        if self.taker_fee_rate is None:
+            object.__setattr__(self, 'taker_fee_rate', DEFAULTS.fees.taker_rate)
+        if self.maker_fee_rate is None:
+            object.__setattr__(self, 'maker_fee_rate', DEFAULTS.fees.maker_rate)
 
 
 class ExecutionModel:

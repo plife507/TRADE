@@ -1,0 +1,73 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# SMA 10/20/200 SWING TRADING STRATEGY (LONG ONLY)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Entry: SMA_10 crosses above SMA_20
+# Filter: Both SMA_10 and SMA_20 must be above SMA_200 (uptrend)
+# Exit: SMA_10 crosses below SMA_20
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: "3.0.0"
+name: "sma_10_20_200_long"
+description: "SMA 10/20/200 swing trading - long only when both fast SMAs above 200"
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 100.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 5.0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INDICATORS
+# ═══════════════════════════════════════════════════════════════════════════════
+features:
+  sma_10:
+    indicator: sma
+    params: {length: 10}
+  sma_20:
+    indicator: sma
+    params: {length: 20}
+  sma_200:
+    indicator: sma
+    params: {length: 200}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TRADING RULES
+# ═══════════════════════════════════════════════════════════════════════════════
+actions:
+  entry_long:
+    all:
+      # Signal: SMA 10 crosses above SMA 20
+      - ["sma_10", "cross_above", "sma_20"]
+
+  exit_long:
+    all:
+      # Exit when fast SMA crosses below medium SMA
+      - ["sma_10", "cross_below", "sma_20"]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RISK MANAGEMENT
+# ═══════════════════════════════════════════════════════════════════════════════
+risk:
+  stop_loss_pct: 3.0      # 3% stop loss
+  take_profit_pct: 9.0    # 3:1 R:R ratio
+  max_position_pct: 50.0  # Use 50% of equity per trade
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POSITION POLICY
+# ═══════════════════════════════════════════════════════════════════════════════
+position_policy:
+  mode: "long_only"
+  exit_mode: "signal"  # Exit on crossover signal only
+  max_positions_per_symbol: 1

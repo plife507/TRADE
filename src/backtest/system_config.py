@@ -14,7 +14,7 @@ Identifier model:
 - Global (stable across runs):
   - strategy_id: stable family name (e.g., "ema_rsi_atr")
   - strategy_version: explicit version string (e.g., "1.0.0")
-  - strategy_instance_id: unique within a system (e.g., "entry", "filter_htf")
+  - strategy_instance_id: unique within a system (e.g., "entry", "filter_high_tf")
   - system_id: human-readable unique name for the YAML
   - system_uid: deterministic hash of resolved config for lineage
 - Instance (per-run):
@@ -238,9 +238,9 @@ class RiskProfileConfig:
     - maintenance_margin_rate: MMR as decimal (default 0.005 = 0.5%, Bybit lowest tier)
     - mark_price_source: Price source used as mark proxy for margining ("close" only in Phase 1)
     
-    Fee model fields:
-    - taker_fee_rate: Taker fee rate as decimal (default 0.0006 = 0.06%)
-    - maker_fee_rate: Maker fee rate as decimal (optional, for future use)
+    Fee model fields (Bybit perpetuals):
+    - taker_fee_rate: Taker fee rate as decimal (default 0.00055 = 0.055%)
+    - maker_fee_rate: Maker fee rate as decimal (default 0.0002 = 0.02%)
     - fee_mode: Fee mode ("taker_only" for MVP)
     
     Entry gate behavior:
@@ -269,8 +269,8 @@ class RiskProfileConfig:
     maintenance_margin_rate: float = 0.005  # 0.5% - Bybit lowest tier default
     mark_price_source: str = "close"
 
-    # Fee model fields
-    taker_fee_rate: float = 0.0006  # 0.06% default (Bybit typical)
+    # Fee model fields (loaded from DEFAULTS if None)
+    taker_fee_rate: float | None = None
     maker_fee_rate: float | None = None
     fee_mode: str = "taker_only"  # MVP: only taker fees applied
     
@@ -291,6 +291,13 @@ class RiskProfileConfig:
 
     def __post_init__(self) -> None:
         """Validate config fields at load time (fail-loud)."""
+        # Load fee defaults from config/defaults.yml if not specified
+        from src.config.constants import DEFAULTS
+        if self.taker_fee_rate is None:
+            object.__setattr__(self, 'taker_fee_rate', DEFAULTS.fees.taker_rate)
+        if self.maker_fee_rate is None:
+            object.__setattr__(self, 'maker_fee_rate', DEFAULTS.fees.maker_rate)
+
         # Validate mark_price_source
         if self.mark_price_source not in self._VALID_MARK_PRICE_SOURCES:
             raise ValueError(
@@ -515,7 +522,7 @@ class SystemConfig:
     description: str = ""
 
     # Execution timeframe (master clock for stepping)
-    # If None, defaults to tf (LTF)
+    # If None, defaults to tf (low_tf)
     exec_tf: str | None = None
 
     # Strategy instances (1..N)
@@ -532,21 +539,21 @@ class SystemConfig:
     # Data build settings
     data_build: DataBuildConfig = field(default_factory=DataBuildConfig)
 
-    # Play-declared warmup bars per TF role (exec/htf/mtf)
+    # Play-declared warmup bars per TF role (low_tf/med_tf/high_tf)
     # This is the CANONICAL warmup source - engine MUST use this, not recompute
     # MUST NOT be empty - engine will fail loud if missing (no fallback path)
     warmup_bars_by_role: dict[str, int] = field(default_factory=dict)
 
-    # Play-declared delay bars per TF role (exec/htf/mtf)
+    # Play-declared delay bars per TF role (low_tf/med_tf/high_tf)
     # Delay = bars to skip at evaluation start (no-lookahead guarantee)
     # Engine MUST fail loud if this is missing when Play declares market_structure
     delay_bars_by_role: dict[str, int] = field(default_factory=dict)
 
-    # Play feature specs by role (exec/htf/mtf)
+    # Play feature specs by role (low_tf/med_tf/high_tf)
     # Required for indicator computation - no legacy params support
     feature_specs_by_role: dict[str, list[Any]] = field(default_factory=dict)
 
-    # Play required indicators by role (exec/htf/mtf)
+    # Play required indicators by role (low_tf/med_tf/high_tf)
     # Used by find_first_valid_bar to avoid requiring mutually exclusive outputs
     # (e.g., PSAR long/short or SuperTrend long/short)
     required_indicators_by_role: dict[str, list[str]] = field(default_factory=dict)
@@ -666,7 +673,7 @@ class SystemConfig:
         """
         Get the resolved execution timeframe.
         
-        Returns exec_tf if explicitly set, otherwise defaults to tf (LTF).
+        Returns exec_tf if explicitly set, otherwise defaults to tf (low_tf).
         """
         return self.exec_tf if self.exec_tf else self.tf
     
@@ -882,8 +889,8 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
         _initial_margin_rate=imr_value,
         maintenance_margin_rate=float(risk_profile_raw.get("maintenance_margin_rate", 0.005)),
         mark_price_source=str(risk_profile_raw.get("mark_price_source", "close")),
-        # Fee model
-        taker_fee_rate=float(risk_profile_raw.get("taker_fee_rate", 0.0006)),
+        # Fee model (None triggers loading from DEFAULTS in __post_init__)
+        taker_fee_rate=float(risk_profile_raw["taker_fee_rate"]) if "taker_fee_rate" in risk_profile_raw else None,
         maker_fee_rate=maker_fee_value,
         fee_mode=str(risk_profile_raw.get("fee_mode", "taker_only")),
         # Entry gate

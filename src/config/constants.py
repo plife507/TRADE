@@ -331,11 +331,11 @@ DEFAULT_TIMEFRAME = "15m"
 #
 # | Category | Timeframes        | Use Case                    |
 # |----------|-------------------|-----------------------------|
-# | exec_tf  | 1m, 3m, 5m, 15m   | Execution, entries/exits    |
+# | low_tf   | 1m, 3m, 5m, 15m   | Execution, entries/exits    |
 # | med_tf   | 30m, 1h, 2h, 4h   | Structure, bias, swing      |
 # | high_tf  | 6h, 12h, D, W, M  | Context, trend, major S/R   |
 
-TF_CATEGORY_EXEC = ["1m", "3m", "5m", "15m"]     # exec_tf (execution)
+TF_CATEGORY_LOW = ["1m", "3m", "5m", "15m"]      # low_tf (execution-level)
 TF_CATEGORY_MED = ["30m", "1h", "2h", "4h"]      # med_tf (structure)
 TF_CATEGORY_HIGH = ["6h", "12h", "D", "W", "M"]  # high_tf (context)
 
@@ -345,18 +345,19 @@ TF_CATEGORY_HIGH = ["6h", "12h", "D", "W", "M"]  # high_tf (context)
 #
 # | Role    | Meaning                              | Typical Values    |
 # |---------|--------------------------------------|-------------------|
-# | exec_tf | Bar-by-bar evaluation timeframe      | 1m, 5m, 15m       |
+# | low_tf  | Fast timeframe for entries/exits     | 1m, 5m, 15m       |
 # | med_tf  | Mid timeframe for structure/bias     | 30m, 1h, 2h, 4h   |
 # | high_tf | High timeframe for trend/context     | 6h, 12h, D        |
+# | exec    | POINTER to which TF to step on       | "low_tf", etc.    |
 
-TF_ROLE_EXEC = ["1m", "3m", "5m", "15m"]         # Valid for exec_tf role
+TF_ROLE_LOW = ["1m", "3m", "5m", "15m"]          # Valid for low_tf role
 TF_ROLE_MED = ["30m", "1h", "2h", "4h"]          # Valid for med_tf role
 TF_ROLE_HIGH = ["6h", "12h", "D"]                # Valid for high_tf role (W, M excluded)
 
 # Mapping from role to allowed timeframes
-# Note: "exec" is a role pointer (points to low_tf/med_tf/high_tf), not a TF category
+# Note: "exec" is a role pointer (points to low_tf/med_tf/high_tf), not a TF value
 TF_ROLE_GROUPS = {
-    "low_tf": TF_ROLE_EXEC,   # low_tf uses exec TF category
+    "low_tf": TF_ROLE_LOW,
     "med_tf": TF_ROLE_MED,
     "high_tf": TF_ROLE_HIGH,
 }
@@ -371,3 +372,137 @@ SMOKE_TEST_TIMEFRAMES = ["1h", "4h", "D"]
 
 # Data sync timeframes (full history)
 DATA_SYNC_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "D"]
+
+
+# ==================== System Defaults (from config/defaults.yml) ====================
+#
+# Single source of truth for all default values.
+# Loaded once at module import time.
+# All code should reference these instead of hardcoding values.
+
+import yaml
+from dataclasses import dataclass
+from functools import lru_cache
+
+
+@dataclass(frozen=True)
+class FeeDefaults:
+    """Fee defaults from config/defaults.yml."""
+    taker_bps: float
+    maker_bps: float
+    liquidation_bps: float
+
+    @property
+    def taker_rate(self) -> float:
+        """Taker fee as decimal (e.g., 0.00055 for 5.5 bps)."""
+        return self.taker_bps / 10000.0
+
+    @property
+    def maker_rate(self) -> float:
+        """Maker fee as decimal."""
+        return self.maker_bps / 10000.0
+
+    @property
+    def liquidation_rate(self) -> float:
+        """Liquidation fee as decimal."""
+        return self.liquidation_bps / 10000.0
+
+
+@dataclass(frozen=True)
+class MarginDefaults:
+    """Margin defaults from config/defaults.yml."""
+    mode: str
+    position_mode: str
+    maintenance_margin_rate: float
+    mark_price_source: str
+
+
+@dataclass(frozen=True)
+class ExecutionDefaults:
+    """Execution defaults from config/defaults.yml."""
+    slippage_bps: float
+    min_trade_notional_usdt: float
+
+
+@dataclass(frozen=True)
+class RiskDefaults:
+    """Risk defaults from config/defaults.yml."""
+    max_leverage: float
+    risk_per_trade_pct: float
+    max_drawdown_pct: float
+    stop_equity_usdt: float
+
+
+@dataclass(frozen=True)
+class SystemDefaults:
+    """All system defaults loaded from config/defaults.yml."""
+    fees: FeeDefaults
+    margin: MarginDefaults
+    execution: ExecutionDefaults
+    risk: RiskDefaults
+    exchange_name: str
+    instrument_type: str
+    quote_ccy: str
+
+
+@lru_cache(maxsize=1)
+def load_system_defaults() -> SystemDefaults:
+    """
+    Load system defaults from config/defaults.yml.
+
+    Cached - only reads file once.
+
+    Returns:
+        SystemDefaults with all default values
+
+    Raises:
+        FileNotFoundError: If defaults.yml not found
+        ValueError: If defaults.yml is invalid
+    """
+    # Find config/defaults.yml relative to this file
+    config_dir = Path(__file__).parent.parent.parent / "config"
+    defaults_path = config_dir / "defaults.yml"
+
+    if not defaults_path.exists():
+        raise FileNotFoundError(
+            f"System defaults not found: {defaults_path}\n"
+            "This file is required - it contains all default values for the system."
+        )
+
+    with open(defaults_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    if not data:
+        raise ValueError(f"Empty or invalid defaults file: {defaults_path}")
+
+    return SystemDefaults(
+        fees=FeeDefaults(
+            taker_bps=float(data["fees"]["taker_bps"]),
+            maker_bps=float(data["fees"]["maker_bps"]),
+            liquidation_bps=float(data["fees"]["liquidation_bps"]),
+        ),
+        margin=MarginDefaults(
+            mode=str(data["margin"]["mode"]),
+            position_mode=str(data["margin"]["position_mode"]),
+            maintenance_margin_rate=float(data["margin"]["maintenance_margin_rate"]),
+            mark_price_source=str(data["margin"]["mark_price_source"]),
+        ),
+        execution=ExecutionDefaults(
+            slippage_bps=float(data["execution"]["slippage_bps"]),
+            min_trade_notional_usdt=float(data["execution"]["min_trade_notional_usdt"]),
+        ),
+        risk=RiskDefaults(
+            max_leverage=float(data["risk"]["max_leverage"]),
+            risk_per_trade_pct=float(data["risk"]["risk_per_trade_pct"]),
+            max_drawdown_pct=float(data["risk"]["max_drawdown_pct"]),
+            stop_equity_usdt=float(data["risk"]["stop_equity_usdt"]),
+        ),
+        exchange_name=str(data["exchange"]["name"]),
+        instrument_type=str(data["exchange"]["instrument_type"]),
+        quote_ccy=str(data["exchange"]["quote_ccy"]),
+    )
+
+
+# Load defaults at module import time
+# This ensures the file is valid and provides fast access
+DEFAULTS = load_system_defaults()

@@ -55,9 +55,15 @@ class SizingConfig:
     max_leverage: float = 2.0
     min_trade_usdt: float = 1.0
 
-    # Optional fee model for entry gate calculations
-    taker_fee_rate: float = 0.0006
+    # Optional fee model for entry gate calculations (loaded from DEFAULTS if None)
+    taker_fee_rate: float | None = None
     include_est_close_fee_in_entry_gate: bool = False
+
+    def __post_init__(self) -> None:
+        """Load defaults from config/defaults.yml if not specified."""
+        if self.taker_fee_rate is None:
+            from src.config.constants import DEFAULTS
+            self.taker_fee_rate = DEFAULTS.fees.taker_rate
 
     @classmethod
     def from_risk_profile(cls, risk_profile: Any) -> "SizingConfig":
