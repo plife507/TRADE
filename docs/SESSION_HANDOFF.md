@@ -8,6 +8,22 @@
 
 ## What Was Done This Session
 
+### 0. Structure Code Consolidation (COMPLETE)
+- **Deleted** `src/backtest/incremental/` directory (14 files)
+- **Updated** 12 files with 25 imports to use canonical `src/structures/`
+- **Single source of truth** for all structure detectors now at `src/structures/`
+- Files updated:
+  - `src/backtest/engine.py`
+  - `src/backtest/engine_snapshot.py`
+  - `src/backtest/runtime/snapshot_view.py`
+  - `src/backtest/feature_registry.py`
+  - `src/engine/play_engine.py`
+  - `src/engine/adapters/live.py`
+  - `src/engine/factory.py`
+  - `src/tools/forge_stress_test_tools.py`
+  - `src/forge/audits/audit_incremental_state.py`
+  - `src/backtest/execution_validation.py` (comment reference)
+
 ### 1. Gate 7: Integration & Stress Testing (COMPLETE)
 - Created 5 pivot foundation stress tests (S_PF_001-005)
 - Fixed validation play format (26 plays updated to use timeframes section)
@@ -101,9 +117,14 @@ Smoke test:           PASS
 
 | File | Change |
 |------|--------|
+| `src/backtest/incremental/` | DELETED - 14 files removed (deprecated) |
+| `src/backtest/engine.py` | Updated imports to `src/structures` |
+| `src/backtest/feature_registry.py` | Updated 3 imports to `src/structures` |
+| `src/engine/play_engine.py` | Updated 3 imports to `src/structures` |
+| `src/engine/adapters/live.py` | Updated 3 imports to `src/structures` |
 | `tests/stress/plays/pivot_foundation/*.yml` | NEW - 5 stress tests |
 | `tests/validation/plays/pivot_foundation/*.yml` | Fixed timeframes format |
-| `docs/TODO.md` | Updated status to Gates 0-7 complete |
+| `docs/TODO.md` | Updated with consolidation completion |
 | `docs/SESSION_HANDOFF.md` | This file |
 
 ---

@@ -205,7 +205,7 @@ def forge_structure_parity_tool(
     """
     try:
         from ..forge.validation.synthetic_data import generate_synthetic_candles
-        from ..backtest.incremental.registry import list_structure_types, get_structure_info
+        from src.structures import list_structure_types, get_structure_info
 
         # Generate synthetic data
         candles = generate_synthetic_candles(

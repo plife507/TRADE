@@ -61,6 +61,7 @@
 
 | Date | Feature |
 |------|---------|
+| 2026-01-16 | Structure code consolidation (deleted src/backtest/incremental/, single source: src/structures/) |
 | 2026-01-16 | Gate 7: Integration & stress testing (5 S_PF plays, full regression) |
 | 2026-01-16 | Gate 6: MTF pivot coordination (S_PF_004 demonstrates pattern) |
 | 2026-01-16 | Gate 5: Market structure detector (BOS/CHoCH) |

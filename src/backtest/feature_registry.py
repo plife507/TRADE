@@ -340,7 +340,7 @@ class FeatureRegistry:
             List of error messages (empty if valid).
         """
         from .indicator_registry import get_registry as get_indicator_registry
-        from .incremental.registry import STRUCTURE_REGISTRY
+        from src.structures import STRUCTURE_REGISTRY
 
         errors: list[str] = []
         indicator_registry = get_indicator_registry()
@@ -429,7 +429,7 @@ class FeatureRegistry:
             return get_indicator_output_type(feature.indicator_type, field)
 
         elif feature.is_structure:
-            from .incremental.registry import get_structure_output_type
+            from src.structures import get_structure_output_type
             return get_structure_output_type(feature.structure_type, field)
 
         else:
@@ -451,7 +451,7 @@ class FeatureRegistry:
             return self._warmup_cache[tf]
 
         from .indicator_registry import get_registry as get_indicator_registry
-        from .incremental.registry import get_structure_info
+        from src.structures import get_structure_info
 
         indicator_registry = get_indicator_registry()
         max_warmup = 0

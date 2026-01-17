@@ -25,7 +25,7 @@ from .sim import StepResult
 if TYPE_CHECKING:
     from .sim import SimulatedExchange
     from .system_config import RiskProfileConfig
-    from .incremental.state import MultiTFIncrementalState
+    from src.structures import MultiTFIncrementalState
     from .feature_registry import FeatureRegistry
     from .rationalization import RationalizedState
 

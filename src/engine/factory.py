@@ -439,7 +439,7 @@ def create_backtest_engine(
     if TYPE_CHECKING:
         from ..backtest.runtime.feed_store import FeedStore
         from ..backtest.sim.exchange import SimulatedExchange
-        from ..backtest.incremental.state import MultiTFIncrementalState
+        from src.structures import MultiTFIncrementalState
 
     # Get account config from Play
     account = play.account

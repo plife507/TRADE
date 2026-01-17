@@ -47,7 +47,7 @@ from .feed_store import FeedStore, MultiTFFeedStore
 from .types import ExchangeState, HistoryConfig, DEFAULT_HISTORY_CONFIG
 
 if TYPE_CHECKING:
-    from ..incremental.state import MultiTFIncrementalState
+    from src.structures import MultiTFIncrementalState
     from ..feature_registry import FeatureRegistry
     from ..rationalization import RationalizedState
 

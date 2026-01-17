@@ -137,10 +137,8 @@ from .simulated_risk_manager import SimulatedRiskManager
 from .risk_policy import RiskPolicy, create_risk_policy, RiskDecision
 from .metrics import compute_backtest_metrics
 
-# Incremental state imports (Phase 6)
-from .incremental.base import BarData
-from .incremental.state import MultiTFIncrementalState
-from .incremental.registry import list_structure_types
+# Incremental state imports (from canonical src/structures)
+from src.structures import BarData, MultiTFIncrementalState, list_structure_types
 from .rationalization import StateRationalizer, RationalizedState
 
 from ..core.risk_manager import Signal

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from ...backtest.play import Play
     from ...data.realtime_state import RealtimeState
     from ...data.realtime_bootstrap import RealtimeBootstrap
-    from ...backtest.incremental.state import TFIncrementalState
+    from src.structures import TFIncrementalState
 
 
 logger = get_logger()
@@ -458,7 +458,7 @@ class LiveDataProvider:
 
     def _init_structure_state(self) -> None:
         """Initialize incremental structure state from Play specs."""
-        from ...backtest.incremental.state import TFIncrementalState
+        from src.structures import TFIncrementalState
 
         if not self._play.structures:
             return
@@ -559,7 +559,7 @@ class LiveDataProvider:
         if self._structure_state is None:
             return
 
-        from ...backtest.incremental.base import BarData
+        from src.structures import BarData
 
         candle = self._candle_buffer[-1]
 

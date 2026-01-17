@@ -55,7 +55,7 @@ from .timeframe import TFIndexManager
 if TYPE_CHECKING:
     from ..backtest.play import Play
     from ..backtest.feature_registry import FeatureRegistry
-    from ..backtest.incremental.state import MultiTFIncrementalState
+    from src.structures import MultiTFIncrementalState
     from ..backtest.rules.types import CompiledBlock
     from ..backtest.execution_validation import PlaySignalEvaluator, EvaluationResult, SignalDecision
     from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
@@ -555,7 +555,7 @@ class PlayEngine:
     def _update_high_tf_incremental_state(self) -> None:
         """Update high_tf incremental state when high_tf bar closes."""
         import numpy as np
-        from ..backtest.incremental.base import BarData
+        from src.structures import BarData
 
         if self._incremental_state is None:
             return
@@ -591,7 +591,7 @@ class PlayEngine:
 
     def _update_incremental_state(self, bar_index: int, candle: Candle) -> None:
         """Update incremental structure state with new bar data."""
-        from ..backtest.incremental.base import BarData
+        from src.structures import BarData
 
         # Build indicators dict from feed store if available
         indicators: dict[str, float] = {}

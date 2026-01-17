@@ -665,7 +665,7 @@ def _compute_structure_warmup(play: "Play") -> int:
     with type='structure' and structure_type indicating the detector type.
 
     Warmup formulas are stored in STRUCTURE_WARMUP_FORMULAS registry.
-    See: src/backtest/incremental/registry.py
+    See: src/structures/registry.py
 
     Args:
         play: Play with features list
