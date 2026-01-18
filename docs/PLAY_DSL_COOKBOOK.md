@@ -37,7 +37,7 @@ When tests reveal behavior differs from this doc:
 5. [Operators](#5-operators)
 6. [Arithmetic DSL](#6-arithmetic-dsl)
 7. [Window Operators](#7-window-operators)
-8. [Multi-Timeframe (Multi-TF)](#8-multi-timeframe-multitf)
+8. [Multi-Timeframe](#8-multi-timeframe)
 9. [Risk Model](#9-risk-model)
 10. [Order Sizing & Execution](#10-order-sizing--execution)
 11. [Complete Examples](#11-complete-examples)
@@ -90,13 +90,16 @@ symbol: "BTCUSDT"              # Trading pair (USDT pairs only)
 
 # REQUIRED: Explicit timeframes section (all 4 keys required)
 timeframes:
-  low_tf: "15m"                # Lowest analysis TF (1m, 3m, 5m, 15m)
-  med_tf: "1h"                 # Medium TF for context (30m, 1h, 2h, 4h)
-  high_tf: "4h"                # Highest TF for trend/levels (6h, 12h, D)
-  exec: "low_tf"               # Which TF to step on: "low_tf", "med_tf", or "high_tf"
+  low_tf: "15m"                # Lowest analysis timeframe (1m, 3m, 5m, 15m)
+  med_tf: "1h"                 # Medium timeframe for context (30m, 1h, 2h, 4h)
+  high_tf: "D"                 # Highest timeframe for trend/levels (12h, D)
+  exec: "low_tf"               # Which timeframe to step on: "low_tf", "med_tf", or "high_tf"
 
 # Hierarchy rule: high_tf >= med_tf >= low_tf (in minutes)
 # exec is a ROLE POINTER, not a 4th feed - it points to one of the 3 feeds
+#
+# USAGE PATTERN: Most strategies primarily use low_tf + med_tf for entries/structure.
+# high_tf is optional - use it for daily bias, session boundaries, or anchor points.
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ACCOUNT CONFIGURATION
@@ -123,9 +126,10 @@ features:
 # MARKET STRUCTURE
 # ═══════════════════════════════════════════════════════════════════════════════
 structures:
-  swing:
-    detector: swing
-    params: {left: 5, right: 5}
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TRADING RULES
@@ -230,7 +234,7 @@ risk:
 | Type | Pattern | Example |
 |------|---------|---------|
 | Single-param | `{type}_{param}` | `ema_20`, `rsi_14` |
-| Single-param + TF | `{type}_{param}_{tf}` | `ema_50_1h`, `rsi_14_4h` |
+| Single-param + timeframe | `{type}_{param}_{tf}` | `ema_50_1h`, `rsi_14_4h` |
 | Multi-param | `{type}_{p1}_{p2}` | `bbands_20_2` |
 | MACD | `macd_{f}_{s}_{sig}` | `macd_12_26_9` |
 
@@ -294,8 +298,8 @@ Every feature computes on a specific timeframe. **If a feature does not specify 
 | Feature `tf:` Field | Timeframe Used | Update Behavior |
 |---------------------|----------------|-----------------|
 | **Not specified** | Inherits main `tf:` | Updates every exec bar |
-| **Explicit (slower than exec)** | Uses specified TF | Forward-fills between TF closes |
-| **Explicit (faster than exec)** | Uses specified TF | Sampled at exec bar boundaries |
+| **Explicit (slower than exec)** | Uses specified timeframe | Forward-fills between timeframe closes |
+| **Explicit (faster than exec)** | Uses specified timeframe | Sampled at exec bar boundaries |
 
 **Important: Inheritance is flat (one level only).** There is no feature-to-feature inheritance. Each feature either:
 1. Has an explicit `tf:` → uses that value
@@ -306,7 +310,7 @@ The `source:` field (e.g., `source: volume`) changes the **input data**, not the
 #### How It Works
 
 ```yaml
-tf: "15m"                      # Main execution TF
+tf: "15m"                      # Main execution timeframe
 
 features:
   # NO tf: specified → inherits "15m"
@@ -332,7 +336,7 @@ features:
 
 #### Forward-Fill Behavior
 
-When a feature's TF is **slower** than the execution TF, its value remains constant (forward-fills) until the slower TF bar closes:
+When a feature's timeframe is **slower** than the execution timeframe, its value remains constant (forward-fills) until the slower timeframe bar closes:
 
 ```
 exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
@@ -350,7 +354,7 @@ exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
 tf: "15m"
 
 features:
-  ema_fast:           # BAD: unclear what TF
+  ema_fast:           # BAD: unclear what timeframe
     indicator: ema
     params: {length: 9}
 
@@ -364,13 +368,13 @@ features:
     tf: "1h"
 ```
 
-**Best practice:** Include TF in feature names when using explicit `tf:` override (e.g., `ema_50_4h`, `rsi_14_1h`). This makes DSL expressions self-documenting:
+**Best practice:** Include timeframe in feature names when using explicit `tf:` override (e.g., `ema_50_4h`, `rsi_14_1h`). This makes DSL expressions self-documenting:
 
 ```yaml
 # Clear: ema_9 is 15m (exec), ema_50_4h is 4h
 - ["ema_9", ">", "ema_50_4h"]
 
-# Unclear: what TF is ema_slow?
+# Unclear: what timeframe is ema_slow?
 - ["ema_fast", ">", "ema_slow"]
 ```
 
@@ -382,9 +386,9 @@ Built-in price features have **fixed resolutions** that do NOT follow inheritanc
 |---------|------------|-------------|
 | `last_price` | Always 1m | No (fixed) |
 | `mark_price` | Always 1m | No (fixed) |
-| `close`, `open`, `high`, `low`, `volume` | Always exec TF | No (fixed) |
-| Declared features without `tf:` | Exec TF | **Yes (inherits)** |
-| Declared features with `tf:` | Specified TF | No (explicit) |
+| `close`, `open`, `high`, `low`, `volume` | Always execution timeframe | No (fixed) |
+| Declared features without `tf:` | Execution timeframe | **Yes (inherits)** |
+| Declared features with `tf:` | Specified timeframe | No (explicit) |
 
 This means `last_price` provides 1m precision regardless of your `tf:` setting, while indicator features follow the inheritance rules above.
 
@@ -470,7 +474,7 @@ mark_price:  Updated every 1m (used for margin calculations)
 | Feature | When to Use |
 |---------|-------------|
 | `close` | Bar-level conditions, indicators, end-of-bar decisions |
-| `last_price` | Precise entries, cross-TF comparisons, intra-bar TP/SL checks |
+| `last_price` | Precise entries, cross-timeframe comparisons, intra-bar TP/SL checks |
 | `mark_price` | Margin calculations, PnL computation, liquidation checks |
 
 ### CRITICAL: last_price vs mark_price (Live Integration)
@@ -515,6 +519,19 @@ actions:
 
 **Design intent:** In live trading, you want to enter/exit based on where you'll actually execute (`last_price`), but value your position based on the stable index price (`mark_price`) to avoid manipulation-triggered liquidations.
 
+### Backtest vs Live Behavior Warning
+
+> **IMPORTANT FOR LIVE TRADING:**
+>
+> In backtest mode, both `last_price` and `mark_price` are sourced from 1m bar close
+> data for simplicity. In live trading, they come from different Bybit WebSocket feeds
+> and can diverge significantly during volatile periods.
+>
+> **Implications:**
+> - Unrealized PnL in backtest may not match live behavior during flash crashes
+> - Strategies should be aware that mark_price stability protects against manipulation
+> - Consider testing with extreme scenarios before going live
+
 **Crossover with 1m resolution:**
 
 ```yaml
@@ -557,7 +574,7 @@ The engine expects structures organized by timeframe role (`exec`, `high_tf`, `m
 
 ```yaml
 structures:
-  # Execution TF structures (list format)
+  # Execution timeframe structures (list format)
   exec:
     - type: swing
       key: swing             # Reference key for actions
@@ -1085,7 +1102,7 @@ count_true:
     - ["volume", ">", "volume_sma_20"]
 ```
 
-### Duration-Based Windows (Recommended for Cross-TF)
+### Duration-Based Windows (Recommended for Cross-Timeframe)
 
 ```yaml
 # holds_for_duration - condition true for time period
@@ -1119,7 +1136,7 @@ count_true_duration:
 ### Why anchor_tf Matters
 
 ```yaml
-# PROBLEM: Bar offsets shift at different TF rates
+# PROBLEM: Bar offsets shift at different timeframe rates
 holds_for:
   bars: 5              # No anchor_tf
   expr:
@@ -1135,22 +1152,51 @@ holds_for_duration:
 
 ---
 
-## 8. Multi-Timeframe (Multi-TF)
+## 8. Multi-Timeframe
 
-**Multi-TF = Multi-TimeFrame** - The capability to use features from multiple timeframes in a single strategy.
+**Multi-Timeframe** - The capability to use features from multiple timeframes in a single strategy.
 
 ### 3-Feed + Exec Role Architecture
 
-The TF system uses **3 feeds** with an **exec role pointer**:
+The timeframe system uses **3 feeds** with an **exec role pointer**:
 
-| Feed | Role | Typical Values |
-|------|------|----------------|
-| `low_tf` | Lowest analysis TF | 1m, 3m, 5m, 15m |
-| `med_tf` | Medium TF for context | 30m, 1h, 2h, 4h |
-| `high_tf` | Highest TF for trend/levels | 6h, 12h, D |
-| `exec` | **Pointer** to which feed we step on | `"low_tf"`, `"med_tf"`, or `"high_tf"` |
+| Feed | Role | Typical Values | Primary Use |
+|------|------|----------------|-------------|
+| `low_tf` | Lowest analysis timeframe | 1m, 3m, 5m, 15m | Entry timing, precise signals |
+| `med_tf` | Medium timeframe for context | 30m, 1h, 2h, 4h | Structure, pullbacks, local trend |
+| `high_tf` | Highest timeframe for bias | 12h, D | Daily bias, session anchors |
+| `exec` | **Pointer** to which feed we step on | `"low_tf"`, `"med_tf"`, or `"high_tf"` | - |
 
-**Key insight:** `exec` is NOT a 4th feed - it's an alias that points to one of the 3 feeds. This determines which TF's bar-close triggers signal evaluation.
+**Key insight:** `exec` is NOT a 4th feed - it's an alias that points to one of the 3 feeds. This determines which timeframe's bar-close triggers signal evaluation.
+
+> **TYPICAL USAGE:** Most strategies focus on `low_tf` + `med_tf`. The `high_tf` is optional and primarily
+> used for: (1) daily trend bias with `D`, or (2) session boundaries/structure anchors with `12h`.
+
+### Multi-Timeframe Best Practices
+
+**The Top-Down Approach:**
+1. **Higher timeframe (D/12h)** - Establish directional bias (bullish, bearish, or neutral)
+2. **Medium timeframe (1h-4h)** - Identify structure, support/resistance, pullback zones
+3. **Lower timeframe (5m-15m)** - Time precise entries when alignment occurs
+
+**When Timeframes Align:**
+- Higher timeframe trend is clear (e.g., daily EMA 50 > EMA 200)
+- Medium timeframe structure supports the bias (e.g., price at support in uptrend)
+- Lower timeframe provides entry signal (e.g., bullish cross, breakout confirmation)
+- **Result:** High-probability trade setup
+
+**When to Use Each high_tf Value:**
+
+| Value | Best For | Example Use Case |
+|-------|----------|------------------|
+| `D` | Daily trend bias | EMA 50/200 golden cross, daily support/resistance |
+| `12h` | Session anchors | Asian/London/NY session boundaries, swing structure |
+
+**Common Mistakes to Avoid:**
+- Starting analysis on lower timeframes (bottom-up) instead of top-down
+- Using more than 3 timeframes (causes analysis paralysis)
+- Trading against the higher timeframe trend
+- Forcing trades when timeframes conflict - wait for alignment
 
 ### Valid Timeframes (Bybit API)
 
@@ -1168,53 +1214,58 @@ The TF system uses **3 feeds** with an **exec role pointer**:
 ```yaml
 # REQUIRED: Explicit timeframes section (all 4 keys required)
 timeframes:
-  low_tf: "15m"      # Lowest analysis TF - engine always loads this data
-  med_tf: "1h"       # Medium TF for context (same as low_tf if single-TF)
-  high_tf: "4h"      # Highest TF for trend/levels (same as med_tf if dual-TF)
+  low_tf: "15m"      # Lowest analysis timeframe - engine always loads this data
+  med_tf: "1h"       # Medium timeframe for context (same as low_tf if single-timeframe)
+  high_tf: "D"       # Highest timeframe for trend/levels (same as med_tf if dual-timeframe)
   exec: "low_tf"     # Which feed to step on: "low_tf", "med_tf", or "high_tf"
 ```
 
 **Hierarchy rule:** `high_tf >= med_tf >= low_tf` (in minutes)
 
+> **BEST PRACTICE:** Most strategies primarily use `low_tf` + `med_tf`. The higher timeframe
+> provides overall trend context but is often optional. Use a top-down approach: establish
+> directional bias on the higher timeframe, identify structure on the medium timeframe, then
+> time entries on the lower timeframe.
+
 ### Exec Role Examples
 
 ```yaml
-# Example 1: Standard (exec on low_tf) - most common
+# Example 1: Standard day trading (exec on low_tf) - most common
 timeframes:
-  low_tf: "15m"     # ← exec points here
-  med_tf: "1h"
-  high_tf: "4h"
+  low_tf: "15m"     # ← exec points here (entry timing)
+  med_tf: "1h"      # Structure and pullbacks
+  high_tf: "D"      # Daily trend bias
   exec: "low_tf"
-# Steps on 15m bars, forward-fills 1h and 4h
+# Steps on 15m bars, forward-fills 1h and D
 
-# Example 2: Swing (exec on med_tf)
+# Example 2: Swing trading (exec on med_tf)
 timeframes:
-  low_tf: "15m"
-  med_tf: "1h"      # ← exec points here
-  high_tf: "4h"
+  low_tf: "15m"     # Precise entry timing
+  med_tf: "1h"      # ← exec points here (main analysis)
+  high_tf: "12h"    # Session boundaries, anchor points
   exec: "med_tf"
-# Steps on 1h bars, looks up 15m at close, forward-fills 4h
+# Steps on 1h bars, looks up 15m at close, forward-fills 12h
 
-# Example 3: Single-TF (all same)
+# Example 3: Single-timeframe (all same)
 timeframes:
   low_tf: "15m"
   med_tf: "15m"
   high_tf: "15m"
   exec: "low_tf"
-# All feeds are the same 15m data
+# All feeds are the same 15m data - simpler but less context
 ```
 
-### Feature TF Assignment
+### Feature Timeframe Assignment
 
 ```yaml
 features:
-  # Execution TF (implied when no tf: specified)
+  # Execution timeframe (implied when no tf: specified)
   ema_9:
     indicator: ema
     params: {length: 9}
-    # tf defaults to execution_tf (15m in this example)
+    # tf defaults to execution timeframe (15m in this example)
 
-  # Explicit higher TF feature
+  # Explicit higher timeframe feature
   ema_50_1h:
     indicator: ema
     params: {length: 50}
@@ -1228,16 +1279,16 @@ features:
 
 ### Forward-Fill Semantics
 
-Forward-fill behavior depends on whether a TF is faster or slower than exec:
+Forward-fill behavior depends on whether a timeframe is faster or slower than exec:
 
-| TF Relationship | Behavior |
-|-----------------|----------|
+| Timeframe Relationship | Behavior |
+|------------------------|----------|
 | **Slower than exec** | Forward-fill (hold last closed bar value) |
 | **Faster than exec** | Lookup most recent closed bar at exec close |
 | **Equal to exec** | Direct access (no fill needed) |
 
 ```
-Example: exec=low_tf (15m), med_tf=1h, high_tf=4h
+Example: exec=low_tf (15m), med_tf=1h, high_tf=D
 
 exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
                   +-----+-----+-----+-----+-----+-----+-----+-----+
@@ -1251,7 +1302,7 @@ exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
 ### Execution Semantics
 
 ```
-Signal evaluation: At exec TF bar close
+Signal evaluation: At execution timeframe bar close
 Order execution:   At next 1m candle open (backtest) or live ticker (live)
 ```
 
@@ -1259,20 +1310,22 @@ The 1m quote feed (separate from the 3 analysis feeds) provides execution prices
 
 ### Multi-Timeframe Strategy Example
 
+This example demonstrates the top-down approach: daily trend bias → 15m entry timing.
+
 ```yaml
 version: "3.0.0"
 name: "multi_tf_trend_strategy"
-description: "Trade with 4h trend, execute on 15m"
+description: "Trade with daily trend bias, execute on 15m"
 
 symbol: "BTCUSDT"
 timeframes:
-  low_tf: "15m"     # Execution TF
-  med_tf: "1h"      # Intermediate TF (not used in this example)
-  high_tf: "4h"     # Trend TF
+  low_tf: "15m"     # Execution timeframe - entry timing
+  med_tf: "1h"      # Structure context (not used in this simple example)
+  high_tf: "D"      # Daily trend bias
   exec: "low_tf"    # Step on 15m bars
 
 features:
-  # Exec TF (15m) - entry/exit signals
+  # Execution timeframe (15m) - entry/exit signals
   ema_9:
     indicator: ema
     params: {length: 9}
@@ -1280,30 +1333,30 @@ features:
     indicator: ema
     params: {length: 21}
 
-  # Higher TF (4h) - trend filter
-  ema_50_4h:
+  # Higher timeframe (daily) - trend filter
+  ema_50_D:
     indicator: ema
     params: {length: 50}
-    tf: "4h"
-  ema_200_4h:
+    tf: "D"
+  ema_200_D:
     indicator: ema
     params: {length: 200}
-    tf: "4h"
+    tf: "D"
 
 actions:
   entry_long:
     all:
-      # 4h trend filter: uptrend
-      - ["ema_50_4h", ">", "ema_200_4h"]
-      # 15m signal: golden cross
-      - cross_above: ["ema_9", "ema_21"]
+      # Daily trend filter: only trade long when daily uptrend
+      - ["ema_50_D", ">", "ema_200_D"]
+      # 15m signal: golden cross for entry timing
+      - ["ema_9", "cross_above", "ema_21"]
 
   exit_long:
     any:
-      # 4h reversal
-      - ["ema_50_4h", "<", "ema_200_4h"]
+      # Daily reversal - trend changed
+      - ["ema_50_D", "<", "ema_200_D"]
       # 15m exit
-      - cross_below: ["ema_9", "ema_21"]
+      - ["ema_9", "cross_below", "ema_21"]
 ```
 
 ### 1m Action Model
@@ -1311,7 +1364,7 @@ actions:
 The engine evaluates signals every 1m within each exec bar. This enables precise entry/exit timing.
 
 ```yaml
-# Use last_price for precise cross-TF entries (1m resolution)
+# Use last_price for precise cross-timeframe entries (1m resolution)
 actions:
   entry_long:
     all:
@@ -1321,9 +1374,9 @@ actions:
 
 | Feature | Update Rate | Use Case |
 |---------|-------------|----------|
-| `last_price` | Every 1m | Precise entries, cross-TF comparisons |
+| `last_price` | Every 1m | Precise entries, cross-timeframe comparisons |
 | `close` | Per exec bar | Bar-level conditions |
-| Higher TF features | Forward-fill | Trend context (update on their bar close) |
+| Higher timeframe features | Forward-fill | Trend context (update on their bar close) |
 
 **Why 1m resolution matters:** If exec is 15m, `close` only updates 4x per hour. But `last_price` updates 60x per hour, allowing precise entry when price crosses a level.
 
@@ -1333,7 +1386,7 @@ Structures can be computed on higher timeframes for trend context:
 
 ```yaml
 structures:
-  # Exec TF structures (15m)
+  # Execution timeframe structures (15m)
   exec:
     - type: swing
       key: swing
@@ -1361,18 +1414,18 @@ structures:
 - high_tf structures forward-fill until their bar closes (same as indicators)
 - Reference by key in actions: `{feature_id: "trend_4h", field: "direction"}`
 
-### Multi-TF Confluence Patterns
+### Multi-Timeframe Confluence Patterns
 
-**Pattern 1: Exec Swing + high_tf Trend Filter**
+**Pattern 1: Execution Swing + Higher Timeframe Trend Filter**
 ```yaml
 actions:
   entry_long:
     all:
-      # high_tf trend is UP
+      # Higher timeframe trend is UP
       - [{feature_id: trend_4h, field: direction}, "==", 1]
-      # Exec swing low exists (bounce setup)
+      # Execution swing low exists (bounce setup)
       - [{feature_id: swing, field: low_level}, ">", 0]
-      # Price near exec swing low
+      # Price near execution swing low
       - [close, "near_pct", {feature_id: swing, field: low_level}, 2.0]
 ```
 
@@ -1381,7 +1434,7 @@ actions:
 actions:
   entry_long:
     all:
-      # Both TFs trending UP - strongest signal
+      # Both timeframes trending UP - strongest signal
       - [{feature_id: trend, field: direction}, "==", 1]
       - [{feature_id: trend_4h, field: direction}, "==", 1]
 ```
@@ -1638,13 +1691,17 @@ features:
 
 actions:
   entry_long:
-    - cross_above: ["ema_9", "ema_21"]
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
   exit_long:
-    - cross_below: ["ema_9", "ema_21"]
+    all:
+      - ["ema_9", "cross_below", "ema_21"]
   entry_short:
-    - cross_below: ["ema_9", "ema_21"]
+    all:
+      - ["ema_9", "cross_below", "ema_21"]
   exit_short:
-    - cross_above: ["ema_9", "ema_21"]
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
 
 position_policy:
   mode: "long_short"
@@ -1699,20 +1756,22 @@ risk:
 
 ### Example 3: Multi-Timeframe Trend + Fib Zones
 
+Uses 12h for structure anchor points (swing highs/lows for fibonacci levels).
+
 ```yaml
 version: "3.0.0"
 name: "multi_tf_fib_zones"
-description: "Trade 4h trend pullbacks to fib zones on 15m"
+description: "Trade trend pullbacks to fib zones - 12h anchor points, 15m entries"
 
 symbol: "BTCUSDT"
 timeframes:
   low_tf: "15m"
   med_tf: "1h"
-  high_tf: "4h"
+  high_tf: "12h"    # Structure anchor points
   exec: "low_tf"
 
 features:
-  # Exec TF (15m)
+  # Execution timeframe (15m)
   rsi_14:
     indicator: rsi
     params: {length: 14}
@@ -1720,22 +1779,23 @@ features:
     indicator: ema
     params: {length: 20}
 
-  # Higher TF (4h)
-  ema_50_4h:
+  # Higher timeframe (12h) - trend context
+  ema_50_12h:
     indicator: ema
     params: {length: 50}
-    tf: "4h"
+    tf: "12h"
 
 structures:
-  swing:
-    detector: swing
-    params: {left: 5, right: 5}
-  fib:
-    detector: fibonacci
-    depends_on: {swing: swing}
-    params:
-      levels: [0.382, 0.5, 0.618]
-      mode: retracement
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+    - type: fibonacci
+      key: fib
+      depends_on: {swing: swing}
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
 
 actions:
   entry_long:
@@ -1784,12 +1844,13 @@ features:
     params: {length: 20}
 
 structures:
-  rolling_high:
-    detector: rolling_window
-    params:
-      mode: max
-      size: 20
-      source: high
+  exec:
+    - type: rolling_window
+      key: rolling_high
+      params:
+        mode: max
+        size: 20
+        source: high
 
 actions:
   entry_long:
@@ -1847,17 +1908,18 @@ features:
     params: {length: 14}
 
 structures:
-  swing:
-    detector: swing
-    params: {left: 5, right: 5}
-  fib_zones:
-    detector: derived_zone
-    depends_on: {source: swing}  # NOTE: derived_zone uses `source:` not `swing:`
-    params:
-      levels: [0.5, 0.618]
-      mode: retracement
-      max_active: 3
-      width_pct: 0.002
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+    - type: derived_zone
+      key: fib_zones
+      depends_on: {source: swing}  # NOTE: derived_zone uses `source:` not `swing:`
+      params:
+        levels: [0.5, 0.618]
+        mode: retracement
+        max_active: 3
+        width_pct: 0.002
 
 actions:
   entry_long:
@@ -2079,14 +2141,18 @@ Currently the engine still accepts `blocks:` and `margin_mode: "isolated"` for b
 | Date | Change |
 |------|--------|
 | 2026-01-08 | Created as canonical source, consolidated from PLAY_SYNTAX.md + DSL_REFERENCE.md |
-| 2026-01-08 | Fixed Multi-TF terminology (Multi-TimeFrame = capability, not role) |
+| 2026-01-08 | Fixed Multi-Timeframe terminology (Multi-Timeframe = capability, not role) |
 | 2026-01-08 | Added exit_mode, variables, price features deep dive, deprecation notes |
 | 2026-01-09 | Symbol operators now canonical (`>`, `<`, `>=`, `<=`, `==`, `!=`). Word forms removed. |
 | 2026-01-09 | Added `!=` operator for discrete type comparisons |
-| 2026-01-15 | Updated terminology: low_tf, med_tf, high_tf, exec_tf, Multi-TF |
+| 2026-01-15 | Updated terminology: low_tf, med_tf, high_tf, exec, Multi-Timeframe |
 | 2026-01-16 | Added wave-based trend detector with strength, wave_count, last_hh/hl/lh/ll outputs |
 | 2026-01-16 | Added market_structure detector (ICT BOS/CHoCH) with bias, bos_this_bar, choch_this_bar outputs |
 | 2026-01-16 | Added Example 6: ICT Market Structure strategy |
+| 2026-01-17 | Fixed structure syntax to use role-based format (exec: list with type/key/params) |
+| 2026-01-17 | Updated all prose to use full natural language (execution timeframe, higher timeframe, etc.) |
+| 2026-01-17 | Standardized high_tf examples to use D (daily bias) or 12h (session anchors) |
+| 2026-01-17 | Added Multi-Timeframe Best Practices section with top-down approach guidance |
 
 ---
 
