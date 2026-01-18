@@ -29,20 +29,35 @@ src/tools/         # CLI/API surface
 
 ## Timeframe Naming (ENFORCED)
 
-**ALWAYS use these terms - in code, YAML, docs, and conversation:**
+**3-Feed + Exec Role System:**
 
-| Role | Correct | WRONG |
-|------|---------|-------|
-| Structure/trend timeframe | `high_tf` | ~~htf~~, ~~HTF~~, ~~higher timeframe~~ |
-| Intermediate filter | `med_tf` | ~~mtf~~, ~~MTF~~, ~~medium timeframe~~ |
-| Execution/entry timeframe | `exec_tf` | ~~ltf~~, ~~LTF~~, ~~lower timeframe~~ |
+| Term | Type | Example Values | Purpose |
+|------|------|----------------|---------|
+| `low_tf` | Timeframe | 1m, 3m, 5m, 15m | Fast: execution, entries |
+| `med_tf` | Timeframe | 30m, 1h, 2h, 4h | Medium: structure, bias |
+| `high_tf` | Timeframe | 12h, D | Slow: trend, context |
+| `exec` | Pointer | "low_tf", "med_tf", "high_tf" | Which TF to step on |
+
+**YAML keys/identifiers (ENFORCED):**
+- ~~htf~~, ~~HTF~~ → use `high_tf`
+- ~~ltf~~, ~~LTF~~ → use `low_tf`
+- ~~exec_tf: 15m~~ → `exec` is a pointer, not a value
+
+**Prose/comments (use full natural language):**
+- "higher timeframe" not HTF
+- "medium timeframe" not MTF
+- "lower timeframe" not LTF
+- "execution timeframe" not exec TF
+- "multi-timeframe" for strategies using multiple timeframes
+- "last price" and "mark price" written out fully
 
 ```yaml
 # Correct Play structure:
 timeframes:
-  high_tf: 4h     # Structure: swings, fib, trend
-  med_tf: 1h      # Filter: RSI, momentum confirmation
-  exec_tf: 15m    # Entry: precise triggers, tight stops
+  low_tf: "15m"    # Concrete timeframe
+  med_tf: "1h"     # Concrete timeframe
+  high_tf: "D"     # Concrete timeframe (12h or D)
+  exec: "low_tf"   # POINTER to which TF to step on
 ```
 
 ## Quick Commands
@@ -57,9 +72,14 @@ python trade_cli.py backtest audit-toolkit          # Check indicators
 
 | Topic | Location |
 |-------|----------|
-| Current status | `docs/TODO.md` |
 | Session context | `docs/SESSION_HANDOFF.md` |
-| What runs today | `docs/PROJECT_STATUS.md` |
+| Project status | `docs/PROJECT_STATUS.md` |
 | DSL syntax | `docs/PLAY_DSL_COOKBOOK.md` |
-| Incremental indicators | `docs/INCREMENTAL_INDICATORS.md` |
-| Play examples | `tests/stress/plays/` |
+| System defaults | `config/defaults.yml` |
+
+## Reference Documentation
+
+| Topic | Location |
+|-------|----------|
+| Bybit API docs | `reference/exchanges/bybit/` |
+| pybit SDK docs | `reference/exchanges/pybit/` |

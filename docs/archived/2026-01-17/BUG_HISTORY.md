@@ -30,11 +30,11 @@ Resolved bugs archive. See [OPEN_BUGS.md](OPEN_BUGS.md) for current issues.
 - **Location**: `src/backtest/sim/execution/execution_model.py:451-452`
 - **Fix**: Changed to `exit_notional = fill_size * fill_price`
 
-### P1-003: MTF Warmup Not Included in Data Window Calculation - FIXED
+### P1-003: med_tf Warmup Not Included in Data Window Calculation - FIXED
 - **Location**: `src/backtest/runtime/windowing.py:352-357`
-- **Fix**: Added MTF warmup span calculation
+- **Fix**: Added med_tf warmup span calculation
 
-### P1-004: No Bounds Check for HTF/MTF Index - FIXED
+### P1-004: No Bounds Check for high_tf/med_tf Index - FIXED
 - **Location**: `src/backtest/engine_snapshot.py:63-77`
 - **Fix**: Added bounds check before using index
 
@@ -80,7 +80,7 @@ Resolved bugs archive. See [OPEN_BUGS.md](OPEN_BUGS.md) for current issues.
 - **Location**: `src/backtest/engine.py:1390-1420`
 - **Fix**: Clamp both start_1m and end_1m to valid range
 
-### BUG-015: HTF Data Coverage Check Too Strict - FIXED
+### BUG-015: high_tf Data Coverage Check Too Strict - FIXED
 - **Fix**: Added `floor_to_bar_boundary()` and coverage calculation fix
 
 ### P2-AUDIT-01 to P3-AUDIT-03: Various audit fixes - FIXED

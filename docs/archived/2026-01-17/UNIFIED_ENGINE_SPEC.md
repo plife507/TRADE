@@ -163,10 +163,10 @@ tf_mapping:
 
 | Role Key | Category | Valid Values | Purpose |
 |----------|----------|--------------|---------|
-| `exec` | ExecTF | LowTF or MedTF | Bar-by-bar signal evaluation |
-| `high_tf` | HighTF | 6h, 12h, D | Trend context, major S/R |
-| `med_tf` | MedTF | 30m, 1h, 2h, 4h | Structure, bias |
-| `low_tf` | LowTF | 1m, 3m, 5m, 15m | Micro-structure, entries |
+| `exec` | Pointer | low_tf or med_tf | Bar-by-bar signal evaluation |
+| `high_tf` | high_tf | 6h, 12h, D | Trend context, major S/R |
+| `med_tf` | med_tf | 30m, 1h, 2h, 4h | Structure, bias |
+| `low_tf` | low_tf | 1m, 3m, 5m, 15m | Micro-structure, entries |
 
 ### FeedStore Roles
 

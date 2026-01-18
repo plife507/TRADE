@@ -14,9 +14,9 @@ Renamed timeframe role keys in tf_mapping for clarity:
 
 | Old Key | New Key | Meaning |
 |---------|---------|---------|
-| `htf` | `high_tf` | HighTF - Higher Timeframe (6h, 12h, D) |
-| `mtf` | `med_tf` | MedTF - Medium Timeframe (30m, 1h, 2h, 4h) |
-| `ltf` | `low_tf` | LowTF - Low Timeframe (1m, 3m, 5m, 15m) |
+| `htf` | `high_tf` | high_tf - Higher Timeframe (6h, 12h, D) |
+| `mtf` | `med_tf` | med_tf - Medium Timeframe (30m, 1h, 2h, 4h) |
+| `ltf` | `low_tf` | low_tf - Low Timeframe (1m, 3m, 5m, 15m) |
 
 **Files Updated:**
 - [x] `src/backtest/play/play.py` - Play YAML schema
@@ -66,7 +66,7 @@ Renamed timeframe role keys in tf_mapping for clarity:
 |------|-------------|--------|
 | GATE 0 | Baseline validation | PASSED |
 | GATE 1 | Extract Signal Evaluation | COMPLETED |
-| GATE 2 | Extract HighTF/MultiTF Logic | COMPLETED |
+| GATE 2 | Extract Multi-TF Logic | COMPLETED |
 | GATE 3 | Unify Position Sizing | COMPLETED |
 | GATE 4 | Wire BacktestRunner | COMPLETED |
 | GATE 5 | Delete Duplicate Code | COMPLETED |

@@ -240,7 +240,7 @@ The market structure detector identifies Break of Structure (BOS) and Change of 
 | S_PF_001 | BTC | ATR ZigZag long-term | PASS |
 | S_PF_002 | ETH | High volatility period | PASS |
 | S_PF_003 | SOL | Ranging/consolidation | PASS |
-| S_PF_004 | BTC | MTF coordination | PASS |
+| S_PF_004 | BTC | Multi-TF coordination | PASS |
 | S_PF_005 | BTC | Mode comparison (fractal) | PASS |
 
 ---

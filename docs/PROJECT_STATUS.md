@@ -1,99 +1,45 @@
 # TRADE Project Status
 
-**Last Updated**: 2026-01-15
+**Last Updated**: 2026-01-17
 **Branch**: feature/unified-engine
 
 ---
 
-## Component Status
+## What This Is
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| CLI | ✅ Production | All menus functional |
-| Data Layer | ✅ Production | DuckDB, sync, heal working |
-| Unified Engine | ✅ Complete | `src/engine/PlayEngine` - ONE engine for backtest/live |
-| Indicators | ✅ Production | 43 indicators + 6 incremental (O(1)) |
-| Structures | ✅ Production | 6 structure types in registry |
-| Backtest Infrastructure | ✅ Production | sim, runtime, features |
-| Live Trading Adapters | ✅ Complete | WebSocket, position sync, orders |
-| Simulated Exchange | ✅ Production | Bybit-aligned accounting |
-| Visualization | ✅ Production | FastAPI + React charts |
-| Live Trading | ⚠️ Ready | Adapters complete, needs E2E validation |
+A crypto trading bot with backtesting and live trading capabilities.
 
 ---
 
-## Architecture
+## Directory Layout
 
 ```
-src/engine/           # Unified engine (PlayEngine)
-├── play_engine.py    # Core signal logic
-├── adapters/         # backtest.py, live.py
-├── runners/          # backtest_runner.py, live_runner.py
-└── factory.py        # PlayEngineFactory
+src/
+├── engine/        # Unified PlayEngine (backtest + live)
+├── indicators/    # 43 indicators
+├── structures/    # 7 structure detectors
+├── backtest/      # Backtest infrastructure
+├── data/          # DuckDB historical data
+├── cli/           # CLI interface
+└── tools/         # CLI tools
 
-src/indicators/       # 43 indicators + incremental module
-├── registry.py       # Unified registry
-├── incremental.py    # O(1) updates (EMA, SMA, RSI, ATR, MACD, BBands)
-└── compute.py        # Computation engine
+tests/
+├── stress/plays/       # (empty - needs new plays)
+├── validation/plays/   # (empty - needs new plays)
+└── functional/plays/   # (empty - needs new plays)
 
-src/structures/       # 6 structure types
-└── detectors/        # swing, trend, zone, fibonacci, derived_zone, rolling_window
-
-src/backtest/         # Infrastructure (NOT an engine)
-├── sim/              # SimulatedExchange
-├── runtime/          # FeedStore, Snapshot
-└── play/             # Play dataclass
+docs/
+├── PLAY_DSL_COOKBOOK.md   # DSL reference
+├── SESSION_HANDOFF.md     # Quick reference
+└── PROJECT_STATUS.md      # This file
 ```
-
----
-
-## Validation Status
-
-| Test Suite | Status |
-|------------|--------|
-| Smoke tests | ✅ Pass |
-| Toolkit audit (43 indicators) | ✅ Pass |
-| Stress tests (50 plays, real data) | ✅ Pass |
-| Structure tests (163 plays) | ✅ Pass |
-| Math parity | ✅ Pass |
-
----
-
-## What's Ready
-
-- **Backtesting**: Full production use
-- **Indicators**: 43 vectorized + 6 incremental
-- **Structures**: swing, trend, zone, fibonacci, derived_zone, rolling_window
-- **Live adapters**: WebSocket feed, order execution
-- **Visualization**: TradingView-style charts
-
-## What Needs Work
-
-| Item | Priority | Notes |
-|------|----------|-------|
-| Live E2E validation | P1 | Adapters ready, needs demo test |
-| More incremental indicators | P2 | Supertrend, Stochastic |
-| ICT structures | P3 | BOS/CHoCH detection |
 
 ---
 
 ## Quick Commands
 
 ```bash
-python trade_cli.py --smoke full              # Full validation
-python trade_cli.py backtest run --play X     # Run backtest
-python trade_cli.py backtest audit-toolkit    # Indicator audit
-python trade_cli.py viz serve                 # Start visualization
+python trade_cli.py --smoke full
+python trade_cli.py backtest run --play <name> --fix-gaps
+python trade_cli.py backtest audit-toolkit
 ```
-
----
-
-## Key Documents
-
-| Document | Purpose |
-|----------|---------|
-| `CLAUDE.md` | AI guidance |
-| `docs/TODO.md` | Active work tracking |
-| `docs/SESSION_HANDOFF.md` | Session continuity |
-| `docs/INCREMENTAL_INDICATORS.md` | O(1) indicator usage |
-| `docs/PLAY_DSL_COOKBOOK.md` | DSL reference |

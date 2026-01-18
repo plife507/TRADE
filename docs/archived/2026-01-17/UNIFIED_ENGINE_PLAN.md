@@ -13,7 +13,7 @@ The unified engine architecture is now fully implemented. All signal evaluation,
 
 **Key Achievements:**
 - Unified signal evaluation with 1m sub-loop support
-- HighTF incremental state updates for forward-fill parity
+- high_tf incremental state updates for forward-fill parity
 - Play-defined risk_model integration for position sizing
 - Backtest adapter wired to SimulatedExchange and FeedStore
 - Live adapter infrastructure in place
@@ -28,7 +28,7 @@ src/engine/                    # THE unified engine
 ├── play_engine.py             # Core signal logic
 ├── signal/                    # Shared signal evaluation
 │   └── subloop.py             # 1m sub-loop logic
-├── timeframe/                 # Shared HighTF/MultiTF logic
+├── timeframe/                 # Shared Multi-TF logic
 │   └── index_manager.py       # Forward-fill index tracking
 ├── sizing/                    # Unified position sizing
 │   └── model.py               # SizingModel
@@ -105,11 +105,11 @@ python trade_cli.py backtest run --play V_131_1m_price_accuracy --synthetic
 
 ---
 
-### GATE 2: Extract HighTF/MultiTF Logic - COMPLETED
+### GATE 2: Extract Multi-TF Logic - COMPLETED
 **Goal:** ONE implementation of multi-timeframe handling
 
 **Extract from BacktestEngine:**
-- `_update_htf_mtf_indices()` (lines 1305-1339)
+- `update_tf_indices_impl()` (lines 1305-1339)
 - `_refresh_tf_caches()` (lines 1277-1303)
 
 **Create:**
@@ -117,7 +117,7 @@ python trade_cli.py backtest run --play V_131_1m_price_accuracy --synthetic
 
 **Wire:**
 - PlayEngine uses shared timeframe module
-- HighTF incremental state updates implemented
+- high_tf incremental state updates implemented
 
 **Validation:**
 ```bash
@@ -180,7 +180,7 @@ python trade_cli.py backtest audit-rollup
 
 **Delete from `src/backtest/engine.py`:**
 - Duplicate signal evaluation logic
-- Duplicate HighTF/MultiTF logic
+- Duplicate Multi-TF logic
 
 **Keep in `src/backtest/`:**
 - `sim/` - SimulatedExchange
@@ -237,7 +237,7 @@ python trade_cli.py backtest run --play V_101_operators_basic --synthetic
 
 - [x] ONE engine codebase
 - [x] ZERO duplicate signal evaluation
-- [x] ZERO duplicate HighTF/MultiTF logic
+- [x] ZERO duplicate Multi-TF logic
 - [x] ZERO duplicate position sizing
 - [x] 100% test parity with baseline
 - [x] All stress tests pass

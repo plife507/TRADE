@@ -893,17 +893,17 @@ high_tf.ms.bias = "bullish"      # Direction from structure
 
 | Play | Description | Validates |
 |------|-------------|-----------|
-| `V_PF_060_htf_stable_anchor` | ATR zigzag on high_tf → stable Fib | Anchor stability |
+| `V_PF_060_high_tf_stable_anchor` | ATR zigzag on high_tf → stable Fib | Anchor stability |
 | `V_PF_061_exec_precise_entry` | Fractal on exec_tf → precise timing | Entry precision |
-| `V_PF_062_bias_alignment` | exec entry only when high_tf bias matches | MTF coordination |
+| `V_PF_062_bias_alignment` | exec entry only when high_tf bias matches | Multi-TF coordination |
 | `V_PF_063_bos_within_fib` | exec BOS inside high_tf Fib zone | Zone + event combo |
 
 ### Gate 6 Deliverables
 
-- [ ] Create MTF pivot coordination documentation
+- [ ] Create Multi-TF pivot coordination documentation
 - [ ] Create example Plays showing pattern
 - [ ] Create validation Plays V_PF_060-063
-- [ ] Update PLAY_DSL_COOKBOOK.md with MTF pivot patterns
+- [ ] Update PLAY_DSL_COOKBOOK.md with Multi-TF pivot patterns
 - [ ] Run smoke tests
 
 ---
@@ -969,7 +969,7 @@ Gate 0 (Significance Infrastructure)
                       │
                       └──> Gate 5 (Market Structure)
                                │
-                               └──> Gate 6 (MTF Coordination)
+                               └──> Gate 6 (Multi-TF Coordination)
                                         │
                                         └──> Gate 7 (Integration)
 ```

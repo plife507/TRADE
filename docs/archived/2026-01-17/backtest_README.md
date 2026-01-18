@@ -92,7 +92,7 @@ The engine hot-loop (`engine.py`) has strict performance requirements:
 1. **No DataFrame operations** — All indicator computation is vectorized BEFORE the loop
 2. **O(1) snapshot access** — Use FeedStores with numpy arrays, not pandas
 3. **Closed-candle only** — Strategy evaluates at `bar.ts_close`, never mid-bar
-4. **HTF/MTF forward-fill** — Between closes, last-closed values carry forward unchanged
+4. **high_tf/med_tf forward-fill** — Between closes, last-closed values carry forward unchanged
 5. **No PriceModel calls** — Exchange computes mark_price once; snapshot reads it
 
 ---

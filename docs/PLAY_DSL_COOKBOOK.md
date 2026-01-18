@@ -21,10 +21,10 @@ When tests reveal behavior differs from this doc:
    - Consistency (follows established patterns)
    - Correctness (matches trading semantics)
 
-3. **Modify the appropriate component:**
+3. **Modify the appropriate component (human-in-the-loop):**
    - Engine bug → fix engine
    - Doc error → fix cookbook
-   - Design flaw → redesign DSL, then update both engine and cookbook
+   - Design flaw → **STOP and discuss with human** before redesigning DSL
 
 ---
 
@@ -51,27 +51,35 @@ A Play is the complete backtest-ready strategy unit.
 
 ### Default Values Reference
 
+> **Source of truth:** `config/defaults.yml`
+> **Fee source:** [Bybit Trading Fees](https://www.bybit.com/en/help-center/article/Trading-Fee-Structure/)
+
 These are the system defaults. When not specified in a Play, these values apply:
 
 | Field | Default | Source | Notes |
 |-------|---------|--------|-------|
-| **Account Configuration** ||||
+| **Fees (Bybit Non-VIP)** ||||
 | `taker_bps` | 5.5 | Bybit API | 0.055% taker fee |
 | `maker_bps` | 2.0 | Bybit API | 0.02% maker fee |
-| `slippage_bps` | 2.0 | - | Conservative estimate |
-| `margin_mode` | `isolated_usdt` | - | Only supported mode |
-| `min_trade_notional_usdt` | 10.0 | - | Minimum trade size |
-| **Risk Model** ||||
-| `sizing.model` | `percent_equity` | - | Margin-based sizing |
-| `sizing.max_leverage` | 1.0 | - | Conservative default |
+| `liquidation_bps` | 5.5 | Bybit API | Same as taker |
+| **Margin Model** ||||
+| `margin.mode` | `isolated` | config | No cross-margin support |
+| `margin.position_mode` | `oneway` | config | No hedge mode support |
+| `margin.maintenance_margin_rate` | 0.005 | Bybit | 0.5% MMR lowest tier |
+| **Execution** ||||
+| `slippage_bps` | 2.0 | config | Conservative estimate |
+| `min_trade_notional_usdt` | 10.0 | config | Minimum trade size |
+| **Risk** ||||
+| `max_leverage` | 1.0 | config | Conservative default |
+| `risk_per_trade_pct` | 1.0 | config | 1% risk per trade |
 | **Position Policy** ||||
-| `mode` | `long_only` | - | Conservative default |
-| `exit_mode` | `sl_tp_only` | - | Mechanical exits |
-| `max_positions_per_symbol` | 1 | - | Single position |
+| `mode` | `long_only` | config | Conservative default |
+| `exit_mode` | `sl_tp_only` | config | Mechanical exits |
+| `max_positions_per_symbol` | 1 | config | Single position |
+| **Account** ||||
+| `starting_equity_usdt` | 10000.0 | config | Default starting capital |
 
-**IMPORTANT: No implicit defaults for capital or risk.** These MUST be explicitly specified:
-- `starting_equity_usdt` - Required
-- `max_leverage` - Required
+**IMPORTANT:** For production, Plays should explicitly set all values.
 - `stop_loss` - Required for sl_tp_only/first_hit modes
 - `take_profit` - Required for sl_tp_only/first_hit modes
 
