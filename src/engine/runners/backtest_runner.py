@@ -7,6 +7,30 @@ Drives the PlayEngine through historical bar data:
 3. Loops through bars, calling engine.process_bar()
 4. Collects results and metrics
 
+FILL MECHANICS (CRITICAL FOR LIVE PARITY):
+==========================================
+Signal-to-fill timeline for 5m exec timeframe:
+
+    5m Bar N:     12:00 - 12:05  <- Signal generated at 12:05 close
+    5m Bar N+1:   12:05 - 12:10  <- Fill executed here
+
+    1m bars within Bar N+1:
+      12:05 - 12:06  <- Fill at THIS bar's OPEN (12:05:00)
+      12:06 - 12:07
+      ...
+
+Fill price = first 1m bar's OPEN within next exec bar + slippage
+
+This ensures:
+- No look-ahead bias (can't fill at signal bar's close price)
+- 1m granularity for accurate entry timing
+- Realistic for market orders (fill in milliseconds, not minutes)
+
+LIVE INTEGRATION CHECK:
+- Live should fill at current market price (equivalent to "next tick")
+- Backtest 1m open approximates this without look-ahead
+- Verify live fill prices align with backtest assumptions
+
 Usage:
     from src.engine import PlayEngineFactory
     from src.engine.runners import BacktestRunner
@@ -422,9 +446,20 @@ class BacktestRunner:
         """
         from ...backtest.sim.exchange import SimulatedExchange
         from ...backtest.sim.types import ExecutionConfig
+        from ...backtest.system_config import RiskProfileConfig
 
         play = self._engine._play
         config = self._engine._config
+
+        # Build RiskProfileConfig from Play/config for proper margin calculation
+        # This ensures the SimulatedExchange uses the correct leverage/IMR
+        risk_profile = RiskProfileConfig(
+            initial_equity=config.initial_equity,
+            max_leverage=config.max_leverage,
+            risk_per_trade_pct=config.risk_per_trade_pct,
+            taker_fee_rate=config.taker_fee_rate,
+            min_trade_usdt=config.min_trade_usdt,
+        )
 
         # Create exchange with config
         sim_exchange = SimulatedExchange(
@@ -433,6 +468,7 @@ class BacktestRunner:
             execution_config=ExecutionConfig(
                 slippage_bps=config.slippage_bps,
             ),
+            risk_profile=risk_profile,
         )
 
         self._exchange_adapter.set_simulated_exchange(sim_exchange)
@@ -518,7 +554,20 @@ class BacktestRunner:
                     exec_1m_range = None
 
         # Process bar for fills (with 1m granularity when available)
-        sim_exchange.process_bar(bar, prev_bar, quote_feed=quote_feed, exec_1m_range=exec_1m_range)
+        # Fill price uses first 1m bar's OPEN within this exec bar (see module docstring)
+        step_result = sim_exchange.process_bar(bar, prev_bar, quote_feed=quote_feed, exec_1m_range=exec_1m_range)
+
+        # Log fills with actual 1m-based prices
+        # NOTE: Logging happens HERE (not in PlayEngine.execute_signal) because:
+        # - Order submission returns before fill (async in backtest flow)
+        # - Actual fill price only known after process_bar completes
+        # - Live mode logs from PlayEngine since exchange returns fill immediately
+        for fill in step_result.fills:
+            if fill.reason.value == "entry":
+                self._engine.logger.info(
+                    f"Order filled: {fill.side.name} {fill.symbol} "
+                    f"price={fill.price:.2f} size={fill.size_usdt:.2f} USDT"
+                )
 
     def _close_remaining_position(self, last_bar_idx: int) -> None:
         """

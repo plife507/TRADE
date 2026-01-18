@@ -207,7 +207,11 @@ class ExecutionModel:
         result = FillResult()
         start_1m, end_1m = exec_1m_range
 
-        # Get first 1m bar data
+        # Get first 1m bar data for fill price
+        # FILL MECHANICS: Use first 1m bar's OPEN within the exec bar
+        # This approximates live market order fills (milliseconds after signal)
+        # without look-ahead bias (not using signal bar's close price)
+        # LIVE PARITY: Verify live fills align with this assumption
         try:
             first_1m_open = float(quote_feed.open[start_1m])
             fill_ts = quote_feed.get_ts_open_datetime(start_1m)

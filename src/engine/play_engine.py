@@ -447,12 +447,13 @@ class PlayEngine:
 
         if result.success:
             self._total_trades += 1
-            price_str = f"{result.fill_price:.2f}" if result.fill_price else "N/A"
-            size_str = f"{result.fill_usdt:.2f}" if result.fill_usdt else "N/A"
-            self.logger.info(
-                f"Order filled: {signal.direction} {self.symbol} "
-                f"price={price_str} size={size_str} USDT"
-            )
+            # Only log fill details when available (live mode)
+            # Backtest fills are logged by BacktestRunner after process_bar
+            if result.fill_price and result.fill_usdt:
+                self.logger.info(
+                    f"Order filled: {signal.direction} {self.symbol} "
+                    f"price={result.fill_price:.2f} size={result.fill_usdt:.2f} USDT"
+                )
         else:
             self.logger.warning(f"Order failed: {result.error}")
 
