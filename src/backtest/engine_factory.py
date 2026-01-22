@@ -1,13 +1,13 @@
 """
-Factory functions module for BacktestEngine.
+Factory functions for PlayEngine creation and execution.
 
-This module provides factory functions for creating and running BacktestEngine:
+This module provides factory functions for creating and running backtests:
 - run_backtest: Convenience function to run a backtest from system_id
-- create_engine_from_play: Create engine from Play
+- create_engine_from_play: Create PlayEngine from Play (uses DataBuilder)
 - run_engine_with_play: Run engine with Play signal evaluation
-- _get_play_result_class: Get PlayBacktestResult class
 
-These functions provide the main entry points for backtest execution.
+DataBuilder handles all data preparation.
+PlayEngine is the unified engine for backtest/demo/live modes.
 """
 
 from collections.abc import Callable
@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .engine import BacktestEngine
+    from .data_builder import DataBuilder
     from .types import BacktestResult
     from .play import Play
     from .feature_registry import FeatureRegistry
@@ -91,7 +91,7 @@ def create_engine_from_play(
     Create a PlayEngine from a Play with pre-built backtest components.
 
     This is the canonical factory for Play-native backtest execution.
-    Uses BacktestEngine internally for data loading and preparation,
+    Uses DataBuilder for data loading and preparation,
     then returns a unified PlayEngine with all pre-built components.
 
     The returned engine can be run via run_engine_with_play() or
@@ -117,7 +117,7 @@ def create_engine_from_play(
     from typing import TYPE_CHECKING
     if TYPE_CHECKING:
         from src.forge.validation.synthetic_provider import SyntheticDataProvider
-    from .engine import BacktestEngine
+    from .data_builder import DataBuilder
     from .system_config import (
         SystemConfig,
         RiskProfileConfig,
@@ -257,6 +257,38 @@ def create_engine_from_play(
         params=strategy_params,
     )
 
+    # Auto-create synthetic provider from Play's synthetic config
+    # This allows validation plays to use the same code path as regular backtests
+    if synthetic_provider is None and play.synthetic is not None:
+        from src.forge.validation.synthetic_data import generate_synthetic_candles
+        from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+
+        # Gather all required timeframes from tf_mapping
+        tf_mapping_resolved = play.tf_mapping or {
+            "low_tf": play.execution_tf,
+            "med_tf": play.execution_tf,
+            "high_tf": play.execution_tf,
+            "exec": "low_tf",
+        }
+        required_tfs = set()
+        for role in ("low_tf", "med_tf", "high_tf"):
+            tf = tf_mapping_resolved.get(role)
+            if tf:
+                required_tfs.add(tf)
+        # Always include 1m for intrabar/mark price
+        required_tfs.add("1m")
+
+        # Generate synthetic candles using Play's config
+        candles = generate_synthetic_candles(
+            symbol=symbol,
+            timeframes=sorted(required_tfs),
+            bars_per_tf=play.synthetic.bars,
+            seed=play.synthetic.seed,
+            pattern=play.synthetic.pattern,
+            align_multi_tf=True,
+        )
+        synthetic_provider = SyntheticCandlesProvider(candles)
+
     # Handle window defaults for synthetic provider mode
     if synthetic_provider is not None and (window_start is None or window_end is None):
         # Get data range from synthetic provider
@@ -327,42 +359,25 @@ def create_engine_from_play(
         data_build=DataBuildConfig(env=data_env),
     )
 
-    # Create BacktestEngine for data preparation
-    # Handles data loading, indicator computation, and feed store building
-    data_builder = BacktestEngine(
+    # Build data using DataBuilder
+    window = system_config.get_window(window_name)
+    builder = DataBuilder(
         config=system_config,
-        window_name=window_name,
-        run_dir=run_dir,
-        feature_registry=registry,
-        on_snapshot=on_snapshot,
+        window=window,
+        play=play,
         tf_mapping=tf_mapping,
         synthetic_provider=synthetic_provider,
     )
+    build_result = builder.build()
 
-    # Store Play reference
-    data_builder._play = play
-
-    # Prepare data frames (loads data, computes indicators)
-    # Determine multi-TF mode: any TF differs from low_tf
-    low_tf_str = tf_mapping["low_tf"]
-    multi_tf_mode = tf_mapping["high_tf"] != low_tf_str or tf_mapping["med_tf"] != low_tf_str
-    if multi_tf_mode:
-        data_builder.prepare_multi_tf_frames()
-    else:
-        data_builder.prepare_backtest_frame()
-
-    # Build FeedStores for O(1) access
-    data_builder._build_feed_stores()
-
-    # Build incremental state for structure detection
-    incremental_state = data_builder._build_incremental_state()
-
-    # Extract all pre-built components
-    feed_store = data_builder._exec_feed
-    high_tf_feed = data_builder._high_tf_feed
-    med_tf_feed = data_builder._med_tf_feed
-    quote_feed = data_builder._quote_feed
-    sim_exchange = data_builder._exchange
+    # Extract components from build result (3-feed + exec role system)
+    feed_store = build_result.exec_feed  # Resolved exec feed
+    high_tf_feed = build_result.high_tf_feed
+    med_tf_feed = build_result.med_tf_feed
+    quote_feed = build_result.quote_feed
+    sim_exchange = build_result.sim_exchange
+    incremental_state = build_result.incremental_state
+    multi_tf_mode = build_result.multi_tf_mode
 
     # Create unified PlayEngine with pre-built components via GATE 4 factory
     from src.engine.factory import create_backtest_engine as create_unified_engine
@@ -381,7 +396,7 @@ def create_engine_from_play(
 
     # Store Play and config references for run_engine_with_play()
     engine._play = play
-    engine._prepared_frame = data_builder._prepared_frame  # For sim_start_idx access
+    engine._prepared_frame = build_result.prepared_frame  # For sim_start_idx access
     engine._multi_tf_mode = multi_tf_mode
 
     return engine

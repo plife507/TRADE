@@ -11,7 +11,7 @@ Design principles:
 - Explicit over implicit: No silent defaults
 - Fail-fast: Validation at load time
 - Feature-based: All features referenced by unique ID
-- Any timeframe: No fixed exec_tf/med_tf/high_tf roles - use any TF
+- Any timeframe: Features can use low_tf/med_tf/high_tf (exec points to one)
 """
 
 from dataclasses import dataclass, field
@@ -39,6 +39,46 @@ if TYPE_CHECKING:
 # =============================================================================
 # Position Policy
 # =============================================================================
+
+# =============================================================================
+# Synthetic Data Config (for validation plays)
+# =============================================================================
+
+@dataclass(frozen=True)
+class SyntheticConfig:
+    """
+    Configuration for synthetic data generation.
+
+    When present in a Play, the backtest uses generated synthetic data
+    instead of loading from DuckDB. This enables deterministic, reproducible
+    validation testing.
+
+    Attributes:
+        pattern: Price pattern to generate (e.g., "trend_up_clean", "choppy")
+        bars: Number of bars to generate beyond warmup
+        seed: Random seed for reproducibility
+    """
+    pattern: str = "trend_up_clean"
+    bars: int = 300
+    seed: int = 42
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "SyntheticConfig":
+        """Create from dict."""
+        return cls(
+            pattern=d.get("pattern", "trend_up_clean"),
+            bars=d.get("bars", 300),
+            seed=d.get("seed", 42),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict."""
+        return {
+            "pattern": self.pattern,
+            "bars": self.bars,
+            "seed": self.seed,
+        }
+
 
 class PositionMode(str, Enum):
     """Position direction policy."""
@@ -351,6 +391,10 @@ class Play:
     # Used for auto-resolving structure references without "structure." prefix
     structure_keys: tuple = field(default_factory=tuple)
 
+    # Synthetic data config (for validation plays)
+    # When set, backtest uses generated synthetic data instead of DuckDB
+    synthetic: SyntheticConfig | None = None
+
     # Cached feature registry
     _registry: FeatureRegistry | None = field(default=None, repr=False)
 
@@ -429,6 +473,26 @@ class Play:
     def exec_tf(self) -> str:
         """Get execution timeframe (alias for compatibility)."""
         return self.execution_tf
+
+    @property
+    def low_tf(self) -> str | None:
+        """Get low timeframe from tf_mapping."""
+        return self.tf_mapping.get("low_tf")
+
+    @property
+    def med_tf(self) -> str | None:
+        """Get medium timeframe from tf_mapping."""
+        return self.tf_mapping.get("med_tf")
+
+    @property
+    def high_tf(self) -> str | None:
+        """Get high timeframe from tf_mapping."""
+        return self.tf_mapping.get("high_tf")
+
+    @property
+    def exec_role(self) -> str | None:
+        """Get exec role pointer (low_tf, med_tf, or high_tf)."""
+        return self.tf_mapping.get("exec")
 
     def get_all_tfs(self) -> set[str]:
         """Get all unique timeframes from features."""
@@ -709,6 +773,10 @@ class Play:
             if symbol:
                 symbol_universe = [symbol]
 
+        # Parse synthetic config (for validation plays)
+        synthetic_dict = d.get("synthetic")
+        synthetic = SyntheticConfig.from_dict(synthetic_dict) if synthetic_dict else None
+
         return cls(
             id=d.get("id") or d.get("name", ""),
             version=d.get("version", ""),
@@ -725,6 +793,7 @@ class Play:
             variables=variables,
             has_structures=has_structures,
             structure_keys=tuple(structure_keys),
+            synthetic=synthetic,
         )
 
 
@@ -732,7 +801,11 @@ class Play:
 # Loader
 # =============================================================================
 
-PLAYS_DIR = Path(__file__).parent.parent.parent.parent / "strategies" / "plays"
+# Default Play directories (new structure: tests/*/plays/)
+_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+PLAYS_DIR = _PROJECT_ROOT / "tests" / "functional" / "plays"
+VALIDATION_PLAYS_DIR = _PROJECT_ROOT / "tests" / "validation" / "plays"
+STRESS_PLAYS_DIR = _PROJECT_ROOT / "tests" / "stress" / "plays"
 
 
 def load_play(play_id: str, base_dir: Path | None = None) -> Play:
@@ -746,28 +819,38 @@ def load_play(play_id: str, base_dir: Path | None = None) -> Play:
     Returns:
         Validated Play instance
     """
-    search_dir = base_dir or PLAYS_DIR
-    search_paths = [
-        search_dir,
-        search_dir / "_validation",
-        search_dir / "_stress_test",
-        search_dir / "strategies",
-    ]
+    # Search all known Play directories
+    if base_dir:
+        search_paths = [base_dir]
+    else:
+        search_paths = [
+            PLAYS_DIR,
+            VALIDATION_PLAYS_DIR,
+            STRESS_PLAYS_DIR,
+        ]
 
     path = None
     for search_path in search_paths:
+        if not search_path.exists():
+            continue
         for ext in (".yml", ".yaml"):
+            # First try direct match (flat directories)
             candidate = search_path / f"{play_id}{ext}"
             if candidate.exists():
                 path = candidate
+                break
+            # Then try recursive search (tier subdirectories)
+            matches = list(search_path.rglob(f"{play_id}{ext}"))
+            if matches:
+                path = matches[0]
                 break
         if path:
             break
 
     if not path:
-        available = list_plays(search_dir)
+        available = list_plays()
         raise FileNotFoundError(
-            f"Play '{play_id}' not found in {search_dir}. Available: {available}"
+            f"Play '{play_id}' not found in tests/*/plays/. Available: {available[:20]}..."
         )
 
     with open(path, "r", encoding="utf-8") as f:
@@ -779,26 +862,34 @@ def load_play(play_id: str, base_dir: Path | None = None) -> Play:
     return Play.from_dict(raw)
 
 
-def list_plays(base_dir: Path | None = None) -> list[str]:
-    """List all available Play files."""
-    search_dir = base_dir or PLAYS_DIR
+def list_plays(base_dir: Path | None = None, recursive: bool = True) -> list[str]:
+    """List all available Play files from tests/*/plays/ directories.
 
-    if not search_dir.exists():
-        return []
+    Args:
+        base_dir: Optional base directory to search
+        recursive: If True, search subdirectories (default: True for tier support)
 
-    search_paths = [
-        search_dir,
-        search_dir / "_validation",
-        search_dir / "_stress_test",
-        search_dir / "strategies",
-    ]
+    Returns:
+        Sorted list of Play IDs (filenames without extension)
+    """
+    # Search all known Play directories
+    if base_dir:
+        search_paths = [base_dir]
+    else:
+        search_paths = [
+            PLAYS_DIR,
+            VALIDATION_PLAYS_DIR,
+            STRESS_PLAYS_DIR,
+        ]
 
     cards = set()
     for search_path in search_paths:
         if not search_path.exists():
             continue
         for ext in ("*.yml", "*.yaml"):
-            for path in search_path.glob(ext):
+            # Use rglob for recursive search (tier subdirectories)
+            glob_fn = search_path.rglob if recursive else search_path.glob
+            for path in glob_fn(ext):
                 if path.stem.startswith("_") and not path.stem.startswith("_V"):
                     continue
                 cards.add(path.stem)

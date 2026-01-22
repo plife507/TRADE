@@ -22,12 +22,15 @@ from .risk_model import (
     RiskModel,
 )
 from .play import (
+    SyntheticConfig,
     PositionMode,
     PositionPolicy,
     Play,
     load_play,
     list_plays,
     PLAYS_DIR,
+    VALIDATION_PLAYS_DIR,
+    STRESS_PLAYS_DIR,
 )
 
 __all__ = [
@@ -44,10 +47,13 @@ __all__ = [
     "SizingRule",
     "RiskModel",
     # Play
+    "SyntheticConfig",
     "PositionMode",
     "PositionPolicy",
     "Play",
     "load_play",
     "list_plays",
     "PLAYS_DIR",
+    "VALIDATION_PLAYS_DIR",
+    "STRESS_PLAYS_DIR",
 ]

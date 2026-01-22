@@ -1,0 +1,157 @@
+version: "3.0.0"
+name: "V_T13_005_max_features"
+description: "Stress test with maximum features"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 500
+  seed: 13005
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_10:
+    indicator: ema
+    params:
+      length: 10
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  sma_20:
+    indicator: sma
+    params:
+      length: 20
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  macd:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  bbands:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+  stoch:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  adx:
+    indicator: adx
+    params:
+      length: 14
+  supertrend:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+  vwap:
+    indicator: vwap
+  cmf_20:
+    indicator: cmf
+    params:
+      length: 20
+  ema_20_mtf:
+    indicator: ema
+    params:
+      length: 20
+    timeframe: med_tf
+  rsi_14_mtf:
+    indicator: rsi
+    params:
+      length: 14
+    timeframe: med_tf
+  ema_50_htf:
+    indicator: ema
+    params:
+      length: 50
+    timeframe: high_tf
+  supertrend_htf:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+    timeframe: high_tf
+
+structures:
+  swing:
+    type: swing
+    params:
+      lookback: 5
+  trend:
+    type: trend
+    params:
+      lookback: 20
+
+actions:
+  entry_long:
+    all:
+      - ["ema_10", ">", "ema_20"]
+      - ["ema_20", ">", "ema_50"]
+      - ["close", ">", "vwap"]
+      - ["close", ">", "ema_50_htf"]
+      - ["supertrend.direction", "==", 1]
+      - ["supertrend_htf.direction", "==", 1]
+      - ["trend.direction", "==", 1]
+      - any:
+          - ["rsi_14", "<", 35]
+          - all:
+              - ["rsi_14", "<", 45]
+              - ["macd.histogram", ">", 0]
+              - ["stoch.k", "<", 50]
+  exit_long:
+    any:
+      - ["rsi_14", ">", 70]
+      - ["supertrend.direction", "==", -1]
+      - ["close", "<", "swing.low"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss:
+    type: structure
+    structure_ref: swing.low
+    buffer_pct: 0.5
+  take_profit:
+    type: rr_ratio
+    ratio: 2.0
+  sizing:
+    type: risk_based
+    risk_per_trade_pct: 1.0
+  leverage: 2.0
+
+expected:
+  min_trades: 1
+  pnl_direction: positive

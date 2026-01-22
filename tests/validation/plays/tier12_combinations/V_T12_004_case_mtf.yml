@@ -1,0 +1,88 @@
+version: "3.0.0"
+name: "V_T12_004_case_mtf"
+description: "Validate case actions with multi-timeframe"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 300
+  seed: 12004
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  supertrend_htf:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+    timeframe: high_tf
+  rsi_14_mtf:
+    indicator: rsi
+    params:
+      length: 14
+    timeframe: med_tf
+
+actions:
+  entry_long:
+    case:
+      - when:
+          all:
+            - ["close", ">", "ema_20"]
+            - ["rsi_14", "<", 25]
+            - ["supertrend_htf.direction", "==", 1]
+            - ["rsi_14_mtf", "<", 40]
+        sizing_override:
+          max_position_pct: 20.0
+      - when:
+          all:
+            - ["close", ">", "ema_20"]
+            - ["rsi_14", "<", 35]
+            - ["supertrend_htf.direction", "==", 1]
+        sizing_override:
+          max_position_pct: 15.0
+      - when:
+          all:
+            - ["close", ">", "ema_20"]
+            - ["rsi_14", "<", 45]
+        sizing_override:
+          max_position_pct: 10.0
+  exit_long:
+    any:
+      - ["rsi_14", ">", 70]
+      - ["supertrend_htf.direction", "==", -1]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+expected:
+  min_trades: 1
+  pnl_direction: positive

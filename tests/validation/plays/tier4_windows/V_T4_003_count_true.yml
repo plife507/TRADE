@@ -1,0 +1,63 @@
+version: "3.0.0"
+name: "V_T4_003_count_true"
+description: "Validate count_true window operator (M of N bars satisfied)"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 300
+  seed: 4003
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "ema_20"]
+      - count_true:
+          bars: 10
+          min_true: 6
+          expr:
+            - ["volume", ">", "volume_sma_20"]
+
+  exit_long:
+    all:
+      - ["close", "<", "ema_20"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 10.0
+
+expected:
+  min_trades: 1
+  pnl_direction: positive
