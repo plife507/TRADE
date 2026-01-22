@@ -11,10 +11,10 @@ import pandas as pd
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .spec import FeatureSpec
+    from src.backtest.features.feature_spec import FeatureSpec
 
-from . import vendor
-from .registry import get_registry
+from src.backtest import indicator_vendor as vendor
+from src.backtest.indicator_registry import get_registry
 
 
 # NOTE: No default indicator columns - all indicators must be explicitly requested

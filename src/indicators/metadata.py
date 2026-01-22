@@ -142,7 +142,7 @@ def compute_feature_spec_id(
 
     EXCLUDES (stored in metadata but not hashed):
     - tf (timeframe)
-    - tf_role (exec/htf/mtf)
+    - tf_role (low_tf/med_tf/high_tf)
     - symbol
     - output_key
 
@@ -197,7 +197,7 @@ class IndicatorMetadata:
 
         symbol: Trading symbol (context, not hashed)
         tf: Timeframe string (context, not hashed)
-        tf_role: TF role (exec/htf/mtf, context, not hashed)
+        tf_role: TF role (low_tf/med_tf/high_tf, context, not hashed)
 
         warmup_bars_declared: Declared warmup from FeatureSpec
         first_valid_idx_observed: First index where output is non-NaN

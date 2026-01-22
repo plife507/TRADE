@@ -32,9 +32,9 @@ Usage:
 """
 
 # =============================================================================
-# Registry exports
+# Registry exports (canonical: src/backtest/indicator_registry.py)
 # =============================================================================
-from .registry import (
+from src.backtest.indicator_registry import (
     get_registry,
     IndicatorRegistry,
     IndicatorInfo,
@@ -45,9 +45,9 @@ from .registry import (
 )
 
 # =============================================================================
-# Vendor exports (pandas_ta wrapper)
+# Vendor exports (canonical: src/backtest/indicator_vendor.py)
 # =============================================================================
-from .vendor import (
+from src.backtest.indicator_vendor import (
     compute_indicator,
     canonicalize_indicator_outputs,
     CanonicalizeResult,
@@ -76,9 +76,9 @@ from .compute import (
 )
 
 # =============================================================================
-# Spec exports (declarative definitions)
+# Spec exports (canonical: src/backtest/features/feature_spec.py)
 # =============================================================================
-from .spec import (
+from src.backtest.features.feature_spec import (
     FeatureSpec,
     FeatureSpecSet,
     InputSource,
@@ -96,9 +96,9 @@ from .spec import (
 )
 
 # =============================================================================
-# Builder exports (vectorized computation)
+# Builder exports (canonical: src/backtest/features/feature_frame_builder.py)
 # =============================================================================
-from .builder import (
+from src.backtest.features.feature_frame_builder import (
     FeatureFrameBuilder,
     FeatureArrays,
     IndicatorCompute,
