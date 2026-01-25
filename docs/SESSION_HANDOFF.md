@@ -1,99 +1,80 @@
 # Session Handoff
 
-**Date**: 2026-01-22
+**Date**: 2026-01-25
 **Branch**: feature/unified-engine
 
 ---
 
 ## Last Session Summary
 
-**Focus**: Comprehensive Validation Suite Implementation
+**Focus**: Unified Indicator System + DSL Cookbook Review
 
 **Key Accomplishments**:
-1. **125 validation plays created** - Full DSL coverage across 14 tiers (T0-T13)
-2. **SyntheticConfig integration** - Plays now auto-create synthetic data providers
-3. **Recursive play loading** - Play loader searches tier subdirectories
-4. **Account field fixes** - Added `fee_model` and `min_trade_notional_usdt` to all plays
 
-**Validation Suite Structure** (125 plays):
-```
-tests/validation/plays/
-├── tier0_smoke/           (1 play)   - Minimal smoke test
-├── tier1_operators/       (12 plays) - >, <, >=, <=, ==, !=, between, near, in, cross
-├── tier2_boolean/         (4 plays)  - all, any, not, nested
-├── tier3_arithmetic/      (6 plays)  - add, subtract, multiply, divide, modulo, nested
-├── tier4_windows/         (6 plays)  - holds_for, occurred_within, count_true (bars/duration)
-├── tier5_indicators/
-│   ├── single_output/     (27 plays) - ema, sma, rsi, atr, wma, dema, tema, etc.
-│   └── multi_output/      (16 plays) - macd, bbands, stoch, aroon, supertrend, etc.
-├── tier6_structures/      (7 plays)  - swing, trend, market_structure, zone, fib, etc.
-├── tier7_price_features/  (5 plays)  - close, open, high, low, last_price
-├── tier8_mtf/             (5 plays)  - high_tf filter, med_tf filter, cross_tf, exec_med_tf
-├── tier9_risk/
-│   ├── stop_loss/         (4 plays)  - percent, atr, structure, fixed_points
-│   ├── take_profit/       (4 plays)  - percent, rr_ratio, atr, fixed_points
-│   └── sizing/            (3 plays)  - percent, risk_based, fixed_usdt
-├── tier10_position_policy/(6 plays)  - long_only, short_only, long_short, exit modes
-├── tier11_actions/        (8 plays)  - entry/exit long/short, case actions, alerts
-├── tier12_combinations/   (5 plays)  - mtf+indicators, structure+indicator, risk+sizing
-└── tier13_stress/         (6 plays)  - many_indicators, deep_nesting, max_features
-```
+### 1. Unified Indicator System (Complete)
 
-**Code Changes**:
-- `src/backtest/play/play.py`: Added SyntheticConfig dataclass, updated from_dict(), recursive load_play()
-- `src/backtest/engine_factory.py`: Auto-create synthetic provider from play.synthetic
-- `src/backtest/play/__init__.py`: Export SyntheticConfig
+Implemented a single indicator system that works identically across backtest, demo, and live modes.
 
-**Validation Test Results** (sample):
-| Play | Trades | Final Equity | Status |
-|------|--------|--------------|--------|
-| V_T0_001_minimal | 1771 | 99.50 | PASS |
-| V_T5_001_ema | 2211 | 99.85 | PASS |
-| V_T8_001_high_tf_filter | 4052 | 99.82 | PASS |
+**5 Phases Completed**:
+- **Phase 1**: Registry as single source of truth (incremental_class field, validation)
+- **Phase 2**: Unified IndicatorProvider protocol (BacktestIndicatorProvider, LiveIndicatorProvider)
+- **Phase 3**: Live adapter refactor (removed hardcoded lists, uses registry)
+- **Phase 4**: Expanded incremental coverage (6 → 11 O(1) indicators)
+- **Phase 5**: Cleanup (INCREMENTAL_INDICATORS now computed from registry)
 
----
+**11 Incremental Indicators** (O(1) for live trading):
+`ema`, `sma`, `rsi`, `atr`, `macd`, `bbands`, `stoch`, `adx`, `supertrend`, `cci`, `willr`
 
-## Current Architecture (VERIFIED)
+**New Files**:
+- `src/indicators/provider.py` - IndicatorProvider protocol + implementations
+- `docs/UNIFIED_INDICATOR_PLAN.md` - Implementation tracking document
 
-```
-Engine Migration: COMPLETE
-├── PlayEngine             Implemented (src/engine/play_engine.py)
-├── Factory functions      Working (create_engine_from_play, PlayEngineFactory)
-├── Backtest runner        Uses PlayEngine
-├── Validation plays       Same code path as regular backtests
-└── Synthetic data         Auto-created from play.synthetic config
-```
+**Key Changes**:
+- `src/backtest/indicator_registry.py` - Added `incremental_class` field, helpers, validation
+- `src/indicators/incremental.py` - 5 new incremental classes, factory registry
+- `src/engine/adapters/live.py` - Uses registry instead of hardcoded list
+- `src/indicators/__init__.py` - Export new classes
+
+### 2. DSL Cookbook Review (Complete)
+
+Comprehensive review and fixes to `docs/PLAY_DSL_COOKBOOK.md`:
+
+| Fix | Details |
+|-----|---------|
+| Multi-output indicator names | Fixed to match registry (k/d not stoch_k/stoch_d) |
+| Example 3 bug | ema_50_4h → ema_50_12h (matched feature) |
+| Indicator counts | 43 total (25 single, 18 multi) |
+| ppo, trix | Moved to multi-output section |
+| Deprecation section | blocks: is REMOVED (not deprecated) |
+| Timeframes wording | "3 timeframes + exec pointer" |
+| Risk config | Added note: risk: and risk_model: both valid |
+| Structure depends_on | Added syntax clarification (source: vs swing:) |
+| Position policy | Added reserved flags (allow_flip, etc.) |
 
 ---
 
-## Validation Play Integration
+## Current Architecture
 
-Validation plays follow the **same code path** as regular backtests:
-
-```python
-from src.backtest.play import load_play
-from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
-
-play = load_play('V_T5_001_ema')  # Loads from tier subdirectory
-# play.synthetic = SyntheticConfig(pattern='trend_up_clean', bars=300, seed=5001)
-
-engine = create_engine_from_play(play)  # Auto-creates synthetic provider
-result = run_engine_with_play(engine, play)  # Standard backtest execution
 ```
+Unified Indicator System: COMPLETE
+├── Registry (indicator_registry.py)     Single source of truth
+├── Incremental (incremental.py)         11 O(1) indicators
+├── Provider Protocol (provider.py)      Unified interface
+├── BacktestIndicatorProvider            Wraps FeedStore arrays
+├── LiveIndicatorProvider                Wraps indicator cache
+└── Live Adapter (live.py)               Registry-driven, no hardcoded lists
+```
+
+**Adding a new indicator = 1 file change** (registry entry + class if incremental)
 
 ---
 
-## Test Plays Available
+## Commits This Session
 
 ```
-tests/functional/plays/
-├── T_001_minimal.yml              # Smoke test
-├── test_ema_stack_supertrend.yml
-└── trend_follower.yml
-
-tests/validation/plays/
-├── tier0_smoke/ through tier13_stress/
-└── 125 validation plays total
+0221141 docs(dsl): comprehensive cookbook review and fixes
+8f35bb1 docs(dsl): fix indicator registry and add synthetic data section
+aa639a0 feat(indicators): implement unified indicator system with registry-driven architecture
 ```
 
 ---
@@ -101,24 +82,18 @@ tests/validation/plays/
 ## Quick Commands
 
 ```bash
-# Smoke test
-python trade_cli.py --smoke full
+# Smoke tests
+python trade_cli.py --smoke backtest
+python trade_cli.py --smoke forge
 
-# Run backtest (real data)
+# Run backtest
 python trade_cli.py backtest run --play <name> --fix-gaps
 
-# Run backtest (synthetic data - default pattern)
-python trade_cli.py backtest run --play <name> --synthetic --synthetic-bars 500
+# Check incremental indicators
+python -c "from src.indicators import list_incremental_indicators; print(list_incremental_indicators())"
 
-# Run backtest (synthetic - specific pattern)
-python trade_cli.py backtest run --play <name> --synthetic --synthetic-pattern breakout_false
-
-# Load and run validation play (Python)
-from src.backtest.play import load_play
-play = load_play('V_T5_001_ema')  # Auto-finds in tier subdirectories
-
-# Indicator audit
-python trade_cli.py backtest audit-toolkit
+# Verify registry
+python -c "from src.backtest.indicator_registry import get_registry; r=get_registry(); print(f'{len(r.list_all())} indicators')"
 ```
 
 ---
@@ -128,40 +103,37 @@ python trade_cli.py backtest audit-toolkit
 | File | Purpose |
 |------|---------|
 | `CLAUDE.md` | Project rules |
-| `docs/PLAY_DSL_COOKBOOK.md` | DSL reference |
-| `docs/TODO.md` | Active work tracking |
-| `src/backtest/play/play.py` | Play class + SyntheticConfig |
-| `src/backtest/engine_factory.py` | Engine factory with synthetic support |
+| `docs/PLAY_DSL_COOKBOOK.md` | DSL reference (43 indicators, 3-feed + exec) |
+| `docs/UNIFIED_INDICATOR_PLAN.md` | Indicator system implementation plan |
+| `src/backtest/indicator_registry.py` | Single source of truth for indicators |
+| `src/indicators/provider.py` | IndicatorProvider protocol |
+| `src/indicators/incremental.py` | 11 O(1) incremental indicators |
 
 ---
 
 ## Next Steps
 
-### P0: Validation Suite
-- [x] Create 125 validation plays across 14 tiers
-- [x] Integrate synthetic config into Play class
-- [x] Auto-create synthetic provider in engine factory
+### P0: Validation
 - [ ] Run full validation suite batch test
-- [ ] Fix any failing plays
+- [ ] Verify all 125 validation plays still pass
 
-### P1: DSL Enhancement
-- [ ] Start DSL validator + block layer (Phase 2 per roadmap)
-
-### P2: Live Trading
-- [ ] Complete live adapter stubs
+### P1: Live Trading Prep
+- [ ] Test LiveIndicatorProvider with real WebSocket data
 - [ ] Paper trading integration
+
+### P2: DSL Enhancement
+- [ ] Start DSL validator + block layer (Phase 2 per roadmap)
 
 ---
 
 ## Directory Structure
 
 ```
-src/engine/       # PlayEngine (mode-agnostic) - THE ENGINE
-src/indicators/   # 43 indicators
+src/engine/       # PlayEngine (mode-agnostic)
+src/indicators/   # 43 indicators, 11 incremental, provider protocol
 src/structures/   # 7 structure types
-src/backtest/     # Infrastructure (runner, factory, data prep) - NOT AN ENGINE
+src/backtest/     # Infrastructure (runner, factory, registry)
 src/data/         # DuckDB data layer
-src/cli/          # CLI interface
-docs/brainstorm/  # Vision and planning docs
+docs/             # DSL cookbook, unified indicator plan, handoff
 tests/validation/ # 125 validation plays in tier subdirectories
 ```
