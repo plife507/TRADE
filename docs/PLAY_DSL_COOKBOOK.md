@@ -97,7 +97,7 @@ description: "Description"     # What it does
 # ═══════════════════════════════════════════════════════════════════════════════
 symbol: "BTCUSDT"              # Trading pair (USDT pairs only)
 
-# REQUIRED: Explicit timeframes section (all 4 keys required)
+# REQUIRED: Explicit timeframes section (3 timeframes + exec pointer)
 timeframes:
   low_tf: "15m"                # Lowest analysis timeframe (1m, 3m, 5m, 15m)
   med_tf: "1h"                 # Medium timeframe for context (30m, 1h, 2h, 4h)
@@ -205,6 +205,13 @@ variables:
 # - If exit_long fires before SL/TP → signal exit
 # - If SL/TP hit before signal → mechanical exit
 ```
+
+**Reserved flags (not yet supported):**
+- `allow_flip: false` - Position flipping (long→short in one action)
+- `allow_scale_in: false` - Adding to existing positions
+- `allow_scale_out: false` - Partial position reduction
+
+These are reserved for future use and must remain `false`.
 
 ### Variables (Template Resolution)
 
@@ -581,6 +588,10 @@ Structures provide O(1) incremental market structure detection.
 | `fibonacci` | Fib retracement/extension levels | `swing` |
 | `rolling_window` | O(1) rolling min/max | None |
 | `derived_zone` | Fibonacci zones from pivots | `source` (not `swing`) |
+
+**Dependency syntax:**
+- Most structures: `depends_on: {swing: <swing_key>}`
+- `derived_zone` only: `depends_on: {source: <swing_key>}` (uses `source:` not `swing:`)
 
 ### Structure YAML Format (Role-Based)
 
@@ -1226,7 +1237,7 @@ The timeframe system uses **3 feeds** with an **exec role pointer**:
 ### Config Fields (REQUIRED)
 
 ```yaml
-# REQUIRED: Explicit timeframes section (all 4 keys required)
+# REQUIRED: Explicit timeframes section (3 timeframes + exec pointer)
 timeframes:
   low_tf: "15m"      # Lowest analysis timeframe - engine always loads this data
   med_tf: "1h"       # Medium timeframe for context (same as low_tf if single-timeframe)
@@ -1586,7 +1597,13 @@ sizing:
   value: 1000              # $1000 per trade
 ```
 
-### Simplified Risk Config
+### Simplified Risk Config (RECOMMENDED)
+
+> **Two formats are supported:**
+> - `risk:` - Simplified shorthand (recommended for most strategies)
+> - `risk_model:` - Full format (for advanced configurations)
+>
+> Both are equivalent - use whichever suits your needs.
 
 ```yaml
 # Shorthand (most common) - percentages are ROI-based
@@ -1815,7 +1832,7 @@ actions:
   entry_long:
     all:
       # high_tf trend filter
-      - ["close", ">", "ema_50_4h"]
+      - ["close", ">", "ema_50_12h"]
       # Near fib level
       - lhs: {feature_id: "close"}
         op: near_pct
@@ -1827,7 +1844,7 @@ actions:
   exit_long:
     any:
       - ["rsi_14", ">", 70]
-      - ["close", "<", "ema_50_4h"]
+      - ["close", "<", "ema_50_12h"]
 
 risk:
   stop_loss_pct: 2.0
@@ -2300,18 +2317,23 @@ python trade_cli.py forge validate-patterns
 
 ## Deprecation Notes
 
-### Deprecated Fields (Do NOT Use)
+### Removed Fields (Will Error)
+
+| Removed | Use Instead | Notes |
+|---------|-------------|-------|
+| `blocks:` (top-level) | `actions:` | Removed in v3.0.0 - will be silently ignored |
+| `signal_rules:` | `actions:` | Legacy format - no longer parsed |
+
+### Deprecated Fields (Still Work, Will Be Removed)
 
 | Deprecated | Use Instead | Notes |
 |------------|-------------|-------|
-| `blocks:` (top-level) | `actions:` | Renamed in v3.0.0 |
-| `signal_rules:` | `actions:` | Legacy format |
-| `margin_mode: "isolated"` | `margin_mode: "isolated_usdt"` | Be explicit about currency |
+| `margin_mode: "isolated"` | `margin_mode: "isolated_usdt"` | Will error with helpful message |
 
 ### Migration Examples
 
 ```yaml
-# DEPRECATED
+# REMOVED - Will NOT work
 blocks:
   entry_long:
     - ["ema_9", ">", "ema_21"]
@@ -2323,7 +2345,7 @@ actions:
 ```
 
 ```yaml
-# DEPRECATED
+# DEPRECATED - Will error with helpful message
 account:
   margin_mode: "isolated"  # Ambiguous
 
@@ -2332,9 +2354,10 @@ account:
   margin_mode: "isolated_usdt"  # Explicit
 ```
 
-### Engine Behavior on Deprecated Fields
+### Engine Behavior
 
-Currently the engine still accepts `blocks:` and `margin_mode: "isolated"` for backward compatibility. This will be removed. Always use the correct forms.
+- `blocks:` is **no longer supported** - the Play loader only reads `actions:`
+- `margin_mode: "isolated"` will raise a `ValueError` directing you to use `"isolated_usdt"`
 
 ---
 
@@ -2359,6 +2382,11 @@ Currently the engine still accepts `blocks:` and `margin_mode: "isolated"` for b
 | 2026-01-25 | Fixed multi-output indicator names to match registry (k/d not stoch_k/stoch_d, etc.) |
 | 2026-01-25 | Added incremental indicator column - 11 O(1) indicators for live trading |
 | 2026-01-25 | Moved ppo, trix to multi-output section; corrected counts (43 total: 25 single, 18 multi) |
+| 2026-01-25 | Fixed Example 3 bug: ema_50_4h → ema_50_12h (matched feature declaration) |
+| 2026-01-25 | Updated deprecation section: blocks: is removed (not deprecated), margin_mode errors helpfully |
+| 2026-01-25 | Added risk config equivalence note (risk: and risk_model: both valid) |
+| 2026-01-25 | Added structure dependency syntax clarification (source: vs swing:) |
+| 2026-01-25 | Added reserved position policy flags documentation (allow_flip, etc.)
 
 ---
 
