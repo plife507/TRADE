@@ -18,6 +18,9 @@ class StopLossType(str, Enum):
     PERCENT = "percent"
     STRUCTURE = "structure"
     FIXED_POINTS = "fixed_points"
+    # Trailing stop types (stop follows price in profitable direction)
+    TRAILING_ATR = "trailing_atr"
+    TRAILING_PCT = "trailing_pct"
 
 
 class TakeProfitType(str, Enum):
@@ -33,6 +36,107 @@ class SizingModel(str, Enum):
     PERCENT_EQUITY = "percent_equity"
     FIXED_USDT = "fixed_usdt"
     RISK_BASED = "risk_based"
+
+
+@dataclass(frozen=True)
+class TrailingConfig:
+    """
+    Configuration for trailing stops.
+
+    Trailing stops move with the price as it moves in the profitable direction,
+    locking in gains. The stop never moves backwards (adverse direction).
+
+    Examples:
+        # Trail 2x ATR behind price
+        TrailingConfig(atr_multiplier=2.0)
+
+        # Trail 1.5% behind price, start trailing after 1% profit
+        TrailingConfig(trail_pct=1.5, activation_pct=1.0)
+    """
+    # ATR-based trailing (distance = ATR × multiplier)
+    atr_multiplier: float = 2.0
+    atr_feature_id: str | None = None  # Required for ATR trailing
+
+    # Percent-based trailing (distance = price × trail_pct / 100)
+    trail_pct: float | None = None
+
+    # Activation threshold (start trailing after X% profit)
+    # 0.0 = trail immediately from entry
+    activation_pct: float = 0.0
+
+    def __post_init__(self):
+        """Validate config."""
+        if self.atr_multiplier <= 0:
+            raise ValueError(f"atr_multiplier must be positive. Got: {self.atr_multiplier}")
+        if self.trail_pct is not None and self.trail_pct <= 0:
+            raise ValueError(f"trail_pct must be positive. Got: {self.trail_pct}")
+        if self.activation_pct < 0:
+            raise ValueError(f"activation_pct must be >= 0. Got: {self.activation_pct}")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict for serialization."""
+        result = {
+            "atr_multiplier": self.atr_multiplier,
+            "activation_pct": self.activation_pct,
+        }
+        if self.atr_feature_id:
+            result["atr_feature_id"] = self.atr_feature_id
+        if self.trail_pct is not None:
+            result["trail_pct"] = self.trail_pct
+        return result
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "TrailingConfig":
+        """Create from dict."""
+        return cls(
+            atr_multiplier=float(d.get("atr_multiplier", 2.0)),
+            atr_feature_id=d.get("atr_feature_id"),
+            trail_pct=float(d["trail_pct"]) if d.get("trail_pct") else None,
+            activation_pct=float(d.get("activation_pct", 0.0)),
+        )
+
+
+@dataclass(frozen=True)
+class BreakEvenConfig:
+    """
+    Configuration for break-even stops.
+
+    Moves stop to entry price (plus optional offset) after reaching
+    a profit threshold. Prevents winning trades from becoming losers.
+
+    Examples:
+        # Move to BE after 1% profit, with 0.1% buffer above entry
+        BreakEvenConfig(activation_pct=1.0, offset_pct=0.1)
+    """
+    # Profit threshold to activate break-even (as % of entry price)
+    activation_pct: float = 1.0
+
+    # Offset above/below entry to place BE stop (as % of entry price)
+    # Positive offset for longs: stop slightly above entry
+    # Positive offset for shorts: stop slightly below entry
+    offset_pct: float = 0.1
+
+    def __post_init__(self):
+        """Validate config."""
+        if self.activation_pct <= 0:
+            raise ValueError(f"activation_pct must be positive. Got: {self.activation_pct}")
+        if self.offset_pct < 0:
+            raise ValueError(f"offset_pct must be >= 0. Got: {self.offset_pct}")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict for serialization."""
+        return {
+            "activation_pct": self.activation_pct,
+            "offset_pct": self.offset_pct,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "BreakEvenConfig":
+        """Create from dict."""
+        return cls(
+            activation_pct=float(d.get("activation_pct", 1.0)),
+            offset_pct=float(d.get("offset_pct", 0.1)),
+        )
 
 
 @dataclass(frozen=True)
@@ -160,20 +264,37 @@ class RiskModel:
     stop_loss: StopLossRule
     take_profit: TakeProfitRule
     sizing: SizingRule
+    trailing_config: TrailingConfig | None = None
+    break_even_config: BreakEvenConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
-        return {
+        result = {
             "stop_loss": self.stop_loss.to_dict(),
             "take_profit": self.take_profit.to_dict(),
             "sizing": self.sizing.to_dict(),
         }
+        if self.trailing_config:
+            result["trailing"] = self.trailing_config.to_dict()
+        if self.break_even_config:
+            result["break_even"] = self.break_even_config.to_dict()
+        return result
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "RiskModel":
         """Create from dict."""
+        trailing = None
+        if d.get("trailing"):
+            trailing = TrailingConfig.from_dict(d["trailing"])
+
+        break_even = None
+        if d.get("break_even"):
+            break_even = BreakEvenConfig.from_dict(d["break_even"])
+
         return cls(
             stop_loss=StopLossRule.from_dict(d["stop_loss"]),
             take_profit=TakeProfitRule.from_dict(d["take_profit"]),
             sizing=SizingRule.from_dict(d["sizing"]),
+            trailing_config=trailing,
+            break_even_config=break_even,
         )

@@ -204,6 +204,11 @@ class PlayEngineFactory:
             maker_fee_rate=account.fee_model.maker_bps / 10000.0,  # Convert bps to rate
             slippage_bps=account.slippage_bps or 2.0,
             persist_state=False,  # Backtest doesn't need state persistence
+            # SL vs Liquidation safety check (default: reject unsafe entries)
+            on_sl_beyond_liq="reject",
+            maintenance_margin_rate=0.004,  # Bybit default MMR
+            # Max drawdown (0 = disabled, set from Play account if available)
+            max_drawdown_pct=getattr(account, 'max_drawdown_pct', 25.0),
         )
 
         # Apply overrides
@@ -264,6 +269,11 @@ class PlayEngineFactory:
             slippage_bps=account.slippage_bps or 2.0,
             persist_state=True,  # Live needs state persistence
             state_save_interval=10,  # Save frequently in live mode
+            # SL vs Liquidation safety check (default: reject unsafe entries)
+            on_sl_beyond_liq="reject",
+            maintenance_margin_rate=0.004,  # Bybit default MMR
+            # Max drawdown (0 = disabled, set from Play account if available)
+            max_drawdown_pct=getattr(account, 'max_drawdown_pct', 25.0),
         )
 
         # Apply overrides
@@ -387,8 +397,7 @@ def create_backtest_engine(
     accepts pre-built FeedStore and SimulatedExchange instances.
 
     This enables the unified engine path where BacktestRunner can drive
-    PlayEngine with the same components used by the old BacktestEngine,
-    ensuring identical trade hashes.
+    PlayEngine with pre-built data components, ensuring deterministic results.
 
     Args:
         play: Play instance with strategy definition
@@ -406,10 +415,9 @@ def create_backtest_engine(
         PlayEngine configured for backtest with injected components
 
     Example:
-        # Build components from old BacktestEngine (for parity)
-        old_engine = create_engine_from_play(play, window_start, window_end)
-        old_engine.prepare_backtest_frame()
-        old_engine._build_feed_stores()
+        # Build components via DataBuilder
+        builder = DataBuilder(config, window, play, tf_mapping)
+        result = builder.build()
 
         # Create unified engine with same components
         unified_engine = create_backtest_engine(

@@ -20,6 +20,8 @@ from .risk_model import (
     TakeProfitRule,
     SizingRule,
     RiskModel,
+    TrailingConfig,
+    BreakEvenConfig,
 )
 from .play import (
     SyntheticConfig,
@@ -46,6 +48,8 @@ __all__ = [
     "TakeProfitRule",
     "SizingRule",
     "RiskModel",
+    "TrailingConfig",
+    "BreakEvenConfig",
     # Play
     "SyntheticConfig",
     "PositionMode",

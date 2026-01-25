@@ -69,14 +69,15 @@ class PlayEngineConfig:
     # Mode
     mode: Literal["backtest", "demo", "live", "shadow"]
 
-    # Risk parameters (unified with BacktestEngine)
+    # Risk parameters
     initial_equity: float = 10000.0
     sizing_model: str = "percent_equity"  # "percent_equity", "risk_based", "fixed_notional"
     risk_per_trade_pct: float = 1.0
     max_leverage: float = 2.0
     min_trade_usdt: float = 10.0
+    max_drawdown_pct: float = 0.0  # 0 = disabled, >0 = halt at this drawdown %
 
-    # Risk policy (matches BacktestEngine)
+    # Risk policy
     risk_mode: str = "none"  # "none" or "rules"
 
     # Fee model (loaded from DEFAULTS if None)
@@ -86,6 +87,13 @@ class PlayEngineConfig:
 
     # Entry gate behavior (matches RiskProfileConfig)
     include_est_close_fee_in_entry_gate: bool = False
+
+    # SL vs Liquidation safety check
+    # "reject": Reject entry if SL beyond liquidation price (default, safest)
+    # "adjust": Auto-tighten SL to safe distance from liquidation
+    # "warn": Allow entry but log warning
+    on_sl_beyond_liq: str = "reject"
+    maintenance_margin_rate: float = 0.004  # Bybit MMR for liq calculation
 
     # State persistence
     persist_state: bool = False
@@ -192,7 +200,7 @@ class PlayEngine:
         # Snapshot view for rule evaluation (built per bar)
         self._snapshot_view: RuntimeSnapshotView | None = None
 
-        # Unified sizing model (matches BacktestEngine behavior)
+        # Unified sizing model
         sizing_config = SizingConfig(
             initial_equity=config.initial_equity,
             sizing_model=config.sizing_model,
@@ -204,7 +212,7 @@ class PlayEngine:
         )
         self._sizing_model = SizingModel(sizing_config)
 
-        # Risk policy for signal filtering (matches BacktestEngine)
+        # Risk policy for signal filtering
         # Lazy initialized when first signal is evaluated
         self._risk_policy = None
 
@@ -271,7 +279,7 @@ class PlayEngine:
         return self._tf_index_manager.med_tf_idx
 
     def set_play_hash(self, play_hash: str) -> None:
-        """Set play hash for debug log correlation (compatibility with BacktestEngine)."""
+        """Set play hash for debug log correlation."""
         self._play_hash = play_hash
 
     def set_on_snapshot(
@@ -408,7 +416,6 @@ class PlayEngine:
 
         # Entry signals (LONG/SHORT)
         # Apply risk policy filtering (if risk_mode=rules)
-        # This matches BacktestEngine behavior (lines 1559-1573)
         if self.config.risk_mode == "rules":
             decision = self._check_risk_policy(signal)
             if not decision.allowed:
@@ -418,10 +425,41 @@ class PlayEngine:
                     error=f"Risk policy blocked: {decision.reason}",
                 )
 
+        # Validate SL vs liquidation price (CRITICAL safety check)
+        stop_loss = signal.metadata.get("stop_loss") if signal.metadata else None
+        if stop_loss is not None and self.config.on_sl_beyond_liq != "disabled":
+            sl_validation_result = self._validate_sl_vs_liquidation(signal, stop_loss)
+            if not sl_validation_result.valid:
+                mode = self.config.on_sl_beyond_liq
+                if mode == "reject":
+                    self.logger.warning(
+                        f"SL vs LIQ REJECTED: {sl_validation_result.reason} "
+                        f"(leverage={self.config.max_leverage}x)"
+                    )
+                    return OrderResult(
+                        success=False,
+                        error=f"SL beyond liquidation: {sl_validation_result.reason}",
+                    )
+                elif mode == "adjust" and sl_validation_result.adjusted_stop is not None:
+                    self.logger.warning(
+                        f"SL AUTO-ADJUSTED: {sl_validation_result.reason} -> "
+                        f"new SL={sl_validation_result.adjusted_stop:.2f}"
+                    )
+                    # Update signal metadata with adjusted stop
+                    if signal.metadata is None:
+                        signal.metadata = {}
+                    signal.metadata["stop_loss"] = sl_validation_result.adjusted_stop
+                    signal.metadata["sl_adjusted_from"] = stop_loss
+                elif mode == "warn":
+                    self.logger.warning(
+                        f"SL vs LIQ WARNING: {sl_validation_result.reason} "
+                        f"(proceeding anyway - on_sl_beyond_liq=warn)"
+                    )
+
         # Apply risk sizing using unified SizingModel
         sized_usdt = self._size_position(signal)
 
-        # Validate minimum size (matches BacktestEngine line 1583-1587)
+        # Validate minimum size
         if sized_usdt < self.config.min_trade_usdt:
             self.logger.debug(
                 f"Size too small ({sized_usdt:.2f} < {self.config.min_trade_usdt}), skipping"
@@ -529,7 +567,6 @@ class PlayEngine:
         Update high_tf/med_tf forward-fill indices based on current candle.
 
         Delegates to shared TFIndexManager (src/engine/timeframe/).
-        This ensures identical forward-fill behavior with BacktestEngine.
 
         Also updates high_tf incremental state when high_tf bar closes (for structures).
         """
@@ -737,8 +774,7 @@ class PlayEngine:
         """
         Apply unified risk sizing to signal.
 
-        Uses the shared SizingModel to ensure identical position sizing
-        behavior between PlayEngine and BacktestEngine.
+        Uses the shared SizingModel for position sizing.
 
         The sizing model supports:
             - percent_equity: Bybit margin model (margin * leverage)
@@ -788,7 +824,6 @@ class PlayEngine:
         Get or create the risk policy instance.
 
         Lazy initialization to avoid import at module level.
-        Uses the same RiskPolicy abstraction as BacktestEngine.
 
         Returns:
             RiskPolicy instance (NoneRiskPolicy or RulesRiskPolicy)
@@ -819,8 +854,7 @@ class PlayEngine:
         """
         Check if a signal passes risk policy rules.
 
-        This mirrors BacktestEngine's risk policy check (lines 1559-1573).
-        The check uses current exchange state for accurate risk evaluation.
+        Uses current exchange state for accurate risk evaluation.
 
         Args:
             signal: Trading signal to check
@@ -862,6 +896,57 @@ class PlayEngine:
         """Save current state to store."""
         state = self.get_state()
         self.state_store.save_state(self.engine_id, state)
+
+    def _validate_sl_vs_liquidation(
+        self,
+        signal: "Signal",
+        stop_loss: float,
+    ) -> "StopLiqValidationResult":
+        """
+        Validate that stop-loss triggers before liquidation price.
+
+        High leverage positions can get liquidated before SL fires if the
+        stop distance exceeds the liquidation distance.
+
+        Args:
+            signal: Trading signal with direction
+            stop_loss: Stop-loss price
+
+        Returns:
+            StopLiqValidationResult with validation status
+        """
+        from ..backtest.simulated_risk_manager import (
+            validate_stop_vs_liquidation,
+            StopLiqValidationResult,
+        )
+
+        # Get entry price approximation (current candle close)
+        entry_price = None
+        if self._current_bar_index >= 0:
+            try:
+                candle = self.data.get_candle(self._current_bar_index)
+                entry_price = candle.close
+            except (IndexError, AttributeError):
+                pass
+
+        # Also check signal metadata for entry_price
+        if entry_price is None and signal.metadata:
+            entry_price = signal.metadata.get("entry_price")
+
+        if entry_price is None or entry_price <= 0:
+            # Can't validate without entry price, allow entry
+            return StopLiqValidationResult(valid=True)
+
+        # Determine direction
+        direction = 1 if signal.direction.upper() == "LONG" else -1
+
+        return validate_stop_vs_liquidation(
+            entry_price=entry_price,
+            stop_price=stop_loss,
+            direction=direction,
+            leverage=self.config.max_leverage,
+            mmr=self.config.maintenance_margin_rate,
+        )
 
     def _evaluate_with_1m_subloop(
         self,

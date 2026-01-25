@@ -492,6 +492,9 @@ class SimulatedExchange:
         funding_events: list[FundingEvent] | None = None,
         quote_feed: "FeedStore | None" = None,
         exec_1m_range: tuple[int, int] | None = None,
+        trailing_config: dict | None = None,
+        break_even_config: dict | None = None,
+        atr_value: float | None = None,
     ) -> StepResult:
         """
         Process a new bar - main simulation step.
@@ -508,6 +511,9 @@ class SimulatedExchange:
             funding_events: Funding events to process
             quote_feed: Optional 1m FeedStore for granular TP/SL checking
             exec_1m_range: Optional (start_idx, end_idx) of 1m bars within this exec bar
+            trailing_config: Optional trailing stop config {"atr_multiplier", "trail_pct", "activation_pct"}
+            break_even_config: Optional break-even config {"activation_pct", "offset_pct"}
+            atr_value: Optional ATR value for ATR-based trailing stops
 
         Returns:
             StepResult with mark_price, fills, and all step events
@@ -562,7 +568,27 @@ class SimulatedExchange:
                     fills.append(exit_fill)
             self._pending_close_reason = None
             self._pending_close_percent = 100.0  # Reset to default
-        
+
+        # 4b. Update dynamic stops (trailing, break-even) before TP/SL check
+        if self.position:
+            # Update trailing stop if configured
+            if trailing_config is not None:
+                self.update_trailing_stop(
+                    current_price=mark_price,
+                    atr_value=atr_value,
+                    trail_pct=trailing_config.get("trail_pct"),
+                    atr_multiplier=trailing_config.get("atr_multiplier", 2.0),
+                    activation_pct=trailing_config.get("activation_pct", 0.0),
+                )
+
+            # Update break-even stop if configured
+            if break_even_config is not None:
+                self.update_break_even_stop(
+                    current_price=mark_price,
+                    activation_pct=break_even_config.get("activation_pct", 1.0),
+                    offset_pct=break_even_config.get("offset_pct", 0.1),
+                )
+
         # 5. Check TP/SL exits (1m granular or exec-bar OHLC)
         if self.position:
             exit_reason = None
@@ -1117,4 +1143,147 @@ class SimulatedExchange:
             "total_trades": len(self.trades),
             "total_fees_paid": self._ledger.state.total_fees_paid,
         }
+
+    def update_trailing_stop(
+        self,
+        current_price: float,
+        atr_value: float | None = None,
+        trail_pct: float | None = None,
+        atr_multiplier: float = 2.0,
+        activation_pct: float = 0.0,
+    ) -> float | None:
+        """
+        Update trailing stop based on current price.
+
+        Only moves stop in favorable direction (never backwards).
+        Returns new stop price if updated, None if no change.
+
+        Args:
+            current_price: Current market price (mark price)
+            atr_value: ATR value for ATR-based trailing (optional)
+            trail_pct: Percent for percent-based trailing (optional)
+            atr_multiplier: Multiplier for ATR-based trailing
+            activation_pct: Profit % required to activate trailing
+
+        Returns:
+            New stop price if updated, None otherwise
+        """
+        if self.position is None:
+            return None
+
+        pos = self.position
+        entry = pos.entry_price
+        is_long = pos.side == OrderSide.LONG
+
+        # Initialize tracking if needed
+        if pos.initial_stop is None and pos.stop_loss is not None:
+            pos.initial_stop = pos.stop_loss
+        if pos.peak_favorable_price is None:
+            pos.peak_favorable_price = entry
+
+        # Update peak favorable price
+        if is_long:
+            pos.peak_favorable_price = max(pos.peak_favorable_price or entry, current_price)
+        else:
+            pos.peak_favorable_price = min(pos.peak_favorable_price or entry, current_price)
+
+        # Check activation threshold
+        if activation_pct > 0 and not pos.trailing_active:
+            profit_pct = abs(pos.peak_favorable_price - entry) / entry * 100
+            if profit_pct < activation_pct:
+                return None  # Not yet activated
+            pos.trailing_active = True
+
+        # Calculate new trailing stop
+        new_stop = None
+        if atr_value is not None and atr_value > 0:
+            # ATR-based trailing
+            if is_long:
+                new_stop = pos.peak_favorable_price - (atr_value * atr_multiplier)
+            else:
+                new_stop = pos.peak_favorable_price + (atr_value * atr_multiplier)
+        elif trail_pct is not None and trail_pct > 0:
+            # Percent-based trailing
+            trail_distance = pos.peak_favorable_price * trail_pct / 100
+            if is_long:
+                new_stop = pos.peak_favorable_price - trail_distance
+            else:
+                new_stop = pos.peak_favorable_price + trail_distance
+        else:
+            return None  # No trailing config
+
+        # Only move stop in favorable direction
+        if pos.stop_loss is None:
+            pos.stop_loss = new_stop
+            return new_stop
+
+        if is_long and new_stop > pos.stop_loss:
+            pos.stop_loss = new_stop
+            return new_stop
+        elif not is_long and new_stop < pos.stop_loss:
+            pos.stop_loss = new_stop
+            return new_stop
+
+        return None
+
+    def update_break_even_stop(
+        self,
+        current_price: float,
+        activation_pct: float = 1.0,
+        offset_pct: float = 0.1,
+    ) -> float | None:
+        """
+        Update stop to break-even after reaching profit threshold.
+
+        Only triggers once per position. Moves stop to entry price
+        plus a small offset for safety.
+
+        Args:
+            current_price: Current market price
+            activation_pct: Profit % required to move stop to BE
+            offset_pct: Offset % above/below entry for BE stop
+
+        Returns:
+            New stop price if updated, None otherwise
+        """
+        if self.position is None:
+            return None
+
+        pos = self.position
+
+        # BE only triggers once
+        if pos.be_activated:
+            return None
+
+        entry = pos.entry_price
+        is_long = pos.side == OrderSide.LONG
+
+        # Calculate profit percentage
+        if is_long:
+            profit_pct = (current_price - entry) / entry * 100
+        else:
+            profit_pct = (entry - current_price) / entry * 100
+
+        # Check if activation threshold reached
+        if profit_pct < activation_pct:
+            return None
+
+        # Calculate BE stop with offset
+        if is_long:
+            new_stop = entry * (1 + offset_pct / 100)
+        else:
+            new_stop = entry * (1 - offset_pct / 100)
+
+        # Only move stop if new stop is better
+        if pos.stop_loss is None or (is_long and new_stop > pos.stop_loss) or \
+           (not is_long and new_stop < pos.stop_loss):
+            # Save original stop if not already saved
+            if pos.initial_stop is None:
+                pos.initial_stop = pos.stop_loss
+            pos.stop_loss = new_stop
+            pos.be_activated = True
+            return new_stop
+
+        pos.be_activated = True  # Mark as activated even if stop wasn't moved
+        return None
 

@@ -182,12 +182,17 @@ class Order:
 class Position:
     """
     Currently open position.
-    
+
     Unified position type (replaces OpenPosition).
-    
+
     Phase 4 additions:
     - entry_bar_index: Bar index at entry (for trade duration tracking)
     - entry_ready: Snapshot readiness state at entry
+
+    Dynamic stop tracking:
+    - initial_stop: Original stop loss before trailing/BE adjustments
+    - trailing_active: Whether trailing stop is activated
+    - be_activated: Whether break-even stop has been triggered
     """
     position_id: str
     symbol: str
@@ -209,6 +214,11 @@ class Position:
     max_price: float | None = None
     # Phase 12: Cumulative funding PnL (applied at 8h settlements)
     funding_pnl_cumulative: float = 0.0
+    # Dynamic stop tracking
+    initial_stop: float | None = None  # Original SL before trailing/BE
+    trailing_active: bool = False  # Whether trailing has been activated
+    be_activated: bool = False  # Whether break-even has been triggered
+    peak_favorable_price: float | None = None  # Best price for trailing stop calc
 
     def unrealized_pnl(self, mark_price: float) -> float:
         """Calculate unrealized PnL at given mark price."""

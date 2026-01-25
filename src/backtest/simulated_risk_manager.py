@@ -12,7 +12,7 @@ REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from ..core.risk_manager import Signal
 from .system_config import RiskProfileConfig
@@ -20,6 +20,152 @@ from .types import Trade
 
 if TYPE_CHECKING:
     from .runtime.snapshot_view import RuntimeSnapshotView
+
+
+@dataclass
+class StopLiqValidationResult:
+    """Result of SL vs liquidation validation."""
+    valid: bool
+    reason: str | None = None
+    adjusted_stop: float | None = None  # Set if auto-adjusted
+    liq_price: float | None = None
+    sl_distance_pct: float | None = None
+    liq_distance_pct: float | None = None
+
+
+def calculate_liquidation_price_simple(
+    entry_price: float,
+    leverage: float,
+    direction: int,  # 1 for long, -1 for short
+    mmr: float = 0.004,  # Bybit maintenance margin rate (0.4%)
+) -> float:
+    """
+    Calculate liquidation price for a leveraged position.
+
+    Uses simplified formula assuming position fills at entry_price with
+    initial margin = 1/leverage.
+
+    For LONG:
+      liq_price = entry × (1 - 1/leverage + mmr)
+
+    For SHORT:
+      liq_price = entry × (1 + 1/leverage - mmr)
+
+    Args:
+        entry_price: Entry fill price
+        leverage: Position leverage (e.g., 50 for 50x)
+        direction: 1 for long, -1 for short
+        mmr: Maintenance margin rate (default 0.4% for Bybit)
+
+    Returns:
+        Estimated liquidation price
+    """
+    if leverage <= 0:
+        return 0.0
+
+    imr = 1.0 / leverage  # Initial margin rate
+
+    if direction == 1:  # Long
+        # Longs liquidate when price drops
+        liq_price = entry_price * (1 - imr + mmr)
+    else:  # Short
+        # Shorts liquidate when price rises
+        liq_price = entry_price * (1 + imr - mmr)
+
+    return max(0.0, liq_price)
+
+
+def validate_stop_vs_liquidation(
+    entry_price: float,
+    stop_price: float,
+    direction: int,  # 1 for long, -1 for short
+    leverage: float,
+    mmr: float = 0.004,
+    safety_buffer_pct: float = 0.1,  # 0.1% safety buffer
+) -> StopLiqValidationResult:
+    """
+    Validate that stop-loss triggers before liquidation price.
+
+    High leverage positions can get liquidated before SL fires if the
+    stop distance exceeds the liquidation distance.
+
+    Example: 50x leverage, 2% SL on long
+    - Liquidation at ~1.6% (1/50 = 2% - 0.4% mmr)
+    - 2% SL is BEYOND liquidation -> position liquidates first
+
+    Args:
+        entry_price: Entry fill price
+        stop_price: Stop-loss price
+        direction: 1 for long, -1 for short
+        leverage: Position leverage
+        mmr: Maintenance margin rate
+        safety_buffer_pct: Extra buffer to ensure SL fires before liq
+
+    Returns:
+        StopLiqValidationResult with validation status
+    """
+    if entry_price <= 0 or stop_price <= 0:
+        return StopLiqValidationResult(
+            valid=False,
+            reason="Invalid entry or stop price (must be > 0)",
+        )
+
+    liq_price = calculate_liquidation_price_simple(
+        entry_price=entry_price,
+        leverage=leverage,
+        direction=direction,
+        mmr=mmr,
+    )
+
+    # Calculate distances as percentages
+    if direction == 1:  # Long
+        sl_dist = entry_price - stop_price
+        liq_dist = entry_price - liq_price
+        sl_dist_pct = (sl_dist / entry_price) * 100
+        liq_dist_pct = (liq_dist / entry_price) * 100
+
+        # Check if SL is beyond (or at) liquidation
+        # Add safety buffer to liquidation distance
+        safe_liq_dist = liq_dist * (1 - safety_buffer_pct / 100)
+
+        if sl_dist >= safe_liq_dist:
+            # Calculate safe stop price (with buffer)
+            safe_stop = entry_price - safe_liq_dist
+            return StopLiqValidationResult(
+                valid=False,
+                reason=f"SL ${stop_price:.2f} ({sl_dist_pct:.2f}%) beyond liq ${liq_price:.2f} ({liq_dist_pct:.2f}%)",
+                adjusted_stop=safe_stop,
+                liq_price=liq_price,
+                sl_distance_pct=sl_dist_pct,
+                liq_distance_pct=liq_dist_pct,
+            )
+    else:  # Short
+        sl_dist = stop_price - entry_price
+        liq_dist = liq_price - entry_price
+        sl_dist_pct = (sl_dist / entry_price) * 100
+        liq_dist_pct = (liq_dist / entry_price) * 100
+
+        # Check if SL is beyond (or at) liquidation
+        safe_liq_dist = liq_dist * (1 - safety_buffer_pct / 100)
+
+        if sl_dist >= safe_liq_dist:
+            # Calculate safe stop price (with buffer)
+            safe_stop = entry_price + safe_liq_dist
+            return StopLiqValidationResult(
+                valid=False,
+                reason=f"SL ${stop_price:.2f} ({sl_dist_pct:.2f}%) beyond liq ${liq_price:.2f} ({liq_dist_pct:.2f}%)",
+                adjusted_stop=safe_stop,
+                liq_price=liq_price,
+                sl_distance_pct=sl_dist_pct,
+                liq_distance_pct=liq_dist_pct,
+            )
+
+    return StopLiqValidationResult(
+        valid=True,
+        liq_price=liq_price,
+        sl_distance_pct=sl_dist_pct if direction == 1 else (stop_price - entry_price) / entry_price * 100,
+        liq_distance_pct=liq_dist_pct if direction == 1 else (liq_price - entry_price) / entry_price * 100,
+    )
 
 
 @dataclass
@@ -123,11 +269,37 @@ class SimulatedRiskManager:
         - margin = $10,000 × 10% = $1,000
         - position = $1,000 × 1 = $1,000
 
-        The position is capped at equity × max_leverage (max borrowing).
+        IMPORTANT: Position is capped by:
+            1. max_position_equity_pct (default 95%) of equity
+            2. Fee buffer reservation (entry + exit fees)
+            3. equity × max_leverage (max borrowing)
         """
         equity = self._equity
         risk_pct = self._profile.risk_per_trade_pct
         max_lev = self._profile.max_leverage
+
+        # Get caps from profile (with defaults)
+        max_pos_pct = getattr(self._profile, "max_position_equity_pct", 95.0)
+        reserve_fees = getattr(self._profile, "reserve_fee_buffer", True)
+        taker_fee = self._profile.taker_fee_rate or 0.00055  # Default 5.5 bps
+
+        # Cap 1: Maximum position as % of total equity
+        # This prevents runaway compounding regardless of leverage
+        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+
+        # Cap 2: Fee reservation
+        # Reserve balance for entry fee + potential exit fee
+        if reserve_fees:
+            fee_factor = 1.0 + 2.0 * taker_fee  # Entry + exit fees
+            max_by_fees = equity * max_lev / fee_factor
+        else:
+            max_by_fees = float("inf")
+
+        # Cap 3: Leverage-based max
+        max_by_leverage = equity * max_lev
+
+        # Final max is the minimum of all caps
+        max_size = min(max_by_equity_pct, max_by_fees, max_by_leverage)
 
         # Margin is the % of equity we're committing
         margin = equity * (risk_pct / 100.0)
@@ -135,15 +307,24 @@ class SimulatedRiskManager:
         # Position size = margin × leverage (Bybit formula)
         size_usdt = margin * max_lev
 
-        # Cap at max allowed position (equity × max_leverage)
-        max_size = equity * max_lev
+        # Apply the cap
         was_capped = size_usdt > max_size
         size_usdt = min(size_usdt, max_size)
+
+        # Build details string
+        cap_reason = ""
+        if was_capped:
+            if max_size == max_by_equity_pct:
+                cap_reason = f" (capped by {max_pos_pct}% equity)"
+            elif max_size == max_by_fees:
+                cap_reason = " (capped by fee reserve)"
+            else:
+                cap_reason = " (capped by leverage)"
 
         return SizingResult(
             size_usdt=size_usdt,
             method="percent_equity",
-            details=f"margin=${margin:.2f}, lev={max_lev:.1f}x, position=${size_usdt:.2f}, capped={was_capped}"
+            details=f"margin=${margin:.2f}, lev={max_lev:.1f}x, position=${size_usdt:.2f}{cap_reason}"
         )
 
     def _size_risk_based(
@@ -173,8 +354,20 @@ class SimulatedRiskManager:
         risk_pct = self._profile.risk_per_trade_pct
         max_lev = self._profile.max_leverage
 
-        # Maximum size based on leverage
-        max_size = equity * max_lev
+        # Get caps from profile (with defaults)
+        max_pos_pct = getattr(self._profile, "max_position_equity_pct", 95.0)
+        reserve_fees = getattr(self._profile, "reserve_fee_buffer", True)
+        taker_fee = self._profile.taker_fee_rate or 0.00055
+
+        # Calculate max size with all caps
+        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+        if reserve_fees:
+            fee_factor = 1.0 + 2.0 * taker_fee
+            max_by_fees = equity * max_lev / fee_factor
+        else:
+            max_by_fees = float("inf")
+        max_by_leverage = equity * max_lev
+        max_size = min(max_by_equity_pct, max_by_fees, max_by_leverage)
 
         # Risk dollars (what we're willing to lose)
         risk_dollars = equity * (risk_pct / 100.0)
@@ -197,10 +390,19 @@ class SimulatedRiskManager:
                 was_capped = size_usdt > max_size
                 size_usdt = min(size_usdt, max_size)
 
+                cap_reason = ""
+                if was_capped:
+                    if max_size == max_by_equity_pct:
+                        cap_reason = f" (capped by {max_pos_pct}% equity)"
+                    elif max_size == max_by_fees:
+                        cap_reason = " (capped by fee reserve)"
+                    else:
+                        cap_reason = " (capped by leverage)"
+
                 return SizingResult(
                     size_usdt=size_usdt,
                     method="risk_based",
-                    details=f"risk=${risk_dollars:.2f}, stop_dist={stop_distance:.4f}, capped={was_capped}"
+                    details=f"risk=${risk_dollars:.2f}, stop_dist={stop_distance:.4f}{cap_reason}"
                 )
 
         # Fallback to percent_equity with leverage if no valid stop

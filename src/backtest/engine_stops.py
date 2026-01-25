@@ -1,5 +1,5 @@
 """
-Stop checks module for BacktestEngine.
+Stop checks module for backtest execution.
 
 This module handles stop condition checking:
 - StopCheckResult: Dataclass for stop check results
@@ -97,6 +97,41 @@ def check_equity_floor(
     return None
 
 
+def check_max_drawdown(
+    current_equity: float,
+    peak_equity: float,
+    max_drawdown_pct: float,
+) -> StopCheckResult | None:
+    """
+    Check if drawdown from peak exceeds maximum allowed.
+
+    Args:
+        current_equity: Current account equity in USDT
+        peak_equity: Peak equity since start in USDT
+        max_drawdown_pct: Maximum allowed drawdown percentage (e.g., 25.0 for 25%)
+
+    Returns:
+        StopCheckResult if max drawdown exceeded, None otherwise
+    """
+    if peak_equity <= 0:
+        return None
+
+    drawdown_pct = (peak_equity - current_equity) / peak_equity * 100
+
+    if drawdown_pct >= max_drawdown_pct:
+        return StopCheckResult(
+            terminal_stop=True,
+            strategy_starved=False,
+            classification=StopReason.MAX_DRAWDOWN_HIT,
+            reason_detail=(
+                f"Max drawdown hit: {drawdown_pct:.2f}% >= {max_drawdown_pct:.2f}% "
+                f"(equity ${current_equity:.2f}, peak ${peak_equity:.2f})"
+            ),
+            reason="max_drawdown",
+        )
+    return None
+
+
 def check_strategy_starvation(
     exchange: "SimulatedExchange",
     min_trade_usdt: float,
@@ -157,6 +192,7 @@ def check_all_stop_conditions(
     bar_ts_close: datetime,
     bar_index: int,
     logger=None,
+    peak_equity: float | None = None,
 ) -> StopCheckResult:
     """
     Check all stop conditions with proper precedence.
@@ -164,7 +200,8 @@ def check_all_stop_conditions(
     Stop precedence (highest to lowest):
     1. LIQUIDATED - equity <= maintenance margin (terminal)
     2. EQUITY_FLOOR_HIT - equity <= stop_equity_usdt (terminal)
-    3. STRATEGY_STARVED - can't meet entry gate (non-terminal)
+    3. MAX_DRAWDOWN_HIT - drawdown from peak exceeds max_drawdown_pct (terminal)
+    4. STRATEGY_STARVED - can't meet entry gate (non-terminal)
 
     Args:
         exchange: SimulatedExchange instance
@@ -172,6 +209,7 @@ def check_all_stop_conditions(
         bar_ts_close: Current bar close timestamp
         bar_index: Current bar index
         logger: Optional logger
+        peak_equity: Peak equity for drawdown calculation (if None, skip DD check)
 
     Returns:
         StopCheckResult with stop status and details
@@ -186,7 +224,17 @@ def check_all_stop_conditions(
     if result:
         return result
 
-    # 3. STRATEGY_STARVED (non-terminal)
+    # 3. MAX_DRAWDOWN_HIT (if peak_equity provided)
+    if peak_equity is not None and risk_profile.max_drawdown_pct > 0:
+        result = check_max_drawdown(
+            current_equity=exchange.equity_usdt,
+            peak_equity=peak_equity,
+            max_drawdown_pct=risk_profile.max_drawdown_pct,
+        )
+        if result:
+            return result
+
+    # 4. STRATEGY_STARVED (non-terminal)
     result = check_strategy_starvation(
         exchange=exchange,
         min_trade_usdt=risk_profile.min_trade_usdt,

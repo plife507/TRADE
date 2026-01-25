@@ -30,6 +30,8 @@ from .risk_model import (
     TakeProfitType,
     SizingRule,
     SizingModel,
+    TrailingConfig,
+    BreakEvenConfig,
 )
 
 if TYPE_CHECKING:
@@ -670,29 +672,81 @@ class Play:
         if rm_dict:
             risk_model = RiskModel.from_dict(rm_dict)
         elif risk_dict:
-            # YAML shorthand: risk.stop_loss_pct, risk.take_profit_pct, max_position_pct
-            # Convert to proper RiskModel
-            stop_loss_pct = risk_dict.get("stop_loss_pct")
-            take_profit_pct = risk_dict.get("take_profit_pct")
+            # YAML shorthand supports multiple formats:
+            # 1. Simple: stop_loss_pct, take_profit_pct
+            # 2. Extended: stop_loss as dict (for trailing), break_even
             max_position_pct = risk_dict.get("max_position_pct", 10.0)
+            account_max_lev = account.max_leverage if account else 10.0
 
-            if stop_loss_pct is not None and take_profit_pct is not None:
-                # Get max_leverage from account config (defaults to 10.0 if not set)
-                account_max_lev = account.max_leverage if account else 10.0
+            # Parse stop_loss - can be simple pct or full dict
+            stop_loss_dict = risk_dict.get("stop_loss")
+            stop_loss_pct = risk_dict.get("stop_loss_pct")
+            trailing_config = None
+
+            if stop_loss_dict and isinstance(stop_loss_dict, dict):
+                # Extended format: stop_loss: {type: trailing_atr, atr_multiplier: 2.0, ...}
+                sl_type_str = stop_loss_dict.get("type", "percent")
+                sl_type = StopLossType(sl_type_str)
+
+                # For trailing types, extract trailing config
+                if sl_type in (StopLossType.TRAILING_ATR, StopLossType.TRAILING_PCT):
+                    trailing_config = TrailingConfig(
+                        atr_multiplier=float(stop_loss_dict.get("atr_multiplier", 2.0)),
+                        atr_feature_id=stop_loss_dict.get("atr_feature_id"),
+                        trail_pct=float(stop_loss_dict["trail_pct"]) if stop_loss_dict.get("trail_pct") else None,
+                        activation_pct=float(stop_loss_dict.get("activation_pct", 0.0)),
+                    )
+                    # For trailing, value is the multiplier or percent
+                    sl_value = float(stop_loss_dict.get("atr_multiplier", stop_loss_dict.get("trail_pct", 2.0)))
+                else:
+                    sl_value = float(stop_loss_dict.get("value", 2.0))
+
+                stop_loss_rule = StopLossRule(
+                    type=sl_type,
+                    value=sl_value,
+                    atr_feature_id=stop_loss_dict.get("atr_feature_id"),
+                    buffer_pct=float(stop_loss_dict.get("buffer_pct", 0.0)),
+                )
+            elif stop_loss_pct is not None:
+                # Simple format: stop_loss_pct
+                stop_loss_rule = StopLossRule(
+                    type=StopLossType.PERCENT,
+                    value=float(stop_loss_pct),
+                )
+            else:
+                stop_loss_rule = None
+
+            # Parse take_profit
+            take_profit_pct = risk_dict.get("take_profit_pct")
+            if take_profit_pct is not None:
+                take_profit_rule = TakeProfitRule(
+                    type=TakeProfitType.PERCENT,
+                    value=float(take_profit_pct),
+                )
+            else:
+                take_profit_rule = None
+
+            # Parse break_even config
+            break_even_dict = risk_dict.get("break_even")
+            break_even_config = None
+            if break_even_dict and isinstance(break_even_dict, dict):
+                break_even_config = BreakEvenConfig(
+                    activation_pct=float(break_even_dict.get("activation_pct", 1.0)),
+                    offset_pct=float(break_even_dict.get("offset_pct", 0.1)),
+                )
+
+            # Build RiskModel if we have required components
+            if stop_loss_rule is not None and take_profit_rule is not None:
                 risk_model = RiskModel(
-                    stop_loss=StopLossRule(
-                        type=StopLossType.PERCENT,
-                        value=float(stop_loss_pct),
-                    ),
-                    take_profit=TakeProfitRule(
-                        type=TakeProfitType.PERCENT,
-                        value=float(take_profit_pct),
-                    ),
+                    stop_loss=stop_loss_rule,
+                    take_profit=take_profit_rule,
                     sizing=SizingRule(
                         model=SizingModel.PERCENT_EQUITY,
                         value=float(max_position_pct),
                         max_leverage=float(account_max_lev),
                     ),
+                    trailing_config=trailing_config,
+                    break_even_config=break_even_config,
                 )
             else:
                 risk_model = None

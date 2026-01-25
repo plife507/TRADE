@@ -316,6 +316,40 @@ class BacktestRunner:
         # Track time in market
         bars_in_position = 0
 
+        # Track peak equity for max drawdown check
+        peak_equity = initial_equity
+        max_drawdown_pct = self._engine._config.max_drawdown_pct if hasattr(self._engine._config, 'max_drawdown_pct') else 0.0
+
+        # Stop tracking
+        stopped_early = False
+        stop_reason = None
+        stop_classification = None
+        stop_reason_detail = None
+
+        # Extract trailing/BE config from Play's risk model
+        trailing_config = None
+        break_even_config = None
+        atr_feature_id = None
+        prev_atr_value = None
+
+        play = self._engine._play
+        if play.risk_model is not None:
+            if play.risk_model.trailing_config is not None:
+                tc = play.risk_model.trailing_config
+                trailing_config = {
+                    "atr_multiplier": tc.atr_multiplier,
+                    "trail_pct": tc.trail_pct,
+                    "activation_pct": tc.activation_pct,
+                }
+                atr_feature_id = tc.atr_feature_id
+
+            if play.risk_model.break_even_config is not None:
+                bc = play.risk_model.break_even_config
+                break_even_config = {
+                    "activation_pct": bc.activation_pct,
+                    "offset_pct": bc.offset_pct,
+                }
+
         # Main bar loop
         # Execution model:
         # 1. Orders submitted at bar N-1 close fill at bar N open
@@ -332,10 +366,23 @@ class BacktestRunner:
             self._set_bar_context(bar_idx)
 
             # 1. Process fills from previous bar's orders (fill at THIS bar's open)
-            self._process_bar_fills(bar_idx)
+            # Also updates trailing/BE stops using previous bar's ATR
+            self._process_bar_fills(
+                bar_idx,
+                trailing_config=trailing_config,
+                break_even_config=break_even_config,
+                atr_value=prev_atr_value,
+            )
 
             # 2. Process bar through engine (signal generation at bar close)
             signal = self._engine.process_bar(bar_idx)
+
+            # 2b. Extract ATR value for next iteration (if trailing is configured)
+            if atr_feature_id and self._engine._snapshot_view is not None:
+                try:
+                    prev_atr_value = self._engine._snapshot_view.get_feature_value(atr_feature_id)
+                except (KeyError, AttributeError):
+                    prev_atr_value = None
 
             # 3. Execute signal if any (submits order for NEXT bar's fill)
             if signal is not None:
@@ -353,13 +400,32 @@ class BacktestRunner:
                 "equity": equity,
             })
 
-        # Close any remaining position
-        self._close_remaining_position(end_idx - 1)
+            # Update peak equity and check max drawdown
+            peak_equity = max(peak_equity, equity)
+            if max_drawdown_pct > 0 and peak_equity > 0:
+                current_dd_pct = (peak_equity - equity) / peak_equity * 100
+                if current_dd_pct >= max_drawdown_pct:
+                    # Max drawdown hit - stop backtest
+                    stopped_early = True
+                    stop_reason = "max_drawdown"
+                    stop_classification = "MAX_DRAWDOWN_HIT"
+                    stop_reason_detail = (
+                        f"Max drawdown hit: {current_dd_pct:.2f}% >= {max_drawdown_pct:.2f}% "
+                        f"(equity ${equity:.2f}, peak ${peak_equity:.2f})"
+                    )
+                    self._engine.logger.warning(stop_reason_detail)
+                    break
+
+        # Close any remaining position (at last processed bar or stop bar)
+        last_bar_idx = bar_idx if stopped_early else end_idx - 1
+        close_reason = stop_reason if stopped_early else None
+        self._close_remaining_position(last_bar_idx, close_reason)
 
         # Build result
         finished_at = datetime.now()
         final_equity = self._exchange_adapter.get_equity()
         trades = self._exchange_adapter.trades
+        actual_bars_processed = last_bar_idx - start_idx + 1
 
         return self._build_result(
             play_id=self._engine._play.name,
@@ -373,9 +439,13 @@ class BacktestRunner:
             final_equity=final_equity,
             trades=trades,
             equity_curve=equity_curve,
-            bars_processed=end_idx - start_idx,
+            bars_processed=actual_bars_processed,
             warmup_bars=warmup_bars,
             bars_in_position=bars_in_position,
+            stopped_early=stopped_early,
+            stop_reason=stop_reason,
+            stop_classification=stop_classification,
+            stop_reason_detail=stop_reason_detail,
         )
 
     def _setup(self) -> None:
@@ -402,40 +472,13 @@ class BacktestRunner:
         """
         Build FeedStore from Play configuration.
 
-        Loads historical data, computes indicators, and creates
-        the FeedStore for O(1) access in the hot loop.
-
-        Uses the existing BacktestEngine infrastructure for data loading.
+        NOTE: This method is deprecated. Use DataBuilder via create_engine_from_play()
+        to get pre-built FeedStore, then pass to BacktestRunner constructor.
         """
-        play = self._engine._play
-
-        # Import here to avoid circular imports
-        from ...backtest.engine_factory import create_engine_from_play
-        from datetime import timedelta
-
-        # Get window from Play or default to last 30 days
-        window_end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        window_start = window_end - timedelta(days=30)
-
-        # Create BacktestEngine to load data
-        # This leverages the existing data loading pipeline
-        old_engine = create_engine_from_play(
-            play,
-            window_start=window_start,
-            window_end=window_end,
+        raise RuntimeError(
+            "BacktestRunner requires pre-built FeedStore. "
+            "Use create_engine_from_play() which returns a PlayEngine with pre-built data."
         )
-
-        # Run data preparation (loads and computes indicators)
-        old_engine.prepare_backtest_frame()
-        old_engine._build_feed_stores()
-
-        # Extract FeedStore from old engine
-        feed_store = old_engine._exec_feed
-        if feed_store is None:
-            raise RuntimeError("Failed to build FeedStore from Play")
-
-        # Set feed store on data provider
-        self._data_provider.set_feed_store(feed_store)
 
     def _build_sim_exchange(self) -> None:
         """
@@ -493,7 +536,13 @@ class BacktestRunner:
         candle = self._data_provider.get_candle(bar_idx)
         self._exchange_adapter.set_current_bar_timestamp(candle.ts_close)
 
-    def _process_bar_fills(self, bar_idx: int) -> None:
+    def _process_bar_fills(
+        self,
+        bar_idx: int,
+        trailing_config: dict | None = None,
+        break_even_config: dict | None = None,
+        atr_value: float | None = None,
+    ) -> None:
         """
         Process order fills and TP/SL for a bar.
 
@@ -501,9 +550,13 @@ class BacktestRunner:
         and check existing positions for TP/SL.
 
         Uses 1m granularity for entry fills when quote_feed is available.
+        Also updates trailing/BE stops if configured.
 
         Args:
             bar_idx: Current bar index
+            trailing_config: Optional trailing stop config
+            break_even_config: Optional break-even config
+            atr_value: ATR value from previous bar (for ATR-based trailing)
         """
         sim_exchange = self._exchange_adapter._sim_exchange
         if sim_exchange is None:
@@ -555,7 +608,16 @@ class BacktestRunner:
 
         # Process bar for fills (with 1m granularity when available)
         # Fill price uses first 1m bar's OPEN within this exec bar (see module docstring)
-        step_result = sim_exchange.process_bar(bar, prev_bar, quote_feed=quote_feed, exec_1m_range=exec_1m_range)
+        # Also updates trailing/BE stops if configured
+        step_result = sim_exchange.process_bar(
+            bar,
+            prev_bar,
+            quote_feed=quote_feed,
+            exec_1m_range=exec_1m_range,
+            trailing_config=trailing_config,
+            break_even_config=break_even_config,
+            atr_value=atr_value,
+        )
 
         # Log fills with actual 1m-based prices
         # NOTE: Logging happens HERE (not in PlayEngine.execute_signal) because:
@@ -569,12 +631,17 @@ class BacktestRunner:
                     f"price={fill.price:.2f} size={fill.size_usdt:.2f} USDT"
                 )
 
-    def _close_remaining_position(self, last_bar_idx: int) -> None:
+    def _close_remaining_position(
+        self,
+        last_bar_idx: int,
+        reason: str | None = None,
+    ) -> None:
         """
         Close any remaining position at end of backtest.
 
         Args:
             last_bar_idx: Index of last bar
+            reason: Optional close reason (e.g., "max_drawdown", defaults to "end_of_data")
         """
         sim_exchange = self._exchange_adapter._sim_exchange
         if sim_exchange is None or sim_exchange.position is None:
@@ -584,7 +651,7 @@ class BacktestRunner:
         sim_exchange.force_close_position(
             price=candle.close,
             timestamp=candle.ts_close,
-            reason="end_of_data",
+            reason=reason or "end_of_data",
         )
 
     def _build_result(
@@ -603,6 +670,10 @@ class BacktestRunner:
         bars_processed: int,
         warmup_bars: int,
         bars_in_position: int = 0,
+        stopped_early: bool = False,
+        stop_reason: str | None = None,
+        stop_classification: str | None = None,
+        stop_reason_detail: str | None = None,
     ) -> BacktestResult:
         """
         Build BacktestResult from run data.
@@ -661,9 +732,13 @@ class BacktestRunner:
             equity_curve=equity_curve,
             bars_processed=bars_processed,
             warmup_bars=warmup_bars,
-            # Store full metrics in metadata for access via .metrics property
+            # Store full metrics and stop info in metadata
             metadata={
                 "computed_metrics": metrics,
+                "stopped_early": stopped_early,
+                "stop_reason": stop_reason,
+                "stop_classification": stop_classification,
+                "stop_reason_detail": stop_reason_detail,
             },
         )
 

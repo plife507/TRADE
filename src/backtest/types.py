@@ -28,21 +28,27 @@ from .runtime.types import Bar
 class StopReason(str, Enum):
     """
     Stop reason taxonomy for backtest termination.
-    
+
     Terminal stops (halt immediately):
     - LIQUIDATED: equity <= maintenance margin (Bybit liquidation)
     - EQUITY_FLOOR_HIT: equity <= stop_equity_usdt threshold
-    
+    - MAX_DRAWDOWN_HIT: drawdown from peak exceeds max_drawdown_pct
+
     Non-terminal stops (continue with restrictions):
     - STRATEGY_STARVED: can't open new trades, but existing position can run
     """
     LIQUIDATED = "liquidated"
     EQUITY_FLOOR_HIT = "equity_floor_hit"
+    MAX_DRAWDOWN_HIT = "max_drawdown_hit"
     STRATEGY_STARVED = "strategy_starved"
-    
+
     def is_terminal(self) -> bool:
         """Return True if this stop reason halts the backtest immediately."""
-        return self in (StopReason.LIQUIDATED, StopReason.EQUITY_FLOOR_HIT)
+        return self in (
+            StopReason.LIQUIDATED,
+            StopReason.EQUITY_FLOOR_HIT,
+            StopReason.MAX_DRAWDOWN_HIT,
+        )
 
 
 @dataclass

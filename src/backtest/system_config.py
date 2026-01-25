@@ -263,7 +263,20 @@ class RiskProfileConfig:
     max_drawdown_pct: float = 100.0  # Max allowed drawdown percentage (for state tracking)
     min_trade_usdt: float = 1.0  # In USDT (name kept for backward compat)
     stop_equity_usdt: float = 0.0  # In USDT (name kept for backward compat)
-    
+
+    # Position sizing caps (Bybit-aligned)
+    # max_position_equity_pct: Maximum position size as % of equity (prevents 100% exposure)
+    # reserve_fee_buffer: Reserve balance for entry+exit fees
+    max_position_equity_pct: float = 95.0  # Leave 5% buffer for fees/safety
+    reserve_fee_buffer: bool = True  # Reserve balance for fees
+
+    # SL vs Liquidation safety check
+    # Validates that stop-loss triggers before liquidation price
+    # "reject": Reject entry if SL beyond liquidation price (default, safest)
+    # "adjust": Auto-tighten SL to safe distance from liquidation
+    # "warn": Allow entry but log warning
+    on_sl_beyond_liq: str = "reject"
+
     # Margin model fields
     _initial_margin_rate: float | None = None  # If None, derived from max_leverage
     maintenance_margin_rate: float = 0.005  # 0.5% - Bybit lowest tier default
@@ -288,6 +301,7 @@ class RiskProfileConfig:
     _VALID_FEE_MODES = ("taker_only",)
     _VALID_MARGIN_MODES = ("isolated",)
     _VALID_POSITION_MODES = ("oneway",)
+    _VALID_SL_LIQ_MODES = ("reject", "adjust", "warn")
 
     def __post_init__(self) -> None:
         """Validate config fields at load time (fail-loud)."""
@@ -324,6 +338,13 @@ class RiskProfileConfig:
             raise ValueError(
                 f"Invalid position_mode='{self.position_mode}'. "
                 f"This simulator version supports only: {self._VALID_POSITION_MODES}"
+            )
+
+        # Validate on_sl_beyond_liq
+        if self.on_sl_beyond_liq not in self._VALID_SL_LIQ_MODES:
+            raise ValueError(
+                f"Invalid on_sl_beyond_liq='{self.on_sl_beyond_liq}'. "
+                f"Valid values: {self._VALID_SL_LIQ_MODES}"
             )
 
     @property
@@ -363,6 +384,9 @@ class RiskProfileConfig:
             "max_drawdown_pct": self.max_drawdown_pct,
             "min_trade_usdt": self.min_trade_usdt,  # In USDT (name kept for backward compat)
             "stop_equity_usdt": self.stop_equity_usdt,  # In USDT (name kept for backward compat)
+            # Position sizing caps
+            "max_position_equity_pct": self.max_position_equity_pct,
+            "reserve_fee_buffer": self.reserve_fee_buffer,
             # Margin model
             "initial_margin_rate": self.initial_margin_rate,
             "maintenance_margin_rate": self.maintenance_margin_rate,
@@ -378,6 +402,8 @@ class RiskProfileConfig:
             "position_mode": self.position_mode,
             "quote_ccy": self.quote_ccy,
             "instrument_type": self.instrument_type,
+            # SL vs Liquidation
+            "on_sl_beyond_liq": self.on_sl_beyond_liq,
             # Derived
             "leverage": self.leverage,
         }
@@ -440,8 +466,10 @@ def resolve_risk_profile(
         position_mode=str(overrides.get("position_mode", base.position_mode)),
         quote_ccy=str(overrides.get("quote_ccy", base.quote_ccy)),
         instrument_type=str(overrides.get("instrument_type", base.instrument_type)),
+        # SL vs Liquidation safety
+        on_sl_beyond_liq=str(overrides.get("on_sl_beyond_liq", base.on_sl_beyond_liq)),
     )
-    
+
     return result
 
 
@@ -829,8 +857,8 @@ def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
         Use Play YAML format instead:
             python trade_cli.py backtest run --play <play_id> --start <date> --end <date>
 
-        Play files are located in strategies/plays/ or tests/validation/plays/
-        See docs/specs/PLAY_DSL_COOKBOOK.md for Play YAML format documentation.
+        Play files are located in tests/functional/plays/ or tests/stress/plays/
+        See docs/PLAY_DSL_COOKBOOK.md for Play YAML format documentation.
     """
     raise RuntimeError(
         f"REMOVED: load_system_config('{system_id}') is no longer supported.\n\n"
