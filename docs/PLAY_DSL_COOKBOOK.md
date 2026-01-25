@@ -41,7 +41,8 @@ When tests reveal behavior differs from this doc:
 9. [Risk Model](#9-risk-model)
 10. [Order Sizing & Execution](#10-order-sizing--execution)
 11. [Complete Examples](#11-complete-examples)
-12. [Quick Reference Card](#quick-reference-card)
+12. [Synthetic Data for Validation](#12-synthetic-data-for-validation)
+13. [Quick Reference Card](#quick-reference-card)
 
 ---
 
@@ -402,7 +403,10 @@ This means `last_price` provides 1m precision regardless of your `tf:` setting, 
 
 ### Complete Indicator Registry (43 Total)
 
-**Single-Output (27):**
+**11 indicators support O(1) incremental computation** for live trading performance:
+`ema`, `sma`, `rsi`, `atr`, `macd`, `bbands`, `stoch`, `adx`, `supertrend`, `cci`, `willr`
+
+**Single-Output (25):**
 
 | Indicator | Params | Description |
 |-----------|--------|-------------|
@@ -429,31 +433,33 @@ This means `last_price` provides 1m precision regardless of your `tf:` setting, 
 | `linreg` | `length` | Linear Regression |
 | `midprice` | `length` | Midprice |
 | `ohlc4` | (none) | OHLC Average |
-| `trix` | `length` | Triple Exponential |
 | `uo` | `fast`, `medium`, `slow` | Ultimate Oscillator |
-| `ppo` | `fast`, `slow`, `signal` | Percentage Price Oscillator |
 | `vwap` | (none) | Volume Weighted Avg Price |
 
-**Multi-Output (16):**
+**Multi-Output (18):**
 
-| Indicator | Outputs | Params |
-|-----------|---------|--------|
-| `macd` | `macd`, `signal`, `histogram` | `fast`, `slow`, `signal` |
-| `bbands` | `lower`, `middle`, `upper`, `bandwidth`, `percent_b` | `length`, `std` |
-| `stoch` | `stoch_k`, `stoch_d` | `k`, `d`, `smooth_k` |
-| `stochrsi` | `stochrsi_k`, `stochrsi_d` | `length`, `rsi_length`, `k`, `d` |
-| `adx` | `adx`, `dmp`, `dmn`, `adxr` | `length` |
-| `aroon` | `aroon_up`, `aroon_down`, `aroon_osc` | `length` |
-| `kc` | `kcl`, `kcb`, `kcu` | `length`, `scalar` |
-| `donchian` | `dcl`, `dcm`, `dcu` | `lower_length`, `upper_length` |
-| `supertrend` | `st`, `std`, `stl`, `sts` | `length`, `multiplier` |
-| `psar` | `psar_l`, `psar_s`, `psar_af`, `psar_r` | `af0`, `af`, `max_af` |
-| `squeeze` | `sqz`, `sqz_on`, `sqz_off`, `sqz_no` | `bb_length`, `bb_std`, `kc_length`, `kc_scalar` |
-| `vortex` | `vip`, `vim` | `length` |
-| `dm` | `dmp`, `dmn` | `length` |
-| `fisher` | `fisher`, `fisher_signal` | `length` |
-| `tsi` | `tsi`, `tsi_signal` | `fast`, `slow`, `signal` |
-| `kvo` | `kvo`, `kvo_signal` | `fast`, `slow`, `signal` |
+| Indicator | Outputs | Params | Incremental |
+|-----------|---------|--------|-------------|
+| `macd` | `macd`, `signal`, `histogram` | `fast`, `slow`, `signal` | ✓ |
+| `bbands` | `lower`, `middle`, `upper`, `bandwidth`, `percent_b` | `length`, `std` | ✓ |
+| `stoch` | `k`, `d` | `k`, `d`, `smooth_k` | ✓ |
+| `stochrsi` | `k`, `d` | `length`, `rsi_length`, `k`, `d` | |
+| `adx` | `adx`, `dmp`, `dmn`, `adxr` | `length` | ✓ |
+| `aroon` | `up`, `down`, `osc` | `length` | |
+| `kc` | `lower`, `basis`, `upper` | `length`, `scalar` | |
+| `donchian` | `lower`, `middle`, `upper` | `lower_length`, `upper_length` | |
+| `supertrend` | `trend`, `direction`, `long`, `short` | `length`, `multiplier` | ✓ |
+| `psar` | `long`, `short`, `af`, `reversal` | `af0`, `af`, `max_af` | |
+| `squeeze` | `sqz`, `on`, `off`, `no_sqz` | `bb_length`, `bb_std`, `kc_length`, `kc_scalar` | |
+| `vortex` | `vip`, `vim` | `length` | |
+| `dm` | `dmp`, `dmn` | `length` | |
+| `fisher` | `fisher`, `signal` | `length` | |
+| `tsi` | `tsi`, `signal` | `fast`, `slow`, `signal` | |
+| `kvo` | `kvo`, `signal` | `fast`, `slow`, `signal` | |
+| `ppo` | `ppo`, `histogram`, `signal` | `fast`, `slow`, `signal` | |
+| `trix` | `trix`, `signal` | `length`, `signal` | |
+
+**Accessing multi-output fields:** Use `{feature_id: "indicator_key", field: "output_name"}` or shorthand `"indicator_key.output_name"`
 
 ### Built-in Price Features (No Declaration Needed)
 
@@ -2056,6 +2062,194 @@ risk:
 
 ---
 
+## 12. Synthetic Data for Validation
+
+Synthetic data generates deterministic, reproducible market conditions for testing Plays. Use it to validate expected behavior, detect edge case errors, and prevent regressions.
+
+### Purpose
+
+| Use Case | Description |
+|----------|-------------|
+| **Baseline validation** | Verify Plays behave correctly under known conditions (uptrend should profit on longs) |
+| **Error detection** | Test edge cases: false breakouts, stop hunts, flash crashes |
+| **Regression testing** | Deterministic seeds ensure consistent results across code changes |
+
+### Running Backtests with Synthetic Data
+
+```bash
+# Run a Play with synthetic data (uses pattern from Play's synthetic: block)
+python trade_cli.py backtest run --play my_strategy --synthetic
+
+# Override seed for reproducibility testing
+python trade_cli.py backtest run --play my_strategy --synthetic --synthetic-seed 123
+
+# Run all synthetic pattern validations
+python trade_cli.py forge validate-patterns
+```
+
+### Available Patterns
+
+**Trend Patterns**
+
+| Pattern | Description | Tests |
+|---------|-------------|-------|
+| `trend_up_clean` | Steady uptrend, 10-20% pullbacks | Long entry/exit signals |
+| `trend_down_clean` | Steady downtrend, small rallies | Short entry/exit signals |
+| `trend_grinding` | Slow, low-volatility trend | Patience, holding behavior |
+| `trend_parabolic` | Accelerating blow-off move | Profit-taking, trailing stops |
+| `trend_exhaustion` | Strong trend fails and reverses | Reversal detection, stops |
+| `trend_stairs` | Step pattern: trend, pause, trend | Trend continuation logic |
+
+**Range Patterns**
+
+| Pattern | Description | Tests |
+|---------|-------------|-------|
+| `range_tight` | Low volatility squeeze | Breakout anticipation |
+| `range_wide` | High volatility, no direction | False signal filtering |
+| `range_ascending` | Higher lows, flat resistance | Ascending triangle breakout |
+| `range_descending` | Flat support, lower highs | Descending triangle breakdown |
+| `range_symmetric` | Clean horizontal channel | Support/resistance detection |
+
+**Reversal Patterns**
+
+| Pattern | Description | Tests |
+|---------|-------------|-------|
+| `reversal_v_bottom` | Sharp V-bottom recovery | Bottom detection, aggressive entries |
+| `reversal_v_top` | Sharp V-top crash | Top detection, exit speed |
+| `reversal_double_bottom` | Classic W pattern | Pattern recognition |
+| `reversal_double_top` | Classic M pattern | Pattern recognition |
+| `reversal_rounded` | Gradual U-shaped reversal | Slow reversal detection |
+
+**Breakout Patterns**
+
+| Pattern | Description | Tests |
+|---------|-------------|-------|
+| `breakout_clean` | Clear breakout with follow-through | Breakout entry signals |
+| `breakout_false` | Fakeout that reverses (stop hunt) | False breakout filtering |
+| `breakout_retest` | Breakout, pullback, continuation | Pullback entries |
+| `breakout_failed` | Breakout attempt that fails | Exit on failure |
+
+**Volatility Patterns**
+
+| Pattern | Description | Tests |
+|---------|-------------|-------|
+| `vol_squeeze_expand` | Low volatility squeeze then expansion | Squeeze detection |
+| `vol_spike_recover` | Flash crash with V-recovery | Panic behavior, holding |
+| `vol_spike_continue` | Flash crash that continues down | Stop loss execution |
+| `vol_decay` | High volatility settling to low | Position sizing adjustment |
+
+**Liquidity/Manipulation Patterns**
+
+| Pattern | Description | Tests |
+|---------|-------------|-------|
+| `liquidity_hunt_lows` | Sweep below support then rally | Stop placement |
+| `liquidity_hunt_highs` | Sweep above resistance then drop | Entry timing |
+| `choppy_whipsaw` | Rapid direction changes, no trend | Signal filtering |
+| `accumulation` | Low volatility drift up | Accumulation detection |
+| `distribution` | Low volatility drift down | Distribution detection |
+
+**Multi-Timeframe Patterns**
+
+| Pattern | Description | Tests |
+|---------|-------------|-------|
+| `mtf_aligned_bull` | All timeframes trending up | Aligned entry confidence |
+| `mtf_aligned_bear` | All timeframes trending down | Aligned short confidence |
+| `mtf_pullback_bull` | Higher timeframe up, lower pulling back | Pullback entries |
+| `mtf_pullback_bear` | Higher timeframe down, lower rallying | Rally fade entries |
+| `mtf_divergent` | Higher timeframe range, lower trending | Conflicting signal handling |
+
+### Embedding Synthetic Config in Plays
+
+Add a `synthetic:` block to define the pattern and parameters:
+
+```yaml
+version: "3.0.0"
+name: "V_SYNTH_trend_up_clean"
+description: "Validate long signals on clean uptrend"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 500
+  seed: 42
+  config:
+    trend_magnitude: 0.25    # 25% price move
+    pullback_depth: 0.20     # 20% retracements
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+# ... features, actions, risk ...
+
+# Expected behavior assertions (optional)
+expected:
+  min_trades: 3
+  max_trades: 10
+  win_rate_min: 0.5
+  pnl_direction: positive
+```
+
+### PatternConfig Customization
+
+Override default pattern parameters via the `config:` block:
+
+```yaml
+synthetic:
+  pattern: "breakout_false"
+  bars: 300
+  seed: 42
+  config:
+    # Core parameters
+    trend_magnitude: 0.20      # 20% price move for trends
+    pullback_depth: 0.30       # 30% retracement on pullbacks
+    volatility_base: 0.02      # 2% daily volatility
+    volatility_spike: 0.10     # 10% for spike events
+
+    # Timing parameters
+    trend_bars: 100            # Bars for trend phase
+    range_bars: 50             # Bars for range phase
+    reversal_bars: 20          # Bars for reversal formation
+
+    # Noise parameters
+    noise_level: 0.3           # 0-1 scale for random noise
+```
+
+### Programmatic Usage
+
+```python
+from src.forge.validation import generate_synthetic_candles, PatternConfig
+
+config = PatternConfig(
+    trend_magnitude=0.30,    # 30% trend move
+    volatility_base=0.03,    # 3% daily volatility
+)
+
+candles = generate_synthetic_candles(
+    pattern="trend_up_clean",
+    config=config,
+    bars_per_tf=500,
+    seed=42,
+)
+```
+
+### CLI Commands Reference
+
+```bash
+# Single Play with synthetic data
+python trade_cli.py backtest run --play V_SYNTH_trend_up_clean --synthetic
+
+# Specific seed for reproducibility
+python trade_cli.py backtest run --play V_SYNTH_trend_up_clean --synthetic --synthetic-seed 123
+
+# Run full pattern validation suite
+python trade_cli.py forge validate-patterns
+```
+
+---
+
 ## Quick Reference Card
 
 ### Operators (Symbols Only - Refactored 2026-01-09)
@@ -2161,6 +2355,10 @@ Currently the engine still accepts `blocks:` and `margin_mode: "isolated"` for b
 | 2026-01-17 | Updated all prose to use full natural language (execution timeframe, higher timeframe, etc.) |
 | 2026-01-17 | Standardized high_tf examples to use D (daily bias) or 12h (session anchors) |
 | 2026-01-17 | Added Multi-Timeframe Best Practices section with top-down approach guidance |
+| 2026-01-22 | Added Section 12: Synthetic Data for Validation (patterns, CLI, PatternConfig) |
+| 2026-01-25 | Fixed multi-output indicator names to match registry (k/d not stoch_k/stoch_d, etc.) |
+| 2026-01-25 | Added incremental indicator column - 11 O(1) indicators for live trading |
+| 2026-01-25 | Moved ppo, trix to multi-output section; corrected counts (43 total: 25 single, 18 multi) |
 
 ---
 
