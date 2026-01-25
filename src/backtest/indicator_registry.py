@@ -45,6 +45,10 @@ from typing import Any
 
 from src.backtest.rules.types import FeatureOutputType
 
+# Forward import for type hints - actual classes imported lazily
+if False:  # TYPE_CHECKING equivalent without import
+    from src.indicators.incremental import IncrementalIndicator
+
 
 # =============================================================================
 # Warmup Formula Functions
@@ -205,36 +209,42 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_ema,
+        "incremental_class": "IncrementalEMA",
     },
     "sma": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_sma,
+        "incremental_class": "IncrementalSMA",
     },
     "rsi": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_rsi,
+        "incremental_class": "IncrementalRSI",
     },
     "atr": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_atr,
+        "incremental_class": "IncrementalATR",
     },
     "cci": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalCCI",
     },
     "willr": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalWilliamsR",
     },
     "roc": {
         "inputs": {"close"},
@@ -371,6 +381,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("macd", "signal", "histogram"),
         "primary_output": "macd",
         "warmup_formula": _warmup_macd,
+        "incremental_class": "IncrementalMACD",
     },
     "bbands": {
         "inputs": {"close"},
@@ -379,6 +390,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("lower", "middle", "upper", "bandwidth", "percent_b"),
         "primary_output": "middle",
         "warmup_formula": _warmup_bbands,
+        "incremental_class": "IncrementalBBands",
     },
     "stoch": {
         "inputs": {"high", "low", "close"},
@@ -387,6 +399,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("k", "d"),
         "primary_output": "k",
         "warmup_formula": _warmup_stoch,
+        "incremental_class": "IncrementalStochastic",
     },
     "stochrsi": {
         "inputs": {"close"},
@@ -403,6 +416,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("adx", "dmp", "dmn", "adxr"),
         "primary_output": "adx",
         "warmup_formula": _warmup_adx,
+        "incremental_class": "IncrementalADX",
     },
     "aroon": {
         "inputs": {"high", "low"},
@@ -438,6 +452,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         # long/short are mutually exclusive - only one is valid at a time
         # (long when uptrend, short when downtrend)
         "mutually_exclusive_outputs": (("long", "short"),),
+        "incremental_class": "IncrementalSuperTrend",
     },
     "psar": {
         "inputs": {"high", "low", "close"},
@@ -696,6 +711,7 @@ class IndicatorInfo:
         mutually_exclusive_outputs: Groups of outputs where only one can be valid
             at a time. E.g., SuperTrend's (("long", "short"),) means st_long and
             st_short are mutually exclusive - when one has a value, the other is NaN.
+        incremental_class: Class name for O(1) incremental computation (None = vectorized only)
     """
     name: str
     input_series: frozenset[str] = field(default_factory=frozenset)
@@ -710,6 +726,8 @@ class IndicatorInfo:
     # Mutually exclusive output groups - tuple of tuples of suffix names
     # E.g., (("long", "short"),) means long and short are mutually exclusive
     mutually_exclusive_outputs: tuple[tuple[str, ...], ...] = field(default_factory=tuple)
+    # Incremental computation support (class name string, resolved lazily)
+    incremental_class: str | None = None
 
     @property
     def requires_hlc(self) -> bool:
@@ -799,6 +817,8 @@ class IndicatorRegistry:
                 compute_fn=spec.get("compute_fn"),
                 # Mutually exclusive outputs (e.g., SuperTrend long/short)
                 mutually_exclusive_outputs=exclusive_outputs,
+                # Incremental computation support
+                incremental_class=spec.get("incremental_class"),
             )
             self._indicators[name] = info
     
@@ -1100,6 +1120,67 @@ class IndicatorRegistry:
 
         return groups
 
+    # =========================================================================
+    # Incremental Computation Support
+    # =========================================================================
+
+    def supports_incremental(self, name: str) -> bool:
+        """
+        Check if indicator supports O(1) incremental computation.
+
+        Indicators with incremental support have an `incremental_class` defined
+        in the registry, enabling efficient live trading updates without
+        recomputing the entire history.
+
+        Args:
+            name: Indicator name (e.g., "ema", "rsi")
+
+        Returns:
+            True if indicator has incremental support
+        """
+        try:
+            info = self.get_indicator_info(name)
+            return info.incremental_class is not None
+        except ValueError:
+            return False
+
+    def get_incremental_class(self, name: str) -> type | None:
+        """
+        Get the incremental indicator class for an indicator type.
+
+        This lazily imports and returns the class for O(1) computation.
+        Returns None if the indicator doesn't support incremental updates.
+
+        Args:
+            name: Indicator name (e.g., "ema", "rsi")
+
+        Returns:
+            The incremental indicator class, or None if not supported
+        """
+        try:
+            info = self.get_indicator_info(name)
+            if info.incremental_class is None:
+                return None
+
+            # Lazy import to avoid circular dependency
+            from src.indicators import incremental as incr_module
+
+            return getattr(incr_module, info.incremental_class, None)
+        except ValueError:
+            return None
+
+    def list_incremental_indicators(self) -> list[str]:
+        """
+        Get list of all indicators that support incremental computation.
+
+        Returns:
+            Sorted list of indicator names with incremental support
+        """
+        return sorted(
+            name for name, info in self._indicators.items()
+            if info.incremental_class is not None
+        )
+
 
 # =============================================================================
 # Module-Level Convenience Functions
@@ -1196,3 +1277,154 @@ def get_indicator_output_type(
     """
     registry = get_registry()
     return registry.get_output_type(indicator_type, field)
+
+
+def supports_incremental(indicator_type: str) -> bool:
+    """
+    Check if indicator supports O(1) incremental computation.
+
+    This is the CANONICAL API for checking incremental support.
+    Use this instead of maintaining separate hardcoded lists.
+
+    Args:
+        indicator_type: Indicator name (e.g., "ema", "rsi")
+
+    Returns:
+        True if indicator has incremental support
+    """
+    registry = get_registry()
+    return registry.supports_incremental(indicator_type)
+
+
+def get_incremental_class(indicator_type: str) -> type | None:
+    """
+    Get the incremental indicator class for an indicator type.
+
+    This is the CANONICAL API for getting incremental classes.
+    Use this instead of maintaining separate factory functions.
+
+    Args:
+        indicator_type: Indicator name (e.g., "ema", "rsi")
+
+    Returns:
+        The incremental indicator class, or None if not supported
+    """
+    registry = get_registry()
+    return registry.get_incremental_class(indicator_type)
+
+
+def list_incremental_indicators() -> list[str]:
+    """
+    Get list of all indicators that support incremental computation.
+
+    Returns:
+        Sorted list of indicator names with incremental support
+    """
+    registry = get_registry()
+    return registry.list_incremental_indicators()
+
+
+# =============================================================================
+# Registry Validation
+# =============================================================================
+
+
+def validate_registry() -> list[str]:
+    """
+    Validate the indicator registry for consistency and correctness.
+
+    Checks:
+    1. All indicators have required fields (inputs, params, multi_output)
+    2. Multi-output indicators have output_keys and primary_output
+    3. incremental_class implies the class exists in incremental.py
+    4. Warmup formulas return valid integers
+    5. Output types are defined for all indicators
+
+    Returns:
+        List of validation errors (empty if valid)
+
+    Raises:
+        ValueError: If critical validation errors are found (fail fast on import)
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # Validate SUPPORTED_INDICATORS entries
+    required_fields = {"inputs", "params", "multi_output"}
+
+    for name, spec in SUPPORTED_INDICATORS.items():
+        # Check required fields
+        missing = required_fields - set(spec.keys())
+        if missing:
+            errors.append(f"{name}: missing required fields {missing}")
+
+        # Check multi-output consistency
+        if spec.get("multi_output"):
+            if "output_keys" not in spec:
+                errors.append(f"{name}: multi_output=True but missing output_keys")
+            if "primary_output" not in spec:
+                errors.append(f"{name}: multi_output=True but missing primary_output")
+            elif spec.get("output_keys"):
+                if spec["primary_output"] not in spec["output_keys"]:
+                    errors.append(
+                        f"{name}: primary_output '{spec['primary_output']}' "
+                        f"not in output_keys {spec['output_keys']}"
+                    )
+
+        # Check incremental_class if specified
+        if "incremental_class" in spec and spec["incremental_class"]:
+            class_name = spec["incremental_class"]
+            try:
+                from src.indicators import incremental as incr_module
+                if not hasattr(incr_module, class_name):
+                    errors.append(
+                        f"{name}: incremental_class '{class_name}' "
+                        f"not found in src.indicators.incremental"
+                    )
+            except ImportError as e:
+                errors.append(f"{name}: failed to import incremental module: {e}")
+
+        # Check warmup_formula
+        if "warmup_formula" in spec:
+            try:
+                # Test with default params
+                test_params = {"length": 20, "fast": 12, "slow": 26, "signal": 9}
+                result = spec["warmup_formula"](test_params)
+                if not isinstance(result, int) or result < 0:
+                    errors.append(
+                        f"{name}: warmup_formula returned invalid value: {result}"
+                    )
+            except Exception as e:
+                errors.append(f"{name}: warmup_formula failed: {e}")
+
+    # Validate INDICATOR_OUTPUT_TYPES covers all indicators
+    for name in SUPPORTED_INDICATORS:
+        if name not in INDICATOR_OUTPUT_TYPES:
+            warnings.append(f"{name}: not in INDICATOR_OUTPUT_TYPES")
+
+    # Log warnings but don't fail
+    if warnings:
+        import logging
+        logger = logging.getLogger(__name__)
+        for w in warnings:
+            logger.warning(f"Registry warning: {w}")
+
+    return errors
+
+
+def _validate_on_load() -> None:
+    """
+    Validate registry on module load (fail fast).
+
+    Called automatically when this module is imported.
+    """
+    errors = validate_registry()
+    if errors:
+        error_msg = "Indicator registry validation failed:\n" + "\n".join(
+            f"  - {e}" for e in errors
+        )
+        raise ValueError(error_msg)
+
+
+# Validate on module load (fail fast)
+_validate_on_load()

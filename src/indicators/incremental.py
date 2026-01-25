@@ -341,6 +341,11 @@ class IncrementalMACD(IncrementalIndicator):
         return self._macd_line
 
     @property
+    def macd_value(self) -> float:
+        """Returns MACD line value (alias for consistency with multi-output pattern)."""
+        return self._macd_line
+
+    @property
     def signal_value(self) -> float:
         """Returns signal line value."""
         return self._signal_line
@@ -435,8 +440,543 @@ class IncrementalBBands(IncrementalIndicator):
         return self.middle - self.std_dev * self.std
 
     @property
+    def bandwidth(self) -> float:
+        """Returns bandwidth: (upper - lower) / middle * 100."""
+        if not self.is_ready:
+            return np.nan
+        mid = self.middle
+        if mid == 0:
+            return np.nan
+        return (self.upper - self.lower) / mid * 100.0
+
+    @property
+    def percent_b(self) -> float:
+        """Returns %B: (close - lower) / (upper - lower)."""
+        if not self.is_ready:
+            return np.nan
+        upper = self.upper
+        lower = self.lower
+        if upper == lower:
+            return 0.5  # Midpoint when bands are equal
+        # Use last close from buffer
+        close = self._buffer[-1]
+        return (close - lower) / (upper - lower)
+
+    # Aliases for multi-output naming convention
+    @property
+    def lower_value(self) -> float:
+        return self.lower
+
+    @property
+    def middle_value(self) -> float:
+        return self.middle
+
+    @property
+    def upper_value(self) -> float:
+        return self.upper
+
+    @property
+    def bandwidth_value(self) -> float:
+        return self.bandwidth
+
+    @property
+    def percent_b_value(self) -> float:
+        return self.percent_b
+
+    @property
     def is_ready(self) -> bool:
         return len(self._buffer) >= self.length
+
+
+@dataclass
+class IncrementalWilliamsR(IncrementalIndicator):
+    """
+    Williams %R with O(1) updates using ring buffers.
+
+    Formula:
+        highest_high = max(high over length periods)
+        lowest_low = min(low over length periods)
+        %R = (highest_high - close) / (highest_high - lowest_low) * -100
+
+    Matches pandas_ta.willr() output.
+    """
+
+    length: int = 14
+    _high_buffer: deque = field(default_factory=deque, init=False)
+    _low_buffer: deque = field(default_factory=deque, init=False)
+    _last_close: float = field(default=np.nan, init=False)
+    _count: int = field(default=0, init=False)
+
+    def update(
+        self, high: float, low: float, close: float, **kwargs: Any
+    ) -> None:
+        """Update with new OHLC data."""
+        self._count += 1
+
+        self._high_buffer.append(high)
+        self._low_buffer.append(low)
+        self._last_close = close
+
+        if len(self._high_buffer) > self.length:
+            self._high_buffer.popleft()
+            self._low_buffer.popleft()
+
+    def reset(self) -> None:
+        self._high_buffer.clear()
+        self._low_buffer.clear()
+        self._last_close = np.nan
+        self._count = 0
+
+    @property
+    def value(self) -> float:
+        if not self.is_ready:
+            return np.nan
+
+        highest_high = max(self._high_buffer)
+        lowest_low = min(self._low_buffer)
+
+        if highest_high == lowest_low:
+            return -50.0  # Midpoint when no range
+
+        return ((highest_high - self._last_close) / (highest_high - lowest_low)) * -100.0
+
+    @property
+    def is_ready(self) -> bool:
+        return len(self._high_buffer) >= self.length
+
+
+@dataclass
+class IncrementalCCI(IncrementalIndicator):
+    """
+    Commodity Channel Index with O(1) updates.
+
+    Formula:
+        tp = (high + low + close) / 3
+        tp_sma = sma(tp, length)
+        mean_dev = mean(|tp - tp_sma|) over length
+        cci = (tp - tp_sma) / (0.015 * mean_dev)
+
+    Uses ring buffer for typical prices and running sums.
+    Matches pandas_ta.cci() output.
+    """
+
+    length: int = 14
+    _tp_buffer: deque = field(default_factory=deque, init=False)
+    _tp_sum: float = field(default=0.0, init=False)
+    _count: int = field(default=0, init=False)
+
+    def update(
+        self, high: float, low: float, close: float, **kwargs: Any
+    ) -> None:
+        """Update with new OHLC data."""
+        self._count += 1
+
+        tp = (high + low + close) / 3.0
+        self._tp_sum += tp
+        self._tp_buffer.append(tp)
+
+        if len(self._tp_buffer) > self.length:
+            oldest = self._tp_buffer.popleft()
+            self._tp_sum -= oldest
+
+    def reset(self) -> None:
+        self._tp_buffer.clear()
+        self._tp_sum = 0.0
+        self._count = 0
+
+    @property
+    def value(self) -> float:
+        if not self.is_ready:
+            return np.nan
+
+        # TP SMA
+        tp_sma = self._tp_sum / self.length
+
+        # Mean deviation
+        mean_dev = sum(abs(tp - tp_sma) for tp in self._tp_buffer) / self.length
+
+        if mean_dev == 0:
+            return 0.0
+
+        # Current TP
+        current_tp = self._tp_buffer[-1]
+
+        return (current_tp - tp_sma) / (0.015 * mean_dev)
+
+    @property
+    def is_ready(self) -> bool:
+        return len(self._tp_buffer) >= self.length
+
+
+@dataclass
+class IncrementalStochastic(IncrementalIndicator):
+    """
+    Stochastic Oscillator with O(1) updates.
+
+    Formula:
+        lowest_low = min(low over k_period)
+        highest_high = max(high over k_period)
+        fast_k = (close - lowest_low) / (highest_high - lowest_low) * 100
+        %K = sma(fast_k, smooth_k)
+        %D = sma(%K, d_period)
+
+    Matches pandas_ta.stoch() output.
+    """
+
+    k_period: int = 14
+    smooth_k: int = 3
+    d_period: int = 3
+    _high_buffer: deque = field(default_factory=deque, init=False)
+    _low_buffer: deque = field(default_factory=deque, init=False)
+    _fast_k_buffer: deque = field(default_factory=deque, init=False)
+    _k_buffer: deque = field(default_factory=deque, init=False)
+    _last_close: float = field(default=np.nan, init=False)
+    _count: int = field(default=0, init=False)
+
+    def update(
+        self, high: float, low: float, close: float, **kwargs: Any
+    ) -> None:
+        """Update with new OHLC data."""
+        self._count += 1
+
+        # Update high/low buffers
+        self._high_buffer.append(high)
+        self._low_buffer.append(low)
+        self._last_close = close
+
+        if len(self._high_buffer) > self.k_period:
+            self._high_buffer.popleft()
+            self._low_buffer.popleft()
+
+        # Compute fast %K once we have enough data
+        if len(self._high_buffer) >= self.k_period:
+            highest_high = max(self._high_buffer)
+            lowest_low = min(self._low_buffer)
+
+            if highest_high == lowest_low:
+                fast_k = 50.0
+            else:
+                fast_k = ((close - lowest_low) / (highest_high - lowest_low)) * 100.0
+
+            self._fast_k_buffer.append(fast_k)
+            if len(self._fast_k_buffer) > self.smooth_k:
+                self._fast_k_buffer.popleft()
+
+            # Compute %K (smoothed)
+            if len(self._fast_k_buffer) >= self.smooth_k:
+                k_val = sum(self._fast_k_buffer) / self.smooth_k
+                self._k_buffer.append(k_val)
+                if len(self._k_buffer) > self.d_period:
+                    self._k_buffer.popleft()
+
+    def reset(self) -> None:
+        self._high_buffer.clear()
+        self._low_buffer.clear()
+        self._fast_k_buffer.clear()
+        self._k_buffer.clear()
+        self._last_close = np.nan
+        self._count = 0
+
+    @property
+    def value(self) -> float:
+        """Returns %K value."""
+        return self.k_value
+
+    @property
+    def k_value(self) -> float:
+        """Returns %K value."""
+        if len(self._k_buffer) < self.d_period:
+            return np.nan
+        return self._k_buffer[-1]
+
+    @property
+    def d_value(self) -> float:
+        """Returns %D value (SMA of %K)."""
+        if len(self._k_buffer) < self.d_period:
+            return np.nan
+        return sum(self._k_buffer) / len(self._k_buffer)
+
+    @property
+    def is_ready(self) -> bool:
+        return len(self._k_buffer) >= self.d_period
+
+
+@dataclass
+class IncrementalADX(IncrementalIndicator):
+    """
+    Average Directional Index with O(1) updates.
+
+    Uses Wilder's smoothing for +DI, -DI, and ADX.
+    Internally uses IncrementalATR for true range.
+
+    Matches pandas_ta.adx() output.
+    """
+
+    length: int = 14
+    _atr: IncrementalATR = field(init=False)
+    _prev_high: float = field(default=np.nan, init=False)
+    _prev_low: float = field(default=np.nan, init=False)
+    _smoothed_plus_dm: float = field(default=0.0, init=False)
+    _smoothed_minus_dm: float = field(default=0.0, init=False)
+    _smoothed_dx: float = field(default=0.0, init=False)
+    _warmup_plus_dm: list = field(default_factory=list, init=False)
+    _warmup_minus_dm: list = field(default_factory=list, init=False)
+    _warmup_dx: list = field(default_factory=list, init=False)
+    _count: int = field(default=0, init=False)
+
+    def __post_init__(self) -> None:
+        self._atr = IncrementalATR(length=self.length)
+
+    def update(
+        self, high: float, low: float, close: float, **kwargs: Any
+    ) -> None:
+        """Update with new OHLC data."""
+        self._count += 1
+
+        # Update ATR
+        self._atr.update(high=high, low=low, close=close)
+
+        if self._count == 1:
+            self._prev_high = high
+            self._prev_low = low
+            return
+
+        # Directional Movement
+        up_move = high - self._prev_high
+        down_move = self._prev_low - low
+
+        plus_dm = up_move if up_move > down_move and up_move > 0 else 0.0
+        minus_dm = down_move if down_move > up_move and down_move > 0 else 0.0
+
+        self._prev_high = high
+        self._prev_low = low
+
+        if self._count <= self.length:
+            # Warmup phase - collect DM values
+            self._warmup_plus_dm.append(plus_dm)
+            self._warmup_minus_dm.append(minus_dm)
+
+            if self._count == self.length:
+                # Initialize smoothed values with sum
+                self._smoothed_plus_dm = sum(self._warmup_plus_dm)
+                self._smoothed_minus_dm = sum(self._warmup_minus_dm)
+        else:
+            # Wilder's smoothed moving average
+            self._smoothed_plus_dm = (
+                self._smoothed_plus_dm - (self._smoothed_plus_dm / self.length) + plus_dm
+            )
+            self._smoothed_minus_dm = (
+                self._smoothed_minus_dm - (self._smoothed_minus_dm / self.length) + minus_dm
+            )
+
+        # Calculate DI values and DX for ADX
+        if self._atr.is_ready and self._count >= self.length:
+            atr_val = self._atr.value
+            if atr_val > 0:
+                plus_di = (self._smoothed_plus_dm / atr_val) * 100.0
+                minus_di = (self._smoothed_minus_dm / atr_val) * 100.0
+
+                di_sum = plus_di + minus_di
+                if di_sum > 0:
+                    dx = abs(plus_di - minus_di) / di_sum * 100.0
+                else:
+                    dx = 0.0
+
+                if self._count <= self.length * 2:
+                    # Warmup phase for DX
+                    self._warmup_dx.append(dx)
+                    if len(self._warmup_dx) == self.length:
+                        self._smoothed_dx = sum(self._warmup_dx) / self.length
+                elif len(self._warmup_dx) >= self.length:
+                    # Wilder's smoothed ADX
+                    self._smoothed_dx = (
+                        (self._smoothed_dx * (self.length - 1) + dx) / self.length
+                    )
+
+    def reset(self) -> None:
+        self._atr.reset()
+        self._prev_high = np.nan
+        self._prev_low = np.nan
+        self._smoothed_plus_dm = 0.0
+        self._smoothed_minus_dm = 0.0
+        self._smoothed_dx = 0.0
+        self._warmup_plus_dm.clear()
+        self._warmup_minus_dm.clear()
+        self._warmup_dx.clear()
+        self._count = 0
+
+    @property
+    def value(self) -> float:
+        """Returns ADX value."""
+        return self.adx_value
+
+    @property
+    def adx_value(self) -> float:
+        """Returns ADX value."""
+        if not self.is_ready:
+            return np.nan
+        return self._smoothed_dx
+
+    @property
+    def dmp_value(self) -> float:
+        """Returns +DI value."""
+        if not self._atr.is_ready or self._count < self.length:
+            return np.nan
+        atr_val = self._atr.value
+        if atr_val <= 0:
+            return np.nan
+        return (self._smoothed_plus_dm / atr_val) * 100.0
+
+    @property
+    def dmn_value(self) -> float:
+        """Returns -DI value."""
+        if not self._atr.is_ready or self._count < self.length:
+            return np.nan
+        atr_val = self._atr.value
+        if atr_val <= 0:
+            return np.nan
+        return (self._smoothed_minus_dm / atr_val) * 100.0
+
+    @property
+    def is_ready(self) -> bool:
+        return len(self._warmup_dx) >= self.length
+
+
+@dataclass
+class IncrementalSuperTrend(IncrementalIndicator):
+    """
+    SuperTrend with O(1) updates.
+
+    Uses IncrementalATR internally. Tracks trend direction and levels.
+
+    Matches pandas_ta.supertrend() output.
+    """
+
+    length: int = 10
+    multiplier: float = 3.0
+    _atr: IncrementalATR = field(init=False)
+    _prev_close: float = field(default=np.nan, init=False)
+    _prev_upper: float = field(default=np.nan, init=False)
+    _prev_lower: float = field(default=np.nan, init=False)
+    _prev_trend: float = field(default=np.nan, init=False)
+    _direction: int = field(default=1, init=False)  # 1 = up, -1 = down
+    _count: int = field(default=0, init=False)
+
+    def __post_init__(self) -> None:
+        self._atr = IncrementalATR(length=self.length)
+
+    def update(
+        self, high: float, low: float, close: float, **kwargs: Any
+    ) -> None:
+        """Update with new OHLC data."""
+        self._count += 1
+
+        # Update ATR
+        self._atr.update(high=high, low=low, close=close)
+
+        if not self._atr.is_ready:
+            self._prev_close = close
+            return
+
+        atr_val = self._atr.value
+        hl2 = (high + low) / 2.0
+
+        # Basic bands
+        basic_upper = hl2 + (self.multiplier * atr_val)
+        basic_lower = hl2 - (self.multiplier * atr_val)
+
+        # Final upper band
+        if np.isnan(self._prev_upper):
+            final_upper = basic_upper
+        elif basic_upper < self._prev_upper or self._prev_close > self._prev_upper:
+            final_upper = basic_upper
+        else:
+            final_upper = self._prev_upper
+
+        # Final lower band
+        if np.isnan(self._prev_lower):
+            final_lower = basic_lower
+        elif basic_lower > self._prev_lower or self._prev_close < self._prev_lower:
+            final_lower = basic_lower
+        else:
+            final_lower = self._prev_lower
+
+        # SuperTrend and direction
+        if np.isnan(self._prev_trend):
+            # First valid bar
+            if close > final_upper:
+                self._direction = 1
+                self._prev_trend = final_lower
+            else:
+                self._direction = -1
+                self._prev_trend = final_upper
+        else:
+            if self._prev_trend == self._prev_upper:
+                # Previous trend was down
+                if close > final_upper:
+                    self._direction = 1
+                    self._prev_trend = final_lower
+                else:
+                    self._direction = -1
+                    self._prev_trend = final_upper
+            else:
+                # Previous trend was up
+                if close < final_lower:
+                    self._direction = -1
+                    self._prev_trend = final_upper
+                else:
+                    self._direction = 1
+                    self._prev_trend = final_lower
+
+        self._prev_upper = final_upper
+        self._prev_lower = final_lower
+        self._prev_close = close
+
+    def reset(self) -> None:
+        self._atr.reset()
+        self._prev_close = np.nan
+        self._prev_upper = np.nan
+        self._prev_lower = np.nan
+        self._prev_trend = np.nan
+        self._direction = 1
+        self._count = 0
+
+    @property
+    def value(self) -> float:
+        """Returns SuperTrend level."""
+        return self.trend_value
+
+    @property
+    def trend_value(self) -> float:
+        """Returns SuperTrend level."""
+        if not self.is_ready:
+            return np.nan
+        return self._prev_trend
+
+    @property
+    def direction_value(self) -> int:
+        """Returns direction: 1 = up, -1 = down."""
+        if not self.is_ready:
+            return 0
+        return self._direction
+
+    @property
+    def long_value(self) -> float:
+        """Returns long stop level (NaN when short)."""
+        if not self.is_ready or self._direction != 1:
+            return np.nan
+        return self._prev_lower
+
+    @property
+    def short_value(self) -> float:
+        """Returns short stop level (NaN when long)."""
+        if not self.is_ready or self._direction != -1:
+            return np.nan
+        return self._prev_upper
+
+    @property
+    def is_ready(self) -> bool:
+        return self._atr.is_ready and self._count > self.length
 
 
 # =============================================================================
@@ -474,15 +1014,55 @@ def create_incremental_indicator(
             length=params.get("length", 20),
             std_dev=params.get("std", 2.0),
         )
+    elif indicator_type == "willr":
+        return IncrementalWilliamsR(length=params.get("length", 14))
+    elif indicator_type == "cci":
+        return IncrementalCCI(length=params.get("length", 14))
+    elif indicator_type == "stoch":
+        return IncrementalStochastic(
+            k_period=params.get("k", 14),
+            smooth_k=params.get("smooth_k", 3),
+            d_period=params.get("d", 3),
+        )
+    elif indicator_type == "adx":
+        return IncrementalADX(length=params.get("length", 14))
+    elif indicator_type == "supertrend":
+        return IncrementalSuperTrend(
+            length=params.get("length", 10),
+            multiplier=params.get("multiplier", 3.0),
+        )
     else:
         # Not supported incrementally - will fall back to vectorized
         return None
 
 
-# Registry of indicators that support incremental computation
-INCREMENTAL_INDICATORS = frozenset({"ema", "sma", "rsi", "atr", "macd", "bbands"})
+# =============================================================================
+# Registry Integration
+# =============================================================================
+# The canonical source of truth for incremental support is indicator_registry.py.
+# These functions delegate to the registry to maintain a single source of truth.
 
 
 def supports_incremental(indicator_type: str) -> bool:
-    """Check if indicator type supports incremental computation."""
-    return indicator_type.lower() in INCREMENTAL_INDICATORS
+    """
+    Check if indicator type supports incremental computation.
+
+    Delegates to indicator_registry for single source of truth.
+    """
+    from src.backtest.indicator_registry import supports_incremental as registry_supports
+    return registry_supports(indicator_type)
+
+
+def list_incremental_indicators() -> list[str]:
+    """
+    Get list of all indicators that support incremental computation.
+
+    Delegates to indicator_registry for single source of truth.
+    """
+    from src.backtest.indicator_registry import list_incremental_indicators as registry_list
+    return registry_list()
+
+
+# INCREMENTAL_INDICATORS is computed from registry at import time
+# This ensures backward compatibility while using the registry as source of truth
+INCREMENTAL_INDICATORS = frozenset(list_incremental_indicators())

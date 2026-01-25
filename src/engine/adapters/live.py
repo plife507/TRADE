@@ -89,6 +89,7 @@ class LiveIndicatorCache:
             indicator_specs: Feature specs from Play
         """
         from ...indicators import FeatureSpec, create_incremental_indicator, supports_incremental
+        from ...backtest.indicator_registry import get_registry
 
         if not candles:
             return
@@ -110,6 +111,9 @@ class LiveIndicatorCache:
 
         self._bar_count = n
 
+        # Get registry for input requirements
+        registry = get_registry()
+
         # Classify indicators: incremental vs vectorized
         self._vectorized_specs = []
         self._incremental = {}
@@ -124,10 +128,22 @@ class LiveIndicatorCache:
                     inc_ind = create_incremental_indicator(ind_type, feature.params)
                     if inc_ind is not None:
                         self._incremental[feature.indicator_id] = (inc_ind, feature)
-                        # Initialize with historical data
-                        self._indicators[feature.indicator_id] = np.full(n, np.nan)
+
+                        # Use registry to determine input requirements and outputs
+                        info = registry.get_indicator_info(ind_type)
+                        needs_hlc = info.requires_hlc
+
+                        # Initialize arrays for all outputs
+                        if info.is_multi_output:
+                            for suffix in info.output_keys:
+                                key = f"{feature.indicator_id}_{suffix}"
+                                self._indicators[key] = np.full(n, np.nan)
+                        else:
+                            self._indicators[feature.indicator_id] = np.full(n, np.nan)
+
+                        # Warmup with historical data
                         for i in range(n):
-                            if ind_type in ("atr",):
+                            if needs_hlc:
                                 inc_ind.update(
                                     high=self._high[i],
                                     low=self._low[i],
@@ -135,7 +151,15 @@ class LiveIndicatorCache:
                                 )
                             else:
                                 inc_ind.update(close=self._close[i])
-                            self._indicators[feature.indicator_id][i] = inc_ind.value
+
+                            # Store all outputs for multi-output indicators
+                            if info.is_multi_output:
+                                for suffix in info.output_keys:
+                                    key = f"{feature.indicator_id}_{suffix}"
+                                    value = self._get_incremental_output(inc_ind, suffix)
+                                    self._indicators[key][i] = value
+                            else:
+                                self._indicators[feature.indicator_id][i] = inc_ind.value
                     else:
                         self._vectorized_specs.append(spec)
                 else:
@@ -175,9 +199,15 @@ class LiveIndicatorCache:
         self._bar_count = len(self._close)
 
         # Update incremental indicators (O(1) per indicator)
+        from ...backtest.indicator_registry import get_registry
+        registry = get_registry()
+
         for name, (inc_ind, feature) in self._incremental.items():
             ind_type = feature.indicator_type.lower()
-            if ind_type in ("atr",):
+
+            # Use registry to determine input requirements
+            info = registry.get_indicator_info(ind_type)
+            if info.requires_hlc:
                 inc_ind.update(
                     high=float(candle.high),
                     low=float(candle.low),
@@ -186,12 +216,48 @@ class LiveIndicatorCache:
             else:
                 inc_ind.update(close=float(candle.close))
 
-            # Append new value
-            self._indicators[name] = np.append(self._indicators[name], inc_ind.value)
+            # Append new values for all outputs
+            if info.is_multi_output:
+                for suffix in info.output_keys:
+                    key = f"{name}_{suffix}"
+                    value = self._get_incremental_output(inc_ind, suffix)
+                    self._indicators[key] = np.append(self._indicators[key], value)
+            else:
+                self._indicators[name] = np.append(self._indicators[name], inc_ind.value)
 
         # Recompute vectorized indicators (still O(n) but only for non-incremental)
         if self._vectorized_specs:
             self._compute_vectorized()
+
+    def _get_incremental_output(self, inc_ind: Any, suffix: str) -> float:
+        """
+        Get output value from incremental indicator by suffix.
+
+        Multi-output incremental indicators have properties like:
+        - k_value, d_value (Stochastic)
+        - adx_value, dmp_value, dmn_value (ADX)
+        - trend_value, direction_value, long_value, short_value (SuperTrend)
+        - macd (via .value), signal_value, histogram_value (MACD)
+        - lower, middle, upper (BBands - direct properties)
+
+        Args:
+            inc_ind: Incremental indicator instance
+            suffix: Output suffix from registry (e.g., "k", "d", "adx")
+
+        Returns:
+            Output value (may be NaN)
+        """
+        # Try {suffix}_value property first (most common pattern)
+        prop_name = f"{suffix}_value"
+        if hasattr(inc_ind, prop_name):
+            return float(getattr(inc_ind, prop_name))
+
+        # Try direct property (BBands: lower, middle, upper)
+        if hasattr(inc_ind, suffix):
+            return float(getattr(inc_ind, suffix))
+
+        # Fallback to primary value
+        return float(inc_ind.value)
 
     def _compute_vectorized(self) -> None:
         """Compute vectorized indicators (fallback for non-incremental)."""
@@ -244,6 +310,12 @@ class LiveDataProvider:
     - Incrementally computed indicators via LiveIndicatorCache
     - Structure state (swing, trend, zones) via TFIncrementalState
 
+    Supports 3-feed + exec role system for multi-timeframe strategies:
+    - low_tf: Fast timeframe (execution, entries)
+    - med_tf: Medium timeframe (structure, bias)
+    - high_tf: Slow timeframe (trend, context)
+    - exec: Pointer to which TF to step on
+
     Integrates with existing RealtimeBootstrap/RealtimeState infrastructure.
     """
 
@@ -258,39 +330,99 @@ class LiveDataProvider:
         self._play = play
         self._demo = demo
         self._symbol = play.symbol_universe[0]
-        self._timeframe = play.execution_tf
+
+        # 3-Feed + Exec Role System
+        # Extract TF mapping from Play timeframes
+        tf_config = play.timeframes if hasattr(play, 'timeframes') and play.timeframes else {}
+        self._tf_mapping = {
+            "low_tf": tf_config.get("low_tf", play.execution_tf),
+            "med_tf": tf_config.get("med_tf", play.execution_tf),
+            "high_tf": tf_config.get("high_tf", play.execution_tf),
+            "exec": tf_config.get("exec", "low_tf"),  # Pointer to which feed
+        }
+        self._exec_role = self._tf_mapping["exec"]
+
+        # Resolved exec TF (the actual timeframe string)
+        self._timeframe = self._tf_mapping[self._exec_role]
 
         # RealtimeState integration (set during connect)
         self._realtime_state: "RealtimeState | None" = None
         self._bootstrap: "RealtimeBootstrap | None" = None
 
-        # Indicator cache
-        self._indicator_cache = LiveIndicatorCache(play)
-
-        # Structure state (incremental detection)
-        self._structure_state: "TFIncrementalState | None" = None
-
-        # Candle buffer (use BarRecord from RealtimeState)
-        self._candle_buffer: list[Candle] = []
+        # 3-Feed Candle Buffers
+        self._low_tf_buffer: list[Candle] = []
+        self._med_tf_buffer: list[Candle] = []
+        self._high_tf_buffer: list[Candle] = []
         self._buffer_size = 500
+
+        # 3-Feed Indicator Caches
+        self._low_tf_indicators = LiveIndicatorCache(play, buffer_size=self._buffer_size)
+        self._med_tf_indicators: LiveIndicatorCache | None = None
+        self._high_tf_indicators: LiveIndicatorCache | None = None
+
+        # Initialize med_tf/high_tf caches only if different from low_tf
+        if self._tf_mapping["med_tf"] != self._tf_mapping["low_tf"]:
+            self._med_tf_indicators = LiveIndicatorCache(play, buffer_size=self._buffer_size)
+        if self._tf_mapping["high_tf"] != self._tf_mapping["med_tf"]:
+            self._high_tf_indicators = LiveIndicatorCache(play, buffer_size=self._buffer_size)
+
+        # 3-Feed Structure States (incremental detection)
+        self._low_tf_structure: "TFIncrementalState | None" = None
+        self._med_tf_structure: "TFIncrementalState | None" = None
+        self._high_tf_structure: "TFIncrementalState | None" = None
+
+        # Legacy single-buffer aliases (for compatibility)
+        self._candle_buffer = self._low_tf_buffer
+        self._indicator_cache = self._low_tf_indicators
+        self._structure_state: "TFIncrementalState | None" = None
 
         # Tracking
         self._ready = False
         self._warmup_bars = 100  # Minimum bars before ready
         self._current_bar_index: int = -1
 
-        # Environment for MTF buffer lookup
+        # Environment for multi-TF buffer lookup
         self._env = "demo" if demo else "live"
 
-        logger.info(
-            f"LiveDataProvider initialized: {self._symbol} {self._timeframe} "
-            f"env={self._env}"
+        # Multi-TF mode flag
+        self._multi_tf_mode = (
+            self._tf_mapping["high_tf"] != self._tf_mapping["low_tf"] or
+            self._tf_mapping["med_tf"] != self._tf_mapping["low_tf"]
         )
+
+        logger.info(
+            f"LiveDataProvider initialized: {self._symbol} exec={self._timeframe} "
+            f"env={self._env} multi_tf={self._multi_tf_mode}"
+        )
+        if self._multi_tf_mode:
+            logger.info(
+                f"  TF mapping: low_tf={self._tf_mapping['low_tf']} "
+                f"med_tf={self._tf_mapping['med_tf']} high_tf={self._tf_mapping['high_tf']} "
+                f"exec={self._exec_role}"
+            )
 
     @property
     def num_bars(self) -> int:
-        """Number of bars in buffer."""
-        return len(self._candle_buffer)
+        """Number of bars in exec buffer."""
+        return len(self._exec_buffer)
+
+    @property
+    def _exec_buffer(self) -> list[Candle]:
+        """Resolved exec buffer based on exec role pointer."""
+        if self._exec_role == "high_tf":
+            return self._high_tf_buffer
+        elif self._exec_role == "med_tf":
+            return self._med_tf_buffer
+        return self._low_tf_buffer
+
+    @property
+    def _exec_indicators(self) -> LiveIndicatorCache:
+        """Resolved exec indicator cache based on exec role pointer."""
+        if self._exec_role == "high_tf" and self._high_tf_indicators:
+            return self._high_tf_indicators
+        elif self._exec_role == "med_tf" and self._med_tf_indicators:
+            return self._med_tf_indicators
+        return self._low_tf_indicators
 
     @property
     def symbol(self) -> str:
@@ -301,6 +433,16 @@ class LiveDataProvider:
         return self._timeframe
 
     @property
+    def tf_mapping(self) -> dict[str, str]:
+        """TF mapping for PlayEngine compatibility."""
+        return self._tf_mapping
+
+    @property
+    def multi_tf_mode(self) -> bool:
+        """Whether multi-TF mode is active."""
+        return self._multi_tf_mode
+
+    @property
     def current_bar_index(self) -> int:
         """Current bar index for structure access."""
         return self._current_bar_index
@@ -309,6 +451,21 @@ class LiveDataProvider:
     def current_bar_index(self, value: int) -> None:
         """Set current bar index (called by runner each bar)."""
         self._current_bar_index = value
+
+    @property
+    def low_tf_buffer(self) -> list[Candle]:
+        """Low timeframe candle buffer."""
+        return self._low_tf_buffer
+
+    @property
+    def med_tf_buffer(self) -> list[Candle]:
+        """Medium timeframe candle buffer."""
+        return self._med_tf_buffer
+
+    @property
+    def high_tf_buffer(self) -> list[Candle]:
+        """High timeframe candle buffer."""
+        return self._high_tf_buffer
 
     async def connect(self) -> None:
         """
@@ -350,21 +507,66 @@ class LiveDataProvider:
         logger.info(f"LiveDataProvider disconnected: {self._symbol}")
 
     async def _load_initial_bars(self) -> None:
-        """Load initial bars from bar buffer, DuckDB, or REST API."""
+        """Load initial bars from bar buffer, DuckDB, or REST API for all TFs."""
         if self._realtime_state is None:
+            return
+
+        # Load bars for each unique timeframe
+        unique_tfs = {
+            "low_tf": self._tf_mapping["low_tf"],
+            "med_tf": self._tf_mapping["med_tf"],
+            "high_tf": self._tf_mapping["high_tf"],
+        }
+
+        # Load low_tf (always required)
+        await self._load_tf_bars("low_tf", unique_tfs["low_tf"])
+
+        # Load med_tf if different from low_tf
+        if unique_tfs["med_tf"] != unique_tfs["low_tf"]:
+            await self._load_tf_bars("med_tf", unique_tfs["med_tf"])
+
+        # Load high_tf if different from med_tf
+        if unique_tfs["high_tf"] != unique_tfs["med_tf"]:
+            await self._load_tf_bars("high_tf", unique_tfs["high_tf"])
+
+        # Initialize structure states for each TF if Play has structures
+        if self._play.structures:
+            self._init_structure_states()
+
+        # Check warmup (exec buffer must have enough bars)
+        if len(self._exec_buffer) >= self._warmup_bars:
+            self._ready = True
+            logger.info("LiveDataProvider ready (warmup complete)")
+
+    async def _load_tf_bars(self, tf_role: str, tf_str: str) -> None:
+        """Load bars for a specific timeframe role."""
+        if self._realtime_state is None:
+            return
+
+        # Get the right buffer and indicator cache for this TF
+        if tf_role == "low_tf":
+            buffer = self._low_tf_buffer
+            indicator_cache = self._low_tf_indicators
+        elif tf_role == "med_tf":
+            buffer = self._med_tf_buffer
+            indicator_cache = self._med_tf_indicators
+        elif tf_role == "high_tf":
+            buffer = self._high_tf_buffer
+            indicator_cache = self._high_tf_indicators
+        else:
             return
 
         # Try to get from bar buffer first (hot in-memory cache)
         bars = self._realtime_state.get_bar_buffer(
             env=self._env,
             symbol=self._symbol,
-            timeframe=self._timeframe,
+            timeframe=tf_str,
             limit=self._buffer_size,
         )
 
         # Fall back to DuckDB if bar buffer is empty
         if not bars:
-            bars = await self._load_bars_from_db()
+            bars = await self._load_bars_from_db_for_tf(tf_str)
 
         if bars:
             # Convert BarRecords to interface Candles
@@ -378,28 +580,37 @@ class LiveDataProvider:
                     close=bar_record.close,
                     volume=bar_record.volume,
                 )
-                self._candle_buffer.append(candle)
+                buffer.append(candle)
 
             # Initialize indicators from historical data
-            self._indicator_cache.initialize_from_history(
-                bars,
-                self._play.features if self._play.features else [],
-            )
+            if indicator_cache is not None:
+                # Get indicator specs for this TF from Play
+                tf_specs = self._get_indicator_specs_for_tf(tf_role)
+                indicator_cache.initialize_from_history(bars, tf_specs)
 
-            logger.info(f"Loaded {len(bars)} bars for warm-up")
+            logger.info(f"Loaded {len(bars)} bars for {tf_role} ({tf_str}) warm-up")
 
-        # Initialize structure state if Play has structures
-        if self._play.structures:
-            self._init_structure_state()
+    def _get_indicator_specs_for_tf(self, tf_role: str) -> list[dict]:
+        """Get indicator specs for a specific TF role from Play."""
+        if not self._play.features:
+            return []
 
-        # Check warmup
-        if len(self._candle_buffer) >= self._warmup_bars:
-            self._ready = True
-            logger.info("LiveDataProvider ready (warmup complete)")
+        tf_str = self._tf_mapping[tf_role]
+        specs = []
+        for feature in self._play.features:
+            # Check if this feature's TF matches
+            feature_tf = feature.get("timeframe", self._timeframe)
+            if feature_tf == tf_str:
+                specs.append(feature)
+        return specs
 
     async def _load_bars_from_db(self) -> list:
+        """Load bars from DuckDB for warm-up (exec TF)."""
+        return await self._load_bars_from_db_for_tf(self._timeframe)
+
+    async def _load_bars_from_db_for_tf(self, tf_str: str) -> list:
         """
-        Load bars from DuckDB for warm-up.
+        Load bars from DuckDB for warm-up for a specific timeframe.
 
         Fallback when in-memory buffer is empty (e.g., bot restart).
         """
@@ -412,19 +623,19 @@ class LiveDataProvider:
 
             # Calculate time range (last N bars based on timeframe)
             end = datetime.utcnow()
-            tf_minutes = self._parse_timeframe_minutes(self._timeframe)
+            tf_minutes = self._parse_timeframe_minutes(tf_str)
             start = end - timedelta(minutes=tf_minutes * self._buffer_size)
 
             # Query DuckDB
             df = store.query_ohlcv(
                 symbol=self._symbol,
-                timeframe=self._timeframe,
+                timeframe=tf_str,
                 start=start,
                 end=end,
             )
 
             if df is None or df.empty:
-                logger.info(f"No bars in DuckDB for {self._symbol} {self._timeframe}")
+                logger.info(f"No bars in DuckDB for {self._symbol} {tf_str}")
                 return []
 
             # Convert DataFrame rows to BarRecord objects
@@ -440,11 +651,11 @@ class LiveDataProvider:
                 )
                 bars.append(bar)
 
-            logger.info(f"Loaded {len(bars)} bars from DuckDB ({self._env})")
+            logger.info(f"Loaded {len(bars)} bars from DuckDB ({self._env}) for {tf_str}")
             return bars
 
         except Exception as e:
-            logger.warning(f"Failed to load bars from DuckDB: {e}")
+            logger.warning(f"Failed to load bars from DuckDB for {tf_str}: {e}")
             return []
 
     def _parse_timeframe_minutes(self, tf: str) -> int:
@@ -457,36 +668,84 @@ class LiveDataProvider:
         return tf_map.get(tf, 60)  # Default to 1h
 
     def _init_structure_state(self) -> None:
-        """Initialize incremental structure state from Play specs."""
+        """Initialize incremental structure state from Play specs (legacy single-TF)."""
+        self._init_structure_states()
+
+    def _init_structure_states(self) -> None:
+        """Initialize incremental structure states for all TFs from Play specs."""
         from src.structures import TFIncrementalState
 
         if not self._play.structures:
             return
 
-        # Get exec TF structures
-        exec_specs = self._play.structures.get("exec", [])
-        if exec_specs:
-            try:
-                self._structure_state = TFIncrementalState(
-                    self._timeframe,
-                    exec_specs,
-                )
-                logger.info(f"Initialized structure state with {len(exec_specs)} specs")
-            except Exception as e:
-                logger.warning(f"Failed to initialize structure state: {e}")
+        # Get structure specs for each TF role
+        # Play.structures is a dict keyed by TF role: {"exec": [...], "high_tf": [...], etc.}
 
-    def get_candle(self, index: int) -> Candle:
+        # low_tf / exec structures
+        exec_specs = self._play.structures.get("exec", [])
+        low_tf_specs = self._play.structures.get("low_tf", [])
+        combined_low_tf = exec_specs + low_tf_specs
+        if combined_low_tf:
+            try:
+                self._low_tf_structure = TFIncrementalState(
+                    self._tf_mapping["low_tf"],
+                    combined_low_tf,
+                )
+                # Set legacy alias
+                self._structure_state = self._low_tf_structure
+                logger.info(f"Initialized low_tf structure state with {len(combined_low_tf)} specs")
+            except Exception as e:
+                logger.warning(f"Failed to initialize low_tf structure state: {e}")
+
+        # med_tf structures (only if different from low_tf)
+        if self._tf_mapping["med_tf"] != self._tf_mapping["low_tf"]:
+            med_tf_specs = self._play.structures.get("med_tf", [])
+            if med_tf_specs:
+                try:
+                    self._med_tf_structure = TFIncrementalState(
+                        self._tf_mapping["med_tf"],
+                        med_tf_specs,
+                    )
+                    logger.info(f"Initialized med_tf structure state with {len(med_tf_specs)} specs")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize med_tf structure state: {e}")
+
+        # high_tf structures (only if different from med_tf)
+        if self._tf_mapping["high_tf"] != self._tf_mapping["med_tf"]:
+            high_tf_specs = self._play.structures.get("high_tf", [])
+            if high_tf_specs:
+                try:
+                    self._high_tf_structure = TFIncrementalState(
+                        self._tf_mapping["high_tf"],
+                        high_tf_specs,
+                    )
+                    logger.info(f"Initialized high_tf structure state with {len(high_tf_specs)} specs")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize high_tf structure state: {e}")
+
+    def get_candle(self, index: int, tf_role: str | None = None) -> Candle:
         """
-        Get candle at index.
+        Get candle at index from specified TF buffer.
 
         Args:
             index: Negative index for live (-1 = latest, -2 = previous, etc.)
+            tf_role: TF role (low_tf, med_tf, high_tf). If None, uses exec buffer.
 
         Returns:
             Candle data
         """
-        if not self._candle_buffer:
-            raise RuntimeError("No candles in buffer. Is WebSocket connected?")
+        # Get the appropriate buffer
+        if tf_role == "low_tf":
+            buffer = self._low_tf_buffer
+        elif tf_role == "med_tf":
+            buffer = self._med_tf_buffer
+        elif tf_role == "high_tf":
+            buffer = self._high_tf_buffer
+        else:
+            buffer = self._exec_buffer
+
+        if not buffer:
+            raise RuntimeError(f"No candles in {tf_role or 'exec'} buffer. Is WebSocket connected?")
 
         # Support both positive (backtest-style) and negative (live-style) indexing
         if index < 0:
@@ -496,78 +755,200 @@ class LiveDataProvider:
             # Backtest-style: positive index
             actual_idx = index
 
-        if abs(actual_idx) > len(self._candle_buffer) if actual_idx < 0 else actual_idx >= len(self._candle_buffer):
-            raise IndexError(f"Index {index} out of buffer bounds (buffer size: {len(self._candle_buffer)})")
+        if abs(actual_idx) > len(buffer) if actual_idx < 0 else actual_idx >= len(buffer):
+            raise IndexError(f"Index {index} out of buffer bounds (buffer size: {len(buffer)})")
 
-        return self._candle_buffer[actual_idx]
+        return buffer[actual_idx]
 
-    def get_indicator(self, name: str, index: int) -> float:
-        """Get indicator value at index."""
-        return self._indicator_cache.get(name, index)
+    def get_indicator(self, name: str, index: int, tf_role: str | None = None) -> float:
+        """
+        Get indicator value at index from specified TF.
 
-    def get_structure(self, key: str, field: str) -> float:
-        """Get current structure field value."""
-        if self._structure_state is None:
-            raise RuntimeError("Structure state not initialized")
+        Args:
+            name: Indicator name
+            index: Bar index
+            tf_role: TF role (low_tf, med_tf, high_tf). If None, uses exec cache.
 
-        return self._structure_state.get_value(key, field)
+        Returns:
+            Indicator value
+        """
+        cache = self._get_indicator_cache_for_role(tf_role)
+        return cache.get(name, index)
 
-    def get_structure_at(self, key: str, field: str, index: int) -> float:
-        """Get structure field at specific index."""
-        if self._structure_state is None:
-            raise RuntimeError("Structure state not initialized")
+    def _get_indicator_cache_for_role(self, tf_role: str | None) -> LiveIndicatorCache:
+        """Get the indicator cache for a TF role."""
+        if tf_role == "low_tf":
+            return self._low_tf_indicators
+        elif tf_role == "med_tf" and self._med_tf_indicators:
+            return self._med_tf_indicators
+        elif tf_role == "high_tf" and self._high_tf_indicators:
+            return self._high_tf_indicators
+        return self._exec_indicators
+
+    def get_structure(self, key: str, field: str, tf_role: str | None = None) -> float:
+        """
+        Get current structure field value.
+
+        Args:
+            key: Structure key
+            field: Field name
+            tf_role: TF role (low_tf, med_tf, high_tf). If None, uses exec structure.
+
+        Returns:
+            Structure field value
+        """
+        structure = self._get_structure_for_role(tf_role)
+        if structure is None:
+            raise RuntimeError(f"Structure state not initialized for {tf_role or 'exec'}")
+
+        return structure.get_value(key, field)
+
+    def _get_structure_for_role(self, tf_role: str | None) -> "TFIncrementalState | None":
+        """Get the structure state for a TF role."""
+        if tf_role == "low_tf":
+            return self._low_tf_structure
+        elif tf_role == "med_tf":
+            return self._med_tf_structure
+        elif tf_role == "high_tf":
+            return self._high_tf_structure
+        # Default: use exec role
+        if self._exec_role == "high_tf":
+            return self._high_tf_structure
+        elif self._exec_role == "med_tf":
+            return self._med_tf_structure
+        return self._low_tf_structure
+
+    def get_structure_at(self, key: str, field: str, index: int, tf_role: str | None = None) -> float:
+        """
+        Get structure field at specific index.
+
+        Args:
+            key: Structure key
+            field: Field name
+            index: Bar index
+            tf_role: TF role (low_tf, med_tf, high_tf). If None, uses exec structure.
+
+        Returns:
+            Structure field value
+        """
+        structure = self._get_structure_for_role(tf_role)
+        if structure is None:
+            raise RuntimeError(f"Structure state not initialized for {tf_role or 'exec'}")
 
         # For now, just return current value (full history not tracked in live)
         # P3: Track structure history for lookback (ring buffer per structure field)
-        return self._structure_state.get_value(key, field)
+        return structure.get_value(key, field)
 
-    def has_indicator(self, name: str) -> bool:
-        """Check if indicator exists."""
-        return self._indicator_cache.has_indicator(name)
+    def has_indicator(self, name: str, tf_role: str | None = None) -> bool:
+        """Check if indicator exists in specified TF cache."""
+        cache = self._get_indicator_cache_for_role(tf_role)
+        return cache.has_indicator(name)
 
     def is_ready(self) -> bool:
         """Check if data provider is ready."""
         return self._ready
 
-    def on_candle_close(self, candle: Candle) -> None:
+    def on_candle_close(self, candle: Candle, timeframe: str | None = None) -> None:
         """
         Called when a new candle closes.
 
         Updates buffer, computes indicators, updates structures.
+
+        Args:
+            candle: The closed candle
+            timeframe: The timeframe this candle belongs to. If None, assumes exec TF.
         """
-        # Add to buffer
-        self._candle_buffer.append(candle)
+        # Determine which TF role this candle belongs to
+        if timeframe is None:
+            timeframe = self._timeframe
 
-        # Trim buffer if needed
-        if len(self._candle_buffer) > self._buffer_size:
-            self._candle_buffer = self._candle_buffer[-self._buffer_size:]
+        tf_role = self._get_tf_role_for_timeframe(timeframe)
 
-        # Update indicators
-        self._indicator_cache.update(candle)
+        # Route to correct buffer and indicator cache
+        if tf_role == "low_tf":
+            self._update_tf_buffer(
+                candle, self._low_tf_buffer, self._low_tf_indicators, self._low_tf_structure
+            )
+        elif tf_role == "med_tf":
+            self._update_tf_buffer(
+                candle, self._med_tf_buffer, self._med_tf_indicators, self._med_tf_structure
+            )
+        elif tf_role == "high_tf":
+            self._update_tf_buffer(
+                candle, self._high_tf_buffer, self._high_tf_indicators, self._high_tf_structure
+            )
 
-        # Update structure state
-        if self._structure_state is not None:
-            self._update_structure_state(len(self._candle_buffer) - 1)
-
-        # Check warmup
-        if not self._ready and len(self._candle_buffer) >= self._warmup_bars:
+        # Check warmup (exec buffer must have enough bars)
+        if not self._ready and len(self._exec_buffer) >= self._warmup_bars:
             self._ready = True
             logger.info("LiveDataProvider ready (warmup complete)")
 
+    def _get_tf_role_for_timeframe(self, timeframe: str) -> str:
+        """Map a timeframe string to its TF role (low_tf, med_tf, high_tf)."""
+        if timeframe == self._tf_mapping["low_tf"]:
+            return "low_tf"
+        elif timeframe == self._tf_mapping["med_tf"]:
+            return "med_tf"
+        elif timeframe == self._tf_mapping["high_tf"]:
+            return "high_tf"
+        # Default to low_tf if unknown
+        return "low_tf"
+
+    def _update_tf_buffer(
+        self,
+        candle: Candle,
+        buffer: list[Candle],
+        indicator_cache: LiveIndicatorCache | None,
+        structure_state: "TFIncrementalState | None",
+    ) -> None:
+        """Update a specific TF's buffer, indicators, and structures."""
+        # Add to buffer
+        buffer.append(candle)
+
+        # Trim buffer if needed
+        if len(buffer) > self._buffer_size:
+            del buffer[:-self._buffer_size]
+
+        # Update indicators
+        if indicator_cache is not None:
+            indicator_cache.update(candle)
+
+        # Update structure state
+        if structure_state is not None:
+            self._update_structure_state_for_tf(structure_state, len(buffer) - 1, candle)
+
     def _update_structure_state(self, bar_idx: int) -> None:
-        """Update structure state with latest candle."""
+        """Update structure state with latest candle (legacy single-TF method)."""
         if self._structure_state is None:
             return
 
+        candle = self._exec_buffer[-1] if self._exec_buffer else None
+        if candle is None:
+            return
+
+        self._update_structure_state_for_tf(self._structure_state, bar_idx, candle)
+
+    def _update_structure_state_for_tf(
+        self,
+        structure_state: "TFIncrementalState",
+        bar_idx: int,
+        candle: Candle,
+    ) -> None:
+        """Update structure state for a specific TF with the given candle."""
         from src.structures import BarData
 
-        candle = self._candle_buffer[-1]
-
         # Get indicator values for structure computation
+        # Use the appropriate indicator cache based on which structure state this is
+        indicator_cache = self._low_tf_indicators
+        if structure_state is self._med_tf_structure and self._med_tf_indicators:
+            indicator_cache = self._med_tf_indicators
+        elif structure_state is self._high_tf_structure and self._high_tf_indicators:
+            indicator_cache = self._high_tf_indicators
+
         indicator_values: dict[str, float] = {}
-        for name in self._indicator_cache._indicators.keys():
+        for name in indicator_cache._indicators.keys():
             try:
-                val = self._indicator_cache.get(name, -1)
+                val = indicator_cache.get(name, -1)
                 if not np.isnan(val):
                     indicator_values[name] = val
             except (IndexError, KeyError):
@@ -584,7 +965,7 @@ class LiveDataProvider:
         )
 
         try:
-            self._structure_state.update(bar_data)
+            structure_state.update(bar_data)
         except Exception as e:
             logger.warning(f"Failed to update structure state: {e}")
 
@@ -911,6 +1292,58 @@ class LiveExchange:
         handles fills asynchronously via WebSocket.
         """
         pass  # Exchange handles fills via WebSocket
+
+    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> None:
+        """
+        Submit close order for current position.
+
+        Args:
+            reason: Reason for close (e.g., "signal", "stop_loss", "take_profit")
+            percent: Percentage of position to close (1-100)
+
+        Called by PlayEngine when exit signal triggers.
+        """
+        position = self.get_position(self._symbol)
+        if position is None:
+            logger.warning(f"submit_close called but no position for {self._symbol}")
+            return
+
+        # Calculate close size
+        close_qty = position.size_qty * (percent / 100.0)
+
+        # Determine close side (opposite of position)
+        close_side = "Sell" if position.side.upper() == "LONG" else "Buy"
+
+        logger.info(
+            f"Submitting close order: {self._symbol} {close_side} "
+            f"qty={close_qty:.6f} ({percent}%) reason={reason}"
+        )
+
+        if self._exchange_manager is None:
+            logger.error("Exchange not connected. Cannot close position.")
+            return
+
+        try:
+            # Use ExchangeManager to close position
+            result = self._exchange_manager.place_order(
+                symbol=self._symbol,
+                side=close_side,
+                order_type="Market",
+                qty=close_qty,
+                reduce_only=True,  # Ensures this only closes, doesn't flip
+            )
+
+            if result and result.success:
+                logger.info(
+                    f"Close order submitted: order_id={result.order_id} "
+                    f"avg_price={result.avg_price}"
+                )
+            else:
+                error_msg = result.error if result else "Unknown error"
+                logger.error(f"Close order failed: {error_msg}")
+
+        except Exception as e:
+            logger.error(f"Failed to submit close order: {e}")
 
     @property
     def has_position(self) -> bool:

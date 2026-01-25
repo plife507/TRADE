@@ -137,9 +137,25 @@ from .incremental import (
     IncrementalATR,
     IncrementalMACD,
     IncrementalBBands,
+    IncrementalWilliamsR,
+    IncrementalCCI,
+    IncrementalStochastic,
+    IncrementalADX,
+    IncrementalSuperTrend,
     create_incremental_indicator,
     supports_incremental,
+    list_incremental_indicators,
     INCREMENTAL_INDICATORS,
+)
+
+# =============================================================================
+# Provider exports (unified interface for backtest/live)
+# =============================================================================
+from .provider import (
+    IndicatorProvider,
+    BacktestIndicatorProvider,
+    LiveIndicatorProvider,
+    IndicatorProviderType,
 )
 
 
@@ -214,7 +230,18 @@ __all__ = [
     "IncrementalATR",
     "IncrementalMACD",
     "IncrementalBBands",
+    "IncrementalWilliamsR",
+    "IncrementalCCI",
+    "IncrementalStochastic",
+    "IncrementalADX",
+    "IncrementalSuperTrend",
     "create_incremental_indicator",
     "supports_incremental",
+    "list_incremental_indicators",
     "INCREMENTAL_INDICATORS",
+    # Provider
+    "IndicatorProvider",
+    "BacktestIndicatorProvider",
+    "LiveIndicatorProvider",
+    "IndicatorProviderType",
 ]
