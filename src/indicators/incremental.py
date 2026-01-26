@@ -227,10 +227,17 @@ class IncrementalATR(IncrementalIndicator):
         tr = max(high-low, |high-prev_close|, |low-prev_close|)
         atr = (atr_prev * (n-1) + tr) / n
 
+    Args:
+        length: ATR period (default 14)
+        prenan: If True, skip first TR (no prev_close available).
+                Matches pandas_ta.atr(prenan=True) behavior.
+                Default False for standalone ATR, but ADX uses True internally.
+
     Matches pandas_ta.atr() output.
     """
 
     length: int = 14
+    prenan: bool = False
     _prev_close: float = field(default=np.nan, init=False)
     _atr: float = field(default=np.nan, init=False)
     _count: int = field(default=0, init=False)
@@ -243,13 +250,16 @@ class IncrementalATR(IncrementalIndicator):
         self._count += 1
 
         if self._count == 1:
-            # First bar - TR is just high-low
-            tr = high - low
-            self._warmup_tr.append(tr)
+            # First bar
+            if not self.prenan:
+                # Include first bar TR in warmup (prenan=False behavior)
+                tr = high - low
+                self._warmup_tr.append(tr)
+            # Either way, record prev_close for next bar's gap calculation
             self._prev_close = close
             return
 
-        # True Range
+        # True Range (includes gap from previous close)
         tr = max(
             high - low,
             abs(high - self._prev_close),
@@ -258,13 +268,16 @@ class IncrementalATR(IncrementalIndicator):
         self._prev_close = close
 
         if self._count <= self.length:
-            # Warmup phase
+            # Warmup phase - collect TR values
             self._warmup_tr.append(tr)
             if self._count == self.length:
-                # Initialize with SMA of TR
-                self._atr = sum(self._warmup_tr) / self.length
+                # Initialize with SMA of warmup TRs
+                # With prenan=True, we have length-1 values (skipped bar 0)
+                # With prenan=False, we have length values
+                # Pandas mean() skips NaN, so uses actual count as divisor
+                self._atr = sum(self._warmup_tr) / len(self._warmup_tr)
         else:
-            # Wilder's smoothed average
+            # Wilder's smoothed average (RMA)
             self._atr = (self._atr * (self.length - 1) + tr) / self.length
 
     def reset(self) -> None:
@@ -706,34 +719,49 @@ class IncrementalADX(IncrementalIndicator):
     """
     Average Directional Index with O(1) updates.
 
-    Uses Wilder's smoothing for +DI, -DI, and ADX.
+    Uses EWM (alpha=1/length) smoothing to match pandas_ta.adx(talib=False).
     Internally uses IncrementalATR for true range.
 
-    Matches pandas_ta.adx() output.
+    Key insight for warmup: pandas_ta starts RMA smoothing of DM from bar 1
+    (the first bar with DM values), NOT from when ATR becomes ready. This means
+    by the time ATR is valid, DM smoothing has already accumulated history.
+
+    For live trading:
+    - Load sufficient historical data (recommended: 3*length bars minimum)
+    - Run through all historical bars to warm up the indicator
+    - Use is_ready check before using values for trading decisions
     """
 
     length: int = 14
     _atr: IncrementalATR = field(init=False)
     _prev_high: float = field(default=np.nan, init=False)
     _prev_low: float = field(default=np.nan, init=False)
-    _smoothed_plus_dm: float = field(default=0.0, init=False)
-    _smoothed_minus_dm: float = field(default=0.0, init=False)
-    _smoothed_dx: float = field(default=0.0, init=False)
-    _warmup_plus_dm: list = field(default_factory=list, init=False)
-    _warmup_minus_dm: list = field(default_factory=list, init=False)
-    _warmup_dx: list = field(default_factory=list, init=False)
+    _smoothed_plus_dm: float = field(default=np.nan, init=False)
+    _smoothed_minus_dm: float = field(default=np.nan, init=False)
+    _smoothed_dx: float = field(default=np.nan, init=False)
+    _dm_count: int = field(default=0, init=False)  # Counts DM values (starts at bar 1)
+    _dx_count: int = field(default=0, init=False)  # Counts DX values
     _count: int = field(default=0, init=False)
+    _atr_first_ready: bool = field(default=False, init=False)  # Track first ATR ready bar
 
     def __post_init__(self) -> None:
-        self._atr = IncrementalATR(length=self.length)
+        # pandas_ta ADX uses atr(..., prenan=True) internally
+        self._atr = IncrementalATR(length=self.length, prenan=True)
 
     def update(
         self, high: float, low: float, close: float, **kwargs: Any
     ) -> None:
-        """Update with new OHLC data."""
+        """
+        Update with new OHLC data.
+
+        Matches pandas_ta.adx(talib=False) calculation:
+        1. Start DM smoothing from bar 1 (first bar with DM values)
+        2. Compute DI when ATR is ready (bar length-1)
+        3. Start DX smoothing when first DI is valid
+        """
         self._count += 1
 
-        # Update ATR
+        # Update ATR (tracks its own warmup)
         self._atr.update(high=high, low=low, close=close)
 
         if self._count == 1:
@@ -741,7 +769,7 @@ class IncrementalADX(IncrementalIndicator):
             self._prev_low = low
             return
 
-        # Directional Movement
+        # Directional Movement - computed from bar 1 onwards
         up_move = high - self._prev_high
         down_move = self._prev_low - low
 
@@ -751,28 +779,33 @@ class IncrementalADX(IncrementalIndicator):
         self._prev_high = high
         self._prev_low = low
 
-        if self._count <= self.length:
-            # Warmup phase - collect DM values
-            self._warmup_plus_dm.append(plus_dm)
-            self._warmup_minus_dm.append(minus_dm)
+        # EWM smoothing for DM - START IMMEDIATELY from bar 1
+        # (matches pandas_ta rma with adjust=False starting from first value)
+        # y[0] = x[0], y[i] = alpha * x[i] + (1 - alpha) * y[i-1]
+        self._dm_count += 1
+        alpha = 1.0 / self.length
 
-            if self._count == self.length:
-                # Initialize smoothed values with sum
-                self._smoothed_plus_dm = sum(self._warmup_plus_dm)
-                self._smoothed_minus_dm = sum(self._warmup_minus_dm)
+        if self._dm_count == 1:
+            # First DM value at bar 1 - initialize
+            self._smoothed_plus_dm = plus_dm
+            self._smoothed_minus_dm = minus_dm
         else:
-            # Wilder's smoothed moving average
-            self._smoothed_plus_dm = (
-                self._smoothed_plus_dm - (self._smoothed_plus_dm / self.length) + plus_dm
-            )
-            self._smoothed_minus_dm = (
-                self._smoothed_minus_dm - (self._smoothed_minus_dm / self.length) + minus_dm
-            )
+            # EWM update - continues accumulating before ATR is ready
+            self._smoothed_plus_dm = alpha * plus_dm + (1 - alpha) * self._smoothed_plus_dm
+            self._smoothed_minus_dm = alpha * minus_dm + (1 - alpha) * self._smoothed_minus_dm
 
-        # Calculate DI values and DX for ADX
-        if self._atr.is_ready and self._count >= self.length:
+        # Calculate DI values and DX only when ATR is ready
+        # Skip the first bar when ATR becomes ready (bar 13 with length=14, prenan=True)
+        # pandas_ta DMP is first valid at bar 14, not bar 13
+        if self._atr.is_ready:
+            if not self._atr_first_ready:
+                # First bar ATR is ready - skip DI/DX computation to match pandas_ta
+                self._atr_first_ready = True
+                return
+
             atr_val = self._atr.value
             if atr_val > 0:
+                # DI = 100 * smoothed_dm / atr
                 plus_di = (self._smoothed_plus_dm / atr_val) * 100.0
                 minus_di = (self._smoothed_minus_dm / atr_val) * 100.0
 
@@ -782,28 +815,24 @@ class IncrementalADX(IncrementalIndicator):
                 else:
                     dx = 0.0
 
-                if self._count <= self.length * 2:
-                    # Warmup phase for DX
-                    self._warmup_dx.append(dx)
-                    if len(self._warmup_dx) == self.length:
-                        self._smoothed_dx = sum(self._warmup_dx) / self.length
-                elif len(self._warmup_dx) >= self.length:
-                    # Wilder's smoothed ADX
-                    self._smoothed_dx = (
-                        (self._smoothed_dx * (self.length - 1) + dx) / self.length
-                    )
+                # EWM smoothing for DX (same formula as DM)
+                self._dx_count += 1
+                if self._dx_count == 1:
+                    self._smoothed_dx = dx
+                else:
+                    self._smoothed_dx = alpha * dx + (1 - alpha) * self._smoothed_dx
 
     def reset(self) -> None:
         self._atr.reset()
         self._prev_high = np.nan
         self._prev_low = np.nan
-        self._smoothed_plus_dm = 0.0
-        self._smoothed_minus_dm = 0.0
-        self._smoothed_dx = 0.0
-        self._warmup_plus_dm.clear()
-        self._warmup_minus_dm.clear()
-        self._warmup_dx.clear()
+        self._smoothed_plus_dm = np.nan
+        self._smoothed_minus_dm = np.nan
+        self._smoothed_dx = np.nan
+        self._dm_count = 0
+        self._dx_count = 0
         self._count = 0
+        self._atr_first_ready = False
 
     @property
     def value(self) -> float:
@@ -820,26 +849,30 @@ class IncrementalADX(IncrementalIndicator):
     @property
     def dmp_value(self) -> float:
         """Returns +DI value."""
-        if not self._atr.is_ready or self._count < self.length:
+        # Use is_ready to match pandas_ta warmup (DI first valid at bar 14, not 13)
+        if not self.is_ready:
             return np.nan
         atr_val = self._atr.value
-        if atr_val <= 0:
+        if atr_val <= 0 or np.isnan(self._smoothed_plus_dm):
             return np.nan
         return (self._smoothed_plus_dm / atr_val) * 100.0
 
     @property
     def dmn_value(self) -> float:
         """Returns -DI value."""
-        if not self._atr.is_ready or self._count < self.length:
+        # Use is_ready to match pandas_ta warmup (DI first valid at bar 14, not 13)
+        if not self.is_ready:
             return np.nan
         atr_val = self._atr.value
-        if atr_val <= 0:
+        if atr_val <= 0 or np.isnan(self._smoothed_minus_dm):
             return np.nan
         return (self._smoothed_minus_dm / atr_val) * 100.0
 
     @property
     def is_ready(self) -> bool:
-        return len(self._warmup_dx) >= self.length
+        # ADX is ready as soon as first DX is computed (pandas_ta RMA uses
+        # first DX as seed, no warmup wait)
+        return self._dx_count >= 1
 
 
 @dataclass
@@ -850,6 +883,10 @@ class IncrementalSuperTrend(IncrementalIndicator):
     Uses IncrementalATR internally. Tracks trend direction and levels.
 
     Matches pandas_ta.supertrend() output.
+
+    Note: pandas_ta.supertrend uses TA-Lib ATR internally (if installed),
+    which is first valid at bar `length` (vs pure Python at bar `length-1`).
+    We skip the first ATR-ready bar to match this +1 bar warmup delay.
     """
 
     length: int = 10
@@ -861,14 +898,23 @@ class IncrementalSuperTrend(IncrementalIndicator):
     _prev_trend: float = field(default=np.nan, init=False)
     _direction: int = field(default=1, init=False)  # 1 = up, -1 = down
     _count: int = field(default=0, init=False)
+    _atr_first_ready: bool = field(default=False, init=False)  # Track first ATR-ready bar
 
     def __post_init__(self) -> None:
-        self._atr = IncrementalATR(length=self.length)
+        # Use prenan=True to match TA-Lib ATR behavior used by pandas_ta.supertrend
+        self._atr = IncrementalATR(length=self.length, prenan=True)
 
     def update(
         self, high: float, low: float, close: float, **kwargs: Any
     ) -> None:
-        """Update with new OHLC data."""
+        """
+        Update with new OHLC data.
+
+        Logic matches pandas_ta.supertrend() exactly:
+        1. Determine direction using PREVIOUS bar's (final) bands
+        2. Apply band holding ONLY when direction unchanged
+        3. Set trend value based on direction
+        """
         self._count += 1
 
         # Update ATR
@@ -878,56 +924,62 @@ class IncrementalSuperTrend(IncrementalIndicator):
             self._prev_close = close
             return
 
+        # Skip first ATR-ready bar to match TA-Lib ATR's +1 bar warmup delay.
+        # pandas_ta.supertrend uses TA-Lib ATR (first valid at bar `length`),
+        # while our IncrementalATR matches pure Python (first valid at bar `length-1`).
+        if not self._atr_first_ready:
+            self._atr_first_ready = True
+            self._prev_close = close
+            return
+
         atr_val = self._atr.value
         hl2 = (high + low) / 2.0
 
-        # Basic bands
+        # Basic bands for THIS bar (before any holding logic)
         basic_upper = hl2 + (self.multiplier * atr_val)
         basic_lower = hl2 - (self.multiplier * atr_val)
 
-        # Final upper band
         if np.isnan(self._prev_upper):
+            # First valid bar - initialize
+            self._direction = 1
+            self._prev_upper = basic_upper
+            self._prev_lower = basic_lower
+            self._prev_trend = basic_lower  # Start in uptrend
+            self._prev_close = close
+            return
+
+        # STEP 1: Determine direction using PREVIOUS bar's (final) bands
+        # This matches pandas_ta: close[i] compared to ub[i-1] and lb[i-1]
+        if close > self._prev_upper:
+            self._direction = 1
+        elif close < self._prev_lower:
+            self._direction = -1
+        # else: keep previous direction (already set)
+
+        # STEP 2: Apply band holding logic
+        # In pandas_ta, holding only happens when direction is unchanged (else branch)
+        if close > self._prev_upper or close < self._prev_lower:
+            # Direction changed - use basic bands without holding
             final_upper = basic_upper
-        elif basic_upper < self._prev_upper or self._prev_close > self._prev_upper:
-            final_upper = basic_upper
-        else:
-            final_upper = self._prev_upper
-
-        # Final lower band
-        if np.isnan(self._prev_lower):
-            final_lower = basic_lower
-        elif basic_lower > self._prev_lower or self._prev_close < self._prev_lower:
             final_lower = basic_lower
         else:
-            final_lower = self._prev_lower
-
-        # SuperTrend and direction
-        if np.isnan(self._prev_trend):
-            # First valid bar
-            if close > final_upper:
-                self._direction = 1
-                self._prev_trend = final_lower
+            # Direction unchanged - apply holding
+            if self._direction > 0:
+                # Uptrend: hold lower band if it contracts (new < old)
+                final_lower = max(basic_lower, self._prev_lower)
+                final_upper = basic_upper
             else:
-                self._direction = -1
-                self._prev_trend = final_upper
+                # Downtrend: hold upper band if it expands (new > old)
+                final_upper = min(basic_upper, self._prev_upper)
+                final_lower = basic_lower
+
+        # STEP 3: Set trend value based on direction
+        if self._direction > 0:
+            self._prev_trend = final_lower
         else:
-            if self._prev_trend == self._prev_upper:
-                # Previous trend was down
-                if close > final_upper:
-                    self._direction = 1
-                    self._prev_trend = final_lower
-                else:
-                    self._direction = -1
-                    self._prev_trend = final_upper
-            else:
-                # Previous trend was up
-                if close < final_lower:
-                    self._direction = -1
-                    self._prev_trend = final_upper
-                else:
-                    self._direction = 1
-                    self._prev_trend = final_lower
+            self._prev_trend = final_upper
 
+        # Store final bands for next bar's comparison
         self._prev_upper = final_upper
         self._prev_lower = final_lower
         self._prev_close = close
@@ -940,6 +992,7 @@ class IncrementalSuperTrend(IncrementalIndicator):
         self._prev_trend = np.nan
         self._direction = 1
         self._count = 0
+        self._atr_first_ready = False
 
     @property
     def value(self) -> float:

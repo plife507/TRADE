@@ -434,12 +434,19 @@ class RiskDefaults:
 
 
 @dataclass(frozen=True)
+class AccountDefaults:
+    """Account defaults from config/defaults.yml."""
+    starting_equity_usdt: float
+
+
+@dataclass(frozen=True)
 class SystemDefaults:
     """All system defaults loaded from config/defaults.yml."""
     fees: FeeDefaults
     margin: MarginDefaults
     execution: ExecutionDefaults
     risk: RiskDefaults
+    account: AccountDefaults
     exchange_name: str
     instrument_type: str
     quote_ccy: str
@@ -496,6 +503,9 @@ def load_system_defaults() -> SystemDefaults:
             risk_per_trade_pct=float(data["risk"]["risk_per_trade_pct"]),
             max_drawdown_pct=float(data["risk"]["max_drawdown_pct"]),
             stop_equity_usdt=float(data["risk"]["stop_equity_usdt"]),
+        ),
+        account=AccountDefaults(
+            starting_equity_usdt=float(data["account"]["starting_equity_usdt"]),
         ),
         exchange_name=str(data["exchange"]["name"]),
         instrument_type=str(data["exchange"]["instrument_type"]),

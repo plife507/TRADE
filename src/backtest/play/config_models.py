@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from src.config.constants import DEFAULTS
+
 
 class ExitMode(str, Enum):
     """
@@ -85,9 +87,11 @@ class AccountConfig:
     Required fields (no defaults - must be explicitly provided):
         starting_equity_usdt: Starting capital in USDT
         max_leverage: Maximum leverage allowed
+        max_drawdown_pct: Maximum allowed drawdown percentage (must be > 0)
     """
     starting_equity_usdt: float
     max_leverage: float
+    max_drawdown_pct: float  # Required: halt trading when drawdown exceeds this %
 
     margin_mode: str = "isolated_usdt"
     fee_model: FeeModel | None = None
@@ -103,6 +107,11 @@ class AccountConfig:
             raise ValueError(f"starting_equity_usdt must be positive. Got: {self.starting_equity_usdt}")
         if self.max_leverage <= 0:
             raise ValueError(f"max_leverage must be positive. Got: {self.max_leverage}")
+        if self.max_drawdown_pct <= 0:
+            raise ValueError(
+                f"max_drawdown_pct must be positive (e.g., 25.0 for 25% max drawdown). "
+                f"Got: {self.max_drawdown_pct}. This is a critical risk control."
+            )
         if self.margin_mode != "isolated_usdt":
             raise ValueError(
                 f"margin_mode must be 'isolated_usdt'. Got: '{self.margin_mode}'. "
@@ -114,6 +123,7 @@ class AccountConfig:
         result = {
             "starting_equity_usdt": self.starting_equity_usdt,
             "max_leverage": self.max_leverage,
+            "max_drawdown_pct": self.max_drawdown_pct,
             "margin_mode": self.margin_mode,
         }
         if self.fee_model:
@@ -132,24 +142,51 @@ class AccountConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "AccountConfig":
-        """Create from dict."""
-        if "starting_equity_usdt" not in d:
-            raise ValueError("AccountConfig requires 'starting_equity_usdt'")
-        if "max_leverage" not in d:
-            raise ValueError("AccountConfig requires 'max_leverage'")
+        """Create from dict, using defaults from config/defaults.yml when not specified."""
+        # All defaults come from config/defaults.yml - single source of truth
+        starting_equity = d.get("starting_equity_usdt", DEFAULTS.account.starting_equity_usdt)
+        max_leverage = d.get("max_leverage", DEFAULTS.risk.max_leverage)
 
+        # max_drawdown_pct in defaults.yml is 0.20 (decimal), convert to percentage if needed
+        default_drawdown = DEFAULTS.risk.max_drawdown_pct
+        if default_drawdown < 1.0:
+            # Convert from decimal (0.20) to percentage (20.0)
+            default_drawdown = default_drawdown * 100.0
+        max_drawdown = d.get("max_drawdown_pct", default_drawdown)
+
+        # Margin mode: defaults.yml uses "isolated", we use "isolated_usdt"
+        default_margin_mode = DEFAULTS.margin.mode
+        if default_margin_mode == "isolated":
+            default_margin_mode = "isolated_usdt"
+        margin_mode = d.get("margin_mode", default_margin_mode)
+
+        # Fee model: use defaults if not specified in Play
         fee_model = None
         if "fee_model" in d and d["fee_model"]:
             fee_model = FeeModel.from_dict(d["fee_model"])
+        else:
+            # Build from defaults.yml
+            fee_model = FeeModel(
+                taker_bps=DEFAULTS.fees.taker_bps,
+                maker_bps=DEFAULTS.fees.maker_bps,
+            )
+
+        # Execution defaults
+        slippage = d.get("slippage_bps", DEFAULTS.execution.slippage_bps)
+        min_notional = d.get("min_trade_notional_usdt", DEFAULTS.execution.min_trade_notional_usdt)
+
+        # Margin defaults
+        mmr = d.get("maintenance_margin_rate", DEFAULTS.margin.maintenance_margin_rate)
 
         return cls(
-            starting_equity_usdt=float(d["starting_equity_usdt"]),
-            max_leverage=float(d["max_leverage"]),
-            margin_mode=d.get("margin_mode", "isolated_usdt"),
+            starting_equity_usdt=float(starting_equity),
+            max_leverage=float(max_leverage),
+            max_drawdown_pct=float(max_drawdown),
+            margin_mode=margin_mode,
             fee_model=fee_model,
-            slippage_bps=float(d["slippage_bps"]) if "slippage_bps" in d else None,
-            min_trade_notional_usdt=float(d["min_trade_notional_usdt"]) if "min_trade_notional_usdt" in d else None,
+            slippage_bps=float(slippage),
+            min_trade_notional_usdt=float(min_notional),
             max_notional_usdt=float(d["max_notional_usdt"]) if "max_notional_usdt" in d else None,
             max_margin_usdt=float(d["max_margin_usdt"]) if "max_margin_usdt" in d else None,
-            maintenance_margin_rate=float(d["maintenance_margin_rate"]) if "maintenance_margin_rate" in d else None,
+            maintenance_margin_rate=float(mmr),
         )
