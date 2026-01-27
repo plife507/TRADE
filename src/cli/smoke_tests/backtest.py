@@ -62,14 +62,14 @@ def _run_backtest_smoke_play(play_id: str, fresh_db: bool = False) -> int:
 
         # Print indicator keys (Phase B)
         exec_keys = diag.get('declared_keys_exec', [])
-        htf_keys = diag.get('declared_keys_htf', [])
-        mtf_keys = diag.get('declared_keys_mtf', [])
+        high_tf_keys = diag.get('declared_keys_high_tf', [])
+        med_tf_keys = diag.get('declared_keys_med_tf', [])
 
         console.print(f"      Indicator Keys (exec): {exec_keys or '(none)'}")
-        if htf_keys:
-            console.print(f"      Indicator Keys (htf): {htf_keys}")
-        if mtf_keys:
-            console.print(f"      Indicator Keys (mtf): {mtf_keys}")
+        if high_tf_keys:
+            console.print(f"      Indicator Keys (high_tf): {high_tf_keys}")
+        if med_tf_keys:
+            console.print(f"      Indicator Keys (med_tf): {med_tf_keys}")
     else:
         console.print(f"  [red]FAIL[/] Preflight failed: {preflight_result.error}")
 
@@ -145,7 +145,7 @@ def _run_backtest_smoke_play(play_id: str, fresh_db: bool = False) -> int:
             if result_json.exists():
                 console.print(f"  [green]OK[/] result.json exists")
                 try:
-                    with open(result_json) as f:
+                    with open(result_json, encoding="utf-8") as f:
                         result_data = json.load(f)
 
                     # Check for required fields
@@ -303,7 +303,7 @@ def run_backtest_smoke(fresh_db: bool = False, play_id: str = None) -> int:
         return _run_backtest_smoke_play(play_id, fresh_db)
 
     # No Plays found - fail
-    console.print(f"\n[bold red]FAIL[/] No Plays found in strategies/plays/")
+    console.print(f"\n[bold red]FAIL[/] No Plays found in tests/functional/plays/")
     console.print(f"[dim]Create a Play YAML file or set BACKTEST_SMOKE_PLAY env var[/]")
     return 1
 
@@ -312,11 +312,11 @@ def run_backtest_mixed_smoke() -> int:
     """
     Run backtest smoke test with validation Plays.
 
-    Tests all validation cards in strategies/plays/_validation/:
+    Tests validation Plays from tests/functional/plays/:
     - V_60-V_62: 1m evaluation loop (mark_price, zone touch, entry timing)
     - V_70-V_75: Incremental state structures (swing, fibonacci, zone, trend, rolling_window, multi-TF)
 
-    These cards validate the full engine pipeline end-to-end.
+    These Plays validate the full engine pipeline end-to-end.
 
     Returns:
         0 on success, number of failures otherwise
@@ -329,7 +329,7 @@ def run_backtest_mixed_smoke() -> int:
 
     failures = 0
 
-    # Select a diverse mix of validation cards from strategies/plays/_validation/
+    # Select a diverse mix of validation Plays from tests/functional/plays/
     plays_to_test = [
         # Core validation cards (1m eval loop)
         "V_60_mark_price_basic",
@@ -400,7 +400,7 @@ def run_phase6_backtest_smoke() -> int:
     2. Deterministic bounded backfill - data-fix with max_lookback_days cap
     3. No-backfill when coverage is sufficient
     4. Drift regression - equity.parquet has ts_ms column
-    5. MTF alignment - eval_start_ts_ms in RunManifest
+    5. Multi-TF alignment - eval_start_ts_ms in RunManifest
     6. Audit verification - pipeline_signature, artifacts, hashes
     7. (Optional) Determinism spot-check - re-run hash comparison
 
@@ -418,8 +418,8 @@ def run_phase6_backtest_smoke() -> int:
     failures = 0
 
     # Test Plays for Phase 6 - progressive validation cards
-    WARMUP_MATRIX_CARD = "T03_multi_indicator"  # Single TF with multiple indicators
-    MTF_ALIGNMENT_CARD = "T09_mtf_three"  # Full MTF with 3 timeframes
+    WARMUP_MATRIX_CARD = "V_I_001_ema"  # Indicator validation play
+    MULTI_TF_ALIGNMENT_CARD = "V_S_001_swing_basic"  # Multi-TF structure play
     TEST_SYMBOL = "BTCUSDT"
     TEST_ENV = "live"
 
@@ -436,7 +436,6 @@ def run_phase6_backtest_smoke() -> int:
         result = backtest_preflight_play_tool(
             play_id=WARMUP_MATRIX_CARD,
             env=TEST_ENV,
-            symbol_override=TEST_SYMBOL,
             start=start_dt,
             end=end_dt,
         )
@@ -547,47 +546,43 @@ def run_phase6_backtest_smoke() -> int:
         failures += 1
 
     # =========================================================================
-    # TEST 3: MTF Alignment Play validation
+    # TEST 3: Multi-TF Alignment Play validation
     # =========================================================================
-    console.print(f"\n[bold cyan]TEST 3: MTF Alignment Play[/]")
+    console.print(f"\n[bold cyan]TEST 3: Multi-TF Alignment Play[/]")
 
     try:
         from ...backtest.play import load_play
         from ...backtest.execution_validation import validate_play_full
 
-        play = load_play(MTF_ALIGNMENT_CARD)
+        play = load_play(MULTI_TF_ALIGNMENT_CARD)
         validation = validate_play_full(play)
 
         if validation.is_valid:
-            console.print(f"  [green]OK[/] MTF Play validates")
-            console.print(f"      exec_tf: {play.exec_tf}")
-            console.print(f"      mtf: {play.mtf}")
-            console.print(f"      htf: {play.htf}")
+            console.print(f"  [green]OK[/] Multi-TF Play validates")
+            console.print(f"      execution_tf: {play.execution_tf}")
+            console.print(f"      tf_mapping: {play.tf_mapping}")
 
-            # Check delay bars are different across roles
-            delays = {}
-            for role, tf_config in play.tf_configs.items():
-                # delay_bars is in market_structure
-                if tf_config.market_structure:
-                    delays[role] = tf_config.market_structure.delay_bars
+            # Check that tf_mapping has the expected roles
+            tf_map = play.tf_mapping
+            if tf_map:
+                roles_present = [r for r in ("low_tf", "med_tf", "high_tf") if tf_map.get(r)]
+                console.print(f"      roles defined: {roles_present}")
+                if len(roles_present) >= 2:
+                    console.print(f"  [green]OK[/] Multi-TF Play has multiple timeframe roles")
                 else:
-                    delays[role] = 0
-            console.print(f"      delay_bars: {delays}")
-
-            if len(set(delays.values())) > 1:
-                console.print(f"  [green]OK[/] Different delay bars across roles")
+                    console.print(f"  [yellow]WARN[/] Play has limited timeframe roles")
             else:
-                console.print(f"  [yellow]WARN[/] Same delay bars across all roles")
+                console.print(f"  [yellow]WARN[/] No tf_mapping defined")
         else:
-            console.print(f"  [red]FAIL[/] MTF Play validation failed")
+            console.print(f"  [red]FAIL[/] Multi-TF Play validation failed")
             for err in validation.errors:
                 console.print(f"      - {err.message}")
             failures += 1
 
     except FileNotFoundError as e:
-        console.print(f"  [yellow]SKIP[/] MTF Play not found: {e}")
+        console.print(f"  [yellow]SKIP[/] Multi-TF Play not found: {e}")
     except Exception as e:
-        console.print(f"  [red]FAIL[/] MTF Play error: {e}")
+        console.print(f"  [red]FAIL[/] Multi-TF Play error: {e}")
         traceback.print_exc()
         failures += 1
 

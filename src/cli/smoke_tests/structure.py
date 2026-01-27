@@ -523,12 +523,12 @@ def run_state_tracking_parity_smoke(
 # Tests production path: engine -> incremental/
 
 
-# Validation Play paths
+# Validation Play paths (must match actual files in tests/validation/plays/)
 VALIDATION_PLAYS = [
-    "V_STRUCT_001_swing_detection",
-    "V_STRUCT_002_trend_classification",
-    "V_STRUCT_003_derived_zones",
-    "V_STRUCT_004_fibonacci_levels",
+    "V_S_001_swing_basic",
+    "V_S_003_trend_basic",
+    "V_S_009_derived_basic",
+    "V_S_007_fib_retracement",
 ]
 
 
@@ -600,10 +600,20 @@ def run_structure_smoke(
             continue
 
         try:
-            # Generate synthetic data
-            timeframes = [play.execution_tf]
-            if "1m" not in timeframes:
-                timeframes.append("1m")
+            # Generate synthetic data for ALL timeframes the Play needs
+            # Extract unique TFs from tf_mapping (low_tf, med_tf, high_tf)
+            timeframes = set()
+            if play.tf_mapping:
+                for role in ("low_tf", "med_tf", "high_tf"):
+                    tf = play.tf_mapping.get(role)
+                    if tf:
+                        timeframes.add(tf)
+            # Fallback to just execution_tf if no tf_mapping
+            if not timeframes:
+                timeframes.add(play.execution_tf)
+            # Always need 1m for quote data
+            timeframes.add("1m")
+            timeframes = list(timeframes)
 
             candles = generate_synthetic_candles(
                 symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
@@ -611,7 +621,7 @@ def run_structure_smoke(
                 bars_per_tf=500,
                 seed=seed,
                 pattern="trending",
-                align_mtf=True,
+                align_multi_tf=True,
             )
             console.print(f"  [green]OK[/] Synthetic data generated: {candles.bar_counts}")
 
@@ -665,9 +675,17 @@ def run_structure_smoke(
             # Run twice with same seed
             hashes = []
             for run_idx in range(2):
-                timeframes = [play.execution_tf]
-                if "1m" not in timeframes:
-                    timeframes.append("1m")
+                # Generate synthetic data for ALL timeframes the Play needs
+                timeframes = set()
+                if play.tf_mapping:
+                    for role in ("low_tf", "med_tf", "high_tf"):
+                        tf = play.tf_mapping.get(role)
+                        if tf:
+                            timeframes.add(tf)
+                if not timeframes:
+                    timeframes.add(play.execution_tf)
+                timeframes.add("1m")
+                timeframes = list(timeframes)
 
                 candles = generate_synthetic_candles(
                     symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
@@ -675,7 +693,7 @@ def run_structure_smoke(
                     bars_per_tf=500,
                     seed=seed,
                     pattern="trending",
-                    align_mtf=True,
+                    align_multi_tf=True,
                 )
 
                 provider = SyntheticCandlesProvider(candles)

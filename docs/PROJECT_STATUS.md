@@ -1,6 +1,6 @@
 # TRADE Project Status
 
-**Last Updated**: 2026-01-22
+**Last Updated**: 2026-01-25
 **Branch**: feature/unified-engine
 
 ---
@@ -22,31 +22,36 @@ The unified PlayEngine migration is **done**:
 | Mode Factory | Complete | `src/engine/factory.py` |
 | BacktestEngine | Deleted | `src/backtest/engine.py` (re-exports only) |
 | Signal Subloop | Complete | `src/engine/signal/subloop.py` |
+| Unified Indicators | Complete | `src/indicators/provider.py` |
 
 ---
 
-## Validation Suite: 125 Plays
+## Indicator System: COMPLETE
 
-Comprehensive DSL validation with synthetic data integration:
+11 incremental O(1) indicators for live trading:
+
+| Indicator | Status |
+|-----------|--------|
+| ema, sma, rsi, atr | ✓ Original |
+| macd, bbands | ✓ Original |
+| stoch, adx, supertrend | ✓ Added 2026-01-25 |
+| cci, willr | ✓ Added 2026-01-25 |
+
+**Registry-driven**: Adding a new indicator = 1 file change
+
+---
+
+## Validation Suite: 19 Plays
+
+Core validation plays for engine and DSL testing:
 
 | Tier | Plays | Coverage |
 |------|-------|----------|
-| T0: Smoke | 1 | Minimal smoke test |
-| T1: Operators | 12 | >, <, >=, <=, ==, !=, between, near, in, cross |
-| T2: Boolean | 4 | all, any, not, nested |
-| T3: Arithmetic | 6 | add, subtract, multiply, divide, modulo |
-| T4: Windows | 6 | holds_for, occurred_within, count_true |
-| T5: Indicators | 43 | 27 single-output + 16 multi-output |
-| T6: Structures | 7 | swing, trend, zone, fib, derived |
-| T7: Price | 5 | close, open, high, low, last_price |
-| T8: Multi-TF | 5 | high_tf filter, cross_tf confluence |
-| T9: Risk | 11 | stop loss, take profit, sizing |
-| T10: Position | 6 | long/short modes, exit modes |
-| T11: Actions | 8 | entry/exit, case actions, alerts |
-| T12: Combinations | 5 | mtf+indicators, structure+indicator |
-| T13: Stress | 6 | many indicators, deep nesting |
+| tier00_smoke | 1 | Engine startup validation |
+| tier06_structures | 12 | swing, trend, zone, fib, derived, rolling |
+| tier07_indicators | 6 | ema, sma, rsi, atr, macd, bbands |
 
-**Key**: Validation plays auto-create synthetic data and use same code path as regular backtests.
+**Key**: Validation plays use synthetic data and same code path as regular backtests.
 
 ---
 
@@ -58,42 +63,27 @@ src/
 │   ├── play_engine.py      # Main engine (1,166 lines)
 │   ├── factory.py          # PlayEngineFactory
 │   └── signal/subloop.py   # Signal evaluation
-├── indicators/    # 43 indicators
+├── indicators/    # 43 indicators, 11 incremental
+│   ├── provider.py         # IndicatorProvider protocol
+│   └── incremental.py      # O(1) indicator implementations
 ├── structures/    # 7 structure detectors
 ├── backtest/      # Backtest INFRASTRUCTURE (not an engine)
 │   ├── runner.py           # Gate-based runner
 │   ├── engine_factory.py   # create_engine_from_play()
-│   ├── engine_data_prep.py # Data loading
+│   ├── indicator_registry.py # Single source of truth
 │   ├── play/play.py        # Play class + SyntheticConfig
 │   └── engine_*.py         # Various helpers
 ├── data/          # DuckDB historical data
 ├── cli/           # CLI interface
 └── tools/         # CLI tools
 
-tests/
-├── functional/plays/   # 3 plays
-├── validation/plays/   # 125 plays (14 tiers)
-│   ├── tier0_smoke/
-│   ├── tier1_operators/
-│   ├── tier2_boolean/
-│   ├── tier3_arithmetic/
-│   ├── tier4_windows/
-│   ├── tier5_indicators/
-│   ├── tier6_structures/
-│   ├── tier7_price_features/
-│   ├── tier8_mtf/
-│   ├── tier9_risk/
-│   ├── tier10_position_policy/
-│   ├── tier11_actions/
-│   ├── tier12_combinations/
-│   └── tier13_stress/
-└── stress/plays/       # (empty - legacy)
+tests/validation/plays/   # 19 plays (3 active tiers)
 
 docs/
 ├── PLAY_DSL_COOKBOOK.md   # DSL reference
 ├── SESSION_HANDOFF.md     # Session context
 ├── PROJECT_STATUS.md      # This file
-└── TODO.md                # Active work tracking
+└── TODO.md                # **Single source of truth for open work**
 ```
 
 ---
@@ -120,15 +110,7 @@ play = load_play('V_T5_001_ema')  # Auto-finds in tier subdirectories
 
 ---
 
-## Current Focus
-
-1. **Validation Suite Testing** - Run all 125 plays, fix failures
-2. **Coverage Gaps** - Document any missing DSL features
-3. **DSL Enhancement** - Phase 2 per roadmap
-
----
-
-## Architecture Notes
+## Architecture Patterns
 
 ### PlayEngine Pattern
 ```python
@@ -154,3 +136,9 @@ play = load_play('V_T5_001_ema')  # Has synthetic config
 engine = create_engine_from_play(play)  # Auto-creates synthetic provider
 result = run_engine_with_play(engine, play)  # Same code path as regular backtests
 ```
+
+---
+
+## Open Work
+
+See **`docs/TODO.md`** for all open work items.

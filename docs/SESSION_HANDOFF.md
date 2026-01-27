@@ -25,15 +25,11 @@ Implemented a single indicator system that works identically across backtest, de
 **11 Incremental Indicators** (O(1) for live trading):
 `ema`, `sma`, `rsi`, `atr`, `macd`, `bbands`, `stoch`, `adx`, `supertrend`, `cci`, `willr`
 
-**New Files**:
-- `src/indicators/provider.py` - IndicatorProvider protocol + implementations
-- `docs/UNIFIED_INDICATOR_PLAN.md` - Implementation tracking document
-
 **Key Changes**:
+- `src/indicators/provider.py` - IndicatorProvider protocol + implementations
 - `src/backtest/indicator_registry.py` - Added `incremental_class` field, helpers, validation
 - `src/indicators/incremental.py` - 5 new incremental classes, factory registry
 - `src/engine/adapters/live.py` - Uses registry instead of hardcoded list
-- `src/indicators/__init__.py` - Export new classes
 
 ### 2. DSL Cookbook Review (Complete)
 
@@ -48,8 +44,6 @@ Comprehensive review and fixes to `docs/PLAY_DSL_COOKBOOK.md`:
 | Deprecation section | blocks: is REMOVED (not deprecated) |
 | Timeframes wording | "3 timeframes + exec pointer" |
 | Risk config | Added note: risk: and risk_model: both valid |
-| Structure depends_on | Added syntax clarification (source: vs swing:) |
-| Position policy | Added reserved flags (allow_flip, etc.) |
 
 ---
 
@@ -72,6 +66,8 @@ Unified Indicator System: COMPLETE
 ## Commits This Session
 
 ```
+a838581 fix(indicators): resolve SuperTrend incremental parity and use defaults.yml
+7440b26 docs: update session handoff for unified indicator system
 0221141 docs(dsl): comprehensive cookbook review and fixes
 8f35bb1 docs(dsl): fix indicator registry and add synthetic data section
 aa639a0 feat(indicators): implement unified indicator system with registry-driven architecture
@@ -103,26 +99,11 @@ python -c "from src.backtest.indicator_registry import get_registry; r=get_regis
 | File | Purpose |
 |------|---------|
 | `CLAUDE.md` | Project rules |
+| `docs/TODO.md` | **Single source of truth for open work** |
 | `docs/PLAY_DSL_COOKBOOK.md` | DSL reference (43 indicators, 3-feed + exec) |
-| `docs/UNIFIED_INDICATOR_PLAN.md` | Indicator system implementation plan |
 | `src/backtest/indicator_registry.py` | Single source of truth for indicators |
 | `src/indicators/provider.py` | IndicatorProvider protocol |
 | `src/indicators/incremental.py` | 11 O(1) incremental indicators |
-
----
-
-## Next Steps
-
-### P0: Validation
-- [ ] Run full validation suite batch test
-- [ ] Verify all 125 validation plays still pass
-
-### P1: Live Trading Prep
-- [ ] Test LiveIndicatorProvider with real WebSocket data
-- [ ] Paper trading integration
-
-### P2: DSL Enhancement
-- [ ] Start DSL validator + block layer (Phase 2 per roadmap)
 
 ---
 
@@ -134,6 +115,6 @@ src/indicators/   # 43 indicators, 11 incremental, provider protocol
 src/structures/   # 7 structure types
 src/backtest/     # Infrastructure (runner, factory, registry)
 src/data/         # DuckDB data layer
-docs/             # DSL cookbook, unified indicator plan, handoff
-tests/validation/ # 125 validation plays in tier subdirectories
+docs/             # DSL cookbook, handoff, TODO
+tests/validation/ # 19 validation plays in tier subdirectories
 ```
