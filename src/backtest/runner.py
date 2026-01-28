@@ -701,29 +701,45 @@ def _emit_snapshots(ctx: _RunContext) -> None:
         # Get DataFrames from engine
         real_engine = getattr(ctx.engine, 'engine', ctx.engine)
 
-        exec_df = None
-        high_tf_df = None
+        # Get dataframes for each of the 3 definable timeframes
+        low_tf_df = None
         med_tf_df = None
-        exec_specs = None
-        high_tf_specs = None
+        high_tf_df = None
+        low_tf_specs = None
         med_tf_specs = None
+        high_tf_specs = None
 
+        # Get prepared frame if available (single-TF mode)
         if hasattr(real_engine, '_prepared_frame') and real_engine._prepared_frame is not None:
-            exec_df = real_engine._prepared_frame.full_df
-        elif hasattr(real_engine, '_low_tf_df') and real_engine._low_tf_df is not None:
-            exec_df = real_engine._low_tf_df
+            low_tf_df = real_engine._prepared_frame.full_df
 
+        # Get multi-TF dataframes
+        if hasattr(real_engine, '_low_tf_df') and real_engine._low_tf_df is not None:
+            low_tf_df = real_engine._low_tf_df
+        if hasattr(real_engine, '_med_tf_df') and real_engine._med_tf_df is not None:
+            med_tf_df = real_engine._med_tf_df
         if hasattr(real_engine, '_high_tf_df') and real_engine._high_tf_df is not None:
             high_tf_df = real_engine._high_tf_df
 
-        if hasattr(real_engine, '_med_tf_df') and real_engine._med_tf_df is not None:
-            med_tf_df = real_engine._med_tf_df
-
+        # Get feature specs for each role
         if hasattr(real_engine, 'config') and hasattr(real_engine.config, 'feature_specs_by_role'):
             engine_config = real_engine.config
-            exec_specs = engine_config.feature_specs_by_role.get('low_tf', [])
-            high_tf_specs = engine_config.feature_specs_by_role.get('high_tf', [])
+            low_tf_specs = engine_config.feature_specs_by_role.get('low_tf', [])
             med_tf_specs = engine_config.feature_specs_by_role.get('med_tf', [])
+            high_tf_specs = engine_config.feature_specs_by_role.get('high_tf', [])
+
+        # Determine which df corresponds to exec based on the exec pointer
+        # exec can point to "low_tf", "med_tf", or "high_tf"
+        exec_role = ctx.play.exec_role if hasattr(ctx.play, 'exec_role') else "low_tf"
+        if exec_role == "med_tf":
+            exec_df = med_tf_df
+            exec_specs = med_tf_specs
+        elif exec_role == "high_tf":
+            exec_df = high_tf_df
+            exec_specs = high_tf_specs
+        else:  # Default to low_tf
+            exec_df = low_tf_df
+            exec_specs = low_tf_specs
 
         snapshots_dir = emit_snapshot_artifacts(
             run_dir=ctx.artifact_path,
@@ -734,9 +750,11 @@ def _emit_snapshots(ctx: _RunContext) -> None:
             exec_tf=ctx.exec_tf,
             high_tf=ctx.play.high_tf,
             med_tf=ctx.play.med_tf,
+            # Pass the 3 definable timeframe dataframes
             exec_df=exec_df,
             high_tf_df=high_tf_df,
             med_tf_df=med_tf_df,
+            # Pass specs for each role
             exec_feature_specs=exec_specs,
             high_tf_feature_specs=high_tf_specs,
             med_tf_feature_specs=med_tf_specs,
