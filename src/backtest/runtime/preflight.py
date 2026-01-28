@@ -27,6 +27,8 @@ import json
 import pandas as pd
 import numpy as np
 
+from src.utils.datetime_utils import datetime_to_epoch_ms
+
 if TYPE_CHECKING:
     from ..execution_validation import WarmupRequirements
 
@@ -114,17 +116,6 @@ class GapInfo:
         }
 
 
-def _datetime_to_epoch_ms(dt: datetime | None) -> int | None:
-    """Convert datetime to epoch milliseconds."""
-    if dt is None:
-        return None
-    # Handle both aware and naive datetimes
-    if dt.tzinfo is not None:
-        return int(dt.timestamp() * 1000)
-    # Assume naive datetime is UTC
-    return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
-
-
 @dataclass
 class TFPreflightResult:
     """Preflight result for a single (symbol, tf) pair."""
@@ -170,8 +161,8 @@ class TFPreflightResult:
                 "max_ts": self.max_ts.isoformat() if self.max_ts else None,
                 "bar_count": self.bar_count,
                 # Phase 6: Add epoch-ms fields for smoke test assertions
-                "db_start_ts_ms": _datetime_to_epoch_ms(self.min_ts),
-                "db_end_ts_ms": _datetime_to_epoch_ms(self.max_ts),
+                "db_start_ts_ms": datetime_to_epoch_ms(self.min_ts),
+                "db_end_ts_ms": datetime_to_epoch_ms(self.max_ts),
                 "ok": self.covers_range,
             },
             "required_range": {
@@ -179,8 +170,8 @@ class TFPreflightResult:
                 "end": self.required_end.isoformat() if self.required_end else None,
                 "warmup_bars": self.warmup_bars,
                 # Phase 6: Add epoch-ms fields for smoke test assertions
-                "start_ts_ms": _datetime_to_epoch_ms(self.required_start),
-                "end_ts_ms": _datetime_to_epoch_ms(self.required_end),
+                "start_ts_ms": datetime_to_epoch_ms(self.required_start),
+                "end_ts_ms": datetime_to_epoch_ms(self.required_end),
             },
             "validation": {
                 "data_exists": self.data_exists,
@@ -243,12 +234,12 @@ class PreflightReport:
         exec_result = self._get_exec_result()
         if exec_result:
             result["required_range"] = {
-                "start_ts_ms": _datetime_to_epoch_ms(exec_result.required_start),
-                "end_ts_ms": _datetime_to_epoch_ms(exec_result.required_end),
+                "start_ts_ms": datetime_to_epoch_ms(exec_result.required_start),
+                "end_ts_ms": datetime_to_epoch_ms(exec_result.required_end),
             }
             result["coverage"] = {
-                "db_start_ts_ms": _datetime_to_epoch_ms(exec_result.min_ts),
-                "db_end_ts_ms": _datetime_to_epoch_ms(exec_result.max_ts),
+                "db_start_ts_ms": datetime_to_epoch_ms(exec_result.min_ts),
+                "db_end_ts_ms": datetime_to_epoch_ms(exec_result.max_ts),
                 "ok": exec_result.covers_range,
             }
         
@@ -1119,10 +1110,10 @@ def run_preflight_gate(
                         "symbol": symbol,
                         "tf": "1m",
                         "reason": "missing_1m_data",
-                        "required_start_ts_ms": _datetime_to_epoch_ms(result_1m.required_start),
-                        "required_end_ts_ms": _datetime_to_epoch_ms(result_1m.required_end),
-                        "db_start_ts_ms": _datetime_to_epoch_ms(result_1m.min_ts),
-                        "db_end_ts_ms": _datetime_to_epoch_ms(result_1m.max_ts),
+                        "required_start_ts_ms": datetime_to_epoch_ms(result_1m.required_start),
+                        "required_end_ts_ms": datetime_to_epoch_ms(result_1m.required_end),
+                        "db_start_ts_ms": datetime_to_epoch_ms(result_1m.min_ts),
+                        "db_end_ts_ms": datetime_to_epoch_ms(result_1m.max_ts),
                         "fix_command": (
                             f"python trade_cli.py data sync-range --symbol {symbol} --tf 1m "
                             f"--start {result_1m.required_start.strftime('%Y-%m-%d') if result_1m.required_start else 'N/A'} "
@@ -1156,10 +1147,10 @@ def run_preflight_gate(
                             "symbol": tf_result.symbol,
                             "tf": tf_result.tf,
                             "reason": "coverage_gap",
-                            "required_start_ts_ms": _datetime_to_epoch_ms(tf_result.required_start),
-                            "required_end_ts_ms": _datetime_to_epoch_ms(tf_result.required_end),
-                            "db_start_ts_ms": _datetime_to_epoch_ms(tf_result.min_ts),
-                            "db_end_ts_ms": _datetime_to_epoch_ms(tf_result.max_ts),
+                            "required_start_ts_ms": datetime_to_epoch_ms(tf_result.required_start),
+                            "required_end_ts_ms": datetime_to_epoch_ms(tf_result.required_end),
+                            "db_start_ts_ms": datetime_to_epoch_ms(tf_result.min_ts),
+                            "db_end_ts_ms": datetime_to_epoch_ms(tf_result.max_ts),
                         }
                         break
                     else:

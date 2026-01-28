@@ -41,7 +41,6 @@ from .shadow_runner import ShadowRunner, ShadowStats, ShadowSignal
 from .live_runner import LiveRunner, LiveRunnerStats, RunnerState
 from .parallel import (
     run_backtests_parallel,
-    run_backtest_isolated,
     ParallelBacktestResult,
 )
 
@@ -53,7 +52,6 @@ __all__ = [
     "SimRunResult",  # Professional alias
     # Parallel execution
     "run_backtests_parallel",
-    "run_backtest_isolated",
     "ParallelBacktestResult",
     # Shadow
     "ShadowRunner",

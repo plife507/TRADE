@@ -69,7 +69,6 @@ from .factory import (
     CorePlayEngine,
     create_unified_engine,
     create_backtest_engine,
-    create_engine,
 )
 
 from .runners import BacktestRunner, BacktestResult, SimRunner, SimRunResult
@@ -104,7 +103,6 @@ __all__ = [
     "CorePlayEngine",  # Professional alias
     # Factory
     "PlayEngineFactory",
-    "create_engine",
     "create_backtest_engine",  # GATE 4: Unified backtest factory
     "create_unified_engine",  # Professional alias
     # Runners

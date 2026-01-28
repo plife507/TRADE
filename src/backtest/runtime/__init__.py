@@ -40,7 +40,7 @@ from .types import (
 
 from .feed_store import FeedStore, MultiTFFeedStore
 from .snapshot_view import RuntimeSnapshotView, TFContext
-from .indicator_metadata import (
+from src.indicators.metadata import (
     IndicatorMetadata,
     canonicalize_params,
     compute_feature_spec_id,

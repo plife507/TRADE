@@ -27,6 +27,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
 from ..play_engine import PlayEngine
+from src.backtest.runtime.timeframe import tf_minutes
 
 from ...utils.logger import get_logger
 
@@ -424,8 +425,8 @@ class LiveRunner:
         Includes health check: alerts if no candle received in 2x expected timeframe.
         """
         # Calculate expected candle interval based on timeframe
-        tf_minutes = self._parse_timeframe_minutes(self._engine.timeframe)
-        health_timeout = tf_minutes * 60 * 2.5  # 2.5x timeframe in seconds
+        tf_mins = tf_minutes(self._engine.timeframe)
+        health_timeout = tf_mins * 60 * 2.5  # 2.5x timeframe in seconds
         queue_timeout = min(60.0, health_timeout)  # Check at least every minute
 
         try:
@@ -462,15 +463,6 @@ class LiveRunner:
         except Exception as e:
             logger.warning(f"Error waiting for candle: {e}")
             return None
-
-    def _parse_timeframe_minutes(self, tf: str) -> int:
-        """Parse timeframe string to minutes."""
-        tf_map = {
-            "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
-            "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720,
-            "d": 1440, "w": 10080,
-        }
-        return tf_map.get(tf.lower(), 60)  # Default to 1h
 
     async def _process_candle(self, candle) -> None:
         """

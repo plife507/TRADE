@@ -4,7 +4,7 @@ Datetime normalization and validation utilities.
 Single source of truth for datetime parsing across the codebase.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 # Maximum allowed range in days for query tools (to prevent bloat)
@@ -148,3 +148,25 @@ def normalize_datetime_for_storage(dt: datetime | str | None) -> str | None:
         return None
 
     return normalized.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def datetime_to_epoch_ms(dt: datetime | None) -> int | None:
+    """
+    Convert datetime to epoch milliseconds.
+
+    Handles both timezone-aware and naive datetimes.
+    Naive datetimes are assumed to be UTC.
+
+    Args:
+        dt: Datetime object or None
+
+    Returns:
+        Epoch milliseconds as int, or None if input is None
+    """
+    if dt is None:
+        return None
+    # Handle both aware and naive datetimes
+    if dt.tzinfo is not None:
+        return int(dt.timestamp() * 1000)
+    # Assume naive datetime is UTC
+    return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)

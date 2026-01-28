@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtest.prices.source import PriceSource, DataNotAvailableError
+from src.backtest.runtime.timeframe import tf_minutes
 from src.backtest.prices.types import HealthCheckResult
 from src.data.historical_data_store import get_historical_store
 
@@ -141,8 +142,8 @@ class DemoPriceSource:
 
         # Normalize column names
         df = df.rename(columns={"timestamp": "ts_open"})
-        tf_minutes = self._parse_timeframe_minutes(timeframe)
-        df["ts_close"] = df["ts_open"] + pd.Timedelta(minutes=tf_minutes)
+        tf_mins = tf_minutes(timeframe)
+        df["ts_close"] = df["ts_open"] + pd.Timedelta(minutes=tf_mins)
         df = df.sort_values("ts_open").reset_index(drop=True)
 
         return df
@@ -240,24 +241,3 @@ class DemoPriceSource:
         """Clear the 1m data cache."""
         self._1m_cache.clear()
 
-    @staticmethod
-    def _parse_timeframe_minutes(tf: str) -> int:
-        """Parse timeframe string to minutes (Bybit intervals only)."""
-        tf_map = {
-            "1m": 1,
-            "3m": 3,
-            "5m": 5,
-            "15m": 15,
-            "30m": 30,
-            "1h": 60,
-            "2h": 120,
-            "4h": 240,
-            "6h": 360,
-            "12h": 720,
-            "D": 1440,
-            "W": 10080,
-            "M": 43200,
-        }
-        if tf not in tf_map:
-            raise ValueError(f"Unknown timeframe: {tf}. Use Bybit format.")
-        return tf_map[tf]

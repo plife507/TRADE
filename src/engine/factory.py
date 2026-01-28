@@ -508,4 +508,4 @@ def create_backtest_engine(
 CorePlayEngine = PlayEngine
 
 # Canonical factory function
-create_unified_engine = create_engine
+create_unified_engine = create_backtest_engine

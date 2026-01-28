@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from src.backtest.runtime.timeframe import tf_minutes
+
 from ..interfaces import (
     Candle,
     DataProvider,
@@ -625,8 +627,8 @@ class LiveDataProvider:
 
             # Calculate time range (last N bars based on timeframe)
             end = datetime.utcnow()
-            tf_minutes = self._parse_timeframe_minutes(tf_str)
-            start = end - timedelta(minutes=tf_minutes * self._buffer_size)
+            tf_mins = tf_minutes(tf_str)
+            start = end - timedelta(minutes=tf_mins * self._buffer_size)
 
             # Query DuckDB
             df = store.query_ohlcv(
@@ -659,15 +661,6 @@ class LiveDataProvider:
         except Exception as e:
             logger.warning(f"Failed to load bars from DuckDB for {tf_str}: {e}")
             return []
-
-    def _parse_timeframe_minutes(self, tf: str) -> int:
-        """Parse timeframe string to minutes."""
-        tf_map = {
-            "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
-            "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720,
-            "D": 1440, "W": 10080, "M": 43200,
-        }
-        return tf_map.get(tf, 60)  # Default to 1h
 
     def _init_structure_state(self) -> None:
         """Initialize incremental structure state from Play specs (legacy single-TF)."""

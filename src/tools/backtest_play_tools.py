@@ -22,6 +22,7 @@ import traceback
 import pandas as pd
 
 from .shared import ToolResult
+from ..utils.datetime_utils import datetime_to_epoch_ms
 from ..config.constants import (
     DataEnv,
     DEFAULT_BACKTEST_ENV,
@@ -977,12 +978,6 @@ def backtest_indicators_tool(
 # Data Fix (tools-layer dispatch to existing tools)
 # =============================================================================
 
-def _datetime_to_epoch_ms(dt: datetime | None) -> int | None:
-    """Convert datetime to epoch milliseconds."""
-    if dt is None:
-        return None
-    return int(dt.timestamp() * 1000)
-
 
 def backtest_data_fix_tool(
     play_id: str,
@@ -1078,8 +1073,8 @@ def backtest_data_fix_tool(
 
         # Build bounds info
         bounds = {
-            "start_ts_ms": _datetime_to_epoch_ms(start),
-            "end_ts_ms": _datetime_to_epoch_ms(end),
+            "start_ts_ms": datetime_to_epoch_ms(start),
+            "end_ts_ms": datetime_to_epoch_ms(end),
             "cap": {"max_lookback_days": max_lookback_days},
             "applied": bounds_applied,
         }

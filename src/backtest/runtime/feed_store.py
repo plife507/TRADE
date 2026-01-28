@@ -32,7 +32,7 @@ import pandas as pd
 
 if TYPE_CHECKING:
     from ..features.feature_frame_builder import FeatureArrays
-    from .indicator_metadata import IndicatorMetadata
+    from src.indicators.metadata import IndicatorMetadata
     from ..market_structure.builder import StructureStore
 
 
