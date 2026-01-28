@@ -482,9 +482,200 @@ class SimulatedExchange:
         self._current_snapshot_ready = snapshot_ready
     
     # ─────────────────────────────────────────────────────────────────────────
+    # Bar Processing Helpers (G4.3 Refactor)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _apply_funding_events(
+        self,
+        funding_events: list[FundingEvent] | None,
+        prev_ts: datetime | None,
+        step_time: datetime,
+        mark_price: float,
+    ) -> FundingResult:
+        """Apply funding events to position."""
+        funding_result = self._funding.apply_events(
+            funding_events or [], prev_ts, step_time, self.position, mark_price
+        )
+        if funding_result.funding_pnl != 0:
+            self._ledger.apply_funding(funding_result.funding_pnl)
+            if self.position is not None:
+                self.position.funding_pnl_cumulative += funding_result.funding_pnl
+        return funding_result
+
+    def _process_pending_close(
+        self,
+        bar: Bar,
+        ts_open: datetime,
+    ) -> tuple[list[Trade], list[Fill]]:
+        """Process pending close request at bar open."""
+        closed_trades = []
+        fills = []
+
+        if not self._pending_close_reason or not self.position:
+            return closed_trades, fills
+
+        close_percent = self._pending_close_percent
+        if close_percent >= 99.9999:  # Use epsilon for float comparison
+            result = self._close_position(bar.open, ts_open, self._pending_close_reason)
+            if result:
+                trade, exit_fill = result
+                closed_trades.append(trade)
+                fills.append(exit_fill)
+        else:
+            result = self._partial_close_position(
+                bar.open, ts_open, self._pending_close_reason, close_percent
+            )
+            if result:
+                fills.append(result)
+
+        self._pending_close_reason = None
+        self._pending_close_percent = 100.0
+        return closed_trades, fills
+
+    def _update_dynamic_stops(
+        self,
+        mark_price: float,
+        trailing_config: dict | None,
+        break_even_config: dict | None,
+        atr_value: float | None,
+    ) -> None:
+        """Update trailing and break-even stops."""
+        if not self.position:
+            return
+
+        if trailing_config is not None:
+            self.update_trailing_stop(
+                current_price=mark_price,
+                atr_value=atr_value,
+                trail_pct=trailing_config.get("trail_pct"),
+                atr_multiplier=trailing_config.get("atr_multiplier", 2.0),
+                activation_pct=trailing_config.get("activation_pct", 0.0),
+            )
+
+        if break_even_config is not None:
+            self.update_break_even_stop(
+                current_price=mark_price,
+                activation_pct=break_even_config.get("activation_pct", 1.0),
+                offset_pct=break_even_config.get("offset_pct", 0.1),
+            )
+
+    def _check_tp_sl_exits(
+        self,
+        bar: Bar,
+        ts_open: datetime,
+        quote_feed: "FeedStore | None",
+        exec_1m_range: tuple[int, int] | None,
+    ) -> tuple[list[Trade], list[Fill]]:
+        """Check and execute TP/SL exits."""
+        closed_trades = []
+        fills = []
+
+        if not self.position:
+            return closed_trades, fills
+
+        exit_reason = None
+        exit_price = None
+        exit_price_source = None
+
+        # 1. Use 1m granular check if available
+        if quote_feed is not None and exec_1m_range is not None:
+            start_1m, end_1m = exec_1m_range
+            bars_1m = []
+            for i in range(start_1m, min(end_1m + 1, quote_feed.length)):
+                bars_1m.append((
+                    float(quote_feed.open[i]),
+                    float(quote_feed.high[i]),
+                    float(quote_feed.low[i]),
+                    float(quote_feed.close[i]),
+                ))
+
+            if bars_1m:
+                position_side = "long" if self.position.side == OrderSide.LONG else "short"
+                result_1m = check_tp_sl_1m(
+                    position_side=position_side,
+                    entry_price=self.position.entry_price,
+                    take_profit=self.position.take_profit,
+                    stop_loss=self.position.stop_loss,
+                    bars_1m=bars_1m,
+                )
+                if result_1m:
+                    reason_str, _, price = result_1m
+                    exit_reason = FillReason.STOP_LOSS if reason_str == "stop_loss" else FillReason.TAKE_PROFIT
+                    exit_price = price
+                    exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
+
+        # 2. Fallback to exec-bar OHLC check
+        if exit_reason is None:
+            exit_reason = self._execution.check_tp_sl(self.position, bar)
+            if exit_reason:
+                exit_price = self._intrabar.get_exit_price(
+                    bar, self.position.side, exit_reason,
+                    self.position.take_profit, self.position.stop_loss
+                )
+                exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
+
+        # 3. Execute exit if triggered
+        if exit_reason and exit_price is not None:
+            result = self._close_position(exit_price, ts_open, exit_reason.value, exit_price_source)
+            if result:
+                trade, exit_fill = result
+                closed_trades.append(trade)
+                fills.append(exit_fill)
+
+        return closed_trades, fills
+
+    def _track_mae_mfe(self, bar: Bar) -> None:
+        """Track min/max price for MAE/MFE calculation."""
+        if not self.position:
+            return
+        pos = self.position
+        if pos.min_price is None or bar.low < pos.min_price:
+            pos.min_price = bar.low
+        if pos.max_price is None or bar.high > pos.max_price:
+            pos.max_price = bar.high
+
+    def _check_liquidation(
+        self,
+        bar: Bar,
+        mark_price: float,
+        step_time: datetime,
+        prices: "PriceSnapshot",
+    ) -> tuple[list[Trade], list[Fill]]:
+        """Check and execute liquidation if needed."""
+        closed_trades = []
+        fills = []
+
+        if not self.position:
+            return closed_trades, fills
+
+        # Compute projected equity at this mark price
+        projected_unrealized_pnl = self.position.unrealized_pnl(mark_price)
+        projected_equity = self._ledger.state.cash_balance_usdt + projected_unrealized_pnl
+
+        # Check maintenance margin threshold
+        position_value = self.position.size * mark_price
+        maintenance_margin = position_value * self._ledger._config.maintenance_margin_rate
+
+        if projected_equity <= maintenance_margin:
+            liq_result = self._liquidation.check_liquidation(
+                self._ledger.state, prices, self.position
+            )
+            if liq_result.liquidated and liq_result.event:
+                result = self._close_position(
+                    mark_price, step_time, "liquidation", "mark_price"
+                )
+                if result:
+                    trade, exit_fill = result
+                    closed_trades.append(trade)
+                    fills.append(exit_fill)
+                    self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
+
+        return closed_trades, fills
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Bar Processing (Main Loop)
     # ─────────────────────────────────────────────────────────────────────────
-    
+
     def process_bar(
         self,
         bar: Bar,
@@ -497,190 +688,66 @@ class SimulatedExchange:
         atr_value: float | None = None,
     ) -> StepResult:
         """
-        Process a new bar - main simulation step.
+        Process a new bar - main simulation step (G4.3 refactored).
 
-        - Fills occur at ts_open (bar open)
-        - MTM updates occur at step time (ts_close)
-
-        Mark price computed exactly once per step via PriceModel.
-        All MTM/liquidation uses the same mark_price.
+        Orchestrates helper methods for each processing phase.
+        Mark price computed once via PriceModel, used throughout.
 
         Args:
             bar: Current exec-timeframe bar
             prev_bar: Previous exec-timeframe bar (for funding)
             funding_events: Funding events to process
             quote_feed: Optional 1m FeedStore for granular TP/SL checking
-            exec_1m_range: Optional (start_idx, end_idx) of 1m bars within this exec bar
-            trailing_config: Optional trailing stop config {"atr_multiplier", "trail_pct", "activation_pct"}
-            break_even_config: Optional break-even config {"activation_pct", "offset_pct"}
+            exec_1m_range: Optional (start_idx, end_idx) of 1m bars
+            trailing_config: Optional trailing stop config
+            break_even_config: Optional break-even config
             atr_value: Optional ATR value for ATR-based trailing stops
 
         Returns:
             StepResult with mark_price, fills, and all step events
         """
-        # Get timestamps from bar
         ts_open = bar.ts_open
         step_time = bar.ts_close
-        
         self._current_ts = step_time
         fills: list[Fill] = []
-        closed_trades = []
-        
-        # 1. Compute prices (mark price is single source of truth for this bar)
+
+        # 1. Compute prices (mark price is single source of truth)
         spread = self._spread_model.get_spread(bar)
         prices = self._price_model.get_prices(bar, spread)
         mark_price = prices.mark_price
-        self._last_mark_price = mark_price  # Track for position queries
+        self._last_mark_price = mark_price
 
-        # 2. Apply funding events (uses mark_price, not entry_price per Bybit semantics)
+        # 2. Apply funding events
         prev_ts = prev_bar.ts_close if prev_bar else None
-        funding_result = self._funding.apply_events(
-            funding_events or [], prev_ts, step_time, self.position, mark_price
+        funding_result = self._apply_funding_events(
+            funding_events, prev_ts, step_time, mark_price
         )
-        if funding_result.funding_pnl != 0:
-            self._ledger.apply_funding(funding_result.funding_pnl)
-            # Phase 12: Accumulate funding PnL on position for per-trade tracking
-            if self.position is not None:
-                self.position.funding_pnl_cumulative += funding_result.funding_pnl
-        
-        # 3. Process all orders from order book (market, limit, stop)
-        # Pass 1m data for granular entry fill timing when available
+
+        # 3. Process order book
         order_book_fills = self._process_order_book(bar, quote_feed, exec_1m_range)
         fills.extend(order_book_fills)
 
-        # 4. Process pending close at bar open
-        if self._pending_close_reason and self.position:
-            close_percent = self._pending_close_percent
-            if close_percent >= 99.9999:  # Use epsilon for float comparison
-                # Full close
-                result = self._close_position(bar.open, ts_open, self._pending_close_reason)
-                if result:
-                    trade, exit_fill = result
-                    closed_trades.append(trade)
-                    fills.append(exit_fill)
-            else:
-                # Partial close
-                result = self._partial_close_position(
-                    bar.open, ts_open, self._pending_close_reason, close_percent
-                )
-                if result:
-                    exit_fill = result
-                    fills.append(exit_fill)
-            self._pending_close_reason = None
-            self._pending_close_percent = 100.0  # Reset to default
+        # 4. Process pending close
+        close_trades, close_fills = self._process_pending_close(bar, ts_open)
+        fills.extend(close_fills)
 
-        # 4b. Update dynamic stops (trailing, break-even) before TP/SL check
-        if self.position:
-            # Update trailing stop if configured
-            if trailing_config is not None:
-                self.update_trailing_stop(
-                    current_price=mark_price,
-                    atr_value=atr_value,
-                    trail_pct=trailing_config.get("trail_pct"),
-                    atr_multiplier=trailing_config.get("atr_multiplier", 2.0),
-                    activation_pct=trailing_config.get("activation_pct", 0.0),
-                )
+        # 5. Update dynamic stops
+        self._update_dynamic_stops(mark_price, trailing_config, break_even_config, atr_value)
 
-            # Update break-even stop if configured
-            if break_even_config is not None:
-                self.update_break_even_stop(
-                    current_price=mark_price,
-                    activation_pct=break_even_config.get("activation_pct", 1.0),
-                    offset_pct=break_even_config.get("offset_pct", 0.1),
-                )
+        # 6. Check TP/SL exits
+        tpsl_trades, tpsl_fills = self._check_tp_sl_exits(bar, ts_open, quote_feed, exec_1m_range)
+        fills.extend(tpsl_fills)
 
-        # 5. Check TP/SL exits (1m granular or exec-bar OHLC)
-        if self.position:
-            exit_reason = None
-            exit_price = None
-            exit_price_source = None
+        # 7. Track MAE/MFE
+        self._track_mae_mfe(bar)
 
-            # 5a. Use 1m granular check if available (more realistic timing)
-            if quote_feed is not None and exec_1m_range is not None:
-                start_1m, end_1m = exec_1m_range
-                # Build list of 1m bars as (open, high, low, close) tuples
-                bars_1m = []
-                for i in range(start_1m, min(end_1m + 1, quote_feed.length)):
-                    bars_1m.append((
-                        float(quote_feed.open[i]),
-                        float(quote_feed.high[i]),
-                        float(quote_feed.low[i]),
-                        float(quote_feed.close[i]),
-                    ))
+        # 8. Check liquidation
+        liq_trades, liq_fills = self._check_liquidation(bar, mark_price, step_time, prices)
+        fills.extend(liq_fills)
 
-                if bars_1m:
-                    position_side = "long" if self.position.side == OrderSide.LONG else "short"
-                    result_1m = check_tp_sl_1m(
-                        position_side=position_side,
-                        entry_price=self.position.entry_price,
-                        take_profit=self.position.take_profit,
-                        stop_loss=self.position.stop_loss,
-                        bars_1m=bars_1m,
-                    )
-                    if result_1m:
-                        reason_str, hit_bar_idx, price = result_1m
-                        exit_reason = FillReason.STOP_LOSS if reason_str == "stop_loss" else FillReason.TAKE_PROFIT
-                        exit_price = price
-                        exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
-
-            # 5b. Fallback to exec-bar OHLC check if no 1m data
-            if exit_reason is None:
-                exit_reason = self._execution.check_tp_sl(self.position, bar)
-                if exit_reason:
-                    exit_price = self._intrabar.get_exit_price(
-                        bar, self.position.side, exit_reason,
-                        self.position.take_profit, self.position.stop_loss
-                    )
-                    exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
-
-            # 5c. Execute TP/SL exit if triggered
-            if exit_reason and exit_price is not None:
-                result = self._close_position(exit_price, ts_open, exit_reason.value, exit_price_source)
-                if result:
-                    trade, exit_fill = result
-                    closed_trades.append(trade)
-                    fills.append(exit_fill)
-
-        # 6. Track min/max price for MAE/MFE calculation
-        if self.position:
-            pos = self.position
-            if pos.min_price is None or bar.low < pos.min_price:
-                pos.min_price = bar.low
-            if pos.max_price is None or bar.high > pos.max_price:
-                pos.max_price = bar.high
-
-        # 7. Check liquidation BEFORE MTM update (prevents negative equity)
-        # This simulates exchange behavior where liquidation is triggered
-        # before losses exceed available capital
-        if self.position:
-            # Temporarily compute what equity would be at this mark price
-            # without actually updating the ledger yet
-            projected_unrealized_pnl = self.position.unrealized_pnl(mark_price)
-            projected_equity = self._ledger.state.cash_balance_usdt + projected_unrealized_pnl
-
-            # If projected equity <= maintenance margin, trigger liquidation
-            # before the MTM update makes equity negative
-            position_value = self.position.size * mark_price
-            maintenance_margin = position_value * self._ledger._config.maintenance_margin_rate
-
-            if projected_equity <= maintenance_margin:
-                liq_result = self._liquidation.check_liquidation(
-                    self._ledger.state, prices, self.position
-                )
-                if liq_result.liquidated and liq_result.event:
-                    result = self._close_position(
-                        mark_price, step_time, "liquidation", "mark_price"
-                    )
-                    if result:
-                        trade, exit_fill = result
-                        closed_trades.append(trade)
-                        fills.append(exit_fill)
-                        self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
-
-        # 8. Update ledger with current mark price (now safe from negative equity)
+        # 9. Update ledger with mark price
         self._ledger.update_for_mark_price(self.position, mark_price)
 
-        # Return StepResult with unified mark price
         return StepResult(
             timestamp=step_time,
             ts_close=step_time,
