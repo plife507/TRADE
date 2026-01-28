@@ -126,118 +126,35 @@ def apply_feature_spec_indicators(
                 f"but column not found. Available: {list(df.columns)}"
             )
         
-        # Apply indicator based on type
-        if ind_type == "ema":
-            length = params.get("length", 20)
-            df[output_key] = vendor.ema(df[input_col], length=length)
-            
-        elif ind_type == "sma":
-            length = params.get("length", 20)
-            df[output_key] = vendor.sma(df[input_col], length=length)
-            
-        elif ind_type == "rsi":
-            length = params.get("length", 14)
-            df[output_key] = vendor.rsi(df[input_col], length=length)
-            
-        elif ind_type == "atr":
-            length = params.get("length", 14)
-            df[output_key] = vendor.atr(df["high"], df["low"], df["close"], length=length)
-            
-        elif ind_type == "macd":
-            fast = params.get("fast", 12)
-            slow = params.get("slow", 26)
-            signal_param = params.get("signal", 9)
-            macd_result = vendor.macd(df[input_col], fast=fast, slow=slow, signal=signal_param)
-            if macd_result is not None:
-                # Get output names from registry
-                output_names = get_registry().get_output_suffixes("macd")
-                if isinstance(macd_result, dict):
-                    for name in output_names:
-                        df[f"{output_key}_{name}"] = macd_result.get(name, pd.Series(index=df.index))
-                elif hasattr(macd_result, 'columns'):
-                    for i, name in enumerate(output_names):
-                        if i < len(macd_result.columns):
-                            df[f"{output_key}_{name}"] = macd_result.iloc[:, i]
-            
-        elif ind_type == "bbands":
-            length = params.get("length", 20)
-            std = params.get("std", 2.0)
-            bb_result = vendor.bbands(df[input_col], length=length, std=std)
-            if bb_result is not None:
-                # Get output names from registry
-                output_names = get_registry().get_output_suffixes("bbands")
-                if isinstance(bb_result, dict):
-                    for name in output_names:
-                        df[f"{output_key}_{name}"] = bb_result.get(name, pd.Series(index=df.index))
-                elif hasattr(bb_result, 'columns'):
-                    for i, name in enumerate(output_names):
-                        if i < len(bb_result.columns):
-                            df[f"{output_key}_{name}"] = bb_result.iloc[:, i]
-            
-        elif ind_type == "stoch":
-            k_param = params.get("k", 14)
-            d_param = params.get("d", 3)
-            smooth_k = params.get("smooth_k", 3)
-            stoch_result = vendor.stoch(df["high"], df["low"], df["close"], k=k_param, d=d_param, smooth_k=smooth_k)
-            if stoch_result is not None:
-                # Get output names from registry
-                output_names = get_registry().get_output_suffixes("stoch")
-                if isinstance(stoch_result, dict):
-                    for name in output_names:
-                        df[f"{output_key}_{name}"] = stoch_result.get(name, pd.Series(index=df.index))
-                elif hasattr(stoch_result, 'columns'):
-                    for i, name in enumerate(output_names):
-                        if i < len(stoch_result.columns):
-                            df[f"{output_key}_{name}"] = stoch_result.iloc[:, i]
-                
-        elif ind_type == "stochrsi":
-            length = params.get("length", 14)
-            rsi_length = params.get("rsi_length", 14)
-            k_param = params.get("k", 3)
-            d_param = params.get("d", 3)
-            stochrsi_result = vendor.stochrsi(df[input_col], length=length, rsi_length=rsi_length, k=k_param, d=d_param)
-            if stochrsi_result is not None:
-                # Get output names from registry
-                output_names = get_registry().get_output_suffixes("stochrsi")
-                if isinstance(stochrsi_result, dict):
-                    for name in output_names:
-                        df[f"{output_key}_{name}"] = stochrsi_result.get(name, pd.Series(index=df.index))
-                elif hasattr(stochrsi_result, 'columns'):
-                    for i, name in enumerate(output_names):
-                        if i < len(stochrsi_result.columns):
-                            df[f"{output_key}_{name}"] = stochrsi_result.iloc[:, i]
-        
-        else:
-            # Generic fallback for any indicator supported by the registry
-            # Uses compute_indicator() which handles all registered indicator types
-            # Pass input_col as the primary input (close parameter) for single-input indicators
-            try:
-                # Get ts_open for VWAP (requires DatetimeIndex for session boundaries)
-                ts_open = df.get("ts_open") if "ts_open" in df.columns else df.get("timestamp")
-                result = vendor.compute_indicator(
-                    ind_type,
-                    close=df[input_col],  # Use input_col, not always "close"
-                    high=df["high"],
-                    low=df["low"],
-                    open_=df["open"],
-                    volume=df.get("volume"),
-                    ts_open=ts_open,  # For VWAP session boundaries
-                    **params
-                )
-                
-                if isinstance(result, dict):
-                    # Multi-output: add each output as separate column
-                    for name, series in result.items():
-                        df[f"{output_key}_{name}"] = series
-                elif isinstance(result, pd.Series):
-                    # Single-output: add directly
-                    df[output_key] = result
-            except Exception as e:
-                # FAIL LOUD - indicator computation failures must be surfaced
-                raise ValueError(
-                    f"INDICATOR_COMPUTATION_FAILED: {ind_type} (output_key={output_key}) failed: {e}. "
-                    f"Check params={params} and input_source={input_col}."
-                ) from e
+        # Apply indicator via compute_indicator() - the ONLY path for all indicators
+        # G1 cleanup: standalone wrapper functions removed, all go through compute_indicator()
+        try:
+            # Get ts_open for VWAP (requires DatetimeIndex for session boundaries)
+            ts_open = df.get("ts_open") if "ts_open" in df.columns else df.get("timestamp")
+            result = vendor.compute_indicator(
+                ind_type,
+                close=df[input_col],  # Use input_col, not always "close"
+                high=df["high"],
+                low=df["low"],
+                open_=df["open"],
+                volume=df.get("volume"),
+                ts_open=ts_open,  # For VWAP session boundaries
+                **params
+            )
+
+            if isinstance(result, dict):
+                # Multi-output: add each output as separate column
+                for name, series in result.items():
+                    df[f"{output_key}_{name}"] = series
+            elif isinstance(result, pd.Series):
+                # Single-output: add directly
+                df[output_key] = result
+        except Exception as e:
+            # FAIL LOUD - indicator computation failures must be surfaced
+            raise ValueError(
+                f"INDICATOR_COMPUTATION_FAILED: {ind_type} (output_key={output_key}) failed: {e}. "
+                f"Check params={params} and input_source={input_col}."
+            ) from e
     
     return df
 
