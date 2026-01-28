@@ -31,9 +31,11 @@ Usage:
 
 from __future__ import annotations
 
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from .interfaces import (
@@ -51,6 +53,30 @@ from .sizing import SizingModel, SizingConfig
 
 from ..utils.logger import get_logger
 from .timeframe import TFIndexManager
+
+
+# G5.8: Engine phase state machine
+class EnginePhase(str, Enum):
+    """Operational phase of the PlayEngine."""
+
+    CREATED = "created"      # Initialized, not started
+    WARMING_UP = "warming"   # Processing warmup bars
+    READY = "ready"          # Warmup complete, ready for signals
+    RUNNING = "running"      # Actively processing bars
+    STOPPED = "stopped"      # Cleanly stopped
+    ERROR = "error"          # Error state
+
+
+# G5.8: Valid phase transitions
+VALID_PHASE_TRANSITIONS: dict[EnginePhase, set[EnginePhase]] = {
+    EnginePhase.CREATED: {EnginePhase.WARMING_UP, EnginePhase.READY},
+    EnginePhase.WARMING_UP: {EnginePhase.READY, EnginePhase.ERROR},
+    EnginePhase.READY: {EnginePhase.RUNNING, EnginePhase.STOPPED, EnginePhase.ERROR},
+    EnginePhase.RUNNING: {EnginePhase.READY, EnginePhase.STOPPED, EnginePhase.ERROR},
+    EnginePhase.STOPPED: {EnginePhase.CREATED},  # Can restart
+    EnginePhase.ERROR: {EnginePhase.STOPPED},    # Must stop before restart
+}
+
 
 if TYPE_CHECKING:
     from ..backtest.play import Play
@@ -160,10 +186,12 @@ class PlayEngine:
         self.engine_id = f"{play.name}_{config.mode}_{uuid.uuid4().hex[:8]}"
         self._play_hash: str = ""  # Set by runner for debug correlation
 
-        # Core state
+        # Core state (G5.8: thread-safe phase machine)
         self._current_bar_index: int = -1
         self._warmup_complete: bool = False
         self._last_signal_ts: datetime | None = None
+        self._phase = EnginePhase.CREATED
+        self._phase_lock = threading.Lock()
 
         # Store Play and config as private attributes for adapters
         self._play = play
@@ -265,6 +293,32 @@ class PlayEngine:
         return self.config.mode == "backtest"
 
     @property
+    def phase(self) -> EnginePhase:
+        """Current engine phase (thread-safe read)."""
+        with self._phase_lock:
+            return self._phase
+
+    def _transition_phase(self, new_phase: EnginePhase) -> bool:
+        """
+        G5.8: Thread-safe phase transition with validation.
+
+        Returns True if transition was valid, False otherwise.
+        Invalid transitions are logged but not raised (fail-safe).
+        """
+        with self._phase_lock:
+            valid_next = VALID_PHASE_TRANSITIONS.get(self._phase, set())
+            if new_phase not in valid_next:
+                self.logger.warning(
+                    f"Invalid phase transition: {self._phase.value} -> {new_phase.value} "
+                    f"(valid: {[s.value for s in valid_next]})"
+                )
+                return False
+            old_phase = self._phase
+            self._phase = new_phase
+            self.logger.debug(f"Engine phase: {old_phase.value} -> {new_phase.value}")
+            return True
+
+    @property
     def _current_high_tf_idx(self) -> int:
         """Current high_tf forward-fill index (from TFIndexManager)."""
         if self._tf_index_manager is None:
@@ -340,6 +394,10 @@ class PlayEngine:
             if bar_index == 100:  # Debug: log early on why not ready
                 self.logger.debug(f"Not ready at bar {bar_index}: data.is_ready={self.data.is_ready()}")
             return None
+
+        # G5.8: Transition to RUNNING when processing post-warmup bars
+        if self._phase == EnginePhase.READY:
+            self._transition_phase(EnginePhase.RUNNING)
 
         # 3. Step exchange (process pending orders, check TP/SL)
         self.exchange.step(candle)
@@ -556,9 +614,14 @@ class PlayEngine:
 
         # Check data provider readiness
         if not self.data.is_ready():
+            # G5.8: Transition to WARMING_UP if not already
+            if self._phase == EnginePhase.CREATED:
+                self._transition_phase(EnginePhase.WARMING_UP)
             return False
 
         self._warmup_complete = True
+        # G5.8: Transition to READY phase
+        self._transition_phase(EnginePhase.READY)
         self.logger.debug(f"Warmup complete at bar {self._current_bar_index}")
         return True
 

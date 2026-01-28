@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -47,6 +48,17 @@ class RunnerState(str, Enum):
     RECONNECTING = "reconnecting"
     STOPPING = "stopping"
     ERROR = "error"
+
+
+# G5.7: Valid state transitions
+VALID_TRANSITIONS: dict[RunnerState, set[RunnerState]] = {
+    RunnerState.STOPPED: {RunnerState.STARTING},
+    RunnerState.STARTING: {RunnerState.RUNNING, RunnerState.ERROR},
+    RunnerState.RUNNING: {RunnerState.STOPPING, RunnerState.RECONNECTING, RunnerState.ERROR},
+    RunnerState.RECONNECTING: {RunnerState.RUNNING, RunnerState.STOPPING, RunnerState.ERROR},
+    RunnerState.STOPPING: {RunnerState.STOPPED, RunnerState.ERROR},
+    RunnerState.ERROR: {RunnerState.STOPPED},  # Can only reset from error
+}
 
 
 @dataclass
@@ -140,8 +152,9 @@ class LiveRunner:
                 "Use BacktestRunner instead."
             )
 
-        # State
+        # State (G5.7: thread-safe state machine)
         self._state = RunnerState.STOPPED
+        self._state_lock = threading.Lock()
         self._stats = LiveRunnerStats()
         self._stop_event = asyncio.Event()
         self._reconnect_attempts = 0
@@ -156,8 +169,29 @@ class LiveRunner:
 
     @property
     def state(self) -> RunnerState:
-        """Current runner state."""
-        return self._state
+        """Current runner state (thread-safe read)."""
+        with self._state_lock:
+            return self._state
+
+    def _transition_state(self, new_state: RunnerState) -> bool:
+        """
+        G5.7: Thread-safe state transition with validation.
+
+        Returns True if transition was valid, False otherwise.
+        Invalid transitions are logged but not raised (fail-safe).
+        """
+        with self._state_lock:
+            valid_next = VALID_TRANSITIONS.get(self._state, set())
+            if new_state not in valid_next:
+                logger.warning(
+                    f"Invalid state transition: {self._state.value} -> {new_state.value} "
+                    f"(valid: {[s.value for s in valid_next]})"
+                )
+                return False
+            old_state = self._state
+            self._state = new_state
+            logger.debug(f"State transition: {old_state.value} -> {new_state.value}")
+            return True
 
     @property
     def stats(self) -> LiveRunnerStats:
@@ -175,11 +209,10 @@ class LiveRunner:
 
         Connects to WebSocket and begins processing candles.
         """
-        if self._state != RunnerState.STOPPED:
+        if not self._transition_state(RunnerState.STARTING):
             logger.warning(f"Cannot start: runner is {self._state.value}")
             return
 
-        self._state = RunnerState.STARTING
         self._stats = LiveRunnerStats(started_at=datetime.now())
         self._stop_event.clear()
         self._reconnect_attempts = 0
@@ -198,12 +231,12 @@ class LiveRunner:
 
             # Start processing loop
             self._subscription_task = asyncio.create_task(self._process_loop())
-            self._state = RunnerState.RUNNING
+            self._transition_state(RunnerState.RUNNING)
 
             logger.info("LiveRunner running")
 
         except Exception as e:
-            self._state = RunnerState.ERROR
+            self._transition_state(RunnerState.ERROR)
             self._stats.errors.append(str(e))
             logger.error(f"Failed to start LiveRunner: {e}")
             raise
@@ -217,7 +250,9 @@ class LiveRunner:
         if self._state == RunnerState.STOPPED:
             return
 
-        self._state = RunnerState.STOPPING
+        if not self._transition_state(RunnerState.STOPPING):
+            return
+
         self._stop_event.set()
 
         # Cancel subscription task
@@ -231,7 +266,7 @@ class LiveRunner:
         # Disconnect from data provider
         await self._disconnect()
 
-        self._state = RunnerState.STOPPED
+        self._transition_state(RunnerState.STOPPED)
         self._stats.stopped_at = datetime.now()
 
         logger.info(
@@ -584,7 +619,7 @@ class LiveRunner:
 
     async def _reconnect(self) -> None:
         """Attempt to reconnect to WebSocket with exponential backoff."""
-        self._state = RunnerState.RECONNECTING
+        self._transition_state(RunnerState.RECONNECTING)
         self._reconnect_attempts += 1
         self._stats.reconnect_count += 1
 
@@ -604,7 +639,7 @@ class LiveRunner:
         try:
             await self._disconnect()
             await self._connect()
-            self._state = RunnerState.RUNNING
+            self._transition_state(RunnerState.RUNNING)
             self._reconnect_attempts = 0  # Reset on success
             logger.info("Reconnection successful")
         except Exception as e:
