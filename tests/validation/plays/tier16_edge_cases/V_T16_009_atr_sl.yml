@@ -11,7 +11,7 @@ symbol: "BTCUSDT"
 timeframes:
   low_tf: "15m"
   med_tf: "1h"
-  high_tf: "4h"
+  high_tf: "12h"
   exec: "low_tf"
 
 account:
