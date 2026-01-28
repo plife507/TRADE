@@ -11,7 +11,7 @@ Every evaluation returns EvalResult with ReasonCode.
 
 from collections.abc import Callable
 from typing import Any
-import math
+# G6.6.4: Removed unused math import
 
 from .types import EvalResult, ReasonCode, RefValue, ValueType
 from .compile import CompiledRef

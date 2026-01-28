@@ -170,8 +170,10 @@ class Order:
 
     @property
     def is_triggered(self) -> bool:
-        """Check if stop order has been triggered (status changed)."""
-        return self.is_conditional and self.status == OrderStatus.PENDING
+        """Check if stop order has been triggered (filled after trigger condition met)."""
+        # G6.6.1: Fix semantic bug - triggered means FILLED, not PENDING
+        # Stop orders go: PENDING -> FILLED (when triggered) or CANCELLED
+        return self.is_conditional and self.status == OrderStatus.FILLED
 
 
 # ─────────────────────────────────────────────────────────────────────────────

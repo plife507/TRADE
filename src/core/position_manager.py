@@ -14,6 +14,7 @@ Features:
 
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from dataclasses import dataclass, field
 
@@ -142,8 +143,8 @@ class PositionManager:
         # Lazy import to avoid circular dependency
         self._realtime_state = None
         
-        # Trade history
-        self._trades: list[TradeRecord] = []
+        # Trade history (G6.8.3: bounded deque to prevent unbounded memory growth)
+        self._trades: deque[TradeRecord] = deque(maxlen=10000)
         
         # Daily tracking
         self._daily_realized_pnl = 0.0
@@ -448,7 +449,9 @@ class PositionManager:
     def get_trade_history(self, limit: int = 100) -> list[dict]:
         """Get recent trade history."""
         with self._trade_lock:
-            trades = self._trades[-limit:] if limit else list(self._trades)
+            # Convert deque to list for slicing (deque doesn't support slicing)
+            trades_list = list(self._trades)
+            trades = trades_list[-limit:] if limit else trades_list
         return [t.to_dict() for t in trades]
 
     def get_performance_summary(self) -> dict:

@@ -1,13 +1,13 @@
 """
-DSL Parser: YAML to AST conversion for Play blocks.
+DSL Parser: YAML to AST conversion for Play actions.
 
-Parses the blocks format from YAML into AST node types.
+Parses the actions format from YAML into AST node types.
 
 YAML Schema (3.0.0):
 ```yaml
 version: "3.0.0"
 
-blocks:
+actions:
   - id: entry
     cases:
       - when:
@@ -26,7 +26,8 @@ blocks:
 ```
 
 Usage:
-    blocks = parse_blocks(yaml_data["blocks"])
+    # G6.9.2: Updated docstring blocks: -> actions:
+    blocks = parse_blocks(yaml_data["actions"])
     expr = parse_expr(condition_dict)
 """
 

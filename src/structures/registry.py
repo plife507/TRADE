@@ -32,7 +32,7 @@ See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from .types import FeatureOutputType
 
@@ -175,7 +175,8 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
 #
 # Returns: int (warmup bars needed)
 
-STRUCTURE_WARMUP_FORMULAS: dict[str, callable] = {
+# G6.6.7: Use Callable from typing, not lowercase callable
+STRUCTURE_WARMUP_FORMULAS: dict[str, Callable] = {
     # SWING: needs left + right bars for pivot confirmation
     "swing": lambda params, swing_params: params.get("left", 5) + params.get("right", 5),
 
