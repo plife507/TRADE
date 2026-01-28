@@ -6,6 +6,8 @@ Loads settings from environment variables with sensible defaults.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import ClassVar
+
 from dotenv import load_dotenv
 
 # Note: Symbols should always be passed as explicit parameters by users/agents
@@ -343,10 +345,10 @@ class RiskConfig:
     # Minimum viable trade size (trades below this are rejected)
     min_viable_size_usdt: float = 5.0
 
-    # Hard caps (cannot be overridden by config)
-    HARD_MAX_LEVERAGE: int = 10
-    HARD_MAX_POSITION_USDT: float = 1000.0
-    HARD_MIN_BALANCE: float = 5.0
+    # Hard caps (cannot be overridden by config) - ClassVar prevents instance modification
+    HARD_MAX_LEVERAGE: ClassVar[int] = 10
+    HARD_MAX_POSITION_USDT: ClassVar[float] = 1000.0
+    HARD_MIN_BALANCE: ClassVar[float] = 5.0
     
     def __post_init__(self):
         """Enforce hard caps."""

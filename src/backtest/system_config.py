@@ -1019,10 +1019,4 @@ def list_systems() -> list[str]:
     return sorted(systems)
 
 
-def get_system_config_path(system_id: str) -> Path | None:
-    """Get the path to a system config file."""
-    for ext in (".yml", ".yaml"):
-        path = CONFIGS_DIR / f"{system_id}{ext}"
-        if path.exists():
-            return path
-    return None
+# G1.11: get_system_config_path() removed (2026-01-27) - unused

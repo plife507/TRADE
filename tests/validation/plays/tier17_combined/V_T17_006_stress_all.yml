@@ -1,0 +1,141 @@
+version: "3.0.0"
+name: "V_T17_006_stress_all"
+description: "All features combined stress test - no crashes"
+
+synthetic:
+  pattern: "vol_squeeze_expand"
+  bars: 200
+  seed: 1706
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  stoch_14_3:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+    - type: market_structure
+      key: ms
+      uses: swing
+    - type: fibonacci
+      key: fib
+      uses: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+    - type: derived_zone
+      key: fib_zones
+      uses: swing
+      params:
+        levels: [0.618, 0.705]
+        mode: retracement
+        max_active: 3
+        width_pct: 0.005
+    - type: rolling_window
+      key: rolling_high_20
+      params:
+        mode: max
+        size: 20
+        source: high
+
+actions:
+  entry_long:
+    any:
+      - all:
+          - ["ema_9", "cross_above", "ema_21"]
+          - ["close", ">", "ema_50_1h"]
+          - ["rsi_14", "<", 65]
+          - ["trend.direction", "==", 1]
+      - all:
+          - ["close", ">", "bbands_20_2.upper"]
+          - ["adx_14.adx", ">", 25]
+          - ["volume", ">", "volume_sma_20"]
+      - all:
+          - ["fib_zones.any_active", "==", 1]
+          - ["stoch_14_3.k", "<", 30]
+
+  entry_short:
+    any:
+      - all:
+          - ["ema_9", "cross_below", "ema_21"]
+          - ["close", "<", "ema_50_1h"]
+          - ["rsi_14", ">", 35]
+          - ["trend.direction", "==", -1]
+      - all:
+          - ["close", "<", "bbands_20_2.lower"]
+          - ["adx_14.adx", ">", 25]
+
+position_policy:
+  mode: long_short
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

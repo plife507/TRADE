@@ -13,20 +13,24 @@ You are a documentation specialist for the TRADE trading bot. You maintain proje
 ## Key Documentation Files
 
 ### TODO Tracking
-- `docs/todos/TODO.md` - Active work tracking (ALWAYS UPDATE)
-- `docs/todos/archived/` - Completed phases
+- `docs/TODO.md` - Active work tracking (ALWAYS UPDATE)
+- `docs/archived/` - Completed phases
 
 ### Project Docs
 - `CLAUDE.md` - Root project rules
+- `config/defaults.yml` - System defaults
 - `src/backtest/CLAUDE.md` - Backtest module rules
 - `src/core/CLAUDE.md` - Live trading rules
 - `src/data/CLAUDE.md` - Data layer rules
 - `src/tools/CLAUDE.md` - Tools/CLI rules
 
-### Architecture
-- `docs/architecture/` - Design documents
-- `docs/audits/OPEN_BUGS.md` - Bug tracking
+### Architecture & Reference
+- `docs/PLAY_DSL_COOKBOOK.md` - DSL syntax reference
+- `docs/PROJECT_STATUS.md` - Current status
 - `docs/SESSION_HANDOFF.md` - Session state
+- `docs/OPEN_BUGS.md` - Bug tracking
+- `reference/exchanges/bybit/` - Bybit API docs
+- `reference/exchanges/pybit/` - pybit SDK docs
 
 ## Documentation Tasks
 
@@ -88,7 +92,7 @@ Update `docs/SESSION_HANDOFF.md`:
 ## Documentation Updates
 
 ### Files Modified
-- `docs/todos/TODO.md`: [changes]
+- `docs/TODO.md`: [changes]
 - `docs/SESSION_HANDOFF.md`: [changes]
 
 ### Summary
@@ -97,7 +101,7 @@ Update `docs/SESSION_HANDOFF.md`:
 
 ## Critical Rules
 
-- ALWAYS update TODO.md after code changes
+- ALWAYS update docs/TODO.md after code changes
 - Keep validation status current
-- Archive completed phases to `archived/`
+- Archive completed phases to `docs/archived/`
 - No speculation - document what was done

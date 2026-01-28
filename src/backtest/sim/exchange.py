@@ -444,9 +444,9 @@ class SimulatedExchange:
         Raises:
             ValueError: If percent is not in (0, 100]
         """
-        # FAIL LOUD: Validate percent strictly
-        if percent <= 0 or percent > 100:
-            raise ValueError(f"submit_close: percent must be in (0, 100], got {percent}")
+        # FAIL LOUD: Validate percent strictly (minimum 1% to prevent dust positions)
+        if percent < 1.0 or percent > 100:
+            raise ValueError(f"submit_close: percent must be in [1, 100], got {percent}")
         self._pending_close_reason = reason
         self._pending_close_percent = percent
     
@@ -551,7 +551,7 @@ class SimulatedExchange:
         # 4. Process pending close at bar open
         if self._pending_close_reason and self.position:
             close_percent = self._pending_close_percent
-            if close_percent >= 100.0:
+            if close_percent >= 99.9999:  # Use epsilon for float comparison
                 # Full close
                 result = self._close_position(bar.open, ts_open, self._pending_close_reason)
                 if result:

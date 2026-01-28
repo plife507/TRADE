@@ -297,8 +297,18 @@ class RuntimeSnapshotView:
                     ready=True,
                 )
         else:
-            # No separate med_tf feed: alias to low_tf
-            self.med_tf_ctx = self.low_tf_ctx
+            # No separate med_tf feed: aliased to low_tf
+            if exec_role == "med_tf":
+                # Exec is med_tf, but med_tf_feed is None (aliased to low_tf)
+                # Create a TFContext using low_tf_feed but with exec_idx
+                self.med_tf_ctx = TFContext(
+                    feed=feeds.low_tf_feed,
+                    current_idx=exec_idx,
+                    ready=True,
+                )
+            else:
+                # Not exec role, just alias to low_tf
+                self.med_tf_ctx = self.low_tf_ctx
 
         # Build high_tf context
         if feeds.high_tf_feed is not None:
@@ -318,8 +328,19 @@ class RuntimeSnapshotView:
                     ready=True,
                 )
         else:
-            # No separate high_tf feed: alias to med_tf
-            self.high_tf_ctx = self.med_tf_ctx
+            # No separate high_tf feed: aliased to med_tf
+            if exec_role == "high_tf":
+                # Exec is high_tf, but high_tf_feed is None (aliased to med_tf)
+                # Create a TFContext using med_tf_feed but with exec_idx
+                # Note: med_tf_ctx.feed should be the correct feed (or aliased to low_tf)
+                self.high_tf_ctx = TFContext(
+                    feed=self.med_tf_ctx.feed,
+                    current_idx=exec_idx,
+                    ready=True,
+                )
+            else:
+                # Not exec role, just alias to med_tf
+                self.high_tf_ctx = self.med_tf_ctx
 
         # Set exec_ctx as alias to the appropriate context
         if exec_role == "low_tf":
@@ -712,7 +733,8 @@ class RuntimeSnapshotView:
                 if self._quote_feed is None or self._quote_idx is None:
                     raise ValueError(
                         f"last_price offset={offset} requires quote_feed (not available). "
-                        "Window operators with last_price need 1m data."
+                        "Window operators with last_price need 1m quote data. "
+                        "Ensure 1m data is synced for this symbol (1m is always loaded separately for quote feed)."
                     )
                 target_idx = self._quote_idx - offset
                 if target_idx < 0:
@@ -845,7 +867,7 @@ class RuntimeSnapshotView:
 
         For multi-TF features:
         - Looks up the feature's TF from the registry
-        - Maps TF to role (exec/mtf/htf) via tf_mapping
+        - Maps TF to role (low_tf/med_tf/high_tf) via tf_mapping
 
         Args:
             feature_id: Feature ID (e.g., "ema_9", "rsi_14", "macd", "ema_50_4h", "rationalize")
@@ -875,7 +897,8 @@ class RuntimeSnapshotView:
                 if self._quote_feed is None or self._quote_idx is None:
                     raise ValueError(
                         f"last_price offset={offset} requires quote_feed (not available). "
-                        "Window operators with last_price need 1m data."
+                        "Window operators with last_price need 1m quote data. "
+                        "Ensure 1m data is synced for this symbol (1m is always loaded separately for quote feed)."
                     )
                 target_idx = self._quote_idx - offset
                 if target_idx < 0:
@@ -897,7 +920,7 @@ class RuntimeSnapshotView:
 
                 # Search for structure in incremental state
                 # 1. First check exec structures
-                # 2. Then check HTF structures by feature's declared TF
+                # 2. Then check high_tf structures by feature's declared TF
                 value = self._get_structure_value(feature_id, field, feature.tf)
 
                 # Handle NaN as None
@@ -1119,7 +1142,7 @@ class RuntimeSnapshotView:
         Args:
             path: Dot-separated path like "swing.high_level" or "trend.direction"
                   For exec TF: "swing.high_level"
-                  For HTF: "high_tf_1h.swing.high_level"
+                  For high_tf: "high_tf_1h.swing.high_level"
 
         Returns:
             The structure value
@@ -1150,14 +1173,14 @@ class RuntimeSnapshotView:
             internal_path = f"exec.{struct_key}.{output_key}"
             return self._incremental_state.get_value(internal_path)
 
-        # Check if it's an HTF path (starts with high_tf_)
+        # Check if it's a high_tf path (starts with high_tf_)
         if struct_key.startswith("high_tf_"):
             # Path format: "high_tf_<tf>.<struct_key>.<output_key>"
             tf_name = parts[0][4:]  # Remove "high_tf_" prefix
-            # P2-005 FIX: Validate HTF path has enough parts before accessing
+            # P2-005 FIX: Validate high_tf path has enough parts before accessing
             if len(parts) < 3:
                 raise KeyError(
-                    f"Invalid HTF structure path: '{path}'. "
+                    f"Invalid high_tf structure path: '{path}'. "
                     f"Expected format: 'high_tf_<tf>.<struct_key>.<output_key>'"
                 )
             if tf_name in self._incremental_state.high_tf:
@@ -1168,12 +1191,12 @@ class RuntimeSnapshotView:
 
         # Structure not found
         available_exec = self._incremental_state.exec.list_structures()
-        available_htf = []
+        available_high_tf = []
         for high_tf_name in self._incremental_state.list_high_tfs():
             for s_key in self._incremental_state.high_tf[high_tf_name].list_structures():
-                available_htf.append(f"high_tf_{high_tf_name}.{s_key}")
+                available_high_tf.append(f"high_tf_{high_tf_name}.{s_key}")
 
-        all_available = available_exec + available_htf
+        all_available = available_exec + available_high_tf
         raise KeyError(
             f"Structure '{struct_key}' not found. "
             f"Available: {all_available}. "
@@ -1196,8 +1219,8 @@ class RuntimeSnapshotView:
 
         Structure storage locations:
         - exec.structures: Structures on the execution timeframe
-        - htf[tf].structures: Structures on any non-exec TF (LowTF, MedTF, or HighTF)
-          The "htf" dict stores ALL non-exec TFs despite the name.
+        - high_tf[tf].structures: Structures on any non-exec TF (low_tf, med_tf, or high_tf)
+          The "high_tf" dict stores ALL non-exec TFs despite the name.
 
         Args:
             feature_id: The structure's feature ID from the Play
@@ -1218,8 +1241,8 @@ class RuntimeSnapshotView:
             except KeyError:
                 return None
 
-        # Check if structure is in non-exec TF state (LowTF, MedTF, or HighTF)
-        # The "htf" dict stores ALL non-exec timeframes despite the name
+        # Check if structure is in non-exec TF state (low_tf, med_tf, or high_tf)
+        # The "high_tf" dict stores ALL non-exec timeframes despite the name
         if feature_tf in self._incremental_state.high_tf:
             tf_state = self._incremental_state.high_tf[feature_tf]
             if feature_id in tf_state.structures:
@@ -1603,7 +1626,7 @@ class RuntimeSnapshotView:
 
         Incremental state paths use MultiTFIncrementalState format internally:
         - "exec.<struct_key>.<output_key>" for exec TF
-        - "high_tf_<tf>.<struct_key>.<output_key>" for HTF
+        - "high_tf_<tf>.<struct_key>.<output_key>" for high_tf
 
         Args:
             parts: Path parts after "structure." (e.g., ["swing", "high_level"])
@@ -1645,7 +1668,7 @@ class RuntimeSnapshotView:
                     # Output key not found - continue to FeedStore fallback
                     pass
 
-            # Check if this is an HTF structure
+            # Check if this is a high_tf structure
             for high_tf_name, high_tf_state in self._incremental_state.high_tf.items():
                 if block_key in high_tf_state.structures:
                     try:

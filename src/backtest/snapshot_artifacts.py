@@ -18,8 +18,8 @@ import json
 
 @dataclass
 class SnapshotFrameInfo:
-    """Metadata about a snapshot frame (role-keyed: exec/htf/mtf)."""
-    role: str  # exec, htf, or mtf
+    """Metadata about a snapshot frame (role-keyed: exec/high_tf/med_tf)."""
+    role: str  # exec, high_tf, or med_tf
     tf: str
     row_count: int
     column_count: int
@@ -40,10 +40,10 @@ class SnapshotManifest:
     window_start: datetime
     window_end: datetime
     exec_tf: str
-    htf: str | None
-    mtf: str | None
+    high_tf: str | None
+    med_tf: str | None
 
-    # Frame info keyed by ROLE (exec/htf/mtf), not TF
+    # Frame info keyed by ROLE (exec/high_tf/med_tf), not TF
     frames: dict[str, SnapshotFrameInfo]  # role -> info
 
     # Metadata
@@ -63,8 +63,8 @@ class SnapshotManifest:
             "window_start": self.window_start.isoformat(),
             "window_end": self.window_end.isoformat(),
             "exec_tf": self.exec_tf,
-            "htf": self.htf,
-            "mtf": self.mtf,
+            "high_tf": self.high_tf,
+            "med_tf": self.med_tf,
             "frame_format": self.frame_format,
             "float_precision": self.float_precision,
             "created_at": self.created_at.isoformat(),
@@ -96,14 +96,14 @@ def emit_snapshot_artifacts(
     window_start: datetime,
     window_end: datetime,
     exec_tf: str,
-    htf: str | None,
-    mtf: str | None,
+    high_tf: str | None,
+    med_tf: str | None,
     exec_df: Any,  # DataFrame
-    htf_df: Any | None = None,  # DataFrame
-    mtf_df: Any | None = None,  # DataFrame
+    high_tf_df: Any | None = None,  # DataFrame
+    med_tf_df: Any | None = None,  # DataFrame
     exec_feature_specs: list | None = None,
-    htf_feature_specs: list | None = None,
-    mtf_feature_specs: list | None = None,
+    high_tf_feature_specs: list | None = None,
+    med_tf_feature_specs: list | None = None,
 ) -> Path:
     """
     Emit snapshot artifacts to run_dir/snapshots/ (role-keyed).
@@ -113,9 +113,9 @@ def emit_snapshot_artifacts(
         play_id: Play identifier
         symbol: Trading symbol
         window_start/end: Backtest window
-        exec_tf/htf/mtf: Timeframes
-        exec_df/htf_df/mtf_df: DataFrames with OHLCV + computed indicators
-        exec_feature_specs/htf_feature_specs/mtf_feature_specs: FeatureSpec objects used
+        exec_tf/high_tf/med_tf: Timeframes
+        exec_df/high_tf_df/med_tf_df: DataFrames with OHLCV + computed indicators
+        exec_feature_specs/high_tf_feature_specs/med_tf_feature_specs: FeatureSpec objects used
 
     Returns:
         Path to snapshots directory
@@ -203,15 +203,15 @@ def emit_snapshot_artifacts(
         if info:
             frames_info["exec"] = info
 
-    if htf_df is not None and htf:
-        info = write_frame(htf_df, "htf", htf, htf_feature_specs)
+    if high_tf_df is not None and high_tf:
+        info = write_frame(high_tf_df, "high_tf", high_tf, high_tf_feature_specs)
         if info:
-            frames_info["htf"] = info
+            frames_info["high_tf"] = info
 
-    if mtf_df is not None and mtf:
-        info = write_frame(mtf_df, "mtf", mtf, mtf_feature_specs)
+    if med_tf_df is not None and med_tf:
+        info = write_frame(med_tf_df, "med_tf", med_tf, med_tf_feature_specs)
         if info:
-            frames_info["mtf"] = info
+            frames_info["med_tf"] = info
 
     # Write manifest
     manifest = SnapshotManifest(
@@ -220,8 +220,8 @@ def emit_snapshot_artifacts(
         window_start=window_start,
         window_end=window_end,
         exec_tf=exec_tf,
-        htf=htf,
-        mtf=mtf,
+        high_tf=high_tf,
+        med_tf=med_tf,
         frames=frames_info,
     )
 

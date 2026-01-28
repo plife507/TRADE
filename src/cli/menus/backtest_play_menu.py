@@ -122,7 +122,7 @@ def _select_play(prompt_text: str = "Select Play") -> str | None:
     cards = result.data.get("plays", [])
 
     if not cards:
-        console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in strategies/plays/[/]")
+        console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in tests/functional/plays/[/]")
         return None
 
     # Display numbered list
@@ -427,7 +427,7 @@ def _view_indicators(cli: "TradeCLI"):
         console.print()
 
         # Show by timeframe role
-        for role in ["exec", "htf", "mtf"]:
+        for role in ["exec", "high_tf", "med_tf"]:
             key = f"{role}_indicators"
             if key in data and data[key]:
                 console.print(f"[bold]{role.upper()} Timeframe:[/]")

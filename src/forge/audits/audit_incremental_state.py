@@ -488,7 +488,7 @@ def run_incremental_state_via_engine(
     seed: int = 1337,
 ) -> dict:
     """
-    Run incremental state audit through BacktestEngine with synthetic data.
+    Run incremental state audit through PlayEngine with synthetic data.
 
     This validates structures in the actual engine execution path by running
     a Play with structures and validating the structure outputs are correct.

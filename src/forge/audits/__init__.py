@@ -42,6 +42,11 @@ from .stress_test_suite import (
     StructureParityResult,
     IndicatorParityResult,
 )
+from .audit_incremental_parity import (
+    run_incremental_parity_audit,
+    IncrementalParityAuditResult,
+    IncrementalIndicatorResult,
+)
 
 __all__ = [
     # In-memory parity
@@ -72,5 +77,9 @@ __all__ = [
     "StressTestStepResult",
     "StructureParityResult",
     "IndicatorParityResult",
+    # Incremental parity (G3-1)
+    "run_incremental_parity_audit",
+    "IncrementalParityAuditResult",
+    "IncrementalIndicatorResult",
 ]
 

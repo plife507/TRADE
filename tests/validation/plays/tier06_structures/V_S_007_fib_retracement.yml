@@ -1,0 +1,59 @@
+version: "3.0.0"
+name: "V_S_007_fib_retracement"
+description: "Validate fibonacci detector - retracement levels"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 100
+  seed: 107
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: fibonacci
+      key: fib
+      uses: swing
+      params:
+        mode: retracement
+        levels: [0.382, 0.5, 0.618, 0.786]
+        use_paired_anchor: true
+
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      - ["fib.anchor_high", ">", 0]
+      - ["fib.anchor_low", ">", 0]
+      - ["close", "near_pct", "fib.level[0.618]", 2.0]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

@@ -176,17 +176,13 @@ class BaseIncrementalDetector(ABC):
         # Check dependencies
         missing_deps = [d for d in cls.DEPENDS_ON if d not in deps]
         if missing_deps:
-            dep_lines = "\n".join(
-                f"      {d}: <key>  # REQUIRED" for d in missing_deps
-            )
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}) missing dependencies: {missing_deps}\n"
                 f"\n"
                 f"Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
-                f"    depends_on:\n"
-                f"{dep_lines}"
+                f"    uses: <dependency_key>  # Key of a {missing_deps[0]} structure"
             )
 
         # Type-specific validation (subclass hook)
@@ -217,7 +213,7 @@ class BaseIncrementalDetector(ABC):
         Raises:
             ValueError: If params are invalid.
         """
-        pass
+        ...
 
     @abstractmethod
     def update(self, bar_idx: int, bar: BarData) -> None:
@@ -231,7 +227,7 @@ class BaseIncrementalDetector(ABC):
             bar_idx: Current bar index.
             bar: Bar data including OHLCV and indicators.
         """
-        pass
+        ...
 
     @abstractmethod
     def get_output_keys(self) -> list[str]:
@@ -241,7 +237,7 @@ class BaseIncrementalDetector(ABC):
         Returns:
             List of string keys that can be passed to get_value().
         """
-        pass
+        ...
 
     @abstractmethod
     def get_value(self, key: str) -> float | int | str:
@@ -257,7 +253,7 @@ class BaseIncrementalDetector(ABC):
         Raises:
             KeyError: If key is not valid.
         """
-        pass
+        ...
 
     def get_value_safe(self, key: str) -> float | int | str:
         """

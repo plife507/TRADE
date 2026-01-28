@@ -741,7 +741,9 @@ Examples:
     run_parser.add_argument("--synthetic", action="store_true", help="Use synthetic data instead of DB (for validation runs)")
     run_parser.add_argument("--synthetic-bars", type=int, default=1000, help="Number of bars per timeframe for synthetic data (default: 1000)")
     run_parser.add_argument("--synthetic-seed", type=int, default=42, help="Random seed for synthetic data generation (default: 42)")
-    run_parser.add_argument("--synthetic-pattern", choices=["trending", "ranging", "volatile"], default="trending", help="Pattern for synthetic data (default: trending)")
+    # Import available patterns from synthetic data module
+    from src.forge.validation import PATTERN_GENERATORS
+    run_parser.add_argument("--synthetic-pattern", choices=list(PATTERN_GENERATORS.keys()), default="trending", help="Pattern for synthetic data (default: trending). Use --list-patterns to see all.")
 
     # backtest preflight
     preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")
@@ -838,6 +840,16 @@ Examples:
     audit_parser.add_argument("--fail-on-extras", action="store_true", help="Treat extras as failures")
     audit_parser.add_argument("--strict", action="store_true", default=True, help="Fail on any contract breach")
     
+    # backtest audit-incremental-parity (G3-1 - incremental vs vectorized parity)
+    inc_parity_parser = backtest_subparsers.add_parser(
+        "audit-incremental-parity",
+        help="Run G3-1 incremental vs vectorized indicator parity audit (11 indicators)"
+    )
+    inc_parity_parser.add_argument("--bars", type=int, default=1000, help="Number of synthetic bars (default: 1000)")
+    inc_parity_parser.add_argument("--tolerance", type=float, default=1e-6, help="Max allowed difference (default: 1e-6)")
+    inc_parity_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
+    inc_parity_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
     # backtest metadata-smoke (Indicator Metadata v1 smoke test)
     metadata_parser = backtest_subparsers.add_parser(
         "metadata-smoke",
@@ -1017,6 +1029,15 @@ def _handle_synthetic_backtest_run(args) -> int:
         play = load_play(args.play, base_dir=plays_dir)
     exec_tf = play.execution_tf
     required_tfs = {exec_tf, "1m"}  # Always need 1m for intrabar
+
+    # Add Play's declared timeframes (low_tf, med_tf, high_tf)
+    if play.low_tf:
+        required_tfs.add(play.low_tf)
+    if play.med_tf:
+        required_tfs.add(play.med_tf)
+    if play.high_tf:
+        required_tfs.add(play.high_tf)
+
     # Collect TFs from features
     for f in play.features or []:
         if hasattr(f, "tf") and f.tf:
@@ -1307,11 +1328,11 @@ def handle_backtest_indicators(args) -> int:
         console.print(f"\n[bold]Indicator Key Discovery[/]")
         console.print(f"Play: {data.get('play_id')}")
         console.print(f"Symbol: {data.get('symbol')}")
-        console.print(f"Exec TF: {data.get('exec_tf')}")
+        console.print(f"Execution timeframe: {data.get('exec_tf')}")
         if data.get('htf'):
-            console.print(f"HTF: {data.get('htf')}")
+            console.print(f"Higher timeframe: {data.get('htf')}")
         if data.get('mtf'):
-            console.print(f"MTF: {data.get('mtf')}")
+            console.print(f"Medium timeframe: {data.get('mtf')}")
 
         console.print(f"\n[bold]Declared Keys (from FeatureSpec output_key):[/]")
         for role, keys in data.get("declared_keys_by_role", {}).items():
@@ -1967,6 +1988,35 @@ def handle_backtest_audit_toolkit(args) -> int:
                 if not r["passed"]:
                     console.print(f"  [red]- {r['indicator_type']}: missing={r['missing_outputs']}, collisions={r['collisions']}, error={r['error_message']}[/]")
         return 1
+
+
+def handle_backtest_audit_incremental_parity(args) -> int:
+    """Handle `backtest audit-incremental-parity` subcommand - G3-1 incremental vs vectorized parity."""
+    import json
+    from src.forge.audits import run_incremental_parity_audit
+
+    if not args.json_output:
+        console.print(Panel(
+            f"[bold cyan]INCREMENTAL vs VECTORIZED PARITY AUDIT (G3-1)[/]\n"
+            f"Bars: {args.bars} | Tolerance: {args.tolerance} | Seed: {args.seed}\n"
+            f"Tests 11 O(1) incremental indicators against pandas_ta",
+            border_style="cyan"
+        ))
+
+    result = run_incremental_parity_audit(
+        bars=args.bars,
+        tolerance=args.tolerance,
+        seed=args.seed,
+    )
+
+    # JSON output mode
+    if args.json_output:
+        print(json.dumps(result.to_dict(), indent=2, default=str))
+        return 0 if result.success else 1
+
+    # Human-readable output
+    result.print_summary()
+    return 0 if result.success else 1
 
 
 def handle_backtest_math_parity(args) -> int:
@@ -2783,6 +2833,8 @@ def main():
             sys.exit(handle_backtest_verify_suite(args))
         elif args.backtest_command == "audit-toolkit":
             sys.exit(handle_backtest_audit_toolkit(args))
+        elif args.backtest_command == "audit-incremental-parity":
+            sys.exit(handle_backtest_audit_incremental_parity(args))
         elif args.backtest_command == "metadata-smoke":
             sys.exit(handle_backtest_metadata_smoke(args))
         elif args.backtest_command == "mark-price-smoke":

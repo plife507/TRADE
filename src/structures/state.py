@@ -11,15 +11,15 @@ bar-by-bar updates. All errors include actionable fix suggestions.
 Example:
     # Create exec_tf state with swing -> fib -> trend chain
     exec_specs = [
-        {"type": "swing", "key": "swing", "params": {"left": 5, "right": 5}},
-        {"type": "fibonacci", "key": "fib", "depends_on": {"swing": "swing"},
+        {"type": "swing", "key": "pivots", "params": {"left": 5, "right": 5}},
+        {"type": "fibonacci", "key": "fib", "uses": "pivots",
          "params": {"levels": [0.382, 0.618]}},
-        {"type": "trend", "key": "trend", "depends_on": {"swing": "swing"}},
+        {"type": "trend", "key": "trend", "uses": "pivots"},
     ]
 
     state = TFIncrementalState("15m", exec_specs)
     state.update(bar)
-    high_level = state.get_value("swing", "high_level")
+    high_level = state.get_value("pivots", "high_level")
 
 See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 """
@@ -54,12 +54,12 @@ class TFIncrementalState:
 
     Example:
         >>> specs = [
-        ...     {"type": "swing", "key": "swing", "params": {"left": 5, "right": 5}},
-        ...     {"type": "trend", "key": "trend", "depends_on": {"swing": "swing"}},
+        ...     {"type": "swing", "key": "pivots", "params": {"left": 5, "right": 5}},
+        ...     {"type": "trend", "key": "trend", "uses": "pivots"},
         ... ]
         >>> state = TFIncrementalState("15m", specs)
         >>> state.update(bar)
-        >>> state.get_value("swing", "high_level")
+        >>> state.get_value("pivots", "high_level")
         50000.0
     """
 
@@ -72,7 +72,7 @@ class TFIncrementalState:
         - type: Registered structure type name
         - key: Unique identifier for this instance
         - params: (optional) Dict of parameters
-        - depends_on: (optional) Dict mapping dep type to key
+        - uses: (optional) Key or list of keys for dependencies
 
         Args:
             timeframe: The timeframe identifier.
@@ -106,7 +106,12 @@ class TFIncrementalState:
             struct_type = spec.get("type")
             key = spec.get("key")
             params = spec.get("params", {})
-            depends_on = spec.get("depends_on", {})
+            # Parse uses field (can be string or list)
+            uses_raw = spec.get("uses", [])
+            if isinstance(uses_raw, str):
+                uses = [uses_raw]
+            else:
+                uses = list(uses_raw) if uses_raw else []
 
             # Validate required fields
             if not struct_type:
@@ -149,29 +154,31 @@ class TFIncrementalState:
 
             cls = STRUCTURE_REGISTRY[struct_type]
 
-            # Resolve dependencies
+            # Resolve dependencies from uses list
             deps: dict[str, BaseIncrementalDetector] = {}
-            for dep_type, dep_key in depends_on.items():
+            for dep_key in uses:
                 if dep_key not in self.structures:
                     available_keys = list(self.structures.keys())
                     available_str = ", ".join(available_keys) if available_keys else "(none defined yet)"
                     raise ValueError(
-                        f"Structure '{key}' depends on '{dep_key}' which is not yet defined.\n"
+                        f"Structure '{key}' uses '{dep_key}' which is not yet defined.\n"
                         f"\n"
                         f"Available structures (defined before '{key}'): {available_str}\n"
                         f"\n"
                         f"Fix: Define '{dep_key}' BEFORE '{key}' in the structures list:\n"
                         f"  structures:\n"
                         f"    exec:\n"
-                        f"      - type: <dep_type>  # Define dependency first\n"
+                        f"      - type: swing\n"
                         f"        key: {dep_key}\n"
                         f"        ...\n"
-                        f"      - type: {struct_type}  # Then the dependent structure\n"
+                        f"      - type: {struct_type}\n"
                         f"        key: {key}\n"
-                        f"        depends_on:\n"
-                        f"          {dep_type}: {dep_key}"
+                        f"        uses: {dep_key}"
                     )
-                deps[dep_type] = self.structures[dep_key]
+                # Get the dependency's type and add to deps dict keyed by type
+                dep_detector = self.structures[dep_key]
+                dep_type = dep_detector._type
+                deps[dep_type] = dep_detector
 
             # Create detector instance with validation
             detector = cls.validate_and_create(struct_type, key, params, deps)

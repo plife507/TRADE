@@ -355,7 +355,7 @@ class FeatureFrameBuilder:
         Args:
             df: OHLCV DataFrame with columns: timestamp, open, high, low, close, volume
             spec_set: FeatureSpecSet with indicator specifications
-            tf_role: TF role context (exec/htf/mtf) for metadata provenance
+            tf_role: TF role context (low_tf/med_tf/high_tf) for metadata provenance
             
         Returns:
             FeatureArrays with computed indicators and metadata
@@ -531,7 +531,7 @@ class FeatureFrameBuilder:
             computed: Dict to store computed indicator series
             metadata_dict: Dict to store IndicatorMetadata per output key
             spec_set: Parent FeatureSpecSet (for symbol, tf)
-            tf_role: TF role context (exec/htf/mtf)
+            tf_role: TF role context (low_tf/med_tf/high_tf)
             length: Total number of bars
             timestamps: Optional array of timestamps for start_ts/end_ts
             pandas_ta_ver: pandas_ta version string
@@ -789,7 +789,7 @@ class FeatureFrameBuilder:
             symbol: Trading symbol
             tf: Timeframe string
             specs: List of FeatureSpecs
-            tf_role: TF role context (exec/htf/mtf) for metadata provenance
+            tf_role: TF role context (low_tf/med_tf/high_tf) for metadata provenance
             
         Returns:
             FeatureArrays with computed indicators and metadata
@@ -798,60 +798,7 @@ class FeatureFrameBuilder:
         return self.build(df, spec_set, tf_role=tf_role)
 
 
-def build_features_from_preloaded_dfs(
-    play: "Play",
-    dfs: dict[str, pd.DataFrame],
-    symbol: str,
-) -> dict[str, FeatureArrays]:
-    """
-    Build FeatureArrays for all TFs defined in an Play using pre-loaded DataFrames.
-
-    NOTE: For canonical feature building, use build_features_from_play() which
-    takes a data_loader and returns PlayFeatures.
-
-    Args:
-        play: Play with TF configs and feature specs
-        dfs: Dict mapping tf -> OHLCV DataFrame (pre-loaded)
-        symbol: Symbol to build for
-
-    Returns:
-        Dict mapping TF role -> FeatureArrays
-        e.g., {"exec": FeatureArrays(...), "htf": FeatureArrays(...)}
-
-    Raises:
-        ValueError: If required TF data is missing
-    """
-    builder = FeatureFrameBuilder()
-    result: dict[str, FeatureArrays] = {}
-    
-    for role, tf_config in play.tf_configs.items():
-        tf = tf_config.tf
-        
-        # Check data is available
-        if tf not in dfs:
-            raise ValueError(
-                f"Play requires {tf} data for '{role}' TF, but it was not provided. "
-                f"Available TFs: {list(dfs.keys())}"
-            )
-        
-        df = dfs[tf]
-        
-        # Get FeatureSpecSet from Play
-        spec_set = play.get_feature_spec_set(role, symbol)
-        
-        if spec_set is None or not spec_set.specs:
-            # No features for this TF - create empty arrays
-            result[role] = FeatureArrays.empty(
-                symbol=symbol,
-                tf=tf,
-                length=len(df) if not df.empty else 0,
-            )
-        else:
-            # Build features with tf_role for metadata provenance
-            result[role] = builder.build(df, spec_set, tf_role=role)
-    
-    return result
-
+# G1.14: build_features_from_preloaded_dfs() removed (2026-01-27) - use build_features_from_play()
 
 # =============================================================================
 # Play Feature Building
@@ -861,40 +808,40 @@ def build_features_from_preloaded_dfs(
 class PlayFeatures:
     """
     Container for features computed from an Play.
-    
-    Holds FeatureArrays for each TF role (exec, htf, mtf).
+
+    Holds FeatureArrays for each TF role (exec, high_tf, med_tf).
     """
     play_id: str
     symbol: str
-    
+
     # FeatureArrays per TF role
     exec_features: FeatureArrays | None = None
-    htf_features: FeatureArrays | None = None
-    mtf_features: FeatureArrays | None = None
+    high_tf_features: FeatureArrays | None = None
+    med_tf_features: FeatureArrays | None = None
 
     # Raw DataFrames per TF (for engine use)
     exec_df: pd.DataFrame | None = None
-    htf_df: pd.DataFrame | None = None
-    mtf_df: pd.DataFrame | None = None
+    high_tf_df: pd.DataFrame | None = None
+    med_tf_df: pd.DataFrame | None = None
 
     def get_features_for_role(self, role: str) -> FeatureArrays | None:
         """Get FeatureArrays for a TF role."""
         if role == "exec":
             return self.exec_features
-        elif role == "htf":
-            return self.htf_features
-        elif role == "mtf":
-            return self.mtf_features
+        elif role == "high_tf":
+            return self.high_tf_features
+        elif role == "med_tf":
+            return self.med_tf_features
         return None
-    
+
     def get_df_for_role(self, role: str) -> pd.DataFrame | None:
         """Get DataFrame for a TF role."""
         if role == "exec":
             return self.exec_df
-        elif role == "htf":
-            return self.htf_df
-        elif role == "mtf":
-            return self.mtf_df
+        elif role == "high_tf":
+            return self.high_tf_df
+        elif role == "med_tf":
+            return self.med_tf_df
         return None
 
 
@@ -964,11 +911,11 @@ def build_features_from_play(
         if role == "exec":
             result.exec_features = arrays
             result.exec_df = df
-        elif role == "htf":
-            result.htf_features = arrays
-            result.htf_df = df
-        elif role == "mtf":
-            result.mtf_features = arrays
-            result.mtf_df = df
-    
+        elif role == "high_tf":
+            result.high_tf_features = arrays
+            result.high_tf_df = df
+        elif role == "med_tf":
+            result.med_tf_features = arrays
+            result.med_tf_df = df
+
     return result

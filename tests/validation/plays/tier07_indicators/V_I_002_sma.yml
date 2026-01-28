@@ -1,0 +1,46 @@
+version: "3.0.0"
+name: "V_I_002_sma"
+description: "Validate SMA indicator - crossover detection"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 100
+  seed: 202
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  sma_10:
+    indicator: sma
+    params:
+      length: 10
+  sma_20:
+    indicator: sma
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      - ["sma_10", "cross_above", "sma_20"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

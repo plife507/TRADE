@@ -52,7 +52,6 @@ from src.backtest.runtime.gate_state import (
 from src.backtest.runtime.block_state import (
     BlockState,
     create_block_state,
-    reset_block_state,
 )
 
 

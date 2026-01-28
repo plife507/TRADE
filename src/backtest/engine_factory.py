@@ -198,6 +198,8 @@ def create_engine_from_play(
     # Extract slippage from Play if present (flows to ExecutionConfig)
     slippage_bps = 5.0  # Default only if not specified
     if play.account.slippage_bps is not None:
+        if play.account.slippage_bps < 0:
+            raise ValueError(f"slippage_bps must be non-negative, got {play.account.slippage_bps}")
         slippage_bps = play.account.slippage_bps
 
     # Extract maker fee from Play

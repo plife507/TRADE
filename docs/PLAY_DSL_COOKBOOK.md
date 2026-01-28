@@ -587,11 +587,11 @@ Structures provide O(1) incremental market structure detection.
 | `zone` | Demand/supply zones | `swing` |
 | `fibonacci` | Fib retracement/extension levels | `swing` |
 | `rolling_window` | O(1) rolling min/max | None |
-| `derived_zone` | Fibonacci zones from pivots | `source` (not `swing`) |
+| `derived_zone` | Fibonacci zones from pivots | `swing` |
 
 **Dependency syntax:**
-- Most structures: `depends_on: {swing: <swing_key>}`
-- `derived_zone` only: `depends_on: {source: <swing_key>}` (uses `source:` not `swing:`)
+- Use `uses: <key>` to reference a dependency (simple key reference)
+- Example: `uses: swing` references a swing detector with key "swing"
 
 ### Structure YAML Format (Role-Based)
 
@@ -612,27 +612,24 @@ structures:
 
     - type: trend
       key: trend
-      depends_on:
-        swing: swing         # References the swing key above
-      # Outputs: direction, strength, bars_in_trend, wave_count,
+      uses: swing            # References the swing key above
+      # Outputs: direction (1/-1/0), strength, bars_in_trend, wave_count,
       #          last_wave_direction, last_hh, last_hl, last_lh, last_ll, version
 
     - type: market_structure
       key: ms
-      depends_on:
-        swing: swing
-      # Outputs: bias, bos_this_bar, choch_this_bar, bos_direction, choch_direction,
+      uses: swing
+      # Outputs: bias (1/-1/0), bos_this_bar, choch_this_bar, bos_direction, choch_direction,
       #          last_bos_idx, last_bos_level, last_choch_idx, last_choch_level,
       #          break_level_high, break_level_low, version
 
     - type: fibonacci
       key: fib
-      depends_on:
-        swing: swing
+      uses: swing
       params:
         levels: [0.382, 0.5, 0.618]
         mode: retracement    # or "extension", "extension_up", "extension_down"
-      # Outputs: level_0.382, level_0.5, level_0.618
+      # Outputs: level[0.382], level[0.5], level[0.618] (bracket syntax)
 
   # high_tf structures (nested by timeframe)
   high_tf:
@@ -648,9 +645,21 @@ structures:
 
 **Key fields:**
 - `type`: Structure detector type (swing, trend, fibonacci, etc.)
-- `key`: Reference name used in actions (e.g., `{feature_id: "swing", field: "high_level"}`)
+- `key`: Reference name used in actions (e.g., `swing.high_level`)
 - `params`: Detector-specific parameters
-- `depends_on`: Map of dependency name to key (for dependent structures)
+- `uses`: Key of dependency structure (e.g., `uses: swing`)
+
+**Bracket syntax for indexed access:**
+```yaml
+# Fibonacci levels - use bracket syntax for clarity
+- ["fib.level[0.618]", ">", 0]           # level_0.618 internally
+- ["close", "near_pct", "fib.level[0.5]", 1.0]
+
+# Zone slots - indexed access to multiple zones
+- ["zones.zone[0].state", "==", "active"]  # Newest zone state
+- ["zones.zone[0].lower", "<", "close"]    # Newest zone lower boundary
+- ["zones.zone[1].touched_this_bar", "==", 1]  # Second newest touched
+```
 
 ### Structure Types Reference
 
@@ -667,16 +676,16 @@ structures:
 # Trend Detector (wave-based, depends on swing)
 - type: trend
   key: trend
-  depends_on: {swing: swing}
+  uses: swing
   params:
     wave_history_size: 4     # Number of waves to track (default: 4)
   # Core outputs:
-  #   direction: 1=bullish, -1=bearish, 0=ranging
+  #   direction: 1=bullish, -1=bearish, 0=ranging (INTEGER for dataframe compat)
   #   strength: 0=weak, 1=normal, 2=strong (based on HH/HL or LL/LH patterns)
   #   bars_in_trend: bars since last direction change
   # Wave outputs:
   #   wave_count: total completed waves
-  #   last_wave_direction: 1=bullish (L→H), -1=bearish (H→L)
+  #   last_wave_direction: "bullish" (L→H), "bearish" (H→L), "none"
   # Comparison flags (from last 4 waves):
   #   last_hh: true if most recent high was higher than previous high
   #   last_hl: true if most recent low was higher than previous low
@@ -687,17 +696,17 @@ structures:
 # Market Structure Detector (ICT BOS/CHoCH, depends on swing)
 - type: market_structure
   key: ms
-  depends_on: {swing: swing}
+  uses: swing
   params:
     confirmation_close: false  # Require candle close beyond level (default: false)
   # Bias output:
-  #   bias: 1=bullish, -1=bearish, 0=ranging (initial state)
+  #   bias: 1=bullish, -1=bearish, 0=ranging (INTEGER for dataframe compat)
   # Event flags (true only on the bar they occur, reset each bar):
   #   bos_this_bar: true when Break of Structure occurs this bar
   #   choch_this_bar: true when Change of Character occurs this bar
   # Event directions (set when event occurs, persist until next event):
-  #   bos_direction: 1=bullish BOS, -1=bearish BOS
-  #   choch_direction: 1=bearish-to-bullish CHoCH, -1=bullish-to-bearish CHoCH
+  #   bos_direction: "bullish", "bearish", "none"
+  #   choch_direction: "bullish", "bearish", "none"
   # Level tracking:
   #   last_bos_idx: bar index of most recent BOS
   #   last_bos_level: price level of most recent BOS
@@ -718,20 +727,21 @@ structures:
 # Fibonacci Levels (depends on swing)
 - type: fibonacci
   key: fib
-  depends_on: {swing: swing}
+  uses: swing
   params:
     levels: [0.236, 0.382, 0.5, 0.618, 0.786]
     mode: retracement    # "retracement", "extension", "extension_up", "extension_down"
-  # Outputs: level_0.236, level_0.382, level_0.5, level_0.618, level_0.786
+  # Outputs: level[0.236], level[0.382], level[0.5], level[0.618], level[0.786] (bracket syntax)
+  # Access in actions: "fib.level[0.618]" or "fib.level_0.618" (both work)
 
 # Demand/Supply Zone (depends on swing)
 - type: zone
   key: demand_zone
-  depends_on: {swing: swing}
+  uses: swing
   params:
     zone_type: demand    # "demand" or "supply"
     width_atr: 1.5       # Zone width in ATR units
-  # Outputs: state, upper, lower, anchor_idx, version
+  # Outputs: state ("active", "broken", "none"), upper, lower, anchor_idx, version
 
 # Rolling Window (O(1) min/max) - no dependencies
 - type: rolling_window
@@ -742,19 +752,60 @@ structures:
     source: high         # Field to track (open, high, low, close)
   # Outputs: value
 
-# Derived Zones (K Slots) - depends on source (swing)
-# NOTE: Uses `source:` key, NOT `swing:` - this is different from other structures!
+# Derived Zones (K Slots) - depends on swing
 - type: derived_zone
   key: fib_zones
-  depends_on: {source: swing}   # CRITICAL: Must use `source:` not `swing:`
+  uses: swing            # Simple key reference (unified syntax)
   params:
     levels: [0.382, 0.5, 0.618]
     mode: retracement
     max_active: 5        # K slots (max zones tracked)
     width_pct: 0.002     # 0.2% zone width
-  # Slot outputs: zone0_lower, zone0_upper, zone0_state, zone0_touched_this_bar...
+  # Slot outputs (bracket syntax): zone[0].lower, zone[0].upper, zone[0].state, zone[0].touched_this_bar...
   # Aggregate outputs: active_count, any_active, any_touched, any_inside
 ```
+
+### Structure Warmup Requirements (G3-2/G3-4)
+
+Structures require warmup bars before producing valid outputs. The engine computes warmup automatically based on structure type and parameters.
+
+**Warmup formulas by structure type:**
+
+| Structure Type | Formula | Reasoning |
+|----------------|---------|-----------|
+| `swing` | `left + right` | Needs bars on both sides for pivot confirmation |
+| `trend` | `(left + right) * 5` | Needs multiple completed swings to establish trend pattern |
+| `market_structure` | `(left + right) * 3` | Needs at least 3 swings for BOS/CHoCH detection |
+| `fibonacci` | `left + right` | Same as source swing (levels computed from swing anchors) |
+| `zone` | `left + right` | Same as source swing (zones anchored to swing pivots) |
+| `derived_zone` | `left + right + 1` | Source swing warmup + 1 bar for regeneration trigger |
+| `rolling_window` | `size` | Needs `size` bars to fill the window |
+
+**Why these multipliers?**
+
+- **Swing (1x):** Pivot detection needs exactly `left + right` bars to confirm a swing point. With `left=5, right=5`, the first valid swing can appear at bar 10.
+
+- **Trend (5x):** Trend detection tracks wave sequences (HH/HL for uptrend, LH/LL for downtrend). Reliable trend detection needs at least 4-5 completed swings to establish a pattern, hence the 5x multiplier.
+
+- **Market Structure (3x):** BOS/CHoCH detection needs at least 3 swings: two to establish structure levels, one to break them. The 3x multiplier ensures sufficient context.
+
+- **Rolling Window (size):** Simple O(1) tracker needs exactly `size` bars to fill its buffer before min/max values are meaningful.
+
+**Example warmup calculation:**
+
+```yaml
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}    # Warmup: 5+5 = 10 bars
+
+    - type: trend
+      key: trend
+      uses: swing                      # Warmup: (5+5) * 5 = 50 bars
+```
+
+The engine automatically skips the first `max(all_warmups)` bars before evaluating signals.
 
 ### Referencing Structures in Actions
 
@@ -772,11 +823,8 @@ actions:
       - lhs: {feature_id: "trend", field: "direction"}
         op: "=="
         rhs: 1
-      # Fibonacci level proximity
-      - lhs: {feature_id: "close"}
-        op: "near_pct"
-        rhs: {feature_id: "fib", field: "level_0.618"}
-        tolerance: 0.005
+      # Fibonacci level proximity (bracket syntax)
+      - ["close", "near_pct", "fib.level[0.618]", 0.5]
 ```
 
 ---
@@ -1418,7 +1466,7 @@ structures:
       params: {left: 5, right: 5}
     - type: trend
       key: trend
-      depends_on: {swing: swing}
+      uses: swing
 
   # high_tf structures (4h) - forward-fill between closes
   high_tf:
@@ -1428,7 +1476,7 @@ structures:
         params: {left: 5, right: 5}
       - type: trend
         key: trend_4h
-        depends_on: {swing: swing_4h}
+        uses: swing_4h
     "1h":
       - type: swing
         key: swing_1h
@@ -1437,7 +1485,7 @@ structures:
 
 **Key behavior:**
 - high_tf structures forward-fill until their bar closes (same as indicators)
-- Reference by key in actions: `{feature_id: "trend_4h", field: "direction"}`
+- Reference by key in actions: `"trend_4h.direction"` (shorthand) or `{feature_id: "trend_4h", field: "direction"}`
 
 ### Multi-Timeframe Confluence Patterns
 
@@ -1478,7 +1526,7 @@ structures:
         params: {left: 5, right: 5}
       - type: fibonacci
         key: fib_4h
-        depends_on: {swing: swing_4h}
+        uses: swing_4h
         params:
           levels: [0.5, 0.618]
           mode: retracement
@@ -1486,10 +1534,10 @@ structures:
 actions:
   entry_long:
     all:
-      # Price near high_tf 0.618 fib level
-      - [close, "near_pct", {feature_id: fib_4h, field: level_0.618}, 1.5]
+      # Price near high_tf 0.618 fib level (bracket syntax)
+      - ["close", "near_pct", "fib_4h.level[0.618]", 1.5]
       # Exec swing confirms support
-      - [{feature_id: swing, field: low_level}, ">", 0]
+      - ["swing.low_level", ">", 0]
 ```
 
 ---
@@ -1823,7 +1871,7 @@ structures:
       params: {left: 5, right: 5}
     - type: fibonacci
       key: fib
-      depends_on: {swing: swing}
+      uses: swing
       params:
         levels: [0.382, 0.5, 0.618]
         mode: retracement
@@ -1833,11 +1881,8 @@ actions:
     all:
       # high_tf trend filter
       - ["close", ">", "ema_50_12h"]
-      # Near fib level
-      - lhs: {feature_id: "close"}
-        op: near_pct
-        rhs: {feature_id: "fib", field: "level_0.618"}
-        tolerance: 0.005
+      # Near fib level (bracket syntax)
+      - ["close", "near_pct", "fib.level[0.618]", 0.5]
       # RSI confirmation
       - ["rsi_14", "<", 40]
 
@@ -1945,7 +1990,7 @@ structures:
       params: {left: 5, right: 5}
     - type: derived_zone
       key: fib_zones
-      depends_on: {source: swing}  # NOTE: derived_zone uses `source:` not `swing:`
+      uses: swing            # Unified syntax (same as other structures)
       params:
         levels: [0.5, 0.618]
         mode: retracement
@@ -1956,9 +2001,7 @@ actions:
   entry_long:
     all:
       # Price in an active zone
-      - lhs: {feature_id: "fib_zones", field: "any_inside"}
-        op: "=="
-        rhs: true
+      - ["fib_zones.any_inside", "==", 1]
       # RSI was oversold within last 10 bars
       - occurred_within:
           bars: 10
@@ -1970,9 +2013,7 @@ actions:
   exit_long:
     any:
       # Zone touched and bounced
-      - lhs: {feature_id: "fib_zones", field: "any_touched"}
-        op: "=="
-        rhs: true
+      - ["fib_zones.any_touched", "==", 1]
       # RSI overbought for 3 bars
       - holds_for:
           bars: 3
@@ -2026,8 +2067,7 @@ structures:
 
     - type: market_structure
       key: ms
-      depends_on:
-        swing: swing
+      uses: swing
 
 actions:
   - id: entry
@@ -2035,16 +2075,16 @@ actions:
       # Bullish BOS with RSI confirmation (not overbought)
       - when:
           all:
-            - [{feature_id: "ms", field: "bos_this_bar"}, "==", true]
-            - [{feature_id: "ms", field: "bias"}, "==", 1]
+            - ["ms.bos_this_bar", "==", 1]
+            - ["ms.bias", "==", 1]
             - ["rsi_14", "<", 70]
         emit:
           - action: entry_long
       # Bearish BOS with RSI confirmation (not oversold)
       - when:
           all:
-            - [{feature_id: "ms", field: "bos_this_bar"}, "==", true]
-            - [{feature_id: "ms", field: "bias"}, "==", -1]
+            - ["ms.bos_this_bar", "==", 1]
+            - ["ms.bias", "==", -1]
             - ["rsi_14", ">", 30]
         emit:
           - action: entry_short
@@ -2387,6 +2427,10 @@ account:
 | 2026-01-25 | Added risk config equivalence note (risk: and risk_model: both valid) |
 | 2026-01-25 | Added structure dependency syntax clarification (source: vs swing:) |
 | 2026-01-25 | Added reserved position policy flags documentation (allow_flip, etc.)
+| 2026-01-25 | **DSL Syntax Unification:** `depends_on: {swing: key}` → `uses: key` (simpler syntax)
+| 2026-01-25 | **Bracket Syntax:** Added universal indexed access - `fib.level[0.618]`, `zones.zone[0].state`
+| 2026-01-25 | **Integer Bias/Direction:** trend.direction and ms.bias return integers (1/-1/0) for dataframe compat
+| 2026-01-25 | **Lowercase Enums:** Zone states now lowercase ("active", "broken", "none")
 
 ---
 

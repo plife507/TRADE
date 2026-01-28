@@ -252,7 +252,7 @@ class InputHashComponents:
 
     # Timeframes
     tf_exec: str
-    tf_ctx: list[str]  # All timeframes used (HTF, MTF, etc.)
+    tf_ctx: list[str]  # All timeframes used (high_tf, med_tf, etc.)
     
     # Window
     window_start: str  # YYYY-MM-DD

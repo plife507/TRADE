@@ -20,7 +20,7 @@ def main():
     if file_path.endswith(".py") and "src/" in file_path:
         # Print reminder - Claude will see this as context
         print(
-            "TRADE Rule: Ensure TODO exists in docs/todos/TODO.md "
+            "TRADE Rule: Ensure TODO exists in docs/TODO.md "
             "before writing code. Every code change maps to a TODO checkbox."
         )
 

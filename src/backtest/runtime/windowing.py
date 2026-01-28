@@ -20,14 +20,17 @@ from datetime import datetime, timedelta
 from .timeframe import tf_duration, tf_minutes
 
 
-# Default safety buffer in number of closes per TF
-DEFAULT_HIGH_TF_SAFETY_CLOSES = 10
-DEFAULT_MED_TF_SAFETY_CLOSES = 20
+# Safety buffer: extra closed candles to keep per timeframe
+# These ensure indicator lookback has sufficient history after TF alignment
+# Higher TF needs fewer closes because each close covers more time
+DEFAULT_HIGH_TF_SAFETY_CLOSES = 10   # ~10 daily bars = 10 days buffer
+DEFAULT_MED_TF_SAFETY_CLOSES = 20    # ~20 hourly bars = 20 hours buffer
 
-# Default tail buffer
-DEFAULT_TAIL_LOW_TF_BARS = 2
-DEFAULT_TAIL_FUNDING_INTERVALS = 1
-FUNDING_INTERVAL_HOURS = 8  # Bybit funding every 8 hours
+# Tail buffer: extra bars at end of test window
+# Ensures last bar has complete data and funding calculations work
+DEFAULT_TAIL_LOW_TF_BARS = 2         # 2 extra 1m bars for final candle completion
+DEFAULT_TAIL_FUNDING_INTERVALS = 1   # 1 extra funding period
+FUNDING_INTERVAL_HOURS = 8           # Bybit perpetuals: 8-hour funding intervals
 
 
 @dataclass

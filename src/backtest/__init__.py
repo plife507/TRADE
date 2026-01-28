@@ -38,7 +38,7 @@ from .window_presets import (
     list_available_presets,
     has_preset,
 )
-from .engine import BacktestEngine, CoreBacktestEngine
+from .data_builder import DataBuilder, DataBuildResult
 from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
 from .engine_factory import (
     run_backtest,
@@ -127,9 +127,9 @@ __all__ = [
     "get_window_preset",
     "list_available_presets",
     "has_preset",
-    # Engine
-    "BacktestEngine",
-    "CoreBacktestEngine",  # Professional alias
+    # Data preparation
+    "DataBuilder",
+    "DataBuildResult",
     "PreparedFrame",
     "MultiTFPreparedFrames",
     # Factory functions

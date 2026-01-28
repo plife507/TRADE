@@ -6,8 +6,8 @@ based on swing pivot levels. Zones are calculated using ATR-based
 width from the swing detector dependency.
 
 State Machine:
-    NONE -> ACTIVE: New swing pivot detected
-    ACTIVE -> BROKEN: Price closes beyond zone boundary
+    none -> active: New swing pivot detected
+    active -> broken: Price closes beyond zone boundary
 
 Zone Calculation:
     Demand zone (from swing low):
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 
 @register_structure("zone")
-class IncrementalZoneDetector(BaseIncrementalDetector):
+class IncrementalZone(BaseIncrementalDetector):
     """
     Demand/supply zone detector with state machine.
 
@@ -46,12 +46,12 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
     Zone width is calculated using ATR from bar.indicators.
 
     State values:
-        - "NONE": No zone active (initial state)
-        - "ACTIVE": Zone is active and being tracked
-        - "BROKEN": Zone has been broken by price
+        - "none": No zone active (initial state)
+        - "active": Zone is active and being tracked
+        - "broken": Zone has been broken by price
 
     Outputs:
-        - state: Current zone state ("NONE", "ACTIVE", "BROKEN")
+        - state: Current zone state ("none", "active", "broken")
         - upper: Upper boundary of the zone
         - lower: Lower boundary of the zone
         - anchor_idx: Bar index where the zone was anchored (swing pivot bar)
@@ -60,14 +60,13 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
         structures:
           exec:
             - type: swing
-              key: swing
+              key: pivots
               params:
                 left: 5
                 right: 5
             - type: zone
               key: demand_zone
-              depends_on:
-                swing: swing
+              uses: pivots
               params:
                 zone_type: demand
                 width_atr: 1.5
@@ -83,7 +82,7 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
     """
 
     REQUIRED_PARAMS: list[str] = ["zone_type", "width_atr"]
-    OPTIONAL_PARAMS: dict[str, Any] = {}
+    OPTIONAL_PARAMS: dict[str, Any] = {"atr_key": "atr"}  # Default ATR indicator key
     DEPENDS_ON: list[str] = ["swing"]
 
     @classmethod
@@ -151,9 +150,10 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
         self.swing = deps["swing"]
         self.zone_type: str = params["zone_type"]
         self.width_atr: float = float(params["width_atr"])
+        self.atr_key: str = params.get("atr_key", "atr")  # Configurable ATR indicator key
 
-        # State machine (uppercase for DSL ENUM compatibility)
-        self.state: str = "NONE"
+        # State machine (lowercase for DSL consistency)
+        self.state: str = "none"
         self.upper: float = np.nan
         self.lower: float = np.nan
         self.anchor_idx: int = -1
@@ -170,8 +170,8 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
         Process one bar and update zone state.
 
         State transitions:
-        1. If new swing detected -> create new zone (NONE/ACTIVE -> ACTIVE)
-        2. If zone ACTIVE and price breaks boundary -> BROKEN
+        1. If new swing detected -> create new zone (none/active -> active)
+        2. If zone active and price breaks boundary -> broken
 
         Args:
             bar_idx: Current bar index.
@@ -187,8 +187,8 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
 
         # Check for new swing (zone creation)
         if swing_idx != self._last_swing_idx and swing_idx >= 0:
-            # Get ATR from indicators (default to 0 if not available)
-            atr = bar.indicators.get("atr", np.nan)
+            # Get ATR from indicators using configurable key (default to 0 if not available)
+            atr = bar.indicators.get(self.atr_key, np.nan)
             width = atr * self.width_atr if not np.isnan(atr) else 0.0
 
             # Calculate zone boundaries
@@ -201,20 +201,20 @@ class IncrementalZoneDetector(BaseIncrementalDetector):
                 self.lower = swing_level
                 self.upper = swing_level + width
 
-            self.state = "ACTIVE"
+            self.state = "active"
             self.anchor_idx = int(swing_idx)
             self._last_swing_idx = int(swing_idx)
             self._version += 1
 
-        # Check for zone break (only when ACTIVE)
-        if self.state == "ACTIVE":
+        # Check for zone break (only when active)
+        if self.state == "active":
             if self.zone_type == "demand" and bar.close < self.lower:
                 # Demand zone broken: price closed below lower boundary
-                self.state = "BROKEN"
+                self.state = "broken"
                 self._version += 1
             elif self.zone_type == "supply" and bar.close > self.upper:
                 # Supply zone broken: price closed above upper boundary
-                self.state = "BROKEN"
+                self.state = "broken"
                 self._version += 1
 
     def get_output_keys(self) -> list[str]:

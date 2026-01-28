@@ -1,0 +1,43 @@
+version: "3.0.0"
+name: "V_I_006_bbands"
+description: "Validate Bollinger Bands - band touch"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 100
+  seed: 206
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  bb:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+actions:
+  entry_long:
+    all:
+      - ["close", "<", "bb.lower"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

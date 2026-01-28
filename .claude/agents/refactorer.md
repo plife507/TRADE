@@ -35,9 +35,13 @@ You are a refactoring expert for the TRADE trading bot. You improve code structu
 ### Phase 1: Assessment
 
 ```bash
-# Check tests pass before starting
-python trade_cli.py backtest audit-toolkit
+# Baseline validation BEFORE refactoring
+# For engine/sim/runtime code, you MUST run actual engine:
 python trade_cli.py --smoke backtest
+
+# audit-toolkit only checks src/indicators/ - NOT engine code
+# Only run if refactoring indicator code:
+# python trade_cli.py backtest audit-toolkit
 
 # Find large files
 find src -name "*.py" -exec wc -l {} + | sort -n | tail -20
@@ -68,11 +72,19 @@ def old_function():
 ### Phase 4: Verify
 
 ```bash
-# Run full validation
-python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
-python trade_cli.py backtest structure-smoke
+# Match validation to what you refactored:
+
+# If refactored engine/sim/runtime - MUST run engine:
 python trade_cli.py --smoke backtest
+
+# If refactored indicators:
+python trade_cli.py backtest audit-toolkit
+
+# If refactored structures:
+python trade_cli.py backtest structure-smoke
+
+# If touched Play parsing:
+python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
 ```
 
 ## Output Format
@@ -87,17 +99,18 @@ python trade_cli.py --smoke backtest
    - Lines removed: X
 
 ### Validation
-- audit-toolkit: PASS (43/43)
-- play-normalize-batch: X/X Plays
-- smoke test: PASS
+[List ONLY tests relevant to what you refactored]
+- If refactored engine/sim/runtime: --smoke backtest PASS
+- If refactored indicators: audit-toolkit PASS (43/43)
+- If refactored structures: structure-smoke PASS
 
 ### TODO Updates
-- Updated docs/todos/TODO.md with completed items
+- Updated docs/TODO.md with completed items
 ```
 
 ## TRADE Rules
 
 - **Build-Forward Only**: Remove legacy code, don't maintain parallel paths
-- **TODO-Driven**: Update TODO.md before and after refactoring
+- **TODO-Driven**: Update docs/TODO.md before and after refactoring
 - **No pytest**: Validate through CLI commands only
 - **Domain Isolation**: Don't leak simulator logic into live trading paths

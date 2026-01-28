@@ -32,15 +32,14 @@ Example Play usage:
     structures:
       exec:
         - type: swing
-          key: swing
+          key: pivots
           params:
             left: 5
             right: 5
 
         - type: trend
           key: trend
-          depends_on:
-            swing: swing
+          uses: pivots
 
 See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 See: docs/todos/PIVOT_FOUNDATION_GATES.md (Gate 4)
@@ -57,7 +56,7 @@ from ..base import BaseIncrementalDetector, BarData
 from ..registry import register_structure
 
 if TYPE_CHECKING:
-    from .swing import IncrementalSwingDetector
+    from .swing import IncrementalSwing
 
 
 @dataclass
@@ -90,7 +89,7 @@ class Wave:
 
 
 @register_structure("trend")
-class IncrementalTrendDetector(BaseIncrementalDetector):
+class IncrementalTrend(BaseIncrementalDetector):
     """
     Trend classification from swing wave sequence.
 

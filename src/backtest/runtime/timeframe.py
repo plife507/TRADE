@@ -10,20 +10,22 @@ Timeframe Role Definitions (1m Action Model):
         TP/SL is checked. This is fixed and not configurable. In backtest,
         we iterate every 1m bar within each eval_tf bar.
 
-    eval_tf: The declared execution_tf from Play YAML. Determines bar-stepping
+    eval_tf: The resolved execution timeframe from Play YAML. Determines bar-stepping
         granularity and indicator computation timing. E.g., if eval_tf="15m",
         we process 15m bars but evaluate signals at every 1m within each.
 
-    condition_tf (exec_tf/med_tf/high_tf): Timeframes used for indicators and
+    condition_tf (low_tf/med_tf/high_tf): Timeframes used for indicators and
         structures. These define when indicator values update (on their TF close)
         and forward-fill until the next close.
 
-    exec_tf (Execution Timeframe): 1m, 3m, 5m, 15m - Execution timing, micro-structure
+    low_tf (Low Timeframe): 1m, 3m, 5m, 15m - Execution timing, micro-structure
     med_tf (Medium Timeframe): 30m, 1h, 2h, 4h - Trade bias + structure context
     high_tf (High Timeframe): 6h, 12h, 1D - Higher-level trend (capped at 1D)
 
+    exec (Pointer): Points to which of low_tf/med_tf/high_tf to use for bar-stepping
+
 Hierarchy Rule:
-    high_tf >= med_tf >= exec_tf (in minutes)
+    high_tf >= med_tf >= low_tf (in minutes)
     Enforced by validate_tf_mapping()
 
 Note: Close detection is data-driven (via close_ts maps), not modulo-based.

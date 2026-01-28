@@ -52,6 +52,13 @@ risk:
   risk_per_trade_pct: 1.0 # 1% risk per trade
   max_drawdown_pct: 0.20  # 20% max drawdown stop
   stop_equity_usdt: 0.0   # No equity floor by default
+  # Position sizing caps (Bybit-aligned)
+  max_position_equity_pct: 95.0  # Max position as % of equity (leaves room for fees)
+  reserve_fee_buffer: true       # Reserve balance for entry+exit fees
+  # G1-1: Daily loss limit (5% of typical 10K starting equity)
+  max_daily_loss_usdt: 500.0     # Halt trading when daily loss exceeds this
+  # G1-2: Funding rate check threshold
+  max_funding_cost_pct: 1.0      # Block if funding_rate * leverage > 1% daily cost
 
 # -----------------------------------------------------------------------------
 # Account Defaults
@@ -66,3 +73,27 @@ position_policy:
   mode: "long_only"
   exit_mode: "sl_tp_only"
   max_positions_per_symbol: 1
+
+# -----------------------------------------------------------------------------
+# Engine Defaults
+# -----------------------------------------------------------------------------
+engine:
+  warmup_bars: 100              # Bars to warm up indicators before trading
+  state_save_interval: 100      # Bars between state snapshots
+  max_warmup_bars: 1000         # Maximum warmup period allowed
+
+# -----------------------------------------------------------------------------
+# Windowing Defaults
+# -----------------------------------------------------------------------------
+# Safety margins for multi-timeframe bar history
+windowing:
+  high_tf_safety_closes: 10     # Extra bars to keep for higher timeframe
+  med_tf_safety_closes: 20      # Extra bars to keep for medium timeframe
+  max_window_bars: 100          # Default max window for HoldsFor/OccurredWithin
+  window_bars_ceiling: 500      # Hard ceiling for window operations
+
+# -----------------------------------------------------------------------------
+# Impact Model Defaults
+# -----------------------------------------------------------------------------
+impact:
+  max_impact_bps: 100.0         # 1% max price impact cap

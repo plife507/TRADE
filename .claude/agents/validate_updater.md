@@ -30,9 +30,9 @@ Keep the validation system in sync with the evolving codebase. The `validate` ag
 
 ## What You Should NOT Modify
 
-- Production Plays in `strategies/plays/`
 - Engine code (`src/backtest/`)
 - Core tools (`src/tools/`)
+- Structure detectors (`src/structures/`)
 
 ---
 
@@ -67,7 +67,11 @@ name: "F_IND_XXX_indicator_name"
 description: "Coverage: indicator_name indicator"
 
 symbol: "BTCUSDT"
-tf: "15m"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0
@@ -166,8 +170,8 @@ python trade_cli.py backtest audit-toolkit
 - Single-output: 27 (ema, sma, rsi, atr, etc.)
 - Multi-output: 16 (macd, bbands, stoch, etc.)
 
-**Structures**: 6 total in STRUCTURE_REGISTRY
-- swing, trend, zone, fibonacci, rolling_window, derived_zone
+**Structures**: 7 total in STRUCTURE_REGISTRY
+- swing, trend, zone, fibonacci, rolling_window, derived_zone, market_structure
 
 ---
 

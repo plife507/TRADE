@@ -519,9 +519,9 @@ def _test_warmup_aware_generation() -> int:
             generate_synthetic_for_play,
         )
 
-        # Use a test Play from tests/stress/plays/ (not strategies/plays/)
-        test_plays_dir = Path(__file__).parent.parent.parent.parent / "tests" / "stress" / "plays"
-        test_play_id = "sma_simple_test"
+        # Use a test Play from tests/validation/plays/tier0_smoke/
+        test_plays_dir = Path(__file__).parent.parent.parent.parent / "tests" / "validation" / "plays" / "tier0_smoke"
+        test_play_id = "V_T0_001_minimal"
 
         # Test 1: Calculate warmup for a known Play
         try:

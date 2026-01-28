@@ -230,39 +230,4 @@ def run_backtests_parallel(
     return [results_map[pid] for pid in play_ids]
 
 
-def run_backtest_isolated(
-    play_id: str,
-    plays_dir: str | Path | None = None,
-    env: str = "backtest",
-    start: datetime | None = None,
-    end: datetime | None = None,
-) -> ParallelBacktestResult:
-    """
-    Run a single backtest in an isolated process.
-
-    Useful when you want to ensure complete isolation from the current process
-    (e.g., when running from a live trading process that has global state).
-
-    Args:
-        play_id: Play identifier to backtest
-        plays_dir: Optional override for plays directory
-        env: Data environment ("backtest", "live", or "demo")
-        start: Optional start datetime
-        end: Optional end datetime
-
-    Returns:
-        ParallelBacktestResult with success/error and result dict
-    """
-    results = run_backtests_parallel(
-        play_ids=[play_id],
-        max_workers=1,
-        plays_dir=plays_dir,
-        env=env,
-        start=start,
-        end=end,
-    )
-    return results[0] if results else ParallelBacktestResult(
-        play_id=play_id,
-        success=False,
-        error="No result returned",
-    )
+# G1.19: run_backtest_isolated() removed (2026-01-27) - use run_backtests_parallel with max_workers=1

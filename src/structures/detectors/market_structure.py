@@ -14,7 +14,7 @@ Change of Character (CHoCH): Reversal signal
 Requires a swing detector as a dependency to provide swing high/low levels.
 
 Outputs:
-- bias: int (1 = bullish, -1 = bearish, 0 = ranging) - matches trend detector convention
+- bias: int (1 = bullish, -1 = bearish, 0 = ranging) - current market structure bias
 - bos_this_bar: bool (True if BOS occurred this bar)
 - choch_this_bar: bool (True if CHoCH occurred this bar)
 - bos_direction: str ("bullish", "bearish", "none") - direction of last BOS
@@ -31,15 +31,14 @@ Example Play usage:
     structures:
       exec:
         - type: swing
-          key: swing
+          key: pivots
           params:
             left: 5
             right: 5
 
         - type: market_structure
           key: ms
-          depends_on:
-            swing: swing
+          uses: pivots
 
 See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 See: docs/todos/PIVOT_FOUNDATION_GATES.md (Gate 5)
@@ -148,11 +147,11 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         self._bos_this_bar = False
         self._choch_this_bar = False
 
-        # Get current swing state
-        high_idx = self.swing.high_idx
-        low_idx = self.swing.low_idx
-        high_level = self.swing.high_level
-        low_level = self.swing.low_level
+        # Get current swing state via get_value() for consistency
+        high_idx = self.swing.get_value("high_idx")
+        low_idx = self.swing.get_value("low_idx")
+        high_level = self.swing.get_value("high_level")
+        low_level = self.swing.get_value("low_level")
 
         # Check for new swing pivots
         high_changed = high_idx != self._last_high_idx and high_idx >= 0

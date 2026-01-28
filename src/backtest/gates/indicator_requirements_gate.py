@@ -238,34 +238,5 @@ def extract_available_keys_from_dataframe(
     return all_cols
 
 
-def extract_available_keys_from_feature_frames(
-    feature_frames: dict[str, Any],
-) -> dict[str, set[str]]:
-    """
-    Extract available indicator keys from computed feature frames.
-    
-    Args:
-        feature_frames: Dict of role -> feature frame (DataFrame or PreparedFrame)
-        
-    Returns:
-        Dict of role -> set of available indicator keys
-    """
-    import pandas as pd
-    
-    result = {}
-    
-    for role, frame in feature_frames.items():
-        if hasattr(frame, 'df'):
-            # PreparedFrame or similar wrapper
-            df = frame.df
-        elif isinstance(frame, pd.DataFrame):
-            df = frame
-        else:
-            # Unknown type, skip
-            result[role] = set()
-            continue
-        
-        result[role] = extract_available_keys_from_dataframe(df, exclude_ohlcv=True)
-    
-    return result
 
+# G1.9: extract_available_keys_from_feature_frames() removed (2026-01-27) - unused

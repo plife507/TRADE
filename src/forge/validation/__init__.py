@@ -29,6 +29,8 @@ from .synthetic_data import (
     generate_synthetic_candles,
     verify_synthetic_hash,
     PatternType,
+    PatternConfig,
+    PATTERN_GENERATORS,
 )
 
 __all__ = [
@@ -48,4 +50,6 @@ __all__ = [
     "generate_synthetic_candles",
     "verify_synthetic_hash",
     "PatternType",
+    "PatternConfig",
+    "PATTERN_GENERATORS",
 ]

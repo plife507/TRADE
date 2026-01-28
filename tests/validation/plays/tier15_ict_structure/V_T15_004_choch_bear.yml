@@ -1,0 +1,54 @@
+version: "3.0.0"
+name: "V_T15_004_choch_bear"
+description: "Change of character bearish - reversal short"
+
+synthetic:
+  pattern: "reversal_v_top"
+  bars: 200
+  seed: 1504
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: market_structure
+      key: ms
+      uses: swing
+
+actions:
+  entry_short:
+    all:
+      - ["ms.choch_this_bar", "==", 1]
+      - ["rsi_14", ">", 50]
+
+position_policy:
+  mode: short_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

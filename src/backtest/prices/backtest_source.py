@@ -58,6 +58,8 @@ class BacktestPriceSource:
         self._store = store
         # Cache for 1m data used by get_mark_price and get_1m_marks
         self._1m_cache: dict[str, pd.DataFrame] = {}
+        # G2-1: Track fallback warnings to avoid spam
+        self._fallback_warnings_issued: set[str] = set()
 
     @property
     def source_name(self) -> str:
@@ -69,16 +71,24 @@ class BacktestPriceSource:
         """Data environment (live/demo)."""
         return self._store.env
 
-    def get_mark_price(self, symbol: str, ts: datetime) -> float | None:
+    def get_mark_price(
+        self,
+        symbol: str,
+        ts: datetime,
+        fallback_tf: str | None = None,
+        fallback_close: float | None = None,
+    ) -> float | None:
         """
         Get mark price at a specific timestamp.
 
         Uses 1m close price as mark price.
-        Returns None if data not available.
+        G2-1: Falls back to exec-TF close if 1m unavailable, with warning.
 
         Args:
             symbol: Trading pair (e.g., 'BTCUSDT')
             ts: Timestamp (UTC)
+            fallback_tf: Optional fallback timeframe for warning message
+            fallback_close: Optional fallback close price if 1m unavailable
 
         Returns:
             Mark price or None if not available
@@ -86,6 +96,18 @@ class BacktestPriceSource:
         # Get 1m data for this symbol (cached)
         df = self._get_1m_data(symbol)
         if df is None or df.empty:
+            # G2-1: Fallback to exec-TF close if provided
+            if fallback_close is not None:
+                fallback_key = f"{symbol}_1m_fallback"
+                if fallback_key not in self._fallback_warnings_issued:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"G2-1: 1m data unavailable for {symbol}, "
+                        f"using {fallback_tf or 'exec-TF'} close as mark price fallback. "
+                        "This may affect simulation accuracy for SL/TP/liquidation."
+                    )
+                    self._fallback_warnings_issued.add(fallback_key)
+                return fallback_close
             return None
 
         # Find the bar that closes at or before ts
@@ -95,6 +117,9 @@ class BacktestPriceSource:
         # Look for exact match on close timestamp
         mask = df["ts_close"] <= ts_naive
         if not mask.any():
+            # G2-1: Fallback to exec-TF close if provided
+            if fallback_close is not None:
+                return fallback_close
             return None
 
         # Get the most recent bar at or before ts

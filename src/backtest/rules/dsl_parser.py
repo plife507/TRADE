@@ -312,13 +312,61 @@ def parse_lhs(data: Any) -> FeatureRef | ArithmeticExpr:
     return parse_feature_ref(data)
 
 
+def _normalize_bracket_syntax(field: str) -> str:
+    """
+    Convert bracket syntax to internal field format.
+
+    Bracket syntax is the user-facing format:
+        - level[0.618]     -> level_0.618     (fibonacci levels)
+        - zone[0].state    -> zone0_state     (zone slot fields)
+        - zone[2].lower    -> zone2_lower     (zone slot fields)
+
+    Args:
+        field: Field string, possibly with bracket syntax.
+
+    Returns:
+        Internal field format string.
+
+    Examples:
+        >>> _normalize_bracket_syntax("level[0.618]")
+        "level_0.618"
+        >>> _normalize_bracket_syntax("zone[0].state")
+        "zone0_state"
+        >>> _normalize_bracket_syntax("high_level")
+        "high_level"
+    """
+    import re
+
+    # Pattern: word[index] optionally followed by .subfield
+    # Examples: level[0.618], zone[0], zone[0].state
+    pattern = r"(\w+)\[([^\]]+)\](?:\.(\w+))?"
+
+    def replace_bracket(match: re.Match) -> str:
+        prefix = match.group(1)   # e.g., "level" or "zone"
+        index = match.group(2)    # e.g., "0.618" or "0"
+        subfield = match.group(3)  # e.g., "state" or None
+
+        # For fibonacci levels: level[0.618] -> level_0.618
+        # For zone slots: zone[0].state -> zone0_state
+        if subfield:
+            # zone[N].field -> zoneN_field
+            return f"{prefix}{index}_{subfield}"
+        else:
+            # level[N] -> level_N (with underscore for readability)
+            return f"{prefix}_{index}"
+
+    return re.sub(pattern, replace_bracket, field)
+
+
 def _string_to_feature_ref_dict(s: str) -> dict:
     """
     Convert a string to a feature reference dict.
 
-    Handles both simple feature IDs and dotted structure.field syntax:
+    Handles simple feature IDs, dotted syntax, and bracket syntax:
     - "ema_21" -> {"feature_id": "ema_21"}
     - "swing.low_level" -> {"feature_id": "swing", "field": "low_level"}
+    - "fib.level[0.618]" -> {"feature_id": "fib", "field": "level_0.618"}
+    - "zones.zone[0].state" -> {"feature_id": "zones", "field": "zone0_state"}
 
     Args:
         s: String to convert.
@@ -328,7 +376,8 @@ def _string_to_feature_ref_dict(s: str) -> dict:
     """
     if "." in s:
         parts = s.split(".", 1)
-        return {"feature_id": parts[0], "field": parts[1]}
+        field = _normalize_bracket_syntax(parts[1])
+        return {"feature_id": parts[0], "field": field}
     return {"feature_id": s}
 
 
@@ -336,26 +385,44 @@ def _is_enum_literal(s: str) -> bool:
     """
     Check if a string looks like an enum literal.
 
-    Enum literals are ALL_CAPS strings used for discrete comparisons:
-    - "ACTIVE", "BROKEN", "NONE" (zone states)
-    - "BULLISH", "BEARISH", "NEUTRAL" (trend states)
+    Enum literals are discrete state values used for comparisons:
+    - "active", "broken", "none" (zone states - lowercase)
+    - "bullish", "bearish", "none" (direction strings - lowercase)
+    - "high", "low" (pivot types - lowercase)
 
     Does NOT match:
-    - Feature IDs: "ema_9", "ema_21", "rsi_14"
-    - Boolean strings: "true", "false"
+    - Feature IDs: "ema_9", "ema_21", "rsi_14" (have underscores with digits)
+    - Dotted refs: "fib.level" (have dots)
+    - Boolean strings: "true", "false" (handled separately)
 
     Args:
         s: String to check.
 
     Returns:
-        True if string is ALL_CAPS (enum literal).
+        True if string is an enum literal (pure alphabetic, no dots, no digit suffix).
     """
-    # Must be non-empty and all uppercase letters (no digits, underscores between letters ok)
     if not s:
         return False
-    # Allow A_B pattern (ALL_CAPS with underscores between)
-    # but not ema_9 (lowercase) or EMA_9 (digits)
-    return s.isupper() and s.replace("_", "").isalpha()
+
+    # Dots indicate a feature reference, not an enum literal
+    if "." in s:
+        return False
+
+    # Brackets indicate indexed access, not an enum literal
+    if "[" in s:
+        return False
+
+    # Check for feature ID pattern: word_number (e.g., "ema_9", "rsi_14")
+    # These have underscores followed by digits
+    if "_" in s:
+        parts = s.rsplit("_", 1)
+        # If last part after underscore is all digits, it's a feature ID
+        if len(parts) == 2 and parts[1].isdigit():
+            return False
+
+    # Pure alphabetic (with optional underscores between letters) is an enum literal
+    # Examples: "active", "bullish", "none", "ACTIVE", "swing_high"
+    return s.replace("_", "").isalpha()
 
 
 def _normalize_rhs_for_operator(rhs: any, op: str) -> any:
@@ -469,9 +536,14 @@ def parse_condition_shorthand(data: list) -> Cond:
         - ["ema_9", ">", "ema_21"]
         - ["rsi_14", "<", 30]
         - ["ema_9", "cross_above", "ema_21"]
-        - ["zone.state", "==", "ACTIVE"]
+        - ["zone.state", "==", "active"]
         - ["rsi_14", "between", [30, 70]]
-        - ["close", "near_pct", {feature_id: "fib", field: "level_0.618"}, 0.5]
+        - ["close", "near_pct", "fib.level[0.618]", 0.5]
+
+    Bracket syntax (universal indexed access):
+        - ["fib.level[0.618]", ">", 0]           # Fibonacci level
+        - ["zones.zone[0].state", "==", "active"] # Zone slot field
+        - ["zones.zone[2].lower", ">", 50000]    # Zone slot boundary
 
     Args:
         data: List of [lhs, operator, rhs] or [lhs, proximity_op, rhs, tolerance].

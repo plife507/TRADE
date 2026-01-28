@@ -28,8 +28,7 @@ Architecture:
 GATE 4 - Unified Backtest Path:
     The create_backtest_engine() factory enables BacktestRunner to drive
     PlayEngine with pre-built FeedStore and SimulatedExchange components.
-    This ensures trade hash parity with the old BacktestEngine during
-    the transition to fully unified execution.
+    This ensures deterministic trade results for the unified execution path.
 
 Usage:
     from src.engine import PlayEngineFactory, create_backtest_engine
@@ -87,6 +86,8 @@ from .adapters.backtest import (
 
 from .sizing import SizingModel, SizingConfig, SizingResult
 
+from .manager import EngineManager, InstanceInfo, InstanceMode
+
 __all__ = [
     # Protocols
     "DataProvider",
@@ -122,4 +123,8 @@ __all__ = [
     "SizingModel",
     "SizingConfig",
     "SizingResult",
+    # Multi-instance manager (GATE 5)
+    "EngineManager",
+    "InstanceInfo",
+    "InstanceMode",
 ]

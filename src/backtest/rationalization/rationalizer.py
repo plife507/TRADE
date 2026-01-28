@@ -120,7 +120,7 @@ class StateRationalizer:
 
         Computes:
         - confluence_score: Signal alignment (0.0-1.0)
-        - alignment: HTF/MTF/LTF agreement
+        - alignment: high_tf/med_tf/low_tf agreement
         - momentum: Aggregate momentum signal
         - structure_stability: Recent change frequency
         """

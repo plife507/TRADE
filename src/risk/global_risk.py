@@ -154,14 +154,18 @@ class GlobalRiskView:
         self._cached_snapshot: PortfolioRiskSnapshot | None = None
         self._cache_timestamp: float = 0.0
         self._min_cache_interval: float = 1.0  # Minimum seconds between rebuilds
-        
+
         # Daily PnL tracking
         self._daily_realized_pnl: float = 0.0
         self._daily_pnl_reset_time: float = time.time()
-        
+
         # High-water mark tracking
         self._equity_high_water_mark: float = 0.0
         self._hwm_timestamp: float = 0.0
+
+        # G1-4: WebSocket health tracking for fail-closed behavior
+        self._ws_unhealthy_since: float | None = None
+        self._ws_unhealthy_threshold_sec: float = 30.0  # Block trading after 30s unhealthy
     
     def build_snapshot(self, force_refresh: bool = False) -> PortfolioRiskSnapshot:
         """
@@ -223,6 +227,47 @@ class GlobalRiskView:
         
         return snapshot
     
+    def _check_ws_health(self) -> tuple[bool, str]:
+        """
+        G1-4: Check WebSocket health for fail-closed behavior.
+
+        Returns:
+            Tuple of (is_healthy, reason_if_unhealthy)
+        """
+        now = time.time()
+
+        try:
+            # Check if WebSocket is connected and receiving data
+            ws_healthy = self.state.is_websocket_healthy()
+
+            if ws_healthy:
+                # Reset unhealthy timer
+                self._ws_unhealthy_since = None
+                return True, ""
+            else:
+                # Track how long we've been unhealthy
+                if self._ws_unhealthy_since is None:
+                    self._ws_unhealthy_since = now
+
+                unhealthy_duration = now - self._ws_unhealthy_since
+
+                if unhealthy_duration > self._ws_unhealthy_threshold_sec:
+                    return False, (
+                        f"WebSocket unhealthy for {unhealthy_duration:.1f}s "
+                        f"(threshold: {self._ws_unhealthy_threshold_sec}s). "
+                        "Blocking trades for safety."
+                    )
+                else:
+                    # Still within grace period
+                    return True, ""
+
+        except Exception as e:
+            # If we can't check health, be conservative
+            self.logger.warning(f"Could not check WebSocket health: {e}")
+            if self._ws_unhealthy_since is None:
+                self._ws_unhealthy_since = now
+            return True, ""  # Allow within grace period
+
     def check_pre_trade(
         self,
         signal: Any | None = None,
@@ -232,21 +277,34 @@ class GlobalRiskView:
     ) -> RiskDecision:
         """
         Check if a trade should be allowed based on current risk state.
-        
+
         This is a global-level check that supplements per-trade checks
         in RiskManager. It focuses on account-wide risk metrics.
-        
+
+        G1-4: Implements fail-closed behavior - blocks trading if WebSocket
+        is unhealthy for > 30 seconds.
+
         Args:
             signal: Trading signal (optional, for signal-based checks)
             symbol: Symbol to trade (optional)
             side: "Buy" or "Sell" (optional)
             size_usdt: Size in USDT (optional)
-        
+
         Returns:
             RiskDecision indicating if trade is allowed
         """
+        # G1-4: Check WebSocket health first (fail-closed)
+        ws_healthy, ws_reason = self._check_ws_health()
+        if not ws_healthy:
+            return RiskDecision.deny(
+                RiskVeto.ACCOUNT_HIGH_RISK,
+                ws_reason,
+                websocket_unhealthy=True,
+                unhealthy_since=self._ws_unhealthy_since,
+            )
+
         snapshot = self.build_snapshot()
-        
+
         # Check 1: Account high risk (liquidation danger)
         if snapshot.has_liquidating_positions:
             return RiskDecision.deny(

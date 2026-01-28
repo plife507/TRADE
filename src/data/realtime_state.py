@@ -734,7 +734,35 @@ class RealtimeState:
     @property
     def is_private_ws_connected(self) -> bool:
         return self._private_ws_status.is_connected
-    
+
+    def is_websocket_healthy(self, max_stale_seconds: float = 30.0) -> bool:
+        """
+        G1-4: Check if WebSocket connections are healthy.
+
+        Healthy means:
+        - Private WebSocket is connected (for account data)
+        - Account metrics are not stale
+
+        Args:
+            max_stale_seconds: Max age before data is considered stale
+
+        Returns:
+            True if WebSocket is healthy and receiving data
+        """
+        # Check private WebSocket connection (needed for trading)
+        if not self.is_private_ws_connected:
+            return False
+
+        # Check if we're receiving account data
+        if self.is_account_metrics_stale(max_stale_seconds):
+            return False
+
+        # Check if wallet data is stale
+        if self.is_wallet_stale(max_age_seconds=max_stale_seconds):
+            return False
+
+        return True
+
     # ==========================================================================
     # Event Queue
     # ==========================================================================

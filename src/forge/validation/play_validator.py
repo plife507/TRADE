@@ -13,7 +13,7 @@ Usage:
     result = validate_play(play_dict)
 
     # From file
-    result = validate_play_file("strategies/plays/my_play.yml")
+    result = validate_play_file("tests/functional/plays/my_play.yml")
 
     if not result.is_valid:
         print(result.format_errors())

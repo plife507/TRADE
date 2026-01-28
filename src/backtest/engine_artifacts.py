@@ -1,5 +1,5 @@
 """
-Artifact writing module for BacktestEngine.
+Artifact writing module for backtest results.
 
 This module handles artifact generation and output:
 - calculate_drawdowns_impl: Calculate drawdown values for equity curve
@@ -7,8 +7,7 @@ This module handles artifact generation and output:
 - Supports Parquet format for trades, equity, account_curve
 - JSON for result.json with artifact hashes
 
-All functions accept data as parameters.
-The BacktestEngine delegates to these functions, maintaining the same public API.
+All functions accept data as parameters and are used by BacktestRunner.
 
 Schema Contract:
 - Field names and types defined in src/viz/schemas/artifact_schema.py

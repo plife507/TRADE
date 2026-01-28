@@ -13,8 +13,10 @@ All tools are the GOLDEN PATH for backtest execution.
 CLI and agents should use these tools, not direct engine access.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 import traceback
 
 import pandas as pd
@@ -319,9 +321,6 @@ def backtest_preflight_play_tool(
 # Run Backtest Helpers
 # =============================================================================
 
-from dataclasses import dataclass
-from typing import Any
-
 
 @dataclass
 class ResolvedBacktestConfig:
@@ -574,8 +573,53 @@ def backtest_run_play_tool(
         Plays are self-contained and deterministic.
     """
     try:
-        # Skip preflight if requested (for parallel execution)
-        if skip_preflight:
+        # Load Play FIRST to check for synthetic config
+        play = load_play(play_id, base_dir=plays_dir)
+
+        # Check if Play has synthetic config - use synthetic data path
+        synthetic_provider = None
+        if play.synthetic is not None:
+            from src.forge.validation import generate_synthetic_candles
+            from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+
+            # Collect required timeframes
+            exec_tf = play.execution_tf
+            required_tfs = {exec_tf, "1m"}  # Always need exec and 1m
+            if play.low_tf:
+                required_tfs.add(play.low_tf)
+            if play.med_tf:
+                required_tfs.add(play.med_tf)
+            if play.high_tf:
+                required_tfs.add(play.high_tf)
+            for tf in play.feature_registry.get_all_tfs():
+                required_tfs.add(tf)
+
+            print(f"[SYNTHETIC] Auto-generating data for Play with synthetic config")
+            print(f"[SYNTHETIC] Pattern: {play.synthetic.pattern}, Bars: {play.synthetic.bars}, Seed: {play.synthetic.seed}")
+            print(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
+
+            # Generate synthetic candles
+            candles = generate_synthetic_candles(
+                symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
+                timeframes=list(required_tfs),
+                bars_per_tf=play.synthetic.bars,
+                seed=play.synthetic.seed,
+                pattern=play.synthetic.pattern,
+            )
+
+            # Create provider and set window from synthetic data
+            synthetic_provider = SyntheticCandlesProvider(candles)
+            data_start, data_end = synthetic_provider.get_data_range(exec_tf)
+            start = data_start
+            end = data_end
+            skip_preflight = True  # No DB data to validate
+
+            print(f"[SYNTHETIC] Data range: {start} to {end}")
+            print(f"[SYNTHETIC] Data hash: {candles.data_hash}")
+            preflight_data = {"synthetic": True, "data_hash": candles.data_hash}
+
+        # Skip preflight if requested or if using synthetic data
+        elif skip_preflight:
             logger.warning("[WARN] --skip-preflight bypasses ALL data validation!")
             logger.warning("[WARN] Use only for testing. Production runs MUST use preflight gate.")
             preflight_data = {}
@@ -594,9 +638,6 @@ def backtest_run_play_tool(
                 return preflight_result
 
             preflight_data = preflight_result.data
-
-        # Load Play
-        play = load_play(play_id, base_dir=plays_dir)
 
         # Validate account config is present (required - no defaults)
         if play.account is None:
@@ -672,7 +713,7 @@ def backtest_run_play_tool(
 
         # Build runner config with correct field names
         # NOTE: skip_preflight=True because CLI wrapper already ran its own preflight
-        # The runner's preflight is more strict (checks HTF/MTF warmup separately)
+        # The runner's preflight is more strict (checks high_tf/med_tf warmup separately)
         # For smoke tests, we trust the CLI wrapper's preflight check
         # NOTE: skip_artifact_validation=True because we skip preflight (no preflight_report.json)
         runner_config = RunnerConfig(
@@ -693,6 +734,7 @@ def backtest_run_play_tool(
         # P1.2 Refactor: engine_factory is now handled internally via create_engine_from_play()
         run_result = run_backtest_with_gates(
             config=runner_config,
+            synthetic_provider=synthetic_provider,
         )
 
         # Extract results
@@ -1166,7 +1208,7 @@ def backtest_list_plays_tool(
             message=f"Found {len(cards)} Plays",
             data={
                 "plays": cards,
-                "directory": str(plays_dir) if plays_dir else "strategies/plays/",
+                "directory": str(plays_dir) if plays_dir else "tests/functional/plays/",
             },
         )
 

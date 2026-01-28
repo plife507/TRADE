@@ -9,7 +9,7 @@ Architecture Principle: Pure Math
 
 The DerivedStateComputer computes:
 1. confluence_score: How many signals align (0.0-1.0)
-2. alignment: HTF/MTF/LTF trend agreement (0.0-1.0)
+2. alignment: high_tf/med_tf/low_tf trend agreement (0.0-1.0)
 3. regime: Market regime classification
 
 See: docs/specs/PLAY_VISION.md
@@ -39,7 +39,7 @@ class DerivedStateComputer:
 
     Derived Values:
         confluence_score: Proportion of aligned bullish/bearish signals (0.0-1.0)
-        alignment: Agreement between HTF, MTF, and exec trend directions (0.0-1.0)
+        alignment: Agreement between high_tf, med_tf, and exec trend directions (0.0-1.0)
         momentum: Aggregate momentum signal (-1.0 to 1.0)
         structure_stability: How recently structures changed (0.0-1.0)
 
@@ -111,8 +111,8 @@ class DerivedStateComputer:
         exec_trend = self._get_trend_direction(incremental_state.exec)
         exec_strength = self._get_trend_strength(incremental_state.exec)
 
-        # Get HTF trend for confirmation
-        htf_trend = self._get_htf_trend_direction(incremental_state)
+        # Get high_tf trend for confirmation
+        high_tf_trend = self._get_high_tf_trend_direction(incremental_state)
 
         # Check volatility (via ATR in bar indicators)
         atr = bar.indicators.get("atr", 0.0)
@@ -130,12 +130,12 @@ class DerivedStateComputer:
             return MarketRegime.VOLATILE
 
         if exec_trend == TREND_UP and is_strong_trend:
-            # Confirm with HTF if available
-            if htf_trend == TREND_UP or htf_trend is None:
+            # Confirm with high_tf if available
+            if high_tf_trend == TREND_UP or high_tf_trend is None:
                 return MarketRegime.TRENDING_UP
 
         if exec_trend == TREND_DOWN and is_strong_trend:
-            if htf_trend == TREND_DOWN or htf_trend is None:
+            if high_tf_trend == TREND_DOWN or high_tf_trend is None:
                 return MarketRegime.TRENDING_DOWN
 
         if exec_strength < 0.3 and not is_volatile:
@@ -171,14 +171,14 @@ class DerivedStateComputer:
             elif exec_trend == TREND_DOWN:
                 signals_bearish += 1
 
-        # Check HTF trends
+        # Check high_tf trends
         for tf_name, tf_state in incremental_state.high_tf.items():
-            htf_trend = self._get_trend_direction(tf_state)
-            if htf_trend is not None:
+            high_tf_trend = self._get_trend_direction(tf_state)
+            if high_tf_trend is not None:
                 total_signals += 1
-                if htf_trend == TREND_UP:
+                if high_tf_trend == TREND_UP:
                     signals_bullish += 1
-                elif htf_trend == TREND_DOWN:
+                elif high_tf_trend == TREND_DOWN:
                     signals_bearish += 1
 
         # Check zone states (demand = bullish, supply = bearish)
@@ -202,7 +202,7 @@ class DerivedStateComputer:
         incremental_state: "MultiTFIncrementalState",
     ) -> float:
         """
-        Compute HTF/MTF/exec trend alignment score.
+        Compute high_tf/med_tf/exec trend alignment score.
 
         Returns:
             Float 0.0-1.0 where 1.0 = all timeframes trend same direction
@@ -214,11 +214,11 @@ class DerivedStateComputer:
         if exec_trend is not None and exec_trend != TREND_NEUTRAL:
             trends.append(exec_trend)
 
-        # Get HTF trends
+        # Get high_tf trends
         for tf_name, tf_state in incremental_state.high_tf.items():
-            htf_trend = self._get_trend_direction(tf_state)
-            if htf_trend is not None and htf_trend != TREND_NEUTRAL:
-                trends.append(htf_trend)
+            high_tf_trend = self._get_trend_direction(tf_state)
+            if high_tf_trend is not None and high_tf_trend != TREND_NEUTRAL:
+                trends.append(high_tf_trend)
 
         if len(trends) <= 1:
             return 0.0  # Need at least 2 timeframes to measure alignment
@@ -258,13 +258,13 @@ class DerivedStateComputer:
             momentum += exec_trend * exec_strength
             weights += 1.0
 
-        # Add HTF trends with lower weight
+        # Add high_tf trends with lower weight
         for tf_name, tf_state in incremental_state.high_tf.items():
-            htf_trend = self._get_trend_direction(tf_state)
-            htf_strength = self._get_trend_strength(tf_state)
+            high_tf_trend = self._get_trend_direction(tf_state)
+            high_tf_strength = self._get_trend_strength(tf_state)
 
-            if htf_trend is not None:
-                momentum += htf_trend * htf_strength * 0.5
+            if high_tf_trend is not None:
+                momentum += high_tf_trend * high_tf_strength * 0.5
                 weights += 0.5
 
         if weights == 0:
@@ -296,9 +296,9 @@ class DerivedStateComputer:
         """Get trend direction from a TF state."""
         try:
             # Look for trend detector
-            for detector_key in tf_state.list_detectors():
+            for detector_key in tf_state.list_structures():
                 if "trend" in detector_key.lower():
-                    detector = tf_state.get_detector(detector_key)
+                    detector = tf_state.structures[detector_key]
                     direction = detector.get_value("direction")
                     if direction is not None:
                         return int(direction)
@@ -312,9 +312,9 @@ class DerivedStateComputer:
     ) -> float:
         """Get trend strength from a TF state."""
         try:
-            for detector_key in tf_state.list_detectors():
+            for detector_key in tf_state.list_structures():
                 if "trend" in detector_key.lower():
-                    detector = tf_state.get_detector(detector_key)
+                    detector = tf_state.structures[detector_key]
                     strength = detector.get_value("strength")
                     if strength is not None:
                         return float(strength)
@@ -322,12 +322,12 @@ class DerivedStateComputer:
         except (KeyError, AttributeError):
             return 0.0
 
-    def _get_htf_trend_direction(
+    def _get_high_tf_trend_direction(
         self,
         incremental_state: "MultiTFIncrementalState",
     ) -> int | None:
         """Get trend direction from highest timeframe available."""
-        # Return first HTF trend found (assumes ordered by TF)
+        # Return first high_tf trend found (assumes ordered by TF)
         for tf_name, tf_state in incremental_state.high_tf.items():
             direction = self._get_trend_direction(tf_state)
             if direction is not None:
@@ -347,9 +347,9 @@ class DerivedStateComputer:
             demand_active = False
             supply_active = False
 
-            for detector_key in tf_state.list_detectors():
+            for detector_key in tf_state.list_structures():
                 if "zone" in detector_key.lower():
-                    detector = tf_state.get_detector(detector_key)
+                    detector = tf_state.structures[detector_key]
                     state = detector.get_value("state")
 
                     if state == "ACTIVE":

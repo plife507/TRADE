@@ -356,26 +356,7 @@ class PlayEngineFactory:
         )
 
 
-def create_engine(
-    play: "Play",
-    mode: Literal["backtest", "demo", "live", "shadow"] = "backtest",
-    **kwargs,
-) -> PlayEngine:
-    """
-    Convenience function for creating PlayEngine.
-
-    This is a shortcut for PlayEngineFactory.create().
-
-    Args:
-        play: Play instance
-        mode: Execution mode
-        **kwargs: Additional arguments for factory
-
-    Returns:
-        Configured PlayEngine
-    """
-    return PlayEngineFactory.create(play, mode, **kwargs)
-
+# G1.15: create_engine() removed (2026-01-27) - use PlayEngineFactory.create() directly
 
 def create_backtest_engine(
     play: "Play",

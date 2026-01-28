@@ -1,0 +1,62 @@
+version: "3.0.0"
+name: "V_T13_002_brk_clean_dn"
+description: "Clean breakdown with volume - strong short entry"
+
+synthetic:
+  pattern: "trend_down_clean"
+  bars: 200
+  seed: 1302
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: rolling_window
+      key: rolling_low_20
+      params:
+        mode: min
+        size: 20
+        source: low
+
+actions:
+  entry_short:
+    all:
+      - ["close", "<", "rolling_low_20.value"]
+      - ["volume", ">", "volume_sma_20"]
+
+position_policy:
+  mode: short_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 6.0

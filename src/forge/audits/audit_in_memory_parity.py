@@ -471,7 +471,7 @@ def run_in_memory_parity_for_play(
         
         # Build the backtest engine using the Play-native engine factory
         # P1.2 Refactor: Use create_engine_from_play() instead of legacy adapter
-        from src.backtest.engine import create_engine_from_play
+        from src.backtest.engine_factory import create_engine_from_play
         from src.backtest.execution_validation import compute_warmup_requirements
         
         # Compute warmup requirements

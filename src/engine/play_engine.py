@@ -574,12 +574,12 @@ class PlayEngine:
         if self._high_tf_feed is None and self._med_tf_feed is None:
             return
 
-        # Get exec feed for comparison
-        from .adapters.backtest import BacktestDataProvider
-        if not isinstance(self._data_provider, BacktestDataProvider):
+        # Only applies to backtest mode (live mode uses different TF management)
+        if not self.is_backtest:
             return
 
-        low_tf_feed = self._data_provider._feed_store
+        # Access feed_store from data provider (backtest mode has this attribute)
+        low_tf_feed = getattr(self._data_provider, '_feed_store', None)
         if low_tf_feed is None:
             return
 
@@ -690,7 +690,7 @@ class PlayEngine:
         # Fallback: single evaluation at exec bar close
         return self._evaluate_rules_single(bar_index, candle, position)
 
-    def _build_snapshot_view(self, bar_index: int, candle: Candle):
+    def _build_snapshot_view(self, bar_index: int, candle: Candle) -> "RuntimeSnapshotView":
         """
         Build RuntimeSnapshotView for rule evaluation.
 
@@ -702,7 +702,7 @@ class PlayEngine:
             candle: Current candle data
 
         Returns:
-            RuntimeSnapshotView or compatible snapshot object
+            RuntimeSnapshotView for rule evaluation
         """
         # In backtest mode, we need to build a proper RuntimeSnapshotView
         # For now, this requires the BacktestDataProvider to have FeedStore set
@@ -754,7 +754,7 @@ class PlayEngine:
                 exec_idx=bar_index,
                 high_tf_idx=high_tf_idx,
                 med_tf_idx=med_tf_idx,
-                exchange=self._exchange._sim_exchange if hasattr(self._exchange, '_sim_exchange') else None,
+                exchange=getattr(self._exchange, '_sim_exchange', None),
                 mark_price=candle.close,
                 mark_price_source="approx_from_ohlcv",
                 history_config=None,
@@ -1155,7 +1155,7 @@ class PlayEngine:
                 exec_idx=bar_index,
                 high_tf_idx=high_tf_idx,
                 med_tf_idx=med_tf_idx,
-                exchange=self._exchange._sim_exchange if hasattr(self._exchange, '_sim_exchange') else None,
+                exchange=getattr(self._exchange, '_sim_exchange', None),
                 mark_price=last_price,  # Use 1m close as mark_price
                 mark_price_source="1m_quote",
                 history_config=None,

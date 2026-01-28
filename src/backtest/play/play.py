@@ -784,6 +784,12 @@ class Play:
                                     f"Example: {{type: swing, key: {spec['key']}, params: {{left: 5, right: 5}}}}"
                                 )
                             structure_keys.append(spec["key"])
+                            # Parse uses field (can be string or list)
+                            uses_raw = spec.get("uses", [])
+                            if isinstance(uses_raw, str):
+                                uses = (uses_raw,)
+                            else:
+                                uses = tuple(uses_raw) if uses_raw else ()
                             # Create Feature object for structure
                             structure_features.append(Feature(
                                 id=spec["key"],
@@ -791,7 +797,7 @@ class Play:
                                 type=FeatureType.STRUCTURE,
                                 structure_type=spec["type"],
                                 params=spec.get("params", {}),
-                                depends_on=spec.get("depends_on", {}),
+                                uses=uses,
                             ))
                 elif isinstance(specs, dict):
                     # high_tf: {"1h": [{type: swing, key: swing_1h}, ...]}
@@ -806,6 +812,12 @@ class Play:
                                             f"Example: {{type: swing, key: {spec['key']}, params: {{left: 3, right: 3}}}}"
                                         )
                                     structure_keys.append(spec["key"])
+                                    # Parse uses field (can be string or list)
+                                    uses_raw = spec.get("uses", [])
+                                    if isinstance(uses_raw, str):
+                                        uses = (uses_raw,)
+                                    else:
+                                        uses = tuple(uses_raw) if uses_raw else ()
                                     # Create Feature object for high_tf structure
                                     structure_features.append(Feature(
                                         id=spec["key"],
@@ -813,7 +825,7 @@ class Play:
                                         type=FeatureType.STRUCTURE,
                                         structure_type=spec["type"],
                                         params=spec.get("params", {}),
-                                        depends_on=spec.get("depends_on", {}),
+                                        uses=uses,
                                     ))
 
         # Combine indicator features with structure features

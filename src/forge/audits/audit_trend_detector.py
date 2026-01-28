@@ -1,5 +1,5 @@
 """
-Audit tests for IncrementalTrendDetector.
+Audit tests for IncrementalTrend.
 
 Tests validate:
 1. Registration in STRUCTURE_REGISTRY
@@ -22,7 +22,7 @@ from typing import Any
 def run_tests() -> None:
     """Run all trend detector tests."""
     print("=" * 60)
-    print("IncrementalTrendDetector Tests")
+    print("IncrementalTrend Tests")
     print("=" * 60)
 
     test_registration()
@@ -46,7 +46,7 @@ def test_registration() -> None:
     info = get_structure_info("trend")
     assert info["required_params"] == [], f"Expected no required params, got {info['required_params']}"
     assert info["depends_on"] == ["swing"], f"Expected depends_on=['swing'], got {info['depends_on']}"
-    assert info["class_name"] == "IncrementalTrendDetector"
+    assert info["class_name"] == "IncrementalTrend"
 
     print("[PASS] test_registration")
 
@@ -63,11 +63,11 @@ class MockSwingDetector:
 
 def create_trend_detector(swing: MockSwingDetector) -> Any:
     """Create a trend detector with mock swing dependency."""
-    from .trend import IncrementalTrendDetector
+    from .trend import IncrementalTrend
 
     params: dict[str, Any] = {}
     deps = {"swing": swing}
-    return IncrementalTrendDetector(params, deps)
+    return IncrementalTrend(params, deps)
 
 
 def test_uptrend_detection() -> None:
@@ -262,11 +262,11 @@ def test_bars_in_trend_tracking() -> None:
 
 def test_missing_dependency_error() -> None:
     """Test that missing swing dependency raises proper error."""
-    from .trend import IncrementalTrendDetector
+    from .trend import IncrementalTrend
 
     try:
         # Try to create via validate_and_create without swing dependency
-        IncrementalTrendDetector.validate_and_create(
+        IncrementalTrend.validate_and_create(
             struct_type="trend",
             key="test_trend",
             params={},

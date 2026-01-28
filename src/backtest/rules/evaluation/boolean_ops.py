@@ -6,24 +6,18 @@ Handles AllExpr, AnyExpr, NotExpr evaluation with short-circuit semantics.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from ..dsl_nodes import (
-    Expr,
     AllExpr,
     AnyExpr,
     NotExpr,
 )
 from ..types import EvalResult, ReasonCode
+from .protocols import ExprEvaluatorProtocol
 
 if TYPE_CHECKING:
     from ...runtime.snapshot import RuntimeSnapshotView
-
-
-class ExprEvaluatorProtocol(Protocol):
-    """Protocol for expression evaluator to avoid circular imports."""
-
-    def evaluate(self, expr: Expr, snapshot: "RuntimeSnapshotView") -> EvalResult: ...
 
 
 def eval_all(

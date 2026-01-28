@@ -20,7 +20,7 @@ Update the project TODO.md file.
 
 ## Location
 
-Main TODO: `docs/todos/TODO.md`
+Main TODO: `docs/TODO.md`
 
 ## Actions
 
@@ -60,6 +60,6 @@ Main TODO: `docs/todos/TODO.md`
 ## Archive
 
 When phase is complete:
-1. Create archive file: `docs/todos/archived/YYYY-MM/PHASE_NAME.md`
+1. Create archive file: `docs/archived/YYYY-MM/PHASE_NAME.md`
 2. Move completed section to archive
-3. Update TODO.md to reference archive
+3. Update docs/TODO.md to reference archive

@@ -81,8 +81,12 @@ from .logging import RunLogger, set_run_logger
 
 
 class GateFailure(Exception):
-    """Raised when a gate fails."""
-    pass
+    """
+    Raised when a validation gate fails during backtest execution.
+
+    Gates are pre-execution checks that validate Play configuration,
+    data availability, and engine state before running a backtest.
+    """
 
 
 # =============================================================================
@@ -206,7 +210,47 @@ def run_backtest_with_gates(
         # Load Play
         play = config.load_play()
 
-        # Auto-infer window from DB coverage if not provided
+        # Check if Play has synthetic config - auto-create provider
+        if play.synthetic is not None and synthetic_provider is None:
+            from src.forge.validation import generate_synthetic_candles
+            from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+
+            # Collect required timeframes
+            exec_tf = play.execution_tf
+            required_tfs = {exec_tf, "1m"}  # Always need exec and 1m
+            if play.low_tf:
+                required_tfs.add(play.low_tf)
+            if play.med_tf:
+                required_tfs.add(play.med_tf)
+            if play.high_tf:
+                required_tfs.add(play.high_tf)
+            for tf in play.feature_registry.get_all_tfs():
+                required_tfs.add(tf)
+
+            print(f"[SYNTHETIC] Auto-generating data for Play with synthetic config")
+            print(f"[SYNTHETIC] Pattern: {play.synthetic.pattern}, Bars: {play.synthetic.bars}, Seed: {play.synthetic.seed}")
+            print(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
+
+            # Generate synthetic candles
+            candles = generate_synthetic_candles(
+                symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
+                timeframes=list(required_tfs),
+                bars_per_tf=play.synthetic.bars,
+                seed=play.synthetic.seed,
+                pattern=play.synthetic.pattern,
+            )
+
+            # Create provider and set window from synthetic data
+            synthetic_provider = SyntheticCandlesProvider(candles)
+            data_start, data_end = synthetic_provider.get_data_range(exec_tf)
+            config.window_start = data_start
+            config.window_end = data_end
+            config.skip_preflight = True  # No DB data to validate
+
+            print(f"[SYNTHETIC] Data range: {config.window_start} to {config.window_end}")
+            print(f"[SYNTHETIC] Data hash: {candles.data_hash}")
+
+        # Auto-infer window from DB coverage if not provided (non-synthetic only)
         if not config.window_start or not config.window_end:
             from src.data.historical_data_store import get_historical_store
 
@@ -558,7 +602,7 @@ def run_backtest_with_gates(
         run_hash = compute_run_hash(trades_hash, equity_hash, play_hash)
         
         # Resolve idea path (where Play was loaded from)
-        resolved_idea_path = str(config.plays_dir / f"{play.id}.yml") if config.plays_dir else f"strategies/plays/{play.id}.yml"
+        resolved_idea_path = str(config.plays_dir / f"{play.id}.yml") if config.plays_dir else f"tests/functional/plays/{play.id}.yml"
         
         # Extract leverage and initial equity from Play's account config
         play_leverage = int(play.account.max_leverage) if play.account else 1
@@ -780,240 +824,9 @@ def run_backtest_with_gates(
         return result
 
 
-def run_smoke_test(
-    play_id: str,
-    window_start: datetime,
-    window_end: datetime,
-    data_loader: DataLoader,
-    base_output_dir: Path = Path("backtests"),
-    plays_dir: Path | None = None,
-) -> RunnerResult:
-    """
-    Convenience function to run a smoke test for an Play.
-    
-    Args:
-        play_id: Play identifier
-        window_start: Backtest window start
-        window_end: Backtest window end
-        data_loader: Function to load data (symbol, tf) -> DataFrame
-        base_output_dir: Base directory for artifacts
-        plays_dir: Directory containing Play YAMLs
-        
-    Returns:
-        RunnerResult with success status
-    """
-    config = RunnerConfig(
-        play_id=play_id,
-        window_start=window_start,
-        window_end=window_end,
-        data_loader=data_loader,
-        base_output_dir=base_output_dir,
-        plays_dir=plays_dir,
-    )
-    
-    return run_backtest_with_gates(config)
-
-
 # =============================================================================
-# CLI Entrypoint
+# G1: Dead code removed (2026-01-27)
 # =============================================================================
-
-def main():
-    """
-    CLI entrypoint for running backtests.
-    
-    Usage:
-        python -m src.backtest.runner --idea <id> --start <date> --end <date> --env <live|demo> --export-root <path>
-    
-    Example:
-        python -m src.backtest.runner --idea SOLUSDT_15m_ema_crossover --start 2024-01-01 --end 2024-03-01 --env live --export-root backtests/
-    """
-    import argparse
-    import sys
-    
-    parser = argparse.ArgumentParser(
-        description="Run Play-based backtest with gate enforcement",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    
-    parser.add_argument(
-        "--idea",
-        required=True,
-        help="Play ID (filename without .yml) or path to YAML file",
-    )
-    parser.add_argument(
-        "--start",
-        required=False,
-        help="Backtest start date (YYYY-MM-DD). Required unless --synthetic is used.",
-    )
-    parser.add_argument(
-        "--end",
-        required=False,
-        help="Backtest end date (YYYY-MM-DD). Required unless --synthetic is used.",
-    )
-    parser.add_argument(
-        "--env",
-        choices=["live", "demo"],
-        default="live",
-        help="Data environment (live or demo)",
-    )
-    parser.add_argument(
-        "--export-root",
-        default="backtests/",
-        help="Base directory for artifact export",
-    )
-    parser.add_argument(
-        "--idea-dir",
-        default=None,
-        help="Override Play directory (default: strategies/plays/)",
-    )
-    parser.add_argument(
-        "--skip-preflight",
-        action="store_true",
-        help="Skip data preflight gate (for testing only)",
-    )
-    parser.add_argument(
-        "--auto-sync",
-        action="store_true",
-        help="Auto-sync missing data during preflight",
-    )
-    parser.add_argument(
-        "--synthetic",
-        action="store_true",
-        help="Use synthetic data instead of DB (for validation runs)",
-    )
-    parser.add_argument(
-        "--synthetic-bars",
-        type=int,
-        default=1000,
-        help="Number of bars per timeframe for synthetic data (default: 1000)",
-    )
-    parser.add_argument(
-        "--synthetic-seed",
-        type=int,
-        default=42,
-        help="Random seed for synthetic data generation (default: 42)",
-    )
-    parser.add_argument(
-        "--synthetic-pattern",
-        choices=["trending", "ranging", "volatile"],
-        default="trending",
-        help="Pattern for synthetic data (default: trending)",
-    )
-
-    args = parser.parse_args()
-
-    # Handle synthetic mode (no dates required if synthetic)
-    window_start: datetime | None = None
-    window_end: datetime | None = None
-    synthetic_provider = None
-
-    if args.synthetic:
-        # Synthetic mode: generate data and auto-detect window bounds
-        from src.forge.validation import generate_synthetic_candles
-        from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
-
-        # Load Play first to get required TFs
-        play = load_play(args.idea, base_dir=Path(args.idea_dir) if args.idea_dir else None)
-
-        # Collect all required timeframes
-        exec_tf = play.execution_tf
-        required_tfs = {exec_tf, "1m"}  # Always need exec and 1m
-        for tf in play.feature_registry.get_all_tfs():
-            required_tfs.add(tf)
-
-        print(f"[SYNTHETIC] Generating {args.synthetic_bars} bars for TFs: {sorted(required_tfs)}")
-
-        # Generate synthetic candles
-        candles = generate_synthetic_candles(
-            symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
-            timeframes=list(required_tfs),
-            bars_per_tf=args.synthetic_bars,
-            seed=args.synthetic_seed,
-            pattern=args.synthetic_pattern,
-        )
-
-        # Create provider
-        synthetic_provider = SyntheticCandlesProvider(candles)
-
-        # Get window bounds from synthetic data
-        data_start, data_end = synthetic_provider.get_data_range(exec_tf)
-        window_start = data_start
-        window_end = data_end
-
-        print(f"[SYNTHETIC] Data range: {window_start} to {window_end}")
-        print(f"[SYNTHETIC] Data hash: {candles.data_hash}")
-
-    else:
-        # Normal mode: parse dates and use DB
-        if not args.start or not args.end:
-            print("[ERROR] --start and --end are required (unless using --synthetic)")
-            sys.exit(1)
-
-        try:
-            window_start = datetime.fromisoformat(args.start)
-            window_end = datetime.fromisoformat(args.end)
-        except ValueError as e:
-            print(f"[ERROR] Invalid date format: {e}")
-            print("Use YYYY-MM-DD format (e.g., 2024-01-01)")
-            sys.exit(1)
-
-        # Ensure dates are timezone-aware
-        if window_start.tzinfo is None:
-            window_start = window_start.replace(tzinfo=timezone.utc)
-        if window_end.tzinfo is None:
-            window_end = window_end.replace(tzinfo=timezone.utc)
-
-    # Create data loader (only needed for non-synthetic mode)
-    data_loader = None
-    if not args.synthetic:
-        from ..data.historical_data_store import get_historical_store
-
-        store = get_historical_store(env=args.env)
-
-        def data_loader(symbol: str, tf: str, start: datetime, end: datetime):
-            """Load OHLCV data from DuckDB."""
-            return store.get_ohlcv(symbol=symbol, tf=tf, start=start, end=end)
-    
-    # Build config
-    config = RunnerConfig(
-        play_id=args.idea,
-        play=play if args.synthetic else None,  # Pass pre-loaded Play in synthetic mode
-        window_start=window_start,
-        window_end=window_end,
-        data_loader=data_loader,
-        base_output_dir=Path(args.export_root),
-        plays_dir=Path(args.idea_dir) if args.idea_dir else None,
-        skip_preflight=args.skip_preflight or args.synthetic,  # Skip preflight in synthetic mode
-        auto_sync_missing_data=args.auto_sync,
-    )
-
-    # Run backtest
-    mode_str = "[SYNTHETIC]" if args.synthetic else f"{args.env}"
-    print(f"\n{'='*60}")
-    print(f"  BACKTEST RUNNER")
-    print(f"{'='*60}")
-    print(f"  Play:   {args.idea}")
-    print(f"  Window:     {window_start.date()} -> {window_end.date()}")
-    print(f"  Mode:       {mode_str}")
-    print(f"  Export:     {args.export_root}")
-    print(f"{'='*60}\n")
-
-    result = run_backtest_with_gates(config, synthetic_provider=synthetic_provider)
-    
-    # Exit with appropriate code
-    if result.success:
-        print(f"\n[SUCCESS] Backtest completed successfully")
-        print(f"  Artifacts: {result.artifact_path}")
-        sys.exit(0)
-    else:
-        print(f"\n[FAILED] Backtest failed")
-        if result.gate_failed:
-            print(f"  Gate failed: {result.gate_failed}")
-        if result.error_message:
-            print(f"  Error: {result.error_message}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+# - run_smoke_test() - unused convenience wrapper
+# - main() CLI entrypoint - unused, backtest runs via trade_cli.py
+# =============================================================================

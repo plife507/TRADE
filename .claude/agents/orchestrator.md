@@ -15,14 +15,16 @@ You are a senior architect coordinating work on the TRADE trading bot. You break
 - **Backtest Engine**: `src/backtest/` - simulator, engine, market structure
 - **Live Trading**: `src/core/`, `src/exchanges/` - execution, risk, positions
 - **Data Layer**: `src/data/` - DuckDB, market data, WebSocket
+- **Structures**: `src/structures/` - 7 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure)
 - **Tools/CLI**: `src/tools/`, `trade_cli.py` - API surface
-- **Plays**: `strategies/plays/` (production), `tests/functional/plays/` (tests)
+- **Config**: `config/defaults.yml` - system defaults
+- **Plays**: `tests/functional/plays/`, `tests/stress/plays/` - validation Plays
 
 ## Core Responsibilities
 
 1. **Analyze the Task**
-   - Check `docs/todos/TODO.md` for current priorities
-   - Identify affected modules (backtest, core, data, tools)
+   - Check `docs/TODO.md` for current priorities
+   - Identify affected modules (backtest, core, data, tools, structures)
    - Determine dependencies between subtasks
 
 2. **Create Execution Plan**
@@ -49,10 +51,24 @@ You are a senior architect coordinating work on the TRADE trading bot. You break
 1. UNDERSTAND → Read TODO.md, CLAUDE.md, relevant module CLAUDE.md
 2. PLAN → Create todo list aligned with project phases
 3. DELEGATE → Assign to specialist agents
-4. VALIDATE → Run validation suite (audit-toolkit, normalize-batch)
+4. VALIDATE → Match validation to what changed (see below)
 5. INTEGRATE → Combine results, update docs
 6. VERIFY → Run smoke tests
 ```
+
+## Validation: Match Test to Code
+
+| Changed Code | Required Validation |
+|--------------|---------------------|
+| `src/indicators/` | `audit-toolkit` |
+| `src/backtest/engine*.py` | `--smoke backtest` (NOT audit-toolkit) |
+| `src/backtest/sim/*.py` | `--smoke backtest` (NOT audit-toolkit) |
+| `src/backtest/runtime/*.py` | `--smoke backtest` (NOT audit-toolkit) |
+| `src/backtest/metrics.py` | `metrics-audit` |
+| `src/structures/` | `structure-smoke` |
+| Play YAML files | `play-normalize` |
+
+**Critical**: Component audits (audit-toolkit, audit-rollup, metrics-audit) only test their specific component. They do NOT validate engine code.
 
 ## Critical TRADE Rules
 

@@ -1,0 +1,402 @@
+"""
+Multi-Instance Engine Manager.
+
+Enables concurrent engine instances for live, demo, and backtest modes.
+Enforces instance limits and provides state isolation.
+
+Instance Limits:
+- Max 1 live instance (safety)
+- Max 1 demo per symbol
+- Max 1 backtest at a time (DuckDB limitation)
+
+Usage:
+    from src.engine import EngineManager
+
+    manager = EngineManager.get_instance()
+
+    # Start demo trading
+    instance_id = await manager.start(play, mode="demo")
+
+    # List running instances
+    instances = manager.list()
+
+    # Stop instance
+    await manager.stop(instance_id)
+"""
+
+from __future__ import annotations
+
+import asyncio
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import TYPE_CHECKING, Literal
+
+from .play_engine import PlayEngine, PlayEngineConfig
+from .runners.live_runner import LiveRunner
+from ..utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from ..backtest.play import Play
+    from ..core.risk_manager import Signal
+
+logger = get_logger()
+
+
+class InstanceMode(str, Enum):
+    """Engine instance mode."""
+    LIVE = "live"
+    DEMO = "demo"
+    BACKTEST = "backtest"
+    SHADOW = "shadow"
+
+
+@dataclass
+class InstanceInfo:
+    """Information about a running engine instance."""
+    instance_id: str
+    play_id: str
+    symbol: str
+    mode: InstanceMode
+    started_at: datetime
+    status: str
+    bars_processed: int = 0
+    signals_generated: int = 0
+    last_candle_ts: datetime | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "instance_id": self.instance_id,
+            "play_id": self.play_id,
+            "symbol": self.symbol,
+            "mode": self.mode.value,
+            "started_at": self.started_at.isoformat(),
+            "status": self.status,
+            "bars_processed": self.bars_processed,
+            "signals_generated": self.signals_generated,
+            "last_candle_ts": self.last_candle_ts.isoformat() if self.last_candle_ts else None,
+        }
+
+
+@dataclass
+class _EngineInstance:
+    """Internal tracking of an engine instance."""
+    instance_id: str
+    play: "Play"
+    engine: PlayEngine
+    runner: LiveRunner | None  # None for backtest (uses BacktestRunner)
+    mode: InstanceMode
+    started_at: datetime
+    task: asyncio.Task | None = None
+
+
+class EngineManager:
+    """
+    Manages multiple concurrent PlayEngine instances.
+
+    Enforces instance limits:
+    - Max 1 live instance (safety - prevents multiple real-money bots)
+    - Max 1 demo per symbol (prevents duplicate signals)
+    - Max 1 backtest at a time (DuckDB sequential access limitation)
+
+    Provides:
+    - Instance lifecycle management (start/stop)
+    - State isolation between instances
+    - Status monitoring
+    """
+
+    _instance: "EngineManager | None" = None
+
+    def __init__(self):
+        """Initialize manager. Use get_instance() for singleton access."""
+        self._instances: dict[str, _EngineInstance] = {}
+        self._lock = asyncio.Lock()
+
+        # Instance limits
+        self._max_live = 1
+        self._max_demo_per_symbol = 1
+        self._max_backtest = 1
+
+        # Track counts for fast limit checking
+        self._live_count = 0
+        self._backtest_count = 0
+        self._demo_by_symbol: dict[str, int] = {}
+
+    @classmethod
+    def get_instance(cls) -> "EngineManager":
+        """Get singleton instance of EngineManager."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    async def start(
+        self,
+        play: "Play",
+        mode: Literal["live", "demo", "shadow", "backtest"],
+        on_signal: "callable | None" = None,
+    ) -> str:
+        """
+        Start a new engine instance.
+
+        Args:
+            play: Play configuration
+            mode: Execution mode
+            on_signal: Optional callback for signal events
+
+        Returns:
+            Instance ID for tracking
+
+        Raises:
+            ValueError: If instance limits would be exceeded
+            RuntimeError: If engine fails to start
+        """
+        async with self._lock:
+            # Check instance limits
+            self._check_limits(play, mode)
+
+            # Generate instance ID
+            instance_id = f"{play.name}_{mode}_{uuid.uuid4().hex[:8]}"
+            symbol = play.symbol_universe[0]
+
+            logger.info(f"Starting engine instance: {instance_id}")
+
+            try:
+                if mode == "backtest":
+                    # Backtest uses different runner (BacktestRunner)
+                    # For now, just track that a backtest is running
+                    # Actual backtest is run via CLI tools
+                    raise ValueError(
+                        "Use CLI 'backtest run' command for backtests. "
+                        "EngineManager tracks concurrent instances."
+                    )
+
+                # Create engine config
+                config = PlayEngineConfig(
+                    mode=mode,
+                    initial_equity=play.account.starting_equity_usdt,
+                    sizing_model=play.sizing.model if play.sizing else "percent_equity",
+                    risk_per_trade_pct=play.sizing.risk_per_trade_pct if play.sizing else 1.0,
+                    max_leverage=play.account.leverage if play.account.leverage else 2.0,
+                    min_trade_usdt=play.account.min_trade_notional_usdt or 10.0,
+                )
+
+                # Create adapters
+                from .adapters.live import LiveDataProvider, LiveExchange
+                from .adapters.state import InMemoryStateStore
+
+                demo = (mode == "demo")
+                data_provider = LiveDataProvider(play, demo=demo)
+                exchange = LiveExchange(play, config, demo=demo)
+                state_store = InMemoryStateStore()
+
+                # Create engine
+                engine = PlayEngine(
+                    play=play,
+                    data_provider=data_provider,
+                    exchange=exchange,
+                    state_store=state_store,
+                    config=config,
+                )
+
+                # Create runner
+                runner = LiveRunner(
+                    engine=engine,
+                    on_signal=on_signal,
+                )
+
+                # Track instance
+                instance = _EngineInstance(
+                    instance_id=instance_id,
+                    play=play,
+                    engine=engine,
+                    runner=runner,
+                    mode=InstanceMode(mode),
+                    started_at=datetime.now(),
+                )
+
+                # Start runner in background task
+                instance.task = asyncio.create_task(
+                    self._run_instance(instance),
+                    name=f"engine_{instance_id}",
+                )
+
+                self._instances[instance_id] = instance
+                self._update_counts(mode, symbol, +1)
+
+                logger.info(f"Engine instance started: {instance_id}")
+                return instance_id
+
+            except Exception as e:
+                logger.error(f"Failed to start engine: {e}")
+                raise RuntimeError(f"Failed to start engine: {e}") from e
+
+    async def stop(self, instance_id: str) -> bool:
+        """
+        Stop a running engine instance.
+
+        Args:
+            instance_id: Instance ID to stop
+
+        Returns:
+            True if stopped successfully, False if not found
+        """
+        async with self._lock:
+            if instance_id not in self._instances:
+                logger.warning(f"Instance not found: {instance_id}")
+                return False
+
+            instance = self._instances[instance_id]
+            logger.info(f"Stopping engine instance: {instance_id}")
+
+            try:
+                # Stop runner
+                if instance.runner is not None:
+                    await instance.runner.stop()
+
+                # Cancel task
+                if instance.task is not None:
+                    instance.task.cancel()
+                    try:
+                        await instance.task
+                    except asyncio.CancelledError:
+                        pass
+
+                # Update counts
+                symbol = instance.play.symbol_universe[0]
+                self._update_counts(instance.mode.value, symbol, -1)
+
+                # Remove from tracking
+                del self._instances[instance_id]
+
+                logger.info(f"Engine instance stopped: {instance_id}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Error stopping instance {instance_id}: {e}")
+                return False
+
+    def list(self) -> list[InstanceInfo]:
+        """
+        List all running instances.
+
+        Returns:
+            List of InstanceInfo for each running instance
+        """
+        result = []
+        for instance in self._instances.values():
+            stats = instance.runner.stats if instance.runner else None
+            result.append(InstanceInfo(
+                instance_id=instance.instance_id,
+                play_id=instance.play.name,
+                symbol=instance.play.symbol_universe[0],
+                mode=instance.mode,
+                started_at=instance.started_at,
+                status=instance.runner.state.value if instance.runner else "unknown",
+                bars_processed=stats.bars_processed if stats else 0,
+                signals_generated=stats.signals_generated if stats else 0,
+                last_candle_ts=stats.last_candle_ts if stats else None,
+            ))
+        return result
+
+    def get(self, instance_id: str) -> InstanceInfo | None:
+        """Get info for a specific instance."""
+        if instance_id not in self._instances:
+            return None
+
+        instance = self._instances[instance_id]
+        stats = instance.runner.stats if instance.runner else None
+
+        return InstanceInfo(
+            instance_id=instance.instance_id,
+            play_id=instance.play.name,
+            symbol=instance.play.symbol_universe[0],
+            mode=instance.mode,
+            started_at=instance.started_at,
+            status=instance.runner.state.value if instance.runner else "unknown",
+            bars_processed=stats.bars_processed if stats else 0,
+            signals_generated=stats.signals_generated if stats else 0,
+            last_candle_ts=stats.last_candle_ts if stats else None,
+        )
+
+    @property
+    def instance_count(self) -> int:
+        """Number of running instances."""
+        return len(self._instances)
+
+    def _check_limits(self, play: "Play", mode: str) -> None:
+        """Check if starting a new instance would exceed limits."""
+        symbol = play.symbol_universe[0]
+
+        if mode == "live":
+            if self._live_count >= self._max_live:
+                raise ValueError(
+                    f"Live instance limit reached ({self._max_live}). "
+                    "Stop existing live instance first."
+                )
+
+        elif mode == "demo":
+            current = self._demo_by_symbol.get(symbol, 0)
+            if current >= self._max_demo_per_symbol:
+                raise ValueError(
+                    f"Demo instance limit for {symbol} reached ({self._max_demo_per_symbol}). "
+                    "Stop existing demo instance first."
+                )
+
+        elif mode == "backtest":
+            if self._backtest_count >= self._max_backtest:
+                raise ValueError(
+                    f"Backtest instance limit reached ({self._max_backtest}). "
+                    "DuckDB requires sequential access. Wait for current backtest to complete."
+                )
+
+    def _update_counts(self, mode: str, symbol: str, delta: int) -> None:
+        """Update instance counts."""
+        if mode == "live":
+            self._live_count += delta
+        elif mode == "demo":
+            self._demo_by_symbol[symbol] = self._demo_by_symbol.get(symbol, 0) + delta
+            if self._demo_by_symbol[symbol] <= 0:
+                del self._demo_by_symbol[symbol]
+        elif mode == "backtest":
+            self._backtest_count += delta
+
+    async def _run_instance(self, instance: _EngineInstance) -> None:
+        """Run an instance until stopped."""
+        try:
+            if instance.runner is not None:
+                await instance.runner.start()
+                await instance.runner.wait_until_stopped()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Instance {instance.instance_id} error: {e}")
+
+    async def stop_all(self) -> int:
+        """
+        Stop all running instances.
+
+        Returns:
+            Number of instances stopped
+        """
+        stopped = 0
+        for instance_id in list(self._instances.keys()):
+            if await self.stop(instance_id):
+                stopped += 1
+        return stopped
+
+    def register_backtest_start(self) -> bool:
+        """
+        Register that a backtest is starting (called by CLI tools).
+
+        Returns:
+            True if backtest can start, False if limit reached
+        """
+        if self._backtest_count >= self._max_backtest:
+            return False
+        self._backtest_count += 1
+        return True
+
+    def register_backtest_end(self) -> None:
+        """Register that a backtest has ended (called by CLI tools)."""
+        self._backtest_count = max(0, self._backtest_count - 1)

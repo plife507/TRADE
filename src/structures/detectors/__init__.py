@@ -22,16 +22,16 @@ from .derived_zone import IncrementalDerivedZone
 from .fibonacci import IncrementalFibonacci
 from .market_structure import IncrementalMarketStructure
 from .rolling_window import IncrementalRollingWindow
-from .swing import IncrementalSwingDetector
-from .trend import IncrementalTrendDetector
-from .zone import IncrementalZoneDetector
+from .swing import IncrementalSwing
+from .trend import IncrementalTrend
+from .zone import IncrementalZone
 
 __all__ = [
     "IncrementalDerivedZone",
     "IncrementalFibonacci",
     "IncrementalMarketStructure",
     "IncrementalRollingWindow",
-    "IncrementalSwingDetector",
-    "IncrementalTrendDetector",
-    "IncrementalZoneDetector",
+    "IncrementalSwing",
+    "IncrementalTrend",
+    "IncrementalZone",
 ]

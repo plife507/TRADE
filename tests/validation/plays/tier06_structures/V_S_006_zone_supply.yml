@@ -1,0 +1,62 @@
+version: "3.0.0"
+name: "V_S_006_zone_supply"
+description: "Validate zone detector - supply zone creation and break"
+
+synthetic:
+  pattern: "liquidity_hunt_highs"
+  bars: 100
+  seed: 106
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: zone
+      key: supply_zone
+      uses: swing
+      params:
+        zone_type: supply
+        width_atr: 0.5
+
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  atr:
+    indicator: atr
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    all:
+      - ["supply_zone.version", ">", 0]
+      - ["supply_zone.upper", ">", 0]
+      - ["close", "<", "supply_zone.upper"]
+
+position_policy:
+  mode: short_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

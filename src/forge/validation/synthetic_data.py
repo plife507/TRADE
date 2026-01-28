@@ -58,9 +58,62 @@ TF_TO_MINUTES: dict[str, int] = {
 
 
 # =============================================================================
-# Pattern Types
+# Pattern Types - Comprehensive Market Conditions
 # =============================================================================
-PatternType = Literal["trending", "ranging", "volatile", "multi_tf_aligned"]
+# Legacy patterns (backwards compatible)
+PatternType = Literal[
+    # Legacy (keep for backwards compatibility)
+    "trending", "ranging", "volatile", "multi_tf_aligned",
+    # Trend patterns
+    "trend_up_clean", "trend_down_clean", "trend_grinding",
+    "trend_parabolic", "trend_exhaustion", "trend_stairs",
+    # Range patterns
+    "range_tight", "range_wide", "range_ascending", "range_descending",
+    # Reversal patterns
+    "reversal_v_bottom", "reversal_v_top", "reversal_double_bottom", "reversal_double_top",
+    # Breakout patterns
+    "breakout_clean", "breakout_false", "breakout_retest",
+    # Volatility patterns
+    "vol_squeeze_expand", "vol_spike_recover", "vol_spike_continue", "vol_decay",
+    # Liquidity/manipulation patterns
+    "liquidity_hunt_lows", "liquidity_hunt_highs", "choppy_whipsaw",
+    "accumulation", "distribution",
+    # Multi-timeframe patterns
+    "mtf_aligned_bull", "mtf_aligned_bear", "mtf_pullback_bull", "mtf_pullback_bear",
+]
+
+
+# =============================================================================
+# Pattern Configuration
+# =============================================================================
+@dataclass
+class PatternConfig:
+    """Configuration for pattern generation."""
+    # Trend parameters
+    trend_magnitude: float = 0.20       # 20% price move for trends
+    pullback_depth: float = 0.30        # 30% retracement on pullbacks
+    stairs_steps: int = 4               # Number of steps in stair pattern
+
+    # Volatility parameters
+    volatility_base: float = 0.02       # 2% daily volatility
+    volatility_spike: float = 0.10      # 10% for spike events
+    volatility_squeeze: float = 0.005   # 0.5% for squeeze periods
+
+    # Range parameters
+    range_width: float = 0.08           # 8% range width
+    triangle_slope: float = 0.001       # Slope for ascending/descending triangles
+
+    # Timing (as fractions of total bars)
+    trend_fraction: float = 0.6         # 60% of bars in trend phase
+    range_fraction: float = 0.3         # 30% of bars in range phase
+    spike_fraction: float = 0.1         # 10% of bars in spike phase
+
+    # Noise
+    noise_level: float = 0.3            # 0-1 scale for random noise overlay
+
+    # Liquidity hunt parameters
+    hunt_depth: float = 0.02            # 2% below/above level for hunt
+    hunt_recovery: float = 0.8          # 80% recovery after hunt
 
 
 # =============================================================================
@@ -281,6 +334,1022 @@ def _generate_multi_tf_aligned_prices(
 
 
 # =============================================================================
+# NEW Pattern Generators - Comprehensive Market Conditions
+# =============================================================================
+
+def _generate_trend_up_clean(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """
+    Generate clean uptrend with small pullbacks.
+
+    Pattern: Up 70%, small pullback 15%, continue up 15%
+    """
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    # Phase boundaries
+    trend1_end = int(n_bars * 0.7)
+    pullback_end = int(n_bars * 0.85)
+
+    # Trend rate per bar
+    total_move = base_price * cfg.trend_magnitude
+    trend_rate = total_move / trend1_end
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < trend1_end:
+            # Main trend up
+            prices[i] = prices[i-1] + trend_rate + noise
+        elif i < pullback_end:
+            # Pullback (30% of the move)
+            pullback_rate = (total_move * cfg.pullback_depth) / (pullback_end - trend1_end)
+            prices[i] = prices[i-1] - pullback_rate + noise
+        else:
+            # Continue trend
+            prices[i] = prices[i-1] + trend_rate * 0.8 + noise
+
+    return prices
+
+
+def _generate_trend_down_clean(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate clean downtrend with small rallies."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    trend1_end = int(n_bars * 0.7)
+    rally_end = int(n_bars * 0.85)
+
+    total_move = base_price * cfg.trend_magnitude
+    trend_rate = total_move / trend1_end
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < trend1_end:
+            prices[i] = prices[i-1] - trend_rate + noise
+        elif i < rally_end:
+            rally_rate = (total_move * cfg.pullback_depth) / (rally_end - trend1_end)
+            prices[i] = prices[i-1] + rally_rate + noise
+        else:
+            prices[i] = prices[i-1] - trend_rate * 0.8 + noise
+
+    return prices
+
+
+def _generate_trend_grinding(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate slow, low-volatility grind up."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    # Very slow trend with minimal noise
+    total_move = base_price * cfg.trend_magnitude * 0.5  # Half the normal move
+    trend_rate = total_move / n_bars
+    low_vol = volatility * 0.3  # 30% of normal volatility
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, low_vol * base_price)
+        prices[i] = prices[i-1] + trend_rate + noise
+
+    return prices
+
+
+def _generate_trend_parabolic(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate accelerating parabolic trend (blow-off top)."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    # Exponential acceleration
+    for i in range(1, n_bars):
+        # Acceleration factor increases over time
+        progress = i / n_bars
+        accel = 1 + progress * 3  # 1x to 4x acceleration
+        base_move = (base_price * cfg.trend_magnitude) / n_bars
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+        prices[i] = prices[i-1] + base_move * accel + noise
+
+    return prices
+
+
+def _generate_trend_exhaustion(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate trend that exhausts and reverses."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    trend_end = int(n_bars * 0.6)
+    exhaust_end = int(n_bars * 0.75)
+
+    total_move = base_price * cfg.trend_magnitude
+    trend_rate = total_move / trend_end
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < trend_end:
+            # Strong trend up
+            prices[i] = prices[i-1] + trend_rate + noise
+        elif i < exhaust_end:
+            # Exhaustion - slowing, choppy
+            prices[i] = prices[i-1] + rng.normal(0, volatility * base_price * 2)
+        else:
+            # Reversal down
+            reversal_rate = total_move * 0.6 / (n_bars - exhaust_end)
+            prices[i] = prices[i-1] - reversal_rate + noise
+
+    return prices
+
+
+def _generate_trend_stairs(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate stair-step pattern: trend, pause, trend, pause."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    steps = cfg.stairs_steps
+    bars_per_step = n_bars // steps
+    step_move = (base_price * cfg.trend_magnitude) / steps
+
+    for i in range(1, n_bars):
+        step_num = i // bars_per_step
+        pos_in_step = i % bars_per_step
+        step_progress = pos_in_step / bars_per_step
+
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if step_progress < 0.6:  # 60% trending
+            trend_rate = step_move / (bars_per_step * 0.6)
+            prices[i] = prices[i-1] + trend_rate + noise
+        else:  # 40% consolidation
+            # Mean revert to current step level
+            target = base_price + (step_num + 1) * step_move
+            reversion = 0.1 * (target - prices[i-1])
+            prices[i] = prices[i-1] + reversion + noise
+
+    return prices
+
+
+def _generate_range_tight(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate tight range / squeeze pattern."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    # Very low volatility, strong mean reversion
+    squeeze_vol = cfg.volatility_squeeze
+    mean_reversion = 0.2
+
+    for i in range(1, n_bars):
+        reversion = mean_reversion * (base_price - prices[i-1])
+        noise = rng.normal(0, squeeze_vol * base_price)
+        prices[i] = prices[i-1] + reversion + noise
+
+    return prices
+
+
+def _generate_range_wide(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate wide range with high volatility but no direction."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    range_high = base_price * (1 + cfg.range_width / 2)
+    range_low = base_price * (1 - cfg.range_width / 2)
+
+    for i in range(1, n_bars):
+        # Random walk with boundary reflection
+        change = rng.normal(0, volatility * base_price * 1.5)
+        new_price = prices[i-1] + change
+
+        # Soft boundaries - mean revert when near edges
+        if new_price > range_high:
+            new_price = range_high - abs(rng.normal(0, volatility * base_price))
+        elif new_price < range_low:
+            new_price = range_low + abs(rng.normal(0, volatility * base_price))
+
+        prices[i] = new_price
+
+    return prices
+
+
+def _generate_range_ascending(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate ascending triangle: higher lows, flat resistance."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    resistance = base_price * (1 + cfg.range_width / 2)
+
+    for i in range(1, n_bars):
+        progress = i / n_bars
+        # Rising support level
+        support = base_price * (1 - cfg.range_width / 2) + progress * base_price * cfg.range_width * 0.8
+
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+        mid = (support + resistance) / 2
+
+        # Oscillate between support and resistance
+        phase = np.sin(progress * 8 * np.pi)
+        prices[i] = mid + phase * (resistance - support) / 2 + noise
+
+        # Enforce boundaries
+        prices[i] = max(support, min(resistance, prices[i]))
+
+    return prices
+
+
+def _generate_range_descending(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate descending triangle: flat support, lower highs."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    support = base_price * (1 - cfg.range_width / 2)
+
+    for i in range(1, n_bars):
+        progress = i / n_bars
+        # Falling resistance level
+        resistance = base_price * (1 + cfg.range_width / 2) - progress * base_price * cfg.range_width * 0.8
+
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+        mid = (support + resistance) / 2
+
+        phase = np.sin(progress * 8 * np.pi)
+        prices[i] = mid + phase * (resistance - support) / 2 + noise
+
+        prices[i] = max(support, min(resistance, prices[i]))
+
+    return prices
+
+
+def _generate_reversal_v_bottom(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate sharp V-bottom reversal."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    bottom_bar = n_bars // 2
+    drop_magnitude = base_price * cfg.trend_magnitude
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < bottom_bar:
+            # Sharp drop
+            drop_rate = drop_magnitude / bottom_bar
+            prices[i] = prices[i-1] - drop_rate + noise
+        else:
+            # Sharp recovery
+            recovery_rate = drop_magnitude / (n_bars - bottom_bar)
+            prices[i] = prices[i-1] + recovery_rate + noise
+
+    return prices
+
+
+def _generate_reversal_v_top(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate sharp V-top reversal."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    top_bar = n_bars // 2
+    rise_magnitude = base_price * cfg.trend_magnitude
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < top_bar:
+            rise_rate = rise_magnitude / top_bar
+            prices[i] = prices[i-1] + rise_rate + noise
+        else:
+            drop_rate = rise_magnitude / (n_bars - top_bar)
+            prices[i] = prices[i-1] - drop_rate + noise
+
+    return prices
+
+
+def _generate_reversal_double_bottom(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate W-pattern double bottom."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    # W pattern: drop, bounce, drop to same level, rally
+    first_bottom = int(n_bars * 0.25)
+    middle_peak = int(n_bars * 0.5)
+    second_bottom = int(n_bars * 0.75)
+    drop_magnitude = base_price * cfg.trend_magnitude
+
+    bottom_price = base_price - drop_magnitude
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < first_bottom:
+            rate = drop_magnitude / first_bottom
+            prices[i] = prices[i-1] - rate + noise
+        elif i < middle_peak:
+            rate = (drop_magnitude * 0.5) / (middle_peak - first_bottom)
+            prices[i] = prices[i-1] + rate + noise
+        elif i < second_bottom:
+            rate = (drop_magnitude * 0.5) / (second_bottom - middle_peak)
+            prices[i] = prices[i-1] - rate + noise
+        else:
+            rate = drop_magnitude / (n_bars - second_bottom)
+            prices[i] = prices[i-1] + rate + noise
+
+    return prices
+
+
+def _generate_reversal_double_top(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate M-pattern double top."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    first_top = int(n_bars * 0.25)
+    middle_dip = int(n_bars * 0.5)
+    second_top = int(n_bars * 0.75)
+    rise_magnitude = base_price * cfg.trend_magnitude
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < first_top:
+            rate = rise_magnitude / first_top
+            prices[i] = prices[i-1] + rate + noise
+        elif i < middle_dip:
+            rate = (rise_magnitude * 0.5) / (middle_dip - first_top)
+            prices[i] = prices[i-1] - rate + noise
+        elif i < second_top:
+            rate = (rise_magnitude * 0.5) / (second_top - middle_dip)
+            prices[i] = prices[i-1] + rate + noise
+        else:
+            rate = rise_magnitude / (n_bars - second_top)
+            prices[i] = prices[i-1] - rate + noise
+
+    return prices
+
+
+def _generate_breakout_clean(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate clean breakout with follow-through."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    range_end = int(n_bars * 0.6)
+    breakout_end = int(n_bars * 0.7)
+
+    range_high = base_price * (1 + cfg.range_width / 4)
+    range_low = base_price * (1 - cfg.range_width / 4)
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < range_end:
+            # Consolidation
+            mid = (range_high + range_low) / 2
+            phase = np.sin(i / range_end * 6 * np.pi)
+            prices[i] = mid + phase * (range_high - range_low) / 2 + noise
+        elif i < breakout_end:
+            # Breakout bar(s) - strong move
+            rate = (base_price * cfg.trend_magnitude * 0.3) / (breakout_end - range_end)
+            prices[i] = prices[i-1] + rate + noise
+        else:
+            # Follow-through
+            rate = (base_price * cfg.trend_magnitude * 0.5) / (n_bars - breakout_end)
+            prices[i] = prices[i-1] + rate + noise
+
+    return prices
+
+
+def _generate_breakout_false(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate false breakout (fakeout) that reverses."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    range_end = int(n_bars * 0.5)
+    fakeout_end = int(n_bars * 0.6)
+    reversal_end = int(n_bars * 0.8)
+
+    range_high = base_price * (1 + cfg.range_width / 4)
+    range_low = base_price * (1 - cfg.range_width / 4)
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < range_end:
+            mid = (range_high + range_low) / 2
+            phase = np.sin(i / range_end * 6 * np.pi)
+            prices[i] = mid + phase * (range_high - range_low) / 2 + noise
+        elif i < fakeout_end:
+            # False breakout up
+            rate = (base_price * cfg.hunt_depth * 2) / (fakeout_end - range_end)
+            prices[i] = prices[i-1] + rate + noise
+        elif i < reversal_end:
+            # Sharp reversal down through range
+            rate = (base_price * cfg.range_width) / (reversal_end - fakeout_end)
+            prices[i] = prices[i-1] - rate + noise
+        else:
+            # Settle at lower level
+            target = range_low - base_price * cfg.range_width * 0.2
+            reversion = 0.1 * (target - prices[i-1])
+            prices[i] = prices[i-1] + reversion + noise
+
+    return prices
+
+
+def _generate_breakout_retest(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate breakout with pullback retest then continuation."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    range_end = int(n_bars * 0.4)
+    breakout_end = int(n_bars * 0.5)
+    retest_end = int(n_bars * 0.65)
+
+    range_high = base_price * (1 + cfg.range_width / 4)
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < range_end:
+            mid = base_price
+            phase = np.sin(i / range_end * 6 * np.pi) * cfg.range_width / 4
+            prices[i] = mid + phase * base_price + noise
+        elif i < breakout_end:
+            # Breakout
+            rate = (range_high * 0.1) / (breakout_end - range_end)
+            prices[i] = prices[i-1] + rate + noise
+        elif i < retest_end:
+            # Pullback to retest breakout level
+            target = range_high
+            reversion = 0.15 * (target - prices[i-1])
+            prices[i] = prices[i-1] + reversion + noise
+        else:
+            # Continuation up
+            rate = (base_price * cfg.trend_magnitude * 0.5) / (n_bars - retest_end)
+            prices[i] = prices[i-1] + rate + noise
+
+    return prices
+
+
+def _generate_vol_squeeze_expand(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate volatility squeeze then expansion."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    squeeze_end = int(n_bars * 0.6)
+    expansion_end = int(n_bars * 0.75)
+
+    for i in range(1, n_bars):
+        if i < squeeze_end:
+            # Decreasing volatility squeeze
+            progress = i / squeeze_end
+            current_vol = cfg.volatility_base * (1 - progress * 0.8)  # Vol decreases to 20%
+            noise = rng.normal(0, current_vol * base_price)
+            # Slight drift up
+            prices[i] = prices[i-1] + base_price * 0.0001 + noise
+        elif i < expansion_end:
+            # Volatility expansion with direction
+            noise = rng.normal(0, cfg.volatility_spike * base_price)
+            rate = (base_price * cfg.trend_magnitude * 0.3) / (expansion_end - squeeze_end)
+            prices[i] = prices[i-1] + rate + noise
+        else:
+            # Continue with elevated volatility
+            noise = rng.normal(0, cfg.volatility_base * 1.5 * base_price)
+            rate = (base_price * cfg.trend_magnitude * 0.3) / (n_bars - expansion_end)
+            prices[i] = prices[i-1] + rate + noise
+
+    return prices
+
+
+def _generate_vol_spike_recover(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate flash crash with V-recovery."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    normal_end = int(n_bars * 0.4)
+    crash_end = int(n_bars * 0.5)
+    recovery_end = int(n_bars * 0.7)
+
+    crash_magnitude = base_price * cfg.volatility_spike * 2
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < normal_end:
+            # Normal trading
+            prices[i] = prices[i-1] + rng.normal(0, volatility * base_price)
+        elif i < crash_end:
+            # Flash crash
+            rate = crash_magnitude / (crash_end - normal_end)
+            prices[i] = prices[i-1] - rate + noise * 0.5
+        elif i < recovery_end:
+            # V-recovery
+            rate = crash_magnitude / (recovery_end - crash_end)
+            prices[i] = prices[i-1] + rate + noise * 0.5
+        else:
+            # Back to normal
+            prices[i] = prices[i-1] + rng.normal(0, volatility * base_price)
+
+    return prices
+
+
+def _generate_vol_spike_continue(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate crash that continues (no recovery)."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    normal_end = int(n_bars * 0.4)
+    crash_end = int(n_bars * 0.55)
+
+    crash_magnitude = base_price * cfg.volatility_spike * 2
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < normal_end:
+            prices[i] = prices[i-1] + rng.normal(0, volatility * base_price)
+        elif i < crash_end:
+            # Sharp crash
+            rate = crash_magnitude / (crash_end - normal_end)
+            prices[i] = prices[i-1] - rate + noise * 0.5
+        else:
+            # Continued selling, slower pace
+            rate = crash_magnitude * 0.3 / (n_bars - crash_end)
+            prices[i] = prices[i-1] - rate + rng.normal(0, volatility * base_price * 1.5)
+
+    return prices
+
+
+def _generate_vol_decay(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate high volatility settling to low volatility."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    for i in range(1, n_bars):
+        progress = i / n_bars
+        # Volatility decays from high to low
+        current_vol = cfg.volatility_spike * (1 - progress * 0.9) + cfg.volatility_squeeze
+        noise = rng.normal(0, current_vol * base_price)
+        prices[i] = prices[i-1] + noise
+
+    return prices
+
+
+def _generate_liquidity_hunt_lows(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate stop hunt below support then rally."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    range_end = int(n_bars * 0.5)
+    hunt_end = int(n_bars * 0.6)
+    recovery_end = int(n_bars * 0.75)
+
+    support = base_price * (1 - cfg.range_width / 4)
+    hunt_low = support * (1 - cfg.hunt_depth)
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < range_end:
+            # Range with defined support
+            mid = base_price
+            phase = np.sin(i / range_end * 8 * np.pi)
+            amplitude = (base_price - support) * 0.8
+            prices[i] = support + amplitude + phase * amplitude * 0.3 + noise
+        elif i < hunt_end:
+            # Sweep below support
+            rate = (support - hunt_low) / (hunt_end - range_end)
+            prices[i] = prices[i-1] - rate + noise * 0.3
+        elif i < recovery_end:
+            # Sharp recovery
+            rate = (base_price - hunt_low) / (recovery_end - hunt_end)
+            prices[i] = prices[i-1] + rate + noise
+        else:
+            # Continue higher
+            rate = (base_price * cfg.trend_magnitude * 0.3) / (n_bars - recovery_end)
+            prices[i] = prices[i-1] + rate + noise
+
+    return prices
+
+
+def _generate_liquidity_hunt_highs(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate stop hunt above resistance then drop."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    range_end = int(n_bars * 0.5)
+    hunt_end = int(n_bars * 0.6)
+    drop_end = int(n_bars * 0.75)
+
+    resistance = base_price * (1 + cfg.range_width / 4)
+    hunt_high = resistance * (1 + cfg.hunt_depth)
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, volatility * base_price * cfg.noise_level)
+
+        if i < range_end:
+            mid = base_price
+            phase = np.sin(i / range_end * 8 * np.pi)
+            amplitude = (resistance - base_price) * 0.8
+            prices[i] = base_price + phase * amplitude + noise
+        elif i < hunt_end:
+            rate = (hunt_high - resistance) / (hunt_end - range_end)
+            prices[i] = prices[i-1] + rate + noise * 0.3
+        elif i < drop_end:
+            rate = (hunt_high - base_price) / (drop_end - hunt_end)
+            prices[i] = prices[i-1] - rate + noise
+        else:
+            rate = (base_price * cfg.trend_magnitude * 0.3) / (n_bars - drop_end)
+            prices[i] = prices[i-1] - rate + noise
+
+    return prices
+
+
+def _generate_choppy_whipsaw(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate choppy price action with many false signals."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    # Multiple small waves with no clear direction
+    for i in range(1, n_bars):
+        # Random direction changes
+        if rng.random() < 0.15:  # 15% chance of direction flip
+            direction = rng.choice([-1, 1])
+        else:
+            direction = 1 if prices[i-1] < base_price else -1
+
+        move = direction * rng.uniform(0.5, 1.5) * volatility * base_price
+        noise = rng.normal(0, volatility * base_price * 0.5)
+
+        prices[i] = prices[i-1] + move + noise
+
+        # Keep in general range
+        if prices[i] > base_price * 1.05:
+            prices[i] = base_price * 1.05 - rng.uniform(0, volatility * base_price)
+        elif prices[i] < base_price * 0.95:
+            prices[i] = base_price * 0.95 + rng.uniform(0, volatility * base_price)
+
+    return prices
+
+
+def _generate_accumulation(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate accumulation pattern: low vol, slight drift up."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    # Very subtle upward drift with low volatility
+    drift_rate = (base_price * cfg.trend_magnitude * 0.3) / n_bars
+    low_vol = volatility * 0.4
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, low_vol * base_price)
+        prices[i] = prices[i-1] + drift_rate + noise
+
+    return prices
+
+
+def _generate_distribution(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate distribution pattern: low vol, slight drift down."""
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    drift_rate = (base_price * cfg.trend_magnitude * 0.3) / n_bars
+    low_vol = volatility * 0.4
+
+    for i in range(1, n_bars):
+        noise = rng.normal(0, low_vol * base_price)
+        prices[i] = prices[i-1] - drift_rate + noise
+
+    return prices
+
+
+def _generate_mtf_aligned_bull(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate multi-timeframe aligned bullish trend."""
+    cfg = config or PatternConfig()
+
+    # Strong uptrend with small pullbacks at different frequencies
+    high_tf_wave = np.sin(np.linspace(0, 2 * np.pi, n_bars)) * base_price * 0.03  # Small wave
+    med_tf_wave = np.sin(np.linspace(0, 8 * np.pi, n_bars)) * base_price * 0.01
+    noise = rng.normal(0, volatility * base_price * cfg.noise_level, n_bars)
+
+    # Strong upward trend component
+    trend = np.linspace(0, base_price * cfg.trend_magnitude, n_bars)
+
+    prices = base_price + trend + high_tf_wave + med_tf_wave + noise
+
+    return prices
+
+
+def _generate_mtf_aligned_bear(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate multi-timeframe aligned bearish trend."""
+    cfg = config or PatternConfig()
+
+    high_tf_wave = np.sin(np.linspace(0, 2 * np.pi, n_bars)) * base_price * 0.03
+    med_tf_wave = np.sin(np.linspace(0, 8 * np.pi, n_bars)) * base_price * 0.01
+    noise = rng.normal(0, volatility * base_price * cfg.noise_level, n_bars)
+
+    trend = np.linspace(0, -base_price * cfg.trend_magnitude, n_bars)
+
+    prices = base_price + trend + high_tf_wave + med_tf_wave + noise
+
+    return prices
+
+
+def _generate_mtf_pullback_bull(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate higher TF uptrend with lower TF pullback."""
+    cfg = config or PatternConfig()
+
+    # Higher TF uptrend
+    trend = np.linspace(0, base_price * cfg.trend_magnitude, n_bars)
+
+    # Lower TF pullback in the middle
+    pullback = np.zeros(n_bars)
+    pullback_start = int(n_bars * 0.4)
+    pullback_end = int(n_bars * 0.6)
+    pullback_depth = base_price * cfg.trend_magnitude * cfg.pullback_depth
+
+    for i in range(n_bars):
+        if pullback_start <= i < pullback_end:
+            progress = (i - pullback_start) / (pullback_end - pullback_start)
+            pullback[i] = -np.sin(progress * np.pi) * pullback_depth
+
+    noise = rng.normal(0, volatility * base_price * cfg.noise_level, n_bars)
+
+    prices = base_price + trend + pullback + noise
+
+    return prices
+
+
+def _generate_mtf_pullback_bear(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate higher TF downtrend with lower TF rally."""
+    cfg = config or PatternConfig()
+
+    trend = np.linspace(0, -base_price * cfg.trend_magnitude, n_bars)
+
+    rally = np.zeros(n_bars)
+    rally_start = int(n_bars * 0.4)
+    rally_end = int(n_bars * 0.6)
+    rally_height = base_price * cfg.trend_magnitude * cfg.pullback_depth
+
+    for i in range(n_bars):
+        if rally_start <= i < rally_end:
+            progress = (i - rally_start) / (rally_end - rally_start)
+            rally[i] = np.sin(progress * np.pi) * rally_height
+
+    noise = rng.normal(0, volatility * base_price * cfg.noise_level, n_bars)
+
+    prices = base_price + trend + rally + noise
+
+    return prices
+
+
+# =============================================================================
+# Pattern Registry - Maps pattern names to generators
+# =============================================================================
+PATTERN_GENERATORS = {
+    # Legacy patterns (backwards compatible)
+    "trending": _generate_trending_prices,
+    "ranging": _generate_ranging_prices,
+    "volatile": _generate_volatile_prices,
+    "multi_tf_aligned": _generate_multi_tf_aligned_prices,
+    # Trend patterns
+    "trend_up_clean": _generate_trend_up_clean,
+    "trend_down_clean": _generate_trend_down_clean,
+    "trend_grinding": _generate_trend_grinding,
+    "trend_parabolic": _generate_trend_parabolic,
+    "trend_exhaustion": _generate_trend_exhaustion,
+    "trend_stairs": _generate_trend_stairs,
+    # Range patterns
+    "range_tight": _generate_range_tight,
+    "range_wide": _generate_range_wide,
+    "range_ascending": _generate_range_ascending,
+    "range_descending": _generate_range_descending,
+    # Reversal patterns
+    "reversal_v_bottom": _generate_reversal_v_bottom,
+    "reversal_v_top": _generate_reversal_v_top,
+    "reversal_double_bottom": _generate_reversal_double_bottom,
+    "reversal_double_top": _generate_reversal_double_top,
+    # Breakout patterns
+    "breakout_clean": _generate_breakout_clean,
+    "breakout_false": _generate_breakout_false,
+    "breakout_retest": _generate_breakout_retest,
+    # Volatility patterns
+    "vol_squeeze_expand": _generate_vol_squeeze_expand,
+    "vol_spike_recover": _generate_vol_spike_recover,
+    "vol_spike_continue": _generate_vol_spike_continue,
+    "vol_decay": _generate_vol_decay,
+    # Liquidity/manipulation patterns
+    "liquidity_hunt_lows": _generate_liquidity_hunt_lows,
+    "liquidity_hunt_highs": _generate_liquidity_hunt_highs,
+    "choppy_whipsaw": _generate_choppy_whipsaw,
+    "accumulation": _generate_accumulation,
+    "distribution": _generate_distribution,
+    # Multi-timeframe patterns
+    "mtf_aligned_bull": _generate_mtf_aligned_bull,
+    "mtf_aligned_bear": _generate_mtf_aligned_bear,
+    "mtf_pullback_bull": _generate_mtf_pullback_bull,
+    "mtf_pullback_bear": _generate_mtf_pullback_bear,
+}
+
+
+# =============================================================================
 # OHLCV Generation from Close Prices
 # =============================================================================
 def _prices_to_ohlcv(
@@ -496,6 +1565,7 @@ def generate_synthetic_candles(
     base_timestamp: datetime | None = None,
     correlate_volume: bool = True,
     align_multi_tf: bool = True,
+    config: PatternConfig | None = None,
 ) -> SyntheticCandles:
     """
     Generate synthetic OHLCV data for all timeframes.
@@ -506,34 +1576,39 @@ def generate_synthetic_candles(
         bars_per_tf: Number of bars for slowest TF (default: 1000). When align_multi_tf=True,
             faster TFs get proportionally more bars to cover the same time range.
         seed: Random seed for reproducibility (default: 42)
-        pattern: Price pattern type:
-            - "trending": Clear directional move (swing highs/lows)
-            - "ranging": Sideways consolidation (zone detection)
-            - "volatile": High volatility spikes (breakout detection)
-            - "multi_tf_aligned": Multi-TF alignment (high_tf/med_tf/low_tf correlation)
+        pattern: Price pattern type. Options include:
+            Legacy: "trending", "ranging", "volatile", "multi_tf_aligned"
+            Trends: "trend_up_clean", "trend_down_clean", "trend_grinding",
+                   "trend_parabolic", "trend_exhaustion", "trend_stairs"
+            Ranges: "range_tight", "range_wide", "range_ascending", "range_descending"
+            Reversals: "reversal_v_bottom", "reversal_v_top",
+                      "reversal_double_bottom", "reversal_double_top"
+            Breakouts: "breakout_clean", "breakout_false", "breakout_retest"
+            Volatility: "vol_squeeze_expand", "vol_spike_recover",
+                       "vol_spike_continue", "vol_decay"
+            Liquidity: "liquidity_hunt_lows", "liquidity_hunt_highs",
+                      "choppy_whipsaw", "accumulation", "distribution"
+            Multi-TF: "mtf_aligned_bull", "mtf_aligned_bear",
+                     "mtf_pullback_bull", "mtf_pullback_bear"
         base_price: Starting price (default: 50000.0)
         volatility: Daily volatility (default: 0.02 = 2%)
         base_timestamp: Starting timestamp (default: 2025-01-01 00:00 UTC)
         correlate_volume: If True (default), volume correlates with price moves.
-            Larger price changes produce higher volume for realistic testing
-            of volume-based indicators and structures.
         align_multi_tf: If True (default), all timeframes cover the same time range.
-            Slowest TF gets bars_per_tf bars, faster TFs get proportionally more.
-            Example: bars_per_tf=100, timeframes=["1m","1h"] -> 1h=100 bars, 1m=6000 bars.
-            If False, all TFs get exactly bars_per_tf bars (misaligned time ranges).
+        config: Optional PatternConfig for fine-tuning pattern parameters.
 
     Returns:
         SyntheticCandles with OHLCV DataFrames for each timeframe
 
     Example:
-        >>> # Multi-TF aligned: 1h gets 100 bars, 1m gets 6000 bars (same time range)
+        >>> # Generate clean uptrend with custom config
+        >>> from src.forge.validation import PatternConfig
+        >>> config = PatternConfig(trend_magnitude=0.30)  # 30% move
         >>> candles = generate_synthetic_candles(
-        ...     timeframes=["1m", "1h"],
-        ...     bars_per_tf=100,
-        ...     align_multi_tf=True,
+        ...     pattern="trend_up_clean",
+        ...     bars_per_tf=500,
+        ...     config=config,
         ... )
-        >>> print(candles.bar_counts)  # {"1m": 6000, "1h": 100}
-        >>> print(candles.total_minutes)  # 6000
     """
     # Apply defaults
     if timeframes is None:
@@ -549,18 +1624,16 @@ def generate_synthetic_candles(
     # Create RNG with seed for reproducibility
     rng = np.random.default_rng(seed)
 
-    # Select pattern generator
-    pattern_generators = {
-        "trending": _generate_trending_prices,
-        "ranging": _generate_ranging_prices,
-        "volatile": _generate_volatile_prices,
-        "multi_tf_aligned": _generate_multi_tf_aligned_prices,
-    }
+    # Select pattern generator from registry
+    if pattern not in PATTERN_GENERATORS:
+        raise ValueError(f"Unknown pattern: {pattern}. Valid: {list(PATTERN_GENERATORS.keys())}")
 
-    if pattern not in pattern_generators:
-        raise ValueError(f"Unknown pattern: {pattern}. Valid: {list(pattern_generators.keys())}")
+    generator = PATTERN_GENERATORS[pattern]
 
-    generator = pattern_generators[pattern]
+    # Check if generator accepts config parameter (new-style generators)
+    import inspect
+    sig = inspect.signature(generator)
+    accepts_config = "config" in sig.parameters
 
     # Calculate bar counts per timeframe
     bar_counts: dict[str, int] = {}
@@ -594,12 +1667,22 @@ def generate_synthetic_candles(
         tf_volatility = volatility * np.sqrt(tf_minutes / 1440)  # Annualized to daily
 
         # Generate close prices using pattern
-        close_prices = generator(
-            rng=rng,
-            n_bars=n_bars,
-            base_price=base_price,
-            volatility=tf_volatility,
-        )
+        if accepts_config:
+            close_prices = generator(
+                rng=rng,
+                n_bars=n_bars,
+                base_price=base_price,
+                volatility=tf_volatility,
+                config=config,  # Pass config (None uses defaults)
+            )
+        else:
+            # Legacy generators don't accept config
+            close_prices = generator(
+                rng=rng,
+                n_bars=n_bars,
+                base_price=base_price,
+                volatility=tf_volatility,
+            )
 
         # Convert to OHLCV
         df = _prices_to_ohlcv(

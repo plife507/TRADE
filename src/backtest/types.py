@@ -163,7 +163,15 @@ class Trade:
 
 @dataclass
 class EquityPoint:
-    """Single point on the equity curve."""
+    """
+    Single point on the equity curve.
+
+    Attributes:
+        timestamp: Bar timestamp (UTC)
+        equity: Total equity (balance + unrealized PnL) in USDT
+        drawdown: Current drawdown in USDT from peak equity
+        drawdown_pct: Current drawdown as percentage (0.0-1.0)
+    """
     timestamp: datetime
     equity: float
     drawdown: float = 0.0

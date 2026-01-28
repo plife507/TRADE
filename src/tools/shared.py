@@ -282,8 +282,10 @@ def _ensure_websocket_running() -> bool:
             return result
         
         return True
-        
-    except Exception:
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"WebSocket startup failed: {e}")
         _ws_startup_failed = True
         _ws_startup_attempt_time = time.time()
         return False
@@ -339,8 +341,10 @@ def _ensure_symbol_subscribed(symbol: str) -> bool:
         if bootstrap and bootstrap._running:
             return bootstrap.ensure_symbol_subscribed(symbol)
         return False
-        
-    except Exception:
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"Symbol subscription failed: {e}")
         return False
 
 
@@ -349,5 +353,7 @@ def _get_realtime_bootstrap() -> "RealtimeBootstrap | None":
     try:
         from ..data.realtime_bootstrap import get_realtime_bootstrap
         return get_realtime_bootstrap()
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"RealtimeBootstrap not available: {e}")
         return None

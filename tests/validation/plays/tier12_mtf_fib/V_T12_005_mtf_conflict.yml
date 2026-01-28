@@ -1,0 +1,70 @@
+version: "3.0.0"
+name: "V_T12_005_mtf_conflict"
+description: "Timeframe disagreement - no trades expected"
+
+synthetic:
+  pattern: "choppy_whipsaw"
+  bars: 200
+  seed: 1205
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_21_1h:
+    indicator: ema
+    params:
+      length: 21
+    tf: "1h"
+  ema_50_4h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "4h"
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
+      - ["close", ">", "ema_21_1h"]
+      - ["close", ">", "ema_50_4h"]
+      - ["trend.direction", "==", 1]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

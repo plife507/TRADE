@@ -198,21 +198,6 @@ class TimeframeCache:
         }
 
 
-def build_close_ts_map(
-    bars: list,
-) -> set[datetime]:
-    """
-    Build a set of close timestamps from a list of Bars.
-    
-    Args:
-        bars: List of Bar objects
-        
-    Returns:
-        Set of ts_close datetimes
-    """
-    return {bar.ts_close for bar in bars}
-
-
 def build_close_ts_map_from_df(
     df,
     ts_close_column: str = "ts_close",

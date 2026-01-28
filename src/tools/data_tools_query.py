@@ -646,9 +646,9 @@ def build_symbol_history_tool(
 
 
 # Default timeframe groups for full history sync
-TF_GROUP_LOW = ["1m", "5m", "15m"]      # LTF (high-resolution)
-TF_GROUP_MID = ["1h", "4h"]             # MTF
-TF_GROUP_HIGH = ["D"]                   # HTF (Bybit format)
+TF_GROUP_LOW = ["1m", "5m", "15m"]      # low_tf (high-resolution)
+TF_GROUP_MID = ["1h", "4h"]             # med_tf
+TF_GROUP_HIGH = ["D"]                   # high_tf (Bybit format)
 
 # All standard timeframes
 ALL_TIMEFRAMES = TF_GROUP_LOW + TF_GROUP_MID + TF_GROUP_HIGH

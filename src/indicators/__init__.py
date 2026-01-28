@@ -51,17 +51,8 @@ from src.backtest.indicator_vendor import (
     compute_indicator,
     canonicalize_indicator_outputs,
     CanonicalizeResult,
-    # Single-output indicator functions
-    ema,
-    sma,
-    rsi,
-    atr,
-    # Multi-output indicator functions
-    macd,
-    bbands,
-    stoch,
-    stochrsi,
 )
+# G1.8: Standalone indicator functions (ema, sma, rsi, etc.) removed - use compute_indicator()
 
 # =============================================================================
 # Compute exports (DataFrame-based application)
@@ -104,7 +95,6 @@ from src.backtest.features.feature_frame_builder import (
     IndicatorCompute,
     get_compute,
     build_features_from_play,
-    build_features_from_preloaded_dfs,
     PlayFeatures,
 )
 
@@ -131,6 +121,7 @@ from .metadata import (
 # =============================================================================
 from .incremental import (
     IncrementalIndicator,
+    # Original 11 incremental indicators
     IncrementalEMA,
     IncrementalSMA,
     IncrementalRSI,
@@ -142,6 +133,46 @@ from .incremental import (
     IncrementalStochastic,
     IncrementalADX,
     IncrementalSuperTrend,
+    IncrementalStochRSI,
+    # Phase 1: Trivial indicators
+    IncrementalOHLC4,
+    IncrementalMidprice,
+    IncrementalROC,
+    IncrementalMOM,
+    IncrementalOBV,
+    IncrementalNATR,
+    # Phase 2: EMA-composable indicators
+    IncrementalDEMA,
+    IncrementalTEMA,
+    IncrementalPPO,
+    IncrementalTRIX,
+    IncrementalTSI,
+    # Phase 3: SMA/Buffer-based indicators
+    IncrementalWMA,
+    IncrementalTRIMA,
+    IncrementalLINREG,
+    IncrementalCMF,
+    IncrementalCMO,
+    IncrementalMFI,
+    # Phase 4: Lookback-based indicators
+    IncrementalAROON,
+    IncrementalDonchian,
+    IncrementalKC,
+    IncrementalDM,
+    IncrementalVortex,
+    # Phase 5: Complex adaptive indicators
+    IncrementalKAMA,
+    IncrementalALMA,
+    IncrementalZLMA,
+    IncrementalUO,
+    # Phase 6: Stateful multi-output indicators
+    IncrementalPSAR,
+    IncrementalSqueeze,
+    IncrementalFisher,
+    # Phase 7: Volume complex indicators
+    IncrementalKVO,
+    IncrementalVWAP,
+    # Factory and utilities
     create_incremental_indicator,
     supports_incremental,
     list_incremental_indicators,
@@ -172,14 +203,6 @@ __all__ = [
     "compute_indicator",
     "canonicalize_indicator_outputs",
     "CanonicalizeResult",
-    "ema",
-    "sma",
-    "rsi",
-    "atr",
-    "macd",
-    "bbands",
-    "stoch",
-    "stochrsi",
     # Compute
     "get_warmup_from_specs",
     "apply_feature_spec_indicators",
@@ -207,7 +230,6 @@ __all__ = [
     "IndicatorCompute",
     "get_compute",
     "build_features_from_play",
-    "build_features_from_preloaded_dfs",
     "PlayFeatures",
     # Metadata
     "IndicatorMetadata",
@@ -222,7 +244,7 @@ __all__ = [
     "export_metadata_jsonl",
     "export_metadata_json",
     "export_metadata_csv",
-    # Incremental
+    # Incremental (all 43 indicators)
     "IncrementalIndicator",
     "IncrementalEMA",
     "IncrementalSMA",
@@ -235,6 +257,38 @@ __all__ = [
     "IncrementalStochastic",
     "IncrementalADX",
     "IncrementalSuperTrend",
+    "IncrementalStochRSI",
+    "IncrementalOHLC4",
+    "IncrementalMidprice",
+    "IncrementalROC",
+    "IncrementalMOM",
+    "IncrementalOBV",
+    "IncrementalNATR",
+    "IncrementalDEMA",
+    "IncrementalTEMA",
+    "IncrementalPPO",
+    "IncrementalTRIX",
+    "IncrementalTSI",
+    "IncrementalWMA",
+    "IncrementalTRIMA",
+    "IncrementalLINREG",
+    "IncrementalCMF",
+    "IncrementalCMO",
+    "IncrementalMFI",
+    "IncrementalAROON",
+    "IncrementalDonchian",
+    "IncrementalKC",
+    "IncrementalDM",
+    "IncrementalVortex",
+    "IncrementalKAMA",
+    "IncrementalALMA",
+    "IncrementalZLMA",
+    "IncrementalUO",
+    "IncrementalPSAR",
+    "IncrementalSqueeze",
+    "IncrementalFisher",
+    "IncrementalKVO",
+    "IncrementalVWAP",
     "create_incremental_indicator",
     "supports_incremental",
     "list_incremental_indicators",

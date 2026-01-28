@@ -251,102 +251,119 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalROC",
     },
     "mom": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalMOM",
     },
     "kama": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_ema,  # Adaptive MA, use EMA warmup
+        "incremental_class": "IncrementalKAMA",
     },
     "alma": {
         "inputs": {"close"},
         "params": {"length", "sigma", "offset"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalALMA",
     },
     "wma": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalWMA",
     },
     "dema": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_ema,  # Double EMA
+        "incremental_class": "IncrementalDEMA",
     },
     "tema": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_ema,  # Triple EMA
+        "incremental_class": "IncrementalTEMA",
     },
     "trima": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_sma,
+        "incremental_class": "IncrementalTRIMA",
     },
     "zlma": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_ema,  # Zero-lag uses EMA
+        "incremental_class": "IncrementalZLMA",
     },
     "natr": {
         "inputs": {"high", "low", "close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_atr,  # Normalized ATR
+        "incremental_class": "IncrementalNATR",
     },
     "mfi": {
         "inputs": {"high", "low", "close", "volume"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalMFI",
     },
     "obv": {
         "inputs": {"close", "volume"},
         "params": set(),
         "multi_output": False,
         "warmup_formula": _warmup_minimal,
+        "incremental_class": "IncrementalOBV",
     },
     "cmf": {
         "inputs": {"high", "low", "close", "volume"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalCMF",
     },
     "cmo": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalCMO",
     },
     "linreg": {
         "inputs": {"close"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalLINREG",
     },
     "midprice": {
         "inputs": {"high", "low"},
         "params": {"length"},
         "multi_output": False,
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalMidprice",
     },
     "ohlc4": {
         "inputs": {"open", "high", "low", "close"},
         "params": set(),
         "multi_output": False,
         "warmup_formula": _warmup_minimal,
+        "incremental_class": "IncrementalOHLC4",
     },
     "trix": {
         "inputs": {"close"},
@@ -355,12 +372,14 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("trix", "signal"),
         "primary_output": "trix",
         "warmup_formula": _warmup_ema,  # Triple EMA-based
+        "incremental_class": "IncrementalTRIX",
     },
     "uo": {
         "inputs": {"high", "low", "close"},
         "params": {"fast", "medium", "slow"},
         "multi_output": False,
         "warmup_formula": _warmup_uo,
+        "incremental_class": "IncrementalUO",
     },
     "ppo": {
         "inputs": {"close"},
@@ -369,6 +388,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("ppo", "histogram", "signal"),
         "primary_output": "ppo",
         "warmup_formula": _warmup_ppo,
+        "incremental_class": "IncrementalPPO",
     },
 
     # -------------------------------------------------------------------------
@@ -408,6 +428,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("k", "d"),
         "primary_output": "k",
         "warmup_formula": _warmup_stochrsi,
+        "incremental_class": "IncrementalStochRSI",
     },
     "adx": {
         "inputs": {"high", "low", "close"},
@@ -425,6 +446,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("up", "down", "osc"),
         "primary_output": "osc",
         "warmup_formula": _warmup_aroon,
+        "incremental_class": "IncrementalAROON",
     },
     "kc": {
         "inputs": {"high", "low", "close"},
@@ -433,6 +455,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("lower", "basis", "upper"),
         "primary_output": "basis",
         "warmup_formula": _warmup_kc,
+        "incremental_class": "IncrementalKC",
     },
     "donchian": {
         "inputs": {"high", "low"},
@@ -441,6 +464,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("lower", "middle", "upper"),
         "primary_output": "middle",
         "warmup_formula": _warmup_donchian,
+        "incremental_class": "IncrementalDonchian",
     },
     "supertrend": {
         "inputs": {"high", "low", "close"},
@@ -464,6 +488,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         # long/short are mutually exclusive - only one is valid at a time
         # (long when SAR is below price, short when SAR is above price)
         "mutually_exclusive_outputs": (("long", "short"),),
+        "incremental_class": "IncrementalPSAR",
     },
     "squeeze": {
         "inputs": {"high", "low", "close"},
@@ -472,6 +497,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("sqz", "on", "off", "no_sqz"),
         "primary_output": "sqz",
         "warmup_formula": _warmup_squeeze,
+        "incremental_class": "IncrementalSqueeze",
     },
     "vortex": {
         "inputs": {"high", "low", "close"},
@@ -480,6 +506,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("vip", "vim"),
         "primary_output": "vip",
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalVortex",
     },
     "dm": {
         "inputs": {"high", "low"},
@@ -488,6 +515,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("dmp", "dmn"),
         "primary_output": "dmp",
         "warmup_formula": _warmup_length,
+        "incremental_class": "IncrementalDM",
     },
     "fisher": {
         "inputs": {"high", "low"},
@@ -496,6 +524,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("fisher", "signal"),
         "primary_output": "fisher",
         "warmup_formula": _warmup_fisher,
+        "incremental_class": "IncrementalFisher",
     },
     "tsi": {
         "inputs": {"close"},
@@ -504,6 +533,7 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("tsi", "signal"),
         "primary_output": "tsi",
         "warmup_formula": _warmup_tsi,
+        "incremental_class": "IncrementalTSI",
     },
     "kvo": {
         "inputs": {"high", "low", "close", "volume"},
@@ -512,12 +542,14 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "output_keys": ("kvo", "signal"),
         "primary_output": "kvo",
         "warmup_formula": _warmup_kvo,
+        "incremental_class": "IncrementalKVO",
     },
     "vwap": {
         "inputs": {"high", "low", "close", "volume"},
         "params": {"anchor"},  # anchor: session reset period (e.g., "D" for daily)
         "multi_output": False,
         "warmup_formula": _warmup_minimal,  # Cumulative from session start
+        "incremental_class": "IncrementalVWAP",
     },
 }
 
@@ -782,7 +814,7 @@ class IndicatorRegistry:
             cls._instance._initialized = False
         return cls._instance
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize registry (only once due to singleton)."""
         if self._initialized:
             return

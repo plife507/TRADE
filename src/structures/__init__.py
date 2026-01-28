@@ -42,9 +42,9 @@ Batch Wrapper (from batch_wrapper.py):
     create_detector_with_deps - Create detector with instantiated dependencies
 
 Detectors (from detectors/):
-    IncrementalSwingDetector  - Swing high/low detection with pivot pairing
-    IncrementalTrendDetector  - Trend direction classification
-    IncrementalZoneDetector   - Demand/supply zone detection
+    IncrementalSwing  - Swing high/low detection with pivot pairing
+    IncrementalTrend  - Trend direction classification
+    IncrementalZone   - Demand/supply zone detection
     IncrementalFibonacci      - Fibonacci retracement/extension levels
     IncrementalRollingWindow  - Rolling window min/max
     IncrementalDerivedZone    - Derived zones with K slots + aggregates
@@ -54,7 +54,7 @@ Example Usage:
 
     from src.structures import (
         MultiTFIncrementalState,
-        IncrementalSwingDetector,
+        IncrementalSwing,
         BarData,
         STRUCTURE_REGISTRY,
     )
@@ -63,8 +63,8 @@ Example Usage:
     state = MultiTFIncrementalState(
         exec_tf="15m",
         exec_specs=[
-            {"type": "swing", "key": "swing", "params": {"left": 5, "right": 5}},
-            {"type": "trend", "key": "trend", "depends_on": {"swing": "swing"}},
+            {"type": "swing", "key": "pivots", "params": {"left": 5, "right": 5}},
+            {"type": "trend", "key": "trend", "uses": "pivots"},
         ],
     )
 
@@ -127,9 +127,9 @@ from .batch_wrapper import (
 
 # Detectors (imports trigger registration)
 from .detectors import (
-    IncrementalSwingDetector,
-    IncrementalTrendDetector,
-    IncrementalZoneDetector,
+    IncrementalSwing,
+    IncrementalTrend,
+    IncrementalZone,
     IncrementalFibonacci,
     IncrementalMarketStructure,
     IncrementalRollingWindow,
@@ -166,9 +166,9 @@ __all__ = [
     "run_detector_batch",
     "create_detector_with_deps",
     # Detectors
-    "IncrementalSwingDetector",
-    "IncrementalTrendDetector",
-    "IncrementalZoneDetector",
+    "IncrementalSwing",
+    "IncrementalTrend",
+    "IncrementalZone",
     "IncrementalFibonacci",
     "IncrementalMarketStructure",
     "IncrementalRollingWindow",

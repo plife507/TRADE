@@ -59,44 +59,6 @@ def adapt_funding_row(row: dict[str, Any] | "pd.Series") -> FundingEvent:
     )
 
 
-def adapt_funding_rows(
-    rows: list[dict[str, Any]],
-    prev_ts: datetime | None,
-    ts: datetime,
-) -> list[FundingEvent]:
-    """
-    Convert funding rows to events, filtering to time window (prev_ts, ts].
-    
-    Funding events are applied to positions held at funding time.
-    Only events in the half-open interval (prev_ts, ts] are included.
-    
-    Args:
-        rows: List of funding data dicts
-        prev_ts: Previous bar timestamp (exclusive bound), or None for first bar
-        ts: Current bar timestamp (inclusive bound)
-        
-    Returns:
-        List of FundingEvent instances within the time window
-    """
-    events = []
-    
-    for row in rows:
-        event = adapt_funding_row(row)
-        
-        # Filter to time window (prev_ts, ts]
-        if prev_ts is not None and event.timestamp <= prev_ts:
-            continue
-        if event.timestamp > ts:
-            continue
-        
-        events.append(event)
-    
-    # Sort by timestamp
-    events.sort(key=lambda e: e.timestamp)
-    
-    return events
-
-
 def adapt_funding_dataframe(
     df: "pd.DataFrame",
     prev_ts: datetime | None = None,

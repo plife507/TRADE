@@ -1,5 +1,5 @@
 """
-Data preparation module for BacktestEngine.
+Data preparation module for backtest data loading.
 
 This module handles all data loading and preparation logic:
 - PreparedFrame: Dataclass holding prepared frame metadata
@@ -9,8 +9,8 @@ This module handles all data loading and preparation logic:
 - load_data_impl: Load and validate candle data
 - timeframe_to_timedelta: Convert timeframe string to timedelta
 
-All functions accept engine state/config as parameters and return prepared data.
-The BacktestEngine delegates to these functions, maintaining the same public API.
+All functions accept config parameters and return prepared data.
+Used by DataBuilder for backtest data preparation.
 
 Gate 1 (Unified Validation): Functions accept optional synthetic_provider parameter
 to enable DB-free validation runs using synthetic data.
@@ -385,14 +385,14 @@ def prepare_multi_tf_frames_impl(
     """
     Prepare multi-TF DataFrames with indicators and close_ts maps.
 
-    Phase 3: Loads data for HTF, MTF, and LTF timeframes, applies
+    Phase 3: Loads data for high_tf, med_tf, and low_tf timeframes, applies
     indicators to each, and builds close_ts maps for data-driven
     cache detection.
 
     Args:
         config: System configuration
         window: Window configuration with start/end dates
-        tf_mapping: Dict mapping htf/mtf/ltf to timeframe strings
+        tf_mapping: Dict mapping high_tf/med_tf/low_tf to timeframe strings
         multi_tf_mode: Whether this is true multi-TF mode
         logger: Optional logger instance
         synthetic_provider: Optional synthetic data provider for DB-free validation
@@ -521,7 +521,7 @@ def prepare_multi_tf_frames_impl(
         df = df.sort_values("timestamp").reset_index(drop=True)
 
         # Apply indicators from Play FeatureSpecs for this TF
-        # Map TF back to role (htf/mtf/exec) to get correct specs
+        # Map TF back to role (low_tf/med_tf/high_tf) to get correct specs
         tf_role = None
         for role, role_tf in tf_mapping.items():
             if role_tf == tf:
@@ -559,7 +559,7 @@ def prepare_multi_tf_frames_impl(
     # Get the ExecTF frame for simulation stepping
     exec_tf_frame = frames[exec_tf]
 
-    # Find first valid bar in LTF where all indicators are ready
+    # Find first valid bar in low_tf where all indicators are ready
     # Use required_indicators from YAML (not all expanded outputs) to avoid
     # issues with mutually exclusive outputs like PSAR long/short or SuperTrend long/short
     # SystemConfig.required_indicators_by_role and feature_specs_by_role are always defined
@@ -689,7 +689,7 @@ def get_tf_features_at_close_impl(
     tf: str,
     ts_close: datetime,
     bar: CanonicalBar,
-    mtf_frames: MultiTFPreparedFrames,
+    multi_tf_frames: MultiTFPreparedFrames,
     tf_mapping: dict[str, str],
     config: SystemConfig,
 ) -> FeatureSnapshot:
@@ -703,15 +703,15 @@ def get_tf_features_at_close_impl(
         tf: Timeframe string
         ts_close: Close timestamp to look up
         bar: Current bar (for fallback if not found)
-        mtf_frames: Multi-TF prepared frames
-        tf_mapping: Dict mapping htf/mtf/ltf to timeframe strings
+        multi_tf_frames: Multi-TF prepared frames
+        tf_mapping: Dict mapping high_tf/med_tf/low_tf to timeframe strings
         config: System configuration (for feature specs)
 
     Returns:
         FeatureSnapshot with indicator values
     """
     # Get the DataFrame for this TF
-    df = mtf_frames.frames.get(tf) if mtf_frames else None
+    df = multi_tf_frames.frames.get(tf) if multi_tf_frames else None
 
     if df is None or "ts_close" not in df.columns:
         return create_not_ready_feature_snapshot(

@@ -65,8 +65,9 @@ DISCRETE_OPERATORS = frozenset({
 })
 
 # Window operator limits (bar-based)
-DEFAULT_MAX_WINDOW_BARS = 100
-WINDOW_BARS_CEILING = 500
+# Used by HoldsFor, OccurredWithin, CountTrue operators
+DEFAULT_MAX_WINDOW_BARS = 100   # Default lookback if not specified in DSL
+WINDOW_BARS_CEILING = 500       # Hard limit to prevent excessive memory/CPU usage
 
 # Duration parsing regex (matches "5m", "30m", "1h", "4h", "1d", etc.)
 DURATION_PATTERN = re.compile(r"^(\d+)(m|h|d)$")

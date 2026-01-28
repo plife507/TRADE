@@ -89,7 +89,7 @@ Take your time - answer when ready!
 |-------|-----------|---------------|
 | Hot Loop | `src/backtest/engine.py` | Warmup, trading phase, O(1) access |
 | Data Caching | `src/backtest/runtime/feed_store.py`, `snapshot_view.py` | FeedStore arrays, snapshot indices |
-| Multi-TF | `src/backtest/runtime/cache.py`, `timeframe.py` | Forward-fill, HTF/MTF roles |
+| Multi-timeframe | `src/backtest/runtime/cache.py`, `timeframe.py` | Forward-fill, timeframe roles |
 | Window Ops | `src/backtest/evaluation/window_ops.py` | holds_for, anchor_tf, history |
 | DSL | `src/backtest/dsl/` | Blocks, conditions, operators |
 | Structures | `src/backtest/incremental/` | Swing detection, demand zones |

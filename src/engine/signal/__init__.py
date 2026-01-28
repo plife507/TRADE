@@ -1,9 +1,9 @@
 """
 Signal evaluation module for unified engine.
 
-This module provides shared signal evaluation infrastructure that works
-identically across BacktestEngine and PlayEngine. The key abstraction is
-SubLoopEvaluator which handles 1m granularity evaluation within exec bars.
+This module provides signal evaluation infrastructure for PlayEngine.
+The key abstraction is SubLoopEvaluator which handles 1m granularity
+evaluation within exec bars.
 
 Usage:
     from src.engine.signal import SubLoopEvaluator, SubLoopContext

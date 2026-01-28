@@ -9,7 +9,7 @@ exposed via:
 
 Implementation follows 14 locked decisions from DERIVATION_RULE_INVESTIGATION.md:
 - Slot ordering: Most recent first (zone0 = newest)
-- Empty encoding: None for floats, "NONE" for state, -1 for ints, false for bools
+- Empty encoding: None for floats, "none" for state, -1 for ints, false for bools
 - Zone hash: blake2b for stability across platforms
 - Version-triggered regen: only on source version change
 - Separate regen vs interaction paths
@@ -20,15 +20,14 @@ Example Play usage:
     structures:
       exec:
         - type: swing
-          key: swing
+          key: pivots
           params:
             left: 5
             right: 5
 
         - type: derived_zone
           key: fib_zones
-          depends_on:
-            source: swing
+          uses: pivots
           params:
             levels: [0.382, 0.5, 0.618]
             mode: retracement
@@ -38,7 +37,7 @@ Example Play usage:
 
 Access in rules:
     # Slot access
-    condition: structure.fib_zones.zone0_state == "ACTIVE"
+    condition: structure.fib_zones.zone0_state == "active"
     condition: close > structure.fib_zones.zone0_lower
 
     # Aggregate access
@@ -62,10 +61,10 @@ if TYPE_CHECKING:
     from ..base import BarData
 
 
-# Zone states matching ZoneState enum in market_structure/types.py
-ZONE_STATE_NONE = "NONE"
-ZONE_STATE_ACTIVE = "ACTIVE"
-ZONE_STATE_BROKEN = "BROKEN"
+# Zone states - all lowercase for DSL consistency
+ZONE_STATE_NONE = "none"
+ZONE_STATE_ACTIVE = "active"
+ZONE_STATE_BROKEN = "broken"
 
 
 @register_structure("derived_zone")
@@ -94,7 +93,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
     Slot Outputs (per zone 0 to max_active-1):
         zone{N}_lower: Lower boundary price (None if empty)
         zone{N}_upper: Upper boundary price (None if empty)
-        zone{N}_state: Zone state ("NONE", "ACTIVE", "BROKEN")
+        zone{N}_state: Zone state ("none", "active", "broken")
         zone{N}_anchor_idx: Bar index where zone was created (-1 if empty)
         zone{N}_age_bars: Bars since creation (-1 if empty)
         zone{N}_touched_this_bar: Event flag - touched THIS bar (false if empty)
@@ -125,8 +124,9 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         "width_pct": 0.002,
         "price_source": "mark_close",
         "use_paired_source": False,
+        "break_tolerance_pct": 0.001,  # 0.1% tolerance for zone break detection
     }
-    DEPENDS_ON: list[str] = ["source"]
+    DEPENDS_ON: list[str] = ["swing"]
     STRUCTURE_TYPE: str = "derived_zone"
 
     @classmethod
@@ -144,11 +144,11 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
             )
 
         for i, level in enumerate(levels):
-            if not isinstance(level, (int, float)) or level <= 0:
+            if not isinstance(level, (int, float)):
                 raise ValueError(
-                    f"Structure '{key}': 'levels[{i}]' must be a positive number\n"
+                    f"Structure '{key}': 'levels[{i}]' must be a number\n"
                     f"\n"
-                    f"Fix: levels: [0.382, 0.5, 0.618]"
+                    f"Fix: levels: [0.382, 0.5, 0.618] or [-0.272, -0.618] for extensions"
                 )
 
         # Validate max_active
@@ -193,13 +193,14 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         deps: dict[str, BaseIncrementalDetector],
     ) -> None:
         """Initialize derived zone detector."""
-        self.source = deps["source"]
+        self.source = deps["swing"]
         self.levels: list[float] = [float(lvl) for lvl in params["levels"]]
         self.max_active: int = params["max_active"]
         self.mode: str = params.get("mode", "retracement")
         self.width_pct: float = float(params.get("width_pct", 0.002))
         self.price_source: str = params.get("price_source", "mark_close")
         self.use_paired_source: bool = params.get("use_paired_source", False)
+        self.break_tolerance_pct: float = float(params.get("break_tolerance_pct", 0.001))
 
         # Internal zone storage: list of dicts, most recent first
         # Each zone dict contains all zone fields
@@ -416,9 +417,11 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
 
             # Check for zone break
             # Zone breaks when price closes completely beyond boundary
-            if price < lower * 0.999:  # Small tolerance for break detection
+            break_tol = 1.0 - self.break_tolerance_pct
+            break_tol_upper = 1.0 + self.break_tolerance_pct
+            if price < lower * break_tol:
                 zone["state"] = ZONE_STATE_BROKEN
-            elif price > upper * 1.001:
+            elif price > upper * break_tol_upper:
                 zone["state"] = ZONE_STATE_BROKEN
 
     def _get_price(self, bar: "BarData") -> float | None:
@@ -637,7 +640,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         """
         Get the empty/default value for a field when slot is unpopulated.
 
-        Uses locked decision: null for floats, "NONE" for state,
+        Uses locked decision: null for floats, "none" for state,
         -1 for ints, false for bools.
 
         Args:

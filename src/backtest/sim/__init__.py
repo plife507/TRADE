@@ -57,7 +57,7 @@ from .types import (
     ExecutionConfig,
 )
 from .exchange import SimulatedExchange
-from .adapters import adapt_ohlcv_row, adapt_funding_rows
+from .adapters import adapt_ohlcv_row
 
 __all__ = [
     # Main class
@@ -92,6 +92,5 @@ __all__ = [
     "ExecutionConfig",
     # Adapters
     "adapt_ohlcv_row",
-    "adapt_funding_rows",
 ]
 

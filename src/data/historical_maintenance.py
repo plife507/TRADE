@@ -46,7 +46,7 @@ def detect_gaps(store: "HistoricalDataStore", symbol: str, timeframe: str) -> li
         curr_ts = rows[i][0]
         actual_delta = curr_ts - prev_ts
         
-        if actual_delta > expected_delta * 1.5:
+        if actual_delta > expected_delta * 1.05:
             gaps.append((prev_ts + expected_delta, curr_ts - expected_delta))
     
     return gaps
@@ -271,36 +271,40 @@ def heal_comprehensive(
         "details": {},
     }
     
-    where_clause = f"WHERE symbol = '{symbol}'" if symbol else ""
-    and_clause = f"AND symbol = '{symbol}'" if symbol else ""
-    
+    # Use parameterized queries for safety
+    symbol_filter = "AND symbol = ?" if symbol else ""
+    params = [symbol] if symbol else []
+
     # 1. Duplicates
     print_activity("Checking for duplicate timestamps...", ActivityEmoji.SEARCH)
-    dupes = store.conn.execute(f"""
+    dupe_query = f"""
         SELECT symbol, timeframe, timestamp, COUNT(*) as cnt
-        FROM {store.table_ohlcv} {where_clause}
+        FROM {store.table_ohlcv}
+        WHERE 1=1 {symbol_filter}
         GROUP BY symbol, timeframe, timestamp HAVING COUNT(*) > 1
-    """).fetchall()
-    
+    """
+    dupes = store.conn.execute(dupe_query, params).fetchall()
+
     report["details"]["duplicates"] = {"found": len(dupes), "fixed": 0}
     report["issues_found"] += len(dupes)
-    
+
     if dupes and fix_issues:
         print_activity(f"Removing {len(dupes)} duplicate entries...", ActivityEmoji.REPAIR)
         for sym, tf, ts, cnt in dupes:
             store.conn.execute(f"""
-                DELETE FROM {store.table_ohlcv} 
+                DELETE FROM {store.table_ohlcv}
                 WHERE symbol = ? AND timeframe = ? AND timestamp = ?
             """, [sym, tf, ts])
         report["details"]["duplicates"]["fixed"] = len(dupes)
         report["issues_fixed"] += len(dupes)
-    
+
     # 2. Invalid high < low
     print_activity("Checking for invalid high < low...", ActivityEmoji.SEARCH)
-    invalid_hl = store.conn.execute(f"""
+    invalid_query = f"""
         SELECT symbol, timeframe, timestamp FROM {store.table_ohlcv}
-        WHERE high < low {and_clause.replace('AND', 'AND' if where_clause else '')}
-    """.replace('AND  AND', 'AND')).fetchall()
+        WHERE high < low {symbol_filter}
+    """
+    invalid_hl = store.conn.execute(invalid_query, params).fetchall()
     
     report["details"]["invalid_high_low"] = {"found": len(invalid_hl), "fixed": 0}
     report["issues_found"] += len(invalid_hl)
@@ -316,10 +320,11 @@ def heal_comprehensive(
     
     # 3. Negative volumes
     print_activity("Checking for negative volumes...", ActivityEmoji.SEARCH)
-    neg_vol = store.conn.execute(f"""
-        SELECT COUNT(*) FROM {store.table_ohlcv} WHERE volume < 0 
-        {and_clause.replace('AND', 'AND' if where_clause else '')}
-    """.replace('AND  AND', 'AND')).fetchone()[0]
+    neg_vol_query = f"""
+        SELECT COUNT(*) FROM {store.table_ohlcv}
+        WHERE volume < 0 {symbol_filter}
+    """
+    neg_vol = store.conn.execute(neg_vol_query, params).fetchone()[0]
     
     report["details"]["negative_volumes"] = {"found": neg_vol, "fixed": 0}
     report["issues_found"] += neg_vol
@@ -335,15 +340,17 @@ def heal_comprehensive(
     
     # 4. NULL values
     print_activity("Checking for NULL values...", ActivityEmoji.SEARCH)
-    null_counts = store.conn.execute(f"""
-        SELECT 
+    null_query = f"""
+        SELECT
             SUM(CASE WHEN open IS NULL THEN 1 ELSE 0 END),
             SUM(CASE WHEN high IS NULL THEN 1 ELSE 0 END),
             SUM(CASE WHEN low IS NULL THEN 1 ELSE 0 END),
             SUM(CASE WHEN close IS NULL THEN 1 ELSE 0 END),
             SUM(CASE WHEN volume IS NULL THEN 1 ELSE 0 END)
-        FROM {store.table_ohlcv} {where_clause}
-    """).fetchone()
+        FROM {store.table_ohlcv}
+        WHERE 1=1 {symbol_filter}
+    """
+    null_counts = store.conn.execute(null_query, params).fetchone()
     total_nulls = sum(n or 0 for n in null_counts)
     
     report["details"]["null_values"] = {"found": total_nulls, "fixed": 0}
@@ -366,10 +373,11 @@ def heal_comprehensive(
     
     # 5. Symbol casing
     print_activity("Checking symbol casing...", ActivityEmoji.SEARCH)
-    bad_casing = store.conn.execute(f"""
-        SELECT DISTINCT symbol FROM {store.table_ohlcv} WHERE symbol != UPPER(symbol)
-        {and_clause.replace('AND', 'AND' if where_clause else '')}
-    """.replace('AND  AND', 'AND')).fetchall()
+    casing_query = f"""
+        SELECT DISTINCT symbol FROM {store.table_ohlcv}
+        WHERE symbol != UPPER(symbol) {symbol_filter}
+    """
+    bad_casing = store.conn.execute(casing_query, params).fetchall()
     
     report["details"]["symbol_casing"] = {"found": len(bad_casing), "fixed": 0}
     report["issues_found"] += len(bad_casing)
@@ -384,11 +392,11 @@ def heal_comprehensive(
     
     # 6. Price anomalies
     print_activity("Checking for price anomalies...", ActivityEmoji.SEARCH)
-    anomalies = store.conn.execute(f"""
-        SELECT COUNT(*) FROM {store.table_ohlcv} 
-        WHERE (open > high OR open < low OR close > high OR close < low)
-        {and_clause.replace('AND', 'AND' if where_clause else '')}
-    """.replace('AND  AND', 'AND')).fetchone()[0]
+    anomaly_query = f"""
+        SELECT COUNT(*) FROM {store.table_ohlcv}
+        WHERE (open > high OR open < low OR close > high OR close < low) {symbol_filter}
+    """
+    anomalies = store.conn.execute(anomaly_query, params).fetchone()[0]
     
     report["details"]["price_anomalies"] = {"found": anomalies, "fixed": 0}
     report["issues_found"] += anomalies
@@ -456,6 +464,129 @@ def heal_comprehensive(
         emoji = ActivityEmoji.SUCCESS if report["issues_fixed"] == report["issues_found"] else ActivityEmoji.WARNING
         print_activity(f"Found {report['issues_found']} issues, fixed {report['issues_fixed']}", emoji)
     print("=" * 60 + "\n")
-    
+
+    return report
+
+
+def validate_data_quality(
+    store: "HistoricalDataStore",
+    symbol: str = None,
+    timeframe: str = None,
+) -> dict:
+    """
+    G2-4: Validate data quality for potential anomalies.
+
+    Checks for:
+    - Stuck prices (close unchanged for > 10 consecutive bars)
+    - Volume spikes (> 10x average volume)
+    - Uniform data (all OHLC equal for extended periods)
+
+    Args:
+        store: HistoricalDataStore instance
+        symbol: Specific symbol or None for all
+        timeframe: Specific timeframe or None for all
+
+    Returns:
+        Dict with quality report per symbol/timeframe
+    """
+    from .historical_data_store import ActivityEmoji, print_activity
+
+    report = {
+        "checked_at": datetime.now().isoformat(),
+        "symbol_filter": symbol,
+        "timeframe_filter": timeframe,
+        "issues": [],
+        "summary": {
+            "stuck_prices": 0,
+            "volume_spikes": 0,
+            "uniform_data": 0,
+        }
+    }
+
+    # Build list of symbol/timeframe combinations to check
+    if symbol and timeframe:
+        combinations = [(symbol.upper(), timeframe)]
+    else:
+        rows = store.conn.execute(f"""
+            SELECT DISTINCT symbol, timeframe FROM {store.table_ohlcv}
+        """).fetchall()
+        combinations = [(r[0], r[1]) for r in rows]
+
+    print_activity(f"Validating data quality for {len(combinations)} combinations...", ActivityEmoji.SEARCH)
+
+    for sym, tf in combinations:
+        # Fetch recent data for analysis
+        df = store.conn.execute(f"""
+            SELECT timestamp, open, high, low, close, volume
+            FROM {store.table_ohlcv}
+            WHERE symbol = ? AND timeframe = ?
+            ORDER BY timestamp DESC
+            LIMIT 1000
+        """, [sym, tf]).fetchdf()
+
+        if df.empty or len(df) < 20:
+            continue
+
+        # 1. Check for stuck prices (close unchanged for > 10 bars)
+        close_diff = df["close"].diff()
+        stuck_mask = (close_diff == 0)
+        if stuck_mask.sum() > 10:
+            # Check for consecutive stuck periods
+            stuck_runs = 0
+            current_run = 0
+            for is_stuck in stuck_mask:
+                if is_stuck:
+                    current_run += 1
+                    if current_run > 10:
+                        stuck_runs += 1
+                else:
+                    current_run = 0
+
+            if stuck_runs > 0:
+                report["issues"].append({
+                    "symbol": sym,
+                    "timeframe": tf,
+                    "type": "stuck_prices",
+                    "detail": f"Found {stuck_runs} period(s) with > 10 consecutive unchanged closes",
+                })
+                report["summary"]["stuck_prices"] += 1
+
+        # 2. Check for volume spikes (> 10x average)
+        avg_volume = df["volume"].mean()
+        if avg_volume > 0:
+            spike_mask = df["volume"] > avg_volume * 10
+            spike_count = spike_mask.sum()
+            if spike_count > 0:
+                report["issues"].append({
+                    "symbol": sym,
+                    "timeframe": tf,
+                    "type": "volume_spike",
+                    "detail": f"Found {spike_count} bar(s) with volume > 10x average",
+                })
+                report["summary"]["volume_spikes"] += spike_count
+
+        # 3. Check for uniform data (OHLC all equal for extended periods)
+        uniform_mask = (df["open"] == df["high"]) & (df["high"] == df["low"]) & (df["low"] == df["close"])
+        if uniform_mask.sum() > 5:
+            # Could indicate synthetic or broken data
+            report["issues"].append({
+                "symbol": sym,
+                "timeframe": tf,
+                "type": "uniform_ohlc",
+                "detail": f"Found {uniform_mask.sum()} bar(s) with O=H=L=C (possibly synthetic)",
+            })
+            report["summary"]["uniform_data"] += uniform_mask.sum()
+
+    # Print summary
+    total_issues = len(report["issues"])
+    if total_issues == 0:
+        print_activity("Data quality OK: No anomalies detected", ActivityEmoji.SUCCESS)
+    else:
+        print_activity(f"Data quality: {total_issues} potential issue(s) found", ActivityEmoji.WARNING)
+        for issue in report["issues"][:5]:  # Show first 5
+            print(f"  - {issue['symbol']} {issue['timeframe']}: {issue['type']} - {issue['detail']}")
+        if total_issues > 5:
+            print(f"  ... and {total_issues - 5} more")
+
     return report
 

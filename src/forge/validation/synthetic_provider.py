@@ -1,7 +1,7 @@
 """
-Synthetic data provider protocol for BacktestEngine injection.
+Synthetic data provider protocol for DataBuilder injection.
 
-This module enables the BacktestEngine to run with synthetic data instead of
+This module enables backtests to run with synthetic data instead of
 DuckDB, allowing validation to run through the actual engine code path.
 
 Architecture:
@@ -32,7 +32,7 @@ from src.forge.validation.synthetic_data import SyntheticCandles
 
 class SyntheticDataProvider(Protocol):
     """
-    Protocol for providing synthetic data to BacktestEngine.
+    Protocol for providing synthetic data to DataBuilder.
 
     Mirrors the HistoricalDataStore interface for drop-in replacement.
     """

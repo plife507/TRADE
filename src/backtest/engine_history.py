@@ -1,5 +1,5 @@
 """
-History management module for BacktestEngine.
+History management module for backtest execution.
 
 This module handles rolling history window management:
 - HistoryManager: Class to manage history state and operations
@@ -8,7 +8,7 @@ This module handles rolling history window management:
 - is_history_ready_impl: Check if history windows are filled
 - get_history_tuples_impl: Get immutable history tuples for snapshot
 
-The BacktestEngine delegates to these functions/class, maintaining the same public API.
+Used by BacktestRunner for tracking bar history during execution.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ class HistoryManager:
     Manages rolling history windows for strategy evaluation.
 
     Encapsulates history state and provides methods to update, check, and access
-    history data. Used by BacktestEngine to track bar and feature history.
+    history data. Used by BacktestRunner to track bar and feature history.
     """
 
     def __init__(self, history_config: HistoryConfig):
@@ -73,8 +73,8 @@ class HistoryManager:
         # Rolling history windows (mutable lists, converted to tuples for snapshot)
         self._history_bars_exec: list[CanonicalBar] = []
         self._history_features_exec: list[FeatureSnapshot] = []
-        self._history_features_htf: list[FeatureSnapshot] = []
-        self._history_features_mtf: list[FeatureSnapshot] = []
+        self._history_features_high_tf: list[FeatureSnapshot] = []
+        self._history_features_med_tf: list[FeatureSnapshot] = []
 
     @property
     def config(self) -> HistoryConfig:
@@ -92,23 +92,23 @@ class HistoryManager:
         return self._history_features_exec
 
     @property
-    def features_htf(self) -> list[FeatureSnapshot]:
-        """Get current HTF feature history."""
-        return self._history_features_htf
+    def features_high_tf(self) -> list[FeatureSnapshot]:
+        """Get current high_tf feature history."""
+        return self._history_features_high_tf
 
     @property
-    def features_mtf(self) -> list[FeatureSnapshot]:
-        """Get current MTF feature history."""
-        return self._history_features_mtf
+    def features_med_tf(self) -> list[FeatureSnapshot]:
+        """Get current med_tf feature history."""
+        return self._history_features_med_tf
 
     def update(
         self,
         bar: CanonicalBar,
         features_exec: FeatureSnapshot,
-        htf_updated: bool,
-        mtf_updated: bool,
-        features_htf: FeatureSnapshot | None,
-        features_mtf: FeatureSnapshot | None,
+        high_tf_updated: bool,
+        med_tf_updated: bool,
+        features_high_tf: FeatureSnapshot | None,
+        features_med_tf: FeatureSnapshot | None,
     ) -> None:
         """
         Update rolling history windows.
@@ -119,10 +119,10 @@ class HistoryManager:
         Args:
             bar: Current exec-TF bar
             features_exec: Current exec-TF features
-            htf_updated: Whether HTF cache was updated this step
-            mtf_updated: Whether MTF cache was updated this step
-            features_htf: Current HTF features (if updated)
-            features_mtf: Current MTF features (if updated)
+            high_tf_updated: Whether high_tf cache was updated this step
+            med_tf_updated: Whether med_tf cache was updated this step
+            features_high_tf: Current high_tf features (if updated)
+            features_med_tf: Current med_tf features (if updated)
         """
         config = self._config
 
@@ -139,17 +139,17 @@ class HistoryManager:
             if len(self._history_features_exec) > config.features_exec_count:
                 self._history_features_exec = self._history_features_exec[-config.features_exec_count:]
 
-        # Update HTF feature history (only on HTF close)
-        if config.features_high_tf_count > 0 and htf_updated and features_htf and features_htf.ready:
-            self._history_features_htf.append(features_htf)
-            if len(self._history_features_htf) > config.features_high_tf_count:
-                self._history_features_htf = self._history_features_htf[-config.features_high_tf_count:]
+        # Update high_tf feature history (only on high_tf close)
+        if config.features_high_tf_count > 0 and high_tf_updated and features_high_tf and features_high_tf.ready:
+            self._history_features_high_tf.append(features_high_tf)
+            if len(self._history_features_high_tf) > config.features_high_tf_count:
+                self._history_features_high_tf = self._history_features_high_tf[-config.features_high_tf_count:]
 
-        # Update MTF feature history (only on MTF close)
-        if config.features_med_tf_count > 0 and mtf_updated and features_mtf and features_mtf.ready:
-            self._history_features_mtf.append(features_mtf)
-            if len(self._history_features_mtf) > config.features_med_tf_count:
-                self._history_features_mtf = self._history_features_mtf[-config.features_med_tf_count:]
+        # Update med_tf feature history (only on med_tf close)
+        if config.features_med_tf_count > 0 and med_tf_updated and features_med_tf and features_med_tf.ready:
+            self._history_features_med_tf.append(features_med_tf)
+            if len(self._history_features_med_tf) > config.features_med_tf_count:
+                self._history_features_med_tf = self._history_features_med_tf[-config.features_med_tf_count:]
 
     def is_ready(self) -> bool:
         """
@@ -174,11 +174,11 @@ class HistoryManager:
                 return False
 
         if config.features_high_tf_count > 0:
-            if len(self._history_features_htf) < config.features_high_tf_count:
+            if len(self._history_features_high_tf) < config.features_high_tf_count:
                 return False
 
         if config.features_med_tf_count > 0:
-            if len(self._history_features_mtf) < config.features_med_tf_count:
+            if len(self._history_features_med_tf) < config.features_med_tf_count:
                 return False
 
         return True
@@ -188,18 +188,18 @@ class HistoryManager:
         Get immutable history tuples for snapshot.
 
         Returns:
-            Tuple of (bars_exec, features_exec, features_htf, features_mtf)
+            Tuple of (bars_exec, features_exec, features_high_tf, features_med_tf)
         """
         return (
             tuple(self._history_bars_exec),
             tuple(self._history_features_exec),
-            tuple(self._history_features_htf),
-            tuple(self._history_features_mtf),
+            tuple(self._history_features_high_tf),
+            tuple(self._history_features_med_tf),
         )
 
     def reset(self) -> None:
         """Reset all history windows to empty."""
         self._history_bars_exec = []
         self._history_features_exec = []
-        self._history_features_htf = []
-        self._history_features_mtf = []
+        self._history_features_high_tf = []
+        self._history_features_med_tf = []

@@ -1,0 +1,52 @@
+version: "3.0.0"
+name: "V_T16_011_between"
+description: "between() range operator test"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 200
+  seed: 1611
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+actions:
+  entry_long:
+    all:
+      - ["rsi_14", "between", [35, 45]]
+      - ["close", ">", "ema_21"]
+
+  entry_short:
+    all:
+      - ["rsi_14", "between", [55, 65]]
+      - ["close", "<", "ema_21"]
+
+position_policy:
+  mode: long_short
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

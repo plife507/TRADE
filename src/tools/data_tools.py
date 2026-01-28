@@ -28,6 +28,7 @@ from .data_tools_status import (
     get_symbol_summary_tool,
     get_symbol_timeframe_ranges_tool,
     get_data_extremes_tool,
+    validate_data_quality_tool,
 )
 
 from .data_tools_sync import (
@@ -69,6 +70,7 @@ __all__ = [
     "get_symbol_summary_tool",
     "get_symbol_timeframe_ranges_tool",
     "get_data_extremes_tool",
+    "validate_data_quality_tool",
     # Sync tools
     "sync_symbols_tool",
     "sync_range_tool",

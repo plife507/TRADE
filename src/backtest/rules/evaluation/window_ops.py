@@ -6,10 +6,9 @@ Handles HoldsFor, OccurredWithin, CountTrue and their duration variants.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from ..dsl_nodes import (
-    Expr,
     HoldsFor,
     OccurredWithin,
     CountTrue,
@@ -21,15 +20,10 @@ from ..dsl_nodes import (
 from ...runtime.timeframe import tf_minutes
 from ..types import EvalResult, ReasonCode
 from .shift_ops import shift_expr
+from .protocols import ExprEvaluatorProtocol
 
 if TYPE_CHECKING:
     from ...runtime.snapshot import RuntimeSnapshotView
-
-
-class ExprEvaluatorProtocol(Protocol):
-    """Protocol for expression evaluator to avoid circular imports."""
-
-    def evaluate(self, expr: Expr, snapshot: "RuntimeSnapshotView") -> EvalResult: ...
 
 
 def eval_holds_for(

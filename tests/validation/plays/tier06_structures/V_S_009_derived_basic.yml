@@ -1,0 +1,59 @@
+version: "3.0.0"
+name: "V_S_009_derived_basic"
+description: "Validate derived zone - multiple zone tracking"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 100
+  seed: 109
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: derived_zone
+      key: derived
+      uses: swing
+      params:
+        levels: [0.382, 0.618]
+        width_pct: 0.005
+        max_active: 3
+
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      - ["derived.active_count", ">", 0]
+      - ["derived.any_active", "==", 1]
+      - ["derived.zone[0].state", "==", "active"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

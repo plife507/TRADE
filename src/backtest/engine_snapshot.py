@@ -1,5 +1,5 @@
 """
-Snapshot building module for BacktestEngine.
+Snapshot building module for backtest execution.
 
 This module handles snapshot construction for the array-backed hot loop:
 - build_snapshot_view_impl: Build RuntimeSnapshotView (O(1) creation)
@@ -7,7 +7,7 @@ This module handles snapshot construction for the array-backed hot loop:
 - refresh_tf_caches_impl: Refresh TF caches with factory functions
 
 All functions accept engine state as parameters and return snapshot-related results.
-The BacktestEngine delegates to these functions, maintaining the same public API.
+Used by BacktestRunner for building snapshots during execution.
 """
 
 from __future__ import annotations
@@ -196,8 +196,8 @@ def build_snapshot_view_impl(
     return RuntimeSnapshotView(
         feeds=multi_tf_feed_store,
         exec_idx=exec_idx,
-        htf_idx=high_tf_idx if high_tf_feed is not exec_feed else None,
-        mtf_idx=med_tf_idx if med_tf_feed is not exec_feed else None,
+        high_tf_idx=high_tf_idx if high_tf_feed is not exec_feed else None,
+        med_tf_idx=med_tf_idx if med_tf_feed is not exec_feed else None,
         exchange=exchange,
         mark_price=mark_price,
         mark_price_source=mark_price_source,

@@ -14,7 +14,7 @@ You are a senior code reviewer for the TRADE trading bot. Your reviews ensure co
 
 ### Project Rules Compliance
 
-- [ ] TODO exists in `docs/todos/TODO.md` before code change
+- [ ] TODO exists in `docs/TODO.md` before code change
 - [ ] No backward compatibility shims (build-forward only)
 - [ ] No legacy code preserved (delete unused paths)
 - [ ] Uses `size_usdt` everywhere (never `size_usd` or `size`)
@@ -88,8 +88,12 @@ Specific violations of CLAUDE.md rules.
 
 ### Validation Reminder
 ```bash
-# Run before commit
-python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
-python trade_cli.py --smoke backtest
+# Match validation to what changed:
+# - If changed src/indicators/: audit-toolkit
+# - If changed engine/sim/runtime: --smoke backtest (REQUIRED)
+# - If changed metrics.py: metrics-audit
+# - If changed Play YAML: play-normalize
+
+# For engine code changes, component audits are NOT sufficient:
+python trade_cli.py --smoke backtest  # Actually runs engine
 ```

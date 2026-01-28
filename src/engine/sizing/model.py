@@ -13,10 +13,10 @@ The module is engine-agnostic - it does not depend on RuntimeSnapshotView
 or any backtest-specific types. Engines pass primitive values.
 
 Architecture:
-    BacktestEngine -> SizingModel.size_order() -> SizingResult
-    PlayEngine     -> SizingModel.size_order() -> SizingResult
+    PlayEngine -> SizingModel.size_order() -> SizingResult
 
-This ensures identical position sizing behavior across all execution modes.
+This ensures identical position sizing behavior across all execution modes
+(backtest, demo, live).
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ class SizingConfig:
         - percent_equity: Position = margin * leverage
           margin = equity * (risk_per_trade_pct / 100)
           Bybit-style isolated margin calculation.
+          CAPPED by max_position_equity_pct to prevent over-exposure.
 
         - risk_based: Size to lose exactly risk_pct if stopped out
           risk$ = equity * (risk_per_trade_pct / 100)
@@ -46,6 +47,21 @@ class SizingConfig:
 
         - fixed_notional: Use requested size_usdt directly
           Still capped by max leverage.
+
+    Position Cap (IMPORTANT):
+        - max_position_equity_pct caps TOTAL position as % of equity
+        - This prevents runaway compounding and over-exposure
+        - Default 95% leaves buffer for fees (entry + potential exit)
+        - Example: with 95% cap and $10K equity, max position = $9,500
+
+    Fee Reservation:
+        - reserve_fee_buffer reserves equity for entry/exit fees
+        - Ensures position margin + fees never exceeds equity
+
+    Liquidation Safety (G0-2):
+        - min_liq_distance_pct ensures liquidation price is at least X% from entry
+        - Default 10% prevents entries where liquidation is too close
+        - Example: at 10x leverage, liq is ~10% away, so min_liq_distance_pct=10 blocks it
     """
 
     # Core sizing parameters
@@ -55,15 +71,42 @@ class SizingConfig:
     max_leverage: float = 2.0
     min_trade_usdt: float = 1.0
 
+    # Position cap: max position as % of equity (prevents 100% exposure)
+    # Default 95% leaves 5% buffer for fees and safety margin
+    max_position_equity_pct: float = 95.0
+
+    # Fee reservation: if True, reserves balance for entry+exit fees
+    reserve_fee_buffer: bool = True
+
     # Optional fee model for entry gate calculations (loaded from DEFAULTS if None)
     taker_fee_rate: float | None = None
     include_est_close_fee_in_entry_gate: bool = False
+
+    # G0-2: Minimum distance to liquidation price as % of entry price
+    # Rejects entries where liquidation would occur within this % move
+    # Default 10% means at 10x leverage (liq ~10% away), entry is blocked
+    min_liq_distance_pct: float = 10.0
+
+    # Maintenance margin rate for liquidation calculation (Bybit default ~0.5%)
+    maintenance_margin_rate: float = 0.005
 
     def __post_init__(self) -> None:
         """Load defaults from config/defaults.yml if not specified."""
         if self.taker_fee_rate is None:
             from src.config.constants import DEFAULTS
             self.taker_fee_rate = DEFAULTS.fees.taker_rate
+
+        # Validate max_position_equity_pct
+        if self.max_position_equity_pct <= 0 or self.max_position_equity_pct > 100:
+            raise ValueError(
+                f"max_position_equity_pct must be in (0, 100], got {self.max_position_equity_pct}"
+            )
+
+        # Validate min_liq_distance_pct
+        if self.min_liq_distance_pct < 0:
+            raise ValueError(
+                f"min_liq_distance_pct must be >= 0, got {self.min_liq_distance_pct}"
+            )
 
     @classmethod
     def from_risk_profile(cls, risk_profile: Any) -> "SizingConfig":
@@ -78,12 +121,18 @@ class SizingConfig:
         Returns:
             SizingConfig with values copied from risk_profile
         """
+        # Get max_position_equity_pct from risk_profile if available, else default
+        max_pos_pct = getattr(risk_profile, "max_position_equity_pct", 95.0)
+        reserve_fee = getattr(risk_profile, "reserve_fee_buffer", True)
+
         return cls(
             initial_equity=risk_profile.initial_equity,
             sizing_model=risk_profile.sizing_model,
             risk_per_trade_pct=risk_profile.risk_per_trade_pct,
             max_leverage=risk_profile.max_leverage,
             min_trade_usdt=risk_profile.min_trade_usdt,
+            max_position_equity_pct=max_pos_pct,
+            reserve_fee_buffer=reserve_fee,
             taker_fee_rate=risk_profile.taker_fee_rate,
             include_est_close_fee_in_entry_gate=risk_profile.include_est_close_fee_in_entry_gate,
         )
@@ -105,14 +154,17 @@ class SizingResult:
     # Optional: indicates if size was capped by leverage limit
     was_capped: bool = False
 
+    # G0-2: Indicates if entry was rejected due to liquidation too close
+    rejected: bool = False
+    rejection_reason: str = ""
+
 
 class SizingModel:
     """
     Unified position sizing model for all TRADE engines.
 
-    This class contains the SOPHISTICATED sizing logic ported from
-    SimulatedRiskManager. Both BacktestEngine and PlayEngine use this
-    to ensure identical position sizing behavior.
+    This class contains the sizing logic ported from SimulatedRiskManager.
+    Used by PlayEngine for all modes (backtest, demo, live).
 
     Usage:
         model = SizingModel(config)
@@ -224,7 +276,10 @@ class SizingModel:
             - margin = $10,000 * 10% = $1,000 (what you're putting up)
             - position = $1,000 * 10 = $10,000 (your exposure)
 
-        The position is capped at free_margin * max_leverage (max borrowing).
+        IMPORTANT: Position is capped by:
+            1. max_position_equity_pct (default 95%) of equity
+            2. Fee buffer reservation (entry + exit fees)
+            3. free_margin * max_leverage (max borrowing)
 
         Args:
             equity: Total account equity
@@ -232,9 +287,32 @@ class SizingModel:
         """
         risk_pct = self._config.risk_per_trade_pct
         max_lev = self._config.max_leverage
+        max_pos_pct = self._config.max_position_equity_pct
+        taker_fee = self._config.taker_fee_rate or 0.00055  # Default 5.5 bps
 
         # Calculate free margin (what's available for new positions)
         free_margin = equity - used_margin
+
+        # Cap 1: Maximum position as % of total equity
+        # This prevents runaway compounding regardless of leverage
+        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+
+        # Cap 2: Fee reservation
+        # Reserve balance for entry fee + potential exit fee
+        # Position + entry_fee + exit_fee <= available
+        # Position * (1 + 2*taker_fee) <= available
+        # Position <= available / (1 + 2*taker_fee)
+        if self._config.reserve_fee_buffer:
+            fee_factor = 1.0 + 2.0 * taker_fee  # Entry + exit fees
+            max_by_fees = free_margin * max_lev / fee_factor
+        else:
+            max_by_fees = float("inf")
+
+        # Cap 3: Leverage-based max (existing cap)
+        max_by_leverage = free_margin * max_lev
+
+        # Final max is the minimum of all caps
+        max_size = min(max_by_equity_pct, max_by_fees, max_by_leverage)
 
         # Margin is the % of FREE equity we're committing
         margin = free_margin * (risk_pct / 100.0)
@@ -242,15 +320,24 @@ class SizingModel:
         # Position size = margin * leverage (Bybit formula)
         size_usdt = margin * max_lev
 
-        # Cap at max allowed position based on FREE margin (not total equity)
-        max_size = free_margin * max_lev
+        # Apply the cap
         was_capped = size_usdt > max_size
         size_usdt = min(size_usdt, max_size)
+
+        # Build details string
+        cap_reason = ""
+        if was_capped:
+            if max_size == max_by_equity_pct:
+                cap_reason = f", capped by {max_pos_pct}% equity"
+            elif max_size == max_by_fees:
+                cap_reason = ", capped by fee reserve"
+            else:
+                cap_reason = ", capped by leverage"
 
         return SizingResult(
             size_usdt=size_usdt,
             method="percent_equity",
-            details=f"free_margin=${free_margin:.2f}, margin=${margin:.2f}, lev={max_lev:.1f}x, position=${size_usdt:.2f}",
+            details=f"free_margin=${free_margin:.2f}, margin=${margin:.2f}, lev={max_lev:.1f}x, position=${size_usdt:.2f}{cap_reason}",
             was_capped=was_capped,
         )
 
@@ -288,12 +375,21 @@ class SizingModel:
         """
         risk_pct = self._config.risk_per_trade_pct
         max_lev = self._config.max_leverage
+        max_pos_pct = self._config.max_position_equity_pct
+        taker_fee = self._config.taker_fee_rate or 0.00055
 
         # Calculate free margin for position cap
         free_margin = equity - used_margin
 
-        # Maximum size based on leverage (capped by free margin)
-        max_size = free_margin * max_lev
+        # Calculate max size with all caps (same as percent_equity)
+        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+        if self._config.reserve_fee_buffer:
+            fee_factor = 1.0 + 2.0 * taker_fee
+            max_by_fees = free_margin * max_lev / fee_factor
+        else:
+            max_by_fees = float("inf")
+        max_by_leverage = free_margin * max_lev
+        max_size = min(max_by_equity_pct, max_by_fees, max_by_leverage)
 
         # Risk dollars (what we're willing to lose)
         risk_dollars = equity * (risk_pct / 100.0)
@@ -308,15 +404,23 @@ class SizingModel:
                 was_capped = size_usdt > max_size
                 size_usdt = min(size_usdt, max_size)
 
+                cap_reason = ""
+                if was_capped:
+                    if max_size == max_by_equity_pct:
+                        cap_reason = f", capped by {max_pos_pct}% equity"
+                    elif max_size == max_by_fees:
+                        cap_reason = ", capped by fee reserve"
+                    else:
+                        cap_reason = ", capped by leverage"
+
                 return SizingResult(
                     size_usdt=size_usdt,
                     method="risk_based",
-                    details=f"risk=${risk_dollars:.2f}, stop_dist={stop_distance:.4f}",
+                    details=f"risk=${risk_dollars:.2f}, stop_dist={stop_distance:.4f}{cap_reason}",
                     was_capped=was_capped,
                 )
 
         # Fallback to percent_equity formula if no valid stop
-        # BUG FIX: Include leverage multiplier for consistency with percent_equity
         margin = free_margin * (risk_pct / 100.0)
         size_usdt = margin * max_lev
         was_capped = size_usdt > max_size
@@ -337,24 +441,38 @@ class SizingModel:
         """
         Size using fixed notional from request.
 
-        Still capped by max leverage to prevent over-leveraging.
+        Still capped by:
+            1. max_position_equity_pct (default 95%) of equity
+            2. max leverage to prevent over-leveraging
 
         Args:
             equity: Current equity for leverage cap calculation
             requested_size: Requested position size in USDT
         """
         max_lev = self._config.max_leverage
-        max_size = equity * max_lev
+        max_pos_pct = self._config.max_position_equity_pct
+
+        # Cap by equity percentage and leverage
+        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+        max_by_leverage = equity * max_lev
+        max_size = min(max_by_equity_pct, max_by_leverage)
 
         # Use requested size or default to max
         size_usdt = requested_size if requested_size is not None else max_size
         was_capped = size_usdt > max_size
         size_usdt = min(size_usdt, max_size)
 
+        cap_reason = ""
+        if was_capped:
+            if max_size == max_by_equity_pct:
+                cap_reason = f" (capped by {max_pos_pct}% equity)"
+            else:
+                cap_reason = " (capped by leverage)"
+
         return SizingResult(
             size_usdt=size_usdt,
             method="fixed_notional",
-            details=f"requested={requested_size or 0:.2f}",
+            details=f"requested={requested_size or 0:.2f}{cap_reason}",
             was_capped=was_capped,
         )
 
@@ -384,3 +502,113 @@ class SizingModel:
             True if size >= min_trade_usdt
         """
         return size_usdt >= self._config.min_trade_usdt
+
+    def check_liquidation_distance(
+        self,
+        entry_price: float,
+        leverage: float,
+        direction: str,
+    ) -> tuple[bool, float, str]:
+        """
+        G0-2: Check if liquidation price is safely distant from entry.
+
+        Liquidation occurs when:
+        - Long: price drops such that loss = margin (minus maintenance)
+        - Short: price rises such that loss = margin (minus maintenance)
+
+        Formula (isolated margin, Bybit-style):
+            Long liq price = entry * (1 - 1/leverage + mmr)
+            Short liq price = entry * (1 + 1/leverage - mmr)
+
+        Where mmr = maintenance margin rate (~0.5% for Bybit)
+
+        Args:
+            entry_price: Entry price
+            leverage: Position leverage
+            direction: "long" or "short"
+
+        Returns:
+            Tuple of (is_safe, liq_distance_pct, reason)
+            - is_safe: True if liq distance >= min_liq_distance_pct
+            - liq_distance_pct: Actual distance to liquidation as %
+            - reason: Rejection reason if not safe
+        """
+        if leverage <= 0 or entry_price <= 0:
+            return False, 0.0, "Invalid leverage or entry price"
+
+        mmr = self._config.maintenance_margin_rate
+        min_distance = self._config.min_liq_distance_pct
+
+        if direction == "long":
+            # Long liquidation: price drops
+            liq_price = entry_price * (1 - 1/leverage + mmr)
+            liq_distance_pct = ((entry_price - liq_price) / entry_price) * 100
+        else:
+            # Short liquidation: price rises
+            liq_price = entry_price * (1 + 1/leverage - mmr)
+            liq_distance_pct = ((liq_price - entry_price) / entry_price) * 100
+
+        is_safe = liq_distance_pct >= min_distance
+
+        if not is_safe:
+            reason = (
+                f"Liquidation too close: {liq_distance_pct:.2f}% from entry "
+                f"(min required: {min_distance:.1f}%). "
+                f"At {leverage:.1f}x leverage, liq price = ${liq_price:.2f}"
+            )
+            return False, liq_distance_pct, reason
+
+        return True, liq_distance_pct, ""
+
+    def size_order_with_liq_check(
+        self,
+        entry_price: float,
+        direction: str,
+        equity: float | None = None,
+        stop_loss: float | None = None,
+        requested_size: float | None = None,
+        used_margin: float = 0.0,
+    ) -> SizingResult:
+        """
+        Size order with liquidation distance validation.
+
+        This is the recommended entry point for live trading. It combines
+        position sizing with the G0-2 liquidation safety check.
+
+        Args:
+            entry_price: Entry price for the trade
+            direction: "long" or "short"
+            equity: Current account equity (uses tracked equity if None)
+            stop_loss: Stop loss price for risk-based sizing
+            requested_size: Requested size for fixed_notional model
+            used_margin: Margin already used by existing positions
+
+        Returns:
+            SizingResult with rejection info if liquidation too close
+        """
+        # First, check liquidation distance
+        is_safe, liq_dist, rejection_reason = self.check_liquidation_distance(
+            entry_price=entry_price,
+            leverage=self._config.max_leverage,
+            direction=direction,
+        )
+
+        if not is_safe:
+            return SizingResult(
+                size_usdt=0.0,
+                method="rejected",
+                details=rejection_reason,
+                rejected=True,
+                rejection_reason=rejection_reason,
+            )
+
+        # Proceed with normal sizing
+        result = self.size_order(
+            equity=equity,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            requested_size=requested_size,
+            used_margin=used_margin,
+        )
+
+        return result

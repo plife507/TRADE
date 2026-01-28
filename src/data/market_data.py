@@ -626,31 +626,31 @@ class MarketData:
     def get_multi_tf_ohlcv(
         self,
         symbol: str,
-        htf: str = "4h",
-        mtf: str = "1h",
-        ltf: str = "15m",
+        high_tf: str = "4h",
+        med_tf: str = "1h",
+        low_tf: str = "15m",
         bars: int = 100,
     ) -> dict[str, pd.DataFrame]:
         """
         Get OHLCV data for multiple timeframes at once.
-        
+
         This is optimized for multi-timeframe strategies that need
-        HTF (Higher), MTF (Medium), and LTF (Lower) timeframe data.
-        
+        high_tf (Higher), med_tf (Medium), and low_tf (Lower) timeframe data.
+
         Args:
             symbol: Trading symbol
-            htf: Higher timeframe (default: 4h)
-            mtf: Medium timeframe (default: 1h)
-            ltf: Lower timeframe (default: 15m)
+            high_tf: Higher timeframe (default: 4h)
+            med_tf: Medium timeframe (default: 1h)
+            low_tf: Lower timeframe (default: 15m)
             bars: Number of bars per timeframe
-        
+
         Returns:
-            Dict with keys 'htf', 'mtf', 'ltf' mapping to DataFrames
+            Dict with keys 'high_tf', 'med_tf', 'low_tf' mapping to DataFrames
         """
         return {
-            "htf": self.get_ohlcv(symbol, htf, bars),
-            "mtf": self.get_ohlcv(symbol, mtf, bars),
-            "ltf": self.get_ohlcv(symbol, ltf, bars),
+            "high_tf": self.get_ohlcv(symbol, high_tf, bars),
+            "med_tf": self.get_ohlcv(symbol, med_tf, bars),
+            "low_tf": self.get_ohlcv(symbol, low_tf, bars),
         }
     
     def get_multiple_timeframes(

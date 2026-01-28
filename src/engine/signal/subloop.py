@@ -1,8 +1,7 @@
 """
 Unified 1m sub-loop evaluation for signal generation.
 
-This module extracts the common 1m sub-loop pattern from both BacktestEngine
-and PlayEngine into a shared, engine-agnostic implementation.
+This module provides engine-agnostic 1m sub-loop evaluation for PlayEngine.
 
 The SubLoopEvaluator handles:
 - Iterating through 1m bars within an exec bar
@@ -114,8 +113,8 @@ class SubLoopEvaluator:
     """Engine-agnostic 1m sub-loop evaluator.
 
     This class encapsulates the shared logic for evaluating signals at
-    1m granularity within exec bars. Both BacktestEngine and PlayEngine
-    can use this with their own SubLoopContext implementations.
+    1m granularity within exec bars. Used by PlayEngine with its
+    SubLoopContext implementation.
 
     Example:
         # In PlayEngine

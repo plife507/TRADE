@@ -38,13 +38,13 @@ Usage in Play:
     structures:
       exec:
         - type: swing
-          key: swing
+          key: pivots
           params: { left: 5, right: 5 }
 
         # Entry zones (retracement)
         - type: fibonacci
           key: fib_entry
-          depends_on: { swing: swing }
+          uses: pivots
           params:
             levels: [0.382, 0.5, 0.618]
             mode: retracement
@@ -53,7 +53,7 @@ Usage in Play:
         # Profit targets (auto-direction based on swing)
         - type: fibonacci
           key: fib_targets
-          depends_on: { swing: swing }
+          uses: pivots
           params:
             levels: [0.272, 0.618, 1.0]  # Will become 1.272, 1.618, 2.0 for bearish
             mode: extension              # or -0.272, -0.618, -1.0 for bullish
@@ -62,7 +62,7 @@ Usage in Play:
         # Or explicit negative levels for long targets
         - type: fibonacci
           key: fib_long_targets
-          depends_on: { swing: swing }
+          uses: pivots
           params:
             levels: [-0.272, -0.618, -1.0]  # Above high
             mode: retracement  # Unified formula handles negative ratios

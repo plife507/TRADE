@@ -292,6 +292,17 @@ def validate_play_contract(play: "Play") -> PlayValidationResult:
                 code="INVALID_MAX_LEVERAGE",
                 message=f"account.max_leverage must be positive. Got: {play.account.max_leverage}",
             ))
+        # G0-1: max_drawdown_pct is required and must be positive
+        if not hasattr(play.account, 'max_drawdown_pct') or play.account.max_drawdown_pct <= 0:
+            issues.append(ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                code="INVALID_MAX_DRAWDOWN",
+                message=(
+                    f"account.max_drawdown_pct must be positive (e.g., 25.0 for 25% max drawdown). "
+                    f"Got: {getattr(play.account, 'max_drawdown_pct', 'missing')}. "
+                    "This is a critical risk control for live trading."
+                ),
+            ))
     
     # Warmup bars validation (P2.2: prevent excessive data requests)
     # Warmup is computed from feature registry at runtime - validation
@@ -685,7 +696,7 @@ def _compute_structure_warmup(play: "Play") -> int:
         return 0
 
     # First pass: find MAX swing params across all swings for dependent structures
-    # Multiple swings may exist (e.g., exec swing + HTF swing) - use largest window
+    # Multiple swings may exist (e.g., exec swing + high_tf swing) - use largest window
     max_left = 5  # default
     max_right = 5  # default
     for feature in structures:

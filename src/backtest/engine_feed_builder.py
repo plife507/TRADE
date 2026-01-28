@@ -1,5 +1,5 @@
 """
-FeedStore builder module for BacktestEngine.
+FeedStore builder module for backtest data.
 
 This module handles FeedStore construction for the array-backed hot loop:
 - build_feed_stores_impl: Build FeedStores from prepared frames
@@ -8,7 +8,7 @@ This module handles FeedStore construction for the array-backed hot loop:
 - Returns MultiTFFeedStore for unified access
 
 All functions accept prepared frames and config as parameters.
-The BacktestEngine delegates to these functions, maintaining the same public API.
+Used by DataBuilder for FeedStore construction.
 
 Phase 2: Adds 1m quote feed for simulator price proxy.
 """
@@ -52,7 +52,7 @@ def build_feed_stores_impl(
     config: SystemConfig,
     tf_mapping: dict[str, str],
     multi_tf_mode: bool,
-    mtf_frames: MultiTFPreparedFrames | None,
+    multi_tf_frames: MultiTFPreparedFrames | None,
     prepared_frame: PreparedFrame | None,
     data: pd.DataFrame | None,
     logger=None,
@@ -73,7 +73,7 @@ def build_feed_stores_impl(
         config: System configuration
         tf_mapping: Dict with low_tf, med_tf, high_tf, exec keys
         multi_tf_mode: Whether this is true multi-TF mode
-        mtf_frames: Multi-TF prepared frames (if multi-TF mode)
+        multi_tf_frames: Multi-TF prepared frames (if multi-TF mode)
         prepared_frame: Single-TF prepared frame (if single-TF mode)
         data: Fallback DataFrame if prepared_frame not available
         logger: Optional logger instance
@@ -87,7 +87,7 @@ def build_feed_stores_impl(
     if logger is None:
         logger = get_logger()
 
-    if mtf_frames is None and prepared_frame is None:
+    if multi_tf_frames is None and prepared_frame is None:
         raise ValueError("No prepared frames. Call prepare_multi_tf_frames() first.")
 
     # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
@@ -104,7 +104,7 @@ def build_feed_stores_impl(
     med_tf_feed: FeedStore | None = None
     high_tf_feed: FeedStore | None = None
 
-    if multi_tf_mode and mtf_frames is not None:
+    if multi_tf_mode and multi_tf_frames is not None:
         # Multi-TF mode: build feeds for each unique TF
         # Get indicator columns for each TF
         low_tf_cols = get_required_indicator_columns_from_specs(specs_by_role.get(low_tf, specs_by_role.get('exec', [])))
@@ -112,7 +112,7 @@ def build_feed_stores_impl(
         high_tf_cols = get_required_indicator_columns_from_specs(specs_by_role.get(high_tf, []))
 
         # Build low_tf feed (always present)
-        low_tf_df = mtf_frames.frames.get(low_tf)
+        low_tf_df = multi_tf_frames.frames.get(low_tf)
         if low_tf_df is not None:
             low_tf_feed = FeedStore.from_dataframe(
                 df=low_tf_df,
@@ -123,7 +123,7 @@ def build_feed_stores_impl(
 
         # Build med_tf feed (None if same as low_tf)
         if med_tf != low_tf:
-            med_tf_df = mtf_frames.frames.get(med_tf)
+            med_tf_df = multi_tf_frames.frames.get(med_tf)
             if med_tf_df is not None:
                 med_tf_feed = FeedStore.from_dataframe(
                     df=med_tf_df,
@@ -135,7 +135,7 @@ def build_feed_stores_impl(
 
         # Build high_tf feed (None if same as med_tf or low_tf)
         if high_tf != med_tf and high_tf != low_tf:
-            high_tf_df = mtf_frames.frames.get(high_tf)
+            high_tf_df = multi_tf_frames.frames.get(high_tf)
             if high_tf_df is not None:
                 high_tf_feed = FeedStore.from_dataframe(
                     df=high_tf_df,

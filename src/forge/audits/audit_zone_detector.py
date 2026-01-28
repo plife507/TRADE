@@ -1,5 +1,5 @@
 """
-Audit tests for IncrementalZoneDetector.
+Audit tests for IncrementalZone.
 
 Tests:
 1. Parameter validation (zone_type, width_atr)
@@ -26,7 +26,7 @@ from src.structures import (
     STRUCTURE_REGISTRY,
     get_structure_info,
     unregister_structure,
-    IncrementalZoneDetector,
+    IncrementalZone,
 )
 
 
@@ -100,12 +100,12 @@ def test_zone_registered() -> None:
     print("Testing zone registration...")
 
     assert "zone" in STRUCTURE_REGISTRY, "zone should be registered"
-    assert STRUCTURE_REGISTRY["zone"] is IncrementalZoneDetector
+    assert STRUCTURE_REGISTRY["zone"] is IncrementalZone
 
     info = get_structure_info("zone")
     assert info["required_params"] == ["zone_type", "width_atr"]
     assert info["depends_on"] == ["swing"]
-    assert info["class_name"] == "IncrementalZoneDetector"
+    assert info["class_name"] == "IncrementalZone"
 
     print("  zone registration: PASSED")
 
@@ -118,7 +118,7 @@ def test_validate_zone_type() -> None:
 
     # Valid zone types should work
     for zone_type in ["demand", "supply"]:
-        detector = IncrementalZoneDetector.validate_and_create(
+        detector = IncrementalZone.validate_and_create(
             struct_type="zone",
             key="test_zone",
             params={"zone_type": zone_type, "width_atr": 1.5},
@@ -129,7 +129,7 @@ def test_validate_zone_type() -> None:
     # Invalid zone type should fail
     for invalid in ["support", "resistance", "DEMAND", "", None, 123]:
         try:
-            IncrementalZoneDetector.validate_and_create(
+            IncrementalZone.validate_and_create(
                 struct_type="zone",
                 key="test_zone",
                 params={"zone_type": invalid, "width_atr": 1.5},
@@ -152,7 +152,7 @@ def test_validate_width_atr() -> None:
 
     # Valid width_atr values should work
     for width in [0.5, 1.0, 1.5, 2.0, 10]:
-        detector = IncrementalZoneDetector.validate_and_create(
+        detector = IncrementalZone.validate_and_create(
             struct_type="zone",
             key="test_zone",
             params={"zone_type": "demand", "width_atr": width},
@@ -163,7 +163,7 @@ def test_validate_width_atr() -> None:
     # Invalid width_atr should fail
     for invalid in [0, -1, -0.5, "1.5", None, []]:
         try:
-            IncrementalZoneDetector.validate_and_create(
+            IncrementalZone.validate_and_create(
                 struct_type="zone",
                 key="test_zone",
                 params={"zone_type": "demand", "width_atr": invalid},
@@ -183,7 +183,7 @@ def test_missing_swing_dependency() -> None:
     print("Testing missing swing dependency...")
 
     try:
-        IncrementalZoneDetector.validate_and_create(
+        IncrementalZone.validate_and_create(
             struct_type="zone",
             key="test_zone",
             params={"zone_type": "demand", "width_atr": 1.5},
@@ -203,7 +203,7 @@ def test_initial_state() -> None:
     print("Testing initial state...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="test_zone",
         params={"zone_type": "demand", "width_atr": 1.5},
@@ -223,7 +223,7 @@ def test_demand_zone_creation() -> None:
     print("Testing demand zone creation...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="demand_zone",
         params={"zone_type": "demand", "width_atr": 1.0},
@@ -253,7 +253,7 @@ def test_supply_zone_creation() -> None:
     print("Testing supply zone creation...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="supply_zone",
         params={"zone_type": "supply", "width_atr": 2.0},
@@ -283,7 +283,7 @@ def test_demand_zone_break() -> None:
     print("Testing demand zone break...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="demand_zone",
         params={"zone_type": "demand", "width_atr": 1.0},
@@ -319,7 +319,7 @@ def test_supply_zone_break() -> None:
     print("Testing supply zone break...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="supply_zone",
         params={"zone_type": "supply", "width_atr": 1.0},
@@ -352,7 +352,7 @@ def test_zone_recalculation_on_new_swing() -> None:
     print("Testing zone recalculation on new swing...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="demand_zone",
         params={"zone_type": "demand", "width_atr": 1.0},
@@ -386,7 +386,7 @@ def test_zone_no_atr() -> None:
     print("Testing zone without ATR...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="demand_zone",
         params={"zone_type": "demand", "width_atr": 1.0},
@@ -411,7 +411,7 @@ def test_output_keys() -> None:
     print("Testing output keys...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="test_zone",
         params={"zone_type": "demand", "width_atr": 1.0},
@@ -429,7 +429,7 @@ def test_get_value() -> None:
     print("Testing get_value...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="test_zone",
         params={"zone_type": "demand", "width_atr": 1.0},
@@ -461,7 +461,7 @@ def test_get_value_safe() -> None:
     print("Testing get_value_safe...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="my_zone",
         params={"zone_type": "demand", "width_atr": 1.0},
@@ -490,7 +490,7 @@ def test_get_all_values() -> None:
     print("Testing get_all_values...")
 
     mock_swing = MockSwingDetector()
-    detector = IncrementalZoneDetector.validate_and_create(
+    detector = IncrementalZone.validate_and_create(
         struct_type="zone",
         key="test_zone",
         params={"zone_type": "supply", "width_atr": 2.0},
@@ -514,7 +514,7 @@ def test_get_all_values() -> None:
 def run_all_tests() -> bool:
     """Run all validation tests."""
     print("=" * 60)
-    print("IncrementalZoneDetector Validation Tests")
+    print("IncrementalZone Validation Tests")
     print("=" * 60)
     print()
 

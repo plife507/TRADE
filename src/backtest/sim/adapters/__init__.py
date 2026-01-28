@@ -11,7 +11,7 @@ from .ohlcv_adapter import (
     adapt_ohlcv_dataframe,
     build_bar_close_ts_map,
 )
-from .funding_adapter import adapt_funding_rows, adapt_funding_dataframe
+from .funding_adapter import adapt_funding_dataframe
 
 __all__ = [
     # Canonical adapters (preferred)
@@ -22,7 +22,6 @@ __all__ = [
     "adapt_ohlcv_row",
     "adapt_ohlcv_dataframe",
     # Funding adapters
-    "adapt_funding_rows",
     "adapt_funding_dataframe",
 ]
 

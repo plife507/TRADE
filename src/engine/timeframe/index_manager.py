@@ -52,9 +52,6 @@ class TFIndexUpdate:
     high_tf_idx: int
 
 
-# Backward compat alias
-HTFIndexUpdate = TFIndexUpdate
-
 
 class TFIndexManager:
     """
@@ -136,17 +133,6 @@ class TFIndexManager:
     def high_tf_idx(self) -> int:
         """Current high_tf index."""
         return self._current_high_tf_idx
-
-    # Backward compat aliases
-    @property
-    def htf_idx(self) -> int:
-        """Current high_tf forward-fill index (backward compat)."""
-        return self._current_high_tf_idx
-
-    @property
-    def mtf_idx(self) -> int:
-        """Current med_tf forward-fill index (backward compat)."""
-        return self._current_med_tf_idx
 
     def reset(self) -> None:
         """Reset indices to initial state."""
@@ -263,10 +249,6 @@ class TFIndexManager:
         self._current_high_tf_idx = high_tf_idx
 
 
-# Backward compat alias
-HTFIndexManager = TFIndexManager
-
-
 def update_tf_indices_impl(
     exec_ts_close: datetime,
     low_tf_feed: "FeedStore",
@@ -332,31 +314,3 @@ def update_tf_indices_impl(
         new_med_tf_idx,
         new_high_tf_idx,
     )
-
-
-# Backward compat wrapper
-def update_high_tf_med_tf_indices_impl(
-    exec_ts_close: datetime,
-    high_tf_feed: "FeedStore | None",
-    med_tf_feed: "FeedStore | None",
-    exec_feed: "FeedStore",
-    current_high_tf_idx: int,
-    current_med_tf_idx: int,
-) -> tuple[bool, bool, int, int]:
-    """
-    Backward compat wrapper for high_tf/med_tf index update.
-
-    Returns tuple format for backward compatibility with existing callers.
-    """
-    # Use new impl with dummy low_tf
-    _, med_updated, high_updated, _, new_med_idx, new_high_idx = update_tf_indices_impl(
-        exec_ts_close=exec_ts_close,
-        low_tf_feed=exec_feed,  # Dummy, not used since same as exec
-        med_tf_feed=med_tf_feed,
-        high_tf_feed=high_tf_feed,
-        exec_feed=exec_feed,
-        current_low_tf_idx=0,
-        current_med_tf_idx=current_med_tf_idx,
-        current_high_tf_idx=current_high_tf_idx,
-    )
-    return high_updated, med_updated, new_high_idx, new_med_idx

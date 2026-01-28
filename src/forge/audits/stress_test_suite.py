@@ -44,7 +44,7 @@ from src.indicators import get_registry
 # Constants (named, not magic numbers)
 # =============================================================================
 HASH_LENGTH = 12
-DEFAULT_VALIDATION_DIR = Path("strategies/plays/_validation")
+DEFAULT_VALIDATION_DIR = Path("tests/functional/plays/_validation")
 DEFAULT_SEED = 42
 DEFAULT_BARS = 1000
 
@@ -609,8 +609,7 @@ def _step_backtest_execution(
 
         # Import required modules
         from src.backtest.play import load_play
-        from src.backtest.engine_factory import create_engine_from_play
-        from src.backtest.engine import run_engine_with_play
+        from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
         from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
         # Create synthetic provider if candles available
@@ -818,7 +817,7 @@ def run_stress_test_suite(
 
     Args:
         validation_plays_dir: Directory containing validation plays
-            (default: strategies/plays/_validation)
+            (default: tests/functional/plays/_validation)
         skip_audits: Skip audit steps 3-6 (default: False)
         skip_backtest: Skip backtest steps 7-8 (default: False)
         trace_hashes: Enable hash tracing (default: True)

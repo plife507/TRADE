@@ -224,7 +224,15 @@
       "Bash(for:*)",
       "WebFetch(domain:innercircletrader.net)",
       "Bash(git merge:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(git grep:*)",
+      "Bash(TRADE_DEBUG=1 python trade_cli.py:*)",
+      "Bash(del _debug_engine.py)",
+      "Skill(validate)",
+      "Bash(git rm:*)",
+      "Bash(PYTHONPATH=. python:*)",
+      "Skill(commit)",
+      "Bash(do echo -n \"$play: \")"
     ]
   },
   "hooks": {

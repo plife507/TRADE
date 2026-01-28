@@ -2,15 +2,11 @@
 Shared timeframe management module for 3-feed + exec role system.
 
 This module provides TFIndexManager for managing low_tf/med_tf/high_tf indices
-relative to the exec role. Works identically for BacktestEngine and PlayEngine.
+relative to the exec role. Used by PlayEngine for both backtest and live modes.
 
 Key Classes:
     TFIndexManager: Manages TF index tracking for 3-feed system
     TFIndexUpdate: Result dataclass with change flags and indices
-
-Backward Compat:
-    HTFIndexManager = TFIndexManager (alias)
-    HTFIndexUpdate = TFIndexUpdate (alias)
 
 Usage:
     from src.engine.timeframe import TFIndexManager, TFIndexUpdate
@@ -32,17 +28,11 @@ Usage:
 from .index_manager import (
     TFIndexManager,
     TFIndexUpdate,
-    HTFIndexManager,  # Backward compat alias
-    HTFIndexUpdate,   # Backward compat alias
     update_tf_indices_impl,
-    update_high_tf_med_tf_indices_impl,  # Backward compat
 )
 
 __all__ = [
     "TFIndexManager",
     "TFIndexUpdate",
-    "HTFIndexManager",
-    "HTFIndexUpdate",
     "update_tf_indices_impl",
-    "update_high_tf_med_tf_indices_impl",
 ]

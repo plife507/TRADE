@@ -112,14 +112,14 @@ class TransitionManager:
         )
         transitions.extend(exec_transitions)
 
-        # Process HTF timeframes
+        # Process high_tf timeframes
         for tf_name, tf_state in incremental_state.high_tf.items():
-            htf_transitions = self._detect_tf_transitions(
+            high_tf_transitions = self._detect_tf_transitions(
                 bar_idx=bar_idx,
                 timeframe=tf_name,
                 tf_state=tf_state,
             )
-            transitions.extend(htf_transitions)
+            transitions.extend(high_tf_transitions)
 
         # Update history
         self._history.extend(transitions)
@@ -204,9 +204,11 @@ class TransitionManager:
 
     def _get_detector_type(self, detector: "BaseIncrementalDetector") -> str:
         """Get the type name of a detector."""
-        # Extract from class name or registry name
+        # Prefer the _type attribute set by validate_and_create() if available
+        if hasattr(detector, '_type') and detector._type:
+            return detector._type
+        # Fallback: extract from class name
         cls_name = type(detector).__name__
-        # Common pattern: SwingDetector -> swing
         if cls_name.endswith("Detector"):
             return cls_name[:-8].lower()
         return cls_name.lower()

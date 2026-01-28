@@ -7,7 +7,7 @@ Streams events.jsonl during simulation:
 - Funding events
 - Liquidation events
 - Entry-disabled events
-- HTF/MTF refresh events
+- high_tf/med_tf refresh events
 - Custom events
 
 Phase 4 additions:
@@ -150,62 +150,62 @@ class EventLogWriter:
         """Log an entries-disabled event."""
         self.log_event("entries_disabled", {"reason": reason}, timestamp)
     
-    def log_htf_refresh(
+    def log_high_tf_refresh(
         self,
         tf: str,
         ts_close: datetime,
         features: dict[str, float],
     ) -> None:
-        """Log an HTF cache refresh event."""
-        self.log_event("htf_refresh", {
+        """Log a high_tf cache refresh event."""
+        self.log_event("high_tf_refresh", {
             "tf": tf,
             "ts_close": ts_close.isoformat(),
             "features": features,
         }, timestamp=ts_close)
-    
-    def log_mtf_refresh(
+
+    def log_med_tf_refresh(
         self,
         tf: str,
         ts_close: datetime,
         features: dict[str, float],
     ) -> None:
-        """Log an MTF cache refresh event."""
-        self.log_event("mtf_refresh", {
+        """Log a med_tf cache refresh event."""
+        self.log_event("med_tf_refresh", {
             "tf": tf,
             "ts_close": ts_close.isoformat(),
             "features": features,
         }, timestamp=ts_close)
-    
+
     def log_snapshot_context(
         self,
         bar_index: int,
         exec_ts_close: datetime,
         snapshot_ready: bool,
         exec_ctx: dict[str, Any] | None = None,
-        htf_ctx: dict[str, Any] | None = None,
-        mtf_ctx: dict[str, Any] | None = None,
+        high_tf_ctx: dict[str, Any] | None = None,
+        med_tf_ctx: dict[str, Any] | None = None,
     ) -> None:
         """
         Log per-TF snapshot context for debugging (Phase 4).
-        
+
         Includes per-TF ctx_ts_close, features_ts_close, and staleness.
         This is designed for debug mode - buffered and written at end.
-        
+
         Args:
             bar_index: Current simulation bar index
             exec_ts_close: Execution timeframe bar close timestamp
             snapshot_ready: Whether snapshot was ready for strategy evaluation
             exec_ctx: Exec TF context dict {ts_close, features_ts_close, is_stale}
-            htf_ctx: HTF context dict {tf, ts_close, features_ts_close, is_stale}
-            mtf_ctx: MTF context dict {tf, ts_close, features_ts_close, is_stale}
+            high_tf_ctx: high_tf context dict {tf, ts_close, features_ts_close, is_stale}
+            med_tf_ctx: med_tf context dict {tf, ts_close, features_ts_close, is_stale}
         """
         self.log_event("snapshot_context", {
             "bar_index": bar_index,
             "exec_ts_close": exec_ts_close.isoformat(),
             "snapshot_ready": snapshot_ready,
             "exec_ctx": exec_ctx,
-            "htf_ctx": htf_ctx,
-            "mtf_ctx": mtf_ctx,
+            "high_tf_ctx": high_tf_ctx,
+            "med_tf_ctx": med_tf_ctx,
         }, timestamp=exec_ts_close)
     
     def log_trade_entry(

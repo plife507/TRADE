@@ -366,32 +366,7 @@ def compute_spec_id(
     return hashlib.sha256(json_str.encode()).hexdigest()[:12]
 
 
-def compute_zone_spec_id(zones: list[dict[str, Any]]) -> str:
-    """
-    Compute zone_spec_id from raw dict data (for parsing).
-
-    Same algorithm as StructureSpec.zone_spec_id but works with dicts.
-    Returns empty string if no zones.
-    """
-    if not zones:
-        return ""
-    canonical = {
-        "zones": sorted(
-            [
-                {
-                    "key": z.get("key", ""),
-                    "type": z.get("type", ""),
-                    "width_model": z.get("width_model", ""),
-                    "width_params": dict(sorted(z.get("width_params", {}).items())),
-                }
-                for z in zones
-            ],
-            key=lambda x: x["key"],
-        ),
-    }
-    json_str = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(json_str.encode()).hexdigest()[:12]
-
+# G1.12: compute_zone_spec_id() removed (2026-01-27) - unused, use StructureSpec.zone_spec_id
 
 def compute_block_id(spec_id: str, key: str, tf_role: str) -> str:
     """
@@ -408,18 +383,4 @@ def compute_block_id(spec_id: str, key: str, tf_role: str) -> str:
     return hashlib.sha256(json_str.encode()).hexdigest()[:12]
 
 
-def compute_zone_block_id(block_id: str, zone_spec_id: str) -> str:
-    """
-    Compute zone_block_id from block_id + zone_spec_id.
-
-    Same algorithm as StructureSpec.zone_block_id but works with primitives.
-    Returns block_id if zone_spec_id is empty.
-    """
-    if not zone_spec_id:
-        return block_id
-    canonical = {
-        "block_id": block_id,
-        "zone_spec_id": zone_spec_id,
-    }
-    json_str = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(json_str.encode()).hexdigest()[:12]
+# G1.13: compute_zone_block_id() removed (2026-01-27) - unused, use StructureSpec.zone_block_id

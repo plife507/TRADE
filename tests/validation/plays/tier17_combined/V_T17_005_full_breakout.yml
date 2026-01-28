@@ -1,0 +1,73 @@
+version: "3.0.0"
+name: "V_T17_005_full_breakout"
+description: "Multi-confirm breakout - comprehensive breakout"
+
+synthetic:
+  pattern: "breakout_clean"
+  bars: 200
+  seed: 1705
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: rolling_window
+      key: rolling_high_20
+      params:
+        mode: max
+        size: 20
+        source: high
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "rolling_high_20.value"]
+      - ["close", ">", "bbands_20_2.upper"]
+      - ["adx_14.adx", ">", 20]
+      - ["volume", ">", "volume_sma_20"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 6.0

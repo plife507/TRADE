@@ -48,7 +48,7 @@ python trade_cli.py --smoke backtest
 #### Phase 2: Isolate
 
 1. Read the full stack trace
-2. Check `docs/audits/OPEN_BUGS.md` for known issues
+2. Check `docs/OPEN_BUGS.md` for known issues
 3. Trace data flow through engine
 4. Check recent changes: `git diff HEAD~5`
 
@@ -61,13 +61,14 @@ python trade_cli.py --smoke backtest
 #### Phase 4: Verify
 
 ```bash
-# Run validation suite
-python trade_cli.py backtest audit-toolkit
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
-python trade_cli.py backtest structure-smoke
+# Match validation to what you fixed:
+# - audit-toolkit: ONLY tests src/indicators/ registry
+# - audit-rollup: ONLY tests sim/pricing.py
+# - metrics-audit: ONLY tests metrics.py
 
-# Run backtest smoke
-python trade_cli.py --smoke backtest
+# For engine/sim/runtime bugs, you MUST run actual engine:
+python trade_cli.py --smoke backtest            # Engine integration test
+python trade_cli.py backtest structure-smoke    # If fixed structures
 ```
 
 ## Output Format
@@ -85,6 +86,6 @@ python trade_cli.py --smoke backtest
 ## TRADE Rules
 
 - Never use pytest files - all validation through CLI
-- Update `docs/todos/TODO.md` with bug fix status
-- Check `docs/audits/OPEN_BUGS.md` for related issues
+- Update `docs/TODO.md` with bug fix status
+- Check `docs/OPEN_BUGS.md` for related issues
 - Remove legacy code, don't add compatibility shims

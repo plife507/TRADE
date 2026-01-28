@@ -327,6 +327,11 @@ class HistoricalDataStore:
         if not read_only:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # G2-2: File-based write lock to prevent concurrent write corruption
+        self._lock_file_path = self.db_path.with_suffix(".lock")
+        self._lock_file = None
+        self._write_lock = threading.Lock()
+
         # Resolve table names for this environment
         self.table_ohlcv = resolve_table_name("ohlcv", self.env)
         self.table_sync_metadata = resolve_table_name("sync_metadata", self.env)
@@ -399,7 +404,79 @@ class HistoricalDataStore:
         # Skip schema initialization in read-only mode (schema must already exist)
         if not self.read_only:
             self._init_schema()
-    
+
+    # =========================================================================
+    # G2-2: File-based Write Locking
+    # =========================================================================
+
+    def _acquire_write_lock(self, timeout: float = 30.0) -> bool:
+        """
+        G2-2: Acquire file-based write lock to prevent concurrent writes.
+
+        Uses a .lock file alongside the database file. This prevents
+        corruption from multiple processes writing simultaneously.
+
+        Args:
+            timeout: Max seconds to wait for lock (default 30s)
+
+        Returns:
+            True if lock acquired, False if timeout
+        """
+        if self.read_only:
+            return True  # No lock needed for read-only
+
+        start = time.time()
+        while time.time() - start < timeout:
+            with self._write_lock:
+                if self._lock_file is not None:
+                    return True  # Already have lock
+
+                try:
+                    # Try to create lock file exclusively
+                    self._lock_file = open(self._lock_file_path, 'x', newline='\n')
+                    self._lock_file.write(f"pid={os.getpid()}\ntime={datetime.now().isoformat()}\n")
+                    self._lock_file.flush()
+                    return True
+                except FileExistsError:
+                    # Lock file exists - check if stale (> 5 minutes old)
+                    try:
+                        age = time.time() - self._lock_file_path.stat().st_mtime
+                        if age > 300:  # 5 minutes
+                            self.logger.warning(
+                                f"Removing stale lock file (age={age:.0f}s): {self._lock_file_path}"
+                            )
+                            self._lock_file_path.unlink()
+                            continue  # Retry
+                    except OSError:
+                        pass
+
+            time.sleep(0.5)  # Wait before retry
+
+        self.logger.error(f"Could not acquire write lock after {timeout}s")
+        return False
+
+    def _release_write_lock(self):
+        """G2-2: Release file-based write lock."""
+        if self.read_only:
+            return
+
+        with self._write_lock:
+            if self._lock_file is not None:
+                try:
+                    self._lock_file.close()
+                except Exception:
+                    pass
+                self._lock_file = None
+
+                try:
+                    self._lock_file_path.unlink()
+                except OSError:
+                    pass
+
+    def __del__(self):
+        """Cleanup: release lock on deletion."""
+        self._release_write_lock()
+
     def _init_schema(self):
         """Initialize database schema with env-specific table names."""
         # OHLCV candle data
@@ -1377,7 +1454,7 @@ class HistoricalDataStore:
 
         return self.conn.execute(query, params).df()
     
-    def get_mtf_data(
+    def get_multi_tf_data(
         self,
         symbol: str,
         preset: str = "day",
@@ -1385,40 +1462,40 @@ class HistoricalDataStore:
     ) -> dict[str, pd.DataFrame]:
         """
         Get multi-timeframe data for backtesting.
-        
+
         Args:
             symbol: Trading symbol
-            preset: MTF preset ("swing", "day", "intraday", "scalp")
+            preset: Multi-TF preset ("swing", "day", "intraday", "scalp")
             period: How far back
-        
+
         Returns:
-            Dict with "htf", "mtf", "ltf" DataFrames
+            Dict with "high_tf", "med_tf", "low_tf" DataFrames
         """
         # Normalize symbol to uppercase for consistency
         symbol = symbol.upper()
-        
+
         presets = {
             "swing":    ("D", "4h", "1h"),
             "day":      ("4h", "1h", "15m"),
             "intraday": ("1h", "15m", "5m"),
             "scalp":    ("15m", "5m", "1m"),
         }
-        
+
         if preset not in presets:
             raise ValueError(f"Invalid preset: {preset}. Use: {list(presets.keys())}")
-        
-        htf, mtf, ltf = presets[preset]
-        
+
+        high_tf, med_tf, low_tf = presets[preset]
+
         return {
-            "htf": self.get_ohlcv(symbol, htf, period=period),
-            "mtf": self.get_ohlcv(symbol, mtf, period=period),
-            "ltf": self.get_ohlcv(symbol, ltf, period=period),
+            "high_tf": self.get_ohlcv(symbol, high_tf, period=period),
+            "med_tf": self.get_ohlcv(symbol, med_tf, period=period),
+            "low_tf": self.get_ohlcv(symbol, low_tf, period=period),
             "_meta": {
                 "symbol": symbol,
                 "preset": preset,
-                "htf_tf": htf,
-                "mtf_tf": mtf,
-                "ltf_tf": ltf,
+                "high_tf_value": high_tf,
+                "med_tf_value": med_tf,
+                "low_tf_value": low_tf,
                 "period": period,
             }
         }

@@ -394,24 +394,31 @@ def _fetch_from_api(
         return pd.DataFrame()
     
     combined = pd.concat(all_data, ignore_index=True)
-    combined = combined.drop_duplicates(subset=["timestamp"], keep="first")
+    combined = combined.drop_duplicates(subset=["timestamp"], keep="last")
     combined = combined.sort_values("timestamp").reset_index(drop=True)
     
     return combined
 
 
 def _store_dataframe(store: "HistoricalDataStore", symbol: str, timeframe: str, df: pd.DataFrame):
-    """Store DataFrame to DuckDB."""
+    """Store DataFrame to DuckDB.
+
+    G2-3: Handles missing turnover column gracefully by setting to 0.0.
+    """
     if df.empty:
         return
-    
+
     temp_df = df.copy()
     temp_df["symbol"] = symbol.upper()
     temp_df["timeframe"] = timeframe
-    
+
     if temp_df["timestamp"].dt.tz is not None:
         temp_df["timestamp"] = temp_df["timestamp"].dt.tz_localize(None)
-    
+
+    # G2-3: Ensure turnover column exists (may be missing from some API responses)
+    if "turnover" not in temp_df.columns:
+        temp_df["turnover"] = 0.0
+
     store.conn.execute(f"""
         INSERT OR REPLACE INTO {store.table_ohlcv}
         (symbol, timeframe, timestamp, open, high, low, close, volume, turnover)

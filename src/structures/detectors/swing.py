@@ -124,7 +124,7 @@ if TYPE_CHECKING:
 
 
 @register_structure("swing")
-class IncrementalSwingDetector(BaseIncrementalDetector):
+class IncrementalSwing(BaseIncrementalDetector):
     """
     Swing high/low detection with delayed confirmation and pivot pairing.
 
@@ -1065,7 +1065,7 @@ class IncrementalSwingDetector(BaseIncrementalDetector):
     def __repr__(self) -> str:
         """Return string representation for debugging."""
         return (
-            f"IncrementalSwingDetector("
+            f"IncrementalSwing("
             f"left={self.left}, right={self.right}, "
             f"high_level={self.high_level}, high_idx={self.high_idx}, "
             f"low_level={self.low_level}, low_idx={self.low_idx})"
@@ -1081,12 +1081,12 @@ def _run_validation_test() -> None:
     """
     from ..base import BarData
 
-    print("Testing IncrementalSwingDetector...")
+    print("Testing IncrementalSwing...")
     print("-" * 60)
 
     # Create detector with left=2, right=2 (window size = 5)
     params = {"left": 2, "right": 2}
-    detector = IncrementalSwingDetector(params, {})
+    detector = IncrementalSwing(params, {})
 
     # Sample price data with clear swings
     # Bar indices:  0,   1,   2,   3,   4,   5,   6,   7,   8,   9
@@ -1143,7 +1143,7 @@ def _run_validation_test() -> None:
 
     # Test invalid left parameter
     try:
-        IncrementalSwingDetector.validate_and_create("swing", "test", {"left": 0, "right": 2}, {})
+        IncrementalSwing.validate_and_create("swing", "test", {"left": 0, "right": 2}, {})
         print("ERROR: Should have raised ValueError for left=0")
     except ValueError as e:
         if "'left' must be integer >= 1" in str(e):
@@ -1153,7 +1153,7 @@ def _run_validation_test() -> None:
 
     # Test invalid right parameter (not an integer)
     try:
-        IncrementalSwingDetector.validate_and_create("swing", "test", {"left": 2, "right": "5"}, {})
+        IncrementalSwing.validate_and_create("swing", "test", {"left": 2, "right": "5"}, {})
         print("ERROR: Should have raised ValueError for right='5'")
     except ValueError as e:
         if "'right' must be integer >= 1" in str(e):
@@ -1163,7 +1163,7 @@ def _run_validation_test() -> None:
 
     # Test missing required parameter
     try:
-        IncrementalSwingDetector.validate_and_create("swing", "test", {"left": 2}, {})
+        IncrementalSwing.validate_and_create("swing", "test", {"left": 2}, {})
         print("ERROR: Should have raised ValueError for missing 'right'")
     except ValueError as e:
         if "missing required params" in str(e):

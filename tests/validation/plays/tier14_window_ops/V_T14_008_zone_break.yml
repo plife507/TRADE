@@ -1,0 +1,57 @@
+version: "3.0.0"
+name: "V_T14_008_zone_break"
+description: "Zone break detection - zone violation"
+
+synthetic:
+  pattern: "trend_down_clean"
+  bars: 200
+  seed: 1408
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: zone
+      key: demand_zone
+      uses: swing
+      params:
+        zone_type: demand
+        width_atr: 1.0
+
+actions:
+  entry_short:
+    all:
+      - ["demand_zone.state", "==", "broken"]
+      - ["close", "<", "ema_21"]
+
+position_policy:
+  mode: short_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

@@ -98,7 +98,7 @@ class FeedStore:
     close_ts_set: set[datetime] = field(default_factory=set)
 
     # O(1) ts_close->index mapping (epoch ms -> array index)
-    # Used for MTF/HTF forward-fill lookups
+    # Used for med_tf/high_tf forward-fill lookups
     ts_close_ms_to_idx: dict[int, int] = field(default_factory=dict)
 
     # Sorted list of close timestamps (ms) for O(log n) binary search
@@ -202,7 +202,7 @@ class FeedStore:
         """
         Get the last closed bar index at or before a given timestamp.
 
-        Used for forward-fill semantics in MTF/HTF.
+        Used for forward-fill semantics in med_tf/high_tf.
         O(log n) via binary search on cached sorted timestamp list.
 
         Args:

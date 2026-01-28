@@ -106,7 +106,7 @@ class ScopeMappings:
     Mappings for a single tf_config scope.
 
     Attributes:
-        role: The TF role ("exec", "htf", "mtf")
+        role: The TF role ("exec", "high_tf", "med_tf")
         declared_keys: All expanded output keys from feature_specs
         base_to_expanded: For multi-output specs, base_output_key -> [expanded_keys]
     """
@@ -289,7 +289,7 @@ def validate_feature_reference(
 
 
 # REMOVED: validate_signal_rules() - Legacy signal_rules format deprecated
-# All Plays now use blocks DSL v3.0.0. See strategies/plays/README.md
+# All Plays now use DSL v3.0.0. See docs/PLAY_DSL_COOKBOOK.md
 
 
 def validate_risk_model_refs(

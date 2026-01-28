@@ -7,11 +7,11 @@ Features can be indicators or structures, each on a specific timeframe.
 Key Concepts:
 - Feature: A single indicator or structure with unique ID, on a specific TF
 - FeatureRegistry: Central registry holding all features for an Play
-- Features are referenced by ID in blocks (not by role like exec/htf/mtf)
+- Features are referenced by ID in blocks (not by role like exec/high_tf/med_tf)
 
 Design Goals:
 1. Unified access: Indicators and structures share the same TF flexibility
-2. No fixed TF roles: Arbitrary TFs instead of exec/mtf/htf slots
+2. No fixed TF roles: Arbitrary TFs instead of exec/med_tf/high_tf slots
 3. ID-based references: Block conditions reference features by unique ID
 4. O(1) lookups: Fast access by ID or by TF
 
@@ -50,6 +50,7 @@ from typing import Any, TYPE_CHECKING
 from .rules.types import FeatureOutputType
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from .indicator_registry import IndicatorRegistry
 
 
@@ -92,7 +93,7 @@ class Feature:
 
         # For structures
         structure_type: Structure type name (e.g., "swing", "trend")
-        depends_on: Structure dependencies {type: feature_id}
+        uses: Structure dependencies as list of feature keys
     """
     id: str
     tf: str
@@ -106,9 +107,9 @@ class Feature:
 
     # Structure fields
     structure_type: str | None = None
-    depends_on: dict[str, str] = field(default_factory=dict)
+    uses: tuple[str, ...] = field(default_factory=tuple)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate feature configuration."""
         if not self.id:
             raise ValueError("Feature id is required")
@@ -163,8 +164,8 @@ class Feature:
                 result["input_source"] = self.input_source.value
         else:
             result["structure_type"] = self.structure_type
-            if self.depends_on:
-                result["depends_on"] = dict(self.depends_on)
+            if self.uses:
+                result["uses"] = list(self.uses)
             if self.params:
                 result["params"] = dict(self.params)
 
@@ -182,6 +183,13 @@ class Feature:
         except ValueError:
             input_source = InputSource.CLOSE
 
+        # Parse uses field (can be string or list)
+        uses_raw = d.get("uses", [])
+        if isinstance(uses_raw, str):
+            uses = (uses_raw,)
+        else:
+            uses = tuple(uses_raw)
+
         return cls(
             id=d["id"],
             tf=d["tf"],
@@ -191,7 +199,7 @@ class Feature:
             input_source=input_source,
             output_keys=tuple(d.get("output_keys", [])),
             structure_type=d.get("structure_type"),
-            depends_on=dict(d.get("depends_on", {})),
+            uses=uses,
         )
 
 
@@ -328,7 +336,7 @@ class FeatureRegistry:
         """Get number of features."""
         return len(self._features)
 
-    def __iter__(self):
+    def __iter__(self) -> "Iterator[FeatureConfig]":
         """Iterate over features."""
         return iter(self._features.values())
 
@@ -372,21 +380,35 @@ class FeatureRegistry:
                         f"Available: {available}"
                     )
 
-                # Validate depends_on references
-                for dep_type, dep_id in feature.depends_on.items():
-                    if dep_id not in self._features:
+                # Validate uses references
+                for dep_key in feature.uses:
+                    if dep_key not in self._features:
                         errors.append(
-                            f"Feature '{feature.id}': depends_on['{dep_type}'] references "
-                            f"unknown feature '{dep_id}'"
+                            f"Feature '{feature.id}': uses '{dep_key}' which does not exist"
                         )
                     else:
                         # Check dependency is a structure
-                        dep_feature = self._features[dep_id]
+                        dep_feature = self._features[dep_key]
                         if not dep_feature.is_structure:
                             errors.append(
-                                f"Feature '{feature.id}': depends_on['{dep_type}'] references "
-                                f"'{dep_id}' which is not a structure"
+                                f"Feature '{feature.id}': uses '{dep_key}' which is not a structure"
                             )
+                        else:
+                            # Check dependency type is valid for this structure
+                            if feature.structure_type in STRUCTURE_REGISTRY:
+                                detector_cls = STRUCTURE_REGISTRY[feature.structure_type]
+                                required_types = set(detector_cls.DEPENDS_ON)
+                                # "source" is an alias for "swing" in derived_zone
+                                dep_type = dep_feature.structure_type
+                                # Map swing->source for derived_zone compatibility
+                                valid = dep_type in required_types or (
+                                    "source" in required_types and dep_type == "swing"
+                                )
+                                if required_types and not valid:
+                                    errors.append(
+                                        f"Feature '{feature.id}': uses '{dep_key}' (type: {dep_type}) "
+                                        f"but requires one of: {sorted(required_types)}"
+                                    )
 
         return errors
 
@@ -518,7 +540,7 @@ class FeatureRegistry:
                         input_source=feature.input_source,
                         output_keys=tuple(output_keys),
                         structure_type=feature.structure_type,
-                        depends_on=feature.depends_on,
+                        uses=feature.uses,
                     )
                 except Exception:
                     # Keep original if expansion fails

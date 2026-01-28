@@ -155,12 +155,3 @@ def create_block_state(
     )
 
 
-def reset_block_state(bar_idx: int = 0) -> BlockState:
-    """Create a fresh BlockState with all states reset."""
-    return BlockState(
-        bar_idx=bar_idx,
-        signal=SignalState(),
-        action=ActionState(),
-        gate=GateResult.pass_(),
-        raw_signal_direction=0,
-    )

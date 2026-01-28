@@ -41,7 +41,7 @@ class VetoCondition(Enum):
     """Standard veto conditions."""
     ZONE_BROKEN = "zone_broken"
     TREND_REVERSAL = "trend_reversal"
-    CONFLICTING_HTF = "conflicting_htf"
+    CONFLICTING_HIGH_TF = "conflicting_high_tf"
     LOW_CONFLUENCE = "low_confluence"
 
 
@@ -53,7 +53,7 @@ class Signal:
 
     Attributes:
         action: Signal action (entry_long, entry_short, exit_long, exit_short)
-        timeframe: Source timeframe (exec, mtf, htf)
+        timeframe: Source timeframe (low_tf, med_tf, high_tf)
         priority: Priority level (higher = more important)
         confidence: Signal confidence (0.0-1.0)
         metadata: Additional signal data
@@ -119,7 +119,7 @@ class ResolutionConfig:
             priority_order=priority_order,
             veto_on=veto_on,
             min_confluence=config.get("min_confluence", 0.0),
-            require_htf_alignment=config.get("require_htf_alignment", False),
+            require_high_tf_alignment=config.get("require_high_tf_alignment", False),
         )
 
 
@@ -239,14 +239,14 @@ class ConflictResolver:
                     contributing_signals=tuple(signals),
                 )
 
-        # Check HTF alignment if required
-        if self._config.require_htf_alignment and derived_values:
+        # Check high_tf alignment if required
+        if self._config.require_high_tf_alignment and derived_values:
             alignment = derived_values.get("alignment", 0.0)
             if alignment < 0.5:
                 return ResolutionResult(
                     resolved_signal=None,
                     vetoed=True,
-                    veto_reason=f"HTF not aligned: {alignment:.2f}",
+                    veto_reason=f"high_tf not aligned: {alignment:.2f}",
                     contributing_signals=tuple(signals),
                 )
 
@@ -276,8 +276,8 @@ class ConflictResolver:
                 return self._check_zone_broken(incremental_state)
             case VetoCondition.TREND_REVERSAL:
                 return self._check_trend_reversal(incremental_state)
-            case VetoCondition.CONFLICTING_HTF:
-                return self._check_conflicting_htf(incremental_state)
+            case VetoCondition.CONFLICTING_HIGH_TF:
+                return self._check_conflicting_high_tf(incremental_state)
             case VetoCondition.LOW_CONFLUENCE:
                 return False  # Handled separately
             case _:
@@ -290,9 +290,9 @@ class ConflictResolver:
         """Check if any zone is broken."""
         try:
             exec_state = incremental_state.exec
-            for detector_key in exec_state.list_detectors():
+            for detector_key in exec_state.list_structures():
                 if "zone" in detector_key.lower():
-                    detector = exec_state.get_detector(detector_key)
+                    detector = exec_state.structures[detector_key]
                     state = detector.get_value("state")
                     if state == "BROKEN":
                         return True
@@ -311,18 +311,18 @@ class ConflictResolver:
         # TODO: Check transition history for recent trend direction change
         return False
 
-    def _check_conflicting_htf(
+    def _check_conflicting_high_tf(
         self,
         incremental_state: "MultiTFIncrementalState",
     ) -> bool:
-        """Check if HTF trends conflict with exec."""
+        """Check if high_tf trends conflict with exec."""
         try:
             exec_trend = self._get_trend_direction(incremental_state.exec)
 
             for tf_name, tf_state in incremental_state.high_tf.items():
-                htf_trend = self._get_trend_direction(tf_state)
-                if htf_trend is not None and exec_trend is not None:
-                    if htf_trend != exec_trend and htf_trend != 0 and exec_trend != 0:
+                high_tf_trend = self._get_trend_direction(tf_state)
+                if high_tf_trend is not None and exec_trend is not None:
+                    if high_tf_trend != exec_trend and high_tf_trend != 0 and exec_trend != 0:
                         return True
         except (KeyError, AttributeError):
             pass
@@ -331,9 +331,9 @@ class ConflictResolver:
     def _get_trend_direction(self, tf_state: Any) -> int | None:
         """Get trend direction from TF state."""
         try:
-            for detector_key in tf_state.list_detectors():
+            for detector_key in tf_state.list_structures():
                 if "trend" in detector_key.lower():
-                    detector = tf_state.get_detector(detector_key)
+                    detector = tf_state.structures[detector_key]
                     return detector.get_value("direction")
         except (KeyError, AttributeError):
             pass

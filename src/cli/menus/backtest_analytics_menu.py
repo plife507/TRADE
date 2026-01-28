@@ -100,7 +100,7 @@ def _scan_runs(limit: int = 20) -> list[dict]:
     # Find all result.json files
     for result_path in BACKTESTS_DIR.rglob("result.json"):
         try:
-            with open(result_path) as f:
+            with open(result_path, encoding="utf-8") as f:
                 result = json.load(f)
 
             run_dir = result_path.parent
@@ -241,7 +241,7 @@ def _view_run_results():
         Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
         return
 
-    with open(result_file) as f:
+    with open(result_file, encoding="utf-8") as f:
         result = json.load(f)
 
     metrics = result.get("metrics", {})
@@ -311,7 +311,7 @@ def _view_time_based_returns():
         Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
         return
 
-    with open(returns_file) as f:
+    with open(returns_file, encoding="utf-8") as f:
         returns = json.load(f)
 
     console.print()
@@ -393,9 +393,9 @@ def _compare_runs():
 
     # Load both results
     try:
-        with open(Path(run1_path) / "result.json") as f:
+        with open(Path(run1_path) / "result.json", encoding="utf-8") as f:
             result1 = json.load(f)
-        with open(Path(run2_path) / "result.json") as f:
+        with open(Path(run2_path) / "result.json", encoding="utf-8") as f:
             result2 = json.load(f)
     except Exception as e:
         console.print(f"[{CLIColors.NEON_RED}]Error loading results: {e}[/]")

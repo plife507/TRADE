@@ -240,8 +240,7 @@ def _run_synthetic_backtest():
     from src.backtest.play import PLAYS_DIR, load_play
     from src.forge.validation import generate_synthetic_candles
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
-    from src.backtest.engine_factory import create_engine_from_play
-    from src.backtest.engine import run_engine_with_play
+    from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
     from pathlib import Path
 
     console.print()

@@ -48,14 +48,14 @@ def forge_stress_test_tool(
 
     Args:
         validation_plays_dir: Directory containing validation plays
-            (default: strategies/plays/_validation)
+            (default: tests/functional/plays/_validation)
         skip_audits: Skip audit steps 3-6 (default: False)
         skip_backtest: Skip backtest steps 7-8 (default: False)
         trace_hashes: Enable hash tracing (default: True)
         use_synthetic_data: Use synthetic data for parity checks (default: True)
         seed: Random seed for synthetic data (default: 42)
         bars_per_tf: Bars per timeframe (default: 1000)
-        pattern: Synthetic data pattern: "trending", "ranging", "volatile", "mtf_aligned"
+        pattern: Synthetic data pattern: "trending", "ranging", "volatile", "multi_tf_aligned"
             (default: "trending")
         timeframes: Timeframes to generate (default: ["1m", "5m", "15m", "1h", "4h"])
 
@@ -143,7 +143,7 @@ def forge_generate_synthetic_data_tool(
             - "trending": Clear directional move (swing highs/lows)
             - "ranging": Sideways consolidation (zone detection)
             - "volatile": High volatility spikes (breakout detection)
-            - "mtf_aligned": Multi-TF alignment (HTF/MTF/LTF correlation)
+            - "multi_tf_aligned": Multi-TF alignment (high_tf/med_tf/low_tf correlation)
 
     Returns:
         ToolResult with synthetic data metadata (not the DataFrames)

@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.backtest.play import Play
-    from src.backtest.engine import BacktestEngine
+    from typing import Any
 
 
 @dataclass
@@ -57,14 +57,14 @@ class ValueFlowAuditResult:
 
 def audit_value_flow(
     play: "Play",
-    engine: "BacktestEngine",
+    engine: "Any",
 ) -> ValueFlowAuditResult:
     """
     Audit that Play values flow correctly to engine configuration.
 
     Args:
         play: Source Play
-        engine: Configured BacktestEngine
+        engine: Configured PlayEngine instance
 
     Returns:
         ValueFlowAuditResult with check details

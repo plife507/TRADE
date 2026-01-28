@@ -350,50 +350,7 @@ def run_production_first_gate(
 
 
 # =============================================================================
-# CLI Entrypoint
+# G1: Dead code removed (2026-01-27)
 # =============================================================================
-
-def main():
-    """CLI entrypoint."""
-    import argparse
-    import sys
-    
-    parser = argparse.ArgumentParser(
-        description="Production-First Import Gate (Gate A) - Scan tests for violations",
-    )
-    parser.add_argument(
-        "--tests-dir",
-        default="tests",
-        help="Path to tests directory",
-    )
-    parser.add_argument(
-        "--fail-on-violations",
-        action="store_true",
-        default=True,
-        help="Exit with code 1 if violations found (default: true)",
-    )
-    parser.add_argument(
-        "--no-fail",
-        action="store_true",
-        help="Don't exit with code 1 even if violations found (report only)",
-    )
-    
-    args = parser.parse_args()
-    
-    fail_on_violations = not args.no_fail
-    
-    result = run_production_first_gate(
-        tests_dir=Path(args.tests_dir),
-        fail_on_violations=fail_on_violations,
-    )
-    
-    result.print_summary()
-    
-    if not result.passed:
-        sys.exit(1)
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
-
+# - main() CLI entrypoint - unused, gate runs via trade_cli.py
+# =============================================================================

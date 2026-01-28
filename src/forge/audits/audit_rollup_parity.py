@@ -520,7 +520,7 @@ def run_rollup_parity_via_engine(
     tolerance: float = 1e-10,
 ) -> RollupParityResult:
     """
-    Run rollup parity audit through BacktestEngine with synthetic data.
+    Run rollup parity audit through PlayEngine with synthetic data.
 
     This validates rollups in the actual engine execution path using the
     on_snapshot callback to capture and validate rollup values during the run.

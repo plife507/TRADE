@@ -81,7 +81,7 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "pair_anchor_hash": FeatureOutputType.ENUM,  # Unique hash for this anchor pair
     },
     "trend": {
-        "direction": FeatureOutputType.INT,           # 1 (up), -1 (down), 0 (ranging)
+        "direction": FeatureOutputType.INT,           # 1 (up), -1 (down), 0 (flat)
         "strength": FeatureOutputType.INT,            # 0 (weak), 1 (normal), 2 (strong)
         "bars_in_trend": FeatureOutputType.INT,       # Bars since trend started
         "wave_count": FeatureOutputType.INT,          # Consecutive waves in same direction
@@ -147,7 +147,7 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "source_version": FeatureOutputType.INT,
     },
     "market_structure": {
-        "bias": FeatureOutputType.ENUM,              # "bullish", "bearish", "ranging"
+        "bias": FeatureOutputType.INT,               # 1 (bullish), -1 (bearish), 0 (ranging)
         "bos_this_bar": FeatureOutputType.BOOL,      # True if BOS occurred this bar
         "choch_this_bar": FeatureOutputType.BOOL,    # True if CHoCH occurred this bar
         "bos_direction": FeatureOutputType.ENUM,     # "bullish", "bearish", "none"

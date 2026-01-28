@@ -88,7 +88,7 @@ from .state_types import (
 from .signal_state import SignalState, transition_signal_state, reset_signal_state
 from .action_state import ActionState, transition_action_state, reset_action_state
 from .gate_state import GateContext, evaluate_gates
-from .block_state import BlockState, create_block_state, reset_block_state
+from .block_state import BlockState, create_block_state
 from .state_tracker import StateTracker, StateTrackerConfig, create_state_tracker
 
 __all__ = [
@@ -153,7 +153,6 @@ __all__ = [
     "evaluate_gates",
     "BlockState",
     "create_block_state",
-    "reset_block_state",
     "StateTracker",
     "StateTrackerConfig",
     "create_state_tracker",
