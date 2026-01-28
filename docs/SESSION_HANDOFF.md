@@ -7,13 +7,13 @@
 
 ## Last Session Summary
 
-**Focus**: G5 Infrastructure Improvements + Full Review
+**Focus**: G6 Codebase Review Remediation
 
 **Key Accomplishments**:
 
-### 1. G0-G5 Remediation Complete
+### 1. G0-G6 Remediation Complete
 
-All 6 remediation gates are now complete:
+All 7 remediation gates are now complete:
 
 | Gate | Description | Commit |
 |------|-------------|--------|
@@ -23,8 +23,23 @@ All 6 remediation gates are now complete:
 | G3 | 10 legacy shims removed | `2ad0e44` |
 | G4 | 4 large functions refactored | `df495d3`, `a67f943`, `4c496aa`, `c18617f` |
 | G5 | 8 infrastructure improvements | `89beb41`, `7814e3a` |
+| G6 | Codebase review fixes | `8b8841a`, `7c65a13`, `38d918c` |
 
-### 2. G5 Infrastructure Details (This Session)
+### 2. G6 Codebase Review Details (This Session)
+
+| Item | Description | Files |
+|------|-------------|-------|
+| G6.0 | Fund safety fixes (4 items) | `live.py`, `live_runner.py`, `position_manager.py` |
+| G6.1 | Build/import errors (3 items) | `orders_menu.py`, `audit_trend_detector.py` |
+| G6.2 | Thread safety for live adapters | `live.py` (Lock for indicators/buffers) |
+| G6.3 | LF line endings | `backtest_play_tools.py`, `logger.py` |
+| G6.4 | Dead code removal | Deleted `types.py`, `historical_queries.py`, 128 LOC |
+| G6.5 | Deprecated patterns | `datetime.utcnow()` → `datetime.now(timezone.utc)` |
+| G6.6 | Type hints, semantic fixes | `sim/types.py`, `registry.py`, `feature_registry.py` |
+| G6.8 | Memory bounds | `position_manager.py` (deque for trades) |
+| G6.9 | Docs cleanup | USDT typos, duplicate docstrings, CLAUDE.md |
+
+### 3. G5 Infrastructure Details (Prior Session)
 
 | Item | Description | File |
 |------|-------------|------|
@@ -94,6 +109,13 @@ State Machines Added (G5.7/G5.8):
 ## Commits This Session
 
 ```
+38d918c fix(g6): dead code removal, type hints, and docstring cleanup
+7c65a13 fix(g6): best practices and memory fixes
+8b8841a fix(g6): codebase review remediation - fund safety, thread safety, cleanup
+```
+
+### Prior Session (G5):
+```
 ce4ae3d fix(validation): correct high_tf values per CLAUDE.md timeframe rules
 7814e3a feat(engine): G5.7/G5.8 add thread-safe state machines
 89beb41 feat(infra): G5 infrastructure improvements for live trading
@@ -135,9 +157,9 @@ python -c "from src.engine.play_engine import EnginePhase, VALID_PHASE_TRANSITIO
 
 ## What's Next
 
-With G0-G5 complete, the codebase is in a stable state. Potential next areas:
+With G0-G6 complete, the codebase is clean and production-ready. Potential next areas:
 
-1. **Live Trading Validation** - Test demo/live modes with new state machines
+1. **Live Trading Validation** - Test demo/live modes with thread-safe adapters
 2. **Performance Profiling** - Benchmark backtest engine
 3. **Additional Indicators** - Expand incremental indicator coverage
 4. **Documentation** - Update architecture docs with state machine diagrams
@@ -149,11 +171,13 @@ With G0-G5 complete, the codebase is in a stable state. Potential next areas:
 ```
 src/engine/           # PlayEngine + state machines
 ├── play_engine.py    # EnginePhase state machine (G5.8)
+├── adapters/
+│   └── live.py       # Thread-safe LiveIndicatorCache/DataProvider (G6.2)
 └── runners/
     └── live_runner.py # RunnerState state machine (G5.7)
-src/indicators/       # 43 indicators, 11 incremental (now with ADXR)
+src/indicators/       # 43 indicators (all incremental O(1))
 src/data/             # realtime_state.py - bounded queue, deques
-src/core/             # safety.py - retry logic
-docs/                 # TODO.md (all G0-G5 complete)
+src/core/             # safety.py - retry logic, position_manager.py - bounded trades
+docs/                 # TODO.md (all G0-G6 complete)
 tests/validation/     # Validation plays using 3-TF format
 ```

@@ -150,6 +150,46 @@ Improvements for production reliability.
 
 ---
 
+## G6: Codebase Review Remediation [COMPLETE] ✓
+
+**Status**: COMPLETE ✓ `8b8841a` `7c65a13` `38d918c` | **Blocks**: None (Quality) | **After**: G5
+
+Full codebase review completed 2026-01-28 (307 files, 126K LOC). Fixed critical bugs and cleaned up code quality issues.
+
+### Fund Safety Critical (4/4) ✓
+
+- [x] **G6.0.1** Fix missing `max_position_pct` attribute ✓
+- [x] **G6.0.2** Fix `tf_minutes` vs `tf_mins` variable bug ✓
+- [x] **G6.0.3** Fix Position field name `liq_price` → `liquidation_price` ✓
+- [x] **G6.0.4** Add missing Position required fields ✓
+
+### Build/Import Errors (3/3) ✓
+
+- [x] **G6.1.1** Fix missing `print_data_result` import ✓
+- [x] **G6.1.2-3** Fix broken relative imports in audit_trend_detector.py ✓
+
+### Thread Safety Critical (2/2) ✓
+
+- [x] **G6.2.1** Add threading.Lock to LiveIndicatorCache ✓
+- [x] **G6.2.2** Add threading.Lock to LiveDataProvider buffers ✓
+
+### LF Line Endings (2/2) ✓
+
+- [x] **G6.3.1-2** Add `newline='\n'` to file writers ✓
+
+### Dead Code & Best Practices ✓
+
+- [x] Delete unused files: `src/engine/types.py`, `src/data/historical_queries.py`
+- [x] Remove 128 LOC dead code in `system_config.py`
+- [x] Remove unused imports across 6 files
+- [x] Fix `datetime.utcnow()` → `datetime.now(timezone.utc)`
+- [x] Remove legacy `blocks` key support (use `actions` only)
+- [x] Fix `is_triggered` semantic bug in sim/types.py
+- [x] Bound `_trades` list with deque in position_manager.py
+- [x] Fix USDT typos and duplicate docstrings in sim files
+
+---
+
 ## Validation After Each Gate
 
 ```bash
