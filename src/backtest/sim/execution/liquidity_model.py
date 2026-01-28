@@ -8,8 +8,7 @@ Caps order fills based on available liquidity:
 Volume is used ONLY for liquidity estimation,
 NEVER for directional inference.
 
-Currency model: All monetary values are in USDTT (quote currency).
-All monetary values are in USDT (quote currency).
+Currency model: All monetary values are in USDT (quote currency).
 """
 
 from dataclasses import dataclass

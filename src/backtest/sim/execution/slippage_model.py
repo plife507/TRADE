@@ -9,8 +9,7 @@ Slippage direction:
 - Buys (longs): pay more (price increases)
 - Sells (shorts): receive less (price decreases)
 
-Currency model: All monetary values are in USDTT (quote currency).
-All monetary values are in USDT (quote currency).
+Currency model: All monetary values are in USDT (quote currency).
 """
 
 from dataclasses import dataclass

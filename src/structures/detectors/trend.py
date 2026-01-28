@@ -495,39 +495,7 @@ class IncrementalTrend(BaseIncrementalDetector):
             return -1
         return 0
 
-    def _is_bullish_wave(self, wave: Wave) -> bool:
-        """
-        Check if a single wave shows bullish characteristics.
-
-        A bullish wave (L->H) with HH, or a bearish wave (H->L) with HL.
-
-        Args:
-            wave: Wave to analyze.
-
-        Returns:
-            True if wave shows bullish structure.
-        """
-        if wave.direction == "bullish":
-            return wave.is_higher_high is True
-        else:
-            return wave.is_higher_low is True
-
-    def _is_bearish_wave(self, wave: Wave) -> bool:
-        """
-        Check if a single wave shows bearish characteristics.
-
-        A bullish wave (L->H) with LH, or a bearish wave (H->L) with LL.
-
-        Args:
-            wave: Wave to analyze.
-
-        Returns:
-            True if wave shows bearish structure.
-        """
-        if wave.direction == "bullish":
-            return wave.is_lower_high is True
-        else:
-            return wave.is_lower_low is True
+    # G6.4.9: Removed unused _is_bullish_wave and _is_bearish_wave methods
 
     def get_output_keys(self) -> list[str]:
         """

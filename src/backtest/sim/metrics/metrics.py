@@ -24,9 +24,7 @@ class ExchangeMetricsSnapshot:
     """
     Snapshot of exchange metrics at a point in time.
     
-    All monetary values in USDTT (quote currency).
     All monetary values are in USDT (quote currency).
-    but all values are in USDTT for this simulator version.
     """
     # Slippage metrics
     total_slippage_usdt: float = 0.0

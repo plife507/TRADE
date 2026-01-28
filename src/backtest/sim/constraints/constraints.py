@@ -10,8 +10,7 @@ Handles:
 Bybit reference:
 - Instrument info: reference/exchanges/bybit/docs/v5/market/instrument.mdx
 
-Currency model: All monetary values are in USDTT (quote currency).
-All monetary values are in USDT (quote currency).
+Currency model: All monetary values are in USDT (quote currency).
 """
 
 from dataclasses import dataclass
@@ -162,7 +161,7 @@ class Constraints:
         Check if notional meets minimum.
         
         Args:
-            notional_usdt: Order notional in USDTT
+            notional_usdt: Order notional in USDT
             
         Returns:
             True if notional is valid

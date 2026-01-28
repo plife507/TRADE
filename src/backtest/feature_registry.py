@@ -336,8 +336,9 @@ class FeatureRegistry:
         """Get number of features."""
         return len(self._features)
 
-    def __iter__(self) -> "Iterator[FeatureConfig]":
+    def __iter__(self) -> "Iterator[Feature]":
         """Iterate over features."""
+        # G6.6.2: Fix type hint FeatureConfig -> Feature
         return iter(self._features.values())
 
     def validate(self) -> list[str]:
