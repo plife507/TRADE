@@ -1,76 +1,103 @@
 # Session Handoff
 
-**Date**: 2026-01-25
+**Date**: 2026-01-28
 **Branch**: feature/unified-engine
 
 ---
 
 ## Last Session Summary
 
-**Focus**: Unified Indicator System + DSL Cookbook Review
+**Focus**: G5 Infrastructure Improvements + Full Review
 
 **Key Accomplishments**:
 
-### 1. Unified Indicator System (Complete)
+### 1. G0-G5 Remediation Complete
 
-Implemented a single indicator system that works identically across backtest, demo, and live modes.
+All 6 remediation gates are now complete:
 
-**5 Phases Completed**:
-- **Phase 1**: Registry as single source of truth (incremental_class field, validation)
-- **Phase 2**: Unified IndicatorProvider protocol (BacktestIndicatorProvider, LiveIndicatorProvider)
-- **Phase 3**: Live adapter refactor (removed hardcoded lists, uses registry)
-- **Phase 4**: Expanded incremental coverage (6 → 11 O(1) indicators)
-- **Phase 5**: Cleanup (INCREMENTAL_INDICATORS now computed from registry)
+| Gate | Description | Commit |
+|------|-------------|--------|
+| G0 | 5 critical live trading blockers | `16891f5` |
+| G1 | 19 dead functions removed | `657d07f` |
+| G2 | 5 duplicate code issues | `59c607d` |
+| G3 | 10 legacy shims removed | `2ad0e44` |
+| G4 | 4 large functions refactored | `df495d3`, `a67f943`, `4c496aa`, `c18617f` |
+| G5 | 8 infrastructure improvements | `89beb41`, `7814e3a` |
 
-**11 Incremental Indicators** (O(1) for live trading):
-`ema`, `sma`, `rsi`, `atr`, `macd`, `bbands`, `stoch`, `adx`, `supertrend`, `cci`, `willr`
+### 2. G5 Infrastructure Details (This Session)
 
-**Key Changes**:
-- `src/indicators/provider.py` - IndicatorProvider protocol + implementations
-- `src/backtest/indicator_registry.py` - Added `incremental_class` field, helpers, validation
-- `src/indicators/incremental.py` - 5 new incremental classes, factory registry
-- `src/engine/adapters/live.py` - Uses registry instead of hardcoded list
+| Item | Description | File |
+|------|-------------|------|
+| G5.1 | Bounded event queue (maxsize=10000) | `realtime_state.py` |
+| G5.2 | Deques with maxlen for trades/executions | `realtime_state.py` |
+| G5.3 | Exponential backoff for WS reconnect | `live_runner.py` |
+| G5.4 | Periodic position reconciliation (5 min) | `live_runner.py` |
+| G5.5 | Retry logic for panic_close_all (3 attempts) | `safety.py` |
+| G5.6 | ADXR output for IncrementalADX | `incremental.py` |
+| G5.7 | Thread-safe state machine for LiveRunner | `live_runner.py` |
+| G5.8 | Thread-safe phase machine for PlayEngine | `play_engine.py` |
 
-### 2. DSL Cookbook Review (Complete)
+### 3. Timeframe Architecture Review
 
-Comprehensive review and fixes to `docs/PLAY_DSL_COOKBOOK.md`:
+**Per CLAUDE.md, the 3-TF + exec pointer system**:
 
-| Fix | Details |
-|-----|---------|
-| Multi-output indicator names | Fixed to match registry (k/d not stoch_k/stoch_d) |
-| Example 3 bug | ema_50_4h → ema_50_12h (matched feature) |
-| Indicator counts | 43 total (25 single, 18 multi) |
-| ppo, trix | Moved to multi-output section |
-| Deprecation section | blocks: is REMOVED (not deprecated) |
-| Timeframes wording | "3 timeframes + exec pointer" |
-| Risk config | Added note: risk: and risk_model: both valid |
+```yaml
+# Timeframe categories (ENFORCED):
+# low_tf:  1m, 3m, 5m, 15m
+# med_tf:  30m, 1h, 2h, 4h
+# high_tf: 12h, D
+
+timeframes:
+  low_tf: "15m"    # Fast: execution, entries
+  med_tf: "1h"     # Medium: structure, bias
+  high_tf: "12h"   # Slow: trend, context (NOT 4h!)
+  exec: "low_tf"   # POINTER to which TF to step on
+```
+
+**Review Findings**:
+
+| Area | Status |
+|------|--------|
+| Play YAML format | ✅ Correct - all 4 keys required |
+| `Play.from_dict()` parsing | ✅ Validates exec is one of 3 roles |
+| `emit_snapshot_artifacts()` | ✅ Uses low_tf/med_tf/high_tf + exec_role |
+| Runner snapshot emission | ✅ Uses `play.low_tf/med_tf/high_tf` |
+| htf/HTF/ltf/LTF abbreviations | ✅ None found in code |
+| Validation plays timeframes | ✅ Fixed - 99 plays updated from 4h to 12h |
+
+**Legacy Pattern (still exists, acceptable)**:
+- `execution_tf` / `exec_tf` - The **resolved** concrete value (e.g., "15m")
+- This is computed from `exec_role` pointer, used for backwards compatibility
+- New code should prefer `exec_role` + `tf_mapping`
 
 ---
 
 ## Current Architecture
 
 ```
-Unified Indicator System: COMPLETE
-├── Registry (indicator_registry.py)     Single source of truth
-├── Incremental (incremental.py)         11 O(1) indicators
-├── Provider Protocol (provider.py)      Unified interface
-├── BacktestIndicatorProvider            Wraps FeedStore arrays
-├── LiveIndicatorProvider                Wraps indicator cache
-└── Live Adapter (live.py)               Registry-driven, no hardcoded lists
-```
+3-TF + Exec Pointer System: CORRECT
+├── Play.tf_mapping           {low_tf: "15m", med_tf: "1h", high_tf: "12h", exec: "low_tf"}
+├── Play.exec_role            "low_tf" | "med_tf" | "high_tf" (pointer)
+├── Play.execution_tf         "15m" (resolved concrete value)
+├── Play.low_tf/med_tf/high_tf Properties for direct access
+└── SystemConfig              warmup_bars_by_role, feature_specs_by_role (role-keyed)
 
-**Adding a new indicator = 1 file change** (registry entry + class if incremental)
+State Machines Added (G5.7/G5.8):
+├── LiveRunner.RunnerState    STOPPED → STARTING → RUNNING ↔ RECONNECTING → STOPPING
+├── LiveRunner._state_lock    Thread-safe state access
+├── PlayEngine.EnginePhase    CREATED → WARMING_UP → READY → RUNNING → STOPPED
+└── PlayEngine._phase_lock    Thread-safe phase access
+```
 
 ---
 
 ## Commits This Session
 
 ```
-a838581 fix(indicators): resolve SuperTrend incremental parity and use defaults.yml
-7440b26 docs: update session handoff for unified indicator system
-0221141 docs(dsl): comprehensive cookbook review and fixes
-8f35bb1 docs(dsl): fix indicator registry and add synthetic data section
-aa639a0 feat(indicators): implement unified indicator system with registry-driven architecture
+ce4ae3d fix(validation): correct high_tf values per CLAUDE.md timeframe rules
+7814e3a feat(engine): G5.7/G5.8 add thread-safe state machines
+89beb41 feat(infra): G5 infrastructure improvements for live trading
+3f978cf docs(todo): mark G0-G5 remediation as complete
 ```
 
 ---
@@ -80,41 +107,53 @@ aa639a0 feat(indicators): implement unified indicator system with registry-drive
 ```bash
 # Smoke tests
 python trade_cli.py --smoke backtest
-python trade_cli.py --smoke forge
+python trade_cli.py --smoke full
 
 # Run backtest
-python trade_cli.py backtest run --play <name> --fix-gaps
+python trade_cli.py backtest run --play V_I_001_ema --fix-gaps
 
-# Check incremental indicators
-python -c "from src.indicators import list_incremental_indicators; print(list_incremental_indicators())"
-
-# Verify registry
-python -c "from src.backtest.indicator_registry import get_registry; r=get_registry(); print(f'{len(r.list_all())} indicators')"
+# Check state machine
+python -c "from src.engine.runners.live_runner import RunnerState, VALID_TRANSITIONS; print(VALID_TRANSITIONS)"
+python -c "from src.engine.play_engine import EnginePhase, VALID_PHASE_TRANSITIONS; print(VALID_PHASE_TRANSITIONS)"
 ```
 
 ---
 
-## Key Files
+## Key Files Modified This Session
 
-| File | Purpose |
+| File | Changes |
 |------|---------|
-| `CLAUDE.md` | Project rules |
-| `docs/TODO.md` | **Single source of truth for open work** |
-| `docs/PLAY_DSL_COOKBOOK.md` | DSL reference (43 indicators, 3-feed + exec) |
-| `src/backtest/indicator_registry.py` | Single source of truth for indicators |
-| `src/indicators/provider.py` | IndicatorProvider protocol |
-| `src/indicators/incremental.py` | 11 O(1) incremental indicators |
+| `src/data/realtime_state.py` | Bounded queue, deques with maxlen |
+| `src/engine/runners/live_runner.py` | State machine, exponential backoff, reconciliation |
+| `src/core/safety.py` | Retry logic for panic close |
+| `src/indicators/incremental.py` | ADXR output implementation |
+| `src/engine/play_engine.py` | Phase state machine |
+| `docs/TODO.md` | All G0-G5 marked complete |
+| `tests/validation/plays/**/*.yml` | 99 files: high_tf 4h → 12h |
+
+---
+
+## What's Next
+
+With G0-G5 complete, the codebase is in a stable state. Potential next areas:
+
+1. **Live Trading Validation** - Test demo/live modes with new state machines
+2. **Performance Profiling** - Benchmark backtest engine
+3. **Additional Indicators** - Expand incremental indicator coverage
+4. **Documentation** - Update architecture docs with state machine diagrams
 
 ---
 
 ## Directory Structure
 
 ```
-src/engine/       # PlayEngine (mode-agnostic)
-src/indicators/   # 43 indicators, 11 incremental, provider protocol
-src/structures/   # 7 structure types
-src/backtest/     # Infrastructure (runner, factory, registry)
-src/data/         # DuckDB data layer
-docs/             # DSL cookbook, handoff, TODO
-tests/validation/ # 19 validation plays in tier subdirectories
+src/engine/           # PlayEngine + state machines
+├── play_engine.py    # EnginePhase state machine (G5.8)
+└── runners/
+    └── live_runner.py # RunnerState state machine (G5.7)
+src/indicators/       # 43 indicators, 11 incremental (now with ADXR)
+src/data/             # realtime_state.py - bounded queue, deques
+src/core/             # safety.py - retry logic
+docs/                 # TODO.md (all G0-G5 complete)
+tests/validation/     # Validation plays using 3-TF format
 ```
