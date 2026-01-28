@@ -120,44 +120,13 @@ def timeframe_to_timedelta(tf: str) -> timedelta:
     return timedelta(minutes=TF_MINUTES[tf_lower])
 
 
-def prepare_backtest_frame_impl(
-    config: SystemConfig,
-    window: "WindowConfig",
-    logger=None,
-    synthetic_provider: "SyntheticDataProvider | None" = None,
-) -> PreparedFrame:
-    """
-    Prepare the backtest DataFrame with proper warm-up.
+# =============================================================================
+# Prepare Frame Helpers (G4.4 Refactor)
+# =============================================================================
 
-    This function:
-    1. Validates symbol and mode locks (fail fast before data fetch)
-    2. Computes warmup_bars based on strategy params and multiplier
-    3. Extends the query range by warmup_span before window_start
-    4. Loads extended DataFrame from DuckDB (or synthetic provider)
-    5. Applies indicators to the full extended DataFrame
-    6. Finds the first bar where all required indicators are valid
-    7. Sets simulation start to max(first_valid_bar, window_start)
-    8. Returns PreparedFrame with all metadata
 
-    Args:
-        config: System configuration
-        window: Window configuration with start/end dates
-        logger: Optional logger instance
-        synthetic_provider: Optional synthetic data provider for DB-free validation
-
-    Returns:
-        PreparedFrame with DataFrame and metadata
-
-    Raises:
-        ValueError: If not enough data for warm-up + window, or invalid config
-    """
-    if logger is None:
-        logger = get_logger()
-
-    # =====================================================================
-    # Mode Lock Validations (BEFORE data fetch)
-    # Fail fast without downloading data for invalid configs.
-    # =====================================================================
+def _validate_inputs(config: SystemConfig, logger) -> None:
+    """Validate config inputs before data fetch (fail fast)."""
     if config.symbol:
         validate_usdt_pair(config.symbol)
     validate_margin_mode_isolated(config.risk_profile.margin_mode)
@@ -166,26 +135,39 @@ def prepare_backtest_frame_impl(
         config.risk_profile.instrument_type,
     )
 
-    # Only initialize DB store if not using synthetic provider
-    store = None if synthetic_provider else get_historical_store(env=config.data_build.env)
 
-    # Use Preflight-computed warmup (CANONICAL source via warmup_bars_by_role)
-    # Engine MUST NOT compute warmup - it reads only from SystemConfig (set by Runner from Preflight)
+def _get_warmup_config(config: SystemConfig) -> tuple[int, int, list]:
+    """
+    Get warmup configuration from SystemConfig.
+
+    Returns:
+        (warmup_bars, max_lookback, exec_specs)
+    """
     warmup_bars_by_role = getattr(config, 'warmup_bars_by_role', {})
     if not warmup_bars_by_role or 'exec' not in warmup_bars_by_role:
         raise ValueError(
             "MISSING_WARMUP_CONFIG: warmup_bars_by_role['exec'] not set. "
-            "Preflight gate must run first to compute warmup requirements. "
-            "Check that Preflight passed and Runner wired computed_warmup_requirements to SystemConfig."
+            "Preflight gate must run first to compute warmup requirements."
         )
     warmup_bars = warmup_bars_by_role['exec']
 
-    # max_lookback is the raw max warmup from specs (for indicator validation only)
-    # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
     exec_specs = config.feature_specs_by_role.get('exec', [])
     max_lookback = get_warmup_from_specs(exec_specs) if exec_specs else 0
 
-    # Compute data window using centralized utility
+    return warmup_bars, max_lookback, exec_specs
+
+
+def _compute_data_windows(
+    config: SystemConfig,
+    window: "WindowConfig",
+    warmup_bars_by_role: dict,
+) -> tuple[datetime, timedelta, datetime, datetime]:
+    """
+    Compute data loading windows.
+
+    Returns:
+        (extended_start, warmup_span, requested_start, requested_end)
+    """
     tf_by_role = {'exec': config.tf}
     data_window = compute_data_window(
         window_start=window.start,
@@ -193,19 +175,25 @@ def prepare_backtest_frame_impl(
         warmup_bars_by_role=warmup_bars_by_role,
         tf_by_role=tf_by_role,
     )
-    extended_start = data_window.data_start
-    warmup_span = data_window.warmup_span
-    requested_start = window.start
-    requested_end = window.end
-
-    data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
-    logger.info(
-        f"Loading data [{data_source}]: {config.symbol} {config.tf} "
-        f"from {extended_start} to {requested_end} "
-        f"(warm-up: {warmup_bars} bars = {warmup_span})"
+    return (
+        data_window.data_start,
+        data_window.warmup_span,
+        window.start,
+        window.end,
     )
 
-    # Load extended data (from synthetic provider or DuckDB)
+
+def _load_ohlcv_data(
+    config: SystemConfig,
+    extended_start: datetime,
+    requested_end: datetime,
+    store,
+    synthetic_provider: "SyntheticDataProvider | None",
+    logger,
+) -> pd.DataFrame:
+    """Load OHLCV data from synthetic provider or DuckDB."""
+    data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
+
     if synthetic_provider is not None:
         df = synthetic_provider.get_ohlcv(
             symbol=config.symbol,
@@ -221,145 +209,196 @@ def prepare_backtest_frame_impl(
             end=requested_end,
         )
 
-    # Validate data exists
     if df.empty:
         if synthetic_provider:
             raise ValueError(
                 f"No synthetic data found for {config.symbol} {config.tf} "
-                f"from {extended_start} to {requested_end}. "
-                f"Generate synthetic data with correct timeframes and date range."
+                f"from {extended_start} to {requested_end}."
             )
         else:
             raise ValueError(
                 f"No data found for {config.symbol} {config.tf} "
-                f"from {extended_start} to {requested_end}. "
-                f"Run data sync first: sync_symbols(['{config.symbol}'], "
-                f"period='{config.data_build.period}')"
+                f"from {extended_start} to {requested_end}. Run data sync first."
             )
 
-    # Ensure sorted by timestamp
-    df = df.sort_values("timestamp").reset_index(drop=True)
+    return df.sort_values("timestamp").reset_index(drop=True)
 
-    # Track actual loaded range (may be clamped to dataset boundaries)
-    loaded_start = df["timestamp"].iloc[0]
-    loaded_end = df["timestamp"].iloc[-1]
 
-    logger.info(
-        f"Loaded {len(df)} bars: {loaded_start} to {loaded_end}"
-    )
-
-    # Apply indicators from Play FeatureSpecs (ONLY supported path)
-    # No legacy params-based indicators - Play is the single source of truth
-    # SystemConfig.feature_specs_by_role is always defined (default: empty dict)
+def _apply_indicators_to_frame(
+    df: pd.DataFrame,
+    config: SystemConfig,
+) -> pd.DataFrame:
+    """Apply indicators from FeatureSpecs to DataFrame."""
     if config.feature_specs_by_role:
         exec_specs = config.feature_specs_by_role.get('exec', [])
         if exec_specs:
-            df = apply_feature_spec_indicators(df, exec_specs)
-    else:
-        raise ValueError(
-            "No feature_specs_by_role in config. "
-            "Play with declared FeatureSpecs is required. "
-            "Legacy params-based indicators are not supported."
-        )
+            return apply_feature_spec_indicators(df, exec_specs)
 
-    # Find first bar where all required indicators are valid
-    # Use required_indicators from YAML (not all expanded outputs) to avoid
-    # issues with mutually exclusive outputs like PSAR long/short or SuperTrend long/short
-    # SystemConfig.required_indicators_by_role and feature_specs_by_role are always defined
+    raise ValueError(
+        "No feature_specs_by_role in config. "
+        "Play with declared FeatureSpecs is required."
+    )
+
+
+def _compute_sim_start(
+    df: pd.DataFrame,
+    config: SystemConfig,
+    requested_start: datetime,
+    requested_end: datetime,
+    warmup_bars: int,
+    logger,
+) -> tuple[datetime, int]:
+    """
+    Compute simulation start timestamp and index.
+
+    Returns:
+        (sim_start_ts, sim_start_idx)
+    """
+    # Get required indicator columns
     if config.required_indicators_by_role.get('exec'):
         required_cols = list(config.required_indicators_by_role['exec'])
     elif config.feature_specs_by_role:
-        # Fallback to expanding all feature_specs if no required_indicators declared
         exec_specs = config.feature_specs_by_role.get('exec', [])
         required_cols = get_required_indicator_columns_from_specs(exec_specs)
     else:
-        required_cols = []  # Will fail validation
+        required_cols = []
 
+    # Find first valid bar
     first_valid_idx = find_first_valid_bar(df, required_cols)
-
     if first_valid_idx < 0:
         raise ValueError(
             f"No valid bars found for {config.symbol} {config.tf}. "
-            f"All indicator columns have NaN values. Check data quality."
+            f"All indicator columns have NaN values."
         )
 
     first_valid_ts = df.iloc[first_valid_idx]["timestamp"]
 
-    # Simulation starts at max(first_valid_bar, requested_start)
-    # We never start before the requested window, even if indicators are valid earlier
+    # Determine sim start (max of first_valid and requested_start)
     if first_valid_ts >= requested_start:
         sim_start_ts = first_valid_ts
         sim_start_idx = first_valid_idx
     else:
-        # Find the first bar >= requested_start
         mask = df["timestamp"] >= requested_start
         if not mask.any():
             raise ValueError(
-                f"No data found at or after requested window start {requested_start}. "
-                f"Loaded data ends at {loaded_end}."
+                f"No data found at or after requested window start {requested_start}."
             )
         sim_start_idx = mask.idxmax()
         sim_start_ts = df.iloc[sim_start_idx]["timestamp"]
 
-    # =====================================================================
-    # DELAY BARS: Apply delay-only evaluation offset (closed-candle aligned)
-    # =====================================================================
-    # Delay is applied AFTER indicator/data readiness check
-    # Engine loads data from data_start, but begins EVALUATION at delay-offset start
-    # Lookback is for data loading only - NOT applied here again
+    # Apply delay bars if configured
     delay_bars_by_role = getattr(config, 'delay_bars_by_role', {})
     exec_delay_bars = delay_bars_by_role.get('exec', 0)
 
     if exec_delay_bars > 0:
-        # Align to TF close boundary first, then add delay offset
         aligned_start = ceil_to_tf_close(sim_start_ts, config.tf)
         delay_offset = tf_duration(config.tf) * exec_delay_bars
         eval_start_ts = aligned_start + delay_offset
 
-        # Find the bar index at or after eval_start_ts
         eval_mask = df["timestamp"] >= eval_start_ts
         if not eval_mask.any():
             raise ValueError(
-                f"Not enough data for delay offset: delay_bars={exec_delay_bars} "
-                f"would start evaluation at {eval_start_ts}, but data ends at {loaded_end}."
+                f"Not enough data for delay offset: delay_bars={exec_delay_bars}"
             )
-        eval_start_idx = eval_mask.idxmax()
-        eval_start_ts_actual = df.iloc[eval_start_idx]["timestamp"]
+        sim_start_idx = eval_mask.idxmax()
+        sim_start_ts = df.iloc[sim_start_idx]["timestamp"]
 
         logger.info(
-            f"Delay offset applied: delay_bars={exec_delay_bars}, "
-            f"sim_start={sim_start_ts} -> eval_start={eval_start_ts_actual}"
+            f"Delay offset applied: delay_bars={exec_delay_bars}, eval_start={sim_start_ts}"
         )
 
-        # Update sim_start to delay-offset value
-        sim_start_ts = eval_start_ts_actual
-        sim_start_idx = eval_start_idx
-
-    # Validate we have enough data for simulation
+    # Validate simulation bounds
     if sim_start_ts > requested_end:
         raise ValueError(
-            f"Not enough history for {config.symbol} {config.tf} "
-            f"to satisfy warm-up + window. Simulation would start at {sim_start_ts}, "
-            f"but requested window ends at {requested_end}. "
-            f"Adjust warmup_bars (current: {warmup_bars}) or window dates."
+            f"Not enough history to satisfy warm-up + window. "
+            f"Simulation would start at {sim_start_ts}, window ends at {requested_end}."
         )
 
-    # Check we have at least some bars for simulation
     sim_bars = len(df) - sim_start_idx
     if sim_bars < 10:
         raise ValueError(
-            f"Insufficient simulation bars: got {sim_bars} bars after warm-up, "
-            f"need at least 10 trading bars."
+            f"Insufficient simulation bars: got {sim_bars}, need at least 10."
         )
 
     logger.info(
-        f"Simulation start: {sim_start_ts} (bar {sim_start_idx}), "
-        f"{sim_bars} bars available for trading"
+        f"Simulation start: {sim_start_ts} (bar {sim_start_idx}), {sim_bars} bars available"
     )
 
-    # Create PreparedFrame
-    prepared = PreparedFrame(
-        df=df,  # Full DF with indicators, engine will handle sim_start_idx
+    return sim_start_ts, sim_start_idx
+
+
+# =============================================================================
+# Main Prepare Function
+# =============================================================================
+
+
+def prepare_backtest_frame_impl(
+    config: SystemConfig,
+    window: "WindowConfig",
+    logger=None,
+    synthetic_provider: "SyntheticDataProvider | None" = None,
+) -> PreparedFrame:
+    """
+    Prepare the backtest DataFrame with proper warm-up (G4.4 refactored).
+
+    Orchestrates helper functions for each preparation phase:
+    1. Validate inputs (fail fast)
+    2. Get warmup config
+    3. Compute data windows
+    4. Load OHLCV data
+    5. Apply indicators
+    6. Compute simulation start
+
+    Args:
+        config: System configuration
+        window: Window configuration with start/end dates
+        logger: Optional logger instance
+        synthetic_provider: Optional synthetic data provider
+
+    Returns:
+        PreparedFrame with DataFrame and metadata
+    """
+    if logger is None:
+        logger = get_logger()
+
+    # 1. Validate inputs (fail fast before data fetch)
+    _validate_inputs(config, logger)
+
+    # 2. Get warmup config
+    warmup_bars, max_lookback, exec_specs = _get_warmup_config(config)
+
+    # 3. Compute data windows
+    warmup_bars_by_role = getattr(config, 'warmup_bars_by_role', {})
+    extended_start, warmup_span, requested_start, requested_end = _compute_data_windows(
+        config, window, warmup_bars_by_role
+    )
+
+    # 4. Load OHLCV data
+    store = None if synthetic_provider else get_historical_store(env=config.data_build.env)
+    data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
+    logger.info(
+        f"Loading data [{data_source}]: {config.symbol} {config.tf} "
+        f"from {extended_start} to {requested_end} (warmup: {warmup_bars} bars)"
+    )
+
+    df = _load_ohlcv_data(
+        config, extended_start, requested_end, store, synthetic_provider, logger
+    )
+
+    loaded_start = df["timestamp"].iloc[0]
+    loaded_end = df["timestamp"].iloc[-1]
+    logger.info(f"Loaded {len(df)} bars: {loaded_start} to {loaded_end}")
+
+    # 5. Apply indicators
+    df = _apply_indicators_to_frame(df, config)
+
+    # 6. Compute simulation start
+    sim_start_ts, sim_start_idx = _compute_sim_start(
+        df, config, requested_start, requested_end, warmup_bars, logger
+    )
+
+    return PreparedFrame(
+        df=df,
         full_df=df,
         warmup_bars=warmup_bars,
         max_indicator_lookback=max_lookback,
@@ -370,8 +409,6 @@ def prepare_backtest_frame_impl(
         simulation_start=sim_start_ts,
         sim_start_index=sim_start_idx,
     )
-
-    return prepared
 
 
 def prepare_multi_tf_frames_impl(
