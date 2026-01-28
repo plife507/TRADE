@@ -143,12 +143,14 @@ class RealtimeState:
         self._tickers: dict[str, TickerData] = {}
         self._orderbooks: dict[str, OrderbookData] = {}
         self._klines: dict[str, dict[str, KlineData]] = defaultdict(dict)  # {symbol: {interval: kline}}
-        self._recent_trades: dict[str, list[TradeData]] = defaultdict(list)  # Keep last N trades
+        # G5.2: Use deque with maxlen for automatic size limiting (no manual slicing)
+        self._recent_trades: dict[str, deque[TradeData]] = defaultdict(lambda: deque(maxlen=100))
 
         # Private account data state
         self._positions: dict[str, PositionData] = {}  # {symbol: position}
         self._orders: dict[str, OrderData] = {}  # {order_id: order}
-        self._executions: list[ExecutionData] = []  # Recent executions
+        # G5.2: Use deque with maxlen for automatic size limiting
+        self._executions: deque[ExecutionData] = deque(maxlen=500)
         self._wallet: dict[str, WalletData] = {}  # {coin: wallet}
         self._account_metrics: AccountMetrics | None = None  # Unified account-level metrics
         
@@ -156,9 +158,9 @@ class RealtimeState:
         self._public_ws_status = ConnectionStatus()
         self._private_ws_status = ConnectionStatus()
         
-        # Event queue for event-driven processing
+        # Event queue for event-driven processing (G5.1: bounded to prevent memory growth)
         self._event_queue_enabled = enable_event_queue
-        self._event_queue: Queue = Queue() if enable_event_queue else None
+        self._event_queue: Queue = Queue(maxsize=10000) if enable_event_queue else None
         
         # Callbacks
         self._ticker_callbacks: list[Callable[[TickerData], None]] = []
@@ -483,12 +485,9 @@ class RealtimeState:
     # ==========================================================================
     
     def add_trade(self, trade: TradeData):
-        """Add a public trade (thread-safe)."""
+        """Add a public trade (thread-safe). G5.2: deque handles size limiting."""
         with self._lock:
-            trades = self._recent_trades[trade.symbol]
-            trades.append(trade)
-            if len(trades) > self._max_recent_trades:
-                self._recent_trades[trade.symbol] = trades[-self._max_recent_trades:]
+            self._recent_trades[trade.symbol].append(trade)
             self._update_counts["trade"] += 1
         
         self._emit_event(EventType.TRADE, trade, trade.symbol)
@@ -584,11 +583,9 @@ class RealtimeState:
     # ==========================================================================
     
     def add_execution(self, execution: ExecutionData):
-        """Add an execution (thread-safe)."""
+        """Add an execution (thread-safe). G5.2: deque handles size limiting."""
         with self._lock:
             self._executions.append(execution)
-            if len(self._executions) > self._max_executions:
-                self._executions = self._executions[-self._max_executions:]
             self._update_counts["execution"] += 1
         
         self._emit_event(EventType.EXECUTION, execution, execution.symbol)

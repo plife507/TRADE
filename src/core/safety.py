@@ -6,10 +6,16 @@ and halt trading operations.
 """
 
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 
 from ..utils.logger import get_logger
+
+
+# G5.5: Retry settings for panic operations
+PANIC_RETRY_ATTEMPTS = 3
+PANIC_RETRY_DELAY = 0.5  # seconds
 
 
 class PanicState:
@@ -112,17 +118,23 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
     # Trigger global panic state
     _panic_state.trigger(reason)
     
-    # Step 1: Cancel all open orders
-    try:
-        exchange_manager.cancel_all_orders()
-        results["orders_cancelled"] = True
-        logger.info("✓ All orders cancelled")
-    except Exception as e:
-        error = f"Failed to cancel orders: {e}"
-        results["errors"].append(error)
-        logger.error(error)
-    
-    # Step 2: Close all positions
+    # Step 1: Cancel all open orders (with retry)
+    for attempt in range(1, PANIC_RETRY_ATTEMPTS + 1):
+        try:
+            exchange_manager.cancel_all_orders()
+            results["orders_cancelled"] = True
+            logger.info("✓ All orders cancelled")
+            break
+        except Exception as e:
+            if attempt == PANIC_RETRY_ATTEMPTS:
+                error = f"Failed to cancel orders after {attempt} attempts: {e}"
+                results["errors"].append(error)
+                logger.error(error)
+            else:
+                logger.warning(f"Cancel orders attempt {attempt} failed, retrying: {e}")
+                time.sleep(PANIC_RETRY_DELAY)
+
+    # Step 2: Close all positions (with retry per position)
     try:
         close_results = exchange_manager.close_all_positions()
         for result in close_results:
@@ -130,9 +142,25 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
                 results["positions_closed"].append(result.symbol)
                 logger.info(f"✓ Closed position: {result.symbol}")
             else:
-                error = f"Failed to close {result.symbol}: {result.error}"
-                results["errors"].append(error)
-                logger.error(error)
+                # Retry failed position closes
+                closed = False
+                for retry in range(1, PANIC_RETRY_ATTEMPTS + 1):
+                    try:
+                        logger.warning(f"Retrying close {result.symbol} (attempt {retry})")
+                        time.sleep(PANIC_RETRY_DELAY)
+                        retry_result = exchange_manager.close_position(result.symbol)
+                        if retry_result.success:
+                            results["positions_closed"].append(result.symbol)
+                            logger.info(f"✓ Closed position: {result.symbol} (retry {retry})")
+                            closed = True
+                            break
+                    except Exception as retry_e:
+                        logger.warning(f"Retry {retry} failed: {retry_e}")
+
+                if not closed:
+                    error = f"Failed to close {result.symbol}: {result.error}"
+                    results["errors"].append(error)
+                    logger.error(error)
     except Exception as e:
         error = f"Failed to close positions: {e}"
         results["errors"].append(error)

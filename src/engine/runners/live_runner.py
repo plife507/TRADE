@@ -108,8 +108,10 @@ class LiveRunner:
         engine: PlayEngine,
         on_signal: Callable[["Signal"], None] | None = None,
         on_error: Callable[[Exception], None] | None = None,
-        reconnect_delay: float = 5.0,
+        base_reconnect_delay: float = 1.0,
+        max_reconnect_delay: float = 60.0,
         max_reconnect_attempts: int = 10,
+        reconcile_interval: float = 300.0,
     ):
         """
         Initialize live runner.
@@ -118,14 +120,18 @@ class LiveRunner:
             engine: PlayEngine instance (must be in demo or live mode)
             on_signal: Optional callback when signal is generated
             on_error: Optional callback when error occurs
-            reconnect_delay: Seconds to wait before reconnecting
-            max_reconnect_attempts: Maximum reconnection attempts
+            base_reconnect_delay: Initial delay before reconnecting (exponential backoff)
+            max_reconnect_delay: Maximum delay between reconnection attempts
+            max_reconnect_attempts: Maximum reconnection attempts before giving up
+            reconcile_interval: Seconds between position reconciliation checks (default 5 min)
         """
         self._engine = engine
         self._on_signal = on_signal
         self._on_error = on_error
-        self._reconnect_delay = reconnect_delay
+        self._base_reconnect_delay = base_reconnect_delay
+        self._max_reconnect_delay = max_reconnect_delay
         self._max_reconnect_attempts = max_reconnect_attempts
+        self._reconcile_interval = reconcile_interval
 
         # Validate mode
         if engine.is_backtest:
@@ -139,6 +145,7 @@ class LiveRunner:
         self._stats = LiveRunnerStats()
         self._stop_event = asyncio.Event()
         self._reconnect_attempts = 0
+        self._last_reconcile_ts: datetime | None = None
 
         # RealtimeState integration
         self._realtime_state = None
@@ -317,6 +324,39 @@ class LiveRunner:
         except Exception as e:
             logger.warning(f"Position sync warning (non-fatal): {e}")
 
+        self._last_reconcile_ts = datetime.now()
+
+    async def _maybe_reconcile_positions(self) -> None:
+        """
+        G5.4: Periodic position reconciliation.
+
+        Syncs positions with exchange at regular intervals to catch any
+        missed fills or out-of-sync state from WebSocket gaps.
+        """
+        now = datetime.now()
+
+        # Skip if recently reconciled
+        if self._last_reconcile_ts:
+            elapsed = (now - self._last_reconcile_ts).total_seconds()
+            if elapsed < self._reconcile_interval:
+                return
+
+        try:
+            from ..adapters.live import LiveExchange
+            exchange = self._engine._exchange
+            if not isinstance(exchange, LiveExchange):
+                return
+
+            if hasattr(exchange, '_position_manager') and exchange._position_manager:
+                pm = exchange._position_manager
+                if hasattr(pm, 'reconcile_with_rest'):
+                    logger.debug("Periodic position reconciliation...")
+                    await asyncio.to_thread(pm.reconcile_with_rest)
+                    self._last_reconcile_ts = now
+
+        except Exception as e:
+            logger.warning(f"Periodic reconciliation failed (non-fatal): {e}")
+
     def _on_kline_update(self, kline_data) -> None:
         """
         Handle kline update from RealtimeState.
@@ -399,6 +439,9 @@ class LiveRunner:
 
                 # Process candle
                 await self._process_candle(candle)
+
+                # G5.4: Periodic position reconciliation
+                await self._maybe_reconcile_positions()
 
             except asyncio.CancelledError:
                 break
@@ -540,22 +583,29 @@ class LiveRunner:
             logger.error(f"Failed to execute signal: {e}")
 
     async def _reconnect(self) -> None:
-        """Attempt to reconnect to WebSocket."""
+        """Attempt to reconnect to WebSocket with exponential backoff."""
         self._state = RunnerState.RECONNECTING
         self._reconnect_attempts += 1
         self._stats.reconnect_count += 1
 
-        logger.warning(
-            f"Reconnecting (attempt {self._reconnect_attempts}/"
-            f"{self._max_reconnect_attempts})..."
+        # Exponential backoff: base * 2^(attempts-1), capped at max
+        delay = min(
+            self._base_reconnect_delay * (2 ** (self._reconnect_attempts - 1)),
+            self._max_reconnect_delay,
         )
 
-        await asyncio.sleep(self._reconnect_delay)
+        logger.warning(
+            f"Reconnecting (attempt {self._reconnect_attempts}/"
+            f"{self._max_reconnect_attempts}, delay={delay:.1f}s)..."
+        )
+
+        await asyncio.sleep(delay)
 
         try:
             await self._disconnect()
             await self._connect()
             self._state = RunnerState.RUNNING
+            self._reconnect_attempts = 0  # Reset on success
             logger.info("Reconnection successful")
         except Exception as e:
             logger.error(f"Reconnection failed: {e}")

@@ -838,6 +838,7 @@ class IncrementalADX(IncrementalIndicator):
     _dx_count: int = field(default=0, init=False)  # Counts DX values
     _count: int = field(default=0, init=False)
     _atr_first_ready: bool = field(default=False, init=False)  # Track first ATR ready bar
+    _adx_history: list = field(default_factory=list, init=False)  # G5.6: For ADXR
 
     def __post_init__(self) -> None:
         # pandas_ta ADX uses atr(..., prenan=True) internally
@@ -917,6 +918,11 @@ class IncrementalADX(IncrementalIndicator):
                 else:
                     self._smoothed_dx = alpha * dx + (1 - alpha) * self._smoothed_dx
 
+                # G5.6: Track ADX history for ADXR calculation
+                self._adx_history.append(self._smoothed_dx)
+                if len(self._adx_history) > self.length:
+                    self._adx_history.pop(0)
+
     def reset(self) -> None:
         self._atr.reset()
         self._prev_high = np.nan
@@ -928,6 +934,7 @@ class IncrementalADX(IncrementalIndicator):
         self._dx_count = 0
         self._count = 0
         self._atr_first_ready = False
+        self._adx_history = []
 
     @property
     def value(self) -> float:
@@ -962,6 +969,20 @@ class IncrementalADX(IncrementalIndicator):
         if atr_val <= 0 or np.isnan(self._smoothed_minus_dm):
             return np.nan
         return (self._smoothed_minus_dm / atr_val) * 100.0
+
+    @property
+    def adxr_value(self) -> float:
+        """
+        Returns ADXR value (Average Directional Index Rating).
+
+        ADXR = (ADX_current + ADX_n_bars_ago) / 2
+        Provides a smoothed view of ADX trend strength.
+        """
+        if len(self._adx_history) < self.length:
+            return np.nan
+        adx_current = self._adx_history[-1]
+        adx_lag = self._adx_history[0]
+        return (adx_current + adx_lag) / 2.0
 
     @property
     def is_ready(self) -> bool:
