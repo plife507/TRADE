@@ -728,18 +728,8 @@ def _emit_snapshots(ctx: _RunContext) -> None:
             med_tf_specs = engine_config.feature_specs_by_role.get('med_tf', [])
             high_tf_specs = engine_config.feature_specs_by_role.get('high_tf', [])
 
-        # Determine which df corresponds to exec based on the exec pointer
-        # exec can point to "low_tf", "med_tf", or "high_tf"
+        # exec_role indicates which of the 3 TFs is the execution TF
         exec_role = ctx.play.exec_role if hasattr(ctx.play, 'exec_role') else "low_tf"
-        if exec_role == "med_tf":
-            exec_df = med_tf_df
-            exec_specs = med_tf_specs
-        elif exec_role == "high_tf":
-            exec_df = high_tf_df
-            exec_specs = high_tf_specs
-        else:  # Default to low_tf
-            exec_df = low_tf_df
-            exec_specs = low_tf_specs
 
         snapshots_dir = emit_snapshot_artifacts(
             run_dir=ctx.artifact_path,
@@ -747,17 +737,20 @@ def _emit_snapshots(ctx: _RunContext) -> None:
             symbol=ctx.symbol,
             window_start=ctx.config.window_start,
             window_end=ctx.config.window_end,
-            exec_tf=ctx.exec_tf,
-            high_tf=ctx.play.high_tf,
+            # The 3 concrete TF values
+            low_tf=ctx.play.low_tf,
             med_tf=ctx.play.med_tf,
-            # Pass the 3 definable timeframe dataframes
-            exec_df=exec_df,
-            high_tf_df=high_tf_df,
+            high_tf=ctx.play.high_tf,
+            # exec_role pointer
+            exec_role=exec_role,
+            # DataFrames for the 3 definable TFs
+            low_tf_df=low_tf_df,
             med_tf_df=med_tf_df,
-            # Pass specs for each role
-            exec_feature_specs=exec_specs,
-            high_tf_feature_specs=high_tf_specs,
+            high_tf_df=high_tf_df,
+            # Feature specs for each TF role
+            low_tf_feature_specs=low_tf_specs,
             med_tf_feature_specs=med_tf_specs,
+            high_tf_feature_specs=high_tf_specs,
         )
 
         print(f"\n[SNAPSHOTS] Emitted to {snapshots_dir}")

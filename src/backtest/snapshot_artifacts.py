@@ -39,11 +39,14 @@ class SnapshotManifest:
     symbol: str
     window_start: datetime
     window_end: datetime
-    exec_tf: str
-    high_tf: str | None
+    # The 3 definable TFs
+    low_tf: str
     med_tf: str | None
+    high_tf: str | None
+    # exec_tf is resolved from exec_role pointer
+    exec_tf: str
 
-    # Frame info keyed by ROLE (exec/high_tf/med_tf), not TF
+    # Frame info keyed by ROLE (low_tf/med_tf/high_tf), not TF value
     frames: dict[str, SnapshotFrameInfo]  # role -> info
 
     # Metadata
@@ -62,9 +65,12 @@ class SnapshotManifest:
             "symbol": self.symbol,
             "window_start": self.window_start.isoformat(),
             "window_end": self.window_end.isoformat(),
-            "exec_tf": self.exec_tf,
-            "high_tf": self.high_tf,
+            # The 3 definable TFs
+            "low_tf": self.low_tf,
             "med_tf": self.med_tf,
+            "high_tf": self.high_tf,
+            # exec_tf resolved from pointer
+            "exec_tf": self.exec_tf,
             "frame_format": self.frame_format,
             "float_precision": self.float_precision,
             "created_at": self.created_at.isoformat(),
@@ -95,27 +101,35 @@ def emit_snapshot_artifacts(
     symbol: str,
     window_start: datetime,
     window_end: datetime,
-    exec_tf: str,
-    high_tf: str | None,
+    # The 3 concrete TF values
+    low_tf: str,
     med_tf: str | None,
-    exec_df: Any,  # DataFrame
-    high_tf_df: Any | None = None,  # DataFrame
+    high_tf: str | None,
+    # exec_role indicates which of the 3 TFs is the execution TF
+    exec_role: str = "low_tf",
+    # DataFrames for the 3 definable TFs
+    low_tf_df: Any = None,  # DataFrame
     med_tf_df: Any | None = None,  # DataFrame
-    exec_feature_specs: list | None = None,
-    high_tf_feature_specs: list | None = None,
+    high_tf_df: Any | None = None,  # DataFrame
+    # Feature specs for each TF role
+    low_tf_feature_specs: list | None = None,
     med_tf_feature_specs: list | None = None,
+    high_tf_feature_specs: list | None = None,
 ) -> Path:
     """
     Emit snapshot artifacts to run_dir/snapshots/ (role-keyed).
+
+    Uses the 3-TF architecture: low_tf, med_tf, high_tf with exec as a pointer.
 
     Args:
         run_dir: Run directory (e.g., backtests/system_symbol_tf/run-001/)
         play_id: Play identifier
         symbol: Trading symbol
         window_start/end: Backtest window
-        exec_tf/high_tf/med_tf: Timeframes
-        exec_df/high_tf_df/med_tf_df: DataFrames with OHLCV + computed indicators
-        exec_feature_specs/high_tf_feature_specs/med_tf_feature_specs: FeatureSpec objects used
+        low_tf/med_tf/high_tf: The 3 concrete timeframe values
+        exec_role: Which TF role is the execution TF ("low_tf", "med_tf", or "high_tf")
+        low_tf_df/med_tf_df/high_tf_df: DataFrames for each definable TF
+        low_tf_feature_specs/med_tf_feature_specs/high_tf_feature_specs: FeatureSpec objects
 
     Returns:
         Path to snapshots directory
@@ -197,21 +211,24 @@ def emit_snapshot_artifacts(
 
         return info
 
-    # Write each frame with role-based keys
-    if exec_df is not None:
-        info = write_frame(exec_df, "exec", exec_tf, exec_feature_specs)
+    # Write each frame with role-based keys (the 3 definable TFs)
+    if low_tf_df is not None and low_tf:
+        info = write_frame(low_tf_df, "low_tf", low_tf, low_tf_feature_specs)
         if info:
-            frames_info["exec"] = info
+            frames_info["low_tf"] = info
+
+    if med_tf_df is not None and med_tf:
+        info = write_frame(med_tf_df, "med_tf", med_tf, med_tf_feature_specs)
+        if info:
+            frames_info["med_tf"] = info
 
     if high_tf_df is not None and high_tf:
         info = write_frame(high_tf_df, "high_tf", high_tf, high_tf_feature_specs)
         if info:
             frames_info["high_tf"] = info
 
-    if med_tf_df is not None and med_tf:
-        info = write_frame(med_tf_df, "med_tf", med_tf, med_tf_feature_specs)
-        if info:
-            frames_info["med_tf"] = info
+    # Resolve exec_tf from exec_role pointer
+    exec_tf = {"low_tf": low_tf, "med_tf": med_tf, "high_tf": high_tf}.get(exec_role, low_tf)
 
     # Write manifest
     manifest = SnapshotManifest(
@@ -219,9 +236,10 @@ def emit_snapshot_artifacts(
         symbol=symbol,
         window_start=window_start,
         window_end=window_end,
-        exec_tf=exec_tf,
-        high_tf=high_tf,
+        low_tf=low_tf,
         med_tf=med_tf,
+        high_tf=high_tf,
+        exec_tf=exec_tf,
         frames=frames_info,
     )
 
