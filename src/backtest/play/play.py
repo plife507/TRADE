@@ -524,29 +524,26 @@ class Play:
             result["actions"] = [b.to_dict() for b in self.actions]
         return result
 
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Play":
-        """Create from dict.
+    # =========================================================================
+    # from_dict() helper methods (G4.2 Refactor)
+    # =========================================================================
 
-        Handles two formats:
-        1. Internal format (from to_dict): features as list, symbol_universe, execution_tf
-        2. YAML format: features as dict, symbol, tf
+    @staticmethod
+    def _parse_timeframes(
+        d: dict[str, Any]
+    ) -> tuple[str, dict[str, str], str]:
         """
-        # Parse account config
-        account_dict = d.get("account")
-        account = AccountConfig.from_dict(account_dict) if account_dict else None
+        Parse timeframes section.
 
-        # Parse features - handle both dict (YAML) and list (internal) formats
-        features_raw = d.get("features", [])
-
-        # Resolve execution_tf from timeframes section (required)
-        # Internal format uses execution_tf + tf_mapping directly
+        Returns:
+            (execution_tf, tf_mapping, exec_role)
+        """
         execution_tf = d.get("execution_tf")
         tf_mapping: dict[str, str] = d.get("tf_mapping", {})
         timeframes_section = d.get("timeframes")
+        exec_role = "low_tf"  # Default
 
         if not execution_tf:
-            # Must have timeframes section (no legacy tf: support)
             if not timeframes_section:
                 raise ValueError(
                     "Missing 'timeframes' section. Example:\n"
@@ -557,13 +554,11 @@ class Play:
                     "  exec: \"low_tf\""
                 )
 
-            # Parse timeframes section
             low_tf = timeframes_section.get("low_tf")
             med_tf = timeframes_section.get("med_tf")
             high_tf = timeframes_section.get("high_tf")
             exec_role = timeframes_section.get("exec")
 
-            # Validate all required keys
             missing = []
             if not low_tf:
                 missing.append("low_tf")
@@ -576,7 +571,6 @@ class Play:
             if missing:
                 raise ValueError(f"timeframes section missing required keys: {missing}")
 
-            # Validate exec role
             if exec_role not in ("low_tf", "med_tf", "high_tf"):
                 raise ValueError(
                     f"timeframes.exec must be 'low_tf', 'med_tf', or 'high_tf', got: {exec_role}"
@@ -589,16 +583,28 @@ class Play:
                 "exec": exec_role,
             }
 
-            # Resolve exec role to actual TF string
             if exec_role == "low_tf":
                 execution_tf = low_tf
             elif exec_role == "med_tf":
                 execution_tf = med_tf
-            else:  # high_tf
+            else:
                 execution_tf = high_tf
 
+        return execution_tf, tf_mapping, exec_role
+
+    @staticmethod
+    def _parse_features(
+        features_raw: dict | list,
+        execution_tf: str,
+    ) -> tuple[Feature, ...]:
+        """
+        Parse features section.
+
+        Handles both:
+        - YAML dict format: {feature_id: {indicator: ..., params: ...}}
+        - Internal list format: list of Feature dicts
+        """
         if isinstance(features_raw, dict):
-            # YAML format: {feature_id: {indicator: ..., params: ...}}
             from ..indicator_registry import get_registry
             registry = get_registry()
 
@@ -608,7 +614,6 @@ class Play:
                 params = spec.get("params", {})
                 feature_tf = spec.get("tf", execution_tf)
 
-                # Get output keys from registry
                 output_keys = ()
                 if registry.is_supported(indicator_type):
                     if registry.is_multi_output(indicator_type):
@@ -625,208 +630,247 @@ class Play:
                     output_keys=output_keys,
                 )
                 features_list.append(feature)
-            features = tuple(features_list)
+            return tuple(features_list)
         else:
-            # Internal format: list of Feature dicts
-            features = tuple(Feature.from_dict(f) for f in features_raw)
+            return tuple(Feature.from_dict(f) for f in features_raw)
+
+    @staticmethod
+    def _parse_actions(actions_data: dict | list) -> list:
+        """
+        Parse actions section (DSL format).
+
+        Handles both shorthand dict format and full list format.
+        """
+        if not actions_data:
+            return []
+
+        from ..rules.dsl_parser import parse_blocks
+
+        if isinstance(actions_data, dict):
+            # Shorthand: {action_id: {all/any: [conditions]}}
+            actions_list = []
+            for action_id, action_content in actions_data.items():
+                cases = []
+                if isinstance(action_content, dict):
+                    when_clause = _convert_shorthand_conditions(action_content)
+                    action = action_id
+                    cases.append({
+                        "when": when_clause,
+                        "emit": [{"action": action}],
+                    })
+                actions_list.append({
+                    "id": action_id,
+                    "cases": cases,
+                })
+            actions_data = actions_list
+
+        return parse_blocks(actions_data)
+
+    @staticmethod
+    def _parse_risk_model(
+        d: dict[str, Any],
+        account: AccountConfig | None,
+    ) -> RiskModel | None:
+        """
+        Parse risk model from risk: or risk_model: sections.
+
+        Handles both full risk_model dict and YAML shorthand.
+        """
+        rm_dict = d.get("risk_model")
+        risk_dict = d.get("risk", {})
+
+        if rm_dict:
+            return RiskModel.from_dict(rm_dict)
+
+        if not risk_dict:
+            return None
+
+        max_position_pct = risk_dict.get("max_position_pct", 10.0)
+        account_max_lev = account.max_leverage if account else 10.0
+
+        # Parse stop_loss
+        stop_loss_dict = risk_dict.get("stop_loss")
+        stop_loss_pct = risk_dict.get("stop_loss_pct")
+        trailing_config = None
+        stop_loss_rule = None
+
+        if stop_loss_dict and isinstance(stop_loss_dict, dict):
+            sl_type_str = stop_loss_dict.get("type", "percent")
+            sl_type = StopLossType(sl_type_str)
+
+            if sl_type in (StopLossType.TRAILING_ATR, StopLossType.TRAILING_PCT):
+                trailing_config = TrailingConfig(
+                    atr_multiplier=float(stop_loss_dict.get("atr_multiplier", 2.0)),
+                    atr_feature_id=stop_loss_dict.get("atr_feature_id"),
+                    trail_pct=float(stop_loss_dict["trail_pct"]) if stop_loss_dict.get("trail_pct") else None,
+                    activation_pct=float(stop_loss_dict.get("activation_pct", 0.0)),
+                )
+                sl_value = float(stop_loss_dict.get("atr_multiplier", stop_loss_dict.get("trail_pct", 2.0)))
+            else:
+                sl_value = float(stop_loss_dict.get("value", 2.0))
+
+            stop_loss_rule = StopLossRule(
+                type=sl_type,
+                value=sl_value,
+                atr_feature_id=stop_loss_dict.get("atr_feature_id"),
+                buffer_pct=float(stop_loss_dict.get("buffer_pct", 0.0)),
+            )
+        elif stop_loss_pct is not None:
+            stop_loss_rule = StopLossRule(
+                type=StopLossType.PERCENT,
+                value=float(stop_loss_pct),
+            )
+
+        # Parse take_profit
+        take_profit_pct = risk_dict.get("take_profit_pct")
+        take_profit_rule = None
+        if take_profit_pct is not None:
+            take_profit_rule = TakeProfitRule(
+                type=TakeProfitType.PERCENT,
+                value=float(take_profit_pct),
+            )
+
+        # Parse break_even config
+        break_even_dict = risk_dict.get("break_even")
+        break_even_config = None
+        if break_even_dict and isinstance(break_even_dict, dict):
+            break_even_config = BreakEvenConfig(
+                activation_pct=float(break_even_dict.get("activation_pct", 1.0)),
+                offset_pct=float(break_even_dict.get("offset_pct", 0.1)),
+            )
+
+        if stop_loss_rule is not None and take_profit_rule is not None:
+            return RiskModel(
+                stop_loss=stop_loss_rule,
+                take_profit=take_profit_rule,
+                sizing=SizingRule(
+                    model=SizingModel.PERCENT_EQUITY,
+                    value=float(max_position_pct),
+                    max_leverage=float(account_max_lev),
+                ),
+                trailing_config=trailing_config,
+                break_even_config=break_even_config,
+            )
+
+        return None
+
+    @staticmethod
+    def _parse_structures(
+        structures_dict: dict[str, Any],
+        execution_tf: str,
+    ) -> tuple[list[str], list[Feature]]:
+        """
+        Parse structures section.
+
+        Returns:
+            (structure_keys, structure_features)
+        """
+        if not structures_dict:
+            return [], []
+
+        VALID_TF_ROLES = {"exec", "low_tf", "med_tf", "high_tf"}
+        structure_keys: list[str] = []
+        structure_features: list[Feature] = []
+
+        for tf_role, specs in structures_dict.items():
+            if tf_role not in VALID_TF_ROLES:
+                raise ValueError(
+                    f"Invalid structures tf_role '{tf_role}'. "
+                    f"Must be one of: {sorted(VALID_TF_ROLES)}. "
+                    f"Example: structures: {{exec: [{{type: swing, key: swing, params: ...}}]}}"
+                )
+
+            if isinstance(specs, list):
+                # exec: [{type: swing, key: swing}, ...]
+                for spec in specs:
+                    if isinstance(spec, dict) and "key" in spec:
+                        if "type" not in spec:
+                            raise ValueError(
+                                f"Structure spec '{spec['key']}' missing required 'type' field. "
+                                f"Example: {{type: swing, key: {spec['key']}, params: {{left: 5, right: 5}}}}"
+                            )
+                        structure_keys.append(spec["key"])
+                        uses_raw = spec.get("uses", [])
+                        if isinstance(uses_raw, str):
+                            uses = (uses_raw,)
+                        else:
+                            uses = tuple(uses_raw) if uses_raw else ()
+                        structure_features.append(Feature(
+                            id=spec["key"],
+                            tf=execution_tf,
+                            type=FeatureType.STRUCTURE,
+                            structure_type=spec["type"],
+                            params=spec.get("params", {}),
+                            uses=uses,
+                        ))
+            elif isinstance(specs, dict):
+                # high_tf: {"1h": [{type: swing, key: swing_1h}, ...]}
+                for tf, tf_specs in specs.items():
+                    if isinstance(tf_specs, list):
+                        for spec in tf_specs:
+                            if isinstance(spec, dict) and "key" in spec:
+                                if "type" not in spec:
+                                    raise ValueError(
+                                        f"Structure spec '{spec['key']}' missing required 'type' field. "
+                                        f"Example: {{type: swing, key: {spec['key']}, params: {{left: 3, right: 3}}}}"
+                                    )
+                                structure_keys.append(spec["key"])
+                                uses_raw = spec.get("uses", [])
+                                if isinstance(uses_raw, str):
+                                    uses = (uses_raw,)
+                                else:
+                                    uses = tuple(uses_raw) if uses_raw else ()
+                                structure_features.append(Feature(
+                                    id=spec["key"],
+                                    tf=tf,
+                                    type=FeatureType.STRUCTURE,
+                                    structure_type=spec["type"],
+                                    params=spec.get("params", {}),
+                                    uses=uses,
+                                ))
+
+        return structure_keys, structure_features
+
+    # =========================================================================
+    # from_dict() main method
+    # =========================================================================
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Play":
+        """Create from dict.
+
+        Handles two formats:
+        1. Internal format (from to_dict): features as list, symbol_universe, execution_tf
+        2. YAML format: features as dict, symbol, tf
+        """
+        # Parse account config
+        account_dict = d.get("account")
+        account = AccountConfig.from_dict(account_dict) if account_dict else None
+
+        # Parse timeframes
+        execution_tf, tf_mapping, _ = cls._parse_timeframes(d)
+
+        # Parse features
+        features_raw = d.get("features", [])
+        features = cls._parse_features(features_raw, execution_tf)
 
         # Parse position policy
         pp_dict = d.get("position_policy", {})
         position_policy = PositionPolicy.from_dict(pp_dict) if pp_dict else PositionPolicy()
 
-        # Parse actions (DSL format) - handle both shorthand and full formats
-        # Only 'actions' is supported (blocks: is deprecated and removed)
-        actions_data = d.get("actions", {})
-        if actions_data:
-            from ..rules.dsl_parser import parse_blocks
+        # Parse actions
+        actions = cls._parse_actions(d.get("actions", {}))
 
-            # Convert shorthand dict format to list format if needed
-            if isinstance(actions_data, dict):
-                # Shorthand: {action_id: {all/any: [conditions]}}
-                actions_list = []
-                for action_id, action_content in actions_data.items():
-                    # Convert shorthand conditions to full format
-                    cases = []
-                    if isinstance(action_content, dict):
-                        # Build the "when" clause from the action content
-                        when_clause = _convert_shorthand_conditions(action_content)
-                        # Infer action from action_id
-                        action = action_id  # e.g., "entry_long", "exit_long"
-                        cases.append({
-                            "when": when_clause,
-                            "emit": [{"action": action}],
-                        })
-                    actions_list.append({
-                        "id": action_id,
-                        "cases": cases,
-                    })
-                actions_data = actions_list
-
-            actions = parse_blocks(actions_data)
-        else:
-            actions = []
-
-        # Parse risk model - handle both formats
-        rm_dict = d.get("risk_model")
-        risk_dict = d.get("risk", {})
-        if rm_dict:
-            risk_model = RiskModel.from_dict(rm_dict)
-        elif risk_dict:
-            # YAML shorthand supports multiple formats:
-            # 1. Simple: stop_loss_pct, take_profit_pct
-            # 2. Extended: stop_loss as dict (for trailing), break_even
-            max_position_pct = risk_dict.get("max_position_pct", 10.0)
-            account_max_lev = account.max_leverage if account else 10.0
-
-            # Parse stop_loss - can be simple pct or full dict
-            stop_loss_dict = risk_dict.get("stop_loss")
-            stop_loss_pct = risk_dict.get("stop_loss_pct")
-            trailing_config = None
-
-            if stop_loss_dict and isinstance(stop_loss_dict, dict):
-                # Extended format: stop_loss: {type: trailing_atr, atr_multiplier: 2.0, ...}
-                sl_type_str = stop_loss_dict.get("type", "percent")
-                sl_type = StopLossType(sl_type_str)
-
-                # For trailing types, extract trailing config
-                if sl_type in (StopLossType.TRAILING_ATR, StopLossType.TRAILING_PCT):
-                    trailing_config = TrailingConfig(
-                        atr_multiplier=float(stop_loss_dict.get("atr_multiplier", 2.0)),
-                        atr_feature_id=stop_loss_dict.get("atr_feature_id"),
-                        trail_pct=float(stop_loss_dict["trail_pct"]) if stop_loss_dict.get("trail_pct") else None,
-                        activation_pct=float(stop_loss_dict.get("activation_pct", 0.0)),
-                    )
-                    # For trailing, value is the multiplier or percent
-                    sl_value = float(stop_loss_dict.get("atr_multiplier", stop_loss_dict.get("trail_pct", 2.0)))
-                else:
-                    sl_value = float(stop_loss_dict.get("value", 2.0))
-
-                stop_loss_rule = StopLossRule(
-                    type=sl_type,
-                    value=sl_value,
-                    atr_feature_id=stop_loss_dict.get("atr_feature_id"),
-                    buffer_pct=float(stop_loss_dict.get("buffer_pct", 0.0)),
-                )
-            elif stop_loss_pct is not None:
-                # Simple format: stop_loss_pct
-                stop_loss_rule = StopLossRule(
-                    type=StopLossType.PERCENT,
-                    value=float(stop_loss_pct),
-                )
-            else:
-                stop_loss_rule = None
-
-            # Parse take_profit
-            take_profit_pct = risk_dict.get("take_profit_pct")
-            if take_profit_pct is not None:
-                take_profit_rule = TakeProfitRule(
-                    type=TakeProfitType.PERCENT,
-                    value=float(take_profit_pct),
-                )
-            else:
-                take_profit_rule = None
-
-            # Parse break_even config
-            break_even_dict = risk_dict.get("break_even")
-            break_even_config = None
-            if break_even_dict and isinstance(break_even_dict, dict):
-                break_even_config = BreakEvenConfig(
-                    activation_pct=float(break_even_dict.get("activation_pct", 1.0)),
-                    offset_pct=float(break_even_dict.get("offset_pct", 0.1)),
-                )
-
-            # Build RiskModel if we have required components
-            if stop_loss_rule is not None and take_profit_rule is not None:
-                risk_model = RiskModel(
-                    stop_loss=stop_loss_rule,
-                    take_profit=take_profit_rule,
-                    sizing=SizingRule(
-                        model=SizingModel.PERCENT_EQUITY,
-                        value=float(max_position_pct),
-                        max_leverage=float(account_max_lev),
-                    ),
-                    trailing_config=trailing_config,
-                    break_even_config=break_even_config,
-                )
-            else:
-                risk_model = None
-        else:
-            risk_model = None
+        # Parse risk model
+        risk_model = cls._parse_risk_model(d, account)
 
         # Parse variables
         variables = d.get("variables", {})
 
-        # Check if structures are defined (allows structure-only Plays)
+        # Parse structures
         structures_dict = d.get("structures", {})
         has_structures = bool(structures_dict)
-
-        # Extract structure keys AND convert structures to Feature objects
-        structure_keys: list[str] = []
-        structure_features: list[Feature] = []
-        if has_structures:
-            # structures: {exec: [...], high_tf: {...}}
-            VALID_TF_ROLES = {"exec", "low_tf", "med_tf", "high_tf"}
-            for tf_role, specs in structures_dict.items():
-                if tf_role not in VALID_TF_ROLES:
-                    raise ValueError(
-                        f"Invalid structures tf_role '{tf_role}'. "
-                        f"Must be one of: {sorted(VALID_TF_ROLES)}. "
-                        f"Example: structures: {{exec: [{{type: swing, key: swing, params: ...}}]}}"
-                    )
-                if isinstance(specs, list):
-                    # exec: [{type: swing, key: swing}, ...]
-                    for spec in specs:
-                        if isinstance(spec, dict) and "key" in spec:
-                            # Validate required fields
-                            if "type" not in spec:
-                                raise ValueError(
-                                    f"Structure spec '{spec['key']}' missing required 'type' field. "
-                                    f"Example: {{type: swing, key: {spec['key']}, params: {{left: 5, right: 5}}}}"
-                                )
-                            structure_keys.append(spec["key"])
-                            # Parse uses field (can be string or list)
-                            uses_raw = spec.get("uses", [])
-                            if isinstance(uses_raw, str):
-                                uses = (uses_raw,)
-                            else:
-                                uses = tuple(uses_raw) if uses_raw else ()
-                            # Create Feature object for structure
-                            structure_features.append(Feature(
-                                id=spec["key"],
-                                tf=execution_tf,  # exec role uses execution_tf
-                                type=FeatureType.STRUCTURE,
-                                structure_type=spec["type"],
-                                params=spec.get("params", {}),
-                                uses=uses,
-                            ))
-                elif isinstance(specs, dict):
-                    # high_tf: {"1h": [{type: swing, key: swing_1h}, ...]}
-                    for tf, tf_specs in specs.items():
-                        if isinstance(tf_specs, list):
-                            for spec in tf_specs:
-                                if isinstance(spec, dict) and "key" in spec:
-                                    # Validate required fields
-                                    if "type" not in spec:
-                                        raise ValueError(
-                                            f"Structure spec '{spec['key']}' missing required 'type' field. "
-                                            f"Example: {{type: swing, key: {spec['key']}, params: {{left: 3, right: 3}}}}"
-                                        )
-                                    structure_keys.append(spec["key"])
-                                    # Parse uses field (can be string or list)
-                                    uses_raw = spec.get("uses", [])
-                                    if isinstance(uses_raw, str):
-                                        uses = (uses_raw,)
-                                    else:
-                                        uses = tuple(uses_raw) if uses_raw else ()
-                                    # Create Feature object for high_tf structure
-                                    structure_features.append(Feature(
-                                        id=spec["key"],
-                                        tf=tf,  # Use the nested TF key (e.g., "1h")
-                                        type=FeatureType.STRUCTURE,
-                                        structure_type=spec["type"],
-                                        params=spec.get("params", {}),
-                                        uses=uses,
-                                    ))
+        structure_keys, structure_features = cls._parse_structures(structures_dict, execution_tf)
 
         # Combine indicator features with structure features
         if structure_features:
