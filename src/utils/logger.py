@@ -220,7 +220,8 @@ class TradingLogger:
         jsonl_path = self.log_dir / jsonl_filename
         
         try:
-            self._jsonl_file = open(jsonl_path, 'a', encoding='utf-8')
+            # G6.3.2: Use LF line endings for Windows compatibility
+            self._jsonl_file = open(jsonl_path, 'a', encoding='utf-8', newline='\n')
         except Exception as e:
             # Fall back to logging the error, but don't crash
             print(f"Warning: Could not open JSONL log file: {e}")

@@ -5,7 +5,7 @@ Contains: connect_public_ws, connect_private_ws, subscribe_* methods,
 close_websockets, and cleanup utilities.
 """
 
-import sys
+# G6.4.13: Removed unused sys import
 import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING

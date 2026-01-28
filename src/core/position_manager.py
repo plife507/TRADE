@@ -309,9 +309,12 @@ class PositionManager:
             ws_pos = self.realtime_state.get_position(symbol)
             if ws_pos and ws_pos.is_open:
                 self._last_source = "websocket"
+                # G6.0.3-4: Use correct Position field names and add required fields
                 return Position(
                     symbol=ws_pos.symbol,
-                    side=ws_pos.side,
+                    exchange="bybit",
+                    position_type="futures",
+                    side="long" if ws_pos.side.lower() == "buy" else "short",
                     size=ws_pos.size,
                     size_usdt=ws_pos.position_value,
                     entry_price=ws_pos.entry_price,
@@ -319,7 +322,8 @@ class PositionManager:
                     unrealized_pnl=ws_pos.unrealized_pnl,
                     unrealized_pnl_percent=ws_pos.pnl_percent,
                     leverage=int(ws_pos.leverage),
-                    liq_price=ws_pos.liq_price,
+                    margin_mode="cross",
+                    liquidation_price=ws_pos.liq_price,
                     take_profit=ws_pos.take_profit,
                     stop_loss=ws_pos.stop_loss,
                 )

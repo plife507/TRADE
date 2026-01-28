@@ -30,7 +30,8 @@ Usage:
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Optional, Union
+# G6.5.3: Removed unused Optional, Union (Python 3.12+ uses X | None syntax)
+from typing import Any
 import pandas as pd
 
 from ..config.constants import DataEnv

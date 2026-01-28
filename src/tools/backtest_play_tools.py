@@ -1309,7 +1309,8 @@ def backtest_play_normalize_tool(
 
         # If write_in_place, write back the normalized YAML
         if write_in_place:
-            with open(yaml_path, "w", encoding="utf-8") as f:
+            # G6.3.1: Use LF line endings for Windows compatibility
+            with open(yaml_path, "w", encoding="utf-8", newline='\n') as f:
                 yaml.dump(normalized, f, sort_keys=False, default_flow_style=False)
 
             return ToolResult(

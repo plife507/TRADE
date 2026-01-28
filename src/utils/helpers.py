@@ -4,7 +4,8 @@ Common utility functions used across the trading bot.
 These helpers handle edge cases from exchange API responses.
 """
 
-from typing import Any, Optional
+# G6.4.14: Removed unused Optional (Python 3.12+ uses X | None syntax)
+from typing import Any
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:

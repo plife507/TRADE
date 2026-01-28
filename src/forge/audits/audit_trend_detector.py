@@ -63,7 +63,8 @@ class MockSwingDetector:
 
 def create_trend_detector(swing: MockSwingDetector) -> Any:
     """Create a trend detector with mock swing dependency."""
-    from .trend import IncrementalTrend
+    # G6.1.2: Fix broken relative import
+    from src.structures import IncrementalTrend
 
     params: dict[str, Any] = {}
     deps = {"swing": swing}
@@ -262,7 +263,8 @@ def test_bars_in_trend_tracking() -> None:
 
 def test_missing_dependency_error() -> None:
     """Test that missing swing dependency raises proper error."""
-    from .trend import IncrementalTrend
+    # G6.1.3: Fix broken relative import
+    from src.structures import IncrementalTrend
 
     try:
         # Try to create via validate_and_create without swing dependency

@@ -74,7 +74,7 @@ def orders_menu(cli: "TradeCLI"):
     """Orders menu."""
     from trade_cli import (
         clear_screen, print_header, get_input, get_choice,
-        run_tool_action, print_result, print_error_below_menu, BACK
+        run_tool_action, print_result, print_data_result, print_error_below_menu, BACK
     )
     from src.cli.utils import get_int_input
     

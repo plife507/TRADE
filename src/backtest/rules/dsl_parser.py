@@ -905,13 +905,13 @@ def parse_play_actions(play_dict: dict) -> list[Block]:
         List of Block instances.
 
     Raises:
-        ValueError: If no 'actions' or 'blocks' key in dict.
+        ValueError: If no 'actions' key in dict.
     """
-    # Support both 'actions' (new) and 'blocks' (legacy)
-    actions_data = play_dict.get("actions") or play_dict.get("blocks")
+    # G6.5.2: Removed legacy 'blocks' key support - use 'actions' only
+    actions_data = play_dict.get("actions")
     if not actions_data:
         raise ValueError(
-            "Play must have 'actions' key (or legacy 'blocks'). "
+            "Play must have 'actions' key. "
             "Define entry/exit rules in the actions section."
         )
 

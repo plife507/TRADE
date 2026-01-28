@@ -10,7 +10,8 @@ Integrates with existing RealtimeState/RealtimeBootstrap infrastructure.
 
 from __future__ import annotations
 
-from datetime import datetime
+import threading
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -58,6 +59,9 @@ class LiveIndicatorCache:
         """
         self._play = play
         self._buffer_size = buffer_size
+
+        # G6.2.1: Thread safety for WebSocket callbacks
+        self._lock = threading.Lock()
 
         # Indicator arrays (name -> numpy array)
         self._indicators: dict[str, np.ndarray] = {}
@@ -177,59 +181,62 @@ class LiveIndicatorCache:
         Add new closed candle and update indicators.
 
         Uses O(1) incremental computation for supported indicators.
+        Thread-safe: protected by lock for WebSocket callbacks.
         """
-        # Append to arrays
-        self._open = np.append(self._open, candle.open)
-        self._high = np.append(self._high, candle.high)
-        self._low = np.append(self._low, candle.low)
-        self._close = np.append(self._close, candle.close)
-        self._volume = np.append(self._volume, candle.volume)
+        # G6.2.1: Thread safety - lock all mutations
+        with self._lock:
+            # Append to arrays
+            self._open = np.append(self._open, candle.open)
+            self._high = np.append(self._high, candle.high)
+            self._low = np.append(self._low, candle.low)
+            self._close = np.append(self._close, candle.close)
+            self._volume = np.append(self._volume, candle.volume)
 
-        # Trim if needed
-        if len(self._close) > self._buffer_size:
-            trim_count = len(self._close) - self._buffer_size
-            self._open = self._open[trim_count:]
-            self._high = self._high[trim_count:]
-            self._low = self._low[trim_count:]
-            self._close = self._close[trim_count:]
-            self._volume = self._volume[trim_count:]
+            # Trim if needed
+            if len(self._close) > self._buffer_size:
+                trim_count = len(self._close) - self._buffer_size
+                self._open = self._open[trim_count:]
+                self._high = self._high[trim_count:]
+                self._low = self._low[trim_count:]
+                self._close = self._close[trim_count:]
+                self._volume = self._volume[trim_count:]
 
-            # Trim indicator arrays too
-            for name in self._indicators:
-                self._indicators[name] = self._indicators[name][trim_count:]
+                # Trim indicator arrays too
+                for name in self._indicators:
+                    self._indicators[name] = self._indicators[name][trim_count:]
 
-        self._bar_count = len(self._close)
+            self._bar_count = len(self._close)
 
-        # Update incremental indicators (O(1) per indicator)
-        from ...backtest.indicator_registry import get_registry
-        registry = get_registry()
+            # Update incremental indicators (O(1) per indicator)
+            from ...backtest.indicator_registry import get_registry
+            registry = get_registry()
 
-        for name, (inc_ind, feature) in self._incremental.items():
-            ind_type = feature.indicator_type.lower()
+            for name, (inc_ind, feature) in self._incremental.items():
+                ind_type = feature.indicator_type.lower()
 
-            # Use registry to determine input requirements
-            info = registry.get_indicator_info(ind_type)
-            if info.requires_hlc:
-                inc_ind.update(
-                    high=float(candle.high),
-                    low=float(candle.low),
-                    close=float(candle.close),
-                )
-            else:
-                inc_ind.update(close=float(candle.close))
+                # Use registry to determine input requirements
+                info = registry.get_indicator_info(ind_type)
+                if info.requires_hlc:
+                    inc_ind.update(
+                        high=float(candle.high),
+                        low=float(candle.low),
+                        close=float(candle.close),
+                    )
+                else:
+                    inc_ind.update(close=float(candle.close))
 
-            # Append new values for all outputs
-            if info.is_multi_output:
-                for suffix in info.output_keys:
-                    key = f"{name}_{suffix}"
-                    value = self._get_incremental_output(inc_ind, suffix)
-                    self._indicators[key] = np.append(self._indicators[key], value)
-            else:
-                self._indicators[name] = np.append(self._indicators[name], inc_ind.value)
+                # Append new values for all outputs
+                if info.is_multi_output:
+                    for suffix in info.output_keys:
+                        key = f"{name}_{suffix}"
+                        value = self._get_incremental_output(inc_ind, suffix)
+                        self._indicators[key] = np.append(self._indicators[key], value)
+                else:
+                    self._indicators[name] = np.append(self._indicators[name], inc_ind.value)
 
-        # Recompute vectorized indicators (still O(n) but only for non-incremental)
-        if self._vectorized_specs:
-            self._compute_vectorized()
+            # Recompute vectorized indicators (still O(n) but only for non-incremental)
+            if self._vectorized_specs:
+                self._compute_vectorized()
 
     def _get_incremental_output(self, inc_ind: Any, suffix: str) -> float:
         """
@@ -280,27 +287,30 @@ class LiveIndicatorCache:
                 logger.warning(f"Failed to compute indicator {spec}: {e}")
 
     def get(self, name: str, index: int) -> float:
-        """Get indicator value at index."""
-        if name not in self._indicators:
-            raise KeyError(f"Indicator '{name}' not found")
+        """Get indicator value at index. Thread-safe."""
+        with self._lock:
+            if name not in self._indicators:
+                raise KeyError(f"Indicator '{name}' not found")
 
-        arr = self._indicators[name]
-        if index < 0:
-            index = len(arr) + index
+            arr = self._indicators[name]
+            if index < 0:
+                index = len(arr) + index
 
-        if index < 0 or index >= len(arr):
-            raise IndexError(f"Index {index} out of bounds")
+            if index < 0 or index >= len(arr):
+                raise IndexError(f"Index {index} out of bounds")
 
-        return float(arr[index])
+            return float(arr[index])
 
     def has_indicator(self, name: str) -> bool:
-        """Check if indicator exists."""
-        return name in self._indicators
+        """Check if indicator exists. Thread-safe."""
+        with self._lock:
+            return name in self._indicators
 
     @property
     def length(self) -> int:
-        """Number of bars in cache."""
-        return self._bar_count
+        """Number of bars in cache. Thread-safe."""
+        with self._lock:
+            return self._bar_count
 
 
 class LiveDataProvider:
@@ -350,6 +360,9 @@ class LiveDataProvider:
         # RealtimeState integration (set during connect)
         self._realtime_state: "RealtimeState | None" = None
         self._bootstrap: "RealtimeBootstrap | None" = None
+
+        # G6.2.2: Thread safety for buffer access from WebSocket callbacks
+        self._buffer_lock = threading.Lock()
 
         # 3-Feed Candle Buffers
         self._low_tf_buffer: list[Candle] = []
@@ -407,8 +420,9 @@ class LiveDataProvider:
 
     @property
     def num_bars(self) -> int:
-        """Number of bars in exec buffer."""
-        return len(self._exec_buffer)
+        """Number of bars in exec buffer. Thread-safe."""
+        with self._buffer_lock:
+            return len(self._exec_buffer)
 
     @property
     def _exec_buffer(self) -> list[Candle]:
@@ -626,7 +640,8 @@ class LiveDataProvider:
             store = get_historical_store(env=self._env)
 
             # Calculate time range (last N bars based on timeframe)
-            end = datetime.utcnow()
+            # G6.5.1: Use non-deprecated timezone-aware datetime
+            end = datetime.now(timezone.utc)
             tf_mins = tf_minutes(tf_str)
             start = end - timedelta(minutes=tf_mins * self._buffer_size)
 
@@ -840,8 +855,9 @@ class LiveDataProvider:
         return cache.has_indicator(name)
 
     def is_ready(self) -> bool:
-        """Check if data provider is ready."""
-        return self._ready
+        """Check if data provider is ready. Thread-safe."""
+        with self._buffer_lock:
+            return self._ready
 
     def on_candle_close(self, candle: Candle, timeframe: str | None = None) -> None:
         """
@@ -874,9 +890,10 @@ class LiveDataProvider:
             )
 
         # Check warmup (exec buffer must have enough bars)
-        if not self._ready and len(self._exec_buffer) >= self._warmup_bars:
-            self._ready = True
-            logger.info("LiveDataProvider ready (warmup complete)")
+        with self._buffer_lock:
+            if not self._ready and len(self._exec_buffer) >= self._warmup_bars:
+                self._ready = True
+                logger.info("LiveDataProvider ready (warmup complete)")
 
     def _get_tf_role_for_timeframe(self, timeframe: str) -> str:
         """Map a timeframe string to its TF role (low_tf, med_tf, high_tf)."""
@@ -896,21 +913,25 @@ class LiveDataProvider:
         indicator_cache: LiveIndicatorCache | None,
         structure_state: "TFIncrementalState | None",
     ) -> None:
-        """Update a specific TF's buffer, indicators, and structures."""
-        # Add to buffer
-        buffer.append(candle)
+        """Update a specific TF's buffer, indicators, and structures. Thread-safe."""
+        # G6.2.2: Thread safety - lock buffer access
+        with self._buffer_lock:
+            # Add to buffer
+            buffer.append(candle)
 
-        # Trim buffer if needed
-        if len(buffer) > self._buffer_size:
-            del buffer[:-self._buffer_size]
+            # Trim buffer if needed
+            if len(buffer) > self._buffer_size:
+                del buffer[:-self._buffer_size]
 
-        # Update indicators
+            buffer_len = len(buffer)
+
+        # Update indicators (has its own lock)
         if indicator_cache is not None:
             indicator_cache.update(candle)
 
         # Update structure state
         if structure_state is not None:
-            self._update_structure_state_for_tf(structure_state, len(buffer) - 1, candle)
+            self._update_structure_state_for_tf(structure_state, buffer_len - 1, candle)
 
     def _update_structure_state(self, bar_idx: int) -> None:
         """Update structure state with latest candle (legacy single-TF method)."""
@@ -1065,8 +1086,11 @@ class LiveExchange:
         account = self._play.account
         risk_model = self._play.risk_model
 
+        # G6.0.1: Use SizingConfig max_position_equity_pct (default 95%)
+        # The PlayEngineConfig doesn't have max_position_pct - use default
+        max_position_pct = 95.0  # SizingConfig default
         config.max_position_value = account.starting_equity_usdt * (
-            self._config.max_position_pct / 100.0
+            max_position_pct / 100.0
         )
 
         if risk_model:

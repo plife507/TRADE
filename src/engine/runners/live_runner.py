@@ -520,7 +520,8 @@ class LiveRunner:
             # Check if we've exceeded health threshold
             if self._stats.last_candle_ts:
                 since_last = (datetime.now() - self._stats.last_candle_ts).total_seconds()
-                expected_interval = tf_minutes * 60
+                # G6.0.2: Use tf_mins (variable from line 506), not tf_minutes (function)
+                expected_interval = tf_mins * 60
 
                 if since_last > expected_interval * 2:
                     logger.warning(

@@ -59,7 +59,7 @@ if TYPE_CHECKING:
     from ...backtest.play import Play
     from ...backtest.runtime.feed_store import FeedStore
     from ...backtest.sim.exchange import SimulatedExchange
-    from ...backtest.types import Trade
+    # G6.4.6: Removed unused Trade import
 
 
 @dataclass
