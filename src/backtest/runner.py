@@ -66,7 +66,6 @@ from .artifacts.hashes import (
 from .artifacts.parquet_writer import write_parquet
 from .gates.indicator_requirements_gate import (
     validate_indicator_requirements,
-    extract_available_keys_from_feature_frames,
     IndicatorGateStatus,
     IndicatorRequirementsResult,
 )
@@ -526,7 +525,7 @@ def run_backtest_with_gates(
         print("\n[RUN] Running Backtest...")
         
         # Import engine factory functions (unified PlayEngine path)
-        from .engine import create_engine_from_play, run_engine_with_play
+        from .engine_factory import create_engine_from_play, run_engine_with_play
 
         # Create engine from Play and run via unified path
         engine = create_engine_from_play(

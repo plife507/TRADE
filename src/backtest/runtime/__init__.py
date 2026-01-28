@@ -83,7 +83,6 @@ from .state_types import (
     ActionStateValue,
     GateCode,
     GateResult,
-    GATE_CODE_DESCRIPTIONS,
 )
 from .signal_state import SignalState, transition_signal_state, reset_signal_state
 from .action_state import ActionState, transition_action_state, reset_action_state
@@ -142,7 +141,6 @@ __all__ = [
     "ActionStateValue",
     "GateCode",
     "GateResult",
-    "GATE_CODE_DESCRIPTIONS",
     "SignalState",
     "transition_signal_state",
     "reset_signal_state",

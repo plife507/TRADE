@@ -179,16 +179,19 @@ from .data_tools import (
 )
 
 
-# Backtest CLI wrapper tools (Play-based, golden path)
-from .backtest_cli_wrapper import (
+# Backtest Play tools (golden path)
+from .backtest_play_tools import (
     backtest_preflight_play_tool,
     backtest_run_play_tool,
     backtest_data_fix_tool,
     backtest_list_plays_tool,
     backtest_indicators_tool,
     backtest_play_normalize_tool,
+)
+
+# Backtest Audit tools
+from .backtest_audit_tools import (
     verify_artifact_parity_tool,
-    # Audit tools
     backtest_audit_toolkit_tool,
     backtest_audit_in_memory_parity_tool,
     backtest_math_parity_tool,

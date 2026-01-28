@@ -41,7 +41,6 @@ from .window_presets import (
 from .data_builder import DataBuilder, DataBuildResult
 from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
 from .engine_factory import (
-    run_backtest,
     create_engine_from_play,
     run_engine_with_play,
     # Professional naming aliases
@@ -133,7 +132,6 @@ __all__ = [
     "PreparedFrame",
     "MultiTFPreparedFrames",
     # Factory functions
-    "run_backtest",
     "create_backtest_engine",  # Professional alias
     "PlayRunResult",  # Professional alias
     # Risk policies

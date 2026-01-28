@@ -1115,7 +1115,7 @@ def handle_backtest_run(args) -> int:
     """Handle `backtest run` subcommand."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import backtest_run_play_tool
+    from src.tools.backtest_play_tools import backtest_run_play_tool
     from src.tools.shared import ToolResult
 
     # Parse dates
@@ -1179,7 +1179,7 @@ def handle_backtest_run(args) -> int:
 def handle_backtest_preflight(args) -> int:
     """Handle `backtest preflight` subcommand."""
     import json
-    from src.tools.backtest_cli_wrapper import backtest_preflight_play_tool, backtest_data_fix_tool
+    from src.tools.backtest_play_tools import backtest_preflight_play_tool, backtest_data_fix_tool
     
     # Parse dates
     start = _parse_datetime(args.start) if args.start else None
@@ -1242,7 +1242,7 @@ def handle_backtest_indicators(args) -> int:
 
     # Handle audit mode
     if args.audit_math_from_snapshots:
-        from src.tools.backtest_cli_wrapper import backtest_audit_math_from_snapshots_tool
+        from src.tools.backtest_audit_tools import backtest_audit_math_from_snapshots_tool
 
         if not args.run_dir:
             console.print("[red]Error: --run-dir is required for --audit-math-from-snapshots[/]")
@@ -1292,7 +1292,7 @@ def handle_backtest_indicators(args) -> int:
         return 0 if result.success else 1
 
     # Original indicator discovery mode
-    from src.tools.backtest_cli_wrapper import backtest_indicators_tool
+    from src.tools.backtest_play_tools import backtest_indicators_tool
 
     # Parse dates
     start = _parse_datetime(args.start) if args.start else None
@@ -1363,7 +1363,7 @@ def handle_backtest_indicators(args) -> int:
 def handle_backtest_data_fix(args) -> int:
     """Handle `backtest data-fix` subcommand."""
     import json
-    from src.tools.backtest_cli_wrapper import backtest_data_fix_tool
+    from src.tools.backtest_play_tools import backtest_data_fix_tool
     
     # Parse dates
     start = _parse_datetime(args.start) if args.start else None
@@ -1411,7 +1411,7 @@ def handle_backtest_list(args) -> int:
     """Handle `backtest list` subcommand."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import backtest_list_plays_tool
+    from src.tools.backtest_play_tools import backtest_list_plays_tool
     
     plays_dir = Path(args.plays_dir) if args.plays_dir else None
     
@@ -1522,7 +1522,7 @@ def handle_backtest_normalize(args) -> int:
     """Handle `backtest play-normalize` subcommand."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import backtest_play_normalize_tool
+    from src.tools.backtest_play_tools import backtest_play_normalize_tool
 
     plays_dir = Path(args.plays_dir) if args.plays_dir else None
 
@@ -1634,9 +1634,11 @@ def handle_backtest_verify_suite(args) -> int:
     """Handle `backtest verify-suite` subcommand - global verification suite or parity check."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import (
+    from src.tools.backtest_play_tools import (
         backtest_play_normalize_batch_tool,
         backtest_run_play_tool,
+    )
+    from src.tools.backtest_audit_tools import (
         backtest_audit_math_from_snapshots_tool,
         backtest_audit_toolkit_tool,
         verify_artifact_parity_tool,
@@ -1897,7 +1899,7 @@ def handle_backtest_normalize_batch(args) -> int:
     """Handle `backtest play-normalize-batch` subcommand."""
     import json
     from pathlib import Path
-    from src.tools.backtest_cli_wrapper import backtest_play_normalize_batch_tool
+    from src.tools.backtest_play_tools import backtest_play_normalize_batch_tool
 
     plays_dir = Path(args.plays_dir)
 
@@ -1946,7 +1948,7 @@ def handle_backtest_normalize_batch(args) -> int:
 def handle_backtest_audit_toolkit(args) -> int:
     """Handle `backtest audit-toolkit` subcommand - Gate 1 toolkit contract audit."""
     import json
-    from src.tools.backtest_cli_wrapper import backtest_audit_toolkit_tool
+    from src.tools.backtest_audit_tools import backtest_audit_toolkit_tool
     
     if not args.json_output:
         console.print(Panel(
@@ -2022,7 +2024,7 @@ def handle_backtest_audit_incremental_parity(args) -> int:
 def handle_backtest_math_parity(args) -> int:
     """Handle `backtest math-parity` subcommand - indicator math parity audit."""
     import json
-    from src.tools.backtest_cli_wrapper import backtest_math_parity_tool
+    from src.tools.backtest_audit_tools import backtest_math_parity_tool
     
     if not args.json_output:
         console.print(Panel(
@@ -2108,7 +2110,7 @@ def handle_backtest_structure_smoke(args) -> int:
 def handle_backtest_audit_snapshot_plumbing(args) -> int:
     """Handle `backtest audit-snapshot-plumbing` subcommand - Phase 4 plumbing parity."""
     import json
-    from src.tools.backtest_cli_wrapper import backtest_audit_snapshot_plumbing_tool
+    from src.tools.backtest_audit_tools import backtest_audit_snapshot_plumbing_tool
     
     if not args.json_output:
         console.print(Panel(
@@ -2168,7 +2170,7 @@ def handle_backtest_audit_snapshot_plumbing(args) -> int:
 def handle_backtest_audit_rollup(args) -> int:
     """Handle `backtest audit-rollup` subcommand - 1m rollup parity audit."""
     import json
-    from src.tools.backtest_cli_wrapper import backtest_audit_rollup_parity_tool
+    from src.tools.backtest_audit_tools import backtest_audit_rollup_parity_tool
 
     if not args.json_output:
         console.print(Panel(

@@ -25,7 +25,6 @@ from .play_generator import (
 from .batch_verification import (
     PlayRunResult,
     BatchSummary,
-    run_batch_verification,
     BATCH_SUMMARY_FILE,
 )
 
@@ -42,7 +41,6 @@ __all__ = [
     "get_available_symbols",
     "PlayRunResult",
     "BatchSummary",
-    "run_batch_verification",
     "BATCH_SUMMARY_FILE",
 ]
 

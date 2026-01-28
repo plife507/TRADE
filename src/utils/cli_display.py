@@ -761,10 +761,6 @@ def format_data_result(action_key: str, result_data: Any, message: str = "") -> 
     return None
 
 
-# Alias for backwards compatibility
-format_action_result = format_data_result
-
-
 def _format_symbols_list_result(data: Any, message: str) -> dict[str, Any]:
     """Format cached symbols list with rich details."""
     if not data:

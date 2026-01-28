@@ -2,7 +2,6 @@
 Factory functions for PlayEngine creation and execution.
 
 This module provides factory functions for creating and running backtests:
-- run_backtest: Convenience function to run a backtest from system_id
 - create_engine_from_play: Create PlayEngine from Play (uses DataBuilder)
 - run_engine_with_play: Run engine with Play signal evaluation
 
@@ -10,10 +9,10 @@ DataBuilder handles all data preparation.
 PlayEngine is the unified engine for backtest/demo/live modes.
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,34 +23,6 @@ if TYPE_CHECKING:
     from .runtime.types import RuntimeSnapshot
     from .runtime.snapshot_view import RuntimeSnapshotView
     from ..core.risk_manager import Signal
-
-
-def run_backtest(
-    system_id: str = "",
-    window_name: str = "",
-    strategy: "Callable | None" = None,
-    run_dir: "Path | None" = None,
-) -> "BacktestResult":
-    """
-    DEPRECATED: Use create_engine_from_play() + run_engine_with_play() instead.
-
-    The system_id-based backtest runner has been removed in favor of
-    Play-native execution. Use:
-
-        from src.backtest import create_engine_from_play, run_engine_with_play
-        from src.backtest.play import load_play
-
-        play = load_play("my_strategy")
-        engine = create_engine_from_play(play, window_start, window_end)
-        result = run_engine_with_play(engine, play)
-
-    Raises:
-        RuntimeError: Always - this function is deprecated.
-    """
-    raise RuntimeError(
-        "run_backtest() is deprecated. Use create_engine_from_play() + run_engine_with_play() "
-        "with a Play file instead. See: from src.backtest import create_engine_from_play, run_engine_with_play"
-    )
 
 
 # =============================================================================

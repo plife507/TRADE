@@ -110,9 +110,6 @@ _GATE_DESCRIPTIONS: dict[GateCode, str] = {
     GateCode.G_EXPOSURE_LIMIT: "Maximum exposure limit reached",
 }
 
-# Backward-compatible alias (deprecated - use GateCode.description or GateCode.get_description())
-GATE_CODE_DESCRIPTIONS: dict[GateCode, str] = _GATE_DESCRIPTIONS
-
 
 @dataclass(frozen=True)
 class GateResult:

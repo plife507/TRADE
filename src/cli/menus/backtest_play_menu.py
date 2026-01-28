@@ -29,7 +29,7 @@ from src.tools import (
     backtest_data_fix_tool,
     backtest_indicators_tool,
 )
-from src.tools.backtest_cli_wrapper import (
+from src.tools.backtest_play_tools import (
     backtest_play_normalize_tool,
 )
 
