@@ -185,6 +185,9 @@ class LiveRunner:
             # Connect to data provider
             await self._connect()
 
+            # G0.4: Sync positions before processing signals
+            await self._sync_positions_on_startup()
+
             # Start processing loop
             self._subscription_task = asyncio.create_task(self._process_loop())
             self._state = RunnerState.RUNNING
@@ -279,6 +282,39 @@ class LiveRunner:
         exchange = self._engine._exchange
         if isinstance(exchange, LiveExchange):
             await exchange.connect()
+
+    async def _sync_positions_on_startup(self) -> None:
+        """
+        G0.4: Synchronize existing positions from exchange before processing signals.
+
+        This ensures we don't open duplicate positions or miss existing ones
+        when restarting the runner.
+        """
+        try:
+            from ..adapters.live import LiveExchange
+            exchange = self._engine._exchange
+            if not isinstance(exchange, LiveExchange):
+                logger.debug("Skipping position sync: not LiveExchange")
+                return
+
+            if hasattr(exchange, '_position_manager') and exchange._position_manager:
+                pm = exchange._position_manager
+                # Force REST sync to get current state
+                if hasattr(pm, 'reconcile_with_rest'):
+                    await asyncio.to_thread(pm.reconcile_with_rest)
+
+                positions = pm.get_all_positions()
+                if positions:
+                    logger.info(f"Position sync: {len(positions)} existing position(s)")
+                    for pos in positions:
+                        if pos.symbol == self._engine.symbol:
+                            logger.info(
+                                f"  {pos.symbol}: {pos.side} {pos.size} @ {pos.entry_price}"
+                            )
+                else:
+                    logger.info("Position sync: no existing positions")
+        except Exception as e:
+            logger.warning(f"Position sync warning (non-fatal): {e}")
 
     def _on_kline_update(self, kline_data) -> None:
         """
@@ -385,19 +421,38 @@ class LiveRunner:
         Wait for next candle close.
 
         Returns candle data when available, None on timeout.
+        Includes health check: alerts if no candle received in 2x expected timeframe.
         """
+        # Calculate expected candle interval based on timeframe
+        tf_minutes = self._parse_timeframe_minutes(self._engine.timeframe)
+        health_timeout = tf_minutes * 60 * 2.5  # 2.5x timeframe in seconds
+        queue_timeout = min(60.0, health_timeout)  # Check at least every minute
+
         try:
             # Wait for candle from queue with timeout
-            # Use timeout to allow periodic health checks
             candle = await asyncio.wait_for(
                 self._candle_queue.get(),
-                timeout=60.0,  # 1 minute timeout
+                timeout=queue_timeout,
             )
             return candle
 
         except asyncio.TimeoutError:
             # No candle received in timeout period
-            # This is normal during quiet periods
+            # Check if we've exceeded health threshold
+            if self._stats.last_candle_ts:
+                since_last = (datetime.now() - self._stats.last_candle_ts).total_seconds()
+                expected_interval = tf_minutes * 60
+
+                if since_last > expected_interval * 2:
+                    logger.warning(
+                        f"HEALTH: No candle received for {since_last:.0f}s "
+                        f"(expected every {expected_interval}s). "
+                        f"Check WebSocket connection."
+                    )
+                    self._stats.errors.append(
+                        f"Health alert: no candle for {since_last:.0f}s"
+                    )
+
             return None
 
         except asyncio.CancelledError:
@@ -407,6 +462,15 @@ class LiveRunner:
         except Exception as e:
             logger.warning(f"Error waiting for candle: {e}")
             return None
+
+    def _parse_timeframe_minutes(self, tf: str) -> int:
+        """Parse timeframe string to minutes."""
+        tf_map = {
+            "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
+            "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720,
+            "d": 1440, "w": 10080,
+        }
+        return tf_map.get(tf.lower(), 60)  # Default to 1h
 
     async def _process_candle(self, candle) -> None:
         """

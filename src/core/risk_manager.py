@@ -63,7 +63,12 @@ class RiskManager:
     - Position status checks (liquidating, ADL, reduce-only)
     """
     
-    def __init__(self, config: RiskConfig | None = None, enable_global_risk: bool = True):
+    def __init__(
+        self,
+        config: RiskConfig | None = None,
+        enable_global_risk: bool = True,
+        exchange_manager: Any | None = None,
+    ):
         self.config = config or get_config().risk
         self.logger = get_logger()
 
@@ -72,10 +77,13 @@ class RiskManager:
         self._daily_trades = 0
         self._last_reset = datetime.now().date()
 
+        # G0.3: Reuse exchange_manager instead of creating fresh instances
+        self._exchange_manager = exchange_manager
+
         # Global risk view integration (optional)
         self._enable_global_risk = enable_global_risk
         self._global_risk_view: Any | None = None
-        
+
         if enable_global_risk:
             try:
                 from ..risk.global_risk import get_global_risk_view
@@ -131,6 +139,36 @@ class RiskManager:
             self._daily_pnl = 0.0
             self._daily_trades = 0
             self._last_reset = today
+
+    def _get_funding_rate(self, symbol: str) -> float | None:
+        """
+        Get current funding rate for symbol.
+
+        G1-2: Used for funding rate pre-trade check.
+
+        Returns:
+            Funding rate as decimal (e.g., 0.0001 for 0.01%), or None if unavailable
+        """
+        try:
+            # Try to get from GlobalRiskView/RealtimeState first (WebSocket)
+            if self._global_risk_view:
+                snapshot = self._global_risk_view.build_snapshot()
+                # Check if we have funding rate in positions
+                for pos in getattr(snapshot, 'positions', []):
+                    if hasattr(pos, 'symbol') and pos.symbol == symbol:
+                        if hasattr(pos, 'funding_rate'):
+                            return pos.funding_rate
+
+            # G0.3: Fallback - use stored exchange_manager to avoid per-call instantiation
+            if self._exchange_manager and hasattr(self._exchange_manager, 'get_funding_rate'):
+                result = self._exchange_manager.get_funding_rate(symbol)
+                if result and 'funding_rate' in result:
+                    return float(result['funding_rate'])
+
+            return None
+        except Exception as e:
+            self.logger.debug(f"Could not get funding rate for {symbol}: {e}")
+            return None
     
     def record_pnl(self, amount: float):
         """Record realized PnL for daily tracking."""
@@ -198,6 +236,47 @@ class RiskManager:
                     reason=f"Global risk: {global_decision.message}",
                 )
         
+        # Check 0.5: Funding rate cost check (G1-2)
+        # Block if funding rate * leverage would exceed 1% daily cost
+        if hasattr(self.config, 'max_funding_cost_pct'):
+            max_funding_cost = self.config.max_funding_cost_pct
+        else:
+            max_funding_cost = 1.0  # Default 1% daily cost threshold
+
+        funding_rate = self._get_funding_rate(signal.symbol)
+        if funding_rate is not None:
+            # Funding is paid 3x daily, so multiply by 3 for daily cost
+            daily_funding_cost_pct = abs(funding_rate) * 100 * 3  # Convert to % and annualize to daily
+
+            # Get leverage from signal metadata if available
+            leverage = signal.metadata.get('leverage', 1.0) if signal.metadata else 1.0
+            effective_cost = daily_funding_cost_pct * leverage
+
+            if effective_cost > max_funding_cost:
+                self.logger.risk(
+                    "BLOCKED",
+                    f"Funding rate cost too high: {effective_cost:.2f}% daily",
+                    funding_rate=funding_rate,
+                    leverage=leverage,
+                    limit=max_funding_cost,
+                )
+                self.logger.event(
+                    "risk.check.blocked",
+                    level="WARNING",
+                    component="risk_manager",
+                    symbol=signal.symbol,
+                    direction=signal.direction,
+                    size_usdt=signal.size_usdt,
+                    block_reason="funding_rate_cost",
+                    funding_rate=funding_rate,
+                    effective_cost_pct=effective_cost,
+                    limit=max_funding_cost,
+                )
+                return RiskCheckResult(
+                    allowed=False,
+                    reason=f"Funding rate cost too high ({effective_cost:.2f}% > {max_funding_cost}% daily)"
+                )
+
         # Check 1: Daily loss limit
         if self._daily_pnl <= -self.config.max_daily_loss_usd:
             self.logger.risk(
@@ -331,14 +410,23 @@ class RiskManager:
         return max(0, self.config.max_total_exposure_usd - portfolio.total_exposure)
     
     def get_max_position_size(self, portfolio: PortfolioSnapshot) -> float:
-        """Get maximum allowed position size given current state."""
+        """
+        Get maximum allowed position size given current state.
+
+        G1-3: Cross-validates against equity with max_pos_pct cap.
+        """
         remaining_exposure = self.get_remaining_exposure(portfolio)
         max_per_trade = portfolio.balance * (self.config.max_risk_per_trade_percent / 100)
-        
+
+        # G1-3: Cap by equity percentage (default 95%)
+        max_pos_pct = getattr(self.config, 'max_position_equity_pct', 95.0)
+        max_by_equity = portfolio.balance * (max_pos_pct / 100)
+
         return min(
             self.config.max_position_size_usdt,
             remaining_exposure,
             max_per_trade,
+            max_by_equity,  # G1-3: Equity-based cap
         )
     
     def get_status(self) -> dict:

@@ -28,6 +28,7 @@ def stop_market_buy(
     order_link_id: str = None,
 ) -> "OrderResult":
     """Place a conditional market buy order (triggers at price)."""
+    # Runtime import required: circular dependency (exchange_manager imports this module)
     from .exchange_manager import OrderResult
 
     try:
@@ -79,6 +80,7 @@ def stop_market_sell(
     order_link_id: str = None,
 ) -> "OrderResult":
     """Place a conditional market sell order (triggers at price)."""
+    # Runtime import required: circular dependency (exchange_manager imports this module)
     from .exchange_manager import OrderResult
 
     try:
@@ -346,7 +348,29 @@ def open_position_with_rr(
         if not position_result.success:
             result["error"] = f"Failed to open position: {position_result.error}"
             return result
-        
+
+        # G0.5: Explicit SL order as backup (TPSL mode may not be reliable)
+        # Place SL conditional order immediately after entry for atomicity
+        sl_trigger_direction = TriggerDirection.FALL if is_long else TriggerDirection.RISE
+        sl_result = create_conditional_order(
+            manager,
+            symbol=symbol,
+            side=close_side,
+            qty=qty,
+            trigger_price=stop_loss,
+            trigger_direction=sl_trigger_direction,
+            order_type="Market",
+            reduce_only=True,
+            order_link_id=f"SL_{symbol}_{int(time.time())}",
+        )
+        result["sl_order"] = sl_result
+
+        if not sl_result.success:
+            manager.logger.error(
+                f"CRITICAL: SL order failed! Position may be unprotected: {sl_result.error}"
+            )
+            result["sl_warning"] = sl_result.error
+
         # Place TPs
         for i, tp_config in enumerate(tp_orders_config):
             tp_result = create_conditional_order(
@@ -358,8 +382,9 @@ def open_position_with_rr(
             result["tp_orders"].append(tp_result)
             if not tp_result.success:
                 manager.logger.warning(f"TP{i+1} order failed: {tp_result.error}")
-        
-        result["success"] = True
+
+        # Success requires entry + SL both placed
+        result["success"] = position_result.success and sl_result.success
         manager.logger.info(f"Position opened with RR: {symbol} {side} ${margin_usd} @ {leverage}x, SL={stop_loss}, {len(result['tp_orders'])} TPs")
         return result
         

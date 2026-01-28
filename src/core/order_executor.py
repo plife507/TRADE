@@ -115,6 +115,7 @@ class OrderExecutor:
         self._realtime_state = None
         self._pending_orders: dict[str, PendingOrder] = {}
         self._pending_lock = threading.RLock()  # Protects _pending_orders access
+        self._last_cleanup_time: float = 0.0  # For time-based cleanup
 
         # Idempotency: track recorded order IDs to prevent duplicate trade recording
         self._recorded_orders: set[str] = set()
@@ -361,10 +362,13 @@ class OrderExecutor:
                     direction=signal.direction,
                     size_usdt=exec_size,
                 )
-                # Periodic cleanup of stale orders (every 50 orders, 5 minute timeout)
+                # Periodic cleanup of stale orders (count-based or time-based)
                 pending_count = len(self._pending_orders)
-            if pending_count > 50:
+                current_time = time.time()
+            # Cleanup if: >50 orders OR >60 seconds since last cleanup with pending orders
+            if pending_count > 50 or (pending_count > 0 and current_time - self._last_cleanup_time > 60):
                 self.cleanup_old_pending_orders(max_age_seconds=300)
+                self._last_cleanup_time = current_time
         
         # Step 3: Record trade (immediate REST feedback)
         if order_result and order_result.success:
@@ -375,20 +379,25 @@ class OrderExecutor:
                     "skipping REST recording - WebSocket callback will handle it"
                 )
             elif order_result.order_id:
-                # Idempotency: mark as recorded before recording
+                # G0.1: Idempotency check INSIDE lock, record_trade() OUTSIDE lock
+                # This prevents deadlock with WebSocket handler which acquires position._trade_lock
+                should_record = False
                 with self._recorded_orders_lock:
                     if order_result.order_id in self._recorded_orders:
                         self.logger.debug(f"Order {order_result.order_id} already recorded, skipping")
                     else:
                         self._recorded_orders.add(order_result.order_id)
-                        self.position.record_trade(
-                            symbol=signal.symbol,
-                            side="BUY" if signal.direction == "LONG" else "SELL",
-                            size_usdt=exec_size,
-                            price=order_result.price,
-                            order_id=order_result.order_id,
-                            strategy=signal.strategy,
-                        )
+                        should_record = True
+                # LOCK RELEASED - now safe to call record_trade() without lock inversion risk
+                if should_record:
+                    self.position.record_trade(
+                        symbol=signal.symbol,
+                        side="BUY" if signal.direction == "LONG" else "SELL",
+                        size_usdt=exec_size,
+                        price=order_result.price,
+                        order_id=order_result.order_id,
+                        strategy=signal.strategy,
+                    )
             else:
                 # No order_id - can't track idempotency, just record
                 self.position.record_trade(

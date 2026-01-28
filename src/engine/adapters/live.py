@@ -378,7 +378,9 @@ class LiveDataProvider:
 
         # Tracking
         self._ready = False
-        self._warmup_bars = 100  # Minimum bars before ready
+        # Minimum bars before provider is ready for trading
+        # 100 bars ensures most indicators (EMA, RSI, etc.) have sufficient history
+        self._warmup_bars = 100
         self._current_bar_index: int = -1
 
         # Environment for multi-TF buffer lookup
@@ -1036,10 +1038,12 @@ class LiveExchange:
             self._position_manager = PositionManager(self._exchange_manager)
 
             # Initialize risk manager with config from Play
+            # G0.2: Remove invalid position_manager param, G0.3: pass exchange_manager
             risk_config = self._build_risk_config()
             self._risk_manager = RiskManager(
-                position_manager=self._position_manager,
                 config=risk_config,
+                enable_global_risk=True,
+                exchange_manager=self._exchange_manager,
             )
 
             # Initialize order executor
