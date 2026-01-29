@@ -1,0 +1,79 @@
+version: "3.0.0"
+name: "V_LTC_003_range_bound"
+description: "LTC ranging market mean reversion"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 200
+  seed: 2103
+
+symbol: "LTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  bbands:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  stoch:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      # Low ADX indicates ranging market
+      - ["adx_14.adx", "<", 25]
+      # At lower Bollinger Band
+      - ["close", "near_pct", "bbands.lower", 1.0]
+      # Oversold
+      - ["rsi_14", "<", 35]
+      - ["stoch.k", "<", 25]
+  exit_long:
+    any:
+      # Exit at middle or upper band
+      - ["close", ">", "bbands.middle"]
+      - ["rsi_14", ">", 65]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 3.0

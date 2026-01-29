@@ -1,0 +1,73 @@
+version: "3.0.0"
+name: "V_T18_032_metadata_capture"
+description: "Test metadata capture for trade analysis"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1832
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "ema_21"]
+      - lhs: {feature_id: "trend", field: "direction"}
+        op: "=="
+        rhs: 1
+    metadata:
+      entry_rsi: rsi_14
+      entry_atr: atr_14
+      trend_strength: trend.strength
+  exit_long:
+    all:
+      - ["rsi_14", ">", 70]
+    metadata:
+      exit_rsi: rsi_14
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

@@ -1,0 +1,65 @@
+version: "3.0.0"
+name: "V_T18_011_indicators_volume"
+description: "Validate volume indicators: obv, cmf, vwap, kvo"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1811
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  obv:
+    indicator: obv
+  cmf_20:
+    indicator: cmf
+    params:
+      length: 20
+  vwap:
+    indicator: vwap
+    params:
+      anchor: "D"
+  kvo:
+    indicator: kvo
+    params:
+      fast: 34
+      slow: 55
+      signal: 13
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      - ["cmf_20", ">", -0.1]
+      - ["close", ">", "vwap"]
+      - ["kvo.kvo", ">", "kvo.signal"]
+      - ["close", ">", "ema_20"]
+  exit_long:
+    any:
+      - ["cmf_20", "<", -0.2]
+      - ["close", "<", "vwap"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

@@ -1,0 +1,82 @@
+version: "3.0.0"
+name: "V_T18_014_indicators_oscillators"
+description: "Validate oscillator indicators: squeeze, vortex, dm, fisher, tsi, ppo, trix"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1814
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  squeeze:
+    indicator: squeeze
+    params:
+      bb_length: 20
+      bb_std: 2.0
+      kc_length: 20
+      kc_scalar: 1.5
+  vortex:
+    indicator: vortex
+    params:
+      length: 14
+  dm:
+    indicator: dm
+    params:
+      length: 14
+  fisher:
+    indicator: fisher
+    params:
+      length: 9
+  tsi:
+    indicator: tsi
+    params:
+      fast: 13
+      slow: 25
+      signal: 13
+  ppo:
+    indicator: ppo
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  trix:
+    indicator: trix
+    params:
+      length: 18
+      signal: 9
+
+actions:
+  entry_long:
+    all:
+      - ["squeeze.sqz", ">", 0]
+      - ["vortex.vip", ">", "vortex.vim"]
+      - ["dm.dmp", ">", "dm.dmn"]
+      - ["fisher.fisher", ">", "fisher.signal"]
+      - ["tsi.tsi", ">", "tsi.signal"]
+  exit_long:
+    any:
+      - ["ppo.ppo", "<", "ppo.signal"]
+      - ["trix.trix", "<", "trix.signal"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

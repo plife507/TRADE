@@ -1,0 +1,61 @@
+version: "3.0.0"
+name: "V_T18_002_arithmetic_lhs"
+description: "Test arithmetic expressions as LHS in conditions"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 100
+  seed: 1802
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  volume_sma:
+    indicator: sma
+    params:
+      length: 20
+    source: volume
+
+actions:
+  entry_long:
+    all:
+      - lhs: ["ema_9", "-", "ema_21"]
+        op: ">"
+        rhs: 0
+      - lhs: ["volume", "/", "volume_sma"]
+        op: ">"
+        rhs: 0.8
+  exit_long:
+    all:
+      - lhs: ["ema_21", "-", "ema_9"]
+        op: ">"
+        rhs: 0
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

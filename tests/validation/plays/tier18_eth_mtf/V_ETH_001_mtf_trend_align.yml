@@ -1,0 +1,87 @@
+version: "3.0.0"
+name: "V_ETH_001_mtf_trend_align"
+description: "ETH multi-timeframe trend alignment strategy"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 2001
+
+symbol: "ETHUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+  med_tf:
+    - type: swing
+      key: swing_1h
+      params:
+        left: 3
+        right: 3
+    - type: trend
+      key: trend_1h
+      uses: swing_1h
+
+actions:
+  entry_long:
+    all:
+      # Trend direction bullish on lower TF
+      - lhs: {feature_id: "trend", field: "direction"}
+        op: "in"
+        rhs: [0, 1]
+      - ["ema_9", ">", "ema_21"]
+      - ["rsi_14", "<", 75]
+  exit_long:
+    any:
+      - lhs: {feature_id: "trend", field: "direction"}
+        op: "=="
+        rhs: -1
+      - ["rsi_14", ">", 78]
+      - ["ema_9", "<", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

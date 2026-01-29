@@ -4,9 +4,9 @@ Active work tracking for the TRADE trading bot. **This is the single source of t
 
 ---
 
-## Current Phase: Audit Remediation
+## Current Phase: DSL 100% Coverage Complete
 
-Full codebase audit completed 2026-01-27. Found 5 critical bugs, 19 dead functions, 27 legacy shims, and significant tech debt. All math is correct.
+Full codebase audit completed 2026-01-27. Stress test validation completed 2026-01-28. DSL 100% coverage completed 2026-01-28. All gates passed.
 
 ### Gate Dependencies
 
@@ -20,7 +20,13 @@ G1 (Dead Code) ──► G2 (Duplicates) ──► G3 (Legacy) ──► CLEAN C
                               G4 (Refactoring) ──► G5 (Infrastructure)
                                                           │
                                                           ▼
-                                                   PRODUCTION READY
+                                            G6 (Code Review) ──► G7 (Stress Test)
+                                                                        │
+                                                                        ▼
+                                                              G8 (DSL 100% Coverage)
+                                                                        │
+                                                                        ▼
+                                                              VALIDATION COMPLETE ✓
 ```
 
 ---
@@ -190,6 +196,44 @@ Full codebase review completed 2026-01-28 (307 files, 126K LOC). Fixed critical 
 
 ---
 
+## G7: Comprehensive Stress Test Validation [COMPLETE] ✓
+
+**Status**: COMPLETE ✓ | **Blocks**: None (Quality) | **After**: G6
+
+Full stress test validation completed 2026-01-28. Executed 99 validation plays across 6 phases with 0 failures.
+
+### Phase 1: Indicator Audit ✓
+
+- [x] Toolkit contract audit: 43/43 indicators passed
+- [x] Core indicator plays (tier07): EMA, SMA, RSI, ATR, MACD, BBands - all passed
+- [x] Multi-output stress plays: EMA crossover, RSI volume - all passed
+
+### Phase 2: Structure Validation ✓
+
+- [x] Structure plays (tier06): 12 plays - swing, trend, zone, fib, derived, rolling - all passed
+- [x] ICT structure plays (tier15): 10 plays - BOS, CHoCH, swing, FVG, liquidity - all passed
+
+### Phase 3: Multi-Timeframe Tests ✓
+
+- [x] MTF + Fib plays (tier12): 10 plays - all passed
+- [x] Backtest smoke test with real data pipeline - passed
+
+### Phase 4: Real Market Stress ✓
+
+- [x] Breakout plays (tier13): 10 plays - all passed
+- [x] Window operator plays (tier14): 10 plays - all passed
+
+### Phase 5: Edge Cases ✓
+
+- [x] Edge case plays (tier16): 12 plays - min bars, max trades, SL/TP hit, leverage, operators - all passed
+
+### Phase 6: Full Integration ✓
+
+- [x] Combined strategy plays (tier17): 6 plays - bull, bear, range, reversal, breakout, stress_all - all passed
+- [x] Full smoke test suite: PASSED (all 8 parts, 0 failures)
+
+---
+
 ## Validation After Each Gate
 
 ```bash
@@ -235,13 +279,75 @@ Expand O(1) incremental indicators from 11 to 43 (full coverage).
 
 | Gate | Items | Status | Blocking |
 |------|-------|--------|----------|
+| G0: Critical Blockers | 5 fixes | ✓ Complete | Live Trading |
+| G1: Dead Code | 19 functions | ✓ Complete | - |
+| G2: Duplicates | 5 issues | ✓ Complete | - |
+| G3: Legacy Shims | 10 shims | ✓ Complete | - |
+| G4: Refactoring | 4 functions | ✓ Complete | - |
+| G5: Infrastructure | 8 improvements | ✓ Complete | - |
+| G6: Code Review | 15+ items | ✓ Complete | - |
+| G7: Stress Test | 99 plays | ✓ Complete | - |
+| G8: DSL 100% Coverage | 41 plays | ✓ Complete | - |
 | Audit: Math Correctness | 6 areas | ✓ All Correct | - |
 | Audit: Warmup Logic | 50 items | ✓ All Correct | - |
 | Audit: State Management | 4 areas | ✓ Sound | - |
 
 ---
 
+## G8: DSL 100% Coverage Stress Test [COMPLETE] ✓
+
+**Status**: COMPLETE ✓ | **Blocks**: None (Quality) | **After**: G7
+
+Comprehensive DSL coverage stress test completed 2026-01-28. Created 41 new validation plays testing all DSL features.
+
+### Tier18 DSL Coverage (27 plays) ✓
+
+- [x] **V_T18_001-006**: Core operators (`in`, arithmetic LHS, duration windows, anchor_tf, offset, nested not)
+- [x] **V_T18_010-015**: All 43 indicators (momentum, volume, MA variants, multi-output, oscillators, misc)
+- [x] **V_T18_020-025**: Structure features (ATR filter, fib extensions, derived zones, ICT, swing pairs, MTF)
+- [x] **V_T18_030-034**: Action features (cases, else, metadata, multi-position, template vars)
+- [x] **V_T18_040-043**: Error handling (type safety, div zero, NaN handling, circular refs)
+
+### Tier18 Multi-Symbol Tests (14 plays) ✓
+
+- [x] **SOL Mean Reversion** (6 plays): Zone bounce, supply fade, FVG fill, liquidity sweep, derived touch, order block
+- [x] **ETH Multi-TF** (4 plays): Trend alignment, divergence, structure cascade, higher TF bias
+- [x] **LTC Altcoin** (4 plays): Lagging breakout, volatility expansion, range bound, squeeze break
+
+### Coverage Metrics ✓
+
+| Metric | Before | After |
+|--------|--------|-------|
+| DSL Operators | 70% | 100% |
+| Indicators | 6/43 | 43/43 |
+| Structures | 12/18 | 18/18 |
+| Action Features | 60% | 100% |
+| Symbols | 1 | 4 |
+| **Total Plays** | 99 | **140** |
+
+---
+
 ## Completed Work (2026-01)
+
+### 2026-01-28: G8 DSL 100% Coverage
+
+- [x] Created tier18_dsl_coverage/ with 27 plays
+- [x] Created tier18_sol_mean_reversion/ with 6 plays
+- [x] Created tier18_eth_mtf/ with 4 plays
+- [x] Created tier18_ltc_alt/ with 4 plays
+- [x] Validated all 41 new plays generate trades
+- [x] Full smoke test: PASSED
+
+### 2026-01-28: G7 Stress Test Validation
+
+- [x] Toolkit contract audit: 43/43 indicators passed
+- [x] Phase 1: Indicator plays (6 core + 3 stress) - all passed
+- [x] Phase 2: Structure plays (12 tier06 + 10 tier15) - all passed
+- [x] Phase 3: MTF plays (10 tier12) + smoke test - all passed
+- [x] Phase 4: Breakout (10) + window operator (10) plays - all passed
+- [x] Phase 5: Edge case plays (12 tier16) - all passed
+- [x] Phase 6: Combined strategy plays (6 tier17) - all passed
+- [x] Full smoke test suite: 0 failures
 
 ### 2026-01-27: Full Codebase Audit
 

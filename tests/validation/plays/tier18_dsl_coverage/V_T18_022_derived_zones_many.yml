@@ -1,0 +1,69 @@
+version: "3.0.0"
+name: "V_T18_022_derived_zones_many"
+description: "Test derived_zone with max_active > 3 (5 slots)"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 250
+  seed: 1822
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: derived_zone
+      key: demand_zones
+      uses: swing
+      params:
+        levels: [0.236, 0.382, 0.5, 0.618, 0.786]
+        max_active: 5
+        mode: retracement
+
+actions:
+  entry_long:
+    all:
+      - lhs: {feature_id: "demand_zones", field: "active_count"}
+        op: ">="
+        rhs: 2
+      - lhs: {feature_id: "demand_zones", field: "any_inside"}
+        op: "=="
+        rhs: true
+      - ["rsi_14", "<", 50]
+  exit_long:
+    any:
+      - lhs: {feature_id: "demand_zones", field: "active_count"}
+        op: "=="
+        rhs: 0
+      - ["rsi_14", ">", 70]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

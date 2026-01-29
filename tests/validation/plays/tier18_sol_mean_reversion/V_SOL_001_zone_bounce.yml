@@ -1,0 +1,70 @@
+version: "3.0.0"
+name: "V_SOL_001_zone_bounce"
+description: "SOL mean reversion at demand zones"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 200
+  seed: 1901
+
+symbol: "SOLUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: derived_zone
+      key: zones
+      uses: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        max_active: 5
+        mode: retracement
+
+actions:
+  entry_long:
+    all:
+      - lhs: {feature_id: "zones", field: "any_inside"}
+        op: "=="
+        rhs: true
+      - ["rsi_14", "<", 40]
+  exit_long:
+    any:
+      - ["rsi_14", ">", 70]
+      - lhs: {feature_id: "zones", field: "any_inside"}
+        op: "=="
+        rhs: false
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

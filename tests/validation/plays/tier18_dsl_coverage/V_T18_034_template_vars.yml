@@ -1,0 +1,58 @@
+version: "3.0.0"
+name: "V_T18_034_template_vars"
+description: "Test parameterized plays with inline constants"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1834
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+# Parameterized play - using direct values
+# fast_ema: 9, slow_ema: 21, rsi_period: 14, rsi_oversold: 30, rsi_overbought: 70
+
+features:
+  ema_fast:
+    indicator: ema
+    params:
+      length: 9
+  ema_slow:
+    indicator: ema
+    params:
+      length: 21
+  rsi:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - ["ema_fast", "cross_above", "ema_slow"]
+      - ["rsi", ">", 30]
+  exit_long:
+    any:
+      - ["ema_fast", "cross_below", "ema_slow"]
+      - ["rsi", ">", 70]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

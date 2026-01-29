@@ -1,0 +1,63 @@
+version: "3.0.0"
+name: "V_T18_024_swing_pairs"
+description: "Test swing pair_* outputs for paired pivot detection"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 200
+  seed: 1824
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+
+actions:
+  entry_long:
+    all:
+      - lhs: {feature_id: "swing", field: "pair_version"}
+        op: ">"
+        rhs: 0
+      - lhs: {feature_id: "swing", field: "pair_direction"}
+        op: "=="
+        rhs: "bullish"
+      - ["close", ">", {feature_id: "swing", field: "pair_low_level"}]
+      - ["close", ">", "ema_20"]
+  exit_long:
+    any:
+      - lhs: {feature_id: "swing", field: "pair_direction"}
+        op: "=="
+        rhs: "bearish"
+      - ["close", "<", {feature_id: "swing", field: "pair_low_level"}]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

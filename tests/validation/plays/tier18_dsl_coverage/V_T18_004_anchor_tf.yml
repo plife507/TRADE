@@ -1,0 +1,62 @@
+version: "3.0.0"
+name: "V_T18_004_anchor_tf"
+description: "Test anchor_tf parameter for cross-timeframe window anchoring"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1804
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - holds_for:
+          bars: 3
+          anchor_tf: "15m"
+          expr:
+            lhs: "close"
+            op: ">"
+            rhs: {feature_id: "ema_21"}
+      - ["rsi_14", "<", 70]
+  exit_long:
+    all:
+      - occurred_within:
+          bars: 2
+          anchor_tf: "15m"
+          expr:
+            lhs: "rsi_14"
+            op: ">"
+            rhs: 75
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

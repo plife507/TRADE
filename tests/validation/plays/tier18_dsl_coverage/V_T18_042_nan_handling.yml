@@ -1,0 +1,72 @@
+version: "3.0.0"
+name: "V_T18_042_nan_handling"
+description: "Test NaN propagation handling during warmup period"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1842
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  # Long warmup indicators to test NaN handling
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  sma_100:
+    indicator: sma
+    params:
+      length: 100
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 10
+        right: 10
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      # These should all gracefully handle NaN during warmup
+      - ["close", ">", "ema_50"]
+      - ["ema_50", ">", "sma_100"]
+      - ["rsi_14", ">", 40]
+      - lhs: {feature_id: "trend", field: "direction"}
+        op: "=="
+        rhs: 1
+  exit_long:
+    any:
+      - ["rsi_14", ">", 70]
+      - ["close", "<", "sma_100"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

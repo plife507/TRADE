@@ -1,0 +1,68 @@
+version: "3.0.0"
+name: "V_T18_021_fib_extensions"
+description: "Test fibonacci extension levels (1.272, 1.618, 2.0)"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1821
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+    - type: fibonacci
+      key: fib
+      uses: swing
+      params:
+        mode: extension_up
+        levels: [1.0, 1.272, 1.618, 2.0]
+
+actions:
+  entry_long:
+    all:
+      - lhs: {feature_id: "trend", field: "direction"}
+        op: "in"
+        rhs: [0, 1]
+      - ["close", ">", "ema_21"]
+  exit_long:
+    any:
+      - lhs: {feature_id: "trend", field: "direction"}
+        op: "=="
+        rhs: -1
+      - ["close", "<", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 6.0

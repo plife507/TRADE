@@ -1,0 +1,73 @@
+version: "3.0.0"
+name: "V_T18_013_indicators_multi_out"
+description: "Validate multi-output channel indicators: stochrsi, aroon, kc, donchian, psar"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 200
+  seed: 1813
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  stochrsi:
+    indicator: stochrsi
+    params:
+      length: 14
+      rsi_length: 14
+      k: 3
+      d: 3
+  aroon:
+    indicator: aroon
+    params:
+      length: 25
+  kc:
+    indicator: kc
+    params:
+      length: 20
+      scalar: 1.5
+  donchian:
+    indicator: donchian
+    params:
+      lower_length: 20
+      upper_length: 20
+  psar:
+    indicator: psar
+    params:
+      af0: 0.02
+      af: 0.02
+      max_af: 0.2
+
+actions:
+  entry_long:
+    all:
+      - ["stochrsi.k", ">", "stochrsi.d"]
+      - ["aroon.up", ">", "aroon.down"]
+      - ["close", ">", "kc.basis"]
+      - ["close", ">", "donchian.middle"]
+  exit_long:
+    any:
+      - ["stochrsi.k", "<", 20]
+      - ["aroon.osc", "<", -50]
+      - ["close", "<", "kc.lower"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

@@ -1,0 +1,74 @@
+version: "3.0.0"
+name: "V_T18_020_struct_atr_filter"
+description: "Test zone structure with atr_key filtering for significance"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 200
+  seed: 1820
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+        atr_key: atr_14
+        major_threshold: 1.5
+    - type: derived_zone
+      key: zones
+      uses: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        max_active: 3
+        mode: retracement
+
+actions:
+  entry_long:
+    all:
+      - lhs: {feature_id: "swing", field: "low_is_major"}
+        op: "=="
+        rhs: true
+      - lhs: {feature_id: "zones", field: "any_active"}
+        op: "=="
+        rhs: true
+      - ["close", ">", "ema_20"]
+  exit_long:
+    any:
+      - lhs: {feature_id: "zones", field: "any_active"}
+        op: "=="
+        rhs: false
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

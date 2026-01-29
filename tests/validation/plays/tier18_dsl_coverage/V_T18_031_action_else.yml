@@ -1,0 +1,61 @@
+version: "3.0.0"
+name: "V_T18_031_action_else"
+description: "Test fallback entry conditions via any operator (else alternative)"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1831
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+actions:
+  entry_long:
+    any:
+      # Primary condition: Oversold with EMA alignment
+      - all:
+          - ["rsi_14", "<", 45]
+          - ["ema_9", ">", "ema_21"]
+      # Fallback condition: Moderate oversold with crossover
+      - all:
+          - ["rsi_14", "<", 55]
+          - ["ema_9", "cross_above", "ema_21"]
+  exit_long:
+    any:
+      - ["rsi_14", ">", 65]
+      - ["ema_9", "<", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

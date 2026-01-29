@@ -1,0 +1,70 @@
+version: "3.0.0"
+name: "V_T18_041_div_zero"
+description: "Test division by zero handling in arithmetic expressions"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 150
+  seed: 1841
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  volume_sma:
+    indicator: sma
+    params:
+      length: 20
+    source: volume
+
+actions:
+  entry_long:
+    all:
+      # Division that should be safe (ATR is always positive)
+      - lhs: [["ema_9", "-", "ema_21"], "/", "atr_14"]
+        op: ">"
+        rhs: 0.0
+      # Volume ratio (volume_sma should be positive)
+      - lhs: ["volume", "/", "volume_sma"]
+        op: ">"
+        rhs: 0.5
+  exit_long:
+    any:
+      - lhs: [["ema_21", "-", "ema_9"], "/", "atr_14"]
+        op: ">"
+        rhs: 0.0
+      - lhs: ["volume", "/", "volume_sma"]
+        op: "<"
+        rhs: 0.8
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

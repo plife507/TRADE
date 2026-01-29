@@ -1,0 +1,69 @@
+version: "3.0.0"
+name: "V_T18_030_action_cases"
+description: "Test multiple entry conditions via any operator (cases alternative)"
+
+synthetic:
+  pattern: "range_wide"
+  bars: 200
+  seed: 1830
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    any:
+      # Case 1: Oversold RSI in uptrend
+      - all:
+          - ["rsi_14", "<", 30]
+          - lhs: {feature_id: "trend", field: "direction"}
+            op: "=="
+            rhs: 1
+      # Case 2: RSI between 30-50 above EMA
+      - all:
+          - ["rsi_14", "between", [30, 50]]
+          - ["close", ">", "ema_20"]
+  exit_long:
+    all:
+      - ["rsi_14", ">", 70]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

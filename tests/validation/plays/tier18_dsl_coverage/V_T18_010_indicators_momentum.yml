@@ -1,0 +1,78 @@
+version: "3.0.0"
+name: "V_T18_010_indicators_momentum"
+description: "Validate momentum indicators: roc, mom, cci, willr, cmo, mfi, uo"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1810
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  roc_10:
+    indicator: roc
+    params:
+      length: 10
+  mom_10:
+    indicator: mom
+    params:
+      length: 10
+  cci_20:
+    indicator: cci
+    params:
+      length: 20
+  willr_14:
+    indicator: willr
+    params:
+      length: 14
+  cmo_14:
+    indicator: cmo
+    params:
+      length: 14
+  mfi_14:
+    indicator: mfi
+    params:
+      length: 14
+  uo:
+    indicator: uo
+    params:
+      fast: 7
+      medium: 14
+      slow: 28
+
+actions:
+  entry_long:
+    all:
+      - ["roc_10", ">", 0]
+      - ["mom_10", ">", 0]
+      - ["cci_20", ">", -100]
+      - ["willr_14", ">", -80]
+      - ["cmo_14", ">", -20]
+      - ["mfi_14", "<", 80]
+      - ["uo", ">", 30]
+  exit_long:
+    any:
+      - ["willr_14", "<", -90]
+      - ["mfi_14", ">", 85]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0

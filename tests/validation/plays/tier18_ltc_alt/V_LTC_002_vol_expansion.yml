@@ -1,0 +1,81 @@
+version: "3.0.0"
+name: "V_LTC_002_vol_expansion"
+description: "LTC volatility expansion breakout"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 2102
+
+symbol: "LTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  bbands:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  natr_14:
+    indicator: natr
+    params:
+      length: 14
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      # Volatility expansion: bandwidth expanding
+      - ["bbands.bandwidth", ">", 0.03]
+      # Breaking above upper band
+      - ["close", ">", "bbands.upper"]
+      - lhs: {feature_id: "trend", field: "direction"}
+        op: "=="
+        rhs: 1
+      - ["rsi_14", "<", 75]
+  exit_long:
+    any:
+      - ["close", "<", "bbands.middle"]
+      - ["rsi_14", ">", 80]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0

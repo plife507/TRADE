@@ -1,0 +1,85 @@
+version: "3.0.0"
+name: "V_T18_015_indicators_misc"
+description: "Validate misc indicators: natr, dema, linreg, midprice, ohlc4, stoch, adx, supertrend"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 1815
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  natr_14:
+    indicator: natr
+    params:
+      length: 14
+  dema_20:
+    indicator: dema
+    params:
+      length: 20
+  linreg_20:
+    indicator: linreg
+    params:
+      length: 20
+  midprice_14:
+    indicator: midprice
+    params:
+      length: 14
+  ohlc4:
+    indicator: ohlc4
+  stoch:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  supertrend:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+
+actions:
+  entry_long:
+    all:
+      - ["natr_14", "<", 5.0]
+      - ["close", ">", "dema_20"]
+      - ["close", ">", "linreg_20"]
+      - ["ohlc4", ">", "midprice_14"]
+      - ["stoch.k", ">", "stoch.d"]
+      - ["adx_14.adx", ">", 20]
+      - lhs: {feature_id: "supertrend", field: "direction"}
+        op: "=="
+        rhs: 1
+  exit_long:
+    any:
+      - ["stoch.k", "<", 20]
+      - lhs: {feature_id: "supertrend", field: "direction"}
+        op: "=="
+        rhs: -1
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
