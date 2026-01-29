@@ -693,7 +693,7 @@ Examples:
     
     parser.add_argument(
         "--smoke",
-        choices=["data", "full", "data_extensive", "orders", "live_check", "backtest", "forge"],
+        choices=["data", "full", "data_extensive", "orders", "live_check", "backtest", "forge", "qa"],
         default=None,
         help="Run non-interactive smoke test. 'data'/'full'/'data_extensive'/'orders'/'backtest'/'forge' use DEMO. 'live_check' tests LIVE connectivity (opt-in, requires LIVE keys)."
     )
@@ -980,6 +980,23 @@ Examples:
     play_stop_parser = play_subparsers.add_parser("stop", help="Stop a running Play instance")
     play_stop_parser.add_argument("--play", required=True, help="Play ID to stop")
     play_stop_parser.add_argument("--force", action="store_true", help="Force stop (may leave positions open)")
+
+    # ===== QA SUBCOMMAND =====
+    # qa audit - Run QA audit agent swarm
+    qa_parser = subparsers.add_parser("qa", help="QA audit agent swarm")
+    qa_subparsers = qa_parser.add_subparsers(dest="qa_command", help="QA commands")
+
+    # qa audit - Run the audit
+    qa_audit_parser = qa_subparsers.add_parser("audit", help="Run QA audit on codebase")
+    qa_audit_parser.add_argument("--paths", nargs="+", default=["src/"], help="Paths to audit (default: src/)")
+    qa_audit_parser.add_argument("--severity", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW"], default="LOW", help="Minimum severity to report")
+    qa_audit_parser.add_argument("--categories", nargs="+", choices=["security", "type_safety", "error_handling", "concurrency", "business_logic", "api_contract", "documentation", "dead_code"], help="Categories to run (default: all)")
+    qa_audit_parser.add_argument("--format", choices=["rich", "json", "markdown"], default="rich", help="Output format (default: rich)")
+    qa_audit_parser.add_argument("--output", help="Output file path (for json/markdown formats)")
+    qa_audit_parser.add_argument("--max-findings", type=int, default=100, help="Maximum findings per agent (default: 100)")
+    qa_audit_parser.add_argument("--no-parallel", action="store_true", help="Run agents sequentially (default: parallel)")
+    qa_audit_parser.add_argument("--timeout", type=int, default=300, help="Timeout per agent in seconds (default: 300)")
+    qa_audit_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output including code snippets")
 
     return parser.parse_args()
 
@@ -2789,6 +2806,82 @@ def handle_play_stop(args) -> int:
     return 0
 
 
+# =============================================================================
+# QA SUBCOMMAND HANDLERS
+# =============================================================================
+
+def handle_qa_audit(args) -> int:
+    """Handle `qa audit` subcommand - run QA audit agent swarm."""
+    from src.qa_swarm import (
+        run_qa_audit_sync,
+        QAAuditConfig,
+        Severity,
+        FindingCategory,
+        format_report_rich,
+        format_report_json,
+        format_report_markdown,
+        save_report,
+    )
+
+    # Build config from args
+    categories = None
+    if getattr(args, "categories", None):
+        categories = [FindingCategory(c) for c in args.categories]
+
+    config = QAAuditConfig(
+        paths=args.paths,
+        min_severity=Severity(args.severity),
+        categories=categories,
+        parallel=not getattr(args, "no_parallel", False),
+        timeout_seconds=args.timeout,
+        max_findings_per_agent=args.max_findings,
+        include_snippets=getattr(args, "verbose", False),
+    )
+
+    output_format = getattr(args, "format", "rich")
+
+    # Only show header panel for rich output
+    if output_format == "rich":
+        console.print(Panel(
+            f"[bold cyan]QA AUDIT[/]\n"
+            f"Paths: {', '.join(config.paths)}\n"
+            f"Min Severity: {config.min_severity.value}\n"
+            f"Parallel: {config.parallel}",
+            border_style="cyan"
+        ))
+
+    # Run audit
+    try:
+        report = run_qa_audit_sync(config)
+    except Exception as e:
+        console.print(f"[bold red]Audit failed: {e}[/]")
+        return 1
+
+    # Output based on format
+    output_path = getattr(args, "output", None)
+
+    if output_format == "json":
+        json_output = format_report_json(report)
+        if output_path:
+            save_report(report, output_path, "json")
+            console.print(f"[green]Report saved to {output_path}[/]")
+        else:
+            print(json_output)
+    elif output_format == "markdown":
+        md_output = format_report_markdown(report)
+        if output_path:
+            save_report(report, output_path, "markdown")
+            console.print(f"[green]Report saved to {output_path}[/]")
+        else:
+            print(md_output)
+    else:
+        # Rich console output
+        format_report_rich(report, console, verbose=getattr(args, "verbose", False))
+
+    # Return exit code based on pass status
+    return 0 if report.pass_status else 1
+
+
 def main():
     """
     Main entry point for trade_cli.
@@ -2881,6 +2974,15 @@ def main():
             console.print("[yellow]Usage: trade_cli.py play {run|status|stop} --help[/]")
             sys.exit(1)
 
+    # ===== QA SUBCOMMANDS =====
+    # Handle QA audit agent swarm commands
+    if args.command == "qa":
+        if args.qa_command == "audit":
+            sys.exit(handle_qa_audit(args))
+        else:
+            console.print("[yellow]Usage: trade_cli.py qa {audit} --help[/]")
+            sys.exit(1)
+
     # ===== SMOKE TEST MODE =====
     # Non-interactive smoke tests - run and exit with status code
     if args.smoke:
@@ -2940,6 +3042,10 @@ def main():
                 # Forge plumbing and verification smoke test
                 from src.cli.smoke_tests import run_forge_smoke
                 exit_code = run_forge_smoke()
+            elif args.smoke == "qa":
+                # QA audit swarm smoke test
+                from src.cli.smoke_tests import run_qa_audit_smoke
+                exit_code = run_qa_audit_smoke()
             else:
                 exit_code = run_smoke_suite(args.smoke, app, config)
             sys.exit(exit_code)

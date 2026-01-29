@@ -59,6 +59,10 @@ from .sim_orders import (
     run_sim_orders_smoke,
 )
 
+from .qa_audit import (
+    run_qa_audit_smoke,
+)
+
 __all__ = [
     # Core entry points
     "run_smoke_suite",
@@ -89,4 +93,6 @@ __all__ = [
     "run_forge_smoke",
     # Simulator order tests
     "run_sim_orders_smoke",
+    # QA audit tests
+    "run_qa_audit_smoke",
 ]

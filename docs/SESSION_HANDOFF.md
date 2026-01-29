@@ -1,73 +1,94 @@
 # Session Handoff
 
-**Date**: 2026-01-28
+**Date**: 2026-01-29
 **Branch**: feature/unified-engine
 
 ---
 
 ## Last Session Summary
 
-**Focus**: G8 DSL 100% Coverage Stress Test
+**Focus**: QA Orchestration Agent Swarm Implementation
 
 **Key Accomplishments**:
 
-### 1. G8 DSL Coverage Complete
+### 1. QA Swarm Package Created
 
-Created 41 new validation plays achieving 100% DSL coverage:
+Implemented a production-grade QA orchestration agent swarm using parallel specialist agents:
 
-| Directory | Plays | Coverage |
-|-----------|-------|----------|
-| tier18_dsl_coverage | 27 | Operators, indicators, structures, actions, errors |
-| tier18_sol_mean_reversion | 6 | SOL mean reversion strategies |
-| tier18_eth_mtf | 4 | ETH multi-timeframe patterns |
-| tier18_ltc_alt | 4 | LTC altcoin strategies |
+```
+src/qa_swarm/
+├── __init__.py           # Package exports
+├── types.py              # Finding, AgentReport, AggregatedReport
+├── orchestrator.py       # Parallel agent coordination
+├── report.py             # Rich, JSON, Markdown output
+└── agents/
+    ├── base.py                    # AgentDefinition registry
+    ├── security_auditor.py        # Credentials, injection
+    ├── type_safety_checker.py     # Type hints, None handling
+    ├── error_handler_reviewer.py  # Silent failures, exceptions
+    ├── concurrency_auditor.py     # Thread safety, races
+    ├── business_logic_validator.py # Trading logic, risk
+    ├── api_contract_checker.py    # API response validation
+    ├── documentation_auditor.py   # Docstrings, TODO/FIXME
+    └── dead_code_detector.py      # Unused code
+```
 
-### 2. Coverage Metrics
+### 2. CLI Integration
 
-| Metric | Before | After |
-|--------|--------|-------|
-| DSL Operators | 70% | 100% |
-| Indicators | 6/43 | 43/43 |
-| Structures | 12/18 | 18/18 |
-| Action Features | 60% | 100% |
-| Symbols | 1 | 4 (BTC, SOL, ETH, LTC) |
-| **Total Plays** | 99 | **140** |
+```bash
+# Full audit
+python trade_cli.py qa audit
 
-### 3. All Gates Complete
+# Audit specific paths
+python trade_cli.py qa audit --paths src/core/ src/exchanges/
 
-| Gate | Description | Status |
-|------|-------------|--------|
-| G0 | Critical live trading blockers | ✓ Complete |
-| G1 | Dead code removal | ✓ Complete |
-| G2 | Duplicate code | ✓ Complete |
-| G3 | Legacy shims | ✓ Complete |
-| G4 | Function refactoring | ✓ Complete |
-| G5 | Infrastructure improvements | ✓ Complete |
-| G6 | Codebase review | ✓ Complete |
-| G7 | Stress test validation | ✓ Complete |
-| G8 | DSL 100% coverage | ✓ Complete |
+# Filter by severity
+python trade_cli.py qa audit --severity HIGH
+
+# JSON output
+python trade_cli.py qa audit --format json --output report.json
+
+# Smoke test
+python trade_cli.py --smoke qa
+```
+
+### 3. Full Codebase Audit Results
+
+| Metric | Value |
+|--------|-------|
+| Files Scanned | 2,029 |
+| Total Findings | 70 MEDIUM |
+| Critical Issues | 0 |
+| High Issues | 0 |
+| Open Bugs | 6 |
+
+### 4. Open Bugs Identified
+
+| Bug ID | Category | Description |
+|--------|----------|-------------|
+| BUG-001 | Error Handling | Broad exception handlers in WebSocket code |
+| BUG-002 | Error Handling | Broad exception handlers in data layer |
+| BUG-003 | Error Handling | Broad exception handlers in feature registry |
+| BUG-004 | Error Handling | Broad exception handlers in app lifecycle |
+| BUG-005 | API Contract | Direct dict access without .get() |
+| BUG-006 | Concurrency | Thread safety patterns need review |
+
+Full details in `docs/QA_AUDIT_FINDINGS.md`.
 
 ---
 
 ## Current Architecture
 
 ```
-Validation Suite: 140 plays across 15 tiers
-├── tier00_smoke           Engine startup
-├── tier06_structures      Swing, trend, zone, fib, derived, rolling
-├── tier07_indicators      Core 6 indicators
-├── tier10_ema_crossover   EMA strategies
-├── tier11_rsi_volume      RSI/volume patterns
-├── tier12_mtf_fib         Multi-TF fibonacci
-├── tier13_breakout        Breakout patterns
-├── tier14_window_ops      Window operators
-├── tier15_ict_structure   BOS/CHoCH/liquidity
-├── tier16_edge_cases      Edge cases
-├── tier17_combined        Full integration
-├── tier18_dsl_coverage    ALL DSL features (27 plays)
-├── tier18_sol_mean_reversion SOL strategies (6 plays)
-├── tier18_eth_mtf         ETH MTF (4 plays)
-└── tier18_ltc_alt         LTC altcoin (4 plays)
+QA Swarm: 8 specialist agents
+├── security_auditor        Credentials, injection, auth
+├── type_safety_checker     Type hints, None handling
+├── error_handler_reviewer  Silent failures, exceptions
+├── concurrency_auditor     Thread safety, race conditions
+├── business_logic_validator Trading logic, risk rules
+├── api_contract_checker    Exchange API validation
+├── documentation_auditor   Docstrings, TODO/FIXME
+└── dead_code_detector      Unused functions/imports
 ```
 
 ---
@@ -78,14 +99,17 @@ Validation Suite: 140 plays across 15 tiers
 # Full smoke test
 python trade_cli.py --smoke full
 
+# QA audit smoke test
+python trade_cli.py --smoke qa
+
+# Run QA audit
+python trade_cli.py qa audit --severity MEDIUM
+
 # Run backtest
-python trade_cli.py backtest run --play V_T18_001_op_in --fix-gaps
+python trade_cli.py backtest run --play V_100 --fix-gaps
 
 # Indicator audit
 python trade_cli.py backtest audit-toolkit
-
-# Count plays
-find tests/validation/plays -name "*.yml" | wc -l  # 140
 ```
 
 ---
@@ -98,11 +122,13 @@ src/indicators/       # 43 indicators (all incremental O(1))
 src/structures/       # 7 structure detectors
 src/backtest/         # Infrastructure (sim, runtime, features)
 src/data/             # DuckDB historical data
+src/qa_swarm/         # QA orchestration agent swarm (NEW)
 docs/
 ├── CLAUDE.md         # Project instructions
 ├── TODO.md           # Single source of truth for work
 ├── SESSION_HANDOFF.md # This file
-└── PLAY_DSL_COOKBOOK.md # DSL reference
+├── PLAY_DSL_COOKBOOK.md # DSL reference
+└── QA_AUDIT_FINDINGS.md # Open bugs from QA audit (NEW)
 tests/validation/plays/ # 140 validation plays
 ```
 
@@ -110,9 +136,10 @@ tests/validation/plays/ # 140 validation plays
 
 ## What's Next
 
-With G0-G8 complete, the system is fully validated. Potential next areas:
+With G0-G9 complete (G9 has 6 open bugs to fix):
 
-1. **Live Trading** - Test with real WebSocket data
-2. **Paper Trading** - Demo mode validation
-3. **Performance** - Benchmark backtest engine
-4. **New Strategies** - Add more trading strategies
+1. **G9 Bug Fixes** - Fix the 6 open bugs from QA audit
+2. **Live Trading** - Test with real WebSocket data
+3. **Paper Trading** - Demo mode validation
+4. **Performance** - Benchmark backtest engine
+5. **New Strategies** - Add more trading strategies

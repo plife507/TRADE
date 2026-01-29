@@ -4,9 +4,9 @@ Active work tracking for the TRADE trading bot. **This is the single source of t
 
 ---
 
-## Current Phase: DSL 100% Coverage Complete
+## Current Phase: QA Swarm Implementation Complete
 
-Full codebase audit completed 2026-01-27. Stress test validation completed 2026-01-28. DSL 100% coverage completed 2026-01-28. All gates passed.
+Full codebase audit completed 2026-01-27. Stress test validation completed 2026-01-28. DSL 100% coverage completed 2026-01-28. QA Swarm agent system implemented 2026-01-29. All gates passed.
 
 ### Gate Dependencies
 
@@ -26,8 +26,55 @@ G1 (Dead Code) ──► G2 (Duplicates) ──► G3 (Legacy) ──► CLEAN C
                                                               G8 (DSL 100% Coverage)
                                                                         │
                                                                         ▼
+                                                              G9 (QA Swarm Audit)
+                                                                        │
+                                                                        ▼
                                                               VALIDATION COMPLETE ✓
 ```
+
+---
+
+## G9: QA Swarm Audit Findings [0/6]
+
+**Status**: IN PROGRESS | **Blocks**: None (Quality) | **After**: G8
+
+QA audit completed 2026-01-29 using the new QA Orchestration Agent Swarm. Found 6 open bugs (all MEDIUM severity). See `docs/QA_AUDIT_FINDINGS.md` for full details.
+
+### Error Handling (4 bugs)
+
+- [ ] **BUG-001** Fix broad exception handlers in WebSocket code
+  - Files: `src/exchanges/bybit_websocket.py:171,178`, `src/core/exchange_websocket.py:149`
+  - Issue: `except Exception:` may swallow connection/auth errors
+  - Fix: Catch specific exceptions, log before swallowing
+
+- [ ] **BUG-002** Fix broad exception handlers in data layer
+  - Files: `src/data/historical_data_store.py:467,1896,1903,1910`, `src/data/realtime_state.py:365`
+  - Issue: Database errors may be silently swallowed
+  - Fix: Catch `duckdb.Error` specifically, log with context
+
+- [ ] **BUG-003** Fix broad exception handlers in feature registry
+  - Files: `src/backtest/feature_registry.py:489,502,546`
+  - Issue: Feature computation errors silently swallowed
+  - Fix: Log failures with indicator name and parameters
+
+- [ ] **BUG-004** Fix broad exception handlers in application lifecycle
+  - Files: `src/core/application.py:575`, `src/core/safety.py:60`, `src/backtest/runner.py:988`
+  - Issue: Lifecycle errors swallowed, hard to debug
+  - Fix: Log at ERROR level before handling
+
+### API Contract (1 bug)
+
+- [ ] **BUG-005** Replace direct dict access with .get()
+  - Files: `src/backtest/runner.py:613`, `src/backtest/artifacts/determinism.py:112`, `src/forge/audits/audit_incremental_registry.py:222,268,315,471`
+  - Issue: `dict['key']` may raise KeyError
+  - Fix: Use `dict.get('key')` or `dict.get('key', default)`
+
+### Concurrency (1 review)
+
+- [ ] **BUG-006** Review thread safety patterns
+  - Files: `src/core/application.py:490`, `src/data/historical_data_store.py:148`, `src/data/realtime_bootstrap.py:241,290`
+  - Issue: Thread usage - verify proper synchronization
+  - Fix: Manual review to confirm locks are in place
 
 ---
 
@@ -288,6 +335,7 @@ Expand O(1) incremental indicators from 11 to 43 (full coverage).
 | G6: Code Review | 15+ items | ✓ Complete | - |
 | G7: Stress Test | 99 plays | ✓ Complete | - |
 | G8: DSL 100% Coverage | 41 plays | ✓ Complete | - |
+| G9: QA Swarm Audit | 6 bugs | In Progress | - |
 | Audit: Math Correctness | 6 areas | ✓ All Correct | - |
 | Audit: Warmup Logic | 50 items | ✓ All Correct | - |
 | Audit: State Management | 4 areas | ✓ Sound | - |
@@ -328,6 +376,16 @@ Comprehensive DSL coverage stress test completed 2026-01-28. Created 41 new vali
 ---
 
 ## Completed Work (2026-01)
+
+### 2026-01-29: G9 QA Swarm Implementation
+
+- [x] Implemented QA Orchestration Agent Swarm (`src/qa_swarm/`)
+- [x] Created 8 specialist agents (security, type safety, error handling, concurrency, business logic, API contract, documentation, dead code)
+- [x] Added CLI command: `python trade_cli.py qa audit`
+- [x] Added smoke test: `python trade_cli.py --smoke qa`
+- [x] Ran full codebase audit (2,029 files, 70 MEDIUM findings)
+- [x] Identified 6 open bugs (documented in `docs/QA_AUDIT_FINDINGS.md`)
+- [x] Verified 28 business logic patterns as correctly implemented
 
 ### 2026-01-28: G8 DSL 100% Coverage
 
