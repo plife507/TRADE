@@ -66,6 +66,8 @@ timeframes:
 python trade_cli.py --smoke full                    # Validate everything
 python trade_cli.py backtest run --play X --fix-gaps  # Run backtest
 python trade_cli.py backtest audit-toolkit          # Check indicators
+python trade_cli.py play run --play X --mode demo   # Demo mode (no real money)
+python trade_cli.py play run --play X --mode live --confirm  # Live (REAL MONEY)
 ```
 
 ## Where to Find Details
@@ -73,7 +75,7 @@ python trade_cli.py backtest audit-toolkit          # Check indicators
 | Topic | Location |
 |-------|----------|
 | Session context | `docs/SESSION_HANDOFF.md` |
-| Project status | `docs/PROJECT_STATUS.md` |
+| Project status | `docs/TODO.md` |
 | DSL syntax | `docs/PLAY_DSL_COOKBOOK.md` |
 | System defaults | `config/defaults.yml` |
 
