@@ -168,15 +168,23 @@ def close_websockets(client: "BybitClient", suppress_errors: bool = True, wait_f
     if client._ws_public:
         try:
             client._ws_public.exit()
-        except Exception:
-            pass
+        except (OSError, RuntimeError, ConnectionError) as e:
+            # BUG-001 fix: Specific exceptions for WebSocket cleanup
+            # These are expected during shutdown and safe to suppress
+            client.logger.debug(f"Expected error during public WS cleanup: {e}")
+        except Exception as e:
+            # Log unexpected errors before suppressing
+            client.logger.warning(f"Unexpected error during public WS cleanup: {e}")
         client._ws_public = None
-    
+
     if client._ws_private:
         try:
             client._ws_private.exit()
-        except Exception:
-            pass
+        except (OSError, RuntimeError, ConnectionError) as e:
+            # BUG-001 fix: Specific exceptions for WebSocket cleanup
+            client.logger.debug(f"Expected error during private WS cleanup: {e}")
+        except Exception as e:
+            client.logger.warning(f"Unexpected error during private WS cleanup: {e}")
         client._ws_private = None
     
     if wait_for_threads > 0:

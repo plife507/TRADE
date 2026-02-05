@@ -464,7 +464,9 @@ class HistoricalDataStore:
             if self._lock_file is not None:
                 try:
                     self._lock_file.close()
-                except Exception:
+                except (OSError, IOError) as e:
+                    # BUG-002 fix: Specific exceptions for file close
+                    # Expected during cleanup - file may already be closed
                     pass
                 self._lock_file = None
 
@@ -477,8 +479,10 @@ class HistoricalDataStore:
         """Cleanup: release lock on deletion."""
         try:
             self._release_write_lock()
-        except Exception:
-            pass  # Suppress errors during garbage collection
+        except (OSError, IOError, RuntimeError):
+            # BUG-002 fix: Specific exceptions during GC cleanup
+            # These are expected - resources may already be released
+            pass
 
     @contextmanager
     def _write_operation(self, timeout: float = 30.0) -> Generator[None, None, None]:

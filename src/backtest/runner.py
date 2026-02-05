@@ -985,8 +985,10 @@ def _finalize_logger_on_error(ctx: _RunContext, status: str) -> None:
         if ctx.run_logger:
             ctx.run_logger.finalize(status=status)
             set_run_logger(None)
-    except Exception:
-        pass  # Ignore errors during cleanup
+    except (OSError, IOError, AttributeError) as e:
+        # BUG-004 fix: Specific exceptions for logger cleanup
+        # File may be closed or logger already finalized
+        pass
 
 
 # =============================================================================

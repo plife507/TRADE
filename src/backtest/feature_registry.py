@@ -486,8 +486,13 @@ class FeatureRegistry:
                         feature.indicator_type, feature.params
                     )
                     max_warmup = max(max_warmup, warmup)
-                except Exception:
-                    # Default warmup if lookup fails
+                except (KeyError, ValueError) as e:
+                    # BUG-003 fix: Specific exceptions for indicator lookup
+                    # Use default warmup for unknown or misconfigured indicators
+                    import logging
+                    logging.getLogger(__name__).debug(
+                        f"Warmup lookup failed for {feature.indicator_type}: {e}, using default"
+                    )
                     max_warmup = max(max_warmup, 50)
 
             elif feature.is_structure:
@@ -499,8 +504,12 @@ class FeatureRegistry:
                     # Multiply by 5 for structure stability
                     struct_warmup = (left + right + 1) * 5
                     max_warmup = max(max_warmup, struct_warmup)
-                except Exception:
-                    # Default structure warmup
+                except (KeyError, ValueError) as e:
+                    # BUG-003 fix: Specific exceptions for structure lookup
+                    import logging
+                    logging.getLogger(__name__).debug(
+                        f"Structure info lookup failed for {feature.structure_type}: {e}, using default"
+                    )
                     max_warmup = max(max_warmup, 50)
 
         self._warmup_cache[tf] = max_warmup
@@ -543,8 +552,13 @@ class FeatureRegistry:
                         structure_type=feature.structure_type,
                         uses=feature.uses,
                     )
-                except Exception:
-                    # Keep original if expansion fails
+                except (KeyError, ValueError, AttributeError) as e:
+                    # BUG-003 fix: Specific exceptions for indicator expansion
+                    # Keep original if expansion fails (indicator may not have multi-output)
+                    import logging
+                    logging.getLogger(__name__).debug(
+                        f"Output key expansion failed for {feature.indicator_type}: {e}"
+                    )
                     updated[feature_id] = feature
             else:
                 updated[feature_id] = feature

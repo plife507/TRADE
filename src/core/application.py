@@ -572,8 +572,10 @@ class Application:
         if self._original_sigint_handler is not None:
             try:
                 signal.signal(signal.SIGINT, self._signal_handler)
-            except Exception:
-                pass
+            except (OSError, ValueError, RuntimeError) as e:
+                # BUG-004 fix: Specific exceptions for signal registration
+                # May fail if called from non-main thread or during shutdown
+                self.logger.debug(f"Could not restore signal handler: {e}")
     
     def _atexit_handler(self):
         """Handle process exit."""

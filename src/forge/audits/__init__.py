@@ -47,6 +47,11 @@ from .audit_incremental_parity import (
     IncrementalParityAuditResult,
     IncrementalIndicatorResult,
 )
+from .audit_live_backtest_parity import (
+    run_all_tests as run_live_backtest_parity_tests,
+    ParityAuditReport,
+    ParityTestResult,
+)
 
 __all__ = [
     # In-memory parity
@@ -81,5 +86,9 @@ __all__ = [
     "run_incremental_parity_audit",
     "IncrementalParityAuditResult",
     "IncrementalIndicatorResult",
+    # Live/backtest parity (G9-Phase4)
+    "run_live_backtest_parity_tests",
+    "ParityAuditReport",
+    "ParityTestResult",
 ]
 

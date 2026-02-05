@@ -312,6 +312,97 @@ class LiveIndicatorCache:
         with self._lock:
             return self._bar_count
 
+    def audit_incremental_parity(self, tolerance: float = 1e-8) -> dict[str, dict]:
+        """
+        WU-03: Audit incremental vs vectorized indicator computation parity.
+
+        Recomputes all indicators using vectorized computation and compares
+        with incrementally computed values. Returns any discrepancies.
+
+        Args:
+            tolerance: Maximum allowed difference (default 1e-8)
+
+        Returns:
+            Dict with audit results per indicator:
+            {
+                "indicator_name": {
+                    "max_diff": 0.0,
+                    "num_mismatches": 0,
+                    "mismatch_indices": [],
+                    "pass": True,
+                }
+            }
+        """
+        from ...indicators import FeatureSpec
+
+        results = {}
+
+        with self._lock:
+            if self._bar_count == 0:
+                return results
+
+            # For each incrementally computed indicator, recompute vectorized
+            for name, (inc_ind, feature) in self._incremental.items():
+                try:
+                    # Recompute using vectorized method
+                    vectorized = feature.compute(
+                        open=self._open,
+                        high=self._high,
+                        low=self._low,
+                        close=self._close,
+                        volume=self._volume,
+                    )
+
+                    # Get incremental values
+                    incremental = self._indicators.get(name, np.array([]))
+
+                    if len(vectorized) == 0 or len(incremental) == 0:
+                        results[name] = {
+                            "max_diff": 0.0,
+                            "num_mismatches": 0,
+                            "mismatch_indices": [],
+                            "pass": True,
+                            "note": "No values to compare",
+                        }
+                        continue
+
+                    # Compare values (skip NaN positions)
+                    min_len = min(len(vectorized), len(incremental))
+                    diffs = []
+                    mismatch_indices = []
+
+                    for i in range(min_len):
+                        v_val = vectorized[i]
+                        i_val = incremental[i]
+
+                        # Skip if either is NaN
+                        if np.isnan(v_val) or np.isnan(i_val):
+                            continue
+
+                        diff = abs(v_val - i_val)
+                        diffs.append(diff)
+                        if diff > tolerance:
+                            mismatch_indices.append(i)
+
+                    max_diff = max(diffs) if diffs else 0.0
+                    results[name] = {
+                        "max_diff": max_diff,
+                        "num_mismatches": len(mismatch_indices),
+                        "mismatch_indices": mismatch_indices[:10],  # First 10
+                        "pass": len(mismatch_indices) == 0,
+                    }
+
+                except Exception as e:
+                    results[name] = {
+                        "max_diff": -1.0,
+                        "num_mismatches": -1,
+                        "mismatch_indices": [],
+                        "pass": False,
+                        "error": str(e),
+                    }
+
+        return results
+
 
 class LiveDataProvider:
     """
@@ -393,10 +484,16 @@ class LiveDataProvider:
 
         # Tracking
         self._ready = False
-        # Minimum bars before provider is ready for trading
+        # WU-01, WU-06: Configurable warmup bars (default 100)
+        # Reads from Play.warmup_bars if present, otherwise defaults to 100
         # 100 bars ensures most indicators (EMA, RSI, etc.) have sufficient history
-        self._warmup_bars = 100
+        self._warmup_bars = getattr(play, 'warmup_bars', 100)
         self._current_bar_index: int = -1
+
+        # WU-02: Track warmup state per TF for multi-TF sync
+        self._low_tf_ready: bool = False
+        self._med_tf_ready: bool = False
+        self._high_tf_ready: bool = False
 
         # Environment for multi-TF buffer lookup
         self._env = "demo" if demo else "live"
@@ -547,14 +644,14 @@ class LiveDataProvider:
         if unique_tfs["high_tf"] != unique_tfs["med_tf"]:
             await self._load_tf_bars("high_tf", unique_tfs["high_tf"])
 
-        # Initialize structure states for each TF if Play has structures
+        # WU-05: Initialize structure states for each TF if Play has structures
+        # Track structure warmup readiness alongside indicator warmup
         if self._play.structures:
             self._init_structure_states()
 
-        # Check warmup (exec buffer must have enough bars)
-        if len(self._exec_buffer) >= self._warmup_bars:
-            self._ready = True
-            logger.info("LiveDataProvider ready (warmup complete)")
+        # WU-02, WU-04: Check warmup for all TFs (not just exec)
+        # All active TFs must have sufficient bars with valid (non-NaN) indicators
+        self._check_all_tf_warmup()
 
     async def _load_tf_bars(self, tf_role: str, tf_str: str) -> None:
         """Load bars for a specific timeframe role."""
@@ -859,6 +956,87 @@ class LiveDataProvider:
         with self._buffer_lock:
             return self._ready
 
+    def _check_all_tf_warmup(self) -> None:
+        """
+        WU-02, WU-04: Check warmup status for all active TFs.
+
+        Provider is only ready when ALL active TFs have:
+        1. Sufficient bars (>= warmup_bars)
+        2. Valid (non-NaN) indicator values for the latest bar
+
+        This ensures multi-TF strategies don't start with incomplete data.
+        """
+        # Check low_tf (always required)
+        self._low_tf_ready = self._check_tf_warmup(
+            self._low_tf_buffer, self._low_tf_indicators
+        )
+
+        # Check med_tf only if different from low_tf
+        if self._tf_mapping["med_tf"] != self._tf_mapping["low_tf"]:
+            self._med_tf_ready = self._check_tf_warmup(
+                self._med_tf_buffer, self._med_tf_indicators
+            )
+        else:
+            self._med_tf_ready = True  # Same as low_tf, already checked
+
+        # Check high_tf only if different from med_tf
+        if self._tf_mapping["high_tf"] != self._tf_mapping["med_tf"]:
+            self._high_tf_ready = self._check_tf_warmup(
+                self._high_tf_buffer, self._high_tf_indicators
+            )
+        else:
+            self._high_tf_ready = True  # Same as med_tf, already checked
+
+        # All active TFs must be ready
+        all_ready = self._low_tf_ready and self._med_tf_ready and self._high_tf_ready
+
+        with self._buffer_lock:
+            if not self._ready and all_ready:
+                self._ready = True
+                logger.info(
+                    f"LiveDataProvider ready (warmup complete): "
+                    f"low_tf={len(self._low_tf_buffer)}, "
+                    f"med_tf={len(self._med_tf_buffer)}, "
+                    f"high_tf={len(self._high_tf_buffer)} bars"
+                )
+
+    def _check_tf_warmup(
+        self,
+        buffer: list[Candle],
+        indicator_cache: LiveIndicatorCache | None,
+    ) -> bool:
+        """
+        WU-04: Check if a single TF is warmed up.
+
+        A TF is ready when:
+        1. Buffer has >= warmup_bars
+        2. Indicators have valid (non-NaN) values at the latest bar
+
+        Args:
+            buffer: Candle buffer for this TF
+            indicator_cache: Indicator cache for this TF (may be None)
+
+        Returns:
+            True if TF is warmed up, False otherwise
+        """
+        # Check bar count
+        if len(buffer) < self._warmup_bars:
+            return False
+
+        # WU-04: Check for NaN in indicator values
+        if indicator_cache is not None and indicator_cache.length > 0:
+            # Check all indicators at the latest bar for NaN
+            with indicator_cache._lock:
+                for name, arr in indicator_cache._indicators.items():
+                    if len(arr) > 0 and np.isnan(arr[-1]):
+                        # Found NaN at latest bar - warmup not complete
+                        logger.debug(
+                            f"Indicator {name} has NaN at latest bar, warmup incomplete"
+                        )
+                        return False
+
+        return True
+
     def on_candle_close(self, candle: Candle, timeframe: str | None = None) -> None:
         """
         Called when a new candle closes.
@@ -889,11 +1067,9 @@ class LiveDataProvider:
                 candle, self._high_tf_buffer, self._high_tf_indicators, self._high_tf_structure
             )
 
-        # Check warmup (exec buffer must have enough bars)
-        with self._buffer_lock:
-            if not self._ready and len(self._exec_buffer) >= self._warmup_bars:
-                self._ready = True
-                logger.info("LiveDataProvider ready (warmup complete)")
+        # WU-02, WU-04: Check warmup for all TFs with NaN validation
+        if not self._ready:
+            self._check_all_tf_warmup()
 
     def _get_tf_role_for_timeframe(self, timeframe: str) -> str:
         """Map a timeframe string to its TF role (low_tf, med_tf, high_tf)."""

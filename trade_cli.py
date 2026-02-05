@@ -2681,10 +2681,14 @@ def handle_play_run(args) -> int:
         console.print(f"[red]Failed to load Play: {e}[/]")
         return 1
 
+    # Get symbol(s) from universe
+    symbols = play.symbol_universe if play.symbol_universe else ["N/A"]
+    symbol_str = symbols[0] if len(symbols) == 1 else f"{symbols[0]} (+{len(symbols)-1} more)"
+
     console.print(Panel(
         f"[bold cyan]Play: {play.name}[/]\n"
         f"[dim]Mode: {mode.upper()}[/]\n"
-        f"[dim]Symbol: {play.symbol} | TF: {play.tf}[/]",
+        f"[dim]Symbol: {symbol_str} | Exec TF: {play.execution_tf}[/]",
         border_style="cyan"
     ))
 

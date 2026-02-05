@@ -57,8 +57,11 @@ class PanicState:
         for callback in callbacks_copy:
             try:
                 callback(reason)
-            except Exception:
-                pass
+            except (RuntimeError, TypeError, ValueError) as e:
+                # BUG-004 fix: Specific exceptions for panic callbacks
+                # Log but continue executing other callbacks - panic must complete
+                import logging
+                logging.getLogger(__name__).error(f"Panic callback failed: {e}")
 
     def reset(self):
         """Reset panic state (use with caution)."""

@@ -362,7 +362,10 @@ class RealtimeState:
                     bar = BarRecord.from_df_row(row)
                     buffer.append(bar)
                     count += 1
-                except Exception:
+                except (KeyError, ValueError, TypeError) as e:
+                    # BUG-002 fix: Specific exceptions for row parsing
+                    # Log and skip malformed rows rather than silently continuing
+                    self.logger.debug(f"Skipping malformed row in bar buffer init: {e}")
                     continue
 
             self._bar_buffers[env][symbol][timeframe] = buffer
