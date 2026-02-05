@@ -16,13 +16,15 @@ Architecture:
 """
 
 import duckdb
+import os
 import pandas as pd
-import time
 import sys
+import time
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from typing import Any
 from dataclasses import dataclass
 
@@ -39,8 +41,6 @@ from ..utils.logger import get_logger
 
 
 # Activity emojis for visual feedback (with Windows-safe fallbacks)
-import sys
-import os
 
 # Detect if we're on Windows with a non-UTF8 console
 def _detect_ascii_mode() -> bool:
@@ -475,7 +475,48 @@ class HistoricalDataStore:
 
     def __del__(self):
         """Cleanup: release lock on deletion."""
+        try:
+            self._release_write_lock()
+        except Exception:
+            pass  # Suppress errors during garbage collection
+
+    @contextmanager
+    def _write_operation(self, timeout: float = 30.0) -> Generator[None, None, None]:
+        """
+        Context manager for write operations with automatic locking.
+
+        Acquires write lock before operation, releases after completion or error.
+        Raises RuntimeError if lock cannot be acquired.
+
+        Usage:
+            with self._write_operation():
+                self.conn.execute("INSERT ...")
+        """
+        if self.read_only:
+            raise RuntimeError("Cannot perform write operation in read-only mode")
+
+        if not self._acquire_write_lock(timeout):
+            raise RuntimeError(
+                f"Could not acquire write lock after {timeout}s. "
+                "Another process may be writing to the database."
+            )
+        try:
+            yield
+        finally:
+            self._release_write_lock()
+
+    def close(self) -> None:
+        """
+        Explicitly close database connection and release resources.
+
+        Preferred over relying on __del__ for cleanup. Call this when done
+        with the store to ensure proper resource cleanup.
+        """
         self._release_write_lock()
+        try:
+            self.conn.close()
+        except Exception:
+            pass
 
     def _init_schema(self):
         """Initialize database schema with env-specific table names."""
@@ -753,26 +794,28 @@ class HistoricalDataStore:
 
         df = df[["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"]]
 
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_ohlcv}
-            SELECT * FROM df
-        """)
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_ohlcv}
+                SELECT * FROM df
+            """)
     
     def _update_metadata(self, symbol: str, timeframe: str):
         """Update sync metadata for a symbol/timeframe."""
         stats = self.conn.execute(f"""
-            SELECT 
+            SELECT
                 MIN(timestamp) as first_ts,
                 MAX(timestamp) as last_ts,
                 COUNT(*) as count
             FROM {self.table_ohlcv}
             WHERE symbol = ? AND timeframe = ?
         """, [symbol, timeframe]).fetchone()
-        
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_sync_metadata}
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, [symbol, timeframe, stats[0], stats[1], stats[2], datetime.now()])
+
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_sync_metadata}
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, [symbol, timeframe, stats[0], stats[1], stats[2], datetime.now()])
 
     # ==================== REAL-TIME CANDLE PERSISTENCE ====================
 
@@ -816,11 +859,12 @@ class HistoricalDataStore:
         if timestamp.tzinfo is not None:
             timestamp = timestamp.replace(tzinfo=None)
 
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_ohlcv}
-            (symbol, timeframe, timestamp, open, high, low, close, volume)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, [symbol, timeframe, timestamp, open_price, high, low, close, volume])
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_ohlcv}
+                (symbol, timeframe, timestamp, open, high, low, close, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, [symbol, timeframe, timestamp, open_price, high, low, close, volume])
 
     def upsert_candles_batch(
         self,
@@ -855,10 +899,11 @@ class HistoricalDataStore:
 
         df = df[["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"]]
 
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_ohlcv}
-            SELECT * FROM df
-        """)
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_ohlcv}
+                SELECT * FROM df
+            """)
 
         return len(candles)
 
@@ -1037,42 +1082,44 @@ class HistoricalDataStore:
         """Store funding rate DataFrame in DuckDB."""
         if df.empty:
             return
-        
+
         symbol = symbol.upper()
         df = df.copy()
         df["symbol"] = symbol
-        
+
         # Remove timezone if present
         if df["timestamp"].dt.tz is not None:
             df["timestamp"] = df["timestamp"].dt.tz_localize(None)
-        
+
         # Ensure columns
         df = df[["symbol", "timestamp", "funding_rate"]]
-        
+
         # Insert or replace
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_funding} (symbol, timestamp, funding_rate)
-            SELECT symbol, timestamp, funding_rate FROM df
-        """)
-        
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_funding} (symbol, timestamp, funding_rate)
+                SELECT symbol, timestamp, funding_rate FROM df
+            """)
+
         # Update metadata
         self._update_funding_metadata(symbol)
-    
+
     def _update_funding_metadata(self, symbol: str):
         """Update funding metadata for a symbol."""
         stats = self.conn.execute(f"""
-            SELECT 
+            SELECT
                 MIN(timestamp) as first_ts,
                 MAX(timestamp) as last_ts,
                 COUNT(*) as count
             FROM {self.table_funding}
             WHERE symbol = ?
         """, [symbol]).fetchone()
-        
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_funding_metadata} 
-            VALUES (?, ?, ?, ?, ?)
-        """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
+
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_funding_metadata}
+                VALUES (?, ?, ?, ?, ?)
+            """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
     
     def get_funding(
         self,
@@ -1291,42 +1338,44 @@ class HistoricalDataStore:
         """Store open interest DataFrame in DuckDB."""
         if df.empty:
             return
-        
+
         symbol = symbol.upper()
         df = df.copy()
         df["symbol"] = symbol
-        
+
         # Remove timezone if present
         if df["timestamp"].dt.tz is not None:
             df["timestamp"] = df["timestamp"].dt.tz_localize(None)
-        
+
         # Ensure columns
         df = df[["symbol", "timestamp", "open_interest"]]
-        
+
         # Insert or replace
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_oi} (symbol, timestamp, open_interest)
-            SELECT symbol, timestamp, open_interest FROM df
-        """)
-        
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_oi} (symbol, timestamp, open_interest)
+                SELECT symbol, timestamp, open_interest FROM df
+            """)
+
         # Update metadata
         self._update_oi_metadata(symbol)
-    
+
     def _update_oi_metadata(self, symbol: str):
         """Update open interest metadata for a symbol."""
         stats = self.conn.execute(f"""
-            SELECT 
+            SELECT
                 MIN(timestamp) as first_ts,
                 MAX(timestamp) as last_ts,
                 COUNT(*) as count
             FROM {self.table_oi}
             WHERE symbol = ?
         """, [symbol]).fetchone()
-        
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_oi_metadata} 
-            VALUES (?, ?, ?, ?, ?)
-        """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
+
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_oi_metadata}
+                VALUES (?, ?, ?, ?, ?)
+            """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
     
     def get_open_interest(
         self,
@@ -1785,16 +1834,17 @@ class HistoricalDataStore:
         """
         symbol = symbol.upper()
         tf_value = timeframe if timeframe else "N/A"
-        
-        self.conn.execute(f"""
-            INSERT OR REPLACE INTO {self.table_extremes} 
-            (symbol, data_type, timeframe, earliest_ts, latest_ts, row_count, 
-             gap_count_after_heal, resolved_launch_time, source, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [
-            symbol, data_type, tf_value, earliest_ts, latest_ts,
-            row_count, gap_count, launch_time, source, datetime.now()
-        ])
+
+        with self._write_operation():
+            self.conn.execute(f"""
+                INSERT OR REPLACE INTO {self.table_extremes}
+                (symbol, data_type, timeframe, earliest_ts, latest_ts, row_count,
+                 gap_count_after_heal, resolved_launch_time, source, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                symbol, data_type, tf_value, earliest_ts, latest_ts,
+                row_count, gap_count, launch_time, source, datetime.now()
+            ])
     
     def get_extremes(self, symbol: str | None = None) -> dict[str, Any]:
         """
@@ -1839,9 +1889,6 @@ class HistoricalDataStore:
         
         return result
     
-    def close(self):
-        """Close database connection."""
-        self.conn.close()
 
 
 # ==============================================================================

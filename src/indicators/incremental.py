@@ -561,13 +561,18 @@ class IncrementalWilliamsR(IncrementalIndicator):
 @dataclass
 class IncrementalCCI(IncrementalIndicator):
     """
-    Commodity Channel Index with O(1) updates.
+    Commodity Channel Index with O(1) update, O(n) value access.
 
     Formula:
         tp = (high + low + close) / 3
         tp_sma = sma(tp, length)
         mean_dev = mean(|tp - tp_sma|) over length
         cci = (tp - tp_sma) / (0.015 * mean_dev)
+
+    Note: The mean absolute deviation (MAD) calculation is inherently O(n)
+    because changing the mean affects all |tp - mean| terms. This is a
+    fundamental mathematical limitation - MAD cannot be computed incrementally.
+    The update() is O(1), only value access is O(n).
 
     Uses ring buffer for typical prices and running sums.
     Matches pandas_ta.cci() output.
@@ -1811,48 +1816,69 @@ class IncrementalTSI(IncrementalIndicator):
 @dataclass
 class IncrementalWMA(IncrementalIndicator):
     """
-    Weighted Moving Average with O(1) updates using ring buffer.
+    Weighted Moving Average with TRUE O(1) updates.
 
     Formula:
         wma = sum(weight[i] * close[i]) / sum(weights)
         where weight[i] = i + 1 (linear weights, most recent has highest weight)
 
-    Uses running weighted sum technique for O(1) updates.
+    O(1) update technique:
+        - New value enters with weight `length` (highest)
+        - All existing values shift down, losing 1 from their weight
+        - weighted_sum = weighted_sum - buffer_sum + new_value * length
+        - When oldest leaves (had weight 1), subtract it from buffer_sum
+
     Matches pandas_ta.wma() output.
     """
 
     length: int = 20
     _buffer: deque = field(default_factory=deque, init=False)
     _count: int = field(default=0, init=False)
-    _weight_sum: int = field(default=0, init=False)
+    _weight_divisor: int = field(default=0, init=False)
+    _weighted_sum: float = field(default=0.0, init=False)
+    _buffer_sum: float = field(default=0.0, init=False)
 
     def __post_init__(self) -> None:
-        # Weight sum = 1 + 2 + ... + length = length * (length + 1) / 2
-        self._weight_sum = self.length * (self.length + 1) // 2
+        # Weight divisor = 1 + 2 + ... + length = length * (length + 1) / 2
+        self._weight_divisor = self.length * (self.length + 1) // 2
 
     def update(self, close: float, **kwargs: Any) -> None:
-        """Update with new close price."""
+        """Update with new close price - O(1) operation."""
         self._count += 1
-        self._buffer.append(close)
 
-        if len(self._buffer) > self.length:
-            self._buffer.popleft()
+        if len(self._buffer) < self.length:
+            # Warmup phase: build up buffer
+            self._buffer.append(close)
+            self._buffer_sum += close
+            # Incrementally build weighted sum
+            # New value gets weight equal to current buffer length
+            self._weighted_sum += close * len(self._buffer)
+        else:
+            # Steady state: O(1) update
+            oldest = self._buffer.popleft()
+            self._buffer.append(close)
+
+            # Oldest had weight 1, remove it
+            self._buffer_sum -= oldest
+
+            # All remaining values shift down (lose 1 weight each) = subtract buffer_sum
+            # Then new value enters with weight `length`
+            self._weighted_sum = self._weighted_sum - self._buffer_sum + close * self.length
+
+            # Update buffer_sum with new value
+            self._buffer_sum += close
 
     def reset(self) -> None:
         self._buffer.clear()
         self._count = 0
+        self._weighted_sum = 0.0
+        self._buffer_sum = 0.0
 
     @property
     def value(self) -> float:
         if not self.is_ready:
             return np.nan
-
-        # Compute weighted sum: weight[i] = i + 1
-        weighted_sum = 0.0
-        for i, val in enumerate(self._buffer):
-            weighted_sum += (i + 1) * val
-
-        return weighted_sum / self._weight_sum
+        return self._weighted_sum / self._weight_divisor
 
     @property
     def is_ready(self) -> bool:
@@ -1911,27 +1937,66 @@ class IncrementalTRIMA(IncrementalIndicator):
 @dataclass
 class IncrementalLINREG(IncrementalIndicator):
     """
-    Linear Regression with O(1) updates using running sums.
+    Linear Regression with TRUE O(1) updates using running sums.
 
-    Uses incremental formulas for linear regression.
+    O(1) update technique:
+        - Track sum_y incrementally (add new, subtract oldest)
+        - Track sum_xy incrementally:
+          * When oldest leaves (index 0), it contributes 0 to sum_xy
+          * Remaining values shift down 1 position: sum_xy -= sum_y
+          * New value enters at index (n-1): sum_xy += new_val * (n-1)
+
     Matches pandas_ta.linreg() output.
     """
 
     length: int = 14
     _buffer: deque = field(default_factory=deque, init=False)
     _count: int = field(default=0, init=False)
+    _sum_y: float = field(default=0.0, init=False)
+    _sum_xy: float = field(default=0.0, init=False)
+    # Precomputed constants
+    _sum_x: float = field(default=0.0, init=False)
+    _sum_xx: float = field(default=0.0, init=False)
+    _denominator: float = field(default=0.0, init=False)
+
+    def __post_init__(self) -> None:
+        n = self.length
+        # Precompute constants (these never change)
+        self._sum_x = (n - 1) * n / 2.0  # 0 + 1 + ... + (n-1)
+        self._sum_xx = (n - 1) * n * (2 * n - 1) / 6.0  # Sum of squares
+        self._denominator = n * self._sum_xx - self._sum_x * self._sum_x
 
     def update(self, close: float, **kwargs: Any) -> None:
-        """Update with new close price."""
+        """Update with new close price - O(1) operation."""
         self._count += 1
-        self._buffer.append(close)
 
-        if len(self._buffer) > self.length:
-            self._buffer.popleft()
+        if len(self._buffer) < self.length:
+            # Warmup phase: build incrementally
+            current_idx = len(self._buffer)
+            self._buffer.append(close)
+            self._sum_y += close
+            self._sum_xy += current_idx * close
+        else:
+            # Steady state: O(1) update
+            oldest = self._buffer.popleft()
+            self._buffer.append(close)
+
+            # Oldest was at index 0, contributed 0 to sum_xy
+            self._sum_y -= oldest
+
+            # All remaining shift down 1 position: sum_xy decreases by sum of remaining values
+            # But we already removed oldest from sum_y, so use current sum_y
+            self._sum_xy -= self._sum_y
+
+            # Add new value at index (length - 1)
+            self._sum_y += close
+            self._sum_xy += close * (self.length - 1)
 
     def reset(self) -> None:
         self._buffer.clear()
         self._count = 0
+        self._sum_y = 0.0
+        self._sum_xy = 0.0
 
     @property
     def value(self) -> float:
@@ -1939,24 +2004,14 @@ class IncrementalLINREG(IncrementalIndicator):
             return np.nan
 
         n = self.length
-        # Precompute x indices: 0, 1, 2, ..., n-1
-        # For linear regression: y = a + b*x
-        # b = (n*sum_xy - sum_x*sum_y) / (n*sum_xx - sum_x^2)
-        # a = (sum_y - b*sum_x) / n
-        # linreg value = a + b*(n-1) (value at last point)
 
-        sum_x = (n - 1) * n / 2  # 0 + 1 + ... + (n-1)
-        sum_xx = (n - 1) * n * (2 * n - 1) / 6  # Sum of squares
-
-        sum_y = sum(self._buffer)
-        sum_xy = sum(i * val for i, val in enumerate(self._buffer))
-
-        denominator = n * sum_xx - sum_x * sum_x
-        if denominator == 0:
+        if self._denominator == 0:
             return self._buffer[-1]  # Fallback to last value
 
-        b = (n * sum_xy - sum_x * sum_y) / denominator
-        a = (sum_y - b * sum_x) / n
+        # b = (n*sum_xy - sum_x*sum_y) / denominator
+        b = (n * self._sum_xy - self._sum_x * self._sum_y) / self._denominator
+        # a = (sum_y - b*sum_x) / n
+        a = (self._sum_y - b * self._sum_x) / n
 
         # Value at last point (x = n - 1)
         return a + b * (n - 1)
@@ -2204,54 +2259,73 @@ class IncrementalMFI(IncrementalIndicator):
 @dataclass
 class IncrementalAROON(IncrementalIndicator):
     """
-    Aroon Indicator with O(1) updates.
+    Aroon Indicator with TRUE O(1) updates using monotonic deques.
 
     Formula:
         aroon_up = ((length - bars_since_high) / length) * 100
         aroon_down = ((length - bars_since_low) / length) * 100
         aroon_osc = aroon_up - aroon_down
 
+    O(1) technique:
+        - Use monotonic deque for max tracking (decreasing order)
+        - Use monotonic deque for min tracking (increasing order)
+        - Each deque stores (value, index) tuples
+        - Front of deque is always the max/min with its position
+
     Matches pandas_ta.aroon() output.
     """
 
     length: int = 25
-    _high_buffer: deque = field(default_factory=deque, init=False)
-    _low_buffer: deque = field(default_factory=deque, init=False)
     _count: int = field(default=0, init=False)
+    # Monotonic deque for max: stores (value, index), decreasing by value
+    _max_deque: deque = field(default_factory=deque, init=False)
+    # Monotonic deque for min: stores (value, index), increasing by value
+    _min_deque: deque = field(default_factory=deque, init=False)
 
     def update(self, high: float, low: float, **kwargs: Any) -> None:
-        """Update with new high/low data."""
+        """Update with new high/low data - amortized O(1) operation."""
+        current_idx = self._count
         self._count += 1
 
-        self._high_buffer.append(high)
-        self._low_buffer.append(low)
+        # Window boundary: remove elements outside the window
+        window_start = current_idx - self.length
+        while self._max_deque and self._max_deque[0][1] <= window_start:
+            self._max_deque.popleft()
+        while self._min_deque and self._min_deque[0][1] <= window_start:
+            self._min_deque.popleft()
 
-        if len(self._high_buffer) > self.length + 1:
-            self._high_buffer.popleft()
-            self._low_buffer.popleft()
+        # Maintain monotonic decreasing for max (remove smaller from back)
+        # For tie-breaking with most recent, use >= to keep most recent max
+        while self._max_deque and self._max_deque[-1][0] <= high:
+            self._max_deque.pop()
+        self._max_deque.append((high, current_idx))
+
+        # Maintain monotonic increasing for min (remove larger from back)
+        # For tie-breaking with most recent, use >= to keep most recent min
+        while self._min_deque and self._min_deque[-1][0] >= low:
+            self._min_deque.pop()
+        self._min_deque.append((low, current_idx))
 
     def reset(self) -> None:
-        self._high_buffer.clear()
-        self._low_buffer.clear()
+        self._max_deque.clear()
+        self._min_deque.clear()
         self._count = 0
 
+    @property
     def _bars_since_high(self) -> int:
-        """Find bars since highest high."""
-        max_val = max(self._high_buffer)
-        # Find most recent occurrence of max
-        for i in range(len(self._high_buffer) - 1, -1, -1):
-            if self._high_buffer[i] == max_val:
-                return len(self._high_buffer) - 1 - i
-        return 0
+        """Bars since highest high - O(1) via monotonic deque front."""
+        if not self._max_deque:
+            return 0
+        _, max_idx = self._max_deque[0]
+        return self._count - 1 - max_idx
 
+    @property
     def _bars_since_low(self) -> int:
-        """Find bars since lowest low."""
-        min_val = min(self._low_buffer)
-        # Find most recent occurrence of min
-        for i in range(len(self._low_buffer) - 1, -1, -1):
-            if self._low_buffer[i] == min_val:
-                return len(self._low_buffer) - 1 - i
-        return 0
+        """Bars since lowest low - O(1) via monotonic deque front."""
+        if not self._min_deque:
+            return 0
+        _, min_idx = self._min_deque[0]
+        return self._count - 1 - min_idx
 
     @property
     def value(self) -> float:
@@ -2263,16 +2337,14 @@ class IncrementalAROON(IncrementalIndicator):
         """Returns Aroon Up value."""
         if not self.is_ready:
             return np.nan
-        bars_since = self._bars_since_high()
-        return ((self.length - bars_since) / self.length) * 100.0
+        return ((self.length - self._bars_since_high) / self.length) * 100.0
 
     @property
     def down_value(self) -> float:
         """Returns Aroon Down value."""
         if not self.is_ready:
             return np.nan
-        bars_since = self._bars_since_low()
-        return ((self.length - bars_since) / self.length) * 100.0
+        return ((self.length - self._bars_since_low) / self.length) * 100.0
 
     @property
     def osc_value(self) -> float:
@@ -2283,44 +2355,63 @@ class IncrementalAROON(IncrementalIndicator):
 
     @property
     def is_ready(self) -> bool:
-        return len(self._high_buffer) > self.length
+        return self._count > self.length
 
 
 @dataclass
 class IncrementalDonchian(IncrementalIndicator):
     """
-    Donchian Channel with O(1) updates.
+    Donchian Channel with TRUE O(1) updates using monotonic deques.
 
     Formula:
         upper = max(high over upper_length)
         lower = min(low over lower_length)
         middle = (upper + lower) / 2
 
+    O(1) technique:
+        - Monotonic deque for max (decreasing order with index)
+        - Monotonic deque for min (increasing order with index)
+        - Front of deque is always current max/min
+
     Matches pandas_ta.donchian() output.
     """
 
     lower_length: int = 20
     upper_length: int = 20
-    _high_buffer: deque = field(default_factory=deque, init=False)
-    _low_buffer: deque = field(default_factory=deque, init=False)
     _count: int = field(default=0, init=False)
+    # Monotonic deque for max highs: (value, index), decreasing by value
+    _max_deque: deque = field(default_factory=deque, init=False)
+    # Monotonic deque for min lows: (value, index), increasing by value
+    _min_deque: deque = field(default_factory=deque, init=False)
 
     def update(self, high: float, low: float, **kwargs: Any) -> None:
-        """Update with new high/low data."""
+        """Update with new high/low data - amortized O(1) operation."""
+        current_idx = self._count
         self._count += 1
 
-        self._high_buffer.append(high)
-        self._low_buffer.append(low)
+        # Remove elements outside upper_length window for max
+        upper_start = current_idx - self.upper_length
+        while self._max_deque and self._max_deque[0][1] <= upper_start:
+            self._max_deque.popleft()
 
-        # Use max of the two lengths for buffer size
-        max_len = max(self.lower_length, self.upper_length)
-        if len(self._high_buffer) > max_len:
-            self._high_buffer.popleft()
-            self._low_buffer.popleft()
+        # Remove elements outside lower_length window for min
+        lower_start = current_idx - self.lower_length
+        while self._min_deque and self._min_deque[0][1] <= lower_start:
+            self._min_deque.popleft()
+
+        # Maintain monotonic decreasing for max (remove smaller from back)
+        while self._max_deque and self._max_deque[-1][0] <= high:
+            self._max_deque.pop()
+        self._max_deque.append((high, current_idx))
+
+        # Maintain monotonic increasing for min (remove larger from back)
+        while self._min_deque and self._min_deque[-1][0] >= low:
+            self._min_deque.pop()
+        self._min_deque.append((low, current_idx))
 
     def reset(self) -> None:
-        self._high_buffer.clear()
-        self._low_buffer.clear()
+        self._max_deque.clear()
+        self._min_deque.clear()
         self._count = 0
 
     @property
@@ -2330,23 +2421,17 @@ class IncrementalDonchian(IncrementalIndicator):
 
     @property
     def upper_value(self) -> float:
-        """Returns upper band (highest high)."""
+        """Returns upper band (highest high) - O(1) via monotonic deque."""
         if not self.is_ready:
             return np.nan
-        # Use only the most recent upper_length values
-        buffer_len = len(self._high_buffer)
-        start_idx = max(0, buffer_len - self.upper_length)
-        return max(list(self._high_buffer)[start_idx:])
+        return self._max_deque[0][0] if self._max_deque else np.nan
 
     @property
     def lower_value(self) -> float:
-        """Returns lower band (lowest low)."""
+        """Returns lower band (lowest low) - O(1) via monotonic deque."""
         if not self.is_ready:
             return np.nan
-        # Use only the most recent lower_length values
-        buffer_len = len(self._low_buffer)
-        start_idx = max(0, buffer_len - self.lower_length)
-        return min(list(self._low_buffer)[start_idx:])
+        return self._min_deque[0][0] if self._min_deque else np.nan
 
     @property
     def middle_value(self) -> float:
@@ -2357,7 +2442,7 @@ class IncrementalDonchian(IncrementalIndicator):
 
     @property
     def is_ready(self) -> bool:
-        return len(self._high_buffer) >= max(self.lower_length, self.upper_length)
+        return self._count >= max(self.lower_length, self.upper_length)
 
 
 @dataclass
@@ -2748,11 +2833,16 @@ class IncrementalKAMA(IncrementalIndicator):
 @dataclass
 class IncrementalALMA(IncrementalIndicator):
     """
-    Arnaud Legoux Moving Average with O(1) updates.
+    Arnaud Legoux Moving Average with O(1) update, O(n) value access.
 
     Formula (matching pandas_ta):
         k = floor(offset * (length - 1))
         weight[i] = exp(-0.5 * ((sigma / length) * (i - k))^2)
+
+    Note: ALMA uses position-based Gaussian weights. Unlike linear-weighted
+    averages (WMA), when values shift positions, their weights change non-linearly.
+    This makes true O(1) weighted sum tracking mathematically impossible.
+    The update() is O(1), only value access is O(n).
 
     Matches pandas_ta.alma() output.
     """
@@ -2772,7 +2862,7 @@ class IncrementalALMA(IncrementalIndicator):
         self._weights = self._weights / self._weights.sum()  # Normalize
 
     def update(self, close: float, **kwargs: Any) -> None:
-        """Update with new close price."""
+        """Update with new close price - O(1) operation."""
         self._count += 1
         self._buffer.append(close)
 
@@ -2785,6 +2875,7 @@ class IncrementalALMA(IncrementalIndicator):
 
     @property
     def value(self) -> float:
+        """O(n) weighted sum calculation - cannot be optimized further."""
         if not self.is_ready:
             return np.nan
 

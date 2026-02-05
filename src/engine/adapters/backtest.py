@@ -398,8 +398,8 @@ class BacktestExchange:
             return None
 
         # Calculate liquidation price using LiquidationModel
-        cash_balance = self._sim_exchange._ledger.state.cash_balance_usdt
-        mmr = self._sim_exchange._ledger._config.maintenance_margin_rate
+        cash_balance = self._sim_exchange.cash_balance_usdt
+        mmr = self._sim_exchange.maintenance_margin_rate
         liq_price = self._sim_exchange._liquidation.calculate_liquidation_price(
             sim_pos, cash_balance, mmr
         )

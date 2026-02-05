@@ -199,7 +199,11 @@ class SimulatedExchange:
     @property
     def initial_margin_rate(self) -> float:
         return self._imr
-    
+
+    @property
+    def maintenance_margin_rate(self) -> float:
+        return self._mmr
+
     @property
     def taker_fee_rate(self) -> float:
         return self._fee_rate
