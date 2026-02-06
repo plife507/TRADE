@@ -1,0 +1,65 @@
+version: "3.0.0"
+name: "ST_T40_006_squeeze_expansion"
+description: "Bollinger/Keltner squeeze release with momentum"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  squeeze_20:
+    indicator: squeeze
+    params:
+      bb_length: 20
+      bb_std: 2.0
+      kc_length: 20
+      kc_scalar: 1.5
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  mom_14:
+    indicator: mom
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - ["squeeze_20.off", "==", 1]
+      - occurred_within:
+          bars: 5
+          expr:
+            - ["squeeze_20.on", "==", 1]
+      - ["macd_12_26_9.histogram", ">", 0]
+      - ["mom_14", ">", 0]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+validation:
+  expect_entries: [5, 100]
+  min_win_rate: 0.25
+  max_drawdown_pct: 25.0

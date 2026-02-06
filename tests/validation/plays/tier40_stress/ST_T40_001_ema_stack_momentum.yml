@@ -1,0 +1,82 @@
+version: "3.0.0"
+name: "ST_T40_001_ema_stack_momentum"
+description: "Triple EMA stack with ADX momentum filter - trend following"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  ema_200:
+    indicator: ema
+    params:
+      length: 200
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", ">", "ema_21"]
+      - ["ema_21", ">", "ema_50"]
+      - ["ema_50", ">", "ema_200"]
+      - ["adx_14.adx", ">", 25]
+      - ["trend.direction", "==", 1]
+      - ["close", ">", "ema_9"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+validation:
+  expect_entries: [5, 100]
+  min_win_rate: 0.25
+  max_drawdown_pct: 25.0

@@ -1,0 +1,72 @@
+version: "3.0.0"
+name: "ST_T40_012_derived_zone_confluence"
+description: "Multiple Fibonacci zones with confluence detection"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  volume_sma_20:
+    indicator: sma
+    params:
+      length: 20
+    source: volume
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: derived_zone
+      key: fib_zones
+      uses: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+        max_active: 5
+        width_pct: 0.003
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["fib_zones.any_active", "==", 1]
+      - ["rsi_14", "<", 55]
+      - ["trend.direction", "==", 1]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+validation:
+  expect_entries: [5, 100]
+  min_win_rate: 0.25
+  max_drawdown_pct: 25.0

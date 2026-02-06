@@ -1,0 +1,70 @@
+version: "3.0.0"
+name: "ST_T40_011_demand_zone_bounce"
+description: "Demand zone touch with momentum confirmation"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: zone
+      key: demand
+      uses: swing
+      params:
+        zone_type: demand
+        width_atr: 1.5
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["demand.version", ">", 0]
+      - ["close", ">", "demand.lower"]
+      - ["rsi_14", "<", 50]
+      - ["trend.direction", "!=", -1]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+validation:
+  expect_entries: [5, 100]
+  min_win_rate: 0.25
+  max_drawdown_pct: 25.0

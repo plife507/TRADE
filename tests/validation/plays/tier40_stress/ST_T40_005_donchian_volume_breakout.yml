@@ -1,0 +1,68 @@
+version: "3.0.0"
+name: "ST_T40_005_donchian_volume_breakout"
+description: "Donchian channel breakout with volume confirmation"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  donchian_20:
+    indicator: donchian
+    params:
+      lower_length: 20
+      upper_length: 20
+  volume_sma_20:
+    indicator: sma
+    params:
+      length: 20
+    source: volume
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: rolling_window
+      key: rolling_high_20
+      params:
+        mode: max
+        size: 20
+        source: high
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "donchian_20.lower"]
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 0.5
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+
+validation:
+  expect_entries: [5, 100]
+  min_win_rate: 0.25
+  max_drawdown_pct: 25.0

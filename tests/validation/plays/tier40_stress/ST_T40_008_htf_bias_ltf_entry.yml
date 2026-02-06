@@ -1,0 +1,75 @@
+version: "3.0.0"
+name: "ST_T40_008_htf_bias_ltf_entry"
+description: "Higher timeframe trend bias with lower timeframe precision entry"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  adx_14_1h:
+    indicator: adx
+    params:
+      length: 14
+    tf: "1h"
+  supertrend_10_3_4h:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+    tf: "4h"
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: market_structure
+      key: ms
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["supertrend_10_3_4h.direction", "==", 1]
+      - ["adx_14_1h.adx", ">", 20]
+      - ["ema_9", "cross_above", "ema_21"]
+      - ["ms.bias", "==", 1]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+validation:
+  expect_entries: [5, 100]
+  min_win_rate: 0.25
+  max_drawdown_pct: 25.0

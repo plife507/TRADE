@@ -1,0 +1,73 @@
+version: "3.0.0"
+name: "ST_T40_009_bos_fib_ote"
+description: "Break of structure with Fibonacci OTE zone entry"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: market_structure
+      key: ms
+      uses: swing
+    - type: fibonacci
+      key: fib
+      uses: swing
+      params:
+        levels: [0.618, 0.786]
+        mode: retracement
+
+actions:
+  entry_long:
+    all:
+      - ["ms.bias", "==", 1]
+      - occurred_within:
+          bars: 50
+          expr:
+            - ["ms.bos_this_bar", "==", 1]
+      - ["close", ">", "ema_21"]
+      - ["rsi_14", "<", 70]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+validation:
+  expect_entries: [5, 100]
+  min_win_rate: 0.25
+  max_drawdown_pct: 25.0

@@ -1,0 +1,69 @@
+version: "3.0.0"
+name: "ST_T40_016_percentage_moves"
+description: "Intrabar percentage move detection with candle analysis"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["trend.direction", "==", 1]
+      - ["close", ">", "ema_50"]
+      - lhs: [["close", "-", "low"], "/", ["high", "-", "low"]]
+        op: ">"
+        rhs: 0.8
+      - ["close", ">", "open"]
+      - lhs: [["close", "-", "open"], "/", "atr_14"]
+        op: ">"
+        rhs: 0.5
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+validation:
+  expect_entries: [5, 100]
+  min_win_rate: 0.25
+  max_drawdown_pct: 25.0
