@@ -1858,15 +1858,14 @@ class IncrementalWMA(IncrementalIndicator):
             oldest = self._buffer.popleft()
             self._buffer.append(close)
 
-            # Oldest had weight 1, remove it
-            self._buffer_sum -= oldest
-
-            # All remaining values shift down (lose 1 weight each) = subtract buffer_sum
-            # Then new value enters with weight `length`
+            # O(1) WMA update:
+            # - Remove oldest (had weight 1): subtract oldest from weighted_sum
+            # - Shift all remaining down by 1 weight: subtract buffer_sum (BEFORE modification)
+            # - Add new value with highest weight: add close * length
             self._weighted_sum = self._weighted_sum - self._buffer_sum + close * self.length
 
-            # Update buffer_sum with new value
-            self._buffer_sum += close
+            # Update buffer_sum: remove oldest, add new
+            self._buffer_sum = self._buffer_sum - oldest + close
 
     def reset(self) -> None:
         self._buffer.clear()
@@ -2288,7 +2287,9 @@ class IncrementalAROON(IncrementalIndicator):
         self._count += 1
 
         # Window boundary: remove elements outside the window
-        window_start = current_idx - self.length
+        # pandas_ta uses rolling(length + 1), so window includes length+1 bars
+        # Elements with index < (current_idx - length) are outside
+        window_start = current_idx - self.length - 1
         while self._max_deque and self._max_deque[0][1] <= window_start:
             self._max_deque.popleft()
         while self._min_deque and self._min_deque[0][1] <= window_start:
