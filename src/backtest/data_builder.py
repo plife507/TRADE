@@ -326,8 +326,13 @@ class DataBuilder:
 
         exec_tf = registry.execution_tf
 
-        # Group structures by TF, converting Feature to spec dict
+        # Resolve med_tf and high_tf strings from tf_mapping
+        med_tf_str = tf_mapping.get("med_tf", exec_tf)
+        high_tf_str = tf_mapping.get("high_tf", exec_tf)
+
+        # Group structures by TF role, converting Feature to spec dict
         exec_specs: list[dict] = []
+        med_tf_configs: dict[str, list[dict]] = {}
         high_tf_configs: dict[str, list[dict]] = {}
 
         for feature in structures:
@@ -342,8 +347,13 @@ class DataBuilder:
 
             if feature.tf == exec_tf:
                 exec_specs.append(spec_dict)
+            elif feature.tf == med_tf_str and med_tf_str != exec_tf:
+                # Medium timeframe structure
+                if feature.tf not in med_tf_configs:
+                    med_tf_configs[feature.tf] = []
+                med_tf_configs[feature.tf].append(spec_dict)
             else:
-                # Higher timeframe structure
+                # Higher timeframe structure (high_tf or any other non-exec/non-med TF)
                 if feature.tf not in high_tf_configs:
                     high_tf_configs[feature.tf] = []
                 high_tf_configs[feature.tf].append(spec_dict)
@@ -352,6 +362,7 @@ class DataBuilder:
         state = MultiTFIncrementalState(
             exec_tf=exec_tf,
             exec_specs=exec_specs,
+            med_tf_configs=med_tf_configs if med_tf_configs else None,
             high_tf_configs=high_tf_configs if high_tf_configs else None,
         )
 

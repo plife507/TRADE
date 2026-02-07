@@ -91,9 +91,9 @@ def vectorized_derived_zone(
     outputs["any_active"] = np.zeros(n)
     outputs["any_touched"] = np.zeros(n)
     outputs["any_inside"] = np.zeros(n)
-    outputs["closest_active_lower"] = np.full(n, np.nan)
-    outputs["closest_active_upper"] = np.full(n, np.nan)
-    outputs["closest_active_idx"] = np.full(n, -1.0)
+    outputs["first_active_lower"] = np.full(n, np.nan)
+    outputs["first_active_upper"] = np.full(n, np.nan)
+    outputs["first_active_idx"] = np.full(n, -1.0)
     outputs["newest_active_idx"] = np.full(n, -1.0)
     outputs["source_version"] = np.zeros(n)
 
@@ -191,9 +191,9 @@ def vectorized_derived_zone(
                 zone["state"] = 2  # broken
 
         # Compute aggregates
-        # NOTE: The incremental get_value("closest_active_*") returns the
-        # FIRST active zone (lowest slot index), not the actual closest by
-        # distance. We match that behavior here for parity.
+        # NOTE: first_active_* returns the FIRST active zone (lowest slot
+        # index), not the closest by distance. Both incremental and vectorized
+        # implementations match this behavior.
         active_count = 0
         first_active_idx = -1
         first_active_lower = float("nan")
@@ -230,9 +230,9 @@ def vectorized_derived_zone(
         outputs["any_active"][bar_idx] = 1.0 if active_count > 0 else 0.0
         outputs["any_touched"][bar_idx] = 1.0 if any_touched_flag else 0.0
         outputs["any_inside"][bar_idx] = 1.0 if any_inside_flag else 0.0
-        outputs["closest_active_lower"][bar_idx] = first_active_lower
-        outputs["closest_active_upper"][bar_idx] = first_active_upper
-        outputs["closest_active_idx"][bar_idx] = first_active_idx
+        outputs["first_active_lower"][bar_idx] = first_active_lower
+        outputs["first_active_upper"][bar_idx] = first_active_upper
+        outputs["first_active_idx"][bar_idx] = first_active_idx
         outputs["newest_active_idx"][bar_idx] = newest_active_idx
         outputs["source_version"][bar_idx] = source_version
 

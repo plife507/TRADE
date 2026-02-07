@@ -48,13 +48,10 @@ def eval_setup_ref(
 
     # Check cache first
     if setup_id not in setup_expr_cache:
-        # SetupRef evaluation is not currently supported
-        # The src.forge.setups module was removed during cleanup
-        # TODO: Re-implement SetupRef if needed, or remove SetupRef from DSL
         return EvalResult.failure(
             ReasonCode.INTERNAL_ERROR,
-            f"SetupRef evaluation not supported: '{setup_id}'. "
-            "Define conditions inline in Play actions instead.",
+            f"Unknown setup reference: '{setup_id}'. "
+            "Define conditions inline in Play actions instead of using setup references.",
             operator="setup",
         )
 

@@ -113,6 +113,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from ..base import BaseIncrementalDetector
@@ -121,6 +122,14 @@ from ..registry import register_structure
 
 if TYPE_CHECKING:
     from ..base import BarData
+
+
+class PairState(str, Enum):
+    """State machine for pivot pairing in swing detection."""
+
+    AWAITING_FIRST = "awaiting_first"
+    GOT_HIGH = "got_high"
+    GOT_LOW = "got_low"
 
 
 @register_structure("swing")
@@ -173,11 +182,6 @@ class IncrementalSwing(BaseIncrementalDetector):
         "atr_multiplier": 2.0,      # Gate 3: ATR multiple for direction change (atr_zigzag mode)
     }
     DEPENDS_ON: list[str] = []
-
-    # Pairing states
-    STATE_AWAITING_FIRST = "awaiting_first"
-    STATE_GOT_HIGH = "got_high"
-    STATE_GOT_LOW = "got_low"
 
     @classmethod
     def _validate_params(
@@ -319,7 +323,7 @@ class IncrementalSwing(BaseIncrementalDetector):
         self._last_confirmed_pivot_type: str = ""  # "high" or "low"
 
         # Paired pivot state machine
-        self._pair_state: str = self.STATE_AWAITING_FIRST
+        self._pair_state: PairState = PairState.AWAITING_FIRST
 
         # Pending pivot (first of pair, waiting for second)
         self._pending_type: str = ""  # "high" or "low"
@@ -855,16 +859,16 @@ class IncrementalSwing(BaseIncrementalDetector):
             level: Price level of the pivot
             idx: Bar index of the pivot
         """
-        if self._pair_state == self.STATE_AWAITING_FIRST:
+        if self._pair_state == PairState.AWAITING_FIRST:
             # First pivot of a new pair
             self._pending_type = pivot_type
             self._pending_level = level
             self._pending_idx = idx
             self._pair_state = (
-                self.STATE_GOT_HIGH if pivot_type == "high" else self.STATE_GOT_LOW
+                PairState.GOT_HIGH if pivot_type == "high" else PairState.GOT_LOW
             )
 
-        elif self._pair_state == self.STATE_GOT_HIGH:
+        elif self._pair_state == PairState.GOT_HIGH:
             if pivot_type == "low":
                 # HIGH -> LOW completes a bearish (HLH) swing
                 self._complete_pair(
@@ -878,13 +882,13 @@ class IncrementalSwing(BaseIncrementalDetector):
                 self._pending_type = "low"
                 self._pending_level = level
                 self._pending_idx = idx
-                self._pair_state = self.STATE_GOT_LOW
+                self._pair_state = PairState.GOT_LOW
             else:
                 # HIGH -> HIGH: new high replaces pending
                 self._pending_level = level
                 self._pending_idx = idx
 
-        elif self._pair_state == self.STATE_GOT_LOW:
+        elif self._pair_state == PairState.GOT_LOW:
             if pivot_type == "high":
                 # LOW -> HIGH completes a bullish (LHL) swing
                 self._complete_pair(
@@ -898,7 +902,7 @@ class IncrementalSwing(BaseIncrementalDetector):
                 self._pending_type = "high"
                 self._pending_level = level
                 self._pending_idx = idx
-                self._pair_state = self.STATE_GOT_HIGH
+                self._pair_state = PairState.GOT_HIGH
             else:
                 # LOW -> LOW: new low replaces pending
                 self._pending_level = level

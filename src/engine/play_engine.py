@@ -659,9 +659,50 @@ class PlayEngine:
         # Update indices via shared manager (single source of truth)
         update = self._tf_index_manager.update_indices(candle.ts_close)
 
+        # Update med_tf incremental state when med_tf bar closes (for structures)
+        if update.med_tf_changed:
+            self._update_med_tf_incremental_state()
+
         # Update high_tf incremental state when high_tf bar closes (for structures)
         if update.high_tf_changed:
             self._update_high_tf_incremental_state()
+
+    def _update_med_tf_incremental_state(self) -> None:
+        """Update med_tf incremental state when med_tf bar closes."""
+        import numpy as np
+        from src.structures import BarData
+
+        if self._incremental_state is None:
+            return
+
+        med_tf = self._tf_mapping.get("med_tf")
+        if not med_tf or med_tf not in self._incremental_state.med_tf:
+            return
+
+        med_tf_feed = self._med_tf_feed
+        if med_tf_feed is None:
+            return
+
+        med_tf_idx = self._current_med_tf_idx
+
+        # Build med_tf BarData
+        med_tf_indicator_values: dict[str, float] = {}
+        for key in med_tf_feed.indicators.keys():
+            val = med_tf_feed.indicators[key][med_tf_idx]
+            if not np.isnan(val):
+                med_tf_indicator_values[key] = float(val)
+
+        med_tf_bar_data = BarData(
+            idx=med_tf_idx,
+            open=float(med_tf_feed.open[med_tf_idx]),
+            high=float(med_tf_feed.high[med_tf_idx]),
+            low=float(med_tf_feed.low[med_tf_idx]),
+            close=float(med_tf_feed.close[med_tf_idx]),
+            volume=float(med_tf_feed.volume[med_tf_idx]),
+            indicators=med_tf_indicator_values,
+        )
+
+        self._incremental_state.update_med_tf(med_tf, med_tf_bar_data)
 
     def _update_high_tf_incremental_state(self) -> None:
         """Update high_tf incremental state when high_tf bar closes."""

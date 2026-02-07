@@ -910,6 +910,64 @@ class RuntimeSnapshotView:
                 raise ValueError("mark_price offset not yet supported - use offset=0")
             return self.mark_price
 
+        # Handle dotted structure paths from higher-TF structure references
+        # e.g. "med_tf_4h.trend_4h.direction" or "high_tf_D.trend_d.direction"
+        # These come from the DSL parser when the LHS is a dotted string
+        if "." in feature_id and self._incremental_state is not None:
+            parts = feature_id.split(".")
+            if len(parts) >= 3:
+                prefix = parts[0]  # e.g. "med_tf_4h" or "high_tf_D"
+                struct_key = parts[1]  # e.g. "trend_4h"
+                struct_field = ".".join(parts[2:])  # e.g. "direction"
+                # Check med_tf structures
+                for tf_name in self._incremental_state.med_tf:
+                    if prefix == f"med_tf_{tf_name}":
+                        tf_state = self._incremental_state.med_tf[tf_name]
+                        if struct_key in tf_state.structures:
+                            try:
+                                path = f"med_tf_{tf_name}.{struct_key}.{struct_field}"
+                                value = self._incremental_state.get_value(path)
+                                if isinstance(value, float):
+                                    import math
+                                    if math.isnan(value):
+                                        return None
+                                if isinstance(value, str):
+                                    return None
+                                return float(value) if value is not None else None
+                            except KeyError:
+                                return None
+                # Check high_tf structures
+                for tf_name in self._incremental_state.high_tf:
+                    if prefix == f"high_tf_{tf_name}":
+                        tf_state = self._incremental_state.high_tf[tf_name]
+                        if struct_key in tf_state.structures:
+                            try:
+                                path = f"high_tf_{tf_name}.{struct_key}.{struct_field}"
+                                value = self._incremental_state.get_value(path)
+                                if isinstance(value, float):
+                                    import math
+                                    if math.isnan(value):
+                                        return None
+                                if isinstance(value, str):
+                                    return None
+                                return float(value) if value is not None else None
+                            except KeyError:
+                                return None
+                # Check exec structures (e.g. "exec.swing.high_level" - unlikely but safe)
+                if prefix == "exec" and struct_key in self._incremental_state.exec.structures:
+                    try:
+                        path = f"exec.{struct_key}.{struct_field}"
+                        value = self._incremental_state.get_value(path)
+                        if isinstance(value, float):
+                            import math
+                            if math.isnan(value):
+                                return None
+                        if isinstance(value, str):
+                            return None
+                        return float(value) if value is not None else None
+                    except KeyError:
+                        return None
+
         # Check if this is a structure (requires feature registry)
         if self._feature_registry is not None:
             feature = self._feature_registry.get_or_none(feature_id)
@@ -1241,8 +1299,17 @@ class RuntimeSnapshotView:
             except KeyError:
                 return None
 
-        # Check if structure is in non-exec TF state (low_tf, med_tf, or high_tf)
-        # The "high_tf" dict stores ALL non-exec timeframes despite the name
+        # Check if structure is in med_tf state
+        if feature_tf in self._incremental_state.med_tf:
+            tf_state = self._incremental_state.med_tf[feature_tf]
+            if feature_id in tf_state.structures:
+                try:
+                    path = f"med_tf_{feature_tf}.{feature_id}.{field}"
+                    return self._incremental_state.get_value(path)
+                except KeyError:
+                    return None
+
+        # Check if structure is in high_tf state
         if feature_tf in self._incremental_state.high_tf:
             tf_state = self._incremental_state.high_tf[feature_tf]
             if feature_id in tf_state.structures:
@@ -1252,7 +1319,7 @@ class RuntimeSnapshotView:
                 except KeyError:
                     return None
 
-        # Structure not found in either location
+        # Structure not found in any location
         return None
 
     def list_structure_paths(self) -> list[str]:
@@ -1667,6 +1734,19 @@ class RuntimeSnapshotView:
                 except KeyError:
                     # Output key not found - continue to FeedStore fallback
                     pass
+
+            # Check if this is a med_tf structure
+            for med_tf_name, med_tf_state in self._incremental_state.med_tf.items():
+                if block_key in med_tf_state.structures:
+                    try:
+                        output_key = ".".join(parts[1:])
+                        internal_path = f"med_tf_{med_tf_name}.{block_key}.{output_key}"
+                        value = self._incremental_state.get_value(internal_path)
+                        if isinstance(value, str):
+                            return None
+                        return float(value)
+                    except KeyError:
+                        pass
 
             # Check if this is a high_tf structure
             for high_tf_name, high_tf_state in self._incremental_state.high_tf.items():

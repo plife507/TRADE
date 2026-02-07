@@ -52,6 +52,11 @@ from .audit_live_backtest_parity import (
     ParityAuditReport,
     ParityTestResult,
 )
+from .audit_structure_parity import (
+    run_structure_parity_audit,
+    StructureParityAuditResult as StructureParityAuditResult2,
+    StructureDetectorResult,
+)
 
 __all__ = [
     # In-memory parity
@@ -90,5 +95,9 @@ __all__ = [
     "run_live_backtest_parity_tests",
     "ParityAuditReport",
     "ParityTestResult",
+    # Structure parity
+    "run_structure_parity_audit",
+    "StructureParityAuditResult2",
+    "StructureDetectorResult",
 ]
 

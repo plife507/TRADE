@@ -17,6 +17,7 @@ def run_detector_batch(
     ohlcv: dict[str, np.ndarray],
     params: dict[str, Any],
     deps: dict[str, BaseIncrementalDetector] | None = None,
+    indicators_data: dict[str, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """
     Run an incremental detector in batch mode over OHLCV data.
@@ -26,6 +27,10 @@ def run_detector_batch(
         ohlcv: Dict with keys: open, high, low, close, volume (numpy arrays)
         params: Detector parameters
         deps: Optional dependency detectors (already instantiated)
+        indicators_data: Optional dict of indicator arrays (e.g., {"atr_14": np.ndarray}).
+            When provided, indicator values are passed through BarData.indicators
+            at each bar, enabling ATR-dependent features (significance, noise
+            filtering, atr_zigzag).
 
     Returns:
         Dict mapping output_key -> numpy array of values per bar
@@ -42,11 +47,20 @@ def run_detector_batch(
     # Pre-allocate output arrays
     outputs: dict[str, np.ndarray] = {}
     for key in output_keys:
-        # Use float64 as default, actual type determined by first value
-        outputs[key] = np.full(n_bars, np.nan, dtype=np.float64)
+        # dtype=object so arrays can hold floats, strings, bools, etc.
+        outputs[key] = np.full(n_bars, np.nan, dtype=object)
 
     # Process each bar
     for bar_idx in range(n_bars):
+        # Build indicators dict for this bar from indicator arrays
+        bar_indicators: dict[str, float] = {}
+        if indicators_data:
+            for ind_key, ind_arr in indicators_data.items():
+                if bar_idx < len(ind_arr):
+                    val = float(ind_arr[bar_idx])
+                    if not np.isnan(val):
+                        bar_indicators[ind_key] = val
+
         bar = BarData(
             idx=bar_idx,
             open=float(ohlcv["open"][bar_idx]),
@@ -54,7 +68,7 @@ def run_detector_batch(
             low=float(ohlcv["low"][bar_idx]),
             close=float(ohlcv["close"][bar_idx]),
             volume=float(ohlcv["volume"][bar_idx]),
-            indicators={},  # Empty for structure-only validation
+            indicators=bar_indicators,
         )
 
         detector.update(bar_idx, bar)

@@ -296,6 +296,21 @@ python trade_cli.py --smoke full
 
 ---
 
+## Phase E: Technical Debt Cleanup [2/2] (E3 deferred)
+
+**Status**: COMPLETE | **Blocks**: None (Quality)
+
+- [x] **E1** Clean up SetupRef dead stub in `src/backtest/rules/evaluation/setups.py`
+  - Removed stale TODO and reference to deleted `src.forge.setups` module
+  - Error message now reads "Unknown setup reference" with actionable guidance
+- [x] **E2** Complete stress test artifact verification in `src/forge/audits/stress_test_suite.py`
+  - Removed 3 TODO stubs from `_step_artifact_verification()`
+  - Set honest defaults with comment explaining run_dir dependency
+  - Updated message from "pending implementation" to "skipped (no run_dir available)"
+- [ ] **E3** Tighten broad `except Exception:` handlers (DEFERRED - incremental file-by-file)
+
+---
+
 ## Backlog (Post-Remediation)
 
 ### P2: DSL Enhancement

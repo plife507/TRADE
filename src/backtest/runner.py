@@ -95,14 +95,6 @@ class GateFailure(Exception):
 from .artifacts.pipeline_signature import PIPELINE_VERSION
 
 
-# =============================================================================
-# DELETED: create_default_engine_factory, PlayEngineWrapper, PlayBacktestResult
-# =============================================================================
-
-
-# =============================================================================
-# G4.1 Refactor: Helper dataclass for run context
-# =============================================================================
 @dataclass
 class _RunContext:
     """Internal context passed between helper functions during a backtest run."""

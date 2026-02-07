@@ -5,7 +5,7 @@ Derives zones from a source swing detector using configurable levels
 (e.g., fibonacci ratios). Zones are stored internally as a list and
 exposed via:
 - Slot fields: zone0_*, zone1_*, ..., zone{K-1}_*
-- Aggregate fields: active_count, any_touched, closest_active_lower, etc.
+- Aggregate fields: active_count, any_touched, first_active_lower, etc.
 
 Implementation follows 14 locked decisions from DERIVATION_RULE_INVESTIGATION.md:
 - Slot ordering: Most recent first (zone0 = newest)
@@ -33,7 +33,6 @@ Example Play usage:
             mode: retracement
             max_active: 5
             width_pct: 0.002
-            price_source: mark_close
 
 Access in rules:
     # Slot access
@@ -42,7 +41,7 @@ Access in rules:
 
     # Aggregate access
     condition: structure.fib_zones.any_touched == true
-    condition: close near_pct structure.fib_zones.closest_active_lower
+    condition: close near_pct structure.fib_zones.first_active_lower
 
 See: docs/architecture/DERIVATION_RULE_INVESTIGATION.md
 See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
@@ -80,7 +79,6 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         mode: "retracement" (between swings) or "extension" (beyond swings)
         max_active: Maximum number of active zones to track (K slots)
         width_pct: Zone width as percentage of level price (e.g., 0.002 = 0.2%)
-        price_source: "mark_close" or "last_close" for interaction checks
         use_paired_source: If true, only regenerate zones when a complete swing
                           pair forms (L->H bullish or H->L bearish), using
                           pair_high_level/pair_low_level which are guaranteed
@@ -107,9 +105,9 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         any_active: Any zone is ACTIVE
         any_touched: Event - any ACTIVE zone touched THIS bar
         any_inside: Price currently inside any ACTIVE zone
-        closest_active_lower: Lower bound of closest ACTIVE zone (None if none)
-        closest_active_upper: Upper bound of closest ACTIVE zone (None if none)
-        closest_active_idx: Slot index of closest ACTIVE zone (-1 if none)
+        first_active_lower: Lower bound of first ACTIVE zone by slot (None if none)
+        first_active_upper: Upper bound of first ACTIVE zone by slot (None if none)
+        first_active_idx: Slot index of first ACTIVE zone by slot (-1 if none)
         newest_active_idx: Slot of most recent ACTIVE (usually 0, -1 if none)
         source_version: Current source structure version
 
@@ -122,7 +120,6 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
     OPTIONAL_PARAMS: dict[str, Any] = {
         "mode": "retracement",
         "width_pct": 0.002,
-        "price_source": "mark_close",
         "use_paired_source": True,
         "break_tolerance_pct": 0.001,  # 0.1% tolerance for zone break detection
     }
@@ -178,15 +175,6 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
                 f"Fix: width_pct: 0.002  # 0.2%"
             )
 
-        # Validate price_source
-        price_source = params.get("price_source", "mark_close")
-        if price_source not in ("mark_close", "last_close"):
-            raise ValueError(
-                f"Structure '{key}': 'price_source' must be 'mark_close' or 'last_close'\n"
-                f"\n"
-                f"Fix: price_source: mark_close"
-            )
-
     def __init__(
         self,
         params: dict[str, Any],
@@ -198,7 +186,6 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         self.max_active: int = params["max_active"]
         self.mode: str = params.get("mode", "retracement")
         self.width_pct: float = float(params.get("width_pct", 0.002))
-        self.price_source: str = params.get("price_source", "mark_close")
         self.use_paired_source: bool = params.get("use_paired_source", True)
         self.break_tolerance_pct: float = float(params.get("break_tolerance_pct", 0.001))
 
@@ -426,7 +413,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
 
     def _get_price(self, bar: "BarData") -> float | None:
         """
-        Get price for interaction checks based on price_source param.
+        Get price for interaction checks.
 
         Args:
             bar: Bar data.
@@ -434,11 +421,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         Returns:
             Price value, or None if not available.
         """
-        if self.price_source == "mark_close":
-            # Try to get mark_close from indicators, fall back to close
-            return bar.indicators.get("mark_close", bar.close)
-        else:
-            return bar.close
+        return bar.close
 
     def _compute_closest_active(self, price: float) -> tuple[int, Any, Any]:
         """
@@ -504,9 +487,9 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
             "any_active",
             "any_touched",
             "any_inside",
-            "closest_active_lower",
-            "closest_active_upper",
-            "closest_active_idx",
+            "first_active_lower",
+            "first_active_upper",
+            "first_active_idx",
             "newest_active_idx",
             "source_version",
         ])
@@ -554,17 +537,15 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
                 if z["state"] == ZONE_STATE_ACTIVE
             )
 
-        if key == "closest_active_lower":
-            # Need current price - use last known from interaction
-            # For now, return first active zone's lower if exists
+        if key == "first_active_lower":
             _, lower, _ = self._get_first_active_bounds()
             return lower
 
-        if key == "closest_active_upper":
+        if key == "first_active_upper":
             _, _, upper = self._get_first_active_bounds()
             return upper
 
-        if key == "closest_active_idx":
+        if key == "first_active_idx":
             for idx, zone in enumerate(self._zones):
                 if zone["state"] == ZONE_STATE_ACTIVE:
                     return idx
@@ -664,7 +645,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
 
     def _get_first_active_bounds(self) -> tuple[int, Any, Any]:
         """
-        Get bounds of first active zone (for closest_active_* when no price context).
+        Get bounds of first active zone (for first_active_* aggregates).
 
         Returns:
             Tuple of (idx, lower, upper). Returns (-1, None, None) if no active zones.

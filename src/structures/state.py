@@ -280,29 +280,35 @@ class MultiTFIncrementalState:
     """
     Unified container for all timeframe states.
 
-    Manages an exec_tf (execution) timeframe state plus optional high_tf (structure)
-    timeframe states. Provides path-based access to structure values.
+    Manages an exec_tf (execution) timeframe state plus optional med_tf and
+    high_tf timeframe states. Provides path-based access to structure values.
 
     Path Format:
         - "exec.<struct_key>.<output_key>" - Exec TF structure value
+        - "med_tf_<tf>.<struct_key>.<output_key>" - Med TF structure value
         - "high_tf_<tf>.<struct_key>.<output_key>" - High TF structure value
 
     Example:
         >>> multi = MultiTFIncrementalState(
         ...     exec_tf="15m",
         ...     exec_specs=[{"type": "swing", "key": "swing", "params": {...}}],
-        ...     high_tf_configs={"1h": [{"type": "swing", "key": "swing_1h", "params": {...}}]}
+        ...     med_tf_configs={"4h": [{"type": "swing", "key": "swing_4h", "params": {...}}]},
+        ...     high_tf_configs={"D": [{"type": "swing", "key": "swing_d", "params": {...}}]},
         ... )
         >>> multi.update_exec(bar_15m)
-        >>> multi.update_high_tf("1h", bar_1h)
+        >>> multi.update_med_tf("4h", bar_4h)
+        >>> multi.update_high_tf("D", bar_d)
         >>> multi.get_value("exec.swing.high_level")
         50000.0
-        >>> multi.get_value("high_tf_1h.swing_1h.high_level")
+        >>> multi.get_value("med_tf_4h.swing_4h.high_level")
+        50200.0
+        >>> multi.get_value("high_tf_D.swing_d.high_level")
         50500.0
 
     Attributes:
         exec_tf: The execution timeframe identifier.
         exec: TFIncrementalState for the exec timeframe.
+        med_tf: Dict mapping med_tf names to TFIncrementalState instances.
         high_tf: Dict mapping high_tf names to TFIncrementalState instances.
     """
 
@@ -310,6 +316,7 @@ class MultiTFIncrementalState:
         self,
         exec_tf: str,
         exec_specs: list[dict[str, Any]],
+        med_tf_configs: dict[str, list[dict[str, Any]]] | None = None,
         high_tf_configs: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
         """
@@ -318,14 +325,21 @@ class MultiTFIncrementalState:
         Args:
             exec_tf: The execution timeframe identifier (e.g., "15m").
             exec_specs: List of structure specs for the exec timeframe.
+            med_tf_configs: Dict mapping med_tf names to their structure specs.
+                         Keys are timeframe names (e.g., "4h").
             high_tf_configs: Dict mapping high_tf names to their structure specs.
-                         Keys are timeframe names (e.g., "1h", "4h").
+                         Keys are timeframe names (e.g., "D", "12h").
 
         Raises:
             ValueError: If any structure spec is invalid.
         """
         self.exec_tf = exec_tf
         self.exec = TFIncrementalState(exec_tf, exec_specs)
+
+        self.med_tf: dict[str, TFIncrementalState] = {}
+        if med_tf_configs:
+            for tf, specs in med_tf_configs.items():
+                self.med_tf[tf] = TFIncrementalState(tf, specs)
 
         self.high_tf: dict[str, TFIncrementalState] = {}
         if high_tf_configs:
@@ -345,6 +359,40 @@ class MultiTFIncrementalState:
             ValueError: If bar index doesn't increase.
         """
         self.exec.update(bar)
+
+    def update_med_tf(self, timeframe: str, bar: "BarData") -> None:
+        """
+        Update med_tf structures with new bar.
+
+        Called only when a med_tf bar closes.
+
+        Args:
+            timeframe: The med_tf name (must match a key in med_tf_configs).
+            bar: Bar data for the med_tf.
+
+        Raises:
+            KeyError: If timeframe not configured.
+            ValueError: If bar index doesn't increase.
+        """
+        if timeframe not in self.med_tf:
+            available = list(self.med_tf.keys())
+            available_str = ", ".join(available) if available else "(none configured)"
+            raise KeyError(
+                f"Med TF '{timeframe}' not configured.\n"
+                f"\n"
+                f"Available med_tfs: {available_str}\n"
+                f"\n"
+                f"Fix: Add med_tf configuration to your Play:\n"
+                f"  structures:\n"
+                f"    med_tf:\n"
+                f"      \"{timeframe}\":\n"
+                f"        - type: swing\n"
+                f"          key: swing_{timeframe}\n"
+                f"          params:\n"
+                f"            left: 3\n"
+                f"            right: 3"
+            )
+        self.med_tf[timeframe].update(bar)
 
     def update_high_tf(self, timeframe: str, bar: "BarData") -> None:
         """
@@ -386,11 +434,13 @@ class MultiTFIncrementalState:
 
         Path format:
             - "exec.<struct_key>.<output_key>" for exec_tf
+            - "med_tf_<tf>.<struct_key>.<output_key>" for med_tf
             - "high_tf_<tf>.<struct_key>.<output_key>" for high_tf
 
         Examples:
             - "exec.swing.high_level" - Swing high from exec_tf
-            - "high_tf_1h.trend.direction" - Trend direction from 1h high_tf
+            - "med_tf_4h.trend_4h.direction" - Trend direction from 4h med_tf
+            - "high_tf_D.trend_d.direction" - Trend direction from D high_tf
             - "high_tf_4h.fib.level_0.618" - Fib level from 4h high_tf
 
         Args:
@@ -413,8 +463,8 @@ class MultiTFIncrementalState:
                 f"\n"
                 f"Examples:\n"
                 f"  - exec.swing.high_level\n"
-                f"  - high_tf_1h.trend.direction\n"
-                f"  - high_tf_4h.fib.level_0.618"
+                f"  - med_tf_4h.trend_4h.direction\n"
+                f"  - high_tf_D.trend_d.direction"
             )
 
         tf_role = parts[0]
@@ -425,6 +475,28 @@ class MultiTFIncrementalState:
         if tf_role == "exec":
             return self.exec.get_value(struct_key, output_key)
 
+        elif tf_role.startswith("med_tf_"):
+            tf_name = tf_role[7:]  # Strip "med_tf_" prefix
+
+            if tf_name not in self.med_tf:
+                available = list(self.med_tf.keys())
+                available_str = ", ".join(available) if available else "(none configured)"
+
+                suggestions = [f"  - exec.{struct_key}.{output_key}"]
+                for med_tf_name in available:
+                    suggestions.append(f"  - med_tf_{med_tf_name}.{struct_key}.{output_key}")
+
+                raise KeyError(
+                    f"Med TF '{tf_name}' not configured.\n"
+                    f"\n"
+                    f"Available med_tfs: {available_str}\n"
+                    f"\n"
+                    f"Valid paths might be:\n"
+                    + "\n".join(suggestions)
+                )
+
+            return self.med_tf[tf_name].get_value(struct_key, output_key)
+
         elif tf_role.startswith("high_tf_"):
             tf_name = tf_role[8:]  # Strip "high_tf_" prefix
 
@@ -432,9 +504,7 @@ class MultiTFIncrementalState:
                 available = list(self.high_tf.keys())
                 available_str = ", ".join(available) if available else "(none configured)"
 
-                # Provide suggestions
-                suggestions = []
-                suggestions.append(f"  - exec.{struct_key}.{output_key}")
+                suggestions = [f"  - exec.{struct_key}.{output_key}"]
                 for high_tf_name in available:
                     suggestions.append(f"  - high_tf_{high_tf_name}.{struct_key}.{output_key}")
 
@@ -450,22 +520,31 @@ class MultiTFIncrementalState:
             return self.high_tf[tf_name].get_value(struct_key, output_key)
 
         else:
-            # Provide helpful suggestions
+            available_med_tfs = list(self.med_tf.keys())
             available_high_tfs = list(self.high_tf.keys())
-            valid_prefixes = ["exec"] + [f"high_tf_{tf}" for tf in available_high_tfs]
+            valid_prefixes = (
+                ["exec"]
+                + [f"med_tf_{tf}" for tf in available_med_tfs]
+                + [f"high_tf_{tf}" for tf in available_high_tfs]
+            )
             prefixes_str = ", ".join(valid_prefixes) if valid_prefixes else "exec"
 
             raise ValueError(
                 f"Invalid tf_role in path: '{tf_role}'\n"
                 f"\n"
-                f"Path must start with 'exec' or 'high_tf_<tf>'.\n"
+                f"Path must start with 'exec', 'med_tf_<tf>', or 'high_tf_<tf>'.\n"
                 f"\n"
                 f"Valid prefixes for this configuration: {prefixes_str}\n"
                 f"\n"
                 f"Examples:\n"
                 f"  - exec.swing.high_level\n"
+                + ("\n".join(f"  - med_tf_{tf}.swing.high_level" for tf in available_med_tfs) + "\n" if available_med_tfs else "")
                 + ("\n".join(f"  - high_tf_{tf}.swing.high_level" for tf in available_high_tfs) if available_high_tfs else "")
             )
+
+    def list_med_tfs(self) -> list[str]:
+        """Return list of configured med_tf names."""
+        return list(self.med_tf.keys())
 
     def list_high_tfs(self) -> list[str]:
         """Return list of configured high_tf names."""
@@ -487,6 +566,12 @@ class MultiTFIncrementalState:
             for output_key in self.exec.list_outputs(struct_key):
                 paths.append(f"exec.{struct_key}.{output_key}")
 
+        # Med TF paths
+        for tf_name, tf_state in self.med_tf.items():
+            for struct_key in tf_state.list_structures():
+                for output_key in tf_state.list_outputs(struct_key):
+                    paths.append(f"med_tf_{tf_name}.{struct_key}.{output_key}")
+
         # High TF paths
         for tf_name, tf_state in self.high_tf.items():
             for struct_key in tf_state.list_structures():
@@ -498,14 +583,18 @@ class MultiTFIncrementalState:
     def reset(self) -> None:
         """Reset all TF states for new backtest run."""
         self.exec.reset()
+        for tf_state in self.med_tf.values():
+            tf_state.reset()
         for tf_state in self.high_tf.values():
             tf_state.reset()
 
     def __repr__(self) -> str:
         """Return string representation."""
+        med_tf_names = ", ".join(self.med_tf.keys()) if self.med_tf else "(none)"
         high_tf_names = ", ".join(self.high_tf.keys()) if self.high_tf else "(none)"
         return (
             f"MultiTFIncrementalState("
             f"exec_tf={self.exec_tf!r}, "
+            f"med_tfs=[{med_tf_names}], "
             f"high_tfs=[{high_tf_names}])"
         )

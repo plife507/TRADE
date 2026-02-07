@@ -94,7 +94,6 @@ from .execution_validation import (
     # Gate 8.2
     compute_warmup_requirements,
     WarmupRequirements,
-    # Gate 8.3 (PlaySystemConfig DELETED - P1.2 Refactor)
     PlaySignalEvaluator,
     SignalDecision,
     EvaluationResult,
@@ -177,7 +176,6 @@ __all__ = [
     "FeatureReference",
     "compute_warmup_requirements",
     "WarmupRequirements",
-    # PlaySystemConfig and adapt_play_to_system_config DELETED (P1.2 Refactor)
     "PlaySignalEvaluator",
     "SignalDecision",
     "EvaluationResult",

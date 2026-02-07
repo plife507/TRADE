@@ -218,8 +218,6 @@ class PlayEngineFactory:
                     setattr(config, key, value)
 
         # Create adapters
-        # Note: These will be fully implemented in Phase 2
-        # For now, they raise NotImplementedError
         data_provider = BacktestDataProvider(play)
         exchange = BacktestExchange(play, config)
         state_store = InMemoryStateStore()
@@ -286,8 +284,6 @@ class PlayEngineFactory:
         is_demo = mode == "demo"
 
         # Create adapters
-        # Note: These will be fully implemented in Phases 3-4
-        # For now, they raise NotImplementedError
         data_provider = LiveDataProvider(play, demo=is_demo)
         exchange = LiveExchange(play, config, demo=is_demo)
         state_store = FileStateStore()
