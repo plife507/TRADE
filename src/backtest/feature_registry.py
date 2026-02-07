@@ -398,17 +398,19 @@ class FeatureRegistry:
                             # Check dependency type is valid for this structure
                             if feature.structure_type in STRUCTURE_REGISTRY:
                                 detector_cls = STRUCTURE_REGISTRY[feature.structure_type]
-                                required_types = set(detector_cls.DEPENDS_ON)
+                                allowed_types = set(detector_cls.DEPENDS_ON) | set(
+                                    getattr(detector_cls, "OPTIONAL_DEPS", [])
+                                )
                                 # "source" is an alias for "swing" in derived_zone
                                 dep_type = dep_feature.structure_type
                                 # Map swing->source for derived_zone compatibility
-                                valid = dep_type in required_types or (
-                                    "source" in required_types and dep_type == "swing"
+                                valid = dep_type in allowed_types or (
+                                    "source" in allowed_types and dep_type == "swing"
                                 )
-                                if required_types and not valid:
+                                if allowed_types and not valid:
                                     errors.append(
                                         f"Feature '{feature.id}': uses '{dep_key}' (type: {dep_type}) "
-                                        f"but requires one of: {sorted(required_types)}"
+                                        f"but accepts: {sorted(allowed_types)}"
                                     )
 
         return errors

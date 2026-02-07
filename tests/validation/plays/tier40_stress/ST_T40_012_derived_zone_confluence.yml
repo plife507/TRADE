@@ -47,6 +47,7 @@ structures:
         mode: retracement
         max_active: 5
         width_pct: 0.003
+        use_paired_source: false
     - type: trend
       key: trend
       uses: swing

@@ -48,6 +48,7 @@ structures:
         levels: [0.382, 0.5, 0.618]
         max_active: 3
         mode: retracement
+        use_paired_source: false
 
 actions:
   entry_long:

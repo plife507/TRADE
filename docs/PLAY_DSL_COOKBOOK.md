@@ -827,6 +827,199 @@ actions:
       - ["close", "near_pct", "fib.level[0.618]", 0.5]
 ```
 
+### Anchoring Strategies for Fibonacci and Structure-Based Indicators
+
+Fibonacci levels, derived zones, and anchored VWAP all need "anchor points" — swing highs and lows that define the price range from which levels are calculated. The choice of anchoring strategy significantly affects signal quality.
+
+#### Three Fibonacci Anchoring Modes
+
+| Mode | Parameter | Anchor Source | Best For |
+|------|-----------|---------------|----------|
+| **Paired** (default) | `use_paired_anchor: true` | Complete H-L swing pairs | Scalping, pullback entries |
+| **Trend-Wave** | `use_trend_anchor: true` | HH/HL in uptrend, LH/LL in downtrend | ICT/SMC swing trading |
+| **Raw Unpaired** (legacy) | `use_paired_anchor: false` | Independent high_idx/low_idx | Legacy compatibility only |
+
+#### Paired Anchoring (Default)
+
+The pairing layer guarantees that the swing high and swing low come from the **same swing sequence** — either a bullish L->H or a bearish H->L move. This eliminates "inverted" anchors where high < low.
+
+```yaml
+structures:
+  exec:
+    - type: swing
+      key: pivots
+      params: { left: 5, right: 5 }
+
+    - type: fibonacci
+      key: fib_entry
+      uses: pivots
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+        # use_paired_anchor: true is the default
+```
+
+Paired anchoring only updates levels when a complete pair forms (pair_version increments), not on every individual pivot. This produces stable, non-flickering levels.
+
+#### Trend-Wave Anchoring
+
+Uses a trend detector dependency to contextualize the paired swing anchors. In an uptrend, the most recent paired swing represents HH/HL structure. In a downtrend, it represents LH/LL structure. When the trend is ranging (direction=0), levels freeze at their last known values.
+
+Requires a trend dependency in `uses:`:
+
+```yaml
+structures:
+  exec:
+    - type: swing
+      key: pivots
+      params: { left: 5, right: 5 }
+
+    - type: trend
+      key: trend
+      uses: pivots
+
+    - type: fibonacci
+      key: fib_trend
+      uses: [pivots, trend]    # Both swing and trend required
+      params:
+        levels: [0.618, 0.705, 0.786]
+        mode: retracement
+        use_trend_anchor: true
+
+actions:
+  entry_long:
+    all:
+      - ["trend.direction", "==", 1]
+      - ["close", "near_pct", "fib_trend.level[0.618]", 1.0]
+```
+
+Outputs include `anchor_trend_direction` (int: 1=uptrend, -1=downtrend, 0=initial).
+
+#### Raw Unpaired (Legacy)
+
+Uses independent `high_level` and `low_level` from the swing detector, which may come from different swing sequences. Can produce inverted anchors where high < low. Only use for backward compatibility:
+
+```yaml
+    - type: fibonacci
+      key: fib_legacy
+      uses: pivots
+      params:
+        levels: [0.382, 0.618]
+        mode: retracement
+        use_paired_anchor: false   # Explicit opt-in to legacy mode
+```
+
+#### Anchored VWAP Anchor Sources
+
+Anchored VWAP resets its volume-weighted average when a swing event occurs, unlike session VWAP which resets on time boundaries.
+
+**Raw pivot sources** (reset on every pivot, including consecutive same-type):
+
+| Source | Resets When |
+|--------|------------|
+| `swing_high` | Any swing high confirmed |
+| `swing_low` | Any swing low confirmed |
+| `swing_any` | Any pivot confirmed |
+
+**Pair-based sources** (recommended — reset only on complete H-L pairs):
+
+| Source | Resets When |
+|--------|------------|
+| `pair_high` | Bullish pair completes (L->H, high is final pivot) |
+| `pair_low` | Bearish pair completes (H->L, low is final pivot) |
+| `pair_any` | Any complete pair |
+
+Pair-based sources avoid spurious resets from consecutive same-type pivots:
+
+```yaml
+features:
+  avwap_paired:
+    indicator: anchored_vwap
+    params:
+      anchor_source: pair_any    # Recommended: resets on complete pairs only
+```
+
+#### Derived Zone Pairing
+
+Derived zones also support paired anchoring via `use_paired_source: true` (default). This ensures zone regeneration only triggers on complete swing pairs:
+
+```yaml
+structures:
+  exec:
+    - type: swing
+      key: pivots
+      params: { left: 5, right: 5 }
+
+    - type: derived_zone
+      key: fib_zones
+      uses: pivots
+      params:
+        levels: [0.382, 0.5, 0.618]
+        max_active: 5
+        mode: retracement
+        # use_paired_source: true is the default
+```
+
+Set `use_paired_source: false` to regenerate zones on every individual pivot (legacy behavior).
+
+#### Complete Multi-Timeframe Trend-Wave Example
+
+```yaml
+version: "3.0.0"
+name: "trend_wave_fib_entry"
+description: "Trend-wave fibonacci OTE entry with medium timeframe bias"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+structures:
+  exec:
+    - type: swing
+      key: pivots
+      params: { left: 5, right: 5 }
+
+    - type: trend
+      key: trend
+      uses: pivots
+
+    - type: fibonacci
+      key: fib_ote
+      uses: [pivots, trend]
+      params:
+        levels: [0.618, 0.705, 0.786]
+        mode: retracement
+        use_trend_anchor: true
+
+features:
+  rsi_14:
+    indicator: rsi
+    params: { length: 14 }
+
+actions:
+  entry_long:
+    all:
+      - ["trend.direction", "==", 1]
+      - ["close", "near_pct", "fib_ote.level[0.705]", 1.5]
+      - ["rsi_14", "<", 50]
+  entry_short:
+    all:
+      - ["trend.direction", "==", -1]
+      - ["close", "near_pct", "fib_ote.level[0.705]", 1.5]
+      - ["rsi_14", ">", 50]
+
+position_policy:
+  mode: bi_directional
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+```
+
 ---
 
 ## 4. Actions (Entry/Exit Rules)

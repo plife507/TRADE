@@ -210,6 +210,58 @@ def _compute_vwap_with_datetime_index(
     return result
 
 
+def _compute_anchored_vwap(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    **kwargs,
+) -> pd.Series:
+    """
+    Compute anchored VWAP using incremental class in batch mode.
+
+    Anchored VWAP has no pandas_ta equivalent - it resets on structure
+    events (swing pivots) rather than time boundaries. We use the
+    IncrementalAnchoredVWAP class directly for batch computation.
+
+    Args:
+        high, low, close, volume: Price series
+        **kwargs: anchor_source, swing_high_version/swing_low_version arrays,
+                  swing_pair_version/swing_pair_direction arrays
+
+    Returns:
+        Anchored VWAP Series
+    """
+    from src.indicators.incremental import IncrementalAnchoredVWAP
+
+    anchor_source = kwargs.get("anchor_source", "swing_any")
+    avwap = IncrementalAnchoredVWAP(anchor_source=anchor_source)
+
+    n = len(close)
+    result = pd.Series(index=close.index, dtype=float)
+
+    def _get_dict_val(key: str, idx: int, default: Any = -1) -> Any:
+        mapping = kwargs.get(key)
+        if isinstance(mapping, dict):
+            return mapping.get(idx, default)
+        return default
+
+    for i in range(n):
+        avwap.update(
+            high=float(high.iloc[i]),
+            low=float(low.iloc[i]),
+            close=float(close.iloc[i]),
+            volume=float(volume.iloc[i]),
+            swing_high_version=_get_dict_val("swing_high_version", i),
+            swing_low_version=_get_dict_val("swing_low_version", i),
+            swing_pair_version=_get_dict_val("swing_pair_version", i),
+            swing_pair_direction=_get_dict_val("swing_pair_direction", i, ""),
+        )
+        result.iloc[i] = avwap.value
+
+    return result
+
+
 # =============================================================================
 # Dynamic Indicator Wrapper (handles ALL pandas_ta indicators)
 # =============================================================================
@@ -260,9 +312,9 @@ def compute_indicator(
         # Returns: {'adx': Series, 'dmp': Series, 'dmn': Series}
     """
     # Get the indicator function from pandas_ta
+    # Note: Custom indicators (anchored_vwap) may not exist in pandas_ta
+    # but are handled by special-case code below before indicator_fn is used.
     indicator_fn = getattr(ta, indicator_name, None)
-    if indicator_fn is None:
-        raise ValueError(f"Unknown indicator: {indicator_name}. Check pandas_ta documentation.")
     
     # Get registry for input requirements (FAIL LOUD - no fallback)
     from .indicator_registry import get_registry
@@ -321,8 +373,16 @@ def compute_indicator(
         result = _compute_vwap_with_datetime_index(
             high=high, low=low, close=close, volume=volume, ts_open=ts_open, **kwargs
         )
+    elif indicator_name == "anchored_vwap":
+        # Anchored VWAP is incremental-only (no pandas_ta batch equivalent).
+        # Compute using the incremental class in batch mode.
+        result = _compute_anchored_vwap(
+            high=high, low=low, close=close, volume=volume, **kwargs
+        )
     else:
-        # Compute indicator
+        # Compute indicator via pandas_ta
+        if indicator_fn is None:
+            raise ValueError(f"Unknown indicator: {indicator_name}. Check pandas_ta documentation.")
         result = indicator_fn(*positional_args, **kwargs)
 
     if result is None:

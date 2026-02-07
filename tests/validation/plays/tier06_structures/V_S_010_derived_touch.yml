@@ -36,6 +36,7 @@ structures:
         levels: [0.5]
         width_pct: 0.01
         max_active: 2
+        use_paired_source: false
 
 features:
   ema_20:

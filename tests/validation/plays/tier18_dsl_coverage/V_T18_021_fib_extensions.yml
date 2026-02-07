@@ -44,6 +44,7 @@ structures:
       params:
         mode: extension_up
         levels: [1.0, 1.272, 1.618, 2.0]
+        use_paired_anchor: false
 
 actions:
   entry_long:

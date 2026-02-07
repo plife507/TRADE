@@ -84,7 +84,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         use_paired_source: If true, only regenerate zones when a complete swing
                           pair forms (L->H bullish or H->L bearish), using
                           pair_high_level/pair_low_level which are guaranteed
-                          to come from the same swing sequence. Default: false.
+                          to come from the same swing sequence. Default: true.
 
     Dependencies:
         source: A swing detector providing high_level, low_level, version,
@@ -123,7 +123,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         "mode": "retracement",
         "width_pct": 0.002,
         "price_source": "mark_close",
-        "use_paired_source": False,
+        "use_paired_source": True,
         "break_tolerance_pct": 0.001,  # 0.1% tolerance for zone break detection
     }
     DEPENDS_ON: list[str] = ["swing"]
@@ -199,7 +199,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         self.mode: str = params.get("mode", "retracement")
         self.width_pct: float = float(params.get("width_pct", 0.002))
         self.price_source: str = params.get("price_source", "mark_close")
-        self.use_paired_source: bool = params.get("use_paired_source", False)
+        self.use_paired_source: bool = params.get("use_paired_source", True)
         self.break_tolerance_pct: float = float(params.get("break_tolerance_pct", 0.001))
 
         # Internal zone storage: list of dicts, most recent first

@@ -125,6 +125,7 @@ class BaseIncrementalDetector(ABC):
     REQUIRED_PARAMS: list[str] = []
     OPTIONAL_PARAMS: dict[str, Any] = {}
     DEPENDS_ON: list[str] = []
+    OPTIONAL_DEPS: list[str] = []  # Dep types accepted but not required
 
     # Instance attributes set by validate_and_create
     _key: str = ""

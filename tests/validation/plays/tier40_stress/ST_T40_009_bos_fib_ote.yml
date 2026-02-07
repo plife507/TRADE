@@ -47,6 +47,7 @@ structures:
       params:
         levels: [0.618, 0.786]
         mode: retracement
+        use_paired_anchor: false
 
 actions:
   entry_long:

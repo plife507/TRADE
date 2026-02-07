@@ -90,6 +90,7 @@ structures:
       params:
         levels: [0.382, 0.5, 0.618]
         mode: retracement
+        use_paired_anchor: false
     - type: derived_zone
       key: fib_zones
       uses: swing
@@ -98,6 +99,7 @@ structures:
         mode: retracement
         max_active: 3
         width_pct: 0.005
+        use_paired_source: false
     - type: rolling_window
       key: rolling_high_20
       params:

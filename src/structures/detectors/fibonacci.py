@@ -5,11 +5,24 @@ Computes Fibonacci levels from swing high/low points provided by
 a swing detector dependency. Levels are recalculated only when the
 swing points change, ensuring O(1) per-bar updates in most cases.
 
-Paired Anchoring (Recommended):
-    By default, fib uses the LATEST high_level and low_level from the swing
-    detector, which may come from different swing sequences. For coherent
-    fib anchoring, use `use_paired_anchor: true` to anchor to a COMPLETE
-    swing pair (L->H for bullish, H->L for bearish).
+Anchoring Modes:
+
+    Paired Anchoring (Default):
+        Anchors to COMPLETE swing pairs (L->H for bullish, H->L for bearish).
+        The high and low come from the same swing sequence, ensuring no
+        inversions. Set `use_paired_anchor: false` for legacy unpaired mode.
+
+    Trend-Wave Anchoring:
+        Uses a trend detector dependency to determine anchor meaning.
+        In uptrend: anchors to the latest paired swing high/low (HH/HL).
+        In downtrend: anchors to the latest paired swing high/low (LH/LL).
+        When ranging (direction=0), keeps last known anchors frozen.
+        Set `use_trend_anchor: true` + add trend to `uses:`.
+
+    Raw Unpaired (Legacy):
+        Uses the latest independent high_level/low_level from the swing
+        detector, which may come from different swing sequences. Can produce
+        inverted anchors (high < low). Set `use_paired_anchor: false`.
 
 Level Calculation (Unified Formula):
     All levels use: level = high - (ratio x range)
@@ -41,14 +54,13 @@ Usage in Play:
           key: pivots
           params: { left: 5, right: 5 }
 
-        # Entry zones (retracement)
+        # Entry zones (retracement) - paired anchor is default
         - type: fibonacci
           key: fib_entry
           uses: pivots
           params:
             levels: [0.382, 0.5, 0.618]
             mode: retracement
-            use_paired_anchor: true
 
         # Profit targets (auto-direction based on swing)
         - type: fibonacci
@@ -57,28 +69,32 @@ Usage in Play:
           params:
             levels: [0.272, 0.618, 1.0]  # Will become 1.272, 1.618, 2.0 for bearish
             mode: extension              # or -0.272, -0.618, -1.0 for bullish
-            use_paired_anchor: true
 
-        # Or explicit negative levels for long targets
-        - type: fibonacci
-          key: fib_long_targets
+        # Trend-wave anchoring (ICT/SMC style)
+        - type: trend
+          key: trend
           uses: pivots
+        - type: fibonacci
+          key: fib_trend
+          uses: [pivots, trend]
           params:
-            levels: [-0.272, -0.618, -1.0]  # Above high
-            mode: retracement  # Unified formula handles negative ratios
-            use_paired_anchor: true
+            levels: [0.618, 0.705, 0.786]
+            mode: retracement
+            use_trend_anchor: true
 
 Access in rules:
     condition: close < structure.fib_entry.level_0.618
     condition: close > structure.fib_targets.level_0.272
     condition: structure.fib_entry.anchor_direction == "bullish"
+    condition: structure.fib_trend.anchor_trend_direction == 1
 
 Anchor Outputs (always available):
     anchor_high: The swing high price (0% reference)
     anchor_low: The swing low price (100% reference)
     range: The price range (high - low)
-    anchor_direction: "bullish", "bearish", or "" (paired mode only)
+    anchor_direction: "bullish", "bearish", or "" (paired/trend mode)
     anchor_hash: Unique hash identifying the anchor pair (paired mode only)
+    anchor_trend_direction: Trend direction at anchor time (0 if not trend mode)
 
 See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 """
@@ -102,7 +118,7 @@ class IncrementalFibonacci(BaseIncrementalDetector):
     Levels are only recalculated when swing points change.
 
     Parameters:
-        levels: List of Fibonacci ratios (must be non-empty, positive numbers).
+        levels: List of Fibonacci ratios (must be non-empty, numbers).
                 Retracement: [0.236, 0.382, 0.5, 0.618, 0.786]
                 Extension up: [1.272, 1.618, 2.0, 2.618]
                 Extension down: [0.272, 0.618] (projected below low)
@@ -110,14 +126,19 @@ class IncrementalFibonacci(BaseIncrementalDetector):
               - "retracement" (default): Levels between high and low
               - "extension_up" or "extension": Levels above swing high
               - "extension_down": Levels below swing low
-        use_paired_anchor: If true, only anchor to COMPLETE swing pairs
-                          (L->H for bullish, H->L for bearish). This ensures
-                          the high and low come from the same swing sequence.
-                          Default: false (uses latest individual pivots).
+        use_paired_anchor: Anchor to COMPLETE swing pairs (L->H for bullish,
+                          H->L for bearish). Default: true (recommended).
+                          Set false for legacy unpaired mode.
+        use_trend_anchor: Anchor based on trend direction from a trend
+                         dependency. Requires `uses: [swing_key, trend_key]`.
+                         Mutually exclusive with use_paired_anchor.
+                         Default: false.
 
     Dependencies:
-        swing: A swing detector instance providing high_level, high_idx,
+        swing: A swing detector providing high_level, high_idx,
                low_level, low_idx, and pair_* outputs.
+        trend: (optional) A trend detector providing direction and version.
+               Required when use_trend_anchor=true.
 
     Outputs:
         Dynamic level outputs based on levels parameter:
@@ -129,16 +150,12 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         - range: The price range (high - low)
         - anchor_direction: "bullish", "bearish", or "" (empty if unpaired mode)
         - anchor_hash: Unique hash of anchor pair (empty if unpaired mode)
+        - anchor_trend_direction: Trend direction at anchor (0 if not trend mode)
 
     Formulas:
         retracement:    level = high - (ratio x range)
         extension_up:   level = high + (ratio x range)
         extension_down: level = low - (ratio x range)
-
-    Trading Application:
-        - Retracement levels (38.2%, 50%, 61.8%): Entry zones in pullbacks
-        - Extension up (127.2%, 161.8%): Long profit targets
-        - Extension down (27.2%, 61.8%): Short profit targets
 
     Performance:
         - update(): O(k) where k = number of levels (only when swings change)
@@ -154,8 +171,13 @@ class IncrementalFibonacci(BaseIncrementalDetector):
     """
 
     REQUIRED_PARAMS: list[str] = ["levels"]
-    OPTIONAL_PARAMS: dict[str, Any] = {"mode": "retracement", "use_paired_anchor": False}
+    OPTIONAL_PARAMS: dict[str, Any] = {
+        "mode": "retracement",
+        "use_paired_anchor": True,
+        "use_trend_anchor": False,
+    }
     DEPENDS_ON: list[str] = ["swing"]
+    OPTIONAL_DEPS: list[str] = ["trend"]
 
     # Valid modes for Fibonacci calculation
     # - retracement: level = high - (ratio x range) - works with any ratio
@@ -210,7 +232,10 @@ class IncrementalFibonacci(BaseIncrementalDetector):
             )
 
         # Validate extension mode requires paired anchor
-        if mode == "extension" and not params.get("use_paired_anchor", False):
+        use_paired = params.get("use_paired_anchor", True)
+        use_trend = params.get("use_trend_anchor", False)
+
+        if mode == "extension" and not use_paired and not use_trend:
             raise ValueError(
                 f"Structure '{key}': mode='extension' requires use_paired_anchor=true\n"
                 f"\n"
@@ -229,6 +254,17 @@ class IncrementalFibonacci(BaseIncrementalDetector):
                 f"  mode: extension_down  # Always below low"
             )
 
+        # Validate mutual exclusivity of trend and paired anchor
+        if use_trend and use_paired:
+            raise ValueError(
+                f"Structure '{key}': use_trend_anchor and use_paired_anchor "
+                f"are mutually exclusive\n"
+                f"\n"
+                f"use_trend_anchor implies paired anchoring internally.\n"
+                f"Fix: Set use_paired_anchor: false when using "
+                f"use_trend_anchor: true"
+            )
+
     def __init__(
         self,
         params: dict[str, Any],
@@ -238,20 +274,40 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         Initialize Fibonacci detector.
 
         Args:
-            params: Dict with levels, optional mode, and optional use_paired_anchor.
-            deps: Dict containing 'swing' dependency.
+            params: Dict with levels, optional mode, use_paired_anchor, use_trend_anchor.
+            deps: Dict containing 'swing' dependency and optionally 'trend'.
         """
         self.swing = deps["swing"]
         self.levels: list[float] = [float(lvl) for lvl in params["levels"]]
         self.mode: str = params.get("mode", "retracement")
-        self.use_paired_anchor: bool = params.get("use_paired_anchor", False)
+        self.use_trend_anchor: bool = params.get("use_trend_anchor", False)
+        self.use_paired_anchor: bool = params.get("use_paired_anchor", True)
+
+        if self.use_trend_anchor and self.use_paired_anchor:
+            raise ValueError(
+                "use_trend_anchor and use_paired_anchor are mutually exclusive. "
+                "use_trend_anchor implies paired anchoring internally."
+            )
+
+        # Trend anchor setup
+        if self.use_trend_anchor:
+            if "trend" not in deps:
+                raise ValueError(
+                    "use_trend_anchor=true requires a trend dependency.\n"
+                    "Fix: uses: [<swing_key>, <trend_key>]"
+                )
+            self.trend = deps["trend"]
+            self._last_trend_version: int = -1
+            self._last_trend_pair_version: int = -1
+        else:
+            self.trend = None
 
         # Note: 'extension' mode is NOT normalized - it uses direction-aware logic
         # in _compute_levels() that determines bullish (above high) vs bearish
         # (below low) based on pair_direction from the swing detector.
 
         # Level values storage: keyed by formatted level string
-        self._values: dict[str, float | str] = {}
+        self._values: dict[str, float | str | int] = {}
 
         # Initialize level outputs with NaN values
         for lvl in self.levels:
@@ -264,6 +320,7 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         self._values["range"] = float("nan")
         self._values["anchor_direction"] = ""  # "bullish", "bearish", or ""
         self._values["anchor_hash"] = ""       # Hash from swing pair
+        self._values["anchor_trend_direction"] = 0  # Trend direction at anchor
 
         # Track last known swing state to detect changes
         # For unpaired mode: track individual pivot indices
@@ -293,14 +350,24 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         """
         Process one bar, recalculating levels if swings changed.
 
-        In unpaired mode: Checks if high_idx or low_idx has changed.
+        In trend mode: Checks if trend version or pair_version changed.
         In paired mode: Checks if pair_version has changed.
+        In unpaired mode: Checks if high_idx or low_idx has changed.
 
         Args:
             bar_idx: Current bar index.
             bar: Bar data (not directly used, but required by interface).
         """
-        if self.use_paired_anchor:
+        if self.use_trend_anchor:
+            # Trend-wave mode: recalculate when trend or pair changes
+            current_trend_version = self.trend.get_value("version")
+            current_pair_version = self.swing.get_value("pair_version")
+            if (current_trend_version != self._last_trend_version or
+                    current_pair_version != self._last_trend_pair_version):
+                self._recalculate_trend_anchored()
+                self._last_trend_version = current_trend_version
+                self._last_trend_pair_version = current_pair_version
+        elif self.use_paired_anchor:
             # Paired mode: only recalculate when a complete pair forms
             current_pair_version = self.swing.get_value("pair_version")
             if current_pair_version != self._last_pair_version:
@@ -374,6 +441,35 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         # Compute each level based on mode (pass direction for extension mode)
         self._compute_levels(high, low, range_val, direction)
 
+    def _recalculate_trend_anchored(self) -> None:
+        """
+        Recalculate Fibonacci levels using trend-wave anchoring.
+
+        Uses the trend detector's direction to contextualize the paired swing
+        anchors. When direction=0 (ranging), keeps the last known anchors
+        frozen to avoid flickering.
+        """
+        direction = self.trend.get_value("direction")
+        if direction == 0:
+            return  # Ranging — keep last known anchors
+
+        high = self.swing.get_value("pair_high_level")
+        low = self.swing.get_value("pair_low_level")
+
+        if math.isnan(high) or math.isnan(low):
+            return
+
+        range_val = high - low
+        self._values["anchor_high"] = high
+        self._values["anchor_low"] = low
+        self._values["range"] = range_val
+        self._values["anchor_trend_direction"] = direction
+        self._values["anchor_direction"] = "bullish" if direction == 1 else "bearish"
+        self._values["anchor_hash"] = ""
+
+        self._compute_levels(high, low, range_val,
+                             "bullish" if direction == 1 else "bearish")
+
     def _compute_levels(
         self, high: float, low: float, range_val: float, direction: str = ""
     ) -> None:
@@ -438,10 +534,13 @@ class IncrementalFibonacci(BaseIncrementalDetector):
             List of all output keys.
         """
         level_keys = [self._format_level_key(lvl) for lvl in self.levels]
-        anchor_keys = ["anchor_high", "anchor_low", "range", "anchor_direction", "anchor_hash"]
+        anchor_keys = [
+            "anchor_high", "anchor_low", "range",
+            "anchor_direction", "anchor_hash", "anchor_trend_direction",
+        ]
         return level_keys + anchor_keys
 
-    def get_value(self, key: str) -> float | str:
+    def get_value(self, key: str) -> float | str | int:
         """
         Get output by key.
 
@@ -449,7 +548,8 @@ class IncrementalFibonacci(BaseIncrementalDetector):
             key: Level key (e.g., 'level_0.618') or anchor key.
 
         Returns:
-            Current level price (float), direction (str), or hash (str).
+            Current level price (float), direction (str), hash (str),
+            or trend direction (int).
             Returns NaN for numeric keys if not yet calculated.
             Returns "" for string keys if not yet available.
 

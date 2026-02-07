@@ -43,6 +43,7 @@ structures:
         mode: retracement
         max_active: 3
         width_pct: 0.005
+        use_paired_source: false
 
 actions:
   entry_short:

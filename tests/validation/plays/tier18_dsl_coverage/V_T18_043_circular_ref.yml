@@ -55,11 +55,13 @@ structures:
       uses: swing
       params:
         levels: [0.382, 0.5, 0.618]
+        use_paired_anchor: false
     - type: derived_zone
       key: zones
       uses: swing
       params:
         levels: [0.382, 0.5, 0.618]
+        use_paired_source: false
         max_active: 3
         mode: retracement
 
