@@ -1,0 +1,47 @@
+version: "3.0.0"
+name: "V_T21_002_bbands"
+description: "Validate Bollinger Bands - band squeeze and breakout"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  bbands:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+actions:
+  entry_long:
+    all:
+      - ["close", "cross_above", "bbands.upper"]
+      - ["bbands.bandwidth", ">", 0.05]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+
+validation:
+  expect_entries: [5, 50]
+  expect_direction: "long"

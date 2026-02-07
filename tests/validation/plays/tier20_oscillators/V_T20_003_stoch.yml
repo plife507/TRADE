@@ -1,0 +1,48 @@
+version: "3.0.0"
+name: "V_T20_003_stoch"
+description: "Validate Stochastic oscillator - %K/%D crossover"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  stoch:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+
+actions:
+  entry_long:
+    all:
+      - ["stoch.k", "cross_above", "stoch.d"]
+      - ["stoch.k", "<", 30]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+
+validation:
+  expect_entries: [5, 50]
+  expect_direction: "long"

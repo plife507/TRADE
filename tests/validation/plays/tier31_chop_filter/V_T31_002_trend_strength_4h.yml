@@ -1,0 +1,66 @@
+version: "3.0.0"
+name: "V_T31_002_trend_strength_4h"
+description: "Trend strength >= 1 on 4h - filter weak/uncertain trends"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 3102
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "4h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+  med_tf:
+    "4h":
+      - type: swing
+        key: swing_4h
+        params:
+          left: 3
+          right: 3
+      - type: trend
+        key: trend_4h
+        uses: swing_4h
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
+      - ["med_tf_4h.trend_4h.direction", "==", 1]
+      - ["med_tf_4h.trend_4h.strength", ">=", 1]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

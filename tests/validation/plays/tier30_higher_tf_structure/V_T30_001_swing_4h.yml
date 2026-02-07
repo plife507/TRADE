@@ -1,0 +1,59 @@
+version: "3.0.0"
+name: "V_T30_001_swing_4h"
+description: "Validate swing detection on 4h medium timeframe - valid pivots"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 3001
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "4h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+  med_tf:
+    "4h":
+      - type: swing
+        key: swing_4h
+        params:
+          left: 3
+          right: 3
+
+actions:
+  entry_long:
+    all:
+      - ["med_tf_4h.swing_4h.low_level", ">", 0]
+      - ["med_tf_4h.swing_4h.version", ">", 0]
+      - ["close", ">", "med_tf_4h.swing_4h.low_level"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

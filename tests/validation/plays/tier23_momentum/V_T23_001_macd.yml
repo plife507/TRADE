@@ -1,0 +1,53 @@
+version: "3.0.0"
+name: "V_T23_001_macd"
+description: "Validate MACD - moving average convergence divergence crossover"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  macd:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+actions:
+  entry_long:
+    all:
+      - ["macd.macd", "cross_above", "macd.signal"]
+      - ["macd.histogram", ">", 0]
+      - ["close", ">", "ema_50"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+
+validation:
+  expect_entries: [5, 50]
+  expect_direction: "long"

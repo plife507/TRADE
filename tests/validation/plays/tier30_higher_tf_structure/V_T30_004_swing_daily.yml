@@ -1,0 +1,59 @@
+version: "3.0.0"
+name: "V_T30_004_swing_daily"
+description: "Validate swing detection on daily timeframe"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 200
+  seed: 3004
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "4h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+  high_tf:
+    "D":
+      - type: swing
+        key: swing_d
+        params:
+          left: 3
+          right: 3
+
+actions:
+  entry_long:
+    all:
+      - ["high_tf_D.swing_d.low_level", ">", 0]
+      - ["high_tf_D.swing_d.version", ">", 0]
+      - ["close", ">", "high_tf_D.swing_d.low_level"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

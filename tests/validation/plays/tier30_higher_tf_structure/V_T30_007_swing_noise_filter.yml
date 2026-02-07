@@ -1,0 +1,65 @@
+version: "3.0.0"
+name: "V_T30_007_swing_noise_filter"
+description: "Gate 1: min_atr_move on 4h - swings must exceed ATR threshold"
+
+synthetic:
+  pattern: "choppy_range"
+  bars: 200
+  seed: 3007
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "4h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  atr_14_4h:
+    indicator: atr
+    timeframe: "4h"
+    params:
+      length: 14
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+  med_tf:
+    "4h":
+      - type: swing
+        key: swing_4h
+        params:
+          left: 3
+          right: 3
+          min_atr_move: 1.0
+          atr_key: atr_14_4h
+
+actions:
+  entry_long:
+    all:
+      - ["med_tf_4h.swing_4h.low_level", ">", 0]
+      - ["close", ">", "ema_9"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

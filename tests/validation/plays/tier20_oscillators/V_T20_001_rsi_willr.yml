@@ -1,0 +1,50 @@
+version: "3.0.0"
+name: "V_T20_001_rsi_willr"
+description: "Validate RSI/Williams %R - momentum oscillators overbought/oversold"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  willr_14:
+    indicator: willr
+    params:
+      length: 14
+
+actions:
+  entry_long:
+    all:
+      - ["rsi_14", "<", 35]
+      - ["willr_14", "<", -80]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+
+validation:
+  expect_entries: [1, 30]
+  expect_direction: "long"

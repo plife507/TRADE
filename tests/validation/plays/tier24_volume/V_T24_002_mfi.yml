@@ -1,0 +1,50 @@
+version: "3.0.0"
+name: "V_T24_002_mfi"
+description: "Validate MFI - money flow index volume-weighted RSI"
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+date_range:
+  start: "2024-01-10"
+  end: "2024-03-14"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  mfi_14:
+    indicator: mfi
+    params:
+      length: 14
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+actions:
+  entry_long:
+    all:
+      - ["mfi_14", "<", 25]
+      - ["close", ">", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+
+validation:
+  expect_entries: [1, 30]
+  expect_direction: "long"
