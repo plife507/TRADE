@@ -21,7 +21,7 @@ symbol: "BTCUSDT"
 timeframes:
   low_tf: "5m"      # Fast execution for scalping
   med_tf: "1h"      # Structure context
-  high_tf: "4h"     # Trend filter
+  high_tf: "4h"     # Trend filter (4h EMAs actively used in entry rules)
   exec: "low_tf"    # Step on 5m bars
 
 account:

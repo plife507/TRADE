@@ -20,7 +20,7 @@ symbol: "ETHUSDT"
 timeframes:
   low_tf: "5m"
   med_tf: "1h"
-  high_tf: "4h"
+  high_tf: "D"
   exec: "low_tf"
 
 account:
