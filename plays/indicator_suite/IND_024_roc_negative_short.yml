@@ -1,0 +1,43 @@
+version: "3.0.0"
+name: "ind_024_roc_negative_short"
+description: |
+  Indicator Suite - ROC 10 negative rate of change - momentum down
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  roc_10:
+    indicator: roc
+    params: {length: 10}
+structures:
+  exec: []
+
+actions:
+  entry_short:
+    all:
+      - ["roc_10", "<", 0]
+position_policy:
+  mode: "short_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

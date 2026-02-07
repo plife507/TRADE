@@ -1,0 +1,86 @@
+version: "3.0.0"
+name: "CL_007_trend_wave_short"
+description: |
+  Complexity Ladder 60% - Trend Wave Trader (Short-Only)
+  Five indicators plus swing + trend structure detectors, short_only mode.
+  Entry short: trend direction == -1 AND supertrend direction == -1
+  AND ema_9 cross_below ema_21 AND rsi > 35.
+  Exit: trend reversal OR supertrend flip OR EMA cross up.
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params:
+        left: 5
+        right: 5
+    - type: trend
+      key: trend
+      uses: swing
+      params: {}
+
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  supertrend_10_3:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+
+actions:
+  entry_short:
+    all:
+      - ["trend.direction", "==", -1]
+      - ["supertrend_10_3.direction", "==", -1]
+      - ["ema_9", "cross_below", "ema_21"]
+      - ["rsi_14", ">", 35]
+
+  exit_short:
+    any:
+      - ["trend.direction", "==", 1]
+      - ["supertrend_10_3.direction", "==", 1]
+      - ["ema_9", "cross_above", "ema_21"]
+
+position_policy:
+  mode: short_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0

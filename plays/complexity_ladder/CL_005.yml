@@ -1,0 +1,83 @@
+version: "3.0.0"
+name: "CL_005_macd_stoch_short"
+description: |
+  Complexity Ladder 40% - MACD + Stochastic Short-Only
+  Six indicators across multiple timeframes, short_only mode.
+  Entry short: MACD cross below signal AND stoch K cross below D
+  AND close < ema_200 AND ADX > 20.
+  Exit: MACD cross above signal OR stoch oversold.
+  L2 token (OP) with higher leverage.
+
+symbol: "OPUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 5000.0
+  max_leverage: 3.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+
+  stoch_14_3_3:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+
+  ema_200:
+    indicator: ema
+    params:
+      length: 200
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+actions:
+  entry_short:
+    all:
+      - ["macd_12_26_9.macd", "cross_below", "macd_12_26_9.signal"]
+      - ["stoch_14_3_3.k", "cross_below", "stoch_14_3_3.d"]
+      - ["close", "<", "ema_200"]
+      - ["adx_14.adx", ">", 20]
+
+  exit_short:
+    any:
+      - ["macd_12_26_9.macd", "cross_above", "macd_12_26_9.signal"]
+      - ["stoch_14_3_3.k", "<", 20]
+
+position_policy:
+  mode: short_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.5
+  take_profit_pct: 7.0

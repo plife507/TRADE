@@ -254,14 +254,22 @@ class SizingModel:
         model = self._config.sizing_model
 
         if model == "percent_equity":
-            return self._size_percent_equity(equity, used_margin)
+            result = self._size_percent_equity(equity, used_margin)
         elif model == "risk_based":
-            return self._size_risk_based(equity, entry_price, stop_loss, used_margin)
+            result = self._size_risk_based(equity, entry_price, stop_loss, used_margin)
         elif model in ("fixed_usdt", "fixed_notional"):
-            return self._size_fixed_notional(equity, requested_size)
+            result = self._size_fixed_notional(equity, requested_size)
         else:
             # Default to percent_equity for unknown models
-            return self._size_percent_equity(equity, used_margin)
+            result = self._size_percent_equity(equity, used_margin)
+
+        # Hard ceiling: prevent float overflow from compounding equity
+        _MAX_NOTIONAL = 1e15
+        if result.size_usdt > _MAX_NOTIONAL:
+            result.size_usdt = _MAX_NOTIONAL
+            result.was_capped = True
+
+        return result
 
     def _size_percent_equity(self, equity: float, used_margin: float = 0.0) -> SizingResult:
         """

@@ -1,0 +1,47 @@
+version: "3.0.0"
+name: "CL_001_bare_minimum"
+description: |
+  Complexity Ladder 0% - Bare Minimum Play
+  Single indicator (EMA 50), single timeframe, long-only.
+  Entry: close > ema_50. Exit: close < ema_50.
+  Fixed percentage SL/TP.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "1h"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "ema_50"]
+
+  exit_long:
+    any:
+      - ["close", "<", "ema_50"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0

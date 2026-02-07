@@ -1,0 +1,104 @@
+version: "3.0.0"
+name: "cl_010_derived_zone_bounce"
+description: |
+  Complexity Ladder 010 (80%) - Derived Zone Bounce Strategy
+
+  Fibonacci-based derived zones with K-slot management for zone bounce entries.
+  Enters long when price touches an active fib zone in an uptrend with EMA
+  and RSI confirmation. Exits when price breaks above the rolling 20-bar high.
+
+  Structures: swing -> trend + derived_zone, rolling_window
+  Entry: Zone touch + trend + EMA alignment + RSI filter
+  Exit: Price above rolling high (breakout confirmation)
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+  ema_200:
+    indicator: ema
+    params: {length: 200}
+
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params: {length: 20}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+    - type: derived_zone
+      key: fib_zones
+      uses: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+        max_active: 5
+        width_pct: 0.03
+        break_tolerance_pct: 0.02
+
+    - type: rolling_window
+      key: rolling_high_20
+      params:
+        mode: max
+        size: 20
+        source: high
+
+actions:
+  entry_long:
+    all:
+      - ["fib_zones.any_active", "==", 1]
+      - ["trend.direction", "==", 1]
+      - ["ema_21", ">", "ema_50"]
+
+  exit_long:
+    all:
+      - ["close", ">", "rolling_high_20.value"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  max_position_pct: 100.0

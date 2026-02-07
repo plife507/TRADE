@@ -1,0 +1,56 @@
+version: "3.0.0"
+name: "op_021_variables"
+description: |
+  Operator Suite - Variables (template substitution) test.
+  Uses variables for RSI threshold and SL/TP values.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+variables:
+  rsi_threshold: 45
+  sl: 3.0
+  tp: 6.0
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+structures:
+  exec: []
+
+actions:
+  entry_long:
+    all:
+      - ["rsi_14", "<", 45]
+      - ["close", ">", "ema_50"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

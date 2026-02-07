@@ -404,12 +404,16 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
 
             # Check for zone break
             # Zone breaks when price closes completely beyond boundary
-            break_tol = 1.0 - self.break_tolerance_pct
-            break_tol_upper = 1.0 + self.break_tolerance_pct
-            if price < lower * break_tol:
-                zone["state"] = ZONE_STATE_BROKEN
-            elif price > upper * break_tol_upper:
-                zone["state"] = ZONE_STATE_BROKEN
+            # Skip break check on the creation bar - zones need at least one bar
+            # to become reachable (price is often far from retracement levels
+            # when the swing pair that created them just completed)
+            if zone["anchor_idx"] < bar_idx:
+                break_tol = 1.0 - self.break_tolerance_pct
+                break_tol_upper = 1.0 + self.break_tolerance_pct
+                if price < lower * break_tol:
+                    zone["state"] = ZONE_STATE_BROKEN
+                elif price > upper * break_tol_upper:
+                    zone["state"] = ZONE_STATE_BROKEN
 
     def _get_price(self, bar: "BarData") -> float | None:
         """

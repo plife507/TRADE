@@ -21,6 +21,7 @@ from typing import Any, TYPE_CHECKING
 import yaml
 
 from ..feature_registry import Feature, FeatureType, FeatureRegistry, InputSource
+from ..rules.dsl_parser import _is_enum_literal
 from .config_models import AccountConfig, FeeModel, ExitMode
 from .risk_model import (
     RiskModel,
@@ -186,12 +187,15 @@ def _convert_shorthand_condition(cond: list) -> dict:
 
     # No conversion - symbols are the canonical form
 
+    # Lazy import for bracket normalization (e.g., "level[0.618]" -> "level_0.618")
+    from ..rules.dsl_parser import _normalize_bracket_syntax
+
     # Build lhs
     if isinstance(lhs_raw, str):
         if "." in lhs_raw:
             # Structure field: "swing.high_level"
             parts = lhs_raw.split(".", 1)
-            lhs = {"feature_id": parts[0], "field": parts[1]}
+            lhs = {"feature_id": parts[0], "field": _normalize_bracket_syntax(parts[1])}
         else:
             lhs = {"feature_id": lhs_raw}
     else:
@@ -203,8 +207,8 @@ def _convert_shorthand_condition(cond: list) -> dict:
     elif isinstance(rhs_raw, str):
         if "." in rhs_raw:
             parts = rhs_raw.split(".", 1)
-            rhs = {"feature_id": parts[0], "field": parts[1]}
-        elif rhs_raw.isupper() and rhs_raw.replace("_", "").isalpha():
+            rhs = {"feature_id": parts[0], "field": _normalize_bracket_syntax(parts[1])}
+        elif _is_enum_literal(rhs_raw):
             rhs = rhs_raw
         else:
             rhs = {"feature_id": rhs_raw}
@@ -215,7 +219,10 @@ def _convert_shorthand_condition(cond: list) -> dict:
 
     # Handle tolerance for near_* operators (4th element)
     if len(cond) > 3 and op in ("near_pct", "near_abs"):
-        result["tolerance"] = cond[3]
+        tol = cond[3]
+        if op == "near_pct":
+            tol = tol / 100.0  # Shorthand uses percentage, eval expects ratio (0.5 -> 0.005)
+        result["tolerance"] = tol
 
     return result
 
@@ -267,6 +274,13 @@ def _convert_shorthand_conditions(block_content: dict | list) -> dict:
         return {"any": [_convert_condition_item(c) for c in conditions]}
     elif "not" in block_content:
         inner = block_content["not"]
+        if isinstance(inner, list) and len(inner) > 0 and isinstance(inner[0], list):
+            # YAML block sequence wraps conditions in a list: not: [["rsi", ">", 70]]
+            if len(inner) == 1:
+                return {"not": _convert_condition_item(inner[0])}
+            else:
+                # Multiple conditions under not: wrap in implicit all
+                return {"not": {"all": [_convert_condition_item(c) for c in inner]}}
         return {"not": _convert_condition_item(inner)}
     elif "holds_for" in block_content:
         hf = block_content["holds_for"]

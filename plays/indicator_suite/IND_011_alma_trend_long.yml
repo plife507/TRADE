@@ -1,0 +1,43 @@
+version: "3.0.0"
+name: "ind_011_alma_trend_long"
+description: |
+  Indicator Suite - ALMA 10 smooth trend - Arnaud Legoux moving average
+
+symbol: "SOLUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  alma_10:
+    indicator: alma
+    params: {length: 10, sigma: 6.0, offset: 0.85}
+structures:
+  exec: []
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "alma_10"]
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

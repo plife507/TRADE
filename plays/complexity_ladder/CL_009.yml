@@ -1,0 +1,84 @@
+version: "3.0.0"
+name: "cl_009_fibonacci_ote"
+description: |
+  Complexity Ladder 009 (75%) - Fibonacci OTE Entry Strategy
+
+  Trend-wave anchored fibonacci retracement for Optimal Trade Entry (OTE).
+  Uses the 0.618-0.786 zone as the primary entry area, with trend direction
+  confirming bullish bias and RSI filtering for mean reversion within the
+  fib zone. Long only.
+
+  Structures: swing -> trend -> fibonacci (trend-anchored)
+  Entry long: Price near fib 0.618 level in uptrend
+  Exit: Mechanical SL/TP only
+
+symbol: "ARBUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 5000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+  adx_14:
+    indicator: adx
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+    - type: fibonacci
+      key: fib
+      uses: [swing, trend]
+      params:
+        levels: [0.618, 0.705, 0.786]
+        mode: retracement
+        use_trend_anchor: true
+        use_paired_anchor: false
+
+actions:
+  entry_long:
+    all:
+      - ["trend.direction", "==", 1]
+      - ["close", "near_pct", "fib.level[0.618]", 3]
+      - ["rsi_14", "<", 55]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.5
+  take_profit_pct: 7.0
+  max_position_pct: 100.0

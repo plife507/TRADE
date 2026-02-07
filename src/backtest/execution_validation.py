@@ -594,12 +594,15 @@ def validate_play_features(play: "Play") -> PlayValidationResult:
     for ref in refs:
         key = ref.key
 
+        # Extract base key for dotted/indexed paths (e.g. "ms.bos_this_bar" -> "ms")
+        base_key = key.split(".")[0].split("[")[0] if ("." in key or "[" in key) else key
+
         # Skip structure paths - validated separately by structure block validation
         if key.startswith("structure."):
             continue
 
         # Skip structure keys without prefix (auto-resolved to structure.*)
-        if key in structure_keys:
+        if base_key in structure_keys:
             continue
 
         # Skip built-in price features (last_price, close, etc.)
@@ -607,7 +610,7 @@ def validate_play_features(play: "Play") -> PlayValidationResult:
             continue
 
         # Check feature exists in declared features
-        if key not in exec_features:
+        if base_key not in exec_features:
             issues.append(ValidationIssue(
                 severity=ValidationSeverity.ERROR,
                 code="UNDECLARED_FEATURE",

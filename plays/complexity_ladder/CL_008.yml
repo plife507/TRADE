@@ -1,0 +1,89 @@
+version: "3.0.0"
+name: "cl_008_ict_bos_choch"
+description: |
+  Complexity Ladder 008 (70%) - ICT BOS/CHoCH Strategy
+
+  Market structure break-of-structure entries with change-of-character exits.
+  Uses trend direction as a filter to only take BOS signals in the direction
+  of the established trend. RSI filter prevents entries in overbought/oversold
+  conditions against the trade direction.
+
+  Structures: swing -> market_structure + trend
+  Entry: BOS in trend direction with RSI confirmation
+  Exit: CHoCH reversal signal
+
+symbol: "SOLUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+  adx_14:
+    indicator: adx
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: market_structure
+      key: ms
+      uses: swing
+
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["ms.bos_this_bar", "==", 1]
+      - ["ms.bos_direction", "==", "bullish"]
+      - ["trend.direction", "==", 1]
+      - ["rsi_14", "<", 60]
+
+  exit_long:
+    all:
+      - ["ms.choch_this_bar", "==", 1]
+      - ["ms.choch_direction", "==", "bearish"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

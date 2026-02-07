@@ -1,0 +1,82 @@
+version: "3.0.0"
+name: "CL_004_bb_mean_reversion_mtf"
+description: |
+  Complexity Ladder 30% - BB Mean Reversion Multi-TF
+  Five indicators across multiple timeframes, long-only.
+  Entry: close < bbands lower AND rsi < 35 AND higher timeframe uptrend
+  AND volume spike. Exit: close > bbands middle.
+  L2 token (ARB) with shorter BB period (15).
+
+symbol: "ARBUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 5000.0
+  max_leverage: 2.0
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  bbands_15_2:
+    indicator: bbands
+    params:
+      length: 15
+      std: 2.0
+
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  ema_200_1h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "1h"
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+actions:
+  entry_long:
+    all:
+      - ["close", "<", "bbands_15_2.lower"]
+      - ["rsi_14", "<", 35]
+      - ["ema_50_1h", ">", "ema_200_1h"]
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 1.5
+
+  exit_long:
+    any:
+      - ["close", ">", "bbands_15_2.middle"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 5.0
+
+synthetic:
+  pattern: "ranging"
+  bars: 500
+  seed: 42

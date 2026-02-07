@@ -142,9 +142,13 @@ def parse_arithmetic_operand(data: Any) -> FeatureRef | ScalarValue | Arithmetic
     if is_arithmetic_list(data):
         return parse_arithmetic(data)
 
-    # String → feature_id shorthand
+    # String → feature_id shorthand (split dotted syntax)
     if isinstance(data, str):
-        return FeatureRef(feature_id=data)
+        ref_dict = _string_to_feature_ref_dict(data)
+        return FeatureRef(
+            feature_id=ref_dict["feature_id"],
+            field=ref_dict.get("field", "value"),
+        )
 
     # Dict → full FeatureRef
     if isinstance(data, dict) and "feature_id" in data:
@@ -221,8 +225,12 @@ def parse_feature_ref(data: dict | str) -> FeatureRef:
         FeatureRef node.
     """
     if isinstance(data, str):
-        # Shorthand: just feature_id
-        return FeatureRef(feature_id=data)
+        # Shorthand: split dotted syntax (e.g. "trend.direction" -> feature_id="trend", field="direction")
+        ref_dict = _string_to_feature_ref_dict(data)
+        return FeatureRef(
+            feature_id=ref_dict["feature_id"],
+            field=ref_dict.get("field", "value"),
+        )
 
     if not isinstance(data, dict):
         raise ValueError(f"FeatureRef must be dict or string, got {type(data).__name__}")
@@ -285,6 +293,14 @@ def parse_rhs(data: Any) -> RhsValue:
         # Must be FeatureRef
         if "feature_id" in data:
             return parse_feature_ref(data)
+
+        # Arithmetic dict format: {"+": ["ema_50", "atr_14"]}
+        arith_keys = set(data.keys()) & ARITHMETIC_OPERATORS
+        if arith_keys:
+            op_key = arith_keys.pop()
+            operands = data[op_key]
+            if isinstance(operands, list) and len(operands) == 2:
+                return parse_arithmetic([operands[0], op_key, operands[1]])
 
         raise ValueError(f"Unknown RHS dict format: {data}")
 
