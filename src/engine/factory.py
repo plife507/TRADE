@@ -434,18 +434,27 @@ def create_backtest_engine(
     if play.risk_model and play.risk_model.sizing:
         risk_per_trade_pct = play.risk_model.sizing.value
 
+    # Extract max_leverage from risk_model if present (match factory path)
+    max_leverage = account.max_leverage
+    if play.risk_model and play.risk_model.sizing:
+        if play.risk_model.sizing.max_leverage:
+            max_leverage = play.risk_model.sizing.max_leverage
+
     # Create config using correct PlayEngineConfig field names
     # Note: PlayEngineConfig uses rate (0.0006) not bps (6), so convert
     config = PlayEngineConfig(
         mode="backtest",
         initial_equity=account.starting_equity_usdt,
         risk_per_trade_pct=risk_per_trade_pct,
-        max_leverage=account.max_leverage,
+        max_leverage=max_leverage,
         min_trade_usdt=account.min_trade_notional_usdt,
         taker_fee_rate=account.fee_model.taker_bps / 10000.0,  # Convert bps to rate
         maker_fee_rate=account.fee_model.maker_bps / 10000.0,  # Convert bps to rate
-        slippage_bps=account.slippage_bps,
+        slippage_bps=account.slippage_bps or 2.0,
         persist_state=False,  # Backtest doesn't need state persistence
+        on_sl_beyond_liq="reject",
+        maintenance_margin_rate=0.004,  # Bybit default MMR
+        max_drawdown_pct=getattr(account, 'max_drawdown_pct', 25.0),
     )
 
     # Apply overrides

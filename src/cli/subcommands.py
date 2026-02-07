@@ -418,10 +418,10 @@ def handle_backtest_indicators(args) -> int:
         console.print(f"Play: {data.get('play_id')}")
         console.print(f"Symbol: {data.get('symbol')}")
         console.print(f"Execution timeframe: {data.get('exec_tf')}")
-        if data.get('htf'):
-            console.print(f"Higher timeframe: {data.get('htf')}")
-        if data.get('mtf'):
-            console.print(f"Medium timeframe: {data.get('mtf')}")
+        if data.get('high_tf'):
+            console.print(f"Higher timeframe: {data.get('high_tf')}")
+        if data.get('med_tf'):
+            console.print(f"Medium timeframe: {data.get('med_tf')}")
 
         console.print(f"\n[bold]Declared Keys (from FeatureSpec output_key):[/]")
         for role, keys in data.get("declared_keys_by_role", {}).items():

@@ -13,7 +13,7 @@
 ```
 src/engine/        # ONE unified engine (PlayEngine) for backtest/live
 src/indicators/    # 43 indicators (all incremental O(1))
-src/structures/    # 6 structure types (swing, trend, zone, fib, derived_zone, rolling_window)
+src/structures/    # 7 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure)
 src/backtest/      # Infrastructure only (sim, runtime, features) - NOT an engine
 src/data/          # DuckDB historical data
 src/tools/         # CLI/API surface

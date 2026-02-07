@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from ..runner import TierResult, TierName, TestResult
+from ..test_runner import TierResult, TierName, TestResult
 
 
 def run_all() -> TierResult:

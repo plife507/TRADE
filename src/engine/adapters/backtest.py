@@ -566,6 +566,14 @@ class ShadowExchange:
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
         return []
 
+    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> None:
+        """No-op in shadow mode - no positions to close."""
+        pass
+
+    def get_realized_pnl(self) -> float:
+        """Shadow mode has no realized PnL."""
+        return 0.0
+
     def step(self, candle: Candle) -> None:
         pass  # No-op
 
