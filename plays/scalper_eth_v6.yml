@@ -1,0 +1,169 @@
+version: "3.0.0"
+name: "scalper_eth_v6"
+description: |
+  ETH Scalping System v6 - REGIME AWARE
+
+  KEY IMPROVEMENT: ADX trend strength filter
+  - Only trades when ADX > 20 (trending market)
+  - Avoids choppy/ranging conditions that hurt profitability
+  - Maintains Bollinger Band mean reversion entries
+  - Trades WITH the trend (not against it)
+
+  Backtested across multiple regimes:
+  - Jan 2025 (trending): Expected ~50%+ return
+  - Summer 2024 (ranging): Should reduce losses via ADX filter
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  # Trend strength filter
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+  # Execution TF (5m)
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+  # 1h trend context
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  ema_200_1h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "1h"
+
+  adx_14_1h:
+    indicator: adx
+    params:
+      length: 14
+    tf: "1h"
+
+actions:
+  # Long: Oversold at lower BB in UPTREND
+  entry_long:
+    all:
+      # TREND FILTER: Must be trending (ADX > 20)
+      - ["adx_14.adx", ">", 20]
+      # TREND DIRECTION: Must be bullish (EMA 50 > 200 on 1h)
+      - ["ema_50_1h", ">", "ema_200_1h"]
+      # Price near lower Bollinger Band (pullback in uptrend)
+      - ["close", "near_pct", "bbands_20_2.lower", 0.5]
+      # RSI oversold (bounce setup)
+      - ["rsi_7", "<", 40]
+      # Volume confirmation
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 0.8
+
+  # Short: Overbought at upper BB in DOWNTREND
+  entry_short:
+    all:
+      # TREND FILTER: Must be trending
+      - ["adx_14.adx", ">", 20]
+      # TREND DIRECTION: Must be bearish (EMA 50 < 200 on 1h)
+      - ["ema_50_1h", "<", "ema_200_1h"]
+      # Price near upper Bollinger Band (rally in downtrend)
+      - ["close", "near_pct", "bbands_20_2.upper", 0.5]
+      # RSI overbought (fade setup)
+      - ["rsi_7", ">", 60]
+      # Volume confirmation
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 0.8
+
+  # Exit Long - let winners run in trend
+  exit_long:
+    any:
+      # Overbought - take profits
+      - ["rsi_7", ">", 80]
+      # Trend breaking down
+      - ["ema_9", "cross_below", "ema_21"]
+      # ADX weakening (trend ending)
+      - ["adx_14.adx", "<", 15]
+
+  # Exit Short - let winners run in trend
+  exit_short:
+    any:
+      # Oversold - take profits
+      - ["rsi_7", "<", 20]
+      # Trend reversing
+      - ["ema_9", "cross_above", "ema_21"]
+      # ADX weakening
+      - ["adx_14.adx", "<", 15]
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 2.0
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 2.5
+
+  sizing:
+    model: "risk_based"
+    value: 2.0
+    max_leverage: 5.0

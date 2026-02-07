@@ -1,0 +1,124 @@
+version: "3.0.0"
+name: "scalper_btc_bb_rsi"
+description: |
+  BTC Scalping - Bollinger Band + RSI
+
+  Based on ETH v5 which showed +53.6% in Jan 2025.
+  Long-only with proper account protection.
+
+  Entry: Price near lower BB + RSI < 35 + above 1h 50 EMA
+  Exit: Hit upper BB, overbought RSI, or EMA cross
+
+  $1000, 5x leverage, 50% max drawdown
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  max_drawdown_pct: 50.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+  # 1h trend
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: "1h"
+
+actions:
+  # Long: Oversold at lower BB in uptrend
+  entry_long:
+    all:
+      # Near lower BB (mean reversion)
+      - ["close", "near_pct", "bbands_20_2.lower", 0.3]
+      # RSI oversold
+      - ["rsi_7", "<", 35]
+      # Above 1h 50 EMA (trend support)
+      - ["close", ">", "ema_50_1h"]
+      # 1h RSI not extreme (room to bounce)
+      - ["rsi_14_1h", ">", 30]
+      # Volume OK
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 0.5
+
+  # Exit
+  exit_long:
+    any:
+      # Hit middle/upper band - target reached
+      - ["close", ">", "bbands_20_2.middle"]
+      # Overbought
+      - ["rsi_7", ">", 75]
+      # Momentum reversal
+      - ["ema_9", "cross_below", "ema_21"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 2.0
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+
+  sizing:
+    model: "risk_based"
+    value: 2.0
+    max_leverage: 5.0

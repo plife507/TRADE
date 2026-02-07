@@ -1,0 +1,151 @@
+version: "3.0.0"
+name: "scalper_eth_v7_long"
+description: |
+  ETH Scalping System v7 - LONG ONLY with Account Protection
+
+  CHANGES FROM v6:
+  - LONG ONLY mode (simpler, clearer edge)
+  - Added risk_limits with max_drawdown_pct (50% = $500 max loss)
+  - Increased R:R to 3:1 for better expectancy
+  - Tighter entry conditions for quality over quantity
+
+  Account Protection:
+  - $1000 starting equity
+  - 50% max drawdown ($500 max loss before stopping)
+  - 2% risk per trade ($20)
+  - 5x leverage
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+# ACCOUNT PROTECTION - Stop trading at 50% drawdown
+risk_limits:
+  max_drawdown_pct: 50.0
+
+features:
+  # Trend strength
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+  # 1h trend context
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  ema_200_1h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "1h"
+
+actions:
+  # Long ONLY: Buy dips in uptrend
+  entry_long:
+    all:
+      # TREND: Bullish on 1h (EMA 50 > EMA 200)
+      - ["ema_50_1h", ">", "ema_200_1h"]
+      # TREND STRENGTH: ADX > 20 (trending, not ranging)
+      - ["adx_14.adx", ">", 20]
+      # PULLBACK: Near lower Bollinger Band
+      - ["close", "near_pct", "bbands_20_2.lower", 0.5]
+      # OVERSOLD: RSI below 40
+      - ["rsi_7", "<", 40]
+      # MOMENTUM: EMA 9 still above 21 (dip, not reversal)
+      - ["ema_9", ">", "ema_21"]
+      # VOLUME: Confirmation
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 0.8
+
+  # Exit when momentum exhausted
+  exit_long:
+    any:
+      # RSI overbought - take profits
+      - ["rsi_7", ">", 75]
+      # Momentum reversal
+      - ["ema_9", "cross_below", "ema_21"]
+      # Trend weakening
+      - ["adx_14.adx", "<", 15]
+      # Price hit upper band (target)
+      - ["close", ">", "bbands_20_2.upper"]
+
+position_policy:
+  mode: "long_only"          # LONG ONLY
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 2.0
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 3.0             # 3:1 R:R for better expectancy
+
+  sizing:
+    model: "risk_based"
+    value: 2.0             # 2% of equity at risk per trade
+    max_leverage: 5.0

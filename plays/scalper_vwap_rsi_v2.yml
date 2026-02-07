@@ -1,0 +1,154 @@
+version: "3.0.0"
+name: "scalper_vwap_rsi_v2"
+description: |
+  Professional VWAP + RSI Scalping System v2
+
+  ITERATION 2 CHANGES:
+  - Widened RSI exit thresholds (85/15 vs 80/20) - let winners run
+  - Increased R:R to 2:1 for better expectancy
+  - Loosened volume filter (1.1x vs 1.2x)
+  - Adjusted RSI entry thresholds (40/60 vs 35/65)
+  - Removed 4h trend filter to allow more trades in choppy markets
+  - Added Bollinger Band squeeze filter for better volatility timing
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  # Core scalping indicators (5m)
+  vwap:
+    indicator: vwap
+
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  volume_sma_10:
+    indicator: sma
+    source: volume
+    params:
+      length: 10
+
+  # Bollinger Bands for volatility/squeeze detection
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+  # Medium timeframe context (1h)
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: "1h"
+
+actions:
+  # Long Entry: Oversold bounce above VWAP
+  entry_long:
+    all:
+      # Session bias - only long above VWAP
+      - ["close", ">", "vwap"]
+      # Momentum confirmation
+      - ["ema_9", ">", "ema_21"]
+      # RSI recovering from oversold (looser threshold)
+      - ["rsi_7", "<", 40]
+      # Volume confirmation (slightly looser)
+      - lhs: ["volume", "/", "volume_sma_10"]
+        op: ">"
+        rhs: 1.1
+      # 1h not extremely overbought
+      - ["rsi_14_1h", "<", 75]
+      # Not in extreme volatility (BB bandwidth check)
+      - ["bbands_20_2.bandwidth", "<", 0.08]
+
+  # Short Entry: Overbought rejection below VWAP
+  entry_short:
+    all:
+      # Session bias - only short below VWAP
+      - ["close", "<", "vwap"]
+      # Momentum confirmation
+      - ["ema_9", "<", "ema_21"]
+      # RSI rolling over from overbought (looser threshold)
+      - ["rsi_7", ">", 60]
+      # Volume confirmation
+      - lhs: ["volume", "/", "volume_sma_10"]
+        op: ">"
+        rhs: 1.1
+      # 1h not extremely oversold
+      - ["rsi_14_1h", ">", 25]
+      # Not in extreme volatility
+      - ["bbands_20_2.bandwidth", "<", 0.08]
+
+  # Exit Long: Let winners run longer
+  exit_long:
+    any:
+      # RSI extremely overbought (higher threshold)
+      - ["rsi_7", ">", 85]
+      # Strong momentum reversal - EMA cross
+      - ["ema_9", "cross_below", "ema_21"]
+
+  # Exit Short: Let winners run longer
+  exit_short:
+    any:
+      # RSI extremely oversold
+      - ["rsi_7", "<", 15]
+      # Strong momentum reversal
+      - ["ema_9", "cross_above", "ema_21"]
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 1.5
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0            # Increased from 1.5 to 2.0
+
+  sizing:
+    model: "risk_based"
+    value: 2.0
+    max_leverage: 5.0

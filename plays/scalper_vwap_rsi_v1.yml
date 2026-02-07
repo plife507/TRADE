@@ -1,0 +1,184 @@
+version: "3.0.0"
+name: "scalper_vwap_rsi_v1"
+description: |
+  Professional VWAP + RSI Scalping System
+
+  Strategy Logic:
+  - VWAP provides session bias (only long above, short below)
+  - RSI confirms oversold/overbought for mean reversion entries
+  - EMA 9/21 confirms short-term momentum direction
+  - Volume spike confirms institutional participation
+  - ATR-based stops adapt to current volatility
+
+  Risk Profile:
+  - Starting capital: $1000
+  - Leverage: 5x
+  - Risk per trade: 2% ($20)
+  - Target R:R: 1.5:1 (scalping with higher win rate)
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"      # Fast execution for scalping
+  med_tf: "1h"      # Structure context
+  high_tf: "4h"     # Trend filter
+  exec: "low_tf"    # Step on 5m bars
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0   # Slightly higher for scalping
+
+# =============================================================================
+# INDICATORS
+# =============================================================================
+features:
+  # Execution timeframe (5m) - Entry signals
+  vwap:
+    indicator: vwap
+
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7       # Faster RSI for scalping
+
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  volume_sma_10:
+    indicator: sma
+    source: volume
+    params:
+      length: 10
+
+  # Medium timeframe (1h) - Structure context
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: "1h"
+
+  # Higher timeframe (4h) - Trend filter
+  ema_50_4h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "4h"
+
+  ema_200_4h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "4h"
+
+# =============================================================================
+# TRADING RULES
+# =============================================================================
+actions:
+  # Long Entry: Oversold bounce above VWAP with trend alignment
+  entry_long:
+    all:
+      # Higher timeframe trend filter - must be bullish
+      - ["ema_50_4h", ">", "ema_200_4h"]
+      # Session bias - only long above VWAP
+      - ["close", ">", "vwap"]
+      # Momentum confirmation - 5m EMA alignment
+      - ["ema_9", ">", "ema_21"]
+      # RSI oversold or recovering (mean reversion)
+      - ["rsi_7", "<", 35]
+      # Volume confirmation - spike above average
+      - lhs: ["volume", "/", "volume_sma_10"]
+        op: ">"
+        rhs: 1.2
+      # 1h not extremely overbought (room to run)
+      - ["rsi_14_1h", "<", 70]
+
+  # Short Entry: Overbought rejection below VWAP with trend alignment
+  entry_short:
+    all:
+      # Higher timeframe trend filter - must be bearish
+      - ["ema_50_4h", "<", "ema_200_4h"]
+      # Session bias - only short below VWAP
+      - ["close", "<", "vwap"]
+      # Momentum confirmation - 5m EMA alignment
+      - ["ema_9", "<", "ema_21"]
+      # RSI overbought or rolling over (mean reversion)
+      - ["rsi_7", ">", 65]
+      # Volume confirmation
+      - lhs: ["volume", "/", "volume_sma_10"]
+        op: ">"
+        rhs: 1.2
+      # 1h not extremely oversold
+      - ["rsi_14_1h", ">", 30]
+
+  # Exit Long: Take profit on momentum exhaustion
+  exit_long:
+    any:
+      # RSI extremely overbought - take profits
+      - ["rsi_7", ">", 80]
+      # Momentum loss - EMA cross
+      - ["ema_9", "cross_below", "ema_21"]
+      # Price drops below VWAP - bias shift
+      - ["close", "<", "vwap"]
+
+  # Exit Short: Take profit on momentum exhaustion
+  exit_short:
+    any:
+      # RSI extremely oversold - take profits
+      - ["rsi_7", "<", 20]
+      # Momentum loss - EMA cross
+      - ["ema_9", "cross_above", "ema_21"]
+      # Price rises above VWAP - bias shift
+      - ["close", ">", "vwap"]
+
+# =============================================================================
+# POSITION POLICY
+# =============================================================================
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"   # Signal OR SL/TP - whichever comes first
+  max_positions_per_symbol: 1
+
+# =============================================================================
+# RISK MANAGEMENT
+# =============================================================================
+risk_model:
+  # ATR-based stop loss - adapts to volatility
+  stop_loss:
+    type: "atr_multiple"
+    value: 1.5             # 1.5x ATR (tight for scalping)
+    atr_feature_id: "atr_14"
+
+  # Risk-reward ratio - 1.5:1 (scalping appropriate)
+  take_profit:
+    type: "rr_ratio"
+    value: 1.5
+
+  # Position sizing - risk 2% per trade
+  sizing:
+    model: "risk_based"
+    value: 2.0             # 2% equity at risk
+    max_leverage: 5.0

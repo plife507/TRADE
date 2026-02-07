@@ -1,0 +1,100 @@
+version: "3.0.0"
+name: "scalper_btc_aggressive"
+description: |
+  BTC Scalping - AGGRESSIVE
+
+  Simplified for more trades:
+  - Just BB lower touch + RSI < 40
+  - 1h trend for direction only
+  - Lower volume threshold
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  max_drawdown_pct: 50.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+  # 1h trend
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  ema_200_1h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "1h"
+
+actions:
+  # Long: Touch lower BB with RSI confirmation
+  entry_long:
+    all:
+      # 1h uptrend
+      - ["ema_50_1h", ">", "ema_200_1h"]
+      # Price touches/near lower BB (wider tolerance)
+      - ["close", "<", "bbands_20_2.lower"]
+      # RSI oversold-ish
+      - ["rsi_14", "<", 45]
+
+  # Exit at middle band or EMA cross
+  exit_long:
+    any:
+      - ["close", ">", "bbands_20_2.middle"]
+      - ["rsi_14", ">", 65]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 2.0
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+
+  sizing:
+    model: "risk_based"
+    value: 2.0
+    max_leverage: 5.0

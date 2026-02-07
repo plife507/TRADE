@@ -1,0 +1,110 @@
+version: "3.0.0"
+name: "scalper_btc_final"
+description: |
+  BTC Scalping - FINAL SIMPLIFIED VERSION
+
+  Simple pullback entry in uptrend:
+  - 1h trend filter (EMA 50 > 200)
+  - RSI oversold bounce (cross above 30)
+  - Volume confirmation
+  - ATR stops with 2:1 R:R
+
+  $1000 account, 5x leverage, 50% max drawdown protection
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  max_drawdown_pct: 50.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+  # 1h trend
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  ema_200_1h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "1h"
+
+actions:
+  # Simple: RSI crosses above 30 (oversold recovery) in uptrend
+  entry_long:
+    all:
+      # 1h uptrend
+      - ["ema_50_1h", ">", "ema_200_1h"]
+      # RSI crossing up from oversold
+      - ["rsi_14", "cross_above", 30]
+      # Volume confirmation
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 1.0
+
+  # Exit on overbought or EMA cross
+  exit_long:
+    any:
+      - ["rsi_14", ">", 70]
+      - ["ema_20", "cross_below", "ema_50"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 2.0
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+
+  sizing:
+    model: "risk_based"
+    value: 2.0
+    max_leverage: 5.0

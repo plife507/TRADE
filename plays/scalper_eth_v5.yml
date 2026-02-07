@@ -1,0 +1,167 @@
+version: "3.0.0"
+name: "scalper_eth_v5"
+description: |
+  ETH Scalping System v5
+
+  SIMPLIFIED APPROACH (no VWAP dependency due to anchoring issues):
+  - EMA 9/21 for momentum direction
+  - RSI for overbought/oversold
+  - Bollinger Bands for mean reversion zones
+  - Volume confirmation
+  - ATR-based risk management
+
+  Designed for ranging/pullback markets.
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  # Execution TF (5m)
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+  # 1h trend context
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  ema_200_1h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "1h"
+
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: "1h"
+
+actions:
+  # Long: Oversold at lower BB with trend support
+  entry_long:
+    all:
+      # Price near lower Bollinger Band (within 0.3%)
+      - ["close", "near_pct", "bbands_20_2.lower", 0.3]
+      # RSI oversold or recovering
+      - ["rsi_7", "<", 35]
+      # 1h trend support (above 1h 50 EMA)
+      - ["close", ">", "ema_50_1h"]
+      # 1h RSI not extremely oversold (avoid catching knives)
+      - ["rsi_14_1h", ">", 30]
+      # Volume confirmation
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 1.0
+
+  # Short: Overbought at upper BB with trend support
+  entry_short:
+    all:
+      # Price near upper Bollinger Band
+      - ["close", "near_pct", "bbands_20_2.upper", 0.3]
+      # RSI overbought
+      - ["rsi_7", ">", 65]
+      # 1h trend support (below 1h 50 EMA)
+      - ["close", "<", "ema_50_1h"]
+      # 1h RSI not extremely overbought
+      - ["rsi_14_1h", "<", 70]
+      # Volume confirmation
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 1.0
+
+  # Exit Long
+  exit_long:
+    any:
+      # Price reaches middle/upper band
+      - ["close", ">", "bbands_20_2.middle"]
+      # RSI overbought
+      - ["rsi_7", ">", 75]
+      # Momentum reversal
+      - ["ema_9", "cross_below", "ema_21"]
+
+  # Exit Short
+  exit_short:
+    any:
+      # Price reaches middle/lower band
+      - ["close", "<", "bbands_20_2.middle"]
+      # RSI oversold
+      - ["rsi_7", "<", 25]
+      # Momentum reversal
+      - ["ema_9", "cross_above", "ema_21"]
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 2.0
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+
+  sizing:
+    model: "risk_based"
+    value: 2.0
+    max_leverage: 5.0

@@ -1,0 +1,144 @@
+version: "3.0.0"
+name: "scalper_vwap_rsi_v4"
+description: |
+  Professional VWAP + RSI Scalping System v4
+
+  ITERATION 4 - QUALITY OVER QUANTITY:
+  - RSI CROSSOVER signals (not just thresholds) for entry timing
+  - Stricter volume requirement (1.5x average)
+  - Added occurred_within to confirm recent oversold/overbought
+  - Wider stops (2x ATR) to avoid noise
+  - Higher R:R (2.5:1) for better expectancy
+  - Only trade when price has structure (near VWAP)
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  vwap:
+    indicator: vwap
+
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+
+  # 1h trend
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+actions:
+  # Long Entry: Oversold recovery with RSI crossover
+  entry_long:
+    all:
+      # Session/trend bias - above VWAP and 50 EMA
+      - ["close", ">", "vwap"]
+      - ["close", ">", "ema_50"]
+      # Momentum aligned
+      - ["ema_9", ">", "ema_21"]
+      # RSI crossing up from oversold (the key timing signal)
+      - ["rsi_7", "cross_above", 30]
+      # Strong volume confirmation (institutional)
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 1.5
+      # Price near VWAP (within 0.5% - mean reversion zone)
+      - ["close", "near_pct", "vwap", 0.5]
+
+  # Short Entry: Overbought rejection with RSI crossover
+  entry_short:
+    all:
+      # Session/trend bias - below VWAP and 50 EMA
+      - ["close", "<", "vwap"]
+      - ["close", "<", "ema_50"]
+      # Momentum aligned
+      - ["ema_9", "<", "ema_21"]
+      # RSI crossing down from overbought (the key timing signal)
+      - ["rsi_7", "cross_below", 70]
+      # Strong volume confirmation
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 1.5
+      # Price near VWAP (within 0.5%)
+      - ["close", "near_pct", "vwap", 0.5]
+
+  # Exit Long: Momentum exhaustion
+  exit_long:
+    any:
+      - ["rsi_7", ">", 75]
+      - ["ema_9", "cross_below", "ema_21"]
+
+  # Exit Short: Momentum exhaustion
+  exit_short:
+    any:
+      - ["rsi_7", "<", 25]
+      - ["ema_9", "cross_above", "ema_21"]
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 2.0           # Wider stops to avoid noise
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 2.5           # Better R:R for positive expectancy
+
+  sizing:
+    model: "risk_based"
+    value: 2.0
+    max_leverage: 5.0

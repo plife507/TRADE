@@ -1,0 +1,125 @@
+version: "3.0.0"
+name: "scalper_vwap_rsi_v3"
+description: |
+  Professional VWAP + RSI Scalping System v3
+
+  ITERATION 3 - SIMPLIFIED FOR MORE TRADES:
+  - Removed Bollinger Band filter (was too restrictive)
+  - Simplified conditions - just VWAP bias + RSI + EMA alignment
+  - More aggressive RSI thresholds (45/55)
+  - Removed 1h RSI filter
+  - Focus: More trades, let ATR stops and R:R do the work
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  vwap:
+    indicator: vwap
+
+  rsi_7:
+    indicator: rsi
+    params:
+      length: 7
+
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+
+  volume_sma_10:
+    indicator: sma
+    source: volume
+    params:
+      length: 10
+
+  # 1h trend filter
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+actions:
+  # Long Entry: VWAP bias + momentum + not overbought
+  entry_long:
+    all:
+      # Session bias - above VWAP
+      - ["close", ">", "vwap"]
+      # Momentum alignment
+      - ["ema_9", ">", "ema_21"]
+      # RSI not overbought (room to run)
+      - ["rsi_7", "<", 55]
+      # Above 1h EMA for trend support
+      - ["close", ">", "ema_50_1h"]
+
+  # Short Entry: VWAP bias + momentum + not oversold
+  entry_short:
+    all:
+      # Session bias - below VWAP
+      - ["close", "<", "vwap"]
+      # Momentum alignment
+      - ["ema_9", "<", "ema_21"]
+      # RSI not oversold (room to drop)
+      - ["rsi_7", ">", 45]
+      # Below 1h EMA for trend support
+      - ["close", "<", "ema_50_1h"]
+
+  # Exit Long: Momentum reversal or extreme overbought
+  exit_long:
+    any:
+      - ["rsi_7", ">", 80]
+      - ["ema_9", "cross_below", "ema_21"]
+      - ["close", "<", "vwap"]
+
+  # Exit Short: Momentum reversal or extreme oversold
+  exit_short:
+    any:
+      - ["rsi_7", "<", 20]
+      - ["ema_9", "cross_above", "ema_21"]
+      - ["close", ">", "vwap"]
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 1.5
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 2.0
+
+  sizing:
+    model: "risk_based"
+    value: 2.0
+    max_leverage: 5.0

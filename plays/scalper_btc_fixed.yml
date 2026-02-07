@@ -1,0 +1,71 @@
+version: "3.0.0"
+name: "scalper_btc_fixed"
+description: |
+  BTC Scalping - FIXED STOPS (sl_tp_only)
+
+  Remove signal exits - let mechanical SL/TP do the work.
+  Fixed percentage stops for predictable R:R.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  max_drawdown_pct: 50.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: "1h"
+
+  ema_200_1h:
+    indicator: ema
+    params:
+      length: 200
+    tf: "1h"
+
+actions:
+  # Long: Simple BB lower touch in uptrend
+  entry_long:
+    all:
+      - ["ema_50_1h", ">", "ema_200_1h"]
+      - ["close", "<", "bbands_20_2.lower"]
+      - ["rsi_14", "<", 45]
+
+  # NO exit_long - let SL/TP handle it
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"    # ONLY exit via SL or TP
+  max_positions_per_symbol: 1
+
+# Fixed percentage stops (ROI-based)
+risk:
+  stop_loss_pct: 2.0         # 2% ROI loss
+  take_profit_pct: 4.0       # 4% ROI gain (2:1 R:R)
+  max_position_pct: 100.0
