@@ -38,7 +38,7 @@ actions:
   entry_long:
     all:
       - ["squeeze.off", "==", 1]
-      - ["squeeze.value", ">", 0]
+      - ["squeeze.sqz", ">", 0]
       - ["close", ">", "ema_21"]
 
 position_policy:

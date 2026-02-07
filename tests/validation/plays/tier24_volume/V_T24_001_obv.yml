@@ -24,11 +24,10 @@ account:
 features:
   obv:
     indicator: obv
-  ema_obv:
-    indicator: ema
-    source: obv
+  sma_20:
+    indicator: sma
     params:
-      length: 21
+      length: 20
   ema_21:
     indicator: ema
     params:
@@ -37,8 +36,9 @@ features:
 actions:
   entry_long:
     all:
-      - ["obv", ">", "ema_obv"]
+      - ["obv", ">", 0]
       - ["close", ">", "ema_21"]
+      - ["close", ">", "sma_20"]
 
 position_policy:
   mode: long_only

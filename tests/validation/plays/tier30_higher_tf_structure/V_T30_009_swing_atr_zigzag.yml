@@ -29,7 +29,7 @@ features:
       length: 9
   atr_14_4h:
     indicator: atr
-    timeframe: "4h"
+    tf: "4h"
     params:
       length: 14
 

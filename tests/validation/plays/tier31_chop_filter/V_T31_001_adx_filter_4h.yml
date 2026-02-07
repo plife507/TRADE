@@ -33,7 +33,7 @@ features:
       length: 21
   adx_14_4h:
     indicator: adx
-    timeframe: "4h"
+    tf: "4h"
     params:
       length: 14
 
@@ -49,7 +49,7 @@ actions:
   entry_long:
     all:
       - ["ema_9", "cross_above", "ema_21"]
-      - ["adx_14_4h_adx", ">", 20]
+      - ["adx_14_4h.adx", ">", 20]
 
 position_policy:
   mode: long_only

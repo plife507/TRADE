@@ -3,7 +3,7 @@ name: "V_T31_005_ranging_detection"
 description: "Entries blocked when 4h ranging (direction=0) - chop filter validation"
 
 synthetic:
-  pattern: "choppy_range"
+  pattern: "choppy_whipsaw"
   bars: 200
   seed: 3105
 

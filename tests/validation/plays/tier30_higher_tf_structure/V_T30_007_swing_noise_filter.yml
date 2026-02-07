@@ -3,7 +3,7 @@ name: "V_T30_007_swing_noise_filter"
 description: "Gate 1: min_atr_move on 4h - swings must exceed ATR threshold"
 
 synthetic:
-  pattern: "choppy_range"
+  pattern: "choppy_whipsaw"
   bars: 200
   seed: 3007
 
@@ -29,7 +29,7 @@ features:
       length: 9
   atr_14_4h:
     indicator: atr
-    timeframe: "4h"
+    tf: "4h"
     params:
       length: 14
 
