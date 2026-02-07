@@ -1199,6 +1199,7 @@ class LiveExchange:
 
         # Tracking
         self._connected = False
+        self._realized_pnl: float = 0.0
 
         logger.info(
             f"LiveExchange initialized: {self._symbol} demo={demo}"
@@ -1435,15 +1436,8 @@ class LiveExchange:
         return self._config.initial_equity
 
     def get_realized_pnl(self) -> float:
-        """
-        Get total realized PnL since start.
-
-        P3: Track from exchange trade history or accumulate locally.
-        For now returns 0.0 - requires integration with position close events.
-        """
-        # Future: Could accumulate from closed position history
-        # or query exchange for session realized PnL
-        return 0.0
+        """Get total realized PnL accumulated from closed positions."""
+        return self._realized_pnl
 
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
         """Get pending orders."""
@@ -1531,6 +1525,18 @@ class LiveExchange:
             )
 
             if result and result.success:
+                # Accumulate realized PnL from the close
+                if result.avg_price and position.entry_price:
+                    if position.side.upper() == "LONG":
+                        pnl = (result.avg_price - position.entry_price) * close_qty
+                    else:
+                        pnl = (position.entry_price - result.avg_price) * close_qty
+                    self._realized_pnl += pnl
+                    logger.info(
+                        f"Realized PnL from close: ${pnl:,.2f} "
+                        f"(total: ${self._realized_pnl:,.2f})"
+                    )
+
                 logger.info(
                     f"Close order submitted: order_id={result.order_id} "
                     f"avg_price={result.avg_price}"

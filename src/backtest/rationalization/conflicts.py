@@ -22,9 +22,12 @@ See: docs/specs/PLAY_VISION.md
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.structures import MultiTFIncrementalState
@@ -306,9 +309,14 @@ class ConflictResolver:
     ) -> bool:
         """Check if trend recently reversed.
 
-        Would need transition history - placeholder implementation.
+        Stub: always returns False (permissive). This means no trades are
+        blocked due to trend reversal detection. Safe as a no-op because
+        returning False never prevents a trade from executing.
+
+        A full implementation would inspect transition history to detect
+        recent trend direction changes.
         """
-        # TODO: Check transition history for recent trend direction change
+        logger.warning("_check_trend_reversal is a stub (always returns False)")
         return False
 
     def _check_conflicting_high_tf(
