@@ -38,14 +38,12 @@ def stop_market_buy(
         trigger_price = inst.round_price(manager, symbol, trigger_price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
         
-        result = manager.bybit.session.place_order(
-            category="linear", symbol=symbol, side="Buy", orderType="Market",
-            qty=str(qty), triggerPrice=str(trigger_price),
-            triggerDirection=trigger_direction, triggerBy=trigger_by,
-            reduceOnly=reduce_only, orderLinkId=order_link_id,
+        result_data = manager.bybit.create_order(
+            symbol=symbol, side="Buy", order_type="Market",
+            qty=qty, trigger_price=str(trigger_price),
+            trigger_direction=trigger_direction, trigger_by=trigger_by,
+            reduce_only=reduce_only, order_link_id=order_link_id,
         )
-        
-        result_data = result[0].get("result", {}) if isinstance(result, tuple) else result.get("result", {})
         
         manager.logger.trade("STOP_ORDER_PLACED", symbol=symbol, side="BUY",
                             size=usd_amount, trigger=trigger_price, qty=qty, type="market")
@@ -90,14 +88,12 @@ def stop_market_sell(
         trigger_price = inst.round_price(manager, symbol, trigger_price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
         
-        result = manager.bybit.session.place_order(
-            category="linear", symbol=symbol, side="Sell", orderType="Market",
-            qty=str(qty), triggerPrice=str(trigger_price),
-            triggerDirection=trigger_direction, triggerBy=trigger_by,
-            reduceOnly=reduce_only, orderLinkId=order_link_id,
+        result_data = manager.bybit.create_order(
+            symbol=symbol, side="Sell", order_type="Market",
+            qty=qty, trigger_price=str(trigger_price),
+            trigger_direction=trigger_direction, trigger_by=trigger_by,
+            reduce_only=reduce_only, order_link_id=order_link_id,
         )
-        
-        result_data = result[0].get("result", {}) if isinstance(result, tuple) else result.get("result", {})
         
         manager.logger.trade("STOP_ORDER_PLACED", symbol=symbol, side="SELL",
                             size=usd_amount, trigger=trigger_price, qty=qty, type="market")
@@ -143,14 +139,12 @@ def stop_limit_buy(
         limit_price = inst.round_price(manager, symbol, limit_price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, limit_price)
         
-        result = manager.bybit.session.place_order(
-            category="linear", symbol=symbol, side="Buy", orderType="Limit",
-            qty=str(qty), price=str(limit_price), triggerPrice=str(trigger_price),
-            triggerDirection=trigger_direction, triggerBy=trigger_by,
-            timeInForce=time_in_force, reduceOnly=reduce_only, orderLinkId=order_link_id,
+        result_data = manager.bybit.create_order(
+            symbol=symbol, side="Buy", order_type="Limit",
+            qty=qty, price=limit_price, trigger_price=str(trigger_price),
+            trigger_direction=trigger_direction, trigger_by=trigger_by,
+            time_in_force=time_in_force, reduce_only=reduce_only, order_link_id=order_link_id,
         )
-        
-        result_data = result[0].get("result", {}) if isinstance(result, tuple) else result.get("result", {})
         
         manager.logger.trade("STOP_LIMIT_ORDER_PLACED", symbol=symbol, side="BUY",
                             size=usd_amount, trigger=trigger_price, limit=limit_price, qty=qty)
@@ -196,14 +190,12 @@ def stop_limit_sell(
         limit_price = inst.round_price(manager, symbol, limit_price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, limit_price)
         
-        result = manager.bybit.session.place_order(
-            category="linear", symbol=symbol, side="Sell", orderType="Limit",
-            qty=str(qty), price=str(limit_price), triggerPrice=str(trigger_price),
-            triggerDirection=trigger_direction, triggerBy=trigger_by,
-            timeInForce=time_in_force, reduceOnly=reduce_only, orderLinkId=order_link_id,
+        result_data = manager.bybit.create_order(
+            symbol=symbol, side="Sell", order_type="Limit",
+            qty=qty, price=limit_price, trigger_price=str(trigger_price),
+            trigger_direction=trigger_direction, trigger_by=trigger_by,
+            time_in_force=time_in_force, reduce_only=reduce_only, order_link_id=order_link_id,
         )
-        
-        result_data = result[0].get("result", {}) if isinstance(result, tuple) else result.get("result", {})
         
         manager.logger.trade("STOP_LIMIT_ORDER_PLACED", symbol=symbol, side="SELL",
                             size=usd_amount, trigger=trigger_price, limit=limit_price, qty=qty)
@@ -370,6 +362,31 @@ def open_position_with_rr(
                 f"CRITICAL: SL order failed! Position may be unprotected: {sl_result.error}"
             )
             result["sl_warning"] = sl_result.error
+
+        # Verify SL order exists on exchange
+        if sl_result.success:
+            import time as _time
+            _time.sleep(0.5)  # Brief delay for order to appear
+            try:
+                open_orders = manager.get_open_orders(symbol=symbol)
+                sl_found = any(
+                    o.order_link_id and o.order_link_id.startswith("SL_")
+                    for o in open_orders
+                )
+                if not sl_found:
+                    manager.logger.error("SL order not found on exchange after placement! Retrying...")
+                    sl_result = create_conditional_order(
+                        manager, symbol=symbol, side=close_side, qty=qty,
+                        trigger_price=stop_loss, trigger_direction=sl_trigger_direction,
+                        order_type="Market", reduce_only=True,
+                        order_link_id=f"SL_{symbol}_{int(time.time()) + 1}",
+                    )
+                    result["sl_order"] = sl_result
+                    if not sl_result.success:
+                        manager.logger.error("CRITICAL: SL retry also failed! Closing position as emergency measure.")
+                        manager.close_position(symbol)
+            except Exception as e:
+                manager.logger.error(f"SL verification failed: {e}")
 
         # Place TPs
         for i, tp_config in enumerate(tp_orders_config):

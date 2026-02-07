@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from src.backtest.runtime.timeframe import tf_minutes
+from src.utils.time_range import TimeRange
 
 from ..interfaces import (
     Candle,
@@ -830,7 +831,19 @@ class LiveDataProvider:
                 except Exception as e:
                     logger.warning(f"Failed to initialize high_tf structure state: {e}")
 
-    def get_candle(self, index: int, tf_role: str | None = None) -> Candle:
+    def get_candle(self, index: int) -> Candle:
+        """
+        Get candle at index from exec buffer (DataProvider protocol).
+
+        Args:
+            index: Negative index for live (-1 = latest, -2 = previous, etc.)
+
+        Returns:
+            Candle data
+        """
+        return self.get_candle_for_tf(index, tf_role=None)
+
+    def get_candle_for_tf(self, index: int, tf_role: str | None = None) -> Candle:
         """
         Get candle at index from specified TF buffer.
 
@@ -867,7 +880,20 @@ class LiveDataProvider:
 
         return buffer[actual_idx]
 
-    def get_indicator(self, name: str, index: int, tf_role: str | None = None) -> float:
+    def get_indicator(self, name: str, index: int) -> float:
+        """
+        Get indicator value at index from exec cache (DataProvider protocol).
+
+        Args:
+            name: Indicator name
+            index: Bar index
+
+        Returns:
+            Indicator value
+        """
+        return self.get_indicator_for_tf(name, index, tf_role=None)
+
+    def get_indicator_for_tf(self, name: str, index: int, tf_role: str | None = None) -> float:
         """
         Get indicator value at index from specified TF.
 
@@ -892,9 +918,22 @@ class LiveDataProvider:
             return self._high_tf_indicators
         return self._exec_indicators
 
-    def get_structure(self, key: str, field: str, tf_role: str | None = None) -> float:
+    def get_structure(self, key: str, field: str) -> float:
         """
-        Get current structure field value.
+        Get current structure field value (DataProvider protocol).
+
+        Args:
+            key: Structure key
+            field: Field name
+
+        Returns:
+            Structure field value
+        """
+        return self.get_structure_for_tf(key, field, tf_role=None)
+
+    def get_structure_for_tf(self, key: str, field: str, tf_role: str | None = None) -> float:
+        """
+        Get current structure field value for a specific TF.
 
         Args:
             key: Structure key
@@ -925,9 +964,25 @@ class LiveDataProvider:
             return self._med_tf_structure
         return self._low_tf_structure
 
-    def get_structure_at(self, key: str, field: str, index: int, tf_role: str | None = None) -> float:
+    def get_structure_at(self, key: str, field: str, index: int) -> float:
         """
-        Get structure field at specific index.
+        Get structure field at specific index (DataProvider protocol).
+
+        Args:
+            key: Structure key
+            field: Field name
+            index: Bar index
+
+        Returns:
+            Structure field value
+        """
+        return self.get_structure_at_for_tf(key, field, index, tf_role=None)
+
+    def get_structure_at_for_tf(
+        self, key: str, field: str, index: int, tf_role: str | None = None
+    ) -> float:
+        """
+        Get structure field at specific index for a specific TF.
 
         Args:
             key: Structure key
@@ -1199,11 +1254,21 @@ class LiveExchange:
 
         # Tracking
         self._connected = False
-        self._realized_pnl: float = 0.0
+        self._start_ms: int = int(datetime.now(timezone.utc).timestamp() * 1000)
 
         logger.info(
             f"LiveExchange initialized: {self._symbol} demo={demo}"
         )
+
+    def _is_ws_data_fresh(self, max_age_s: float = 60.0) -> bool:
+        """Check if WebSocket data is fresh enough to trust."""
+        if not self._realtime_state:
+            return False
+        last_update = getattr(self._realtime_state, '_last_update_ts', None)
+        if last_update is None:
+            return True  # No timestamp tracking, assume fresh
+        age = (datetime.now(timezone.utc) - last_update).total_seconds()
+        return age < max_age_s
 
     async def connect(self) -> None:
         """
@@ -1293,15 +1358,44 @@ class LiveExchange:
         from ...core.risk_manager import Signal
 
         try:
-            # Convert unified Order to Signal format
+            # Extract original Signal from Order metadata if available
+            # (PlayEngine.execute_signal stores it as order.metadata["signal"])
+            original_signal = order.metadata.get("signal") if order.metadata else None
+
+            # Preserve strategy and confidence from original signal
+            strategy = (
+                original_signal.strategy
+                if original_signal and hasattr(original_signal, "strategy")
+                else self._play.name
+            )
+            confidence = (
+                original_signal.confidence
+                if original_signal and hasattr(original_signal, "confidence")
+                else 1.0
+            )
+
+            # Build metadata preserving original signal fields
+            signal_metadata = {}
+            if original_signal and hasattr(original_signal, "metadata") and original_signal.metadata:
+                signal_metadata.update(original_signal.metadata)
+            # Ensure stop_loss/take_profit are in metadata for downstream consumers
+            if order.stop_loss is not None:
+                signal_metadata["stop_loss"] = order.stop_loss
+            if order.take_profit is not None:
+                signal_metadata["take_profit"] = order.take_profit
+            if order.order_type:
+                signal_metadata["order_type"] = order.order_type.lower()
+            if order.limit_price is not None:
+                signal_metadata["limit_price"] = order.limit_price
+
+            # Convert unified Order to Signal format (only valid Signal fields)
             signal = Signal(
                 symbol=order.symbol,
                 direction=self._order_side_to_direction(order.side),
                 size_usdt=order.size_usdt,
-                stop_loss=order.stop_loss,
-                take_profit=order.take_profit,
-                order_type=order.order_type.lower(),
-                limit_price=order.limit_price,
+                strategy=strategy,
+                confidence=confidence,
+                metadata=signal_metadata,
             )
 
             # Execute through OrderExecutor
@@ -1314,6 +1408,7 @@ class LiveExchange:
                 exchange_order_id=exec_result.order_result.order_id if exec_result.order_result else None,
                 fill_price=exec_result.order_result.avg_price if exec_result.order_result else None,
                 fill_usdt=exec_result.executed_size,
+                fee_usdt=getattr(exec_result, 'fee_usdt', None),
                 error=exec_result.error,
                 metadata={
                     "risk_check": exec_result.risk_check.to_dict() if exec_result.risk_check else None,
@@ -1356,8 +1451,8 @@ class LiveExchange:
 
     def get_position(self, symbol: str) -> Position | None:
         """Get current position."""
-        # Try RealtimeState first (WebSocket-fed)
-        if self._realtime_state:
+        # Try RealtimeState first (WebSocket-fed) if data is fresh
+        if self._realtime_state and self._is_ws_data_fresh():
             pos_data = self._realtime_state.get_position(symbol)
             if pos_data and pos_data.is_open:
                 return Position(
@@ -1387,14 +1482,17 @@ class LiveExchange:
                     mark_price=pm_pos.mark_price,
                     unrealized_pnl=pm_pos.unrealized_pnl,
                     leverage=pm_pos.leverage,
+                    stop_loss=pm_pos.stop_loss,
+                    take_profit=pm_pos.take_profit,
+                    liquidation_price=pm_pos.liquidation_price,
                 )
 
         return None
 
     def get_balance(self) -> float:
         """Get available balance."""
-        # Try RealtimeState first
-        if self._realtime_state:
+        # Try RealtimeState first if data is fresh
+        if self._realtime_state and self._is_ws_data_fresh():
             metrics = self._realtime_state.get_account_metrics()
             if metrics:
                 return metrics.total_available_balance
@@ -1407,7 +1505,7 @@ class LiveExchange:
         if self._exchange_manager:
             try:
                 balance = self._exchange_manager.get_balance()
-                return balance.available if balance else self._config.initial_equity
+                return balance["available"] if balance else self._config.initial_equity
             except Exception:
                 pass
 
@@ -1415,8 +1513,8 @@ class LiveExchange:
 
     def get_equity(self) -> float:
         """Get total equity."""
-        # Try RealtimeState first
-        if self._realtime_state:
+        # Try RealtimeState first if data is fresh
+        if self._realtime_state and self._is_ws_data_fresh():
             metrics = self._realtime_state.get_account_metrics()
             if metrics:
                 return metrics.total_equity
@@ -1429,15 +1527,31 @@ class LiveExchange:
         if self._exchange_manager:
             try:
                 balance = self._exchange_manager.get_balance()
-                return balance.equity if balance else self._config.initial_equity
+                return balance["total"] if balance else self._config.initial_equity
             except Exception:
                 pass
 
         return self._config.initial_equity
 
     def get_realized_pnl(self) -> float:
-        """Get total realized PnL accumulated from closed positions."""
-        return self._realized_pnl
+        """Get total realized PnL from Bybit closed PnL endpoint."""
+        if self._exchange_manager is None:
+            return 0.0
+        try:
+            now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+            time_range = TimeRange(
+                start_ms=self._start_ms,
+                end_ms=now_ms,
+                label="engine_session",
+                endpoint_type="closed_pnl",
+            )
+            records = self._exchange_manager.get_closed_pnl(
+                time_range=time_range, symbol=self._symbol,
+            )
+            return sum(float(r.get("closedPnl", 0)) for r in records)
+        except Exception as e:
+            logger.warning(f"Failed to query realized PnL from exchange: {e}")
+            return 0.0
 
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
         """Get pending orders."""
@@ -1525,21 +1639,9 @@ class LiveExchange:
             )
 
             if result and result.success:
-                # Accumulate realized PnL from the close
-                if result.avg_price and position.entry_price:
-                    if position.side.upper() == "LONG":
-                        pnl = (result.avg_price - position.entry_price) * close_qty
-                    else:
-                        pnl = (position.entry_price - result.avg_price) * close_qty
-                    self._realized_pnl += pnl
-                    logger.info(
-                        f"Realized PnL from close: ${pnl:,.2f} "
-                        f"(total: ${self._realized_pnl:,.2f})"
-                    )
-
                 logger.info(
                     f"Close order submitted: order_id={result.order_id} "
-                    f"avg_price={result.avg_price}"
+                    f"(PnL tracked by exchange)"
                 )
             else:
                 error_msg = result.error if result else "Unknown error"

@@ -10,7 +10,6 @@ when WebSocket data is available.
 
 from typing import Any
 from dataclasses import dataclass
-from datetime import datetime
 
 from ..config.config import get_config, RiskConfig
 from ..utils.logger import get_logger
@@ -72,10 +71,9 @@ class RiskManager:
         self.config = config or get_config().risk
         self.logger = get_logger()
 
-        # Daily tracking
-        self._daily_pnl = 0.0
-        self._daily_trades = 0
-        self._last_reset = datetime.now().date()
+        # Daily tracking (shared with SafetyChecks via DailyLossTracker singleton)
+        from .safety import get_daily_loss_tracker
+        self._daily_tracker = get_daily_loss_tracker()
 
         # G0.3: Reuse exchange_manager instead of creating fresh instances
         self._exchange_manager = exchange_manager
@@ -132,13 +130,15 @@ class RiskManager:
             self.logger.warning(f"Failed to start websocket for risk manager: {e}")
             return False
     
+    @property
+    def _daily_pnl(self) -> float:
+        """Daily PnL from shared tracker."""
+        return self._daily_tracker.daily_pnl
+
     def _reset_daily_if_needed(self):
-        """Reset daily counters at midnight."""
-        today = datetime.now().date()
-        if today > self._last_reset:
-            self._daily_pnl = 0.0
-            self._daily_trades = 0
-            self._last_reset = today
+        """Reset daily counters at midnight (handled by shared tracker)."""
+        # The DailyLossTracker auto-resets on property access
+        pass
 
     def _get_funding_rate(self, symbol: str) -> float | None:
         """
@@ -172,8 +172,7 @@ class RiskManager:
     
     def record_pnl(self, amount: float):
         """Record realized PnL for daily tracking."""
-        self._reset_daily_if_needed()
-        self._daily_pnl += amount
+        self._daily_tracker.record_pnl(amount)
         if amount < 0:
             self.logger.risk("WARNING", f"Recorded loss: ${amount:.2f}")
         
@@ -385,25 +384,60 @@ class RiskManager:
     
     def check_leverage(self, symbol: str, requested_leverage: int) -> tuple[bool, int]:
         """
-        Check and cap leverage.
-        
+        Check and cap leverage against config and exchange risk tiers.
+
         Args:
             symbol: Trading symbol
             requested_leverage: Desired leverage
-        
+
         Returns:
             Tuple of (allowed, capped_leverage)
         """
         max_lev = min(requested_leverage, self.config.max_leverage)
-        
+
+        # Validate against exchange risk tier limits if available
+        if self._exchange_manager is not None:
+            tier_max = self._get_tier_max_leverage(symbol)
+            if tier_max is not None and tier_max < max_lev:
+                self.logger.risk(
+                    "WARNING",
+                    f"Leverage capped by exchange risk tier: {max_lev}x -> {tier_max}x",
+                    symbol=symbol,
+                )
+                max_lev = tier_max
+
         if max_lev != requested_leverage:
             self.logger.risk(
                 "WARNING",
                 f"Leverage capped: {requested_leverage}x -> {max_lev}x",
                 symbol=symbol
             )
-        
+
         return True, max_lev
+
+    def _get_tier_max_leverage(self, symbol: str) -> float | None:
+        """Get max leverage from exchange risk tiers for symbol. Cached per symbol."""
+        if not hasattr(self, '_risk_limit_cache'):
+            self._risk_limit_cache: dict[str, list[dict]] = {}
+
+        if symbol not in self._risk_limit_cache:
+            try:
+                from ..core import exchange_positions
+                tiers = exchange_positions.get_risk_limits(self._exchange_manager, symbol)
+                self._risk_limit_cache[symbol] = tiers
+            except Exception as e:
+                self.logger.debug(f"Could not query risk limits for {symbol}: {e}")
+                self._risk_limit_cache[symbol] = []
+
+        tiers = self._risk_limit_cache.get(symbol, [])
+        if not tiers:
+            return None
+
+        # Find the tier with the highest max leverage (lowest risk tier)
+        try:
+            return max(float(t.get("maxLeverage", 0)) for t in tiers)
+        except (ValueError, TypeError):
+            return None
     
     def get_remaining_exposure(self, portfolio: PortfolioSnapshot) -> float:
         """Get remaining available exposure in USD."""

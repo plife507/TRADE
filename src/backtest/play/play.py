@@ -329,6 +329,21 @@ def _convert_shorthand_conditions(block_content: dict | list) -> dict:
         }
 
     # Fallback: return as-is (might already be full format)
+    # Warn about unrecognized keys that aren't standard DSL keys
+    _KNOWN_CONDITION_KEYS = {
+        "lhs", "op", "rhs", "tolerance",
+        "all", "any", "not",
+        "holds_for", "occurred_within", "count_true",
+        "holds_for_duration", "occurred_within_duration", "count_true_duration",
+        "setup",
+    }
+    if isinstance(block_content, dict):
+        unknown = set(block_content.keys()) - _KNOWN_CONDITION_KEYS
+        if unknown:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Unrecognized keys in condition block (passed through): {sorted(unknown)}"
+            )
     return block_content
 
 
@@ -911,9 +926,9 @@ class Play:
 # Loader
 # =============================================================================
 
-# Default Play directories (new structure: tests/*/plays/)
+# Default Play directories
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-PLAYS_DIR = _PROJECT_ROOT / "tests" / "functional" / "plays"
+PLAYS_DIR = _PROJECT_ROOT / "plays"
 VALIDATION_PLAYS_DIR = _PROJECT_ROOT / "tests" / "validation" / "plays"
 STRESS_PLAYS_DIR = _PROJECT_ROOT / "tests" / "stress" / "plays"
 

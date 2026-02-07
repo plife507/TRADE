@@ -196,11 +196,12 @@ def set_trailing_stop(
     try:
         manager._validate_trading_operation()
         
-        manager.bybit.set_trading_stop(
-            symbol=symbol,
-            trailing_stop=str(trailing_stop),
-        )
-        manager.logger.info(f"Set trailing stop for {symbol}: {trailing_stop}")
+        kwargs = {"symbol": symbol, "trailing_stop": str(trailing_stop)}
+        if active_price is not None:
+            kwargs["active_price"] = str(active_price)
+        manager.bybit.set_trading_stop(**kwargs)
+        manager.logger.info(f"Set trailing stop for {symbol}: {trailing_stop}" +
+                            (f" (active at {active_price})" if active_price else ""))
         return True
     except Exception as e:
         manager.logger.error(f"Set trailing stop failed: {e}")
@@ -245,30 +246,31 @@ def set_leverage(manager: "ExchangeManager", symbol: str, leverage: int) -> bool
         return False
 
 
-def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str) -> bool:
+def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str, leverage: float = 1.0) -> bool:
     """
     Set margin mode for a symbol.
-    
+
     Args:
         manager: ExchangeManager instance
         symbol: Trading symbol
         mode: "ISOLATED_MARGIN" or "REGULAR_MARGIN" (cross)
-    
+        leverage: Leverage to set (from Play risk model)
+
     Returns:
         True if successful
     """
     try:
         manager._validate_trading_operation()
-        
-        # Use raw pybit session for this
-        result = manager.bybit.session.switch_margin_mode(
-            category="linear",
+
+        lev_str = str(int(leverage)) if leverage == int(leverage) else str(leverage)
+        trade_mode = 0 if mode == "REGULAR_MARGIN" else 1  # 0=cross, 1=isolated
+        manager.bybit.switch_cross_isolated_margin(
             symbol=symbol,
-            tradeMode=0 if mode == "REGULAR_MARGIN" else 1,  # 0=cross, 1=isolated
-            buyLeverage="10",  # Required param
-            sellLeverage="10",
+            trade_mode=trade_mode,
+            buy_leverage=lev_str,
+            sell_leverage=lev_str,
         )
-        manager.logger.info(f"Set margin mode for {symbol} to {mode}")
+        manager.logger.info(f"Set margin mode for {symbol} to {mode} at {lev_str}x leverage")
         return True
     except Exception as e:
         # Mode might already be set
@@ -292,9 +294,9 @@ def set_position_mode(manager: "ExchangeManager", mode: str = "MergedSingle") ->
     try:
         manager._validate_trading_operation()
         
-        result = manager.bybit.session.switch_position_mode(
-            category="linear",
+        manager.bybit.switch_position_mode_v5(
             mode=0 if mode == "MergedSingle" else 3,  # 0=one-way, 3=hedge
+            coin="USDT",
         )
         manager.logger.info(f"Set position mode to {mode}")
         return True
@@ -377,8 +379,8 @@ def cancel_position_conditional_orders(
         # Determine the side that would close this position
         close_side = "Sell" if position_side == "long" else "Buy"
         
-        # Pattern for bot-generated TP orders: TP1_BTCUSDT_1234567890
-        tp_pattern = re.compile(rf"^TP\d+_{re.escape(symbol)}_\d+$")
+        # Pattern for bot-generated TP/SL orders: TP1_BTCUSDT_1234567890 or SL_BTCUSDT_1234567890
+        tp_pattern = re.compile(rf"^(TP\d+|SL)_{re.escape(symbol)}_\d+$")
         
         # Filter for conditional reduce-only orders that would close position
         orders_to_cancel = []
@@ -489,8 +491,8 @@ def reconcile_orphaned_orders(
             if symbol and order_symbol != symbol:
                 continue
             
-            # Pattern for bot-generated TP orders
-            tp_pattern = re.compile(rf"^TP\d+_{re.escape(order_symbol)}_\d+$")
+            # Pattern for bot-generated TP/SL orders
+            tp_pattern = re.compile(rf"^(TP\d+|SL)_{re.escape(order_symbol)}_\d+$")
             
             # Check if position exists
             has_position = order_symbol in open_symbols
@@ -746,13 +748,16 @@ def switch_to_isolated_margin(manager: "ExchangeManager", symbol: str, leverage:
 
 def switch_to_one_way_mode(manager: "ExchangeManager") -> bool:
     """
-    Switch to one-way position mode (can only hold Buy OR Sell).
-    
+    Switch to one-way position mode for all USDT linear pairs.
+
+    Uses coin="USDT" to batch-switch all USDT perpetuals that have no
+    open positions or orders. Bybit V5 requires either symbol or coin.
+
     Returns:
-        True if successful
+        True if successful or already in one-way mode
     """
     try:
-        manager.bybit.switch_position_mode_v5(mode=0)
+        manager.bybit.switch_position_mode_v5(mode=0, coin="USDT")
         return True
     except Exception as e:
         if "not modified" in str(e).lower():
@@ -763,13 +768,15 @@ def switch_to_one_way_mode(manager: "ExchangeManager") -> bool:
 
 def switch_to_hedge_mode(manager: "ExchangeManager") -> bool:
     """
-    Switch to hedge position mode (can hold both Buy AND Sell).
-    
+    Switch to hedge position mode for all USDT linear pairs.
+
+    Uses coin="USDT" to batch-switch. Bybit V5 requires either symbol or coin.
+
     Returns:
-        True if successful
+        True if successful or already in hedge mode
     """
     try:
-        manager.bybit.switch_position_mode_v5(mode=3)
+        manager.bybit.switch_position_mode_v5(mode=3, coin="USDT")
         return True
     except Exception as e:
         if "not modified" in str(e).lower():

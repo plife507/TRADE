@@ -119,7 +119,7 @@ class PlayEngineConfig:
     # "adjust": Auto-tighten SL to safe distance from liquidation
     # "warn": Allow entry but log warning
     on_sl_beyond_liq: str = "reject"
-    maintenance_margin_rate: float = 0.004  # Bybit MMR for liq calculation
+    maintenance_margin_rate: float | None = None
 
     # State persistence
     persist_state: bool = False
@@ -134,6 +134,8 @@ class PlayEngineConfig:
             self.maker_fee_rate = DEFAULTS.fees.maker_rate
         if self.slippage_bps is None:
             self.slippage_bps = DEFAULTS.execution.slippage_bps
+        if self.maintenance_margin_rate is None:
+            self.maintenance_margin_rate = DEFAULTS.margin.maintenance_margin_rate
 
 
 class PlayEngine:
@@ -320,17 +322,19 @@ class PlayEngine:
 
     @property
     def _current_high_tf_idx(self) -> int:
-        """Current high_tf forward-fill index (from TFIndexManager)."""
-        if self._tf_index_manager is None:
-            return 0
-        return self._tf_index_manager.high_tf_idx
+        """Current high_tf forward-fill index (from TFIndexManager or live tracking)."""
+        if self._tf_index_manager is not None:
+            return self._tf_index_manager.high_tf_idx
+        # Live mode fallback: use stored live index
+        return getattr(self, '_live_high_tf_idx', 0)
 
     @property
     def _current_med_tf_idx(self) -> int:
-        """Current med_tf forward-fill index (from TFIndexManager)."""
-        if self._tf_index_manager is None:
-            return 0
-        return self._tf_index_manager.med_tf_idx
+        """Current med_tf forward-fill index (from TFIndexManager or live tracking)."""
+        if self._tf_index_manager is not None:
+            return self._tf_index_manager.med_tf_idx
+        # Live mode fallback: use stored live index
+        return getattr(self, '_live_med_tf_idx', 0)
 
     def set_play_hash(self, play_hash: str) -> None:
         """Set play hash for debug log correlation."""
@@ -374,6 +378,13 @@ class PlayEngine:
         """
         self._current_bar_index = bar_index
         self._bars_processed += 1
+
+        # Refresh equity from exchange for accurate sizing (live/demo only)
+        if not self.is_backtest:
+            try:
+                self._sizing_model.update_equity(self.exchange.get_equity())
+            except Exception as e:
+                self.logger.error(f"Failed to refresh equity from exchange: {e}. Using last known value.")
 
         # Get current candle
         try:
@@ -560,9 +571,17 @@ class PlayEngine:
         Get current engine state for persistence.
 
         Returns:
-            EngineState with current position, equity, and metadata
+            EngineState with current position, equity, incremental state, and metadata
         """
         position = self.exchange.get_position(self.symbol)
+
+        # Serialize incremental state if available
+        incremental_json = None
+        if self._incremental_state is not None and hasattr(self._incremental_state, 'to_json'):
+            try:
+                incremental_json = self._incremental_state.to_json()
+            except Exception:
+                pass
 
         return EngineState(
             engine_id=self.engine_id,
@@ -578,6 +597,7 @@ class PlayEngine:
             if self._current_bar_index >= 0
             else None,
             last_signal_ts=self._last_signal_ts,
+            incremental_state_json=incremental_json,
             metadata={
                 "bars_processed": self._bars_processed,
                 "total_signals": self._total_signals,
@@ -597,6 +617,32 @@ class PlayEngine:
         self._bars_processed = state.metadata.get("bars_processed", 0)
         self._total_signals = state.metadata.get("total_signals", 0)
         self._warmup_complete = state.metadata.get("warmup_complete", False)
+
+        # Restore position via exchange adapter if it supports it
+        if state.position is not None:
+            if hasattr(self.exchange, 'restore_position'):
+                self.exchange.restore_position(state.position)
+                self.logger.info(
+                    f"Position restored: {state.position.side} {state.position.symbol} "
+                    f"size={state.position.size_usdt:.2f} entry={state.position.entry_price:.2f}"
+                )
+            else:
+                self.logger.warning(
+                    f"Exchange adapter does not support restore_position(). "
+                    f"Persisted position ({state.position.side} {state.position.symbol}) "
+                    f"will need to be reconciled from exchange state."
+                )
+
+        # Restore incremental state if persisted
+        if state.incremental_state_json and self._incremental_state is not None:
+            try:
+                from src.structures import MultiTFIncrementalState
+                if hasattr(self._incremental_state, 'from_json'):
+                    self._incremental_state = MultiTFIncrementalState.from_json(
+                        state.incremental_state_json
+                    )
+            except Exception as e:
+                self.logger.warning(f"Failed to restore incremental state: {e}")
 
         self.logger.info(
             f"State restored: {state.engine_id} "
@@ -629,43 +675,92 @@ class PlayEngine:
         """
         Update high_tf/med_tf forward-fill indices based on current candle.
 
-        Delegates to shared TFIndexManager (src/engine/timeframe/).
+        Delegates to shared TFIndexManager (src/engine/timeframe/) for backtest,
+        and uses timestamp-based tracking for live mode.
 
-        Also updates high_tf incremental state when high_tf bar closes (for structures).
+        Also updates high_tf/med_tf incremental state when their bars close.
         """
-        # Skip if no high_tf/med_tf feeds
+        # Skip if no high_tf/med_tf feeds (single-TF mode)
         if self._high_tf_feed is None and self._med_tf_feed is None:
+            # For live mode, check if multi_tf_mode is active via LiveDataProvider
+            from .adapters.live import LiveDataProvider
+            if isinstance(self._data_provider, LiveDataProvider) and self._data_provider.multi_tf_mode:
+                self._update_live_tf_indices(candle)
             return
 
-        # Only applies to backtest mode (live mode uses different TF management)
-        if not self.is_backtest:
+        if self.is_backtest:
+            # Backtest mode: use FeedStore-based TFIndexManager
+            low_tf_feed = getattr(self._data_provider, '_feed_store', None)
+            if low_tf_feed is None:
+                return
+
+            # Lazy-initialize TFIndexManager on first use
+            if self._tf_index_manager is None:
+                from .timeframe import TFIndexManager
+                self._tf_index_manager = TFIndexManager(
+                    low_tf_feed=low_tf_feed,
+                    med_tf_feed=self._med_tf_feed,
+                    high_tf_feed=self._high_tf_feed,
+                    exec_role=self._tf_mapping.get("exec", "low_tf"),
+                )
+
+            # Update indices via shared manager (single source of truth)
+            update = self._tf_index_manager.update_indices(candle.ts_close)
+
+            # Update med_tf incremental state when med_tf bar closes (for structures)
+            if update.med_tf_changed:
+                self._update_med_tf_incremental_state()
+
+            # Update high_tf incremental state when high_tf bar closes (for structures)
+            if update.high_tf_changed:
+                self._update_high_tf_incremental_state()
+        else:
+            # Live mode: use buffer-length-based index tracking
+            self._update_live_tf_indices(candle)
+
+    def _update_live_tf_indices(self, candle: Candle) -> None:
+        """
+        Update TF indices for live mode using buffer lengths.
+
+        In live mode, each TF buffer is maintained by LiveDataProvider.
+        The current index for each TF is simply len(buffer) - 1.
+        We detect bar closes by comparing buffer lengths between calls.
+        """
+        from .adapters.live import LiveDataProvider
+
+        if not isinstance(self._data_provider, LiveDataProvider):
             return
 
-        # Access feed_store from data provider (backtest mode has this attribute)
-        low_tf_feed = getattr(self._data_provider, '_feed_store', None)
-        if low_tf_feed is None:
-            return
+        provider = self._data_provider
 
-        # Lazy-initialize TFIndexManager on first use
-        if self._tf_index_manager is None:
-            from .timeframe import TFIndexManager
-            self._tf_index_manager = TFIndexManager(
-                low_tf_feed=low_tf_feed,
-                med_tf_feed=self._med_tf_feed,
-                high_tf_feed=self._high_tf_feed,
-                exec_role=self._tf_mapping.get("exec", "low_tf"),
-            )
+        # Initialize tracking state on first call
+        if not hasattr(self, '_prev_med_tf_len'):
+            self._prev_med_tf_len: int = len(provider.med_tf_buffer)
+            self._prev_high_tf_len: int = len(provider.high_tf_buffer)
+            self._live_med_tf_idx: int = max(0, self._prev_med_tf_len - 1)
+            self._live_high_tf_idx: int = max(0, self._prev_high_tf_len - 1)
 
-        # Update indices via shared manager (single source of truth)
-        update = self._tf_index_manager.update_indices(candle.ts_close)
+        # Update med_tf index from buffer length
+        med_tf_len = len(provider.med_tf_buffer)
+        if med_tf_len > 0:
+            new_med_idx = med_tf_len - 1
+            med_tf_changed = med_tf_len > self._prev_med_tf_len
+            self._prev_med_tf_len = med_tf_len
+            self._live_med_tf_idx = new_med_idx
 
-        # Update med_tf incremental state when med_tf bar closes (for structures)
-        if update.med_tf_changed:
-            self._update_med_tf_incremental_state()
+            if med_tf_changed:
+                self._update_med_tf_incremental_state()
 
-        # Update high_tf incremental state when high_tf bar closes (for structures)
-        if update.high_tf_changed:
-            self._update_high_tf_incremental_state()
+        # Update high_tf index from buffer length
+        high_tf_len = len(provider.high_tf_buffer)
+        if high_tf_len > 0:
+            new_high_idx = high_tf_len - 1
+            high_tf_changed = high_tf_len > self._prev_high_tf_len
+            self._prev_high_tf_len = high_tf_len
+            self._live_high_tf_idx = new_high_idx
+
+            if high_tf_changed:
+                self._update_high_tf_incremental_state()
 
     def _update_med_tf_incremental_state(self) -> None:
         """Update med_tf incremental state when med_tf bar closes."""
@@ -870,9 +965,169 @@ class PlayEngine:
             )
             return snapshot
 
-        # Live mode would build from LiveDataProvider
-        # For now, return None (not implemented)
+        # Live mode: build from LiveDataProvider buffers
+        from .adapters.live import LiveDataProvider
+
+        if isinstance(self._data_provider, LiveDataProvider):
+            from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
+            from ..backtest.runtime.feed_store import FeedStore, MultiTFFeedStore
+
+            provider = self._data_provider
+
+            # Build FeedStore from live buffers for each TF
+            low_tf_feed = self._build_live_feed_store(
+                provider.low_tf_buffer,
+                provider._low_tf_indicators,
+                provider._tf_mapping["low_tf"],
+                provider.symbol,
+            )
+            if low_tf_feed is None:
+                return None
+
+            med_tf_feed = None
+            if provider._multi_tf_mode and provider._tf_mapping["med_tf"] != provider._tf_mapping["low_tf"]:
+                med_tf_feed = self._build_live_feed_store(
+                    provider.med_tf_buffer,
+                    provider._med_tf_indicators,
+                    provider._tf_mapping["med_tf"],
+                    provider.symbol,
+                )
+
+            high_tf_feed = None
+            if provider._multi_tf_mode and provider._tf_mapping["high_tf"] != provider._tf_mapping["med_tf"]:
+                high_tf_feed = self._build_live_feed_store(
+                    provider.high_tf_buffer,
+                    provider._high_tf_indicators,
+                    provider._tf_mapping["high_tf"],
+                    provider.symbol,
+                )
+
+            feeds = MultiTFFeedStore(
+                low_tf_feed=low_tf_feed,
+                med_tf_feed=med_tf_feed,
+                high_tf_feed=high_tf_feed,
+                tf_mapping=provider._tf_mapping,
+                exec_role=provider._tf_mapping.get("exec", "low_tf"),
+            )
+
+            # Use exec buffer length - 1 as exec_idx (latest bar)
+            exec_buffer = provider._exec_buffer
+            exec_idx = len(exec_buffer) - 1 if exec_buffer else 0
+
+            # Determine high_tf/med_tf indices
+            high_tf_idx = None
+            med_tf_idx = None
+            if high_tf_feed is not None:
+                high_tf_idx = self._current_high_tf_idx
+            if med_tf_feed is not None:
+                med_tf_idx = self._current_med_tf_idx
+
+            # Get prev_last_price for crossover operators
+            prev_last_price = None
+            if exec_idx > 0:
+                try:
+                    prev_candle = self.data.get_candle(exec_idx - 1)
+                    prev_last_price = prev_candle.close
+                except (IndexError, RuntimeError):
+                    prev_last_price = candle.close
+
+            snapshot = RuntimeSnapshotView(
+                feeds=feeds,
+                exec_idx=exec_idx,
+                high_tf_idx=high_tf_idx,
+                med_tf_idx=med_tf_idx,
+                exchange=None,  # Live mode has no sim exchange
+                mark_price=candle.close,
+                mark_price_source="live_candle_close",
+                history_config=None,
+                history_ready=True,
+                incremental_state=self._incremental_state,
+                feature_registry=self._feature_registry,
+                last_price=candle.close,
+                prev_last_price=prev_last_price,
+            )
+            return snapshot
+
         return None
+
+    def _build_live_feed_store(
+        self,
+        buffer: list[Candle],
+        indicator_cache: Any | None,
+        tf_str: str,
+        symbol: str,
+    ) -> "FeedStore | None":
+        """
+        Build a FeedStore from a live candle buffer and indicator cache.
+
+        Converts LiveDataProvider's list[Candle] + LiveIndicatorCache arrays
+        into a FeedStore that RuntimeSnapshotView can consume.
+
+        Args:
+            buffer: Candle buffer from LiveDataProvider
+            indicator_cache: LiveIndicatorCache for this TF (may be None)
+            tf_str: Timeframe string (e.g. "15m", "1h")
+            symbol: Trading symbol
+
+        Returns:
+            FeedStore or None if buffer is empty
+        """
+        import numpy as np
+        from ..backtest.runtime.feed_store import FeedStore
+
+        if not buffer:
+            return None
+
+        n = len(buffer)
+
+        # Build OHLCV arrays from candle buffer
+        ts_open = np.array([c.ts_open for c in buffer], dtype="datetime64[ms]")
+        ts_close = np.array([c.ts_close for c in buffer], dtype="datetime64[ms]")
+        open_arr = np.array([c.open for c in buffer], dtype=np.float64)
+        high_arr = np.array([c.high for c in buffer], dtype=np.float64)
+        low_arr = np.array([c.low for c in buffer], dtype=np.float64)
+        close_arr = np.array([c.close for c in buffer], dtype=np.float64)
+        volume_arr = np.array([c.volume for c in buffer], dtype=np.float64)
+
+        # Build indicator arrays from cache
+        indicators: dict[str, np.ndarray] = {}
+        if indicator_cache is not None:
+            with indicator_cache._lock:
+                for name, arr in indicator_cache._indicators.items():
+                    # Align indicator array length to buffer length
+                    if len(arr) == n:
+                        indicators[name] = arr.copy()
+                    elif len(arr) > n:
+                        indicators[name] = arr[-n:].copy()
+                    else:
+                        # Pad front with NaN if indicator has fewer values
+                        padded = np.full(n, np.nan, dtype=np.float64)
+                        padded[n - len(arr):] = arr
+                        indicators[name] = padded
+
+        # Build ts_close_ms_to_idx mapping for TF index lookups
+        ts_close_ms_to_idx: dict[int, int] = {}
+        close_ts_set: set = set()
+        for i, c in enumerate(buffer):
+            ts_ms = int(c.ts_close.timestamp() * 1000)
+            ts_close_ms_to_idx[ts_ms] = i
+            close_ts_set.add(c.ts_close)
+
+        return FeedStore(
+            tf=tf_str,
+            symbol=symbol,
+            ts_open=ts_open,
+            ts_close=ts_close,
+            open=open_arr,
+            high=high_arr,
+            low=low_arr,
+            close=close_arr,
+            volume=volume_arr,
+            indicators=indicators,
+            ts_close_ms_to_idx=ts_close_ms_to_idx,
+            close_ts_set=close_ts_set,
+            length=n,
+        )
 
     def _size_position(self, signal: "Signal") -> float:
         """

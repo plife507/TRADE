@@ -1633,10 +1633,13 @@ def handle_play_run(args) -> int:
         border_style="cyan"
     ))
 
-    from src.engine import PlayEngineFactory
+    from src.engine import PlayEngineFactory, EngineManager
 
     try:
-        engine = PlayEngineFactory.create(play, mode=mode)
+        # B2: Forward confirm_live to factory
+        engine = PlayEngineFactory.create(
+            play, mode=mode, confirm_live=getattr(args, "confirm", False),
+        )
     except Exception as e:
         console.print(f"[red]Failed to create engine: {e}[/]")
         return 1
@@ -1646,7 +1649,8 @@ def handle_play_run(args) -> int:
     elif mode == "shadow":
         return _run_play_shadow(engine, play, args)
     elif mode in ("demo", "live"):
-        return _run_play_live(engine, play, args)
+        # B7: Route through EngineManager for instance limits
+        return _run_play_live(play, args, manager=EngineManager.get_instance())
 
     return 0
 
@@ -1683,7 +1687,7 @@ def _run_play_shadow(engine, play, args) -> int:
     console.print("[dim]Press Ctrl+C to stop[/]")
 
     try:
-        stats = asyncio.run(runner.run_replay(start_idx=0, end_idx=100))
+        stats = asyncio.run(runner.run_replay(start_idx=0, end_idx=None))
         console.print(f"\n[green]Shadow run complete:[/]")
         console.print(f"  Bars: {stats.bars_processed}")
         console.print(f"  Signals: {stats.signals_generated}")
@@ -1697,13 +1701,15 @@ def _run_play_shadow(engine, play, args) -> int:
     return 0
 
 
-def _run_play_live(engine, play, args) -> int:
-    """Run Play in live or demo mode."""
+def _run_play_live(play, args, manager=None) -> int:
+    """Run Play in live or demo mode via EngineManager."""
     import asyncio
-    from src.engine.runners import LiveRunner
+    import signal
+    from src.engine import EngineManager
 
     mode = args.mode
-    runner = LiveRunner(engine)
+    if manager is None:
+        manager = EngineManager.get_instance()
 
     console.print(f"[cyan]Starting {mode.upper()} mode...[/]")
     console.print("[dim]Press Ctrl+C to stop[/]")
@@ -1711,37 +1717,137 @@ def _run_play_live(engine, play, args) -> int:
     if mode == "live":
         console.print("[bold red]LIVE TRADING ACTIVE - REAL MONEY[/]")
 
+    instance_id: str | None = None
+
+    async def _run_live():
+        nonlocal instance_id
+        instance_id = await manager.start(play, mode=mode)
+        console.print(f"[dim]Instance: {instance_id}[/]")
+
+        # Wait for the instance to complete
+        instance = manager._instances.get(instance_id)
+        if instance and instance.task:
+            await instance.task
+
+    # B1: Single event loop for start + wait
+    # B6: Register signal handlers for graceful shutdown
     try:
-        asyncio.run(runner.start())
-        asyncio.run(runner.wait_until_stopped())
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # B6: Wire SIGINT/SIGTERM for graceful stop
+        def _signal_handler():
+            console.print(f"\n[yellow]{mode.upper()} mode: shutdown signal received[/]")
+            if instance_id:
+                loop.create_task(manager.stop(instance_id))
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _signal_handler)
+            except NotImplementedError:
+                # Windows does not support add_signal_handler for all signals
+                pass
+
+        loop.run_until_complete(_run_live())
+
     except KeyboardInterrupt:
         console.print(f"\n[yellow]{mode.upper()} mode stopped by user[/]")
-        asyncio.run(runner.stop())
+        if instance_id:
+            loop.run_until_complete(manager.stop(instance_id))
     except Exception as e:
         console.print(f"\n[red]{mode.upper()} mode error: {e}[/]")
+        if instance_id:
+            try:
+                loop.run_until_complete(manager.stop(instance_id))
+            except Exception:
+                pass
         return 1
+    finally:
+        loop.close()
 
-    stats = runner.stats
-    console.print(f"\n[green]{mode.upper()} run complete:[/]")
-    console.print(f"  Bars: {stats.bars_processed}")
-    console.print(f"  Signals: {stats.signals_generated}")
-    console.print(f"  Orders: {stats.orders_filled} filled / {stats.orders_failed} failed")
+    # Print stats from the instance if available
+    info = manager.get(instance_id) if instance_id else None
+    if info:
+        console.print(f"\n[green]{mode.upper()} run complete:[/]")
+        console.print(f"  Bars: {info.bars_processed}")
+        console.print(f"  Signals: {info.signals_generated}")
+    else:
+        console.print(f"\n[green]{mode.upper()} run complete.[/]")
 
     return 0
 
 
 def handle_play_status(args) -> int:
     """Handle `play status` subcommand - show running instances."""
-    console.print("[yellow]Play status tracking not yet implemented.[/]")
-    console.print("[dim]This will show running Play instances in future.[/]")
+    from src.engine import EngineManager
+
+    manager = EngineManager.get_instance()
+    instances = manager.list()
+
+    if not instances:
+        console.print("[dim]No running Play instances.[/]")
+        return 0
+
+    table = Table(title="Running Play Instances")
+    table.add_column("Instance ID", style="cyan")
+    table.add_column("Play", style="white")
+    table.add_column("Symbol", style="yellow")
+    table.add_column("Mode", style="green")
+    table.add_column("Status", style="white")
+    table.add_column("Bars", justify="right")
+    table.add_column("Signals", justify="right")
+    table.add_column("Started", style="dim")
+
+    for info in instances:
+        table.add_row(
+            info.instance_id,
+            info.play_id,
+            info.symbol,
+            info.mode.value.upper(),
+            info.status,
+            str(info.bars_processed),
+            str(info.signals_generated),
+            info.started_at.strftime("%H:%M:%S"),
+        )
+
+    console.print(table)
     return 0
 
 
 def handle_play_stop(args) -> int:
     """Handle `play stop` subcommand - stop a running instance."""
-    console.print(f"[yellow]Stopping Play '{args.play}' not yet implemented.[/]")
-    console.print("[dim]This will stop running instances in future.[/]")
-    return 0
+    import asyncio
+    from src.engine import EngineManager
+
+    manager = EngineManager.get_instance()
+    target = args.play  # instance ID or play name
+
+    # If --all flag, stop everything
+    if getattr(args, "all", False):
+        count = asyncio.run(manager.stop_all())
+        console.print(f"[green]Stopped {count} instance(s).[/]")
+        return 0
+
+    # Try to find the instance by ID or play name
+    instances = manager.list()
+    match = None
+    for info in instances:
+        if info.instance_id == target or info.play_id == target:
+            match = info
+            break
+
+    if match is None:
+        console.print(f"[red]No running instance found matching '{target}'.[/]")
+        console.print("[dim]Use 'play status' to see running instances.[/]")
+        return 1
+
+    stopped = asyncio.run(manager.stop(match.instance_id))
+    if stopped:
+        console.print(f"[green]Stopped instance: {match.instance_id}[/]")
+        return 0
+    else:
+        console.print(f"[red]Failed to stop instance: {match.instance_id}[/]")
+        return 1
 
 
 # =============================================================================

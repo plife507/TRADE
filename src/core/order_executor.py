@@ -15,6 +15,7 @@ SAFETY GUARD RAILS:
 
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -118,8 +119,10 @@ class OrderExecutor:
         self._last_cleanup_time: float = 0.0  # For time-based cleanup
 
         # Idempotency: track recorded order IDs to prevent duplicate trade recording
-        self._recorded_orders: set[str] = set()
+        # Bounded to 10,000 entries; oldest evicted first via OrderedDict
+        self._recorded_orders: OrderedDict[str, None] = OrderedDict()
         self._recorded_orders_lock = threading.Lock()
+        self._recorded_orders_max = 10_000
 
         # Callbacks
         self._execution_callbacks: list[Callable[[ExecutionResult], None]] = []
@@ -201,7 +204,9 @@ class OrderExecutor:
             if order_id in self._recorded_orders:
                 self.logger.debug(f"Order {order_id} already recorded via REST, skipping WS recording")
                 return
-            self._recorded_orders.add(order_id)
+            self._recorded_orders[order_id] = None
+            if len(self._recorded_orders) > self._recorded_orders_max:
+                self._recorded_orders.popitem(last=False)
 
         self.position.record_execution_from_ws(exec_data)
 
@@ -237,13 +242,27 @@ class OrderExecutor:
     def execute(self, signal: Signal) -> ExecutionResult:
         """
         Execute a trading signal through risk checks.
-        
+
         Args:
             signal: Trading signal to execute
-        
+
         Returns:
             ExecutionResult with full details
         """
+        # SAFETY: Check panic state before anything else
+        from .safety import is_panic_triggered
+        if is_panic_triggered():
+            from .risk_manager import RiskCheckResult
+            risk_result = RiskCheckResult(allowed=False, reason="Panic state active - trading halted")
+            result = ExecutionResult(
+                success=False,
+                signal=signal,
+                risk_check=risk_result,
+                error="Panic state active - trading halted",
+            )
+            self._invoke_callbacks(result)
+            return result
+
         # SAFETY GUARD RAIL: Validate trading mode consistency FIRST
         is_valid, error_msg = self._validate_trading_mode()
         if not is_valid:
@@ -386,7 +405,9 @@ class OrderExecutor:
                     if order_result.order_id in self._recorded_orders:
                         self.logger.debug(f"Order {order_result.order_id} already recorded, skipping")
                     else:
-                        self._recorded_orders.add(order_result.order_id)
+                        self._recorded_orders[order_result.order_id] = None
+                        if len(self._recorded_orders) > self._recorded_orders_max:
+                            self._recorded_orders.popitem(last=False)
                         should_record = True
                 # LOCK RELEASED - now safe to call record_trade() without lock inversion risk
                 if should_record:
@@ -560,7 +581,35 @@ class OrderExecutor:
 
         # Final check after timeout
         with self._pending_lock:
-            return self._pending_orders.get(order_id)
+            pending = self._pending_orders.get(order_id)
+
+        if pending and not pending.filled:
+            self.logger.warning(
+                f"wait_for_fill timed out after {timeout}s for order {order_id} "
+                f"(symbol={pending.symbol}) - falling back to REST query"
+            )
+            # REST fallback: verify order status via API
+            try:
+                orders = self.exchange.get_open_orders(pending.symbol)
+                found = False
+                for order in orders:
+                    if order.order_id == order_id:
+                        found = True
+                        if order.status == "Filled":
+                            pending.filled = True
+                            pending.fill_price = order.price
+                        elif order.status in ("Cancelled", "Rejected"):
+                            pending.error = f"Order {order.status} (REST fallback)"
+                        break
+                if not found:
+                    # Order not in open orders - likely already filled or cancelled
+                    self.logger.warning(
+                        f"Order {order_id} not found in open orders (REST fallback) - may be filled"
+                    )
+            except Exception as e:
+                self.logger.warning(f"REST fallback query failed for order {order_id}: {e}")
+
+        return pending
     
     # ==================== Callbacks ====================
 

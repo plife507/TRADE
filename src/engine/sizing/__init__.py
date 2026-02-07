@@ -10,16 +10,8 @@ Components:
     - SizingConfig: Configuration for sizing behavior
 
 Usage:
-    from src.engine.sizing import SizingModel, SizingConfig, SizingResult
-
-    config = SizingConfig(
-        initial_equity=10000.0,
-        risk_per_trade_pct=1.0,
-        max_leverage=10.0,
-        sizing_model="percent_equity",
-    )
-    model = SizingModel(config)
-    result = model.size_order(equity=10000.0, entry_price=50000.0, stop_loss=49000.0)
+    All config flows from Play YAML via PlayEngine — no hardcoded values.
+    See src/engine/play_engine.py:232 for the production wiring.
 """
 
 from .model import SizingModel, SizingResult, SizingConfig

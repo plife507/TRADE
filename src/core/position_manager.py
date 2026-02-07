@@ -422,11 +422,15 @@ class PositionManager:
         # Calculate approximate USDT size
         size_usdt = exec_data.qty * exec_data.price
 
+        # Extract realized PnL from closedPnl field (non-zero on position closes)
+        realized_pnl = exec_data.closed_pnl or None
+
         self.record_trade(
             symbol=exec_data.symbol,
             side=exec_data.side,
             size_usdt=size_usdt,
             price=exec_data.price,
+            realized_pnl=realized_pnl,
             fees=exec_data.exec_fee,
             order_id=exec_data.order_id,
         )

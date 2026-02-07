@@ -140,6 +140,7 @@ def calculate_qty(
 
     qty_step = float(lot_size.get("qtyStep", "0.001"))
     min_qty = float(lot_size.get("minOrderQty", "0.001"))
+    max_qty = float(lot_size.get("maxOrderQty", "0")) or float("inf")
 
     # Calculate base quantity
     qty = usd_amount / price
@@ -153,6 +154,22 @@ def calculate_qty(
         manager.logger.warning(
             f"Order size {qty} below minimum {min_qty} for {symbol} "
             f"(min ${min_usd:.2f} at price ${price:.2f})"
+        )
+        raise OrderSizeError(symbol, usd_amount, min_qty, min_usd, price)
+
+    # Cap to maximum order quantity
+    if qty > max_qty:
+        manager.logger.error(
+            f"Order qty {qty} exceeds max {max_qty} for {symbol}, capping to max"
+        )
+        qty = max_qty
+
+    # Check minimum notional value
+    min_notional = float(lot_size.get("minNotionalValue", "0"))
+    if min_notional > 0 and qty * price < min_notional:
+        min_usd = min_notional
+        manager.logger.warning(
+            f"Order notional {qty * price:.2f} below minimum {min_notional:.2f} for {symbol}"
         )
         raise OrderSizeError(symbol, usd_amount, min_qty, min_usd, price)
 

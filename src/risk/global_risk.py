@@ -15,6 +15,7 @@ Design principles:
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -75,26 +76,28 @@ class RiskDecision:
 class RiskLimits:
     """
     Risk limits configuration.
-    
+
     These are the thresholds that trigger risk vetoes.
+    All values should come from config/defaults.yml or Play YAML via from_config().
+    Dataclass defaults are conservative fallbacks only.
     """
     # Account-level limits
-    max_account_im_rate: float = 0.8  # Max account initial margin rate
-    max_account_mm_rate: float = 0.9  # Max maintenance margin rate before alert
-    min_available_balance_usd: float = 100.0  # Minimum available balance
-    
-    # Position-level limits
-    max_leverage: float = 10.0  # Maximum leverage per position
-    max_position_size_usdt: float = 10000.0  # Max size per position
-    max_total_exposure_usd: float = 50000.0  # Max total notional exposure
-    max_positions: int = 10  # Maximum open positions
-    
+    max_account_im_rate: float = 0.8
+    max_account_mm_rate: float = 0.9
+    min_available_balance_usd: float = 100.0
+
+    # Position-level limits (override via config or Play)
+    max_leverage: float = 1.0
+    max_position_size_usdt: float = 50.0
+    max_total_exposure_usd: float = 200.0
+    max_positions: int = 10
+
     # Risk thresholds
-    min_liq_distance_pct: float = 5.0  # Minimum distance to liquidation
-    max_single_asset_pct: float = 50.0  # Max % of portfolio in one asset
-    
+    min_liq_distance_pct: float = 5.0
+    max_single_asset_pct: float = 50.0
+
     # Daily limits
-    max_daily_loss_usd: float = 500.0  # Max daily realized loss
+    max_daily_loss_usd: float = 20.0
     
     @classmethod
     def from_config(cls, config: Config) -> 'RiskLimits':
@@ -157,7 +160,7 @@ class GlobalRiskView:
 
         # Daily PnL tracking
         self._daily_realized_pnl: float = 0.0
-        self._daily_pnl_reset_time: float = time.time()
+        self._daily_pnl_reset_date = datetime.now(timezone.utc).date()
 
         # High-water mark tracking
         self._equity_high_water_mark: float = 0.0
@@ -442,23 +445,24 @@ class GlobalRiskView:
 
         Should be called by OrderExecutor when trades are closed.
         Thread-safe: uses _cache_lock to prevent race conditions.
+        Resets at midnight UTC.
         """
         with self._cache_lock:
-            # Reset daily PnL if new day
-            now = time.time()
-            if now - self._daily_pnl_reset_time > 86400:  # 24 hours
+            # Reset daily PnL if new UTC day
+            today = datetime.now(timezone.utc).date()
+            if today > self._daily_pnl_reset_date:
                 self._daily_realized_pnl = 0.0
-                self._daily_pnl_reset_time = now
+                self._daily_pnl_reset_date = today
 
             self._daily_realized_pnl += pnl
     
-    def get_daily_pnl(self) -> dict[str, float]:
+    def get_daily_pnl(self) -> dict[str, Any]:
         """Get daily realized PnL info."""
         return {
             "daily_realized_pnl": self._daily_realized_pnl,
             "daily_loss_limit": self.limits.max_daily_loss_usd,
             "remaining_loss_budget": self.limits.max_daily_loss_usd + self._daily_realized_pnl,
-            "reset_time": self._daily_pnl_reset_time,
+            "reset_date": self._daily_pnl_reset_date.isoformat(),
         }
     
     def get_risk_summary(self) -> dict[str, Any]:

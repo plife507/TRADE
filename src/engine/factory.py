@@ -58,6 +58,62 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+def _build_config_from_play(
+    play: "Play",
+    mode: str,
+    *,
+    persist_state: bool = False,
+    state_save_interval: int = 100,
+    config_override: dict | None = None,
+) -> PlayEngineConfig:
+    """
+    Build PlayEngineConfig from a Play's account and risk model.
+
+    Shared config builder used by all factory paths to eliminate duplication.
+
+    Args:
+        play: Play instance with account + risk_model
+        mode: Engine mode (backtest/demo/live/shadow)
+        persist_state: Whether to enable state persistence
+        state_save_interval: How often to save state (bars)
+        config_override: Optional overrides applied last
+
+    Returns:
+        Configured PlayEngineConfig
+    """
+    account = play.account
+
+    # Extract sizing from risk_model if present
+    risk_per_trade_pct = 1.0
+    max_leverage = account.max_leverage
+    if play.risk_model and play.risk_model.sizing:
+        risk_per_trade_pct = play.risk_model.sizing.value
+        if play.risk_model.sizing.max_leverage:
+            max_leverage = play.risk_model.sizing.max_leverage
+
+    config = PlayEngineConfig(
+        mode=mode,
+        initial_equity=account.starting_equity_usdt,
+        risk_per_trade_pct=risk_per_trade_pct,
+        max_leverage=max_leverage,
+        min_trade_usdt=account.min_trade_notional_usdt,
+        taker_fee_rate=account.fee_model.taker_bps / 10000.0,
+        maker_fee_rate=account.fee_model.maker_bps / 10000.0,
+        slippage_bps=account.slippage_bps or 2.0,
+        persist_state=persist_state,
+        state_save_interval=state_save_interval,
+        on_sl_beyond_liq="reject",
+        max_drawdown_pct=account.max_drawdown_pct,
+    )
+
+    if config_override:
+        for key, value in config_override.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+
+    return config
+
+
 class PlayEngineFactory:
     """
     Factory for creating PlayEngine instances.
@@ -175,49 +231,13 @@ class PlayEngineFactory:
         config_override: dict | None,
     ) -> PlayEngine:
         """Create backtest engine with simulated components."""
-        # Import adapters here to avoid circular imports
-        from .adapters.backtest import (
-            BacktestDataProvider,
-            BacktestExchange,
-        )
+        from .adapters.backtest import BacktestDataProvider, BacktestExchange
         from .adapters.state import InMemoryStateStore
 
-        # Get account config from Play
-        account = play.account
-
-        # Extract sizing from risk_model if present
-        risk_per_trade_pct = 1.0
-        max_leverage = account.max_leverage
-        if play.risk_model and play.risk_model.sizing:
-            risk_per_trade_pct = play.risk_model.sizing.value
-            if play.risk_model.sizing.max_leverage:
-                max_leverage = play.risk_model.sizing.max_leverage
-
-        # Create config - use PlayEngineConfig's actual fields
-        config = PlayEngineConfig(
-            mode="backtest",
-            initial_equity=account.starting_equity_usdt,
-            risk_per_trade_pct=risk_per_trade_pct,
-            max_leverage=max_leverage,
-            min_trade_usdt=account.min_trade_notional_usdt,
-            taker_fee_rate=account.fee_model.taker_bps / 10000.0,  # Convert bps to rate
-            maker_fee_rate=account.fee_model.maker_bps / 10000.0,  # Convert bps to rate
-            slippage_bps=account.slippage_bps or 2.0,
-            persist_state=False,  # Backtest doesn't need state persistence
-            # SL vs Liquidation safety check (default: reject unsafe entries)
-            on_sl_beyond_liq="reject",
-            maintenance_margin_rate=0.004,  # Bybit default MMR
-            # Max drawdown (0 = disabled, set from Play account if available)
-            max_drawdown_pct=getattr(account, 'max_drawdown_pct', 25.0),
+        config = _build_config_from_play(
+            play, "backtest", persist_state=False, config_override=config_override,
         )
 
-        # Apply overrides
-        if config_override:
-            for key, value in config_override.items():
-                if hasattr(config, key):
-                    setattr(config, key, value)
-
-        # Create adapters
         data_provider = BacktestDataProvider(play)
         exchange = BacktestExchange(play, config)
         state_store = InMemoryStateStore()
@@ -237,53 +257,16 @@ class PlayEngineFactory:
         config_override: dict | None,
     ) -> PlayEngine:
         """Create live/demo engine with real exchange components."""
-        # Import adapters here to avoid circular imports
-        from .adapters.live import (
-            LiveDataProvider,
-            LiveExchange,
-        )
+        from .adapters.live import LiveDataProvider, LiveExchange
         from .adapters.state import FileStateStore
 
-        # Get account config from Play
-        account = play.account
-
-        # Extract sizing from risk_model if present
-        risk_per_trade_pct = 1.0
-        max_leverage = account.max_leverage
-        if play.risk_model and play.risk_model.sizing:
-            risk_per_trade_pct = play.risk_model.sizing.value
-            if play.risk_model.sizing.max_leverage:
-                max_leverage = play.risk_model.sizing.max_leverage
-
-        # Create config - use PlayEngineConfig's actual fields
-        config = PlayEngineConfig(
-            mode=mode,
-            initial_equity=account.starting_equity_usdt,
-            risk_per_trade_pct=risk_per_trade_pct,
-            max_leverage=max_leverage,
-            min_trade_usdt=account.min_trade_notional_usdt,
-            taker_fee_rate=account.fee_model.taker_bps / 10000.0,  # Convert bps to rate
-            maker_fee_rate=account.fee_model.maker_bps / 10000.0,  # Convert bps to rate
-            slippage_bps=account.slippage_bps or 2.0,
-            persist_state=True,  # Live needs state persistence
-            state_save_interval=10,  # Save frequently in live mode
-            # SL vs Liquidation safety check (default: reject unsafe entries)
-            on_sl_beyond_liq="reject",
-            maintenance_margin_rate=0.004,  # Bybit default MMR
-            # Max drawdown (0 = disabled, set from Play account if available)
-            max_drawdown_pct=getattr(account, 'max_drawdown_pct', 25.0),
+        config = _build_config_from_play(
+            play, mode,
+            persist_state=True, state_save_interval=10,
+            config_override=config_override,
         )
 
-        # Apply overrides
-        if config_override:
-            for key, value in config_override.items():
-                if hasattr(config, key):
-                    setattr(config, key, value)
-
-        # Determine if demo mode
         is_demo = mode == "demo"
-
-        # Create adapters
         data_provider = LiveDataProvider(play, demo=is_demo)
         exchange = LiveExchange(play, config, demo=is_demo)
         state_store = FileStateStore()
@@ -302,45 +285,16 @@ class PlayEngineFactory:
         config_override: dict | None,
     ) -> PlayEngine:
         """Create shadow engine (live data, no execution)."""
-        # Shadow uses live data provider but doesn't execute
-        # The PlayEngine's execute_signal() handles shadow mode
-
         from .adapters.live import LiveDataProvider
         from .adapters.state import InMemoryStateStore
-
-        # Shadow mode uses a mock exchange that doesn't execute
         from .adapters.backtest import ShadowExchange
 
-        # Get account config from Play
-        account = play.account
-
-        # Extract sizing from risk_model if present
-        risk_per_trade_pct = 1.0
-        max_leverage = account.max_leverage
-        if play.risk_model and play.risk_model.sizing:
-            risk_per_trade_pct = play.risk_model.sizing.value
-            if play.risk_model.sizing.max_leverage:
-                max_leverage = play.risk_model.sizing.max_leverage
-
-        # Create config - use PlayEngineConfig's actual fields
-        config = PlayEngineConfig(
-            mode="shadow",
-            initial_equity=account.starting_equity_usdt,
-            risk_per_trade_pct=risk_per_trade_pct,
-            max_leverage=max_leverage,
-            min_trade_usdt=account.min_trade_notional_usdt,
-            persist_state=False,  # Shadow doesn't need state persistence
+        config = _build_config_from_play(
+            play, "shadow", persist_state=False, config_override=config_override,
         )
 
-        # Apply overrides
-        if config_override:
-            for key, value in config_override.items():
-                if hasattr(config, key):
-                    setattr(config, key, value)
-
-        # Create adapters
-        data_provider = LiveDataProvider(play, demo=True)  # Use demo data
-        exchange = ShadowExchange(play, config)  # No-op exchange
+        data_provider = LiveDataProvider(play, demo=True)
+        exchange = ShadowExchange(play, config)
         state_store = InMemoryStateStore()
 
         return PlayEngine(
@@ -412,58 +366,13 @@ def create_backtest_engine(
         runner = BacktestRunner(unified_engine, feed_store, sim_exchange)
         result = runner.run()
     """
-    # Import adapters here to avoid circular imports
-    from .adapters.backtest import (
-        BacktestDataProvider,
-        BacktestExchange,
-    )
+    from .adapters.backtest import BacktestDataProvider, BacktestExchange
     from .adapters.state import InMemoryStateStore
 
-    # TYPE_CHECKING imports
-    from typing import TYPE_CHECKING
-    if TYPE_CHECKING:
-        from ..backtest.runtime.feed_store import FeedStore
-        from ..backtest.sim.exchange import SimulatedExchange
-        from src.structures import MultiTFIncrementalState
-
-    # Get account config from Play
-    account = play.account
-
-    # Extract sizing from risk_model if present
-    risk_per_trade_pct = 1.0  # Default
-    if play.risk_model and play.risk_model.sizing:
-        risk_per_trade_pct = play.risk_model.sizing.value
-
-    # Extract max_leverage from risk_model if present (match factory path)
-    max_leverage = account.max_leverage
-    if play.risk_model and play.risk_model.sizing:
-        if play.risk_model.sizing.max_leverage:
-            max_leverage = play.risk_model.sizing.max_leverage
-
-    # Create config using correct PlayEngineConfig field names
-    # Note: PlayEngineConfig uses rate (0.0006) not bps (6), so convert
-    config = PlayEngineConfig(
-        mode="backtest",
-        initial_equity=account.starting_equity_usdt,
-        risk_per_trade_pct=risk_per_trade_pct,
-        max_leverage=max_leverage,
-        min_trade_usdt=account.min_trade_notional_usdt,
-        taker_fee_rate=account.fee_model.taker_bps / 10000.0,  # Convert bps to rate
-        maker_fee_rate=account.fee_model.maker_bps / 10000.0,  # Convert bps to rate
-        slippage_bps=account.slippage_bps or 2.0,
-        persist_state=False,  # Backtest doesn't need state persistence
-        on_sl_beyond_liq="reject",
-        maintenance_margin_rate=0.004,  # Bybit default MMR
-        max_drawdown_pct=getattr(account, 'max_drawdown_pct', 25.0),
+    config = _build_config_from_play(
+        play, "backtest", persist_state=False, config_override=config_override,
     )
 
-    # Apply overrides
-    if config_override:
-        for key, value in config_override.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
-
-    # Create adapters
     data_provider = BacktestDataProvider(play)
     exchange = BacktestExchange(play, config)
     state_store = InMemoryStateStore()

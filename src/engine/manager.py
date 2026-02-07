@@ -33,7 +33,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Literal
 
-from .play_engine import PlayEngine, PlayEngineConfig
+from .play_engine import PlayEngine
 from .runners.live_runner import LiveRunner
 from ..utils.logger import get_logger
 
@@ -171,24 +171,22 @@ class EngineManager:
                         "EngineManager tracks concurrent instances."
                     )
 
-                # Create engine config
-                config = PlayEngineConfig(
-                    mode=mode,
-                    initial_equity=play.account.starting_equity_usdt,
-                    sizing_model=play.sizing.model if play.sizing else "percent_equity",
-                    risk_per_trade_pct=play.sizing.risk_per_trade_pct if play.sizing else 1.0,
-                    max_leverage=play.account.leverage if play.account.leverage else 2.0,
-                    min_trade_usdt=play.account.min_trade_notional_usdt or 10.0,
+                # Delegate config construction to shared factory builder
+                from .factory import _build_config_from_play
+                config = _build_config_from_play(
+                    play, mode,
+                    persist_state=(mode in ("live", "demo")),
+                    state_save_interval=10,
                 )
 
                 # Create adapters
                 from .adapters.live import LiveDataProvider, LiveExchange
-                from .adapters.state import InMemoryStateStore
+                from .adapters.state import FileStateStore
 
                 demo = (mode == "demo")
                 data_provider = LiveDataProvider(play, demo=demo)
                 exchange = LiveExchange(play, config, demo=demo)
-                state_store = InMemoryStateStore()
+                state_store = FileStateStore()
 
                 # Create engine
                 engine = PlayEngine(
@@ -324,18 +322,19 @@ class EngineManager:
         """Number of running instances."""
         return len(self._instances)
 
-    def _check_limits(self, play: "Play", mode: str) -> None:
+    def _check_limits(self, play: "Play", mode: str | InstanceMode) -> None:
         """Check if starting a new instance would exceed limits."""
+        mode = InstanceMode(mode)
         symbol = play.symbol_universe[0]
 
-        if mode == "live":
+        if mode is InstanceMode.LIVE:
             if self._live_count >= self._max_live:
                 raise ValueError(
                     f"Live instance limit reached ({self._max_live}). "
                     "Stop existing live instance first."
                 )
 
-        elif mode == "demo":
+        elif mode is InstanceMode.DEMO:
             current = self._demo_by_symbol.get(symbol, 0)
             if current >= self._max_demo_per_symbol:
                 raise ValueError(
@@ -343,22 +342,23 @@ class EngineManager:
                     "Stop existing demo instance first."
                 )
 
-        elif mode == "backtest":
+        elif mode is InstanceMode.BACKTEST:
             if self._backtest_count >= self._max_backtest:
                 raise ValueError(
                     f"Backtest instance limit reached ({self._max_backtest}). "
                     "DuckDB requires sequential access. Wait for current backtest to complete."
                 )
 
-    def _update_counts(self, mode: str, symbol: str, delta: int) -> None:
+    def _update_counts(self, mode: str | InstanceMode, symbol: str, delta: int) -> None:
         """Update instance counts."""
-        if mode == "live":
+        mode = InstanceMode(mode)
+        if mode is InstanceMode.LIVE:
             self._live_count += delta
-        elif mode == "demo":
+        elif mode is InstanceMode.DEMO:
             self._demo_by_symbol[symbol] = self._demo_by_symbol.get(symbol, 0) + delta
             if self._demo_by_symbol[symbol] <= 0:
                 del self._demo_by_symbol[symbol]
-        elif mode == "backtest":
+        elif mode is InstanceMode.BACKTEST:
             self._backtest_count += delta
 
     async def _run_instance(self, instance: _EngineInstance) -> None:

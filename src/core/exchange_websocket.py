@@ -44,8 +44,11 @@ def on_position_update_cleanup(manager: "ExchangeManager", position_data):
     Only cancels orders with bot-generated order_link_id pattern.
     """
     try:
+        if not hasattr(position_data, 'symbol') or not position_data.symbol:
+            manager.logger.error(f"WS position update missing 'symbol' field: {type(position_data).__name__}")
+            return
         symbol = position_data.symbol
-        is_open = position_data.is_open if hasattr(position_data, 'is_open') else position_data.size > 0
+        is_open = position_data.is_open
 
         # Check and update tracking with lock
         with manager._position_tracking_lock:
@@ -74,7 +77,7 @@ def on_position_update_cleanup(manager: "ExchangeManager", position_data):
 
     except Exception as e:
         # Don't let callback errors break WebSocket processing
-        manager.logger.warning(f"Error in position cleanup callback for {position_data.symbol}: {e}")
+        manager.logger.warning(f"Error in position cleanup callback for {getattr(position_data, 'symbol', 'unknown')}: {e}")
 
 
 def cancel_conditional_orders_for_symbol(manager: "ExchangeManager", symbol: str) -> list[str]:
@@ -96,8 +99,8 @@ def cancel_conditional_orders_for_symbol(manager: "ExchangeManager", symbol: str
     try:
         orders = manager.get_open_orders(symbol)
         
-        # Pattern for bot-generated TP orders: TP1_BTCUSDT_1234567890
-        tp_pattern = re.compile(rf"^TP\d+_{re.escape(symbol)}_\d+$")
+        # Pattern for bot-generated TP/SL orders: TP1_BTCUSDT_1234567890 or SL_BTCUSDT_1234567890
+        tp_pattern = re.compile(rf"^(TP\d+|SL)_{re.escape(symbol)}_\d+$")
         
         # Cancel all bot-generated conditional reduce-only orders
         orders_to_cancel = [

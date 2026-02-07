@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from ..play_engine import PlayEngine
 from src.backtest.runtime.timeframe import tf_minutes
+from ...core.safety import check_panic_and_halt, get_panic_state
 
 from ...utils.logger import get_logger
 
@@ -160,10 +161,13 @@ class LiveRunner:
         self._reconnect_attempts = 0
         self._last_reconcile_ts: datetime | None = None
 
+        # Max drawdown tracking (B5)
+        self._peak_equity: float = 0.0
+
         # RealtimeState integration
         self._realtime_state = None
         self._bootstrap = None
-        self._candle_queue: asyncio.Queue = asyncio.Queue()
+        self._candle_queue: asyncio.Queue = asyncio.Queue(maxsize=100)
         self._subscription_task: asyncio.Task | None = None
         self._kline_callback_registered = False
 
@@ -255,13 +259,23 @@ class LiveRunner:
 
         self._stop_event.set()
 
-        # Cancel subscription task
+        # Cancel subscription task with timeout
         if self._subscription_task is not None:
             self._subscription_task.cancel()
             try:
-                await self._subscription_task
+                await asyncio.wait_for(self._subscription_task, timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning("Subscription task did not stop within 10s timeout")
             except asyncio.CancelledError:
                 pass
+
+        # Cancel open orders before disconnect
+        try:
+            em = self._engine._exchange._exchange_manager
+            em.cancel_all_orders(self._engine.symbol)
+            logger.info(f"Cancelled open orders for {self._engine.symbol} on shutdown")
+        except Exception as e:
+            logger.error(f"Failed to cancel orders on shutdown: {e}")
 
         # Disconnect from data provider
         await self._disconnect()
@@ -423,12 +437,12 @@ class LiveRunner:
 
         # Convert to Candle and enqueue
         from ..interfaces import Candle
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         try:
             candle = Candle(
-                ts_open=datetime.fromtimestamp(kline_data.start_time / 1000.0),
-                ts_close=datetime.fromtimestamp(kline_data.end_time / 1000.0) if kline_data.end_time else datetime.now(),
+                ts_open=datetime.fromtimestamp(kline_data.start_time / 1000.0, tz=timezone.utc),
+                ts_close=datetime.fromtimestamp(kline_data.end_time / 1000.0, tz=timezone.utc) if kline_data.end_time else datetime.now(timezone.utc),
                 open=kline_data.open,
                 high=kline_data.high,
                 low=kline_data.low,
@@ -440,7 +454,13 @@ class LiveRunner:
             try:
                 self._candle_queue.put_nowait(candle)
             except asyncio.QueueFull:
-                logger.warning("Candle queue full, dropping oldest")
+                # Dequeue oldest candle to make room
+                try:
+                    self._candle_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                self._candle_queue.put_nowait(candle)
+                logger.warning("Candle queue full, dropped oldest candle")
 
         except Exception as e:
             logger.warning(f"Failed to convert kline to candle: {e}")
@@ -465,8 +485,17 @@ class LiveRunner:
 
         Waits for candle closes and processes through engine.
         """
+        # Initialize peak equity for max drawdown tracking (B5)
+        self._peak_equity = self._engine._exchange.get_equity()
+
         while not self._stop_event.is_set():
             try:
+                # B3: Check panic state at top of each iteration
+                if check_panic_and_halt():
+                    logger.warning("Panic state active, stopping LiveRunner")
+                    self._stop_event.set()
+                    break
+
                 # Wait for next candle close
                 candle = await self._wait_for_candle()
                 if candle is None:
@@ -475,25 +504,39 @@ class LiveRunner:
                 # Process candle
                 await self._process_candle(candle)
 
+                # B5: Check max drawdown after processing
+                await self._check_max_drawdown()
+
                 # G5.4: Periodic position reconciliation
                 await self._maybe_reconcile_positions()
 
             except asyncio.CancelledError:
                 break
 
-            except Exception as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
+                # Network/connection errors: attempt reconnection
                 self._stats.errors.append(str(e))
-                logger.error(f"Error in process loop: {e}")
+                logger.error(f"Connection error in process loop: {e}")
 
                 if self._on_error:
                     self._on_error(e)
 
-                # Attempt reconnection
                 if self._reconnect_attempts < self._max_reconnect_attempts:
                     await self._reconnect()
                 else:
                     logger.error("Max reconnection attempts reached, stopping")
                     break
+
+            except Exception as e:
+                # Logic errors (TypeError, AttributeError, etc.): halt trading
+                self._stats.errors.append(str(e))
+                logger.error(f"Fatal error in process loop (non-connection): {e}")
+
+                if self._on_error:
+                    self._on_error(e)
+
+                # Logic errors are not recoverable by reconnection -- stop
+                break
 
     async def _wait_for_candle(self):
         """
@@ -585,6 +628,11 @@ class LiveRunner:
                 f"at {candle.ts_close}"
             )
 
+            # B4: Run safety checks before execution
+            if not self._run_safety_checks():
+                logger.warning("Safety checks failed, skipping signal execution")
+                return
+
             # Notify callback
             if self._on_signal:
                 self._on_signal(signal)
@@ -640,9 +688,76 @@ class LiveRunner:
         try:
             await self._disconnect()
             await self._connect()
+            await self._sync_positions_on_startup()
             self._transition_state(RunnerState.RUNNING)
             self._reconnect_attempts = 0  # Reset on success
             logger.info("Reconnection successful")
         except Exception as e:
             logger.error(f"Reconnection failed: {e}")
             self._stats.errors.append(f"Reconnect error: {e}")
+
+    def _run_safety_checks(self) -> bool:
+        """
+        B4: Run SafetyChecks before order execution.
+
+        Returns True if all checks pass, False to skip execution.
+        Fail-closed: if safety checks cannot run, trading is halted.
+        """
+        try:
+            from ...core.safety import SafetyChecks
+
+            em = getattr(self._engine._exchange, '_exchange_manager', None)
+            if em is None:
+                logger.error("Safety checks failed: no ExchangeManager available")
+                return False
+
+            if not getattr(em, '_initialized', False):
+                logger.error("Safety checks failed: ExchangeManager not initialized")
+                return False
+
+            checks = SafetyChecks(em, em.config)
+            passed, failures = checks.run_all_checks()
+            if not passed:
+                for reason in failures:
+                    logger.error(f"Safety check failed: {reason}")
+                    self._stats.errors.append(f"Safety: {reason}")
+            return passed
+
+        except Exception as e:
+            logger.error(f"Safety checks failed (fail-closed): {e}")
+            return False
+
+    async def _check_max_drawdown(self) -> None:
+        """
+        B5: Check equity vs max_drawdown_pct and trigger panic if breached.
+
+        Ported from BacktestRunner max drawdown logic.
+        """
+        max_dd_pct = self._engine.config.max_drawdown_pct
+        if max_dd_pct <= 0:
+            return
+
+        try:
+            equity = self._engine._exchange.get_equity()
+            self._peak_equity = max(self._peak_equity, equity)
+
+            if self._peak_equity <= 0:
+                return
+
+            current_dd_pct = (self._peak_equity - equity) / self._peak_equity * 100
+
+            if current_dd_pct >= max_dd_pct:
+                reason = (
+                    f"Max drawdown hit: {current_dd_pct:.2f}% >= {max_dd_pct:.2f}% "
+                    f"(equity ${equity:.2f}, peak ${self._peak_equity:.2f})"
+                )
+                logger.warning(reason)
+                self._stats.errors.append(reason)
+
+                # Trigger panic to halt all trading
+                panic = get_panic_state()
+                panic.trigger(reason)
+                self._stop_event.set()
+
+        except Exception as e:
+            logger.warning(f"Max drawdown check failed (non-fatal): {e}")

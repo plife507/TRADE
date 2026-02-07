@@ -440,17 +440,17 @@ class BacktestExchange:
 
     def get_realized_pnl(self) -> float:
         """
-        Get total realized PnL since start.
+        Get total realized PnL since start (net of fees).
 
-        Calculated from: cash_balance - initial_capital + total_fees_paid
+        Fees are already deducted from cash_balance, so net PnL = cash - initial.
+        This matches the live exchange behavior where fees are deducted at fill.
         """
         if self._sim_exchange is None:
             return 0.0
         ledger = self._sim_exchange._ledger
         initial = ledger._initial_capital
         cash = ledger.state.cash_balance_usdt
-        fees = ledger.state.total_fees_paid
-        return cash - initial + fees
+        return cash - initial
 
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
         """

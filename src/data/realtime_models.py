@@ -565,8 +565,9 @@ class ExecutionData:
     is_maker: bool = False
     order_link_id: str = ""
     exec_time: int = 0
+    closed_pnl: float = 0.0
     timestamp: float = field(default_factory=time.time)
-    
+
     @classmethod
     def from_bybit(cls, data: dict) -> 'ExecutionData':
         def safe_float(val, default=0.0):
@@ -585,6 +586,7 @@ class ExecutionData:
             fee_rate=safe_float(data.get("feeRate")), is_maker=data.get("isMaker", False),
             order_link_id=data.get("orderLinkId", ""),
             exec_time=safe_int(data.get("execTime")),
+            closed_pnl=safe_float(data.get("closedPnl")),
             timestamp=time.time(),
         )
     

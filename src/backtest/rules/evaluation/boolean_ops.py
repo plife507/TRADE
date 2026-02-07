@@ -58,7 +58,7 @@ def eval_any(
     if last_failure:
         return last_failure
     return EvalResult.failure(
-        ReasonCode.OK,
+        ReasonCode.CONDITION_FAILED,
         "No conditions in any() were true",
         operator="any",
     )

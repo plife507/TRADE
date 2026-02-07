@@ -135,19 +135,32 @@ class OrderResult:
 
 class ExchangeManager:
     """
-    Unified exchange manager.
-    
+    Unified exchange manager (thread-safe singleton).
+
     Provides high-level trading operations with:
     - Automatic position sizing (USD to quantity)
     - Minimum size validation
     - Leverage management
     - Error handling
-    
+
     All methods delegate to helper modules for implementation.
     """
-    
+
+    _instance: 'ExchangeManager | None' = None
+    _singleton_lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
         """Initialize exchange manager."""
+        if self._initialized:
+            return
         self.config = get_config()
         self.logger = get_logger()
         
@@ -193,6 +206,36 @@ class ExchangeManager:
         # Setup WebSocket cleanup
         from . import exchange_websocket as ws
         ws.setup_websocket_cleanup(self)
+
+        self._initialized = True
+
+        # Verify one-way position mode at startup (fail-closed)
+        from . import exchange_positions
+        if not exchange_positions.switch_to_one_way_mode(self):
+            raise ValueError(
+                "Failed to verify one-way position mode. "
+                "Check account settings on Bybit."
+            )
+
+        # Validate fee rates against exchange
+        try:
+            fee_info = self.bybit.get_fee_rates()
+            if fee_info:
+                from ..config.constants import DEFAULTS
+                for item in fee_info:
+                    taker = float(item.get("takerFeeRate", 0))
+                    maker = float(item.get("makerFeeRate", 0))
+                    config_taker = DEFAULTS.fees.taker_rate
+                    config_maker = DEFAULTS.fees.maker_rate
+                    if abs(taker - config_taker) > 0.00001 or abs(maker - config_maker) > 0.00001:
+                        self.logger.warning(
+                            f"Fee rate mismatch! Exchange: taker={taker:.6f} maker={maker:.6f}, "
+                            f"Config: taker={config_taker:.6f} maker={config_maker:.6f}"
+                        )
+                    break  # Only check first result
+                self._actual_fee_rates = fee_info
+        except Exception as e:
+            self.logger.debug(f"Could not query fee rates (non-fatal): {e}")
     
     def _validate_trading_operation(self) -> None:
         """SAFETY GUARD RAIL: Validate trading mode consistency."""
@@ -267,9 +310,9 @@ class ExchangeManager:
         from . import exchange_positions as pos
         return pos.set_leverage(self, symbol, leverage)
     
-    def set_margin_mode(self, symbol: str, mode: str) -> bool:
+    def set_margin_mode(self, symbol: str, mode: str, leverage: float = 1.0) -> bool:
         from . import exchange_positions as pos
-        return pos.set_margin_mode(self, symbol, mode)
+        return pos.set_margin_mode(self, symbol, mode, leverage=leverage)
     
     def set_position_mode(self, mode: str = "MergedSingle") -> bool:
         from . import exchange_positions as pos

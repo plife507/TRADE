@@ -547,7 +547,10 @@ class ExecutionModel:
         fill_size = position.size * close_ratio
         fill_size_usdt = position.size_usdt * close_ratio
 
-        # Apply slippage (based on the portion being closed)
+        # Apply slippage to the exit fill.  On Bybit, TP/SL triggers submit
+        # a market order once the trigger price is hit, so the actual fill
+        # price includes slippage just like any other market order.  Applying
+        # slippage here keeps the simulation realistic for all exit types.
         fill_price = self._slippage.apply_exit_slippage(
             exit_price,
             position.side,

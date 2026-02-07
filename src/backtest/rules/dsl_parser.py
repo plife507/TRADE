@@ -382,6 +382,21 @@ def _string_to_feature_ref_dict(s: str) -> dict:
     return {"feature_id": s}
 
 
+_KNOWN_ENUM_VALUES = frozenset({
+    # Zone states
+    "active", "broken", "none", "expired",
+    # Direction / bias
+    "bullish", "bearish", "neutral",
+    # Pivot types
+    "high", "low",
+    # Trend states
+    "up", "down", "flat", "ranging",
+    # Market structure
+    "higher_high", "higher_low", "lower_high", "lower_low",
+    "strong_bullish", "strong_bearish", "weak_bullish", "weak_bearish",
+})
+
+
 def _is_enum_literal(s: str) -> bool:
     """
     Check if a string looks like an enum literal.
@@ -395,12 +410,13 @@ def _is_enum_literal(s: str) -> bool:
     - Feature IDs: "ema_9", "ema_21", "rsi_14" (have underscores with digits)
     - Dotted refs: "fib.level" (have dots)
     - Boolean strings: "true", "false" (handled separately)
+    - Underscore strings that aren't known enums (e.g., "swing_detector")
 
     Args:
         s: String to check.
 
     Returns:
-        True if string is an enum literal (pure alphabetic, no dots, no digit suffix).
+        True if string is an enum literal.
     """
     if not s:
         return False
@@ -420,10 +436,14 @@ def _is_enum_literal(s: str) -> bool:
         # If last part after underscore is all digits, it's a feature ID
         if len(parts) == 2 and parts[1].isdigit():
             return False
+        # Underscore strings without digit suffix: only allow known enum values
+        return s.lower() in _KNOWN_ENUM_VALUES
 
-    # Pure alphabetic (with optional underscores between letters) is an enum literal
-    # Examples: "active", "bullish", "none", "ACTIVE", "swing_high"
-    return s.replace("_", "").isalpha()
+    # Pure alphabetic strings: check against known enums for safety
+    if s.replace("_", "").isalpha():
+        return s.lower() in _KNOWN_ENUM_VALUES
+
+    return False
 
 
 def _normalize_rhs_for_operator(rhs: any, op: str) -> any:

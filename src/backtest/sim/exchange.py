@@ -727,30 +727,44 @@ class SimulatedExchange:
             funding_events, prev_ts, step_time, mark_price
         )
 
-        # 3. Process order book
+        # Steps 3-6: Exit processing order matches Bybit's live behavior.
+        #
+        # On Bybit, TP/SL are exchange-side conditional orders that the
+        # matching engine monitors continuously and triggers intra-bar.
+        # A bot's signal close is submitted via API after bar evaluation,
+        # so it arrives later.  Processing TP/SL before signal closes
+        # keeps backtest results conservative and realistic.
+        #
+        # If TP/SL closes the position, the signal close becomes a no-op
+        # (no position left to close).
+
+        # 3. Process order book (pending limit/stop entries)
         order_book_fills = self._process_order_book(bar, quote_feed, exec_1m_range)
         fills.extend(order_book_fills)
 
-        # 4. Process pending close
-        close_trades, close_fills = self._process_pending_close(bar, ts_open)
-        fills.extend(close_fills)
-
-        # 5. Update dynamic stops
+        # 4. Update dynamic stops (before TP/SL check so trailing/BE
+        #    adjustments apply to this bar's trigger evaluation)
         self._update_dynamic_stops(mark_price, trailing_config, break_even_config, atr_value)
 
-        # 6. Check TP/SL exits
+        # 5. Check TP/SL exits (exchange-side, highest priority)
         tpsl_trades, tpsl_fills = self._check_tp_sl_exits(bar, ts_open, quote_feed, exec_1m_range)
         fills.extend(tpsl_fills)
+
+        # 6. Process pending close (signal exits — only if TP/SL didn't
+        #    already close the position)
+        close_trades, close_fills = self._process_pending_close(bar, ts_open)
+        fills.extend(close_fills)
 
         # 7. Track MAE/MFE
         self._track_mae_mfe(bar)
 
-        # 8. Check liquidation
+        # 8. Update ledger with mark price (must precede liquidation check
+        #    so unrealized PnL and margin are current)
+        self._ledger.update_for_mark_price(self.position, mark_price)
+
+        # 9. Check liquidation (uses up-to-date ledger state from step 8)
         liq_trades, liq_fills = self._check_liquidation(bar, mark_price, step_time, prices)
         fills.extend(liq_fills)
-
-        # 9. Update ledger with mark price
-        self._ledger.update_for_mark_price(self.position, mark_price)
 
         return StepResult(
             timestamp=step_time,
@@ -874,10 +888,12 @@ class SimulatedExchange:
                     order.size_usdt = clamped_size
             
             # Try to fill the limit order
-            # Compute is_first_bar for IOC/FOK handling
+            # Compute is_first_bar for IOC/FOK handling.
+            # Orders submitted on bar N are first processed on bar N+1,
+            # so we use <= submission + 1 instead of ==.
             is_first_bar = (
                 order.submission_bar_index is not None
-                and order.submission_bar_index == self._current_bar_index
+                and self._current_bar_index <= order.submission_bar_index + 1
             )
             result = self._execution.fill_limit_order(
                 order, bar, self.available_balance_usdt,
@@ -1141,8 +1157,7 @@ class SimulatedExchange:
         else:
             price_diff = pos.entry_price - exit_price
 
-        size_closed = pos.size * close_ratio
-        realized_pnl = price_diff * size_closed
+        realized_pnl = price_diff * fill.size
 
         # Pro-rate entry fee for this partial close
         # Entry fee was already deducted from equity at entry, so we're just

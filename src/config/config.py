@@ -4,10 +4,9 @@ Loads settings from environment variables with sensible defaults.
 """
 
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar
-
 from dotenv import load_dotenv
 
 # Note: Symbols should always be passed as explicit parameters by users/agents
@@ -345,16 +344,14 @@ class RiskConfig:
     # Minimum viable trade size (trades below this are rejected)
     min_viable_size_usdt: float = 5.0
 
-    # Hard caps (cannot be overridden by config) - ClassVar prevents instance modification
-    HARD_MAX_LEVERAGE: ClassVar[int] = 10
-    HARD_MAX_POSITION_USDT: ClassVar[float] = 1000.0
-    HARD_MIN_BALANCE: ClassVar[float] = 5.0
-    
     def __post_init__(self):
-        """Enforce hard caps."""
-        self.max_leverage = min(self.max_leverage, self.HARD_MAX_LEVERAGE)
-        self.max_position_size_usdt = min(self.max_position_size_usdt, self.HARD_MAX_POSITION_USDT)
-        self.min_balance_usd = max(self.min_balance_usd, self.HARD_MIN_BALANCE)
+        """Validate risk config values are sane."""
+        if self.max_leverage < 1:
+            raise ValueError(f"max_leverage must be >= 1. Got: {self.max_leverage}")
+        if self.max_position_size_usdt <= 0:
+            raise ValueError(f"max_position_size_usdt must be > 0. Got: {self.max_position_size_usdt}")
+        if self.min_balance_usd < 0:
+            raise ValueError(f"min_balance_usd must be >= 0. Got: {self.min_balance_usd}")
 
 
 @dataclass
@@ -580,11 +577,14 @@ class Config:
     """
 
     _instance: 'Config | None' = None
-    
+    _singleton_lock = threading.Lock()
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
     
     def __init__(self, env_file: str = ".env"):
@@ -803,16 +803,6 @@ class Config:
                 )
         
         # === Risk Settings Validation ===
-        if self.risk.max_leverage > self.risk.HARD_MAX_LEVERAGE:
-            errors.append(
-                f"Max leverage ({self.risk.max_leverage}) exceeds hard cap of {self.risk.HARD_MAX_LEVERAGE}"
-            )
-        
-        if self.risk.max_position_size_usdt > self.risk.HARD_MAX_POSITION_USDT:
-            errors.append(
-                f"Max position size (${self.risk.max_position_size_usdt}) exceeds hard cap of ${self.risk.HARD_MAX_POSITION_USDT}"
-            )
-        
         if self.risk.default_leverage > self.risk.max_leverage:
             errors.append(
                 f"Default leverage ({self.risk.default_leverage}) exceeds max leverage ({self.risk.max_leverage})"
@@ -1026,8 +1016,8 @@ class Config:
             f"Symbols: {', '.join(self.trading.default_symbols) or '(none configured)'}",
             "",
             "Risk Settings:",
-            f"  Max Leverage:    {self.risk.max_leverage}x (cap: {self.risk.HARD_MAX_LEVERAGE}x)",
-            f"  Max Position:    ${self.risk.max_position_size_usdt:,.0f} (cap: ${self.risk.HARD_MAX_POSITION_USDT:,.0f})",
+            f"  Max Leverage:    {self.risk.max_leverage}x",
+            f"  Max Position:    ${self.risk.max_position_size_usdt:,.0f}",
             f"  Max Daily Loss:  ${self.risk.max_daily_loss_usd:,.0f}",
             f"  Min Balance:     ${self.risk.min_balance_usd:,.0f}",
             "",

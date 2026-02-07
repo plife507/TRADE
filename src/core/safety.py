@@ -3,14 +3,137 @@ Safety module with panic button implementation.
 
 Provides emergency controls to immediately flatten all positions
 and halt trading operations.
+
+Also provides the shared DailyLossTracker used by both RiskManager
+and SafetyChecks to avoid duplicate/divergent daily loss tracking.
 """
 
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..utils.logger import get_logger
+
+
+# ==============================================================================
+# Shared Daily Loss Tracker
+# ==============================================================================
+
+class DailyLossTracker:
+    """
+    Thread-safe daily loss tracker shared between RiskManager and SafetyChecks.
+
+    Resets at midnight. Tracks cumulative realized PnL for the day.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._daily_pnl: float = 0.0
+        self._daily_trades: int = 0
+        self._last_reset = datetime.now(timezone.utc).date()
+
+    def _reset_if_needed(self):
+        """Reset counters if a new day has started. Must hold _lock."""
+        today = datetime.now(timezone.utc).date()
+        if today > self._last_reset:
+            self._daily_pnl = 0.0
+            self._daily_trades = 0
+            self._last_reset = today
+
+    def record_pnl(self, amount: float):
+        """Record realized PnL (positive or negative)."""
+        with self._lock:
+            self._reset_if_needed()
+            self._daily_pnl += amount
+            self._daily_trades += 1
+
+    def record_loss(self, amount: float):
+        """Record a realized loss (amount should be negative or will be negated)."""
+        with self._lock:
+            self._reset_if_needed()
+            if amount < 0:
+                self._daily_pnl += amount
+
+    @property
+    def daily_pnl(self) -> float:
+        with self._lock:
+            self._reset_if_needed()
+            return self._daily_pnl
+
+    @property
+    def daily_trades(self) -> int:
+        with self._lock:
+            self._reset_if_needed()
+            return self._daily_trades
+
+    def check_limit(self, max_daily_loss_usd: float) -> tuple[bool, str]:
+        """Check if daily loss limit has been reached."""
+        with self._lock:
+            self._reset_if_needed()
+            if self._daily_pnl <= -max_daily_loss_usd:
+                return False, f"Daily loss limit reached: ${self._daily_pnl:.2f} >= -${max_daily_loss_usd:.2f}"
+            return True, ""
+
+    def seed_from_exchange(self, exchange_manager, symbol: str | None = None) -> None:
+        """
+        Seed daily PnL from Bybit closed PnL records for today.
+
+        Should be called once at startup so the tracker reflects any trades
+        already executed today before this process started.
+
+        Args:
+            exchange_manager: ExchangeManager instance
+            symbol: Optional symbol filter
+        """
+        logger = get_logger()
+        try:
+            from ..utils.time_range import TimeRange
+
+            today_start = datetime.now(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0,
+            )
+            start_ms = int(today_start.timestamp() * 1000)
+            end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+            time_range = TimeRange(
+                start_ms=start_ms,
+                end_ms=end_ms,
+                label="daily_seed",
+                endpoint_type="closed_pnl",
+            )
+
+            records = exchange_manager.get_closed_pnl(
+                time_range=time_range, symbol=symbol,
+            )
+            total = sum(float(r.get("closedPnl", 0)) for r in records)
+
+            with self._lock:
+                self._daily_pnl = total
+                self._daily_trades = len(records)
+
+            logger.info(
+                f"DailyLossTracker seeded from exchange: "
+                f"pnl=${total:.2f}, trades={len(records)}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to seed daily PnL from exchange: {e}. "
+                "Daily loss tracker starts at $0 -- trades from earlier today are NOT counted."
+            )
+
+
+_daily_loss_tracker: DailyLossTracker | None = None
+_dlt_lock = threading.Lock()
+
+
+def get_daily_loss_tracker() -> DailyLossTracker:
+    """Get the global shared DailyLossTracker singleton."""
+    global _daily_loss_tracker
+    if _daily_loss_tracker is None:
+        with _dlt_lock:
+            if _daily_loss_tracker is None:
+                _daily_loss_tracker = DailyLossTracker()
+    return _daily_loss_tracker
 
 
 # G5.5: Retry settings for panic operations
@@ -168,15 +291,26 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
         error = f"Failed to close positions: {e}"
         results["errors"].append(error)
         logger.error(error)
-    
+
+    # Verify positions are actually closed
+    try:
+        remaining = exchange_manager.get_all_positions()
+        open_positions = [p for p in remaining if hasattr(p, 'size') and p.size > 0]
+        if open_positions:
+            for pos in open_positions:
+                results["errors"].append(f"Position still open: {pos.symbol} size={pos.size}")
+            logger.error(f"PANIC INCOMPLETE: {len(open_positions)} position(s) still open after close attempts")
+    except Exception as e:
+        results["errors"].append(f"Failed to verify position closure: {e}")
+
     # Determine overall success
     results["success"] = results["orders_cancelled"] and len(results["errors"]) == 0
-    
+
     if results["success"]:
         logger.panic("PANIC COMPLETE: All positions flattened, trading halted")
     else:
         logger.panic(f"PANIC INCOMPLETE: {len(results['errors'])} errors occurred")
-    
+
     return results
 
 
@@ -220,41 +354,27 @@ def reset_panic(confirm: str = None) -> bool:
 class SafetyChecks:
     """
     Pre-trade safety checks.
-    
+
     These are additional safety validations that run before
     any trade is executed.
     """
-    
+
     def __init__(self, exchange_manager, config):
         self.exchange_manager = exchange_manager
         self.config = config
         self.logger = get_logger()
-        
-        # Track daily losses
-        self._daily_loss = 0.0
-        self._last_reset = datetime.now().date()
-    
-    def _reset_daily_if_needed(self):
-        """Reset daily counters at midnight."""
-        today = datetime.now().date()
-        if today > self._last_reset:
-            self._daily_loss = 0.0
-            self._last_reset = today
-    
+
+        # Use shared daily loss tracker (same instance as RiskManager)
+        self._tracker = get_daily_loss_tracker()
+
     def record_loss(self, amount: float):
         """Record a realized loss."""
-        self._reset_daily_if_needed()
-        if amount < 0:
-            self._daily_loss += abs(amount)
-    
+        self._tracker.record_loss(amount)
+
     def check_daily_loss_limit(self) -> tuple[bool, str]:
         """Check if daily loss limit has been reached."""
-        self._reset_daily_if_needed()
-        
         limit = self.config.risk.max_daily_loss_usd
-        if self._daily_loss >= limit:
-            return False, f"Daily loss limit reached: ${self._daily_loss:.2f} >= ${limit:.2f}"
-        return True, ""
+        return self._tracker.check_limit(limit)
     
     def check_min_balance(self) -> tuple[bool, str]:
         """Check if account has minimum required balance."""

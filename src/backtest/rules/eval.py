@@ -568,7 +568,12 @@ def evaluate_condition(
     relative_tolerance: bool = False,
 ) -> EvalResult:
     """
-    Evaluate a compiled condition against a snapshot.
+    Legacy: Evaluate a compiled condition against a snapshot.
+
+    .. deprecated::
+        This function is legacy. The production hot path uses
+        ExprEvaluator (src/backtest/rules/evaluation/). Retained
+        only for smoke tests and backward compatibility.
 
     Args:
         lhs_ref: Compiled left-hand side reference
@@ -581,6 +586,12 @@ def evaluate_condition(
     Returns:
         EvalResult with evaluation outcome and reason code
     """
+    import warnings
+    warnings.warn(
+        "evaluate_condition() is legacy. Use ExprEvaluator for production code.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     # Normalize operator
     op = operator.lower()
 
