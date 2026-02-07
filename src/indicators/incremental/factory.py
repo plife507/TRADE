@@ -291,6 +291,4 @@ def list_incremental_indicators() -> list[str]:
     return registry_list()
 
 
-# INCREMENTAL_INDICATORS is computed from registry at import time
-# This ensures backward compatibility while using the registry as source of truth
 INCREMENTAL_INDICATORS = frozenset(list_incremental_indicators())

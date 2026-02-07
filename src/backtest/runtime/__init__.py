@@ -15,8 +15,6 @@ Submodules:
 - types: Core runtime types (Bar, RuntimeSnapshot, etc.)
 - timeframe: Timeframe utilities (tf_duration)
 - windowing: Load window computation
-- data_health: Data health checks and gap detection
-- snapshot_builder: RuntimeSnapshot construction
 - snapshot_view: View-based snapshot (performance)
 - feed_store: Precomputed array storage
 - cache: Multi-timeframe feature caching

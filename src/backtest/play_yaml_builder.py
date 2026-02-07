@@ -288,8 +288,6 @@ def validate_feature_reference(
     )
 
 
-# REMOVED: validate_signal_rules() - Legacy signal_rules format deprecated
-# All Plays now use DSL v3.0.0. See docs/PLAY_DSL_COOKBOOK.md
 
 
 def validate_risk_model_refs(
@@ -541,8 +539,6 @@ def validate_structure_blocks(
     return errors, structure_fields, zone_keys
 
 
-# REMOVED: validate_structure_references() - Legacy signal_rules format deprecated
-# Structure references in blocks DSL are validated by dsl_parser.py
 
 
 # =============================================================================

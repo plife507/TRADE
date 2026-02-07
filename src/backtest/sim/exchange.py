@@ -455,7 +455,7 @@ class SimulatedExchange:
         self._pending_close_percent = percent
     
     def cancel_pending_order(self) -> bool:
-        """Cancel pending market order (legacy compatibility)."""
+        """Cancel pending market order."""
         pending_market = self._order_book.get_pending_orders(OrderType.MARKET, self.symbol)
         if pending_market:
             return self._order_book.cancel_order(pending_market[0].order_id)

@@ -261,8 +261,8 @@ class RiskProfileConfig:
     risk_per_trade_pct: float = 1.0
     max_leverage: float = 2.0
     max_drawdown_pct: float = 100.0  # Max allowed drawdown percentage (for state tracking)
-    min_trade_usdt: float = 1.0  # In USDT (name kept for backward compat)
-    stop_equity_usdt: float = 0.0  # In USDT (name kept for backward compat)
+    min_trade_usdt: float = 1.0
+    stop_equity_usdt: float = 0.0
 
     # Position sizing caps (Bybit-aligned)
     # max_position_equity_pct: Maximum position size as % of equity (prevents 100% exposure)
@@ -382,8 +382,8 @@ class RiskProfileConfig:
             "risk_per_trade_pct": self.risk_per_trade_pct,
             "max_leverage": self.max_leverage,
             "max_drawdown_pct": self.max_drawdown_pct,
-            "min_trade_usdt": self.min_trade_usdt,  # In USDT (name kept for backward compat)
-            "stop_equity_usdt": self.stop_equity_usdt,  # In USDT (name kept for backward compat)
+            "min_trade_usdt": self.min_trade_usdt,
+            "stop_equity_usdt": self.stop_equity_usdt,
             # Position sizing caps
             "max_position_equity_pct": self.max_position_equity_pct,
             "reserve_fee_buffer": self.reserve_fee_buffer,
@@ -844,29 +844,6 @@ def _parse_strategy_instance(raw: dict[str, Any]) -> StrategyInstanceConfig:
         params=raw.get("params", {}),
         role=raw.get("role"),
     )
-
-
-def load_system_config(system_id: str, window_name: str = None) -> SystemConfig:
-    """
-    REMOVED: YAML SystemConfig is no longer supported.
-
-    Raises:
-        RuntimeError: Always. This function is deprecated.
-
-    Migration Guide:
-        Use Play YAML format instead:
-            python trade_cli.py backtest run --play <play_id> --start <date> --end <date>
-
-        Play files are located in tests/functional/plays/ or tests/stress/plays/
-        See docs/PLAY_DSL_COOKBOOK.md for Play YAML format documentation.
-    """
-    raise RuntimeError(
-        f"REMOVED: load_system_config('{system_id}') is no longer supported.\n\n"
-        f"YAML SystemConfig format is deprecated. Use Play YAML format instead:\n"
-        f"  python trade_cli.py backtest run --play <play_id> --start <date> --end <date>\n\n"
-        f"See docs/specs/PLAY_DSL_COOKBOOK.md for Play YAML format documentation."
-    )
-    # G6.4.2: Removed 128 lines of dead code after raise statement
 
 
 def list_systems() -> list[str]:

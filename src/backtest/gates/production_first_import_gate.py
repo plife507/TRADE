@@ -66,8 +66,8 @@ ALLOWLIST_DIRS = [
 
 # Suggested target modules for common patterns
 SUGGESTED_TARGETS = {
-    "build_exchange_state": "src/backtest/runtime/snapshot_builder.py",
-    "build_test_exchange_state": "src/backtest/runtime/snapshot_builder.py",
+    "build_exchange_state": "src/backtest/runtime/snapshot_view.py",
+    "build_test_exchange_state": "src/backtest/runtime/snapshot_view.py",
     "compute_structure_sl": "src/backtest/execution_validation.py",
     "compute_trades_hash": "src/backtest/artifacts/hashes.py",
     "compute_equity_hash": "src/backtest/artifacts/hashes.py",
@@ -77,7 +77,7 @@ SUGGESTED_TARGETS = {
     "align_": "src/backtest/runtime/",
     "preflight_": "src/backtest/runtime/preflight.py",
     "indicator_": "src/backtest/indicators.py",
-    "snapshot_": "src/backtest/runtime/snapshot_builder.py",
+    "snapshot_": "src/backtest/runtime/snapshot_view.py",
     ".rolling(": "src/backtest/features/feature_frame_builder.py",
     ".ewm(": "src/backtest/features/feature_frame_builder.py",
 }

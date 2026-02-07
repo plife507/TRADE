@@ -70,7 +70,7 @@ phases:
       - src/backtest/runtime/preflight.py  # P0: exec_tf variable fix
       - src/backtest/sim/execution/execution_model.py  # P0: exit fee calc
       - src/backtest/runtime/windowing.py  # P1: med_tf warmup
-      - src/backtest/engine_snapshot.py  # P1: bounds check
+      # (engine_snapshot.py removed - superseded by runtime/snapshot_view.py)
       - src/backtest/runner.py  # P1: warnings
       - src/backtest/sim/exchange.py  # P2: IOC/FOK, partial fees
       - src/backtest/sim/types.py  # P2: submission_bar_index, entry_fee

@@ -193,6 +193,18 @@ def _compare_outputs(
         vec_post = vec_post[:min_len]
         keys_checked += 1
 
+        # Coerce object arrays to float64 (run_detector_batch uses dtype=object)
+        if inc_post.dtype == object:
+            inc_post = np.array(
+                [float(v) if isinstance(v, (int, float)) else np.nan for v in inc_post],
+                dtype=np.float64,
+            )
+        if vec_post.dtype == object:
+            vec_post = np.array(
+                [float(v) if isinstance(v, (int, float)) else np.nan for v in vec_post],
+                dtype=np.float64,
+            )
+
         if key in ENUM_FLOAT_KEYS:
             # For enum-encoded floats: both NaN = match, otherwise exact
             both_nan = np.isnan(inc_post) & np.isnan(vec_post)

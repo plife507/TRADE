@@ -1,8 +1,6 @@
 """
 Play package - Declarative strategy specification with Feature Registry.
 
-Re-exports all Play-related classes and functions for backward compatibility.
-
 Usage:
     from src.backtest.play import Play, load_play, AccountConfig
 """

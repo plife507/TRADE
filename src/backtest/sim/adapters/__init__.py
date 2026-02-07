@@ -18,7 +18,6 @@ __all__ = [
     "adapt_ohlcv_row_canonical",
     "adapt_ohlcv_dataframe_canonical",
     "build_bar_close_ts_map",
-    # Aliases for backward compatibility
     "adapt_ohlcv_row",
     "adapt_ohlcv_dataframe",
     # Funding adapters
