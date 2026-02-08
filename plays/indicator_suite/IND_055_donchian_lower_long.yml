@@ -1,7 +1,7 @@
 version: "3.0.0"
 name: "ind_055_donchian_lower_long"
 description: |
-  Indicator Suite - Donchian Channel lower bounce
+  Indicator Suite - Donchian Channel lower bounce (near lower band)
 
 symbol: "ETHUSDT"
 
@@ -31,7 +31,7 @@ structures:
 actions:
   entry_long:
     all:
-      - ["close", "<", "dc_20.lower"]
+      - ["close", "near_pct", "dc_20.lower", 2]
 position_policy:
   mode: "long_only"
   exit_mode: "sl_tp_only"

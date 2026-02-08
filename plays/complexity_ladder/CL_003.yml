@@ -1,10 +1,10 @@
 version: "3.0.0"
 name: "CL_003_rsi_range_trend_short"
 description: |
-  Complexity Ladder 20% - RSI Range + Trend Filter (Short-Only)
+  Complexity Ladder 20% - RSI Mean-Reversion (Short-Only)
   Three indicators (RSI 14, EMA 50, ATR 14), single timeframe, short-only.
-  Entry: rsi_14 between [60, 75] AND close < ema_50 (overbought in downtrend).
-  Exit: rsi_14 < 30.
+  Entry: rsi_14 > 65 AND close > ema_50 (overbought above mean, fade for reversion).
+  Exit: rsi_14 < 35 (mean reverted).
   Risk-based sizing at 1% per trade.
 
 symbol: "SOLUSDT"
@@ -42,12 +42,12 @@ features:
 actions:
   entry_short:
     all:
-      - ["rsi_14", "between", [60, 75]]
-      - ["close", "<", "ema_50"]
+      - ["rsi_14", ">", 65]
+      - ["close", ">", "ema_50"]
 
   exit_short:
     any:
-      - ["rsi_14", "<", 30]
+      - ["rsi_14", "<", 35]
 
 position_policy:
   mode: short_only

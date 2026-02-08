@@ -2,7 +2,7 @@ version: "3.0.0"
 name: "op_012_arithmetic_add"
 description: |
   Operator Suite - Arithmetic addition (+) operator test.
-  Entry when close > ema_50 + atr_14.
+  Entry when close > ema_50 + rsi_14 (RSI is 0-100, negligible on price scale).
 
 symbol: "ETHUSDT"
 
@@ -27,8 +27,8 @@ features:
     indicator: ema
     params: {length: 50}
 
-  atr_14:
-    indicator: atr
+  rsi_14:
+    indicator: rsi
     params: {length: 14}
 
 structures:
@@ -37,7 +37,7 @@ structures:
 actions:
   entry_long:
     all:
-      - ["close", ">", {"+": ["ema_50", "atr_14"]}]
+      - ["close", ">", {"+": ["ema_50", "rsi_14"]}]
 
 position_policy:
   mode: "long_only"
