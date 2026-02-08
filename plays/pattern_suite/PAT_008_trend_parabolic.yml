@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_008_trend_parabolic"
 description: |
-  Pattern Suite - Synthetic pattern 'trend_parabolic' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Parabolic momentum with ROC and SuperTrend.
+  Entry when ROC shows upward momentum (>0.1%) and SuperTrend is bullish.
 
 symbol: "BTCUSDT"
 
@@ -23,17 +23,13 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
-    indicator: ema
-    params: {length: 9}
+  roc_10:
+    indicator: roc
+    params: {length: 10}
 
-  ema_21:
-    indicator: ema
-    params: {length: 21}
-
-  rsi_14:
-    indicator: rsi
-    params: {length: 14}
+  st_10_3:
+    indicator: supertrend
+    params: {length: 10, multiplier: 3.0}
 
 structures:
   exec: []
@@ -41,7 +37,8 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["roc_10", ">", 0.1]
+      - ["st_10_3.direction", "==", 1]
 
 position_policy:
   mode: "long_only"
@@ -49,6 +46,6 @@ position_policy:
   max_positions_per_symbol: 1
 
 risk:
-  stop_loss_pct: 3.0
-  take_profit_pct: 6.0
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
   max_position_pct: 100.0

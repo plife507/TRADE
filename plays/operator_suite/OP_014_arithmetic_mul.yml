@@ -2,7 +2,7 @@ version: "3.0.0"
 name: "op_014_arithmetic_mul"
 description: |
   Operator Suite - Arithmetic multiplication (*) operator test.
-  Entry when atr > natr * 100 (ATR vs normalized check).
+  Entry when close > ema_50 * 1.001 (0.1% above EMA).
 
 symbol: "SOLUSDT"
 
@@ -37,7 +37,7 @@ structures:
 actions:
   entry_long:
     all:
-      - ["close", ">", {"*": ["ema_50", 1.01]}]
+      - ["close", ">", {"*": ["ema_50", 1.001]}]
 
 position_policy:
   mode: "long_only"

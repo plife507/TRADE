@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_024_vol_spike_continue"
 description: |
-  Pattern Suite - Synthetic pattern 'vol_spike_continue' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Momentum continuation on volatility spike.
+  Entry long when NATR > 3, ROC > 3, and close above EMA 20.
 
 symbol: "BTCUSDT"
 
@@ -23,17 +23,17 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
-    indicator: ema
-    params: {length: 9}
-
-  ema_21:
-    indicator: ema
-    params: {length: 21}
-
-  rsi_14:
-    indicator: rsi
+  natr_14:
+    indicator: natr
     params: {length: 14}
+
+  roc_10:
+    indicator: roc
+    params: {length: 10}
+
+  ema_20:
+    indicator: ema
+    params: {length: 20}
 
 structures:
   exec: []
@@ -41,7 +41,9 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["natr_14", ">", 1.0]
+      - ["roc_10", ">", 1]
+      - ["close", ">", "ema_20"]
 
 position_policy:
   mode: "long_only"
@@ -49,6 +51,6 @@ position_policy:
   max_positions_per_symbol: 1
 
 risk:
-  stop_loss_pct: 3.0
-  take_profit_pct: 6.0
+  stop_loss_pct: 4.0
+  take_profit_pct: 8.0
   max_position_pct: 100.0

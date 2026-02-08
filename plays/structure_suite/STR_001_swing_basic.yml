@@ -3,7 +3,7 @@ name: "str_001_swing_basic"
 description: |
   Structure Suite - Swing detector basic test.
   Uses swing high/low detection with simple EMA filter.
-  Tests swing.last_high_price and swing.last_low_price access.
+  Tests swing.high_level and swing.low_level access.
 
 symbol: "BTCUSDT"
 
@@ -38,6 +38,7 @@ actions:
   entry_long:
     all:
       - ["close", ">", "ema_20"]
+      - ["close", "near_pct", "swing.low_level", 3]
 
 position_policy:
   mode: "long_only"

@@ -1,8 +1,9 @@
 version: "3.0.0"
 name: "pat_028_choppy_whipsaw"
 description: |
-  Pattern Suite - Synthetic pattern 'choppy_whipsaw' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Choppy whipsaw filter: avoids choppy markets using ADX.
+  Filters OUT choppy conditions using ADX > 25 gate. Only enters when
+  ADX confirms a real trend exists, combined with EMA crossover for direction.
 
 symbol: "BTCUSDT"
 
@@ -23,6 +24,10 @@ account:
   slippage_bps: 2.0
 
 features:
+  adx_14:
+    indicator: adx
+    params: {length: 14}
+
   ema_9:
     indicator: ema
     params: {length: 9}
@@ -31,16 +36,13 @@ features:
     indicator: ema
     params: {length: 21}
 
-  rsi_14:
-    indicator: rsi
-    params: {length: 14}
-
 structures:
   exec: []
 
 actions:
   entry_long:
     all:
+      - ["adx_14.adx", ">", 25]
       - ["ema_9", "cross_above", "ema_21"]
 
 position_policy:

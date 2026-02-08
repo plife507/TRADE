@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_025_vol_decay"
 description: |
-  Pattern Suite - Synthetic pattern 'vol_decay' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Declining volatility squeeze.
+  Entry long when Bollinger bandwidth tight (< 0.02) in uptrend (close > EMA 50).
 
 symbol: "BTCUSDT"
 
@@ -23,17 +23,17 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
-    indicator: ema
-    params: {length: 9}
+  bb_20_2:
+    indicator: bbands
+    params: {length: 20, std: 2.0}
 
-  ema_21:
-    indicator: ema
-    params: {length: 21}
-
-  rsi_14:
-    indicator: rsi
+  atr_14:
+    indicator: atr
     params: {length: 14}
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
 
 structures:
   exec: []
@@ -41,7 +41,8 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["bb_20_2.bandwidth", "<", 0.02]
+      - ["close", ">", "ema_50"]
 
 position_policy:
   mode: "long_only"
@@ -49,6 +50,6 @@ position_policy:
   max_positions_per_symbol: 1
 
 risk:
-  stop_loss_pct: 3.0
-  take_profit_pct: 6.0
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
   max_position_pct: 100.0

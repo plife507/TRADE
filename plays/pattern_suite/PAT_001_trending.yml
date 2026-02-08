@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_001_trending"
 description: |
-  Pattern Suite - Synthetic pattern 'trending' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - ADX-filtered trend following.
+  Entry when ADX shows strong trend (>25) and price above EMA 50.
 
 symbol: "BTCUSDT"
 
@@ -23,16 +23,12 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
+  ema_50:
     indicator: ema
-    params: {length: 9}
+    params: {length: 50}
 
-  ema_21:
-    indicator: ema
-    params: {length: 21}
-
-  rsi_14:
-    indicator: rsi
+  adx_14:
+    indicator: adx
     params: {length: 14}
 
 structures:
@@ -41,7 +37,8 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["close", ">", "ema_50"]
+      - ["adx_14.adx", ">", 25]
 
 position_policy:
   mode: "long_only"

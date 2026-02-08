@@ -1,8 +1,9 @@
 version: "3.0.0"
 name: "pat_029_accumulation"
 description: |
-  Pattern Suite - Synthetic pattern 'accumulation' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Accumulation phase detection.
+  Identifies accumulation via positive Chaikin Money Flow while price is
+  still below EMA 50, suggesting smart money buying before a markup phase.
 
 symbol: "BTCUSDT"
 
@@ -23,17 +24,17 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
-    indicator: ema
-    params: {length: 9}
+  obv:
+    indicator: obv
+    params: {}
 
-  ema_21:
-    indicator: ema
-    params: {length: 21}
+  cmf_20:
+    indicator: cmf
+    params: {length: 20}
 
-  rsi_14:
-    indicator: rsi
-    params: {length: 14}
+  ema_50:
+    indicator: ema
+    params: {length: 50}
 
 structures:
   exec: []
@@ -41,7 +42,8 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["cmf_20", ">", 0.1]
+      - ["close", "<", "ema_50"]
 
 position_policy:
   mode: "long_only"

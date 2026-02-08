@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_016_reversal_v_top"
 description: |
-  Pattern Suite - Synthetic pattern 'reversal_v_top' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - V-top reversal detection.
+  Entry short on extreme overbought: RSI > 80, MFI > 80, close above EMA 50.
 
 symbol: "BTCUSDT"
 
@@ -23,17 +23,17 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
-    indicator: ema
-    params: {length: 9}
-
-  ema_21:
-    indicator: ema
-    params: {length: 21}
-
   rsi_14:
     indicator: rsi
     params: {length: 14}
+
+  mfi_14:
+    indicator: mfi
+    params: {length: 14}
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
 
 structures:
   exec: []
@@ -41,7 +41,9 @@ structures:
 actions:
   entry_short:
     all:
-      - ["ema_9", "cross_below", "ema_21"]
+      - ["rsi_14", ">", 80]
+      - ["mfi_14", ">", 80]
+      - ["close", ">", "ema_50"]
 
 position_policy:
   mode: "short_only"
@@ -50,5 +52,5 @@ position_policy:
 
 risk:
   stop_loss_pct: 3.0
-  take_profit_pct: 6.0
+  take_profit_pct: 9.0
   max_position_pct: 100.0

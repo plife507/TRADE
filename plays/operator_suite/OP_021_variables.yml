@@ -1,8 +1,9 @@
 version: "3.0.0"
 name: "op_021_variables"
 description: |
-  Operator Suite - Variables (template substitution) test.
-  Uses variables for RSI threshold and SL/TP values.
+  Operator Suite - Variables (parse) test.
+  Declares variables section; tests that the parser accepts it without error.
+  No template substitution engine exists yet, so conditions use literal values.
 
 symbol: "BTCUSDT"
 

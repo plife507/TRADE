@@ -1,8 +1,9 @@
 version: "3.0.0"
 name: "pat_034_mtf_pullback_bear"
 description: |
-  Pattern Suite - Synthetic pattern 'mtf_pullback_bear' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Multi-timeframe bearish pullback.
+  Enters short on a pullback to the execution EMA 20 while the medium timeframe
+  EMA 50 confirms a downtrend. RSI above 55 confirms the pullback bounce.
 
 symbol: "BTCUSDT"
 
@@ -23,28 +24,31 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
+  ema_20:
     indicator: ema
-    params: {length: 9}
-
-  ema_21:
-    indicator: ema
-    params: {length: 21}
+    params: {length: 20}
 
   rsi_14:
     indicator: rsi
     params: {length: 14}
 
+  ema_50_1h:
+    indicator: ema
+    params: {length: 50}
+    tf: "1h"
+
 structures:
   exec: []
 
 actions:
-  entry_long:
+  entry_short:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["close", "near_pct", "ema_20", 1]
+      - ["close", "<", "ema_50_1h"]
+      - ["rsi_14", ">", 55]
 
 position_policy:
-  mode: "long_only"
+  mode: "short_only"
   exit_mode: "sl_tp_only"
   max_positions_per_symbol: 1
 

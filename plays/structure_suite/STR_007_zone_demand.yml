@@ -26,6 +26,9 @@ features:
   rsi_14:
     indicator: rsi
     params: {length: 14}
+  atr_14:
+    indicator: atr
+    params: {length: 14}
 
 structures:
   exec:
@@ -39,11 +42,12 @@ structures:
       params:
         zone_type: demand
         width_atr: 1.5
+        atr_key: atr_14
 
 actions:
   entry_long:
     all:
-      - ["rsi_14", "<", 45]
+      - ["demand_zone.state", "==", "active"]
 
 position_policy:
   mode: "long_only"

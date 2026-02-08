@@ -30,6 +30,9 @@ features:
   ema_50:
     indicator: ema
     params: {length: 50}
+  atr_14:
+    indicator: atr
+    params: {length: 14}
 
 structures:
   exec:
@@ -67,6 +70,7 @@ structures:
       params:
         zone_type: demand
         width_atr: 1.5
+        atr_key: atr_14
 
     - type: rolling_window
       key: rolling_high_20
@@ -81,6 +85,8 @@ actions:
       - ["trend.direction", "==", 1]
       - ["rsi_14", "<", 50]
       - ["close", ">", "ema_50"]
+      - ["fib_zones.any_active", "==", 1]
+      - ["rolling_high_20.value", ">", 0]
 
 position_policy:
   mode: "long_only"

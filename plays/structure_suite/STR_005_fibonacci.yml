@@ -49,6 +49,7 @@ actions:
     all:
       - ["trend.direction", "==", 1]
       - ["rsi_14", "<", 50]
+      - ["close", "near_pct", "fib.level_0.618", 1]
 
 position_policy:
   mode: "long_only"

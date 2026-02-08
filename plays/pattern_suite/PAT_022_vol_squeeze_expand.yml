@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_022_vol_squeeze_expand"
 description: |
-  Pattern Suite - Synthetic pattern 'vol_squeeze_expand' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Squeeze fire entry.
+  Entry long when squeeze momentum fires positive (sqz > 0).
 
 symbol: "BTCUSDT"
 
@@ -23,17 +23,9 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
-    indicator: ema
-    params: {length: 9}
-
-  ema_21:
-    indicator: ema
-    params: {length: 21}
-
-  rsi_14:
-    indicator: rsi
-    params: {length: 14}
+  sqz:
+    indicator: squeeze
+    params: {bb_length: 20, bb_std: 2.0, kc_length: 20, kc_scalar: 1.5}
 
 structures:
   exec: []
@@ -41,7 +33,7 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["sqz.sqz", ">", 0]
 
 position_policy:
   mode: "long_only"

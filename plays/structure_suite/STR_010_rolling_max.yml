@@ -40,6 +40,7 @@ actions:
   entry_short:
     all:
       - ["close", "<", "ema_20"]
+      - ["close", "near_pct", "rolling_high_20.value", 2]
 
 position_policy:
   mode: "short_only"

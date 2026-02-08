@@ -37,8 +37,7 @@ structures:
 actions:
   entry_long:
     all:
-      - ["rsi_14", "<", 40]
-      - ["close", ">", "ema_50"]
+      - ["rsi_14", "<", 50]
 
   exit_long:
     all:

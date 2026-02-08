@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_004_multi_tf_aligned"
 description: |
-  Pattern Suite - Synthetic pattern 'multi_tf_aligned' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Multi-timeframe EMA alignment.
+  Entry when price above 15m EMA 20 and above 1h EMA 50.
 
 symbol: "BTCUSDT"
 
@@ -23,17 +23,14 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
+  ema_20:
     indicator: ema
-    params: {length: 9}
+    params: {length: 20}
 
-  ema_21:
+  ema_50_1h:
     indicator: ema
-    params: {length: 21}
-
-  rsi_14:
-    indicator: rsi
-    params: {length: 14}
+    params: {length: 50}
+    tf: "1h"
 
 structures:
   exec: []
@@ -41,7 +38,8 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["close", ">", "ema_20"]
+      - ["close", ">", "ema_50_1h"]
 
 position_policy:
   mode: "long_only"

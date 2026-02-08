@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_019_breakout_clean"
 description: |
-  Pattern Suite - Synthetic pattern 'breakout_clean' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Clean Donchian channel breakout.
+  Entry long when close breaks above Donchian mid-channel.
 
 symbol: "BTCUSDT"
 
@@ -23,17 +23,14 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
-    indicator: ema
-    params: {length: 9}
+  dc_20:
+    indicator: donchian
+    params: {lower_length: 20, upper_length: 20}
 
-  ema_21:
-    indicator: ema
-    params: {length: 21}
-
-  rsi_14:
-    indicator: rsi
-    params: {length: 14}
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params: {length: 20}
 
 structures:
   exec: []
@@ -41,7 +38,7 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["close", ">", "dc_20.middle"]
 
 position_policy:
   mode: "long_only"

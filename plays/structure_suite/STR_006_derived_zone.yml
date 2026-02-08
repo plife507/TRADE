@@ -51,6 +51,7 @@ actions:
     all:
       - ["trend.direction", "==", 1]
       - ["rsi_14", "<", 50]
+      - ["fib_zones.any_active", "==", 1]
 
 position_policy:
   mode: "long_only"

@@ -41,7 +41,7 @@ actions:
       - holds_for:
           bars: 3
           expr:
-            - ["rsi_14", "<", 45]
+            - ["rsi_14", "<", 55]
 
 position_policy:
   mode: "long_only"

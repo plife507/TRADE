@@ -1,8 +1,8 @@
 version: "3.0.0"
 name: "pat_020_breakout_false"
 description: |
-  Pattern Suite - Synthetic pattern 'breakout_false' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Fade false breakout.
+  Entry short when price falls back below Donchian upper with overbought RSI.
 
 symbol: "BTCUSDT"
 
@@ -23,13 +23,9 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
-    indicator: ema
-    params: {length: 9}
-
-  ema_21:
-    indicator: ema
-    params: {length: 21}
+  dc_20:
+    indicator: donchian
+    params: {lower_length: 20, upper_length: 20}
 
   rsi_14:
     indicator: rsi
@@ -39,16 +35,17 @@ structures:
   exec: []
 
 actions:
-  entry_long:
+  entry_short:
     all:
-      - ["ema_9", "cross_above", "ema_21"]
+      - ["close", "<", "dc_20.upper"]
+      - ["rsi_14", ">", 70]
 
 position_policy:
-  mode: "long_only"
+  mode: "short_only"
   exit_mode: "sl_tp_only"
   max_positions_per_symbol: 1
 
 risk:
-  stop_loss_pct: 3.0
-  take_profit_pct: 6.0
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
   max_position_pct: 100.0

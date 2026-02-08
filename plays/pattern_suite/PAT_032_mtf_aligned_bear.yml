@@ -1,8 +1,9 @@
 version: "3.0.0"
 name: "pat_032_mtf_aligned_bear"
 description: |
-  Pattern Suite - Synthetic pattern 'mtf_aligned_bear' coverage test.
-  Simple EMA crossover strategy to verify engine handles this pattern.
+  Pattern Suite - Multi-timeframe bearish alignment.
+  Enters short when execution timeframe price is below EMA 20, medium timeframe
+  EMA 50 confirms downtrend, and RSI is below 50 showing bearish momentum.
 
 symbol: "BTCUSDT"
 
@@ -23,17 +24,18 @@ account:
   slippage_bps: 2.0
 
 features:
-  ema_9:
+  ema_20:
     indicator: ema
-    params: {length: 9}
-
-  ema_21:
-    indicator: ema
-    params: {length: 21}
+    params: {length: 20}
 
   rsi_14:
     indicator: rsi
     params: {length: 14}
+
+  ema_50_1h:
+    indicator: ema
+    params: {length: 50}
+    tf: "1h"
 
 structures:
   exec: []
@@ -41,7 +43,9 @@ structures:
 actions:
   entry_short:
     all:
-      - ["ema_9", "cross_below", "ema_21"]
+      - ["close", "<", "ema_20"]
+      - ["close", "<", "ema_50_1h"]
+      - ["rsi_14", "<", 50]
 
 position_policy:
   mode: "short_only"
