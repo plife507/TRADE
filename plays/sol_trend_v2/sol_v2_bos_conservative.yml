@@ -1,0 +1,126 @@
+version: 3.0.0
+name: sol_v2_bos_conservative
+description: 'Conservative BOS entry on 1h execution. Requires ADX > 30 for strong
+  trend,
+
+  RSI in mid-range (40-60) to avoid overbought/oversold entries.
+
+  Multi-timeframe trend alignment via swing/trend structures.
+
+  Wide 3% SL / 9% TP (1:3 R:R) for SOL volatility.
+
+  '
+symbol: SOLUSDT
+timeframes:
+  low_tf: 15m
+  med_tf: 1h
+  high_tf: D
+  exec: med_tf
+features:
+  ema_50:
+    indicator: ema
+    params:
+      length: 50
+  ema_200:
+    indicator: ema
+    params:
+      length: 200
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+structures:
+  exec:
+  - type: swing
+    key: swing
+    params:
+      left: 5
+      right: 5
+  - type: trend
+    key: trend
+    uses: swing
+  - type: market_structure
+    key: ms
+    uses: swing
+actions:
+  entry_long:
+    all:
+    - - ms.bos_this_bar
+      - ==
+      - 1
+    - - ms.bos_direction
+      - ==
+      - bullish
+    - - trend.direction
+      - ==
+      - 1
+    - - adx_14.adx
+      - '>'
+      - 30
+    - - rsi_14
+      - between
+      - - 40
+        - 60
+    - - close
+      - '>'
+      - ema_50
+  entry_short:
+    all:
+    - - ms.bos_this_bar
+      - ==
+      - 1
+    - - ms.bos_direction
+      - ==
+      - bearish
+    - - trend.direction
+      - ==
+      - -1
+    - - adx_14.adx
+      - '>'
+      - 30
+    - - rsi_14
+      - between
+      - - 40
+        - 60
+    - - close
+      - <
+      - ema_50
+  exit_long:
+    any:
+    - - ms.choch_this_bar
+      - ==
+      - 1
+    - - close
+      - <
+      - ema_200
+  exit_short:
+    any:
+    - - ms.choch_this_bar
+      - ==
+      - 1
+    - - close
+      - '>'
+      - ema_200
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 9.0
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0

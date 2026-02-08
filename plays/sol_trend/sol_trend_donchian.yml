@@ -1,0 +1,81 @@
+version: 3.0.0
+name: sol_trend_donchian
+description: Turtle-style Donchian 20 breakout with 10-bar exit channel, ADX filter
+symbol: SOLUSDT
+timeframes:
+  low_tf: 15m
+  med_tf: 1h
+  high_tf: D
+  exec: low_tf
+features:
+  donchian_20:
+    indicator: donchian
+    params:
+      lower_length: 20
+      upper_length: 20
+  donchian_10:
+    indicator: donchian
+    params:
+      lower_length: 10
+      upper_length: 10
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: 1h
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+actions:
+  entry_long:
+    all:
+    - - close
+      - '>'
+      - donchian_20.upper
+    - - adx_14.adx
+      - '>'
+      - 20
+    - - close
+      - '>'
+      - ema_50_1h
+  entry_short:
+    all:
+    - - close
+      - <
+      - donchian_20.lower
+    - - adx_14.adx
+      - '>'
+      - 20
+    - - close
+      - <
+      - ema_50_1h
+  exit_long:
+    all:
+    - - close
+      - <
+      - donchian_10.lower
+  exit_short:
+    all:
+    - - close
+      - '>'
+      - donchian_10.upper
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 9.0
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0
+  margin_mode: isolated_usdt
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0

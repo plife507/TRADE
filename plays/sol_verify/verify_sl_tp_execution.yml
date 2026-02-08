@@ -1,0 +1,34 @@
+version: 3.0.0
+name: verify_sl_tp_execution
+description: Verify SL/TP execute at correct prices - tight stops force frequent hits
+symbol: SOLUSDT
+timeframes:
+  low_tf: 5m
+  med_tf: 1h
+  high_tf: D
+  exec: low_tf
+features:
+  ema_10:
+    indicator: ema
+    params:
+      length: 10
+  ema_30:
+    indicator: ema
+    params:
+      length: 30
+actions:
+  entry_long:
+    all:
+    - - ema_10
+      - cross_above
+      - ema_30
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 0.5
+  take_profit_pct: 1.0
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 2.0

@@ -1,0 +1,58 @@
+version: 3.0.0
+name: verify_structure_detection
+description: Verify swing/trend/BOS detection fires correctly
+symbol: SOLUSDT
+timeframes:
+  low_tf: 15m
+  med_tf: 1h
+  high_tf: D
+  exec: low_tf
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+structures:
+  exec:
+  - type: swing
+    key: swing
+    params:
+      left: 5
+      right: 5
+  - type: trend
+    key: trend
+    uses: swing
+  - type: market_structure
+    key: ms
+    uses: swing
+actions:
+  entry_long:
+    all:
+    - - trend.direction
+      - ==
+      - 1
+    - - ms.bias
+      - ==
+      - 1
+    - - close
+      - '>'
+      - ema_20
+  exit_long:
+    all:
+    - - trend.direction
+      - ==
+      - -1
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0

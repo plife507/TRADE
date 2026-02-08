@@ -1,0 +1,65 @@
+version: 3.0.0
+name: verify_indicator_math
+description: Verify indicator math - EMA, RSI, MACD, BBands, ADX all checked via snapshot
+  audit
+symbol: SOLUSDT
+timeframes:
+  low_tf: 15m
+  med_tf: 1h
+  high_tf: D
+  exec: low_tf
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  rsi_14:
+    indicator: rsi
+    params:
+      length: 14
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  supertrend_10_3:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+actions:
+  entry_long:
+    all:
+    - - close
+      - '>'
+      - ema_20
+    - - rsi_14
+      - '>'
+      - 50
+    - - adx_14.adx
+      - '>'
+      - 20
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0

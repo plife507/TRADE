@@ -1,0 +1,49 @@
+version: 3.0.0
+name: verify_mtf_alignment
+description: Verify multi-TF forward-fill - 1h EMA on 15m exec bar should hold steady
+  between 1h closes
+symbol: SOLUSDT
+timeframes:
+  low_tf: 15m
+  med_tf: 1h
+  high_tf: D
+  exec: low_tf
+features:
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  ema_50_1h:
+    indicator: ema
+    params:
+      length: 50
+    tf: 1h
+  rsi_14_1h:
+    indicator: rsi
+    params:
+      length: 14
+    tf: 1h
+actions:
+  entry_long:
+    all:
+    - - ema_20
+      - '>'
+      - ema_50_1h
+    - - rsi_14_1h
+      - '>'
+      - 50
+  exit_long:
+    all:
+    - - ema_20
+      - <
+      - ema_50_1h
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0

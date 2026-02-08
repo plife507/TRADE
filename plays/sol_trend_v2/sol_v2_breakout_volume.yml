@@ -1,0 +1,105 @@
+version: 3.0.0
+name: sol_v2_breakout_volume
+description: 'Wide Donchian 50 breakout on 1h execution with volume confirmation.
+
+  Requires volume > 2x SMA(20) to filter false breakouts.
+
+  ADX > 25 ensures trending market. 5% SL / 15% TP (1:3 R:R).
+
+  Uses Donchian 20 exit channel. Long and short.
+
+  '
+symbol: SOLUSDT
+timeframes:
+  low_tf: 15m
+  med_tf: 1h
+  high_tf: D
+  exec: med_tf
+features:
+  donchian_50:
+    indicator: donchian
+    params:
+      lower_length: 50
+      upper_length: 50
+  donchian_20:
+    indicator: donchian
+    params:
+      lower_length: 20
+      upper_length: 20
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params:
+      length: 20
+  adx_14:
+    indicator: adx
+    params:
+      length: 14
+  ema_200:
+    indicator: ema
+    params:
+      length: 200
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+actions:
+  entry_long:
+    all:
+    - - close
+      - '>'
+      - donchian_50.upper
+    - lhs:
+      - volume
+      - /
+      - volume_sma_20
+      op: '>'
+      rhs: 2.0
+    - - adx_14.adx
+      - '>'
+      - 25
+    - - close
+      - '>'
+      - ema_200
+  entry_short:
+    all:
+    - - close
+      - <
+      - donchian_50.lower
+    - lhs:
+      - volume
+      - /
+      - volume_sma_20
+      op: '>'
+      rhs: 2.0
+    - - adx_14.adx
+      - '>'
+      - 25
+    - - close
+      - <
+      - ema_200
+  exit_long:
+    all:
+    - - close
+      - <
+      - donchian_20.lower
+  exit_short:
+    all:
+    - - close
+      - '>'
+      - donchian_20.upper
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 15.0
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  margin_mode: isolated_usdt
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0

@@ -1,0 +1,39 @@
+version: 3.0.0
+name: verify_ema_cross_entry
+description: Verify EMA 9/21 crossover entry fires correctly on trending data
+symbol: SOLUSDT
+timeframes:
+  low_tf: 15m
+  med_tf: 1h
+  high_tf: D
+  exec: low_tf
+features:
+  ema_9:
+    indicator: ema
+    params:
+      length: 9
+  ema_21:
+    indicator: ema
+    params:
+      length: 21
+actions:
+  entry_long:
+    all:
+    - - ema_9
+      - cross_above
+      - ema_21
+  exit_long:
+    all:
+    - - ema_9
+      - cross_below
+      - ema_21
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
