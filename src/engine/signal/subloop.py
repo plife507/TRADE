@@ -160,6 +160,8 @@ class SubLoopEvaluator:
         exec_idx: int,
         context: SubLoopContext,
         exec_close: float,
+        exec_ts_open: datetime | None = None,
+        exec_ts_close: datetime | None = None,
     ) -> SubLoopResult:
         """Evaluate strategy at 1m granularity within an exec bar.
 
@@ -171,6 +173,8 @@ class SubLoopEvaluator:
             exec_idx: Current exec bar index
             context: Engine-specific context for snapshot/evaluation
             exec_close: Exec bar close price (for fallback)
+            exec_ts_open: Open timestamp of exec bar (for correct 1m alignment)
+            exec_ts_close: Close timestamp of exec bar (for correct 1m alignment)
 
         Returns:
             SubLoopResult with signal, snapshot, and signal_ts
@@ -181,7 +185,9 @@ class SubLoopEvaluator:
 
         # Get 1m bar range for this exec bar
         start_1m, end_1m = self._quote_feed.get_1m_indices_for_exec(
-            exec_idx, self._exec_tf_minutes
+            exec_idx, self._exec_tf_minutes,
+            exec_ts_open=exec_ts_open,
+            exec_ts_close=exec_ts_close,
         )
 
         # Clamp to available 1m data (both start and end)

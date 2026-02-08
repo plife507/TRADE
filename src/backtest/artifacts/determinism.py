@@ -208,7 +208,7 @@ def verify_determinism_rerun(
     )
     
     # Load manifest from existing run to get Play and window
-    manifest_file = run_path / STANDARD_FILES["manifest"]
+    manifest_file = run_path / STANDARD_FILES["run_manifest"]
     if not manifest_file.exists():
         result.passed = False
         result.errors.append(f"Cannot load run_manifest.json from: {run_path}")

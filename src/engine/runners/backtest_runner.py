@@ -601,7 +601,11 @@ class BacktestRunner:
             exec_tf_minutes = tf_minutes(self._data_provider.timeframe)
             if exec_tf_minutes > 1:
                 try:
-                    exec_1m_range = quote_feed.get_1m_indices_for_exec(bar_idx, exec_tf_minutes)
+                    exec_1m_range = quote_feed.get_1m_indices_for_exec(
+                        bar_idx, exec_tf_minutes,
+                        exec_ts_open=candle.ts_open,
+                        exec_ts_close=candle.ts_close,
+                    )
                 except (ValueError, IndexError):
                     # Fall back to exec-bar granularity if 1m mapping fails
                     exec_1m_range = None

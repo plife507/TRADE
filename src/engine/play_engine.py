@@ -1347,6 +1347,8 @@ class PlayEngine:
             exec_idx=bar_index,
             context=context,
             exec_close=candle.close,
+            exec_ts_open=candle.ts_open,
+            exec_ts_close=candle.ts_close,
         )
 
         return result.signal, result.signal_ts
