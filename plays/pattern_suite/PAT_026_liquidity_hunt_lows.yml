@@ -41,8 +41,8 @@ structures:
 actions:
   entry_long:
     all:
-      - ["close", "<", "swing.low_level"]
-      - ["rsi_14", "<", 25]
+      - ["close", "near_pct", "swing.low_level", 2]
+      - ["rsi_14", "<", 40]
 
 position_policy:
   mode: "long_only"

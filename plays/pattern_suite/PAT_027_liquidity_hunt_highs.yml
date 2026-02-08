@@ -41,7 +41,7 @@ structures:
 actions:
   entry_short:
     all:
-      - ["close", ">", "swing.high_level"]
+      - ["close", "near_pct", "swing.high_level", 2]
       - ["rsi_14", ">", 55]
 
 position_policy:
