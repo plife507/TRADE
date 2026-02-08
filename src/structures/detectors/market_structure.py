@@ -215,9 +215,22 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         Check for breaks in bullish bias.
 
         In bullish bias:
+        - Break below swing low = CHoCH (potential reversal to bearish) - checked first, takes priority
         - Break above swing high = BOS (bullish continuation)
-        - Break below swing low = CHoCH (potential reversal to bearish)
         """
+        # Check for CHoCH (reversal) - takes priority over BOS
+        if not math.isnan(self._break_level_low) and check_low < self._break_level_low:
+            self._choch_this_bar = True
+            self._last_choch_idx = bar_idx
+            self._last_choch_level = self._break_level_low
+            self._choch_direction = "bearish"
+            self.bias = -1
+            self._version += 1
+            # Mark this swing as broken and clear break level
+            self._broken_low_idx = self._last_low_idx
+            self._break_level_low = float("nan")
+            return  # CHoCH supersedes BOS on same bar
+
         # Check for bullish BOS (continuation)
         if not math.isnan(self._break_level_high) and check_high > self._break_level_high:
             self._bos_this_bar = True
@@ -230,23 +243,27 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             # Clear break level - require NEW swing to form before next BOS
             self._break_level_high = float("nan")
 
-        # Check for CHoCH (reversal)
-        if not math.isnan(self._break_level_low) and check_low < self._break_level_low:
-            self._choch_this_bar = True
-            self._last_choch_idx = bar_idx
-            self._last_choch_level = self._break_level_low
-            self._choch_direction = "bearish"
-            self.bias = -1
-            self._version += 1
-
     def _check_bearish_bias_breaks(self, bar_idx: int, check_high: float, check_low: float) -> None:
         """
         Check for breaks in bearish bias.
 
         In bearish bias:
+        - Break above swing high = CHoCH (potential reversal to bullish) - checked first, takes priority
         - Break below swing low = BOS (bearish continuation)
-        - Break above swing high = CHoCH (potential reversal to bullish)
         """
+        # Check for CHoCH (reversal) - takes priority over BOS
+        if not math.isnan(self._break_level_high) and check_high > self._break_level_high:
+            self._choch_this_bar = True
+            self._last_choch_idx = bar_idx
+            self._last_choch_level = self._break_level_high
+            self._choch_direction = "bullish"
+            self.bias = 1
+            self._version += 1
+            # Mark this swing as broken and clear break level
+            self._broken_high_idx = self._last_high_idx
+            self._break_level_high = float("nan")
+            return  # CHoCH supersedes BOS on same bar
+
         # Check for bearish BOS (continuation)
         if not math.isnan(self._break_level_low) and check_low < self._break_level_low:
             self._bos_this_bar = True
@@ -258,15 +275,6 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._broken_low_idx = self._last_low_idx
             # Clear break level - require NEW swing to form before next BOS
             self._break_level_low = float("nan")
-
-        # Check for CHoCH (reversal)
-        if not math.isnan(self._break_level_high) and check_high > self._break_level_high:
-            self._choch_this_bar = True
-            self._last_choch_idx = bar_idx
-            self._last_choch_level = self._break_level_high
-            self._choch_direction = "bullish"
-            self.bias = 1
-            self._version += 1
 
     def _check_ranging_breaks(self, bar_idx: int, check_high: float, check_low: float) -> None:
         """

@@ -331,15 +331,17 @@ class IncrementalTrend(BaseIncrementalDetector):
         self.last_wave_direction = wave.direction
 
         # Update comparison flags based on wave endpoint only
+        # Note: is_higher_high and is_lower_high are always set together in _create_wave(),
+        # same for is_lower_low and is_higher_low. No fallback needed.
         if wave.end_type == "high":
             if wave.is_higher_high is not None:
                 self.last_hh = wave.is_higher_high
-                self.last_lh = wave.is_lower_high if wave.is_lower_high is not None else not wave.is_higher_high
+                self.last_lh = wave.is_lower_high  # type: ignore[assignment]
 
         if wave.end_type == "low":
             if wave.is_lower_low is not None:
                 self.last_ll = wave.is_lower_low
-                self.last_hl = wave.is_higher_low if wave.is_higher_low is not None else not wave.is_lower_low
+                self.last_hl = wave.is_higher_low  # type: ignore[assignment]
 
     def _classify_trend(self) -> None:
         """
