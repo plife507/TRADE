@@ -248,51 +248,38 @@ class FeedStore:
         self,
         exec_idx: int,
         exec_tf_minutes: int,
-        exec_ts_open: datetime | None = None,
-        exec_ts_close: datetime | None = None,
+        exec_ts_open: datetime,
+        exec_ts_close: datetime,
     ) -> tuple[int, int]:
         """Return (start_1m_idx, end_1m_idx) for an exec bar.
 
         Maps an exec-timeframe bar index to the range of 1m bar indices
-        that fall within that exec bar.
-
-        When exec_ts_open and exec_ts_close are provided, uses timestamp-based
-        alignment (correct). Falls back to index multiplication only when
-        timestamps are not provided (legacy callers).
+        that fall within that exec bar using timestamp-based alignment.
 
         Args:
             exec_idx: Index of the exec-timeframe bar
             exec_tf_minutes: Minutes per exec-timeframe bar (e.g., 5 for 5m)
-            exec_ts_open: Open timestamp of the exec bar (preferred)
-            exec_ts_close: Close timestamp of the exec bar (preferred)
+            exec_ts_open: Open timestamp of the exec bar
+            exec_ts_close: Close timestamp of the exec bar
 
         Returns:
             Tuple of (start_1m_idx, end_1m_idx) inclusive
         """
-        if exec_ts_open is not None and exec_ts_close is not None:
-            # Timestamp-based alignment (correct regardless of feed offsets)
-            open_ms = self._ts_to_ms(exec_ts_open)
-            close_ms = self._ts_to_ms(exec_ts_close)
+        open_ms = self._ts_to_ms(exec_ts_open)
+        close_ms = self._ts_to_ms(exec_ts_close)
 
-            # Find first 1m bar whose ts_close > exec_ts_open
-            # (the 1m bar that opens at or after exec_ts_open)
-            start_pos = bisect.bisect_right(self._sorted_close_ms, open_ms)
-            if start_pos >= len(self._sorted_close_ms):
-                # All 1m bars close before exec opens - no overlap
-                return (self.length - 1, self.length - 1)
-            start_1m = self.ts_close_ms_to_idx[self._sorted_close_ms[start_pos]]
+        # Find first 1m bar whose ts_close > exec_ts_open
+        start_pos = bisect.bisect_right(self._sorted_close_ms, open_ms)
+        if start_pos >= len(self._sorted_close_ms):
+            return (self.length - 1, self.length - 1)
+        start_1m = self.ts_close_ms_to_idx[self._sorted_close_ms[start_pos]]
 
-            # Find last 1m bar whose ts_close <= exec_ts_close
-            end_pos = bisect.bisect_right(self._sorted_close_ms, close_ms)
-            if end_pos == 0:
-                return (0, 0)
-            end_1m = self.ts_close_ms_to_idx[self._sorted_close_ms[end_pos - 1]]
+        # Find last 1m bar whose ts_close <= exec_ts_close
+        end_pos = bisect.bisect_right(self._sorted_close_ms, close_ms)
+        if end_pos == 0:
+            return (0, 0)
+        end_1m = self.ts_close_ms_to_idx[self._sorted_close_ms[end_pos - 1]]
 
-            return (start_1m, end_1m)
-
-        # Legacy fallback: naive index multiplication (assumes aligned starts)
-        start_1m = exec_idx * exec_tf_minutes
-        end_1m = start_1m + exec_tf_minutes - 1
         return (start_1m, end_1m)
 
     def get_structure_field(
