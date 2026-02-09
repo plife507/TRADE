@@ -911,11 +911,15 @@ def run_preflight_gate(
     warmup_requirements = compute_warmup_requirements(play)
     
     # Validate that warmup doesn't push data start before earliest available data
-    # In new schema, use feature_registry to get all TFs
+    # Collect ALL TFs: feature-declared TFs + play's 3-feed TFs (low/med/high)
     try:
         all_tfs = play.feature_registry.get_all_tfs()
     except Exception:
         all_tfs = {play.execution_tf} if play.execution_tf else set()
+    # Always include the play's 3-feed timeframes so auto-sync covers them
+    for tf_prop in (play.low_tf, play.med_tf, play.high_tf):
+        if tf_prop:
+            all_tfs.add(tf_prop)
 
     for tf in all_tfs:
         warmup = warmup_requirements.warmup_by_role.get(tf, 0)

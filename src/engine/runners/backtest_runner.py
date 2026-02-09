@@ -421,9 +421,22 @@ class BacktestRunner:
         close_reason = stop_reason if stopped_early else None
         self._close_remaining_position(last_bar_idx, close_reason)
 
+        # Update equity curve after force close so equity_curve[-1] includes
+        # exit fees and slippage from the end-of-data close.  Without this,
+        # equity_curve[-1] reflects unrealized PnL at mark price (bar close)
+        # but NOT the exit fee/slippage, causing sum(trades.net_pnl) to
+        # diverge from (final_equity - initial_equity) by ~$7 per run.
+        post_close_equity = self._exchange_adapter.get_equity()
+        last_candle = self._data_provider.get_candle(last_bar_idx)
+        equity_curve.append({
+            "bar_idx": last_bar_idx,
+            "timestamp": last_candle.ts_close,
+            "equity": post_close_equity,
+        })
+
         # Build result
         finished_at = datetime.now()
-        final_equity = self._exchange_adapter.get_equity()
+        final_equity = post_close_equity
         trades = self._exchange_adapter.trades
         actual_bars_processed = last_bar_idx - start_idx + 1
 

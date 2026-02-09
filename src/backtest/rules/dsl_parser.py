@@ -150,13 +150,21 @@ def parse_arithmetic_operand(data: Any) -> FeatureRef | ScalarValue | Arithmetic
             field=ref_dict.get("field", "value"),
         )
 
-    # Dict → full FeatureRef
-    if isinstance(data, dict) and "feature_id" in data:
-        return FeatureRef(
-            feature_id=data["feature_id"],
-            field=data.get("field", "value"),
-            offset=data.get("offset", 0),
-        )
+    # Dict → full FeatureRef or nested dict-format arithmetic
+    if isinstance(data, dict):
+        if "feature_id" in data:
+            return FeatureRef(
+                feature_id=data["feature_id"],
+                field=data.get("field", "value"),
+                offset=data.get("offset", 0),
+            )
+        # Dict-format arithmetic: {"*": ["atr_14", 0.5]}
+        arith_keys = set(data.keys()) & ARITHMETIC_OPERATORS
+        if arith_keys:
+            op_key = arith_keys.pop()
+            operands = data[op_key]
+            if isinstance(operands, list) and len(operands) == 2:
+                return parse_arithmetic([operands[0], op_key, operands[1]])
 
     # Number → scalar
     if isinstance(data, (int, float)):
