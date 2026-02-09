@@ -3,9 +3,9 @@
 > **CANONICAL SOURCE OF TRUTH** for Play DSL syntax.
 > All other DSL documentation is deprecated. This is the single reference.
 
-**Status: FROZEN (2026-01-08)**
+**Status: FROZEN (2026-01-08)** | **Last updated: 2026-02-08**
 
-The DSL language is now frozen with 259 synthetic tests validating all operators, edge cases, and type safety rules. Changes to DSL semantics require explicit unfreezing and test updates.
+The DSL language is now frozen with 170 synthetic plays + 60 real-data plays validating all operators, structures, and indicators. Changes to DSL semantics require explicit unfreezing and test updates.
 
 ## Discrepancy Resolution Workflow
 
@@ -30,6 +30,9 @@ When tests reveal behavior differs from this doc:
 
 ## Table of Contents
 
+- [Timeframe Naming (ENFORCED)](#timeframe-naming-enforced)
+- [Price Semantics](#price-semantics)
+
 1. [Play Structure](#1-play-structure)
 2. [Features (Indicators)](#2-features-indicators)
 3. [Structures (Market Structure)](#3-structures-market-structure)
@@ -43,6 +46,59 @@ When tests reveal behavior differs from this doc:
 11. [Complete Examples](#11-complete-examples)
 12. [Synthetic Data for Validation](#12-synthetic-data-for-validation)
 13. [Quick Reference Card](#quick-reference-card)
+
+---
+
+## Timeframe Naming (ENFORCED)
+
+All Play YAML files must use the **3-Feed + Exec Role** naming system. This is enforced at load time.
+
+```yaml
+# CORRECT:
+timeframes:
+  low_tf: "15m"      # Fast: execution, entries
+  med_tf: "1h"       # Medium: structure, bias
+  high_tf: "D"       # Slow: trend, context
+  exec: "low_tf"     # POINTER to which TF to step on (not a value)
+
+# WRONG (will cause errors or confusion):
+# ltf: "15m"         # Use low_tf
+# htf: "D"           # Use high_tf
+# exec_tf: "15m"     # exec is a pointer, not a concrete value
+# LTF, HTF, MTF      # Never use abbreviations as YAML keys
+```
+
+**YAML keys:** Always use `low_tf`, `med_tf`, `high_tf`, `exec`.
+
+**In prose and comments:** Write out full names:
+- "higher timeframe" not HTF
+- "medium timeframe" not MTF
+- "lower timeframe" not LTF
+- "execution timeframe" not exec TF
+- "multi-timeframe" for strategies using multiple timeframes
+- "last price" and "mark price" written out fully
+
+---
+
+## Price Semantics
+
+The engine provides three price types with different update rates and semantics:
+
+| Feature | Resolution | Source (Backtest) | Source (Live) | Use Case |
+|---------|------------|-------------------|---------------|----------|
+| `close` | Per exec bar | Exec TF bar close | Exec TF bar close | Standard conditions, indicators, end-of-bar decisions |
+| `last_price` | Every 1m | 1m bar close | `ticker.lastPrice` | Intra-bar precision, precise entries |
+| `mark_price` | Every 1m | 1m bar close | `ticker.markPrice` (index) | Position valuation, margin, liquidation |
+
+**Key differences:**
+- `close` is the same for all 1m ticks within an exec bar. It only changes at bar close.
+- `last_price` updates every 1m tick in the signal subloop, giving intra-bar precision.
+- `mark_price` is used for position valuation. In backtest both `last_price` and `mark_price` equal the 1m close; in live they can diverge during volatile periods.
+
+**When to use which:**
+- Use `close` for standard indicator comparisons and bar-level logic.
+- Use `last_price` when you need intra-bar precision (e.g., precise level crosses within a 15m bar).
+- `mark_price` is used internally by the engine for margin and PnL. Rarely needed in conditions.
 
 ---
 
@@ -1182,12 +1238,19 @@ Full control when you need explicit `field:` or `offset:` on feature references:
   tolerance: 50.0     # Within $50
 
 # near_pct - percentage tolerance (4-element shorthand)
-- ["close", "near_pct", {feature_id: "fib", field: "level_0.618"}, 0.5]
+# IMPORTANT: The tolerance value is a PERCENTAGE. 3 means 3%, NOT 0.03.
+# The engine divides by 100 internally: tolerance 3 -> ratio 0.03.
+- ["close", "near_pct", "fib.level[0.618]", 3]      # Within 3% of fib level
+- ["close", "near_pct", "fib.level[0.618]", 0.5]     # Within 0.5% of fib level
+
+# WRONG - 0.03 means 0.03% = 0.0003 ratio (way too tight, almost never matches)
+# - ["close", "near_pct", "fib.level[0.618]", 0.03]
+
 # Verbose form:
 - lhs: {feature_id: "close"}
   op: near_pct
   rhs: {feature_id: "fib", field: "level_0.618"}
-  tolerance: 0.005    # Within 0.5%
+  tolerance: 0.005    # Verbose form uses ratio directly (0.5%)
 ```
 
 ### Set Operator
@@ -1227,9 +1290,14 @@ any:
   - ["rsi_14", "<", 30]   # Oversold
   - ["rsi_14", ">", 70]   # Overbought
 
-# not - negation
+# not - negation (single condition)
 not:
   - ["rsi_14", ">", 70]   # NOT overbought
+
+# not - negation (multiple conditions wrapped in implicit all)
+not:
+  - ["rsi_14", ">", 70]
+  - ["close", ">", "ema_50"]    # NOT (overbought AND above EMA)
 
 # Nested logic: (A AND B) OR C
 any:
@@ -1313,6 +1381,20 @@ Inline arithmetic expressions for difference thresholds, ratios, etc.
 | `*` | multiply | numeric * numeric |
 | `/` | divide | div by zero -> None (fails condition) |
 | `%` | modulo | int % int |
+
+### Two Equivalent Formats
+
+Arithmetic expressions can be written in **list format** or **dict format**:
+
+```yaml
+# List format: [operand, operator, operand]
+- ["close", ">", ["swing.high_level", "-", 10]]
+
+# Dict format: {operator: [operand, operand]}
+- ["close", ">", {"-": ["swing.high_level", 10]}]
+```
+
+Both formats work in LHS and RHS positions. The dict format is useful when embedding arithmetic in shorthand conditions.
 
 ### Use Cases
 
@@ -2514,7 +2596,7 @@ python trade_cli.py forge validate-patterns
 | `!=` | Discrete | `["zone.state", "!=", "BROKEN"]` |
 | `between` | Numeric | `{op: "between", rhs: {low: 30, high: 70}}` |
 | `near_abs` | Numeric | `{op: "near_abs", tolerance: 10}` |
-| `near_pct` | Numeric | `{op: "near_pct", tolerance: 0.005}` |
+| `near_pct` | Numeric | `["close", "near_pct", "fib.level[0.618]", 3]` (3 = 3%) |
 | `in` | Discrete | `{op: "in", rhs: [1, 0, -1]}` |
 | `cross_above` | Numeric | `["ema_9", "cross_above", "ema_21"]` |
 | `cross_below` | Numeric | `["ema_9", "cross_below", "ema_21"]` |
@@ -2622,8 +2704,14 @@ account:
 | 2026-01-25 | Added reserved position policy flags documentation (allow_flip, etc.)
 | 2026-01-25 | **DSL Syntax Unification:** `depends_on: {swing: key}` → `uses: key` (simpler syntax)
 | 2026-01-25 | **Bracket Syntax:** Added universal indexed access - `fib.level[0.618]`, `zones.zone[0].state`
-| 2026-01-25 | **Integer Bias/Direction:** trend.direction and ms.bias return integers (1/-1/0) for dataframe compat
-| 2026-01-25 | **Lowercase Enums:** Zone states now lowercase ("active", "broken", "none")
+| 2026-01-25 | **Integer Bias/Direction:** trend.direction and ms.bias return integers (1/-1/0) for dataframe compat |
+| 2026-01-25 | **Lowercase Enums:** Zone states now lowercase ("active", "broken", "none") |
+| 2026-02-08 | Added prominent Timeframe Naming (ENFORCED) section at top |
+| 2026-02-08 | Added Price Semantics section (close vs last_price vs mark_price) |
+| 2026-02-08 | Clarified near_pct tolerance is PERCENTAGE (3 = 3%), not ratio |
+| 2026-02-08 | Added dict-format arithmetic documentation (`{"+": [a, b]}`) |
+| 2026-02-08 | Added NOT operator multi-condition behavior (implicit all wrapping) |
+| 2026-02-08 | Updated validation counts: 170 synthetic + 60 real-data plays verified |
 
 ---
 

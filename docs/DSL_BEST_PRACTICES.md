@@ -18,6 +18,7 @@
 9. [Multi-Timeframe Patterns](#9-multi-timeframe-patterns)
 10. [Common Mistakes](#10-common-mistakes)
 11. [Strategy Recipes](#11-strategy-recipes)
+12. [Pitfalls from Production Audits](#12-pitfalls-from-production-audits)
 
 ---
 
@@ -62,6 +63,34 @@ position_policy:
 - `exec` is a **pointer** to a timeframe role (`"low_tf"`, `"med_tf"`, or `"high_tf"`), never a raw value like `"15m"`.
 - `symbol_universe` or `symbol` must provide at least one symbol.
 - `account` is required (no silent defaults for equity or leverage).
+
+### Timeframe Naming (ENFORCED)
+
+```yaml
+# CORRECT:
+timeframes:
+  low_tf: "15m"      # Fast: execution, entries
+  med_tf: "1h"       # Medium: structure, bias
+  high_tf: "D"       # Slow: trend, context
+  exec: "low_tf"     # POINTER to which TF to step on
+
+# WRONG (will cause errors or confusion):
+# ltf, htf, LTF, HTF, MTF    - Never as YAML keys
+# exec_tf: "15m"              - exec is a pointer, not a value
+```
+
+**In prose and comments:** Write full names -- "higher timeframe" not HTF, "execution timeframe" not exec TF, "multi-timeframe" for strategies using multiple timeframes.
+
+### 1m Data is Mandatory
+
+The engine always requires 1m candle data regardless of your execution timeframe. The 1m feed drives:
+
+- **Fill simulation**: Entries and exits are filled at 1m bar open prices (next bar after signal).
+- **TP/SL checking**: Stop loss and take profit are checked every 1m tick, not just at exec bar close.
+- **Signal subloop**: `last_price` and `mark_price` update every 1m within each exec bar.
+- **Slippage model**: Applied to 1m fill prices for realistic execution.
+
+If 1m data is missing, the backtest will fail. Use `--fix-gaps` to auto-sync missing data.
 
 ---
 
@@ -656,9 +685,14 @@ any:
   - ["rsi_14", "<", 30]
   - ["close", "<", "swing.low_level"]
 
-# NOT: negate a condition
+# NOT: negate a condition (single condition auto-unwrapped)
 not:
   - ["rsi_14", ">", 70]
+
+# NOT: multiple conditions (implicitly wrapped in all)
+not:
+  - ["rsi_14", ">", 70]
+  - ["close", ">", "ema_50"]    # NOT (overbought AND above EMA)
 
 # Nested: (A AND B) OR C
 any:
@@ -667,6 +701,48 @@ any:
       - ["rsi_14", "<", 70]
   - ["ms.bos_this_bar", "==", 1]
 ```
+
+### Use `near_pct` for structure level comparisons
+
+Strict `<`/`>` comparisons against structure levels (swing highs/lows, fib levels) often produce zero trades because price must cross the exact level. Use `near_pct` instead:
+
+```yaml
+# RISKY - may produce zero trades if price never exactly crosses the level
+- ["close", "<", "swing.low_level"]
+
+# BETTER - catches price within 1.5% of the level
+- ["close", "near_pct", "swing.low_level", 1.5]
+```
+
+This is especially important on synthetic data where patterns get diluted across multi-timeframe bar expansion (see Section 12).
+
+### Bracket syntax for indexed structure fields
+
+Fibonacci levels and zone slots support bracket syntax which is internally normalized:
+
+```yaml
+# These are equivalent:
+- ["fib.level[0.618]", ">", 0]      # Bracket syntax (preferred)
+- ["fib.level_0.618", ">", 0]       # Underscore syntax (internal form)
+
+# Zone slots:
+- ["zones.zone[0].state", "==", "active"]
+- ["zones.zone[0].lower", "<", "close"]
+```
+
+The bracket syntax `fib.level[0.618]` is converted internally to `level_0.618`. Both work in shorthand conditions.
+
+### Arithmetic supports both list and dict formats
+
+```yaml
+# List format
+- ["close", ">", ["ema_50", "+", "atr_14"]]
+
+# Dict format (equivalent)
+- ["close", ">", {"+": ["ema_50", "atr_14"]}]
+```
+
+Both work in LHS and RHS positions. The dict format is useful in shorthand conditions where nesting lists can be confusing.
 
 ---
 
@@ -852,3 +928,89 @@ actions:
       - ["ema_9", "cross_above", "ema_21"]         # 15m entry signal
       - ["rsi_14", "<", 70]                        # Not overbought
 ```
+
+---
+
+## 12. Pitfalls from Production Audits
+
+Lessons learned from the 170-play synthetic audit and 60-play real-data verification (2026-02-08).
+
+### Multi-timeframe bar dilation on synthetic data
+
+When using `generate_synthetic_candles` with 3 timeframes (e.g., 15m/1h/D) and `bars_per_tf=500`, the lower timeframe gets 500 * 96 = 48,000 bars (because 1 daily bar = 96 fifteen-minute bars). Patterns designed for ~500 bars get diluted across 48,000 bars, meaning per-bar price movement becomes ~96x smaller while noise stays the same amplitude.
+
+**Symptoms:** Conditions like `close < swing.low_level` never trigger because the hunt phase barely moves price relative to noise.
+
+**Fix:** Use `near_pct` instead of strict `<`/`>` for structure level comparisons on diluted patterns:
+
+```yaml
+# WRONG on multi-TF synthetic - price may never cross exact level
+- ["close", "<", "swing.low_level"]
+
+# CORRECT - catches price within proximity of level
+- ["close", "near_pct", "swing.low_level", 3]
+```
+
+### Impossible conditions produce zero trades silently
+
+The engine does not warn you if your conditions are mathematically impossible. Common examples from the 170-play audit:
+
+```yaml
+# IMPOSSIBLE: Donchian upper is ALWAYS >= close (by definition)
+- ["close", ">", "donchian_20.upper"]   # Never true
+
+# IMPOSSIBLE: RSI bounds are [0, 100], not larger
+- ["rsi_14", ">", 120]                  # Never true
+
+# NEAR-IMPOSSIBLE: Requiring exact equality on continuous values
+- ["close", "==", "ema_50"]             # Almost never true
+```
+
+Always verify your play produces trades by checking the backtest output.
+
+### PSAR indicator parameter names
+
+The PSAR factory expects specific parameter names. Common wrong names are silently ignored (fall back to defaults):
+
+```yaml
+# WRONG - these parameter names are silently ignored
+params:
+  af_start: 0.02    # Wrong name
+  af_max: 0.2       # Wrong name
+
+# CORRECT - use these exact names
+params:
+  af0: 0.02          # Initial acceleration factor
+  af: 0.02           # Acceleration factor step
+  max_af: 0.2        # Maximum acceleration factor
+```
+
+### near_pct is a percentage, not a ratio
+
+This is the most common mistake. The tolerance value is divided by 100 internally:
+
+```yaml
+# WRONG - 0.03 means 0.03% tolerance = nearly impossible match
+- ["close", "near_pct", "fib.level[0.618]", 0.03]
+
+# CORRECT - 3 means 3% tolerance
+- ["close", "near_pct", "fib.level[0.618]", 3]
+```
+
+### Real data requires `--fix-gaps` for initial sync
+
+When running backtests on real data for the first time, DuckDB may not have all required candle data. Use `--fix-gaps` to auto-sync:
+
+```bash
+python trade_cli.py backtest run --play my_play --fix-gaps
+```
+
+The `--data-env` defaults to `"live"` (uses `market_data_live.duckdb`), not `"backtest"`.
+
+### Preflight validates all three timeframes
+
+The preflight gate validates and auto-syncs data for all three timeframe feeds (`low_tf`, `med_tf`, `high_tf`), not just timeframes with declared features. If your play only declares features on `low_tf` (15m), the preflight still checks that `med_tf` (1h) and `high_tf` (D) data exists.
+
+### Equity curve includes force-close of open positions
+
+At the end of a backtest, any open position is force-closed at the last bar's close price (with slippage and fees applied). The final equity point in the equity curve reflects this force-close. This means `sum(trades.net_pnl)` matches `result.json net_pnl_usdt` within float tolerance.

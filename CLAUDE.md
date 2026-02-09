@@ -12,12 +12,14 @@
 
 ```
 src/engine/        # ONE unified engine (PlayEngine) for backtest/live
-src/indicators/    # 43 indicators (all incremental O(1))
+src/indicators/    # 44 indicators (all incremental O(1))
 src/structures/    # 7 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure)
 src/backtest/      # Infrastructure only (sim, runtime, features) - NOT an engine
-src/data/          # DuckDB historical data
+src/data/          # DuckDB historical data (1m candles mandatory for all runs)
 src/tools/         # CLI/API surface
 ```
+
+**1m data is mandatory**: Every backtest/live run pulls 1m candles regardless of exec timeframe. Drives fill simulation, TP/SL evaluation, and signal subloop.
 
 ## Key Patterns
 
@@ -63,9 +65,18 @@ timeframes:
 ## Quick Commands
 
 ```bash
+# Validation
 python trade_cli.py --smoke full                    # Validate everything
-python trade_cli.py backtest run --play X --fix-gaps  # Run backtest
 python trade_cli.py backtest audit-toolkit          # Check indicators
+
+# Backtest
+python trade_cli.py backtest run --play X --fix-gaps  # Run single backtest
+python scripts/run_full_suite.py                    # 170-play synthetic suite
+python scripts/run_full_suite.py --real --start 2025-01-01 --end 2025-06-30  # Real data suite
+python scripts/run_real_verification.py             # 60-play real verification
+python scripts/verify_trade_math.py --play X        # Math verification for a play
+
+# Live/Demo
 python trade_cli.py play run --play X --mode demo   # Demo mode (no real money)
 python trade_cli.py play run --play X --mode live --confirm  # Live (REAL MONEY)
 ```

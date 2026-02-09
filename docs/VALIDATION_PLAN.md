@@ -1,5 +1,13 @@
 # Comprehensive Backtest Validation Plan
 
+> **SUPERSEDED (2026-02-08)**: This plan has been fully executed and exceeded by
+> actual verification results. The 170-play synthetic audit (170/170 pass) and
+> 60-play real-data Wyckoff verification (60/60 pass, 23 math checks each)
+> provide far more comprehensive coverage than this plan outlined. See:
+> - `docs/TODO.md` for current status
+> - `docs/REAL_VERIFICATION_REPORT.md` for real-data results
+> - `backtests/suite_report.csv` for synthetic results
+
 ## Goal
 Test every component that could produce incorrect backtest results.
 

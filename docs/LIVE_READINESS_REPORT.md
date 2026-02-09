@@ -5,6 +5,12 @@
 **Audit Scope:** 341 files, ~136,000 lines of Python
 **Audit Team:** 6 specialist agents reviewing in parallel
 
+> **Update 2026-02-08**: Backtest engine verification is now COMPLETE.
+> 170/170 synthetic plays pass, 60/60 real-data Wyckoff verification plays pass
+> with 23 math checks each. Equity curve post-close bug fixed ($7 gap to $0.00).
+> The findings below regarding live-mode gaps remain valid and are tracked in
+> `docs/TODO.md` under "Open Work > P2: Live Engine Rubric".
+
 ---
 
 ## Executive Summary

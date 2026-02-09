@@ -1,73 +1,53 @@
 # Session Handoff
 
-**Date**: 2026-02-05
+**Date**: 2026-02-08
 **Branch**: feature/unified-engine
-**Last Commit**: `f3cccd2` feat(engine): complete live/backtest parity fixes + stress tests
+**Last Commit**: `ea5f58d` fix(plays): fix last 2 zero-trade plays (liquidity hunt patterns)
 
 ---
 
-## Last Session Summary
+## Current State
 
-**Focus**: Code Verification & Backtest/Live Parity Assessment - **COMPLETE**
+**Engine: FULLY VERIFIED**
 
-### Key Accomplishments
+| Suite | Result |
+|-------|--------|
+| Synthetic (170 plays) | 170/170 PASS, 0 fail, 0 zero-trade |
+| Real-data (60 plays) | 60/60 PASS, 60/60 math verified (23 checks each) |
+| Indicators covered | 44/44 (synthetic), 41/43 (real) |
+| Structures covered | 7/7 |
+| DSL operators covered | All (synthetic), 19/24 (real) |
+| Symbols tested (real) | BTC, ETH, SOL, LTC |
 
-#### 1. Code Review Complete (10 files, ~7,500 lines)
-
-| File | Lines | Status |
-|------|-------|--------|
-| `src/engine/play_engine.py` | 1,320 | ✅ SOLID |
-| `src/engine/adapters/live.py` | 1,379 | ✅ FIXED |
-| `src/engine/adapters/backtest.py` | 587 | ✅ SOLID |
-| `src/engine/factory.py` | 512 | ✅ SOLID |
-| `src/backtest/sim/exchange.py` | 1,361 | ✅ SOLID |
-| `src/engine/runners/live_runner.py` | 649 | ✅ SOLID |
-| `src/engine/runners/backtest_runner.py` | 754 | ✅ SOLID |
-| `src/engine/signal/subloop.py` | 288 | ✅ SOLID |
-| `src/engine/sizing/model.py` | 615 | ✅ SOLID |
-| `src/engine/interfaces.py` | 427 | ✅ SOLID |
-
-#### 2. Warmup Gaps Fixed (6 fixes in live.py)
-
-- **WU-01, WU-06**: Configurable warmup via `Play.warmup_bars`
-- **WU-02**: Multi-TF sync (all 3 TFs must be warmed)
-- **WU-03**: Added `audit_incremental_parity()` method
-- **WU-04**: NaN validation on indicator values
-- **WU-05**: Structure warmup tracking
-
-#### 3. QA Bugs Fixed (BUG-001 through BUG-006)
-
-- BUG-001 to BUG-004: Fixed broad exception handling in 8 files
-- BUG-005: Verified as false positive (constant dict access)
-- BUG-006: Verified concurrency patterns are safe
-
-#### 4. Stress Tests Created
-
-New file: `src/forge/audits/audit_live_backtest_parity.py`
-- ST-01: Live warmup indicator parity - PASSED
-- ST-02: Multi-TF sync stress test - PASSED
-- ST-04: WebSocket reconnect simulation - PASSED
-- ST-05: FileStateStore recovery - PASSED
-
-#### 5. CLI Fixed
-
-- Fixed `play.symbol` → `play.symbol_universe` in trade_cli.py
+**Open Bugs: NONE**
 
 ---
 
-## System Status
+## Recent Fixes (2026-02-07 / 2026-02-08)
 
-**Overall: ~98% ready for live trading**
+### DSL Parser (2026-02-07)
+- Dotted feature refs (`trend.direction`) now split correctly in `parse_feature_ref()`
+- Bracket syntax (`fib.level[0.618]`) normalized in play.py shorthand conversion
+- Arithmetic dict format (`{"+": [a, b]}`) handled in `parse_rhs()`
+- NOT operator list-of-lists unwrapped in `_convert_shorthand_conditions()`
 
-| Component | Status |
-|-----------|--------|
-| PlayEngine (unified) | ✅ COMPLETE |
-| Backtest path | ✅ WORKING |
-| Live adapters | ✅ COMPLETE |
-| Warmup handling | ✅ FIXED |
-| QA validation | ✅ COMPLETE |
-| Stress tests | ✅ PASSING |
-| Live CLI | ✅ WORKING |
+### Structure Bugs (2026-02-07)
+- Derived zone creation-bar break: `anchor_idx < bar_idx` guard added
+- Market structure and trend detector fixes (3 bugs)
+
+### Engine/Verifier (2026-02-08)
+- Equity curve post-close: final equity point appended AFTER force close
+- Math verifier candle loading: DuckDB candle lookup via timestamps
+- Preflight auto-sync: all 3 TFs synced (not just feature TFs)
+- 6 zero-trade plays fixed: 4 impossible conditions, 2 multi-TF bar dilation
+
+---
+
+## Timeframe Naming (ENFORCED)
+
+YAML keys: `low_tf`, `med_tf`, `high_tf`, `exec` (pointer to role, not a value).
+Never use: `ltf`, `htf`, `LTF`, `HTF`, `exec_tf`.
+Prose: "higher timeframe", "execution timeframe", "multi-timeframe" (no abbreviations).
 
 ---
 
@@ -78,104 +58,56 @@ New file: `src/forge/audits/audit_live_backtest_parity.py`
 python trade_cli.py --smoke full
 
 # Run backtest
-python trade_cli.py backtest run --play V_SMOKE_001_engine_startup --fix-gaps
+python trade_cli.py backtest run --play X --fix-gaps
 
-# Run demo mode (no real money)
-python trade_cli.py play run --play V_SMOKE_001_engine_startup --mode demo
+# Run suite (synthetic)
+python scripts/run_full_suite.py
 
-# Run live mode (REAL MONEY - requires --confirm)
-python trade_cli.py play run --play YOUR_PLAY --mode live --confirm
+# Run suite (real data)
+python scripts/run_full_suite.py --real --start 2025-01-01 --end 2025-06-30
 
-# Run parity stress tests
-python -c "from src.forge.audits.audit_live_backtest_parity import run_all_tests; run_all_tests()"
+# Run 60-play real verification
+python scripts/run_real_verification.py
+
+# Verify trade math for a play
+python scripts/verify_trade_math.py --play X
 
 # Indicator audit
 python trade_cli.py backtest audit-toolkit
+
+# Demo mode (no real money)
+python trade_cli.py play run --play X --mode demo
+
+# Live mode (REAL MONEY)
+python trade_cli.py play run --play X --mode live --confirm
 ```
 
 ---
 
-## Before Live Trading
+## Next Steps
 
-**Pre-flight checklist:**
-
-1. [ ] Run full smoke test: `python trade_cli.py --smoke full`
-2. [ ] Run parity stress tests (all should pass)
-3. [ ] Test demo mode with your Play
-4. [ ] Verify API credentials in config
-5. [ ] Start with small position sizes
-6. [ ] Monitor first few trades closely
+1. **Re-run 60-play suite** with all engine fixes applied (confirm all still pass)
+2. **Create last_price verification plays** -- ensure last price semantics are correct
+3. **Live engine rubric** -- define acceptance criteria for live trading readiness
+4. **Paper trading test** -- demo mode with real market data end-to-end
 
 ---
 
 ## Architecture
 
 ```
-PlayEngine (unified)
-├── BacktestDataProvider -> FeedStore (O(1) arrays)
-├── BacktestExchange -> SimulatedExchange (order sim)
-├── LiveDataProvider -> WebSocket + LiveIndicatorCache
-├── LiveExchange -> OrderExecutor + PositionManager
-└── StateStore (InMemory or File)
-
-Signal Flow (identical for backtest/live):
-1. process_bar(bar_index)
-2. _update_high_tf_med_tf_indices()
-3. _is_ready() -> warmup check (now with multi-TF sync + NaN validation)
-4. exchange.step()
-5. _evaluate_rules() -> Signal or None
-6. execute_signal(signal)
+src/engine/        # ONE unified PlayEngine for backtest/live
+src/indicators/    # 44 indicators (all incremental O(1))
+src/structures/    # 7 structure types
+src/backtest/      # Infrastructure only (sim, runtime, features)
+src/data/          # DuckDB historical data (1m mandatory for all runs)
+src/tools/         # CLI/API surface
 ```
 
----
-
-## Directory Structure
-
-```
-src/engine/           # PlayEngine (unified backtest/live)
-├── play_engine.py    # Core engine (1,320 lines)
-├── factory.py        # Mode routing
-├── interfaces.py     # Protocol definitions
-├── adapters/         # Mode-specific adapters
-│   ├── backtest.py   # FeedStore/SimExchange wrappers
-│   ├── live.py       # WebSocket/OrderExecutor wrappers (FIXED)
-│   └── state.py      # StateStore implementations
-├── runners/          # Execution loops
-│   ├── backtest_runner.py
-│   └── live_runner.py
-├── signal/           # Signal generation
-│   └── subloop.py    # 1m sub-loop evaluator
-├── sizing/           # Position sizing
-│   └── model.py      # Unified sizing model
-└── timeframe/        # TF index management
-
-src/forge/audits/     # Validation audits
-├── audit_live_backtest_parity.py  # NEW: Parity stress tests
-├── audit_incremental_parity.py    # O(1) vs vectorized
-└── ...
-
-docs/
-├── CLAUDE.md         # Project instructions
-├── TODO.md           # Single source of truth for work
-├── SESSION_HANDOFF.md # This file
-├── PLAY_DSL_COOKBOOK.md # DSL reference
-└── QA_AUDIT_FINDINGS.md # QA bugs (all fixed)
-```
-
----
-
-## What's Next
-
-### Recommended Next Steps
-
-1. **Paper Trading**: Test demo mode with real market data
-2. **Monitoring**: Add metrics/alerting for live trading
-3. **Position Recovery**: Test state recovery after restart
-4. **Multi-Symbol**: Test with multiple symbols
-
-### Backlog
-
-- Tier 3 code review (indicators, structures, DSL)
-- Enhanced reconnection strategies
-- Position reconciliation improvements
-- Live trading dashboard
+Signal flow (identical for backtest/live):
+1. `process_bar(bar_index)` on exec timeframe
+2. Update higher/medium timeframe indices
+3. Warmup check (multi-TF sync + NaN validation)
+4. `exchange.step()` (fill simulation via 1m subloop)
+5. `_evaluate_rules()` -> Signal or None
+6. `execute_signal(signal)`

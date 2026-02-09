@@ -2,7 +2,11 @@
 
 **Date**: 2026-01-29 (Updated 2026-02-05)
 **Auditor**: QA Swarm Agent System
-**Status**: ALL FIXED ✓
+**Status**: ALL 6 BUGS RESOLVED (4 fixed, 1 false positive, 1 verified safe)
+
+> All findings from this audit were resolved during G9/G10 gates (2026-02-05).
+> The backtest engine has since been fully verified: 170/170 synthetic plays,
+> 60/60 real-data Wyckoff plays with 23 math checks each (2026-02-08).
 
 ---
 
