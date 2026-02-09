@@ -1,0 +1,67 @@
+version: "3.0.0"
+name: "rv_026_ltc_markup_psar"
+description: |
+  Real Verification - LTC Parabolic SAR direction with EMA filter in markup phase
+  Window: --start 2026-01-01 --end 2026-01-15
+
+symbol: "LTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "1h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  psar_0_02_0_2:
+    indicator: psar
+    params:
+      af0: 0.02
+      af: 0.02
+      max_af: 0.2
+
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - any:
+          - ["psar_0_02_0_2.reversal", "==", 1]
+          - ["psar_0_02_0_2.direction", "==", 1]
+      - ["close", "near_pct", "ema_21", 5]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

@@ -1,0 +1,62 @@
+version: "3.0.0"
+name: "rv_053_btcusdt_md_multi_tf"
+description: |
+  Real Verification - BTC multi-timeframe short during markdown.
+  Price below EMA 50 on both exec and 1h timeframes with swing structure.
+  Window: --start 2025-12-15 --end 2026-01-02
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+  ema_50_1h:
+    indicator: ema
+    params: {length: 50}
+    tf: "1h"
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+  med_tf:
+    "1h":
+      - type: swing
+        key: swing_1h
+        params: {left: 5, right: 5}
+
+actions:
+  entry_short:
+    all:
+      - ["close", "near_pct", "ema_50", 5]
+      - ["close", "near_pct", "ema_50_1h", 5]
+
+position_policy:
+  mode: "short_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

@@ -1,0 +1,71 @@
+version: "3.0.0"
+name: "rv_003_sol_accum_rsi_macd_mfi"
+description: |
+  Real Verification - SOL accumulation with RSI, MACD, MFI confluence.
+  Tests: cross_above, any operator with market_structure.
+  Window: --start 2025-12-25 --end 2026-01-02
+
+symbol: "SOLUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+
+  mfi_14:
+    indicator: mfi
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: market_structure
+      key: ms
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - any:
+          - ["rsi_14", "<", 55]
+          - ["mfi_14", "<", 55]
+      - any:
+          - ["macd_12_26_9.histogram", "cross_above", 0]
+          - ["macd_12_26_9.histogram", ">", 0]
+          - ["ms.bos_direction", "==", "bullish"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

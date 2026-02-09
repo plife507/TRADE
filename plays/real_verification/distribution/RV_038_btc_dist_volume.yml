@@ -1,0 +1,61 @@
+version: "3.0.0"
+name: "rv_038_btc_dist_volume"
+description: |
+  Real Verification - BTC distribution volume divergence with VWAP and CMF.
+  Tests: <, cross_below operators with swing and trend structures.
+  Window: --start 2025-09-14 --end 2025-09-29
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  obv:
+    indicator: obv
+
+  cmf_20:
+    indicator: cmf
+    params: {length: 20}
+
+  vwap:
+    indicator: vwap
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_short:
+    all:
+      - ["close", "near_pct", "vwap", 5]
+      - ["cmf_20", "<", 0.1]
+
+position_policy:
+  mode: "short_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

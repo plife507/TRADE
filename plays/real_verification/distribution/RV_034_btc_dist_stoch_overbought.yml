@@ -1,0 +1,66 @@
+version: "3.0.0"
+name: "rv_034_btc_dist_stoch_overbought"
+description: |
+  Real Verification - BTC distribution stochastic overbought with Williams %R
+  confirmation. Tests: >, >=, cross_below operators.
+  Window: --start 2025-09-14 --end 2025-09-29
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  stoch_14_3_3:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+
+  stochrsi_14_14_3_3:
+    indicator: stochrsi
+    params:
+      length: 14
+      rsi_length: 14
+      k: 3
+      d: 3
+
+  willr_14:
+    indicator: willr
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+actions:
+  entry_short:
+    all:
+      - ["stoch_14_3_3.k", ">", 45]
+      - ["willr_14", ">", -55]
+
+position_policy:
+  mode: "short_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

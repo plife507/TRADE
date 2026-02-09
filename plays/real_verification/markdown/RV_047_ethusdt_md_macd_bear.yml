@@ -1,0 +1,68 @@
+version: "3.0.0"
+name: "rv_047_ethusdt_md_macd_bear"
+description: |
+  Real Verification - ETH MACD bearish momentum short during markdown.
+  MACD histogram negative with ADX confirming strong trend.
+  Window: --start 2025-11-13 --end 2025-12-19
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  macd_12_26_9:
+    indicator: macd
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+
+  adx_14:
+    indicator: adx
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+    - type: market_structure
+      key: ms
+      uses: swing
+
+actions:
+  entry_short:
+    all:
+      - ["macd_12_26_9.histogram", "<", 0.5]
+      - any:
+          - ["adx_14", ">", 15]
+          - ["macd_12_26_9.macd", "<", "macd_12_26_9.signal"]
+
+position_policy:
+  mode: "short_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

@@ -1,0 +1,73 @@
+version: "3.0.0"
+name: "rv_051_ethusdt_md_breakdown"
+description: |
+  Real Verification - ETH breakdown short during markdown.
+  Close below rolling window min with bearish trend context.
+  Window: --start 2025-11-13 --end 2025-12-19
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  donchian_20:
+    indicator: donchian
+    params:
+      lower_length: 20
+      upper_length: 20
+
+  obv:
+    indicator: obv
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+    - type: rolling_window
+      key: rolling_low_20
+      params:
+        mode: min
+        size: 20
+        source: low
+
+actions:
+  entry_short:
+    all:
+      - ["close", "near_pct", "rolling_low_20.value", 5]
+      - any:
+          - ["close", "near_pct", "ema_50", 5]
+          - ["trend.direction", "==", -1]
+
+position_policy:
+  mode: "short_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

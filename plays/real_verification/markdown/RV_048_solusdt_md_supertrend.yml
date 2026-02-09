@@ -1,0 +1,65 @@
+version: "3.0.0"
+name: "rv_048_solusdt_md_supertrend"
+description: |
+  Real Verification - SOL SuperTrend bearish with RSI mid-range filter.
+  SuperTrend direction bearish, RSI between 40-65 (not oversold).
+  Window: --start 2025-11-12 --end 2025-12-19
+
+symbol: "SOLUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  supertrend_10_3:
+    indicator: supertrend
+    params:
+      length: 10
+      multiplier: 3.0
+
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_short:
+    all:
+      - ["supertrend_10_3.direction", "==", -1]
+      - ["rsi_14", "between", [20, 80]]
+
+position_policy:
+  mode: "short_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

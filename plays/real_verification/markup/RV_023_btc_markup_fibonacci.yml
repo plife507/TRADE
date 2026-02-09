@@ -1,0 +1,80 @@
+version: "3.0.0"
+name: "rv_023_btc_markup_fibonacci"
+description: |
+  Real Verification - BTC fibonacci zone proximity with RSI filter in markup phase
+  Window: --start 2025-01-16 --end 2025-02-09
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+    - type: fibonacci
+      key: fib
+      uses: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+
+    - type: derived_zone
+      key: fib_zones
+      uses: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+        max_active: 5
+        width_pct: 0.002
+
+actions:
+  entry_long:
+    all:
+      - ["rsi_14", "<", 55]
+      - any:
+          - ["trend.direction", "==", 1]
+          - ["fib_zones.any_active", "==", 1]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

@@ -1,0 +1,68 @@
+version: "3.0.0"
+name: "rv_009_eth_accum_donchian_keltner"
+description: |
+  Real Verification - ETH accumulation with Donchian and Keltner channel indicators.
+  Tests: between, near_pct operators with rolling_window structure.
+  Window: --start 2025-02-12 --end 2025-02-24
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  donchian_20:
+    indicator: donchian
+    params: {length: 20}
+
+  keltner_20_2:
+    indicator: kc
+    params:
+      length: 20
+      multiplier: 2.0
+
+  sma_50:
+    indicator: sma
+    params: {length: 50}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: rolling_window
+      key: rolling_high_20
+      params:
+        mode: max
+        size: 20
+        source: high
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "donchian_20.lower"]
+      - ["close", "near_pct", "sma_50", 5]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

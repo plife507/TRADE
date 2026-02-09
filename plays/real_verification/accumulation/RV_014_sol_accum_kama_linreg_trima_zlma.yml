@@ -1,0 +1,71 @@
+version: "3.0.0"
+name: "rv_014_sol_accum_kama_linreg_trima_zlma"
+description: |
+  Real Verification - SOL accumulation with KAMA, LINREG, TRIMA, ZLMA adaptive MAs.
+  Tests: >, arithmetic */+ operators with trend structure.
+  Window: --start 2025-12-25 --end 2026-01-02
+
+symbol: "SOLUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  kama_10:
+    indicator: kama
+    params: {length: 10}
+
+  linreg_14:
+    indicator: linreg
+    params: {length: 14}
+
+  trima_20:
+    indicator: trima
+    params: {length: 20}
+
+  zlma_20:
+    indicator: zlma
+    params: {length: 20}
+
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  entry_long:
+    all:
+      - ["close", "near_pct", "kama_10", 3]
+      - ["close", "near_pct", "linreg_14", 5]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

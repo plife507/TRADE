@@ -1,0 +1,79 @@
+version: "3.0.0"
+name: "rv_004_ltc_accum_stoch_cci"
+description: |
+  Real Verification - LTC accumulation with Stochastic, StochRSI, CCI oscillators.
+  Tests: <=, < operators with derived_zone structure.
+  Window: --start 2025-12-24 --end 2026-01-01
+
+symbol: "LTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  stoch_14_3_3:
+    indicator: stoch
+    params:
+      k: 14
+      d: 3
+      smooth_k: 3
+
+  stochrsi_14_14_3_3:
+    indicator: stochrsi
+    params:
+      length: 14
+      rsi_length: 14
+      k: 3
+      d: 3
+
+  cci_14:
+    indicator: cci
+    params: {length: 14}
+
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: derived_zone
+      key: fib_zones
+      uses: swing
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+        max_active: 5
+        width_pct: 0.002
+
+actions:
+  entry_long:
+    all:
+      - ["stoch_14_3_3.k", "<=", 55]
+      - ["cci_14", "<", 50]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

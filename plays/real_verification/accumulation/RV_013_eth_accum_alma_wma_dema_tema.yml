@@ -1,0 +1,66 @@
+version: "3.0.0"
+name: "rv_013_eth_accum_alma_wma_dema_tema"
+description: |
+  Real Verification - ETH accumulation with ALMA, WMA, DEMA, TEMA moving averages.
+  Tests: cross_above, holds_for operators with swing structure.
+  Window: --start 2025-02-12 --end 2025-02-24
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  alma_9:
+    indicator: alma
+    params: {length: 9}
+
+  wma_21:
+    indicator: wma
+    params: {length: 21}
+
+  dema_21:
+    indicator: dema
+    params: {length: 21}
+
+  tema_21:
+    indicator: tema
+    params: {length: 21}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "alma_9"]
+      - holds_for:
+          bars: 2
+          expr:
+            - ["close", ">", "wma_21"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0

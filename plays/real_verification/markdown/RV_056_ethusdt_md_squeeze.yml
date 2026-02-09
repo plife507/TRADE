@@ -1,0 +1,76 @@
+version: "3.0.0"
+name: "rv_056_ethusdt_md_squeeze"
+description: |
+  Real Verification - ETH squeeze-based short during markdown.
+  Squeeze on (consolidation), RSI or UO elevated, not oversold.
+  Tests: ==, <, not, any operators.
+  Window: --start 2025-11-13 --end 2025-12-19
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  bbands_20_2:
+    indicator: bbands
+    params:
+      length: 20
+      std: 2.0
+
+  sqz:
+    indicator: squeeze
+    params: {bb_length: 20, bb_std: 2.0, kc_length: 20, kc_scalar: 1.5}
+
+  uo_14:
+    indicator: uo
+    params:
+      fast: 7
+      medium: 14
+      slow: 28
+
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+actions:
+  entry_short:
+    all:
+      - ["close", "near_pct", "ema_50", 5]
+      - any:
+          - ["sqz.on", "==", 1]
+          - ["rsi_14", ">", 45]
+          - ["uo_14", ">", 45]
+
+position_policy:
+  mode: "short_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0
