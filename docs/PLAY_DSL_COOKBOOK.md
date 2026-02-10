@@ -86,7 +86,7 @@ The engine provides three price types with different update rates and semantics:
 
 | Feature | Resolution | Source (Backtest) | Source (Live) | Use Case |
 |---------|------------|-------------------|---------------|----------|
-| `close` | Per exec bar | Exec TF bar close | Exec TF bar close | Standard conditions, indicators, end-of-bar decisions |
+| `close` | Per exec bar | Execution-bar close | Execution-bar close | Standard conditions, indicators, end-of-bar decisions |
 | `last_price` | Every 1m | 1m bar close | `ticker.lastPrice` | Intra-bar precision, precise entries |
 | `mark_price` | Every 1m | 1m bar close | `ticker.markPrice` (index) | Position valuation, margin, liquidation |
 
@@ -410,7 +410,7 @@ features:
 
 When a feature's timeframe is **slower** than the execution timeframe, its value remains constant (forward-fills) until the slower timeframe bar closes:
 
-```
+```text
 exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
                   +-----+-----+-----+-----+-----+-----+-----+-----+
 1h feature:       |     1h bar 0 (v=100)  |    1h bar 1 (v=102)   |
@@ -536,7 +536,7 @@ This means `last_price` provides 1m precision regardless of your `tf:` setting, 
 
 **`last_price` vs `close` vs `mark_price`:**
 
-```
+```text
 Timeline within a 15m exec bar:
 |----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
  1m   2m   3m   4m   5m   6m   7m   8m   9m  10m  11m  12m  13m  14m  15m
@@ -568,7 +568,7 @@ In backtest, both default to the same 1m close source for simplicity. In live tr
 | `mark_price` | Index across multiple exchanges | PnL, liquidation, margin | Stable (anti-manipulation design) |
 
 **Example divergence scenario:**
-```
+```text
 During a flash crash on Bybit:
 - last_price: Drops to $50,000 (actual trades happening)
 - mark_price: Stays at $51,500 (index stable across exchanges)
@@ -1635,7 +1635,7 @@ Forward-fill behavior depends on whether a timeframe is faster or slower than ex
 | **Faster than exec** | Lookup most recent closed bar at exec close |
 | **Equal to exec** | Direct access (no fill needed) |
 
-```
+```text
 Example: exec=low_tf (15m), med_tf=1h, high_tf=D
 
 exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
@@ -1649,7 +1649,7 @@ exec bars (15m):  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |
 
 ### Execution Semantics
 
-```
+```text
 Signal evaluation: At execution timeframe bar close
 Order execution:   At next 1m candle open (backtest) or live ticker (live)
 ```
@@ -1951,7 +1951,7 @@ risk:
 
 ### Sizing Flow
 
-```
+```text
 Signal Generated -> SimulatedRiskManager.size_order() -> SizingResult
                           |
               Sizing Model (percent_equity / risk_based / fixed_usdt)
@@ -1966,7 +1966,7 @@ Signal Generated -> SimulatedRiskManager.size_order() -> SizingResult
 ### Sizing Models Explained
 
 **1. percent_equity (Default)**
-```
+```text
 margin = equity x (risk_pct / 100)
 position = margin x leverage
 
@@ -1976,7 +1976,7 @@ Example: $10,000 equity, 10% risk, 3x leverage
 ```
 
 **2. risk_based (Kelly-style)**
-```
+```text
 risk_dollars = equity x (risk_pct / 100)
 size = risk_dollars x entry_price / stop_distance
 
@@ -1987,7 +1987,7 @@ Example: $10,000 equity, 1% risk, 2% stop
 ```
 
 **3. fixed_usdt**
-```
+```text
 size = fixed_amount (capped by max_leverage)
 
 Example: fixed $1000, max 10x leverage on $10,000
@@ -2701,9 +2701,9 @@ account:
 | 2026-01-25 | Updated deprecation section: blocks: is removed (not deprecated), margin_mode errors helpfully |
 | 2026-01-25 | Added risk config equivalence note (risk: and risk_model: both valid) |
 | 2026-01-25 | Added structure dependency syntax clarification (source: vs swing:) |
-| 2026-01-25 | Added reserved position policy flags documentation (allow_flip, etc.)
-| 2026-01-25 | **DSL Syntax Unification:** `depends_on: {swing: key}` → `uses: key` (simpler syntax)
-| 2026-01-25 | **Bracket Syntax:** Added universal indexed access - `fib.level[0.618]`, `zones.zone[0].state`
+| 2026-01-25 | Added reserved position policy flags documentation (allow_flip, etc.) |
+| 2026-01-25 | **DSL Syntax Unification:** `depends_on: {swing: key}` → `uses: key` (simpler syntax) |
+| 2026-01-25 | **Bracket Syntax:** Added universal indexed access - `fib.level[0.618]`, `zones.zone[0].state` |
 | 2026-01-25 | **Integer Bias/Direction:** trend.direction and ms.bias return integers (1/-1/0) for dataframe compat |
 | 2026-01-25 | **Lowercase Enums:** Zone states now lowercase ("active", "broken", "none") |
 | 2026-02-08 | Added prominent Timeframe Naming (ENFORCED) section at top |

@@ -15,42 +15,42 @@
 |---|------|--------|--------|-----|--------|
 | 1 | CL_001 | PASS | 12 | 147.35 | 11P/0F/0W/0S |
 | 2 | CL_002 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 | 3 | CL_003 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 | 4 | CL_004 | PASS | 310 | -1002.90 | 11P/0F/0W/0S |
 | 5 | CL_005 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 | 6 | CL_006 | PASS | 718 | 94.69 | 11P/0F/0W/0S |
 | 7 | CL_007 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 | 8 | CL_008 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 | 9 | CL_009 | PASS | 19 | -1028.18 | 11P/0F/0W/0S |
 | 10 | CL_010 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 | 11 | CL_011 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 | 12 | CL_012 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 | 13 | CL_013 | RUN_FAIL | 0 | 0.00 | [ERROR] Error: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process.
-FAIL IO Error: Cannot open file 
+FAIL IO Error: Cannot open file
 Traceback (most recent call last):
 _duckdb.IOException: IO Error: Cannot open file "c:\code\ai\trade\data\market_data_backtest.duckdb": The process cannot access the file because it is being used by another process. |
 

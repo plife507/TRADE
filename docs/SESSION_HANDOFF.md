@@ -39,7 +39,7 @@
 - Equity curve post-close: final equity point appended AFTER force close
 - Math verifier candle loading: DuckDB candle lookup via timestamps
 - Preflight auto-sync: all 3 TFs synced (not just feature TFs)
-- 6 zero-trade plays fixed: 4 impossible conditions, 2 multi-TF bar dilation
+- 6 zero-trade plays fixed: 4 impossible conditions, 2 multi-timeframe bar dilation
 
 ---
 
@@ -95,7 +95,7 @@ python trade_cli.py play run --play X --mode live --confirm
 
 ## Architecture
 
-```
+```text
 src/engine/        # ONE unified PlayEngine for backtest/live
 src/indicators/    # 44 indicators (all incremental O(1))
 src/structures/    # 7 structure types
@@ -107,7 +107,7 @@ src/tools/         # CLI/API surface
 Signal flow (identical for backtest/live):
 1. `process_bar(bar_index)` on exec timeframe
 2. Update higher/medium timeframe indices
-3. Warmup check (multi-TF sync + NaN validation)
+3. Warmup check (multi-timeframe sync + NaN validation)
 4. `exchange.step()` (fill simulation via 1m subloop)
 5. `_evaluate_rules()` -> Signal or None
 6. `execute_signal(signal)`

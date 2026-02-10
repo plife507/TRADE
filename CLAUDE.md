@@ -10,7 +10,7 @@
 
 ## Architecture
 
-```
+```text
 src/engine/        # ONE unified engine (PlayEngine) for backtest/live
 src/indicators/    # 44 indicators (all incremental O(1))
 src/structures/    # 7 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure)

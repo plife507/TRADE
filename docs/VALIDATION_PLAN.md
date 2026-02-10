@@ -213,8 +213,8 @@ For each indicator, verify:
 ### 6.2 Data Alignment
 | Test | Setup | Expected | Status |
 |------|-------|----------|--------|
-| htf_close_alignment | 4h closes, 15m bars | LTF sees HTF at close | ✅ |
-| htf_during_bar | Mid-4h bar check | LTF sees previous HTF | ✅ |
+| htf_close_alignment | 4h closes, 15m bars | Lower timeframe sees higher timeframe at close | ✅ |
+| htf_during_bar | Mid-4h bar check | Lower timeframe sees previous higher timeframe | ✅ |
 
 ### 6.3 Timeframe Calculations
 | Test | Setup | Expected | Status |
@@ -319,9 +319,9 @@ For each indicator, verify:
 - [x] SL/TP execution tests (5/5)
 - [ ] Position management (pending - requires live engine integration)
 
-### Phase 6: Multi-TF (DONE - 6/6)
+### Phase 6: Multi-timeframe (DONE - 6/6)
 - [x] Resampling tests (2/2 - 15m->1h, 1h->4h)
-- [x] Alignment tests (2/2 - HTF close, during bar)
+- [x] Alignment tests (2/2 - higher timeframe close, during bar)
 - [x] TF calculation tests (2/2 - ratios, indicators)
 
 ### Phase 7: Edge Cases (DONE - 10/10)

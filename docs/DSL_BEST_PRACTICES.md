@@ -538,10 +538,10 @@ timeframes:
 features:
   ema_9:
     indicator: ema
-    params: { length: 9 }       # Inherits exec TF (15m)
+    params: { length: 9 }       # Inherits execution timeframe (15m)
   ema_21:
     indicator: ema
-    params: { length: 21 }      # Inherits exec TF (15m)
+    params: { length: 21 }      # Inherits execution timeframe (15m)
   ema_50_1h:
     indicator: ema
     params: { length: 50 }
@@ -558,7 +558,7 @@ actions:
 
 Slower-timeframe features hold their last closed value between closes:
 
-```
+```text
 exec bars (15m):   | bar 1 | bar 2 | bar 3 | bar 4 | bar 5 | bar 6 | bar 7 | bar 8 |
 1h feature:        |     1h bar closes here ----->  |     next 1h bar close ----->   |
                    |  100     100     100     100   |  102     102     102     102    |
@@ -944,7 +944,7 @@ When using `generate_synthetic_candles` with 3 timeframes (e.g., 15m/1h/D) and `
 **Fix:** Use `near_pct` instead of strict `<`/`>` for structure level comparisons on diluted patterns:
 
 ```yaml
-# WRONG on multi-TF synthetic - price may never cross exact level
+# WRONG on multi-timeframe synthetic - price may never cross exact level
 - ["close", "<", "swing.low_level"]
 
 # CORRECT - catches price within proximity of level

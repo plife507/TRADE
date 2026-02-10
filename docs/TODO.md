@@ -107,7 +107,7 @@ Use `low_tf`, `med_tf`, `high_tf`, and `exec` (pointer). Never use HTF/LTF/MTF a
 ### 170-Play Synthetic Audit (2026-02-08)
 
 - [x] Generated 5 suites: indicator (84), operator (25), structure (14), pattern (34), complexity ladder (13)
-- [x] Fixed 6 zero-trade plays: 4 impossible conditions (Donchian/arithmetic/RSI), 2 multi-TF bar dilation
+- [x] Fixed 6 zero-trade plays: 4 impossible conditions (Donchian/arithmetic/RSI), 2 multi-timeframe bar dilation
 - [x] Fixed 3 structure detector bugs (market_structure and trend)
 - [x] All 170/170 synthetic plays pass with trades generated
 - [x] Suites at `plays/{indicator,operator,structure,pattern}_suite/` and `plays/complexity_ladder/`
