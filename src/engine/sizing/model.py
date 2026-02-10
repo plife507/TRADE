@@ -19,7 +19,6 @@ This ensures identical position sizing behavior across all execution modes
 (backtest, demo, live).
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any

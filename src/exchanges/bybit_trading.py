@@ -10,7 +10,6 @@ position management methods.
 from typing import TYPE_CHECKING
 
 from ..utils.time_range import TimeRange
-from ..utils.helpers import safe_float
 
 if TYPE_CHECKING:
     from .bybit_client import BybitClient

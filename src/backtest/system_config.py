@@ -864,6 +864,3 @@ def list_systems() -> list[str]:
             systems.append(path.stem)
     
     return sorted(systems)
-
-
-# G1.11: get_system_config_path() removed (2026-01-27) - unused

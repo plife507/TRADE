@@ -120,8 +120,8 @@ def market_buy_with_tpsl(
     manager: "ExchangeManager",
     symbol: str,
     usd_amount: float,
-    take_profit: float = None,
-    stop_loss: float = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
     tpsl_mode: str = "Full",
 ) -> "OrderResult":
     """Place a market buy order with TP/SL."""
@@ -172,8 +172,8 @@ def market_sell_with_tpsl(
     manager: "ExchangeManager",
     symbol: str,
     usd_amount: float,
-    take_profit: float = None,
-    stop_loss: float = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
     tpsl_mode: str = "Full",
 ) -> "OrderResult":
     """Place a market sell order with TP/SL (short)."""

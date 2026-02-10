@@ -40,8 +40,6 @@ from .shared import (
     _get_exchange_manager,
     _get_realtime_state,
     _is_websocket_connected,
-    _ensure_websocket_running,
-    _get_data_source,
     validate_trading_env_or_error,
 )
 

@@ -29,20 +29,16 @@ from ..config.constants import (
     validate_data_env,
     validate_symbol,
     resolve_db_path,
-    resolve_table_name,
 )
 from ..data.historical_data_store import (
     get_historical_store,
-    TIMEFRAMES as DB_TIMEFRAMES,
     TF_MINUTES,
 )
 from ..backtest.play import load_play, list_plays, Play
 from ..backtest.execution_validation import (
     validate_play_full,
     compute_warmup_requirements,
-    get_declared_features_by_role,
 )
-from ..indicators import get_required_indicator_columns_from_specs
 from ..backtest.system_config import validate_usdt_pair
 from ..backtest.runtime.preflight import run_preflight_gate, PreflightReport, AutoSyncConfig
 from ..utils.logger import get_logger
@@ -110,31 +106,6 @@ def validate_canonical_tf(tf: str) -> str:
         f"Invalid timeframe: '{tf}'. "
         f"Must be one of: {sorted(CANONICAL_TIMEFRAMES)}"
     )
-
-
-def normalize_timestamp(dt: datetime) -> datetime:
-    """
-    Normalize timestamp to UTC-naive for DuckDB storage.
-
-    DuckDB stores timestamps as UTC-naive. If user passes tz-aware datetime,
-    we strip the timezone info and log the normalization.
-
-    Args:
-        dt: Datetime (may be tz-aware)
-
-    Returns:
-        UTC-naive datetime
-    """
-    if dt.tzinfo is not None:
-        # Convert to UTC first if needed, then strip
-        try:
-            dt_utc = dt.utctimetuple()
-            dt = datetime(*dt_utc[:6])
-        except Exception:
-            # Just strip tzinfo if conversion fails
-            dt = dt.replace(tzinfo=None)
-        logger.info(f"Normalized tz-aware timestamp to UTC-naive: {dt}")
-    return dt
 
 
 # =============================================================================
@@ -883,7 +854,6 @@ def backtest_indicators_tool(
         # Validate env
         data_env = validate_data_env(data_env)
         db_path = resolve_db_path(data_env)
-        ohlcv_table = resolve_table_name("ohlcv", data_env)
 
         # Load Play
         try:

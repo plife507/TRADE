@@ -536,7 +536,7 @@ class ExchangeManager:
         from . import exchange_instruments as inst
         return inst.get_min_qty(self, symbol)
     
-    def _calculate_qty(self, symbol: str, usd_amount: float, price: float = None) -> float:
+    def _calculate_qty(self, symbol: str, usd_amount: float, price: float | None = None) -> float:
         from . import exchange_instruments as inst
         return inst.calculate_qty(self, symbol, usd_amount, price)
     

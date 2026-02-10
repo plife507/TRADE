@@ -17,7 +17,6 @@ Usage:
     mark = source.get_mark_price("BTCUSDT", ts)
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING

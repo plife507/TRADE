@@ -312,11 +312,11 @@ def backtest_math_parity_tool(
 # =============================================================================
 
 def verify_artifact_parity_tool(
-    play_id: str = None,
-    symbol: str = None,
+    play_id: str | None = None,
+    symbol: str | None = None,
     run_id: str | None = None,
     base_dir: str | None = None,
-    run_dir: Path = None,
+    run_dir: Path | None = None,
 ) -> ToolResult:
     """
     Verify CSV ↔ Parquet parity for backtest artifacts.

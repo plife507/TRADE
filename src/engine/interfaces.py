@@ -10,7 +10,6 @@ All adapters must implement these protocols to work with PlayEngine.
 The protocols ensure identical signal generation logic across all modes.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime

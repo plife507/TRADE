@@ -5,7 +5,8 @@ Contains: detect_gaps, fill_gaps, heal, delete_symbol, cleanup_empty_symbols, va
 """
 
 from datetime import datetime, timedelta
-from typing import Callable, Union, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -54,9 +55,9 @@ def detect_gaps(store: "HistoricalDataStore", symbol: str, timeframe: str) -> li
 
 def fill_gaps(
     store: "HistoricalDataStore",
-    symbol: str = None,
-    timeframe: str = None,
-    progress_callback: Callable = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    progress_callback: Callable | None = None,
 ) -> dict[str, int]:
     """
     Fill detected gaps in data.
@@ -120,9 +121,9 @@ def fill_gaps(
 
 def heal(
     store: "HistoricalDataStore",
-    symbol: str = None,
-    timeframe: str = None,
-    progress_callback: Callable = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    progress_callback: Callable | None = None,
 ) -> dict[str, dict]:
     """
     Heal data by detecting and filling gaps, plus verifying integrity.
@@ -245,7 +246,7 @@ def vacuum(store: "HistoricalDataStore"):
 
 def heal_comprehensive(
     store: "HistoricalDataStore",
-    symbol: str = None,
+    symbol: str | None = None,
     fix_issues: bool = True,
     fill_gaps_after: bool = True,
 ) -> dict:
@@ -470,8 +471,8 @@ def heal_comprehensive(
 
 def validate_data_quality(
     store: "HistoricalDataStore",
-    symbol: str = None,
-    timeframe: str = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
 ) -> dict:
     """
     G2-4: Validate data quality for potential anomalies.

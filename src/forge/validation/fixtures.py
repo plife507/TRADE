@@ -7,8 +7,6 @@ Provides deterministic, predictable data patterns for validating:
 - Integration tests (full signal generation)
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 

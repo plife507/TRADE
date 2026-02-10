@@ -36,7 +36,7 @@ from typing import Any
 import pandas as pd
 
 from ..utils.logger import get_logger
-from ..config.constants import DataEnv, DEFAULT_DATA_ENV, validate_data_env
+from ..config.constants import DataEnv, validate_data_env
 
 # Import all models from realtime_models
 from .realtime_models import (
@@ -143,13 +143,11 @@ class RealtimeState:
         self._tickers: dict[str, TickerData] = {}
         self._orderbooks: dict[str, OrderbookData] = {}
         self._klines: dict[str, dict[str, KlineData]] = defaultdict(dict)  # {symbol: {interval: kline}}
-        # G5.2: Use deque with maxlen for automatic size limiting (no manual slicing)
         self._recent_trades: dict[str, deque[TradeData]] = defaultdict(lambda: deque(maxlen=100))
 
         # Private account data state
         self._positions: dict[str, PositionData] = {}  # {symbol: position}
         self._orders: dict[str, OrderData] = {}  # {order_id: order}
-        # G5.2: Use deque with maxlen for automatic size limiting
         self._executions: deque[ExecutionData] = deque(maxlen=500)
         self._wallet: dict[str, WalletData] = {}  # {coin: wallet}
         self._account_metrics: AccountMetrics | None = None  # Unified account-level metrics
@@ -158,7 +156,6 @@ class RealtimeState:
         self._public_ws_status = ConnectionStatus()
         self._private_ws_status = ConnectionStatus()
         
-        # Event queue for event-driven processing (G5.1: bounded to prevent memory growth)
         self._event_queue_enabled = enable_event_queue
         self._event_queue: Queue = Queue(maxsize=10000) if enable_event_queue else None
         
@@ -214,7 +211,7 @@ class RealtimeState:
         with self._lock:
             return dict(self._tickers)
     
-    def is_ticker_stale(self, symbol: str, max_age_seconds: float = None) -> bool:
+    def is_ticker_stale(self, symbol: str, max_age_seconds: float | None = None) -> bool:
         """Check if ticker is stale."""
         max_age = max_age_seconds or STALENESS_THRESHOLDS["ticker"]
         with self._lock:
@@ -270,7 +267,7 @@ class RealtimeState:
         with self._lock:
             return self._orderbooks.get(symbol)
     
-    def is_orderbook_stale(self, symbol: str, max_age_seconds: float = None) -> bool:
+    def is_orderbook_stale(self, symbol: str, max_age_seconds: float | None = None) -> bool:
         """Check if orderbook is stale."""
         max_age = max_age_seconds or STALENESS_THRESHOLDS["orderbook"]
         with self._lock:
@@ -308,7 +305,7 @@ class RealtimeState:
         with self._lock:
             return dict(self._klines.get(symbol, {}))
     
-    def is_kline_stale(self, symbol: str, interval: str, max_age_seconds: float = None) -> bool:
+    def is_kline_stale(self, symbol: str, interval: str, max_age_seconds: float | None = None) -> bool:
         """Check if kline is stale."""
         max_age = max_age_seconds or STALENESS_THRESHOLDS["kline"]
         with self._lock:
@@ -363,8 +360,6 @@ class RealtimeState:
                     buffer.append(bar)
                     count += 1
                 except (KeyError, ValueError, TypeError) as e:
-                    # BUG-002 fix: Specific exceptions for row parsing
-                    # Log and skip malformed rows rather than silently continuing
                     self.logger.debug(f"Skipping malformed row in bar buffer init: {e}")
                     continue
 
@@ -447,7 +442,7 @@ class RealtimeState:
 
         return pd.DataFrame(data)
 
-    def get_bar_buffer_stats(self, env: DataEnv = None) -> dict[str, Any]:
+    def get_bar_buffer_stats(self, env: DataEnv | None = None) -> dict[str, Any]:
         """Get statistics about bar buffers."""
         with self._lock:
             stats = {}
@@ -468,7 +463,7 @@ class RealtimeState:
 
             return stats
 
-    def clear_bar_buffers(self, env: DataEnv = None, symbol: str = None):
+    def clear_bar_buffers(self, env: DataEnv | None = None, symbol: str | None = None):
         """Clear bar buffers."""
         with self._lock:
             if env is None:
@@ -488,7 +483,7 @@ class RealtimeState:
     # ==========================================================================
     
     def add_trade(self, trade: TradeData):
-        """Add a public trade (thread-safe). G5.2: deque handles size limiting."""
+        """Add a public trade (thread-safe)."""
         with self._lock:
             self._recent_trades[trade.symbol].append(trade)
             self._update_counts["trade"] += 1
@@ -533,7 +528,7 @@ class RealtimeState:
         with self._lock:
             return dict(self._positions)
     
-    def is_position_stale(self, symbol: str, max_age_seconds: float = None) -> bool:
+    def is_position_stale(self, symbol: str, max_age_seconds: float | None = None) -> bool:
         """Check if position data is stale."""
         max_age = max_age_seconds or STALENESS_THRESHOLDS["position"]
         with self._lock:
@@ -586,7 +581,7 @@ class RealtimeState:
     # ==========================================================================
     
     def add_execution(self, execution: ExecutionData):
-        """Add an execution (thread-safe). G5.2: deque handles size limiting."""
+        """Add an execution (thread-safe)."""
         with self._lock:
             self._executions.append(execution)
             self._update_counts["execution"] += 1
@@ -630,7 +625,7 @@ class RealtimeState:
         with self._lock:
             return dict(self._wallet)
     
-    def is_wallet_stale(self, coin: str = "USDT", max_age_seconds: float = None) -> bool:
+    def is_wallet_stale(self, coin: str = "USDT", max_age_seconds: float | None = None) -> bool:
         """Check if wallet data is stale."""
         max_age = max_age_seconds or STALENESS_THRESHOLDS["wallet"]
         with self._lock:
@@ -662,7 +657,7 @@ class RealtimeState:
         with self._lock:
             return self._account_metrics
     
-    def is_account_metrics_stale(self, max_age_seconds: float = None) -> bool:
+    def is_account_metrics_stale(self, max_age_seconds: float | None = None) -> bool:
         """Check if account metrics are stale."""
         max_age = max_age_seconds or STALENESS_THRESHOLDS["wallet"]
         with self._lock:

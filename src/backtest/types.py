@@ -565,9 +565,8 @@ class BacktestResult:
     stop_reason_detail: str | None = None  # Human-readable stable text
 
     # Early-stop fields (terminal states: account_blown, insufficient_free_margin)
-    # Legacy stop_reason kept for backward compat, maps from stop_classification
     stopped_early: bool = False
-    stop_reason: str | None = None  # Legacy: "account_blown" | "insufficient_free_margin" | "liquidated"
+    stop_reason: str | None = None  # "account_blown" | "insufficient_free_margin" | "liquidated"
     stop_ts: datetime | None = None
     stop_bar_index: int | None = None
     stop_details: dict[str, Any] | None = None  # Full exchange snapshot at stop

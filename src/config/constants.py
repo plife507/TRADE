@@ -105,7 +105,7 @@ DEFAULT_LIVE_ENV: DataEnv = "live"
 # Default for demo/paper trading
 DEFAULT_DEMO_ENV: DataEnv = "demo"
 
-# Generic default for data tools (backward compatibility)
+# Generic default for data tools
 # Points to "backtest" since most data operations are for preparing backtest data
 DEFAULT_DATA_ENV: DataEnv = "backtest"
 

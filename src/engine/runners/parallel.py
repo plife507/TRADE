@@ -24,11 +24,11 @@ Note:
     for concurrent live/demo instances.
 """
 
-from __future__ import annotations
 
 import multiprocessing as mp
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
@@ -90,7 +90,6 @@ def _run_single_backtest_process(
         reset_stores(force_read_only=True)
 
         # Import inside the process to get fresh module state
-        from ...backtest.play import load_play
         from ...tools.backtest_play_tools import backtest_run_play_tool
 
         # Convert plays_dir to Path if provided
@@ -142,7 +141,7 @@ def run_backtests_parallel(
     env: str = "backtest",
     start: datetime | None = None,
     end: datetime | None = None,
-    progress_callback: callable | None = None,
+    progress_callback: Callable | None = None,
 ) -> list[ParallelBacktestResult]:
     """
     Run multiple backtests in parallel using separate processes.
@@ -228,6 +227,3 @@ def run_backtests_parallel(
 
     # Return results in original order
     return [results_map[pid] for pid in play_ids]
-
-
-# G1.19: run_backtest_isolated() removed (2026-01-27) - use run_backtests_parallel with max_workers=1

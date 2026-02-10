@@ -9,7 +9,6 @@ These adapters wrap existing backtest infrastructure:
 Fully integrated with existing backtest engine infrastructure.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -581,14 +580,3 @@ class ShadowExchange:
     def recorded_signals(self) -> list[Order]:
         """Get all recorded signals."""
         return self._signals.copy()
-
-
-# =============================================================================
-# PROFESSIONAL NAMING ALIASES
-# See docs/specs/ENGINE_NAMING_CONVENTION.md for full naming standards
-# =============================================================================
-
-# Sim* prefix for simulation/backtest adapters
-SimDataAdapter = BacktestDataProvider
-SimExchangeAdapter = BacktestExchange
-ShadowExchangeAdapter = ShadowExchange

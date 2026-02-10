@@ -52,8 +52,6 @@ The 43 incremental indicators tested:
 43. VWAP - Volume Weighted Average Price
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 

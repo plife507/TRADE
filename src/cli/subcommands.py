@@ -1173,7 +1173,7 @@ def handle_backtest_audit_snapshot_plumbing(args) -> int:
             console.print(f"  abs_diff: {mismatch.get('abs_diff')}")
             console.print(f"  tolerance: {mismatch.get('tolerance')}")
             console.print(f"  exec_idx: {mismatch.get('exec_idx')}")
-            console.print(f"  htf_idx: {mismatch.get('htf_idx')}")
+            console.print(f"  high_tf_idx: {mismatch.get('high_tf_idx')}")
             console.print(f"  target_idx: {mismatch.get('target_idx')}")
         return 1
 

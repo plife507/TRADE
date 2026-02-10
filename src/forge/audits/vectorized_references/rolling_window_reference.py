@@ -5,8 +5,6 @@ Uses pd.Series.rolling() as the ground truth - trivial to verify
 but proves the comparison framework works end-to-end.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 

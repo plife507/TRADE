@@ -981,11 +981,3 @@ def _finalize_logger_on_error(ctx: _RunContext, status: str) -> None:
         # BUG-004 fix: Specific exceptions for logger cleanup
         # File may be closed or logger already finalized
         pass
-
-
-# =============================================================================
-# G1: Dead code removed (2026-01-27)
-# =============================================================================
-# - run_smoke_test() - unused convenience wrapper
-# - main() CLI entrypoint - unused, backtest runs via trade_cli.py
-# =============================================================================

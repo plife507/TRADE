@@ -18,14 +18,13 @@ Usage:
     await runner.stop()
 """
 
-from __future__ import annotations
 
 import asyncio
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 from ..play_engine import PlayEngine
 from src.backtest.runtime.timeframe import tf_minutes
@@ -300,7 +299,7 @@ class LiveRunner:
         Sets up candle close callbacks for processing through the engine.
         """
         from ..adapters.live import LiveDataProvider
-        from ...data.realtime_state import get_realtime_state, EventType
+        from ...data.realtime_state import get_realtime_state
         from ...data.realtime_bootstrap import get_realtime_bootstrap
 
         # Connect to RealtimeState for events

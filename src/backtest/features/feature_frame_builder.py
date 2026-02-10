@@ -457,52 +457,6 @@ class FeatureFrameBuilder:
             metadata=metadata_dict,
         )
     
-    def _compute_and_store(
-        self,
-        spec: FeatureSpec,
-        ohlcv: dict[str, pd.Series],
-        computed: dict[str, pd.Series],
-    ):
-        """
-        Compute indicator and store results in computed dict.
-
-        Handles both single-output and multi-output indicators.
-        NOTE: This method does NOT capture metadata. Use _compute_and_store_with_metadata
-        for the full metadata-enabled path.
-
-        Args:
-            spec: FeatureSpec to compute
-            ohlcv: Dict of OHLCV series
-            computed: Dict to store computed indicator series
-        """
-        ind_type = spec.indicator_type
-        ind_type_str = spec.indicator_type.lower()
-
-        # Check if indicator type is registered
-        if not self.registry.has(ind_type):
-            raise KeyError(
-                f"Unknown indicator type: {ind_type_str}. "
-                f"Registered types: {self.registry.list_types()}"
-            )
-
-        if is_multi_output(ind_type):
-            # Multi-output indicator
-            result = self._compute_multi_output(spec, ohlcv, computed)
-            output_names = get_output_names(ind_type)
-
-            for name in output_names:
-                key = spec.get_output_key(name)
-                if name in result:
-                    computed[key] = result[name]
-                else:
-                    raise ValueError(
-                        f"Multi-output indicator {ind_type_str} did not produce output '{name}'"
-                    )
-        else:
-            # Single-output indicator
-            series = self._compute_single_output(spec, ohlcv, computed)
-            computed[spec.output_key] = series
-    
     def _compute_and_store_with_metadata(
         self,
         spec: FeatureSpec,
@@ -549,10 +503,10 @@ class FeatureFrameBuilder:
         ind_type_str = spec.indicator_type.lower()
 
         # Check if indicator type is registered
-        if not self.registry.has(ind_type):
+        if not self.compute.has(ind_type):
             raise KeyError(
                 f"Unknown indicator type: {ind_type_str}. "
-                f"Registered types: {self.registry.list_types()}"
+                f"Registered types: {self.compute.list_types()}"
             )
         
         # Prepare canonical params for metadata
@@ -675,7 +629,7 @@ class FeatureFrameBuilder:
 
         # Pass input_series as the primary input - single-input indicators use it directly
         # Multi-input indicators (ATR, MACD) use their own required inputs from registry
-        return self.registry.compute(
+        return self.compute.compute(
             ind_type,
             close=input_series,
             high=ohlcv["high"],
@@ -718,7 +672,7 @@ class FeatureFrameBuilder:
 
         # Pass input_series as the primary input - single-input indicators use it directly
         # Multi-input indicators (ATR, MACD) use their own required inputs from registry
-        return self.registry.compute(
+        return self.compute.compute(
             ind_type,
             close=input_series,
             high=ohlcv["high"],
@@ -797,8 +751,6 @@ class FeatureFrameBuilder:
         spec_set = FeatureSpecSet(symbol=symbol, tf=tf, specs=specs)
         return self.build(df, spec_set, tf_role=tf_role)
 
-
-# G1.14: build_features_from_preloaded_dfs() removed (2026-01-27) - use build_features_from_play()
 
 # =============================================================================
 # Play Feature Building

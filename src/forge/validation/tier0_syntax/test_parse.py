@@ -4,8 +4,6 @@ Tier 0: Syntax & Parse Tests.
 Tests that Play YAML files parse correctly and validation catches errors.
 """
 
-from __future__ import annotations
-
 import time
 from typing import Any
 

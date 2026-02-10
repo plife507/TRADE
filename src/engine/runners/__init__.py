@@ -30,13 +30,7 @@ Usage:
     await runner.start()
 """
 
-from .backtest_runner import (
-    BacktestRunner,
-    BacktestResult,
-    # Professional aliases
-    SimRunner,
-    SimRunResult,
-)
+from .backtest_runner import BacktestRunner, BacktestResult
 from .shadow_runner import ShadowRunner, ShadowStats, ShadowSignal
 from .live_runner import LiveRunner, LiveRunnerStats, RunnerState
 from .parallel import (
@@ -45,11 +39,9 @@ from .parallel import (
 )
 
 __all__ = [
-    # Backtest/Simulation
+    # Backtest
     "BacktestRunner",
     "BacktestResult",
-    "SimRunner",  # Professional alias
-    "SimRunResult",  # Professional alias
     # Parallel execution
     "run_backtests_parallel",
     "ParallelBacktestResult",

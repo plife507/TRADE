@@ -16,7 +16,6 @@ Engines provide a SubLoopContext that implements the engine-specific parts:
 - Entry skip logic (entries_disabled check)
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime

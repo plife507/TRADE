@@ -22,7 +22,7 @@ def limit_buy(
     price: float,
     time_in_force: str = "GTC",
     reduce_only: bool = False,
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Place a limit buy order."""
     from .exchange_manager import OrderResult
@@ -70,7 +70,7 @@ def limit_sell(
     price: float,
     time_in_force: str = "GTC",
     reduce_only: bool = False,
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Place a limit sell order (short or close long)."""
     from .exchange_manager import OrderResult
@@ -116,13 +116,13 @@ def limit_buy_with_tpsl(
     symbol: str,
     usd_amount: float,
     price: float,
-    take_profit: float = None,
-    stop_loss: float = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
     time_in_force: str = "GTC",
     tpsl_mode: str = "Full",
     tp_order_type: str = "Market",
     sl_order_type: str = "Market",
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Place a limit buy order with TP/SL."""
     from .exchange_manager import OrderResult
@@ -172,13 +172,13 @@ def limit_sell_with_tpsl(
     symbol: str,
     usd_amount: float,
     price: float,
-    take_profit: float = None,
-    stop_loss: float = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
     time_in_force: str = "GTC",
     tpsl_mode: str = "Full",
     tp_order_type: str = "Market",
     sl_order_type: str = "Market",
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Place a limit sell order with TP/SL (short)."""
     from .exchange_manager import OrderResult

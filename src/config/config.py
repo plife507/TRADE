@@ -250,7 +250,7 @@ class BybitConfig:
                 "is_demo": self.use_demo,
                 "is_live": not self.use_demo,
             },
-            # Legacy "data" key for backwards compatibility (shows LIVE data only)
+            # "data" key shows LIVE data (canonical for historical/market data)
             "data": {
                 "mode": "LIVE",
                 "base_url": self.live_base_url,
@@ -393,7 +393,7 @@ class WebSocketConfig:
     shutdown_timeout: float = 5.0   # Max wait for graceful shutdown
 
     # Runner mode: "polling" (traditional) or "realtime" (event-driven)
-    runner_mode: str = "polling"  # Default to polling for backwards compatibility
+    runner_mode: str = "polling"  # Default to polling (explicit WebSocket opt-in)
 
     # Public stream options
     enable_ticker_stream: bool = True

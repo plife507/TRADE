@@ -26,7 +26,6 @@ actions:
 ```
 
 Usage:
-    # G6.9.2: Updated docstring blocks: -> actions:
     blocks = parse_blocks(yaml_data["actions"])
     expr = parse_expr(condition_dict)
 """
@@ -952,7 +951,6 @@ def parse_play_actions(play_dict: dict) -> list[Block]:
     Raises:
         ValueError: If no 'actions' key in dict.
     """
-    # G6.5.2: Removed legacy 'blocks' key support - use 'actions' only
     actions_data = play_dict.get("actions")
     if not actions_data:
         raise ValueError(

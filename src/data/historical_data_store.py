@@ -148,7 +148,7 @@ class ActivitySpinner:
         self.thread = threading.Thread(target=self._spin, daemon=True)
         self.thread.start()
     
-    def stop(self, final_message: str = None, success: bool = True):
+    def stop(self, final_message: str | None = None, success: bool = True):
         """Stop the spinner and show final message."""
         self.running = False
         if self.thread:
@@ -303,7 +303,7 @@ class HistoricalDataStore:
         table_oi_metadata: Name of open interest metadata table
     """
     
-    def __init__(self, env: DataEnv = DEFAULT_DATA_ENV, db_path: str = None, read_only: bool = False):
+    def __init__(self, env: DataEnv = DEFAULT_DATA_ENV, db_path: str | None = None, read_only: bool = False):
         """
         Initialize the data store.
 
@@ -327,7 +327,6 @@ class HistoricalDataStore:
         if not read_only:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # G2-2: File-based write lock to prevent concurrent write corruption
         self._lock_file_path = self.db_path.with_suffix(".lock")
         self._lock_file = None
         self._write_lock = threading.Lock()
@@ -406,12 +405,12 @@ class HistoricalDataStore:
             self._init_schema()
 
     # =========================================================================
-    # G2-2: File-based Write Locking
+    # File-based Write Locking
     # =========================================================================
 
     def _acquire_write_lock(self, timeout: float = 30.0) -> bool:
         """
-        G2-2: Acquire file-based write lock to prevent concurrent writes.
+        Acquire file-based write lock to prevent concurrent writes.
 
         Uses a .lock file alongside the database file. This prevents
         corruption from multiple processes writing simultaneously.
@@ -456,7 +455,7 @@ class HistoricalDataStore:
         return False
 
     def _release_write_lock(self):
-        """G2-2: Release file-based write lock."""
+        """Release file-based write lock."""
         if self.read_only:
             return
 
@@ -464,9 +463,7 @@ class HistoricalDataStore:
             if self._lock_file is not None:
                 try:
                     self._lock_file.close()
-                except (OSError, IOError) as e:
-                    # BUG-002 fix: Specific exceptions for file close
-                    # Expected during cleanup - file may already be closed
+                except (OSError, IOError):
                     pass
                 self._lock_file = None
 
@@ -480,8 +477,6 @@ class HistoricalDataStore:
         try:
             self._release_write_lock()
         except (OSError, IOError, RuntimeError):
-            # BUG-002 fix: Specific exceptions during GC cleanup
-            # These are expected - resources may already be released
             pass
 
     @contextmanager
@@ -768,7 +763,7 @@ class HistoricalDataStore:
         start: datetime,
         end: datetime,
         show_progress: bool = True,
-        progress_prefix: str = None,
+        progress_prefix: str | None = None,
     ) -> pd.DataFrame:
         """Fetch data from Bybit API with visual progress."""
         from . import historical_sync
@@ -1128,7 +1123,7 @@ class HistoricalDataStore:
     def get_funding(
         self,
         symbol: str,
-        period: str = None,
+        period: str | None = None,
         start: datetime = None,
         end: datetime = None,
     ) -> pd.DataFrame:
@@ -1384,7 +1379,7 @@ class HistoricalDataStore:
     def get_open_interest(
         self,
         symbol: str,
-        period: str = None,
+        period: str | None = None,
         start: datetime = None,
         end: datetime = None,
     ) -> pd.DataFrame:
@@ -1433,8 +1428,8 @@ class HistoricalDataStore:
     
     def fill_gaps(
         self,
-        symbol: str = None,
-        timeframe: str = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
         progress_callback: Callable = None,
     ) -> dict[str, int]:
         """Detect and fill gaps in data."""
@@ -1443,7 +1438,7 @@ class HistoricalDataStore:
     
     def heal(
         self,
-        symbol: str = None,
+        symbol: str | None = None,
         fix_issues: bool = True,
         fill_gaps_after: bool = True,
     ) -> dict[str, Any]:
@@ -1459,7 +1454,7 @@ class HistoricalDataStore:
         self,
         symbol: str,
         tf: str,
-        period: str = None,
+        period: str | None = None,
         start: datetime = None,
         end: datetime = None,
     ) -> pd.DataFrame:
@@ -1555,7 +1550,7 @@ class HistoricalDataStore:
     
     # ==================== STATUS METHODS ====================
     
-    def status(self, symbol: str = None) -> dict:
+    def status(self, symbol: str | None = None) -> dict:
         """
         Get sync status of cached data with gap detection.
 
@@ -1750,7 +1745,6 @@ class HistoricalDataStore:
                 "total_records": oi_stats[1],
                 "by_symbol": oi_symbols,
             },
-            # Legacy fields for backwards compatibility
             "symbols": ohlcv_stats[0],
             "symbol_timeframe_combinations": ohlcv_stats[1],
             "total_candles": ohlcv_stats[2],
@@ -2034,7 +2028,7 @@ def get_demo_historical_store() -> HistoricalDataStore:
 def get_ohlcv(
     symbol: str,
     tf: str,
-    period: str = None,
+    period: str | None = None,
     start: datetime = None,
     end: datetime = None,
     env: DataEnv = DEFAULT_DATA_ENV,
@@ -2105,7 +2099,7 @@ def append_ohlcv(
 
 def get_funding(
     symbol: str,
-    period: str = None,
+    period: str | None = None,
     start: datetime = None,
     end: datetime = None,
     env: DataEnv = DEFAULT_DATA_ENV,
@@ -2129,7 +2123,7 @@ def get_funding(
 
 def get_open_interest(
     symbol: str,
-    period: str = None,
+    period: str | None = None,
     start: datetime = None,
     end: datetime = None,
     env: DataEnv = DEFAULT_DATA_ENV,

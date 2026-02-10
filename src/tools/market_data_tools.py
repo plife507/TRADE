@@ -4,7 +4,6 @@ Market data tools for TRADE trading bot.
 These tools provide access to prices, OHLCV, funding rates, orderbooks, and more.
 """
 
-from typing import Any
 from .shared import ToolResult, _get_exchange_manager
 
 

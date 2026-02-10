@@ -366,8 +366,6 @@ def compute_spec_id(
     return hashlib.sha256(json_str.encode()).hexdigest()[:12]
 
 
-# G1.12: compute_zone_spec_id() removed (2026-01-27) - unused, use StructureSpec.zone_spec_id
-
 def compute_block_id(spec_id: str, key: str, tf_role: str) -> str:
     """
     Compute block_id from spec_id + key + tf_role.
@@ -381,6 +379,3 @@ def compute_block_id(spec_id: str, key: str, tf_role: str) -> str:
     }
     json_str = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(json_str.encode()).hexdigest()[:12]
-
-
-# G1.13: compute_zone_block_id() removed (2026-01-27) - unused, use StructureSpec.zone_block_id

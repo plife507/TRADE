@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 # Order Queries
 # =============================================================================
 
-def get_open_orders(manager: "ExchangeManager", symbol: str = None) -> list["Order"]:
+def get_open_orders(manager: "ExchangeManager", symbol: str | None = None) -> list["Order"]:
     """Get all open orders."""
     from .exchange_manager import Order
     
@@ -67,8 +67,8 @@ def get_open_orders(manager: "ExchangeManager", symbol: str = None) -> list["Ord
 def cancel_order(
     manager: "ExchangeManager",
     symbol: str,
-    order_id: str = None,
-    order_link_id: str = None,
+    order_id: str | None = None,
+    order_link_id: str | None = None,
 ) -> bool:
     """Cancel a specific order."""
     if not order_id and not order_link_id:
@@ -85,7 +85,7 @@ def cancel_order(
         return False
 
 
-def cancel_all_orders(manager: "ExchangeManager", symbol: str = None) -> bool:
+def cancel_all_orders(manager: "ExchangeManager", symbol: str | None = None) -> bool:
     """Cancel all open orders."""
     try:
         manager._validate_trading_operation()
@@ -120,13 +120,13 @@ def cancel_all_orders(manager: "ExchangeManager", symbol: str = None) -> bool:
 def amend_order(
     manager: "ExchangeManager",
     symbol: str,
-    order_id: str = None,
-    order_link_id: str = None,
-    qty: float = None,
-    price: float = None,
-    take_profit: float = None,
-    stop_loss: float = None,
-    trigger_price: float = None,
+    order_id: str | None = None,
+    order_link_id: str | None = None,
+    qty: float | None = None,
+    price: float | None = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
+    trigger_price: float | None = None,
 ) -> bool:
     """Amend an existing order."""
     from . import exchange_instruments as inst
@@ -239,7 +239,7 @@ def close_all_positions(manager: "ExchangeManager") -> list["OrderResult"]:
 def get_order_history(
     manager: "ExchangeManager",
     time_range: TimeRange,
-    symbol: str = None,
+    symbol: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     """Get order history. TimeRange is REQUIRED."""
@@ -254,7 +254,7 @@ def get_order_history(
 def get_executions(
     manager: "ExchangeManager",
     time_range: TimeRange,
-    symbol: str = None,
+    symbol: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     """Get trade execution history. TimeRange is REQUIRED."""
@@ -268,7 +268,7 @@ def get_executions(
 def get_closed_pnl(
     manager: "ExchangeManager",
     time_range: TimeRange,
-    symbol: str = None,
+    symbol: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     """Get closed position PnL history. TimeRange is REQUIRED."""

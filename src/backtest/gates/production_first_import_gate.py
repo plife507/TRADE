@@ -347,10 +347,3 @@ def run_production_first_gate(
         files_with_violations=len(files_with_violations),
         files_importing_backtest=files_importing_backtest,
     )
-
-
-# =============================================================================
-# G1: Dead code removed (2026-01-27)
-# =============================================================================
-# - main() CLI entrypoint - unused, gate runs via trade_cli.py
-# =============================================================================

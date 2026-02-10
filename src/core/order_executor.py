@@ -22,8 +22,8 @@ from datetime import datetime
 
 from .exchange_manager import ExchangeManager, OrderResult
 from .risk_manager import RiskManager, Signal, RiskCheckResult
-from .position_manager import PositionManager, PortfolioSnapshot
-from ..config.config import get_config, TradingMode
+from .position_manager import PositionManager
+from ..config.config import get_config
 from ..utils.logger import get_logger
 
 

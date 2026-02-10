@@ -14,8 +14,6 @@ Or run specific tests:
     python -c "from src.forge.audits.audit_live_backtest_parity import test_state_store_recovery; test_state_store_recovery()"
 """
 
-from __future__ import annotations
-
 import math
 import tempfile
 from dataclasses import dataclass

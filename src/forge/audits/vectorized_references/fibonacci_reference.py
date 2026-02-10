@@ -12,8 +12,6 @@ Supports three anchoring modes:
 - Trend-wave (use_trend_anchor=True): uses trend direction + paired swing levels
 """
 
-from __future__ import annotations
-
 import math
 
 import numpy as np

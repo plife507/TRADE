@@ -8,8 +8,6 @@ Replicates IncrementalDerivedZone logic:
 - Version-triggered regeneration
 """
 
-from __future__ import annotations
-
 import hashlib
 import struct
 from typing import Any

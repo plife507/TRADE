@@ -6,8 +6,6 @@ Only tier0 (syntax & parse) is supported - higher tiers were removed as they
 tested divergent code paths.
 """
 
-from __future__ import annotations
-
 import json
 import sys
 import time

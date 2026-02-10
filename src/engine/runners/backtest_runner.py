@@ -40,7 +40,6 @@ Usage:
     result = runner.run()
 """
 
-from __future__ import annotations
 from types import SimpleNamespace
 
 from dataclasses import dataclass, field
@@ -59,7 +58,6 @@ if TYPE_CHECKING:
     from ...backtest.play import Play
     from ...backtest.runtime.feed_store import FeedStore
     from ...backtest.sim.exchange import SimulatedExchange
-    # G6.4.6: Removed unused Trade import
 
 
 @dataclass
@@ -758,13 +756,3 @@ class BacktestRunner:
                 "stop_reason_detail": stop_reason_detail,
             },
         )
-
-
-# =============================================================================
-# PROFESSIONAL NAMING ALIASES
-# See docs/specs/ENGINE_NAMING_CONVENTION.md for full naming standards
-# =============================================================================
-
-# SimRunner is the canonical name for backtest execution loop
-SimRunner = BacktestRunner
-SimRunResult = BacktestResult

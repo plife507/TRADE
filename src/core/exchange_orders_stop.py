@@ -25,7 +25,7 @@ def stop_market_buy(
     trigger_direction: int = 1,
     trigger_by: str = "LastPrice",
     reduce_only: bool = False,
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Place a conditional market buy order (triggers at price)."""
     # Runtime import required: circular dependency (exchange_manager imports this module)
@@ -75,7 +75,7 @@ def stop_market_sell(
     trigger_direction: int = 2,
     trigger_by: str = "LastPrice",
     reduce_only: bool = False,
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Place a conditional market sell order (triggers at price)."""
     # Runtime import required: circular dependency (exchange_manager imports this module)
@@ -127,7 +127,7 @@ def stop_limit_buy(
     trigger_by: str = "LastPrice",
     time_in_force: str = "GTC",
     reduce_only: bool = False,
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Place a conditional limit buy order."""
     from .exchange_manager import OrderResult
@@ -178,7 +178,7 @@ def stop_limit_sell(
     trigger_by: str = "LastPrice",
     time_in_force: str = "GTC",
     reduce_only: bool = False,
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Place a conditional limit sell order."""
     from .exchange_manager import OrderResult
@@ -225,11 +225,11 @@ def create_conditional_order(
     side: str,
     qty: float,
     trigger_price: float,
-    trigger_direction: "TriggerDirection" = None,
+    trigger_direction: "TriggerDirection | None" = None,
     order_type: str = "Market",
-    price: float = None,
+    price: float | None = None,
     reduce_only: bool = True,
-    order_link_id: str = None,
+    order_link_id: str | None = None,
 ) -> "OrderResult":
     """Create a conditional (trigger) order - used for split take profits."""
     from .exchange_manager import OrderResult, TriggerDirection

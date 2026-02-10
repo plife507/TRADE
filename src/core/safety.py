@@ -330,7 +330,7 @@ def check_panic_and_halt() -> bool:
     return False
 
 
-def reset_panic(confirm: str = None) -> bool:
+def reset_panic(confirm: str | None = None) -> bool:
     """
     Reset panic state to allow trading to resume.
     

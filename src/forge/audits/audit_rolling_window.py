@@ -12,8 +12,6 @@ These tests validate:
 5. Integration with registry and base class
 """
 
-from __future__ import annotations
-
 import sys
 
 

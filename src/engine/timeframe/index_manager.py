@@ -21,7 +21,6 @@ Example (exec=med_tf, low_tf=15m, med_tf=1h, high_tf=4h):
 Uses O(1) ts_close_ms_to_idx mapping from FeedStore.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime

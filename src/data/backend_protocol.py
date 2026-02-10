@@ -30,7 +30,6 @@ Usage:
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-# G6.5.3: Removed unused Optional, Union (Python 3.12+ uses X | None syntax)
 from typing import Any
 import pandas as pd
 
@@ -90,8 +89,8 @@ class HistoricalBackend(ABC):
         self,
         symbol: str,
         timeframe: str,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """
         Get OHLCV data for a symbol/timeframe.
@@ -156,8 +155,8 @@ class HistoricalBackend(ABC):
     def get_funding(
         self,
         symbol: str,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """
         Get funding rate data for a symbol.
@@ -198,8 +197,8 @@ class HistoricalBackend(ABC):
     def get_open_interest(
         self,
         symbol: str,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """
         Get open interest data for a symbol.
@@ -324,7 +323,7 @@ class MongoBackend(HistoricalBackend):
         See docs/architecture/LIVE_VS_DEMO_DATA.md for migration instructions.
     """
     
-    def __init__(self, env: DataEnv, connection_string: str = None, database: str = None):
+    def __init__(self, env: DataEnv, connection_string: str | None = None, database: str | None = None):
         """
         Initialize MongoDB backend.
         
@@ -369,8 +368,8 @@ class MongoBackend(HistoricalBackend):
         self,
         symbol: str,
         timeframe: str,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """Get OHLCV data from MongoDB."""
         raise NotImplementedError("MongoDB backend not yet implemented")
@@ -395,8 +394,8 @@ class MongoBackend(HistoricalBackend):
     def get_funding(
         self,
         symbol: str,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """Get funding rate data from MongoDB."""
         raise NotImplementedError("MongoDB backend not yet implemented")
@@ -412,8 +411,8 @@ class MongoBackend(HistoricalBackend):
     def get_open_interest(
         self,
         symbol: str,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """Get open interest data from MongoDB."""
         raise NotImplementedError("MongoDB backend not yet implemented")

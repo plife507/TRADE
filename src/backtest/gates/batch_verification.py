@@ -7,7 +7,7 @@ All Plays use blocks DSL v3.0.0 format.
 """
 
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import json
@@ -64,7 +64,5 @@ class BatchSummary:
         with open(path, "w", newline="\n") as f:
             f.write(self.to_json())
 
-
-# G1.10: run_batch_verification() removed (2026-01-27) - unused
 
 BATCH_SUMMARY_FILE = "batch_summary.json"

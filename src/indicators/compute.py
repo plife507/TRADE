@@ -267,7 +267,6 @@ def get_required_indicator_columns_from_specs(feature_specs: list) -> list[str]:
 
 
 
-
 def find_first_valid_bar(df: pd.DataFrame, indicator_columns: list[str]) -> int:
     """
     Find the first bar index where all specified indicators are non-NaN.

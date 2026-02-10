@@ -111,7 +111,7 @@ def calculate_qty(
     manager: "ExchangeManager",
     symbol: str,
     usd_amount: float,
-    price: float = None
+    price: float | None = None
 ) -> float:
     """
     Calculate order quantity from USD amount.

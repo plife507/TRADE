@@ -127,7 +127,6 @@ def apply_feature_spec_indicators(
             )
         
         # Apply indicator via compute_indicator() - the ONLY path for all indicators
-        # G1 cleanup: standalone wrapper functions removed, all go through compute_indicator()
         try:
             # Get ts_open for VWAP (requires DatetimeIndex for session boundaries)
             ts_open = df.get("ts_open") if "ts_open" in df.columns else df.get("timestamp")

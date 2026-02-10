@@ -7,8 +7,6 @@ Takes swing output arrays and replicates IncrementalTrend logic:
 - Classify trend from wave sequence (HH/HL/LH/LL)
 """
 
-from __future__ import annotations
-
 import math
 from collections import deque
 from dataclasses import dataclass

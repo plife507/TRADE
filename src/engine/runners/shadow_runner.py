@@ -18,14 +18,12 @@ Usage:
     await runner.stop()
 """
 
-from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from ..adapters.backtest import ShadowExchange
 from ..play_engine import PlayEngine
 
 from ...utils.logger import get_logger

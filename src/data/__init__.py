@@ -9,11 +9,11 @@ Environment-aware data layer supporting live and demo trading:
 - Backend Protocol: Interface for future MongoDB backend support
 
 Timeframe Terminology:
-- LowTF: 1m, 3m, 5m, 15m (execution timing)
-- MedTF: 30m, 1h, 2h, 4h (trade bias)
-- HighTF: 6h, 12h, D, W (trend direction)
-- ExecTF: Play's execution timeframe
-- MultiTF: Cross-timeframe analysis (comparing LowTF/MedTF/HighTF)
+- low_tf: 1m, 3m, 5m, 15m (execution timing)
+- med_tf: 30m, 1h, 2h, 4h (trade bias)
+- high_tf: 6h, 12h, D, W (trend direction)
+- exec: Play's execution timeframe pointer
+- multi-timeframe: Cross-timeframe analysis (comparing low_tf/med_tf/high_tf)
 """
 
 from .market_data import (

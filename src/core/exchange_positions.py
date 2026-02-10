@@ -142,8 +142,8 @@ def get_total_exposure(manager: "ExchangeManager") -> float:
 def set_position_tpsl(
     manager: "ExchangeManager",
     symbol: str,
-    take_profit: float = None,
-    stop_loss: float = None,
+    take_profit: float | None = None,
+    stop_loss: float | None = None,
     tpsl_mode: str = "Full",
 ) -> bool:
     """
@@ -179,7 +179,7 @@ def set_trailing_stop(
     manager: "ExchangeManager",
     symbol: str,
     trailing_stop: float,
-    active_price: float = None,
+    active_price: float | None = None,
 ) -> bool:
     """
     Set a trailing stop for an existing position.
@@ -448,7 +448,7 @@ def cancel_position_conditional_orders(
 
 def reconcile_orphaned_orders(
     manager: "ExchangeManager",
-    symbol: str = None
+    symbol: str | None = None
 ) -> dict[str, list[str]]:
     """
     Find and cancel conditional orders for positions that no longer exist.
@@ -609,7 +609,7 @@ def set_risk_limit_by_id(
         return False
 
 
-def get_risk_limits(manager: "ExchangeManager", symbol: str = None) -> list[dict]:
+def get_risk_limits(manager: "ExchangeManager", symbol: str | None = None) -> list[dict]:
     """
     Get risk limit tiers for a symbol.
     
@@ -696,7 +696,7 @@ def modify_position_margin(manager: "ExchangeManager", symbol: str, margin: floa
         return False
 
 
-def switch_to_cross_margin(manager: "ExchangeManager", symbol: str, leverage: int = None) -> bool:
+def switch_to_cross_margin(manager: "ExchangeManager", symbol: str, leverage: int | None = None) -> bool:
     """
     Switch symbol to cross margin mode.
     
@@ -721,7 +721,7 @@ def switch_to_cross_margin(manager: "ExchangeManager", symbol: str, leverage: in
         return False
 
 
-def switch_to_isolated_margin(manager: "ExchangeManager", symbol: str, leverage: int = None) -> bool:
+def switch_to_isolated_margin(manager: "ExchangeManager", symbol: str, leverage: int | None = None) -> bool:
     """
     Switch symbol to isolated margin mode.
     
@@ -792,9 +792,9 @@ def switch_to_hedge_mode(manager: "ExchangeManager") -> bool:
 def get_transaction_log(
     manager: "ExchangeManager",
     time_range: TimeRange,
-    category: str = None,
-    currency: str = None,
-    log_type: str = None,
+    category: str | None = None,
+    currency: str | None = None,
+    log_type: str | None = None,
     limit: int = 50,
 ) -> dict:
     """
@@ -827,7 +827,7 @@ def get_transaction_log(
         return {"list": [], "error": str(e)}
 
 
-def get_collateral_info(manager: "ExchangeManager", currency: str = None) -> list[dict]:
+def get_collateral_info(manager: "ExchangeManager", currency: str | None = None) -> list[dict]:
     """
     Get collateral information for Unified account.
     
@@ -873,7 +873,7 @@ def set_collateral_coin(manager: "ExchangeManager", coin: str, enabled: bool) ->
 def get_borrow_history(
     manager: "ExchangeManager",
     time_range: TimeRange,
-    currency: str = None,
+    currency: str | None = None,
     limit: int = 50,
 ) -> dict:
     """
@@ -902,7 +902,7 @@ def get_borrow_history(
         return {"list": [], "error": str(e)}
 
 
-def get_coin_greeks(manager: "ExchangeManager", base_coin: str = None) -> list[dict]:
+def get_coin_greeks(manager: "ExchangeManager", base_coin: str | None = None) -> list[dict]:
     """
     Get current account Greeks information (for options).
     

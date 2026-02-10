@@ -43,7 +43,7 @@ import time
 from typing import Any
 
 from ..config.config import get_config
-from ..config.constants import DataEnv, DEFAULT_DATA_ENV, validate_data_env
+from ..config.constants import DataEnv, validate_data_env
 from ..utils.logger import get_logger
 from .realtime_state import get_realtime_state, RealtimeState
 from .historical_data_store import get_historical_store, get_latest_ohlcv

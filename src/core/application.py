@@ -37,7 +37,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..config.config import get_config, Config
-from ..utils.logger import get_logger, setup_logger
+from ..utils.logger import get_logger
 
 
 @dataclass

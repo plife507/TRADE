@@ -26,8 +26,6 @@ if TYPE_CHECKING:
     from .rules.strategy_blocks import Block
 
 from .play import ExitMode
-
-# Note: IndicatorType enum removed in Registry Consolidation Phase 2
 # All indicator type handling is now via string + registry validation
 
 

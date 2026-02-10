@@ -10,8 +10,6 @@ Provides various data generators that exercise different market regimes:
 - Rapid alternating swings
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 

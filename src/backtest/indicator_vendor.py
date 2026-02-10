@@ -571,9 +571,3 @@ def _extract_column_key(col_name: str, indicator_name: str) -> str:
 # CANONICAL SOURCE: Warmup bars are computed via IndicatorRegistry.get_warmup_bars()
 # in src/backtest/indicator_registry.py. Use FeatureSpec.warmup_bars property
 # or registry.get_warmup_bars(indicator_type, params) for warmup calculations.
-#
-# G1: Dead code removed (2026-01-27):
-# - get_available_indicators() - unused, registry is source of truth
-# - ema(), sma(), rsi(), atr() - standalone wrappers never called
-# - macd(), bbands(), stoch(), stochrsi() - standalone wrappers never called
-# All indicator computation goes through compute_indicator() which calls pandas_ta directly.

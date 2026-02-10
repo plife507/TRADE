@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 import json
-import hashlib
 
 if TYPE_CHECKING:
     from ..play import Play

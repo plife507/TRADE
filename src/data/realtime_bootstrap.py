@@ -32,14 +32,13 @@ from enum import Enum
 
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config
-from ..config.constants import DataEnv, DEFAULT_DATA_ENV, validate_data_env
+from ..config.constants import DataEnv, validate_data_env
 from ..utils.logger import get_logger
 from .realtime_state import (
     get_realtime_state,
     RealtimeState,
     TickerData,
     OrderbookData,
-    OrderbookLevel,
     TradeData,
     KlineData,
     BarRecord,
@@ -48,7 +47,6 @@ from .realtime_state import (
     ExecutionData,
     WalletData,
     AccountMetrics,
-    ConnectionState,
 )
 
 

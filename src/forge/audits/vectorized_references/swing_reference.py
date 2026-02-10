@@ -15,8 +15,6 @@ Algorithm:
     - Forward-fill: outputs hold their value until next confirmation
 """
 
-from __future__ import annotations
-
 import hashlib
 import math
 

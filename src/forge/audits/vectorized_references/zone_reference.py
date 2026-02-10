@@ -7,8 +7,6 @@ Takes swing output arrays + OHLCV and replicates IncrementalZone logic:
 - Zone breaks when close crosses boundary
 """
 
-from __future__ import annotations
-
 import numpy as np
 
 

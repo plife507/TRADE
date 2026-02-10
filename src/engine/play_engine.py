@@ -29,11 +29,10 @@ Usage:
             result = engine.execute_signal(signal)
 """
 
-from __future__ import annotations
 
 import threading
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Literal
@@ -48,7 +47,7 @@ from .interfaces import (
     StateStore,
     EngineState,
 )
-from .signal import SubLoopEvaluator, SubLoopResult
+from .signal import SubLoopEvaluator
 from .sizing import SizingModel, SizingConfig
 
 from ..utils.logger import get_logger
@@ -82,7 +81,6 @@ if TYPE_CHECKING:
     from ..backtest.play import Play
     from ..backtest.feature_registry import FeatureRegistry
     from src.structures import MultiTFIncrementalState
-    from ..backtest.rules.types import CompiledBlock
     from ..backtest.execution_validation import PlaySignalEvaluator, EvaluationResult, SignalDecision
     from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
     from ..core.risk_manager import Signal
@@ -451,8 +449,6 @@ class PlayEngine:
         Note:
             In shadow mode, this logs but doesn't execute.
         """
-        from ..core.risk_manager import Signal as SignalType
-
         # Shadow mode: log but don't execute
         if self.is_shadow:
             self.logger.info(

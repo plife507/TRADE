@@ -227,7 +227,7 @@ class TradingLogger:
             print(f"Warning: Could not open JSONL log file: {e}")
             self._jsonl_file = None
     
-    def _create_logger(self, name: str, level: str, file_prefix: str = None) -> logging.Logger:
+    def _create_logger(self, name: str, level: str, file_prefix: str | None = None) -> logging.Logger:
         """Create a configured logger instance."""
         logger = logging.getLogger(name)
         logger.setLevel(getattr(logging, level.upper()))
@@ -295,7 +295,7 @@ class TradingLogger:
         self.error_logger.critical(msg, *args, **kwargs)
     
     def trade(self, action: str, symbol: str, side: str, size: float, 
-              price: float = None, pnl: float = None, **kwargs):
+              price: float | None = None, pnl: float | None = None, **kwargs):
         """
         Log a trade action with structured format.
         
@@ -365,7 +365,7 @@ class TradingLogger:
         self,
         event_name: str,
         level: str = "INFO",
-        component: str = None,
+        component: str | None = None,
         **fields: Any,
     ) -> None:
         """

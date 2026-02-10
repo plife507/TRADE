@@ -9,11 +9,11 @@ Contains all normalized data types used by RealtimeState:
 - Utility: RealtimeEvent, ConnectionStatus
 
 Timeframe Terminology:
-- LowTF: 1m, 3m, 5m, 15m (execution timing)
-- MedTF: 30m, 1h, 2h, 4h (trade bias)
-- HighTF: 6h, 12h, D, W (trend direction)
-- ExecTF: Play's execution timeframe
-- MultiTF: Cross-timeframe analysis (comparing LowTF/MedTF/HighTF)
+- lower timeframe (low_tf): 1m, 3m, 5m, 15m (execution timing)
+- medium timeframe (med_tf): 30m, 1h, 2h, 4h (trade bias)
+- higher timeframe (high_tf): 6h, 12h, D, W (trend direction)
+- execution timeframe (exec): Play's execution timeframe pointer
+- multi-timeframe: Cross-timeframe analysis (comparing low_tf/med_tf/high_tf)
 """
 
 import time
@@ -292,7 +292,7 @@ class BarRecord:
     Bar data record for ring buffer storage.
 
     Used for storing closed bars in memory buffers during live/demo trading.
-    Works with any timeframe (LowTF, MedTF, HighTF).
+    Works with any timeframe (low_tf, med_tf, high_tf).
     """
     timestamp: datetime
     open: float

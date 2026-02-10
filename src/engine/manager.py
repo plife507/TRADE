@@ -24,11 +24,11 @@ Usage:
     await manager.stop(instance_id)
 """
 
-from __future__ import annotations
 
 import asyncio
 import uuid
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Literal
@@ -39,7 +39,6 @@ from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
     from ..backtest.play import Play
-    from ..core.risk_manager import Signal
 
 logger = get_logger()
 
@@ -134,7 +133,7 @@ class EngineManager:
         self,
         play: "Play",
         mode: Literal["live", "demo", "shadow", "backtest"],
-        on_signal: "callable | None" = None,
+        on_signal: "Callable | None" = None,
     ) -> str:
         """
         Start a new engine instance.

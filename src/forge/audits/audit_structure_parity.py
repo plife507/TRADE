@@ -16,8 +16,6 @@ The 7 structure detectors tested:
 7. derived_zone - K slots + scalar aggregates
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 

@@ -40,13 +40,12 @@ Usage:
     results = run_backtests_parallel(["S_01", "S_02", "S_03"], max_workers=3)
 """
 
-from __future__ import annotations
 
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from .interfaces import DataProvider, ExchangeAdapter, StateStore
+from .interfaces import DataProvider, StateStore
 from .play_engine import PlayEngine, PlayEngineConfig
 
 from ..utils.logger import get_logger
@@ -306,8 +305,6 @@ class PlayEngineFactory:
         )
 
 
-# G1.15: create_engine() removed (2026-01-27) - use PlayEngineFactory.create() directly
-
 def create_backtest_engine(
     play: "Play",
     feed_store: "FeedStore | None" = None,
@@ -411,15 +408,3 @@ def create_backtest_engine(
         engine.set_on_snapshot(on_snapshot)
 
     return engine
-
-
-# =============================================================================
-# PROFESSIONAL NAMING ALIASES
-# See docs/specs/ENGINE_NAMING_CONVENTION.md for full naming standards
-# =============================================================================
-
-# CorePlayEngine is the canonical name for the unified mode-agnostic engine
-CorePlayEngine = PlayEngine
-
-# Canonical factory function
-create_unified_engine = create_backtest_engine

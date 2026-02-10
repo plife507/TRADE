@@ -16,8 +16,6 @@ Usage:
     print(format_batch_report(batch_result))
 """
 
-from __future__ import annotations
-
 from .play_validator import PlayValidationResult
 from .batch_runner import BatchValidationResult
 

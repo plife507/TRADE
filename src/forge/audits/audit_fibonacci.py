@@ -12,8 +12,6 @@ Run as module:
     python -m src.backtest.audits.audit_fibonacci
 """
 
-from __future__ import annotations
-
 import math
 import sys
 from typing import Any

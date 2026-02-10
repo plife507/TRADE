@@ -8,7 +8,6 @@ These adapters connect to real exchange infrastructure:
 Integrates with existing RealtimeState/RealtimeBootstrap infrastructure.
 """
 
-from __future__ import annotations
 
 import threading
 from datetime import datetime, timezone
@@ -478,11 +477,6 @@ class LiveDataProvider:
         self._med_tf_structure: "TFIncrementalState | None" = None
         self._high_tf_structure: "TFIncrementalState | None" = None
 
-        # Legacy single-buffer aliases (for compatibility)
-        self._candle_buffer = self._low_tf_buffer
-        self._indicator_cache = self._low_tf_indicators
-        self._structure_state: "TFIncrementalState | None" = None
-
         # Tracking
         self._ready = False
         # WU-01, WU-06: Configurable warmup bars (default 100)
@@ -775,10 +769,6 @@ class LiveDataProvider:
             logger.warning(f"Failed to load bars from DuckDB for {tf_str}: {e}")
             return []
 
-    def _init_structure_state(self) -> None:
-        """Initialize incremental structure state from Play specs (legacy single-TF)."""
-        self._init_structure_states()
-
     def _init_structure_states(self) -> None:
         """Initialize incremental structure states for all TFs from Play specs."""
         from src.structures import TFIncrementalState
@@ -799,8 +789,6 @@ class LiveDataProvider:
                     self._tf_mapping["low_tf"],
                     combined_low_tf,
                 )
-                # Set legacy alias
-                self._structure_state = self._low_tf_structure
                 logger.info(f"Initialized low_tf structure state with {len(combined_low_tf)} specs")
             except Exception as e:
                 logger.warning(f"Failed to initialize low_tf structure state: {e}")
@@ -1163,17 +1151,6 @@ class LiveDataProvider:
         # Update structure state
         if structure_state is not None:
             self._update_structure_state_for_tf(structure_state, buffer_len - 1, candle)
-
-    def _update_structure_state(self, bar_idx: int) -> None:
-        """Update structure state with latest candle (legacy single-TF method)."""
-        if self._structure_state is None:
-            return
-
-        candle = self._exec_buffer[-1] if self._exec_buffer else None
-        if candle is None:
-            return
-
-        self._update_structure_state_for_tf(self._structure_state, bar_idx, candle)
 
     def _update_structure_state_for_tf(
         self,

@@ -234,9 +234,9 @@ def _test_htf_close_alignment() -> MultiTFTestResult:
 
     passed = len(failures) == 0
     return MultiTFTestResult(
-        name="htf_close_alignment",
+        name="high_tf_close_alignment",
         passed=passed,
-        expected="LTF sees HTF close at correct times",
+        expected="Lower timeframe sees higher timeframe close at correct times",
         actual="All alignments correct" if passed else f"{len(failures)} misaligned",
         error_msg=None if passed else "; ".join(failures[:3]),
     )

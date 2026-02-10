@@ -5,7 +5,8 @@ Contains: sync, sync_range, sync_forward, and internal sync methods.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Union, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 import pandas as pd
 
 
@@ -36,10 +37,10 @@ def _get_constants():
 
 def sync(
     store: "HistoricalDataStore",
-    symbols: Union[str, list[str]],
+    symbols: str | list[str],
     period: str = "1M",
-    timeframes: list[str] = None,
-    progress_callback: Callable = None,
+    timeframes: list[str] | None = None,
+    progress_callback: Callable | None = None,
     show_spinner: bool = True,
 ) -> dict[str, int]:
     """Sync historical data for symbols."""
@@ -113,11 +114,11 @@ def sync(
 
 def sync_range(
     store: "HistoricalDataStore",
-    symbols: Union[str, list[str]],
+    symbols: str | list[str],
     start: datetime,
     end: datetime,
-    timeframes: list[str] = None,
-    progress_callback: Callable = None,
+    timeframes: list[str] | None = None,
+    progress_callback: Callable | None = None,
     show_spinner: bool = True,
 ) -> dict[str, int]:
     """Sync a specific date range with progress logging."""
@@ -177,9 +178,9 @@ def sync_range(
 
 def sync_forward(
     store: "HistoricalDataStore",
-    symbols: Union[str, list[str]],
-    timeframes: list[str] = None,
-    progress_callback: Callable = None,
+    symbols: str | list[str],
+    timeframes: list[str] | None = None,
+    progress_callback: Callable | None = None,
     show_spinner: bool = True,
 ) -> dict[str, int]:
     """Sync data forward from the last stored candle to now."""
@@ -339,7 +340,7 @@ def _fetch_from_api(
     start: datetime,
     end: datetime,
     show_progress: bool = True,
-    progress_prefix: str = None,
+    progress_prefix: str | None = None,
 ) -> pd.DataFrame:
     """Fetch data from Bybit API with visual progress."""
     _, _, ActivityEmoji, _ = _get_constants()
@@ -401,10 +402,7 @@ def _fetch_from_api(
 
 
 def _store_dataframe(store: "HistoricalDataStore", symbol: str, timeframe: str, df: pd.DataFrame):
-    """Store DataFrame to DuckDB.
-
-    G2-3: Handles missing turnover column gracefully by setting to 0.0.
-    """
+    """Store DataFrame to DuckDB."""
     if df.empty:
         return
 
@@ -415,7 +413,6 @@ def _store_dataframe(store: "HistoricalDataStore", symbol: str, timeframe: str, 
     if temp_df["timestamp"].dt.tz is not None:
         temp_df["timestamp"] = temp_df["timestamp"].dt.tz_localize(None)
 
-    # G2-3: Ensure turnover column exists (may be missing from some API responses)
     if "turnover" not in temp_df.columns:
         temp_df["turnover"] = 0.0
 

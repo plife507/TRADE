@@ -33,15 +33,13 @@ from pybit.exceptions import (
     UnauthorizedExceptionError,
 )
 
-from ..utils.rate_limiter import RateLimiter, create_bybit_limiters
+from ..utils.rate_limiter import create_bybit_limiters
 from ..utils.logger import get_logger
-from ..utils.helpers import safe_float
 from ..utils.time_range import TimeRange
 
 
-# Re-export pybit exceptions for backwards compatibility
 class BybitAPIError(Exception):
-    """Custom exception wrapping pybit errors for backwards compatibility."""
+    """Custom exception wrapping pybit errors."""
     
     def __init__(self, code: int, message: str, response: dict | None = None, original: Exception | None = None):
         self.code = code

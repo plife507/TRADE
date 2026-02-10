@@ -31,8 +31,7 @@ from .state import (
     FileStateStore,
 )
 
-# Live adapters will be imported when implemented
-# from .live import LiveDataProvider, LiveExchange
+from .live import LiveDataProvider, LiveExchange
 
 __all__ = [
     # Backtest
@@ -42,7 +41,7 @@ __all__ = [
     # State
     "InMemoryStateStore",
     "FileStateStore",
-    # Live (future)
-    # "LiveDataProvider",
-    # "LiveExchange",
+    # Live
+    "LiveDataProvider",
+    "LiveExchange",
 ]

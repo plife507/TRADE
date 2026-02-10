@@ -236,7 +236,3 @@ def extract_available_keys_from_dataframe(
         return all_cols - ohlcv_cols
     
     return all_cols
-
-
-
-# G1.9: extract_available_keys_from_feature_frames() removed (2026-01-27) - unused

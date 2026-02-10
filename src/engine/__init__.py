@@ -64,24 +64,11 @@ from .interfaces import (
 
 from .play_engine import PlayEngine
 
-from .factory import (
-    PlayEngineFactory,
-    CorePlayEngine,
-    create_unified_engine,
-    create_backtest_engine,
-)
+from .factory import PlayEngineFactory, create_backtest_engine
 
-from .runners import BacktestRunner, BacktestResult, SimRunner, SimRunResult
+from .runners import BacktestRunner, BacktestResult
 
-from .adapters.backtest import (
-    BacktestDataProvider,
-    BacktestExchange,
-    ShadowExchange,
-    # Professional aliases
-    SimDataAdapter,
-    SimExchangeAdapter,
-    ShadowExchangeAdapter,
-)
+from .adapters.backtest import BacktestDataProvider, BacktestExchange, ShadowExchange
 
 from .sizing import SizingModel, SizingConfig, SizingResult
 
@@ -100,28 +87,21 @@ __all__ = [
     "EngineState",
     # Core engine
     "PlayEngine",
-    "CorePlayEngine",  # Professional alias
     # Factory
     "PlayEngineFactory",
-    "create_backtest_engine",  # GATE 4: Unified backtest factory
-    "create_unified_engine",  # Professional alias
+    "create_backtest_engine",
     # Runners
     "BacktestRunner",
     "BacktestResult",
-    "SimRunner",  # Professional alias
-    "SimRunResult",  # Professional alias
     # Adapters
     "BacktestDataProvider",
     "BacktestExchange",
     "ShadowExchange",
-    "SimDataAdapter",  # Professional alias
-    "SimExchangeAdapter",  # Professional alias
-    "ShadowExchangeAdapter",  # Professional alias
-    # Unified sizing (GATE 3)
+    # Sizing
     "SizingModel",
     "SizingConfig",
     "SizingResult",
-    # Multi-instance manager (GATE 5)
+    # Multi-instance manager
     "EngineManager",
     "InstanceInfo",
     "InstanceMode",

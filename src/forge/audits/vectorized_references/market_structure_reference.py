@@ -8,8 +8,6 @@ Takes swing output arrays + OHLCV and replicates IncrementalMarketStructure logi
 - Event flags reset each bar
 """
 
-from __future__ import annotations
-
 import math
 
 import numpy as np

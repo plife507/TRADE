@@ -126,7 +126,7 @@ def _get_exchange_manager_for_env(trading_env: str | None = None) -> "ExchangeMa
     """
     manager = _get_exchange_manager()
     
-    # If no trading_env specified, return as-is (backward compatible)
+    # If no trading_env specified, return without validation
     if trading_env is None:
         return manager
     
