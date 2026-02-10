@@ -11,7 +11,7 @@ Rapidly fix syntax errors, import issues, or simple type problems.
 ## Usage
 
 ```
-/trade-workflow:quick-fix [file]
+/quick-fix [file]
 ```
 
 ## Process
@@ -24,9 +24,6 @@ python -m py_compile [file]
 
 # Check for import issues
 python -c "import [module]"
-
-# Run type check if applicable
-mypy [file] --ignore-missing-imports
 ```
 
 2. **Fix the Issue**
@@ -42,24 +39,7 @@ mypy [file] --ignore-missing-imports
 python -m py_compile [file]
 
 # Quick validation
-python trade_cli.py backtest audit-toolkit
-```
-
-## Common Fixes
-
-### Missing Import
-```python
-from .module import Class
-```
-
-### Syntax Error
-- Check for missing colons, parentheses, brackets
-- Verify indentation
-
-### Type Mismatch
-```python
-# Fix: Add proper type annotation
-def func(param: Type) -> ReturnType:
+python trade_cli.py validate quick
 ```
 
 ## Report Format
@@ -75,5 +55,5 @@ def func(param: Type) -> ReturnType:
 
 ### Verification
 - Syntax check: PASS
-- Import check: PASS
+- Validate quick: PASS
 ```

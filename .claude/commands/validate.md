@@ -1,12 +1,12 @@
 ---
 allowed-tools: Bash, Read, Grep, Glob
 description: Run TRADE validation suite (Play normalize, audits, smoke tests)
-argument-hint: [tier: 1|2|3|full]
+argument-hint: [tier: quick|standard|full|pre-live]
 ---
 
 # Validate Command
 
-Run the TRADE validation suite at the specified tier.
+Run the unified TRADE validation suite at the specified tier.
 
 ## Usage
 
@@ -14,49 +14,77 @@ Run the TRADE validation suite at the specified tier.
 /validate [tier]
 ```
 
-- `1` - TIER 1: Play normalization only (fastest)
-- `2` - TIER 2: Unit audits (audit-toolkit, structure-smoke)
-- `3` - TIER 3: Integration smoke tests
-- `full` - All tiers (default)
+- `quick` - Core plays + audits (~10s, default)
+- `standard` - + synthetic suites (~2min)
+- `full` - + full indicator/pattern suites, math verification (~10min)
+- `pre-live` - Connectivity + readiness gate for specific play
 
 ## Execution
 
-### TIER 1: Play Normalization
-
 ```bash
-python trade_cli.py backtest play-normalize-batch --dir tests/functional/plays
+# Quick (pre-commit)
+python trade_cli.py validate quick
+
+# Standard (pre-merge)
+python trade_cli.py validate standard
+
+# Full (pre-release)
+python trade_cli.py validate full
+
+# Pre-live (specific play readiness)
+python trade_cli.py validate pre-live --play <play_name>
+
+# JSON output for CI
+python trade_cli.py validate quick --json
+
+# Skip fail-fast (run all gates even on failure)
+python trade_cli.py validate standard --no-fail-fast
 ```
 
-### TIER 2: Unit Audits
+## What Each Tier Tests
 
-```bash
-python trade_cli.py backtest audit-toolkit       # 43/43 indicators
-python trade_cli.py backtest structure-smoke     # Market structures
-```
+### Quick (G1-G4)
+- G1: YAML parse + normalize all 5 core plays
+- G2: Indicator toolkit contract audit (43+ indicators)
+- G3: Incremental parity audit
+- G4: Run 5 core plays with synthetic data (all must produce trades)
 
-### TIER 3: Integration
+### Standard (G5-G10)
+- G5-G8: Structure parity, rollup parity, sim orders, operator/structure/complexity suites
+- G9-G10: Additional suite coverage
 
-```bash
-python trade_cli.py --smoke backtest
-```
+### Full (G11-G12)
+- G11: Full 170-play synthetic suite
+- G12: 60-play real-data verification with math checks
 
-Expected: Trades generated, artifacts created
+### Pre-Live (PL1-PL3)
+- PL1: Exchange connectivity
+- PL2: Play-specific readiness
+- PL3: Risk parameter validation
+
+## Core Validation Plays
+
+Located in `plays/core_validation/`:
+
+| Play | Exercises |
+|------|-----------|
+| V_CORE_001_indicator_cross | EMA crossover, swing/trend structures, first_hit exit |
+| V_CORE_002_structure_chain | swing -> trend -> market_structure, BOS/CHoCH |
+| V_CORE_003_cases_metadata | cases/when/emit, metadata capture, bbands multi-output |
+| V_CORE_004_multi_tf | Higher timeframe features + structures, forward-fill |
+| V_CORE_005_arithmetic_window | holds_for, occurred_within, between, near_pct, rolling_window |
 
 ## Report Format
 
 ```
 ## Validation Report
 
-### TIER 1: Play Normalization
-Result: PASS/FAIL (X/Y Plays)
-
-### TIER 2: Unit Audits
-- audit-toolkit: PASS/FAIL (43/43 indicators)
-- structure-smoke: PASS/FAIL
-
-### TIER 3: Integration
-- backtest smoke: PASS/FAIL (X trades)
+### Quick Tier
+- G1 YAML Parse: PASS (5/5)
+- G2 Toolkit Audit: PASS (43/43)
+- G3 Incremental Parity: PASS
+- G4 Core Plays: PASS (5/5, 2134 trades)
 
 ### Summary
-[Overall status and any failures to address]
+All gates passed.
 ```

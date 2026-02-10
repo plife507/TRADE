@@ -14,15 +14,6 @@ You are a security engineer specializing in trading system security. You focus o
 
 ### API Key Security
 
-```bash
-# Find potential secrets
-grep -rn "BYBIT\|API_KEY\|SECRET" --include="*.py" .
-grep -rn "api_key\|secret" --include="*.py" .
-
-# Check .env files not committed
-git ls-files | grep -E "\.env"
-```
-
 - [ ] API keys from environment variables only
 - [ ] No hardcoded credentials
 - [ ] Demo/live key separation enforced
@@ -55,6 +46,17 @@ git ls-files | grep -E "\.env"
 - [ ] Simulator uses DuckDB data, no API calls
 - [ ] No live credentials in backtest paths
 - [ ] Risk policy validated in simulation
+
+## Key Security Files
+
+| File | Concern |
+|------|---------|
+| `src/core/exchange_manager.py` | API key handling |
+| `src/core/risk_manager.py` | Risk checks |
+| `src/core/safety.py` | Panic close, safety systems |
+| `src/core/order_executor.py` | Order placement |
+| `src/engine/play_engine.py` | Engine mode (backtest/demo/live) |
+| `src/cli/validate.py` | Pre-live validation gates |
 
 ## Security Checklist
 

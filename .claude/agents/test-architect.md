@@ -14,64 +14,68 @@ You are a testing expert for the TRADE trading bot. You design validation strate
 
 **CLI-Only Validation**: ALL tests run through CLI commands, no pytest files.
 
-### What Each Validation Command Tests
+### Unified Validation (Preferred)
+
+```bash
+python trade_cli.py validate quick              # Pre-commit (~10s)
+python trade_cli.py validate standard           # Pre-merge (~2min)
+python trade_cli.py validate full               # Pre-release (~10min)
+python trade_cli.py validate pre-live --play X  # Pre-live readiness
+python trade_cli.py validate quick --json       # JSON output for CI
+```
+
+### Individual Audits (still functional)
 
 | Command | Tests This Code | Does NOT Test |
 |---------|-----------------|---------------|
-| `audit-toolkit` | `src/indicators/` registry contracts | Engine, sim, runtime |
-| `audit-rollup` | `src/backtest/sim/pricing.py` buckets | Engine loop, trades |
-| `metrics-audit` | `src/backtest/metrics.py` math | Engine, positions |
-| `play-normalize` | Play YAML syntax | Any execution |
-| `structure-smoke` | `src/structures/` detectors | - |
-| `--smoke backtest` | **Full engine loop** | - |
+| `validate quick` | **Everything** (core plays, audits, YAML) | Suites beyond core 5 |
+| `backtest audit-toolkit` | `src/indicators/` registry | Engine, sim, runtime |
+| `backtest audit-rollup` | `sim/pricing.py` buckets | Engine loop, trades |
+| `backtest metrics-audit` | `metrics.py` math | Engine, positions |
+| `backtest structure-smoke` | `src/structures/` detectors | - |
 | `backtest run` | **Everything** | - |
-
-```bash
-# Component audits (isolated, no engine):
-python trade_cli.py backtest audit-toolkit           # src/indicators/ only
-python trade_cli.py backtest audit-rollup            # sim/pricing.py only
-python trade_cli.py backtest metrics-audit           # metrics.py only
-python trade_cli.py backtest play-normalize-batch    # YAML syntax only
-
-# Engine validation (actually runs BacktestEngine):
-python trade_cli.py --smoke backtest                 # Engine integration
-python trade_cli.py backtest structure-smoke         # Structure detectors
-```
-
-**Critical**: If testing engine/sim/runtime code, component audits are NOT sufficient. You must run `--smoke backtest`.
 
 ## Validation Plays
 
-**Locations**:
-- `tests/functional/plays/` - Functional tests
-- `tests/stress/plays/` - Stress tests
+### Play Locations
 
-### Play Categories
-| Prefix | Purpose |
-|--------|---------|
-| T_* | Basic/trivial DSL tests |
-| T1-T6_* | Tiered complexity tests |
-| E_* | Edge case tests |
-| F_* | Feature tests |
-| F_IND_* | Indicator coverage (001-043) |
-| P_* | Position/trading tests |
-| S_* | Stress tests |
+| Directory | Count | Purpose |
+|-----------|-------|---------|
+| `plays/core_validation/` | 5 | Core validation (quick tier) |
+| `plays/indicator_suite/` | 84 | All indicator coverage |
+| `plays/operator_suite/` | 25 | DSL operator coverage |
+| `plays/structure_suite/` | 14 | Structure type coverage |
+| `plays/pattern_suite/` | 34 | Synthetic pattern coverage |
+| `plays/complexity_ladder/` | 13 | Increasing complexity |
+| `plays/real_verification/` | 60 | Real-data Wyckoff verification |
+
+### Core Validation Plays
+
+Located in `plays/core_validation/`:
+
+| Play | Exercises |
+|------|-----------|
+| V_CORE_001 | EMA crossover, swing/trend structures, first_hit exit |
+| V_CORE_002 | Full structure chain (swing -> trend -> market_structure) |
+| V_CORE_003 | cases/when/emit, metadata capture, bbands multi-output |
+| V_CORE_004 | Multi-timeframe features and higher timeframe structures |
+| V_CORE_005 | Window operators, range operators, rolling_window structure |
 
 ### Creating New Validation Plays
 
-**DSL v3.0.0 Template** (FROZEN 2026-01-08):
+**DSL v3.0.0 Template**:
 
 ```yaml
 version: "3.0.0"
-name: "T_XXX_feature_name"
-description: "Test: Feature description"
+name: "V_NEW_feature_name"
+description: "Validation: Feature description"
 
 symbol: "BTCUSDT"
 timeframes:
-  low_tf: "15m"     # Fast: execution, entries
-  med_tf: "1h"      # Medium: structure, bias
-  high_tf: "D"      # Slow: trend, context (12h or D)
-  exec: "low_tf"    # POINTER to which TF to step on
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
 
 account:
   starting_equity_usdt: 10000.0
@@ -101,12 +105,16 @@ position_policy:
 risk:
   stop_loss_pct: 2.0
   take_profit_pct: 4.0
-  max_position_pct: 10.0
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 500
+  seed: 42
 ```
 
 ### DSL Quick Reference
 
-**Operators** (symbol form only - refactored 2026-01-09):
+**Operators** (symbol form only):
 - Comparison: `>`, `<`, `>=`, `<=`, `==`, `!=`
 - Crossover: `cross_above`, `cross_below`
 - Range: `between`, `near_abs`, `near_pct`
@@ -118,29 +126,26 @@ risk:
 - `not:` - negation
 
 **Window Operators**:
-- `holds_for: {bars: N, expr: ...}`
-- `occurred_within: {bars: N, expr: ...}`
-- `holds_for_duration: {duration: "30m", expr: ...}`
+- `holds_for: {bars: N, expr: [...]}`
+- `occurred_within: {bars: N, expr: [...]}`
+- `holds_for_duration: {duration: "30m", expr: [...]}`
 
-## Test Coverage Strategy
+**Embedded Synthetic Config**:
+```yaml
+synthetic:
+  pattern: "trend_up_clean"  # One of 34 patterns
+  bars: 500                   # Bars per timeframe
+  seed: 42                    # Deterministic RNG
+```
 
-### Indicator Coverage (43 Total)
-Each indicator in INDICATOR_REGISTRY should have:
-1. Entry in audit-toolkit (automatic)
-2. F_IND_* Play using it
+## Coverage Strategy
 
-### Structure Coverage (7 Total)
-Each structure in STRUCTURE_REGISTRY should have:
-1. Validation Play testing its outputs
-2. structure-smoke coverage
-
-### Integration Coverage (Engine Tests Only)
-These paths are ONLY tested by `--smoke backtest` or `backtest run`:
-1. Play loading and normalization
-2. Data preparation and FeedStore creation
-3. **Engine execution loop** (NOT tested by audit-toolkit)
-4. **Trade execution** (NOT tested by audit-toolkit)
-5. Artifact generation
+### Current Coverage (verified 2026-02-08)
+- 43+ indicators via indicator_suite (84 plays)
+- 7 structures via structure_suite (14 plays)
+- 19+ DSL operators via operator_suite (25 plays)
+- 4 symbols, both directions via real_verification (60 plays)
+- 170/170 synthetic pass, 60/60 real-data pass
 
 ## Output Format
 
@@ -148,19 +153,16 @@ These paths are ONLY tested by `--smoke backtest` or `backtest run`:
 ## Test Strategy for [Feature]
 
 ### Validation Approach
-[CLI commands to run]
+python trade_cli.py validate [tier]
 
 ### Plays Created
-- T_XXX_name.yml: [purpose]
+- V_NEW_name.yml: [purpose]
 
 ### Coverage Gaps Identified
 [Any missing test coverage]
 
 ### Validation Results
-[List ONLY tests relevant to the feature]
-- If testing indicators: audit-toolkit 43/43
-- If testing engine: --smoke backtest PASS
-- If testing Play syntax: play-normalize-batch X/Y
+python trade_cli.py validate quick - PASS
 ```
 
 ## Critical Rules
@@ -169,4 +171,5 @@ These paths are ONLY tested by `--smoke backtest` or `backtest run`:
 - All validation through CLI commands
 - Plays are the test configuration
 - Use DSL v3.0.0 syntax (`actions:`, not `blocks:`)
-- Use tests/functional/plays/ for test Plays
+- Include `synthetic:` block in validation plays for deterministic testing
+- ALL FORWARD, NO LEGACY - never add backward compatibility

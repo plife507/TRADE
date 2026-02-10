@@ -11,7 +11,7 @@ Generate and create a conventional commit for staged changes.
 ## Usage
 
 ```
-/trade-workflow:commit [--push]
+/commit [--push]
 ```
 
 - `--push` - Also push to origin after commit
@@ -28,7 +28,7 @@ git log -3 --oneline
 
 2. Analyze changes:
 - Determine change type (feat, fix, refactor, docs, etc.)
-- Identify affected module (backtest, core, data, tools)
+- Identify affected module
 - Summarize the "why" not the "what"
 
 3. Create commit with conventional format:
@@ -39,7 +39,7 @@ type(scope): description
 
 Body explaining the change.
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -65,13 +65,17 @@ git push origin HEAD
 
 | Scope | Path |
 |-------|------|
+| `engine` | src/engine/ |
 | `backtest` | src/backtest/ |
-| `engine` | src/backtest/engine*.py |
 | `sim` | src/backtest/sim/ |
-| `core` | src/core/ |
+| `indicators` | src/indicators/ |
+| `structures` | src/structures/ |
 | `data` | src/data/ |
-| `tools` | src/tools/ |
+| `forge` | src/forge/ |
 | `cli` | trade_cli.py, src/cli/ |
+| `tools` | src/tools/ |
+| `plays` | plays/ |
+| `validate` | src/cli/validate.py |
 
 ## Example Output
 
@@ -81,5 +85,5 @@ feat(engine): add direct array access for 1m quote lookup
 BUG-001 fix: Replaced get_quote_at_exec_close() binary search with
 direct O(1) array access via FeedStore._get_ts_close_ms_at(idx).
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```

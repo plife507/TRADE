@@ -16,12 +16,14 @@ Engage interactive tutoring mode to learn about any aspect of the TRADE codebase
 
 Examples:
 ```
-/tutor backtest engine
+/tutor play engine
 /tutor multi-timeframe anchoring
 /tutor DSL syntax
 /tutor simulated exchange
 /tutor swing detection
 /tutor FeedStore and snapshots
+/tutor validation system
+/tutor synthetic data patterns
 ```
 
 ## Behavior
@@ -37,7 +39,7 @@ When tutor mode is invoked:
 - Start with the BIG PICTURE (why does this exist?)
 - Break complex topics into digestible lessons
 - ONE concept at a time - never overwhelm
-- Build from simple → complex
+- Build from simple to complex
 
 ### 3. Use Visual References
 - ASCII diagrams for architecture and data flow
@@ -45,37 +47,12 @@ When tutor mode is invoked:
 - Code pseudocode (simplified, not actual implementation)
 - Timeline diagrams for temporal concepts
 
-Example visual style:
-```
-┌─────────────────────────────────────────┐
-│           CONCEPT NAME                  │
-├─────────────────────────────────────────┤
-│                                         │
-│   Component A ──────► Component B       │
-│       │                   │             │
-│       ▼                   ▼             │
-│   [Detail 1]         [Detail 2]         │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
 ### 4. Check Comprehension
 - After each major concept, ask 2-3 comprehension questions
 - WAIT for the user to answer before continuing
 - Do NOT provide answers immediately
 - Gently correct misunderstandings
 - Acknowledge correct answers, then advance
-
-Example comprehension check:
-```
-## Comprehension Check
-
-1. What happens when [X]?
-2. Why is [Y] necessary?
-3. True or False: "[statement]"
-
-Take your time - answer when ready!
-```
 
 ### 5. Adapt to the Learner
 - If answers show confusion, re-explain with different analogy
@@ -87,14 +64,19 @@ Take your time - answer when ready!
 
 | Topic | Key Files | Core Concepts |
 |-------|-----------|---------------|
-| Hot Loop | `src/backtest/engine.py` | Warmup, trading phase, O(1) access |
-| Data Caching | `src/backtest/runtime/feed_store.py`, `snapshot_view.py` | FeedStore arrays, snapshot indices |
-| Multi-timeframe | `src/backtest/runtime/cache.py`, `timeframe.py` | Forward-fill, timeframe roles |
-| Window Ops | `src/backtest/evaluation/window_ops.py` | holds_for, anchor_tf, history |
-| DSL | `src/backtest/dsl/` | Blocks, conditions, operators |
-| Structures | `src/backtest/incremental/` | Swing detection, demand zones |
+| Play Engine | `src/engine/play_engine.py` | Unified engine, 1m evaluation, warmup |
+| Engine Factory | `src/engine/factory.py`, `src/backtest/engine_factory.py` | create_engine_from_play(), run_engine_with_play() |
+| Data Caching | `src/backtest/runtime/snapshot_view.py`, `cache.py` | FeedStore arrays, snapshot indices |
+| Multi-timeframe | `src/engine/timeframe/index_manager.py` | Forward-fill, timeframe roles, low/med/high_tf |
+| Window Ops | `src/backtest/rules/evaluation/window_ops.py` | holds_for, occurred_within, count_true |
+| DSL | `src/backtest/rules/` | Blocks, conditions, operators |
+| Structures | `src/structures/` | Swing, trend, zone, fibonacci, derived_zone, rolling_window, market_structure |
 | Sim Exchange | `src/backtest/sim/` | Order fill, slippage, liquidation |
 | Metrics | `src/backtest/metrics.py` | Sharpe, Sortino, MAE/MFE |
+| Validation | `src/cli/validate.py`, `plays/core_validation/` | Tiered gates, core plays |
+| Forge Audits | `src/forge/audits/` | toolkit, parity, structure, rollup audits |
+| Synthetic Data | `src/forge/validation/synthetic_data.py` | 34 patterns, SyntheticCandlesProvider |
+| Signal Subloop | `src/engine/signal/subloop.py` | 1m candle evaluation, TP/SL |
 
 ## Session Flow
 

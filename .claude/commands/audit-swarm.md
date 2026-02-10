@@ -22,16 +22,17 @@ Launch these agents simultaneously:
 - `code-reviewer` focusing on engine core
 - `code-reviewer` focusing on sim/exchange
 - `security-auditor` for trading safety
-- `validate` for full test suite
+- `validate` for full validation suite
 
 2. **Audit Areas**
 
 | Agent Focus | Path | Checks |
 |-------------|------|--------|
-| Engine Core | src/backtest/engine*.py | Lookahead, timing, snapshots |
+| Engine Core | src/engine/play_engine.py | Lookahead, timing, snapshots |
 | Sim/Exchange | src/backtest/sim/ | Fills, fees, position sizing |
 | Runtime | src/backtest/runtime/ | State tracking, snapshots |
-| Integration | tests/functional/plays/ | End-to-end paths |
+| Structures | src/structures/ | Detector correctness |
+| Forge/Audits | src/forge/audits/ | Audit integrity |
 
 3. **Consolidate Findings**
 
@@ -52,19 +53,14 @@ Categorize by severity:
 | Engine Core | X | X | X | X |
 | Sim/Exchange | X | X | X | X |
 | Runtime | X | X | X | X |
-| Integration | X | X | X | X |
+| Structures | X | X | X | X |
 
 ### P0 Critical Issues
 [List with file:line references]
-
-### P1 High Priority
-[List]
 
 ### Recommended Fixes
 [Prioritized action items]
 
 ### Validation Status
-- audit-toolkit: 43/43
-- play-normalize-batch: X/X
-- smoke: PASS/FAIL
+- validate quick: PASS/FAIL
 ```

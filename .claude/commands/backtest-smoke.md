@@ -10,6 +10,11 @@ Run backtest smoke tests to verify engine functionality.
 ## Usage
 
 ```bash
+# Preferred: use unified validate
+python trade_cli.py validate quick
+
+# Legacy smoke (still functional)
+python trade_cli.py --smoke full
 python trade_cli.py --smoke backtest
 ```
 

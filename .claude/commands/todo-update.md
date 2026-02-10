@@ -11,7 +11,7 @@ Update the project TODO.md file.
 ## Usage
 
 ```
-/trade-workflow:todo-update [action]
+/todo-update [action]
 ```
 
 - `complete` - Mark items as completed
@@ -29,12 +29,11 @@ Main TODO: `docs/TODO.md`
 1. Read current TODO.md
 2. Find items to mark complete
 3. Update checkboxes: `- [ ]` to `- [x]`
-4. Add **[FIXED]** or **[DONE]** suffix
-5. Add validation status
+4. Add validation status
 
 ### Add Items
 
-1. Determine priority (P0-P3)
+1. Determine priority (P0-P5)
 2. Add to appropriate section
 3. Include:
    - Description
@@ -50,16 +49,9 @@ Main TODO: `docs/TODO.md`
 ## Format
 
 ```markdown
-### BUG-XXX: Description [FIXED]
-- [x] Task 1
-- [x] Task 2
-- **Fix**: Brief explanation
-- **Validation**: audit-toolkit PASS, smoke PASS
+### Completed Work (YYYY-MM-DD)
+
+- [x] Task description
+- [x] Task description
+- **Validation**: validate quick PASS
 ```
-
-## Archive
-
-When phase is complete:
-1. Create archive file: `docs/archived/YYYY-MM/PHASE_NAME.md`
-2. Move completed section to archive
-3. Update docs/TODO.md to reference archive

@@ -26,8 +26,8 @@ git diff HEAD
 2. **Spawn Verification Agents**
 
 Launch in parallel:
-- `validate` - Run TIER 1-2 validation
-- `code-reviewer` - Review code quality
+- `validate` - Run `python trade_cli.py validate quick`
+- `code-reviewer` - Review code quality and TRADE rules
 - `security-auditor` - Check for security issues (if trading code changed)
 
 3. **Aggregate Results**
@@ -36,9 +36,10 @@ Launch in parallel:
 ## Verification Report
 
 ### Validation Agent
-- play-normalize-batch: PASS (X/Y)
-- audit-toolkit: PASS (43/43)
-- structure-smoke: PASS
+- G1 YAML Parse: PASS (5/5)
+- G2 Toolkit Audit: PASS (43/43)
+- G3 Incremental Parity: PASS
+- G4 Core Plays: PASS (5/5)
 
 ### Code Review Agent
 - Rule compliance: OK
@@ -59,4 +60,4 @@ READY TO COMMIT / NEEDS FIXES
 This command should be run:
 - Before any commit to main
 - After significant code changes
-- When backtest engine is modified
+- When engine code is modified
