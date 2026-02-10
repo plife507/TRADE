@@ -64,6 +64,19 @@ scripts/           Suite runners and generators
 | **Incremental Indicators** | All 44 indicators compute in O(1) per bar. No lookback recomputation. |
 | **Structure Detectors** | Swing points, trend detection, market structure (BOS/CHoCH), Fibonacci retracements, derived zones, rolling windows. |
 
+### Live Trading Safety
+
+| Feature | Description |
+|---------|-------------|
+| **Pre-live Gate** | Auto-validates connectivity, balance, and conflicts before live launch. |
+| **Fat Finger Guard** | Rejects orders with >5% price deviation from last known price. |
+| **Drawdown Circuit Breaker** | Halts trading when drawdown exceeds configured threshold. |
+| **DCP (Disconnect Cancel All)** | Exchange cancels all orders if connection drops for >10s. |
+| **Daily Loss Tracker** | Tracks realized daily PnL, survives restarts via exchange seeding. |
+| **Panic Button** | `panic --confirm` closes all positions and cancels all orders instantly. |
+| **Trade Journal** | JSONL log of every signal, fill, and error for post-session review. |
+| **Notifications** | Telegram and Discord alerts for signals, fills, and errors. |
+
 ## Indicators (44)
 
 **Moving Averages (12):** EMA, SMA, WMA, DEMA, TEMA, TRIMA, ZLMA, KAMA, ALMA, LINREG, Anchored VWAP, VWAP
@@ -169,15 +182,30 @@ python trade_cli.py backtest run --play <name> --synthetic --synthetic-bars 500
 python trade_cli.py backtest run --play <name> --start 2025-10-01 --end 2026-01-01
 
 # Live Trading
-python trade_cli.py play run --play <name> --mode demo
-python trade_cli.py play run --play <name> --mode live --confirm
+python trade_cli.py play run --play <name> --mode demo          # Paper trading
+python trade_cli.py play run --play <name> --mode live --confirm # Real money
+python trade_cli.py play status [--json]                         # Running instances
+python trade_cli.py play stop --play <name> [--close-positions]  # Stop with position handling
+python trade_cli.py play watch [--play <name>]                   # Live dashboard (2s refresh)
+python trade_cli.py play logs --play <name> [--follow]           # Stream trade journal
+python trade_cli.py play pause --play <name>                     # Pause signal evaluation
+python trade_cli.py play resume --play <name>                    # Resume signal evaluation
+
+# Account & Positions
+python trade_cli.py account balance [--json]       # Account balance
+python trade_cli.py account exposure [--json]      # Total exposure
+python trade_cli.py position list [--json]         # Open positions
+python trade_cli.py position close SYMBOL          # Close a position
+python trade_cli.py panic --confirm                # Emergency close all
 
 # Validation
-python trade_cli.py --smoke full
-python trade_cli.py backtest audit-toolkit
+python trade_cli.py validate quick                 # Core plays + audits (~30s)
+python trade_cli.py validate standard              # + synthetic suites (~2min)
+python trade_cli.py validate full                  # Everything (~10min)
+python trade_cli.py validate pre-live --play <name> # Pre-live readiness check
 
-# Suite Runner (170 plays)
-python scripts/run_full_suite.py                                    # Synthetic
+# Suite Runners
+python scripts/run_full_suite.py                                    # 170-play synthetic
 python scripts/run_full_suite.py --real --start 2025-10-01 --end 2026-01-01  # Real data
 ```
 
@@ -195,6 +223,8 @@ The engine is validated by 170 plays across 5 suites, tested on both synthetic p
 
 Results: 170/170 pass on synthetic data, 170/170 pass on real data (BTC, ETH, SOL, ARB, OP).
 
+Additionally, a 60-play Wyckoff real-data verification suite validates 41/43 indicators, 7/7 structures, and 19/24 DSL operators across 4 symbols (BTC, ETH, SOL, LTC) with 23 math checks per play.
+
 ## Exchange Support
 
 - **Bybit** perpetual futures (USDT-margined)
@@ -209,7 +239,6 @@ Results: 170/170 pass on synthetic data, 170/170 pass on real data (BTC, ETH, SO
 - Bybit REST + WebSocket (pybit SDK)
 - NumPy, Pandas (data processing)
 - Rich (CLI output)
-- FastAPI (visualization server)
 
 ## Configuration
 
@@ -231,6 +260,8 @@ System defaults are in `config/defaults.yml`. Plays override any default. Key de
 |----------|-------------|
 | `docs/PLAY_DSL_COOKBOOK.md` | Complete DSL syntax reference (frozen) |
 | `docs/TODO.md` | Project status and gate tracking |
+| `docs/SESSION_HANDOFF.md` | Session handoff with quick commands |
+| `docs/plans/LIVE_READINESS_GLOBAL.md` | Live readiness gate overview (G14-G17) |
 | `config/defaults.yml` | All system defaults with sources |
 | `CLAUDE.md` | Development conventions |
 
