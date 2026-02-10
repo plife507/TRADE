@@ -196,13 +196,10 @@ from src.cli.subcommands import (
     handle_backtest_verify_determinism,
     handle_backtest_metrics_audit,
     handle_backtest_audit_rollup,
-    handle_viz_serve,
-    handle_viz_open,
-    handle_play_run,
+handle_play_run,
     handle_play_status,
     handle_play_stop,
-    handle_qa_audit,
-    handle_test_indicators,
+handle_test_indicators,
     handle_test_parity,
     handle_test_live_parity,
     handle_test_agent,
@@ -750,16 +747,6 @@ def main():
             console.print("[yellow]Usage: trade_cli.py backtest {run|preflight|indicators|data-fix|list|play-normalize|play-normalize-batch|verify-suite|audit-toolkit|audit-incremental-parity|audit-structure-parity|metadata-smoke|mark-price-smoke|structure-smoke|math-parity|audit-snapshot-plumbing|verify-determinism|metrics-audit|audit-rollup} --help[/]")
             sys.exit(1)
 
-    # ===== VIZ SUBCOMMANDS =====
-    if args.command == "viz":
-        if args.viz_command == "serve":
-            sys.exit(handle_viz_serve(args))
-        elif args.viz_command == "open":
-            sys.exit(handle_viz_open(args))
-        else:
-            console.print("[yellow]Usage: trade_cli.py viz {serve|open} --help[/]")
-            sys.exit(1)
-
     # ===== PLAY SUBCOMMANDS =====
     if args.command == "play":
         if args.play_command == "run":
@@ -770,14 +757,6 @@ def main():
             sys.exit(handle_play_stop(args))
         else:
             console.print("[yellow]Usage: trade_cli.py play {run|status|stop} --help[/]")
-            sys.exit(1)
-
-    # ===== QA SUBCOMMANDS =====
-    if args.command == "qa":
-        if args.qa_command == "audit":
-            sys.exit(handle_qa_audit(args))
-        else:
-            console.print("[yellow]Usage: trade_cli.py qa {audit} --help[/]")
             sys.exit(1)
 
     # ===== TEST SUBCOMMANDS =====
@@ -845,9 +824,6 @@ def main():
             elif args.smoke == "forge":
                 from src.cli.smoke_tests import run_forge_smoke
                 exit_code = run_forge_smoke()
-            elif args.smoke == "qa":
-                from src.cli.smoke_tests import run_qa_audit_smoke
-                exit_code = run_qa_audit_smoke()
             else:
                 exit_code = run_smoke_suite(args.smoke, app, config)
             sys.exit(exit_code)

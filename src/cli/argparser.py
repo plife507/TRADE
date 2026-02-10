@@ -3,9 +3,7 @@ Argument parser setup for TRADE CLI.
 
 Defines all subcommands and their arguments:
 - backtest: Play-based backtesting (run, preflight, indicators, data-fix, list, audits)
-- viz: Backtest visualization server
 - play: Unified Play engine (backtest/demo/live/shadow)
-- qa: QA audit agent swarm
 - test: Indicator validation testing agent
 """
 
@@ -45,7 +43,7 @@ Examples:
 
     parser.add_argument(
         "--smoke",
-        choices=["data", "full", "data_extensive", "orders", "live_check", "backtest", "forge", "qa"],
+        choices=["data", "full", "data_extensive", "orders", "live_check", "backtest", "forge"],
         default=None,
         help="Run non-interactive smoke test. 'data'/'full'/'data_extensive'/'orders'/'backtest'/'forge' use DEMO. 'live_check' tests LIVE connectivity (opt-in, requires LIVE keys)."
     )
@@ -68,9 +66,7 @@ Examples:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     _setup_backtest_subcommands(subparsers)
-    _setup_viz_subcommands(subparsers)
     _setup_play_subcommands(subparsers)
-    _setup_qa_subcommands(subparsers)
     _setup_test_subcommands(subparsers)
 
     return parser.parse_args()
@@ -307,23 +303,6 @@ def _setup_backtest_subcommands(subparsers) -> None:
     rollup_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
 
 
-def _setup_viz_subcommands(subparsers) -> None:
-    """Set up viz subcommand and all its sub-subcommands."""
-    viz_parser = subparsers.add_parser("viz", help="Backtest visualization server")
-    viz_subparsers = viz_parser.add_subparsers(dest="viz_command", help="Visualization commands")
-
-    # viz serve
-    serve_parser = viz_subparsers.add_parser("serve", help="Start visualization server")
-    serve_parser.add_argument("--port", type=int, default=8765, help="Server port (default: 8765)")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
-    serve_parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
-    serve_parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
-
-    # viz open
-    open_parser = viz_subparsers.add_parser("open", help="Open browser to running server")
-    open_parser.add_argument("--port", type=int, default=8765, help="Server port (default: 8765)")
-
-
 def _setup_play_subcommands(subparsers) -> None:
     """Set up play subcommand and all its sub-subcommands."""
     play_parser = subparsers.add_parser("play", help="Unified Play engine (all modes)")
@@ -353,24 +332,6 @@ def _setup_play_subcommands(subparsers) -> None:
     play_stop_parser = play_subparsers.add_parser("stop", help="Stop a running Play instance")
     play_stop_parser.add_argument("--play", required=True, help="Play ID to stop")
     play_stop_parser.add_argument("--force", action="store_true", help="Force stop (may leave positions open)")
-
-
-def _setup_qa_subcommands(subparsers) -> None:
-    """Set up qa subcommand and all its sub-subcommands."""
-    qa_parser = subparsers.add_parser("qa", help="QA audit agent swarm")
-    qa_subparsers = qa_parser.add_subparsers(dest="qa_command", help="QA commands")
-
-    # qa audit - Run the audit
-    qa_audit_parser = qa_subparsers.add_parser("audit", help="Run QA audit on codebase")
-    qa_audit_parser.add_argument("--paths", nargs="+", default=["src/"], help="Paths to audit (default: src/)")
-    qa_audit_parser.add_argument("--severity", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW"], default="LOW", help="Minimum severity to report")
-    qa_audit_parser.add_argument("--categories", nargs="+", choices=["security", "type_safety", "error_handling", "concurrency", "business_logic", "api_contract", "documentation", "dead_code"], help="Categories to run (default: all)")
-    qa_audit_parser.add_argument("--format", choices=["rich", "json", "markdown"], default="rich", help="Output format (default: rich)")
-    qa_audit_parser.add_argument("--output", help="Output file path (for json/markdown formats)")
-    qa_audit_parser.add_argument("--max-findings", type=int, default=100, help="Maximum findings per agent (default: 100)")
-    qa_audit_parser.add_argument("--no-parallel", action="store_true", help="Run agents sequentially (default: parallel)")
-    qa_audit_parser.add_argument("--timeout", type=int, default=300, help="Timeout per agent in seconds (default: 300)")
-    qa_audit_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output including code snippets")
 
 
 def _setup_test_subcommands(subparsers) -> None:

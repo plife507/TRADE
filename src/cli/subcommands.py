@@ -6,9 +6,7 @@ They are dispatched from main() in trade_cli.py.
 
 Sections:
 - Backtest handlers (handle_backtest_*)
-- Viz handlers (handle_viz_*)
 - Play handlers (handle_play_*)
-- QA handlers (handle_qa_*)
 - Test handlers (handle_test_*)
 """
 
@@ -1534,49 +1532,6 @@ def handle_backtest_metrics_audit(args) -> int:
 
 
 # =============================================================================
-# VIZ SUBCOMMAND HANDLERS
-# =============================================================================
-
-def handle_viz_serve(args) -> int:
-    """Handle `viz serve` subcommand - start visualization server."""
-    try:
-        from src.viz.server import run_server
-
-        console.print(Panel(
-            f"[bold cyan]BACKTEST VISUALIZATION SERVER[/]\n"
-            f"Host: {args.host}:{args.port}\n"
-            f"Auto-reload: {args.reload}",
-            border_style="cyan"
-        ))
-
-        run_server(
-            host=args.host,
-            port=args.port,
-            open_browser=not args.no_browser,
-            reload=args.reload,
-        )
-        return 0
-    except ImportError as e:
-        console.print(f"[red]Error: Missing dependencies for visualization server[/]")
-        console.print(f"[dim]Run: pip install fastapi uvicorn[/]")
-        console.print(f"[dim]Details: {e}[/]")
-        return 1
-    except Exception as e:
-        console.print(f"[red]Error starting server: {e}[/]")
-        return 1
-
-
-def handle_viz_open(args) -> int:
-    """Handle `viz open` subcommand - open browser to running server."""
-    import webbrowser
-
-    url = f"http://127.0.0.1:{args.port}"
-    console.print(f"Opening browser to: {url}")
-    webbrowser.open(url)
-    return 0
-
-
-# =============================================================================
 # PLAY SUBCOMMAND HANDLERS (Unified Engine)
 # =============================================================================
 
@@ -1848,76 +1803,6 @@ def handle_play_stop(args) -> int:
     else:
         console.print(f"[red]Failed to stop instance: {match.instance_id}[/]")
         return 1
-
-
-# =============================================================================
-# QA SUBCOMMAND HANDLERS
-# =============================================================================
-
-def handle_qa_audit(args) -> int:
-    """Handle `qa audit` subcommand - run QA audit agent swarm."""
-    from src.qa_swarm import (
-        run_qa_audit_sync,
-        QAAuditConfig,
-        Severity,
-        FindingCategory,
-        format_report_rich,
-        format_report_json,
-        format_report_markdown,
-        save_report,
-    )
-
-    categories = None
-    if getattr(args, "categories", None):
-        categories = [FindingCategory(c) for c in args.categories]
-
-    config = QAAuditConfig(
-        paths=args.paths,
-        min_severity=Severity(args.severity),
-        categories=categories,
-        parallel=not getattr(args, "no_parallel", False),
-        timeout_seconds=args.timeout,
-        max_findings_per_agent=args.max_findings,
-        include_snippets=getattr(args, "verbose", False),
-    )
-
-    output_format = getattr(args, "format", "rich")
-
-    if output_format == "rich":
-        console.print(Panel(
-            f"[bold cyan]QA AUDIT[/]\n"
-            f"Paths: {', '.join(config.paths)}\n"
-            f"Min Severity: {config.min_severity.value}\n"
-            f"Parallel: {config.parallel}",
-            border_style="cyan"
-        ))
-
-    try:
-        report = run_qa_audit_sync(config)
-    except Exception as e:
-        console.print(f"[bold red]Audit failed: {e}[/]")
-        return 1
-
-    output_path = getattr(args, "output", None)
-
-    if output_format == "json":
-        json_output = format_report_json(report)
-        if output_path:
-            save_report(report, output_path, "json")
-            console.print(f"[green]Report saved to {output_path}[/]")
-        else:
-            print(json_output)
-    elif output_format == "markdown":
-        md_output = format_report_markdown(report)
-        if output_path:
-            save_report(report, output_path, "markdown")
-            console.print(f"[green]Report saved to {output_path}[/]")
-        else:
-            print(md_output)
-    else:
-        format_report_rich(report, console, verbose=getattr(args, "verbose", False))
-
-    return 0 if report.pass_status else 1
 
 
 # =============================================================================
