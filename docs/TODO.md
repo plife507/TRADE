@@ -4,9 +4,9 @@ Active work tracking for the TRADE trading bot. **This is the single source of t
 
 ---
 
-## Current Phase: Engine Verified - Production Ready
+## Current Phase: Unified Validation - Demo Ready
 
-Backtest engine fully verified 2026-02-08. **170/170 synthetic plays pass**, **60/60 real-data Wyckoff verification plays pass** with 23 math checks each. All DSL operators, 43+ indicators, 7 structure types verified. Equity curve post-close fix applied, math verifier corrected. Backtest pipeline is production-quality.
+Backtest engine fully verified 2026-02-08. **170/170 synthetic plays pass**, **60/60 real-data Wyckoff verification plays pass** with 23 math checks each. Unified validation system deployed 2026-02-10 with tiered gates (`validate quick/standard/full/pre-live`). Dead code and fragmented validation entry points consolidated. Ready for demo/live feed testing.
 
 ---
 
@@ -27,6 +27,7 @@ Backtest engine fully verified 2026-02-08. **170/170 synthetic plays pass**, **6
 | G10: Live/Backtest Parity | 10 files reviewed, 6 warmup fixes, 4 stress tests | COMPLETE | 2026-02-05 |
 | G11: 170-Play Synthetic Audit | 170/170 pass, 0 fail, 0 zero-trade | COMPLETE | 2026-02-08 |
 | G12: 60-Play Real-Data Verification | 60/60 pass, 60/60 math verified (23 checks each) | COMPLETE | 2026-02-08 |
+| G13: Unified Validation System | 5 core plays, 4 tiers, dead code removed | COMPLETE | 2026-02-10 |
 | Audit: Math Correctness | 6 areas verified | COMPLETE | 2026-01-27 |
 | Audit: Warmup Logic | 50 items verified | COMPLETE | 2026-01-27 |
 | Audit: State Management | 4 areas verified | COMPLETE | 2026-01-27 |
@@ -91,6 +92,31 @@ Expand O(1) incremental indicators from 11 to 43 (full coverage for live trading
 ## Timeframe Naming
 
 Use `low_tf`, `med_tf`, `high_tf`, and `exec` (pointer). Never use HTF/LTF/MTF abbreviations in YAML or code identifiers. See `CLAUDE.md` for full rules and examples.
+
+---
+
+## Completed Work (2026-02-10)
+
+### G13: Unified Validation System
+
+- [x] Created `src/cli/validate.py` — single entry point replacing 17+ fragmented validation paths
+- [x] 4 tiers: `quick` (G1-G4), `standard` (G5-G10), `full` (G11-G12), `pre-live` (PL1-PL3)
+- [x] 5 core validation plays in `plays/core_validation/`:
+  - V_CORE_001: indicator crossover + swing/trend structures
+  - V_CORE_002: full structure chain (swing → trend → market_structure, BOS/CHoCH)
+  - V_CORE_003: cases/when/emit syntax with metadata capture
+  - V_CORE_004: multi-timeframe features and higher timeframe structures
+  - V_CORE_005: window operators (holds_for, occurred_within) + range operators (between, near_pct)
+- [x] All 5 plays pass with trades: 75, 330, 5, 1031, 693
+- [x] Added `validate` subcommand to CLI (`trade_cli.py`, `src/cli/argparser.py`)
+- [x] JSON output support (`--json`) for CI integration
+- [x] Dead code removed:
+  - `run_backtest_mixed_smoke()` (~80 LOC, exported but never wired)
+  - `TRADE_SMOKE_INCLUDE_BACKTEST` env var gate (Parts 9+10 now unconditional in `--smoke full`)
+  - `scripts/run_validation_suite.py` (replaced by `validate` subcommand)
+  - `tests/functional/plays/` (empty directory)
+- [x] Updated `docs/PLAY_DSL_COOKBOOK.md` — Sections 13 (Validation Plays) and 14 (Quick Validation)
+- [x] Updated `CLAUDE.md` — added validate commands, marked old smoke/audit as legacy
 
 ---
 
@@ -190,21 +216,18 @@ Use `low_tf`, `med_tf`, `high_tf`, and `exec` (pointer). Never use HTF/LTF/MTF a
 ## Validation After Each Gate
 
 ```bash
-# Full smoke test
-python trade_cli.py --smoke full
+# Unified validation (preferred)
+python trade_cli.py validate quick              # Core plays + audits (~30s)
+python trade_cli.py validate standard           # + synthetic suites (~5m)
+python trade_cli.py validate full               # + real-data verification (~15m)
+python trade_cli.py validate pre-live --play X  # Pre-live readiness for specific play
+python trade_cli.py validate quick --json       # JSON output for CI
 
-# Backtest a single play
-python trade_cli.py backtest run --play X --fix-gaps
-
-# Audit indicator toolkit
-python trade_cli.py backtest audit-toolkit
-
-# Run full synthetic suite
-python scripts/run_full_suite.py
-
-# Run real-data verification
-python scripts/run_real_verification.py --fix-gaps
-
-# Verify trade math
-python scripts/verify_trade_math.py --suite all
+# Individual tools (still functional)
+python trade_cli.py --smoke full                # Full smoke test
+python trade_cli.py backtest run --play X --fix-gaps  # Single backtest
+python trade_cli.py backtest audit-toolkit      # Audit indicators
+python scripts/run_full_suite.py                # 170-play synthetic suite
+python scripts/run_real_verification.py --fix-gaps    # 60-play real verification
+python scripts/verify_trade_math.py --suite all       # Math verification
 ```
