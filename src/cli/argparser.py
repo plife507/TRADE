@@ -68,6 +68,7 @@ Examples:
     _setup_backtest_subcommands(subparsers)
     _setup_play_subcommands(subparsers)
     _setup_test_subcommands(subparsers)
+    _setup_validate_subcommand(subparsers)
 
     return parser.parse_args()
 
@@ -368,3 +369,31 @@ def _setup_test_subcommands(subparsers) -> None:
     test_agent_parser.add_argument("--fix-gaps", action="store_true", default=True, help="Auto-fetch missing data")
     test_agent_parser.add_argument("--no-fix-gaps", action="store_false", dest="fix_gaps", help="Disable auto-fetch")
     test_agent_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+
+def _setup_validate_subcommand(subparsers) -> None:
+    """Set up validate subcommand for unified validation."""
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Unified validation suite (quick/standard/full/pre-live)"
+    )
+    validate_parser.add_argument(
+        "tier",
+        choices=["quick", "standard", "full", "pre-live"],
+        help="Validation tier: quick (~10s), standard (~2min), full (~10min), pre-live (readiness gate)"
+    )
+    validate_parser.add_argument(
+        "--play",
+        help="Play identifier (required for pre-live tier)"
+    )
+    validate_parser.add_argument(
+        "--no-fail-fast",
+        action="store_true",
+        help="Run all gates even if one fails (default: stop on first failure)"
+    )
+    validate_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output results as JSON"
+    )

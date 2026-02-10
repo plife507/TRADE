@@ -65,8 +65,14 @@ timeframes:
 ## Quick Commands
 
 ```bash
-# Validation
-python trade_cli.py --smoke full                    # Validate everything
+# Validation (unified, preferred)
+python trade_cli.py validate quick                  # Core validation plays (~30s)
+python trade_cli.py validate standard               # Core + audits (~2min)
+python trade_cli.py validate full                   # Everything (~10min)
+python trade_cli.py validate pre-live --play X      # Real-data check before deploy
+
+# Validation (legacy, still functional)
+python trade_cli.py --smoke full                    # Full CLI smoke test
 python trade_cli.py backtest audit-toolkit          # Check indicators
 
 # Backtest

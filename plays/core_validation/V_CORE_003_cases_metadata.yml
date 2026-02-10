@@ -1,0 +1,113 @@
+version: "3.0.0"
+name: "v_core_003_cases_metadata"
+description: |
+  Core Validation Play 3 - Cases/When/Emit with Metadata Capture
+
+  Exercises: full cases DSL syntax, first-match logic across
+  multiple case branches, metadata capture at entry time,
+  nested boolean logic (all/any inside cases), else clause,
+  multiple indicator types (ema, rsi, atr, bbands), multi-output
+  indicator field access (bbands.upper, bbands.lower).
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+  bbands_20_2:
+    indicator: bbands
+    params: {length: 20, std: 2.0}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+    - type: trend
+      key: trend
+      uses: swing
+
+actions:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - ["ema_9", "cross_above", "ema_21"]
+            - ["rsi_14", "<", 50]
+            - ["trend.direction", "==", 1]
+        emit:
+          - action: entry_long
+            metadata:
+              entry_atr: {feature_id: "atr_14"}
+              entry_bb_upper: {feature_id: "bbands_20_2", field: "upper"}
+
+      - when:
+          all:
+            - ["ema_9", "cross_below", "ema_21"]
+            - ["rsi_14", ">", 50]
+            - ["trend.direction", "==", -1]
+        emit:
+          - action: entry_short
+            metadata:
+              entry_atr: {feature_id: "atr_14"}
+              entry_bb_lower: {feature_id: "bbands_20_2", field: "lower"}
+
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          any:
+            - ["ema_9", "cross_below", "ema_21"]
+            - ["close", ">", "bbands_20_2.upper"]
+        emit:
+          - action: exit_long
+
+      - when:
+          any:
+            - ["ema_9", "cross_above", "ema_21"]
+            - ["close", "<", "bbands_20_2.lower"]
+        emit:
+          - action: exit_short
+
+position_policy:
+  mode: long_short
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+
+synthetic:
+  pattern: "trend_stairs"
+  bars: 500
+  seed: 202

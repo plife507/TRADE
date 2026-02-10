@@ -773,6 +773,17 @@ def main():
             console.print("[yellow]Usage: trade_cli.py test {indicators|parity|live-parity|agent} --help[/]")
             sys.exit(1)
 
+    # ===== VALIDATE SUBCOMMAND =====
+    if args.command == "validate":
+        from src.cli.validate import run_validation, Tier
+        tier = Tier(args.tier)
+        sys.exit(run_validation(
+            tier=tier,
+            play_id=getattr(args, "play", None),
+            fail_fast=not getattr(args, "no_fail_fast", False),
+            json_output=getattr(args, "json_output", False),
+        ))
+
     # ===== SMOKE TEST MODE =====
     if args.smoke:
         config = get_config()

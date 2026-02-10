@@ -317,25 +317,17 @@ def run_full_cli_smoke(smoke_config, app, config) -> int:
     console.print(f"[bold magenta]{'='*50}[/]")
     failures += run_backtest_suite_smoke(smoke_config, app, config)
 
-    # PART 9: Structure Smoke (Incremental State - opt-in)
-    import os
-    include_backtest = os.environ.get("TRADE_SMOKE_INCLUDE_BACKTEST", "0")
-    if include_backtest in ("1", "true", "True", "TRUE"):
-        console.print(f"\n[bold magenta]{'='*50}[/]")
-        console.print(f"[bold magenta]PART 9: STRUCTURE SMOKE (Incremental State)[/]")
-        console.print(f"[bold magenta]{'='*50}[/]")
-        failures += run_structure_smoke()
-    else:
-        console.print(f"\n[dim]Part 9: Structure smoke skipped (set TRADE_SMOKE_INCLUDE_BACKTEST=1)[/]")
+    # PART 9: Structure Smoke (Incremental State)
+    console.print(f"\n[bold magenta]{'='*50}[/]")
+    console.print(f"[bold magenta]PART 9: STRUCTURE SMOKE (Incremental State)[/]")
+    console.print(f"[bold magenta]{'='*50}[/]")
+    failures += run_structure_smoke()
 
-    # PART 10: Simulator Order Types (opt-in)
-    if include_backtest in ("1", "true", "True", "TRUE"):
-        console.print(f"\n[bold magenta]{'='*50}[/]")
-        console.print(f"[bold magenta]PART 10: SIMULATOR ORDER TYPES[/]")
-        console.print(f"[bold magenta]{'='*50}[/]")
-        failures += run_sim_orders_smoke()
-    else:
-        console.print(f"\n[dim]Part 10: Simulator order smoke skipped (set TRADE_SMOKE_INCLUDE_BACKTEST=1)[/]")
+    # PART 10: Simulator Order Types
+    console.print(f"\n[bold magenta]{'='*50}[/]")
+    console.print(f"[bold magenta]PART 10: SIMULATOR ORDER TYPES[/]")
+    console.print(f"[bold magenta]{'='*50}[/]")
+    failures += run_sim_orders_smoke()
 
     console.print(f"\n[bold]Full CLI Smoke Test Complete[/]")
     console.print(f"  Symbols tested: {symbols}")

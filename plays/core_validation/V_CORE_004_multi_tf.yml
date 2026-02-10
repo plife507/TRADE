@@ -1,0 +1,90 @@
+version: "3.0.0"
+name: "v_core_004_multi_tf"
+description: |
+  Core Validation Play 4 - Multi-Timeframe Features and Structures
+
+  Exercises: higher timeframe indicator access via tf: key,
+  forward-fill system for higher timeframe values,
+  timeframe index management across 3 concurrent feeds,
+  higher timeframe structure detection (daily trend),
+  cross-timeframe condition alignment.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+  ema_50_1h:
+    indicator: ema
+    params: {length: 50}
+    tf: "med_tf"
+  rsi_14_1h:
+    indicator: rsi
+    params: {length: 14}
+    tf: "med_tf"
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+    - type: trend
+      key: trend
+      uses: swing
+  high_tf:
+    - type: swing
+      key: daily_swing
+      params: {left: 3, right: 3}
+    - type: trend
+      key: daily_trend
+      uses: daily_swing
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
+      - ["rsi_14", "<", 60]
+      - any:
+          - ["daily_trend.direction", "==", 1]
+          - ["rsi_14_1h", "<", 70]
+
+  exit_long:
+    any:
+      - ["ema_9", "cross_below", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+
+synthetic:
+  pattern: "mtf_aligned_bull"
+  bars: 500
+  seed: 303

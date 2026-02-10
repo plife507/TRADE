@@ -308,89 +308,6 @@ def run_backtest_smoke(fresh_db: bool = False, play_id: str = None) -> int:
     return 1
 
 
-def run_backtest_mixed_smoke() -> int:
-    """
-    Run backtest smoke test with validation Plays.
-
-    Tests validation Plays from tests/functional/plays/:
-    - V_60-V_62: 1m evaluation loop (mark_price, zone touch, entry timing)
-    - V_70-V_75: Incremental state structures (swing, fibonacci, zone, trend, rolling_window, multi-TF)
-
-    These Plays validate the full engine pipeline end-to-end.
-
-    Returns:
-        0 on success, number of failures otherwise
-    """
-    console.print(Panel(
-        "[bold]BACKTEST SMOKE TEST: MIXED PLAYS[/]\n"
-        "[dim]Testing multiple plays across different scenarios[/]",
-        border_style="magenta"
-    ))
-
-    failures = 0
-
-    # Select a diverse mix of validation Plays from tests/functional/plays/
-    plays_to_test = [
-        # Core validation cards (1m eval loop)
-        "V_60_mark_price_basic",
-        "V_61_zone_touch",
-        "V_62_entry_timing",
-        # Structure validation cards (incremental state)
-        "V_70_swing_basic",
-        "V_71_fibonacci",
-        "V_72_zone_state",
-        "V_73_trend_direction",
-        "V_74_rolling_window",
-        "V_75_multi_tf",
-    ]
-
-    # Filter to only existing cards
-    result = backtest_list_plays_tool()
-    available_cards = []
-    if result.success and result.data:
-        available_cards = result.data.get("plays", [])
-
-    # Filter plays_to_test to only those that exist
-    cards_to_test = [card for card in plays_to_test if card in available_cards]
-
-    if not cards_to_test:
-        console.print(f"  [yellow]WARN[/] No plays found to test")
-        console.print(f"      Available cards: {available_cards[:10]}")
-        # Try to use any available card
-        if available_cards:
-            cards_to_test = available_cards[:3]  # Use first 3 available
-            console.print(f"      Using first 3 available: {cards_to_test}")
-        else:
-            return 1
-
-    console.print(f"\n[bold cyan]Testing {len(cards_to_test)} plays:[/]")
-    for card in cards_to_test:
-        console.print(f"  - {card}")
-
-    # Test each card
-    for i, card_id in enumerate(cards_to_test, 1):
-        console.print(f"\n[bold cyan]{'='*68}[/]")
-        console.print(f"[bold cyan]Card {i}/{len(cards_to_test)}: {card_id}[/]")
-        console.print(f"[bold cyan]{'='*68}[/]")
-
-        card_failures = _run_backtest_smoke_play(card_id, fresh_db=False)
-        failures += card_failures
-
-        if card_failures == 0:
-            console.print(f"  [green]PASSED[/] {card_id}")
-        else:
-            console.print(f"  [red]FAILED[/] {card_id} ({card_failures} failure(s))")
-
-    # Summary
-    console.print(f"\n[bold cyan]{'='*68}[/]")
-    if failures == 0:
-        console.print(f"[bold green]ALL CARDS PASSED[/] ({len(cards_to_test)}/{len(cards_to_test)})")
-    else:
-        console.print(f"[bold red]{failures} FAILURE(S) ACROSS {len(cards_to_test)} CARDS[/]")
-
-    return failures
-
-
 def run_phase6_backtest_smoke() -> int:
     """
     Phase 6: CLI Smoke Tests for backtest infrastructure.
@@ -777,13 +694,6 @@ def run_backtest_suite_smoke(smoke_config, app, config) -> int:
     """
     Run backtest-specific smoke tests (for smoke suite integration).
 
-    This is a lightweight wrapper that calls Phase 6 tests if enabled.
+    This is a lightweight wrapper that calls Phase 6 tests.
     """
-    # Check opt-in environment variable
-    include_backtest = os.environ.get("TRADE_SMOKE_INCLUDE_BACKTEST", "0")
-
-    if include_backtest not in ("1", "true", "True", "TRUE"):
-        console.print(f"\n[dim]Backtest smoke tests skipped (set TRADE_SMOKE_INCLUDE_BACKTEST=1 to enable)[/]")
-        return 0
-
     return run_phase6_backtest_smoke()

@@ -3,7 +3,7 @@
 > **CANONICAL SOURCE OF TRUTH** for Play DSL syntax.
 > All other DSL documentation is deprecated. This is the single reference.
 
-**Status: FROZEN (2026-01-08)** | **Last updated: 2026-02-08**
+**Status: FROZEN (2026-01-08)** | **Last updated: 2026-02-10**
 
 The DSL language is now frozen with 170 synthetic plays + 60 real-data plays validating all operators, structures, and indicators. Changes to DSL semantics require explicit unfreezing and test updates.
 
@@ -45,7 +45,9 @@ When tests reveal behavior differs from this doc:
 10. [Order Sizing & Execution](#10-order-sizing--execution)
 11. [Complete Examples](#11-complete-examples)
 12. [Synthetic Data for Validation](#12-synthetic-data-for-validation)
-13. [Quick Reference Card](#quick-reference-card)
+13. [Validation Plays](#13-validation-plays)
+14. [Quick Validation](#14-quick-validation)
+15. [Quick Reference Card](#quick-reference-card)
 
 ---
 
@@ -2582,6 +2584,179 @@ python trade_cli.py forge validate-patterns
 
 ---
 
+## 13. Validation Plays
+
+Validation plays are self-contained Play YAML files that embed their own synthetic data configuration. They live in `plays/core_validation/` and exercise specific engine code paths without requiring external pattern mappings or databases.
+
+### Why Embedded Synthetic Config
+
+Previously, running synthetic backtests required an external `PLAY_PATTERN_MAP` dictionary mapping play names to patterns. Validation plays eliminate this by embedding the `synthetic:` block directly in the YAML. This makes each play fully self-contained and portable -- clone the repo, run the play, get deterministic results.
+
+### The `synthetic:` Config Block
+
+Add a top-level `synthetic:` key to any Play YAML to embed synthetic data generation config:
+
+```yaml
+version: "3.0.0"
+name: "V_CORE_indicator_basic"
+description: "Core validation - indicator computation and signal generation"
+
+synthetic:
+  pattern: "trend_up_clean"     # Pattern name from the forge pattern registry
+  bars: 500                     # Bars per timeframe to generate
+  seed: 42                      # Deterministic seed for reproducibility
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+# ... features, structures, actions, risk ...
+```
+
+**Key fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `pattern` | Yes | Synthetic pattern name (see Section 12 for full list) |
+| `bars` | Yes | Number of bars per timeframe to generate |
+| `seed` | Yes | Random seed for deterministic, reproducible output |
+| `config` | No | Override default pattern parameters (see Section 12) |
+
+When `--synthetic` is passed to the backtest CLI, the engine reads the `synthetic:` block from the play file and generates data accordingly. No external mapping is needed.
+
+### 5 Core Validation Plays
+
+The `plays/core_validation/` directory contains 5 plays designed to cover the critical engine code paths with minimal overlap. Each play targets a specific validation domain.
+
+| Play | Pattern | Domain | Code Paths Exercised |
+|------|---------|--------|---------------------|
+| `V_CORE_indicator_basic` | `trend_up_clean` | Indicator computation | Feature registry, incremental update, snapshot access |
+| `V_CORE_structure_swing` | `trend_up_clean` | Structure detection | Swing pivot detection, trend tracking, dependency resolution |
+| `V_CORE_signal_dsl` | `trend_up_clean` | DSL condition evaluation | Comparison operators, crossovers, boolean logic, arithmetic |
+| `V_CORE_risk_execution` | `breakout_clean` | Risk and execution | Position sizing, SL/TP evaluation, fill simulation, fee calculation |
+| `V_CORE_multi_tf` | `mtf_aligned_bull` | Multi-timeframe | Forward-fill, timeframe alignment, cross-timeframe conditions |
+
+**Design principles for validation plays:**
+
+1. **Self-contained** -- embedded `synthetic:` block, no external dependencies
+2. **Deterministic** -- fixed seed produces identical results every run
+3. **Minimal** -- each play uses the fewest features needed to exercise its target code paths
+4. **Named with V_CORE_ prefix** -- clearly identified as core validation plays
+5. **Expected behavior** -- optional `expected:` block defines pass/fail criteria
+
+### Writing Your Own Validation Plays
+
+Follow this template for custom validation plays:
+
+```yaml
+version: "3.0.0"
+name: "V_CUSTOM_my_test"
+description: "Validate [specific behavior] under [specific conditions]"
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 500
+  seed: 100
+
+symbol: "BTCUSDT"
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+features:
+  # Only declare what the test needs
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+
+structures:
+  exec: []
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "ema_9"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+# Optional: assert expected outcomes
+expected:
+  min_trades: 1
+  pnl_direction: positive
+```
+
+**Best practices:**
+
+- Use the `V_CUSTOM_` or `V_CORE_` prefix for validation plays
+- Pick a pattern that creates the conditions your test needs (see Section 12 for pattern catalog)
+- Keep `bars` at 500 for fast execution; increase only if the test requires longer history
+- Always specify a `seed` for deterministic results
+- Use `expected:` to define pass/fail criteria when running in automated suites
+
+---
+
+## 14. Quick Validation
+
+The `validate` subcommand provides tiered validation for development workflow integration.
+
+### Tiers
+
+| Tier | Duration | What It Checks |
+|------|----------|----------------|
+| `quick` | ~30 seconds | Core validation plays only (5 plays, synthetic data) |
+| `standard` | ~2 minutes | Core plays + indicator audit + structure parity |
+| `full` | ~10 minutes | Standard + full 170-play synthetic suite |
+| `pre-live` | ~5 minutes | Standard + real-data verification for a specific play |
+
+### Commands
+
+```bash
+# Quick: core validation plays (fast feedback during development)
+python trade_cli.py validate quick
+
+# Standard: core plays + audit toolkit checks
+python trade_cli.py validate standard
+
+# Full: everything (run before merging)
+python trade_cli.py validate full
+
+# Pre-live: validate a specific play against real market data before deployment
+python trade_cli.py validate pre-live --play my_strategy
+```
+
+### When to Run Each Tier
+
+| Scenario | Recommended Tier |
+|----------|-----------------|
+| During development (frequent) | `quick` |
+| Before committing | `standard` |
+| Before merging to main | `full` |
+| Before deploying a play to live/demo | `pre-live --play X` |
+
+### Relationship to Existing Commands
+
+The `validate` subcommand unifies several existing validation workflows:
+
+| Old Command | New Equivalent |
+|-------------|---------------|
+| `python trade_cli.py --smoke full` | `python trade_cli.py validate standard` |
+| `python trade_cli.py backtest audit-toolkit` | Included in `validate standard` |
+| `python scripts/run_full_suite.py` | Included in `validate full` |
+| `python scripts/run_real_verification.py` | `python trade_cli.py validate pre-live --play X` |
+
+---
+
 ## Quick Reference Card
 
 ### Operators (Symbols Only - Refactored 2026-01-09)
@@ -2712,6 +2887,8 @@ account:
 | 2026-02-08 | Added dict-format arithmetic documentation (`{"+": [a, b]}`) |
 | 2026-02-08 | Added NOT operator multi-condition behavior (implicit all wrapping) |
 | 2026-02-08 | Updated validation counts: 170 synthetic + 60 real-data plays verified |
+| 2026-02-10 | Added Section 13: Validation Plays (self-contained plays with embedded synthetic: config) |
+| 2026-02-10 | Added Section 14: Quick Validation (tiered validate subcommand reference) |
 
 ---
 
