@@ -69,6 +69,9 @@ Examples:
     _setup_play_subcommands(subparsers)
     _setup_test_subcommands(subparsers)
     _setup_validate_subcommand(subparsers)
+    _setup_account_subcommands(subparsers)
+    _setup_position_subcommands(subparsers)
+    _setup_panic_subcommand(subparsers)
 
     return parser.parse_args()
 
@@ -331,8 +334,29 @@ def _setup_play_subcommands(subparsers) -> None:
 
     # play stop - Stop running instance (future)
     play_stop_parser = play_subparsers.add_parser("stop", help="Stop a running Play instance")
-    play_stop_parser.add_argument("--play", required=True, help="Play ID to stop")
+    play_stop_parser.add_argument("--play", help="Play ID to stop")
     play_stop_parser.add_argument("--force", action="store_true", help="Force stop (may leave positions open)")
+    play_stop_parser.add_argument("--all", action="store_true", help="Stop all running instances")
+    play_stop_parser.add_argument("--close-positions", action="store_true", help="Close all positions before stopping")
+
+    # play watch - Live dashboard
+    play_watch_parser = play_subparsers.add_parser("watch", help="Live dashboard for running instances")
+    play_watch_parser.add_argument("--play", help="Filter to a specific Play instance")
+    play_watch_parser.add_argument("--interval", type=float, default=2.0, help="Refresh interval in seconds (default: 2)")
+
+    # play logs - Stream logs for running instance
+    play_logs_parser = play_subparsers.add_parser("logs", help="Stream logs for a running instance")
+    play_logs_parser.add_argument("--play", required=True, help="Play ID or instance ID")
+    play_logs_parser.add_argument("--follow", "-f", action="store_true", help="Follow log output continuously")
+    play_logs_parser.add_argument("--lines", "-n", type=int, default=50, help="Number of lines to show (default: 50)")
+
+    # play pause - Pause a running instance
+    play_pause_parser = play_subparsers.add_parser("pause", help="Pause signal evaluation (keeps receiving data)")
+    play_pause_parser.add_argument("--play", required=True, help="Play ID or instance ID to pause")
+
+    # play resume - Resume a paused instance
+    play_resume_parser = play_subparsers.add_parser("resume", help="Resume a paused instance")
+    play_resume_parser.add_argument("--play", required=True, help="Play ID or instance ID to resume")
 
 
 def _setup_test_subcommands(subparsers) -> None:
@@ -397,3 +421,37 @@ def _setup_validate_subcommand(subparsers) -> None:
         dest="json_output",
         help="Output results as JSON"
     )
+
+
+def _setup_account_subcommands(subparsers) -> None:
+    """Set up account subcommand."""
+    account_parser = subparsers.add_parser("account", help="Account information")
+    account_subparsers = account_parser.add_subparsers(dest="account_command", help="Account commands")
+
+    # account balance
+    balance_parser = account_subparsers.add_parser("balance", help="Show account balance")
+    balance_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # account exposure
+    exposure_parser = account_subparsers.add_parser("exposure", help="Show total exposure")
+    exposure_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+
+def _setup_position_subcommands(subparsers) -> None:
+    """Set up position subcommand."""
+    position_parser = subparsers.add_parser("position", help="Position management")
+    position_subparsers = position_parser.add_subparsers(dest="position_command", help="Position commands")
+
+    # position list
+    list_parser = position_subparsers.add_parser("list", help="List open positions")
+    list_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # position close
+    close_parser = position_subparsers.add_parser("close", help="Close a position")
+    close_parser.add_argument("symbol", help="Symbol to close (e.g., BTCUSDT)")
+
+
+def _setup_panic_subcommand(subparsers) -> None:
+    """Set up panic subcommand."""
+    panic_parser = subparsers.add_parser("panic", help="Emergency: cancel all orders and close all positions")
+    panic_parser.add_argument("--confirm", action="store_true", help="Required confirmation flag")

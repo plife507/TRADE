@@ -263,6 +263,34 @@ class TFIncrementalState:
             )
         return self.structures[struct_key].get_output_keys()
 
+    def to_json(self) -> dict:
+        """Serialize state for crash recovery."""
+        data: dict[str, Any] = {
+            "timeframe": self.timeframe,
+            "bar_idx": self._bar_idx,
+            "detectors": {},
+        }
+        for key, detector in self.structures.items():
+            det_state: dict[str, Any] = {
+                "type": type(detector).__name__,
+                "bar_idx": getattr(detector, '_bar_idx', None),
+            }
+            # Try to get serializable state from common detector patterns
+            if hasattr(detector, 'to_dict'):
+                det_state["state"] = detector.to_dict()
+            data["detectors"][key] = det_state
+        return data
+
+    @classmethod
+    def from_json(cls, data: dict) -> TFIncrementalState:
+        """Restore state from serialized data. Detectors must be re-registered separately."""
+        instance = cls.__new__(cls)
+        instance.timeframe = data["timeframe"]
+        instance._bar_idx = data.get("bar_idx", 0)
+        instance.structures = {}  # Detectors must be re-registered
+        instance._update_order = []
+        return instance
+
     def reset(self) -> None:
         """Reset state for new backtest run."""
         self._bar_idx = -1
@@ -579,6 +607,35 @@ class MultiTFIncrementalState:
                     paths.append(f"high_tf_{tf_name}.{struct_key}.{output_key}")
 
         return paths
+
+    def to_json(self) -> dict:
+        """Serialize all timeframe states for crash recovery."""
+        return {
+            "exec_tf": self.exec_tf,
+            "exec": self.exec.to_json(),
+            "med_tf": {
+                tf: state.to_json() for tf, state in self.med_tf.items()
+            },
+            "high_tf": {
+                tf: state.to_json() for tf, state in self.high_tf.items()
+            },
+        }
+
+    @classmethod
+    def from_json(cls, data: dict) -> MultiTFIncrementalState:
+        """Restore multi-TF state from serialized data."""
+        instance = cls.__new__(cls)
+        instance.exec_tf = data["exec_tf"]
+        instance.exec = TFIncrementalState.from_json(data["exec"])
+        instance.med_tf = {
+            tf: TFIncrementalState.from_json(tf_data)
+            for tf, tf_data in data.get("med_tf", {}).items()
+        }
+        instance.high_tf = {
+            tf: TFIncrementalState.from_json(tf_data)
+            for tf, tf_data in data.get("high_tf", {}).items()
+        }
+        return instance
 
     def reset(self) -> None:
         """Reset all TF states for new backtest run."""

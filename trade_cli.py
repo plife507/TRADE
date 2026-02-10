@@ -203,6 +203,11 @@ handle_test_indicators,
     handle_test_parity,
     handle_test_live_parity,
     handle_test_agent,
+    handle_account_balance,
+    handle_account_exposure,
+    handle_position_list,
+    handle_position_close,
+    handle_panic,
 )
 
 # Argparse setup (extracted to src/cli/argparser.py)
@@ -755,8 +760,20 @@ def main():
             sys.exit(handle_play_status(args))
         elif args.play_command == "stop":
             sys.exit(handle_play_stop(args))
+        elif args.play_command == "watch":
+            from src.cli.subcommands import handle_play_watch
+            sys.exit(handle_play_watch(args))
+        elif args.play_command == "logs":
+            from src.cli.subcommands import handle_play_logs
+            sys.exit(handle_play_logs(args))
+        elif args.play_command == "pause":
+            from src.cli.subcommands import handle_play_pause
+            sys.exit(handle_play_pause(args))
+        elif args.play_command == "resume":
+            from src.cli.subcommands import handle_play_resume
+            sys.exit(handle_play_resume(args))
         else:
-            console.print("[yellow]Usage: trade_cli.py play {run|status|stop} --help[/]")
+            console.print("[yellow]Usage: trade_cli.py play {run|status|stop|watch|logs|pause|resume} --help[/]")
             sys.exit(1)
 
     # ===== TEST SUBCOMMANDS =====
@@ -783,6 +800,30 @@ def main():
             fail_fast=not getattr(args, "no_fail_fast", False),
             json_output=getattr(args, "json_output", False),
         ))
+
+    # ===== ACCOUNT SUBCOMMANDS =====
+    if args.command == "account":
+        if args.account_command == "balance":
+            sys.exit(handle_account_balance(args))
+        elif args.account_command == "exposure":
+            sys.exit(handle_account_exposure(args))
+        else:
+            console.print("[dim]Usage: account [balance|exposure][/]")
+            sys.exit(1)
+
+    # ===== POSITION SUBCOMMANDS =====
+    if args.command == "position":
+        if args.position_command == "list":
+            sys.exit(handle_position_list(args))
+        elif args.position_command == "close":
+            sys.exit(handle_position_close(args))
+        else:
+            console.print("[dim]Usage: position [list|close][/]")
+            sys.exit(1)
+
+    # ===== PANIC SUBCOMMAND =====
+    if args.command == "panic":
+        sys.exit(handle_panic(args))
 
     # ===== SMOKE TEST MODE =====
     if args.smoke:

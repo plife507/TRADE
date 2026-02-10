@@ -4,9 +4,9 @@ Active work tracking for the TRADE trading bot. **This is the single source of t
 
 ---
 
-## Current Phase: Unified Validation - Demo Ready
+## Current Phase: Live Trading Ready
 
-Backtest engine fully verified 2026-02-08. **170/170 synthetic plays pass**, **60/60 real-data Wyckoff verification plays pass** with 23 math checks each. Unified validation system deployed 2026-02-10 with tiered gates (`validate quick/standard/full/pre-live`). Dead code and fragmented validation entry points consolidated. Ready for demo/live feed testing.
+Backtest engine fully verified 2026-02-08. **170/170 synthetic plays pass**, **60/60 real-data Wyckoff verification plays pass**. Live readiness gates G14-G17 completed 2026-02-10: crash fixes, MVP live CLI, production hardening, and operational excellence. Full CLI tooling for live trading: `play run/status/stop/watch/logs/pause/resume`, `account balance/exposure`, `position list/close`, `panic`. See `docs/plans/LIVE_READINESS_GLOBAL.md` for details.
 
 ---
 
@@ -28,6 +28,10 @@ Backtest engine fully verified 2026-02-08. **170/170 synthetic plays pass**, **6
 | G11: 170-Play Synthetic Audit | 170/170 pass, 0 fail, 0 zero-trade | COMPLETE | 2026-02-08 |
 | G12: 60-Play Real-Data Verification | 60/60 pass, 60/60 math verified (23 checks each) | COMPLETE | 2026-02-08 |
 | G13: Unified Validation System | 5 core plays, 4 tiers, dead code removed | COMPLETE | 2026-02-10 |
+| G14: Crash Fixes & Safety | 5 fixes (query_ohlcv, end_time, fat finger, DCP, daily loss seed) | COMPLETE | 2026-02-10 |
+| G15: MVP Live CLI | 7 items (pre-live gate, banner, status, stop, watch, account/position, signals) | COMPLETE | 2026-02-10 |
+| G16: Production Hardening | 4 items (drawdown breaker, state serialization, ring buffer, cross-process) | COMPLETE | 2026-02-10 |
+| G17: Operational Excellence | 5 items (journal, logs, pause/resume, notifications, unified backtest) | COMPLETE | 2026-02-10 |
 | Audit: Math Correctness | 6 areas verified | COMPLETE | 2026-01-27 |
 | Audit: Warmup Logic | 50 items verified | COMPLETE | 2026-01-27 |
 | Audit: State Management | 4 areas verified | COMPLETE | 2026-01-27 |

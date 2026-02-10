@@ -1,14 +1,14 @@
 # Session Handoff
 
-**Date**: 2026-02-08
+**Date**: 2026-02-10
 **Branch**: feature/unified-engine
-**Last Commit**: `ea5f58d` fix(plays): fix last 2 zero-trade plays (liquidity hunt patterns)
+**Phase**: Live Trading Ready (G14-G17 complete)
 
 ---
 
 ## Current State
 
-**Engine: FULLY VERIFIED**
+**Engine: FULLY VERIFIED + LIVE READY**
 
 | Suite | Result |
 |-------|--------|
@@ -84,12 +84,35 @@ python trade_cli.py play run --play X --mode live --confirm
 
 ---
 
+## Live Readiness (G14-G17, 2026-02-10)
+
+**G14: Crash Fixes** -- `query_ohlcv` -> `get_ohlcv`, `end_time` calculated, fat finger guard, DCP activated, daily loss seeded
+**G15: MVP Live CLI** -- pre-live gate, mode banners, enhanced status/stop/watch, account/position/panic commands, Windows signals
+**G16: Production Hardening** -- drawdown circuit breaker, state serialization, structure ring buffer, cross-process EngineManager
+**G17: Operational Excellence** -- trade journal, play logs/pause/resume, Telegram/Discord notifications, unified backtest path
+
+### New CLI Commands
+```bash
+# Live operations
+python trade_cli.py play status [--json]          # Show running instances
+python trade_cli.py play stop --play X [--close-positions]  # Stop with position handling
+python trade_cli.py play watch [--play X]          # Live dashboard (2s refresh)
+python trade_cli.py play logs --play X [--follow]  # Stream trade journal
+python trade_cli.py play pause --play X            # Pause signal evaluation
+python trade_cli.py play resume --play X           # Resume signal evaluation
+python trade_cli.py account balance [--json]       # Account balance
+python trade_cli.py account exposure [--json]      # Total exposure
+python trade_cli.py position list [--json]         # Open positions
+python trade_cli.py position close SYMBOL          # Close a position
+python trade_cli.py panic --confirm                # Emergency close all
+```
+
 ## Next Steps
 
-1. **Re-run 60-play suite** with all engine fixes applied (confirm all still pass)
-2. **Create last_price verification plays** -- ensure last price semantics are correct
-3. **Live engine rubric** -- define acceptance criteria for live trading readiness
-4. **Paper trading test** -- demo mode with real market data end-to-end
+1. **Demo mode 24h validation** -- run `play run --mode demo` for 24h, verify candles/signals/fills
+2. **Re-run 60-play suite** with all engine fixes applied (confirm all still pass)
+3. **Create last_price verification plays** -- ensure last price semantics are correct
+4. **Live trading test** -- go live with small size, monitor via `play watch`
 
 ---
 

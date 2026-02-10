@@ -344,6 +344,9 @@ class RiskConfig:
     # Minimum viable trade size (trades below this are rejected)
     min_viable_size_usdt: float = 5.0
 
+    # Max drawdown circuit breaker (0 = disabled, >0 = block new entries at this drawdown %)
+    max_drawdown_pct: float = 0.0
+
     def __post_init__(self):
         """Validate risk config values are sane."""
         if self.max_leverage < 1:

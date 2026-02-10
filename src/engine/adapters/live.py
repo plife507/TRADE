@@ -10,6 +10,7 @@ Integrates with existing RealtimeState/RealtimeBootstrap infrastructure.
 
 
 import threading
+from collections import deque
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -477,6 +478,10 @@ class LiveDataProvider:
         self._med_tf_structure: "TFIncrementalState | None" = None
         self._high_tf_structure: "TFIncrementalState | None" = None
 
+        # G16.3: Structure history ring buffer for lookback
+        # Key: (tf_role, struct_key, field) -> deque of (bar_idx, value)
+        self._structure_history: dict[tuple[str, str, str], deque] = {}
+
         # Tracking
         self._ready = False
         # WU-01, WU-06: Configurable warmup bars (default 100)
@@ -737,10 +742,10 @@ class LiveDataProvider:
             tf_mins = tf_minutes(tf_str)
             start = end - timedelta(minutes=tf_mins * self._buffer_size)
 
-            # Query DuckDB
-            df = store.query_ohlcv(
+            # Query DuckDB (G14.1: use get_ohlcv, not query_ohlcv)
+            df = store.get_ohlcv(
                 symbol=self._symbol,
-                timeframe=tf_str,
+                tf=tf_str,
                 start=start,
                 end=end,
             )
@@ -972,10 +977,12 @@ class LiveDataProvider:
         """
         Get structure field at specific index for a specific TF.
 
+        Supports negative indexing for lookback (-1 = latest, -2 = previous, etc.).
+
         Args:
             key: Structure key
             field: Field name
-            index: Bar index
+            index: Bar index (negative for lookback)
             tf_role: TF role (low_tf, med_tf, high_tf). If None, uses exec structure.
 
         Returns:
@@ -985,8 +992,19 @@ class LiveDataProvider:
         if structure is None:
             raise RuntimeError(f"Structure state not initialized for {tf_role or 'exec'}")
 
-        # For now, just return current value (full history not tracked in live)
-        # P3: Track structure history for lookback (ring buffer per structure field)
+        # G16.3: Use ring buffer for lookback (negative index)
+        resolved_role = tf_role
+        if resolved_role is None:
+            # Resolve exec pointer to actual role
+            resolved_role = self._exec_role
+        buf_key = (resolved_role, key, field)
+        buf = self._structure_history.get(buf_key)
+        if buf and index < 0:
+            abs_idx = len(buf) + index
+            if 0 <= abs_idx < len(buf):
+                return buf[abs_idx][1]
+
+        # Fall through to current value for non-negative index or empty buffer
         return structure.get_value(key, field)
 
     def has_indicator(self, name: str, tf_role: str | None = None) -> bool:
@@ -1099,15 +1117,15 @@ class LiveDataProvider:
         # Route to correct buffer and indicator cache
         if tf_role == "low_tf":
             self._update_tf_buffer(
-                candle, self._low_tf_buffer, self._low_tf_indicators, self._low_tf_structure
+                candle, self._low_tf_buffer, self._low_tf_indicators, self._low_tf_structure, tf_role
             )
         elif tf_role == "med_tf":
             self._update_tf_buffer(
-                candle, self._med_tf_buffer, self._med_tf_indicators, self._med_tf_structure
+                candle, self._med_tf_buffer, self._med_tf_indicators, self._med_tf_structure, tf_role
             )
         elif tf_role == "high_tf":
             self._update_tf_buffer(
-                candle, self._high_tf_buffer, self._high_tf_indicators, self._high_tf_structure
+                candle, self._high_tf_buffer, self._high_tf_indicators, self._high_tf_structure, tf_role
             )
 
         # WU-02, WU-04: Check warmup for all TFs with NaN validation
@@ -1131,6 +1149,7 @@ class LiveDataProvider:
         buffer: list[Candle],
         indicator_cache: LiveIndicatorCache | None,
         structure_state: "TFIncrementalState | None",
+        tf_role: str = "low_tf",
     ) -> None:
         """Update a specific TF's buffer, indicators, and structures. Thread-safe."""
         # G6.2.2: Thread safety - lock buffer access
@@ -1150,13 +1169,14 @@ class LiveDataProvider:
 
         # Update structure state
         if structure_state is not None:
-            self._update_structure_state_for_tf(structure_state, buffer_len - 1, candle)
+            self._update_structure_state_for_tf(structure_state, buffer_len - 1, candle, tf_role)
 
     def _update_structure_state_for_tf(
         self,
         structure_state: "TFIncrementalState",
         bar_idx: int,
         candle: Candle,
+        tf_role: str = "low_tf",
     ) -> None:
         """Update structure state for a specific TF with the given candle."""
         from src.structures import BarData
@@ -1190,8 +1210,29 @@ class LiveDataProvider:
 
         try:
             structure_state.update(bar_data)
+            # G16.3: Record all structure output values in history ring buffer
+            self._record_structure_history(structure_state, tf_role, bar_idx)
         except Exception as e:
             logger.warning(f"Failed to update structure state: {e}")
+
+
+    def _record_structure_history(
+        self,
+        structure_state: "TFIncrementalState",
+        tf_role: str,
+        bar_idx: int,
+    ) -> None:
+        """G16.3: Record all structure output values in history ring buffer."""
+        for struct_key in structure_state.list_structures():
+            for field in structure_state.list_outputs(struct_key):
+                try:
+                    value = structure_state.get_value(struct_key, field)
+                except (KeyError, RuntimeError):
+                    continue
+                buf_key = (tf_role, struct_key, field)
+                if buf_key not in self._structure_history:
+                    self._structure_history[buf_key] = deque(maxlen=500)
+                self._structure_history[buf_key].append((bar_idx, value))
 
 
 class LiveExchange:

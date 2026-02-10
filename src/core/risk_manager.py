@@ -78,6 +78,9 @@ class RiskManager:
         # G0.3: Reuse exchange_manager instead of creating fresh instances
         self._exchange_manager = exchange_manager
 
+        # G16.1: Peak equity for drawdown circuit breaker
+        self._peak_equity: float = 0.0
+
         # Global risk view integration (optional)
         self._enable_global_risk = enable_global_risk
         self._global_risk_view: Any | None = None
@@ -366,7 +369,38 @@ class RiskManager:
                 allowed=False,
                 reason=f"Adjusted size too small (${adjusted_size:.2f} < ${min_viable_size:.2f})"
             )
-        
+
+        # Check 7: Max drawdown circuit breaker (G16.1)
+        equity = portfolio.balance + portfolio.unrealized_pnl
+        if equity > self._peak_equity:
+            self._peak_equity = equity
+        if self._peak_equity > 0 and equity > 0 and self.config.max_drawdown_pct > 0:
+            current_dd = (self._peak_equity - equity) / self._peak_equity * 100
+            if current_dd >= self.config.max_drawdown_pct:
+                self.logger.risk(
+                    "BLOCKED",
+                    f"Drawdown circuit breaker: {current_dd:.2f}% >= {self.config.max_drawdown_pct:.2f}%",
+                    equity=equity,
+                    peak_equity=self._peak_equity,
+                )
+                self.logger.event(
+                    "risk.check.blocked",
+                    level="WARNING",
+                    component="risk_manager",
+                    symbol=signal.symbol,
+                    direction=signal.direction,
+                    size_usdt=signal.size_usdt,
+                    block_reason="max_drawdown",
+                    current_dd_pct=current_dd,
+                    limit=self.config.max_drawdown_pct,
+                    equity=equity,
+                    peak_equity=self._peak_equity,
+                )
+                return RiskCheckResult(
+                    allowed=False,
+                    reason=f"Drawdown circuit breaker: {current_dd:.2f}% >= {self.config.max_drawdown_pct:.2f}%",
+                )
+
         # All checks passed
         self.logger.risk(
             "ALLOWED",

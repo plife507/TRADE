@@ -20,10 +20,12 @@ Usage:
 
 
 import asyncio
+import os
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from ..play_engine import PlayEngine
@@ -163,6 +165,16 @@ class LiveRunner:
         # Max drawdown tracking (B5)
         self._peak_equity: float = 0.0
 
+        # G17.1: Trade journal (initialized in start())
+        self._journal = None
+
+        # G17.4: Notification adapter (initialized in start())
+        self._notifier = None
+
+        # G17.3: Pause file-based IPC
+        self._pause_dir = Path(os.path.expanduser("~/.trade/instances"))
+        self._instance_id: str = ""  # Set by EngineManager after construction
+
         # RealtimeState integration
         self._realtime_state = None
         self._bootstrap = None
@@ -206,6 +218,18 @@ class LiveRunner:
         """Check if runner is active."""
         return self._state == RunnerState.RUNNING
 
+    @property
+    def is_paused(self) -> bool:
+        """G17.3: Check if this runner is paused via file-based IPC.
+
+        Checks for {instance_id}.pause file in ~/.trade/instances/.
+        The instance_id is set by EngineManager after construction.
+        """
+        if not self._instance_id or not self._pause_dir.exists():
+            return False
+        pause_file = self._pause_dir / f"{self._instance_id}.pause"
+        return pause_file.exists()
+
     async def start(self) -> None:
         """
         Start live trading.
@@ -231,6 +255,27 @@ class LiveRunner:
 
             # G0.4: Sync positions before processing signals
             await self._sync_positions_on_startup()
+
+            # G14.5: Seed daily loss tracker from exchange closed PnL
+            # so a restart mid-day doesn't reset loss tracking to $0.
+            try:
+                from ...core.safety import get_daily_loss_tracker
+                em = getattr(self._engine._exchange, '_exchange_manager', None)
+                if em is not None:
+                    tracker = get_daily_loss_tracker()
+                    tracker.seed_from_exchange(em, symbol=self._engine.symbol)
+            except Exception as e:
+                logger.warning(f"Failed to seed daily loss tracker (non-fatal): {e}")
+
+            # G17.1: Initialize trade journal
+            from ..journal import TradeJournal
+            self._journal = TradeJournal(
+                instance_id=f"{self._engine.symbol}_{id(self)}"
+            )
+
+            # G17.4: Initialize notification adapter
+            from ..notifications import get_notification_adapter
+            self._notifier = get_notification_adapter()
 
             # Start processing loop
             self._subscription_task = asyncio.create_task(self._process_loop())
@@ -439,9 +484,12 @@ class LiveRunner:
         from datetime import datetime, timezone
 
         try:
+            # G14.2: KlineData has no end_time field. Calculate close time
+            # from start_time + interval duration.
+            close_ts_ms = kline_data.start_time + tf_minutes(kline_tf_norm) * 60 * 1000
             candle = Candle(
                 ts_open=datetime.fromtimestamp(kline_data.start_time / 1000.0, tz=timezone.utc),
-                ts_close=datetime.fromtimestamp(kline_data.end_time / 1000.0, tz=timezone.utc) if kline_data.end_time else datetime.now(timezone.utc),
+                ts_close=datetime.fromtimestamp(close_ts_ms / 1000.0, tz=timezone.utc),
                 open=kline_data.open,
                 high=kline_data.high,
                 low=kline_data.low,
@@ -610,6 +658,11 @@ class LiveRunner:
             )
             return
 
+        # G17.3: Check pause state -- skip signal evaluation but keep receiving data
+        if self.is_paused:
+            logger.debug("Runner paused, skipping signal evaluation")
+            return
+
         # Process through engine (use -1 for latest in live mode)
         try:
             signal = self._engine.process_bar(-1)
@@ -626,6 +679,24 @@ class LiveRunner:
                 f"Signal generated: {signal.direction} {self._engine.symbol} "
                 f"at {candle.ts_close}"
             )
+
+            # G17.1: Record signal in journal
+            if self._journal:
+                self._journal.record_signal(
+                    symbol=self._engine.symbol,
+                    direction=signal.direction,
+                    size_usdt=signal.size_usdt,
+                    strategy=signal.strategy,
+                    metadata=signal.metadata,
+                )
+
+            # G17.4: Notify signal
+            if self._notifier:
+                self._notifier.notify_signal(
+                    symbol=self._engine.symbol,
+                    direction=signal.direction,
+                    size_usdt=signal.size_usdt,
+                )
 
             # B4: Run safety checks before execution
             if not self._run_safety_checks():
@@ -656,14 +727,62 @@ class LiveRunner:
                     f"Order filled: {signal.direction} {signal.symbol} "
                     f"id={result.order_id}"
                 )
+
+                # G17.1: Record fill in journal
+                if self._journal:
+                    self._journal.record_fill(
+                        symbol=signal.symbol,
+                        direction=signal.direction,
+                        size_usdt=result.fill_usdt or signal.size_usdt,
+                        fill_price=result.fill_price or 0.0,
+                        order_id=result.order_id or "",
+                        sl=signal.metadata.get("stop_loss") if signal.metadata else None,
+                        tp=signal.metadata.get("take_profit") if signal.metadata else None,
+                    )
+
+                # G17.4: Notify fill
+                if self._notifier:
+                    self._notifier.notify_fill(
+                        symbol=signal.symbol,
+                        direction=signal.direction,
+                        fill_price=result.fill_price or 0.0,
+                    )
             else:
                 self._stats.orders_failed += 1
                 logger.warning(f"Order failed: {result.error}")
+
+                # G17.1: Record error in journal
+                if self._journal:
+                    self._journal.record_error(
+                        symbol=signal.symbol,
+                        direction=signal.direction,
+                        error=result.error or "Unknown error",
+                    )
+
+                # G17.4: Notify error
+                if self._notifier:
+                    self._notifier.notify_error(
+                        f"Order failed for {signal.symbol}: {result.error}"
+                    )
 
         except Exception as e:
             self._stats.orders_failed += 1
             self._stats.errors.append(f"Execute error: {e}")
             logger.error(f"Failed to execute signal: {e}")
+
+            # G17.1: Record exception in journal
+            if self._journal:
+                self._journal.record_error(
+                    symbol=signal.symbol,
+                    direction=signal.direction,
+                    error=str(e),
+                )
+
+            # G17.4: Notify error
+            if self._notifier:
+                self._notifier.notify_error(
+                    f"Execute exception for {signal.symbol}: {e}"
+                )
 
     async def _reconnect(self) -> None:
         """Attempt to reconnect to WebSocket with exponential backoff."""
@@ -752,6 +871,10 @@ class LiveRunner:
                 )
                 logger.warning(reason)
                 self._stats.errors.append(reason)
+
+                # G17.4: Notify panic
+                if self._notifier:
+                    self._notifier.notify_panic(reason)
 
                 # Trigger panic to halt all trading
                 panic = get_panic_state()

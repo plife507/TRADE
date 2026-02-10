@@ -327,10 +327,16 @@ class OrderExecutor:
         
         # Determine execution size
         exec_size = risk_result.adjusted_size or signal.size_usdt
-        
+
+        # G14.3: Fat finger / price sanity guard
+        deviation_result = self._check_price_deviation(signal)
+        if deviation_result is not None:
+            self._invoke_callbacks(deviation_result)
+            return deviation_result
+
         # Step 2: Execute order
         order_result = None
-        
+
         try:
             if signal.direction == "LONG":
                 order_result = self.exchange.market_buy(signal.symbol, exec_size)
@@ -611,6 +617,84 @@ class OrderExecutor:
 
         return pending
     
+    # ==================== Price Deviation Guard (G14.3) ====================
+
+    # Maximum allowed deviation between last traded price and implied entry.
+    # Rejects market orders during flash crashes / extreme slippage.
+    MAX_PRICE_DEVIATION_PCT: float = 5.0
+
+    def _check_price_deviation(self, signal: Signal) -> ExecutionResult | None:
+        """
+        G14.3: Fat finger / price sanity guard.
+
+        Fetches last traded price from exchange and rejects the order if
+        the deviation from expected price exceeds MAX_PRICE_DEVIATION_PCT.
+
+        Returns None if check passes, or a failed ExecutionResult if blocked.
+        """
+        if signal.direction == "FLAT":
+            return None  # Always allow position closes
+
+        try:
+            ticker = self.exchange.bybit.get_ticker(signal.symbol)
+            if not ticker:
+                self.logger.warning("Price deviation check: no ticker data, allowing order")
+                return None
+
+            # Bybit ticker response: list with lastPrice field
+            last_price_str = None
+            if isinstance(ticker, list):
+                for item in ticker:
+                    last_price_str = item.get("lastPrice")
+                    if last_price_str:
+                        break
+            elif isinstance(ticker, dict):
+                last_price_str = ticker.get("lastPrice")
+
+            if not last_price_str:
+                self.logger.warning("Price deviation check: no lastPrice in ticker, allowing order")
+                return None
+
+            last_price = float(last_price_str)
+            if last_price <= 0:
+                return None
+
+            # For market orders we don't have an explicit price, but we can
+            # check that the market hasn't moved absurdly from recent data.
+            # If signal carries a reference price, compare against it.
+            ref_price = getattr(signal, 'reference_price', None)
+            if ref_price and ref_price > 0:
+                deviation_pct = abs(last_price - ref_price) / ref_price * 100
+                if deviation_pct > self.MAX_PRICE_DEVIATION_PCT:
+                    reason = (
+                        f"Price deviation guard: last_price={last_price:.4f} vs "
+                        f"ref={ref_price:.4f} ({deviation_pct:.1f}% > {self.MAX_PRICE_DEVIATION_PCT}%)"
+                    )
+                    self.logger.warning(reason)
+                    return ExecutionResult(
+                        success=False,
+                        signal=signal,
+                        risk_check=RiskCheckResult(allowed=True),
+                        error=reason,
+                    )
+
+            # Also check for zero / absurdly low price (possible exchange glitch)
+            if last_price < 0.0001:
+                reason = f"Price deviation guard: last_price={last_price} is near zero"
+                self.logger.warning(reason)
+                return ExecutionResult(
+                    success=False,
+                    signal=signal,
+                    risk_check=RiskCheckResult(allowed=True),
+                    error=reason,
+                )
+
+        except Exception as e:
+            # Fail open: if we can't check, log warning but allow the order
+            self.logger.warning(f"Price deviation check failed (allowing order): {e}")
+
+        return None
+
     # ==================== Callbacks ====================
 
     def on_execution(self, callback: Callable[[ExecutionResult], None]):

@@ -4,6 +4,7 @@ Multi-Instance Engine Manager.
 Enables concurrent engine instances for live, demo, and backtest modes.
 Enforces instance limits and provides state isolation.
 
+
 Instance Limits:
 - Max 1 live instance (safety)
 - Max 1 demo per symbol
@@ -24,13 +25,18 @@ Usage:
     await manager.stop(instance_id)
 """
 
+from __future__ import annotations
 
 import asyncio
+import json
+import os
+import sys
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from .play_engine import PlayEngine
@@ -122,6 +128,10 @@ class EngineManager:
         self._backtest_count = 0
         self._demo_by_symbol: dict[str, int] = {}
 
+        # G16.4: Cross-process instance tracking
+        self._instances_dir = Path(os.path.expanduser("~/.trade/instances"))
+        self._instances_dir.mkdir(parents=True, exist_ok=True)
+
     @classmethod
     def get_instance(cls) -> "EngineManager":
         """Get singleton instance of EngineManager."""
@@ -202,6 +212,9 @@ class EngineManager:
                     on_signal=on_signal,
                 )
 
+                # G17.3: Set instance_id for pause file-based IPC
+                runner._instance_id = instance_id
+
                 # Track instance
                 instance = _EngineInstance(
                     instance_id=instance_id,
@@ -220,6 +233,9 @@ class EngineManager:
 
                 self._instances[instance_id] = instance
                 self._update_counts(mode, symbol, +1)
+
+                # G16.4: Write cross-process instance file
+                self._write_instance_file(instance_id, instance)
 
                 logger.info(f"Engine instance started: {instance_id}")
                 return instance_id
@@ -263,6 +279,9 @@ class EngineManager:
                 symbol = instance.play.symbol_universe[0]
                 self._update_counts(instance.mode.value, symbol, -1)
 
+                # G16.4: Remove cross-process instance file
+                self._remove_instance_file(instance_id)
+
                 # Remove from tracking
                 del self._instances[instance_id]
 
@@ -295,6 +314,13 @@ class EngineManager:
                 last_candle_ts=stats.last_candle_ts if stats else None,
             ))
         return result
+
+    def get_runner_stats(self, instance_id: str) -> dict | None:
+        """Get detailed runner stats for an instance."""
+        instance = self._instances.get(instance_id)
+        if instance and instance.runner:
+            return instance.runner.stats.to_dict()
+        return None
 
     def get(self, instance_id: str) -> InstanceInfo | None:
         """Get info for a specific instance."""
@@ -399,3 +425,106 @@ class EngineManager:
     def register_backtest_end(self) -> None:
         """Register that a backtest has ended (called by CLI tools)."""
         self._backtest_count = max(0, self._backtest_count - 1)
+
+    # ------------------------------------------------------------------
+    # G16.4: Cross-process instance tracking via PID files
+    # ------------------------------------------------------------------
+
+    def _write_instance_file(self, instance_id: str, instance: _EngineInstance) -> None:
+        """Write instance state to disk for cross-process visibility."""
+        data = {
+            "instance_id": instance_id,
+            "pid": os.getpid(),
+            "play_id": instance.play.name,
+            "symbol": instance.play.symbol_universe[0],
+            "mode": instance.mode.value,
+            "started_at": instance.started_at.isoformat(),
+        }
+        path = self._instances_dir / f"{instance_id}.json"
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
+
+    def _update_instance_file(self, instance_id: str) -> None:
+        """Update instance stats in the JSON file."""
+        instance = self._instances.get(instance_id)
+        if not instance:
+            return
+        path = self._instances_dir / f"{instance_id}.json"
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            stats = instance.runner.stats if instance.runner else None
+            if stats:
+                data["stats"] = stats.to_dict()
+            data["status"] = instance.runner.state.value if instance.runner else "unknown"
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
+        except Exception:
+            pass  # Non-fatal
+
+    def _remove_instance_file(self, instance_id: str) -> None:
+        """Remove instance file on stop."""
+        path = self._instances_dir / f"{instance_id}.json"
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    def list_all(self) -> list[InstanceInfo]:
+        """List all instances including cross-process ones from disk."""
+        # Start with in-process instances
+        result = self.list()
+        known_ids = {info.instance_id for info in result}
+
+        # Read disk instances for cross-process visibility
+        try:
+            for path in self._instances_dir.glob("*.json"):
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    iid = data.get("instance_id", "")
+                    if iid in known_ids:
+                        continue  # Already in our process
+
+                    # Check if PID is still alive
+                    pid = data.get("pid", 0)
+                    if not self._is_pid_alive(pid):
+                        # Stale file, clean up
+                        path.unlink(missing_ok=True)
+                        continue
+
+                    result.append(InstanceInfo(
+                        instance_id=iid,
+                        play_id=data.get("play_id", "?"),
+                        symbol=data.get("symbol", "?"),
+                        mode=InstanceMode(data.get("mode", "demo")),
+                        started_at=datetime.fromisoformat(data["started_at"]),
+                        status=data.get("status", "unknown"),
+                        bars_processed=data.get("stats", {}).get("bars_processed", 0) if "stats" in data else 0,
+                        signals_generated=data.get("stats", {}).get("signals_generated", 0) if "stats" in data else 0,
+                    ))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        return result
+
+    @staticmethod
+    def _is_pid_alive(pid: int) -> bool:
+        """Check if a process with given PID is alive. Cross-platform."""
+        if pid <= 0:
+            return False
+        if sys.platform == "win32":
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if handle:
+                kernel32.CloseHandle(handle)
+                return True
+            return False
+        else:
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False

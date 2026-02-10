@@ -1562,6 +1562,16 @@ def handle_play_run(args) -> int:
         ))
         return 1
 
+    # G15.1: Auto-run pre-live validation gate for live mode
+    if mode == "live":
+        from src.cli.validate import run_validation, Tier
+        console.print("[cyan]Running pre-live validation gate...[/]")
+        gate_result = run_validation(Tier.PRE_LIVE, play_id=args.play)
+        if gate_result != 0:
+            console.print("[bold red]Pre-live validation FAILED. Cannot start live trading.[/]")
+            return 1
+        console.print("[green]Pre-live validation passed.[/]")
+
     from src.backtest.play import Play, load_play
 
     plays_dir = Path(args.plays_dir) if getattr(args, "plays_dir", None) else None
@@ -1588,6 +1598,12 @@ def handle_play_run(args) -> int:
         border_style="cyan"
     ))
 
+    # Backtest mode: delegate to backtest_run_play_tool (golden path)
+    # No need to create PlayEngineFactory engine -- the tool creates its own
+    # via create_engine_from_play + run_engine_with_play.
+    if mode == "backtest":
+        return _run_play_backtest(play, args)
+
     from src.engine import PlayEngineFactory, EngineManager
 
     try:
@@ -1599,9 +1615,7 @@ def handle_play_run(args) -> int:
         console.print(f"[red]Failed to create engine: {e}[/]")
         return 1
 
-    if mode == "backtest":
-        return _run_play_backtest(engine, play, args)
-    elif mode == "shadow":
+    if mode == "shadow":
         return _run_play_shadow(engine, play, args)
     elif mode in ("demo", "live"):
         # B7: Route through EngineManager for instance limits
@@ -1610,25 +1624,48 @@ def handle_play_run(args) -> int:
     return 0
 
 
-def _run_play_backtest(engine, play, args) -> int:
-    """Run Play in backtest mode."""
-    from datetime import datetime, timedelta
+def _run_play_backtest(play, args) -> int:
+    """Run Play in backtest mode via backtest_run_play_tool (golden path).
 
-    if args.start:
-        start_ts = _parse_datetime(args.start)
+    Delegates to the same tool that ``backtest run`` uses, so behaviour is
+    identical regardless of which CLI entry-point the user chooses.
+    """
+    import json
+    from pathlib import Path
+    from src.tools.backtest_play_tools import backtest_run_play_tool
+
+    start = _parse_datetime(args.start) if args.start else None
+    end = _parse_datetime(args.end) if args.end else None
+    plays_dir = Path(args.plays_dir) if getattr(args, "plays_dir", None) else None
+    json_output = getattr(args, "json_output", False)
+
+    result = backtest_run_play_tool(
+        play_id=play.id,
+        start=start,
+        end=end,
+        plays_dir=plays_dir,
+    )
+
+    if json_output:
+        output = {
+            "status": "pass" if result.success else "fail",
+            "message": result.message if result.success else result.error,
+            "data": result.data,
+        }
+        print(json.dumps(output, indent=2, default=str))
+        return 0 if result.success else 1
+
+    if result.data and "preflight" in result.data:
+        _print_preflight_diagnostics(result.data["preflight"])
+
+    if result.success:
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        if result.data and "artifact_dir" in result.data:
+            console.print(f"[dim]Artifacts: {result.data['artifact_dir']}[/]")
+        return 0
     else:
-        start_ts = datetime.now() - timedelta(days=30)
-
-    if args.end:
-        end_ts = _parse_datetime(args.end)
-    else:
-        end_ts = datetime.now()
-
-    console.print(f"[dim]Window: {start_ts.date()} to {end_ts.date()}[/]")
-    console.print("[yellow]Note: Backtest mode requires full data loading integration.[/]")
-    console.print("[yellow]Use 'backtest run' for full backtest functionality for now.[/]")
-
-    return 0
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        return 1
 
 
 def _run_play_shadow(engine, play, args) -> int:
@@ -1666,11 +1703,20 @@ def _run_play_live(play, args, manager=None) -> int:
     if manager is None:
         manager = EngineManager.get_instance()
 
-    console.print(f"[cyan]Starting {mode.upper()} mode...[/]")
-    console.print("[dim]Press Ctrl+C to stop[/]")
-
     if mode == "live":
-        console.print("[bold red]LIVE TRADING ACTIVE - REAL MONEY[/]")
+        console.print(Panel(
+            "[bold red]LIVE TRADING -- REAL MONEY[/]\n"
+            f"[red]Play: {play.name} | Symbol: {play.symbol_universe[0]}[/]\n"
+            "[dim]Press Ctrl+C to stop[/]",
+            border_style="red",
+        ))
+    else:
+        console.print(Panel(
+            "[bold blue]DEMO TRADING -- PAPER MONEY[/]\n"
+            f"[blue]Play: {play.name} | Symbol: {play.symbol_universe[0]}[/]\n"
+            "[dim]Press Ctrl+C to stop[/]",
+            border_style="blue",
+        ))
 
     instance_id: str | None = None
 
@@ -1696,12 +1742,13 @@ def _run_play_live(play, args, manager=None) -> int:
             if instance_id:
                 loop.create_task(manager.stop(instance_id))
 
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
+        import sys
+        if sys.platform == "win32":
+            # Windows: use signal.signal() instead of loop.add_signal_handler()
+            signal.signal(signal.SIGINT, lambda s, f: _signal_handler())
+        else:
+            for sig in (signal.SIGINT, signal.SIGTERM):
                 loop.add_signal_handler(sig, _signal_handler)
-            except NotImplementedError:
-                # Windows does not support add_signal_handler for all signals
-                pass
 
         loop.run_until_complete(_run_live())
 
@@ -1734,13 +1781,33 @@ def _run_play_live(play, args, manager=None) -> int:
 
 def handle_play_status(args) -> int:
     """Handle `play status` subcommand - show running instances."""
+    import json
     from src.engine import EngineManager
 
     manager = EngineManager.get_instance()
-    instances = manager.list()
+    instances = manager.list_all()
+
+    # Filter by play ID if specified
+    play_filter = getattr(args, "play", None)
+    if play_filter:
+        instances = [i for i in instances if i.play_id == play_filter or i.instance_id == play_filter]
 
     if not instances:
-        console.print("[dim]No running Play instances.[/]")
+        if getattr(args, "json_output", False):
+            console.print(json.dumps({"instances": []}))
+        else:
+            console.print("[dim]No running Play instances.[/]")
+        return 0
+
+    if getattr(args, "json_output", False):
+        data = []
+        for info in instances:
+            entry = info.to_dict()
+            stats = manager.get_runner_stats(info.instance_id)
+            if stats:
+                entry["stats"] = stats
+            data.append(entry)
+        console.print(json.dumps({"instances": data}, indent=2))
         return 0
 
     table = Table(title="Running Play Instances")
@@ -1751,9 +1818,30 @@ def handle_play_status(args) -> int:
     table.add_column("Status", style="white")
     table.add_column("Bars", justify="right")
     table.add_column("Signals", justify="right")
-    table.add_column("Started", style="dim")
+    table.add_column("Orders", justify="right", style="dim")
+    table.add_column("Reconnects", justify="right", style="dim")
+    table.add_column("Duration", style="dim")
+    table.add_column("Last Candle", style="dim")
 
     for info in instances:
+        stats = manager.get_runner_stats(info.instance_id)
+        orders_str = ""
+        reconnects_str = ""
+        duration_str = ""
+        last_candle_str = ""
+
+        if stats:
+            submitted = stats.get("orders_submitted", 0)
+            filled = stats.get("orders_filled", 0)
+            failed = stats.get("orders_failed", 0)
+            orders_str = f"{submitted}/{filled}/{failed}"
+            reconnects_str = str(stats.get("reconnect_count", 0))
+            secs = stats.get("duration_seconds", 0)
+            mins, s = divmod(int(secs), 60)
+            hrs, m = divmod(mins, 60)
+            duration_str = f"{hrs}h{m:02d}m" if hrs else f"{m}m{s:02d}s"
+            last_candle_str = stats.get("last_candle_ts", "")[:19] if stats.get("last_candle_ts") else ""
+
         table.add_row(
             info.instance_id,
             info.play_id,
@@ -1762,7 +1850,10 @@ def handle_play_status(args) -> int:
             info.status,
             str(info.bars_processed),
             str(info.signals_generated),
-            info.started_at.strftime("%H:%M:%S"),
+            orders_str,
+            reconnects_str,
+            duration_str,
+            last_candle_str,
         )
 
     console.print(table)
@@ -1775,13 +1866,40 @@ def handle_play_stop(args) -> int:
     from src.engine import EngineManager
 
     manager = EngineManager.get_instance()
-    target = args.play  # instance ID or play name
 
     # If --all flag, stop everything
     if getattr(args, "all", False):
+        instances = manager.list()
+        if not instances:
+            console.print("[dim]No running instances to stop.[/]")
+            return 0
+
+        # Check for positions if --close-positions
+        if getattr(args, "close_positions", False):
+            try:
+                from src.tools.position_tools import list_open_positions_tool
+                result = list_open_positions_tool()
+                if result.success and result.data:
+                    positions = result.data.get("positions", [])
+                    if positions:
+                        console.print(f"[yellow]Closing {len(positions)} open position(s) first...[/]")
+                        from src.tools.position_tools import panic_close_all_tool
+                        close_result = panic_close_all_tool(reason="play stop --all --close-positions")
+                        if close_result.success:
+                            console.print("[green]All positions closed.[/]")
+                        else:
+                            console.print(f"[red]Failed to close positions: {close_result.error}[/]")
+            except Exception as e:
+                console.print(f"[yellow]Could not check positions: {e}[/]")
+
         count = asyncio.run(manager.stop_all())
         console.print(f"[green]Stopped {count} instance(s).[/]")
         return 0
+
+    target = getattr(args, "play", None)
+    if not target:
+        console.print("[red]Specify --play ID or --all to stop instances.[/]")
+        return 1
 
     # Try to find the instance by ID or play name
     instances = manager.list()
@@ -1796,6 +1914,37 @@ def handle_play_stop(args) -> int:
         console.print("[dim]Use 'play status' to see running instances.[/]")
         return 1
 
+    # Check for open positions unless --force
+    if not getattr(args, "force", False) and not getattr(args, "close_positions", False):
+        try:
+            from src.tools.position_tools import list_open_positions_tool
+            result = list_open_positions_tool(symbol=match.symbol)
+            if result.success and result.data:
+                positions = result.data.get("positions", [])
+                if positions:
+                    console.print(f"[yellow]Warning: {len(positions)} open position(s) for {match.symbol}[/]")
+                    for pos in positions:
+                        side = pos.get("side", "?")
+                        size = pos.get("size", "?")
+                        pnl = pos.get("unrealized_pnl", "?")
+                        console.print(f"  {side} {size} (PnL: {pnl})")
+                    console.print("[dim]Use --force to stop anyway, or --close-positions to close first.[/]")
+                    return 1
+        except Exception:
+            pass  # If we can't check positions, proceed with stop
+
+    # Close positions if requested
+    if getattr(args, "close_positions", False):
+        try:
+            from src.tools.position_tools import close_position_tool
+            close_result = close_position_tool(symbol=match.symbol)
+            if close_result.success:
+                console.print(f"[green]Position closed for {match.symbol}.[/]")
+            else:
+                console.print(f"[yellow]No position to close or close failed: {close_result.error}[/]")
+        except Exception as e:
+            console.print(f"[yellow]Could not close position: {e}[/]")
+
     stopped = asyncio.run(manager.stop(match.instance_id))
     if stopped:
         console.print(f"[green]Stopped instance: {match.instance_id}[/]")
@@ -1803,6 +1952,243 @@ def handle_play_stop(args) -> int:
     else:
         console.print(f"[red]Failed to stop instance: {match.instance_id}[/]")
         return 1
+
+
+def handle_play_watch(args) -> int:
+    """Handle `play watch` subcommand - live dashboard for running instances."""
+    import json
+    import time as _time
+    from src.engine import EngineManager
+    from rich.live import Live
+    from rich.layout import Layout
+
+    manager = EngineManager.get_instance()
+    interval = getattr(args, "interval", 2.0)
+    play_filter = getattr(args, "play", None)
+
+    def _build_display() -> Table:
+        """Build the dashboard table."""
+        instances = manager.list()
+        if play_filter:
+            instances = [i for i in instances if i.play_id == play_filter or i.instance_id == play_filter]
+
+        if not instances:
+            table = Table(title="Play Watch -- No Running Instances", border_style="dim")
+            table.add_column("Info")
+            table.add_row("[dim]Waiting for instances... (Ctrl+C to exit)[/]")
+            return table
+
+        table = Table(title="Play Watch (live)", border_style="cyan")
+        table.add_column("Play", style="cyan")
+        table.add_column("Symbol", style="yellow")
+        table.add_column("Mode", style="green")
+        table.add_column("Status", style="white")
+        table.add_column("Bars", justify="right")
+        table.add_column("Signals", justify="right")
+        table.add_column("Orders (sub/fill/fail)", justify="right", style="dim")
+        table.add_column("Reconnects", justify="right")
+        table.add_column("Duration", style="dim")
+        table.add_column("Last Candle", style="dim")
+
+        for info in instances:
+            stats = manager.get_runner_stats(info.instance_id)
+            orders_str = ""
+            reconnects_str = ""
+            duration_str = ""
+            last_candle_str = ""
+
+            if stats:
+                sub = stats.get("orders_submitted", 0)
+                fill = stats.get("orders_filled", 0)
+                fail = stats.get("orders_failed", 0)
+                orders_str = f"{sub}/{fill}/{fail}"
+                reconnects_str = str(stats.get("reconnect_count", 0))
+                secs = stats.get("duration_seconds", 0)
+                mins, s = divmod(int(secs), 60)
+                hrs, m = divmod(mins, 60)
+                duration_str = f"{hrs}h{m:02d}m" if hrs else f"{m}m{s:02d}s"
+                lc = stats.get("last_candle_ts")
+                last_candle_str = lc[:19] if lc else ""
+
+            table.add_row(
+                info.play_id,
+                info.symbol,
+                info.mode.value.upper(),
+                info.status,
+                str(info.bars_processed),
+                str(info.signals_generated),
+                orders_str,
+                reconnects_str,
+                duration_str,
+                last_candle_str,
+            )
+
+        return table
+
+    console.print("[dim]Press Ctrl+C to exit watch (does not stop the engine)[/]")
+
+    try:
+        with Live(_build_display(), console=console, refresh_per_second=1) as live:
+            while True:
+                _time.sleep(interval)
+                live.update(_build_display())
+    except KeyboardInterrupt:
+        console.print("\n[dim]Watch stopped.[/]")
+
+    return 0
+
+
+def handle_play_logs(args) -> int:
+    """Handle `play logs` subcommand - stream journal/log for an instance."""
+    import json
+    import time as _time
+    from pathlib import Path
+
+    play_id = args.play
+    follow = getattr(args, "follow", False)
+    num_lines = getattr(args, "lines", 50)
+
+    # Find journal file in ~/.trade/journal/
+    journal_dir = Path.home() / ".trade" / "journal"
+    if not journal_dir.exists():
+        console.print("[dim]No journal directory found.[/]")
+        return 0
+
+    # Find matching journal file
+    matches = list(journal_dir.glob(f"*{play_id}*.jsonl"))
+    if not matches:
+        # Also check instance files to resolve play_id -> instance_id
+        instances_dir = Path.home() / ".trade" / "instances"
+        if instances_dir.exists():
+            for path in instances_dir.glob("*.json"):
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    if data.get("play_id") == play_id:
+                        iid = data.get("instance_id", "")
+                        matches = list(journal_dir.glob(f"*{iid}*.jsonl"))
+                        break
+                except Exception:
+                    continue
+
+    if not matches:
+        console.print(f"[dim]No logs found for '{play_id}'.[/]")
+        return 0
+
+    journal_path = matches[0]
+    console.print(f"[dim]Reading: {journal_path}[/]")
+
+    # Read last N lines
+    try:
+        lines = journal_path.read_text(encoding="utf-8").strip().split("\n")
+        display_lines = lines[-num_lines:] if len(lines) > num_lines else lines
+
+        for line in display_lines:
+            try:
+                entry = json.loads(line)
+                ts = entry.get("timestamp", "")[:19]
+                event = entry.get("event", "?")
+                symbol = entry.get("symbol", "")
+                direction = entry.get("direction", "")
+                if event == "fill":
+                    price = entry.get("fill_price", "?")
+                    console.print(f"  {ts} [green]FILL[/] {symbol} {direction} @ {price}")
+                elif event == "signal":
+                    size = entry.get("size_usdt", "?")
+                    console.print(f"  {ts} [cyan]SIGNAL[/] {symbol} {direction} ${size}")
+                elif event == "error":
+                    err = entry.get("error", "?")
+                    console.print(f"  {ts} [red]ERROR[/] {symbol} {err}")
+                else:
+                    console.print(f"  {ts} {event} {line[:80]}")
+            except json.JSONDecodeError:
+                console.print(f"  {line[:100]}")
+
+    except Exception as e:
+        console.print(f"[red]Error reading logs: {e}[/]")
+        return 1
+
+    # Follow mode
+    if follow:
+        console.print("[dim]Following... (Ctrl+C to stop)[/]")
+        try:
+            with open(journal_path, "r", encoding="utf-8") as f:
+                f.seek(0, 2)  # Seek to end
+                while True:
+                    line = f.readline()
+                    if line:
+                        try:
+                            entry = json.loads(line)
+                            ts = entry.get("timestamp", "")[:19]
+                            event = entry.get("event", "?")
+                            symbol = entry.get("symbol", "")
+                            console.print(f"  {ts} [{event}] {symbol} {line.strip()[:80]}")
+                        except json.JSONDecodeError:
+                            console.print(f"  {line.strip()[:100]}")
+                    else:
+                        _time.sleep(0.5)
+        except KeyboardInterrupt:
+            console.print("\n[dim]Stopped following.[/]")
+
+    return 0
+
+
+def handle_play_pause(args) -> int:
+    """Handle `play pause` subcommand."""
+    import json
+    from pathlib import Path
+
+    play_id = args.play
+    pause_dir = Path.home() / ".trade" / "instances"
+    pause_dir.mkdir(parents=True, exist_ok=True)
+
+    # Find matching instance
+    for path in pause_dir.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("play_id") == play_id or data.get("instance_id") == play_id:
+                instance_id = data.get("instance_id", play_id)
+                pause_file = pause_dir / f"{instance_id}.pause"
+                pause_file.touch()
+                console.print(f"[yellow]Paused: {instance_id}[/]")
+                console.print("[dim]Indicators continue updating. Use 'play resume' to resume signal evaluation.[/]")
+                return 0
+        except Exception:
+            continue
+
+    console.print(f"[red]No running instance found matching '{play_id}'.[/]")
+    return 1
+
+
+def handle_play_resume(args) -> int:
+    """Handle `play resume` subcommand."""
+    import json
+    from pathlib import Path
+
+    play_id = args.play
+    pause_dir = Path.home() / ".trade" / "instances"
+
+    if not pause_dir.exists():
+        console.print(f"[red]No running instance found matching '{play_id}'.[/]")
+        return 1
+
+    # Find and remove matching pause file
+    for path in pause_dir.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("play_id") == play_id or data.get("instance_id") == play_id:
+                instance_id = data.get("instance_id", play_id)
+                pause_file = pause_dir / f"{instance_id}.pause"
+                if pause_file.exists():
+                    pause_file.unlink()
+                    console.print(f"[green]Resumed: {instance_id}[/]")
+                else:
+                    console.print(f"[dim]{instance_id} was not paused.[/]")
+                return 0
+        except Exception:
+            continue
+
+    console.print(f"[red]No running instance found matching '{play_id}'.[/]")
+    return 1
 
 
 # =============================================================================
@@ -1963,3 +2349,134 @@ def handle_test_agent(args) -> int:
         print_agent_report(result)
 
     return 0 if result.success else 1
+
+
+# =============================================================================
+# ACCOUNT SUBCOMMAND HANDLERS (G15.6)
+# =============================================================================
+
+def handle_account_balance(args) -> int:
+    """Handle `account balance` subcommand."""
+    import json
+    from src.tools.account_tools import get_account_balance_tool
+
+    result = get_account_balance_tool()
+    if not result.success:
+        console.print(f"[red]Failed to get balance: {result.error}[/]")
+        return 1
+
+    if getattr(args, "json_output", False):
+        console.print(json.dumps(result.data, indent=2))
+    else:
+        data = result.data or {}
+        equity = data.get("equity", "N/A")
+        available = data.get("available_balance", "N/A")
+        wallet = data.get("wallet_balance", "N/A")
+        console.print(f"[bold]Account Balance[/]")
+        console.print(f"  Equity:    ${equity}")
+        console.print(f"  Available: ${available}")
+        console.print(f"  Wallet:    ${wallet}")
+    return 0
+
+
+def handle_account_exposure(args) -> int:
+    """Handle `account exposure` subcommand."""
+    import json
+    from src.tools.account_tools import get_total_exposure_tool
+
+    result = get_total_exposure_tool()
+    if not result.success:
+        console.print(f"[red]Failed to get exposure: {result.error}[/]")
+        return 1
+
+    if getattr(args, "json_output", False):
+        console.print(json.dumps(result.data, indent=2))
+    else:
+        data = result.data or {}
+        total = data.get("total_exposure_usdt", "N/A")
+        console.print(f"[bold]Total Exposure:[/] ${total}")
+    return 0
+
+
+def handle_position_list(args) -> int:
+    """Handle `position list` subcommand."""
+    import json
+    from src.tools.position_tools import list_open_positions_tool
+
+    result = list_open_positions_tool()
+    if not result.success:
+        console.print(f"[red]Failed to list positions: {result.error}[/]")
+        return 1
+
+    if getattr(args, "json_output", False):
+        console.print(json.dumps(result.data, indent=2))
+        return 0
+
+    positions = (result.data or {}).get("positions", [])
+    if not positions:
+        console.print("[dim]No open positions.[/]")
+        return 0
+
+    table = Table(title="Open Positions")
+    table.add_column("Symbol", style="cyan")
+    table.add_column("Side", style="white")
+    table.add_column("Size", justify="right")
+    table.add_column("Entry", justify="right")
+    table.add_column("Current", justify="right")
+    table.add_column("PnL", justify="right")
+    table.add_column("PnL %", justify="right")
+
+    for pos in positions:
+        pnl = float(pos.get("unrealized_pnl", 0))
+        pnl_style = "green" if pnl >= 0 else "red"
+        table.add_row(
+            pos.get("symbol", "?"),
+            pos.get("side", "?"),
+            str(pos.get("size", "?")),
+            f"${float(pos.get('entry_price', 0)):,.2f}",
+            f"${float(pos.get('current_price', 0)):,.2f}",
+            f"[{pnl_style}]${pnl:,.2f}[/]",
+            f"[{pnl_style}]{float(pos.get('unrealized_pnl_percent', 0)):.2f}%[/]",
+        )
+
+    console.print(table)
+    return 0
+
+
+def handle_position_close(args) -> int:
+    """Handle `position close SYMBOL` subcommand."""
+    from src.tools.position_tools import close_position_tool
+
+    symbol = args.symbol.upper()
+    console.print(f"[yellow]Closing position for {symbol}...[/]")
+
+    result = close_position_tool(symbol=symbol)
+    if result.success:
+        console.print(f"[green]Position closed for {symbol}.[/]")
+        return 0
+    else:
+        console.print(f"[red]Failed to close position: {result.error}[/]")
+        return 1
+
+
+def handle_panic(args) -> int:
+    """Handle `panic` subcommand - emergency close all."""
+    if not getattr(args, "confirm", False):
+        console.print(Panel(
+            "[bold red]EMERGENCY PANIC CLOSE[/]\n"
+            "[red]This will cancel ALL orders and close ALL positions immediately.[/]\n"
+            "[dim]Add --confirm to proceed.[/]",
+            border_style="red"
+        ))
+        return 1
+
+    from src.tools.position_tools import panic_close_all_tool
+
+    console.print("[bold red]PANIC: Closing all positions and cancelling all orders...[/]")
+    result = panic_close_all_tool(reason="CLI panic command")
+    if result.success:
+        console.print("[green]All positions closed, all orders cancelled.[/]")
+        return 0
+    else:
+        console.print(f"[red]Panic close encountered errors: {result.error}[/]")
+        return 1

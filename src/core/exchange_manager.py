@@ -207,6 +207,17 @@ class ExchangeManager:
         from . import exchange_websocket as ws
         ws.setup_websocket_cleanup(self)
 
+        # G14.4: Activate Disconnect Cancel All (DCP) for live mode.
+        # If our process crashes, the exchange will cancel all open orders
+        # after time_window seconds of disconnection.
+        self._trading_mode = trading_mode
+        if trading_mode == TradingMode.REAL:
+            try:
+                self.bybit.set_disconnect_cancel_all(time_window=10)
+                self.logger.info("DCP activated: exchange will cancel orders after 10s disconnect")
+            except Exception as e:
+                self.logger.warning(f"Failed to activate DCP (non-fatal): {e}")
+
         self._initialized = True
 
         # Verify one-way position mode at startup (fail-closed)

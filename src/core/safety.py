@@ -243,7 +243,15 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
     
     # Trigger global panic state
     _panic_state.trigger(reason)
-    
+
+    # G14.4: Activate DCP with minimal window as first server-side defense.
+    # Even if our process dies mid-panic, the exchange will cancel orders.
+    try:
+        exchange_manager.bybit.set_disconnect_cancel_all(time_window=1)
+        logger.info("DCP set to 1s for panic close")
+    except Exception as e:
+        logger.warning(f"Failed to set DCP during panic (continuing): {e}")
+
     # Step 1: Cancel all open orders (with retry)
     for attempt in range(1, PANIC_RETRY_ATTEMPTS + 1):
         try:
