@@ -12,11 +12,13 @@ Integrates with existing RealtimeState/RealtimeBootstrap infrastructure.
 import threading
 from collections import deque
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
+import pandas as pd
 
 from src.backtest.runtime.timeframe import tf_minutes
+from src.config.constants import DataEnv, validate_data_env
 from src.utils.time_range import TimeRange
 
 from ..interfaces import (
@@ -325,18 +327,27 @@ class LiveIndicatorCache:
     def _compute_vectorized(self) -> None:
         """Compute vectorized indicators (fallback for non-incremental)."""
         from ...indicators import FeatureSpec
+        from ...backtest.indicator_vendor import compute_indicator
 
         for spec in self._vectorized_specs:
             try:
                 feature = FeatureSpec.from_dict(spec)
-                values = feature.compute(
-                    open=self._open,
-                    high=self._high,
-                    low=self._low,
-                    close=self._close,
-                    volume=self._volume,
+                result = compute_indicator(
+                    feature.indicator_type,
+                    close=pd.Series(self._close),
+                    high=pd.Series(self._high),
+                    low=pd.Series(self._low),
+                    open_=pd.Series(self._open),
+                    volume=pd.Series(self._volume),
+                    **feature.params,
                 )
-                self._indicators[feature.output_key] = values
+                if isinstance(result, dict):
+                    # Multi-output: store each output separately
+                    for suffix, series in result.items():
+                        key = f"{feature.output_key}_{suffix}"
+                        self._indicators[key] = series.to_numpy() if hasattr(series, 'to_numpy') else np.asarray(series)
+                else:
+                    self._indicators[feature.output_key] = result.to_numpy() if hasattr(result, 'to_numpy') else np.asarray(result)
             except Exception as e:
                 logger.warning(f"Failed to compute indicator {spec}: {e}")
 
@@ -528,7 +539,7 @@ class LiveDataProvider:
 
         # 3-Feed + Exec Role System
         # Extract TF mapping from Play timeframes
-        tf_config = play.timeframes if hasattr(play, 'timeframes') and play.timeframes else {}
+        tf_config = play.tf_mapping if play.tf_mapping else {}
         self._tf_mapping = {
             "low_tf": tf_config.get("low_tf", play.execution_tf),
             "med_tf": tf_config.get("med_tf", play.execution_tf),
@@ -587,7 +598,7 @@ class LiveDataProvider:
         self._high_tf_ready: bool = False
 
         # Environment for multi-TF buffer lookup
-        self._env = "demo" if demo else "live"
+        self._env: DataEnv = "demo" if demo else "live"
 
         # Multi-TF mode flag
         self._multi_tf_mode = (
@@ -868,8 +879,11 @@ class LiveDataProvider:
             # Convert DataFrame rows to BarRecord objects
             bars = []
             for _, row in df.iterrows():
+                ts = row['timestamp']
+                if not isinstance(ts, datetime):
+                    ts = datetime.fromisoformat(str(ts))
                 bar = BarRecord(
-                    timestamp=row['timestamp'],
+                    timestamp=ts,
                     open=float(row['open']),
                     high=float(row['high']),
                     low=float(row['low']),
@@ -1097,7 +1111,7 @@ class LiveDataProvider:
         if structure is None:
             raise RuntimeError(f"Structure state not initialized for {tf_role or 'exec'}")
 
-        return structure.get_value(key, field)
+        return float(structure.get_value(key, field))
 
     def _get_structure_for_role(self, tf_role: str | None) -> "TFIncrementalState | None":
         """Get the structure state for a TF role."""
@@ -1162,7 +1176,7 @@ class LiveDataProvider:
                 return buf[abs_idx][1]
 
         # Fall through to current value for non-negative index or empty buffer
-        return structure.get_value(key, field)
+        return float(structure.get_value(key, field))
 
     def has_indicator(self, name: str, tf_role: str | None = None) -> bool:
         """Check if indicator exists in specified TF cache."""
@@ -1268,6 +1282,7 @@ class LiveDataProvider:
         # Determine which TF role this candle belongs to
         if timeframe is None:
             timeframe = self._timeframe
+        assert isinstance(timeframe, str)
 
         tf_role = self._get_tf_role_for_timeframe(timeframe)
 
@@ -1500,19 +1515,14 @@ class LiveExchange:
 
         # Apply Play-specific settings
         account = self._play.account
-        risk_model = self._play.risk_model
+        assert account is not None, "Play.account is required for live trading"
 
         # G6.0.1: Use SizingConfig max_position_equity_pct (default 95%)
         # The PlayEngineConfig doesn't have max_position_pct - use default
         max_position_pct = 95.0  # SizingConfig default
-        config.max_position_value = account.starting_equity_usdt * (
+        config.max_position_size_usdt = account.starting_equity_usdt * (
             max_position_pct / 100.0
         )
-
-        if risk_model:
-            # Apply risk limits from Play
-            if hasattr(risk_model, 'max_daily_trades'):
-                config.max_daily_trades = risk_model.max_daily_trades
 
         return config
 
@@ -1540,7 +1550,7 @@ class LiveExchange:
             strategy = (
                 original_signal.strategy
                 if original_signal and hasattr(original_signal, "strategy")
-                else self._play.name
+                else (self._play.name or self._play.id)
             )
             confidence = (
                 original_signal.confidence
@@ -1631,7 +1641,7 @@ class LiveExchange:
                 symbol=self._symbol,
                 order_id=order_id,
             )
-            return result.success if result else False
+            return bool(result)
         except Exception as e:
             logger.error(f"Cancel order failed: {e}")
             return False
@@ -1661,9 +1671,11 @@ class LiveExchange:
         if self._position_manager:
             pm_pos = self._position_manager.get_position(symbol)
             if pm_pos:
+                raw_side = pm_pos.side.upper()
+                pos_side: Literal["LONG", "SHORT"] = "LONG" if raw_side == "LONG" else "SHORT"
                 return Position(
                     symbol=pm_pos.symbol,
-                    side=pm_pos.side.upper(),
+                    side=pos_side,
                     size_usdt=pm_pos.size_usdt,
                     size_qty=pm_pos.size,
                     entry_price=pm_pos.entry_price,
@@ -1749,11 +1761,19 @@ class LiveExchange:
         if self._realtime_state:
             open_orders = self._realtime_state.get_open_orders(symbol)
             for order_data in open_orders:
+                od_side: Literal["LONG", "SHORT"] = "LONG" if order_data.side.lower() == "buy" else "SHORT"
+                raw_otype = order_data.order_type.upper()
+                od_otype: Literal["MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"] = (
+                    "LIMIT" if raw_otype == "LIMIT"
+                    else "STOP_MARKET" if raw_otype == "STOP_MARKET"
+                    else "STOP_LIMIT" if raw_otype == "STOP_LIMIT"
+                    else "MARKET"
+                )
                 orders.append(Order(
                     symbol=order_data.symbol,
-                    side="LONG" if order_data.side.lower() == "buy" else "SHORT",
-                    size_usdt=order_data.value,
-                    order_type=order_data.order_type.upper(),
+                    side=od_side,
+                    size_usdt=order_data.price * order_data.qty,
+                    order_type=od_otype,
                     limit_price=order_data.price if order_data.order_type.lower() == "limit" else None,
                     client_order_id=order_data.order_id,
                 ))
@@ -1764,13 +1784,21 @@ class LiveExchange:
             try:
                 rest_orders = self._exchange_manager.get_open_orders(symbol)
                 for od in rest_orders:
+                    rest_side: Literal["LONG", "SHORT"] = "LONG" if od.side.lower() == "buy" else "SHORT"
+                    raw_rt = od.order_type.upper()
+                    rest_otype: Literal["MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"] = (
+                        "LIMIT" if raw_rt == "LIMIT"
+                        else "STOP_MARKET" if raw_rt == "STOP_MARKET"
+                        else "STOP_LIMIT" if raw_rt == "STOP_LIMIT"
+                        else "MARKET"
+                    )
                     orders.append(Order(
-                        symbol=od.get("symbol", self._symbol),
-                        side="LONG" if od.get("side", "").lower() == "buy" else "SHORT",
-                        size_usdt=float(od.get("orderValue", 0)),
-                        order_type=od.get("orderType", "MARKET").upper(),
-                        limit_price=float(od.get("price", 0)) if od.get("price") else None,
-                        client_order_id=od.get("orderId"),
+                        symbol=od.symbol,
+                        side=rest_side,
+                        size_usdt=float((od.price or 0.0) * od.qty),
+                        order_type=rest_otype,
+                        limit_price=od.price,
+                        client_order_id=od.order_id,
                     ))
             except Exception as e:
                 logger.warning(f"Failed to get open orders: {e}")
@@ -1818,12 +1846,8 @@ class LiveExchange:
 
         try:
             # Use ExchangeManager to close position
-            result = self._exchange_manager.place_order(
+            result = self._exchange_manager.close_position(
                 symbol=self._symbol,
-                side=close_side,
-                order_type="Market",
-                qty=close_qty,
-                reduce_only=True,  # Ensures this only closes, doesn't flip
             )
 
             if result and result.success:

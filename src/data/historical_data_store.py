@@ -700,8 +700,8 @@ class HistoricalDataStore:
         self,
         symbols: str | list[str],
         period: str = "1M",
-        timeframes: list[str] = None,
-        progress_callback: Callable = None,
+        timeframes: list[str] | None = None,
+        progress_callback: Callable | None = None,
         show_spinner: bool = True,
     ) -> dict[str, int]:
         """Sync historical data for symbols. See module docstring for details."""
@@ -715,8 +715,8 @@ class HistoricalDataStore:
         symbols: str | list[str],
         start: datetime,
         end: datetime,
-        timeframes: list[str] = None,
-        progress_callback: Callable = None,
+        timeframes: list[str] | None = None,
+        progress_callback: Callable | None = None,
         show_spinner: bool = True,
     ) -> dict[str, int]:
         """Sync a specific date range with progress logging."""
@@ -728,8 +728,8 @@ class HistoricalDataStore:
     def sync_forward(
         self,
         symbols: str | list[str],
-        timeframes: list[str] = None,
-        progress_callback: Callable = None,
+        timeframes: list[str] | None = None,
+        progress_callback: Callable | None = None,
         show_spinner: bool = True,
     ) -> dict[str, int]:
         """Sync data forward from the last stored candle to now."""
@@ -791,14 +791,14 @@ class HistoricalDataStore:
         if df["timestamp"].dt.tz is not None:
             df["timestamp"] = df["timestamp"].dt.tz_localize(None)
 
-        df = df[["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"]]
+        df = df.reindex(columns=["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"])
 
         with self._write_operation():
             self.conn.execute(f"""
                 INSERT OR REPLACE INTO {self.table_ohlcv}
                 SELECT * FROM df
             """)
-    
+
     def _update_metadata(self, symbol: str, timeframe: str):
         """Update sync metadata for a symbol/timeframe."""
         stats = self.conn.execute(f"""
@@ -810,6 +810,7 @@ class HistoricalDataStore:
             WHERE symbol = ? AND timeframe = ?
         """, [symbol, timeframe]).fetchone()
 
+        assert stats is not None
         with self._write_operation():
             self.conn.execute(f"""
                 INSERT OR REPLACE INTO {self.table_sync_metadata}
@@ -888,7 +889,7 @@ class HistoricalDataStore:
         symbol = symbol.upper()
 
         # Build DataFrame for batch insert
-        df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df = pd.DataFrame(candles, columns=pd.Index(["timestamp", "open", "high", "low", "close", "volume"]))
         df["symbol"] = symbol
         df["timeframe"] = timeframe
 
@@ -896,7 +897,7 @@ class HistoricalDataStore:
         if df["timestamp"].dt.tz is not None:
             df["timestamp"] = df["timestamp"].dt.tz_localize(None)
 
-        df = df[["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"]]
+        df = df.reindex(columns=["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "volume"])
 
         with self._write_operation():
             self.conn.execute(f"""
@@ -912,7 +913,7 @@ class HistoricalDataStore:
         self,
         symbols: str | list[str],
         period: str = "3M",
-        progress_callback: Callable = None,
+        progress_callback: Callable | None = None,
         show_spinner: bool = True,
     ) -> dict[str, int]:
         """
@@ -988,8 +989,8 @@ class HistoricalDataStore:
             FROM {self.table_funding}
             WHERE symbol = ?
         """, [symbol]).fetchone()
-        
-        last_ts = existing[0] if existing[0] else None
+
+        last_ts = existing[0] if existing and existing[0] else None
         
         # Determine start point
         if last_ts and last_ts > target_start:
@@ -1091,7 +1092,7 @@ class HistoricalDataStore:
             df["timestamp"] = df["timestamp"].dt.tz_localize(None)
 
         # Ensure columns
-        df = df[["symbol", "timestamp", "funding_rate"]]
+        df = df.reindex(columns=["symbol", "timestamp", "funding_rate"])
 
         # Insert or replace
         with self._write_operation():
@@ -1114,18 +1115,19 @@ class HistoricalDataStore:
             WHERE symbol = ?
         """, [symbol]).fetchone()
 
+        assert stats is not None
         with self._write_operation():
             self.conn.execute(f"""
                 INSERT OR REPLACE INTO {self.table_funding_metadata}
                 VALUES (?, ?, ?, ?, ?)
             """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
-    
+
     def get_funding(
         self,
         symbol: str,
         period: str | None = None,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """
         Get funding rate data as DataFrame.
@@ -1146,23 +1148,23 @@ class HistoricalDataStore:
             FROM {self.table_funding}
             WHERE symbol = ?
         """
-        params = [symbol]
-        
+        params: list[Any] = [symbol]
+
         if period:
             start = datetime.now() - self.parse_period(period)
-        
+
         if start:
             query += " AND timestamp >= ?"
             params.append(start)
-        
+
         if end:
             query += " AND timestamp <= ?"
             params.append(end)
-        
+
         query += " ORDER BY timestamp"
-        
+
         return self.conn.execute(query, params).df()
-    
+
     # ==================== OPEN INTEREST SYNC ====================
     
     def sync_open_interest(
@@ -1170,7 +1172,7 @@ class HistoricalDataStore:
         symbols: str | list[str],
         period: str = "1M",
         interval: str = "1h",
-        progress_callback: Callable = None,
+        progress_callback: Callable | None = None,
         show_spinner: bool = True,
     ) -> dict[str, int]:
         """
@@ -1247,8 +1249,8 @@ class HistoricalDataStore:
             FROM {self.table_oi}
             WHERE symbol = ?
         """, [symbol]).fetchone()
-        
-        last_ts = existing[0] if existing[0] else None
+
+        last_ts = existing[0] if existing and existing[0] else None
         
         # Determine start point
         if last_ts and last_ts > target_start:
@@ -1347,7 +1349,7 @@ class HistoricalDataStore:
             df["timestamp"] = df["timestamp"].dt.tz_localize(None)
 
         # Ensure columns
-        df = df[["symbol", "timestamp", "open_interest"]]
+        df = df.reindex(columns=["symbol", "timestamp", "open_interest"])
 
         # Insert or replace
         with self._write_operation():
@@ -1370,18 +1372,19 @@ class HistoricalDataStore:
             WHERE symbol = ?
         """, [symbol]).fetchone()
 
+        assert stats is not None
         with self._write_operation():
             self.conn.execute(f"""
                 INSERT OR REPLACE INTO {self.table_oi_metadata}
                 VALUES (?, ?, ?, ?, ?)
             """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
-    
+
     def get_open_interest(
         self,
         symbol: str,
         period: str | None = None,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """
         Get open interest data as DataFrame.
@@ -1402,21 +1405,21 @@ class HistoricalDataStore:
             FROM {self.table_oi}
             WHERE symbol = ?
         """
-        params = [symbol]
-        
+        params: list[Any] = [symbol]
+
         if period:
             start = datetime.now() - self.parse_period(period)
-        
+
         if start:
             query += " AND timestamp >= ?"
             params.append(start)
-        
+
         if end:
             query += " AND timestamp <= ?"
             params.append(end)
-        
+
         query += " ORDER BY timestamp"
-        
+
         return self.conn.execute(query, params).df()
     
     # ==================== GAP DETECTION & FILLING ====================
@@ -1430,7 +1433,7 @@ class HistoricalDataStore:
         self,
         symbol: str | None = None,
         timeframe: str | None = None,
-        progress_callback: Callable = None,
+        progress_callback: Callable | None = None,
     ) -> dict[str, int]:
         """Detect and fill gaps in data."""
         from . import historical_maintenance
@@ -1455,8 +1458,8 @@ class HistoricalDataStore:
         symbol: str,
         tf: str,
         period: str | None = None,
-        start: datetime = None,
-        end: datetime = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """
         Get OHLCV data as DataFrame.
@@ -1478,7 +1481,7 @@ class HistoricalDataStore:
             FROM {self.table_ohlcv}
             WHERE symbol = ? AND timeframe = ?
         """
-        params = [symbol, tf]
+        params: list[Any] = [symbol, tf]
 
         if period:
             start = datetime.now() - self.parse_period(period)
@@ -1507,7 +1510,7 @@ class HistoricalDataStore:
         symbol: str,
         preset: str = "day",
         period: str = "1M",
-    ) -> dict[str, pd.DataFrame]:
+    ) -> dict[str, Any]:
         """
         Get multi-timeframe data for backtesting.
 
@@ -1517,7 +1520,7 @@ class HistoricalDataStore:
             period: How far back
 
         Returns:
-            Dict with "high_tf", "med_tf", "low_tf" DataFrames
+            Dict with "high_tf", "med_tf", "low_tf" DataFrames and "_meta" dict
         """
         # Normalize symbol to uppercase for consistency
         symbol = symbol.upper()
@@ -1725,6 +1728,9 @@ class HistoricalDataStore:
         
         file_size = self.db_path.stat().st_size if self.db_path.exists() else 0
         
+        assert ohlcv_stats is not None
+        assert funding_stats is not None
+        assert oi_stats is not None
         return {
             "db_path": str(self.db_path),
             "env": self.env,
@@ -2029,8 +2035,8 @@ def get_ohlcv(
     symbol: str,
     tf: str,
     period: str | None = None,
-    start: datetime = None,
-    end: datetime = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> pd.DataFrame:
     """
@@ -2100,8 +2106,8 @@ def append_ohlcv(
 def get_funding(
     symbol: str,
     period: str | None = None,
-    start: datetime = None,
-    end: datetime = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> pd.DataFrame:
     """
@@ -2124,8 +2130,8 @@ def get_funding(
 def get_open_interest(
     symbol: str,
     period: str | None = None,
-    start: datetime = None,
-    end: datetime = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> pd.DataFrame:
     """

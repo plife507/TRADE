@@ -12,7 +12,7 @@ Sections:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from rich.panel import Panel
 from rich.table import Table
@@ -123,6 +123,7 @@ def _handle_synthetic_backtest_run(args) -> int:
     from src.backtest.play import load_play, Play
     from src.backtest.runner import run_backtest_with_gates, RunnerConfig
     from src.forge.validation import generate_synthetic_candles
+    from src.forge.validation.synthetic_data import PatternType
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
     plays_dir = Path(args.plays_dir) if getattr(args, "plays_dir", None) else None

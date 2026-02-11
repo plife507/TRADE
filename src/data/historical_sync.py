@@ -290,10 +290,14 @@ def _sync_symbol_timeframe(
 
     # Normalize all datetimes to naive UTC for consistent comparison
     # (DuckDB returns tz-aware, CLI input is naive)
-    first_ts = _normalize_to_naive_utc(existing[0])
-    last_ts = _normalize_to_naive_utc(existing[1])
-    target_start = _normalize_to_naive_utc(target_start)
-    target_end = _normalize_to_naive_utc(target_end)
+    first_ts = _normalize_to_naive_utc(existing[0]) if existing else None
+    last_ts = _normalize_to_naive_utc(existing[1]) if existing else None
+    target_start_norm = _normalize_to_naive_utc(target_start)
+    target_end_norm = _normalize_to_naive_utc(target_end)
+    assert target_start_norm is not None
+    assert target_end_norm is not None
+    target_start = target_start_norm
+    target_end = target_end_norm
 
     total_synced = 0
 
@@ -302,6 +306,7 @@ def _sync_symbol_timeframe(
     if first_ts is None:
         ranges_to_fetch.append((target_start, target_end))
     else:
+        assert last_ts is not None, "last_ts must not be None when first_ts is not None"
         if target_start < first_ts:
             older_end = first_ts - timedelta(minutes=tf_minutes)
             if target_start <= older_end:
@@ -323,9 +328,10 @@ def _sync_symbol_timeframe(
             _store_dataframe(store, symbol, timeframe, df)
             total_synced += len(df)
     
-    has_data = store.conn.execute(f"""
+    count_row = store.conn.execute(f"""
         SELECT COUNT(*) FROM {store.table_ohlcv} WHERE symbol = ? AND timeframe = ?
-    """, [symbol, timeframe]).fetchone()[0] > 0
+    """, [symbol, timeframe]).fetchone()
+    has_data = (count_row[0] > 0) if count_row else False
     
     if has_data:
         _update_metadata(store, symbol, timeframe)

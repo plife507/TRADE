@@ -160,6 +160,10 @@ class DataBuilder:
             # Create PreparedFrame wrapper for API consistency
             exec_role = tf_mapping["exec"]
             exec_tf = tf_mapping[exec_role]
+            assert multi_tf_frames.exec_frame is not None, "exec_frame must be set after multi-TF preparation"
+            assert multi_tf_frames.requested_start is not None, "requested_start must be set"
+            assert multi_tf_frames.requested_end is not None, "requested_end must be set"
+            assert multi_tf_frames.simulation_start is not None, "simulation_start must be set"
             prepared_frame = PreparedFrame(
                 df=multi_tf_frames.exec_frame,
                 full_df=multi_tf_frames.exec_frame,
@@ -295,7 +299,7 @@ class DataBuilder:
 
         # Get slippage from Play (with default)
         slippage_bps = 5.0  # Default
-        if self.play.account.slippage_bps is not None:
+        if self.play.account and self.play.account.slippage_bps is not None:
             slippage_bps = self.play.account.slippage_bps
 
         # Build execution config - only slippage, fees come from risk_profile

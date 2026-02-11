@@ -360,8 +360,9 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         """
         if self.use_trend_anchor:
             # Trend-wave mode: recalculate when trend or pair changes
-            current_trend_version = self.trend.get_value("version")
-            current_pair_version = self.swing.get_value("pair_version")
+            assert self.trend is not None
+            current_trend_version = int(self.trend.get_value("version"))
+            current_pair_version = int(self.swing.get_value("pair_version"))
             if (current_trend_version != self._last_trend_version or
                     current_pair_version != self._last_trend_pair_version):
                 self._recalculate_trend_anchored()
@@ -369,14 +370,14 @@ class IncrementalFibonacci(BaseIncrementalDetector):
                 self._last_trend_pair_version = current_pair_version
         elif self.use_paired_anchor:
             # Paired mode: only recalculate when a complete pair forms
-            current_pair_version = self.swing.get_value("pair_version")
+            current_pair_version = int(self.swing.get_value("pair_version"))
             if current_pair_version != self._last_pair_version:
                 self._recalculate_paired()
                 self._last_pair_version = current_pair_version
         else:
             # Unpaired mode: recalculate when any pivot changes
-            current_high_idx = self.swing.get_value("high_idx")
-            current_low_idx = self.swing.get_value("low_idx")
+            current_high_idx = int(self.swing.get_value("high_idx"))
+            current_low_idx = int(self.swing.get_value("low_idx"))
 
             if (current_high_idx != self._last_high_idx or
                     current_low_idx != self._last_low_idx):
@@ -395,8 +396,8 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         - extension_up: levels above swing high
         - extension_down: levels below swing low
         """
-        high = self.swing.get_value("high_level")
-        low = self.swing.get_value("low_level")
+        high = float(self.swing.get_value("high_level"))
+        low = float(self.swing.get_value("low_level"))
 
         # Check for valid values (not NaN)
         if math.isnan(high) or math.isnan(low):
@@ -421,10 +422,10 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         Uses pair_high_level and pair_low_level from the swing dependency.
         These are guaranteed to come from the same swing sequence.
         """
-        high = self.swing.get_value("pair_high_level")
-        low = self.swing.get_value("pair_low_level")
-        direction = self.swing.get_value("pair_direction")
-        anchor_hash = self.swing.get_value("pair_anchor_hash")
+        high = float(self.swing.get_value("pair_high_level"))
+        low = float(self.swing.get_value("pair_low_level"))
+        direction = str(self.swing.get_value("pair_direction"))
+        anchor_hash = str(self.swing.get_value("pair_anchor_hash"))
 
         # Check for valid values (not NaN)
         if math.isnan(high) or math.isnan(low):
@@ -449,12 +450,13 @@ class IncrementalFibonacci(BaseIncrementalDetector):
         anchors. When direction=0 (ranging), keeps the last known anchors
         frozen to avoid flickering.
         """
-        direction = self.trend.get_value("direction")
+        assert self.trend is not None
+        direction = int(self.trend.get_value("direction"))
         if direction == 0:
             return  # Ranging — keep last known anchors
 
-        high = self.swing.get_value("pair_high_level")
-        low = self.swing.get_value("pair_low_level")
+        high = float(self.swing.get_value("pair_high_level"))
+        low = float(self.swing.get_value("pair_low_level"))
 
         if math.isnan(high) or math.isnan(low):
             return

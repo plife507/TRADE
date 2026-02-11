@@ -19,6 +19,7 @@ from rich.text import Text
 
 from src.config.config import get_config
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper, BillArtColors
+from src.cli.utils import BackCommand
 from src.tools import (
     list_open_positions_tool,
     get_position_detail_tool,
@@ -121,6 +122,7 @@ def positions_menu(cli: "TradeCLI"):
             price_input = get_input("Stop Loss Price (USD, e.g. 85000.50)")
             if price_input is BACK:
                 continue
+            assert isinstance(price_input, str)
             try:
                 price = float(price_input)
                 result = run_tool_action("positions.set_stop_loss", set_stop_loss_tool, symbol, price)
@@ -135,6 +137,7 @@ def positions_menu(cli: "TradeCLI"):
             price_input = get_input("Take Profit Price (USD, e.g. 95000.00)")
             if price_input is BACK:
                 continue
+            assert isinstance(price_input, str)
             try:
                 price = float(price_input)
                 result = run_tool_action("positions.set_take_profit", set_take_profit_tool, symbol, price)
@@ -150,9 +153,11 @@ def positions_menu(cli: "TradeCLI"):
             tp = get_input("Take Profit Price (USD, blank to skip)", "")
             if tp is BACK:
                 continue
+            assert isinstance(tp, str)
             sl = get_input("Stop Loss Price (USD, blank to skip)", "")
             if sl is BACK:
                 continue
+            assert isinstance(sl, str)
             try:
                 result = run_tool_action(
                     "positions.set_tpsl", set_position_tpsl_tool, symbol,
@@ -170,9 +175,11 @@ def positions_menu(cli: "TradeCLI"):
             percent_input = get_input("Close Percentage (0-100, e.g. 50 for 50%)", "50")
             if percent_input is BACK:
                 continue
+            assert isinstance(percent_input, str)
             price = get_input("Limit Price (USD, blank for Market order)", "")
             if price is BACK:
                 continue
+            assert isinstance(price, str)
             try:
                 percent = float(percent_input)
                 if percent < 0 or percent > 100:
@@ -249,6 +256,7 @@ def positions_menu(cli: "TradeCLI"):
             risk_id_input = get_input("Risk Limit ID (integer number)", "")
             if risk_id_input is BACK:
                 continue
+            assert isinstance(risk_id_input, str)
             if not risk_id_input:
                 console.print("[yellow]Cancelled - no risk limit ID provided[/]")
             else:
@@ -287,6 +295,7 @@ def positions_menu(cli: "TradeCLI"):
             leverage_input = get_input("Leverage (1-100, blank to keep current)", "")
             if leverage_input is BACK:
                 continue
+            assert isinstance(leverage_input, str)
             try:
                 lev_value = int(leverage_input) if leverage_input else None
                 if lev_value and (lev_value < 1 or lev_value > 100):
@@ -314,6 +323,7 @@ def positions_menu(cli: "TradeCLI"):
             margin_input = get_input("Margin amount (USD, e.g. 100 or -50)", "")
             if margin_input is BACK:
                 continue
+            assert isinstance(margin_input, str)
             try:
                 margin = float(margin_input)
                 result = run_tool_action("positions.modify_margin", modify_position_margin_tool, symbol, margin)

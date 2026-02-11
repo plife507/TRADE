@@ -16,7 +16,7 @@ CLI and agents should use these tools, not direct engine access.
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 import traceback
 
 import pandas as pd
@@ -213,6 +213,7 @@ def backtest_preflight_play_tool(
                             end = last_ts
                         # Compute start as 100 bars before end
                         tf_minutes = TF_MINUTES.get(exec_tf, 15)
+                        assert end is not None
                         start = end - timedelta(minutes=tf_minutes * 100)
                         logger.info(f"Preflight auto-window: start={start}, end={end} (from DB coverage)")
                     break
@@ -242,6 +243,7 @@ def backtest_preflight_play_tool(
                 data_env=env,
             )
 
+        assert end is not None
         preflight_report = run_preflight_gate(
             play=play,
             data_loader=data_loader,
@@ -325,6 +327,7 @@ def _resolve_backtest_config(
     Returns:
         ResolvedBacktestConfig with all resolved values
     """
+    assert play.account is not None, "Play.account is required for backtest"
     starting_equity = (
         initial_equity_override
         if initial_equity_override is not None
@@ -338,7 +341,7 @@ def _resolve_backtest_config(
     min_trade = play.account.min_trade_notional_usdt or 1.0
     symbol = preflight_data.get("symbol") or play.symbol_universe[0]
     exec_tf = validate_canonical_tf(play.exec_tf)
-    all_tfs = play.get_all_tfs()
+    all_tfs = sorted(play.get_all_tfs())
 
     # Compute warmup requirements
     warmup_reqs = compute_warmup_requirements(play)
@@ -378,10 +381,10 @@ def _log_backtest_config(config: ResolvedBacktestConfig, play: Play) -> None:
     logger.info(f"  max_leverage: {config.max_leverage:.1f}x")
     logger.info(f"  min_trade_notional_usdt: {config.min_trade:.2f}")
 
-    if play.account.fee_model:
+    if play.account is not None and play.account.fee_model:
         logger.info(f"  taker_fee_bps: {play.account.fee_model.taker_bps}")
         logger.info(f"  maker_fee_bps: {play.account.fee_model.maker_bps}")
-    if play.account.slippage_bps:
+    if play.account is not None and play.account.slippage_bps:
         logger.info(f"  slippage_bps: {play.account.slippage_bps}")
 
     logger.info("-" * 40)
@@ -572,12 +575,13 @@ def backtest_run_play_tool(
             print(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
 
             # Generate synthetic candles
+            from src.forge.validation.synthetic_data import PatternType
             candles = generate_synthetic_candles(
                 symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
                 timeframes=list(required_tfs),
                 bars_per_tf=play.synthetic.bars,
                 seed=play.synthetic.seed,
-                pattern=play.synthetic.pattern,
+                pattern=cast(PatternType, play.synthetic.pattern),
             )
 
             # Create provider and set window from synthetic data
@@ -623,6 +627,7 @@ def backtest_run_play_tool(
             )
 
         # Resolve configuration from Play and overrides
+        assert preflight_data is not None
         config = _resolve_backtest_config(
             play=play,
             preflight_data=preflight_data,

@@ -33,7 +33,7 @@ from pybit.exceptions import (
     UnauthorizedExceptionError,
 )
 
-from ..utils.rate_limiter import create_bybit_limiters
+from ..utils.rate_limiter import RateLimiter, create_bybit_limiters
 from ..utils.logger import get_logger
 from ..utils.time_range import TimeRange
 
@@ -202,11 +202,17 @@ class BybitClient:
         )
         
         self._limiters = create_bybit_limiters()
-        self._public_limiter = self._limiters.get_limiter("public")
-        self._private_limiter = self._limiters.get_limiter("private")
-        self._order_limiter = self._limiters.get_limiter("orders")
+        public = self._limiters.get_limiter("public")
+        private = self._limiters.get_limiter("private")
+        orders = self._limiters.get_limiter("orders")
+        assert public is not None, "public limiter not configured"
+        assert private is not None, "private limiter not configured"
+        assert orders is not None, "orders limiter not configured"
+        self._public_limiter: RateLimiter = public
+        self._private_limiter: RateLimiter = private
+        self._order_limiter: RateLimiter = orders
         
-        self._rate_limit_status = {
+        self._rate_limit_status: dict[str, str | None] = {
             "remaining": None,
             "limit": None,
             "reset_timestamp": None,
@@ -222,12 +228,12 @@ class BybitClient:
             server_time = self._session.get_server_time()
             after = int(time.time() * 1000)
             
-            result = server_time
+            result: dict = {}
             if isinstance(server_time, tuple):
                 result = server_time[0].get("result", {})
             elif isinstance(server_time, dict):
                 result = server_time.get("result", {})
-            
+
             server_time_ms = int(result.get("timeNano", "0")) // 1_000_000
             if server_time_ms == 0:
                 server_time_ms = int(result.get("timeSecond", "0")) * 1000
@@ -324,7 +330,7 @@ class BybitClient:
         from . import bybit_market as mkt
         return mkt.get_instruments(self, symbol, category)
     
-    def get_instrument_info(self, symbol: str, category: str = "linear") -> dict:
+    def get_instrument_info(self, symbol: str, category: str = "linear") -> dict | None:
         from . import bybit_market as mkt
         return mkt.get_instrument_info(self, symbol, category)
     

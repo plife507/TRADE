@@ -18,7 +18,7 @@ import pandas as pd
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from ..play import Play
@@ -392,13 +392,18 @@ class FeatureFrameBuilder:
         code_ver = get_code_version()
         computed_at = datetime.now(timezone.utc)
         
-        # Extract OHLCV columns
-        ohlcv = {
-            "open": df["open"],
-            "high": df["high"],
-            "low": df["low"],
-            "close": df["close"],
-            "volume": df["volume"] if "volume" in df.columns else pd.Series(np.zeros(length)),
+        # Extract OHLCV columns (cast to Series for type safety)
+        _open = cast(pd.Series, df["open"])
+        _high = cast(pd.Series, df["high"])
+        _low = cast(pd.Series, df["low"])
+        _close = cast(pd.Series, df["close"])
+        _volume = cast(pd.Series, df["volume"]) if "volume" in df.columns else pd.Series(np.zeros(length))
+        ohlcv: dict[str, pd.Series] = {
+            "open": _open,
+            "high": _high,
+            "low": _low,
+            "close": _close,
+            "volume": _volume,
         }
 
         # Compute derived sources
@@ -413,7 +418,7 @@ class FeatureFrameBuilder:
             ohlcv["ts_open"] = df["timestamp"]
 
         # Get timestamps for metadata (optional)
-        timestamps = df["timestamp"].values if "timestamp" in df.columns else None
+        timestamps: np.ndarray | None = np.asarray(df["timestamp"].values) if "timestamp" in df.columns else None
         
         # Process specs in order (dependencies already validated)
         for spec in spec_set.specs:
@@ -584,7 +589,7 @@ class FeatureFrameBuilder:
                     series = result[name]
                     computed[key] = series
                     # Create metadata for this output
-                    metadata_dict[key] = create_metadata(key, series.values)
+                    metadata_dict[key] = create_metadata(key, np.asarray(series.values))
                 else:
                     raise ValueError(
                         f"Multi-output indicator {ind_type_str} did not produce output '{name}'"
@@ -595,7 +600,7 @@ class FeatureFrameBuilder:
             key = spec.output_key
             computed[key] = series
             # Create metadata for this output
-            metadata_dict[key] = create_metadata(key, series.values)
+            metadata_dict[key] = create_metadata(key, np.asarray(series.values))
     
     def _compute_single_output(
         self,
@@ -629,7 +634,7 @@ class FeatureFrameBuilder:
 
         # Pass input_series as the primary input - single-input indicators use it directly
         # Multi-input indicators (ATR, MACD) use their own required inputs from registry
-        return self.compute.compute(
+        result = self.compute.compute(
             ind_type,
             close=input_series,
             high=ohlcv["high"],
@@ -639,7 +644,9 @@ class FeatureFrameBuilder:
             ts_open=ohlcv.get("ts_open"),  # For VWAP session boundaries
             **params,
         )
-    
+        assert isinstance(result, pd.Series), f"Expected single-output Series from {ind_type}"
+        return result
+
     def _compute_multi_output(
         self,
         spec: FeatureSpec,
@@ -672,7 +679,7 @@ class FeatureFrameBuilder:
 
         # Pass input_series as the primary input - single-input indicators use it directly
         # Multi-input indicators (ATR, MACD) use their own required inputs from registry
-        return self.compute.compute(
+        result = self.compute.compute(
             ind_type,
             close=input_series,
             high=ohlcv["high"],
@@ -682,6 +689,8 @@ class FeatureFrameBuilder:
             ts_open=ohlcv.get("ts_open"),  # For VWAP session boundaries
             **params,
         )
+        assert isinstance(result, dict), f"Expected multi-output dict from {ind_type}"
+        return result
 
     def _get_input_series(
         self,

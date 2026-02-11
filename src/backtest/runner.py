@@ -28,7 +28,7 @@ If any gate fails, the runner stops and returns a failure status.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, cast
 from pathlib import Path
 import json
 import time
@@ -80,6 +80,7 @@ from .logging import RunLogger, set_run_logger
 
 if TYPE_CHECKING:
     from ..forge.validation.synthetic_provider import SyntheticDataProvider
+    from ..forge.validation.synthetic_data import PatternType
 
 
 class GateFailure(Exception):
@@ -177,7 +178,7 @@ def _setup_synthetic_provider(
         timeframes=list(required_tfs),
         bars_per_tf=play.synthetic.bars,
         seed=play.synthetic.seed,
-        pattern=play.synthetic.pattern,
+        pattern=cast("PatternType", play.synthetic.pattern),
     )
 
     # Create provider and set window from synthetic data
@@ -245,13 +246,17 @@ def _create_artifact_setup(
     exec_tf = play.execution_tf
     tf_ctx = sorted(play.feature_registry.get_all_tfs())
 
+    # Window must be resolved before artifact setup
+    assert config.window_start is not None, "window_start must be set before artifact setup"
+    assert config.window_end is not None, "window_end must be set before artifact setup"
+
     # Determine data source ID
     data_source_id = "synthetic" if synthetic_provider is not None else "duckdb_live"
 
     # Build input hash components
     input_components = InputHashComponents(
         play_hash=play_hash,
-        symbols=play.symbol_universe,
+        symbols=list(play.symbol_universe),
         tf_exec=exec_tf,
         tf_ctx=tf_ctx,
         window_start=config.window_start.strftime("%Y-%m-%d"),
@@ -303,7 +308,7 @@ def _create_artifact_setup(
         hash_algorithm="sha256",
         play_id=play.id,
         play_hash=play_hash,
-        symbols=play.symbol_universe,
+        symbols=list(play.symbol_universe),
         universe_id=universe_id,
         tf_exec=exec_tf,
         tf_ctx=tf_ctx,
@@ -336,6 +341,12 @@ def _run_preflight_gate(
     Returns PreflightReport if run, None if skipped.
     Raises GateFailure if preflight fails.
     """
+    assert ctx.config is not None, "config must be set before preflight gate"
+    assert ctx.play is not None, "play must be set before preflight gate"
+    assert ctx.artifact_path is not None, "artifact_path must be set before preflight gate"
+    assert ctx.manifest is not None, "manifest must be set before preflight gate"
+    assert ctx.result is not None, "result must be set before preflight gate"
+
     config = ctx.config
     play = ctx.play
     artifact_path = ctx.artifact_path
@@ -349,6 +360,9 @@ def _run_preflight_gate(
 
     if not config.data_loader:
         raise ValueError("data_loader is required for preflight gate")
+
+    assert config.window_start is not None, "window_start must be set before preflight gate"
+    assert config.window_end is not None, "window_end must be set before preflight gate"
 
     print("\n[PREFLIGHT] Running Data Preflight Gate...")
 
@@ -471,6 +485,9 @@ def _execute_backtest(
 
     Updates ctx with engine, engine_result, trades, equity_curve.
     """
+    assert ctx.play is not None, "play must be set before backtest execution"
+    assert ctx.config is not None, "config must be set before backtest execution"
+
     from .engine_factory import create_engine_from_play, run_engine_with_play
 
     print("\n[RUN] Running Backtest...")
@@ -512,6 +529,7 @@ def _write_trade_artifacts(ctx: _RunContext) -> int | None:
 
     Returns eval_start_ts_ms for manifest.
     """
+    assert ctx.artifact_path is not None, "artifact_path must be set before writing artifacts"
     artifact_path = ctx.artifact_path
 
     # Write trades.parquet
@@ -560,6 +578,12 @@ def _write_results_summary(ctx: _RunContext) -> ResultsSummary:
 
     Returns ResultsSummary.
     """
+    assert ctx.config is not None, "config must be set before writing results"
+    assert ctx.play is not None, "play must be set before writing results"
+    assert ctx.artifact_path is not None, "artifact_path must be set before writing results"
+    assert ctx.config.window_start is not None, "window_start must be set before writing results"
+    assert ctx.config.window_end is not None, "window_end must be set before writing results"
+
     run_duration = time.time() - ctx.run_start_time
 
     # Compute hashes
@@ -617,6 +641,11 @@ def _write_pipeline_signature(ctx: _RunContext) -> None:
 
     Raises GateFailure if signature validation fails.
     """
+    assert ctx.config is not None, "config must be set before pipeline signature"
+    assert ctx.play is not None, "play must be set before pipeline signature"
+    assert ctx.result is not None, "result must be set before pipeline signature"
+    assert ctx.artifact_path is not None, "artifact_path must be set before pipeline signature"
+
     from .artifacts.pipeline_signature import (
         PIPELINE_SIGNATURE_FILE,
         create_pipeline_signature,
@@ -665,6 +694,10 @@ def _run_artifact_validation(ctx: _RunContext) -> None:
 
     Raises GateFailure if validation fails.
     """
+    assert ctx.config is not None, "config must be set before artifact validation"
+    assert ctx.result is not None, "result must be set before artifact validation"
+    assert ctx.artifact_path is not None, "artifact_path must be set before artifact validation"
+
     if ctx.config.skip_artifact_validation:
         return
 
@@ -687,6 +720,12 @@ def _emit_snapshots(ctx: _RunContext) -> None:
 
     Non-fatal errors are logged but don't fail the run.
     """
+    assert ctx.config is not None, "config must be set before snapshot emission"
+    assert ctx.play is not None, "play must be set before snapshot emission"
+    assert ctx.artifact_path is not None, "artifact_path must be set before snapshot emission"
+    assert ctx.config.window_start is not None, "window_start must be set before snapshot emission"
+    assert ctx.config.window_end is not None, "window_end must be set before snapshot emission"
+
     if not ctx.config.emit_snapshots:
         return
 
@@ -724,7 +763,11 @@ def _emit_snapshots(ctx: _RunContext) -> None:
             high_tf_specs = engine_config.feature_specs_by_role.get('high_tf', [])
 
         # exec_role indicates which of the 3 TFs is the execution TF
-        exec_role = ctx.play.exec_role if hasattr(ctx.play, 'exec_role') else "low_tf"
+        exec_role = ctx.play.exec_role or "low_tf"
+
+        # low_tf is required for snapshot emission
+        play_low_tf = ctx.play.low_tf
+        assert play_low_tf is not None, "play.low_tf must be set for snapshot emission"
 
         snapshots_dir = emit_snapshot_artifacts(
             run_dir=ctx.artifact_path,
@@ -733,7 +776,7 @@ def _emit_snapshots(ctx: _RunContext) -> None:
             window_start=ctx.config.window_start,
             window_end=ctx.config.window_end,
             # The 3 concrete TF values
-            low_tf=ctx.play.low_tf,
+            low_tf=play_low_tf,
             med_tf=ctx.play.med_tf,
             high_tf=ctx.play.high_tf,
             # exec_role pointer
@@ -862,6 +905,7 @@ def run_backtest_with_gates(
         result=RunnerResult(success=False, run_id=""),
         run_start_time=time.time(),
     )
+    assert ctx.result is not None
     result = ctx.result
 
     try:

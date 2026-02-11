@@ -454,6 +454,7 @@ def sync_to_now_and_fill_gaps_tool(
     try:
         sync_result = sync_to_now_tool(symbols, timeframes=timeframes, env=env)
         if sync_result.success:
+            assert sync_result.data is not None
             results["sync_forward"] = {
                 "total_synced": sync_result.data.get("total_synced", 0),
                 "details": sync_result.data.get("results", {}),
@@ -473,6 +474,7 @@ def sync_to_now_and_fill_gaps_tool(
                 env=env,
             )
             if gap_result.success:
+                assert gap_result.data is not None
                 # Merge per-symbol results
                 for key, count in gap_result.data.get("results", {}).items():
                     gap_results[key] = count
@@ -555,6 +557,7 @@ def build_symbol_history_tool(
     try:
         ohlcv_result = sync_symbols_tool(symbols, period=period, timeframes=timeframes, env=env)
         if ohlcv_result.success:
+            assert ohlcv_result.data is not None
             results["ohlcv"] = {
                 "success": True,
                 "total_synced": ohlcv_result.data.get("total_synced", 0),
@@ -569,6 +572,7 @@ def build_symbol_history_tool(
     try:
         funding_result = sync_funding_tool(symbols, period=period, env=env)
         if funding_result.success:
+            assert funding_result.data is not None
             results["funding"] = {
                 "success": True,
                 "total_synced": funding_result.data.get("total_synced", 0),
@@ -583,6 +587,7 @@ def build_symbol_history_tool(
     try:
         oi_result = sync_open_interest_tool(symbols, period=period, interval=oi_interval, env=env)
         if oi_result.success:
+            assert oi_result.data is not None
             results["open_interest"] = {
                 "success": True,
                 "total_synced": oi_result.data.get("total_synced", 0),

@@ -17,6 +17,7 @@ from rich.prompt import Prompt
 from rich.align import Align
 
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper
+from src.cli.utils import BackCommand
 from src.tools import (
     get_account_balance_tool,
     get_total_exposure_tool,
@@ -108,6 +109,7 @@ def account_menu(cli: "TradeCLI"):
             limit_input = get_input("Limit (1-50)", "50")
             if limit_input is BACK:
                 continue
+            assert isinstance(limit_input, str)
             try:
                 limit = int(limit_input)
                 result = run_tool_action(
@@ -133,6 +135,7 @@ def account_menu(cli: "TradeCLI"):
             limit_input = get_input("Limit (1-50)", "50")
             if limit_input is BACK:
                 continue
+            assert isinstance(limit_input, str)
             try:
                 limit = int(limit_input)
                 result = run_tool_action(
@@ -164,6 +167,7 @@ def account_menu(cli: "TradeCLI"):
             limit_input = get_input("Limit (1-50)", "50")
             if limit_input is BACK:
                 continue
+            assert isinstance(limit_input, str)
             try:
                 limit = int(limit_input)
                 result = run_tool_action(
@@ -194,6 +198,7 @@ def account_menu(cli: "TradeCLI"):
             action = get_input("Enable as collateral? (yes/no)", "yes")
             if action is BACK:
                 continue
+            assert isinstance(action, str)
             enabled = action.lower() in ("yes", "y", "true", "1")
             result = run_tool_action("account.set_collateral", set_collateral_coin_tool, coin, enabled)
             print_data_result("account.set_collateral", result)
@@ -209,6 +214,7 @@ def account_menu(cli: "TradeCLI"):
             limit_input = get_input("Limit (1-50)", "50")
             if limit_input is BACK:
                 continue
+            assert isinstance(limit_input, str)
             try:
                 limit = int(limit_input)
                 result = run_tool_action(

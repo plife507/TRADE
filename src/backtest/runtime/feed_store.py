@@ -30,6 +30,18 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 import pandas as pd
 
+
+def _np_dt64_to_epoch_ms(ts: np.datetime64) -> int:
+    """Convert numpy datetime64 to epoch milliseconds (no pandas NaT issues)."""
+    # Use .item() to get a Python int from the numpy scalar
+    return int(ts.astype("datetime64[ms]").astype("int64"))
+
+
+def _np_dt64_to_datetime(ts: np.datetime64) -> datetime:
+    """Convert numpy datetime64 to Python datetime."""
+    epoch_ms = _np_dt64_to_epoch_ms(ts)
+    return datetime.utcfromtimestamp(epoch_ms / 1000.0)
+
 if TYPE_CHECKING:
     from ..features.feature_frame_builder import FeatureArrays
     from src.indicators.metadata import IndicatorMetadata
@@ -165,14 +177,14 @@ class FeedStore:
         """Get ts_close as Python datetime at index."""
         ts = self.ts_close[idx]
         if isinstance(ts, np.datetime64):
-            return pd.Timestamp(ts).to_pydatetime()
+            return _np_dt64_to_datetime(ts)
         return ts
-    
+
     def get_ts_open_datetime(self, idx: int) -> datetime:
         """Get ts_open as Python datetime at index."""
         ts = self.ts_open[idx]
         if isinstance(ts, np.datetime64):
-            return pd.Timestamp(ts).to_pydatetime()
+            return _np_dt64_to_datetime(ts)
         return ts
     
     def is_close_at(self, ts: datetime) -> bool:
@@ -193,11 +205,11 @@ class FeedStore:
         """
         # Convert to epoch ms
         if isinstance(ts, np.datetime64):
-            ts_ms = int(pd.Timestamp(ts).timestamp() * 1000)
+            ts_ms = _np_dt64_to_epoch_ms(ts)
         else:
             ts_ms = int(ts.timestamp() * 1000)
         return self.ts_close_ms_to_idx.get(ts_ms)
-    
+
     def get_last_closed_idx_at_or_before(self, ts: datetime) -> int | None:
         """
         Get the last closed bar index at or before a given timestamp.
@@ -215,7 +227,7 @@ class FeedStore:
             return None
 
         if isinstance(ts, np.datetime64):
-            ts_ms = int(pd.Timestamp(ts).timestamp() * 1000)
+            ts_ms = _np_dt64_to_epoch_ms(ts)
         else:
             ts_ms = int(ts.timestamp() * 1000)
 
@@ -234,14 +246,14 @@ class FeedStore:
         """Get ts_close in epoch ms at a given index."""
         ts = self.ts_close[idx]
         if isinstance(ts, np.datetime64):
-            return int(pd.Timestamp(ts).timestamp() * 1000)
+            return _np_dt64_to_epoch_ms(ts)
         return int(ts.timestamp() * 1000)
 
     @staticmethod
-    def _ts_to_ms(ts) -> int:
+    def _ts_to_ms(ts: datetime | np.datetime64) -> int:
         """Convert a timestamp to epoch milliseconds."""
         if isinstance(ts, np.datetime64):
-            return int(pd.Timestamp(ts).timestamp() * 1000)
+            return _np_dt64_to_epoch_ms(ts)
         return int(ts.timestamp() * 1000)
 
     def get_1m_indices_for_exec(
@@ -452,8 +464,8 @@ class FeedStore:
         ts_close_ms_to_idx: dict[int, int] = {}
         for i, ts in enumerate(ts_close):
             if isinstance(ts, np.datetime64):
-                dt = pd.Timestamp(ts).to_pydatetime()
-                ts_ms = int(pd.Timestamp(ts).timestamp() * 1000)
+                dt = _np_dt64_to_datetime(ts)
+                ts_ms = _np_dt64_to_epoch_ms(ts)
             else:
                 dt = ts
                 ts_ms = int(ts.timestamp() * 1000)
@@ -466,12 +478,12 @@ class FeedStore:
         for col in indicator_columns:
             if col in df.columns:
                 indicators[col] = df[col].values.astype(dtype)
-        
+
         return cls(
             tf=tf,
             symbol=symbol,
-            ts_open=ts_open,
-            ts_close=ts_close,
+            ts_open=np.asarray(ts_open),
+            ts_close=np.asarray(ts_close),
             open=df["open"].values.astype(np.float64),
             high=df["high"].values.astype(np.float64),
             low=df["low"].values.astype(np.float64),
@@ -533,8 +545,8 @@ class FeedStore:
         ts_close_ms_to_idx_features: dict[int, int] = {}
         for i, ts in enumerate(ts_close):
             if isinstance(ts, np.datetime64):
-                dt = pd.Timestamp(ts).to_pydatetime()
-                ts_ms = int(pd.Timestamp(ts).timestamp() * 1000)
+                dt = _np_dt64_to_datetime(ts)
+                ts_ms = _np_dt64_to_epoch_ms(ts)
             else:
                 dt = ts
                 ts_ms = int(ts.timestamp() * 1000)
@@ -544,8 +556,8 @@ class FeedStore:
         return cls(
             tf=tf,
             symbol=symbol,
-            ts_open=ts_open,
-            ts_close=ts_close,
+            ts_open=np.asarray(ts_open),
+            ts_close=np.asarray(ts_close),
             open=df["open"].values.astype(np.float64),
             high=df["high"].values.astype(np.float64),
             low=df["low"].values.astype(np.float64),

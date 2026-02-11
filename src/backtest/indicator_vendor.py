@@ -199,8 +199,12 @@ def _compute_vwap_with_datetime_index(
         'volume': volume.values,
     }, index=dt_index)
 
-    # Compute VWAP
-    vwap_result = ta.vwap(df['high'], df['low'], df['close'], df['volume'], **kwargs)
+    # Compute VWAP (columns are guaranteed to be Series from DataFrame construction)
+    s_high = pd.Series(df['high'])
+    s_low = pd.Series(df['low'])
+    s_close = pd.Series(df['close'])
+    s_volume = pd.Series(df['volume'])
+    vwap_result = ta.vwap(s_high, s_low, s_close, s_volume, **kwargs)
 
     if vwap_result is None:
         return pd.Series(index=original_index, dtype=float)
@@ -370,12 +374,21 @@ def compute_indicator(
 
     # Special handling for VWAP: requires DatetimeIndex for session boundaries
     if indicator_name == "vwap":
+        # Registry guarantees high, low, close, volume are required for VWAP
+        assert high is not None, "VWAP requires 'high' series"
+        assert low is not None, "VWAP requires 'low' series"
+        assert close is not None, "VWAP requires 'close' series"
+        assert volume is not None, "VWAP requires 'volume' series"
         result = _compute_vwap_with_datetime_index(
             high=high, low=low, close=close, volume=volume, ts_open=ts_open, **kwargs
         )
     elif indicator_name == "anchored_vwap":
         # Anchored VWAP is incremental-only (no pandas_ta batch equivalent).
         # Compute using the incremental class in batch mode.
+        assert high is not None, "Anchored VWAP requires 'high' series"
+        assert low is not None, "Anchored VWAP requires 'low' series"
+        assert close is not None, "Anchored VWAP requires 'close' series"
+        assert volume is not None, "Anchored VWAP requires 'volume' series"
         result = _compute_anchored_vwap(
             high=high, low=low, close=close, volume=volume, **kwargs
         )
@@ -563,6 +576,92 @@ def _extract_column_key(col_name: str, indicator_name: str) -> str:
         return parts[0]
     
     return col_lower
+
+
+# =============================================================================
+# Explicit Wrapper Functions (backward compatibility)
+# =============================================================================
+# These thin wrappers forward to pandas_ta for explicit parameter documentation
+# and type safety. compute.py's fast-path uses these directly.
+
+
+def ema(close: pd.Series, length: int = 20, **kwargs: Any) -> pd.Series:
+    """Exponential moving average."""
+    result = ta.ema(close, length=length, **kwargs)
+    if result is None:
+        return pd.Series(index=close.index, dtype=float)
+    return result
+
+
+def sma(close: pd.Series, length: int = 20, **kwargs: Any) -> pd.Series:
+    """Simple moving average."""
+    result = ta.sma(close, length=length, **kwargs)
+    if result is None:
+        return pd.Series(index=close.index, dtype=float)
+    return result
+
+
+def rsi(close: pd.Series, length: int = 14, **kwargs: Any) -> pd.Series:
+    """Relative strength index."""
+    result = ta.rsi(close, length=length, **kwargs)
+    if result is None:
+        return pd.Series(index=close.index, dtype=float)
+    return result
+
+
+def atr(
+    high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14, **kwargs: Any
+) -> pd.Series:
+    """Average true range."""
+    result = ta.atr(high, low, close, length=length, **kwargs)
+    if result is None:
+        return pd.Series(index=close.index, dtype=float)
+    return result
+
+
+def macd(
+    close: pd.Series,
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9,
+    **kwargs: Any,
+) -> pd.DataFrame | None:
+    """MACD (returns DataFrame with MACD, histogram, signal columns)."""
+    return ta.macd(close, fast=fast, slow=slow, signal=signal, **kwargs)
+
+
+def bbands(
+    close: pd.Series, length: int = 20, std: float = 2.0, **kwargs: Any
+) -> pd.DataFrame | None:
+    """Bollinger Bands (returns DataFrame with lower, middle, upper columns)."""
+    # pandas_ta uses lower_std/upper_std params; std is passed via kwargs
+    kwargs["std"] = std
+    return ta.bbands(close, length=length, **kwargs)
+
+
+def stoch(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    k: int = 14,
+    d: int = 3,
+    smooth_k: int = 3,
+    **kwargs: Any,
+) -> pd.DataFrame | None:
+    """Stochastic oscillator (returns DataFrame with k, d columns)."""
+    return ta.stoch(high, low, close, k=k, d=d, smooth_k=smooth_k, **kwargs)
+
+
+def stochrsi(
+    close: pd.Series,
+    length: int = 14,
+    rsi_length: int = 14,
+    k: int = 3,
+    d: int = 3,
+    **kwargs: Any,
+) -> pd.DataFrame | None:
+    """Stochastic RSI (returns DataFrame with k, d columns)."""
+    return ta.stochrsi(close, length=length, rsi_length=rsi_length, k=k, d=d, **kwargs)
 
 
 # =============================================================================

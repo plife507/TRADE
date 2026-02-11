@@ -382,12 +382,18 @@ def delete_all_data_tool(vacuum: bool = True, env: DataEnv = DEFAULT_DATA_ENV) -
         store = _get_historical_store(env=env)
         
         # Count rows before deletion
-        ohlcv_count = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_ohlcv}").fetchone()[0]
-        metadata_count = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_sync_metadata}").fetchone()[0]
-        funding_count = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_funding}").fetchone()[0]
-        funding_meta_count = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_funding_metadata}").fetchone()[0]
-        oi_count = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_oi}").fetchone()[0]
-        oi_meta_count = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_oi_metadata}").fetchone()[0]
+        ohlcv_row = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_ohlcv}").fetchone()
+        metadata_row = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_sync_metadata}").fetchone()
+        funding_row = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_funding}").fetchone()
+        funding_meta_row = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_funding_metadata}").fetchone()
+        oi_row = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_oi}").fetchone()
+        oi_meta_row = store.conn.execute(f"SELECT COUNT(*) FROM {store.table_oi_metadata}").fetchone()
+        ohlcv_count = ohlcv_row[0] if ohlcv_row else 0
+        metadata_count = metadata_row[0] if metadata_row else 0
+        funding_count = funding_row[0] if funding_row else 0
+        funding_meta_count = funding_meta_row[0] if funding_meta_row else 0
+        oi_count = oi_row[0] if oi_row else 0
+        oi_meta_count = oi_meta_row[0] if oi_meta_row else 0
         
         # Delete all data from all tables
         store.conn.execute(f"DELETE FROM {store.table_ohlcv}")
@@ -791,7 +797,7 @@ def sync_full_from_launch_tool(
             try:
                 gap_result = fill_gaps_tool(symbol=symbol, env=env)
                 if gap_result.success:
-                    results["gaps_filled"] = gap_result.data.get("total_filled", 0)
+                    results["gaps_filled"] = gap_result.data.get("total_filled", 0) if gap_result.data else 0
             except Exception as e:
                 errors.append(f"Gap fill: {str(e)}")
         

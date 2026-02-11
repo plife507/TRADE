@@ -10,6 +10,7 @@ Contains:
 
 import os
 from datetime import datetime
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -112,31 +113,31 @@ def print_header():
     console.print()  # Spacer
 
 
-def get_input(prompt: str, default: str = "") -> str:
+def get_input(prompt: str, default: str = "") -> str | BackCommand:
     """Get user input with optional default. Returns BACK sentinel if exit command detected."""
     hint = "[dim](or 'back'/'b' to cancel)[/]"
     try:
         user_input = Prompt.ask(f"[cyan]{prompt}[/] {hint}", default=default if default else None, show_default=bool(default))
-        
-        if is_exit_command(user_input):
+
+        if user_input is not None and is_exit_command(user_input):
             return BACK
-        return user_input
+        return user_input or ""
     except (EOFError, KeyboardInterrupt):
         console.print("\n[yellow]Cancelled.[/]")
         return BACK
 
 
-def get_choice(valid_range: range = None) -> int:
+def get_choice(valid_range: range | None = None) -> int | BackCommand:
     """Get numeric choice from user. Returns BACK sentinel if exit command detected."""
     while True:
         try:
             choice_input = Prompt.ask("\n[bold cyan]Enter choice[/] [dim](or 'back'/'b' to go back)[/]")
-            
+
             if is_exit_command(choice_input):
                 return BACK
-            
+
             choice = int(choice_input)
-            
+
             if valid_range and choice not in valid_range:
                 print_error_below_menu(f"Invalid choice. Please enter a number between {valid_range.start} and {valid_range.stop-1}.")
                 continue
@@ -149,19 +150,19 @@ def get_choice(valid_range: range = None) -> int:
             continue
 
 
-def get_float_input(prompt: str, default: str = "") -> float:
+def get_float_input(prompt: str, default: str = "") -> float | BackCommand | None:
     """
     Get float input from user with error handling.
     Returns BACK sentinel if exit command detected or None on error.
     Shows error message and returns None for invalid input (caller should handle).
     """
     value = get_input(prompt, default)
-    if value is BACK:
+    if isinstance(value, BackCommand):
         return BACK
-    
+
     if not value and default:
         value = default
-    
+
     try:
         return float(value)
     except (ValueError, TypeError):
@@ -169,19 +170,19 @@ def get_float_input(prompt: str, default: str = "") -> float:
         return None
 
 
-def get_int_input(prompt: str, default: str = "") -> int:
+def get_int_input(prompt: str, default: str = "") -> int | BackCommand | None:
     """
     Get integer input from user with error handling.
     Returns BACK sentinel if exit command detected or None on error.
     Shows error message and returns None for invalid input (caller should handle).
     """
     value = get_input(prompt, default)
-    if value is BACK:
+    if isinstance(value, BackCommand):
         return BACK
-    
+
     if not value and default:
         value = default
-    
+
     try:
         return int(value)
     except (ValueError, TypeError):
@@ -285,9 +286,9 @@ def select_time_range_cli(
     
     max_option = custom_option if include_custom else max_preset_option
     choice_input = get_input(f"Time range [1-{max_option}]", "1")
-    if choice_input is BACK:
+    if isinstance(choice_input, BackCommand):
         return TimeRangeSelection(is_back=True)
-    
+
     window_map = {"1": "24h", "2": "7d", "3": "30d" if max_days >= 30 else "7d"}
     
     if include_custom and choice_input == str(custom_option):
@@ -311,9 +312,9 @@ def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSel
     console.print(f"[dim]Format: YYYY-MM-DD or YYYY-MM-DD HH:MM[/]")
     
     start_input = get_input(f"Start date (earliest: {earliest_str})")
-    if start_input is BACK:
+    if isinstance(start_input, BackCommand):
         return TimeRangeSelection(is_back=True)
-    
+
     if not start_input.strip():
         print_error_below_menu("Start date is required")
         return TimeRangeSelection(is_back=True)
@@ -340,9 +341,9 @@ def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSel
     console.print(f"[dim]Valid end range: {start_dt.strftime('%Y-%m-%d')} to {max_end_str}[/]")
     
     end_input = get_input("End date (blank = now)")
-    if end_input is BACK:
+    if isinstance(end_input, BackCommand):
         return TimeRangeSelection(is_back=True)
-    
+
     end_dt = _parse_datetime_input(end_input, default_now=True)
     if end_dt is None:
         print_error_below_menu(f"Invalid date: '{end_input}'", "Use YYYY-MM-DD or YYYY-MM-DD HH:MM")
@@ -577,22 +578,23 @@ def print_result(result: ToolResult):
         console.print(Panel(f"[bold {CLIColors.NEON_GREEN}]✓ {result.message}[/]", border_style=CLIColors.NEON_GREEN))
         
         if result.data:
-            if isinstance(result.data, list):
-                if result.data and isinstance(result.data[0], dict):
+            data: Any = result.data
+            if isinstance(data, list):
+                if data and isinstance(data[0], dict):
                     table = Table(show_header=True, header_style=f"bold {CLIColors.NEON_MAGENTA}", border_style=CLIColors.BORDER)
-                    keys = result.data[0].keys()
+                    keys = data[0].keys()
                     for key in keys:
                         table.add_column(str(key))
-                    
-                    for item in result.data[:20]:
+
+                    for item in data[:20]:
                         row_vals = [str(item.get(k, "")) for k in keys]
                         table.add_row(*row_vals)
                     
                     console.print(table)
-                    if len(result.data) > 20:
-                        console.print(f"[{CLIColors.DIM_TEXT}]... and {len(result.data) - 20} more items[/]")
+                    if len(data) > 20:
+                        console.print(f"[{CLIColors.DIM_TEXT}]... and {len(data) - 20} more items[/]")
                 else:
-                    for item in result.data:
+                    for item in data:
                         console.print(f"  • {item}")
             
             elif isinstance(result.data, dict):
@@ -617,7 +619,7 @@ def print_result(result: ToolResult):
             else:
                 console.print(f"[{CLIColors.NEON_CYAN}]Data:[/] {result.data}")
     else:
-        print_error_below_menu(result.error)
+        print_error_below_menu(result.error or "Unknown error")
 
 
 def print_data_result(action_key: str, result: ToolResult):
@@ -734,7 +736,7 @@ def print_data_result(action_key: str, result: ToolResult):
         console.print(f"[{CLIColors.DIM_TEXT}]{footer}[/]")
 
 
-def print_order_preview(order_type: str, symbol: str, side: str, qty_usd: float, price: float = None, **kwargs):
+def print_order_preview(order_type: str, symbol: str, side: str, qty_usd: float, price: float | None = None, **kwargs: Any):
     """Print a preview panel for an order."""
     grid = Table.grid(expand=True, padding=(0, 2))
     grid.add_column(justify="right", style=CLIColors.NEON_CYAN)

@@ -357,6 +357,7 @@ class FeatureRegistry:
         for feature in self._features.values():
             if feature.is_indicator:
                 # Validate indicator type
+                assert feature.indicator_type is not None
                 if not indicator_registry.is_supported(feature.indicator_type):
                     available = indicator_registry.list_indicators()
                     errors.append(
@@ -451,10 +452,12 @@ class FeatureRegistry:
 
         if feature.is_indicator:
             from .indicator_registry import get_indicator_output_type
+            assert feature.indicator_type is not None
             return get_indicator_output_type(feature.indicator_type, field)
 
         elif feature.is_structure:
             from src.structures import get_structure_output_type
+            assert feature.structure_type is not None
             return get_structure_output_type(feature.structure_type, field)
 
         else:
@@ -484,6 +487,7 @@ class FeatureRegistry:
         for feature in self.get_for_tf(tf):
             if feature.is_indicator:
                 try:
+                    assert feature.indicator_type is not None
                     warmup = indicator_registry.get_warmup_bars(
                         feature.indicator_type, feature.params
                     )
@@ -499,6 +503,7 @@ class FeatureRegistry:
 
             elif feature.is_structure:
                 try:
+                    assert feature.structure_type is not None
                     info = get_structure_info(feature.structure_type)
                     # Structure warmup from params (e.g., swing: left + right + 1)
                     left = feature.params.get("left", 5)
@@ -539,6 +544,7 @@ class FeatureRegistry:
         for feature_id, feature in self._features.items():
             if feature.is_indicator:
                 try:
+                    assert feature.indicator_type is not None
                     output_keys = indicator_registry.get_expanded_keys(
                         feature.indicator_type, feature.id
                     )

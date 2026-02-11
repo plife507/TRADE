@@ -34,7 +34,7 @@ class RiskDecision:
     adjusted_size: float | None = None
     
     @classmethod
-    def allow(cls, reason: str = "Allowed", adjusted_size: float = None) -> "RiskDecision":
+    def allow(cls, reason: str = "Allowed", adjusted_size: float | None = None) -> "RiskDecision":
         return cls(allowed=True, reason=reason, adjusted_size=adjusted_size)
     
     @classmethod
@@ -85,12 +85,12 @@ class RiskPolicy(ABC):
 class NoneRiskPolicy(RiskPolicy):
     """
     Always-allow risk policy.
-    
+
     Used for pure strategy backtesting without risk constraints.
     Signals pass through unchanged.
     """
-    
-    def __init__(self, risk_profile: RiskProfileConfig = None):
+
+    def __init__(self, risk_profile: RiskProfileConfig | None = None):
         """
         Initialize with optional risk profile (for reference only).
         
@@ -111,7 +111,6 @@ class NoneRiskPolicy(RiskPolicy):
         """Always allow signals (ignores portfolio state)."""
         return RiskDecision.allow(
             reason="NoneRiskPolicy: all signals allowed",
-            adjusted_size=None,  # No adjustment
         )
     
     @property
@@ -171,12 +170,12 @@ class RulesRiskPolicy(RiskPolicy):
 
         # Create a RiskConfig from the profile
         self._risk_config = RiskConfig(
-            max_leverage=risk_profile.max_leverage,
+            max_leverage=int(risk_profile.max_leverage),
             max_position_size_usdt=max_position,
-            max_total_exposure_usdt=max_position,
-            min_balance_usdt=risk_profile.initial_equity * 0.1,  # 10% floor
+            max_total_exposure_usd=max_position,
+            min_balance_usd=risk_profile.initial_equity * 0.1,  # 10% floor
             max_risk_per_trade_percent=risk_profile.risk_per_trade_pct,
-            max_daily_loss_usdt=daily_loss_usdt,
+            max_daily_loss_usd=daily_loss_usdt,
             max_daily_loss_percent=daily_loss_pct,
         )
         
@@ -211,13 +210,26 @@ class RulesRiskPolicy(RiskPolicy):
         from datetime import datetime
 
         # P1-004 FIX: Include unrealized_pnl and position count from exchange
+        # PortfolioSnapshot.positions expects list[Position] but we only need the count
+        # Create placeholder Position objects to represent position count
+        from ..core.exchange_manager import Position as CorePosition
+        placeholder_positions: list[CorePosition] = []
+        if position_count > 0:
+            placeholder_positions = [
+                CorePosition(
+                    symbol="", exchange="backtest", position_type="linear",
+                    side="", size=0.0, size_usdt=0.0, entry_price=0.0,
+                    current_price=0.0, unrealized_pnl=0.0,
+                    unrealized_pnl_percent=0.0, leverage=1.0, margin_mode="isolated",
+                )
+            ] * position_count
         portfolio = PortfolioSnapshot(
             timestamp=datetime.now(),
             balance=equity,
             available=available_balance,
             total_exposure=total_exposure,
             unrealized_pnl=unrealized_pnl,
-            positions=[{"count": position_count}] if position_count > 0 else [],
+            positions=placeholder_positions,
             source="backtest",
         )
         
@@ -237,7 +249,7 @@ class RulesRiskPolicy(RiskPolicy):
 
 def create_risk_policy(
     risk_mode: str,
-    risk_profile: RiskProfileConfig = None,
+    risk_profile: RiskProfileConfig | None = None,
     enforce_daily_loss: bool = False,
 ) -> RiskPolicy:
     """
@@ -259,7 +271,7 @@ def create_risk_policy(
         return NoneRiskPolicy(risk_profile)
     elif risk_mode == "rules":
         if risk_profile is None:
-            risk_profile = RiskProfileConfig()
+            risk_profile = RiskProfileConfig(initial_equity=10000.0)
         return RulesRiskPolicy(risk_profile, enforce_daily_loss=enforce_daily_loss)
     else:
         raise ValueError(

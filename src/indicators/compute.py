@@ -8,7 +8,7 @@ The engine uses only values available at or before the current bar (no look-ahea
 """
 
 import pandas as pd
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from src.backtest.features.feature_spec import FeatureSpec
@@ -126,28 +126,34 @@ def apply_feature_spec_indicators(
                 f"but column not found. Available: {list(df.columns)}"
             )
 
+        # Extract typed Series for OHLCV columns used by indicators
+        input_series = cast(pd.Series, df[input_col])
+        high_s = cast(pd.Series, df["high"])
+        low_s = cast(pd.Series, df["low"])
+        close_s = cast(pd.Series, df["close"])
+
         # Apply indicator based on type
         if ind_type == "ema":
             length = params.get("length", 20)
-            df[output_key] = vendor.ema(df[input_col], length=length)
+            df[output_key] = vendor.ema(input_series, length=length)
 
         elif ind_type == "sma":
             length = params.get("length", 20)
-            df[output_key] = vendor.sma(df[input_col], length=length)
+            df[output_key] = vendor.sma(input_series, length=length)
 
         elif ind_type == "rsi":
             length = params.get("length", 14)
-            df[output_key] = vendor.rsi(df[input_col], length=length)
+            df[output_key] = vendor.rsi(input_series, length=length)
 
         elif ind_type == "atr":
             length = params.get("length", 14)
-            df[output_key] = vendor.atr(df["high"], df["low"], df["close"], length=length)
+            df[output_key] = vendor.atr(high_s, low_s, close_s, length=length)
 
         elif ind_type == "macd":
             fast = params.get("fast", 12)
             slow = params.get("slow", 26)
             signal_param = params.get("signal", 9)
-            macd_result = vendor.macd(df[input_col], fast=fast, slow=slow, signal=signal_param)
+            macd_result = vendor.macd(input_series, fast=fast, slow=slow, signal=signal_param)
             if macd_result is not None:
                 # Get output names from registry
                 output_names = get_registry().get_output_suffixes("macd")
@@ -162,7 +168,7 @@ def apply_feature_spec_indicators(
         elif ind_type == "bbands":
             length = params.get("length", 20)
             std = params.get("std", 2.0)
-            bb_result = vendor.bbands(df[input_col], length=length, std=std)
+            bb_result = vendor.bbands(input_series, length=length, std=std)
             if bb_result is not None:
                 # Get output names from registry
                 output_names = get_registry().get_output_suffixes("bbands")
@@ -178,7 +184,7 @@ def apply_feature_spec_indicators(
             k_param = params.get("k", 14)
             d_param = params.get("d", 3)
             smooth_k = params.get("smooth_k", 3)
-            stoch_result = vendor.stoch(df["high"], df["low"], df["close"], k=k_param, d=d_param, smooth_k=smooth_k)
+            stoch_result = vendor.stoch(high_s, low_s, close_s, k=k_param, d=d_param, smooth_k=smooth_k)
             if stoch_result is not None:
                 # Get output names from registry
                 output_names = get_registry().get_output_suffixes("stoch")
@@ -195,7 +201,7 @@ def apply_feature_spec_indicators(
             rsi_length = params.get("rsi_length", 14)
             k_param = params.get("k", 3)
             d_param = params.get("d", 3)
-            stochrsi_result = vendor.stochrsi(df[input_col], length=length, rsi_length=rsi_length, k=k_param, d=d_param)
+            stochrsi_result = vendor.stochrsi(input_series, length=length, rsi_length=rsi_length, k=k_param, d=d_param)
             if stochrsi_result is not None:
                 # Get output names from registry
                 output_names = get_registry().get_output_suffixes("stochrsi")
@@ -214,14 +220,18 @@ def apply_feature_spec_indicators(
             try:
                 # Get ts_open for VWAP (requires DatetimeIndex for session boundaries)
                 ts_open = df.get("ts_open") if "ts_open" in df.columns else df.get("timestamp")
+                open_s = cast(pd.Series, df["open"])
+                vol_col = df.get("volume")
+                volume_series: pd.Series | None = vol_col if isinstance(vol_col, pd.Series) else None
+                ts_series: pd.Series | None = ts_open if isinstance(ts_open, pd.Series) else None
                 result = vendor.compute_indicator(
                     ind_type,
-                    close=df[input_col],  # Use input_col, not always "close"
-                    high=df["high"],
-                    low=df["low"],
-                    open_=df["open"],
-                    volume=df.get("volume"),
-                    ts_open=ts_open,  # For VWAP session boundaries
+                    close=input_series,  # Use input_col, not always "close"
+                    high=high_s,
+                    low=low_s,
+                    open_=open_s,
+                    volume=volume_series,
+                    ts_open=ts_series,  # For VWAP session boundaries
                     **params
                 )
 
@@ -318,7 +328,9 @@ def find_first_valid_bar(df: pd.DataFrame, indicator_columns: list[str]) -> int:
             # any() across columns - at least one must be valid
             valid_mask &= df[group_cols].notna().any(axis=1)
 
-    valid_indices = valid_mask[valid_mask].index.tolist()
+    filtered = valid_mask[valid_mask]
+    assert isinstance(filtered, pd.Series)
+    valid_indices = filtered.index.tolist()
 
     if not valid_indices:
         return -1  # No valid bars found

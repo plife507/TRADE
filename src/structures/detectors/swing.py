@@ -371,6 +371,8 @@ class IncrementalSwing(BaseIncrementalDetector):
         If the buffers are full, checks if the pivot bar is a swing high/low.
         """
         # Push current bar's high and low to buffers
+        assert self._high_buf is not None
+        assert self._low_buf is not None
         self._high_buf.push(bar.high)
         self._low_buf.push(bar.low)
 
@@ -617,6 +619,7 @@ class IncrementalSwing(BaseIncrementalDetector):
         Returns:
             True if pivot is a swing high, False otherwise.
         """
+        assert self._high_buf is not None
         pivot_val = self._high_buf[pivot_idx]
 
         # Check all other elements in the buffer
@@ -639,6 +642,7 @@ class IncrementalSwing(BaseIncrementalDetector):
         Returns:
             True if pivot is a swing low, False otherwise.
         """
+        assert self._low_buf is not None
         pivot_val = self._low_buf[pivot_idx]
 
         # Check all other elements in the buffer

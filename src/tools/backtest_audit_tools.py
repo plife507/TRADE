@@ -15,6 +15,7 @@ No production data is modified.
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 import traceback
 
 from .shared import ToolResult
@@ -180,6 +181,7 @@ def backtest_audit_in_memory_parity_tool(
         )
 
         if result.success:
+            assert result.summary is not None
             return ToolResult(
                 success=True,
                 message=(
@@ -240,7 +242,7 @@ def backtest_math_parity_tool(
     from ..forge.audits.toolkit_contract_audit import run_toolkit_contract_audit
     from ..forge.audits.audit_in_memory_parity import run_in_memory_parity_for_play
 
-    results = {
+    results: dict[str, dict[str, Any] | None] = {
         "contract_audit": None,
         "parity_audit": None,
     }
@@ -281,13 +283,15 @@ def backtest_math_parity_tool(
         }
 
         if not parity_result.success:
+            failed_cols = parity_result.summary.get('failed_columns', 0) if parity_result.summary else 0
             return ToolResult(
                 success=False,
-                error=f"Math parity FAILED: {parity_result.summary.get('failed_columns', 0)} column(s) mismatched",
+                error=f"Math parity FAILED: {failed_cols} column(s) mismatched",
                 data=results,
             )
 
         # Both passed
+        assert parity_result.summary is not None
         return ToolResult(
             success=True,
             message=(

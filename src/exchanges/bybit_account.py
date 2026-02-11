@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 def get_balance(client: "BybitClient", account_type: str = "UNIFIED") -> dict:
     """Get account balance."""
     client._private_limiter.acquire()
-    
+
     response = client._session.get_wallet_balance(accountType=account_type)
     result = client._extract_result(response)
-    
+
     balances = result.get("list", [])
     if balances:
         return balances[0]
@@ -27,19 +27,19 @@ def get_balance(client: "BybitClient", account_type: str = "UNIFIED") -> dict:
 
 
 def get_positions(
-    client: "BybitClient", symbol: str = None, settle_coin: str = "USDT", category: str = "linear"
+    client: "BybitClient", symbol: str | None = None, settle_coin: str = "USDT", category: str = "linear"
 ) -> list[dict]:
     """Get open positions."""
     client._private_limiter.acquire()
-    
-    kwargs = {"category": category}
+
+    kwargs: dict[str, str] = {"category": category}
     if symbol:
         kwargs["symbol"] = symbol
     else:
         kwargs["settleCoin"] = settle_coin
-    
+
     response = client._session.get_positions(**kwargs)
-    
+
     result = client._extract_result(response)
     return result.get("list", [])
 
@@ -47,19 +47,19 @@ def get_positions(
 def get_account_info(client: "BybitClient") -> dict:
     """Get account info (margin mode, etc)."""
     client._private_limiter.acquire()
-    
+
     response = client._session.get_account_info()
     return client._extract_result(response)
 
 
-def get_fee_rates(client: "BybitClient", symbol: str = None, category: str = "linear") -> dict:
+def get_fee_rates(client: "BybitClient", symbol: str | None = None, category: str = "linear") -> dict:
     """Get fee rates for the account."""
     client._private_limiter.acquire()
-    
-    kwargs = {"category": category}
+
+    kwargs: dict[str, str] = {"category": category}
     if symbol:
         kwargs["symbol"] = symbol
-    
+
     response = client._session.get_fee_rates(**kwargs)
     result = client._extract_result(response)
     return result.get("list", [])
@@ -71,20 +71,20 @@ def get_transaction_log(
     client: "BybitClient",
     time_range: TimeRange,
     account_type: str = "UNIFIED",
-    category: str = None,
-    currency: str = None,
-    base_coin: str = None,
-    log_type: str = None,
+    category: str | None = None,
+    currency: str | None = None,
+    base_coin: str | None = None,
+    log_type: str | None = None,
     limit: int = 50,
-    cursor: str = None,
+    cursor: str | None = None,
 ) -> dict:
     """Get transaction logs in Unified account."""
     client._private_limiter.acquire()
-    
+
     time_params = time_range.to_bybit_params()
     client.logger.debug(f"get_transaction_log: {time_range.label} ({time_range.format_range()})")
-    
-    kwargs = {
+
+    kwargs: dict = {
         "accountType": account_type,
         "limit": min(limit, 50),
         "startTime": time_params["startTime"],
@@ -100,19 +100,19 @@ def get_transaction_log(
         kwargs["type"] = log_type
     if cursor:
         kwargs["cursor"] = cursor
-    
+
     response = client._session.get_transaction_log(**kwargs)
     return client._extract_result(response)
 
 
-def get_collateral_info(client: "BybitClient", currency: str = None) -> list[dict]:
+def get_collateral_info(client: "BybitClient", currency: str | None = None) -> list[dict]:
     """Get collateral info for coins."""
     client._private_limiter.acquire()
-    
-    kwargs = {}
+
+    kwargs: dict[str, str] = {}
     if currency:
         kwargs["currency"] = currency
-    
+
     response = client._session.get_collateral_info(**kwargs)
     result = client._extract_result(response)
     return result.get("list", [])
@@ -121,8 +121,10 @@ def get_collateral_info(client: "BybitClient", currency: str = None) -> list[dic
 def set_collateral_coin(client: "BybitClient", coin: str, switch: str) -> dict:
     """Enable/disable a coin as collateral."""
     client._private_limiter.acquire()
-    
-    response = client._session.set_collateral_switch(
+
+    # pybit generates this method dynamically at runtime
+    set_collateral_fn = getattr(client._session, "set_collateral_switch")
+    response = set_collateral_fn(
         coin=coin,
         collateralSwitch=switch,
     )
@@ -132,7 +134,7 @@ def set_collateral_coin(client: "BybitClient", coin: str, switch: str) -> dict:
 def batch_set_collateral_coin(client: "BybitClient", coins: list[dict[str, str]]) -> dict:
     """Batch set collateral coins."""
     client._private_limiter.acquire()
-    
+
     response = client._session.batch_set_collateral_coin(request=coins)
     return client._extract_result(response)
 
@@ -140,17 +142,17 @@ def batch_set_collateral_coin(client: "BybitClient", coins: list[dict[str, str]]
 def get_borrow_history(
     client: "BybitClient",
     time_range: TimeRange,
-    currency: str = None,
+    currency: str | None = None,
     limit: int = 50,
-    cursor: str = None,
+    cursor: str | None = None,
 ) -> dict:
     """Get borrow history for Unified account."""
     client._private_limiter.acquire()
-    
+
     time_params = time_range.to_bybit_params()
     client.logger.debug(f"get_borrow_history: {time_range.label} ({time_range.format_range()})")
-    
-    kwargs = {
+
+    kwargs: dict = {
         "limit": min(limit, 50),
         "startTime": time_params["startTime"],
         "endTime": time_params["endTime"],
@@ -159,31 +161,31 @@ def get_borrow_history(
         kwargs["currency"] = currency
     if cursor:
         kwargs["cursor"] = cursor
-    
+
     response = client._session.get_borrow_history(**kwargs)
     return client._extract_result(response)
 
 
-def repay_liability(client: "BybitClient", coin: str = None) -> dict:
+def repay_liability(client: "BybitClient", coin: str | None = None) -> dict:
     """Repay liabilities in Unified account."""
     client._private_limiter.acquire()
-    
-    kwargs = {}
+
+    kwargs: dict[str, str] = {}
     if coin:
         kwargs["coin"] = coin
-    
+
     response = client._session.repay_liability(**kwargs)
     return client._extract_result(response)
 
 
-def get_coin_greeks(client: "BybitClient", base_coin: str = None) -> list[dict]:
+def get_coin_greeks(client: "BybitClient", base_coin: str | None = None) -> list[dict]:
     """Get options Greeks for coins."""
     client._private_limiter.acquire()
-    
-    kwargs = {}
+
+    kwargs: dict[str, str] = {}
     if base_coin:
         kwargs["baseCoin"] = base_coin
-    
+
     response = client._session.get_coin_greeks(**kwargs)
     result = client._extract_result(response)
     return result.get("list", [])
@@ -192,7 +194,7 @@ def get_coin_greeks(client: "BybitClient", base_coin: str = None) -> list[dict]:
 def set_account_margin_mode(client: "BybitClient", margin_mode: str) -> dict:
     """Set account margin mode (REGULAR_MARGIN or PORTFOLIO_MARGIN)."""
     client._private_limiter.acquire()
-    
+
     response = client._session.set_margin_mode(setMarginMode=margin_mode)
     return client._extract_result(response)
 
@@ -200,7 +202,7 @@ def set_account_margin_mode(client: "BybitClient", margin_mode: str) -> dict:
 def upgrade_to_unified_account(client: "BybitClient") -> dict:
     """Upgrade to Unified Trading Account."""
     client._private_limiter.acquire()
-    
+
     response = client._session.upgrade_to_unified_trading_account()
     return client._extract_result(response)
 
@@ -208,8 +210,10 @@ def upgrade_to_unified_account(client: "BybitClient") -> dict:
 def get_transferable_amount(client: "BybitClient", coin: str) -> dict:
     """Get amount available to transfer out."""
     client._private_limiter.acquire()
-    
-    response = client._session.get_spot_margin_trade_borrow_amount(coin=coin)
+
+    # pybit generates this method dynamically at runtime
+    get_borrow_amount_fn = getattr(client._session, "get_spot_margin_trade_borrow_amount")
+    response = get_borrow_amount_fn(coin=coin)
     result = client._extract_result(response)
     return result
 
@@ -217,7 +221,7 @@ def get_transferable_amount(client: "BybitClient", coin: str) -> dict:
 def get_mmp_state(client: "BybitClient", base_coin: str) -> dict:
     """Get Market Maker Protection state."""
     client._private_limiter.acquire()
-    
+
     response = client._session.get_mmp_state(baseCoin=base_coin)
     return client._extract_result(response)
 
@@ -232,7 +236,7 @@ def set_mmp(
 ) -> dict:
     """Configure Market Maker Protection."""
     client._private_limiter.acquire()
-    
+
     response = client._session.set_mmp(
         baseCoin=base_coin,
         window=str(window),
@@ -246,7 +250,7 @@ def set_mmp(
 def reset_mmp(client: "BybitClient", base_coin: str) -> dict:
     """Reset MMP status."""
     client._private_limiter.acquire()
-    
+
     response = client._session.reset_mmp(baseCoin=base_coin)
     return client._extract_result(response)
 
@@ -259,11 +263,12 @@ def get_borrow_quota(
 ) -> dict:
     """Get borrow quota for spot margin trading."""
     client._private_limiter.acquire()
-    
-    response = client._session.get_spot_margin_trade_borrow_quota(
+
+    # pybit generates this method dynamically at runtime
+    get_borrow_quota_fn = getattr(client._session, "get_spot_margin_trade_borrow_quota")
+    response = get_borrow_quota_fn(
         category=category,
         symbol=symbol,
         side=side,
     )
     return client._extract_result(response)
-

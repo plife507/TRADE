@@ -35,7 +35,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal, cast
 
 from .interfaces import (
     Candle,
@@ -213,9 +213,9 @@ class PlayEngine:
         self._incremental_state: MultiTFIncrementalState | None = None
 
         # 3-feed system for multi-timeframe indicators (set by parity test or runner)
-        self._low_tf_feed = None   # FeedStore for low_tf (always present)
-        self._med_tf_feed = None   # FeedStore for med_tf (None if same as low_tf)
-        self._high_tf_feed = None  # FeedStore for high_tf (None if same as med_tf)
+        self._low_tf_feed: FeedStore | None = None   # FeedStore for low_tf (always present)
+        self._med_tf_feed: FeedStore | None = None   # FeedStore for med_tf (None if same as low_tf)
+        self._high_tf_feed: FeedStore | None = None  # FeedStore for high_tf (None if same as med_tf)
         self._exec_role: str = "low_tf"  # Which feed exec points to
         self._tf_mapping: dict[str, str] = {}  # TF mapping from Play config
 
@@ -225,7 +225,7 @@ class PlayEngine:
 
         # 1m quote feed for action model (set by parity test or runner)
         # This enables granular 1m evaluation within exec_tf bars
-        self._quote_feed = None  # FeedStore for 1m OHLCV
+        self._quote_feed: FeedStore | None = None  # FeedStore for 1m OHLCV
         self._quote_feed_fallback_warned: bool = False  # Track if fallback warning issued
 
         # Snapshot view for rule evaluation (built per bar)
@@ -425,7 +425,7 @@ class PlayEngine:
             self.logger.debug(
                 f"[DBG] Engine.process_bar: phase={self._phase.value} "
                 f"bar={bar_index} close={candle.close} "
-                f"position={'FLAT' if position is None else f'{position.side} {position.size}'}"
+                f"position={'FLAT' if position is None else f'{position.side} {position.size_qty}'}"
             )
 
         # 5. Evaluate rules and generate signal
@@ -549,9 +549,10 @@ class PlayEngine:
             )
 
         # Create order
+        side = cast(Literal["LONG", "SHORT", "FLAT"], signal.direction.upper())
         order = Order(
             symbol=self.symbol,
-            side=signal.direction,
+            side=side,
             size_usdt=sized_usdt,
             order_type="MARKET",
             stop_loss=signal.metadata.get("stop_loss") if signal.metadata else None,
@@ -586,17 +587,18 @@ class PlayEngine:
         position = self.exchange.get_position(self.symbol)
 
         # Serialize incremental state if available
-        incremental_json = None
+        incremental_json: str | None = None
         if self._incremental_state is not None and hasattr(self._incremental_state, 'to_json'):
             try:
-                incremental_json = self._incremental_state.to_json()
+                import json as _json
+                incremental_json = _json.dumps(self._incremental_state.to_json())
             except Exception:
                 pass
 
         return EngineState(
             engine_id=self.engine_id,
-            play_id=self.play.name,
-            mode=self.config.mode,
+            play_id=self.play.name or self.engine_id,
+            mode=cast(Literal["backtest", "demo", "live", "shadow"], self.config.mode),
             symbol=self.symbol,
             position=position,
             pending_orders=self.exchange.get_pending_orders(self.symbol),
@@ -628,8 +630,9 @@ class PlayEngine:
 
         # Restore position via exchange adapter if it supports it
         if state.position is not None:
-            if hasattr(self.exchange, 'restore_position'):
-                self.exchange.restore_position(state.position)
+            restore_fn = getattr(self.exchange, 'restore_position', None)
+            if restore_fn is not None:
+                restore_fn(state.position)
                 self.logger.info(
                     f"Position restored: {state.position.side} {state.position.symbol} "
                     f"size={state.position.size_usdt:.2f} entry={state.position.entry_price:.2f}"
@@ -644,10 +647,12 @@ class PlayEngine:
         # Restore incremental state if persisted
         if state.incremental_state_json and self._incremental_state is not None:
             try:
+                import json as _json
                 from src.structures import MultiTFIncrementalState
                 if hasattr(self._incremental_state, 'from_json'):
+                    parsed_data: dict = _json.loads(state.incremental_state_json)
                     self._incremental_state = MultiTFIncrementalState.from_json(
-                        state.incremental_state_json
+                        parsed_data
                     )
             except Exception as e:
                 self.logger.warning(f"Failed to restore incremental state: {e}")
@@ -888,6 +893,7 @@ class PlayEngine:
         )
 
         # MultiTFIncrementalState uses update_exec() for exec timeframe updates
+        assert self._incremental_state is not None
         self._incremental_state.update_exec(bar_data)
 
     def _evaluate_rules(
@@ -915,7 +921,7 @@ class PlayEngine:
         # Fallback: single evaluation at exec bar close
         return self._evaluate_rules_single(bar_index, candle, position)
 
-    def _build_snapshot_view(self, bar_index: int, candle: Candle) -> "RuntimeSnapshotView":
+    def _build_snapshot_view(self, bar_index: int, candle: Candle) -> "RuntimeSnapshotView | None":
         """
         Build RuntimeSnapshotView for rule evaluation.
 
@@ -1308,8 +1314,9 @@ class PlayEngine:
         if position:
             position_count = 1
             # Try to get unrealized PnL if exchange supports it
-            if hasattr(self.exchange, 'get_unrealized_pnl'):
-                unrealized_pnl = self.exchange.get_unrealized_pnl(self.symbol)
+            get_upnl_fn = getattr(self.exchange, 'get_unrealized_pnl', None)
+            if get_upnl_fn is not None:
+                unrealized_pnl = get_upnl_fn(self.symbol)
 
         # Check signal against policy
         decision = policy.check(
@@ -1370,6 +1377,7 @@ class PlayEngine:
         # Determine direction
         direction = 1 if signal.direction.upper() == "LONG" else -1
 
+        assert self.config.maintenance_margin_rate is not None
         return validate_stop_vs_liquidation(
             entry_price=entry_price,
             stop_price=stop_loss,
@@ -1494,11 +1502,12 @@ class PlayEngine:
             }
             if result.resolved_metadata:
                 metadata.update(result.resolved_metadata)
+            strategy = self.play.name or ""
             return Signal(
                 symbol=self.symbol,
                 direction="LONG",
                 size_usdt=0.0,  # Sized by execute_signal
-                strategy=self.play.name,
+                strategy=strategy,
                 confidence=1.0,
                 metadata=metadata,
             )
@@ -1510,11 +1519,12 @@ class PlayEngine:
             }
             if result.resolved_metadata:
                 metadata.update(result.resolved_metadata)
+            strategy = self.play.name or ""
             return Signal(
                 symbol=self.symbol,
                 direction="SHORT",
                 size_usdt=0.0,
-                strategy=self.play.name,
+                strategy=strategy,
                 confidence=1.0,
                 metadata=metadata,
             )
@@ -1525,11 +1535,12 @@ class PlayEngine:
                 metadata["exit_percent"] = result.exit_percent
             if result.resolved_metadata:
                 metadata.update(result.resolved_metadata)
+            strategy = self.play.name or ""
             return Signal(
                 symbol=self.symbol,
                 direction="FLAT",
                 size_usdt=position.size_usdt if position else 0.0,
-                strategy=self.play.name,
+                strategy=strategy,
                 confidence=1.0,
                 metadata=metadata if metadata else None,
             )
@@ -1654,7 +1665,7 @@ class _PlayEngineSubLoopContext:
             quote_idx=quote_idx,
         )
         # Call audit callback if registered
-        if self._engine._on_snapshot is not None:
+        if self._engine._on_snapshot is not None and snapshot is not None:
             self._engine._on_snapshot(
                 snapshot, exec_idx,
                 self._engine._current_high_tf_idx, self._engine._current_med_tf_idx
@@ -1687,7 +1698,7 @@ class _PlayEngineSubLoopContext:
         """Build snapshot for fallback evaluation."""
         snapshot = self._engine._build_snapshot_view(exec_idx, self._candle)
         # Call audit callback if registered
-        if self._engine._on_snapshot is not None:
+        if self._engine._on_snapshot is not None and snapshot is not None:
             self._engine._on_snapshot(
                 snapshot, exec_idx,
                 self._engine._current_high_tf_idx, self._engine._current_med_tf_idx

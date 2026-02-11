@@ -25,6 +25,7 @@ from rich.text import Text
 from src.config.config import get_config
 from src.config.constants import DataEnv, DEFAULT_DATA_ENV
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper
+from src.cli.utils import BackCommand
 from src.tools import (
     # Database info tools
     get_database_stats_tool,
@@ -188,16 +189,28 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 6:
             # Build Full History (OHLCV + Funding + OI)
             symbol = get_input("Symbol(s) to build (comma-separated)")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
             symbols = [s.strip().upper() for s in symbol.split(",") if s.strip()]
             if not symbols:
                 print_error_below_menu("No symbols provided.")
                 Prompt.ask("\nPress Enter to continue")
                 continue
-            
+
             period = get_input("Period (1D, 1W, 1M, 3M, 6M, 1Y)", "1M")
+            if period is BACK:
+                continue
+            assert isinstance(period, str)
             timeframes_input = get_input("OHLCV Timeframes (comma-separated, blank for all)", "")
+            if timeframes_input is BACK:
+                continue
+            assert isinstance(timeframes_input, str)
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
             oi_interval = get_input("Open Interest Interval (5min, 15min, 30min, 1h, 4h, D)", "1h")
+            if oi_interval is BACK:
+                continue
+            assert isinstance(oi_interval, str)
             
             result = run_long_action(
                 "data.build_full_history", build_symbol_history_tool,
@@ -209,13 +222,19 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 7:
             # Sync Forward to Now (new candles only)
             symbol = get_input("Symbol(s) to sync forward (comma-separated)")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
             symbols = [s.strip().upper() for s in symbol.split(",") if s.strip()]
             if not symbols:
                 print_error_below_menu("No symbols provided.")
                 Prompt.ask("\nPress Enter to continue")
                 continue
-            
+
             timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
+            if timeframes_input is BACK:
+                continue
+            assert isinstance(timeframes_input, str)
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
             
             result = run_long_action(
@@ -228,13 +247,19 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 8:
             # Sync Forward + Fill Gaps (complete)
             symbol = get_input("Symbol(s) to sync and heal (comma-separated)")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
             symbols = [s.strip().upper() for s in symbol.split(",") if s.strip()]
             if not symbols:
                 print_error_below_menu("No symbols provided.")
                 Prompt.ask("\nPress Enter to continue")
                 continue
-            
+
             timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
+            if timeframes_input is BACK:
+                continue
+            assert isinstance(timeframes_input, str)
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
             
             result = run_long_action(
@@ -247,9 +272,18 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 9:
             # Sync OHLCV by Period
             symbol = get_input("Symbol (comma-separated for multiple)")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
             symbols = [s.strip().upper() for s in symbol.split(",")]
             period = get_input("Period (1D, 1W, 1M, 3M, 6M, 1Y)", "1M")
+            if period is BACK:
+                continue
+            assert isinstance(period, str)
             timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
+            if timeframes_input is BACK:
+                continue
+            assert isinstance(timeframes_input, str)
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
             
             result = run_long_action(
@@ -262,12 +296,24 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 10:
             # Sync OHLCV by Date Range
             symbol = get_input("Symbol (comma-separated for multiple)")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
             symbols = [s.strip().upper() for s in symbol.split(",")]
             start_str = get_input("Start Date (YYYY-MM-DD)")
+            if start_str is BACK:
+                continue
+            assert isinstance(start_str, str)
             end_str = get_input("End Date (YYYY-MM-DD)", datetime.now().strftime("%Y-%m-%d"))
+            if end_str is BACK:
+                continue
+            assert isinstance(end_str, str)
             timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
+            if timeframes_input is BACK:
+                continue
+            assert isinstance(timeframes_input, str)
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
-            
+
             try:
                 start_dt = datetime.strptime(start_str, "%Y-%m-%d")
                 end_dt = datetime.strptime(end_str, "%Y-%m-%d")
@@ -286,6 +332,9 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 11:
             # Sync Funding Rates
             symbol = get_input("Symbol (comma-separated for multiple)")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
             symbols = [s.strip().upper() for s in symbol.split(",")]
             period = get_input("Period (1M, 3M, 6M, 1Y)", "3M")
             
@@ -299,6 +348,9 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 12:
             # Sync Open Interest
             symbol = get_input("Symbol (comma-separated for multiple)")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
             symbols = [s.strip().upper() for s in symbol.split(",")]
             period = get_input("Period (1D, 1W, 1M, 3M)", "1M")
             interval = get_input("Interval (5min, 15min, 30min, 1h, 4h, D)", "1h")
@@ -313,15 +365,18 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 13:
             # Query OHLCV History
             symbol = get_input("Symbol")
-            if symbol is BACK or not symbol:
-                if not symbol:
-                    print_error_below_menu("Symbol is required")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
+            if not symbol:
+                print_error_below_menu("Symbol is required")
                 Prompt.ask("\nPress Enter to continue")
                 continue
-            
+
             timeframe = get_input("Timeframe (1m, 5m, 15m, 1h, 4h, D)", "1h")
             if timeframe is BACK:
                 continue
+            assert isinstance(timeframe, str)
             
             console.print("\n[bold cyan]Select data range:[/]")
             console.print("  1) Use period (e.g., 1M = last month)")
@@ -367,9 +422,11 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 14:
             # Query Funding History
             symbol = get_input("Symbol")
-            if symbol is BACK or not symbol:
-                if not symbol:
-                    print_error_below_menu("Symbol is required")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
+            if not symbol:
+                print_error_below_menu("Symbol is required")
                 Prompt.ask("\nPress Enter to continue")
                 continue
             
@@ -417,9 +474,11 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 15:
             # Query Open Interest History
             symbol = get_input("Symbol")
-            if symbol is BACK or not symbol:
-                if not symbol:
-                    print_error_below_menu("Symbol is required")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
+            if not symbol:
+                print_error_below_menu("Symbol is required")
                 Prompt.ask("\nPress Enter to continue")
                 continue
             
@@ -493,6 +552,9 @@ def data_menu(cli: "TradeCLI"):
         elif choice == 18:
             # Delete Symbol
             symbol = get_input("Symbol to DELETE")
+            if symbol is BACK:
+                continue
+            assert isinstance(symbol, str)
             if symbol:
                 env_label = data_env.upper()
                 if Confirm.ask(f"[bold red]Delete ALL data for {symbol.upper()} in {env_label} env?[/]"):

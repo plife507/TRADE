@@ -40,6 +40,7 @@ from .indicators import (
 )
 
 from ..data.historical_data_store import get_historical_store, TF_MINUTES
+from ..config.constants import DataEnv
 from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -533,6 +534,7 @@ def prepare_multi_tf_frames_impl(
                 end=requested_end,
             )
         else:
+            assert store is not None
             df = store.get_ohlcv(
                 symbol=config.symbol,
                 tf=tf,
@@ -796,7 +798,7 @@ def get_tf_features_at_close_impl(
         required_cols = list(config.required_indicators_by_role[tf_role])
     elif config.feature_specs_by_role:
         # Fallback to expanding all feature_specs if no required_indicators declared
-        specs = config.feature_specs_by_role.get(tf_role) or \
+        specs = (config.feature_specs_by_role.get(tf_role) if tf_role else None) or \
                 config.feature_specs_by_role.get('exec', [])
         required_cols = get_required_indicator_columns_from_specs(specs)
 
@@ -900,6 +902,7 @@ def load_1m_data_impl(
             end=window_end,
         )
     else:
+        assert store is not None
         df = store.get_ohlcv(
             symbol=symbol,
             tf="1m",
@@ -981,7 +984,7 @@ def load_funding_data_impl(
             f"Funding settlements will be skipped. "
             f"To sync: python trade_cli.py data sync-funding --symbol {symbol}"
         )
-        return pd.DataFrame(columns=["timestamp", "funding_rate"])
+        return pd.DataFrame(columns=pd.Index(["timestamp", "funding_rate"]))
 
     # Ensure sorted by timestamp
     df = df.sort_values("timestamp").reset_index(drop=True)

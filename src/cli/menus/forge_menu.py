@@ -18,6 +18,8 @@ from rich.table import Table
 from rich.prompt import Prompt
 from rich.text import Text
 
+from typing import cast
+
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons
 
 if TYPE_CHECKING:
@@ -71,30 +73,30 @@ def forge_menu(cli: "TradeCLI"):
 
         console.print(menu)
 
-        choice = get_choice(["0", "1", "2", "3", "4", "5", "6", "7"])
+        choice = get_choice(range(0, 8))
 
-        if choice == BACK or choice == "0":
+        if choice is BACK or choice == 0:
             break
 
-        elif choice == "1":
+        elif choice == 1:
             _validate_single_play()
 
-        elif choice == "2":
+        elif choice == 2:
             _validate_batch()
 
-        elif choice == "3":
+        elif choice == 3:
             _validate_all()
 
-        elif choice == "4":
+        elif choice == 4:
             _run_toolkit_audit()
 
-        elif choice == "5":
+        elif choice == 5:
             _run_rollup_audit()
 
-        elif choice == "6":
+        elif choice == 6:
             _run_stress_test()
 
-        elif choice == "7":
+        elif choice == 7:
             _run_synthetic_backtest()
 
 
@@ -135,7 +137,7 @@ def _validate_single_play():
     if result.is_valid:
         console.print(f"[bold {CLIColors.NEON_GREEN}]PASS[/] {result.play_id}")
     else:
-        console.print(f"[bold {CLIColors.SELL_RED}]FAIL[/] {result.play_id}")
+        console.print(f"[bold {CLIColors.NEON_RED}]FAIL[/] {result.play_id}")
         console.print(format_validation_report(result))
 
     Prompt.ask("\n[dim]Press Enter to continue[/]")
@@ -184,7 +186,7 @@ def _validate_all():
             result = validate_batch(dir_path, recursive=False)
             if result.total > 0:
                 all_results.append(result)
-                status = f"[{CLIColors.NEON_GREEN}]PASS[/]" if result.all_passed else f"[{CLIColors.SELL_RED}]FAIL[/]"
+                status = f"[{CLIColors.NEON_GREEN}]PASS[/]" if result.all_passed else f"[{CLIColors.NEON_RED}]FAIL[/]"
                 console.print(f"  {status} {result.passed}/{result.total} - {dir_path.name}/")
 
     # Summary
@@ -196,7 +198,7 @@ def _validate_all():
     if total_failed == 0:
         console.print(f"[bold {CLIColors.NEON_GREEN}]ALL PASSED[/]: {total_passed}/{total_plays} Plays validated")
     else:
-        console.print(f"[bold {CLIColors.SELL_RED}]FAILED[/]: {total_failed}/{total_plays} Plays have errors")
+        console.print(f"[bold {CLIColors.NEON_RED}]FAILED[/]: {total_failed}/{total_plays} Plays have errors")
 
     Prompt.ask("\n[dim]Press Enter to continue[/]")
 
@@ -213,7 +215,7 @@ def _run_toolkit_audit():
     if result.success:
         console.print(f"[bold {CLIColors.NEON_GREEN}]PASS[/] {result.message}")
     else:
-        console.print(f"[bold {CLIColors.SELL_RED}]FAIL[/] {result.error}")
+        console.print(f"[bold {CLIColors.NEON_RED}]FAIL[/] {result.error}")
 
     Prompt.ask("\n[dim]Press Enter to continue[/]")
 
@@ -230,7 +232,7 @@ def _run_rollup_audit():
     if result.success:
         console.print(f"[bold {CLIColors.NEON_GREEN}]PASS[/] {result.message}")
     else:
-        console.print(f"[bold {CLIColors.SELL_RED}]FAIL[/] {result.error}")
+        console.print(f"[bold {CLIColors.NEON_RED}]FAIL[/] {result.error}")
 
     Prompt.ask("\n[dim]Press Enter to continue[/]")
 
@@ -239,6 +241,7 @@ def _run_synthetic_backtest():
     """Run a single Play with synthetic data (no DB required)."""
     from src.backtest.play import PLAYS_DIR, load_play
     from src.forge.validation import generate_synthetic_candles
+    from src.forge.validation.synthetic_data import PatternType
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
     from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
     from pathlib import Path
@@ -298,7 +301,7 @@ def _run_synthetic_backtest():
                 continue
 
         if play is None:
-            console.print(f"[{CLIColors.SELL_RED}]Play not found: {play_id}[/]")
+            console.print(f"[{CLIColors.NEON_RED}]Play not found: {play_id}[/]")
             Prompt.ask("\n[dim]Press Enter to continue[/]")
             return
 
@@ -316,7 +319,7 @@ def _run_synthetic_backtest():
             timeframes=list(required_tfs),
             bars_per_tf=bars,
             seed=seed,
-            pattern=pattern,
+            pattern=cast(PatternType, pattern),
         )
 
         console.print(f"[{CLIColors.DIM_TEXT}]Data hash: {candles.data_hash}[/]")
@@ -356,7 +359,7 @@ def _run_synthetic_backtest():
 
     except Exception as e:
         import traceback
-        console.print(f"[{CLIColors.SELL_RED}]Error: {e}[/]")
+        console.print(f"[{CLIColors.NEON_RED}]Error: {e}[/]")
         console.print(f"[{CLIColors.DIM_TEXT}]{traceback.format_exc()}[/]")
 
     Prompt.ask("\n[dim]Press Enter to continue[/]")
@@ -397,7 +400,7 @@ def _run_stress_test():
         if result.data and "steps" in result.data:
             console.print()
             for step in result.data["steps"]:
-                status = f"[{CLIColors.NEON_GREEN}]PASS[/]" if step["passed"] else f"[{CLIColors.SELL_RED}]FAIL[/]"
+                status = f"[{CLIColors.NEON_GREEN}]PASS[/]" if step["passed"] else f"[{CLIColors.NEON_RED}]FAIL[/]"
                 hash_info = ""
                 if step.get("output_hash"):
                     hash_info = f" [{CLIColors.DIM_TEXT}]{step['output_hash'][:8]}[/]"
@@ -409,15 +412,15 @@ def _run_stress_test():
             for h in result.data["hash_chain"]:
                 console.print(f"  [{CLIColors.NEON_CYAN}]{h}[/]")
     else:
-        console.print(f"[bold {CLIColors.SELL_RED}]FAIL[/] {result.error}")
+        console.print(f"[bold {CLIColors.NEON_RED}]FAIL[/] {result.error}")
 
         # Show step results on failure
         if result.data and "steps" in result.data:
             console.print()
             for step in result.data["steps"]:
-                status = f"[{CLIColors.NEON_GREEN}]PASS[/]" if step["passed"] else f"[{CLIColors.SELL_RED}]FAIL[/]"
+                status = f"[{CLIColors.NEON_GREEN}]PASS[/]" if step["passed"] else f"[{CLIColors.NEON_RED}]FAIL[/]"
                 console.print(f"  {status} {step['step_name']} ({step['duration_seconds']:.2f}s)")
                 if not step["passed"] and step.get("message"):
-                    console.print(f"      [{CLIColors.SELL_RED}]{step['message']}[/]")
+                    console.print(f"      [{CLIColors.NEON_RED}]{step['message']}[/]")
 
     Prompt.ask("\n[dim]Press Enter to continue[/]")

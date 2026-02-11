@@ -64,7 +64,7 @@ logger = get_logger()
 
 def _build_config_from_play(
     play: "Play",
-    mode: str,
+    mode: Literal["backtest", "demo", "live", "shadow"],
     *,
     persist_state: bool = False,
     state_save_interval: int = 100,
@@ -86,6 +86,7 @@ def _build_config_from_play(
         Configured PlayEngineConfig
     """
     account = play.account
+    assert account is not None, "Play must have an account config to build engine config"
 
     # Extract sizing from risk_model if present
     risk_per_trade_pct = 1.0
@@ -95,14 +96,15 @@ def _build_config_from_play(
         if play.risk_model.sizing.max_leverage:
             max_leverage = play.risk_model.sizing.max_leverage
 
+    fee_model = account.fee_model
     config = PlayEngineConfig(
         mode=mode,
         initial_equity=account.starting_equity_usdt,
         risk_per_trade_pct=risk_per_trade_pct,
         max_leverage=max_leverage,
-        min_trade_usdt=account.min_trade_notional_usdt,
-        taker_fee_rate=account.fee_model.taker_bps / 10000.0,
-        maker_fee_rate=account.fee_model.maker_bps / 10000.0,
+        min_trade_usdt=account.min_trade_notional_usdt or 5.0,
+        taker_fee_rate=fee_model.taker_bps / 10000.0 if fee_model else 0.0006,
+        maker_fee_rate=fee_model.maker_bps / 10000.0 if fee_model else 0.0001,
         slippage_bps=account.slippage_bps or 2.0,
         persist_state=persist_state,
         state_save_interval=state_save_interval,
