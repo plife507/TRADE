@@ -124,6 +124,8 @@ def create_engine_from_play(
             "high": FSInputSource.HIGH,
             "low": FSInputSource.LOW,
             "volume": FSInputSource.VOLUME,
+            "hlc3": FSInputSource.HLC3,
+            "ohlc4": FSInputSource.OHLC4,
         }
         fs_input = input_source_map.get(feature.input_source.value, FSInputSource.CLOSE)
         return FeatureSpec(

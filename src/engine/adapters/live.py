@@ -134,7 +134,7 @@ class LiveIndicatorCache:
                     # Create incremental indicator
                     inc_ind = create_incremental_indicator(ind_type, feature.params)
                     if inc_ind is not None:
-                        self._incremental[feature.indicator_id] = (inc_ind, feature)
+                        self._incremental[feature.output_key] = (inc_ind, feature)
 
                         # Use registry to determine input requirements and outputs
                         info = registry.get_indicator_info(ind_type)
@@ -143,30 +143,39 @@ class LiveIndicatorCache:
                         # Initialize arrays for all outputs
                         if info.is_multi_output:
                             for suffix in info.output_keys:
-                                key = f"{feature.indicator_id}_{suffix}"
+                                key = f"{feature.output_key}_{suffix}"
                                 self._indicators[key] = np.full(n, np.nan)
                         else:
-                            self._indicators[feature.indicator_id] = np.full(n, np.nan)
+                            self._indicators[feature.output_key] = np.full(n, np.nan)
 
                         # Warmup with historical data
+                        needs_volume = info.requires_volume
                         for i in range(n):
                             if needs_hlc:
-                                inc_ind.update(
+                                kwargs: dict = dict(
                                     high=self._high[i],
                                     low=self._low[i],
                                     close=self._close[i],
                                 )
+                                if needs_volume:
+                                    kwargs["volume"] = self._volume[i]
+                                inc_ind.update(**kwargs)
                             else:
-                                inc_ind.update(close=self._close[i])
+                                # Route primary input by feature's input_source
+                                input_val = self._resolve_input_from_arrays(feature, i)
+                                kwargs = dict(close=input_val)
+                                if needs_volume:
+                                    kwargs["volume"] = self._volume[i]
+                                inc_ind.update(**kwargs)
 
                             # Store all outputs for multi-output indicators
                             if info.is_multi_output:
                                 for suffix in info.output_keys:
-                                    key = f"{feature.indicator_id}_{suffix}"
+                                    key = f"{feature.output_key}_{suffix}"
                                     value = self._get_incremental_output(inc_ind, suffix)
                                     self._indicators[key][i] = value
                             else:
-                                self._indicators[feature.indicator_id][i] = inc_ind.value
+                                self._indicators[feature.output_key][i] = inc_ind.value
                     else:
                         self._vectorized_specs.append(spec)
                 else:
@@ -176,6 +185,42 @@ class LiveIndicatorCache:
 
         # Compute vectorized indicators
         self._compute_vectorized()
+
+    def _resolve_input_from_candle(self, feature, candle: Candle) -> float:
+        """Resolve primary input value from candle based on feature's input_source."""
+        source = feature.input_source
+        source_str = source.value if hasattr(source, 'value') else str(source).lower()
+        if source_str == "volume":
+            return float(candle.volume)
+        elif source_str == "open":
+            return float(candle.open)
+        elif source_str == "high":
+            return float(candle.high)
+        elif source_str == "low":
+            return float(candle.low)
+        elif source_str == "hlc3":
+            return float(candle.hlc3)
+        elif source_str == "ohlc4":
+            return float(candle.ohlc4)
+        return float(candle.close)
+
+    def _resolve_input_from_arrays(self, feature, idx: int) -> float:
+        """Resolve primary input value from OHLCV arrays based on feature's input_source."""
+        source = feature.input_source
+        source_str = source.value if hasattr(source, 'value') else str(source).lower()
+        if source_str == "volume":
+            return float(self._volume[idx])
+        elif source_str == "open":
+            return float(self._open[idx])
+        elif source_str == "high":
+            return float(self._high[idx])
+        elif source_str == "low":
+            return float(self._low[idx])
+        elif source_str == "hlc3":
+            return (float(self._high[idx]) + float(self._low[idx]) + float(self._close[idx])) / 3.0
+        elif source_str == "ohlc4":
+            return (float(self._open[idx]) + float(self._high[idx]) + float(self._low[idx]) + float(self._close[idx])) / 4.0
+        return float(self._close[idx])
 
     def update(self, candle: Candle) -> None:
         """
@@ -218,13 +263,21 @@ class LiveIndicatorCache:
                 # Use registry to determine input requirements
                 info = registry.get_indicator_info(ind_type)
                 if info.requires_hlc:
-                    inc_ind.update(
+                    kwargs: dict = dict(
                         high=float(candle.high),
                         low=float(candle.low),
                         close=float(candle.close),
                     )
+                    if info.requires_volume:
+                        kwargs["volume"] = float(candle.volume)
+                    inc_ind.update(**kwargs)
                 else:
-                    inc_ind.update(close=float(candle.close))
+                    # Route primary input by feature's input_source
+                    input_val = self._resolve_input_from_candle(feature, candle)
+                    kwargs = dict(close=input_val)
+                    if info.requires_volume:
+                        kwargs["volume"] = float(candle.volume)
+                    inc_ind.update(**kwargs)
 
                 # Append new values for all outputs
                 if info.is_multi_output:
@@ -283,7 +336,7 @@ class LiveIndicatorCache:
                     close=self._close,
                     volume=self._volume,
                 )
-                self._indicators[feature.indicator_id] = values
+                self._indicators[feature.output_key] = values
             except Exception as e:
                 logger.warning(f"Failed to compute indicator {spec}: {e}")
 
@@ -1140,8 +1193,7 @@ class LiveDataProvider:
             return "med_tf"
         elif timeframe == self._tf_mapping["high_tf"]:
             return "high_tf"
-        # Default to low_tf if unknown
-        return "low_tf"
+        raise ValueError(f"Unknown timeframe '{timeframe}' - valid TFs: {self._tf_mapping}")
 
     def _update_tf_buffer(
         self,
