@@ -171,8 +171,8 @@ def validate_strict_allowlist(
         Tuple of (passed, message)
     """
     # First, sanity check that valid field works
+    path = f"{structure_key}.{valid_field}"
     try:
-        path = f"{structure_key}.{valid_field}"
         snapshot.get(path)
     except (KeyError, ValueError):
         return False, f"Valid field {path} should be accessible"

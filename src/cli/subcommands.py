@@ -10,17 +10,24 @@ Sections:
 - Test handlers (handle_test_*)
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from rich.panel import Panel
 from rich.table import Table
 
 from src.cli.utils import console, BACK
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 # =============================================================================
 # SHARED HELPERS
 # =============================================================================
 
-def _parse_datetime(dt_str: str) -> "datetime":
+def _parse_datetime(dt_str: str) -> datetime:
     """Parse datetime string from CLI."""
     from datetime import datetime
 
@@ -1747,6 +1754,7 @@ def _run_play_live(play, args, manager=None) -> int:
 
     # B1: Single event loop for start + wait
     # B6: Register signal handlers for graceful shutdown
+    loop: asyncio.AbstractEventLoop | None = None
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -1769,7 +1777,7 @@ def _run_play_live(play, args, manager=None) -> int:
 
     except KeyboardInterrupt:
         console.print(f"\n[yellow]{mode.upper()} mode stopped by user[/]")
-        if instance_id:
+        if instance_id and loop is not None:
             loop.run_until_complete(manager.stop(instance_id))
     except Exception as e:
         from src.utils.debug import is_debug_enabled
@@ -1779,14 +1787,15 @@ def _run_play_live(play, args, manager=None) -> int:
             console.print(f"[red]{traceback.format_exc()}[/]")
         else:
             console.print(f"\n[red]{mode.upper()} mode error: {e}[/]")
-        if instance_id:
+        if instance_id and loop is not None:
             try:
                 loop.run_until_complete(manager.stop(instance_id))
             except Exception:
                 pass
         return 1
     finally:
-        loop.close()
+        if loop is not None:
+            loop.close()
 
     # Print stats from the instance if available
     info = manager.get(instance_id) if instance_id else None

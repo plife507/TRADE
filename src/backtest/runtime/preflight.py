@@ -31,6 +31,7 @@ from src.utils.datetime_utils import datetime_to_epoch_ms
 
 if TYPE_CHECKING:
     from ..execution_validation import WarmupRequirements
+    from ..play import Play
 
 
 def _utcnow() -> datetime:
@@ -1051,6 +1052,7 @@ def run_preflight_gate(
     # Validate exec→1m mapping feasibility
     exec_to_1m_mapping_feasible = True
     mapping_error: str | None = None
+    exec_tf_str: str | None = None
 
     if has_1m_coverage:
         # Get exec TF from Play (new schema uses execution_tf directly)

@@ -51,7 +51,12 @@ from .play_engine import PlayEngine, PlayEngineConfig
 from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ..backtest.play import Play
+    from ..backtest.runtime.feed_store import FeedStore
+    from ..backtest.sim.exchange import SimulatedExchange
+    from ..structures import MultiTFIncrementalState
 
 
 logger = get_logger()

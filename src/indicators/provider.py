@@ -37,6 +37,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from src.backtest.runtime.feed_store import FeedStore
+    from src.engine.adapters.live import LiveIndicatorCache
 
 
 @runtime_checkable

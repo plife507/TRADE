@@ -544,6 +544,7 @@ def backtest_run_play_tool(
         Symbol is taken from the Play configuration (Play.symbol_universe[0]).
         Plays are self-contained and deterministic.
     """
+    preflight_result = None
     try:
         # Load Play FIRST to check for synthetic config
         play = load_play(play_id, base_dir=plays_dir)
@@ -789,7 +790,7 @@ def backtest_run_play_tool(
         return ToolResult(
             success=False,
             error=f"Indicator key error: {error_msg}{available_info}",
-            data={"preflight": preflight_result.data if preflight_result.success else None},
+            data={"preflight": preflight_result.data if preflight_result and preflight_result.success else None},
         )
 
     except ValueError as e:
@@ -805,7 +806,7 @@ def backtest_run_play_tool(
         return ToolResult(
             success=False,
             error=error_msg,
-            data={"preflight": preflight_result.data if preflight_result.success else None},
+            data={"preflight": preflight_result.data if preflight_result and preflight_result.success else None},
         )
 
     except Exception as e:

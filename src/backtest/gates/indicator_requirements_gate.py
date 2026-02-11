@@ -15,9 +15,12 @@ Gate runs BEFORE signal_rules evaluation.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from ..play import Play
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class IndicatorGateStatus(str, Enum):

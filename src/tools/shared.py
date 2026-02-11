@@ -15,8 +15,17 @@ NOTE on Trading Environment:
 - This enables multi-process orchestration where agents route calls correctly
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, asdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..core.exchange_manager import ExchangeManager
+    from ..data.historical_data_store import HistoricalDataStore
+    from ..data.realtime_bootstrap import RealtimeBootstrap
+    from ..data.realtime_state import RealtimeState
+    from ..risk.global_risk import GlobalRiskView
 
 
 @dataclass

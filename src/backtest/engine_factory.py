@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from .runtime.types import RuntimeSnapshot
     from .runtime.snapshot_view import RuntimeSnapshotView
     from ..core.risk_manager import Signal
+    from ..forge.validation.synthetic_provider import SyntheticDataProvider
 
 
 # =============================================================================

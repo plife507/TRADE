@@ -1,0 +1,14 @@
+{
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.12",
+  "include": ["src"],
+  "exclude": [
+    "src/forge/audits",
+    "src/testing_agent",
+    "src/cli/smoke_tests",
+    "src/utils/cli_display.py"
+  ],
+  "reportMissingImports": "warning",
+  "reportUndefinedVariable": "error",
+  "reportPossiblyUnboundVariable": "error"
+}

@@ -353,6 +353,7 @@ class BacktestRunner:
         # 1. Orders submitted at bar N-1 close fill at bar N open
         # 2. Strategy evaluates at bar N close -> generates signal
         # 3. Signal submits order (to fill at bar N+1 open)
+        bar_idx = start_idx
         for bar_idx in range(start_idx, end_idx):
             # Update current bar index in data provider
             self._data_provider.current_bar_index = bar_idx

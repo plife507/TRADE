@@ -48,6 +48,7 @@ from .types import ExchangeState, HistoryConfig, DEFAULT_HISTORY_CONFIG
 
 if TYPE_CHECKING:
     from src.structures import MultiTFIncrementalState
+    from src.structures.types import FeatureOutputType
     from ..feature_registry import FeatureRegistry
     from ..rationalization import RationalizedState
 

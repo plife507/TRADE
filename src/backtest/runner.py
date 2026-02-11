@@ -28,7 +28,7 @@ If any gate fails, the runner stops and returns a failure status.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from pathlib import Path
 import json
 import time
@@ -77,6 +77,9 @@ from .execution_validation import (
     SignalDecision,
 )
 from .logging import RunLogger, set_run_logger
+
+if TYPE_CHECKING:
+    from ..forge.validation.synthetic_provider import SyntheticDataProvider
 
 
 class GateFailure(Exception):

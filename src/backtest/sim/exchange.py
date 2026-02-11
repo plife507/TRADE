@@ -57,6 +57,7 @@ from ..types import Trade
 if TYPE_CHECKING:
     from ..system_config import RiskProfileConfig
     from ..runtime.feed_store import FeedStore
+    from .types import PriceSnapshot
 
 # Import validation function for symbol validation
 from ..system_config import validate_usdt_pair

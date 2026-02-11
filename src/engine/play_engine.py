@@ -84,6 +84,8 @@ if TYPE_CHECKING:
     from src.structures import MultiTFIncrementalState
     from ..backtest.execution_validation import PlaySignalEvaluator, EvaluationResult, SignalDecision
     from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
+    from ..backtest.runtime.feed_store import FeedStore
+    from ..backtest.simulated_risk_manager import StopLiqValidationResult
     from ..core.risk_manager import Signal
 
 

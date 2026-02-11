@@ -30,6 +30,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config
@@ -49,6 +50,9 @@ from .realtime_state import (
     WalletData,
     AccountMetrics,
 )
+
+if TYPE_CHECKING:
+    from .historical_data_store import HistoricalDataStore
 
 
 class StreamType(Enum):
