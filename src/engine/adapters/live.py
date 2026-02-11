@@ -387,7 +387,8 @@ class LiveIndicatorCache:
                 }
             }
         """
-        from ...indicators import FeatureSpec
+        import pandas as pd
+        from ...backtest.indicator_vendor import compute_indicator
 
         results = {}
 
@@ -395,17 +396,54 @@ class LiveIndicatorCache:
             if self._bar_count == 0:
                 return results
 
+            # Build pandas Series from arrays for vectorized computation
+            close_s = pd.Series(self._close)
+            high_s = pd.Series(self._high)
+            low_s = pd.Series(self._low)
+            open_s = pd.Series(self._open)
+            volume_s = pd.Series(self._volume)
+
             # For each incrementally computed indicator, recompute vectorized
             for name, (inc_ind, feature) in self._incremental.items():
                 try:
-                    # Recompute using vectorized method
-                    vectorized = feature.compute(
-                        open=self._open,
-                        high=self._high,
-                        low=self._low,
-                        close=self._close,
-                        volume=self._volume,
+                    # Determine primary input based on feature's input_source
+                    source_str = (
+                        feature.input_source.value
+                        if hasattr(feature.input_source, 'value')
+                        else str(feature.input_source).lower()
                     )
+                    if source_str == "volume":
+                        primary_input = volume_s
+                    elif source_str == "open":
+                        primary_input = open_s
+                    elif source_str == "high":
+                        primary_input = high_s
+                    elif source_str == "low":
+                        primary_input = low_s
+                    elif source_str == "hlc3":
+                        primary_input = (high_s + low_s + close_s) / 3.0
+                    elif source_str == "ohlc4":
+                        primary_input = (open_s + high_s + low_s + close_s) / 4.0
+                    else:
+                        primary_input = close_s
+
+                    # Recompute using vectorized method
+                    vec_result = compute_indicator(
+                        feature.indicator_type,
+                        close=primary_input,
+                        high=high_s,
+                        low=low_s,
+                        open_=open_s,
+                        volume=volume_s,
+                        **feature.params,
+                    )
+
+                    # Handle single vs multi-output
+                    if isinstance(vec_result, dict):
+                        # Multi-output: take first output
+                        vectorized = next(iter(vec_result.values())).to_numpy()
+                    else:
+                        vectorized = vec_result.to_numpy()
 
                     # Get incremental values
                     incremental = self._indicators.get(name, np.array([]))
