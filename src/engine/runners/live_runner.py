@@ -21,7 +21,9 @@ Usage:
 
 import asyncio
 import os
+import queue
 import threading
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -33,6 +35,7 @@ from src.backtest.runtime.timeframe import tf_minutes
 from ...core.safety import check_panic_and_halt, get_panic_state
 
 from ...utils.logger import get_logger
+from ...utils.debug import is_debug_enabled
 
 if TYPE_CHECKING:
     from ...core.risk_manager import Signal
@@ -175,12 +178,22 @@ class LiveRunner:
         self._pause_dir = Path(os.path.expanduser("~/.trade/instances"))
         self._instance_id: str = ""  # Set by EngineManager after construction
 
+        # Multi-timeframe routing
+        self._play_timeframes: set[str] = set()
+        self._exec_tf: str = ""
+
         # RealtimeState integration
         self._realtime_state = None
         self._bootstrap = None
-        self._candle_queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        # stdlib Queue (not asyncio.Queue) for thread-safe put from sync WebSocket callbacks
+        self._candle_queue: queue.Queue = queue.Queue(maxsize=100)
         self._subscription_task: asyncio.Task | None = None
         self._kline_callback_registered = False
+
+    @property
+    def _debug(self) -> bool:
+        """Check if debug mode is active (reads global flag, responsive to runtime changes)."""
+        return is_debug_enabled()
 
     @property
     def state(self) -> RunnerState:
@@ -249,6 +262,18 @@ class LiveRunner:
             f"mode={self._engine.mode}"
         )
 
+        if self._debug:
+            logger.debug(
+                f"[DBG] Runner config: symbol={self._engine.symbol} "
+                f"exec_tf={self._engine.timeframe} mode={self._engine.mode} "
+                f"max_reconnect={self._max_reconnect_attempts} "
+                f"reconcile_interval={self._reconcile_interval}s"
+            )
+            logger.debug(
+                f"[DBG] Play: {self._engine.play.name} "
+                f"tf_mapping={getattr(self._engine, '_tf_mapping', 'N/A')}"
+            )
+
         try:
             # Connect to data provider
             await self._connect()
@@ -286,7 +311,10 @@ class LiveRunner:
         except Exception as e:
             self._transition_state(RunnerState.ERROR)
             self._stats.errors.append(str(e))
-            logger.error(f"Failed to start LiveRunner: {e}")
+            if self._debug:
+                logger.error(f"[DBG] Failed to start LiveRunner:\n{traceback.format_exc()}")
+            else:
+                logger.error(f"Failed to start LiveRunner: {e}")
             raise
 
     async def stop(self) -> None:
@@ -361,6 +389,28 @@ class LiveRunner:
         # Ensure our symbol is subscribed
         self._bootstrap.ensure_symbol_subscribed(self._engine.symbol)
 
+        # Subscribe to all play timeframes (multi-timeframe support)
+        # Read TF mapping from data provider (LiveDataProvider populates it;
+        # PlayEngine._tf_mapping is empty in live mode).
+        dp = self._engine._data_provider
+        tf_mapping = getattr(dp, '_tf_mapping', {}) or self._engine._tf_mapping
+        unique_tfs = {tf_mapping[role] for role in ("low_tf", "med_tf", "high_tf") if role in tf_mapping}
+        self._play_timeframes = {tf.lower() for tf in unique_tfs}
+        self._exec_tf = self._engine.timeframe.lower()
+
+        if self._debug:
+            logger.debug(
+                f"[DBG] Multi-timeframe subscription: play_tfs={self._play_timeframes} "
+                f"exec_tf={self._exec_tf} tf_mapping={tf_mapping}"
+            )
+
+        from ...data.realtime_models import KlineData
+        bybit_intervals = [KlineData.tf_to_bybit(tf) for tf in unique_tfs]
+        self._bootstrap.subscribe_kline_intervals(self._engine.symbol, bybit_intervals)
+
+        if self._debug:
+            logger.debug(f"[DBG] Bybit intervals subscribed: {bybit_intervals}")
+
         # Register callback for candle closes
         if not self._kline_callback_registered:
             self._realtime_state.on_kline_update(self._on_kline_update)
@@ -398,13 +448,10 @@ class LiveRunner:
                 logger.debug("Skipping position sync: not LiveExchange")
                 return
 
-            if hasattr(exchange, '_position_manager') and exchange._position_manager:
-                pm = exchange._position_manager
-                # Force REST sync to get current state
-                if hasattr(pm, 'reconcile_with_rest'):
-                    await asyncio.to_thread(pm.reconcile_with_rest)
-
-                positions = pm.get_all_positions()
+            if hasattr(exchange, '_exchange_manager') and exchange._exchange_manager:
+                em = exchange._exchange_manager
+                # Query all positions via ExchangeManager (has get_all_positions)
+                positions = em.get_all_positions()
                 if positions:
                     logger.info(f"Position sync: {len(positions)} existing position(s)")
                     for pos in positions:
@@ -454,39 +501,40 @@ class LiveRunner:
         """
         Handle kline update from RealtimeState.
 
-        Only processes closed candles matching our symbol and timeframe.
+        Processes closed candles matching our symbol and any play timeframe.
+        KlineData.interval is pre-normalized by from_bybit() (e.g., "15m", "1h").
         """
-        # Filter for our symbol and timeframe
+        # Filter for our symbol
         if kline_data.symbol != self._engine.symbol:
             return
 
-        # Map timeframe (Bybit uses minutes for most TFs)
-        expected_tf = self._engine.timeframe.lower()
+        # Accept any kline matching a play timeframe (not just exec)
         kline_tf = kline_data.interval.lower() if kline_data.interval else ""
-
-        # Convert to comparable format
-        tf_map = {
-            "1": "1m", "3": "3m", "5": "5m", "15": "15m", "30": "30m",
-            "60": "1h", "120": "2h", "240": "4h", "360": "6h",
-            "720": "12h", "d": "d", "w": "w", "m": "m",
-        }
-        kline_tf_norm = tf_map.get(kline_tf, kline_tf)
-
-        if kline_tf_norm != expected_tf:
+        if kline_tf not in self._play_timeframes:
             return
 
         # Only process closed candles
         if not kline_data.is_closed:
             return
 
-        # Convert to Candle and enqueue
+        if self._debug:
+            logger.debug(
+                f"[DBG] Kline closed: symbol={kline_data.symbol} tf={kline_tf} "
+                f"o={kline_data.open} h={kline_data.high} l={kline_data.low} "
+                f"c={kline_data.close} v={kline_data.volume:.2f} "
+                f"start={kline_data.start_time} end={kline_data.end_time}"
+            )
+
+        # Convert to Candle and enqueue with timeframe
         from ..interfaces import Candle
         from datetime import datetime, timezone
 
         try:
-            # G14.2: KlineData has no end_time field. Calculate close time
-            # from start_time + interval duration.
-            close_ts_ms = kline_data.start_time + tf_minutes(kline_tf_norm) * 60 * 1000
+            if kline_data.end_time > 0:
+                # Bybit end_time is last ms of candle (e.g. 12:14:59.999); +1 = candle close boundary
+                close_ts_ms = kline_data.end_time + 1
+            else:
+                close_ts_ms = kline_data.start_time + tf_minutes(kline_tf) * 60 * 1000
             candle = Candle(
                 ts_open=datetime.fromtimestamp(kline_data.start_time / 1000.0, tz=timezone.utc),
                 ts_close=datetime.fromtimestamp(close_ts_ms / 1000.0, tz=timezone.utc),
@@ -497,16 +545,15 @@ class LiveRunner:
                 volume=kline_data.volume,
             )
 
-            # Add to queue (non-blocking)
+            # Enqueue (candle, timeframe) tuple
             try:
-                self._candle_queue.put_nowait(candle)
-            except asyncio.QueueFull:
-                # Dequeue oldest candle to make room
+                self._candle_queue.put_nowait((candle, kline_data.interval))
+            except queue.Full:
                 try:
                     self._candle_queue.get_nowait()
-                except asyncio.QueueEmpty:
+                except queue.Empty:
                     pass
-                self._candle_queue.put_nowait(candle)
+                self._candle_queue.put_nowait((candle, kline_data.interval))
                 logger.warning("Candle queue full, dropped oldest candle")
 
         except Exception as e:
@@ -544,12 +591,14 @@ class LiveRunner:
                     break
 
                 # Wait for next candle close
-                candle = await self._wait_for_candle()
-                if candle is None:
+                result = await self._wait_for_candle()
+                if result is None:
                     continue
 
+                candle, timeframe = result
+
                 # Process candle
-                await self._process_candle(candle)
+                await self._process_candle(candle, timeframe)
 
                 # B5: Check max drawdown after processing
                 await self._check_max_drawdown()
@@ -563,7 +612,10 @@ class LiveRunner:
             except (ConnectionError, TimeoutError, OSError) as e:
                 # Network/connection errors: attempt reconnection
                 self._stats.errors.append(str(e))
-                logger.error(f"Connection error in process loop: {e}")
+                if self._debug:
+                    logger.error(f"[DBG] Connection error:\n{traceback.format_exc()}")
+                else:
+                    logger.error(f"Connection error in process loop: {e}")
 
                 if self._on_error:
                     self._on_error(e)
@@ -577,7 +629,10 @@ class LiveRunner:
             except Exception as e:
                 # Logic errors (TypeError, AttributeError, etc.): halt trading
                 self._stats.errors.append(str(e))
-                logger.error(f"Fatal error in process loop (non-connection): {e}")
+                if self._debug:
+                    logger.error(f"[DBG] Fatal error in process loop:\n{traceback.format_exc()}")
+                else:
+                    logger.error(f"Fatal error in process loop (non-connection): {e}")
 
                 if self._on_error:
                     self._on_error(e)
@@ -598,19 +653,21 @@ class LiveRunner:
         queue_timeout = min(60.0, health_timeout)  # Check at least every minute
 
         try:
-            # Wait for candle from queue with timeout
-            candle = await asyncio.wait_for(
-                self._candle_queue.get(),
-                timeout=queue_timeout,
+            # Wait for candle from thread-safe queue via executor
+            loop = asyncio.get_event_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, lambda: self._candle_queue.get(timeout=queue_timeout)
+                ),
+                timeout=queue_timeout + 5.0,  # Outer timeout slightly longer
             )
-            return candle
+            return result
 
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, queue.Empty):
             # No candle received in timeout period
             # Check if we've exceeded health threshold
             if self._stats.last_candle_ts:
                 since_last = (datetime.now() - self._stats.last_candle_ts).total_seconds()
-                # G6.0.2: Use tf_mins (variable from line 506), not tf_minutes (function)
                 expected_interval = tf_mins * 60
 
                 if since_last > expected_interval * 2:
@@ -633,29 +690,48 @@ class LiveRunner:
             logger.warning(f"Error waiting for candle: {e}")
             return None
 
-    async def _process_candle(self, candle) -> None:
+    async def _process_candle(self, candle, timeframe: str) -> None:
         """
         Process a closed candle through the engine.
 
         Args:
             candle: Candle data from WebSocket
+            timeframe: Timeframe string (e.g. "15m", "1h", "D")
         """
         from ..adapters.live import LiveDataProvider
 
         self._stats.bars_processed += 1
         self._stats.last_candle_ts = candle.ts_close
 
-        # Update data provider with new candle
+        if self._debug:
+            logger.debug(
+                f"[DBG] Processing candle #{self._stats.bars_processed}: "
+                f"tf={timeframe} close={candle.close} ts={candle.ts_close} "
+                f"o={candle.open} h={candle.high} l={candle.low} v={candle.volume:.2f}"
+            )
+
+        # Update data provider with new candle (routes to correct TF buffer)
         data_provider = self._engine._data_provider
         if isinstance(data_provider, LiveDataProvider):
-            data_provider.on_candle_close(candle)
+            data_provider.on_candle_close(candle, timeframe=timeframe)
+
+        # Only evaluate signals on execution timeframe candles
+        if timeframe.lower() != self._exec_tf:
+            logger.debug(f"Non-exec TF candle ({timeframe}), updated indicators only")
+            return
 
         # Check if data provider is ready (warmup complete)
         if not data_provider.is_ready():
-            logger.debug(
-                f"Data provider not ready (warmup), skipping signal evaluation. "
-                f"Bars: {data_provider.num_bars}"
-            )
+            if self._debug:
+                logger.debug(
+                    f"[DBG] Warmup pending: bars={data_provider.num_bars} "
+                    f"ready={data_provider.is_ready()}"
+                )
+            else:
+                logger.debug(
+                    f"Data provider not ready (warmup), skipping signal evaluation. "
+                    f"Bars: {data_provider.num_bars}"
+                )
             return
 
         # G17.3: Check pause state -- skip signal evaluation but keep receiving data
@@ -663,13 +739,26 @@ class LiveRunner:
             logger.debug("Runner paused, skipping signal evaluation")
             return
 
+        if self._debug:
+            # Dump indicator snapshot before engine processes
+            self._debug_dump_indicators(data_provider)
+
         # Process through engine (use -1 for latest in live mode)
         try:
             signal = self._engine.process_bar(-1)
         except Exception as e:
-            logger.error(f"Error processing bar: {e}")
+            if self._debug:
+                logger.error(f"[DBG] Error processing bar:\n{traceback.format_exc()}")
+            else:
+                logger.error(f"Error processing bar: {e}")
             self._stats.errors.append(f"Process error: {e}")
             return
+
+        if self._debug and signal is None:
+            logger.debug(
+                f"[DBG] No signal at bar #{self._stats.bars_processed} "
+                f"(close={candle.close}, ts={candle.ts_close})"
+            )
 
         if signal is not None:
             self._stats.signals_generated += 1
@@ -679,6 +768,14 @@ class LiveRunner:
                 f"Signal generated: {signal.direction} {self._engine.symbol} "
                 f"at {candle.ts_close}"
             )
+
+            if self._debug:
+                logger.debug(
+                    f"[DBG] Signal detail: direction={signal.direction} "
+                    f"symbol={signal.symbol} size_usdt={signal.size_usdt} "
+                    f"strategy={signal.strategy} confidence={signal.confidence} "
+                    f"metadata={signal.metadata}"
+                )
 
             # G17.1: Record signal in journal
             if self._journal:
@@ -717,6 +814,12 @@ class LiveRunner:
         Args:
             signal: Signal to execute
         """
+        if self._debug:
+            logger.debug(
+                f"[DBG] Executing signal: {signal.direction} {signal.symbol} "
+                f"size_usdt={signal.size_usdt} metadata={signal.metadata}"
+            )
+
         try:
             self._stats.orders_submitted += 1
             result = self._engine.execute_signal(signal)
@@ -727,6 +830,11 @@ class LiveRunner:
                     f"Order filled: {signal.direction} {signal.symbol} "
                     f"id={result.order_id}"
                 )
+                if self._debug:
+                    logger.debug(
+                        f"[DBG] Fill detail: order_id={result.order_id} "
+                        f"fill_price={result.fill_price} fill_usdt={result.fill_usdt}"
+                    )
 
                 # G17.1: Record fill in journal
                 if self._journal:
@@ -768,7 +876,10 @@ class LiveRunner:
         except Exception as e:
             self._stats.orders_failed += 1
             self._stats.errors.append(f"Execute error: {e}")
-            logger.error(f"Failed to execute signal: {e}")
+            if self._debug:
+                logger.error(f"[DBG] Failed to execute signal:\n{traceback.format_exc()}")
+            else:
+                logger.error(f"Failed to execute signal: {e}")
 
             # G17.1: Record exception in journal
             if self._journal:
@@ -842,8 +953,47 @@ class LiveRunner:
             return passed
 
         except Exception as e:
-            logger.error(f"Safety checks failed (fail-closed): {e}")
+            if self._debug:
+                logger.error(f"[DBG] Safety checks exception (fail-closed):\n{traceback.format_exc()}")
+            else:
+                logger.error(f"Safety checks failed (fail-closed): {e}")
             return False
+
+    def _debug_dump_indicators(self, data_provider) -> None:
+        """Dump current indicator values when debug mode is active."""
+        from ..adapters.live import LiveDataProvider, LiveIndicatorCache
+
+        if not isinstance(data_provider, LiveDataProvider):
+            return
+
+        cache: LiveIndicatorCache | None = data_provider._exec_indicators
+        if cache is None:
+            logger.debug("[DBG] Indicators: no exec indicator cache")
+            return
+
+        with cache._lock:
+            indicator_snapshot = {}
+            for name, arr in cache._indicators.items():
+                if len(arr) > 0:
+                    val = arr[-1]
+                    try:
+                        import math
+                        if isinstance(val, (int, float)) and not math.isnan(val):
+                            indicator_snapshot[name] = f"{val:.6g}"
+                        elif isinstance(val, (int, float)):
+                            indicator_snapshot[name] = "NaN"
+                        else:
+                            indicator_snapshot[name] = str(val)
+                    except (TypeError, ValueError):
+                        indicator_snapshot[name] = str(val)
+                else:
+                    indicator_snapshot[name] = "empty"
+
+        if indicator_snapshot:
+            lines = [f"    {k}: {v}" for k, v in sorted(indicator_snapshot.items())]
+            logger.debug(f"[DBG] Indicator snapshot (exec TF, {len(indicator_snapshot)} values):\n" + "\n".join(lines))
+        else:
+            logger.debug("[DBG] Indicator snapshot: empty (no indicators computed)")
 
     async def _check_max_drawdown(self) -> None:
         """

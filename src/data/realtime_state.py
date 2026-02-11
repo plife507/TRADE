@@ -245,12 +245,13 @@ class RealtimeState:
                     })
                 else:
                     self._orderbooks[orderbook.symbol] = orderbook
-            
+
             self._update_counts["orderbook"] += 1
-        
+            callback_data = self._orderbooks.get(orderbook.symbol)
+
         event_type = EventType.ORDERBOOK_SNAPSHOT if is_snapshot else EventType.ORDERBOOK_DELTA
         self._emit_event(event_type, orderbook, orderbook.symbol)
-        self._invoke_callbacks(self._orderbook_callbacks, self._orderbooks.get(orderbook.symbol))
+        self._invoke_callbacks(self._orderbook_callbacks, callback_data)
     
     def apply_orderbook_delta(self, symbol: str, delta: dict):
         """Apply delta update to orderbook."""
@@ -385,9 +386,15 @@ class RealtimeState:
 
         with self._lock:
             if symbol not in self._bar_buffers[env]:
-                return False
+                self._bar_buffers[env][symbol] = defaultdict(deque)
+
             if timeframe not in self._bar_buffers[env][symbol]:
-                return False
+                self._bar_buffers[env][symbol][timeframe] = deque(
+                    maxlen=get_bar_buffer_size(timeframe)
+                )
+                self.logger.warning(
+                    f"Auto-initialized bar buffer: env={env}, symbol={symbol}, tf={timeframe}"
+                )
 
             buffer = self._bar_buffers[env][symbol][timeframe]
             buffer.append(bar)
@@ -828,7 +835,8 @@ class RealtimeState:
             self._order_callbacks.clear()
             self._execution_callbacks.clear()
             self._wallet_callbacks.clear()
-    
+            self._account_metrics_callbacks.clear()
+
     # ==========================================================================
     # State Management
     # ==========================================================================

@@ -51,6 +51,7 @@ from .signal import SubLoopEvaluator
 from .sizing import SizingModel, SizingConfig
 
 from ..utils.logger import get_logger
+from ..utils.debug import is_debug_enabled
 from .timeframe import TFIndexManager
 
 
@@ -249,6 +250,12 @@ class PlayEngine:
         self._total_trades: int = 0
         self._bars_processed: int = 0
 
+        # Live mode multi-TF index tracking (set by _update_live_tf_indices)
+        self._prev_med_tf_len: int = 0
+        self._prev_high_tf_len: int = 0
+        self._live_med_tf_idx: int = 0
+        self._live_high_tf_idx: int = 0
+
         # Optional snapshot callback for auditing (set via set_on_snapshot)
         self._on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None
 
@@ -323,16 +330,14 @@ class PlayEngine:
         """Current high_tf forward-fill index (from TFIndexManager or live tracking)."""
         if self._tf_index_manager is not None:
             return self._tf_index_manager.high_tf_idx
-        # Live mode fallback: use stored live index
-        return getattr(self, '_live_high_tf_idx', 0)
+        return self._live_high_tf_idx
 
     @property
     def _current_med_tf_idx(self) -> int:
         """Current med_tf forward-fill index (from TFIndexManager or live tracking)."""
         if self._tf_index_manager is not None:
             return self._tf_index_manager.med_tf_idx
-        # Live mode fallback: use stored live index
-        return getattr(self, '_live_med_tf_idx', 0)
+        return self._live_med_tf_idx
 
     def set_play_hash(self, play_hash: str) -> None:
         """Set play hash for debug log correlation."""
@@ -413,6 +418,13 @@ class PlayEngine:
 
         # 4. Get current position
         position = self.exchange.get_position(self.symbol)
+
+        if is_debug_enabled() and not self.is_backtest:
+            self.logger.debug(
+                f"[DBG] Engine.process_bar: phase={self._phase.value} "
+                f"bar={bar_index} close={candle.close} "
+                f"position={'FLAT' if position is None else f'{position.side} {position.size}'}"
+            )
 
         # 5. Evaluate rules and generate signal
         signal = self._evaluate_rules(bar_index, candle, position)
@@ -589,9 +601,7 @@ class PlayEngine:
             equity_usdt=self.exchange.get_equity(),
             realized_pnl=self.exchange.get_realized_pnl(),
             total_trades=self._total_trades,
-            last_bar_ts=self.data.get_candle(self._current_bar_index).ts_close
-            if self._current_bar_index >= 0
-            else None,
+            last_bar_ts=self._get_last_bar_ts(),
             last_signal_ts=self._last_signal_ts,
             incremental_state_json=incremental_json,
             metadata={
@@ -648,6 +658,13 @@ class PlayEngine:
     # =========================================================================
     # Private Methods
     # =========================================================================
+
+    def _get_last_bar_ts(self) -> datetime | None:
+        """Get timestamp of the last processed bar, or None if unavailable."""
+        try:
+            return self.data.get_candle(self._current_bar_index).ts_close
+        except (IndexError, RuntimeError, AttributeError):
+            return None
 
     def _is_ready(self) -> bool:
         """Check if engine is ready for trading (warmup complete)."""
@@ -729,12 +746,12 @@ class PlayEngine:
 
         provider = self._data_provider
 
-        # Initialize tracking state on first call
-        if not hasattr(self, '_prev_med_tf_len'):
-            self._prev_med_tf_len: int = len(provider.med_tf_buffer)
-            self._prev_high_tf_len: int = len(provider.high_tf_buffer)
-            self._live_med_tf_idx: int = max(0, self._prev_med_tf_len - 1)
-            self._live_high_tf_idx: int = max(0, self._prev_high_tf_len - 1)
+        # Initialize tracking state on first call (attrs pre-initialized to 0 in __init__)
+        if self._prev_med_tf_len == 0 and len(provider.med_tf_buffer) > 0:
+            self._prev_med_tf_len = len(provider.med_tf_buffer)
+            self._prev_high_tf_len = len(provider.high_tf_buffer)
+            self._live_med_tf_idx = max(0, self._prev_med_tf_len - 1)
+            self._live_high_tf_idx = max(0, self._prev_high_tf_len - 1)
 
         # Update med_tf index from buffer length
         med_tf_len = len(provider.med_tf_buffer)
@@ -834,6 +851,7 @@ class PlayEngine:
 
     def _update_incremental_state(self, bar_index: int, candle: Candle) -> None:
         """Update incremental structure state with new bar data."""
+        import numpy as np
         from src.structures import BarData
 
         # Build indicators dict from feed store if available
@@ -846,6 +864,16 @@ class PlayEngine:
                 for name, arr in feed_store.indicators.items():
                     if bar_index < len(arr):
                         indicators[name] = float(arr[bar_index])
+        else:
+            # Live mode: get latest indicator values from exec indicator cache
+            from .adapters.live import LiveDataProvider
+            if isinstance(self._data_provider, LiveDataProvider):
+                cache = self._data_provider._exec_indicators
+                if cache is not None:
+                    with cache._lock:
+                        for name, arr in cache._indicators.items():
+                            if len(arr) > 0 and not np.isnan(arr[-1]):
+                                indicators[name] = float(arr[-1])
 
         bar_data = BarData(
             idx=bar_index,
@@ -970,12 +998,33 @@ class PlayEngine:
 
             provider = self._data_provider
 
+            # Resolve real-time prices + market data from ticker stream (WebSocket)
+            # Falls back to candle.close if ticker unavailable or stale
+            live_last_price = candle.close
+            live_mark_price = candle.close
+            mark_source = "live_candle_close"
+            live_funding_rate: float | None = None
+            live_open_interest: float | None = None
+            if provider._realtime_state is not None:
+                ticker = provider._realtime_state.get_ticker(provider._symbol)
+                if ticker is not None and not provider._realtime_state.is_ticker_stale(provider._symbol):
+                    if ticker.last_price > 0:
+                        live_last_price = ticker.last_price
+                    if ticker.mark_price > 0:
+                        live_mark_price = ticker.mark_price
+                        mark_source = "live_ticker"
+                    live_funding_rate = ticker.funding_rate
+                    live_open_interest = ticker.open_interest
+
             # Build FeedStore from live buffers for each TF
+            # OI and funding are injected from ticker into each feed
             low_tf_feed = self._build_live_feed_store(
                 provider.low_tf_buffer,
                 provider._low_tf_indicators,
                 provider._tf_mapping["low_tf"],
                 provider.symbol,
+                funding_rate=live_funding_rate,
+                open_interest=live_open_interest,
             )
             if low_tf_feed is None:
                 return None
@@ -987,6 +1036,8 @@ class PlayEngine:
                     provider._med_tf_indicators,
                     provider._tf_mapping["med_tf"],
                     provider.symbol,
+                    funding_rate=live_funding_rate,
+                    open_interest=live_open_interest,
                 )
 
             high_tf_feed = None
@@ -996,6 +1047,8 @@ class PlayEngine:
                     provider._high_tf_indicators,
                     provider._tf_mapping["high_tf"],
                     provider.symbol,
+                    funding_rate=live_funding_rate,
+                    open_interest=live_open_interest,
                 )
 
             feeds = MultiTFFeedStore(
@@ -1032,14 +1085,14 @@ class PlayEngine:
                 exec_idx=exec_idx,
                 high_tf_idx=high_tf_idx,
                 med_tf_idx=med_tf_idx,
-                exchange=None,  # Live mode has no sim exchange
-                mark_price=candle.close,
-                mark_price_source="live_candle_close",
+                exchange=self._build_live_exchange_state(),
+                mark_price=live_mark_price,
+                mark_price_source=mark_source,
                 history_config=None,
                 history_ready=True,
                 incremental_state=self._incremental_state,
                 feature_registry=self._feature_registry,
-                last_price=candle.close,
+                last_price=live_last_price,
                 prev_last_price=prev_last_price,
             )
             return snapshot
@@ -1052,6 +1105,9 @@ class PlayEngine:
         indicator_cache: Any | None,
         tf_str: str,
         symbol: str,
+        *,
+        funding_rate: float | None = None,
+        open_interest: float | None = None,
     ) -> "FeedStore | None":
         """
         Build a FeedStore from a live candle buffer and indicator cache.
@@ -1064,6 +1120,8 @@ class PlayEngine:
             indicator_cache: LiveIndicatorCache for this TF (may be None)
             tf_str: Timeframe string (e.g. "15m", "1h")
             symbol: Trading symbol
+            funding_rate: Current funding rate from ticker (forward-filled into array)
+            open_interest: Current open interest from ticker (forward-filled into array)
 
         Returns:
             FeedStore or None if buffer is empty
@@ -1109,6 +1167,15 @@ class PlayEngine:
             ts_close_ms_to_idx[ts_ms] = i
             close_ts_set.add(c.ts_close)
 
+        # Build market data arrays (forward-filled from latest ticker value)
+        funding_arr = None
+        if funding_rate is not None:
+            funding_arr = np.full(n, funding_rate, dtype=np.float64)
+
+        oi_arr = None
+        if open_interest is not None and open_interest > 0:
+            oi_arr = np.full(n, open_interest, dtype=np.float64)
+
         return FeedStore(
             tf=tf_str,
             symbol=symbol,
@@ -1123,7 +1190,14 @@ class PlayEngine:
             ts_close_ms_to_idx=ts_close_ms_to_idx,
             close_ts_set=close_ts_set,
             length=n,
+            funding_rate=funding_arr,
+            open_interest=oi_arr,
         )
+
+    def _build_live_exchange_state(self):
+        """Build a frozen snapshot of live exchange state for RuntimeSnapshotView."""
+        from .adapters.live_state_adapter import LiveExchangeStateAdapter
+        return LiveExchangeStateAdapter.from_live_exchange(self._exchange, self.symbol)
 
     def _size_position(self, signal: "Signal") -> float:
         """
@@ -1153,7 +1227,7 @@ class PlayEngine:
             entry_price = signal.metadata.get("entry_price")
 
         # If no entry_price in metadata, try to get from current candle
-        if entry_price is None and self._current_bar_index >= 0:
+        if entry_price is None:
             try:
                 candle = self.data.get_candle(self._current_bar_index)
                 entry_price = candle.close
@@ -1277,12 +1351,11 @@ class PlayEngine:
 
         # Get entry price approximation (current candle close)
         entry_price = None
-        if self._current_bar_index >= 0:
-            try:
-                candle = self.data.get_candle(self._current_bar_index)
-                entry_price = candle.close
-            except (IndexError, AttributeError):
-                pass
+        try:
+            candle = self.data.get_candle(self._current_bar_index)
+            entry_price = candle.close
+        except (IndexError, AttributeError):
+            pass
 
         # Also check signal metadata for entry_price
         if entry_price is None and signal.metadata:
@@ -1389,6 +1462,13 @@ class PlayEngine:
 
         # Evaluate using PlaySignalEvaluator
         result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
+
+        if is_debug_enabled() and not self.is_backtest:
+            self.logger.debug(
+                f"[DBG] Rule evaluation: decision={result.decision.value} "
+                f"has_pos={has_position} pos_side={position_side} "
+                f"sl={result.stop_loss_price} tp={result.take_profit_price}"
+            )
 
         # Convert evaluation result to Signal
         return self._result_to_signal(result, position)

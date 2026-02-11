@@ -1,0 +1,78 @@
+version: "3.0.0"
+name: "sol_ema_cross_demo"
+description: |
+  EMA 9/21 golden cross strategy for SOLUSDT with filters.
+  Long only, single timeframe (15m), hybrid exits (signal or SL/TP).
+
+  Entry conditions (ALL must be true):
+    1. EMA 9 crosses below EMA 21 (momentum shift down)
+    2. Close below EMA 200 (trend filter -- only trade with the trend)
+    3. Volume above 20-period average (participation confirmation)
+    4. Open interest above 5,800,000 (crowded long = good short opportunity)
+
+  Exit conditions (whichever hits FIRST):
+    - Signal: EMA 9 crosses above EMA 21 (momentum reversal)
+    - Stop loss: 5% above entry
+    - Take profit: 10% below entry (2:1 reward-to-risk)
+
+symbol: "SOLUSDT"
+
+# Single timeframe: all three feeds point to 15m
+timeframes:
+  low_tf: "15m"
+  med_tf: "15m"
+  high_tf: "15m"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_fast:
+    indicator: ema
+    params: {length: 9}
+
+  ema_slow:
+    indicator: ema
+    params: {length: 21}
+
+  ema_trend:
+    indicator: ema
+    params: {length: 200}
+
+  vol_avg:
+    indicator: sma
+    source: volume
+    params: {length: 20}
+
+structures:
+  exec: []
+
+actions:
+  entry_short:
+    all:
+      - ["ema_fast", "cross_below", "ema_slow"]    # Momentum shift down
+      - ["close", "<", "ema_trend"]                 # Trend filter (below EMA 200)
+      - ["volume", ">", "vol_avg"]                  # Volume confirmation
+      - ["open_interest", ">", 5800000]             # High participation (crowded longs)
+
+  exit_short:
+    all:
+      - ["ema_fast", "cross_above", "ema_slow"]    # Momentum reversal
+
+position_policy:
+  mode: "short_only"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 5.0
+  take_profit_pct: 10.0
+  max_position_pct: 100.0

@@ -1598,6 +1598,15 @@ def handle_play_run(args) -> int:
         border_style="cyan"
     ))
 
+    from src.utils.debug import is_debug_enabled
+    if is_debug_enabled() and mode in ("demo", "live"):
+        console.print(Panel(
+            "[bold yellow]DEBUG MODE ACTIVE[/]\n"
+            "[dim]Full tracebacks, indicator snapshots, and rule evaluation details enabled.\n"
+            "Log level: DEBUG | All output goes to console + log file.[/]",
+            border_style="yellow"
+        ))
+
     # Backtest mode: delegate to backtest_run_play_tool (golden path)
     # No need to create PlayEngineFactory engine -- the tool creates its own
     # via create_engine_from_play + run_engine_with_play.
@@ -1612,7 +1621,13 @@ def handle_play_run(args) -> int:
             play, mode=mode, confirm_live=getattr(args, "confirm", False),
         )
     except Exception as e:
-        console.print(f"[red]Failed to create engine: {e}[/]")
+        from src.utils.debug import is_debug_enabled
+        if is_debug_enabled():
+            import traceback
+            console.print(f"[red]Failed to create engine:[/]")
+            console.print(f"[red]{traceback.format_exc()}[/]")
+        else:
+            console.print(f"[red]Failed to create engine: {e}[/]")
         return 1
 
     if mode == "shadow":
@@ -1757,7 +1772,13 @@ def _run_play_live(play, args, manager=None) -> int:
         if instance_id:
             loop.run_until_complete(manager.stop(instance_id))
     except Exception as e:
-        console.print(f"\n[red]{mode.upper()} mode error: {e}[/]")
+        from src.utils.debug import is_debug_enabled
+        if is_debug_enabled():
+            import traceback
+            console.print(f"\n[red]{mode.upper()} mode error:[/]")
+            console.print(f"[red]{traceback.format_exc()}[/]")
+        else:
+            console.print(f"\n[red]{mode.upper()} mode error: {e}[/]")
         if instance_id:
             try:
                 loop.run_until_complete(manager.stop(instance_id))
@@ -1773,6 +1794,15 @@ def _run_play_live(play, args, manager=None) -> int:
         console.print(f"\n[green]{mode.upper()} run complete:[/]")
         console.print(f"  Bars: {info.bars_processed}")
         console.print(f"  Signals: {info.signals_generated}")
+
+        # Show errors in debug mode
+        from src.utils.debug import is_debug_enabled
+        if is_debug_enabled():
+            stats = manager.get_runner_stats(instance_id)
+            if stats and stats.get("errors"):
+                console.print(f"\n[yellow]Errors ({len(stats['errors'])}):[/]")
+                for err in stats["errors"]:
+                    console.print(f"  [red]{err}[/]")
     else:
         console.print(f"\n[green]{mode.upper()} run complete.[/]")
 

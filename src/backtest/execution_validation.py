@@ -89,6 +89,10 @@ BUILTIN_FEATURES = {
     "high",         # Current eval_tf bar high
     "low",          # Current eval_tf bar low
     "volume",       # Current eval_tf bar volume
+
+    # === Market Data (Forward-Filled from Exchange) ===
+    "open_interest",  # Open interest - Backtest: DuckDB OI table | Live: ticker.openInterest
+    "funding_rate",   # Funding rate - Backtest: DuckDB funding table | Live: ticker.fundingRate
 }
 
 # Earliest available Bybit data (linear perpetuals launched late 2018)

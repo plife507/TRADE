@@ -643,6 +643,13 @@ class Play:
                 params = spec.get("params", {})
                 feature_tf = spec.get("tf", execution_tf)
 
+                # Parse input source (e.g. source: volume)
+                source_str = spec.get("source", "close")
+                try:
+                    input_source = InputSource(source_str)
+                except ValueError:
+                    input_source = InputSource.CLOSE
+
                 output_keys = ()
                 if registry.is_supported(indicator_type):
                     if registry.is_multi_output(indicator_type):
@@ -656,6 +663,7 @@ class Play:
                     type=FeatureType.INDICATOR,
                     indicator_type=indicator_type,
                     params=params,
+                    input_source=input_source,
                     output_keys=output_keys,
                 )
                 features_list.append(feature)

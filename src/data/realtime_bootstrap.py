@@ -28,6 +28,7 @@ Usage:
 import time
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 
 from ..exchanges.bybit_client import BybitClient
@@ -223,6 +224,7 @@ class RealtimeBootstrap:
         self._running = False
         self._public_connected = False
         self._private_connected = False
+        self._stale_logged = False
 
         # Real-time bar persistence configuration
         # When a closed bar is received:
@@ -424,7 +426,45 @@ class RealtimeBootstrap:
         
         # Try dynamic subscription
         return self.subscribe_symbol_dynamic(symbol)
-    
+
+    def subscribe_kline_intervals(self, symbol: str, intervals: list[str]) -> None:
+        """
+        Subscribe to additional kline intervals for a symbol.
+
+        Call this when the engine needs kline data for timeframes not in the
+        original subscription config (e.g., multi-timeframe strategies).
+
+        Args:
+            symbol: Symbol to subscribe klines for (e.g., "BTCUSDT")
+            intervals: Bybit-format intervals (e.g., ["15", "60", "D"])
+        """
+        symbol = symbol.upper()
+
+        with self._lock:
+            already = set(self.sub_config.kline_intervals)
+            new_intervals = [iv for iv in intervals if iv not in already]
+
+            if not new_intervals:
+                return
+
+            if not self._public_connected or not self.client._ws_public:
+                self.logger.warning(
+                    f"Cannot subscribe kline intervals {new_intervals} - "
+                    "public WebSocket not connected"
+                )
+                return
+
+        for interval in new_intervals:
+            try:
+                interval_int: int | str = int(interval)
+            except ValueError:
+                interval_int = interval
+            self.client.subscribe_klines(symbol, interval_int, self._on_kline)
+            self.logger.info(f"Subscribed to kline.{interval}.{symbol}")
+
+        with self._lock:
+            self.sub_config.kline_intervals.extend(new_intervals)
+
     # ==========================================================================
     # Public Streams
     # ==========================================================================
@@ -506,10 +546,17 @@ class RealtimeBootstrap:
             topic = msg.get("topic", "")
             msg_type = msg.get("type", "")
             data = msg.get("data", {})
-            
+
             if not data:
                 return
-            
+
+            # Detect reconnection: data resumed but _public_connected was cleared
+            if not self._public_connected:
+                self._public_connected = True
+                self.state.set_public_ws_connected()
+                self._stale_logged = False
+                self.logger.info("Public WebSocket reconnected (data resumed)")
+
             # Handle both snapshot and delta
             ticker = TickerData.from_bybit(data)
             self.state.update_ticker(ticker)
@@ -564,6 +611,13 @@ class RealtimeBootstrap:
 
             if not data:
                 return
+
+            # Detect reconnection: data resumed but _public_connected was cleared
+            if not self._public_connected:
+                self._public_connected = True
+                self.state.set_public_ws_connected()
+                self._stale_logged = False
+                self.logger.info("Public WebSocket reconnected (data resumed)")
 
             # Handle list of klines
             if isinstance(data, list):
@@ -650,10 +704,14 @@ class RealtimeBootstrap:
 
         try:
             store = self._get_db_store()
+            # Convert start_time (int ms) to UTC-naive datetime for DuckDB
+            ts_dt = datetime.fromtimestamp(
+                kline.start_time / 1000, tz=timezone.utc
+            ).replace(tzinfo=None)
             store.upsert_candle(
                 symbol=kline.symbol,
                 timeframe=kline.interval,
-                timestamp=kline.start_time,
+                timestamp=ts_dt,
                 open_price=kline.open,
                 high=kline.high,
                 low=kline.low,
@@ -1112,6 +1170,13 @@ def get_realtime_bootstrap() -> RealtimeBootstrap:
             app_config = get_config()
             ws_config = app_config.websocket
             
+            # In demo mode, auto-enable live public streams because
+            # stream-demo.bybit.com/v5/public/linear returns 404.
+            # Market data is identical on live vs demo.
+            use_live_public = ws_config.use_live_for_public_streams
+            if app_config.bybit.use_demo and not use_live_public:
+                use_live_public = True
+
             sub_config = SubscriptionConfig(
                 enable_ticker=ws_config.enable_ticker_stream,
                 enable_orderbook=ws_config.enable_orderbook_stream,
@@ -1122,7 +1187,7 @@ def get_realtime_bootstrap() -> RealtimeBootstrap:
                 enable_orders=ws_config.enable_order_stream,
                 enable_executions=ws_config.enable_execution_stream,
                 enable_wallet=ws_config.enable_wallet_stream,
-                use_live_for_public_streams=ws_config.use_live_for_public_streams,
+                use_live_for_public_streams=use_live_public,
             )
             
             _realtime_bootstrap = RealtimeBootstrap(config=sub_config)

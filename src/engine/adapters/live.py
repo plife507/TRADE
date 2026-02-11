@@ -737,7 +737,7 @@ class LiveDataProvider:
 
         # WU-05: Initialize structure states for each TF if Play has structures
         # Track structure warmup readiness alongside indicator warmup
-        if self._play.structures:
+        if self._play.has_structures:
             self._init_structure_states()
 
         # WU-02, WU-04: Check warmup for all TFs (not just exec)
@@ -797,17 +797,37 @@ class LiveDataProvider:
             logger.info(f"Loaded {len(bars)} bars for {tf_role} ({tf_str}) warm-up")
 
     def _get_indicator_specs_for_tf(self, tf_role: str) -> list[dict]:
-        """Get indicator specs for a specific TF role from Play."""
+        """Get indicator specs for a specific TF role from Play.
+
+        Converts Feature objects into dicts compatible with
+        ``FeatureSpec.from_dict()`` (maps ``Feature.id`` → ``output_key``).
+        """
         if not self._play.features:
             return []
 
         tf_str = self._tf_mapping[tf_role]
         specs = []
         for feature in self._play.features:
-            # Check if this feature's TF matches
-            feature_tf = feature.get("timeframe", self._timeframe)
-            if feature_tf == tf_str:
-                specs.append(feature)
+            # Feature is a dataclass -- read .tf directly
+            if getattr(feature, "tf", None) != tf_str:
+                continue
+            # Only include indicators (not structures)
+            if getattr(feature, "type", None) is not None:
+                from ...backtest.feature_registry import FeatureType
+                if feature.type != FeatureType.INDICATOR:
+                    continue
+            # Build FeatureSpec-compatible dict
+            input_source = getattr(feature, "input_source", None)
+            if input_source is not None and hasattr(input_source, "value"):
+                input_source = input_source.value
+            else:
+                input_source = str(input_source) if input_source else "close"
+            specs.append({
+                "indicator_type": feature.indicator_type,
+                "output_key": feature.id,
+                "params": dict(feature.params) if feature.params else {},
+                "input_source": input_source,
+            })
         return specs
 
     async def _load_bars_from_db(self) -> list:
@@ -865,33 +885,79 @@ class LiveDataProvider:
             logger.warning(f"Failed to load bars from DuckDB for {tf_str}: {e}")
             return []
 
+    def _get_structure_specs_by_tf_role(self) -> dict[str, list[dict]]:
+        """Derive structure specs grouped by TF role from play.features.
+
+        Each structure Feature already carries its concrete TF string.
+        We reverse-map concrete TFs back to roles using ``_tf_mapping``
+        so the live adapter knows which ``TFIncrementalState`` to feed.
+
+        Returns:
+            Dict keyed by TF role ("low_tf", "med_tf", "high_tf") with
+            lists of spec dicts suitable for ``TFIncrementalState``.
+        """
+        from ...backtest.feature_registry import FeatureType
+
+        # Build reverse map: concrete TF → set of roles
+        tf_to_roles: dict[str, list[str]] = {}
+        for role in ("low_tf", "med_tf", "high_tf"):
+            tf_str = self._tf_mapping[role]
+            tf_to_roles.setdefault(tf_str, []).append(role)
+
+        # Also map the exec role's concrete TF to low_tf (exec → low_tf by convention)
+        exec_role = self._tf_mapping.get("exec", "low_tf")
+        exec_tf = self._tf_mapping.get(exec_role, self._tf_mapping.get("low_tf", ""))
+        tf_to_roles.setdefault(exec_tf, [])
+
+        result: dict[str, list[dict]] = {"low_tf": [], "med_tf": [], "high_tf": []}
+
+        for feature in self._play.features:
+            if getattr(feature, "type", None) != FeatureType.STRUCTURE:
+                continue
+            spec = {
+                "type": feature.structure_type,
+                "key": feature.id,
+                "params": dict(feature.params) if feature.params else {},
+            }
+            if feature.uses:
+                spec["uses"] = list(feature.uses)
+
+            # Map concrete TF to the highest-priority role
+            roles = tf_to_roles.get(feature.tf, [])
+            if roles:
+                # Prefer lowest role: low_tf > med_tf > high_tf
+                target = roles[0]
+            else:
+                # Unknown TF — default to low_tf
+                target = "low_tf"
+            result[target].append(spec)
+
+        return result
+
     def _init_structure_states(self) -> None:
-        """Initialize incremental structure states for all TFs from Play specs."""
+        """Initialize incremental structure states for all TFs from Play features."""
         from src.structures import TFIncrementalState
 
-        if not self._play.structures:
+        if not self._play.has_structures:
             return
 
-        # Get structure specs for each TF role
-        # Play.structures is a dict keyed by TF role: {"exec": [...], "high_tf": [...], etc.}
+        specs_by_role = self._get_structure_specs_by_tf_role()
 
         # low_tf / exec structures
-        exec_specs = self._play.structures.get("exec", [])
-        low_tf_specs = self._play.structures.get("low_tf", [])
-        combined_low_tf = exec_specs + low_tf_specs
-        if combined_low_tf:
+        low_tf_specs = specs_by_role["low_tf"]
+        if low_tf_specs:
             try:
                 self._low_tf_structure = TFIncrementalState(
                     self._tf_mapping["low_tf"],
-                    combined_low_tf,
+                    low_tf_specs,
                 )
-                logger.info(f"Initialized low_tf structure state with {len(combined_low_tf)} specs")
+                logger.info(f"Initialized low_tf structure state with {len(low_tf_specs)} specs")
             except Exception as e:
                 logger.warning(f"Failed to initialize low_tf structure state: {e}")
 
         # med_tf structures (only if different from low_tf)
         if self._tf_mapping["med_tf"] != self._tf_mapping["low_tf"]:
-            med_tf_specs = self._play.structures.get("med_tf", [])
+            med_tf_specs = specs_by_role["med_tf"]
             if med_tf_specs:
                 try:
                     self._med_tf_structure = TFIncrementalState(
@@ -904,7 +970,7 @@ class LiveDataProvider:
 
         # high_tf structures (only if different from med_tf)
         if self._tf_mapping["high_tf"] != self._tf_mapping["med_tf"]:
-            high_tf_specs = self._play.structures.get("high_tf", [])
+            high_tf_specs = specs_by_role["high_tf"]
             if high_tf_specs:
                 try:
                     self._high_tf_structure = TFIncrementalState(
@@ -1510,16 +1576,26 @@ class LiveExchange:
             exec_result = self._order_executor.execute(signal)
 
             # Convert to unified OrderResult
+            # Build risk_check metadata (RiskCheckResult has no to_dict)
+            risk_meta = None
+            if exec_result.risk_check:
+                rc = exec_result.risk_check
+                risk_meta = {
+                    "allowed": rc.allowed,
+                    "reason": rc.reason,
+                    "adjusted_size": rc.adjusted_size,
+                }
+
             return OrderResult(
                 success=exec_result.success,
                 order_id=exec_result.order_result.order_id if exec_result.order_result else None,
                 exchange_order_id=exec_result.order_result.order_id if exec_result.order_result else None,
-                fill_price=exec_result.order_result.avg_price if exec_result.order_result else None,
+                fill_price=exec_result.order_result.price if exec_result.order_result else None,
                 fill_usdt=exec_result.executed_size,
                 fee_usdt=getattr(exec_result, 'fee_usdt', None),
                 error=exec_result.error,
                 metadata={
-                    "risk_check": exec_result.risk_check.to_dict() if exec_result.risk_check else None,
+                    "risk_check": risk_meta,
                     "source": exec_result.source,
                 },
             )
@@ -1532,15 +1608,18 @@ class LiveExchange:
             )
 
     def _order_side_to_direction(self, side: str) -> str:
-        """Convert order side to direction string."""
+        """Convert order side to direction string.
+
+        OrderExecutor expects uppercase: LONG, SHORT, FLAT.
+        """
         side_upper = side.upper()
         if side_upper in ("LONG", "BUY"):
-            return "long"
+            return "LONG"
         elif side_upper in ("SHORT", "SELL"):
-            return "short"
-        elif side_upper == "FLAT":
-            return "close"
-        return side.lower()
+            return "SHORT"
+        elif side_upper in ("FLAT", "CLOSE"):
+            return "FLAT"
+        return side_upper
 
     def cancel_order(self, order_id: str) -> bool:
         """Cancel pending order."""
@@ -1578,6 +1657,7 @@ class LiveExchange:
                 )
 
         # Fall back to PositionManager
+        # PM returns core Position (fields: size, current_price) not interfaces.Position (size_qty, mark_price)
         if self._position_manager:
             pm_pos = self._position_manager.get_position(symbol)
             if pm_pos:
@@ -1585,9 +1665,9 @@ class LiveExchange:
                     symbol=pm_pos.symbol,
                     side=pm_pos.side.upper(),
                     size_usdt=pm_pos.size_usdt,
-                    size_qty=pm_pos.size_qty,
+                    size_qty=pm_pos.size,
                     entry_price=pm_pos.entry_price,
-                    mark_price=pm_pos.mark_price,
+                    mark_price=pm_pos.current_price,
                     unrealized_pnl=pm_pos.unrealized_pnl,
                     leverage=pm_pos.leverage,
                     stop_loss=pm_pos.stop_loss,

@@ -1,0 +1,62 @@
+version: "3.0.0"
+name: "pf_005_both_prices_combined"
+description: |
+  Price Feature Suite 5 - Combined last_price and mark_price usage.
+
+  Exercises: both built-in price features in a single play,
+  last_price for entry signals, mark_price for proximity checks,
+  validates both resolve independently in the same snapshot.
+
+  Entry when last_price > ema_20 AND mark_price near_pct close within 0.5%.
+  Exit on SL/TP only (no signal exit).
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_20:
+    indicator: ema
+    params: {length: 20}
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+actions:
+  entry_long:
+    all:
+      - ["last_price", ">", "ema_20"]
+      - ["mark_price", "near_pct", "close", 0.5]
+      - ["rsi_14", "<", 60]
+
+  exit_long:
+    any:
+      - ["rsi_14", ">", 75]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.5
+  take_profit_pct: 5.0
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 500
+  seed: 105

@@ -227,7 +227,7 @@ def build_all_scope_mappings(
 
 # OHLCV columns and builtin price features are always implicitly available
 # mark_price is a runtime builtin - accessible via snapshot_view.get_feature()
-OHLCV_COLUMNS = {"open", "high", "low", "close", "volume", "timestamp", "mark_price"}
+OHLCV_COLUMNS = {"open", "high", "low", "close", "volume", "timestamp", "mark_price", "last_price", "open_interest", "funding_rate"}
 
 
 def validate_feature_reference(

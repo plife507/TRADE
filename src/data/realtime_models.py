@@ -18,9 +18,9 @@ Timeframe Terminology:
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 import pandas as pd
 
@@ -252,20 +252,55 @@ class KlineData:
     close: float
     volume: float
     turnover: float
+    end_time: int = 0
     is_closed: bool = False
     timestamp: float = field(default_factory=time.time)
-    
+
+    # Bybit interval → normalized format (matches our DuckDB/FeedStore convention)
+    _INTERVAL_MAP: ClassVar[dict[str, str]] = {
+        "1": "1m", "3": "3m", "5": "5m", "15": "15m", "30": "30m",
+        "60": "1h", "120": "2h", "240": "4h", "360": "6h", "720": "12h",
+        "d": "D", "w": "W", "m": "M",
+    }
+
+    # Normalized format → Bybit interval (reverse of _INTERVAL_MAP)
+    _TF_TO_BYBIT_MAP: ClassVar[dict[str, str]] = {
+        v: k for k, v in _INTERVAL_MAP.items()
+    } | {"D": "D", "W": "W", "M": "M"}
+
+    @classmethod
+    def tf_to_bybit(cls, tf: str) -> str:
+        """Convert our timeframe format to Bybit interval format.
+
+        Raises ValueError for unknown timeframes (no silent defaults).
+        """
+        result = cls._TF_TO_BYBIT_MAP.get(tf)
+        if result is None:
+            raise ValueError(f"Unknown timeframe: {tf!r}")
+        return result
+
+    @classmethod
+    def _normalize_interval(cls, raw: str) -> str:
+        """Convert Bybit interval (e.g., '15', '60', 'D') to our format ('15m', '1h', 'D')."""
+        return cls._INTERVAL_MAP.get(raw.lower(), raw)
+
     @classmethod
     def from_bybit(cls, data: dict, topic: str = "") -> 'KlineData':
-        interval = ""
+        # Topic format: "kline.{interval}.{symbol}"
+        raw_interval = ""
+        symbol = ""
         if topic:
             parts = topic.split(".")
             if len(parts) >= 2:
-                interval = parts[1]
+                raw_interval = parts[1]
+            if len(parts) >= 3:
+                symbol = parts[2]
+        raw_interval = raw_interval or str(data.get("interval", ""))
         return cls(
-            symbol=data.get("symbol", ""),
-            interval=interval or str(data.get("interval", "")),
+            symbol=symbol or data.get("symbol", ""),
+            interval=cls._normalize_interval(raw_interval),
             start_time=int(data.get("start", 0)),
+            end_time=int(data.get("end", 0)),
             open=float(data.get("open", 0)),
             high=float(data.get("high", 0)),
             low=float(data.get("low", 0)),
@@ -275,14 +310,14 @@ class KlineData:
             is_closed=data.get("confirm", False),
             timestamp=time.time(),
         )
-    
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol, "interval": self.interval,
-            "start_time": self.start_time, "open": self.open,
-            "high": self.high, "low": self.low, "close": self.close,
-            "volume": self.volume, "is_closed": self.is_closed,
-            "timestamp": self.timestamp,
+            "start_time": self.start_time, "end_time": self.end_time,
+            "open": self.open, "high": self.high, "low": self.low,
+            "close": self.close, "volume": self.volume,
+            "is_closed": self.is_closed, "timestamp": self.timestamp,
         }
 
 
@@ -303,8 +338,9 @@ class BarRecord:
 
     @classmethod
     def from_kline_data(cls, kline: 'KlineData') -> 'BarRecord':
+        # UTC-naive datetime for DuckDB compatibility (system stores UTC-naive)
         return cls(
-            timestamp=datetime.fromtimestamp(kline.start_time / 1000),
+            timestamp=datetime.fromtimestamp(kline.start_time / 1000, tz=timezone.utc).replace(tzinfo=None),
             open=kline.open, high=kline.high, low=kline.low,
             close=kline.close, volume=kline.volume,
         )

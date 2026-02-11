@@ -4,19 +4,21 @@ Trade journal for persistent trade logging.
 Writes trade events as JSONL (one JSON object per line) for post-analysis.
 Each line is a complete JSON object with event type, timestamp, and details.
 
-Journal files are stored at ~/.trade/journal/{instance_id}.jsonl
+Journal files are stored at {project_root}/data/journal/{instance_id}.jsonl
 """
 
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ..utils.logger import get_logger
 
 logger = get_logger()
+
+# Project root: src/engine/journal.py -> two levels up
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class TradeJournal:
@@ -31,7 +33,7 @@ class TradeJournal:
 
     def __init__(self, instance_id: str):
         self._instance_id = instance_id
-        self._journal_dir = Path(os.path.expanduser("~/.trade/journal"))
+        self._journal_dir = _PROJECT_ROOT / "data" / "journal"
         self._journal_dir.mkdir(parents=True, exist_ok=True)
         self._path = self._journal_dir / f"{instance_id}.jsonl"
         logger.info(f"TradeJournal initialized: {self._path}")

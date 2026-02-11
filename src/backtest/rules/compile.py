@@ -245,7 +245,7 @@ def _validate_indicator_path(
         role_indicators = available_indicators.get(tf_role, [])
         # Also check OHLCV and built-in keys which are always available
         ohlcv = ["open", "high", "low", "close", "volume"]
-        builtin_keys = ["mark_price"]  # 1m eval loop built-in
+        builtin_keys = ["mark_price", "last_price"]  # 1m eval loop built-ins
         if indicator_key not in role_indicators and indicator_key not in ohlcv and indicator_key not in builtin_keys:
             all_available = role_indicators + ohlcv + builtin_keys
             raise CompileError(
