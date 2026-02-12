@@ -5,16 +5,12 @@ These tools provide exchange connection testing, health checks, and status repor
 """
 
 import sys
-import os
 from .shared import ToolResult, _get_exchange_manager, _get_realtime_state
 from src.config.config import get_config
 
-# Windows-safe symbols (avoid Unicode encoding errors on legacy consoles)
-_USE_ASCII = (
-    sys.platform == "win32" 
-    and os.environ.get("PYTHONIOENCODING", "").lower() != "utf-8"
-    and not os.environ.get("WT_SESSION")
-)
+# Windows-safe symbols: always use ASCII on Windows because Rich's legacy
+# renderer encodes via cp1252 even inside Windows Terminal (WT_SESSION).
+_USE_ASCII = sys.platform == "win32"
 _OK = "[OK]" if _USE_ASCII else "✓"
 _FAIL = "[X]" if _USE_ASCII else "✗"
 
@@ -475,11 +471,6 @@ def get_api_environment_tool() -> ToolResult:
         
         trading_status = f"Active Trading: {trading['mode']} ({trading['base_url']})"
         legs_status = f"Keys: Trade[L:{tl} D:{td}] Data[L:{dl} D:{dd}]"
-        
-        if safety["mode_consistent"]:
-            safety_msg = "OK"
-        else:
-            safety_msg = safety["messages"][0] if safety["messages"] else "Issues detected"
         
         return ToolResult(
             success=True,
