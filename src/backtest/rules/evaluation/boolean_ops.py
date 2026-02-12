@@ -64,6 +64,25 @@ def eval_any(
     )
 
 
+# Reason codes that represent true errors (missing data, type issues, internal).
+# These should propagate through NOT unchanged — they are NOT invertible.
+_ERROR_REASONS = frozenset({
+    ReasonCode.MISSING_VALUE,
+    ReasonCode.MISSING_LHS,
+    ReasonCode.MISSING_RHS,
+    ReasonCode.MISSING_PREV_VALUE,
+    ReasonCode.TYPE_MISMATCH,
+    ReasonCode.FLOAT_EQUALITY,
+    ReasonCode.UNKNOWN_OPERATOR,
+    ReasonCode.UNSUPPORTED_OPERATOR,
+    ReasonCode.INVALID_TOLERANCE,
+    ReasonCode.INVALID_PATH,
+    ReasonCode.UNKNOWN_NAMESPACE,
+    ReasonCode.UNKNOWN_FIELD,
+    ReasonCode.INTERNAL_ERROR,
+})
+
+
 def eval_not(
     expr: NotExpr,
     snapshot: "RuntimeSnapshotView",
@@ -73,10 +92,18 @@ def eval_not(
     Evaluate NotExpr (negation).
 
     Inverts the result of the child expression.
+
+    Semantics:
+    - OK (clean evaluation): invert ok value (NOT true = false, NOT false = true)
+    - CONDITION_FAILED / WINDOW_CONDITION_FAILED: these are normal "not met"
+      results from any()/holds_for()/occurred_within()/count_true(), so NOT
+      should invert them to true.
+    - True errors (MISSING_*, TYPE_MISMATCH, INTERNAL_ERROR, etc.): propagate
+      unchanged — cannot meaningfully invert missing data or type errors.
     """
     result = evaluator.evaluate(expr.child, snapshot)
-    if result.reason != ReasonCode.OK:
-        # Propagate errors unchanged
+    if result.reason in _ERROR_REASONS:
+        # True errors: propagate unchanged
         return result
-    # Invert the result
+    # OK, CONDITION_FAILED, WINDOW_CONDITION_FAILED: invert the result
     return EvalResult.success(not result.ok, result.lhs_path or "", result.rhs_repr or "", "not")

@@ -186,7 +186,8 @@ class LiveRunner:
         self._realtime_state = None
         self._bootstrap = None
         # stdlib Queue (not asyncio.Queue) for thread-safe put from sync WebSocket callbacks
-        self._candle_queue: queue.Queue = queue.Queue(maxsize=100)
+        # Unbounded: candle close events are precious and can't be recovered if dropped
+        self._candle_queue: queue.Queue = queue.Queue(maxsize=0)
         self._subscription_task: asyncio.Task | None = None
         self._kline_callback_registered = False
 
@@ -547,15 +548,10 @@ class LiveRunner:
             )
 
             # Enqueue (candle, timeframe) tuple
-            try:
-                self._candle_queue.put_nowait((candle, kline_data.interval))
-            except queue.Full:
-                try:
-                    dropped = self._candle_queue.get_nowait()
-                    logger.warning(f"Candle queue full, dropped oldest candle (tf={dropped[1]})")
-                except queue.Empty:
-                    logger.warning("Candle queue full but was drained before drop")
-                self._candle_queue.put_nowait((candle, kline_data.interval))
+            self._candle_queue.put_nowait((candle, kline_data.interval))
+            depth = self._candle_queue.qsize()
+            if depth > 10:
+                logger.warning(f"Candle queue depth={depth}, processing may be falling behind")
 
         except Exception as e:
             logger.warning(f"Failed to convert kline to candle: {e}")
@@ -655,7 +651,7 @@ class LiveRunner:
 
         try:
             # Wait for candle from thread-safe queue via executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None, lambda: self._candle_queue.get(timeout=queue_timeout)

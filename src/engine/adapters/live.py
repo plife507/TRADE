@@ -1441,6 +1441,11 @@ class LiveExchange:
         # RealtimeState for account data
         self._realtime_state = None
 
+        # Last known good equity/balance (prevents fallback to initial_equity)
+        self._last_known_equity: float = config.initial_equity
+        self._last_known_balance: float = config.initial_equity
+        self._equity_stale_count: int = 0
+
         # Tracking
         self._connected = False
         self._start_ms: int = int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -1690,48 +1695,63 @@ class LiveExchange:
         return None
 
     def get_balance(self) -> float:
-        """Get available balance."""
+        """Get available balance. Uses last known value on failure (never initial_equity)."""
         # Try RealtimeState first if data is fresh
         if self._realtime_state and self._is_ws_data_fresh():
             metrics = self._realtime_state.get_account_metrics()
             if metrics:
-                return metrics.total_available_balance
+                self._last_known_balance = metrics.total_available_balance
+                return self._last_known_balance
 
             wallet = self._realtime_state.get_wallet("USDT")
             if wallet:
-                return wallet.available_balance
+                self._last_known_balance = wallet.available_balance
+                return self._last_known_balance
 
         # Fall back to REST
         if self._exchange_manager:
             try:
                 balance = self._exchange_manager.get_balance()
-                return balance["available"] if balance else self._config.initial_equity
+                if balance and "available" in balance:
+                    self._last_known_balance = balance["available"]
+                    return self._last_known_balance
             except Exception as e:
-                logger.error(f"Failed to get available balance from exchange, using initial equity: {e}")
+                logger.error(f"Failed to get balance from exchange, using last known ${self._last_known_balance:.2f}: {e}")
 
-        return self._config.initial_equity
+        return self._last_known_balance
 
     def get_equity(self) -> float:
-        """Get total equity."""
+        """Get total equity. Uses last known value on failure (never initial_equity)."""
         # Try RealtimeState first if data is fresh
         if self._realtime_state and self._is_ws_data_fresh():
             metrics = self._realtime_state.get_account_metrics()
             if metrics:
-                return metrics.total_equity
+                self._last_known_equity = metrics.total_equity
+                self._equity_stale_count = 0
+                return self._last_known_equity
 
             wallet = self._realtime_state.get_wallet("USDT")
             if wallet:
-                return wallet.equity
+                self._last_known_equity = wallet.equity
+                self._equity_stale_count = 0
+                return self._last_known_equity
 
         # Fall back to REST
         if self._exchange_manager:
             try:
                 balance = self._exchange_manager.get_balance()
-                return balance["total"] if balance else self._config.initial_equity
+                if balance and "total" in balance:
+                    self._last_known_equity = balance["total"]
+                    self._equity_stale_count = 0
+                    return self._last_known_equity
             except Exception as e:
-                logger.error(f"Failed to get equity from exchange, using initial equity: {e}")
+                self._equity_stale_count += 1
+                logger.error(
+                    f"Failed to get equity from exchange (stale count: {self._equity_stale_count}), "
+                    f"using last known ${self._last_known_equity:.2f}: {e}"
+                )
 
-        return self._config.initial_equity
+        return self._last_known_equity
 
     def get_realized_pnl(self) -> float:
         """Get total realized PnL from Bybit closed PnL endpoint."""

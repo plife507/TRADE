@@ -419,7 +419,7 @@ class BacktestExchange:
             size_qty=sim_pos.size,
             entry_price=sim_pos.entry_price,
             mark_price=mark_price,
-            unrealized_pnl=0.0,  # Calculated by SimulatedExchange
+            unrealized_pnl=self._sim_exchange.unrealized_pnl_usdt,
             leverage=self._sim_exchange.leverage,
             stop_loss=sim_pos.stop_loss,
             take_profit=sim_pos.take_profit,
