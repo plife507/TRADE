@@ -374,7 +374,7 @@ class Play:
     - Identity (id, version)
     - Account config (starting equity, leverage, fees) - REQUIRED
     - Scope (symbols)
-    - execution_tf: The timeframe for bar-by-bar stepping
+    - exec_tf: The timeframe for bar-by-bar stepping
     - features: List of Feature instances (indicators + structures on any TF)
     - Position policy (direction constraints)
     - actions: Entry/exit rules (DSL with nested boolean logic)
@@ -393,7 +393,7 @@ class Play:
     symbol_universe: tuple = field(default_factory=tuple)
 
     # Execution timeframe (bar stepping granularity)
-    execution_tf: str = ""
+    exec_tf: str = ""
 
     # Timeframe mapping (3-feed + exec role system)
     # Keys: low_tf, med_tf, high_tf, exec (role pointer)
@@ -449,8 +449,8 @@ class Play:
         if self.account is None:
             errors.append("account section is required")
 
-        if not self.execution_tf:
-            errors.append("execution_tf is required")
+        if not self.exec_tf:
+            errors.append("exec_tf is required")
 
         # Allow structure-only Plays (empty features if structures exist)
         if not self.features and not self.has_structures:
@@ -494,16 +494,11 @@ class Play:
         """Get or build the feature registry."""
         if self._registry is None:
             self._registry = FeatureRegistry.from_features(
-                execution_tf=self.execution_tf,
+                exec_tf=self.exec_tf,
                 features=list(self.features),
             )
             self._registry.expand_indicator_outputs()
         return self._registry
-
-    @property
-    def exec_tf(self) -> str:
-        """Get execution timeframe (alias for compatibility)."""
-        return self.execution_tf
 
     @property
     def low_tf(self) -> str | None:
@@ -537,7 +532,7 @@ class Play:
             "name": self.name,
             "description": self.description,
             "symbol_universe": list(self.symbol_universe),
-            "execution_tf": self.execution_tf,
+            "exec_tf": self.exec_tf,
             "features": [f.to_dict() for f in self.features],
             "position_policy": self.position_policy.to_dict(),
             "risk_model": self.risk_model.to_dict() if self.risk_model else None,
@@ -565,14 +560,14 @@ class Play:
         Parse timeframes section.
 
         Returns:
-            (execution_tf, tf_mapping, exec_role)
+            (exec_tf, tf_mapping, exec_role)
         """
-        execution_tf = d.get("execution_tf")
+        exec_tf = d.get("exec_tf")
         tf_mapping: dict[str, str] = d.get("tf_mapping", {})
         timeframes_section = d.get("timeframes")
         exec_role = "low_tf"  # Default
 
-        if not execution_tf:
+        if not exec_tf:
             if not timeframes_section:
                 raise ValueError(
                     "Missing 'timeframes' section. Example:\n"
@@ -613,18 +608,19 @@ class Play:
             }
 
             if exec_role == "low_tf":
-                execution_tf = low_tf
+                exec_tf = low_tf
             elif exec_role == "med_tf":
-                execution_tf = med_tf
+                exec_tf = med_tf
             else:
-                execution_tf = high_tf
+                exec_tf = high_tf
 
-        return execution_tf, tf_mapping, exec_role
+        return exec_tf, tf_mapping, exec_role
 
     @staticmethod
     def _parse_features(
         features_raw: dict | list,
-        execution_tf: str,
+        exec_tf: str,
+        tf_mapping: dict[str, str] | None = None,
     ) -> tuple[Feature, ...]:
         """
         Parse features section.
@@ -641,7 +637,10 @@ class Play:
             for feature_id, spec in features_raw.items():
                 indicator_type = spec.get("indicator", "")
                 params = spec.get("params", {})
-                feature_tf = spec.get("tf", execution_tf)
+                feature_tf = spec.get("tf", exec_tf)
+                # Resolve role names (low_tf, med_tf, high_tf) to concrete TFs
+                if tf_mapping and feature_tf in tf_mapping and feature_tf != "exec":
+                    feature_tf = tf_mapping[feature_tf]
 
                 # Parse input source (e.g. source: volume)
                 source_str = spec.get("source", "close")
@@ -794,7 +793,8 @@ class Play:
     @staticmethod
     def _parse_structures(
         structures_dict: dict[str, Any],
-        execution_tf: str,
+        exec_tf: str,
+        tf_mapping: dict[str, str] | None = None,
     ) -> tuple[list[str], list[Feature]]:
         """
         Parse structures section.
@@ -809,6 +809,14 @@ class Play:
         structure_keys: list[str] = []
         structure_features: list[Feature] = []
 
+        def _resolve_tf_for_role(role: str) -> str:
+            """Resolve a role key to its concrete timeframe."""
+            if role == "exec":
+                return exec_tf
+            if tf_mapping and role in tf_mapping:
+                return tf_mapping[role]
+            return exec_tf
+
         for tf_role, specs in structures_dict.items():
             if tf_role not in VALID_TF_ROLES:
                 raise ValueError(
@@ -818,7 +826,7 @@ class Play:
                 )
 
             if isinstance(specs, list):
-                # exec: [{type: swing, key: swing}, ...]
+                resolved_tf = _resolve_tf_for_role(tf_role)
                 for spec in specs:
                     if isinstance(spec, dict) and "key" in spec:
                         if "type" not in spec:
@@ -834,7 +842,7 @@ class Play:
                             uses = tuple(uses_raw) if uses_raw else ()
                         structure_features.append(Feature(
                             id=spec["key"],
-                            tf=execution_tf,
+                            tf=resolved_tf,
                             type=FeatureType.STRUCTURE,
                             structure_type=spec["type"],
                             params=spec.get("params", {}),
@@ -877,7 +885,7 @@ class Play:
         """Create from dict.
 
         Handles two formats:
-        1. Internal format (from to_dict): features as list, symbol_universe, execution_tf
+        1. Internal format (from to_dict): features as list, symbol_universe, exec_tf
         2. YAML format: features as dict, symbol, tf
         """
         # Parse account config
@@ -885,11 +893,11 @@ class Play:
         account = AccountConfig.from_dict(account_dict) if account_dict else None
 
         # Parse timeframes
-        execution_tf, tf_mapping, _ = cls._parse_timeframes(d)
+        exec_tf, tf_mapping, _ = cls._parse_timeframes(d)
 
         # Parse features
         features_raw = d.get("features", [])
-        features = cls._parse_features(features_raw, execution_tf)
+        features = cls._parse_features(features_raw, exec_tf, tf_mapping)
 
         # Parse position policy
         pp_dict = d.get("position_policy", {})
@@ -907,7 +915,7 @@ class Play:
         # Parse structures
         structures_dict = d.get("structures", {})
         has_structures = bool(structures_dict)
-        structure_keys, structure_features = cls._parse_structures(structures_dict, execution_tf)
+        structure_keys, structure_features = cls._parse_structures(structures_dict, exec_tf, tf_mapping)
 
         # Combine indicator features with structure features
         if structure_features:
@@ -931,7 +939,7 @@ class Play:
             description=d.get("description"),
             account=account,
             symbol_universe=tuple(symbol_universe),
-            execution_tf=execution_tf,
+            exec_tf=exec_tf,
             tf_mapping=tf_mapping,
             features=features,
             position_policy=position_policy,

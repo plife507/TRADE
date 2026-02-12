@@ -483,7 +483,7 @@ def audit_snapshot_plumbing_parity(
                 keys.add(feature.id)
             declared_keys_by_role[tf] = keys
         # Map exec TF keys to "exec" role for compatibility
-        declared_keys_by_role["exec"] = declared_keys_by_role.get(play.execution_tf, set())
+        declared_keys_by_role["exec"] = declared_keys_by_role.get(play.exec_tf, set())
 
         # Create audit callback placeholder (will be set after engine creation)
         callback_holder = {"callback": None}

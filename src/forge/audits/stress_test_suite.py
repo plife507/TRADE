@@ -631,7 +631,7 @@ def _step_backtest_execution(
 
                 # Verify required TFs are in synthetic data
                 if provider:
-                    exec_tf = play.execution_tf
+                    exec_tf = play.exec_tf
                     if not provider.has_tf(exec_tf):
                         # Skip plays that require TFs not in synthetic data
                         play_results.append({

@@ -129,6 +129,7 @@ def analyze_play(play_stem: str) -> None:
 
         # Compute expected realized pnl from prices
         size = row.get("entry_size", 0.0)
+        assert entry_p is not None and exit_p is not None and size is not None
         if side == "long":
             expected_realized = (exit_p - entry_p) * size
         else:
@@ -187,6 +188,7 @@ def analyze_play(play_stem: str) -> None:
                 # We can compute entry_fee from fees - exit_fee
                 # exit_fee = exit_notional * fee_rate = size * fill_price * fee_rate
                 # But we don't have fee_rate directly. Let's back-compute:
+                assert size is not None and exit_p is not None and entry_p is not None
                 exit_notional = size * exit_p
                 # From the overall fee structure: entry_notional * rate + exit_notional * rate = total_fees_this_trade
                 # entry_notional = size * entry_price (approximately, entry also has slippage)

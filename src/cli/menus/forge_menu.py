@@ -306,7 +306,7 @@ def _run_synthetic_backtest():
             return
 
         # Determine required timeframes
-        exec_tf = play.execution_tf
+        exec_tf = play.exec_tf
         required_tfs = {exec_tf, "1m"}
         for tf in play.feature_registry.get_all_tfs():
             required_tfs.add(tf)

@@ -33,8 +33,10 @@ import os
 import sys
 import time
 import traceback
+from typing import Any, cast
 import yaml
 from datetime import datetime, timezone
+from io import TextIOWrapper
 from pathlib import Path
 
 # Ensure project root on PYTHONPATH
@@ -44,8 +46,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Fix Windows console encoding for Unicode (check marks, arrows in log output)
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        cast(TextIOWrapper, sys.stdout).reconfigure(encoding="utf-8", errors="replace")
+        cast(TextIOWrapper, sys.stderr).reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -264,6 +266,7 @@ def phase_2_exchange_rest(play) -> "tuple[PhaseResult, Any]":
         return ph, None
 
     # P2.2 get_balance()
+    total: float = 0.0
     try:
         balance = em.get_balance()
         assert isinstance(balance, dict)
@@ -466,6 +469,7 @@ async def phase_3_data_provider(play, em) -> "tuple[PhaseResult, Any]":
 
     # P3.7 Parity audit pass
     try:
+        cache = dp._low_tf_indicators
         audit = cache.audit_incremental_parity()
         all_pass = all(r.get("pass", False) for r in audit.values())
         max_diffs = {k: f'{v["max_diff"]:.2e}' for k, v in audit.items()}
@@ -474,6 +478,11 @@ async def phase_3_data_provider(play, em) -> "tuple[PhaseResult, Any]":
         ph.record("P3.7", "Parity audit", False, str(e))
 
     # P3.8 Input source routing from candle (_resolve_input_from_candle)
+    # Define MockFeature outside try so it's available in P3.9 too
+    class MockFeature:
+        def __init__(self, src: str):
+            self.input_source = src
+
     try:
         from src.engine.interfaces import Candle as TestCandle
 
@@ -482,11 +491,6 @@ async def phase_3_data_provider(play, em) -> "tuple[PhaseResult, Any]":
             ts_close=datetime.now(timezone.utc),
             open=100.0, high=110.0, low=90.0, close=105.0, volume=5000.0,
         )
-
-        # Build a mock feature with different input_source values
-        class MockFeature:
-            def __init__(self, src):
-                self.input_source = src
 
         cache_inst = dp._low_tf_indicators
         results = {}
@@ -600,10 +604,10 @@ async def phase_4_websocket(play) -> "tuple[PhaseResult, Any]":
         ph.record("P4.2", "Subscribe klines", False, str(e))
 
     # P4.3 Receive WS messages (wait up to 90s)
+    got_data = False
     try:
         state = get_realtime_state()
         env = "demo"
-        got_data = False
 
         # Poll for data arrival
         deadline = time.monotonic() + 90
@@ -647,6 +651,7 @@ async def phase_4_websocket(play) -> "tuple[PhaseResult, Any]":
     try:
         # For 1m candles we should get a close within ~60s
         got_closed = False
+        assert state is not None, "RealtimeState not initialized"
         if got_data:
             # Check existing bars for closed ones
             bars = state.get_bar_buffer(env="demo", symbol=symbol, timeframe="1m", limit=5)
@@ -668,6 +673,7 @@ async def phase_4_websocket(play) -> "tuple[PhaseResult, Any]":
         ph.record("P4.5", "Closed bar received", False, str(e))
 
     # P4.6 on_candle_close routes (feed bar through DataProvider)
+    test_dp = None
     try:
         from src.engine.adapters.live import LiveDataProvider
         from src.engine.interfaces import Candle
@@ -696,6 +702,7 @@ async def phase_4_websocket(play) -> "tuple[PhaseResult, Any]":
 
     # P4.7 Indicators update after new bar
     try:
+        assert test_dp is not None, "DataProvider not initialized from P4.6"
         cache = test_dp._low_tf_indicators
         before_len = cache.length
         # We can't easily verify indicators change without warmup
@@ -742,6 +749,7 @@ async def phase_4_websocket(play) -> "tuple[PhaseResult, Any]":
     try:
         from src.data.realtime_models import TickerData
 
+        assert state is not None, "RealtimeState not initialized"
         # Ticker subscription may have been set up by bootstrap.start()
         # Poll for up to 10s to see if ticker data arrives
         ticker_data = None
@@ -772,6 +780,7 @@ async def phase_4_websocket(play) -> "tuple[PhaseResult, Any]":
 
     # P4.11 Price sanity checks (last_price > 0, bid < ask, staleness API)
     try:
+        assert state is not None, "RealtimeState not initialized"
         ticker_data = state.get_ticker(symbol)
         assert ticker_data is not None, "No ticker data available"
 
@@ -872,6 +881,7 @@ async def phase_5_order_execution(play, config) -> PhaseResult:
         if panic.is_triggered:
             reset_panic("RESET")
 
+        assert exchange._exchange_manager is not None, "ExchangeManager not initialized"
         checks = SafetyChecks(exchange._exchange_manager, exchange._exchange_manager.config)
         passed, failures = checks.run_all_checks()
         ph.record("P5.6", "SafetyChecks.run_all_checks()", passed,
@@ -884,6 +894,7 @@ async def phase_5_order_execution(play, config) -> PhaseResult:
         from src.core.risk_manager import Signal
         from src.core.position_manager import PositionManager
 
+        assert exchange._exchange_manager is not None, "ExchangeManager not initialized"
         pm = PositionManager(exchange._exchange_manager)
         signal = Signal(
             symbol=symbol,
@@ -893,6 +904,7 @@ async def phase_5_order_execution(play, config) -> PhaseResult:
             confidence=1.0,
         )
         portfolio = pm.get_snapshot()
+        assert exchange._risk_manager is not None, "RiskManager not initialized"
         risk_result = exchange._risk_manager.check(signal, portfolio)
         ph.record("P5.7", "RiskManager.check()", risk_result.allowed,
                    f"allowed={risk_result.allowed}, reason={risk_result.reason}")
@@ -933,6 +945,7 @@ async def phase_5_order_execution(play, config) -> PhaseResult:
     # P5.10 Close position
     if order_success:
         try:
+            assert exchange._exchange_manager is not None, "ExchangeManager not initialized"
             close_result = exchange._exchange_manager.close_position(symbol)
             ph.record("P5.10", "Close position", close_result.success,
                        f"error={close_result.error}" if not close_result.success else "closed")
@@ -985,6 +998,8 @@ async def phase_6_edge_cases(play, em) -> PhaseResult:
                    f"Crashed: {type(e).__name__}: {e}")
 
     # P6.2 Zero-size order
+    rm = None
+    portfolio = None
     try:
         from src.core.risk_manager import RiskManager, Signal
         from src.core.position_manager import PositionManager
@@ -1007,7 +1022,10 @@ async def phase_6_edge_cases(play, em) -> PhaseResult:
 
     # P6.3 Huge order rejected
     try:
-        huge_signal = Signal(
+        from src.core.risk_manager import Signal as Signal_
+        assert rm is not None, "RiskManager not initialized from P6.2"
+        assert portfolio is not None, "Portfolio not initialized from P6.2"
+        huge_signal = Signal_(
             symbol=symbol,
             direction="SHORT",
             size_usdt=999999999.0,
@@ -1117,6 +1135,7 @@ async def phase_7_integration(play, engine_timeout: int) -> PhaseResult:
     try:
         deadline = time.monotonic() + engine_timeout
         processed = False
+        info = None
         while time.monotonic() < deadline:
             info = manager.get(instance_id)
             if info and info.bars_processed > 0:
@@ -1131,14 +1150,16 @@ async def phase_7_integration(play, engine_timeout: int) -> PhaseResult:
         ph.record("P7.3", "Process at least 1 bar", False, str(e))
 
     # P7.4 Indicators warm (check data provider has data, not strict is_ready)
+    instance = None
     try:
         instance = manager._instances.get(instance_id)
         if instance and instance.engine:
             dp = instance.engine._data_provider
-            has_data = hasattr(dp, '_low_tf_buffer') and len(dp._low_tf_buffer) > 0
+            low_buf = getattr(dp, '_low_tf_buffer', None)
+            has_data = low_buf is not None and len(low_buf) > 0
             ready = dp.is_ready() if hasattr(dp, 'is_ready') else False
             ph.record("P7.4", "Indicators warm", has_data or ready,
-                       f"is_ready={ready}, buffer_len={len(dp._low_tf_buffer) if hasattr(dp, '_low_tf_buffer') else 0}")
+                       f"is_ready={ready}, buffer_len={len(low_buf) if low_buf is not None else 0}")
         else:
             ph.record("P7.4", "Indicators warm", False, "No instance/engine found")
     except Exception as e:
@@ -1361,7 +1382,8 @@ def phase_9_safety_breakers(play, em) -> PhaseResult:
 
     # P9.2 PanicState callback exception handling
     try:
-        ps2 = PanicState()
+        from src.core.safety import PanicState as PanicState_
+        ps2 = PanicState_()
         good_calls = []
         def _bad_callback(r):
             raise ValueError("bad callback")
@@ -1556,7 +1578,7 @@ async def phase_10_multi_tf(play) -> PhaseResult:
 
     # P10.4 LiveDataProvider.disconnect() cleanup
     try:
-        dp.disconnect()
+        await dp.disconnect()
         ph.record("P10.4", "DataProvider disconnect", True)
     except Exception as e:
         ph.record("P10.4", "DataProvider disconnect", False, str(e))
@@ -1693,6 +1715,7 @@ async def phase_12_runner_state(play) -> PhaseResult:
     from src.engine.manager import EngineManager, InstanceMode
 
     # P12.1 Instance limit: 2nd demo for same symbol rejected
+    mgr: EngineManager | None = None
     try:
         EngineManager._instance = None  # Reset singleton
         mgr = EngineManager.get_instance()
@@ -1716,6 +1739,7 @@ async def phase_12_runner_state(play) -> PhaseResult:
 
     # P12.2 Instance limit: max 1 live instance
     try:
+        assert mgr is not None, "EngineManager not initialized from P12.1"
         mgr._live_count = 1
         try:
             mgr._check_limits(play, "live")
@@ -1730,6 +1754,7 @@ async def phase_12_runner_state(play) -> PhaseResult:
 
     # P12.3 Instance limit: max 1 backtest
     try:
+        assert mgr is not None, "EngineManager not initialized from P12.1"
         mgr._backtest_count = 1
         try:
             mgr._check_limits(play, "backtest")

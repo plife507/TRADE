@@ -21,7 +21,9 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -30,7 +32,7 @@ import yaml
 # Ensure project root is importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.forge.validation.synthetic_data import generate_synthetic_candles
+from src.forge.validation.synthetic_data import PatternType, generate_synthetic_candles
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -278,7 +280,7 @@ def regenerate_candles(play_config: dict, pattern: str, bars: int = 500, seed: i
         timeframes=tf_list,
         bars_per_tf=bars,
         seed=seed,
-        pattern=pattern,
+        pattern=cast(PatternType, pattern),
         align_multi_tf=True,
     )
     return dict(result.timeframes)
@@ -372,6 +374,7 @@ class TradeVerifier:
 
     def check_trade_count(self):
         """Verify trade count matches between result.json and trades.parquet."""
+        assert self.result_json is not None
         json_count = self.result_json.get("trades_count", 0)
         parquet_count = len(self.trades_df) if self.trades_df is not None else 0
 
@@ -393,11 +396,11 @@ class TradeVerifier:
         issues = []
         for idx, trade in self.trades_df.iterrows():
             side = trade.get("side", "")
-            entry_p = trade.get("entry_price", 0)
-            exit_p = trade.get("exit_price", 0)
-            realized = trade.get("realized_pnl", 0)
+            entry_p = float(trade.get("entry_price", 0) or 0)
+            exit_p = float(trade.get("exit_price", 0) or 0)
+            realized = float(trade.get("realized_pnl", 0) or 0)
 
-            if pd.isna(exit_p) or exit_p == 0:
+            if bool(pd.isna(exit_p)) or exit_p == 0:
                 continue  # Open trade
 
             if side == "long":
@@ -428,11 +431,11 @@ class TradeVerifier:
 
         issues = []
         for idx, trade in self.trades_df.iterrows():
-            realized = trade.get("realized_pnl", 0)
-            fees = trade.get("fees_paid", 0)
-            net = trade.get("net_pnl", 0)
+            realized = float(trade.get("realized_pnl", 0) or 0)
+            fees = float(trade.get("fees_paid", 0) or 0)
+            net = float(trade.get("net_pnl", 0) or 0)
 
-            if pd.isna(realized) or pd.isna(fees) or pd.isna(net):
+            if bool(pd.isna(realized)) or bool(pd.isna(fees)) or bool(pd.isna(net)):
                 continue
 
             expected_net = realized - fees
@@ -462,12 +465,12 @@ class TradeVerifier:
 
         issues = []
         for idx, trade in self.trades_df.iterrows():
-            entry_usdt = abs(trade.get("entry_size_usdt", 0))
-            fees = trade.get("fees_paid", 0)
-            exit_p = trade.get("exit_price", 0)
-            entry_p = trade.get("entry_price", 0)
+            entry_usdt = abs(float(trade.get("entry_size_usdt", 0) or 0))
+            fees = float(trade.get("fees_paid", 0) or 0)
+            exit_p = float(trade.get("exit_price", 0) or 0)
+            entry_p = float(trade.get("entry_price", 0) or 0)
 
-            if pd.isna(fees) or pd.isna(entry_usdt) or entry_usdt == 0:
+            if bool(pd.isna(fees)) or bool(pd.isna(entry_usdt)) or entry_usdt == 0:
                 continue
 
             # Entry fee = entry_usdt * taker_rate
@@ -475,7 +478,7 @@ class TradeVerifier:
 
             # Exit fee = exit_notional * taker_rate
             # exit_notional ≈ entry_usdt * (exit_price / entry_price) for longs
-            if entry_p > 0 and not pd.isna(exit_p) and exit_p > 0:
+            if entry_p > 0 and not bool(pd.isna(exit_p)) and exit_p > 0:
                 exit_notional = entry_usdt * (exit_p / entry_p)
                 exit_fee = exit_notional * taker_rate
             else:
@@ -530,22 +533,22 @@ class TradeVerifier:
         for idx, trade in self.trades_df.iterrows():
             sl = trade.get("stop_loss")
             tp = trade.get("take_profit")
-            entry_p = trade.get("entry_price", 0)
+            entry_p = float(trade.get("entry_price", 0) or 0)
             side = str(trade.get("side", "long")).lower()
 
             # SL/TP must be positive
-            if sl_pct is not None and sl is not None and not pd.isna(sl):
+            if sl_pct is not None and sl is not None and not bool(pd.isna(sl)):
                 total += 1
                 if sl <= 0:
                     issues.append(f"Trade {idx}: SL={sl:.2f} is non-positive")
-            if tp_pct is not None and tp is not None and not pd.isna(tp):
+            if tp_pct is not None and tp is not None and not bool(pd.isna(tp)):
                 if tp <= 0:
                     issues.append(f"Trade {idx}: TP={tp:.2f} is non-positive")
 
             # SL/TP must be on correct side relative to EACH OTHER
             # (not relative to entry, because signal-fill gap can cause crossovers)
-            if (sl is not None and not pd.isna(sl) and
-                    tp is not None and not pd.isna(tp)):
+            if (sl is not None and not bool(pd.isna(sl)) and
+                    tp is not None and not bool(pd.isna(tp))):
                 if side == "long" and sl >= tp:
                     issues.append(
                         f"Trade {idx}: Long SL={sl:.2f} >= TP={tp:.2f}"
@@ -557,10 +560,10 @@ class TradeVerifier:
 
             # Track signal-fill gap crossovers as info
             if entry_p > 0:
-                if sl is not None and not pd.isna(sl):
+                if sl is not None and not bool(pd.isna(sl)):
                     if (side == "long" and sl >= entry_p) or (side == "short" and sl <= entry_p):
                         info_counts["sl_cross"] += 1
-                if tp is not None and not pd.isna(tp):
+                if tp is not None and not bool(pd.isna(tp)):
                     if (side == "long" and tp <= entry_p) or (side == "short" and tp >= entry_p):
                         info_counts["tp_cross"] += 1
 
@@ -586,15 +589,15 @@ class TradeVerifier:
         issues = []
         for idx, trade in self.trades_df.iterrows():
             reason = trade.get("exit_reason", "")
-            exit_p = trade.get("exit_price")
+            exit_p = float(trade.get("exit_price", 0) or 0)
             sl = trade.get("stop_loss")
             tp = trade.get("take_profit")
             side = trade.get("side", "long")
 
-            if pd.isna(exit_p) or exit_p == 0:
+            if bool(pd.isna(exit_p)) or exit_p == 0:
                 continue
 
-            if reason == "tp" and tp is not None and not pd.isna(tp):
+            if reason == "tp" and tp is not None and not bool(pd.isna(tp)):
                 # Exit price should be at or near TP
                 diff_pct = abs(exit_p - tp) / tp * 100 if tp != 0 else 0
                 if diff_pct > 1.0:  # 1% tolerance for slippage
@@ -603,7 +606,7 @@ class TradeVerifier:
                         f"far from tp={tp:.4f} (diff={diff_pct:.2f}%)"
                     )
 
-            elif reason == "sl" and sl is not None and not pd.isna(sl):
+            elif reason == "sl" and sl is not None and not bool(pd.isna(sl)):
                 # Exit price should be at or near SL
                 diff_pct = abs(exit_p - sl) / sl * 100 if sl != 0 else 0
                 if diff_pct > 1.0:
@@ -775,21 +778,21 @@ class TradeVerifier:
         issues = []
         for idx, trade in self.trades_df.iterrows():
             side = trade.get("side", "long")
-            entry_p = trade.get("entry_price", 0)
-            exit_p = trade.get("exit_price", 0)
-            entry_size = trade.get("entry_size", 0)  # Base currency qty
-            entry_usdt = abs(trade.get("entry_size_usdt", 0))
-            realized = trade.get("realized_pnl", 0)
-            fees = trade.get("fees_paid", 0)
-            net = trade.get("net_pnl", 0)
+            entry_p = float(trade.get("entry_price", 0) or 0)
+            exit_p = float(trade.get("exit_price", 0) or 0)
+            entry_size = float(trade.get("entry_size", 0) or 0)  # Base currency qty
+            entry_usdt = abs(float(trade.get("entry_size_usdt", 0) or 0))
+            realized = float(trade.get("realized_pnl", 0) or 0)
+            fees = float(trade.get("fees_paid", 0) or 0)
+            net = float(trade.get("net_pnl", 0) or 0)
 
-            if pd.isna(exit_p) or exit_p == 0 or entry_p == 0:
+            if bool(pd.isna(exit_p)) or exit_p == 0 or entry_p == 0:
                 continue
 
             # --- Bybit realized PnL formula ---
             # Long: qty * (exit - entry)
             # Short: qty * (entry - exit)
-            if not pd.isna(entry_size) and entry_size > 0:
+            if not bool(pd.isna(entry_size)) and entry_size > 0:
                 if side == "long":
                     expected_realized = entry_size * (exit_p - entry_p)
                 else:
@@ -805,9 +808,9 @@ class TradeVerifier:
             # --- Bybit fee formula ---
             # Open fee = entry_value * taker_rate
             # Close fee = exit_value * taker_rate
-            if entry_usdt > 0 and not pd.isna(fees):
+            if entry_usdt > 0 and not bool(pd.isna(fees)):
                 entry_fee_expected = entry_usdt * taker_rate
-                exit_value = entry_size * exit_p if (not pd.isna(entry_size) and entry_size > 0) else entry_usdt
+                exit_value = entry_size * exit_p if (not bool(pd.isna(entry_size)) and entry_size > 0) else entry_usdt
                 exit_fee_expected = exit_value * taker_rate
                 total_fee_expected = entry_fee_expected + exit_fee_expected
 
@@ -820,7 +823,7 @@ class TradeVerifier:
                     )
 
             # --- Bybit closed PnL = realized - fees ---
-            if not pd.isna(net) and not pd.isna(realized) and not pd.isna(fees):
+            if not bool(pd.isna(net)) and not bool(pd.isna(realized)) and not bool(pd.isna(fees)):
                 expected_net = realized - fees
                 net_diff = abs(net - expected_net)
                 if net_diff > ABS_TOL:
@@ -854,25 +857,31 @@ class TradeVerifier:
             if df.empty:
                 continue
             # low <= min(open, close)
-            min_oc = np.minimum(df["open"].values, df["close"].values)
-            bad_low = df["low"].values > min_oc + ABS_TOL
+            open_arr = np.asarray(df["open"].values)
+            close_arr = np.asarray(df["close"].values)
+            low_arr = np.asarray(df["low"].values)
+            high_arr = np.asarray(df["high"].values)
+            vol_arr = np.asarray(df["volume"].values)
+
+            min_oc = np.minimum(open_arr, close_arr)
+            bad_low = low_arr > min_oc + ABS_TOL
             if bad_low.any():
                 issues.append(f"{tf}: {bad_low.sum()} bars where low > min(open, close)")
 
             # high >= max(open, close)
-            max_oc = np.maximum(df["open"].values, df["close"].values)
-            bad_high = df["high"].values < max_oc - ABS_TOL
+            max_oc = np.maximum(open_arr, close_arr)
+            bad_high = high_arr < max_oc - ABS_TOL
             if bad_high.any():
                 issues.append(f"{tf}: {bad_high.sum()} bars where high < max(open, close)")
 
             # volume > 0
-            bad_vol = df["volume"].values <= 0
+            bad_vol = vol_arr <= 0
             if bad_vol.any():
                 issues.append(f"{tf}: {bad_vol.sum()} bars with volume <= 0")
 
             # timestamps monotonic
             if "timestamp" in df.columns:
-                ts = df["timestamp"].values
+                ts = np.asarray(df["timestamp"].values)
                 if len(ts) > 1 and not np.all(ts[1:] > ts[:-1]):
                     issues.append(f"{tf}: timestamps not strictly monotonic")
 
@@ -902,8 +911,8 @@ class TradeVerifier:
 
         issues = []
         for idx, trade in self.trades_df.iterrows():
-            entry_p = trade.get("entry_price", 0)
-            exit_p = trade.get("exit_price", 0)
+            entry_p = float(trade.get("entry_price", 0) or 0)
+            exit_p = float(trade.get("exit_price", 0) or 0)
 
             # 1. Entry price must be positive and finite
             if not (np.isfinite(entry_p) and entry_p > 0):
@@ -911,7 +920,7 @@ class TradeVerifier:
                 continue
 
             # 2. Exit price must be positive and finite
-            if exit_p != 0 and not pd.isna(exit_p):
+            if exit_p != 0 and not bool(pd.isna(exit_p)):
                 if not (np.isfinite(exit_p) and exit_p > 0):
                     issues.append(f"Trade {idx}: exit_price={exit_p} is invalid")
 
@@ -919,8 +928,8 @@ class TradeVerifier:
             sl = trade.get("stop_loss")
 
             # 3. Entry size must be positive
-            entry_size = trade.get("entry_size_usdt", 0)
-            if entry_size is not None and not pd.isna(entry_size):
+            entry_size = float(trade.get("entry_size_usdt", 0) or 0)
+            if not bool(pd.isna(entry_size)):
                 if entry_size <= 0:
                     issues.append(f"Trade {idx}: entry_size_usdt={entry_size} <= 0")
 
@@ -951,30 +960,31 @@ class TradeVerifier:
 
         issues = []
         for idx, trade in self.trades_df.iterrows():
-            exit_p = trade.get("exit_price")
-            if exit_p is None or pd.isna(exit_p) or exit_p == 0:
+            exit_p_raw = trade.get("exit_price")
+            if exit_p_raw is None or bool(pd.isna(exit_p_raw)) or exit_p_raw == 0:
                 continue
+            exit_p = float(exit_p_raw)
 
             side = trade.get("side", "long")
             reason = trade.get("exit_reason", "")
             tp = trade.get("take_profit")
             sl = trade.get("stop_loss")
 
-            if reason == "tp" and tp is not None and not pd.isna(tp):
+            if reason == "tp" and tp is not None and not bool(pd.isna(tp)):
                 # TP fill: long exit receives less, short exit pays more
                 if side == "long":
-                    expected = tp * (1 - slip_rate)
+                    expected = float(tp) * (1 - slip_rate)
                 else:
-                    expected = tp * (1 + slip_rate)
-            elif reason == "sl" and sl is not None and not pd.isna(sl):
+                    expected = float(tp) * (1 + slip_rate)
+            elif reason == "sl" and sl is not None and not bool(pd.isna(sl)):
                 # SL fill: long exit receives less, short exit pays more
                 if side == "long":
-                    expected = sl * (1 - slip_rate)
+                    expected = float(sl) * (1 - slip_rate)
                 else:
-                    expected = sl * (1 + slip_rate)
+                    expected = float(sl) * (1 + slip_rate)
             elif reason in ("signal", "end_of_data"):
                 bar_idx = trade.get("exit_bar_index")
-                if bar_idx is None or pd.isna(bar_idx):
+                if bar_idx is None or bool(pd.isna(bar_idx)):
                     continue
                 bar_idx = int(bar_idx)
                 if bar_idx < 0 or bar_idx >= len(candles):
@@ -1047,8 +1057,10 @@ class TradeVerifier:
             tp = trade.get("take_profit")
             sl = trade.get("stop_loss")
 
-            entry_ts = pd.Timestamp(trade["entry_time"])
-            exit_ts = pd.Timestamp(trade["exit_time"])
+            entry_time_val = trade["entry_time"]
+            exit_time_val = trade["exit_time"]
+            entry_ts = pd.Timestamp(str(entry_time_val))
+            exit_ts = pd.Timestamp(str(exit_time_val))
 
             # Find entry and exit rows in candle data
             entry_row = ts_to_row.get(entry_ts)
@@ -1062,7 +1074,7 @@ class TradeVerifier:
             # to detect TP/SL, so same-bar triggers are expected and fine.
             for ri in range(entry_row + 1, exit_row):
                 bar = candles_sorted.iloc[ri]
-                if reason == "tp" and tp is not None and not pd.isna(tp):
+                if reason == "tp" and tp is not None and not bool(pd.isna(tp)):
                     if side == "long" and bar["high"] >= tp:
                         issues.append(
                             f"Trade {idx}: TP should have triggered at ts={bar['timestamp']} "
@@ -1075,7 +1087,7 @@ class TradeVerifier:
                             f"(low={bar['low']:.4f} <= tp={tp:.4f}), but exit_ts={exit_ts}"
                         )
                         break
-                if reason == "sl" and sl is not None and not pd.isna(sl):
+                if reason == "sl" and sl is not None and not bool(pd.isna(sl)):
                     if side == "long" and bar["low"] <= sl:
                         issues.append(
                             f"Trade {idx}: SL should have triggered at ts={bar['timestamp']} "
@@ -1109,13 +1121,13 @@ class TradeVerifier:
         issues = []
         for idx, trade in self.trades_df.iterrows():
             side = trade.get("side", "long")
-            entry_p = trade.get("entry_price", 0)
-            exit_p = trade.get("exit_price", 0)
-            qty = trade.get("entry_size", 0)
-            realized = trade.get("realized_pnl", 0)
-            entry_usdt = abs(trade.get("entry_size_usdt", 0))
+            entry_p = float(trade.get("entry_price", 0) or 0)
+            exit_p = float(trade.get("exit_price", 0) or 0)
+            qty = float(trade.get("entry_size", 0) or 0)
+            realized = float(trade.get("realized_pnl", 0) or 0)
+            entry_usdt = abs(float(trade.get("entry_size_usdt", 0) or 0))
 
-            if pd.isna(exit_p) or exit_p == 0 or entry_p == 0 or pd.isna(qty) or qty == 0:
+            if bool(pd.isna(exit_p)) or exit_p == 0 or entry_p == 0 or bool(pd.isna(qty)) or qty == 0:
                 continue
 
             if side == "long":
@@ -1168,8 +1180,11 @@ class TradeVerifier:
             tp = trade.get("take_profit")
             side = str(trade.get("side", "long")).lower()
 
-            if sl is None or pd.isna(sl) or tp is None or pd.isna(tp):
+            if sl is None or bool(pd.isna(sl)) or tp is None or bool(pd.isna(tp)):
                 continue
+
+            sl = float(sl)
+            tp = float(tp)
 
             # Back-derive signal_close from SL
             sl_rate = sl_pct / (100.0 * leverage)
@@ -1806,15 +1821,20 @@ def _load_candle_data_for_play(config: dict, artifact_dir: Path) -> dict[str, pd
         if eq_df.empty or "timestamp" not in eq_df.columns:
             return None
 
-        start_ts = pd.Timestamp(eq_df["timestamp"].iloc[0])
-        end_ts = pd.Timestamp(eq_df["timestamp"].iloc[-1])
+        start_ts = pd.Timestamp(str(eq_df["timestamp"].iloc[0]))
+        end_ts = pd.Timestamp(str(eq_df["timestamp"].iloc[-1]))
+
+        if bool(pd.isna(start_ts)) or bool(pd.isna(end_ts)):
+            return None
+        start_dt = cast(datetime, start_ts.to_pydatetime())
+        end_dt = cast(datetime, end_ts.to_pydatetime())
 
         # Load candles from DuckDB
         from src.data.historical_data_store import get_historical_store
         store = get_historical_store(read_only=True)
         candle_data = {}
 
-        ohlcv = store.get_ohlcv(symbol, exec_tf, start=start_ts.to_pydatetime(), end=end_ts.to_pydatetime())
+        ohlcv = store.get_ohlcv(symbol, exec_tf, start=start_dt, end=end_dt)
         if ohlcv is not None and len(ohlcv) > 0:
             candle_data[exec_tf] = ohlcv
 

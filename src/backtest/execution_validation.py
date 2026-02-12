@@ -262,11 +262,11 @@ def validate_play_contract(play: "Play") -> PlayValidationResult:
         ))
     
     # Exec TF is required
-    if not play.execution_tf:
+    if not play.exec_tf:
         issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
             code="MISSING_EXEC_TF",
-            message="execution_tf is required",
+            message="exec_tf is required",
         ))
     
     # Account config is REQUIRED (no hard-coded defaults)
@@ -756,26 +756,26 @@ def compute_warmup_requirements(play: "Play") -> WarmupRequirements:
             feature_warmup[tf] = max_feature_warmup
 
             # Include structure_warmup for exec TF
-            role_structure_warmup = structure_warmup if tf == play.execution_tf else 0
+            role_structure_warmup = structure_warmup if tf == play.exec_tf else 0
             effective_warmup = max(max_feature_warmup, role_structure_warmup)
 
             warmup_by_role[tf] = effective_warmup
             delay_by_role[tf] = 0  # No delay in new schema
 
         # Ensure exec TF is always present
-        if play.execution_tf and play.execution_tf not in warmup_by_role:
-            warmup_by_role[play.execution_tf] = structure_warmup
-            delay_by_role[play.execution_tf] = 0
-            feature_warmup[play.execution_tf] = 0
+        if play.exec_tf and play.exec_tf not in warmup_by_role:
+            warmup_by_role[play.exec_tf] = structure_warmup
+            delay_by_role[play.exec_tf] = 0
+            feature_warmup[play.exec_tf] = 0
 
     except Exception as e:
         # Fallback if registry fails
         import logging
         logging.getLogger(__name__).debug(f"Warmup calculation failed, using defaults: {e}")
-        if play.execution_tf:
-            warmup_by_role[play.execution_tf] = structure_warmup
-            delay_by_role[play.execution_tf] = 0
-            feature_warmup[play.execution_tf] = 0
+        if play.exec_tf:
+            warmup_by_role[play.exec_tf] = structure_warmup
+            delay_by_role[play.exec_tf] = 0
+            feature_warmup[play.exec_tf] = 0
 
     # Overall max
     max_warmup = max(warmup_by_role.values()) if warmup_by_role else 0

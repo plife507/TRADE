@@ -328,7 +328,7 @@ class DataBuilder:
         if not structures:
             return None
 
-        exec_tf = registry.execution_tf
+        exec_tf = registry.exec_tf
 
         # Resolve med_tf and high_tf strings from tf_mapping
         med_tf_str = tf_mapping.get("med_tf", exec_tf)

@@ -6,11 +6,14 @@ import sys
 sys.path.insert(0, ".")
 
 from datetime import datetime, timezone
+from typing import cast
 import math
+
+import pandas as pd
 
 from src.data.historical_data_store import HistoricalDataStore
 from src.indicators import compute_indicator
-from src.structures.detectors.swing import IncrementalSwingDetector
+from src.structures.detectors.swing import IncrementalSwing
 from src.structures.base import BarData
 
 # Configuration - using earlier date range to avoid late 2025 black swan
@@ -34,7 +37,7 @@ df = df.set_index("timestamp")
 print(f"Loaded {len(df)} bars")
 
 # Calculate ATR
-atr_values = compute_indicator("atr", close=df["close"], high=df["high"], low=df["low"], length=ATR_LENGTH)
+atr_values = compute_indicator("atr", close=cast(pd.Series, df["close"]), high=cast(pd.Series, df["high"]), low=cast(pd.Series, df["low"]), length=ATR_LENGTH)
 df["atr"] = atr_values
 
 #######################################################################
@@ -47,8 +50,8 @@ print(f"{'='*80}")
 print("Formula: significance = |current_level - previous_level| / ATR_at_confirmation")
 print()
 
-detector = IncrementalSwingDetector(
-    params={
+detector = IncrementalSwing(
+    params={  # type: ignore[reportCallIssue]
         "mode": "fractal",
         "left": 5,
         "right": 5,
@@ -78,16 +81,16 @@ for i in range(len(df)):
 
     detector.update(i, bar)
 
-    version = detector.get_value("version")
+    version = int(detector.get_value("version"))
     if version > prev_version:
-        pivot_type = detector.get_value("last_confirmed_pivot_type")
-        pivot_idx = detector.get_value("last_confirmed_pivot_idx")
+        pivot_type = str(detector.get_value("last_confirmed_pivot_type"))
+        pivot_idx = int(detector.get_value("last_confirmed_pivot_idx"))
         confirm_idx = pivot_idx + RIGHT
 
         if pivot_type == "high":
-            level = detector.get_value("high_level")
-            reported_sig = detector.get_value("high_significance")
-            is_major = detector.get_value("high_is_major")
+            level = float(detector.get_value("high_level"))
+            reported_sig = float(detector.get_value("high_significance"))
+            is_major = bool(detector.get_value("high_is_major"))
             prev_level = prev_high_level
 
             # Calculate expected
@@ -99,9 +102,9 @@ for i in range(len(df)):
 
             prev_high_level = level
         else:
-            level = detector.get_value("low_level")
-            reported_sig = detector.get_value("low_significance")
-            is_major = detector.get_value("low_is_major")
+            level = float(detector.get_value("low_level"))
+            reported_sig = float(detector.get_value("low_significance"))
+            is_major = bool(detector.get_value("low_is_major"))
             prev_level = prev_low_level
 
             # Calculate expected
@@ -180,8 +183,8 @@ print("Downtrend reversal: high > extreme + threshold")
 print()
 
 ATR_MULTIPLIER = 3.0
-detector_zz = IncrementalSwingDetector(
-    params={
+detector_zz = IncrementalSwing(
+    params={  # type: ignore[reportCallIssue]
         "mode": "atr_zigzag",
         "atr_key": "atr",
         "atr_multiplier": ATR_MULTIPLIER,
@@ -217,19 +220,19 @@ for i in range(len(df)):
     # Update detector
     detector_zz.update(i, bar)
 
-    version = detector_zz.get_value("version")
+    version = int(detector_zz.get_value("version"))
     if version > prev_version_zz:
-        pivot_type = detector_zz.get_value("last_confirmed_pivot_type")
-        pivot_idx = detector_zz.get_value("last_confirmed_pivot_idx")
+        pivot_type = str(detector_zz.get_value("last_confirmed_pivot_type"))
+        pivot_idx = int(detector_zz.get_value("last_confirmed_pivot_idx"))
 
         if pivot_type == "high":
-            level = detector_zz.get_value("high_level")
-            reported_sig = detector_zz.get_value("high_significance")
-            is_major = detector_zz.get_value("high_is_major")
+            level = float(detector_zz.get_value("high_level"))
+            reported_sig = float(detector_zz.get_value("high_significance"))
+            is_major = bool(detector_zz.get_value("high_is_major"))
         else:
-            level = detector_zz.get_value("low_level")
-            reported_sig = detector_zz.get_value("low_significance")
-            is_major = detector_zz.get_value("low_is_major")
+            level = float(detector_zz.get_value("low_level"))
+            reported_sig = float(detector_zz.get_value("low_significance"))
+            is_major = bool(detector_zz.get_value("low_is_major"))
 
         zz_pivots.append({
             "type": pivot_type,

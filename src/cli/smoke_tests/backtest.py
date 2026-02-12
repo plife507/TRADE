@@ -476,7 +476,7 @@ def run_phase6_backtest_smoke() -> int:
 
         if validation.is_valid:
             console.print(f"  [green]OK[/] Multi-TF Play validates")
-            console.print(f"      execution_tf: {play.execution_tf}")
+            console.print(f"      exec_tf: {play.exec_tf}")
             console.print(f"      tf_mapping: {play.tf_mapping}")
 
             # Check that tf_mapping has the expected roles

@@ -151,7 +151,7 @@ def _setup_synthetic_provider(
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
     # Collect required timeframes
-    exec_tf = play.execution_tf
+    exec_tf = play.exec_tf
     required_tfs = {exec_tf, "1m"}  # Always need exec and 1m
     if play.low_tf:
         required_tfs.add(play.low_tf)
@@ -204,7 +204,7 @@ def _resolve_window(play: Play, config: "RunnerConfig") -> None:
         raise ValueError("Play has no symbols in symbol_universe")
 
     symbol = play.symbol_universe[0]
-    tf = play.execution_tf
+    tf = play.exec_tf
 
     store = get_historical_store()
     status = store.status(symbol)
@@ -237,7 +237,7 @@ def _create_artifact_setup(
     Returns: (artifact_path, run_id, play_hash, data_source_id, input_components, manifest)
     """
     play_hash = compute_play_hash(play)
-    exec_tf = play.execution_tf
+    exec_tf = play.exec_tf
     tf_ctx = sorted(play.feature_registry.get_all_tfs())
 
     # Window must be resolved before artifact setup
@@ -914,7 +914,7 @@ def run_backtest_with_gates(
         if not ctx.play.symbol_universe:
             raise ValueError("Play has no symbols in symbol_universe")
         ctx.symbol = ctx.play.symbol_universe[0]
-        ctx.exec_tf = ctx.play.execution_tf
+        ctx.exec_tf = ctx.play.exec_tf
 
         # Phase 4: Create artifact setup (hashes, paths, manifest)
         (

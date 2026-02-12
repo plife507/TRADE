@@ -6,8 +6,11 @@ import sys
 sys.path.insert(0, ".")
 
 from datetime import datetime, timezone
+from typing import cast
 import random
 import math
+
+import pandas as pd
 
 from src.data.historical_data_store import HistoricalDataStore
 from src.indicators import compute_indicator
@@ -38,16 +41,16 @@ df = df.set_index("timestamp")
 print(f"Loaded {len(df)} bars")
 
 # Calculate ATR (pass individual series)
-atr_values = compute_indicator("atr", close=df["close"], high=df["high"], low=df["low"], length=ATR_LENGTH)
+atr_values = compute_indicator("atr", close=cast(pd.Series, df["close"]), high=cast(pd.Series, df["high"]), low=cast(pd.Series, df["low"]), length=ATR_LENGTH)
 df["atr"] = atr_values
 
 # Import swing detector and BarData
-from src.structures.detectors.swing import IncrementalSwingDetector
+from src.structures.detectors.swing import IncrementalSwing
 from src.structures.base import BarData
 
 # Create detector with ATR significance
-detector = IncrementalSwingDetector(
-    params={
+detector = IncrementalSwing(
+    params={  # type: ignore[reportCallIssue]
         "left": LEFT,
         "right": RIGHT,
         "atr_key": "atr",
@@ -81,17 +84,17 @@ for i in range(len(df)):
     detector.update(bar_idx, bar)
 
     # Check for new pivot (version changed)
-    version = detector.get_value("version")
+    version = int(detector.get_value("version"))
     if version > prev_version:
         # Get current values
-        high_level = detector.get_value("high_level")
-        low_level = detector.get_value("low_level")
-        high_sig = detector.get_value("high_significance")
-        low_sig = detector.get_value("low_significance")
-        high_major = detector.get_value("high_is_major")
-        low_major = detector.get_value("low_is_major")
-        pivot_type = detector.get_value("last_confirmed_pivot_type")
-        pivot_idx = detector.get_value("last_confirmed_pivot_idx")
+        high_level = float(detector.get_value("high_level"))
+        low_level = float(detector.get_value("low_level"))
+        high_sig = float(detector.get_value("high_significance"))
+        low_sig = float(detector.get_value("low_significance"))
+        high_major = bool(detector.get_value("high_is_major"))
+        low_major = bool(detector.get_value("low_is_major"))
+        pivot_type = str(detector.get_value("last_confirmed_pivot_type"))
+        pivot_idx = int(detector.get_value("last_confirmed_pivot_idx"))
 
         # Get ATR at the CONFIRMATION bar (not pivot bar!)
         # Pivot is confirmed at bar_idx, which is pivot_idx + RIGHT bars
@@ -213,12 +216,12 @@ df_4h = df_4h.set_index("timestamp")
 print(f"Loaded {len(df_4h)} bars (4h)")
 
 # Calculate ATR for 4h
-atr_values_4h = compute_indicator("atr", close=df_4h["close"], high=df_4h["high"], low=df_4h["low"], length=ATR_LENGTH)
+atr_values_4h = compute_indicator("atr", close=cast(pd.Series, df_4h["close"]), high=cast(pd.Series, df_4h["high"]), low=cast(pd.Series, df_4h["low"]), length=ATR_LENGTH)
 df_4h["atr"] = atr_values_4h
 
 # Create new detector for 4h
-detector_4h = IncrementalSwingDetector(
-    params={
+detector_4h = IncrementalSwing(
+    params={  # type: ignore[reportCallIssue]
         "left": LEFT,
         "right": RIGHT,
         "atr_key": "atr",
@@ -248,16 +251,16 @@ for i in range(len(df_4h)):
 
     detector_4h.update(bar_idx, bar)
 
-    version = detector_4h.get_value("version")
+    version = int(detector_4h.get_value("version"))
     if version > prev_version_4h:
-        high_level = detector_4h.get_value("high_level")
-        low_level = detector_4h.get_value("low_level")
-        high_sig = detector_4h.get_value("high_significance")
-        low_sig = detector_4h.get_value("low_significance")
-        high_major = detector_4h.get_value("high_is_major")
-        low_major = detector_4h.get_value("low_is_major")
-        pivot_type = detector_4h.get_value("last_confirmed_pivot_type")
-        pivot_idx = detector_4h.get_value("last_confirmed_pivot_idx")
+        high_level = float(detector_4h.get_value("high_level"))
+        low_level = float(detector_4h.get_value("low_level"))
+        high_sig = float(detector_4h.get_value("high_significance"))
+        low_sig = float(detector_4h.get_value("low_significance"))
+        high_major = bool(detector_4h.get_value("high_is_major"))
+        low_major = bool(detector_4h.get_value("low_is_major"))
+        pivot_type = str(detector_4h.get_value("last_confirmed_pivot_type"))
+        pivot_idx = int(detector_4h.get_value("last_confirmed_pivot_idx"))
 
         confirm_idx_4h = pivot_idx + RIGHT
         atr_at_confirm_4h = df_4h.iloc[confirm_idx_4h]["atr"] if confirm_idx_4h >= 0 and confirm_idx_4h < len(df_4h) else float("nan")

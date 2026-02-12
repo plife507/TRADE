@@ -1455,7 +1455,7 @@ def calculate_warmup_for_play(play_id: str, base_dir: Path | None = None) -> dic
 
     # Build feature registry from play's existing features
     # The Play already has a features tuple of Feature objects
-    registry = FeatureRegistry(execution_tf=play.execution_tf)
+    registry = FeatureRegistry(exec_tf=play.exec_tf)
 
     # Register features from the play (already Feature objects)
     for feature in play.features:
@@ -1514,7 +1514,7 @@ def generate_synthetic_for_play(
 
     # Collect all TFs used by the play from features
     timeframes = set()
-    timeframes.add(play.execution_tf)  # exec TF
+    timeframes.add(play.exec_tf)  # exec TF
 
     # Add TFs from features (Feature objects have a .tf attribute)
     for feature in play.features:

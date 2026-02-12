@@ -16,7 +16,7 @@ Design Goals:
 4. O(1) lookups: Fast access by ID or by TF
 
 Example Play:
-    execution_tf: "15m"
+    exec_tf: "15m"
     features:
       - id: "ema_fast"
         tf: "15m"
@@ -214,7 +214,7 @@ class FeatureRegistry:
     - Warmup computation per TF
 
     Example:
-        registry = FeatureRegistry(execution_tf="15m")
+        registry = FeatureRegistry(exec_tf="15m")
         registry.add(Feature(id="ema_fast", tf="15m", type=FeatureType.INDICATOR, ...))
         registry.add(Feature(id="swing_1h", tf="1h", type=FeatureType.STRUCTURE, ...))
 
@@ -224,22 +224,22 @@ class FeatureRegistry:
         warmup = registry.get_warmup_for_tf("15m")
     """
 
-    def __init__(self, execution_tf: str):
+    def __init__(self, exec_tf: str):
         """
         Initialize feature registry.
 
         Args:
-            execution_tf: The execution timeframe (bar stepping granularity).
+            exec_tf: The execution timeframe (bar stepping granularity).
         """
-        self._execution_tf = execution_tf
+        self._exec_tf = exec_tf
         self._features: dict[str, Feature] = {}
         self._by_tf: dict[str, list[Feature]] = {}
         self._warmup_cache: dict[str, int] = {}
 
     @property
-    def execution_tf(self) -> str:
+    def exec_tf(self) -> str:
         """Get execution timeframe."""
-        return self._execution_tf
+        return self._exec_tf
 
     def add(self, feature: Feature) -> None:
         """
@@ -582,27 +582,27 @@ class FeatureRegistry:
     def to_dict(self) -> dict[str, Any]:
         """Convert registry to dict for serialization."""
         return {
-            "execution_tf": self._execution_tf,
+            "exec_tf": self._exec_tf,
             "features": [f.to_dict() for f in self._features.values()],
         }
 
     @classmethod
     def from_features(
         cls,
-        execution_tf: str,
+        exec_tf: str,
         features: list[Feature],
     ) -> "FeatureRegistry":
         """
         Create registry from feature list.
 
         Args:
-            execution_tf: Execution timeframe.
+            exec_tf: Execution timeframe.
             features: List of Feature instances.
 
         Returns:
             Populated FeatureRegistry.
         """
-        registry = cls(execution_tf=execution_tf)
+        registry = cls(exec_tf=exec_tf)
         for feature in features:
             registry.add(feature)
         return registry
@@ -611,7 +611,7 @@ class FeatureRegistry:
         """String representation."""
         return (
             f"FeatureRegistry("
-            f"execution_tf={self._execution_tf!r}, "
+            f"exec_tf={self._exec_tf!r}, "
             f"features={len(self._features)}, "
             f"tfs={sorted(self._by_tf.keys())})"
         )

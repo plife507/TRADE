@@ -274,7 +274,7 @@ class PlayEngine:
     @property
     def timeframe(self) -> str:
         """Execution timeframe."""
-        return self.play.execution_tf
+        return self.play.exec_tf
 
     @property
     def mode(self) -> str:

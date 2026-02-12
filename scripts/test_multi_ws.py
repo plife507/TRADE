@@ -225,7 +225,7 @@ def run_test(
         return on_kline
 
     for bi in bybit_intervals:
-        ws.kline_stream(interval=bi, symbol=symbol, callback=make_callback(bi))
+        ws.kline_stream(interval=int(bi), symbol=symbol, callback=make_callback(bi))
         our_tf = normalized[bi]
         print(f"  -> Subscribed: kline.{bi}.{symbol} (={our_tf})")
 

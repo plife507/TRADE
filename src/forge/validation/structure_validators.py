@@ -116,7 +116,7 @@ def validate_determinism(
     play = load_play(str(play_path))
 
     # Generate synthetic data
-    timeframes = [play.execution_tf]
+    timeframes = [play.exec_tf]
     candles = generate_synthetic_candles(
         symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
         timeframes=timeframes,
@@ -212,7 +212,7 @@ def run_play_with_synthetic(
     play = load_play(str(play_path))
 
     # Generate synthetic data with required TFs
-    timeframes = [play.execution_tf]
+    timeframes = [play.exec_tf]
     if "1m" not in timeframes:
         timeframes.append("1m")  # Needed for intrabar evaluation
 

@@ -69,16 +69,21 @@ Before claiming code is 'dead' or unused, verify by grepping for all references 
 | `high_tf` | Timeframe | 12h, D | Slow: trend, context |
 | `exec` | Pointer | "low_tf", "med_tf", "high_tf" | Which TF to step on |
 
-**YAML keys/identifiers (ENFORCED):**
+**YAML keys (ENFORCED):**
 - ~~htf~~, ~~HTF~~ → use `high_tf`
 - ~~ltf~~, ~~LTF~~ → use `low_tf`
-- ~~exec_tf: 15m~~ → `exec` is a pointer, not a value
+- In YAML: `exec` is a pointer (`"low_tf"`, `"med_tf"`, `"high_tf"`), never a raw value like `"15m"`
 
-**Prose/comments (use full natural language):**
+**Python identifiers (ENFORCED):**
+- `exec_tf` = resolved concrete timeframe string (e.g., `"15m"`) -- standard name
+- ~~execution_tf~~ → use `exec_tf` everywhere in Python code
+- ~~ltf~~, ~~htf~~, ~~LTF~~, ~~HTF~~, ~~MTF~~ → banned
+
+**Prose/comments:**
 - "higher timeframe" not HTF
 - "medium timeframe" not MTF
 - "lower timeframe" not LTF
-- "execution timeframe" not exec TF
+- "exec TF" is acceptable shorthand in comments and log messages
 - "multi-timeframe" for strategies using multiple timeframes
 - "last price" and "mark price" written out fully
 
@@ -122,7 +127,7 @@ python trade_cli.py play run --play X --mode live --confirm  # Live (REAL MONEY)
 |-------|----------|
 | Session context | `docs/SESSION_HANDOFF.md` |
 | Project status | `docs/TODO.md` |
-| DSL syntax | `docs/PLAY_DSL_COOKBOOK.md` |
+| DSL syntax | `docs/PLAY_DSL_REFERENCE.md` |
 | System defaults | `config/defaults.yml` |
 
 ## Reference Documentation

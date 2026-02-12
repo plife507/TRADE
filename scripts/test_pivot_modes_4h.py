@@ -9,11 +9,14 @@ import sys
 sys.path.insert(0, ".")
 
 from datetime import datetime, timezone
+from typing import cast
 import math
+
+import pandas as pd
 
 from src.data.historical_data_store import HistoricalDataStore
 from src.indicators import compute_indicator
-from src.structures.detectors.swing import IncrementalSwingDetector
+from src.structures.detectors.swing import IncrementalSwing
 from src.structures.base import BarData
 
 # Configuration
@@ -41,7 +44,7 @@ df = df.set_index("timestamp")
 print(f"Loaded {len(df)} bars (~{len(df)*4} hours = {len(df)*4/24:.1f} days)")
 
 # Calculate ATR
-atr_values = compute_indicator("atr", close=df["close"], high=df["high"], low=df["low"], length=ATR_LENGTH)
+atr_values = compute_indicator("atr", close=cast(pd.Series, df["close"]), high=cast(pd.Series, df["high"]), low=cast(pd.Series, df["low"]), length=ATR_LENGTH)
 df["atr"] = atr_values
 
 print()
@@ -50,8 +53,8 @@ print(f"=== TEST 1: FRACTAL MODE (left=5, right=5) ===")
 print(f"{'='*70}")
 
 # Create fractal detector
-detector_fractal = IncrementalSwingDetector(
-    params={
+detector_fractal = IncrementalSwing(
+    params={  # type: ignore[reportCallIssue]
         "mode": "fractal",
         "left": 5,
         "right": 5,
@@ -77,19 +80,19 @@ for i in range(len(df)):
 
     detector_fractal.update(i, bar)
 
-    version = detector_fractal.get_value("version")
+    version = int(detector_fractal.get_value("version"))
     if version > prev_version_f:
-        pivot_type = detector_fractal.get_value("last_confirmed_pivot_type")
-        pivot_idx = detector_fractal.get_value("last_confirmed_pivot_idx")
+        pivot_type = str(detector_fractal.get_value("last_confirmed_pivot_type"))
+        pivot_idx = int(detector_fractal.get_value("last_confirmed_pivot_idx"))
 
         if pivot_type == "high":
-            level = detector_fractal.get_value("high_level")
-            sig = detector_fractal.get_value("high_significance")
-            is_major = detector_fractal.get_value("high_is_major")
+            level = float(detector_fractal.get_value("high_level"))
+            sig = float(detector_fractal.get_value("high_significance"))
+            is_major = bool(detector_fractal.get_value("high_is_major"))
         else:
-            level = detector_fractal.get_value("low_level")
-            sig = detector_fractal.get_value("low_significance")
-            is_major = detector_fractal.get_value("low_is_major")
+            level = float(detector_fractal.get_value("low_level"))
+            sig = float(detector_fractal.get_value("low_significance"))
+            is_major = bool(detector_fractal.get_value("low_is_major"))
 
         fractal_pivots.append({
             "type": pivot_type.upper(),
@@ -124,8 +127,8 @@ print(f"=== TEST 2: ATR ZIGZAG MODE (atr_multiplier={ATR_MULTIPLIER}) ===")
 print(f"{'='*70}")
 
 # Create ATR ZigZag detector
-detector_zigzag = IncrementalSwingDetector(
-    params={
+detector_zigzag = IncrementalSwing(
+    params={  # type: ignore[reportCallIssue]
         "mode": "atr_zigzag",
         "atr_key": "atr",
         "atr_multiplier": ATR_MULTIPLIER,
@@ -150,19 +153,19 @@ for i in range(len(df)):
 
     detector_zigzag.update(i, bar)
 
-    version = detector_zigzag.get_value("version")
+    version = int(detector_zigzag.get_value("version"))
     if version > prev_version_z:
-        pivot_type = detector_zigzag.get_value("last_confirmed_pivot_type")
-        pivot_idx = detector_zigzag.get_value("last_confirmed_pivot_idx")
+        pivot_type = str(detector_zigzag.get_value("last_confirmed_pivot_type"))
+        pivot_idx = int(detector_zigzag.get_value("last_confirmed_pivot_idx"))
 
         if pivot_type == "high":
-            level = detector_zigzag.get_value("high_level")
-            sig = detector_zigzag.get_value("high_significance")
-            is_major = detector_zigzag.get_value("high_is_major")
+            level = float(detector_zigzag.get_value("high_level"))
+            sig = float(detector_zigzag.get_value("high_significance"))
+            is_major = bool(detector_zigzag.get_value("high_is_major"))
         else:
-            level = detector_zigzag.get_value("low_level")
-            sig = detector_zigzag.get_value("low_significance")
-            is_major = detector_zigzag.get_value("low_is_major")
+            level = float(detector_zigzag.get_value("low_level"))
+            sig = float(detector_zigzag.get_value("low_significance"))
+            is_major = bool(detector_zigzag.get_value("low_is_major"))
 
         zigzag_pivots.append({
             "type": pivot_type.upper(),

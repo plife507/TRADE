@@ -608,9 +608,9 @@ def run_structure_smoke(
                     tf = play.tf_mapping.get(role)
                     if tf:
                         timeframes.add(tf)
-            # Fallback to just execution_tf if no tf_mapping
+            # Fallback to just exec_tf if no tf_mapping
             if not timeframes:
-                timeframes.add(play.execution_tf)
+                timeframes.add(play.exec_tf)
             # Always need 1m for quote data
             timeframes.add("1m")
             timeframes = list(timeframes)
@@ -683,7 +683,7 @@ def run_structure_smoke(
                         if tf:
                             timeframes.add(tf)
                 if not timeframes:
-                    timeframes.add(play.execution_tf)
+                    timeframes.add(play.exec_tf)
                 timeframes.add("1m")
                 timeframes = list(timeframes)
 

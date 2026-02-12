@@ -244,7 +244,7 @@ def _build_play_dict(
             "slippage_bps": 2.0,
         },
         "symbol_universe": [symbol],
-        "execution_tf": exec_tf,
+        "exec_tf": exec_tf,
         "features": features,
         "position_policy": {
             "mode": direction,

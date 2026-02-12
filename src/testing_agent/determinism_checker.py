@@ -263,7 +263,7 @@ def run_determinism_check(
             else:
                 from ..data.historical_data_store import get_historical_store
                 store = get_historical_store(env="live")
-                exec_tf = play.execution_tf
+                exec_tf = play.exec_tf
                 # Query to find what data exists
                 df = store.get_ohlcv(symbol, exec_tf, start=datetime(2024, 1, 1), end=datetime(2025, 12, 31))
                 if df is not None and len(df) >= 100:

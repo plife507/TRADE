@@ -142,8 +142,8 @@ def create_engine_from_play(
             if spec:
                 specs.append(spec)
         feature_specs_by_role[tf] = specs
-    # Also set 'exec' role pointing to execution_tf specs
-    feature_specs_by_role["exec"] = feature_specs_by_role.get(play.execution_tf, [])
+    # Also set 'exec' role pointing to exec_tf specs
+    feature_specs_by_role["exec"] = feature_specs_by_role.get(play.exec_tf, [])
 
     # Extract capital/account params from Play (REQUIRED - no defaults)
     initial_equity = play.account.starting_equity_usdt
@@ -227,7 +227,7 @@ def create_engine_from_play(
         strategy_instance_id="play_strategy",
         strategy_id=play.id,
         strategy_version=play.version,
-        inputs=StrategyInstanceInputs(symbol=symbol, tf=play.execution_tf),
+        inputs=StrategyInstanceInputs(symbol=symbol, tf=play.exec_tf),
         params=strategy_params,
     )
 
@@ -239,9 +239,9 @@ def create_engine_from_play(
 
         # Gather all required timeframes from tf_mapping
         tf_mapping_resolved = play.tf_mapping or {
-            "low_tf": play.execution_tf,
-            "med_tf": play.execution_tf,
-            "high_tf": play.execution_tf,
+            "low_tf": play.exec_tf,
+            "med_tf": play.exec_tf,
+            "high_tf": play.exec_tf,
             "exec": "low_tf",
         }
         required_tfs = set()
@@ -266,7 +266,7 @@ def create_engine_from_play(
     # Handle window defaults for synthetic provider mode
     if synthetic_provider is not None and (window_start is None or window_end is None):
         # Get data range from synthetic provider
-        exec_tf = play.execution_tf
+        exec_tf = play.exec_tf
         data_start, data_end = synthetic_provider.get_data_range(exec_tf)  # type: ignore[attr-defined]
         if window_start is None:
             window_start = data_start
@@ -284,11 +284,11 @@ def create_engine_from_play(
     window_end_naive = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
 
     # Use Play's tf_mapping (new 3-feed + exec role system)
-    exec_tf = play.execution_tf
+    exec_tf = play.exec_tf
     tf_mapping = play.tf_mapping
 
     if not tf_mapping:
-        # Fallback: build tf_mapping from execution_tf (single-TF mode)
+        # Fallback: build tf_mapping from exec_tf (single-TF mode)
         tf_mapping = {
             "low_tf": exec_tf,
             "med_tf": exec_tf,
@@ -312,7 +312,7 @@ def create_engine_from_play(
     system_config = SystemConfig(
         system_id=play.id,
         symbol=symbol,
-        tf=play.execution_tf,
+        tf=play.exec_tf,
         description=play.description or "",
         strategies=[strategy_instance],
         primary_strategy_instance_id="play_strategy",

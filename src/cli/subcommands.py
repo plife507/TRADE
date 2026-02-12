@@ -139,7 +139,7 @@ def _handle_synthetic_backtest_run(args) -> int:
         play = Play.from_dict(raw)
     else:
         play = load_play(args.play, base_dir=plays_dir)
-    exec_tf = play.execution_tf
+    exec_tf = play.exec_tf
     required_tfs = {exec_tf, "1m"}  # Always need 1m for intrabar
 
     # Add Play's declared timeframes (low_tf, med_tf, high_tf)
@@ -1604,7 +1604,7 @@ def handle_play_run(args) -> int:
     console.print(Panel(
         f"[bold cyan]Play: {play.name}[/]\n"
         f"[dim]Mode: {mode.upper()}[/]\n"
-        f"[dim]Symbol: {symbol_str} | Exec TF: {play.execution_tf}[/]",
+        f"[dim]Symbol: {symbol_str} | Exec TF: {play.exec_tf}[/]",
         border_style="cyan"
     ))
 

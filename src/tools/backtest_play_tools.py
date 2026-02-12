@@ -480,7 +480,7 @@ def _validate_indicator_gate(play: Play) -> tuple[bool, dict[str, Any] | None, s
         logger.info("[GATE] Indicator requirements: SKIPPED (no required_indicators declared)")
 
     # Log declared keys
-    exec_tf = play.execution_tf
+    exec_tf = play.exec_tf
     logger.info(f"Declared indicator keys ({exec_tf}): {declared_keys_by_role.get(exec_tf, [])}")
 
     return True, gate_result.to_dict(), None
@@ -559,7 +559,7 @@ def backtest_run_play_tool(
             from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
             # Collect required timeframes
-            exec_tf = play.execution_tf
+            exec_tf = play.exec_tf
             required_tfs = {exec_tf, "1m"}  # Always need exec and 1m
             if play.low_tf:
                 required_tfs.add(play.low_tf)

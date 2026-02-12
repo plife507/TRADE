@@ -917,7 +917,7 @@ def run_preflight_gate(
     try:
         all_tfs = play.feature_registry.get_all_tfs()
     except (AttributeError, TypeError):
-        all_tfs = {play.execution_tf} if play.execution_tf else set()
+        all_tfs = {play.exec_tf} if play.exec_tf else set()
     # Always include the play's 3-feed timeframes so auto-sync covers them
     for tf_prop in (play.low_tf, play.med_tf, play.high_tf):
         if tf_prop:
@@ -1056,8 +1056,8 @@ def run_preflight_gate(
     exec_tf_str: str | None = None
 
     if has_1m_coverage:
-        # Get exec TF from Play (new schema uses execution_tf directly)
-        exec_tf_str = play.execution_tf
+        # Get exec TF from Play (new schema uses exec_tf directly)
+        exec_tf_str = play.exec_tf
         if exec_tf_str:
             # Load 1m data for mapping validation
             for symbol in play.symbol_universe:

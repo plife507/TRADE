@@ -181,7 +181,7 @@ def test_invalid_feature_ref() -> TestResult:
     try:
         from src.backtest.feature_registry import FeatureRegistry
 
-        registry = FeatureRegistry(execution_tf="15m")
+        registry = FeatureRegistry(exec_tf="15m")
 
         try:
             # Try to get non-existent feature

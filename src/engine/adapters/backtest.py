@@ -59,7 +59,7 @@ class BacktestDataProvider:
 
         # These will be populated during engine initialization
         self._symbol = play.symbol_universe[0]
-        self._timeframe = play.execution_tf
+        self._timeframe = play.exec_tf
 
     @property
     def num_bars(self) -> int:

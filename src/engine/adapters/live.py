@@ -541,9 +541,9 @@ class LiveDataProvider:
         # Extract TF mapping from Play timeframes
         tf_config = play.tf_mapping if play.tf_mapping else {}
         self._tf_mapping = {
-            "low_tf": tf_config.get("low_tf", play.execution_tf),
-            "med_tf": tf_config.get("med_tf", play.execution_tf),
-            "high_tf": tf_config.get("high_tf", play.execution_tf),
+            "low_tf": tf_config.get("low_tf", play.exec_tf),
+            "med_tf": tf_config.get("med_tf", play.exec_tf),
+            "high_tf": tf_config.get("high_tf", play.exec_tf),
             "exec": tf_config.get("exec", "low_tf"),  # Pointer to which feed
         }
         self._exec_role = self._tf_mapping["exec"]
