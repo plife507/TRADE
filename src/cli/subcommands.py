@@ -12,7 +12,7 @@ Sections:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from rich.panel import Panel
 from rich.table import Table
@@ -134,7 +134,7 @@ def _handle_synthetic_backtest_run(args) -> int:
     # Load Play - check if it's a file path first
     play_path = Path(args.play)
     if play_path.exists() and play_path.is_file():
-        with open(play_path, "r", encoding="utf-8") as f:
+        with open(play_path, "r", encoding="utf-8", newline='\n') as f:
             raw = yaml.safe_load(f)
         play = Play.from_dict(raw)
     else:
@@ -170,7 +170,7 @@ def _handle_synthetic_backtest_run(args) -> int:
         timeframes=list(required_tfs),
         bars_per_tf=synthetic_bars,
         seed=synthetic_seed,
-        pattern=synthetic_pattern,
+        pattern=cast(PatternType, synthetic_pattern),
     )
 
     provider = SyntheticCandlesProvider(candles)
@@ -521,6 +521,7 @@ def handle_backtest_list(args) -> int:
 
     if result.success:
         console.print(f"\n[bold cyan]Available Plays:[/]")
+        assert result.data is not None
         console.print(f"[dim]Directory: {result.data['directory']}[/]\n")
 
         for card_id in result.data["plays"]:
@@ -746,6 +747,7 @@ def handle_backtest_verify_suite(args) -> int:
             print(json.dumps(suite_results, indent=2, default=str))
         return 1
 
+    assert normalize_result.data is not None
     console.print(f"[green]PASS Normalization successful: {normalize_result.data['summary']['passed']}/{normalize_result.data['summary']['total_cards']} cards[/]")
 
     # PHASE 2: Run backtests with snapshot emission
@@ -802,7 +804,7 @@ def handle_backtest_verify_suite(args) -> int:
             suite_results["summary"] = {"overall_success": False, "failure_phase": "backtests"}
             print(json.dumps(suite_results, indent=2, default=str))
         return 1
-
+    else:
         console.print(f"[green]PASS Backtests successful: {len(backtest_results)}/{len(backtest_results)} cards[/]")
 
     # PHASE 3: Math parity audits
@@ -1587,7 +1589,7 @@ def handle_play_run(args) -> int:
 
     try:
         if play_path.exists() and play_path.is_file():
-            with open(play_path, "r", encoding="utf-8") as f:
+            with open(play_path, "r", encoding="utf-8", newline='\n') as f:
                 raw = yaml.safe_load(f)
             play = Play.from_dict(raw)
         else:
@@ -1808,6 +1810,7 @@ def _run_play_live(play, args, manager=None) -> int:
         # Show errors in debug mode
         from src.utils.debug import is_debug_enabled
         if is_debug_enabled():
+            assert instance_id is not None
             stats = manager.get_runner_stats(instance_id)
             if stats and stats.get("errors"):
                 console.print(f"\n[yellow]Errors ({len(stats['errors'])}):[/]")
@@ -2381,7 +2384,7 @@ def handle_test_agent(args) -> int:
     from src.testing_agent.runner import run_agent
     from src.testing_agent.reporting import print_agent_report, format_agent_report_json
 
-    result = run_agent(mode=mode, fix_gaps=fix_gaps)
+    result = run_agent(mode=cast(Literal["full", "btc", "l2"], mode), fix_gaps=fix_gaps)
 
     if args.json_output:
         print(json.dumps(format_agent_report_json(result), indent=2))

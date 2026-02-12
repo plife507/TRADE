@@ -12,7 +12,7 @@ Used by verification suite to enable pandas_ta parity audits.
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 import json
 
 
@@ -52,7 +52,7 @@ class SnapshotManifest:
     # Metadata
     frame_format: str = "parquet"
     float_precision: str = "lossless"
-    created_at: datetime = None
+    created_at: datetime | None = None
 
     def __post_init__(self):
         if self.created_at is None:
@@ -73,7 +73,7 @@ class SnapshotManifest:
             "exec_tf": self.exec_tf,
             "frame_format": self.frame_format,
             "float_precision": self.float_precision,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
             "frames": {}
         }
 
@@ -201,7 +201,7 @@ def emit_snapshot_artifacts(
             tf=tf,
             row_count=len(df),
             column_count=len(df.columns),
-            timestamp_range=(df["timestamp"].min(), df["timestamp"].max()),
+            timestamp_range=(cast(datetime, df["timestamp"].min()), cast(datetime, df["timestamp"].max())),
             columns_present=columns_present,
             feature_specs_resolved=feature_specs_resolved,
             outputs_expected_by_registry=outputs_expected_by_registry,
@@ -244,7 +244,7 @@ def emit_snapshot_artifacts(
     )
 
     manifest_path = snapshots_dir / "snapshot_manifest.json"
-    with open(manifest_path, "w") as f:
+    with open(manifest_path, "w", newline='\n') as f:
         json.dump(manifest.to_dict(), f, indent=2, sort_keys=True)
 
     return snapshots_dir
@@ -271,7 +271,7 @@ def load_snapshot_artifacts(run_dir: Path) -> dict[str, Any] | None:
         return None
 
     # Load manifest
-    with open(manifest_path, "r") as f:
+    with open(manifest_path, "r", newline='\n') as f:
         manifest_data = json.load(f)
 
     # Load DataFrames keyed by role

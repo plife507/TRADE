@@ -177,7 +177,7 @@ class ConflictResolver:
     def resolve(
         self,
         signals: list[Signal],
-        incremental_state: "MultiTFIncrementalState" | None = None,
+        incremental_state: "MultiTFIncrementalState | None" = None,
         derived_values: dict[str, Any] | None = None,
     ) -> ResolutionResult:
         """
@@ -226,7 +226,7 @@ class ConflictResolver:
     def _check_veto_conditions(
         self,
         signals: list[Signal],
-        incremental_state: "MultiTFIncrementalState" | None,
+        incremental_state: "MultiTFIncrementalState | None",
         derived_values: dict[str, Any] | None,
     ) -> ResolutionResult | None:
         """Check veto conditions. Returns ResolutionResult if vetoed."""
@@ -268,7 +268,7 @@ class ConflictResolver:
     def _is_veto_triggered(
         self,
         veto: VetoCondition,
-        incremental_state: "MultiTFIncrementalState" | None,
+        incremental_state: "MultiTFIncrementalState | None",
     ) -> bool:
         """Check if a veto condition is triggered."""
         if incremental_state is None:

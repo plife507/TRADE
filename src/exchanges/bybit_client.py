@@ -28,9 +28,6 @@ from pybit.unified_trading import HTTP, WebSocket
 from pybit.exceptions import (
     FailedRequestError,
     InvalidRequestError,
-    InvalidChannelTypeError,
-    TopicMismatchError,
-    UnauthorizedExceptionError,
 )
 
 from ..utils.rate_limiter import RateLimiter, create_bybit_limiters
@@ -67,8 +64,6 @@ def handle_pybit_errors(func):
             return func(*args, **kwargs)
         except (FailedRequestError, InvalidRequestError) as e:
             raise BybitAPIError.from_pybit(e)
-        except Exception as e:
-            raise
     return wrapper
 
 
@@ -91,12 +86,10 @@ def with_retry(max_retries: int = 3, backoff_base: float = 1.0):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            last_exception = None
             for attempt in range(max_retries):
                 try:
                     return func(*args, **kwargs)
                 except (ConnectionError, TimeoutError, OSError) as e:
-                    last_exception = e
                     if attempt == max_retries - 1:
                         raise
                     delay = backoff_base * (2 ** attempt)
@@ -109,7 +102,6 @@ def with_retry(max_retries: int = 3, backoff_base: float = 1.0):
                 except BybitAPIError as e:
                     # Retry on rate limit errors (429) and server errors (5xx)
                     if e.code in (429, 500, 502, 503, 504, 10006):
-                        last_exception = e
                         if attempt == max_retries - 1:
                             raise
                         delay = backoff_base * (2 ** attempt)
@@ -589,7 +581,7 @@ class BybitClient:
         from . import bybit_websocket as ws
         ws.subscribe_trades(self, symbol, callback)
     
-    def subscribe_klines(self, symbol: str | list[str], interval: int, callback: Callable):
+    def subscribe_klines(self, symbol: str | list[str], interval: int | str, callback: Callable):
         from . import bybit_websocket as ws
         ws.subscribe_klines(self, symbol, interval, callback)
     

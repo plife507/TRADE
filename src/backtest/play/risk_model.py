@@ -75,7 +75,7 @@ class TrailingConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
-        result = {
+        result: dict[str, Any] = {
             "atr_multiplier": self.atr_multiplier,
             "activation_pct": self.activation_pct,
         }

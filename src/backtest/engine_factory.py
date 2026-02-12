@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Callable
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .data_builder import DataBuilder
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from .runtime.snapshot_view import RuntimeSnapshotView
     from ..core.risk_manager import Signal
     from ..forge.validation.synthetic_provider import SyntheticDataProvider
+    from ..forge.validation.synthetic_data import PatternType
 
 
 # =============================================================================
@@ -86,9 +87,6 @@ def create_engine_from_play(
     Raises:
         ValueError: If Play is missing required sections (account)
     """
-    from typing import TYPE_CHECKING
-    if TYPE_CHECKING:
-        from src.forge.validation.synthetic_provider import SyntheticDataProvider
     from .data_builder import DataBuilder
     from .system_config import (
         SystemConfig,
@@ -260,7 +258,7 @@ def create_engine_from_play(
             timeframes=sorted(required_tfs),
             bars_per_tf=play.synthetic.bars,
             seed=play.synthetic.seed,
-            pattern=play.synthetic.pattern,
+            pattern=cast("PatternType", play.synthetic.pattern),
             align_multi_tf=True,
         )
         synthetic_provider = SyntheticCandlesProvider(candles)
@@ -269,7 +267,7 @@ def create_engine_from_play(
     if synthetic_provider is not None and (window_start is None or window_end is None):
         # Get data range from synthetic provider
         exec_tf = play.execution_tf
-        data_start, data_end = synthetic_provider.get_data_range(exec_tf)
+        data_start, data_end = synthetic_provider.get_data_range(exec_tf)  # type: ignore[attr-defined]
         if window_start is None:
             window_start = data_start
         if window_end is None:
@@ -315,7 +313,7 @@ def create_engine_from_play(
         system_id=play.id,
         symbol=symbol,
         tf=play.execution_tf,
-        description=play.description,
+        description=play.description or "",
         strategies=[strategy_instance],
         primary_strategy_instance_id="play_strategy",
         windows={
@@ -372,8 +370,8 @@ def create_engine_from_play(
 
     # Store Play and config references for run_engine_with_play()
     engine._play = play
-    engine._prepared_frame = build_result.prepared_frame  # For sim_start_idx access
-    engine._multi_tf_mode = multi_tf_mode
+    engine._prepared_frame = build_result.prepared_frame  # type: ignore[attr-defined]  # For sim_start_idx access
+    engine._multi_tf_mode = multi_tf_mode  # type: ignore[attr-defined]
 
     return engine
 

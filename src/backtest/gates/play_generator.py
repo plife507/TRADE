@@ -17,7 +17,7 @@ Rules:
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 import yaml
 import numpy as np
 
@@ -66,7 +66,8 @@ def get_available_symbols(env: str = "live") -> list[str]:
     """Get symbols available in local DuckDB data."""
     try:
         from src.data.historical_data_store import get_historical_store
-        store = get_historical_store(env=env)
+        from src.config.constants import DataEnv
+        store = get_historical_store(env=cast(DataEnv, env))
         table_name = f"ohlcv_{env}"
         result = store.conn.execute(f"""
             SELECT DISTINCT symbol

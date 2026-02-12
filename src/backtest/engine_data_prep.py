@@ -19,7 +19,7 @@ to enable DB-free validation runs using synthetic data.
 import pandas as pd
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, cast
 
 from .runtime.types import FeatureSnapshot, create_not_ready_feature_snapshot
 from .runtime.types import Bar as CanonicalBar
@@ -193,8 +193,6 @@ def _load_ohlcv_data(
     logger,
 ) -> pd.DataFrame:
     """Load OHLCV data from synthetic provider or DuckDB."""
-    data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
-
     if synthetic_provider is not None:
         df = synthetic_provider.get_ohlcv(
             symbol=config.symbol,
@@ -375,7 +373,7 @@ def prepare_backtest_frame_impl(
     )
 
     # 4. Load OHLCV data
-    store = None if synthetic_provider else get_historical_store(env=config.data_build.env)
+    store = None if synthetic_provider else get_historical_store(env=cast(DataEnv, config.data_build.env))
     data_source = "SYNTHETIC" if synthetic_provider else "DuckDB"
     logger.info(
         f"Loading data [{data_source}]: {config.symbol} {config.tf} "
@@ -445,7 +443,7 @@ def prepare_multi_tf_frames_impl(
         logger = get_logger()
 
     # Only initialize DB store if not using synthetic provider
-    store = None if synthetic_provider else get_historical_store(env=config.data_build.env)
+    store = None if synthetic_provider else get_historical_store(env=cast(DataEnv, config.data_build.env))
 
     # Get TF mapping (3-feed + exec role system)
     low_tf = tf_mapping["low_tf"]
@@ -507,7 +505,6 @@ def prepare_multi_tf_frames_impl(
         tf_by_role=tf_by_role,
     )
     data_start = data_window.data_start
-    warmup_span = data_window.warmup_span
     requested_start = window.start
     requested_end = window.end
 
@@ -881,7 +878,7 @@ def load_1m_data_impl(
         logger = get_logger()
 
     # Only initialize DB store if not using synthetic provider
-    store = None if synthetic_provider else get_historical_store(env=data_env)
+    store = None if synthetic_provider else get_historical_store(env=cast(DataEnv, data_env))
 
     # Calculate extended start with warmup
     warmup_span = timedelta(minutes=warmup_bars_1m)
@@ -966,7 +963,7 @@ def load_funding_data_impl(
     if logger is None:
         logger = get_logger()
 
-    store = get_historical_store(env=data_env)
+    store = get_historical_store(env=cast(DataEnv, data_env))
 
     logger.info(
         f"Loading funding data: {symbol} from {window_start} to {window_end}"
@@ -1024,7 +1021,7 @@ def load_open_interest_data_impl(
     if logger is None:
         logger = get_logger()
 
-    store = get_historical_store(env=data_env)
+    store = get_historical_store(env=cast(DataEnv, data_env))
 
     logger.info(
         f"Loading open interest data: {symbol} from {window_start} to {window_end}"
@@ -1042,7 +1039,7 @@ def load_open_interest_data_impl(
             f"Open interest features will be unavailable. "
             f"To sync: python trade_cli.py data sync-oi --symbol {symbol}"
         )
-        return pd.DataFrame(columns=["timestamp", "open_interest"])
+        return pd.DataFrame(columns=pd.Index(["timestamp", "open_interest"]))
 
     # Ensure sorted by timestamp
     df = df.sort_values("timestamp").reset_index(drop=True)

@@ -14,14 +14,11 @@ Execution flow:
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
 from ..types import (
     Bar,
     Order,
     OrderType,
     OrderSide,
-    OrderStatus,
     TimeInForce,
     Fill,
     FillReason,
@@ -33,9 +30,6 @@ from .slippage_model import SlippageModel, SlippageConfig
 from .impact_model import ImpactModel, ImpactConfig
 from .liquidity_model import LiquidityModel, LiquidityConfig
 from ..pricing.intrabar_path import IntrabarPath, IntrabarPathConfig
-
-if TYPE_CHECKING:
-    from ..ledger import Ledger
 
 
 @dataclass
@@ -154,10 +148,11 @@ class ExecutionModel:
         
         # Calculate size in base units
         size = order.size_usdt / fill_price
-        
+
         # Calculate fee
+        assert self._config.taker_fee_rate is not None
         fee = order.size_usdt * self._config.taker_fee_rate
-        
+
         # Create fill (timestamp = ts_open)
         fill = Fill(
             fill_id=self._next_fill_id(),
@@ -255,6 +250,7 @@ class ExecutionModel:
         size = order.size_usdt / fill_price
 
         # Calculate fee
+        assert self._config.taker_fee_rate is not None
         fee = order.size_usdt * self._config.taker_fee_rate
 
         # Create fill (timestamp = 1m bar open time)
@@ -417,7 +413,9 @@ class ExecutionModel:
 
         # Execute fill
         # For limit orders, apply minimal slippage (maker fill)
+        assert fill_price is not None
         size = order.size_usdt / fill_price
+        assert self._config.maker_fee_rate is not None
         fee = order.size_usdt * self._config.maker_fee_rate  # Limit orders use maker fee
 
         fill = Fill(
@@ -560,6 +558,7 @@ class ExecutionModel:
         # Fee calculation: use EXIT notional (qty * exit price), not entry notional
         # This is critical for accuracy when price has moved significantly since entry
         exit_notional = fill_size * fill_price
+        assert self._config.taker_fee_rate is not None
         fee = exit_notional * self._config.taker_fee_rate
 
         return Fill(

@@ -52,11 +52,11 @@ from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ..base import BaseIncrementalDetector, BarData
+from ..base import BaseIncrementalDetector
 from ..registry import register_structure
 
 if TYPE_CHECKING:
-    from .swing import IncrementalSwing
+    from ..base import BarData
 
 
 @dataclass
@@ -178,8 +178,8 @@ class IncrementalTrend(BaseIncrementalDetector):
             bar: Bar data (not directly used; trend is derived from swings).
         """
         # Get current swing indices from the swing detector
-        high_idx = self.swing.high_idx
-        low_idx = self.swing.low_idx
+        high_idx = self.swing.high_idx  # type: ignore[attr-defined]
+        low_idx = self.swing.low_idx  # type: ignore[attr-defined]
 
         # Check if any swing has changed
         high_changed = high_idx != self._last_high_idx and high_idx >= 0
@@ -191,8 +191,8 @@ class IncrementalTrend(BaseIncrementalDetector):
             return
 
         # Get current swing levels
-        current_high = self.swing.high_level
-        current_low = self.swing.low_level
+        current_high = self.swing.high_level  # type: ignore[attr-defined]
+        current_low = self.swing.low_level  # type: ignore[attr-defined]
 
         # Process swing changes to form waves
         # We need to handle both highs and lows, potentially in order

@@ -32,7 +32,7 @@ from .dsl_nodes import (
     FeatureRef, CROSSOVER_OPERATORS,
     get_max_offset, get_referenced_features,
 )
-from .strategy_blocks import Block, Case
+from .strategy_blocks import Block
 
 if TYPE_CHECKING:
     from ..feature_registry import FeatureRegistry
@@ -102,7 +102,9 @@ def _extract_offsets(expr: Expr) -> dict[str, int]:
 
     def collect(e: Expr, additional_offset: int = 0) -> None:
         if isinstance(e, Cond):
-            # LHS
+            # LHS - only FeatureRef has feature_id/offset
+            if not isinstance(e.lhs, FeatureRef):
+                return  # ArithmeticExpr LHS - skip offset collection
             feature_id = e.lhs.feature_id
             total_offset = e.lhs.offset + additional_offset
             offsets[feature_id] = max(offsets.get(feature_id, 0), total_offset)

@@ -4,9 +4,11 @@ Historical data sync operations.
 Contains: sync, sync_range, sync_forward, and internal sync methods.
 """
 
+import time
+
 from datetime import datetime, timedelta, timezone
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 import pandas as pd
 
 
@@ -44,30 +46,25 @@ def sync(
     show_spinner: bool = True,
 ) -> dict[str, int]:
     """Sync historical data for symbols."""
-    TIMEFRAMES, TF_MINUTES, ActivityEmoji, ActivitySpinner = _get_constants()
-    
+    TIMEFRAMES, _, ActivityEmoji, ActivitySpinner = _get_constants()
+
     if isinstance(symbols, str):
         symbols = [symbols]
-    
+
     symbols = [s.upper() for s in symbols]
     timeframes = timeframes or list(TIMEFRAMES.keys())
     target_start = datetime.now() - store.parse_period(period)
-    
+
     results = {}
-    total_synced = 0
-    
+
     store.reset_cancellation()
-    
-    total_combinations = len(symbols) * len(timeframes)
-    current_combination = 0
-    
+
     for symbol in symbols:
         for tf in timeframes:
             if store._cancelled:
                 store.logger.info("Sync cancelled by user")
                 break
-            
-            current_combination += 1
+
             key = f"{symbol}_{tf}"
             
             if progress_callback:
@@ -81,7 +78,6 @@ def sync(
             try:
                 count = _sync_symbol_timeframe(store, symbol, tf, target_start, datetime.now())
                 results[key] = count
-                total_synced += max(0, count)
                 
                 if spinner:
                     spinner.stop(f"{symbol} {tf}: {count} candles {ActivityEmoji.SPARKLE}")
@@ -192,24 +188,22 @@ def sync_forward(
     symbols = [s.upper() for s in symbols]
     timeframes = timeframes or list(TIMEFRAMES.keys())
     results = {}
-    total_synced = 0
-    
+
     for symbol in symbols:
         for tf in timeframes:
             key = f"{symbol}_{tf}"
-            
+
             if progress_callback:
                 progress_callback(symbol, tf, f"{ActivityEmoji.SYNC} syncing forward")
-            
+
             spinner = None
             if show_spinner and not progress_callback:
                 spinner = ActivitySpinner(f"Syncing {symbol} {tf} forward", ActivityEmoji.CANDLE)
                 spinner.start()
-            
+
             try:
                 count = _sync_forward_symbol_timeframe(store, symbol, tf)
                 results[key] = count
-                total_synced += max(0, count)
                 
                 if spinner:
                     if count > 0:
@@ -321,8 +315,7 @@ def _sync_symbol_timeframe(
         if store._cancelled:
             break
         
-        progress_prefix = f"{symbol} {timeframe}"
-        df = _fetch_from_api(store, symbol, bybit_tf, range_start, range_end, progress_prefix=progress_prefix)
+        df = _fetch_from_api(store, symbol, bybit_tf, range_start, range_end)
         
         if not df.empty:
             _store_dataframe(store, symbol, timeframe, df)
@@ -349,23 +342,18 @@ def _fetch_from_api(
     progress_prefix: str | None = None,
 ) -> pd.DataFrame:
     """Fetch data from Bybit API with visual progress."""
-    _, _, ActivityEmoji, _ = _get_constants()
-    
     all_data = []
-    current_end = end
-    request_count = 0
     
-    start_ts = pd.Timestamp(start, tz='UTC') if start.tzinfo is None else pd.Timestamp(start)
-    end_ts = pd.Timestamp(end, tz='UTC') if end.tzinfo is None else pd.Timestamp(end)
+    start_ts = cast(pd.Timestamp, pd.Timestamp(start, tz='UTC') if start.tzinfo is None else pd.Timestamp(start))
+    end_ts = cast(pd.Timestamp, pd.Timestamp(end, tz='UTC') if end.tzinfo is None else pd.Timestamp(end))
     current_end_ts = end_ts
     
     while current_end_ts > start_ts:
         if store._cancelled:
             break
-        
-        request_count += 1
-        
-        end_ms = int(current_end_ts.timestamp() * 1000)
+
+        # current_end_ts is always valid (constructed from datetime arg)
+        end_ms = int(current_end_ts.value // 10**6)
         
         try:
             df = store.client.get_klines(
@@ -393,8 +381,7 @@ def _fetch_from_api(
             break
         
         current_end_ts = oldest - pd.Timedelta(milliseconds=1)
-        
-        import time
+
         time.sleep(0.05)
     
     if not all_data:
@@ -443,6 +430,7 @@ def _update_metadata(store: "HistoricalDataStore", symbol: str, timeframe: str):
         WHERE symbol = ? AND timeframe = ?
     """, [symbol, timeframe]).fetchone()
     
+    assert stats is not None
     first_ts, last_ts, count = stats
     
     if first_ts and last_ts:

@@ -250,7 +250,7 @@ class BaseSession:
                     # Get historical data
                     df = get_latest_ohlcv(
                         symbol=symbol,
-                        timeframe=tf,
+                        tf=tf,
                         limit=self.config.warmup_candles,
                         env=self.env,
                     )

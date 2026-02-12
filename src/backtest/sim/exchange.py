@@ -207,6 +207,7 @@ class SimulatedExchange:
 
     @property
     def taker_fee_rate(self) -> float:
+        assert self._fee_rate is not None
         return self._fee_rate
     
     @property

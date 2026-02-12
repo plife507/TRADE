@@ -122,10 +122,10 @@ def subscribe_trades(client: "BybitClient", symbol: str | list[str], callback: C
     client.logger.info(f"Subscribed to trades: {symbol}")
 
 
-def subscribe_klines(client: "BybitClient", symbol: str | list[str], interval: int, callback: Callable):
+def subscribe_klines(client: "BybitClient", symbol: str | list[str], interval: int | str, callback: Callable):
     """Subscribe to kline/candlestick updates."""
     ws = connect_public_ws(client)
-    ws.kline_stream(interval=interval, symbol=symbol, callback=callback)
+    ws.kline_stream(interval=int(interval), symbol=symbol, callback=callback)
     client.logger.info(f"Subscribed to klines({interval}): {symbol}")
 
 

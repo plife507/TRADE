@@ -13,6 +13,7 @@ Design choices:
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -155,11 +156,11 @@ def compare_csv_parquet(
         # Compare non-null values
         if csv_col.dtype in ['float64', 'float32']:
             # Float comparison with tolerance
-            csv_vals = csv_col[~csv_null].values
-            pq_vals = pq_col[~pq_null].values
-            
-            if len(csv_vals) > 0:
-                max_diff = abs(csv_vals - pq_vals).max()
+            csv_arr: np.ndarray = np.asarray(csv_col[~csv_null])
+            pq_arr: np.ndarray = np.asarray(pq_col[~pq_null])
+
+            if len(csv_arr) > 0:
+                max_diff = float(np.abs(csv_arr - pq_arr).max())
                 if max_diff > float_tolerance:
                     errors.append(
                         f"Column '{col}': Float values differ by {max_diff} "
@@ -167,13 +168,13 @@ def compare_csv_parquet(
                     )
         else:
             # Exact comparison for non-floats
-            csv_vals = csv_col[~csv_null]
-            pq_vals = pq_col[~pq_null]
-            
+            csv_series = pd.Series(csv_col[~csv_null])
+            pq_series = pd.Series(pq_col[~pq_null])
+
             # Convert to string for comparison (handles type differences)
-            if not csv_vals.astype(str).equals(pq_vals.astype(str)):
+            if not csv_series.astype(str).equals(pq_series.astype(str)):
                 # Find first mismatch
-                for i, (c, p) in enumerate(zip(csv_vals, pq_vals)):
+                for i, (c, p) in enumerate(zip(csv_series, pq_series)):
                     if str(c) != str(p):
                         errors.append(
                             f"Column '{col}': Value mismatch at row {i}: "

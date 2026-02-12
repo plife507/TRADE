@@ -101,8 +101,18 @@ def vectorized_market_structure(
         check_low = close[i] if confirmation_close else low[i]
 
         if bias == 1:  # Bullish
+            # CHoCH: break below swing low (reversal) - checked first, takes priority
+            if not math.isnan(break_level_low) and check_low < break_level_low:
+                choch_this_bar = True
+                last_choch_idx = i
+                last_choch_level = break_level_low
+                choch_direction_val = -1.0
+                bias = -1
+                version += 1
+                broken_low_idx = last_low_idx
+                break_level_low = float("nan")
             # BOS: break above swing high (continuation)
-            if not math.isnan(break_level_high) and check_high > break_level_high:
+            elif not math.isnan(break_level_high) and check_high > break_level_high:
                 bos_this_bar = True
                 last_bos_idx = i
                 last_bos_level = break_level_high
@@ -111,27 +121,8 @@ def vectorized_market_structure(
                 broken_high_idx = last_high_idx
                 break_level_high = float("nan")
 
-            # CHoCH: break below swing low (reversal)
-            if not math.isnan(break_level_low) and check_low < break_level_low:
-                choch_this_bar = True
-                last_choch_idx = i
-                last_choch_level = break_level_low
-                choch_direction_val = -1.0
-                bias = -1
-                version += 1
-
         elif bias == -1:  # Bearish
-            # BOS: break below swing low (continuation)
-            if not math.isnan(break_level_low) and check_low < break_level_low:
-                bos_this_bar = True
-                last_bos_idx = i
-                last_bos_level = break_level_low
-                bos_direction_val = -1.0
-                version += 1
-                broken_low_idx = last_low_idx
-                break_level_low = float("nan")
-
-            # CHoCH: break above swing high (reversal)
+            # CHoCH: break above swing high (reversal) - checked first, takes priority
             if not math.isnan(break_level_high) and check_high > break_level_high:
                 choch_this_bar = True
                 last_choch_idx = i
@@ -139,6 +130,17 @@ def vectorized_market_structure(
                 choch_direction_val = 1.0
                 bias = 1
                 version += 1
+                broken_high_idx = last_high_idx
+                break_level_high = float("nan")
+            # BOS: break below swing low (continuation)
+            elif not math.isnan(break_level_low) and check_low < break_level_low:
+                bos_this_bar = True
+                last_bos_idx = i
+                last_bos_level = break_level_low
+                bos_direction_val = -1.0
+                version += 1
+                broken_low_idx = last_low_idx
+                break_level_low = float("nan")
 
         else:  # Ranging
             if not math.isnan(break_level_high) and check_high > break_level_high:

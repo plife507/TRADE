@@ -226,7 +226,7 @@ class ToolRegistry:
         self,
         spec: ToolSpec,
         name: str,
-        tool_call_id: str,
+        tool_call_id: str | None,
         safe_args: dict[str, Any],
         safe_meta: dict[str, Any],
         logger,
@@ -288,7 +288,7 @@ class ToolRegistry:
         """
         results = []
         for action in actions:
-            tool_name = action.get("tool")
+            tool_name = action.get("tool", "")
             args = action.get("args", {})
             result = self.execute(tool_name, **args)
             results.append(result)

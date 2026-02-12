@@ -106,7 +106,7 @@ class CLIStyles:
     use_art_wrapper = True
     
     @staticmethod
-    def get_title_panel(subtitle: str = None, is_demo: bool = True) -> Panel:
+    def get_title_panel(subtitle: str | None = None, is_demo: bool = True) -> Panel:
         """
         Create the main title panel with ASCII art.
         

@@ -25,12 +25,10 @@ Enforces all gates before and after the run:
 If any gate fails, the runner stops and returns a failure status.
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING, cast
 from pathlib import Path
-import json
 import time
 
 
@@ -67,14 +65,10 @@ from .artifacts.parquet_writer import write_parquet
 from .gates.indicator_requirements_gate import (
     validate_indicator_requirements,
     IndicatorGateStatus,
-    IndicatorRequirementsResult,
 )
 from .execution_validation import (
-    validate_play_full,
     compute_warmup_requirements,
     compute_play_hash,
-    PlaySignalEvaluator,
-    SignalDecision,
 )
 from .logging import RunLogger, set_run_logger
 
@@ -533,16 +527,16 @@ def _write_trade_artifacts(ctx: _RunContext) -> int | None:
     artifact_path = ctx.artifact_path
 
     # Write trades.parquet
-    trades_df = pd.DataFrame(ctx.trades) if ctx.trades else pd.DataFrame(columns=[
+    trades_df = pd.DataFrame(ctx.trades) if ctx.trades else pd.DataFrame(columns=pd.Index([
         "entry_time", "exit_time", "side", "entry_price", "exit_price",
         "entry_size_usdt", "net_pnl", "stop_loss", "take_profit", "exit_reason",
-    ])
+    ]))
     write_parquet(trades_df, artifact_path / "trades.parquet")
 
     # Write equity.parquet
-    equity_df = pd.DataFrame(ctx.equity_curve) if ctx.equity_curve else pd.DataFrame(columns=[
+    equity_df = pd.DataFrame(ctx.equity_curve) if ctx.equity_curve else pd.DataFrame(columns=pd.Index([
         "timestamp", "equity",
-    ])
+    ]))
 
     # Add ts_ms column
     if not equity_df.empty and "timestamp" in equity_df.columns:

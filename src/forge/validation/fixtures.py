@@ -8,7 +8,7 @@ Provides deterministic, predictable data patterns for validating:
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -36,23 +36,23 @@ class SyntheticData:
 
     @property
     def open(self) -> pd.Series:
-        return self.df["open"]
+        return cast(pd.Series, self.df["open"])
 
     @property
     def high(self) -> pd.Series:
-        return self.df["high"]
+        return cast(pd.Series, self.df["high"])
 
     @property
     def low(self) -> pd.Series:
-        return self.df["low"]
+        return cast(pd.Series, self.df["low"])
 
     @property
     def close(self) -> pd.Series:
-        return self.df["close"]
+        return cast(pd.Series, self.df["close"])
 
     @property
     def volume(self) -> pd.Series:
-        return self.df["volume"]
+        return cast(pd.Series, self.df["volume"])
 
     def __len__(self) -> int:
         return len(self.df)
@@ -378,8 +378,6 @@ def generate_rsi_oversold(
 def generate_crossover_setup(
     n_bars: int = 100,
     cross_index: int = 50,
-    fast_length: int = 9,
-    slow_length: int = 21,
     seed: int = 42,
 ) -> SyntheticData:
     """
@@ -391,7 +389,6 @@ def generate_crossover_setup(
     dates = pd.date_range("2024-01-01", periods=n_bars, freq="1min")
 
     # Start flat, then trend up to cause crossover
-    warmup = max(fast_length, slow_length) * 3
     flat_end = cross_index - 10
 
     close = np.zeros(n_bars)

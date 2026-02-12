@@ -440,7 +440,7 @@ class BacktestRunner:
         actual_bars_processed = last_bar_idx - start_idx + 1
 
         return self._build_result(
-            play_id=self._engine._play.name,
+            play_id=self._engine._play.name or "unknown",
             symbol=self._data_provider.symbol,
             timeframe=self._data_provider.timeframe,
             start_ts=actual_start_ts,
@@ -521,7 +521,7 @@ class BacktestRunner:
             symbol=play.symbol_universe[0],
             initial_capital=config.initial_equity,
             execution_config=ExecutionConfig(
-                slippage_bps=config.slippage_bps,
+                slippage_bps=config.slippage_bps or 2.0,
             ),
             risk_profile=risk_profile,
         )

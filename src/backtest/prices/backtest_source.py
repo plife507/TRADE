@@ -240,6 +240,7 @@ class BacktestPriceSource:
                 f"SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '{table_name}'"
             ).fetchone()
 
+            assert result is not None
             if result[0] == 0:
                 return HealthCheckResult(
                     ok=False,
@@ -248,9 +249,11 @@ class BacktestPriceSource:
                 )
 
             # Get row count for diagnostics
-            row_count = conn.execute(
+            row_result = conn.execute(
                 f"SELECT COUNT(*) FROM {table_name}"
-            ).fetchone()[0]
+            ).fetchone()
+            assert row_result is not None
+            row_count = row_result[0]
 
             return HealthCheckResult(
                 ok=True,
@@ -279,13 +282,14 @@ class BacktestPriceSource:
                 if df is not None and not df.empty:
                     # Normalize and cache
                     df = df.rename(columns={"timestamp": "ts_open"})
-                    tf_minutes = 1
-                    df["ts_close"] = df["ts_open"] + pd.Timedelta(minutes=tf_minutes)
+                    df["ts_close"] = df["ts_open"] + pd.Timedelta(minutes=1)
                     df = df.sort_values("ts_open").reset_index(drop=True)
                     self._1m_cache[symbol] = df
                 else:
                     return None
-            except Exception:
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"Failed to load 1m data for {symbol}: {e}")
                 return None
         return self._1m_cache.get(symbol)
 

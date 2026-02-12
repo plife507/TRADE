@@ -4,6 +4,8 @@ Data tools - status and info tools.
 Split from data_tools.py for maintainability.
 """
 
+from typing import Any, cast
+
 from .shared import ToolResult, _get_historical_store
 from ..config.constants import DataEnv, DEFAULT_DATA_ENV
 from .data_tools_common import _build_extremes_metadata
@@ -124,7 +126,7 @@ def list_cached_symbols_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
             return ToolResult(
                 success=True,
                 message=f"[{env.upper()}] No symbols cached in database",
-                data=[],  # Empty list for consistent table handling
+                data=cast(dict[str, Any], []),  # Empty list for consistent table handling
                 source="duckdb",
             )
         
@@ -170,7 +172,7 @@ def list_cached_symbols_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
         return ToolResult(
             success=True,
             message=f"[{env.upper()}] Found {len(symbols_data)} cached symbols",
-            data=symbols_data,  # Return as list for table rendering
+            data=cast(dict[str, Any], symbols_data),  # Return as list for table rendering
             source="duckdb",
         )
     except Exception as e:
@@ -330,7 +332,7 @@ def get_symbol_timeframe_ranges_tool(symbol: str | None = None, env: DataEnv = D
             success=True,
             symbol=symbol,
             message=f"Found {len(ranges)} symbol/timeframe combinations across {symbols_count} symbol(s)",
-            data=ranges,  # Return as list for direct table rendering
+            data=cast(dict[str, Any], ranges),  # Return as list for direct table rendering
             source="duckdb",
         )
     except Exception as e:

@@ -674,6 +674,8 @@ def set_trailing_stop_by_percent_tool(symbol: str, percent: float, trading_env: 
         # Enhance message with percent info
         if result.success:
             result.message = f"Trailing stop set: {trailing_distance:.2f} ({percent}% of {current_price:.2f})"
+            if result.data is None:
+                result.data = {}
             result.data["percent"] = percent
             result.data["price_used"] = current_price
         

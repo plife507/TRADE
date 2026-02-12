@@ -190,7 +190,7 @@ def _run_math_parity_audit(cli: "TradeCLI"):
 
     # Get date range
     start_date, end_date = _get_date_range()
-    if start_date is None:
+    if start_date is None or end_date is None:
         return
 
     console.print()
@@ -239,7 +239,7 @@ def _run_snapshot_plumbing_audit(cli: "TradeCLI"):
 
     # Get date range
     start_date, end_date = _get_date_range()
-    if start_date is None:
+    if start_date is None or end_date is None:
         return
 
     console.print()

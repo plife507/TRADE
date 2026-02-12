@@ -181,12 +181,16 @@ def vectorized_derived_zone(
             zone["inside"] = currently_inside
 
             # Check break: price beyond boundary with tolerance
-            break_tol = 1.0 - break_tolerance_pct
-            break_tol_upper = 1.0 + break_tolerance_pct
-            if price < lower * break_tol:
-                zone["state"] = 2  # broken
-            elif price > upper * break_tol_upper:
-                zone["state"] = 2  # broken
+            # Skip break check on the creation bar - zones need at least one bar
+            # to become reachable (price is often far from retracement levels
+            # when the swing pair that created them just completed)
+            if zone["anchor_idx"] < bar_idx:
+                break_tol = 1.0 - break_tolerance_pct
+                break_tol_upper = 1.0 + break_tolerance_pct
+                if price < lower * break_tol:
+                    zone["state"] = 2  # broken
+                elif price > upper * break_tol_upper:
+                    zone["state"] = 2  # broken
 
         # Compute aggregates
         # NOTE: first_active_* returns the FIRST active zone (lowest slot

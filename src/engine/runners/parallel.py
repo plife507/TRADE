@@ -31,10 +31,9 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, cast
 
-if TYPE_CHECKING:
-    from ...backtest.play import Play
+from ...config.constants import DataEnv
 
 
 @dataclass
@@ -54,7 +53,7 @@ class ParallelBacktestResult:
 def _run_single_backtest_process(
     play_id: str,
     plays_dir: str | None,
-    env: str,
+    env: DataEnv,
     start: datetime | None,
     end: datetime | None,
 ) -> ParallelBacktestResult:
@@ -197,7 +196,7 @@ def run_backtests_parallel(
                 _run_single_backtest_process,
                 play_id,
                 plays_dir_str,
-                env,
+                cast(DataEnv, env),
                 start,
                 end,
             ): play_id

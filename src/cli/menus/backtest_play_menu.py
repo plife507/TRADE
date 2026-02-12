@@ -159,7 +159,7 @@ def _select_play(prompt_text: str = "Select Play") -> str | None:
         return None
 
 
-def _get_date_range() -> tuple:
+def _get_date_range() -> tuple[datetime | None, datetime | None]:
     """
     Prompt user for start and end dates.
 
@@ -203,6 +203,7 @@ def _list_plays(cli: "TradeCLI"):
     result = backtest_list_plays_tool()
 
     if result.success:
+        assert result.data is not None
         cards = result.data.get("plays", [])
         directory = result.data.get("directory", "")
 
@@ -239,7 +240,7 @@ def _run_play_backtest(cli: "TradeCLI"):
 
     # Get date range
     start_date, end_date = _get_date_range()
-    if start_date is None:
+    if start_date is None or end_date is None:
         return
 
     # Confirm
@@ -311,7 +312,7 @@ def _preflight_check(cli: "TradeCLI"):
 
     # Get date range
     start_date, end_date = _get_date_range()
-    if start_date is None:
+    if start_date is None or end_date is None:
         return
 
     # Ask about auto-fix
@@ -376,7 +377,7 @@ def _data_fix(cli: "TradeCLI"):
 
     # Get date range
     start_date, end_date = _get_date_range()
-    if start_date is None:
+    if start_date is None or end_date is None:
         return
 
     console.print()

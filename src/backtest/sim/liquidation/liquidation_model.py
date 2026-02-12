@@ -97,6 +97,7 @@ class LiquidationModel:
         
         # Calculate liquidation fee
         position_value = position.size * prices.mark_price
+        assert self._config.liquidation_fee_rate is not None
         liquidation_fee = position_value * self._config.liquidation_fee_rate
         
         # Create liquidation event

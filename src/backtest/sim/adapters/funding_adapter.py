@@ -52,6 +52,7 @@ def adapt_funding_row(row: dict[str, Any] | "pd.Series") -> FundingEvent:
     if rate is None:
         raise KeyError("Missing funding_rate column")
     
+    assert isinstance(symbol, str)
     return FundingEvent(
         timestamp=ts,
         symbol=symbol,

@@ -136,16 +136,16 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         if not isinstance(levels, list) or len(levels) == 0:
             raise ValueError(
                 f"Structure '{key}': 'levels' must be a non-empty list\n"
-                f"\n"
-                f"Fix: levels: [0.382, 0.5, 0.618]"
+                "\n"
+                "Fix: levels: [0.382, 0.5, 0.618]"
             )
 
         for i, level in enumerate(levels):
             if not isinstance(level, (int, float)):
                 raise ValueError(
                     f"Structure '{key}': 'levels[{i}]' must be a number\n"
-                    f"\n"
-                    f"Fix: levels: [0.382, 0.5, 0.618] or [-0.272, -0.618] for extensions"
+                    "\n"
+                    "Fix: levels: [0.382, 0.5, 0.618] or [-0.272, -0.618] for extensions"
                 )
 
         # Validate max_active
@@ -153,8 +153,8 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         if not isinstance(max_active, int) or max_active < 1:
             raise ValueError(
                 f"Structure '{key}': 'max_active' must be integer >= 1\n"
-                f"\n"
-                f"Fix: max_active: 5"
+                "\n"
+                "Fix: max_active: 5"
             )
 
         # Validate mode
@@ -162,8 +162,8 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         if mode not in ("retracement", "extension"):
             raise ValueError(
                 f"Structure '{key}': 'mode' must be 'retracement' or 'extension'\n"
-                f"\n"
-                f"Fix: mode: retracement"
+                "\n"
+                "Fix: mode: retracement"
             )
 
         # Validate width_pct
@@ -171,8 +171,8 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         if not isinstance(width_pct, (int, float)) or width_pct <= 0:
             raise ValueError(
                 f"Structure '{key}': 'width_pct' must be positive number\n"
-                f"\n"
-                f"Fix: width_pct: 0.002  # 0.2%"
+                "\n"
+                "Fix: width_pct: 0.002  # 0.2%"
             )
 
     def __init__(
@@ -228,7 +228,7 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         # REGEN PATH: Only on source version change (new swing pivot confirmed)
         if current_source_version != self._source_version:
             self._regenerate_zones(bar_idx, bar)
-            self._source_version = current_source_version
+            self._source_version = current_source_version  # type: ignore[assignment]
 
         # INTERACTION PATH: Every exec close (check touches, breaks, age updates)
         self._update_zone_interactions(bar_idx, bar)
@@ -268,11 +268,11 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         # Need valid swing levels (not NaN, both present)
         if high_level != high_level or low_level != low_level:  # NaN check
             return
-        if high_idx < 0 or low_idx < 0:
+        if high_idx < 0 or low_idx < 0:  # type: ignore[operator]
             return
 
         # Calculate range
-        range_val = high_level - low_level
+        range_val = high_level - low_level  # type: ignore[operator]
         if range_val <= 0:
             return
 
@@ -281,10 +281,10 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
             # Calculate zone center based on mode
             if self.mode == "retracement":
                 # Retracement: levels between high and low
-                center = high_level - (range_val * level)
+                center = high_level - (range_val * level)  # type: ignore[operator]
             else:
                 # Extension: levels projected beyond high
-                center = high_level + (range_val * level)
+                center = high_level + (range_val * level)  # type: ignore[operator]
 
             # Calculate zone boundaries using width_pct
             width = center * self.width_pct
@@ -426,46 +426,6 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
             Price value, or None if not available.
         """
         return bar.close
-
-    def _compute_closest_active(self, price: float) -> tuple[int, Any, Any]:
-        """
-        Find the closest ACTIVE zone to the given price.
-
-        Distance is min(abs(price - lower), abs(price - upper)).
-        If inside zone, distance is 0.
-        Tie-breaker: prefer newer zone (lower slot index).
-
-        Args:
-            price: Current price for distance calculation.
-
-        Returns:
-            Tuple of (slot_idx, lower, upper). Returns (-1, None, None) if no active zones.
-        """
-        best_idx = -1
-        best_dist = float("inf")
-
-        for idx, zone in enumerate(self._zones):
-            if zone["state"] != ZONE_STATE_ACTIVE:
-                continue
-
-            lower = zone["lower"]
-            upper = zone["upper"]
-
-            # Distance to nearest boundary
-            if lower <= price <= upper:
-                dist = 0.0  # Inside zone
-            else:
-                dist = min(abs(price - lower), abs(price - upper))
-
-            # Prefer lower slot index on tie (newer zone)
-            if dist < best_dist or (dist == best_dist and idx < best_idx):
-                best_dist = dist
-                best_idx = idx
-
-        if best_idx >= 0:
-            zone = self._zones[best_idx]
-            return (best_idx, zone["lower"], zone["upper"])
-        return (-1, None, None)
 
     def get_output_keys(self) -> list[str]:
         """

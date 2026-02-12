@@ -53,7 +53,7 @@ class EventLogWriter:
         """Start the event log (create/truncate file)."""
         self.run_dir.mkdir(parents=True, exist_ok=True)
         log_path = self.run_dir / self.filename
-        self._file = open(log_path, "w")
+        self._file = open(log_path, "w", newline='\n')
         self._started = True
         
         # Write header event
@@ -85,6 +85,7 @@ class EventLogWriter:
             **data,
         }
         
+        assert self._file is not None
         self._file.write(json.dumps(event, default=str, sort_keys=True) + "\n")
         self._file.flush()
         self._event_count += 1

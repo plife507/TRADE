@@ -28,7 +28,6 @@ import yaml
 from src.backtest.play_yaml_builder import (
     validate_play_yaml,
     normalize_play_yaml,
-    ValidationResult as YamlValidationResult,
     ValidationError,
     ValidationErrorCode,
     format_validation_errors,
@@ -92,7 +91,7 @@ def validate_play(play_dict: dict[str, Any]) -> PlayValidationResult:
 
     # Try normalization (expands defaults, validates blocks)
     try:
-        normalized = normalize_play_yaml(play_dict)
+        normalized, _ = normalize_play_yaml(play_dict)
         return PlayValidationResult(
             play_id=play_id,
             is_valid=True,

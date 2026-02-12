@@ -48,7 +48,7 @@ class ApplicationStatus:
     websocket_connected: bool = False
     websocket_public: bool = False
     websocket_private: bool = False
-    symbols: list[str] = None
+    symbols: list[str] | None = None
     error: str | None = None
     
     def __post_init__(self):
@@ -82,7 +82,7 @@ class Application:
     _instance: 'Application | None' = None
     _lock = threading.Lock()
     
-    def __init__(self, config: Config = None):
+    def __init__(self, config: Config | None = None):
         """
         Initialize application manager.
         
@@ -359,6 +359,7 @@ class Application:
     def _init_position_manager(self):
         """Initialize PositionManager."""
         from .position_manager import PositionManager
+        assert self._exchange_manager is not None
         self._position_manager = PositionManager(
             exchange_manager=self._exchange_manager,
             prefer_websocket=self.config.websocket.prefer_websocket_data,
@@ -462,8 +463,7 @@ class Application:
             # Suppress verbose rate limit errors
             error_msg = str(e)
             if "Too many connection attempts" in error_msg or "connection failed" in error_msg:
-                # Already logged by realtime_bootstrap, just silently fall back
-                pass
+                self.logger.debug(f"WebSocket connection issue (falling back to REST): {e}")
             else:
                 self.logger.error(f"Failed to start WebSocket: {e}")
             
@@ -669,7 +669,7 @@ _application: Application | None = None
 _app_lock = threading.Lock()
 
 
-def get_application(config: Config = None) -> Application:
+def get_application(config: Config | None = None) -> Application:
     """
     Get or create the global Application instance.
     

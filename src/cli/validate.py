@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -355,6 +356,7 @@ def _gate_pre_live_balance(play_id: str) -> GateResult:
             failures.append(f"Balance check: {result.error}")
         elif result.data:
             available = float(result.data.get("available_balance", 0))
+            assert play.account is not None
             required = play.account.starting_equity_usdt
             if available < required:
                 failures.append(f"Insufficient balance: {available:.2f} < {required:.2f} USDT")
@@ -382,12 +384,14 @@ def _gate_pre_live_no_conflicts(play_id: str) -> GateResult:
         from src.tools import list_open_positions_tool
 
         play = load_play(play_id)
+        symbol = play.symbol_universe[0]
         result = list_open_positions_tool()
         if result.success and result.data:
-            positions = result.data if isinstance(result.data, list) else []
+            raw_data = result.data
+            positions: list[dict[str, Any]] = raw_data if isinstance(raw_data, list) else []
             for pos in positions:
-                if pos.get("symbol") == play.symbol:
-                    failures.append(f"Open position exists for {play.symbol}")
+                if isinstance(pos, dict) and pos.get("symbol") == symbol:
+                    failures.append(f"Open position exists for {symbol}")
     except Exception as e:
         failures.append(f"Position check: {e}")
 

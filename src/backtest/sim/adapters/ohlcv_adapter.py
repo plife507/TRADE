@@ -57,8 +57,11 @@ def adapt_ohlcv_row_canonical(
         ts_open = datetime.fromisoformat(ts_open)
     elif hasattr(ts_open, "to_pydatetime"):
         # pandas Timestamp
-        ts_open = ts_open.to_pydatetime()
-    
+        ts_open = ts_open.to_pydatetime()  # type: ignore[union-attr]
+
+    # Ensure ts_open is a datetime for type safety
+    assert isinstance(ts_open, datetime)
+
     # Compute ts_close
     ts_close = ts_open + tf_duration(tf)
     
@@ -139,8 +142,6 @@ def build_bar_close_ts_map(
     """
     bars = adapt_ohlcv_dataframe_canonical(df, symbol=symbol, tf=tf)
     return {bar.ts_close: bar for bar in bars}
-
-
 
 
 # Convenience aliases for cleaner imports

@@ -241,7 +241,7 @@ class RiskManager:
         # Check 0.5: Funding rate cost check (G1-2)
         # Block if funding rate * leverage would exceed 1% daily cost
         if hasattr(self.config, 'max_funding_cost_pct'):
-            max_funding_cost = self.config.max_funding_cost_pct
+            max_funding_cost = getattr(self.config, 'max_funding_cost_pct')
         else:
             max_funding_cost = 1.0  # Default 1% daily cost threshold
 
@@ -447,7 +447,7 @@ class RiskManager:
                 symbol=symbol
             )
 
-        return True, max_lev
+        return True, int(max_lev)
 
     def _get_tier_max_leverage(self, symbol: str) -> float | None:
         """Get max leverage from exchange risk tiers for symbol. Cached per symbol."""
@@ -457,6 +457,7 @@ class RiskManager:
         if symbol not in self._risk_limit_cache:
             try:
                 from ..core import exchange_positions
+                assert self._exchange_manager is not None
                 tiers = exchange_positions.get_risk_limits(self._exchange_manager, symbol)
                 self._risk_limit_cache[symbol] = tiers
             except Exception as e:

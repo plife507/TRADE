@@ -33,17 +33,17 @@ def get_open_orders(manager: "ExchangeManager", symbol: str | None = None) -> li
         orders = []
         for order in raw_orders:
             orders.append(Order(
-                order_id=order.get("orderId"),
+                order_id=str(order.get("orderId", "")),
                 order_link_id=order.get("orderLinkId"),
-                symbol=order.get("symbol"),
-                side=order.get("side"),
-                order_type=order.get("orderType"),
+                symbol=str(order.get("symbol", "")),
+                side=str(order.get("side", "")),
+                order_type=str(order.get("orderType", "")),
                 price=safe_float(order.get("price")) if order.get("price") else None,
                 qty=safe_float(order.get("qty", 0)),
                 filled_qty=safe_float(order.get("cumExecQty", 0)),
                 remaining_qty=safe_float(order.get("leavesQty", 0)),
-                status=order.get("orderStatus"),
-                time_in_force=order.get("timeInForce"),
+                status=str(order.get("orderStatus", "")),
+                time_in_force=str(order.get("timeInForce", "")),
                 reduce_only=order.get("reduceOnly", False),
                 trigger_price=safe_float(order.get("triggerPrice")) if order.get("triggerPrice") else None,
                 trigger_by=order.get("triggerBy"),
@@ -147,7 +147,9 @@ def amend_order(
             kwargs["take_profit"] = str(take_profit)
         if stop_loss is not None:
             kwargs["stop_loss"] = str(stop_loss)
-        
+        if trigger_price is not None:
+            kwargs["trigger_price"] = str(trigger_price)
+
         manager.bybit.amend_order(**kwargs)
         manager.logger.info(f"Amended order {order_id or order_link_id} for {symbol}")
         return True

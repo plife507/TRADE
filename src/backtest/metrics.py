@@ -563,7 +563,7 @@ def _compute_tail_risk(
         - var_95_pct: 95th percentile loss (worst 5% of returns)
         - cvar_95_pct: Expected shortfall (avg of worst 5%)
     """
-    returns = _compute_returns_for_tail_risk(equity_curve)
+    returns = _compute_returns(equity_curve)
 
     if len(returns) < 10:  # Need enough data for meaningful stats
         return 0.0, 0.0, 0.0, 0.0
@@ -600,23 +600,6 @@ def _compute_tail_risk(
     cvar_95_pct = abs(cvar_95) * 100  # Convert to positive percentage
 
     return round(skewness, 4), round(kurtosis, 4), round(var_95_pct, 4), round(cvar_95_pct, 4)
-
-
-def _compute_returns_for_tail_risk(equity_curve: list[EquityPoint]) -> list[float]:
-    """Compute per-bar returns from equity curve (for tail risk)."""
-    if len(equity_curve) < 2:
-        return []
-
-    returns = []
-    for i in range(1, len(equity_curve)):
-        prev_equity = equity_curve[i - 1].equity
-        curr_equity = equity_curve[i].equity
-
-        if prev_equity > 0:
-            ret = (curr_equity / prev_equity) - 1.0
-            returns.append(ret)
-
-    return returns
 
 
 def _compute_returns(equity_curve: list[EquityPoint]) -> list[float]:
@@ -1021,8 +1004,8 @@ def _find_extremes(
     if not period_returns:
         return None, None
 
-    best_key = max(period_returns, key=period_returns.get)
-    worst_key = min(period_returns, key=period_returns.get)
+    best_key = max(period_returns, key=lambda k: period_returns[k])
+    worst_key = min(period_returns, key=lambda k: period_returns[k])
 
     best = (best_key, period_returns[best_key])
     worst = (worst_key, period_returns[worst_key])

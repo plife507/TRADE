@@ -154,20 +154,20 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         low_level = self.swing.get_value("low_level")
 
         # Check for new swing pivots
-        high_changed = high_idx != self._last_high_idx and high_idx >= 0
-        low_changed = low_idx != self._last_low_idx and low_idx >= 0
+        high_changed = high_idx != self._last_high_idx and high_idx >= 0  # type: ignore[operator]
+        low_changed = low_idx != self._last_low_idx and low_idx >= 0  # type: ignore[operator]
 
         # Update break levels when new swings are detected
         if high_changed:
             self._prev_prev_swing_high = self._prev_swing_high
-            self._prev_swing_high = high_level
-            self._last_high_idx = high_idx
+            self._prev_swing_high = high_level  # type: ignore[assignment]
+            self._last_high_idx = high_idx  # type: ignore[assignment]
             self._update_break_levels()
 
         if low_changed:
             self._prev_prev_swing_low = self._prev_swing_low
-            self._prev_swing_low = low_level
-            self._last_low_idx = low_idx
+            self._prev_swing_low = low_level  # type: ignore[assignment]
+            self._last_low_idx = low_idx  # type: ignore[assignment]
             self._update_break_levels()
 
         # Check for structure breaks

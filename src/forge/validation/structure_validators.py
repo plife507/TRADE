@@ -5,11 +5,7 @@ Validates structure detection through the production engine path (incremental/).
 """
 
 from pathlib import Path
-from typing import Any
-
-from rich.console import Console
-
-console = Console()
+from typing import Any, cast
 
 
 def validate_structure_accessible(
@@ -31,7 +27,7 @@ def validate_structure_accessible(
     try:
         # Try the dot notation path used by engine
         path = f"{key}.{field}"
-        value = snapshot.get(path)
+        snapshot.get(path)
         return True
     except (KeyError, ValueError, AttributeError):
         return False
@@ -78,7 +74,7 @@ def validate_no_lookahead(
             first_pivot_bar = int(pivot_idx_arr[i])
             break
 
-    if first_confirm_bar is None:
+    if first_confirm_bar is None or first_pivot_bar is None:
         return True, "No pivots confirmed (not enough data for validation)"
 
     # Pivot at bar P should not be confirmed until bar >= P + right_bars
@@ -117,7 +113,7 @@ def validate_determinism(
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
     # Load play
-    play = load_play(play_path)
+    play = load_play(str(play_path))
 
     # Generate synthetic data
     timeframes = [play.execution_tf]
@@ -209,11 +205,11 @@ def run_play_with_synthetic(
     from src.backtest.play import load_play
     from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
     from src.backtest.execution_validation import compute_warmup_requirements
-    from src.forge.validation.synthetic_data import generate_synthetic_candles
+    from src.forge.validation.synthetic_data import generate_synthetic_candles, PatternType
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
     # Load play
-    play = load_play(play_path)
+    play = load_play(str(play_path))
 
     # Generate synthetic data with required TFs
     timeframes = [play.execution_tf]
@@ -225,7 +221,7 @@ def run_play_with_synthetic(
         timeframes=sorted(timeframes),
         bars_per_tf=extra_bars,
         seed=seed,
-        pattern=pattern,
+        pattern=cast(PatternType, pattern),
         align_multi_tf=True,
     )
 

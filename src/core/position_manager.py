@@ -225,6 +225,7 @@ class PositionManager:
         self._last_source = "websocket"
         
         # Get positions from RealtimeState
+        assert self.realtime_state is not None
         ws_positions = self.realtime_state.get_all_positions()
         
         # Convert to Position objects (matching ExchangeManager.Position format)
@@ -256,6 +257,7 @@ class PositionManager:
                 unrealized_pnl += ws_pos.unrealized_pnl
         
         # Get wallet from RealtimeState
+        assert self.realtime_state is not None
         ws_wallet = self.realtime_state.get_wallet("USDT")
         
         if ws_wallet:
@@ -307,6 +309,7 @@ class PositionManager:
         """
         # Try WebSocket first
         if self._has_fresh_ws_data():
+            assert self.realtime_state is not None
             ws_pos = self.realtime_state.get_position(symbol)
             if ws_pos and ws_pos.is_open:
                 self._last_source = "websocket"
@@ -341,6 +344,7 @@ class PositionManager:
         """
         # Try WebSocket first
         if self._has_fresh_ws_data():
+            assert self.realtime_state is not None
             ws_orders = self.realtime_state.get_open_orders(symbol)
             if ws_orders:
                 self._last_source = "websocket"
@@ -490,8 +494,8 @@ class PositionManager:
             "win_count": len(winning),
             "loss_count": len(losing),
             "win_rate": win_rate,
-            "avg_win": sum(t.realized_pnl for t in winning) / len(winning) if winning else 0,
-            "avg_loss": sum(t.realized_pnl for t in losing) / len(losing) if losing else 0,
+            "avg_win": sum(t.realized_pnl or 0 for t in winning) / len(winning) if winning else 0,
+            "avg_loss": sum(t.realized_pnl or 0 for t in losing) / len(losing) if losing else 0,
         }
     
     # ==================== Reconciliation ====================

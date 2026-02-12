@@ -18,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from .runtime.feed_store import FeedStore, MultiTFFeedStore
 from .runtime.quote_state import QuoteState
@@ -148,6 +148,7 @@ def build_feed_stores_impl(
         # Single-TF mode: all feeds are the same
         exec_cols = get_required_indicator_columns_from_specs(specs_by_role.get('exec', []))
         df = prepared_frame.df if prepared_frame else data
+        assert df is not None, "Single-TF mode requires prepared_frame or data"
 
         low_tf_feed = FeedStore.from_dataframe(
             df=df,
@@ -158,6 +159,7 @@ def build_feed_stores_impl(
         # med_tf_feed and high_tf_feed stay None (use low_tf_feed)
 
     # Create MultiTFFeedStore with 3-feed + exec_role
+    assert low_tf_feed is not None, "low_tf_feed must be built (always required)"
     multi_tf_feed_store = MultiTFFeedStore(
         low_tf_feed=low_tf_feed,
         med_tf_feed=med_tf_feed,
@@ -266,7 +268,7 @@ def get_quote_at_exec_close(
     # Extract 1m bar data
     ts_close = quote_feed.get_ts_close_datetime(idx)
     if isinstance(ts_close, np.datetime64):
-        ts_ms = int(pd.Timestamp(ts_close).timestamp() * 1000)
+        ts_ms = int(cast(float, cast(pd.Timestamp, pd.Timestamp(ts_close)).timestamp()) * 1000)
     else:
         ts_ms = int(ts_close.timestamp() * 1000)
 
@@ -335,11 +337,11 @@ def build_market_data_arrays_impl(
         # Convert funding timestamps to epoch ms for O(1) lookup
         funding_ts_ms_to_rate: dict[int, float] = {}
         for _, row in funding_df.iterrows():
-            ts = row["timestamp"]
+            ts: datetime = cast(datetime, row["timestamp"])
             if hasattr(ts, "timestamp"):
                 ts_ms = int(ts.timestamp() * 1000)
             else:
-                ts_ms = int(pd.Timestamp(ts).timestamp() * 1000)
+                ts_ms = int(cast(float, cast(pd.Timestamp, pd.Timestamp(ts)).timestamp()) * 1000)
             funding_ts_ms_to_rate[ts_ms] = float(row["funding_rate"])
             funding_settlement_times.add(ts_ms)
 

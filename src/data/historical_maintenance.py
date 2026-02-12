@@ -7,7 +7,6 @@ Contains: detect_gaps, fill_gaps, heal, delete_symbol, cleanup_empty_symbols, va
 from datetime import datetime, timedelta
 from collections.abc import Callable
 from typing import TYPE_CHECKING
-import pandas as pd
 
 if TYPE_CHECKING:
     from .historical_data_store import HistoricalDataStore
@@ -24,8 +23,8 @@ def detect_gaps(store: "HistoricalDataStore", symbol: str, timeframe: str) -> li
     
     Returns list of (gap_start, gap_end) tuples.
     """
-    TIMEFRAMES, TF_MINUTES, _, _ = _get_constants()
-    
+    _, TF_MINUTES, _, _ = _get_constants()
+
     symbol = symbol.upper()
     tf_minutes = TF_MINUTES.get(timeframe, 15)
     
@@ -179,9 +178,11 @@ def delete_symbol(store: "HistoricalDataStore", symbol: str) -> int:
     """Delete all data for a symbol."""
     symbol = symbol.upper()
     
-    count = store.conn.execute(f"""
+    row = store.conn.execute(f"""
         SELECT COUNT(*) FROM {store.table_ohlcv} WHERE symbol = ?
-    """, [symbol]).fetchone()[0]
+    """, [symbol]).fetchone()
+    assert row is not None
+    count = row[0]
     
     store.conn.execute(f"DELETE FROM {store.table_ohlcv} WHERE symbol = ?", [symbol])
     store.conn.execute(f"DELETE FROM {store.table_sync_metadata} WHERE symbol = ?", [symbol])
@@ -198,9 +199,11 @@ def delete_symbol_timeframe(store: "HistoricalDataStore", symbol: str, timeframe
     """Delete data for a specific symbol/timeframe."""
     symbol = symbol.upper()
     
-    count = store.conn.execute(f"""
+    row = store.conn.execute(f"""
         SELECT COUNT(*) FROM {store.table_ohlcv} WHERE symbol = ? AND timeframe = ?
-    """, [symbol, timeframe]).fetchone()[0]
+    """, [symbol, timeframe]).fetchone()
+    assert row is not None
+    count = row[0]
     
     store.conn.execute(f"""
         DELETE FROM {store.table_ohlcv} WHERE symbol = ? AND timeframe = ?
@@ -215,15 +218,15 @@ def delete_symbol_timeframe(store: "HistoricalDataStore", symbol: str, timeframe
 
 def cleanup_empty_symbols(store: "HistoricalDataStore") -> list[str]:
     """Remove symbols with no data from metadata tables."""
-    symbols_with_data = store.conn.execute(f"""
+    data_rows = store.conn.execute(f"""
         SELECT DISTINCT symbol FROM {store.table_ohlcv}
     """).fetchall()
-    symbols_with_data = {r[0] for r in symbols_with_data}
-    
-    all_metadata_symbols = store.conn.execute(f"""
+    symbols_with_data = {r[0] for r in data_rows}
+
+    metadata_rows = store.conn.execute(f"""
         SELECT DISTINCT symbol FROM {store.table_sync_metadata}
     """).fetchall()
-    all_metadata_symbols = {r[0] for r in all_metadata_symbols}
+    all_metadata_symbols = {r[0] for r in metadata_rows}
     
     empty_symbols = all_metadata_symbols - symbols_with_data
     
@@ -256,7 +259,6 @@ def heal_comprehensive(
     Checks for: duplicates, invalid OHLCV, negative volumes, NULL values,
     symbol casing, price anomalies, and time gaps.
     """
-    from datetime import datetime
     from .historical_data_store import TIMEFRAMES, ActivityEmoji, print_activity
     
     if symbol:
@@ -325,7 +327,9 @@ def heal_comprehensive(
         SELECT COUNT(*) FROM {store.table_ohlcv}
         WHERE volume < 0 {symbol_filter}
     """
-    neg_vol = store.conn.execute(neg_vol_query, params).fetchone()[0]
+    neg_vol_row = store.conn.execute(neg_vol_query, params).fetchone()
+    assert neg_vol_row is not None
+    neg_vol = neg_vol_row[0]
     
     report["details"]["negative_volumes"] = {"found": neg_vol, "fixed": 0}
     report["issues_found"] += neg_vol
@@ -352,6 +356,7 @@ def heal_comprehensive(
         WHERE 1=1 {symbol_filter}
     """
     null_counts = store.conn.execute(null_query, params).fetchone()
+    assert null_counts is not None
     total_nulls = sum(n or 0 for n in null_counts)
     
     report["details"]["null_values"] = {"found": total_nulls, "fixed": 0}
@@ -397,7 +402,9 @@ def heal_comprehensive(
         SELECT COUNT(*) FROM {store.table_ohlcv}
         WHERE (open > high OR open < low OR close > high OR close < low) {symbol_filter}
     """
-    anomalies = store.conn.execute(anomaly_query, params).fetchone()[0]
+    anomaly_row = store.conn.execute(anomaly_query, params).fetchone()
+    assert anomaly_row is not None
+    anomalies = anomaly_row[0]
     
     report["details"]["price_anomalies"] = {"found": anomalies, "fixed": 0}
     report["issues_found"] += anomalies

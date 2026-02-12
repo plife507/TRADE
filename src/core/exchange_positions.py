@@ -17,7 +17,7 @@ from ..utils.helpers import safe_float
 from ..utils.time_range import TimeRange
 
 if TYPE_CHECKING:
-    from .exchange_manager import ExchangeManager, Position, Order
+    from .exchange_manager import ExchangeManager, Position
 
 
 # =============================================================================
@@ -105,7 +105,7 @@ def get_all_positions(manager: "ExchangeManager") -> list["Position"]:
         unrealized_pnl = safe_float(pos.get("unrealisedPnl", 0))
         
         positions.append(Position(
-            symbol=symbol,
+            symbol=str(symbol),
             exchange="bybit",
             position_type="futures",
             side=side,
@@ -323,7 +323,7 @@ def add_margin(manager: "ExchangeManager", symbol: str, amount: float) -> bool:
     try:
         manager._validate_trading_operation()
         
-        result = manager.bybit.session.add_or_reduce_margin(
+        manager.bybit.session.add_or_reduce_margin(
             category="linear",
             symbol=symbol,
             margin=str(amount),
@@ -687,7 +687,7 @@ def modify_position_margin(manager: "ExchangeManager", symbol: str, margin: floa
         True if successful
     """
     try:
-        manager.bybit.modify_position_margin(symbol, margin)
+        manager.bybit.modify_position_margin(symbol, str(margin))
         action = "Added" if margin > 0 else "Reduced"
         manager.logger.info(f"{action} {abs(margin)} margin for {symbol}")
         return True
@@ -712,7 +712,8 @@ def switch_to_cross_margin(manager: "ExchangeManager", symbol: str, leverage: in
         leverage = manager.config.risk.default_leverage
     
     try:
-        manager.bybit.switch_cross_isolated_margin(symbol, trade_mode=0, leverage=leverage)
+        lev_str = str(leverage)
+        manager.bybit.switch_cross_isolated_margin(symbol, trade_mode=0, buy_leverage=lev_str, sell_leverage=lev_str)
         return True
     except Exception as e:
         if "not modified" in str(e).lower():
@@ -724,20 +725,21 @@ def switch_to_cross_margin(manager: "ExchangeManager", symbol: str, leverage: in
 def switch_to_isolated_margin(manager: "ExchangeManager", symbol: str, leverage: int | None = None) -> bool:
     """
     Switch symbol to isolated margin mode.
-    
+
     Args:
         manager: ExchangeManager instance
         symbol: Trading symbol
         leverage: Leverage to set (uses current if None)
-    
+
     Returns:
         True if successful
     """
     if leverage is None:
         leverage = manager.config.risk.default_leverage
-    
+
     try:
-        manager.bybit.switch_cross_isolated_margin(symbol, trade_mode=1, leverage=leverage)
+        lev_str = str(leverage)
+        manager.bybit.switch_cross_isolated_margin(symbol, trade_mode=1, buy_leverage=lev_str, sell_leverage=lev_str)
         return True
     except Exception as e:
         if "not modified" in str(e).lower():

@@ -393,10 +393,11 @@ class RealtimeBootstrap:
             if self.sub_config.enable_klines:
                 for interval in self.sub_config.kline_intervals:
                     try:
-                        interval_int = int(interval)
+                        interval_val: int | str = int(interval)
                     except ValueError:
-                        interval_int = interval
-                    self.client.subscribe_klines(symbol, interval_int, self._on_kline)
+                        # Non-numeric intervals like "D", "W"
+                        interval_val = interval
+                    self.client.subscribe_klines(symbol, interval_val, self._on_kline)
             
             # Track that we're now subscribed
             with self._lock:
@@ -547,8 +548,6 @@ class RealtimeBootstrap:
     def _on_ticker(self, msg: dict):
         """Handle ticker update from WebSocket."""
         try:
-            topic = msg.get("topic", "")
-            msg_type = msg.get("type", "")
             data = msg.get("data", {})
 
             if not data:
@@ -1094,7 +1093,7 @@ class RealtimeBootstrap:
         Returns True if either WebSocket or REST fallback is working.
         """
         health = self.get_health()
-        return health["healthy"]
+        return bool(health["healthy"])
     
     # ==========================================================================
     # Status and Introspection

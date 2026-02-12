@@ -22,8 +22,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .play import Play, TFConfig, ExitMode
-    from .rules.strategy_blocks import Block
+    from .play import Play
 
 from .play import ExitMode
 # All indicator type handling is now via string + registry validation
@@ -425,7 +424,7 @@ def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
     """
     from .rules.dsl_nodes import (
         Expr, Cond, AllExpr, AnyExpr, NotExpr,
-        HoldsFor, OccurredWithin, CountTrue, FeatureRef, ArithmeticExpr, ScalarValue,
+        HoldsFor, OccurredWithin, CountTrue, FeatureRef, ArithmeticExpr,
     )
 
     refs: list[FeatureReference] = []
@@ -713,6 +712,7 @@ def _compute_structure_warmup(play: "Play") -> int:
     # Second pass: compute warmup for each structure using registry
     max_structure_warmup = 0
     for feature in structures:
+        assert feature.structure_type is not None
         struct_warmup = get_structure_warmup(
             feature.structure_type,
             feature.params,
@@ -1065,7 +1065,7 @@ class PlaySignalEvaluator:
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.ENTRY_LONG,
-                    reason=f"Block emitted entry_long",
+                    reason="Block emitted entry_long",
                     stop_loss_price=sl_price,
                     take_profit_price=tp_price,
                     resolved_metadata=resolved_meta,
@@ -1078,7 +1078,7 @@ class PlaySignalEvaluator:
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.ENTRY_SHORT,
-                    reason=f"Block emitted entry_short",
+                    reason="Block emitted entry_short",
                     stop_loss_price=sl_price,
                     take_profit_price=tp_price,
                     resolved_metadata=resolved_meta,
@@ -1086,7 +1086,7 @@ class PlaySignalEvaluator:
 
             # Exit signals (only when has matching position)
             elif action == "exit_long" and has_position and position_side == "long":
-                reason = f"Block emitted exit_long"
+                reason = "Block emitted exit_long"
                 if intent.percent != 100.0:
                     reason = f"Block emitted exit_long ({intent.percent}%)"
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
@@ -1098,7 +1098,7 @@ class PlaySignalEvaluator:
                 )
 
             elif action == "exit_short" and has_position and position_side == "short":
-                reason = f"Block emitted exit_short"
+                reason = "Block emitted exit_short"
                 if intent.percent != 100.0:
                     reason = f"Block emitted exit_short ({intent.percent}%)"
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
@@ -1113,7 +1113,7 @@ class PlaySignalEvaluator:
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.EXIT,
-                    reason=f"Block emitted exit_all",
+                    reason="Block emitted exit_all",
                     exit_percent=intent.percent,
                     resolved_metadata=resolved_meta,
                 )
@@ -1190,6 +1190,7 @@ class PlaySignalEvaluator:
         # Compute stop loss
         sl_rule = risk_model.stop_loss
         if sl_rule.type.value == "atr_multiple":
+            assert sl_rule.atr_feature_id is not None
             atr = self._get_snapshot_value(snapshot, sl_rule.atr_feature_id, "exec")
             if atr is not None:
                 sl_distance = atr * sl_rule.value
@@ -1224,6 +1225,7 @@ class PlaySignalEvaluator:
             else:
                 tp_price = entry_price - tp_distance
         elif tp_rule.type.value == "atr_multiple":
+            assert tp_rule.atr_feature_id is not None
             atr = self._get_snapshot_value(snapshot, tp_rule.atr_feature_id, "exec")
             if atr is not None:
                 tp_distance = atr * tp_rule.value

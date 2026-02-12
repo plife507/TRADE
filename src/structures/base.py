@@ -166,11 +166,11 @@ class BaseIncrementalDetector(ABC):
             )
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}) missing required params: {missing_params}\n"
-                f"\n"
-                f"Fix in Play:\n"
+                "\n"
+                "Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
-                f"    params:\n"
+                "    params:\n"
                 f"{param_lines}"
             )
 
@@ -179,8 +179,8 @@ class BaseIncrementalDetector(ABC):
         if missing_deps:
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}) missing dependencies: {missing_deps}\n"
-                f"\n"
-                f"Fix in Play:\n"
+                "\n"
+                "Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
                 f"    uses: <dependency_key>  # Key of a {missing_deps[0]} structure"
@@ -190,7 +190,7 @@ class BaseIncrementalDetector(ABC):
         cls._validate_params(struct_type, key, params)
 
         # Create instance
-        instance = cls(params, deps)
+        instance = cls(params, deps)  # type: ignore[call-arg]
         instance._key = key
         instance._type = struct_type
 
@@ -276,10 +276,10 @@ class BaseIncrementalDetector(ABC):
         if key not in valid_keys:
             raise KeyError(
                 f"Structure '{self._key}' (type: {self._type}) has no output '{key}'\n"
-                f"\n"
+                "\n"
                 f"Available outputs: {valid_keys}\n"
-                f"\n"
-                f"Fix: Use one of the available output keys above."
+                "\n"
+                "Fix: Use one of the available output keys above."
             )
         return self.get_value(key)
 

@@ -46,7 +46,7 @@ def get_pandas_ta_version() -> str:
         if hasattr(ta, "version"):
             return str(ta.version)
         elif hasattr(ta, "__version__"):
-            return str(ta.__version__)
+            return str(getattr(ta, "__version__"))
         return "unknown"
     except ImportError:
         return "not_installed"

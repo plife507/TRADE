@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from math import ceil
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, cast
 import json
 import pandas as pd
 import numpy as np
@@ -269,7 +269,7 @@ class PreflightReport:
     def write_json(self, path: Path) -> None:
         """Write report to JSON file."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8", newline='\n') as f:
             json.dump(self.to_dict(), f, indent=2, sort_keys=True)
     
     def print_summary(self) -> None:
@@ -408,10 +408,10 @@ def validate_tf_data(
     df = df.sort_values("timestamp").reset_index(drop=True)
     
     # Get coverage (normalize to naive for comparison - DuckDB returns naive timestamps)
-    min_ts = pd.Timestamp(df["timestamp"].min()).to_pydatetime()
-    max_ts = pd.Timestamp(df["timestamp"].max()).to_pydatetime()
-    result.min_ts = min_ts
-    result.max_ts = max_ts
+    min_ts = pd.Timestamp(df["timestamp"].min()).to_pydatetime()  # type: ignore[arg-type]
+    max_ts = pd.Timestamp(df["timestamp"].max()).to_pydatetime()  # type: ignore[arg-type]
+    result.min_ts = min_ts  # type: ignore[assignment]
+    result.max_ts = max_ts  # type: ignore[assignment]
     result.bar_count = len(df)
     
     # Normalize datetimes to naive for comparison (DuckDB stores as UTC naive)
@@ -485,15 +485,16 @@ def validate_tf_data(
     large_gaps = ts_diff[ts_diff > gap_threshold]
     
     if len(large_gaps) > 0:
-        for idx in large_gaps.index:
+        gap_indices = cast(pd.Index, large_gaps.index)  # type: ignore[attr-defined]
+        for idx in gap_indices:
             gap_start = df.loc[idx - 1, "timestamp"]
             gap_end = df.loc[idx, "timestamp"]
             gap_duration = (gap_end - gap_start).total_seconds() / 60
             expected_bars = int(gap_duration / tf_minutes)
             
             result.gaps.append(GapInfo(
-                start_ts=pd.Timestamp(gap_start).to_pydatetime(),
-                end_ts=pd.Timestamp(gap_end).to_pydatetime(),
+                start_ts=cast(datetime, pd.Timestamp(gap_start).to_pydatetime()),
+                end_ts=cast(datetime, pd.Timestamp(gap_end).to_pydatetime()),
                 expected_bars=expected_bars,
                 actual_bars=1,
                 gap_duration_minutes=gap_duration,
@@ -789,7 +790,7 @@ def _validate_exec_to_1m_mapping(
 
     # Convert to pandas Timestamp for reliable epoch ms conversion
     ts_1m_epoch_ms = np.array([
-        int(pd.Timestamp(ts).timestamp() * 1000) for ts in ts_1m_array
+        int(pd.Timestamp(ts).timestamp() * 1000) for ts in ts_1m_array  # type: ignore[union-attr]
     ])
 
     # Build set of available 1m close times (for O(1) lookup)
@@ -915,7 +916,7 @@ def run_preflight_gate(
     # Collect ALL TFs: feature-declared TFs + play's 3-feed TFs (low/med/high)
     try:
         all_tfs = play.feature_registry.get_all_tfs()
-    except Exception:
+    except (AttributeError, TypeError):
         all_tfs = {play.execution_tf} if play.execution_tf else set()
     # Always include the play's 3-feed timeframes so auto-sync covers them
     for tf_prop in (play.low_tf, play.med_tf, play.high_tf):

@@ -62,7 +62,7 @@ class ValidationError:
     suggestions: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        result = {
+        result: dict[str, Any] = {
             "code": self.code.value,
             "message": self.message,
         }
@@ -355,12 +355,11 @@ STRUCTURE_PUBLIC_FIELDS = {
 
 # Import structure enums from source of truth
 from src.backtest.structure_types import TrendState, ZoneState
-from enum import Enum as EnumType
 
 # Map field names to their enum classes
 # Only enum fields should be listed here
 # Keep namespace-specific: structure enums only
-STRUCTURE_ENUM_FIELDS: dict[str, type[EnumType]] = {
+STRUCTURE_ENUM_FIELDS: dict[str, type[Enum]] = {
     "trend_state": TrendState,
     "state": ZoneState,  # Stage 5+: Zone state field (NONE/ACTIVE/BROKEN)
 }

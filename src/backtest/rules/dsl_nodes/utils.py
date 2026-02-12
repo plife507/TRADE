@@ -146,13 +146,14 @@ def validate_operator_type_compatibility(
     from ..types import FeatureOutputType
 
     errors: list[str] = []
+    lhs_label = cond.lhs.feature_id if isinstance(cond.lhs, FeatureRef) else repr(cond.lhs)
 
     # Check discrete operators (eq, in) against non-discrete types
     if cond.op in DISCRETE_OPERATORS:
         if not lhs_output_type.is_discrete():
             errors.append(
                 f"Operator '{cond.op}' cannot be used with {lhs_output_type.name} type "
-                f"(feature: {cond.lhs.feature_id}). "
+                f"(feature: {lhs_label}). "
                 f"Use 'near_abs' or 'near_pct' for float equality."
             )
 
@@ -163,7 +164,7 @@ def validate_operator_type_compatibility(
         if lhs_output_type == FeatureOutputType.ENUM:
             errors.append(
                 f"Operator '{cond.op}' cannot be used with ENUM type "
-                f"(feature: {cond.lhs.feature_id}). "
+                f"(feature: {lhs_label}). "
                 f"Use 'eq' or 'in' for enum comparisons."
             )
         elif lhs_output_type == FeatureOutputType.BOOL:
@@ -172,7 +173,7 @@ def validate_operator_type_compatibility(
             if cond.op not in ("eq",):
                 errors.append(
                     f"Operator '{cond.op}' cannot be used with BOOL type "
-                    f"(feature: {cond.lhs.feature_id}). "
+                    f"(feature: {lhs_label}). "
                     f"Use 'eq' for boolean comparisons."
                 )
 
@@ -206,6 +207,8 @@ def validate_expr_types(
 
     def validate_recursive(e: Expr) -> None:
         if isinstance(e, Cond):
+            if not isinstance(e.lhs, FeatureRef):
+                return  # ArithmeticExpr LHS - skip type validation
             try:
                 lhs_type = get_output_type(e.lhs.feature_id, e.lhs.field)
                 cond_errors = validate_operator_type_compatibility(e, lhs_type)

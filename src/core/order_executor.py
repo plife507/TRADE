@@ -46,7 +46,7 @@ class ExecutionResult:
     def to_dict(self) -> dict:
         return {
             "success": self.success,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "symbol": self.signal.symbol,
             "direction": self.signal.direction,
             "requested_size": self.signal.size_usdt,
@@ -322,7 +322,7 @@ class OrderExecutor:
             return result
         
         # Log any warnings
-        for warning in risk_result.warnings:
+        for warning in (risk_result.warnings or []):
             self.logger.warning(f"Risk warning: {warning}")
         
         # Determine execution size
@@ -645,7 +645,7 @@ class OrderExecutor:
             last_price_str = None
             if isinstance(ticker, list):
                 for item in ticker:
-                    last_price_str = item.get("lastPrice")
+                    last_price_str = item.get("lastPrice") if isinstance(item, dict) else None
                     if last_price_str:
                         break
             elif isinstance(ticker, dict):
@@ -674,7 +674,7 @@ class OrderExecutor:
                     return ExecutionResult(
                         success=False,
                         signal=signal,
-                        risk_check=RiskCheckResult(allowed=True),
+                        risk_check=RiskCheckResult(allowed=True, reason="passed"),
                         error=reason,
                     )
 
@@ -685,7 +685,7 @@ class OrderExecutor:
                 return ExecutionResult(
                     success=False,
                     signal=signal,
-                    risk_check=RiskCheckResult(allowed=True),
+                    risk_check=RiskCheckResult(allowed=True, reason="passed"),
                     error=reason,
                 )
 

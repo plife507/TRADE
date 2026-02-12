@@ -32,7 +32,7 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from .dsl_nodes import (
     Expr, Cond, AllExpr, AnyExpr, NotExpr,
@@ -293,9 +293,10 @@ def parse_rhs(data: Any) -> RhsValue:
 
     # Dict - could be FeatureRef or RangeValue
     if isinstance(data, dict):
+        d = cast(dict[str, Any], data)
         # Check for range
-        if "low" in data and "high" in data:
-            return RangeValue(low=float(data["low"]), high=float(data["high"]))
+        if "low" in d and "high" in d:
+            return RangeValue(low=float(d["low"]), high=float(d["high"]))
 
         # Must be FeatureRef
         if "feature_id" in data:
@@ -469,7 +470,7 @@ def _is_enum_literal(s: str) -> bool:
     return False
 
 
-def _normalize_rhs_for_operator(rhs: any, op: str) -> any:
+def _normalize_rhs_for_operator(rhs: Any, op: str) -> Any:
     """
     Normalize RHS value based on operator context.
 

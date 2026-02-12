@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import TYPE_CHECKING, Any
 
+from ..config.constants import DataEnv  # noqa: F401 - used in type annotations
+
 if TYPE_CHECKING:
     from ..core.exchange_manager import ExchangeManager
     from ..data.historical_data_store import HistoricalDataStore
@@ -92,7 +94,7 @@ def get_trading_env_summary() -> dict[str, Any]:
     
     config = get_config()
     use_demo = config.bybit.use_demo
-    trading_mode = config.trading.mode.value if hasattr(config.trading.mode, 'value') else str(config.trading.mode)
+    trading_mode = str(config.trading.mode)
     
     return {
         "mode": "DEMO" if use_demo else "LIVE",
@@ -222,7 +224,7 @@ def _is_websocket_connected() -> bool:
 
 # Track WebSocket startup attempts to avoid repeated failures
 _ws_startup_failed = False
-_ws_startup_attempt_time = 0
+_ws_startup_attempt_time = 0.0
 
 
 def _ensure_websocket_running() -> bool:
@@ -310,7 +312,7 @@ def _get_data_source() -> str:
     return "websocket" if _is_websocket_connected() else "rest_api"
 
 
-def _get_historical_store(env: str = "live") -> "HistoricalDataStore":
+def _get_historical_store(env: DataEnv = "live") -> "HistoricalDataStore":
     """
     Get the HistoricalDataStore singleton for a given environment (lazy import).
 

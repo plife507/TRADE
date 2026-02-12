@@ -9,6 +9,7 @@ import traceback
 from pathlib import Path
 
 from .shared import ToolResult
+from ..forge.validation.synthetic_data import PatternType
 from ..utils.logger import get_logger
 
 
@@ -123,7 +124,7 @@ def forge_generate_synthetic_data_tool(
     timeframes: list[str] | None = None,
     bars_per_tf: int = 1000,
     seed: int = 42,
-    pattern: str = "trending",
+    pattern: PatternType = "trending",
 ) -> ToolResult:
     """
     Generate synthetic candle data for testing.
@@ -186,7 +187,7 @@ def forge_generate_synthetic_data_tool(
 def forge_structure_parity_tool(
     seed: int = 42,
     bars_per_tf: int = 1000,
-    pattern: str = "trending",
+    pattern: PatternType = "trending",
 ) -> ToolResult:
     """
     Run structure parity check on all structures in STRUCTURE_REGISTRY.
@@ -285,7 +286,7 @@ def forge_structure_parity_tool(
 def forge_indicator_parity_tool(
     seed: int = 42,
     bars_per_tf: int = 1000,
-    pattern: str = "trending",
+    pattern: PatternType = "trending",
 ) -> ToolResult:
     """
     Run indicator parity check on all indicators in INDICATOR_REGISTRY.

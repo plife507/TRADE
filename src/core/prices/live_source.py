@@ -26,7 +26,7 @@ import numpy as np
 from src.backtest.runtime.timeframe import tf_minutes
 import pandas as pd
 
-from src.backtest.prices.source import PriceSource, DataNotAvailableError
+from src.backtest.prices.source import DataNotAvailableError
 from src.backtest.prices.types import HealthCheckResult
 from src.data.historical_data_store import get_historical_store
 
@@ -202,16 +202,18 @@ class LivePriceSource:
                 f"SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '{table_name}'"
             ).fetchone()
 
-            if result[0] == 0:
+            if result is None or result[0] == 0:
                 return HealthCheckResult(
                     ok=False,
                     provider_name=self.SOURCE_NAME,
                     message=f"OHLCV table '{table_name}' does not exist",
                 )
 
-            row_count = conn.execute(
+            row_count_row = conn.execute(
                 f"SELECT COUNT(*) FROM {table_name}"
-            ).fetchone()[0]
+            ).fetchone()
+            assert row_count_row is not None
+            row_count = row_count_row[0]
 
             return HealthCheckResult(
                 ok=True,

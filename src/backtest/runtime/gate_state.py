@@ -185,6 +185,7 @@ def evaluate_gates(ctx: GateContext) -> GateResult:
     if not failed_codes:
         return GateResult.pass_()
 
+    assert first_failure is not None
     return GateResult.fail_(
         code=first_failure,
         reason=first_reason,

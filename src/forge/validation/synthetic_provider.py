@@ -23,7 +23,7 @@ Usage:
 """
 
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, cast
 
 import pandas as pd
 
@@ -150,7 +150,7 @@ class SyntheticCandlesProvider:
 
         # Filter to requested time range
         mask = (df["timestamp"] >= start) & (df["timestamp"] <= end)
-        filtered = df[mask].reset_index(drop=True)
+        filtered = cast(pd.DataFrame, df[mask].reset_index(drop=True))
 
         if filtered.empty:
             raise ValueError(

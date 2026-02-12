@@ -8,7 +8,7 @@ The engine uses only values available at or before the current bar (no look-ahea
 """
 
 import pandas as pd
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .features.feature_spec import FeatureSpec
@@ -132,10 +132,10 @@ def apply_feature_spec_indicators(
             ts_open = df.get("ts_open") if "ts_open" in df.columns else df.get("timestamp")
             result = vendor.compute_indicator(
                 ind_type,
-                close=df[input_col],  # Use input_col, not always "close"
-                high=df["high"],
-                low=df["low"],
-                open_=df["open"],
+                close=cast(pd.Series, df[input_col]),  # Use input_col, not always "close"
+                high=cast(pd.Series, df["high"]),
+                low=cast(pd.Series, df["low"]),
+                open_=cast(pd.Series, df["open"]),
                 volume=df.get("volume"),
                 ts_open=ts_open,  # For VWAP session boundaries
                 **params
@@ -235,7 +235,7 @@ def find_first_valid_bar(df: pd.DataFrame, indicator_columns: list[str]) -> int:
             # any() across columns - at least one must be valid
             valid_mask &= df[group_cols].notna().any(axis=1)
 
-    valid_indices = valid_mask[valid_mask].index.tolist()
+    valid_indices = cast(pd.Series, valid_mask[valid_mask]).index.tolist()
 
     if not valid_indices:
         return -1  # No valid bars found

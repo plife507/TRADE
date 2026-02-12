@@ -226,11 +226,12 @@ class MarketData:
         """
         # Try WebSocket first
         if self._has_fresh_ws_ticker(symbol):
+            assert self.realtime_state is not None
             ticker = self.realtime_state.get_ticker(symbol)
             if ticker and ticker.last_price > 0:
                 self._last_source[symbol] = "websocket"
                 return ticker.last_price
-        
+
         # Fall back to REST with caching
         self._last_source[symbol] = "rest"
         
@@ -259,6 +260,7 @@ class MarketData:
         """
         # Try WebSocket first
         if self._has_fresh_ws_ticker(symbol):
+            assert self.realtime_state is not None
             ticker = self.realtime_state.get_ticker(symbol)
             if ticker and ticker.bid_price > 0:
                 bid = ticker.bid_price
@@ -313,6 +315,7 @@ class MarketData:
         """
         # Try WebSocket first
         if self._has_fresh_ws_ticker(symbol):
+            assert self.realtime_state is not None
             ws_ticker = self.realtime_state.get_ticker(symbol)
             if ws_ticker and ws_ticker.last_price > 0:
                 self._last_source[symbol] = "websocket"
@@ -454,6 +457,7 @@ class MarketData:
         """
         # Check WebSocket for current kline
         if self._has_fresh_ws_kline(symbol, timeframe):
+            assert self.realtime_state is not None
             ws_kline = self.realtime_state.get_kline(symbol, timeframe)
             if ws_kline and ws_kline.is_closed:
                 self._last_source[symbol] = "websocket"
@@ -502,6 +506,7 @@ class MarketData:
         """
         # Check WebSocket ticker for funding rate
         if self._has_fresh_ws_ticker(symbol):
+            assert self.realtime_state is not None
             ws_ticker = self.realtime_state.get_ticker(symbol)
             if ws_ticker and ws_ticker.funding_rate != 0:
                 self._last_source[symbol] = "websocket"
@@ -553,6 +558,7 @@ class MarketData:
         """
         # Check WebSocket ticker for open interest
         if self._has_fresh_ws_ticker(symbol):
+            assert self.realtime_state is not None
             ws_ticker = self.realtime_state.get_ticker(symbol)
             if ws_ticker and ws_ticker.open_interest > 0:
                 self._last_source[symbol] = "websocket"

@@ -105,34 +105,34 @@ class IncrementalZone(BaseIncrementalDetector):
         if zone_type not in ("demand", "supply"):
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}): 'zone_type' must be 'demand' or 'supply', got {zone_type!r}\n"
-                f"\n"
-                f"Fix in Play:\n"
+                "\n"
+                "Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
-                f"    params:\n"
-                f"      zone_type: demand  # or 'supply'\n"
-                f"      width_atr: 1.5\n"
-                f"\n"
-                f"Hint:\n"
-                f"  - 'demand': Zone from swing low (support area)\n"
-                f"  - 'supply': Zone from swing high (resistance area)"
+                "    params:\n"
+                "      zone_type: demand  # or 'supply'\n"
+                "      width_atr: 1.5\n"
+                "\n"
+                "Hint:\n"
+                "  - 'demand': Zone from swing low (support area)\n"
+                "  - 'supply': Zone from swing high (resistance area)"
             )
 
         width_atr = params.get("width_atr")
         if not isinstance(width_atr, (int, float)) or width_atr <= 0:
             raise ValueError(
                 f"Structure '{key}' (type: {struct_type}): 'width_atr' must be a positive number, got {width_atr!r}\n"
-                f"\n"
-                f"Fix in Play:\n"
+                "\n"
+                "Fix in Play:\n"
                 f"  - type: {struct_type}\n"
                 f"    key: {key}\n"
-                f"    params:\n"
+                "    params:\n"
                 f"      zone_type: {zone_type or 'demand'}\n"
-                f"      width_atr: 1.5  # Must be > 0\n"
-                f"\n"
-                f"Hint:\n"
-                f"  - Common values: 0.5 (tight), 1.0 (normal), 2.0 (wide)\n"
-                f"  - This multiplies the ATR to determine zone width"
+                "      width_atr: 1.5  # Must be > 0\n"
+                "\n"
+                "Hint:\n"
+                "  - Common values: 0.5 (tight), 1.0 (normal), 2.0 (wide)\n"
+                "  - This multiplies the ATR to determine zone width"
             )
 
     def __init__(
@@ -186,7 +186,7 @@ class IncrementalZone(BaseIncrementalDetector):
             swing_idx = self.swing.get_value("high_idx")
 
         # Check for new swing (zone creation)
-        if swing_idx != self._last_swing_idx and swing_idx >= 0:
+        if swing_idx != self._last_swing_idx and swing_idx >= 0:  # type: ignore[operator]
             # Get ATR from indicators using configurable key (default to 0 if not available)
             atr = bar.indicators.get(self.atr_key, np.nan)
             width = atr * self.width_atr if not np.isnan(atr) else 0.0
@@ -194,12 +194,12 @@ class IncrementalZone(BaseIncrementalDetector):
             # Calculate zone boundaries
             if self.zone_type == "demand":
                 # Demand zone: extends below the swing low
-                self.lower = swing_level - width
-                self.upper = swing_level
+                self.lower = swing_level - width  # type: ignore[operator]
+                self.upper = swing_level  # type: ignore[assignment]
             else:  # supply
                 # Supply zone: extends above the swing high
-                self.lower = swing_level
-                self.upper = swing_level + width
+                self.lower = swing_level  # type: ignore[assignment]
+                self.upper = swing_level + width  # type: ignore[operator]
 
             self.state = "active"
             self.anchor_idx = int(swing_idx)

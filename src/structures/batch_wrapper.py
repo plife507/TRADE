@@ -39,7 +39,7 @@ def run_detector_batch(
         raise ValueError(f"Unknown detector type: {detector_type}")
 
     detector_class = STRUCTURE_REGISTRY[detector_type]
-    detector = detector_class(params, deps)
+    detector = detector_class(params, deps)  # type: ignore[call-arg]
 
     n_bars = len(ohlcv["close"])
     output_keys = detector.get_output_keys()
@@ -106,12 +106,12 @@ def create_detector_with_deps(
             if dep_type not in STRUCTURE_REGISTRY:
                 raise ValueError(f"Unknown dependency type: {dep_type}")
             dep_class = STRUCTURE_REGISTRY[dep_type]
-            deps[dep_name] = dep_class(dep_params, None)
+            deps[dep_name] = dep_class(dep_params, None)  # type: ignore[call-arg]
 
     if detector_type not in STRUCTURE_REGISTRY:
         raise ValueError(f"Unknown detector type: {detector_type}")
 
     detector_class = STRUCTURE_REGISTRY[detector_type]
-    detector = detector_class(params, deps if deps else None)
+    detector = detector_class(params, deps if deps else None)  # type: ignore[call-arg]
 
     return detector, deps

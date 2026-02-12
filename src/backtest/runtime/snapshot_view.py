@@ -929,7 +929,6 @@ class RuntimeSnapshotView:
                                 path = f"med_tf_{tf_name}.{struct_key}.{struct_field}"
                                 value = self._incremental_state.get_value(path)
                                 if isinstance(value, float):
-                                    import math
                                     if math.isnan(value):
                                         return None
                                 if isinstance(value, str):
@@ -946,7 +945,6 @@ class RuntimeSnapshotView:
                                 path = f"high_tf_{tf_name}.{struct_key}.{struct_field}"
                                 value = self._incremental_state.get_value(path)
                                 if isinstance(value, float):
-                                    import math
                                     if math.isnan(value):
                                         return None
                                 if isinstance(value, str):
@@ -960,7 +958,6 @@ class RuntimeSnapshotView:
                         path = f"exec.{struct_key}.{struct_field}"
                         value = self._incremental_state.get_value(path)
                         if isinstance(value, float):
-                            import math
                             if math.isnan(value):
                                 return None
                         if isinstance(value, str):
@@ -984,7 +981,6 @@ class RuntimeSnapshotView:
 
                 # Handle NaN as None
                 if value is not None and isinstance(value, float):
-                    import math
                     if math.isnan(value):
                         return None
                 return value
@@ -1230,7 +1226,7 @@ class RuntimeSnapshotView:
         # Check exec state
         if struct_key in self._incremental_state.exec.structures:
             internal_path = f"exec.{struct_key}.{output_key}"
-            return self._incremental_state.get_value(internal_path)
+            return self._incremental_state.get_value(internal_path)  # type: ignore[return-value]
 
         # Check if it's a high_tf path (starts with high_tf_)
         if struct_key.startswith("high_tf_"):
@@ -1246,7 +1242,7 @@ class RuntimeSnapshotView:
                 actual_struct_key = parts[1]
                 actual_output_key = ".".join(parts[2:])
                 internal_path = f"high_tf_{tf_name}.{actual_struct_key}.{actual_output_key}"
-                return self._incremental_state.get_value(internal_path)
+                return self._incremental_state.get_value(internal_path)  # type: ignore[return-value]
 
         # Structure not found
         available_exec = self._incremental_state.exec.list_structures()
@@ -1296,7 +1292,7 @@ class RuntimeSnapshotView:
         if feature_id in self._incremental_state.exec.structures:
             try:
                 path = f"exec.{feature_id}.{field}"
-                return self._incremental_state.get_value(path)
+                return self._incremental_state.get_value(path)  # type: ignore[return-value]
             except KeyError:
                 return None
 
@@ -1306,7 +1302,7 @@ class RuntimeSnapshotView:
             if feature_id in tf_state.structures:
                 try:
                     path = f"med_tf_{feature_tf}.{feature_id}.{field}"
-                    return self._incremental_state.get_value(path)
+                    return self._incremental_state.get_value(path)  # type: ignore[return-value]
                 except KeyError:
                     return None
 
@@ -1316,7 +1312,7 @@ class RuntimeSnapshotView:
             if feature_id in tf_state.structures:
                 try:
                     path = f"high_tf_{feature_tf}.{feature_id}.{field}"
-                    return self._incremental_state.get_value(path)
+                    return self._incremental_state.get_value(path)  # type: ignore[return-value]
                 except KeyError:
                     return None
 

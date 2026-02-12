@@ -22,7 +22,6 @@ Identifier model:
   - window_name: hygiene|test
 """
 
-import yaml
 import json
 import hashlib
 from enum import Enum
@@ -561,7 +560,7 @@ class SystemConfig:
     windows: dict[str, dict[str, str]] = field(default_factory=dict)
     
     # Risk configuration
-    risk_profile: RiskProfileConfig = field(default_factory=RiskProfileConfig)
+    risk_profile: RiskProfileConfig = field(default_factory=lambda: RiskProfileConfig(initial_equity=0.0))
     risk_mode: str = "none"  # "none" or "rules"
     
     # Data build settings

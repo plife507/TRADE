@@ -64,7 +64,7 @@ def get_terminal_width() -> int:
         return 80
 
 
-def make_border(char: str = "═", width: int = None, left: str = "", right: str = "") -> str:
+def make_border(char: str = "═", width: int | None = None, left: str = "", right: str = "") -> str:
     """Create a border line that fits the terminal width."""
     if width is None:
         width = min(get_terminal_width() - 4, 90)  # Leave margin, cap at 90
@@ -73,7 +73,7 @@ def make_border(char: str = "═", width: int = None, left: str = "", right: str
     return f"{left}{char * inner_width}{right}"
 
 
-def make_pattern_border(width: int = None) -> str:
+def make_pattern_border(width: int | None = None) -> str:
     """Create a guilloché-style pattern border."""
     if width is None:
         width = min(get_terminal_width() - 4, 90)

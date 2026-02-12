@@ -24,13 +24,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .types import (
-    Fill,
     Position,
-    FundingResult,
-    PriceSnapshot,
     LedgerState,
     LedgerUpdate,
-    OrderSide,
 )
 
 if TYPE_CHECKING:
@@ -332,6 +328,7 @@ class Ledger:
             Required USD to open position
         """
         position_im = notional_usdt * self._config.initial_margin_rate
+        assert self._config.taker_fee_rate is not None
         est_open_fee = notional_usdt * self._config.taker_fee_rate
         est_close_fee = 0.0
         if include_close_fee:

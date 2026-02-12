@@ -157,7 +157,7 @@ class RealtimeState:
         self._private_ws_status = ConnectionStatus()
         
         self._event_queue_enabled = enable_event_queue
-        self._event_queue: Queue = Queue(maxsize=10000) if enable_event_queue else None
+        self._event_queue: Queue | None = Queue(maxsize=10000) if enable_event_queue else None
         
         # Callbacks
         self._ticker_callbacks: list[Callable[[TickerData], None]] = []
@@ -436,7 +436,7 @@ class RealtimeState:
         bars = self.get_bar_buffer(env, symbol, timeframe, limit)
 
         if not bars:
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+            return pd.DataFrame(columns=pd.Index(["timestamp", "open", "high", "low", "close", "volume"]))
 
         data = [
             {
@@ -502,7 +502,8 @@ class RealtimeState:
         """Get recent trades for a symbol."""
         with self._lock:
             trades = self._recent_trades.get(symbol, [])
-            return list(trades[-limit:])
+            trade_list = list(trades)
+            return trade_list[-limit:]
     
     def on_trade(self, callback: Callable[[TradeData], None]):
         """Register callback for trades."""
@@ -777,7 +778,10 @@ class RealtimeState:
                 data=data,
                 symbol=symbol,
             )
-            self._event_queue.put_nowait(event)
+            try:
+                self._event_queue.put_nowait(event)
+            except Exception:
+                self.logger.warning("Event queue full, dropping event")
     
     def get_event(self, timeout: float | None = None) -> RealtimeEvent | None:
         """Get next event from queue (blocking)."""

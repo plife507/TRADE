@@ -168,8 +168,8 @@ class ExchangeManager:
         trading_mode = self.config.trading.mode
         use_demo = self.config.bybit.use_demo
         
-        valid_paper = (trading_mode == TradingMode.PAPER and use_demo == True)
-        valid_real = (trading_mode == TradingMode.REAL and use_demo == False)
+        valid_paper = (trading_mode == TradingMode.PAPER and use_demo)
+        valid_real = (trading_mode == TradingMode.REAL and not use_demo)
         
         if not (valid_paper or valid_real):
             raise ValueError(
@@ -289,11 +289,11 @@ class ExchangeManager:
                            safe_float(coin.get("equity")) or total
                 break
         
-        return {"total": total, "available": available, "used": total - available, "currency": "USDT"}
+        return {"total": total, "available": available, "used": total - available}
     
     def get_account_value(self) -> float:
         """Get total account value in USD."""
-        return self.get_balance().get("total", 0.0)
+        return float(self.get_balance().get("total", 0.0))
     
     # ==================== Positions (delegated) ====================
     

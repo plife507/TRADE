@@ -116,28 +116,28 @@ class TFIncrementalState:
             # Validate required fields
             if not struct_type:
                 raise ValueError(
-                    f"Structure spec missing 'type' field.\n"
-                    f"\n"
-                    f"Fix: Add 'type' to the structure spec:\n"
-                    f"  - type: swing\n"
-                    f"    key: <unique_key>"
+                    "Structure spec missing 'type' field.\n"
+                    "\n"
+                    "Fix: Add 'type' to the structure spec:\n"
+                    "  - type: swing\n"
+                    "    key: <unique_key>"
                 )
 
             if not key:
                 raise ValueError(
                     f"Structure spec for type '{struct_type}' missing 'key' field.\n"
-                    f"\n"
-                    f"Fix: Add 'key' to the structure spec:\n"
+                    "\n"
+                    "Fix: Add 'key' to the structure spec:\n"
                     f"  - type: {struct_type}\n"
-                    f"    key: <unique_key>"
+                    "    key: <unique_key>"
                 )
 
             # Check for duplicate keys
             if key in self.structures:
                 raise ValueError(
                     f"Duplicate structure key '{key}' in timeframe '{self.timeframe}'.\n"
-                    f"\n"
-                    f"Fix: Use unique keys for each structure."
+                    "\n"
+                    "Fix: Use unique keys for each structure."
                 )
 
             # Validate type is registered
@@ -146,10 +146,10 @@ class TFIncrementalState:
                 available_str = ", ".join(available) if available else "(none registered)"
                 raise ValueError(
                     f"Unknown structure type: '{struct_type}'\n"
-                    f"\n"
+                    "\n"
                     f"Available types: {available_str}\n"
-                    f"\n"
-                    f"Fix: Use one of the available types, or register a new detector."
+                    "\n"
+                    "Fix: Use one of the available types, or register a new detector."
                 )
 
             cls = STRUCTURE_REGISTRY[struct_type]
@@ -162,15 +162,15 @@ class TFIncrementalState:
                     available_str = ", ".join(available_keys) if available_keys else "(none defined yet)"
                     raise ValueError(
                         f"Structure '{key}' uses '{dep_key}' which is not yet defined.\n"
-                        f"\n"
+                        "\n"
                         f"Available structures (defined before '{key}'): {available_str}\n"
-                        f"\n"
+                        "\n"
                         f"Fix: Define '{dep_key}' BEFORE '{key}' in the structures list:\n"
-                        f"  structures:\n"
-                        f"    exec:\n"
-                        f"      - type: swing\n"
+                        "  structures:\n"
+                        "    exec:\n"
+                        "      - type: swing\n"
                         f"        key: {dep_key}\n"
-                        f"        ...\n"
+                        "        ...\n"
                         f"      - type: {struct_type}\n"
                         f"        key: {key}\n"
                         f"        uses: {dep_key}"
@@ -201,10 +201,10 @@ class TFIncrementalState:
         """
         if bar.idx <= self._bar_idx:
             raise ValueError(
-                f"Bar index must increase monotonically. "
+                "Bar index must increase monotonically. "
                 f"Got bar.idx={bar.idx}, but last processed was {self._bar_idx}.\n"
-                f"\n"
-                f"Fix: Ensure bars are processed in chronological order."
+                "\n"
+                "Fix: Ensure bars are processed in chronological order."
             )
         self._bar_idx = bar.idx
 
@@ -230,10 +230,10 @@ class TFIncrementalState:
             available_str = ", ".join(available) if available else "(none defined)"
             raise KeyError(
                 f"Structure '{struct_key}' not defined for timeframe '{self.timeframe}'.\n"
-                f"\n"
+                "\n"
                 f"Available structures: {available_str}\n"
-                f"\n"
-                f"Fix: Use one of the available structure keys, or add the structure to your Play."
+                "\n"
+                "Fix: Use one of the available structure keys, or add the structure to your Play."
             )
 
         return self.structures[struct_key].get_value_safe(output_key)
@@ -277,7 +277,7 @@ class TFIncrementalState:
             }
             # Try to get serializable state from common detector patterns
             if hasattr(detector, 'to_dict'):
-                det_state["state"] = detector.to_dict()
+                det_state["state"] = detector.to_dict()  # type: ignore[attr-defined]
             data["detectors"][key] = det_state
         return data
 
@@ -296,7 +296,7 @@ class TFIncrementalState:
         self._bar_idx = -1
         for struct in self.structures.values():
             if hasattr(struct, 'reset'):
-                struct.reset()
+                struct.reset()  # type: ignore[attr-defined]
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -407,18 +407,18 @@ class MultiTFIncrementalState:
             available_str = ", ".join(available) if available else "(none configured)"
             raise KeyError(
                 f"Med TF '{timeframe}' not configured.\n"
-                f"\n"
+                "\n"
                 f"Available med_tfs: {available_str}\n"
-                f"\n"
-                f"Fix: Add med_tf configuration to your Play:\n"
-                f"  structures:\n"
-                f"    med_tf:\n"
+                "\n"
+                "Fix: Add med_tf configuration to your Play:\n"
+                "  structures:\n"
+                "    med_tf:\n"
                 f"      \"{timeframe}\":\n"
-                f"        - type: swing\n"
+                "        - type: swing\n"
                 f"          key: swing_{timeframe}\n"
-                f"          params:\n"
-                f"            left: 3\n"
-                f"            right: 3"
+                "          params:\n"
+                "            left: 3\n"
+                "            right: 3"
             )
         self.med_tf[timeframe].update(bar)
 
@@ -441,18 +441,18 @@ class MultiTFIncrementalState:
             available_str = ", ".join(available) if available else "(none configured)"
             raise KeyError(
                 f"High TF '{timeframe}' not configured.\n"
-                f"\n"
+                "\n"
                 f"Available high_tfs: {available_str}\n"
-                f"\n"
-                f"Fix: Add high_tf configuration to your Play:\n"
-                f"  structures:\n"
-                f"    high_tf:\n"
+                "\n"
+                "Fix: Add high_tf configuration to your Play:\n"
+                "  structures:\n"
+                "    high_tf:\n"
                 f"      \"{timeframe}\":\n"
-                f"        - type: swing\n"
+                "        - type: swing\n"
                 f"          key: swing_{timeframe.replace('h', 'H')}\n"
-                f"          params:\n"
-                f"            left: 3\n"
-                f"            right: 3"
+                "          params:\n"
+                "            left: 3\n"
+                "            right: 3"
             )
         self.high_tf[timeframe].update(bar)
 
@@ -486,13 +486,13 @@ class MultiTFIncrementalState:
         if len(parts) < 3:
             raise ValueError(
                 f"Invalid path: '{path}'\n"
-                f"\n"
-                f"Path must have at least 3 parts: <tf_role>.<struct_key>.<output_key>\n"
-                f"\n"
-                f"Examples:\n"
-                f"  - exec.swing.high_level\n"
-                f"  - med_tf_4h.trend_4h.direction\n"
-                f"  - high_tf_D.trend_d.direction"
+                "\n"
+                "Path must have at least 3 parts: <tf_role>.<struct_key>.<output_key>\n"
+                "\n"
+                "Examples:\n"
+                "  - exec.swing.high_level\n"
+                "  - med_tf_4h.trend_4h.direction\n"
+                "  - high_tf_D.trend_d.direction"
             )
 
         tf_role = parts[0]
@@ -516,10 +516,10 @@ class MultiTFIncrementalState:
 
                 raise KeyError(
                     f"Med TF '{tf_name}' not configured.\n"
-                    f"\n"
+                    "\n"
                     f"Available med_tfs: {available_str}\n"
-                    f"\n"
-                    f"Valid paths might be:\n"
+                    "\n"
+                    "Valid paths might be:\n"
                     + "\n".join(suggestions)
                 )
 
@@ -538,10 +538,10 @@ class MultiTFIncrementalState:
 
                 raise KeyError(
                     f"High TF '{tf_name}' not configured.\n"
-                    f"\n"
+                    "\n"
                     f"Available high_tfs: {available_str}\n"
-                    f"\n"
-                    f"Valid paths might be:\n"
+                    "\n"
+                    "Valid paths might be:\n"
                     + "\n".join(suggestions)
                 )
 
@@ -559,13 +559,13 @@ class MultiTFIncrementalState:
 
             raise ValueError(
                 f"Invalid tf_role in path: '{tf_role}'\n"
-                f"\n"
-                f"Path must start with 'exec', 'med_tf_<tf>', or 'high_tf_<tf>'.\n"
-                f"\n"
+                "\n"
+                "Path must start with 'exec', 'med_tf_<tf>', or 'high_tf_<tf>'.\n"
+                "\n"
                 f"Valid prefixes for this configuration: {prefixes_str}\n"
-                f"\n"
-                f"Examples:\n"
-                f"  - exec.swing.high_level\n"
+                "\n"
+                "Examples:\n"
+                "  - exec.swing.high_level\n"
                 + ("\n".join(f"  - med_tf_{tf}.swing.high_level" for tf in available_med_tfs) + "\n" if available_med_tfs else "")
                 + ("\n".join(f"  - high_tf_{tf}.swing.high_level" for tf in available_high_tfs) if available_high_tfs else "")
             )
