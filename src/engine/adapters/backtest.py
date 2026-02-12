@@ -10,8 +10,11 @@ Fully integrated with existing backtest engine infrastructure.
 """
 
 
+import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 
@@ -380,7 +383,8 @@ class BacktestExchange:
 
         try:
             return self._sim_exchange.cancel_order_by_id(sim_order_id)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to cancel order {order_id}: {e}")
             return False
 
     def get_position(self, symbol: str) -> Position | None:
@@ -407,9 +411,10 @@ class BacktestExchange:
         mark_price = self._sim_exchange.last_mark_price or sim_pos.entry_price
 
         # Translate to unified Position
+        side_str = sim_pos.side.value if hasattr(sim_pos.side, "value") else str(sim_pos.side)
         return Position(
             symbol=sim_pos.symbol,
-            side=sim_pos.side.value if hasattr(sim_pos.side, "value") else str(sim_pos.side),
+            side=cast(Literal["LONG", "SHORT"], side_str),
             size_usdt=sim_pos.size_usdt,
             size_qty=sim_pos.size,
             entry_price=sim_pos.entry_price,
@@ -467,11 +472,13 @@ class BacktestExchange:
             if symbol is not None and sim_order.symbol != symbol:
                 continue
 
+            order_side = sim_order.side.value if hasattr(sim_order.side, "value") else str(sim_order.side)
+            order_type = sim_order.order_type.value if hasattr(sim_order.order_type, "value") else str(sim_order.order_type)
             unified_orders.append(Order(
                 symbol=sim_order.symbol,
-                side=sim_order.side.value if hasattr(sim_order.side, "value") else str(sim_order.side),
+                side=cast(Literal["LONG", "SHORT", "FLAT"], order_side),
                 size_usdt=sim_order.size_usdt,
-                order_type=sim_order.order_type.value if hasattr(sim_order.order_type, "value") else str(sim_order.order_type),
+                order_type=cast(Literal["MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"], order_type),
                 limit_price=sim_order.limit_price,
                 trigger_price=sim_order.trigger_price,
                 stop_loss=sim_order.stop_loss,

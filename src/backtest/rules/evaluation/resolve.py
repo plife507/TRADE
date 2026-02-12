@@ -17,7 +17,7 @@ from ..dsl_nodes import (
 from ..types import RefValue, ValueType
 
 if TYPE_CHECKING:
-    from ...runtime.snapshot import RuntimeSnapshotView
+    from ...runtime.snapshot_view import RuntimeSnapshotView
 
 
 def infer_value_type(value: Any) -> ValueType:

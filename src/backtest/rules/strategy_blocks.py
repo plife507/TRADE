@@ -41,7 +41,7 @@ from .dsl_nodes import Expr, DEFAULT_MAX_WINDOW_BARS
 from .evaluation import ExprEvaluator
 
 if TYPE_CHECKING:
-    from ..runtime.snapshot import RuntimeSnapshotView
+    from ..runtime.snapshot_view import RuntimeSnapshotView
 
 
 # =============================================================================

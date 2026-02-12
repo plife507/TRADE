@@ -281,8 +281,14 @@ class KlineData:
 
     @classmethod
     def _normalize_interval(cls, raw: str) -> str:
-        """Convert Bybit interval (e.g., '15', '60', 'D') to our format ('15m', '1h', 'D')."""
-        return cls._INTERVAL_MAP.get(raw.lower(), raw)
+        """Convert Bybit interval (e.g., '15', '60', 'D') to our format ('15m', '1h', 'D').
+
+        Raises ValueError for unknown intervals (no silent passthrough).
+        """
+        result = cls._INTERVAL_MAP.get(raw.lower())
+        if result is None:
+            raise ValueError(f"Unknown Bybit interval: {raw!r}")
+        return result
 
     @classmethod
     def from_bybit(cls, data: dict, topic: str = "") -> 'KlineData':
@@ -348,8 +354,12 @@ class BarRecord:
     @classmethod
     def from_df_row(cls, row) -> 'BarRecord':
         ts = row.get("timestamp") or row.get("ts")
+        if not isinstance(ts, datetime):
+            parsed_dt = pd.Timestamp(ts).to_pydatetime()
+            assert isinstance(parsed_dt, datetime), f"Cannot parse timestamp: {ts}"
+            ts = parsed_dt
         return cls(
-            timestamp=ts if isinstance(ts, datetime) else pd.Timestamp(ts).to_pydatetime(),
+            timestamp=ts,
             open=float(row.get("open", 0)), high=float(row.get("high", 0)),
             low=float(row.get("low", 0)), close=float(row.get("close", 0)),
             volume=float(row.get("volume", 0)),

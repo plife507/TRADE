@@ -343,8 +343,9 @@ class LiveRunner:
 
         # Cancel open orders before disconnect
         try:
-            em = self._engine._exchange._exchange_manager
-            em.cancel_all_orders(self._engine.symbol)
+            em = getattr(self._engine._exchange, '_exchange_manager', None)
+            if em is not None:
+                em.cancel_all_orders(self._engine.symbol)
             logger.info(f"Cancelled open orders for {self._engine.symbol} on shutdown")
         except Exception as e:
             logger.error(f"Failed to cancel orders on shutdown: {e}")
@@ -550,11 +551,11 @@ class LiveRunner:
                 self._candle_queue.put_nowait((candle, kline_data.interval))
             except queue.Full:
                 try:
-                    self._candle_queue.get_nowait()
+                    dropped = self._candle_queue.get_nowait()
+                    logger.warning(f"Candle queue full, dropped oldest candle (tf={dropped[1]})")
                 except queue.Empty:
-                    pass
+                    logger.warning("Candle queue full but was drained before drop")
                 self._candle_queue.put_nowait((candle, kline_data.interval))
-                logger.warning("Candle queue full, dropped oldest candle")
 
         except Exception as e:
             logger.warning(f"Failed to convert kline to candle: {e}")

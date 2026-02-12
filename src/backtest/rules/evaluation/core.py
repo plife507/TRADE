@@ -52,7 +52,7 @@ from .setups import eval_setup_ref
 from .resolve import resolve_ref
 
 if TYPE_CHECKING:
-    from ...runtime.snapshot import RuntimeSnapshotView
+    from ...runtime.snapshot_view import RuntimeSnapshotView
 
 
 class ExprEvaluator:

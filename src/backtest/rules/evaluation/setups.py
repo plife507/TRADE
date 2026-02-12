@@ -13,7 +13,7 @@ from ..types import EvalResult, ReasonCode
 from .protocols import ExprEvaluatorProtocol
 
 if TYPE_CHECKING:
-    from ...runtime.snapshot import RuntimeSnapshotView
+    from ...runtime.snapshot_view import RuntimeSnapshotView
 
 
 def eval_setup_ref(
@@ -68,7 +68,7 @@ def eval_setup_ref(
         return EvalResult.success(
             True,
             f"setup:{setup_id}",
-            result.rhs_repr,
+            result.rhs_repr or "",
             "setup",
         )
     else:

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from ..play import Play
-    from ..runtime.indicator_metadata import IndicatorMetadata
+    from src.indicators.metadata import IndicatorMetadata
 
 from .feature_spec import (
     FeatureSpec,
@@ -365,7 +365,7 @@ class FeatureFrameBuilder:
             ValueError: If required feature key is missing from result
         """
         # Import here to avoid circular imports
-        from ..runtime.indicator_metadata import (
+        from src.indicators.metadata import (
             IndicatorMetadata,
             canonicalize_params,
             compute_feature_spec_id,
@@ -407,15 +407,15 @@ class FeatureFrameBuilder:
         }
 
         # Compute derived sources
-        ohlcv["hlc3"] = (ohlcv["high"] + ohlcv["low"] + ohlcv["close"]) / 3
-        ohlcv["ohlc4"] = (ohlcv["open"] + ohlcv["high"] + ohlcv["low"] + ohlcv["close"]) / 4
+        ohlcv["hlc3"] = cast("pd.Series", (ohlcv["high"] + ohlcv["low"] + ohlcv["close"]) / 3)
+        ohlcv["ohlc4"] = cast("pd.Series", (ohlcv["open"] + ohlcv["high"] + ohlcv["low"] + ohlcv["close"]) / 4)
 
         # Add ts_open for indicators that require DatetimeIndex (e.g., VWAP)
         if "ts_open" in df.columns:
-            ohlcv["ts_open"] = df["ts_open"]
+            ohlcv["ts_open"] = cast("pd.Series", df["ts_open"])
         elif "timestamp" in df.columns:
             # Use timestamp as ts_open if ts_open not available
-            ohlcv["ts_open"] = df["timestamp"]
+            ohlcv["ts_open"] = cast("pd.Series", df["timestamp"])
 
         # Get timestamps for metadata (optional)
         timestamps: np.ndarray | None = np.asarray(df["timestamp"].values) if "timestamp" in df.columns else None
@@ -497,7 +497,7 @@ class FeatureFrameBuilder:
             code_ver: Code version (git SHA)
             computed_at: Computation timestamp
         """
-        from ..runtime.indicator_metadata import (
+        from src.indicators.metadata import (
             IndicatorMetadata,
             canonicalize_params,
             compute_feature_spec_id,
@@ -545,14 +545,16 @@ class FeatureFrameBuilder:
                 try:
                     if start_bar_idx < len(timestamps):
                         ts_val = timestamps[start_bar_idx]
-                        if isinstance(ts_val, np.datetime64):
-                            start_ts = pd.Timestamp(ts_val).to_pydatetime()
+                        if isinstance(ts_val, np.datetime64) and not np.isnat(ts_val):
+                            dt_val = pd.Timestamp(ts_val).to_pydatetime()
+                            start_ts = cast(datetime, dt_val).replace(tzinfo=None)
                         elif isinstance(ts_val, datetime):
                             start_ts = ts_val
                     if end_bar_idx < len(timestamps):
                         ts_val = timestamps[end_bar_idx]
-                        if isinstance(ts_val, np.datetime64):
-                            end_ts = pd.Timestamp(ts_val).to_pydatetime()
+                        if isinstance(ts_val, np.datetime64) and not np.isnat(ts_val):
+                            dt_val = pd.Timestamp(ts_val).to_pydatetime()
+                            end_ts = cast(datetime, dt_val).replace(tzinfo=None)
                         elif isinstance(ts_val, datetime):
                             end_ts = ts_val
                 except Exception:
@@ -807,7 +809,7 @@ class PlayFeatures:
 
 
 def build_features_from_play(
-    play: "Play",
+    play: Any,
     data_loader: Callable[[str, str], pd.DataFrame],
     symbol: str | None = None,
     builder: FeatureFrameBuilder | None = None,
@@ -840,7 +842,8 @@ def build_features_from_play(
     
     if builder is None:
         builder = FeatureFrameBuilder()
-    
+
+    assert symbol is not None
     result = PlayFeatures(
         play_id=play.id,
         symbol=symbol,

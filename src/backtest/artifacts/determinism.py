@@ -229,13 +229,13 @@ def verify_determinism_rerun(
     result.run_a_play_id = play_id
     
     # Import here to avoid circular imports
-    from src.tools.backtest_cli_wrapper import backtest_run_play_tool
+    from src.tools.backtest_play_tools import backtest_run_play_tool
     
     # Re-run the Play with the same window
     rerun_result = backtest_run_play_tool(
         play_id=play_id,
-        window_start=window_start,
-        window_end=window_end,
+        start=window_start,
+        end=window_end,
         fix_gaps=fix_gaps,
     )
     

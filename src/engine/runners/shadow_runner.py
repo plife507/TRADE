@@ -270,7 +270,8 @@ class ShadowRunner:
             candle = self._engine._data_provider.get_candle(bar_idx)
             candle_close = candle.close
             timestamp = candle.ts_close
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get candle at bar_idx={bar_idx}, using fallback: {e}")
             candle_close = 0.0
             timestamp = datetime.now()
 

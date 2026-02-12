@@ -1706,8 +1706,8 @@ class LiveExchange:
             try:
                 balance = self._exchange_manager.get_balance()
                 return balance["available"] if balance else self._config.initial_equity
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to get available balance from exchange, using initial equity: {e}")
 
         return self._config.initial_equity
 
@@ -1728,8 +1728,8 @@ class LiveExchange:
             try:
                 balance = self._exchange_manager.get_balance()
                 return balance["total"] if balance else self._config.initial_equity
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to get equity from exchange, using initial equity: {e}")
 
         return self._config.initial_equity
 

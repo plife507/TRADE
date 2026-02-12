@@ -304,7 +304,7 @@ class EngineManager:
             stats = instance.runner.stats if instance.runner else None
             result.append(InstanceInfo(
                 instance_id=instance.instance_id,
-                play_id=instance.play.name,
+                play_id=instance.play.name or "unknown",
                 symbol=instance.play.symbol_universe[0],
                 mode=instance.mode,
                 started_at=instance.started_at,
@@ -332,7 +332,7 @@ class EngineManager:
 
         return InstanceInfo(
             instance_id=instance.instance_id,
-            play_id=instance.play.name,
+            play_id=instance.play.name or "unknown",
             symbol=instance.play.symbol_universe[0],
             mode=instance.mode,
             started_at=instance.started_at,
@@ -458,16 +458,16 @@ class EngineManager:
                 data["stats"] = stats.to_dict()
             data["status"] = instance.runner.state.value if instance.runner else "unknown"
             path.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
-        except Exception:
-            pass  # Non-fatal
+        except Exception as e:
+            logger.warning(f"Failed to update instance file {path.name}: {e}")
 
     def _remove_instance_file(self, instance_id: str) -> None:
         """Remove instance file on stop."""
         path = self._instances_dir / f"{instance_id}.json"
         try:
             path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to remove instance file {path.name}: {e}")
 
     def list_all(self) -> list[InstanceInfo]:
         """List all instances including cross-process ones from disk."""
@@ -501,10 +501,11 @@ class EngineManager:
                         bars_processed=data.get("stats", {}).get("bars_processed", 0) if "stats" in data else 0,
                         signals_generated=data.get("stats", {}).get("signals_generated", 0) if "stats" in data else 0,
                     ))
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Failed to read instance file {path.name}: {e}")
                     continue
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to list instance files: {e}")
 
         return result
 

@@ -27,7 +27,7 @@ import bisect
 import numpy as np
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 import pandas as pd
 
 
@@ -45,7 +45,6 @@ def _np_dt64_to_datetime(ts: np.datetime64) -> datetime:
 if TYPE_CHECKING:
     from ..features.feature_frame_builder import FeatureArrays
     from src.indicators.metadata import IndicatorMetadata
-    from ..market_structure.builder import StructureStore
 
 
 @dataclass
@@ -101,7 +100,7 @@ class FeedStore:
 
     # Structure stores (keyed by block_id)
     # Populated by StructureBuilder; provides structure.* namespace
-    structures: dict[str, StructureStore] = field(default_factory=dict)
+    structures: dict[str, Any] = field(default_factory=dict)
 
     # Structure key map (block_key -> block_id) for resolution
     structure_key_map: dict[str, str] = field(default_factory=dict)

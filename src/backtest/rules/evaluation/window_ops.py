@@ -23,7 +23,7 @@ from .shift_ops import shift_expr
 from .protocols import ExprEvaluatorProtocol
 
 if TYPE_CHECKING:
-    from ...runtime.snapshot import RuntimeSnapshotView
+    from ...runtime.snapshot_view import RuntimeSnapshotView
 
 
 def eval_holds_for(

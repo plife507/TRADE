@@ -592,8 +592,8 @@ class PlayEngine:
             try:
                 import json as _json
                 incremental_json = _json.dumps(self._incremental_state.to_json())
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.error(f"Failed to serialize incremental state: {e}")
 
         return EngineState(
             engine_id=self.engine_id,

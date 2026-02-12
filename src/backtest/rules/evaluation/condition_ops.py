@@ -38,7 +38,7 @@ from .resolve import (
 )
 
 if TYPE_CHECKING:
-    from ...runtime.snapshot import RuntimeSnapshotView
+    from ...runtime.snapshot_view import RuntimeSnapshotView
 
 
 def dispatch_operator(
@@ -108,14 +108,24 @@ def eval_crossover(
 
     Requires previous bar values for both LHS and RHS.
     """
+    # Crossover requires FeatureRef LHS (ArithmeticExpr doesn't support shifted)
+    lhs = cond.lhs
+    if not isinstance(lhs, FeatureRef):
+        return EvalResult.failure(
+            ReasonCode.INTERNAL_ERROR,
+            "Crossover requires FeatureRef LHS, not ArithmeticExpr",
+            lhs_path=str(lhs),
+            operator=cond.op,
+        )
+
     # Get previous LHS value
-    lhs_prev_ref = cond.lhs.shifted(1)
+    lhs_prev_ref = lhs.shifted(1)
     lhs_prev = resolve_ref(lhs_prev_ref, snapshot)
     if lhs_prev.is_missing:
         return EvalResult.failure(
             ReasonCode.MISSING_PREV_VALUE,
-            f"Previous LHS value is missing: {cond.lhs.feature_id}",
-            lhs_path=cond.lhs.feature_id,
+            f"Previous LHS value is missing: {lhs.feature_id}",
+            lhs_path=lhs.feature_id,
             operator=cond.op,
         )
 
@@ -133,7 +143,7 @@ def eval_crossover(
             return EvalResult.failure(
                 ReasonCode.MISSING_RHS,
                 f"RHS value is missing: {cond.rhs.feature_id}",
-                lhs_path=cond.lhs.feature_id,
+                lhs_path=lhs.feature_id,
                 operator=cond.op,
             )
         # Get previous RHS value
@@ -143,14 +153,14 @@ def eval_crossover(
             return EvalResult.failure(
                 ReasonCode.MISSING_PREV_VALUE,
                 f"Previous RHS value is missing: {cond.rhs.feature_id}",
-                lhs_path=cond.lhs.feature_id,
+                lhs_path=lhs.feature_id,
                 operator=cond.op,
             )
     else:
         return EvalResult.failure(
             ReasonCode.INTERNAL_ERROR,
             "Crossover requires scalar or feature reference RHS",
-            lhs_path=cond.lhs.feature_id,
+            lhs_path=lhs.feature_id,
             operator=cond.op,
         )
 
@@ -164,7 +174,7 @@ def eval_crossover(
 
     return EvalResult.success(
         crossed,
-        cond.lhs.feature_id,
+        lhs.feature_id,
         str(rhs_curr.value),
         cond.op,
     )

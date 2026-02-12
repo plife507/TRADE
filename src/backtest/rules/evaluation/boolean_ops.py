@@ -17,7 +17,7 @@ from ..types import EvalResult, ReasonCode
 from .protocols import ExprEvaluatorProtocol
 
 if TYPE_CHECKING:
-    from ...runtime.snapshot import RuntimeSnapshotView
+    from ...runtime.snapshot_view import RuntimeSnapshotView
 
 
 def eval_all(
@@ -79,4 +79,4 @@ def eval_not(
         # Propagate errors unchanged
         return result
     # Invert the result
-    return EvalResult.success(not result.ok, result.lhs_path, result.rhs_repr, "not")
+    return EvalResult.success(not result.ok, result.lhs_path or "", result.rhs_repr or "", "not")

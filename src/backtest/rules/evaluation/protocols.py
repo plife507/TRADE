@@ -12,7 +12,7 @@ from ..dsl_nodes import Expr
 from ..types import EvalResult
 
 if TYPE_CHECKING:
-    from ...runtime.snapshot import RuntimeSnapshotView
+    from ...runtime.snapshot_view import RuntimeSnapshotView
 
 
 class ExprEvaluatorProtocol(Protocol):
