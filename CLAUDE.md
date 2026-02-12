@@ -1,5 +1,14 @@
 # CLAUDE.md
 
+## Project Overview
+
+This is a Python project. Primary language is Python with YAML for configuration and Markdown for documentation. Use pyright for type checking. Always validate changes with existing test suites before committing.
+
+## General Principles
+
+- Always use the project's existing CLI tools and infrastructure before building custom scripts or solutions. Ask the user which CLI commands are available if unsure.
+- When spawning agent teams for audits or large tasks, begin executing promptly rather than spending excessive time on codebase exploration and orchestration planning. The user prefers action over preparation.
+
 ## Prime Directives
 
 - **ALL FORWARD, NO LEGACY** - Delete old code, don't wrap it
@@ -7,6 +16,10 @@
 - **LF LINE ENDINGS** - Use `newline='\n'` on Windows
 - **TODO-DRIVEN** - Every change maps to `docs/TODO.md`
 - **CLI VALIDATION** - Use CLI commands, not pytest
+
+## Project Structure
+
+When working with this codebase, target `src/` not `scripts/` unless explicitly told otherwise. The main source tree is under `src/`.
 
 ## Architecture
 
@@ -21,6 +34,10 @@ src/tools/         # CLI/API surface
 
 **1m data is mandatory**: Every backtest/live run pulls 1m candles regardless of exec timeframe. Drives fill simulation, TP/SL evaluation, and signal subloop.
 
+## Database & Concurrency
+
+When running parallel agents or sub-tasks, NEVER use parallel file access to DuckDB databases. Always run DuckDB operations sequentially to avoid file lock conflicts.
+
 ## Key Patterns
 
 | Pattern | Rule |
@@ -28,6 +45,18 @@ src/tools/         # CLI/API surface
 | Engine | Always use `create_engine_from_play()` + `run_engine_with_play()` |
 | Indicators | Declare in Play YAML, access via snapshot |
 | Database | Sequential access only (DuckDB limitation) |
+
+## Trading Domain Rules
+
+For trading logic: Take Profit (TP) and Stop Loss (SL) orders fire BEFORE signal-based closes. Do not assume signal closes have priority over TP/SL.
+
+## Type Checking
+
+When fixing type errors or pyright issues, run the full pyright check after each batch of fixes to catch cascading errors early. Fixing one category of errors often exposes hidden ones.
+
+## Code Cleanup Rules
+
+Before claiming code is 'dead' or unused, verify by grepping for all references including dynamic imports, CLI entry points, and test fixtures. Do not remove code without confirmed zero references.
 
 ## Timeframe Naming (ENFORCED)
 

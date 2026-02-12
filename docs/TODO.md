@@ -99,6 +99,46 @@ Use `low_tf`, `med_tf`, `high_tf`, and `exec` (pointer). Never use HTF/LTF/MTF a
 
 ---
 
+## Completed Work (2026-02-11)
+
+### Pyright Zero + Silent Exception Handler Audit
+
+- [x] Resolved all 298 pyright type errors across 75+ files (commits 7959386, 754a686)
+- [x] Resolved all 13 pyright import warnings → 0 errors, 0 warnings (commit c5d01a7)
+  - 8 files: `snapshot` → `snapshot_view` import path (rules/evaluation/)
+  - 3 imports: `indicator_metadata` → `src.indicators.metadata` (feature_frame_builder.py)
+  - 1 import: `backtest_cli_wrapper` → `backtest_play_tools` (determinism.py)
+  - 1 import: dead `StructureStore` type removed (feed_store.py)
+- [x] Fixed 2 hidden bugs surfaced by import fixes:
+  - `determinism.py`: wrong param names `window_start`/`window_end` → `start`/`end`
+  - `feature_frame_builder.py`: NaT-unsafe timestamp conversion (cast + np.isnat guard)
+- [x] Fixed 7 silent `except Exception: pass` handlers in engine:
+  - CRITICAL: `adapters/live.py` balance fallback now logs error before using stale equity (2 locations)
+  - HIGH: `play_engine.py` JSON state serialization failure now logged
+  - HIGH: `manager.py` instance file I/O failures now logged (3 locations)
+  - MEDIUM: `realtime_models.py` `_normalize_interval()` raises ValueError on unknown intervals
+  - MEDIUM: `adapters/backtest.py` order cancel failure now logged
+  - MEDIUM: `runners/shadow_runner.py` candle lookup failure now logged
+  - MEDIUM: `runners/live_runner.py` queue overflow now logs which candle was dropped
+- [x] Added pyrightconfig.json for consistent type checking
+- [x] Updated CLAUDE.md with 7 new sections from insights audit
+- [x] Added pyright PostToolUse hook and pre-commit pyright gate to settings
+
+### G5 Structure Parity Vectorized Reference Fixes
+
+- [x] Fixed market_structure vectorized reference: CHoCH priority + broken index tracking
+  - CHoCH must be checked before BOS (priority) with `elif` to prevent both firing
+  - CHoCH blocks must update `broken_*_idx` and clear `break_level_*` to prevent spurious BOS on next bar
+  - File: `src/forge/audits/vectorized_references/market_structure_reference.py`
+- [x] Fixed derived_zone vectorized reference: creation-bar guard for break detection
+  - Added `if zone["anchor_idx"] < bar_idx:` guard matching incremental detector
+  - Zones created on current bar skip break check (price often far from retracement levels when swing pair just completed)
+  - File: `src/forge/audits/vectorized_references/derived_zone_reference.py`
+- [x] G5 Structure Parity: 9/9 detectors PASS across 6 datasets (was 7/9 FAIL)
+- [x] Note: Both bugs were in the vectorized **reference** implementations, not the incremental detectors (which were correct)
+
+---
+
 ## Completed Work (2026-02-10)
 
 ### G13: Unified Validation System
