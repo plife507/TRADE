@@ -48,7 +48,7 @@ src/
   tools/           CLI/API tool layer
   risk/            Risk management + global risk view
 
-plays/             184 strategy definitions (YAML)
+plays/             277 strategy definitions (YAML)
 config/            System defaults
 scripts/           Suite runners and generators
 ```
@@ -265,6 +265,7 @@ python scripts/test_demo_readiness.py --skip-orders  # Read-only mode (~3min)
 - Bybit REST + WebSocket (pybit SDK)
 - NumPy, Pandas (data processing)
 - Rich (CLI output)
+- Pyright (static type checking, 0 errors / 0 warnings)
 
 ## Configuration
 
