@@ -1,8 +1,8 @@
 # Session Handoff
 
-**Date**: 2026-02-12
+**Date**: 2026-02-13
 **Branch**: feature/unified-engine
-**Phase**: Pyright Zero + Codebase Audit Complete
+**Phase**: Play Lab Pipeline (Design Complete, Ready to Implement)
 
 ---
 
@@ -12,7 +12,7 @@
 
 | Suite | Result |
 |-------|--------|
-| Pyright | **0 errors, 0 warnings** (was 298 errors + 13 warnings) |
+| Pyright | **0 errors, 0 warnings** |
 | Validation quick (4 gates) | ALL PASS (5 plays, 2134 trades) |
 | Synthetic (170 plays) | 170/170 PASS, 0 fail, 0 zero-trade |
 | Real-data (60 plays) | 60/60 PASS, 60/60 math verified (23 checks each) |
@@ -24,62 +24,50 @@
 
 ---
 
-## Work Completed This Session (2026-02-12)
+## Next Task: Play Lab Pipeline
 
-### 1. Full Pyright Cleanup (298 errors + 13 warnings → 0/0)
+Full design document at **`docs/PLAY_LAB_PIPELINE_PLAN.md`**.
 
-Three commits resolved all type issues:
-- `7959386`: Resolved dangerous pyright errors, added pyrightconfig.json
-- `754a686`: Resolved 549 more pyright errors across 31 files
-- `c5d01a7`: Resolved all 13 import warnings + silent exception handlers
+### Summary
 
-### 2. Import Fixes (13 warnings → 0)
+Add `python trade_cli.py lab <command>` -- a 4-stage pipeline for play lifecycle:
 
-| Fix | Files |
-|-----|-------|
-| `snapshot` → `snapshot_view` | 8 files in rules/evaluation/ + strategy_blocks.py |
-| `indicator_metadata` path | feature_frame_builder.py (3 imports, 2 were runtime-critical) |
-| `backtest_cli_wrapper` → `backtest_play_tools` | determinism.py |
-| Dead `StructureStore` type removed | feed_store.py |
+1. **Design**: `lab design --idea "..." --name X` -- scaffold YAML from natural language (future LLM API integration point)
+2. **Test**: `lab test --play X --start ... --end ...` -- backtest with metric thresholds, robustness checks, buy-and-hold benchmark
+3. **Review**: `lab review --play X --auto` -- agent auto-review or human verdict recording
+4. **Approve**: `lab approve --play X` -- run approval gates, promote to `plays/approved/`
 
-### 3. Hidden Bugs Found via Import Fixes
+Staged directories: `plays/ideas/` -> `plays/testing/` -> `plays/approved/` with sidecar `.meta.json` files.
 
-- `determinism.py`: Called `backtest_run_play_tool()` with wrong param names (`window_start`/`window_end` → `start`/`end`)
-- `feature_frame_builder.py`: NaT-unsafe timestamp conversion (added `np.isnat` guard + `cast`)
+All commands support `--json` for agent consumption. Exit codes 0/1.
 
-### 4. Silent Exception Handler Audit (7 fixes)
+### Files to Create
+- `src/tools/lab_tools.py` -- all business logic
+- `config/lab_defaults.yml` -- threshold profiles
+- `plays/ideas/`, `plays/testing/`, `plays/approved/`, `plays/archived/` directories
 
-| Severity | File | Fix |
-|----------|------|-----|
-| CRITICAL | `adapters/live.py` (2 locations) | Balance fallback logs error before using stale equity |
-| HIGH | `play_engine.py` | JSON state serialization failure logged |
-| HIGH | `manager.py` (3 locations) | Instance file I/O failures logged |
-| MEDIUM | `realtime_models.py` | `_normalize_interval()` raises ValueError on unknown intervals |
-| MEDIUM | `adapters/backtest.py` | Order cancel failure logged (+ added logger) |
-| MEDIUM | `runners/shadow_runner.py` | Candle lookup failure logged |
-| MEDIUM | `runners/live_runner.py` | Queue overflow logs which candle was dropped |
+### Files to Modify
+- `src/cli/argparser.py` -- add `_setup_lab_subcommands()`
+- `src/cli/subcommands.py` -- add 9 `handle_lab_*()` handlers
+- `trade_cli.py` -- wire lab command dispatch
 
-### 5. Full Codebase Architecture Audit
+### Key Reuse
+- `backtest_run_play_tool()` from `src/tools/backtest_play_tools.py`
+- `load_play()` from `src/backtest/play/play.py` (already rglobs `plays/`)
+- `ResultsSummary` from `src/backtest/artifacts/artifact_standards.py:937`
+- `ToolResult` from `src/tools/shared.py:34`
+- `GateResult` pattern from `src/cli/validate.py`
 
-Three parallel audit agents scanned the entire codebase:
-- **Architecture**: Clean - no timeframe naming violations, proper infrastructure separation
-- **Security**: No hardcoded credentials, no unsafe eval/exec
-- **Type consistency**: All modern Python 3.12+ (`X | None`, not `Optional[X]`)
-- **Dead code**: Minimal (2 acceptable error recovery patterns)
-
-### 6. CLAUDE.md Updated with Insights
-
-Added 7 new sections from /insights analysis:
-- Project Overview, General Principles, Project Structure
-- Database & Concurrency (no parallel DuckDB)
-- Trading Domain Rules (TP/SL fires before signal closes)
-- Type Checking (run pyright after each batch)
-- Code Cleanup Rules (grep before claiming dead code)
-
-### 7. Hooks Added
-
-- PostToolUse (Edit|Write): Runs pyright on edited file
-- PreToolUse (git commit): Runs full pyright check on src/
+### Implementation Order
+1. Directories + `config/lab_defaults.yml`
+2. `src/tools/lab_tools.py` core (PlayMeta, MetricThresholds, Stage, _move_play)
+3. Design tools (scaffold, template clone, validate)
+4. List/status/history tools
+5. Argparse + handlers + wiring for above
+6. Test tool (backtest + metrics + robustness + benchmark)
+7. Review + approve + reject + archive tools
+8. Argparse + handlers + wiring for above
+9. End-to-end smoke test
 
 ---
 
@@ -90,7 +78,7 @@ Added 7 new sections from /insights analysis:
 - Fix: Wire `get_warmup_from_specs()` into `LiveDataProvider.__init__()`
 
 ### GAP #2: No REST API Fallback for Warmup Data
-- `_load_tf_bars()` tries bar buffer → DuckDB → gives up
+- `_load_tf_bars()` tries bar buffer -> DuckDB -> gives up
 - Fix: Add REST `get_klines()` fallback
 
 ### GAP #3: Starting Equity Ignored in Live/Demo
@@ -103,15 +91,6 @@ Added 7 new sections from /insights analysis:
 
 ### GAP #5: Fee Model Not Reconciled
 - Play `taker_bps` vs actual Bybit VIP tier fees not compared
-
----
-
-## Priority Fixes for Next Session
-
-1. **Dynamic warmup** (GAP #1 + #2) -- Wire `get_warmup_from_specs()`, add REST fallback
-2. **Leverage on startup** (GAP #4) -- Call `set_leverage()` in `LiveExchange.connect()`
-3. **Equity reconciliation** (GAP #3) -- Warning when real balance != Play config
-4. **P0: Regenerate artifacts** -- Re-run 170-play and 60-play suites with equity curve fix
 
 ---
 
@@ -165,5 +144,5 @@ Signal flow (identical for backtest/live):
 2. Update higher/medium timeframe indices
 3. Warmup check (multi-timeframe sync + NaN validation)
 4. `exchange.step()` (fill simulation via 1m subloop)
-5. `_evaluate_rules()` → Signal or None
+5. `_evaluate_rules()` -> Signal or None
 6. `execute_signal(signal)`
