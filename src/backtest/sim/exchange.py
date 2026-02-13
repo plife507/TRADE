@@ -239,6 +239,8 @@ class SimulatedExchange:
         stop_loss: float | None = None,
         take_profit: float | None = None,
         timestamp: datetime | None = None,
+        tp_order_type: str = "Market",
+        sl_order_type: str = "Market",
     ) -> OrderId | None:
         """Submit a market order to be filled on next bar."""
         self.entry_attempts_count += 1
@@ -269,6 +271,8 @@ class SimulatedExchange:
             take_profit=take_profit,
             created_at=timestamp,
             submission_bar_index=self._current_bar_index,
+            tp_order_type=tp_order_type,
+            sl_order_type=sl_order_type,
         )
 
         self._order_book.add_order(order)
@@ -284,6 +288,8 @@ class SimulatedExchange:
         time_in_force: str = "GTC",
         reduce_only: bool = False,
         timestamp: datetime | None = None,
+        tp_order_type: str = "Market",
+        sl_order_type: str = "Market",
     ) -> OrderId | None:
         """
         Submit a limit order.
@@ -328,6 +334,8 @@ class SimulatedExchange:
             take_profit=take_profit,
             created_at=timestamp,
             submission_bar_index=self._current_bar_index,
+            tp_order_type=tp_order_type,
+            sl_order_type=sl_order_type,
         )
         
         self._order_book.add_order(order)
@@ -940,6 +948,8 @@ class SimulatedExchange:
             entry_fee=fill.fee,  # Track original entry fee for partial close pro-rating
             entry_bar_index=self._current_bar_index,
             entry_ready=self._current_snapshot_ready,
+            tp_order_type=order.tp_order_type,
+            sl_order_type=order.sl_order_type,
         )
     
     def _handle_reduce_only_fill(self, fill: Fill, order: Order) -> None:

@@ -426,6 +426,14 @@ class Play:
     # When set, backtest uses generated synthetic data instead of DuckDB
     synthetic: SyntheticConfig | None = None
 
+    # Entry order configuration
+    entry_order_type: str = "MARKET"       # "MARKET" | "LIMIT"
+    limit_offset_pct: float = 0.0          # % offset from close (e.g., 0.05 = 0.05%)
+    time_in_force: str = "GTC"             # "GTC" | "IOC" | "FOK" | "PostOnly"
+    expire_after_bars: int = 0             # 0 = no expiry
+    tp_order_type: str = "Market"          # "Market" | "Limit" (Bybit convention)
+    sl_order_type: str = "Market"          # "Market" | "Limit"
+
     # Cached feature registry
     _registry: FeatureRegistry | None = field(default=None, repr=False)
 
@@ -459,6 +467,27 @@ class Play:
         # Must have actions for signal generation
         if not self.actions:
             errors.append("actions is required for signal generation")
+
+        # Validate entry order type fields
+        valid_order_types = {"MARKET", "LIMIT"}
+        if self.entry_order_type not in valid_order_types:
+            errors.append(f"entry_order_type must be one of {valid_order_types}, got: {self.entry_order_type!r}")
+
+        valid_tifs = {"GTC", "IOC", "FOK", "PostOnly"}
+        if self.time_in_force not in valid_tifs:
+            errors.append(f"time_in_force must be one of {valid_tifs}, got: {self.time_in_force!r}")
+
+        if self.limit_offset_pct < 0:
+            errors.append(f"limit_offset_pct must be >= 0, got: {self.limit_offset_pct}")
+
+        if self.expire_after_bars < 0:
+            errors.append(f"expire_after_bars must be >= 0, got: {self.expire_after_bars}")
+
+        valid_tp_sl_types = {"Market", "Limit"}
+        if self.tp_order_type not in valid_tp_sl_types:
+            errors.append(f"tp_order_type must be one of {valid_tp_sl_types}, got: {self.tp_order_type!r}")
+        if self.sl_order_type not in valid_tp_sl_types:
+            errors.append(f"sl_order_type must be one of {valid_tp_sl_types}, got: {self.sl_order_type!r}")
 
         # Validate operator/type compatibility in actions
         # Only run if we have features and actions (otherwise skip - above errors cover it)
@@ -546,6 +575,20 @@ class Play:
         # Serialize actions
         if self.actions:
             result["actions"] = [b.to_dict() for b in self.actions]
+        # Entry order configuration (only serialize non-defaults)
+        if self.entry_order_type != "MARKET" or self.limit_offset_pct != 0.0 or self.time_in_force != "GTC" or self.expire_after_bars != 0:
+            result["entry"] = {
+                "order_type": self.entry_order_type,
+                "limit_offset_pct": self.limit_offset_pct,
+                "time_in_force": self.time_in_force,
+                "expire_after_bars": self.expire_after_bars,
+            }
+        if self.tp_order_type != "Market" or self.sl_order_type != "Market":
+            risk = result.get("risk_model") or {}
+            risk["tp_order_type"] = self.tp_order_type
+            risk["sl_order_type"] = self.sl_order_type
+            if "risk_model" not in result:
+                result["risk_model"] = risk
         return result
 
     # =========================================================================
@@ -932,6 +975,18 @@ class Play:
         synthetic_dict = d.get("synthetic")
         synthetic = SyntheticConfig.from_dict(synthetic_dict) if synthetic_dict else None
 
+        # Parse entry order configuration
+        entry_cfg = d.get("entry", {})
+        entry_order_type = str(entry_cfg.get("order_type", "MARKET")).upper()
+        limit_offset_pct = float(entry_cfg.get("limit_offset_pct", 0.0))
+        time_in_force = str(entry_cfg.get("time_in_force", "GTC"))
+        expire_after_bars = int(entry_cfg.get("expire_after_bars", 0))
+
+        # Parse TP/SL order types from risk section
+        risk_section = d.get("risk", {})
+        tp_order_type = str(risk_section.get("tp_order_type", "Market"))
+        sl_order_type = str(risk_section.get("sl_order_type", "Market"))
+
         return cls(
             id=d.get("id") or d.get("name", ""),
             version=d.get("version", ""),
@@ -949,6 +1004,12 @@ class Play:
             has_structures=has_structures,
             structure_keys=tuple(structure_keys),
             synthetic=synthetic,
+            entry_order_type=entry_order_type,
+            limit_offset_pct=limit_offset_pct,
+            time_in_force=time_in_force,
+            expire_after_bars=expire_after_bars,
+            tp_order_type=tp_order_type,
+            sl_order_type=sl_order_type,
         )
 
 

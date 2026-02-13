@@ -123,6 +123,8 @@ def market_buy_with_tpsl(
     take_profit: float | None = None,
     stop_loss: float | None = None,
     tpsl_mode: str = "Full",
+    tp_order_type: str = "Market",
+    sl_order_type: str = "Market",
 ) -> "OrderResult":
     """Place a market buy order with TP/SL."""
     from .exchange_manager import OrderResult
@@ -140,6 +142,8 @@ def market_buy_with_tpsl(
             take_profit=str(take_profit) if take_profit else None,
             stop_loss=str(stop_loss) if stop_loss else None,
             tpsl_mode=tpsl_mode if (take_profit or stop_loss) else None,
+            tp_order_type=tp_order_type if take_profit else None,
+            sl_order_type=sl_order_type if stop_loss else None,
         )
 
         # Use actual fill price from response, fallback to quote price
@@ -175,6 +179,8 @@ def market_sell_with_tpsl(
     take_profit: float | None = None,
     stop_loss: float | None = None,
     tpsl_mode: str = "Full",
+    tp_order_type: str = "Market",
+    sl_order_type: str = "Market",
 ) -> "OrderResult":
     """Place a market sell order with TP/SL (short)."""
     from .exchange_manager import OrderResult
@@ -192,6 +198,8 @@ def market_sell_with_tpsl(
             take_profit=str(take_profit) if take_profit else None,
             stop_loss=str(stop_loss) if stop_loss else None,
             tpsl_mode=tpsl_mode if (take_profit or stop_loss) else None,
+            tp_order_type=tp_order_type if take_profit else None,
+            sl_order_type=sl_order_type if stop_loss else None,
         )
 
         # Use actual fill price from response, fallback to quote price

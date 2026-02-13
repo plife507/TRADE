@@ -1576,6 +1576,9 @@ class LiveExchange:
                 signal_metadata["order_type"] = order.order_type.lower()
             if order.limit_price is not None:
                 signal_metadata["limit_price"] = order.limit_price
+            signal_metadata["time_in_force"] = order.time_in_force
+            signal_metadata["tp_order_type"] = order.tp_order_type
+            signal_metadata["sl_order_type"] = order.sl_order_type
 
             # Convert unified Order to Signal format (only valid Signal fields)
             signal = Signal(

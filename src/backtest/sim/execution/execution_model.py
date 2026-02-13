@@ -558,8 +558,15 @@ class ExecutionModel:
         # Fee calculation: use EXIT notional (qty * exit price), not entry notional
         # This is critical for accuracy when price has moved significantly since entry
         exit_notional = fill_size * fill_price
-        assert self._config.taker_fee_rate is not None
-        fee = exit_notional * self._config.taker_fee_rate
+
+        # TP-as-Limit: use maker fee when position has tp_order_type="Limit" and this is a TP exit
+        # SL always uses taker fee for safety (SL triggers are market orders on Bybit)
+        if reason == FillReason.TAKE_PROFIT and getattr(position, 'tp_order_type', 'Market') == "Limit":
+            assert self._config.maker_fee_rate is not None
+            fee = exit_notional * self._config.maker_fee_rate
+        else:
+            assert self._config.taker_fee_rate is not None
+            fee = exit_notional * self._config.taker_fee_rate
 
         return Fill(
             fill_id=self._next_fill_id(),

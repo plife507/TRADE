@@ -343,13 +343,13 @@ class ExchangeManager:
         from . import exchange_orders_market as mkt
         return mkt.market_sell(self, symbol, usd_amount)
     
-    def market_buy_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float | None = None, stop_loss: float | None = None, tpsl_mode: str = "Full") -> OrderResult:
+    def market_buy_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float | None = None, stop_loss: float | None = None, tpsl_mode: str = "Full", tp_order_type: str = "Market", sl_order_type: str = "Market") -> OrderResult:
         from . import exchange_orders_market as mkt
-        return mkt.market_buy_with_tpsl(self, symbol, usd_amount, take_profit, stop_loss, tpsl_mode)
-    
-    def market_sell_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float | None = None, stop_loss: float | None = None, tpsl_mode: str = "Full") -> OrderResult:
+        return mkt.market_buy_with_tpsl(self, symbol, usd_amount, take_profit, stop_loss, tpsl_mode, tp_order_type, sl_order_type)
+
+    def market_sell_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float | None = None, stop_loss: float | None = None, tpsl_mode: str = "Full", tp_order_type: str = "Market", sl_order_type: str = "Market") -> OrderResult:
         from . import exchange_orders_market as mkt
-        return mkt.market_sell_with_tpsl(self, symbol, usd_amount, take_profit, stop_loss, tpsl_mode)
+        return mkt.market_sell_with_tpsl(self, symbol, usd_amount, take_profit, stop_loss, tpsl_mode, tp_order_type, sl_order_type)
     
     # ==================== Limit Orders (delegated) ====================
     

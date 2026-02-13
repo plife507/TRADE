@@ -261,6 +261,9 @@ class PlayEngine:
         # Optional snapshot callback for auditing (set via set_on_snapshot)
         self._on_snapshot: Callable[["RuntimeSnapshotView", int, int, int], None] | None = None
 
+        # Limit order expiry tracking: list of (order_id, submit_bar_index)
+        self._pending_limit_orders: list[tuple[str, int]] = []
+
         self.logger.info(
             f"PlayEngine initialized: {self.engine_id} "
             f"mode={config.mode} symbol={play.symbol_universe[0]}"
@@ -418,6 +421,20 @@ class PlayEngine:
         # 3. Step exchange (process pending orders, check TP/SL)
         self.exchange.step(candle)
 
+        # 3b. Prune filled limit orders and check expiry (after fills are processed)
+        if self._pending_limit_orders:
+            # Remove orders that were filled during step()
+            # In backtest, pending orders use sim order IDs (order_XXXX) as client_order_id
+            still_pending = {
+                o.client_order_id for o in self.exchange.get_pending_orders(self.symbol)
+            }
+            self._pending_limit_orders = [
+                (oid, bar) for oid, bar in self._pending_limit_orders if oid in still_pending
+            ]
+            # Check expiry
+            if self._pending_limit_orders and self.play.expire_after_bars > 0:
+                self._check_limit_expiry(bar_index)
+
         # 4. Get current position
         position = self.exchange.get_position(self.symbol)
 
@@ -548,15 +565,37 @@ class PlayEngine:
                 error=f"Position size {sized_usdt:.2f} below minimum {self.config.min_trade_usdt}",
             )
 
-        # Create order
+        # Create order with order type from Play config
         side = cast(Literal["LONG", "SHORT", "FLAT"], signal.direction.upper())
+        order_type = self.play.entry_order_type  # "MARKET" or "LIMIT"
+        limit_price: float | None = None
+
+        if order_type == "LIMIT":
+            try:
+                current_price = self.data.get_candle(self._current_bar_index).close
+            except (IndexError, AttributeError):
+                current_price = None
+
+            if current_price is not None and self.play.limit_offset_pct > 0:
+                offset = self.play.limit_offset_pct / 100.0
+                if signal.direction.upper() == "LONG":
+                    limit_price = current_price * (1.0 - offset)
+                else:
+                    limit_price = current_price * (1.0 + offset)
+            elif current_price is not None:
+                limit_price = current_price  # 0% offset = at current price
+
         order = Order(
             symbol=self.symbol,
             side=side,
             size_usdt=sized_usdt,
-            order_type="MARKET",
+            order_type=cast(Literal["MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"], order_type),
+            limit_price=limit_price,
             stop_loss=signal.metadata.get("stop_loss") if signal.metadata else None,
             take_profit=signal.metadata.get("take_profit") if signal.metadata else None,
+            time_in_force=self.play.time_in_force,
+            tp_order_type=self.play.tp_order_type,
+            sl_order_type=self.play.sl_order_type,
             metadata={"signal": signal, "bar_index": self._current_bar_index},
         )
 
@@ -565,6 +604,11 @@ class PlayEngine:
 
         if result.success:
             self._total_trades += 1
+            # Track pending limit orders for expiry (use exchange_order_id for sim exchange)
+            if order_type == "LIMIT" and self.play.expire_after_bars > 0:
+                track_id = result.exchange_order_id or result.order_id
+                if track_id:
+                    self._pending_limit_orders.append((track_id, self._current_bar_index))
             # Only log fill details when available (live mode)
             # Backtest fills are logged by BacktestRunner after process_bar
             if result.fill_price and result.fill_usdt:
@@ -1329,6 +1373,27 @@ class PlayEngine:
         )
 
         return decision
+
+    def _check_limit_expiry(self, current_bar: int) -> None:
+        """Cancel unfilled limit orders after expire_after_bars exec bars."""
+        expire_bars = self.play.expire_after_bars
+        if expire_bars <= 0:
+            return
+
+        remaining: list[tuple[str, int]] = []
+        for order_id, submit_bar in self._pending_limit_orders:
+            if current_bar - submit_bar >= expire_bars:
+                if self.exchange.cancel_order(order_id):
+                    self.logger.info(f"Expired limit order {order_id} after {expire_bars} bars")
+            else:
+                remaining.append((order_id, submit_bar))
+        self._pending_limit_orders = remaining
+
+    def _remove_filled_limit_order(self, order_id: str) -> None:
+        """Remove a filled limit order from expiry tracking."""
+        self._pending_limit_orders = [
+            (oid, bar) for oid, bar in self._pending_limit_orders if oid != order_id
+        ]
 
     def _save_state(self) -> None:
         """Save current state to store."""

@@ -144,6 +144,8 @@ class Order:
     created_at: datetime | None = None
     status: OrderStatus = OrderStatus.PENDING
     submission_bar_index: int | None = None
+    tp_order_type: str = "Market"
+    sl_order_type: str = "Market"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -221,6 +223,9 @@ class Position:
     trailing_active: bool = False  # Whether trailing has been activated
     be_activated: bool = False  # Whether break-even has been triggered
     peak_favorable_price: float | None = None  # Best price for trailing stop calc
+    # TP/SL order types (Bybit convention: "Market" or "Limit")
+    tp_order_type: str = "Market"
+    sl_order_type: str = "Market"
 
     def unrealized_pnl(self, mark_price: float) -> float:
         """Calculate unrealized PnL at given mark price."""

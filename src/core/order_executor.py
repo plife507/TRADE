@@ -335,16 +335,53 @@ class OrderExecutor:
             return deviation_result
 
         # Step 2: Execute order
+        # Extract order type and parameters from signal metadata
+        meta = signal.metadata or {}
+        order_type = meta.get("order_type", "market").lower()
+        limit_price = meta.get("limit_price")
+        time_in_force = meta.get("time_in_force", "GTC")
+        tp_order_type = meta.get("tp_order_type", "Market")
+        sl_order_type = meta.get("sl_order_type", "Market")
+        stop_loss = meta.get("stop_loss")
+        take_profit = meta.get("take_profit")
+
         order_result = None
 
         try:
-            if signal.direction == "LONG":
-                order_result = self.exchange.market_buy(signal.symbol, exec_size)
-            elif signal.direction == "SHORT":
-                order_result = self.exchange.market_sell(signal.symbol, exec_size)
-            elif signal.direction == "FLAT":
+            if signal.direction == "FLAT":
                 order_result = self.exchange.close_position(signal.symbol)
+            elif order_type == "limit" and limit_price is not None:
+                # Limit entry with TP/SL
+                if signal.direction == "LONG":
+                    order_result = self.exchange.limit_buy_with_tpsl(
+                        signal.symbol, exec_size, limit_price,
+                        take_profit=take_profit, stop_loss=stop_loss,
+                        time_in_force=time_in_force,
+                        tp_order_type=tp_order_type, sl_order_type=sl_order_type,
+                    )
+                elif signal.direction == "SHORT":
+                    order_result = self.exchange.limit_sell_with_tpsl(
+                        signal.symbol, exec_size, limit_price,
+                        take_profit=take_profit, stop_loss=stop_loss,
+                        time_in_force=time_in_force,
+                        tp_order_type=tp_order_type, sl_order_type=sl_order_type,
+                    )
             else:
+                # Market entry with TP/SL
+                if signal.direction == "LONG":
+                    order_result = self.exchange.market_buy_with_tpsl(
+                        signal.symbol, exec_size,
+                        take_profit=take_profit, stop_loss=stop_loss,
+                        tp_order_type=tp_order_type, sl_order_type=sl_order_type,
+                    )
+                elif signal.direction == "SHORT":
+                    order_result = self.exchange.market_sell_with_tpsl(
+                        signal.symbol, exec_size,
+                        take_profit=take_profit, stop_loss=stop_loss,
+                        tp_order_type=tp_order_type, sl_order_type=sl_order_type,
+                    )
+
+            if order_result is None:
                 result = ExecutionResult(
                     success=False,
                     signal=signal,

@@ -316,6 +316,8 @@ class BacktestExchange:
                     stop_loss=order.stop_loss,
                     take_profit=order.take_profit,
                     timestamp=self._get_order_timestamp(),
+                    tp_order_type=order.tp_order_type,
+                    sl_order_type=order.sl_order_type,
                 )
             elif order.order_type.upper() == "LIMIT":
                 if order.limit_price is None:
@@ -330,6 +332,9 @@ class BacktestExchange:
                     stop_loss=order.stop_loss,
                     take_profit=order.take_profit,
                     timestamp=self._get_order_timestamp(),
+                    time_in_force=order.time_in_force,
+                    tp_order_type=order.tp_order_type,
+                    sl_order_type=order.sl_order_type,
                 )
             elif order.order_type.upper() in ("STOP", "STOP_MARKET"):
                 if order.trigger_price is None:

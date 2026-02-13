@@ -62,6 +62,9 @@ class Order:
     stop_loss: float | None = None
     take_profit: float | None = None
     client_order_id: str | None = None
+    time_in_force: str = "GTC"
+    tp_order_type: str = "Market"
+    sl_order_type: str = "Market"
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
