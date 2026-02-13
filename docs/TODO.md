@@ -56,12 +56,10 @@ The equity curve post-close fix ($7 gap to $0.00) was applied after the 170-play
 ### P2: Live Engine Rubric
 
 - [ ] Define live parity rubric: backtest results as gold standard for live comparison
-- [ ] Fix critical live-mode gaps documented in `docs/LIVE_READINESS_REPORT.md`:
+- [ ] Fix remaining live-mode gaps:
   - Live snapshot building returns None (play_engine.py)
   - TF index management skipped in live
   - Sub-loop never activates in live
-  - asyncio double-run in CLI
-- [ ] Wire safety systems (panic check, max drawdown halt, SIGTERM handler)
 - [ ] Demo mode 24h validation
 
 ### P3: Live Trading Integration
@@ -69,11 +67,11 @@ The equity curve post-close fix ($7 gap to $0.00) was applied after the 170-play
 - [ ] Test LiveIndicatorProvider with real WebSocket data
 - [ ] Paper trading integration
 - [ ] Complete live adapter stubs
-- [ ] Implement `play status` and `play stop` CLI commands
+- [x] ~~Implement `play status` and `play stop` CLI commands~~ (G15.3/G15.4)
 
 ### P4: Incremental Indicator Expansion
 
-Expand O(1) incremental indicators from 11 to 43 (full coverage for live trading).
+All 44 O(1) incremental indicators implemented. Expand coverage testing and edge-case validation.
 
 ### P5: DSL Enhancement (Deferred)
 

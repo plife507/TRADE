@@ -20,11 +20,10 @@ You are a documentation specialist for the TRADE trading bot. You maintain proje
 - `config/defaults.yml` - System defaults
 
 ### Architecture and Reference
-- `docs/PLAY_DSL_COOKBOOK.md` - DSL syntax reference (sections 1-14)
+- `docs/PLAY_DSL_REFERENCE.md` - Unified DSL syntax reference
 - `docs/SESSION_HANDOFF.md` - Session state
-- `docs/LIVE_READINESS_REPORT.md` - Live mode gaps
 - `docs/REAL_VERIFICATION_REPORT.md` - 60-play verification results
-- `docs/DSL_BEST_PRACTICES.md` - DSL best practices
+- `docs/CLI_DATA_GUIDE.md` - CLI data management guide
 
 ## Documentation Tasks
 

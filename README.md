@@ -285,7 +285,7 @@ System defaults are in `config/defaults.yml`. Plays override any default. Key de
 
 | Document | Description |
 |----------|-------------|
-| `docs/PLAY_DSL_COOKBOOK.md` | Complete DSL syntax reference (frozen) |
+| `docs/PLAY_DSL_REFERENCE.md` | Unified DSL syntax reference (frozen semantics) |
 | `docs/TODO.md` | Project status and gate tracking |
 | `docs/SESSION_HANDOFF.md` | Session handoff with quick commands |
 | `docs/plans/LIVE_READINESS_GLOBAL.md` | Live readiness gate overview (G14-G17) |

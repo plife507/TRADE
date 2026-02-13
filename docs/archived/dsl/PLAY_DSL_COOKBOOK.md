@@ -3,7 +3,7 @@
 > **CANONICAL SOURCE OF TRUTH** for Play DSL syntax.
 > All other DSL documentation is deprecated. This is the single reference.
 
-**Status: FROZEN (2026-01-08)** | **Last updated: 2026-02-10**
+**DSL Semantics: FROZEN (2026-01-08)** | **Document last updated: 2026-02-10**
 
 The DSL language is now frozen with 170 synthetic plays + 60 real-data plays validating all operators, structures, and indicators. Changes to DSL semantics require explicit unfreezing and test updates.
 

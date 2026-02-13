@@ -61,7 +61,7 @@ git log -3 --oneline
 
 2. **Check TRADE Rules**
 - Read `CLAUDE.md` for project rules
-- Check `docs/PLAY_DSL_COOKBOOK.md` for DSL patterns
+- Check `docs/PLAY_DSL_REFERENCE.md` for DSL patterns
 
 3. **Analyze Changes**
 - Read all modified files
