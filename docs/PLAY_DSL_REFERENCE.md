@@ -20,6 +20,7 @@ timeframes:
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 3.0
+  max_drawdown_pct: 20.0
   margin_mode: "isolated_usdt"
   fee_model: { taker_bps: 5.5, maker_bps: 2.0 }
   slippage_bps: 2.0
@@ -52,6 +53,12 @@ position_policy:
   mode: "long_only"          # long_only | short_only | long_short
   exit_mode: "first_hit"     # sl_tp_only | signal | first_hit
   max_positions_per_symbol: 1
+
+entry:                        # Optional: limit order entries
+  order_type: "MARKET"        # MARKET | LIMIT
+  limit_offset_pct: 0.05      # % offset from close for LIMIT
+  time_in_force: "GTC"        # GTC | IOC | FOK | PostOnly
+  expire_after_bars: 10       # 0 = no expiry
 
 variables:                    # Optional template resolution
   fast_len: 9
@@ -226,7 +233,10 @@ structures:
 
 **swing** (no deps)
 - Params: `left`, `right`, optional `atr_key`, `min_atr_move`, `major_threshold`
-- Outputs: `high_level`, `high_idx`, `low_level`, `low_idx`, `version`, `pair_high_level`, `pair_low_level`, `pair_direction`, `pair_version`
+- Primary outputs: `high_level`, `high_idx`, `low_level`, `low_idx`, `version`
+- Significance outputs (require `atr_key`): `high_significance`, `low_significance`, `high_is_major`, `low_is_major`
+- Paired pivot outputs: `pair_high_level`, `pair_high_idx`, `pair_low_level`, `pair_low_idx`, `pair_direction` ("bullish"/"bearish"), `pair_version`, `pair_anchor_hash`
+- Tracking outputs: `last_confirmed_pivot_idx`, `last_confirmed_pivot_type` ("high"/"low")
 
 **trend** (uses: swing)
 - Params: `wave_history_size` (default 4)
@@ -239,7 +249,8 @@ structures:
 
 **fibonacci** (uses: swing, optionally trend)
 - Params: `levels`, `mode` (retracement|extension|extension_up|extension_down), `use_paired_anchor` (default true), `use_trend_anchor` (false)
-- Outputs: `level[0.382]`, `level[0.5]`, `level[0.618]` etc. (bracket syntax)
+- Level outputs: `level[0.382]`, `level[0.5]`, `level[0.618]` etc. (bracket syntax)
+- Anchor outputs: `anchor_high`, `anchor_low`, `range`, `anchor_direction` ("bullish"/"bearish"/""), `anchor_hash`, `anchor_trend_direction`
 - Formula: `level = high - (ratio * range)`
 - Trend-wave mode requires `uses: [swing, trend]` + `use_trend_anchor: true` (implies `use_paired_anchor: false`)
 
@@ -252,9 +263,9 @@ structures:
 - Outputs: `value`
 
 **derived_zone** (uses: swing)
-- Params: `levels`, `mode`, `max_active` (K slots), `width_pct`, `use_paired_source` (default true)
-- Slot outputs: `zone[0].lower`, `zone[0].upper`, `zone[0].state`, `zone[0].touched_this_bar`
-- Aggregate outputs: `active_count`, `any_active`, `any_touched`, `any_inside`
+- Params: `levels`, `mode`, `max_active` (K slots), `width_pct`, `use_paired_source` (default true), `break_tolerance_pct`
+- Slot outputs (per zone N): `zone[N].lower`, `zone[N].upper`, `zone[N].state`, `zone[N].anchor_idx`, `zone[N].age_bars`, `zone[N].touched_this_bar`, `zone[N].touch_count`, `zone[N].last_touch_age`, `zone[N].inside`, `zone[N].instance_id`
+- Aggregate outputs: `active_count`, `any_active`, `any_touched`, `any_inside`, `first_active_lower`, `first_active_upper`, `first_active_idx`, `newest_active_idx`, `source_version`
 
 ### Warmup formulas
 
@@ -436,17 +447,20 @@ Both list and dict formats work in LHS and RHS positions.
 ```yaml
 holds_for:                    # ALL N bars must satisfy
   bars: 5
+  anchor_tf: "15m"            # Optional: scale to TF granularity
   expr:
     - ["close", ">", "ema_21"]
 
 occurred_within:              # At least ONE bar satisfied
   bars: 10
+  anchor_tf: "15m"            # Optional
   expr:
     - ["ema_9", "cross_above", "ema_21"]
 
 count_true:                   # At least M of N bars
   bars: 20
   min_true: 15
+  anchor_tf: "15m"            # Optional
   expr:
     - ["close", ">", "ema_50"]
 ```
@@ -458,6 +472,17 @@ holds_for_duration:
   duration: "30m"             # Explicit time, not bar count
   expr:
     - ["rsi_14", ">", 70]
+
+occurred_within_duration:
+  duration: "4h"              # At least one occurrence within 4 hours
+  expr:
+    - ["ema_9", "cross_above", "ema_21"]
+
+count_true_duration:
+  duration: "1d"              # At least M occurrences within duration
+  min_true: 5
+  expr:
+    - ["close", ">", "ema_50"]
 ```
 
 Duration formats: `"5m"`, `"1h"`, `"1d"` etc. Max 24h, max 500 bars after conversion.
@@ -482,7 +507,7 @@ risk:
 ```yaml
 risk_model:
   stop_loss:
-    type: "percent"           # percent | atr_multiple | structure | fixed_points
+    type: "percent"           # percent | atr_multiple | structure | fixed_points | trailing_atr | trailing_pct
     value: 2.0
   take_profit:
     type: "rr_ratio"          # percent | rr_ratio | atr_multiple | fixed_points
@@ -495,7 +520,57 @@ risk_model:
 
 ATR-based stops require `atr_feature_id: "atr_14"` referencing a declared feature.
 
-## 10. Multi-Timeframe
+### Trailing stops
+
+```yaml
+risk:
+  stop_loss:
+    type: "trailing_atr"        # Trail using ATR distance
+    atr_multiplier: 2.0         # Distance = ATR x multiplier
+    atr_feature_id: "atr_14"    # Required for ATR trailing
+    activation_pct: 1.0         # Start trailing after 1% profit (0 = immediate)
+  # OR
+  stop_loss:
+    type: "trailing_pct"        # Trail using % distance
+    trail_pct: 1.5              # Distance = price x 1.5%
+    activation_pct: 1.0         # Start trailing after 1% profit
+```
+
+### Break-even stop
+
+```yaml
+risk:
+  break_even:
+    activation_pct: 1.0         # Move to BE after 1% profit
+    offset_pct: 0.1             # Place stop 0.1% above entry (positive = favorable)
+```
+
+### TP/SL order types
+
+```yaml
+risk:
+  tp_order_type: "Market"       # Market | Limit (Bybit convention)
+  sl_order_type: "Market"       # Market | Limit
+```
+
+## 10. Entry Order Configuration
+
+```yaml
+entry:
+  order_type: "LIMIT"           # MARKET (default) | LIMIT
+  limit_offset_pct: 0.05        # % offset from close price (for LIMIT orders)
+  time_in_force: "GTC"          # GTC (default) | IOC | FOK | PostOnly
+  expire_after_bars: 10         # Bars before unfilled LIMIT order expires (0 = no expiry)
+```
+
+| Field | Type | Default | Valid Values |
+|-------|------|---------|-------------|
+| `order_type` | str | `"MARKET"` | `MARKET`, `LIMIT` |
+| `limit_offset_pct` | float | `0.0` | >= 0 |
+| `time_in_force` | str | `"GTC"` | `GTC`, `IOC`, `FOK`, `PostOnly` |
+| `expire_after_bars` | int | `0` | >= 0 (0 = no expiry) |
+
+## 11. Multi-Timeframe
 
 ### Top-down approach
 
@@ -548,7 +623,37 @@ actions:
 - ["last_price", "cross_above", "ema_200_4h"]  # 1m granularity
 ```
 
-## 11. Synthetic Data & Validation
+## 12. Account Configuration
+
+```yaml
+account:
+  starting_equity_usdt: 10000.0    # Required: starting capital
+  max_leverage: 3.0                 # Required: max leverage (1.0 = no margin)
+  max_drawdown_pct: 20.0            # Required: halt trading at 20% drawdown
+  margin_mode: "isolated_usdt"      # Must be "isolated_usdt"
+  fee_model:
+    taker_bps: 5.5                  # Taker fee in basis points (0.055%)
+    maker_bps: 2.0                  # Maker fee in basis points (0.02%)
+  slippage_bps: 2.0                 # Slippage in basis points
+  min_trade_notional_usdt: 10.0     # Minimum position size
+  max_notional_usdt: 100000.0       # Optional: max notional cap
+  max_margin_usdt: 5000.0           # Optional: max margin per position
+  maintenance_margin_rate: 0.005    # Optional: 0.5% MMR
+```
+
+| Field | Required | Default (from config/defaults.yml) |
+|-------|----------|-------|
+| `starting_equity_usdt` | Yes | 10000.0 |
+| `max_leverage` | Yes | 1.0 |
+| `max_drawdown_pct` | Yes | 20.0 |
+| `margin_mode` | No | `"isolated_usdt"` |
+| `fee_model.taker_bps` | No | 5.5 |
+| `fee_model.maker_bps` | No | 2.0 |
+| `slippage_bps` | No | 2.0 |
+| `min_trade_notional_usdt` | No | 10.0 |
+| `maintenance_margin_rate` | No | 0.005 |
+
+## 13. Synthetic Data & Validation
 
 ### Embedding in plays
 
@@ -585,7 +690,7 @@ python trade_cli.py validate full          # ~10min, 170-play suite
 python trade_cli.py validate pre-live --play X  # Real-data check
 ```
 
-## 12. Pitfalls
+## 14. Pitfalls
 
 ### near_pct is a percentage, not a ratio
 ```yaml
@@ -639,7 +744,7 @@ Structures are built top-to-bottom. A structure can only `uses:` keys defined ab
 | `mark_price` | Current | Not supported | - |
 | `close` | Current bar | Previous bar | Supported |
 
-## 13. Recipes
+## 15. Recipes
 
 ### EMA crossover with trend filter
 ```yaml
@@ -755,7 +860,38 @@ risk_model:
   sizing: { model: "risk_based", value: 1.0, max_leverage: 5.0 }
 ```
 
-## 14. Defaults Reference
+### Trailing stop with break-even
+```yaml
+features:
+  atr_14: { indicator: atr, params: { length: 14 } }
+risk:
+  stop_loss:
+    type: "trailing_atr"
+    atr_multiplier: 2.0
+    atr_feature_id: "atr_14"
+    activation_pct: 1.0
+  take_profit_pct: 6.0
+  max_position_pct: 10.0
+  break_even:
+    activation_pct: 1.0
+    offset_pct: 0.1
+```
+
+### Limit order entry with expiry
+```yaml
+entry:
+  order_type: LIMIT
+  limit_offset_pct: 0.05
+  time_in_force: GTC
+  expire_after_bars: 5
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  tp_order_type: Limit
+  sl_order_type: Market
+```
+
+## 16. Defaults Reference
 
 Source: `config/defaults.yml`
 
@@ -764,16 +900,21 @@ Source: `config/defaults.yml`
 | `taker_bps` | 5.5 (0.055%) |
 | `maker_bps` | 2.0 (0.02%) |
 | `slippage_bps` | 2.0 |
-| `margin.mode` | isolated |
+| `margin.mode` | isolated_usdt |
 | `margin.maintenance_margin_rate` | 0.005 (0.5%) |
 | `max_leverage` | 1.0 |
 | `risk_per_trade_pct` | 1.0 |
-| `mode` | long_only |
-| `exit_mode` | sl_tp_only |
+| `max_drawdown_pct` | 20.0 |
 | `starting_equity_usdt` | 10000.0 |
 | `min_trade_notional_usdt` | 10.0 |
+| `mode` | long_only |
+| `exit_mode` | sl_tp_only |
+| `entry_order_type` | MARKET |
+| `time_in_force` | GTC |
+| `tp_order_type` | Market |
+| `sl_order_type` | Market |
 
-## 15. Deprecations
+## 17. Deprecations
 
 | Removed | Use Instead |
 |---------|-------------|
