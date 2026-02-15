@@ -1,0 +1,76 @@
+# concept: scalping
+version: "3.0.0"
+name: "sol_bb_scalp_3m"
+description: "Bollinger Band %B crossover scalp on SOL 3m. Fade bands, exit at middle."
+
+symbol: "SOLUSDT"
+
+timeframes:
+  low_tf: "3m"
+  med_tf: "15m"
+  high_tf: "1h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  max_drawdown_pct: 20.0
+  margin_mode: "isolated_usdt"
+  fee_model: { taker_bps: 5.5, maker_bps: 2.0 }
+  slippage_bps: 2.0
+
+features:
+  bbands_20_2:
+    indicator: bbands
+    params: { length: 20, std: 2.0 }
+
+actions:
+  - id: entry
+    cases:
+      - when:
+          all:
+            - ["bbands_20_2.percent_b", "cross_above", 0]
+        emit:
+          - action: entry_long
+      - when:
+          all:
+            - ["bbands_20_2.percent_b", "cross_below", 1]
+        emit:
+          - action: entry_short
+    else:
+      emit:
+        - action: no_action
+
+  - id: exit
+    cases:
+      - when:
+          all:
+            - ["bbands_20_2.percent_b", "cross_above", 0.5]
+        emit:
+          - action: exit_long
+      - when:
+          all:
+            - ["bbands_20_2.percent_b", "cross_below", 0.5]
+        emit:
+          - action: exit_short
+    else:
+      emit:
+        - action: no_action
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 20.0
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "signal"
+  max_positions_per_symbol: 1
+
+synthetic:
+  pattern: "range_wide"
+  bars: 500
+  seed: 42
+
+expected:
+  min_trades: 1

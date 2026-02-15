@@ -137,14 +137,17 @@ def _setup_synthetic_provider(
     play: Play,
     config: "RunnerConfig",
     synthetic_provider: "SyntheticDataProvider | None",
+    use_synthetic: bool = False,
 ) -> "SyntheticDataProvider | None":
     """
     Setup synthetic data provider if Play has synthetic config.
 
     Returns updated synthetic_provider (may be newly created or passed through).
     Also modifies config.window_start/end and config.skip_preflight if synthetic.
+
+    Only auto-creates from play.synthetic when use_synthetic=True.
     """
-    if play.synthetic is None or synthetic_provider is not None:
+    if not use_synthetic or play.synthetic is None or synthetic_provider is not None:
         return synthetic_provider
 
     from src.forge.validation import generate_synthetic_candles
@@ -593,7 +596,7 @@ def _write_results_summary(ctx: _RunContext) -> ResultsSummary:
     resolved_idea_path = (
         str(ctx.config.plays_dir / f"{ctx.play.id}.yml")
         if ctx.config.plays_dir
-        else f"tests/functional/plays/{ctx.play.id}.yml"
+        else f"plays/{ctx.play.id}.yml"
     )
 
     # Extract leverage and equity from Play
@@ -649,7 +652,7 @@ def _write_pipeline_signature(ctx: _RunContext) -> None:
     resolved_idea_path = (
         str(ctx.config.plays_dir / f"{ctx.play.id}.yml")
         if ctx.config.plays_dir
-        else f"tests/functional/plays/{ctx.play.id}.yml"
+        else f"plays/{ctx.play.id}.yml"
     )
 
     # Get declared feature keys

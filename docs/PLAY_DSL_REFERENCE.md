@@ -657,6 +657,18 @@ account:
 
 ### Embedding in plays
 
+The `synthetic:` block is **metadata only**. It defines how to generate test data for the play but is **NOT auto-activated**. To use it, pass `--synthetic` on the CLI:
+
+```bash
+# Uses real data (synthetic: block IGNORED)
+python trade_cli.py backtest run --play my_play
+
+# Uses synthetic data via CLI args
+python trade_cli.py backtest run --play my_play --synthetic
+
+# Programmatic callers (validate.py) auto-use synthetic: block via create_engine_from_play()
+```
+
 ```yaml
 synthetic:
   pattern: "trend_up_clean"
@@ -670,6 +682,17 @@ expected:                     # Optional assertions
   min_trades: 3
   pnl_direction: positive
 ```
+
+Choose a pattern that matches the strategy concept:
+
+| Concept | Good patterns |
+|---------|--------------|
+| Mean reversion / scalping | `range_wide`, `range_symmetric`, `vol_squeeze_expand` |
+| Trend following | `trend_up_clean`, `trend_down_clean`, `trend_stairs` |
+| Breakout | `breakout_clean`, `breakout_retest`, `vol_squeeze_expand` |
+| Range trading | `range_tight`, `range_wide`, `range_ascending` |
+
+For short strategies, use the corresponding down/bear patterns.
 
 ### Pattern catalog
 

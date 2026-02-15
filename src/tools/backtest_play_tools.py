@@ -253,6 +253,9 @@ def backtest_preflight_play_tool(
             auto_sync_config=auto_sync_config,
         )
 
+        # Print summary so user sees all TF statuses (including 1m)
+        preflight_report.print_summary()
+
         # Get exec TF info for message
         exec_tf = validate_canonical_tf(play.exec_tf)
 
@@ -513,6 +516,7 @@ def backtest_run_play_tool(
     fix_gaps: bool = True,
     validate_artifacts_after: bool = True,
     skip_preflight: bool = False,
+    use_synthetic: bool = False,
 ) -> ToolResult:
     """
     Run a backtest for an Play.
@@ -539,6 +543,8 @@ def backtest_run_play_tool(
         validate_artifacts_after: If True (default), validate artifacts after run (HARD FAIL if invalid)
         skip_preflight: If True, skip preflight checks. Use for parallel execution where
                        data was already synced by the parent process.
+        use_synthetic: If True and Play has a synthetic: block, use synthetic data.
+                      If False (default), the synthetic block is ignored and real data is used.
 
     Returns:
         ToolResult with backtest results
@@ -553,8 +559,9 @@ def backtest_run_play_tool(
         play = load_play(play_id, base_dir=plays_dir)
 
         # Check if Play has synthetic config - use synthetic data path
+        # Only when use_synthetic=True (explicit --synthetic flag)
         synthetic_provider = None
-        if play.synthetic is not None:
+        if use_synthetic and play.synthetic is not None:
             from src.forge.validation import generate_synthetic_candles
             from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
@@ -1179,7 +1186,7 @@ def backtest_list_plays_tool(
             message=f"Found {len(cards)} Plays",
             data={
                 "plays": cards,
-                "directory": str(plays_dir) if plays_dir else "tests/functional/plays/",
+                "directory": str(plays_dir) if plays_dir else "plays/",
             },
         )
 
@@ -1267,14 +1274,31 @@ def backtest_play_normalize_tool(
                 error=f"Empty or invalid YAML in {yaml_path}",
             )
 
-        # Normalize and validate
+        # Phase 1: Unified validation (dict-level checks + Play.from_dict())
+        from ..forge.validation.play_validator import validate_play_unified
+        unified_result = validate_play_unified(raw)
+
+        if not unified_result.is_valid:
+            error_details = format_validation_errors(unified_result.errors)
+            return ToolResult(
+                success=False,
+                error=f"Play validation failed with {len(unified_result.errors)} error(s)",
+                data={
+                    "play_id": play_id,
+                    "yaml_path": str(yaml_path),
+                    "errors": [e.to_dict() for e in unified_result.errors],
+                    "error_details": error_details,
+                },
+            )
+
+        # Phase 2: Normalize (auto-generate required_indicators etc.)
         normalized, result = normalize_play_yaml(raw, auto_generate_required=True)
 
         if not result.is_valid:
             error_details = format_validation_errors(result.errors)
             return ToolResult(
                 success=False,
-                error=f"Play validation failed with {len(result.errors)} error(s)",
+                error=f"Play normalization failed with {len(result.errors)} error(s)",
                 data={
                     "play_id": play_id,
                     "yaml_path": str(yaml_path),

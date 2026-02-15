@@ -59,6 +59,7 @@ def create_engine_from_play(
     synthetic_provider: "SyntheticDataProvider | None" = None,
     window_name: str = "run",
     data_env: str = "backtest",
+    use_synthetic: bool = True,
 ):
     """
     Create a PlayEngine from a Play with pre-built backtest components.
@@ -232,8 +233,8 @@ def create_engine_from_play(
     )
 
     # Auto-create synthetic provider from Play's synthetic config
-    # This allows validation plays to use the same code path as regular backtests
-    if synthetic_provider is None and play.synthetic is not None:
+    # Only when use_synthetic=True (explicit opt-in via --synthetic flag)
+    if use_synthetic and synthetic_provider is None and play.synthetic is not None:
         from src.forge.validation.synthetic_data import generate_synthetic_candles
         from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
