@@ -15,29 +15,65 @@ python trade_cli.py validate quick              # Pre-commit (~10s)
 python trade_cli.py validate standard           # Pre-merge (~2min)
 python trade_cli.py validate full               # Pre-release (~10min)
 python trade_cli.py validate pre-live --play X  # Pre-live readiness
+python trade_cli.py validate exchange           # Exchange integration (~30s)
 python trade_cli.py validate quick --json       # JSON output for CI
 ```
 
 ## What Each Tier Tests
 
 ### Quick (G1-G4)
-- G1: YAML parse + normalize 5 core plays in `plays/core_validation/`
-- G2: Indicator toolkit contract audit (43+ indicators)
-- G3: Incremental parity audit
+- G1: YAML parse + normalize 5 core plays in `plays/validation/core/`
+- G2: Indicator registry contract audit (44 indicators)
+- G3: Incremental vs vectorized parity audit (43 indicators)
 - G4: Run 5 core plays with synthetic data (all produce trades)
 
-### Standard (G5-G10)
-- G5-G8: Structure parity, rollup parity, sim orders
-- G9-G10: Operator/structure/complexity suite runs
+### Standard (G5-G11)
+- G5: Structure detector parity (7 detectors)
+- G6: 1m rollup bucket parity
+- G7: Simulator order type smoke tests (6 order types)
+- G8: Operator suite (plays/validation/operators/)
+- G9: Structure suite (plays/validation/structures/)
+- G10: Complexity ladder (plays/validation/complexity/)
+- G11: Financial metrics audit (drawdown, CAGR, Calmar, TF normalization)
 
-### Full (G11-G12)
-- G11: Full 170-play synthetic suite (`scripts/run_full_suite.py`)
-- G12: 60-play real-data verification (`scripts/run_real_verification.py`)
+### Full (G12-G14)
+- G12: Full indicator suite (plays/validation/indicators/)
+- G13: Full pattern suite (plays/validation/patterns/)
+- G14: Engine determinism (same input = same output, 5 plays x2 runs)
 
-### Pre-Live (PL1-PL3)
-- PL1: Exchange connectivity
-- PL2: Play-specific readiness
-- PL3: Risk parameter validation
+### Pre-Live (PL1-PL3 + G1 + G4)
+- PL1: Bybit API connectivity
+- PL2: Account balance sufficiency for play
+- PL3: No conflicting open positions
+- G1: YAML parse (core plays)
+- G4: Core engine plays (synthetic)
+
+### Exchange (EX1-EX5)
+- EX1: API connectivity + server time offset
+- EX2: Account balance, exposure, portfolio, collateral
+- EX3: Market data (prices, OHLCV, funding, open interest, orderbook)
+- EX4: Order flow (place limit buy -> verify -> cancel, demo mode only)
+- EX5: Diagnostics (rate limits, WebSocket status, health check)
+
+---
+
+## Debug Commands
+
+For targeted investigation when a gate fails:
+
+```bash
+# Indicator math parity for a specific play
+python trade_cli.py debug math-parity --play <play_name> --start <date> --end <date>
+
+# Snapshot plumbing parity
+python trade_cli.py debug snapshot-plumbing --play <play_name> --start <date> --end <date>
+
+# Engine determinism comparison
+python trade_cli.py debug determinism --run-a <path_a> --run-b <path_b>
+
+# Standalone metrics audit
+python trade_cli.py debug metrics
+```
 
 ---
 
@@ -50,34 +86,17 @@ python trade_cli.py validate quick --json       # JSON output for CI
 | `src/backtest/sim/` | `validate quick` |
 | `src/backtest/runtime/` | `validate quick` |
 | `src/structures/` | `validate standard` |
-| `src/backtest/metrics.py` | `backtest metrics-audit` |
+| `src/backtest/metrics.py` | `validate standard` (G11 metrics audit) |
 | Play YAML files | `validate quick` |
 | Multiple modules | `validate standard` or `full` |
-
----
-
-## Individual Audit Commands (still functional)
-
-### Component Audits (isolated, no engine)
-```bash
-python trade_cli.py backtest audit-toolkit      # src/indicators/ registry
-python trade_cli.py backtest audit-rollup       # sim/pricing.py buckets
-python trade_cli.py backtest metrics-audit      # metrics.py math
-```
-
-### Engine Validation
-```bash
-python trade_cli.py --smoke full                # Full smoke test
-python trade_cli.py --smoke backtest            # Engine integration
-python trade_cli.py backtest structure-smoke    # Structure detectors
-python trade_cli.py backtest run --play <play>  # Full backtest execution
-```
+| Exchange/API code | `validate exchange` |
+| Pre-deploy play | `validate pre-live --play X` |
 
 ---
 
 ## Core Validation Plays
 
-Located in `plays/core_validation/`:
+Located in `plays/validation/core/`:
 
 | Play | Exercises |
 |------|-----------|
@@ -91,13 +110,13 @@ Located in `plays/core_validation/`:
 
 | Directory | Count | Purpose |
 |-----------|-------|---------|
-| `plays/core_validation/` | 5 | Core validation (quick tier) |
-| `plays/indicator_suite/` | 84 | All indicator coverage |
-| `plays/operator_suite/` | 25 | DSL operator coverage |
-| `plays/structure_suite/` | 14 | Structure type coverage |
-| `plays/pattern_suite/` | 34 | Synthetic pattern coverage |
-| `plays/complexity_ladder/` | 13 | Increasing complexity |
-| `plays/real_verification/` | 60 | Real-data Wyckoff verification |
+| `plays/validation/core/` | 5 | Core validation (quick tier) |
+| `plays/validation/indicators/` | 84 | All indicator coverage |
+| `plays/validation/operators/` | 25 | DSL operator coverage |
+| `plays/validation/structures/` | 14 | Structure type coverage |
+| `plays/validation/patterns/` | 34 | Synthetic pattern coverage |
+| `plays/validation/complexity/` | 13 | Increasing complexity |
+| `plays/validation/real_data/` | 60 | Real-data Wyckoff verification |
 
 ---
 

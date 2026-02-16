@@ -242,7 +242,5 @@ risk:
   take_profit_pct: 6.0
   max_position_pct: 100.0
 
-synthetic:
-  pattern: "ranging"
-  bars: 500
-  seed: 42
+validation:
+  pattern: "trending"

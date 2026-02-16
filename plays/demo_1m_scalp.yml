@@ -1,0 +1,87 @@
+version: "3.0.0"
+name: "demo_1m_scalp"
+description: |
+  1m EMA scalper for demo testing.
+
+  Fast EMA 5/13 crossover on 1m with RSI guard.
+  Designed to fire frequently so you can test demo live actions
+  (entries, exits, TP/SL hits) quickly.
+
+  Entry long:  EMA5 crosses above EMA13, RSI < 70 (not overbought)
+  Entry short: EMA5 crosses below EMA13, RSI > 30 (not oversold)
+  Exit: reverse cross or TP/SL hit
+
+symbol: "SOLUSDT"
+
+timeframes:
+  low_tf: "1m"
+  med_tf: "1m"
+  high_tf: "1m"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 3.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  max_drawdown_pct: 20.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_fast:
+    indicator: ema
+    params: {length: 5}
+
+  ema_slow:
+    indicator: ema
+    params: {length: 13}
+
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+actions:
+  entry_long:
+    all:
+      - ["ema_fast", "cross_above", "ema_slow"]
+      - ["rsi_14", "<", 70]
+
+  entry_short:
+    all:
+      - ["ema_fast", "cross_below", "ema_slow"]
+      - ["rsi_14", ">", 30]
+
+  exit_long:
+    any:
+      - ["ema_fast", "cross_below", "ema_slow"]
+
+  exit_short:
+    any:
+      - ["ema_fast", "cross_above", "ema_slow"]
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "atr_multiple"
+    value: 1.5
+    atr_feature_id: "atr_14"
+
+  take_profit:
+    type: "rr_ratio"
+    value: 1.5
+
+  sizing:
+    model: "risk_based"
+    value: 1.0
+    max_leverage: 3.0

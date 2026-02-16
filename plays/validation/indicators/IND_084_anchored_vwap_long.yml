@@ -1,7 +1,7 @@
 version: "3.0.0"
 name: "ind_084_anchored_vwap_long"
 description: |
-  Indicator Suite - Anchored VWAP above price with EMA filter
+  Indicator Suite - Anchored VWAP: tests primary value AND bars_since_anchor in DSL conditions
 
 symbol: "BTCUSDT"
 
@@ -38,7 +38,8 @@ structures:
 actions:
   entry_long:
     all:
-      - ["close", ">", "ema_20"]
+      - ["close", ">", "avwap"]
+      - ["avwap.bars_since_anchor", ">", 3]
 position_policy:
   mode: "long_only"
   exit_mode: "sl_tp_only"
@@ -48,3 +49,6 @@ risk:
   stop_loss_pct: 3.0
   take_profit_pct: 6.0
   max_position_pct: 100.0
+
+validation:
+  pattern: "trend_up_clean"

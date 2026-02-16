@@ -71,11 +71,15 @@ git push origin HEAD
 | `indicators` | src/indicators/ |
 | `structures` | src/structures/ |
 | `data` | src/data/ |
+| `core` | src/core/ (exchange manager, order executor, risk) |
+| `exchanges` | src/exchanges/ (Bybit websocket, API) |
+| `config` | src/config/ |
 | `forge` | src/forge/ |
 | `cli` | trade_cli.py, src/cli/ |
 | `tools` | src/tools/ |
 | `plays` | plays/ |
 | `validate` | src/cli/validate.py |
+| `risk` | src/risk/ |
 
 ## Example Output
 

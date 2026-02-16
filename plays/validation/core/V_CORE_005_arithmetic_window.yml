@@ -82,7 +82,5 @@ risk:
   stop_loss_pct: 3.0
   take_profit_pct: 6.0
 
-synthetic:
-  pattern: "range_wide"
-  bars: 500
-  seed: 404
+validation:
+  pattern: "trending"

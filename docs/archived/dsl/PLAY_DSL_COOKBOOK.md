@@ -2586,7 +2586,7 @@ python trade_cli.py forge validate-patterns
 
 ## 13. Validation Plays
 
-Validation plays are self-contained Play YAML files that embed their own synthetic data configuration. They live in `plays/core_validation/` and exercise specific engine code paths without requiring external pattern mappings or databases.
+Validation plays are self-contained Play YAML files that embed their own synthetic data configuration. They live in `plays/validation/core/` and exercise specific engine code paths without requiring external pattern mappings or databases.
 
 ### Why Embedded Synthetic Config
 
@@ -2629,7 +2629,7 @@ When `--synthetic` is passed to the backtest CLI, the engine reads the `syntheti
 
 ### 5 Core Validation Plays
 
-The `plays/core_validation/` directory contains 5 plays designed to cover the critical engine code paths with minimal overlap. Each play targets a specific validation domain.
+The `plays/validation/core/` directory contains 5 plays designed to cover the critical engine code paths with minimal overlap. Each play targets a specific validation domain.
 
 | Play | Pattern | Domain | Code Paths Exercised |
 |------|---------|--------|---------------------|

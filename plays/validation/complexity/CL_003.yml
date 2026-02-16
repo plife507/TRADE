@@ -59,7 +59,5 @@ risk:
   take_profit_pct: 5.0
   risk_per_trade_pct: 1.0
 
-synthetic:
-  pattern: "breakout_clean"
-  bars: 500
-  seed: 42
+validation:
+  pattern: "ranging"

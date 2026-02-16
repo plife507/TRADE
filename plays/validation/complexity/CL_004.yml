@@ -76,7 +76,5 @@ risk:
   stop_loss_pct: 3.0
   take_profit_pct: 5.0
 
-synthetic:
+validation:
   pattern: "ranging"
-  bars: 500
-  seed: 42

@@ -82,3 +82,6 @@ risk:
   stop_loss_pct: 3.5
   take_profit_pct: 7.0
   max_position_pct: 100.0
+
+validation:
+  pattern: "trending"

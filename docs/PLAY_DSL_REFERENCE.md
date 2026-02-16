@@ -36,10 +36,16 @@ structures:
       key: swing
       params: { left: 5, right: 5 }
 
+setups:                         # Optional: reusable condition blocks
+  trend_up:
+    all:
+      - ["ema_9", ">", "ema_21"]
+
 actions:
   entry_long:
     all:
-      - ["ema_9", ">", "ema_21"]
+      - setup: trend_up
+      - ["rsi_14", "<", 70]
   exit_long:
     all:
       - ["ema_9", "<", "ema_21"]
@@ -359,7 +365,47 @@ emit:
       entry_reason: "oversold_bounce"     # Static string
 ```
 
-## 6. Operators
+## 6. Setups (Reusable Condition Blocks)
+
+Define named condition blocks that can be referenced from actions or other setups.
+
+```yaml
+setups:
+  trend_up:
+    all:
+      - ["close", ">", "ema_50"]
+      - ["ema_9", ">", "ema_21"]
+
+  rsi_oversold:
+    all:
+      - ["rsi_14", "<", 30]
+
+  pullback_entry:
+    all:
+      - setup: trend_up          # Reference another setup
+      - setup: rsi_oversold
+
+actions:
+  entry_long:
+    all:
+      - setup: pullback_entry    # Use setup in action
+      - ["volume", ">", "vol_sma_20"]
+```
+
+### Rules
+
+- Setups are parsed before actions (so references resolve correctly)
+- Setups can reference other setups (nested composition)
+- Circular references are detected at parse time: `A -> B -> A` raises `ValueError`
+- Undeclared setup references raise `ValueError` with suggestions
+- Feature references inside setups are validated against declared features
+- Setup conditions use the same syntax as action conditions (`all:`, `any:`, `not:`, operators)
+
+### Evaluation
+
+Setup expressions are cached per bar. If `pullback_entry` is referenced in both `entry_long` and `exit_short`, it evaluates once and reuses the result.
+
+## 7. Operators
 
 ### Condition formats
 
@@ -414,7 +460,7 @@ any:
 
 `None`, `NaN`, `Infinity`, feature-not-found, offset-exceeds-history all return `false` (not error).
 
-## 7. Arithmetic
+## 8. Arithmetic
 
 Operators: `+`, `-`, `*`, `/`, `%`. Division by zero returns None (fails condition).
 
@@ -440,7 +486,7 @@ Operators: `+`, `-`, `*`, `/`, `%`. Division by zero returns None (fails conditi
 
 Both list and dict formats work in LHS and RHS positions.
 
-## 8. Window Operators
+## 9. Window Operators
 
 ### Bar-based
 
@@ -487,7 +533,7 @@ count_true_duration:
 
 Duration formats: `"5m"`, `"1h"`, `"1d"` etc. Max 24h, max 500 bars after conversion.
 
-## 9. Risk Model
+## 10. Risk Model
 
 Two equivalent formats: `risk:` (shorthand) or `risk_model:` (full).
 
@@ -553,7 +599,7 @@ risk:
   sl_order_type: "Market"       # Market | Limit
 ```
 
-## 10. Entry Order Configuration
+## 11. Entry Order Configuration
 
 ```yaml
 entry:
@@ -570,7 +616,7 @@ entry:
 | `time_in_force` | str | `"GTC"` | `GTC`, `IOC`, `FOK`, `PostOnly` |
 | `expire_after_bars` | int | `0` | >= 0 (0 = no expiry) |
 
-## 11. Multi-Timeframe
+## 12. Multi-Timeframe
 
 ### Top-down approach
 
@@ -623,7 +669,7 @@ actions:
 - ["last_price", "cross_above", "ema_200_4h"]  # 1m granularity
 ```
 
-## 12. Account Configuration
+## 13. Account Configuration
 
 ```yaml
 account:
@@ -653,7 +699,7 @@ account:
 | `min_trade_notional_usdt` | No | 10.0 |
 | `maintenance_margin_rate` | No | 0.005 |
 
-## 13. Synthetic Data & Validation
+## 14. Synthetic Data & Validation
 
 ### Embedding in plays
 
@@ -687,7 +733,7 @@ Choose a pattern that matches the strategy concept:
 
 | Concept | Good patterns |
 |---------|--------------|
-| Mean reversion / scalping | `range_wide`, `range_symmetric`, `vol_squeeze_expand` |
+| Mean reversion / scalping | `range_wide`, `range_tight`, `vol_squeeze_expand` |
 | Trend following | `trend_up_clean`, `trend_down_clean`, `trend_stairs` |
 | Breakout | `breakout_clean`, `breakout_retest`, `vol_squeeze_expand` |
 | Range trading | `range_tight`, `range_wide`, `range_ascending` |
@@ -697,12 +743,13 @@ For short strategies, use the corresponding down/bear patterns.
 ### Pattern catalog
 
 **Trend**: `trend_up_clean`, `trend_down_clean`, `trend_grinding`, `trend_parabolic`, `trend_exhaustion`, `trend_stairs`
-**Range**: `range_tight`, `range_wide`, `range_ascending`, `range_descending`, `range_symmetric`
-**Reversal**: `reversal_v_bottom`, `reversal_v_top`, `reversal_double_bottom`, `reversal_double_top`, `reversal_rounded`
-**Breakout**: `breakout_clean`, `breakout_false`, `breakout_retest`, `breakout_failed`
+**Range**: `range_tight`, `range_wide`, `range_ascending`, `range_descending`
+**Reversal**: `reversal_v_bottom`, `reversal_v_top`, `reversal_double_bottom`, `reversal_double_top`
+**Breakout**: `breakout_clean`, `breakout_false`, `breakout_retest`
 **Volatility**: `vol_squeeze_expand`, `vol_spike_recover`, `vol_spike_continue`, `vol_decay`
 **Liquidity**: `liquidity_hunt_lows`, `liquidity_hunt_highs`, `choppy_whipsaw`, `accumulation`, `distribution`
-**Multi-TF**: `mtf_aligned_bull`, `mtf_aligned_bear`, `mtf_pullback_bull`, `mtf_pullback_bear`, `mtf_divergent`
+**Multi-TF**: `mtf_aligned_bull`, `mtf_aligned_bear`, `mtf_pullback_bull`, `mtf_pullback_bear`
+**Legacy**: `trending`, `ranging`, `volatile`, `multi_tf_aligned`
 
 ### Validation tiers
 
@@ -713,7 +760,7 @@ python trade_cli.py validate full          # ~10min, 170-play suite
 python trade_cli.py validate pre-live --play X  # Real-data check
 ```
 
-## 14. Pitfalls
+## 15. Pitfalls
 
 ### near_pct is a percentage, not a ratio
 ```yaml
@@ -767,7 +814,7 @@ Structures are built top-to-bottom. A structure can only `uses:` keys defined ab
 | `mark_price` | Current | Not supported | - |
 | `close` | Current bar | Previous bar | Supported |
 
-## 15. Recipes
+## 16. Recipes
 
 ### EMA crossover with trend filter
 ```yaml
@@ -914,7 +961,7 @@ risk:
   sl_order_type: Market
 ```
 
-## 16. Defaults Reference
+## 17. Defaults Reference
 
 Source: `config/defaults.yml`
 
@@ -937,7 +984,7 @@ Source: `config/defaults.yml`
 | `tp_order_type` | Market |
 | `sl_order_type` | Market |
 
-## 17. Deprecations
+## 18. Deprecations
 
 | Removed | Use Instead |
 |---------|-------------|

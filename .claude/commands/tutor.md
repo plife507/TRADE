@@ -24,6 +24,12 @@ Examples:
 /tutor FeedStore and snapshots
 /tutor validation system
 /tutor synthetic data patterns
+/tutor live runner
+/tutor incremental indicators
+/tutor order execution
+/tutor risk management
+/tutor play YAML
+/tutor data sync
 ```
 
 ## Behavior
@@ -66,17 +72,26 @@ When tutor mode is invoked:
 |-------|-----------|---------------|
 | Play Engine | `src/engine/play_engine.py` | Unified engine, 1m evaluation, warmup |
 | Engine Factory | `src/engine/factory.py`, `src/backtest/engine_factory.py` | create_engine_from_play(), run_engine_with_play() |
-| Data Caching | `src/backtest/runtime/snapshot_view.py`, `cache.py` | FeedStore arrays, snapshot indices |
+| Engine Manager | `src/engine/manager.py` | EngineManager.start(), lifecycle, state |
+| Live Runner | `src/engine/runners/live_runner.py` | WebSocket candles, multi-TF routing, dedup |
+| Backtest Runner | `src/engine/runners/backtest_runner.py` | 1m subloop, fill sim, equity tracking |
+| Data Caching | `src/backtest/runtime/snapshot_view.py` | FeedStore arrays, snapshot indices |
 | Multi-timeframe | `src/engine/timeframe/index_manager.py` | Forward-fill, timeframe roles, low/med/high_tf |
 | Window Ops | `src/backtest/rules/evaluation/window_ops.py` | holds_for, occurred_within, count_true |
 | DSL | `src/backtest/rules/` | Blocks, conditions, operators |
+| Play YAML | `src/backtest/play/play.py` | Play parsing, features, near_pct, source field |
 | Structures | `src/structures/` | Swing, trend, zone, fibonacci, derived_zone, rolling_window, market_structure |
 | Sim Exchange | `src/backtest/sim/` | Order fill, slippage, liquidation |
 | Metrics | `src/backtest/metrics.py` | Sharpe, Sortino, MAE/MFE |
-| Validation | `src/cli/validate.py`, `plays/core_validation/` | Tiered gates, core plays |
+| Validation | `src/cli/validate.py`, `plays/validation/core/` | Tiered gates, core plays |
 | Forge Audits | `src/forge/audits/` | toolkit, parity, structure, rollup audits |
 | Synthetic Data | `src/forge/validation/synthetic_data.py` | 34 patterns, SyntheticCandlesProvider |
 | Signal Subloop | `src/engine/signal/subloop.py` | 1m candle evaluation, TP/SL |
+| Incremental Indicators | `src/indicators/incremental/` | O(1) update, is_ready, factory |
+| Order Execution | `src/core/order_executor.py` | Limit/market orders, fills, callbacks |
+| Risk Management | `src/core/risk_manager.py` | Position sizing, max drawdown, panic state |
+| Bybit WebSocket | `src/exchanges/bybit_websocket.py` | Kline streams, execution callbacks, reconnect |
+| Data Sync | `src/data/historical_sync.py` | DuckDB, gap fill, 1m mandatory |
 
 ## Session Flow
 

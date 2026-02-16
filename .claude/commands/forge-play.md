@@ -22,7 +22,7 @@ Delegate to the `forge-play` agent which will:
 
 2. **Generate** - Write valid Play YAML using the DSL spec (`docs/PLAY_DSL_REFERENCE.md`). Save to `plays/{concept}/` folder with a `concept:` metadata tag.
 
-3. **Validate** - Parse the play and run a synthetic smoke backtest (the `synthetic:` block is metadata only, activated by `--synthetic`):
+3. **Validate** - Parse the play and run a synthetic smoke backtest. `--synthetic` reads the play's `synthetic:` block for pattern/bars/seed:
    ```bash
    python trade_cli.py backtest run --play <name> --synthetic
    ```

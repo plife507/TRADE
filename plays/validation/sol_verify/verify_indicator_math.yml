@@ -63,3 +63,6 @@ risk:
 account:
   starting_equity_usdt: 10000.0
   max_leverage: 1.0
+
+validation:
+  pattern: "trending"

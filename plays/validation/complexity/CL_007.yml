@@ -84,3 +84,6 @@ position_policy:
 risk:
   stop_loss_pct: 2.5
   take_profit_pct: 5.0
+
+validation:
+  pattern: "trend_down_clean"

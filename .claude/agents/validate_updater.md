@@ -23,12 +23,12 @@ Keep the validation system in sync with the evolving codebase. The `validate` ag
 
 | File | Purpose |
 |------|---------|
-| `plays/core_validation/*.yml` | Core validation Plays (5 plays) |
-| `plays/indicator_suite/*.yml` | Indicator coverage Plays (84 plays) |
-| `plays/operator_suite/*.yml` | DSL operator Plays (25 plays) |
-| `plays/structure_suite/*.yml` | Structure type Plays (14 plays) |
-| `plays/pattern_suite/*.yml` | Synthetic pattern Plays (34 plays) |
-| `plays/complexity_ladder/*.yml` | Complexity ladder Plays (13 plays) |
+| `plays/validation/core/*.yml` | Core validation Plays (5 plays) |
+| `plays/validation/indicators/*.yml` | Indicator coverage Plays (84 plays) |
+| `plays/validation/operators/*.yml` | DSL operator Plays (25 plays) |
+| `plays/validation/structures/*.yml` | Structure type Plays (14 plays) |
+| `plays/validation/patterns/*.yml` | Synthetic pattern Plays (34 plays) |
+| `plays/validation/complexity/*.yml` | Complexity ladder Plays (13 plays) |
 | `.claude/agents/validate.md` | Update test instructions and expectations |
 | `src/cli/validate.py` | Update validation gates and tiers |
 | `CLAUDE.md` (validation section) | Update validation documentation |
@@ -48,10 +48,10 @@ When a new indicator is added to `indicator_registry.py`:
 
 1. **Check current coverage**:
 ```bash
-grep -h "indicator:" plays/indicator_suite/*.yml | sort | uniq
+grep -h "indicator:" plays/validation/indicators/*.yml | sort | uniq
 ```
 
-2. **Create new Play** in `plays/indicator_suite/` following template with embedded `synthetic:` block
+2. **Create new Play** in `plays/validation/indicators/` following template with embedded `synthetic:` block
 
 3. **Update validate.md** indicator count
 

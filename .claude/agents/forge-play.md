@@ -71,8 +71,8 @@ Read docs/PLAY_DSL_REFERENCE.md
 - RSI bounds are [0,100] -- don't test outside that range
 - Dependencies must be declared before use in structures list
 
-### Add concept metadata and synthetic test config:
-Add a comment at the top of the YAML. The `synthetic:` block is **metadata only** — it defines how to generate test data but is NOT auto-activated. It is used when `--synthetic` is passed on the CLI or by the validation pipeline programmatically.
+### Add concept metadata and synthetic test config (REQUIRED):
+Every play MUST have a `synthetic:` block. The `--synthetic` CLI flag requires it and will fail if missing. The block defines how to generate test data for validation.
 ```yaml
 # concept: trend_following
 version: "3.0.0"
@@ -89,7 +89,7 @@ expected:
 ### Choose synthetic pattern matching strategy:
 | Concept | Good patterns |
 |---------|--------------|
-| mean_reversion | `range_wide`, `range_symmetric`, `vol_squeeze_expand` |
+| mean_reversion | `range_wide`, `range_tight`, `vol_squeeze_expand` |
 | trend_following | `trend_up_clean`, `trend_down_clean`, `trend_stairs` |
 | breakout | `breakout_clean`, `breakout_retest`, `vol_squeeze_expand` |
 | scalping | `range_tight`, `range_wide`, `choppy_whipsaw` |
@@ -109,15 +109,17 @@ Use the Write tool to save to `plays/{concept}/{name}.yml`
 ## Phase 3: Validate
 
 ### Step 1: Smoke check with synthetic data
-The `synthetic:` block is metadata only -- pass `--synthetic` to activate it:
+Pass `--synthetic` to use the play's `synthetic:` block (pattern, bars, seed). CLI args override if needed:
 ```bash
 python trade_cli.py backtest run --play {name} --synthetic 2>&1
 ```
+To override specific settings: `--synthetic-pattern range_wide --synthetic-bars 500 --synthetic-seed 42`
 
 ### Step 2: Check results
 - Play must parse without errors
 - Synthetic backtest must produce at least 1 trade (non-zero)
 - If `expected:` block exists, assertions must pass
+- Verify the banner shows the correct pattern (from play's `synthetic:` block)
 
 **Note:** Without `--synthetic`, the engine uses real data from DuckDB.
 
@@ -180,6 +182,7 @@ plays/{concept}/{name}.yml
 ## Reference
 
 - DSL spec: `docs/PLAY_DSL_REFERENCE.md`
+- Synthetic data guide: `docs/SYNTHETIC_DATA_REFERENCE.md`
 - Existing plays for style: `plays/validation/core/`
 - Synthetic patterns: `src/forge/validation/synthetic_data.py`
 - Synthetic smoke CLI: `python trade_cli.py backtest run --play {name} --synthetic`

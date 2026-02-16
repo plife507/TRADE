@@ -70,3 +70,6 @@ position_policy:
 risk:
   stop_loss_pct: 2.0
   take_profit_pct: 4.0
+
+validation:
+  pattern: "trending"

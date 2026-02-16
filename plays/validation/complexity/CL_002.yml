@@ -50,7 +50,5 @@ risk:
   stop_loss_pct: 2.0
   take_profit_pct: 4.0
 
-synthetic:
-  pattern: "ranging"
-  bars: 500
-  seed: 42
+validation:
+  pattern: "reversal_v_bottom"

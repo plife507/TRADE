@@ -75,7 +75,7 @@ python trade_cli.py backtest structure-smoke    # If structure issue
 python trade_cli.py validate quick
 
 # For engine/sim/runtime bugs, also run core plays manually:
-python trade_cli.py backtest run --play plays/core_validation/V_CORE_001_indicator_cross.yml --fix-gaps
+python trade_cli.py backtest run --play plays/validation/core/V_CORE_001_indicator_cross.yml --fix-gaps
 ```
 
 ## Key File Locations
@@ -93,7 +93,7 @@ python trade_cli.py backtest run --play plays/core_validation/V_CORE_001_indicat
 | Indicators | `src/indicators/` |
 | Forge Audits | `src/forge/audits/` |
 | Validation | `src/cli/validate.py` |
-| Core Plays | `plays/core_validation/` |
+| Core Plays | `plays/validation/core/` |
 
 ## Output Format
 

@@ -41,17 +41,17 @@ python trade_cli.py validate quick --json       # JSON output for CI
 
 | Directory | Count | Purpose |
 |-----------|-------|---------|
-| `plays/core_validation/` | 5 | Core validation (quick tier) |
-| `plays/indicator_suite/` | 84 | All indicator coverage |
-| `plays/operator_suite/` | 25 | DSL operator coverage |
-| `plays/structure_suite/` | 14 | Structure type coverage |
-| `plays/pattern_suite/` | 34 | Synthetic pattern coverage |
-| `plays/complexity_ladder/` | 13 | Increasing complexity |
-| `plays/real_verification/` | 60 | Real-data Wyckoff verification |
+| `plays/validation/core/` | 5 | Core validation (quick tier) |
+| `plays/validation/indicators/` | 84 | All indicator coverage |
+| `plays/validation/operators/` | 25 | DSL operator coverage |
+| `plays/validation/structures/` | 14 | Structure type coverage |
+| `plays/validation/patterns/` | 34 | Synthetic pattern coverage |
+| `plays/validation/complexity/` | 13 | Increasing complexity |
+| `plays/validation/real_data/` | 60 | Real-data Wyckoff verification |
 
 ### Core Validation Plays
 
-Located in `plays/core_validation/`:
+Located in `plays/validation/core/`:
 
 | Play | Exercises |
 |------|-----------|

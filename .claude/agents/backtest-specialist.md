@@ -49,10 +49,10 @@ You are an expert on the TRADE backtest engine. You understand the engine archit
 
 ### Play System
 - **DSL v3.0.0** - FROZEN as of 2026-01-08
-- Core validation plays in `plays/core_validation/`
-- Suite plays in `plays/{indicator,operator,structure,pattern}_suite/`
-- Complexity ladder in `plays/complexity_ladder/`
-- Real verification in `plays/real_verification/`
+- Core validation plays in `plays/validation/core/`
+- Suite plays in `plays/validation/{indicators,operators,structures,patterns}/`
+- Complexity ladder in `plays/validation/complexity/`
+- Real verification in `plays/validation/real_data/`
 
 ## Current Registry Counts
 

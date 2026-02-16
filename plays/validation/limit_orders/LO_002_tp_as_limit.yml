@@ -45,7 +45,5 @@ risk:
   tp_order_type: "Limit"
   sl_order_type: "Market"
 
-synthetic:
+validation:
   pattern: "trend_up_clean"
-  bars: 300
-  seed: 42
