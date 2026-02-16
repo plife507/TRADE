@@ -7,7 +7,7 @@ used by both backtest and live trading systems.
 Components:
 - registry: Indicator metadata, validation, warmup calculation
 - vendor: pandas_ta wrapper (only pandas_ta import point)
-- compute: DataFrame-based indicator application
+- compute: DataFrame-based indicator application (canonical: src/backtest/indicators.py)
 - spec: FeatureSpec declarative indicator definitions
 - builder: FeatureFrameBuilder for vectorized computation
 - metadata: Provenance tracking for indicator values
@@ -39,9 +39,6 @@ from src.backtest.indicator_registry import (
     IndicatorRegistry,
     IndicatorInfo,
     SUPPORTED_INDICATORS,
-    INDICATOR_OUTPUT_TYPES,
-    validate_indicator_type,
-    validate_indicator_params,
 )
 
 # =============================================================================
@@ -55,9 +52,9 @@ from src.backtest.indicator_vendor import (
 # G1.8: Standalone indicator functions (ema, sma, rsi, etc.) removed - use compute_indicator()
 
 # =============================================================================
-# Compute exports (DataFrame-based application)
+# Compute exports (canonical: src/backtest/indicators.py)
 # =============================================================================
-from .compute import (
+from src.backtest.indicators import (
     get_warmup_from_specs,
     apply_feature_spec_indicators,
     get_required_indicator_columns_from_specs,
@@ -71,19 +68,9 @@ from .compute import (
 # =============================================================================
 from src.backtest.features.feature_spec import (
     FeatureSpec,
-    FeatureSpecSet,
     InputSource,
     is_multi_output,
     get_output_names,
-    # Factory functions
-    ema_spec,
-    sma_spec,
-    rsi_spec,
-    atr_spec,
-    macd_spec,
-    bbands_spec,
-    stoch_spec,
-    stochrsi_spec,
 )
 
 # =============================================================================
@@ -108,12 +95,6 @@ from .metadata import (
     find_first_valid_idx,
     get_pandas_ta_version,
     get_code_version,
-    validate_metadata_coverage,
-    validate_feature_spec_ids,
-    MetadataValidationResult,
-    export_metadata_jsonl,
-    export_metadata_json,
-    export_metadata_csv,
 )
 
 # =============================================================================
@@ -172,21 +153,11 @@ from .incremental import (
     # Phase 7: Volume complex indicators
     IncrementalKVO,
     IncrementalVWAP,
+    IncrementalAnchoredVWAP,
     # Factory and utilities
     create_incremental_indicator,
     supports_incremental,
     list_incremental_indicators,
-    INCREMENTAL_INDICATORS,
-)
-
-# =============================================================================
-# Provider exports (unified interface for backtest/live)
-# =============================================================================
-from .provider import (
-    IndicatorProvider,
-    BacktestIndicatorProvider,
-    LiveIndicatorProvider,
-    IndicatorProviderType,
 )
 
 
@@ -196,9 +167,6 @@ __all__ = [
     "IndicatorRegistry",
     "IndicatorInfo",
     "SUPPORTED_INDICATORS",
-    "INDICATOR_OUTPUT_TYPES",
-    "validate_indicator_type",
-    "validate_indicator_params",
     # Vendor
     "compute_indicator",
     "canonicalize_indicator_outputs",
@@ -212,18 +180,9 @@ __all__ = [
     "get_max_warmup_from_specs_by_role",
     # Spec
     "FeatureSpec",
-    "FeatureSpecSet",
     "InputSource",
     "is_multi_output",
     "get_output_names",
-    "ema_spec",
-    "sma_spec",
-    "rsi_spec",
-    "atr_spec",
-    "macd_spec",
-    "bbands_spec",
-    "stoch_spec",
-    "stochrsi_spec",
     # Builder
     "FeatureFrameBuilder",
     "FeatureArrays",
@@ -238,13 +197,7 @@ __all__ = [
     "find_first_valid_idx",
     "get_pandas_ta_version",
     "get_code_version",
-    "validate_metadata_coverage",
-    "validate_feature_spec_ids",
-    "MetadataValidationResult",
-    "export_metadata_jsonl",
-    "export_metadata_json",
-    "export_metadata_csv",
-    # Incremental (all 43 indicators)
+    # Incremental (all 44 indicators)
     "IncrementalIndicator",
     "IncrementalEMA",
     "IncrementalSMA",
@@ -289,13 +242,8 @@ __all__ = [
     "IncrementalFisher",
     "IncrementalKVO",
     "IncrementalVWAP",
+    "IncrementalAnchoredVWAP",
     "create_incremental_indicator",
     "supports_incremental",
     "list_incremental_indicators",
-    "INCREMENTAL_INDICATORS",
-    # Provider
-    "IndicatorProvider",
-    "BacktestIndicatorProvider",
-    "LiveIndicatorProvider",
-    "IndicatorProviderType",
 ]

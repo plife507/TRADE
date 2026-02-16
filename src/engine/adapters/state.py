@@ -52,9 +52,6 @@ class InMemoryStateStore:
         """List all stored engine IDs."""
         return list(self._states.keys())
 
-    def clear(self) -> None:
-        """Clear all stored states."""
-        self._states.clear()
 
 
 class FileStateStore:

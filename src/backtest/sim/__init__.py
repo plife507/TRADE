@@ -6,8 +6,6 @@ Modular, Bybit-aligned, isolated-margin, USDT linear perpetual simulation.
 Public API:
 - SimulatedExchange: Main exchange orchestrator
 - Bar, Order, Position, Fill: Core types
-- adapt_ohlcv_row, adapt_funding_rows: Data adapters
-
 This module provides deterministic trade execution:
 - Decisions made at bar close, fills at next bar open
 - TP/SL evaluated using intrabar path with deterministic tie-break
@@ -57,8 +55,6 @@ from .types import (
     ExecutionConfig,
 )
 from .exchange import SimulatedExchange
-from .adapters import adapt_ohlcv_row
-
 __all__ = [
     # Main class
     "SimulatedExchange",
@@ -90,7 +86,5 @@ __all__ = [
     "SimulatorExchangeState",
     # Config
     "ExecutionConfig",
-    # Adapters
-    "adapt_ohlcv_row",
 ]
 

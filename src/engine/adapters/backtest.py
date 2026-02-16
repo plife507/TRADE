@@ -215,18 +215,6 @@ class BacktestDataProvider:
             return False
         return self._feed_store.has_structure(key)
 
-    def get_indicator_keys(self) -> list[str]:
-        """Get all available indicator names."""
-        if self._feed_store is None:
-            return []
-        return list(self._feed_store.indicators.keys())
-
-    def get_structure_keys(self) -> list[str]:
-        """Get all available structure block keys."""
-        if self._feed_store is None:
-            return []
-        return list(self._feed_store.structure_key_map.keys())
-
     def is_ready(self) -> bool:
         """Check if data provider is ready."""
         return self._ready and self._feed_store is not None
@@ -588,7 +576,3 @@ class ShadowExchange:
     def step(self, candle: Candle) -> None:
         pass  # No-op
 
-    @property
-    def recorded_signals(self) -> list[Order]:
-        """Get all recorded signals."""
-        return self._signals.copy()

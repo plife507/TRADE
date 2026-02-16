@@ -291,4 +291,3 @@ def list_incremental_indicators() -> list[str]:
     return registry_list()
 
 
-INCREMENTAL_INDICATORS = frozenset(list_incremental_indicators())

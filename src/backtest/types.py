@@ -418,26 +418,6 @@ class BacktestMetrics:
 
 
 @dataclass
-class StrategyInstanceSummary:
-    """Summary of a StrategyInstance for BacktestResult."""
-    strategy_instance_id: str
-    strategy_id: str
-    strategy_version: str
-    role: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dict for serialization."""
-        result = {
-            "strategy_instance_id": self.strategy_instance_id,
-            "strategy_id": self.strategy_id,
-            "strategy_version": self.strategy_version,
-        }
-        if self.role:
-            result["role"] = self.role
-        return result
-
-
-@dataclass
 class BacktestRunConfigEcho:
     """
     Captured config values used for a specific backtest run.
@@ -511,9 +491,6 @@ class BacktestResult:
     end_ts: datetime
     started_at: datetime
     finished_at: datetime
-    
-    # Strategies summary (all instances in the system)
-    strategies: list[StrategyInstanceSummary] = field(default_factory=list)
     
     # System-level fields
     symbol: str = ""
@@ -594,7 +571,6 @@ class BacktestResult:
             "primary_strategy_instance_id": self.primary_strategy_instance_id,
             "strategy_id": self.strategy_id,
             "strategy_version": self.strategy_version,
-            "strategies": [s.to_dict() for s in self.strategies],
             # System-level
             "symbol": self.symbol,
             "tf": self.tf,

@@ -295,11 +295,6 @@ class PlayEngine:
         return self.config.mode == "live"
 
     @property
-    def is_demo(self) -> bool:
-        """True if running in demo mode (fake money)."""
-        return self.config.mode == "demo"
-
-    @property
     def is_shadow(self) -> bool:
         """True if running in shadow mode (signals only)."""
         return self.config.mode == "shadow"
@@ -1566,12 +1561,6 @@ class PlayEngine:
             else:
                 remaining.append((order_id, submit_bar))
         self._pending_limit_orders = remaining
-
-    def _remove_filled_limit_order(self, order_id: str) -> None:
-        """Remove a filled limit order from expiry tracking."""
-        self._pending_limit_orders = [
-            (oid, bar) for oid, bar in self._pending_limit_orders if oid != order_id
-        ]
 
     def _save_state(self) -> None:
         """Save current state to store."""

@@ -193,7 +193,6 @@ from .backtest_play_tools import (
 from .backtest_audit_tools import (
     verify_artifact_parity_tool,
     backtest_audit_toolkit_tool,
-    backtest_audit_in_memory_parity_tool,
     backtest_math_parity_tool,
     backtest_audit_snapshot_plumbing_tool,
     backtest_audit_rollup_parity_tool,
@@ -331,7 +330,6 @@ __all__ = [
     "verify_artifact_parity_tool",
     # Audit tools
     "backtest_audit_toolkit_tool",
-    "backtest_audit_in_memory_parity_tool",
     "backtest_math_parity_tool",
     "backtest_audit_snapshot_plumbing_tool",
     "backtest_audit_rollup_parity_tool",

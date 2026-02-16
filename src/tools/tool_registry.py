@@ -276,28 +276,6 @@ class ToolRegistry:
             )
             return ToolResult(success=False, error=f"Tool execution failed: {str(e)}")
 
-    def execute_batch(self, actions: list[dict[str, Any]]) -> list[ToolResult]:
-        """
-        Execute multiple tools in sequence.
-
-        Args:
-            actions: List of {"tool": "name", "args": {...}} dicts
-
-        Returns:
-            List of ToolResults
-        """
-        results = []
-        for action in actions:
-            tool_name = action.get("tool", "")
-            args = action.get("args", {})
-            result = self.execute(tool_name, **args)
-            results.append(result)
-
-            # Stop on critical failure if specified
-            if not result.success and action.get("stop_on_fail", False):
-                break
-
-        return results
 
 
 # Singleton instance for convenience

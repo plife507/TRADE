@@ -21,8 +21,6 @@ This ensures identical position sizing behavior across all execution modes
 
 
 from dataclasses import dataclass, field
-from typing import Any
-
 
 @dataclass(slots=True)
 class SizingConfig:
@@ -110,34 +108,6 @@ class SizingConfig:
                 f"min_liq_distance_pct must be >= 0, got {self.min_liq_distance_pct}"
             )
 
-    @classmethod
-    def from_risk_profile(cls, risk_profile: Any) -> "SizingConfig":
-        """
-        Create SizingConfig from a RiskProfileConfig.
-
-        This factory method bridges the backtest config to the unified sizing module.
-
-        Args:
-            risk_profile: RiskProfileConfig instance (from src/backtest/system_config.py)
-
-        Returns:
-            SizingConfig with values copied from risk_profile
-        """
-        # Get max_position_equity_pct from risk_profile if available, else default
-        max_pos_pct = getattr(risk_profile, "max_position_equity_pct", 95.0)
-        reserve_fee = getattr(risk_profile, "reserve_fee_buffer", True)
-
-        return cls(
-            initial_equity=risk_profile.initial_equity,
-            sizing_model=risk_profile.sizing_model,
-            risk_per_trade_pct=risk_profile.risk_per_trade_pct,
-            max_leverage=risk_profile.max_leverage,
-            min_trade_usdt=risk_profile.min_trade_usdt,
-            max_position_equity_pct=max_pos_pct,
-            reserve_fee_buffer=reserve_fee,
-            taker_fee_rate=risk_profile.taker_fee_rate,
-            include_est_close_fee_in_entry_gate=risk_profile.include_est_close_fee_in_entry_gate,
-        )
 
 
 @dataclass(slots=True)
@@ -498,128 +468,3 @@ class SizingModel:
         """
         self._equity = new_equity
 
-    def reset(self) -> None:
-        """Reset equity to initial value."""
-        self._equity = self._config.initial_equity
-
-    def check_min_size(self, size_usdt: float) -> bool:
-        """
-        Check if size meets minimum trade requirement.
-
-        Args:
-            size_usdt: Computed position size
-
-        Returns:
-            True if size >= min_trade_usdt
-        """
-        return size_usdt >= self._config.min_trade_usdt
-
-    def check_liquidation_distance(
-        self,
-        entry_price: float,
-        leverage: float,
-        direction: str,
-    ) -> tuple[bool, float, str]:
-        """
-        G0-2: Check if liquidation price is safely distant from entry.
-
-        Liquidation occurs when:
-        - Long: price drops such that loss = margin (minus maintenance)
-        - Short: price rises such that loss = margin (minus maintenance)
-
-        Formula (isolated margin, Bybit-style):
-            Long liq price = entry * (1 - 1/leverage + mmr)
-            Short liq price = entry * (1 + 1/leverage - mmr)
-
-        Where mmr = maintenance margin rate (~0.5% for Bybit)
-
-        Args:
-            entry_price: Entry price
-            leverage: Position leverage
-            direction: "long" or "short"
-
-        Returns:
-            Tuple of (is_safe, liq_distance_pct, reason)
-            - is_safe: True if liq distance >= min_liq_distance_pct
-            - liq_distance_pct: Actual distance to liquidation as %
-            - reason: Rejection reason if not safe
-        """
-        if leverage <= 0 or entry_price <= 0:
-            return False, 0.0, "Invalid leverage or entry price"
-
-        mmr = self._config.maintenance_margin_rate
-        min_distance = self._config.min_liq_distance_pct
-
-        if direction == "long":
-            # Long liquidation: price drops
-            liq_price = entry_price * (1 - 1/leverage + mmr)
-            liq_distance_pct = ((entry_price - liq_price) / entry_price) * 100
-        else:
-            # Short liquidation: price rises
-            liq_price = entry_price * (1 + 1/leverage - mmr)
-            liq_distance_pct = ((liq_price - entry_price) / entry_price) * 100
-
-        is_safe = liq_distance_pct >= min_distance
-
-        if not is_safe:
-            reason = (
-                f"Liquidation too close: {liq_distance_pct:.2f}% from entry "
-                f"(min required: {min_distance:.1f}%). "
-                f"At {leverage:.1f}x leverage, liq price = ${liq_price:.2f}"
-            )
-            return False, liq_distance_pct, reason
-
-        return True, liq_distance_pct, ""
-
-    def size_order_with_liq_check(
-        self,
-        entry_price: float,
-        direction: str,
-        equity: float | None = None,
-        stop_loss: float | None = None,
-        requested_size: float | None = None,
-        used_margin: float = 0.0,
-    ) -> SizingResult:
-        """
-        Size order with liquidation distance validation.
-
-        This is the recommended entry point for live trading. It combines
-        position sizing with the G0-2 liquidation safety check.
-
-        Args:
-            entry_price: Entry price for the trade
-            direction: "long" or "short"
-            equity: Current account equity (uses tracked equity if None)
-            stop_loss: Stop loss price for risk-based sizing
-            requested_size: Requested size for fixed_notional model
-            used_margin: Margin already used by existing positions
-
-        Returns:
-            SizingResult with rejection info if liquidation too close
-        """
-        # First, check liquidation distance
-        is_safe, liq_dist, rejection_reason = self.check_liquidation_distance(
-            entry_price=entry_price,
-            leverage=self._config.max_leverage,
-            direction=direction,
-        )
-
-        if not is_safe:
-            return SizingResult(
-                size_usdt=0.0,
-                method="rejected",
-                details=rejection_reason,
-                rejected=True,
-                rejection_reason=rejection_reason,
-            )
-
-        # Proceed with normal sizing
-        result = self.size_order(
-            equity=equity,
-            entry_price=entry_price,
-            stop_loss=stop_loss,
-            requested_size=requested_size,
-            used_margin=used_margin,
-        )
-
-        return result

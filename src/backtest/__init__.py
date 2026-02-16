@@ -29,7 +29,6 @@ from .types import (
 from .system_config import (
     SystemConfig,
     RiskProfileConfig,
-    list_systems,
     resolve_risk_profile,
 )
 from .window_presets import (
@@ -117,7 +116,6 @@ __all__ = [
     # Config
     "SystemConfig",
     "RiskProfileConfig",
-    "list_systems",
     "resolve_risk_profile",
     # Window presets
     "get_window_preset",

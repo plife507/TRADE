@@ -133,12 +133,6 @@ class TFIndexManager:
         """Current high_tf index."""
         return self._current_high_tf_idx
 
-    def reset(self) -> None:
-        """Reset indices to initial state."""
-        self._current_low_tf_idx = 0
-        self._current_med_tf_idx = 0
-        self._current_high_tf_idx = 0
-
     def update_indices(self, exec_ts_close: datetime, exec_idx: int | None = None) -> TFIndexUpdate:
         """
         Update all TF indices based on exec bar close timestamp.
@@ -234,82 +228,3 @@ class TFIndexManager:
             high_tf_idx=self._current_high_tf_idx,
         )
 
-    def set_indices(self, low_tf_idx: int, med_tf_idx: int, high_tf_idx: int) -> None:
-        """
-        Directly set TF indices (for state restoration).
-
-        Args:
-            low_tf_idx: low_tf index to set
-            med_tf_idx: med_tf index to set
-            high_tf_idx: high_tf index to set
-        """
-        self._current_low_tf_idx = low_tf_idx
-        self._current_med_tf_idx = med_tf_idx
-        self._current_high_tf_idx = high_tf_idx
-
-
-def update_tf_indices_impl(
-    exec_ts_close: datetime,
-    low_tf_feed: "FeedStore",
-    med_tf_feed: "FeedStore | None",
-    high_tf_feed: "FeedStore | None",
-    exec_feed: "FeedStore",
-    current_low_tf_idx: int,
-    current_med_tf_idx: int,
-    current_high_tf_idx: int,
-) -> tuple[bool, bool, bool, int, int, int]:
-    """
-    Functional implementation of TF index update.
-
-    This is the stateless version for backward compatibility.
-
-    Args:
-        exec_ts_close: Current exec bar's ts_close
-        low_tf_feed: LowTF FeedStore
-        med_tf_feed: MedTF FeedStore (may be None)
-        high_tf_feed: HighTF FeedStore (may be None)
-        exec_feed: Exec FeedStore (determines which TF is exec)
-        current_low_tf_idx: Current low_tf index
-        current_med_tf_idx: Current med_tf index
-        current_high_tf_idx: Current high_tf index
-
-    Returns:
-        Tuple of (low_tf_updated, med_tf_updated, high_tf_updated,
-                  new_low_tf_idx, new_med_tf_idx, new_high_tf_idx)
-    """
-    low_tf_updated = False
-    med_tf_updated = False
-    high_tf_updated = False
-    new_low_tf_idx = current_low_tf_idx
-    new_med_tf_idx = current_med_tf_idx
-    new_high_tf_idx = current_high_tf_idx
-
-    # Low TF index (if distinct from exec)
-    if low_tf_feed is not exec_feed:
-        low_idx = low_tf_feed.get_idx_at_ts_close(exec_ts_close)
-        if low_idx is not None and 0 <= low_idx < low_tf_feed.length:
-            new_low_tf_idx = low_idx
-            low_tf_updated = True
-
-    # Med TF index (if distinct from exec)
-    if med_tf_feed is not None and med_tf_feed is not exec_feed:
-        med_idx = med_tf_feed.get_idx_at_ts_close(exec_ts_close)
-        if med_idx is not None and 0 <= med_idx < med_tf_feed.length:
-            new_med_tf_idx = med_idx
-            med_tf_updated = True
-
-    # High TF index (if distinct from exec)
-    if high_tf_feed is not None and high_tf_feed is not exec_feed:
-        high_idx = high_tf_feed.get_idx_at_ts_close(exec_ts_close)
-        if high_idx is not None and 0 <= high_idx < high_tf_feed.length:
-            new_high_tf_idx = high_idx
-            high_tf_updated = True
-
-    return (
-        low_tf_updated,
-        med_tf_updated,
-        high_tf_updated,
-        new_low_tf_idx,
-        new_med_tf_idx,
-        new_high_tf_idx,
-    )

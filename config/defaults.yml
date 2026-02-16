@@ -90,7 +90,6 @@ windowing:
   high_tf_safety_closes: 10     # Extra bars to keep for higher timeframe
   med_tf_safety_closes: 20      # Extra bars to keep for medium timeframe
   max_window_bars: 100          # Default max window for HoldsFor/OccurredWithin
-  window_bars_ceiling: 500      # Hard ceiling for window operations
 
 # -----------------------------------------------------------------------------
 # Impact Model Defaults

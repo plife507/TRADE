@@ -635,22 +635,3 @@ def build_symbol_history_tool(
         source="duckdb",
     )
 
-
-# ==================== FULL_FROM_LAUNCH BOOTSTRAP TOOLS ====================
-
-
-# Default timeframe groups for full history sync
-TF_GROUP_LOW = ["1m", "5m", "15m"]      # low_tf (high-resolution)
-TF_GROUP_MID = ["1h", "4h"]             # med_tf
-TF_GROUP_HIGH = ["D"]                   # high_tf (Bybit format)
-
-# All standard timeframes
-ALL_TIMEFRAMES = TF_GROUP_LOW + TF_GROUP_MID + TF_GROUP_HIGH
-
-# Maximum chunk size for range syncing (days)
-MAX_CHUNK_DAYS = 90
-
-# Safety cap to prevent accidental massive pulls (years)
-DEFAULT_MAX_HISTORY_YEARS = 5
-
-

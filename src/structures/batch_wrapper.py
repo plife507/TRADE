@@ -82,36 +82,3 @@ def run_detector_batch(
                 pass  # Keep NaN for unavailable values
 
     return outputs
-
-
-def create_detector_with_deps(
-    detector_type: str,
-    params: dict[str, Any],
-    dep_specs: dict[str, tuple[str, dict[str, Any]]] | None = None,
-) -> tuple[BaseIncrementalDetector, dict[str, BaseIncrementalDetector]]:
-    """
-    Create a detector with its dependencies instantiated.
-
-    Args:
-        detector_type: Main detector type
-        params: Main detector parameters
-        dep_specs: Dict mapping dep_name -> (dep_type, dep_params)
-
-    Returns:
-        Tuple of (main_detector, deps_dict)
-    """
-    deps = {}
-    if dep_specs:
-        for dep_name, (dep_type, dep_params) in dep_specs.items():
-            if dep_type not in STRUCTURE_REGISTRY:
-                raise ValueError(f"Unknown dependency type: {dep_type}")
-            dep_class = STRUCTURE_REGISTRY[dep_type]
-            deps[dep_name] = dep_class(dep_params, None)  # type: ignore[call-arg]
-
-    if detector_type not in STRUCTURE_REGISTRY:
-        raise ValueError(f"Unknown detector type: {detector_type}")
-
-    detector_class = STRUCTURE_REGISTRY[detector_type]
-    detector = detector_class(params, deps if deps else None)  # type: ignore[call-arg]
-
-    return detector, deps

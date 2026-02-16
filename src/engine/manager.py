@@ -424,22 +424,6 @@ class EngineManager:
                 stopped += 1
         return stopped
 
-    def register_backtest_start(self) -> bool:
-        """
-        Register that a backtest is starting (called by CLI tools).
-
-        Returns:
-            True if backtest can start, False if limit reached
-        """
-        if self._backtest_count >= self._max_backtest:
-            return False
-        self._backtest_count += 1
-        return True
-
-    def register_backtest_end(self) -> None:
-        """Register that a backtest has ended (called by CLI tools)."""
-        self._backtest_count = max(0, self._backtest_count - 1)
-
     # ------------------------------------------------------------------
     # G16.4: Cross-process instance tracking via PID files
     # ------------------------------------------------------------------
@@ -456,24 +440,6 @@ class EngineManager:
         }
         path = self._instances_dir / f"{instance_id}.json"
         path.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
-
-    def _update_instance_file(self, instance_id: str) -> None:
-        """Update instance stats in the JSON file."""
-        instance = self._instances.get(instance_id)
-        if not instance:
-            return
-        path = self._instances_dir / f"{instance_id}.json"
-        if not path.exists():
-            return
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            stats = instance.runner.stats if instance.runner else None
-            if stats:
-                data["stats"] = stats.to_dict()
-            data["status"] = instance.runner.state.value if instance.runner else "unknown"
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
-        except Exception as e:
-            logger.warning(f"Failed to update instance file {path.name}: {e}")
 
     def _remove_instance_file(self, instance_id: str) -> None:
         """Remove instance file on stop."""

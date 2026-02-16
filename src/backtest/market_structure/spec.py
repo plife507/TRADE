@@ -11,7 +11,7 @@ from typing import Any, Literal
 import hashlib
 import json
 
-from src.backtest.market_structure.types import StructureType, ZoneType
+from src.backtest.structure_types import StructureType, ZoneType
 
 
 @dataclass(frozen=True)

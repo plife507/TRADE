@@ -31,7 +31,6 @@ Registry (from registry.py):
     get_structure_warmup      - Get warmup bars needed for a structure
     get_structure_output_type - Get output type for a structure field
     STRUCTURE_OUTPUT_TYPES    - Maps structure fields to output types
-    STRUCTURE_WARMUP_FORMULAS - Maps structure types to warmup formulas
 
 State Containers (from state.py):
     TFIncrementalState        - Container for single-timeframe structures
@@ -39,7 +38,6 @@ State Containers (from state.py):
 
 Batch Wrapper (from batch_wrapper.py):
     run_detector_batch        - Run detector in batch mode over OHLCV data
-    create_detector_with_deps - Create detector with instantiated dependencies
 
 Detectors (from detectors/):
     IncrementalSwing  - Swing high/low detection with pivot pairing
@@ -110,7 +108,6 @@ from .registry import (
     get_structure_warmup,
     get_structure_output_type,
     STRUCTURE_OUTPUT_TYPES,
-    STRUCTURE_WARMUP_FORMULAS,
 )
 
 # State containers
@@ -122,7 +119,6 @@ from .state import (
 # Batch wrapper
 from .batch_wrapper import (
     run_detector_batch,
-    create_detector_with_deps,
 )
 
 # Detectors (imports trigger registration)
@@ -158,13 +154,11 @@ __all__ = [
     "get_structure_warmup",
     "get_structure_output_type",
     "STRUCTURE_OUTPUT_TYPES",
-    "STRUCTURE_WARMUP_FORMULAS",
     # State containers
     "TFIncrementalState",
     "MultiTFIncrementalState",
     # Batch wrapper
     "run_detector_batch",
-    "create_detector_with_deps",
     # Detectors
     "IncrementalSwing",
     "IncrementalTrend",

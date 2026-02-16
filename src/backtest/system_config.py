@@ -656,12 +656,6 @@ class SystemConfig:
             "delay_bars_by_role": self.delay_bars_by_role,
         }
     
-    def config_fingerprint(self) -> str:
-        """
-        Short fingerprint for display (first 8 chars of system_uid).
-        """
-        return self.system_uid[:8]
-    
     def get_primary_strategy(self) -> StrategyInstanceConfig:
         """
         Get the primary StrategyInstance.
@@ -825,41 +819,3 @@ class SystemConfig:
                     errors.append(f"Window '{window_name}' missing 'end' date (and no preset)")
         
         return errors
-
-
-def _parse_strategy_instance(raw: dict[str, Any]) -> StrategyInstanceConfig:
-    """Parse a single StrategyInstance from raw YAML dict."""
-    inputs_raw = raw.get("inputs", {})
-    inputs = StrategyInstanceInputs(
-        symbol=inputs_raw.get("symbol", ""),
-        tf=inputs_raw.get("tf", ""),
-    )
-    
-    return StrategyInstanceConfig(
-        strategy_instance_id=raw.get("strategy_instance_id", ""),
-        strategy_id=raw.get("strategy_id", ""),
-        strategy_version=str(raw.get("strategy_version", "1.0.0")),
-        inputs=inputs,
-        params=raw.get("params", {}),
-        role=raw.get("role"),
-    )
-
-
-def list_systems() -> list[str]:
-    """
-    List all available system configurations.
-    
-    Returns:
-        List of system_id strings
-    """
-    if not CONFIGS_DIR.exists():
-        return []
-    
-    systems = []
-    for path in CONFIGS_DIR.glob("*.yml"):
-        systems.append(path.stem)
-    for path in CONFIGS_DIR.glob("*.yaml"):
-        if path.stem not in systems:
-            systems.append(path.stem)
-    
-    return sorted(systems)

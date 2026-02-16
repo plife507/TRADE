@@ -103,7 +103,6 @@ from .factory import (
     create_incremental_indicator,
     supports_incremental,
     list_incremental_indicators,
-    INCREMENTAL_INDICATORS,
 )
 
 __all__ = [
@@ -165,5 +164,4 @@ __all__ = [
     "create_incremental_indicator",
     "supports_incremental",
     "list_incremental_indicators",
-    "INCREMENTAL_INDICATORS",
 ]

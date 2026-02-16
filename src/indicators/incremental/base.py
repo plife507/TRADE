@@ -8,11 +8,7 @@ the O(1) per-bar update interface: update(), reset(), value, is_ready.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections import deque
-from dataclasses import dataclass, field
 from typing import Any
-
-import numpy as np
 
 
 class IncrementalIndicator(ABC):

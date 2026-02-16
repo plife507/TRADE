@@ -24,22 +24,3 @@ SYMBOL_PARAM = {
     "type": "string",
     "description": "Trading symbol (e.g., SOLUSDT)",
 }
-
-# Time range parameters for history queries
-TIME_RANGE_PARAMS = {
-    "period": {
-        "type": "string",
-        "description": "Relative period (1M, 3M, 6M, 1Y) - alternative to start/end",
-        "optional": True,
-    },
-    "start": {
-        "type": "string",
-        "description": "Start datetime ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
-        "optional": True,
-    },
-    "end": {
-        "type": "string",
-        "description": "End datetime ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
-        "optional": True,
-    },
-}

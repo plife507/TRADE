@@ -19,16 +19,12 @@ Engines provide a SubLoopContext that implements the engine-specific parts:
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from ...backtest.runtime.snapshot_view import RuntimeSnapshotView
     from ...backtest.runtime.feed_store import FeedStore
     from ...core.risk_manager import Signal
-
-
-# Type variable for snapshot (could be RuntimeSnapshotView or compatible)
-SnapshotT = TypeVar("SnapshotT")
 
 
 @dataclass(slots=True)

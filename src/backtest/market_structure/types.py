@@ -1,10 +1,9 @@
 """
-Market Structure Type Definitions.
+Market Structure Output Schemas.
 
-Enums for structure and zone types with per-type output schemas.
+Per-type output schemas, mappings, and required params for structure detectors.
 
 CANONICAL LOCATION for enums: src/backtest/structure_types.py
-This module re-exports enums for backward compatibility.
 
 NAMING CONVENTION:
 - Internal outputs: Used by detectors (e.g., "high_level", "recency")
@@ -17,13 +16,7 @@ SCHEMA VERSION:
 - Increment PATCH for documentation changes, MINOR for new fields, MAJOR for breaking changes.
 """
 
-# Re-export enums from canonical location
-from src.backtest.structure_types import (
-    StructureType,
-    ZoneType,
-    ZoneState,
-    TrendState,
-)
+from src.backtest.structure_types import StructureType
 
 # =============================================================================
 # SCHEMA VERSION (Stage 3.2+)

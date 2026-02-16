@@ -45,12 +45,6 @@ from src.indicators.metadata import (
     find_first_valid_idx,
     get_pandas_ta_version,
     get_code_version,
-    validate_metadata_coverage,
-    validate_feature_spec_ids,
-    MetadataValidationResult,
-    export_metadata_jsonl,
-    export_metadata_json,
-    export_metadata_csv,
 )
 from .preflight import (
     PreflightStatus,
@@ -108,12 +102,6 @@ __all__ = [
     "find_first_valid_idx",
     "get_pandas_ta_version",
     "get_code_version",
-    "validate_metadata_coverage",
-    "validate_feature_spec_ids",
-    "MetadataValidationResult",
-    "export_metadata_jsonl",
-    "export_metadata_json",
-    "export_metadata_csv",
     # Preflight gate (Phase 7.5)
     "PreflightStatus",
     "GapInfo",

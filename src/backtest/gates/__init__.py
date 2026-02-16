@@ -1,46 +1,22 @@
 """
 Backtest gates for production enforcement.
 
-Gates are read-only validators that scan and report violations.
-They do NOT auto-edit files.
-
-Gate D.1: Pipeline signature verification
-Gate D.2: Batch verification with generated Plays (blocks DSL v3.0.0)
+Indicator Requirements Gate: validates that all required indicator keys
+declared in the Play are available after feature computation.
 """
 
-from .production_first_import_gate import (
-    run_production_first_gate,
-    GateViolation,
-    GateResult,
-)
-
-from .play_generator import (
-    GeneratorConfig,
-    GeneratedPlay,
-    generate_plays,
-    cleanup_generated_plays,
-    get_available_symbols,
-)
-
-from .batch_verification import (
-    PlayRunResult,
-    BatchSummary,
-    BATCH_SUMMARY_FILE,
+from .indicator_requirements_gate import (
+    IndicatorGateStatus,
+    RoleValidationResult,
+    IndicatorRequirementsResult,
+    validate_indicator_requirements,
+    extract_available_keys_from_dataframe,
 )
 
 __all__ = [
-    # Gate A
-    "run_production_first_gate",
-    "GateViolation",
-    "GateResult",
-    # Gate D.2 - Play generation and batch verification
-    "GeneratorConfig",
-    "GeneratedPlay",
-    "generate_plays",
-    "cleanup_generated_plays",
-    "get_available_symbols",
-    "PlayRunResult",
-    "BatchSummary",
-    "BATCH_SUMMARY_FILE",
+    "IndicatorGateStatus",
+    "RoleValidationResult",
+    "IndicatorRequirementsResult",
+    "validate_indicator_requirements",
+    "extract_available_keys_from_dataframe",
 ]
-

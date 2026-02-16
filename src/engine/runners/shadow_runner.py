@@ -235,28 +235,6 @@ class ShadowRunner:
 
         return self._stats
 
-    def process_candle(self, bar_idx: int) -> "Signal | None":
-        """
-        Process a single candle (for manual/callback mode).
-
-        Args:
-            bar_idx: Bar index to process
-
-        Returns:
-            Signal if generated, None otherwise
-        """
-        if not self._running:
-            logger.warning("ShadowRunner not running, call start() first")
-            return None
-
-        signal = self._engine.process_bar(bar_idx)
-        self._stats.bars_processed += 1
-
-        if signal is not None:
-            self._record_signal(signal, bar_idx)
-
-        return signal
-
     def _record_signal(self, signal: "Signal", bar_idx: int) -> None:
         """
         Record a generated signal.

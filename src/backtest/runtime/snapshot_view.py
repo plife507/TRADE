@@ -50,7 +50,6 @@ if TYPE_CHECKING:
     from src.structures import MultiTFIncrementalState
     from src.structures.types import FeatureOutputType
     from ..feature_registry import FeatureRegistry
-    from ..rationalization import RationalizedState
 
 
 # LRU-cached path tokenization (P2-07: avoid string split in hot loop)
@@ -202,7 +201,7 @@ class RuntimeSnapshotView:
         'history_ready', '_feeds', '_rollups',
         '_resolvers', '_incremental_state',
         '_feature_registry', '_feature_id_cache',
-        '_rationalized_state', '_last_price', '_prev_last_price',
+        '_last_price', '_prev_last_price',
         '_quote_feed', '_quote_idx',  # For arbitrary last_price offset lookups
     )
     
@@ -220,7 +219,6 @@ class RuntimeSnapshotView:
         rollups: dict[str, float] | None = None,
         incremental_state: "MultiTFIncrementalState | None" = None,
         feature_registry: "FeatureRegistry | None" = None,
-        rationalized_state: "RationalizedState | None" = None,
         last_price: float | None = None,
         prev_last_price: float | None = None,
         quote_feed: "FeedStore | None" = None,
@@ -243,7 +241,6 @@ class RuntimeSnapshotView:
             rollups: Optional px.rollup.* values from 1m accumulation
             incremental_state: Optional MultiTFIncrementalState for structure access
             feature_registry: Optional FeatureRegistry for feature_id-based access
-            rationalized_state: Optional RationalizedState for Layer 2 access
             last_price: 1m ticker close for SIGNAL EVALUATION.
             prev_last_price: Previous 1m action price (for crossover operators).
             quote_feed: Optional 1m FeedStore for arbitrary last_price offset lookups.
@@ -253,7 +250,6 @@ class RuntimeSnapshotView:
         self._feeds = feeds
         self._incremental_state = incremental_state
         self._feature_registry = feature_registry
-        self._rationalized_state = rationalized_state
         self._feature_id_cache: dict[str, tuple[str, str]] = {}  # feature_id -> (tf, key)
         self.symbol = feeds.exec_feed.symbol
         self.exec_tf = feeds.exec_feed.tf
@@ -630,48 +626,6 @@ class RuntimeSnapshotView:
         """Get high_tf indicator by name."""
         return self.high_tf_ctx.get_indicator(name)
 
-    # =========================================================================
-    # Layer 2: Rationalized State Access (W2)
-    # =========================================================================
-
-    @property
-    def rationalized_state(self) -> "RationalizedState | None":
-        """Get current rationalized state (Layer 2)."""
-        return self._rationalized_state
-
-    def get_rationalized_value(self, field: str) -> Any:
-        """
-        Get a value from rationalized state.
-
-        Accessible via get_feature_value("rationalize", field=...).
-
-        Args:
-            field: Field name (e.g., "confluence_score", "regime", "alignment")
-
-        Returns:
-            Value or None if not available
-        """
-        if self._rationalized_state is None:
-            return None
-
-        # Check derived values first
-        derived = self._rationalized_state.derived_values
-        if field in derived:
-            return derived[field]
-
-        # Check core properties
-        match field:
-            case "transition_count":
-                return self._rationalized_state.transition_count
-            case "has_transitions":
-                return self._rationalized_state.has_transitions
-            case "regime":
-                return self._rationalized_state.regime.value
-            case "bar_idx":
-                return self._rationalized_state.bar_idx
-            case _:
-                return None
-
     @property
     def available_low_tf_indicators(self) -> list:
         """Get list of available low_tf indicator keys."""
@@ -858,10 +812,6 @@ class RuntimeSnapshotView:
         This is the expected API for the DSL evaluator (dsl_eval.py).
         Maps feature_id to indicator_key and uses the feature's declared TF.
 
-        Special feature_ids:
-        - feature_id="rationalize" -> Layer 2 rationalized state values
-          (confluence_score, alignment, regime, etc.)
-
         For multi-output indicators like MACD:
         - feature_id="macd", field="histogram" -> indicator_key="macd_histogram"
         - feature_id="adx", field="dmp" -> indicator_key="adx_dmp"
@@ -871,20 +821,13 @@ class RuntimeSnapshotView:
         - Maps TF to role (low_tf/med_tf/high_tf) via tf_mapping
 
         Args:
-            feature_id: Feature ID (e.g., "ema_9", "rsi_14", "macd", "ema_50_4h", "rationalize")
+            feature_id: Feature ID (e.g., "ema_9", "rsi_14", "macd", "ema_50_4h")
             field: Optional field for multi-output indicators (e.g., "histogram", "signal")
-                   For rationalize: required field name (e.g., "confluence_score", "regime")
-            offset: Bar offset (0 = current, 1 = previous). Note: rationalize ignores offset.
+            offset: Bar offset (0 = current, 1 = previous).
 
         Returns:
             Feature value or None if not available
         """
-        # Handle special "rationalize" feature_id for Layer 2 state
-        if feature_id == "rationalize":
-            if field is None:
-                return None
-            return self.get_rationalized_value(field)
-
         # Handle special price features (action-level, not from feeds)
         if feature_id == "last_price":
             if offset == 0:

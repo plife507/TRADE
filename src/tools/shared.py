@@ -20,14 +20,12 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import TYPE_CHECKING, Any
 
-from ..config.constants import DataEnv  # noqa: F401 - used in type annotations
+from ..config.constants import DataEnv
 
 if TYPE_CHECKING:
     from ..core.exchange_manager import ExchangeManager
     from ..data.historical_data_store import HistoricalDataStore
-    from ..data.realtime_bootstrap import RealtimeBootstrap
     from ..data.realtime_state import RealtimeState
-    from ..risk.global_risk import GlobalRiskView
 
 
 @dataclass
@@ -222,96 +220,6 @@ def _is_websocket_connected() -> bool:
         return False
 
 
-# Track WebSocket startup attempts to avoid repeated failures
-_ws_startup_failed = False
-_ws_startup_attempt_time = 0.0
-
-
-def _ensure_websocket_running() -> bool:
-    """
-    Ensure WebSocket is running, starting it if necessary.
-
-    This is used by tools that need WebSocket data. If WebSocket is not
-    running and auto_start is enabled, it will start the WebSocket.
-
-    Includes 60-second cooldown to prevent repeated startup attempts that flood logs.
-    Falls back silently to REST on failure.
-
-    Returns:
-        True if WebSocket is now connected, False otherwise (use REST fallback)
-    """
-    global _ws_startup_failed, _ws_startup_attempt_time
-    import time
-
-    # First check if already connected
-    if _is_websocket_connected():
-        _ws_startup_failed = False  # Reset on success
-        return True
-
-    # If we've recently failed, don't retry (60s cooldown)
-    if _ws_startup_failed:
-        if time.time() - _ws_startup_attempt_time < 60:
-            return False  # Silent fallback to REST
-        # Reset after cooldown
-        _ws_startup_failed = False
-    
-    # Try to start via Application
-    try:
-        from ..core.application import get_application
-        from ..config.config import get_config
-        
-        config = get_config()
-        
-        # Only auto-start if WebSocket is enabled
-        if not config.websocket.enable_websocket:
-            return False
-        
-        app = get_application()
-        
-        # If app not initialized, initialize it
-        if not app.is_initialized:
-            if not app.initialize():
-                _ws_startup_failed = True
-                _ws_startup_attempt_time = time.time()
-                return False
-        
-        # If app not running (WebSocket not started), start it
-        if not app.is_running:
-            result = app.start()
-            if not result:
-                _ws_startup_failed = True
-                _ws_startup_attempt_time = time.time()
-            # start() already attempts WebSocket, so check if connected now
-            return _is_websocket_connected()
-        
-        # App is running but WebSocket might not be - try to start it
-        if not _is_websocket_connected():
-            result = app.start_websocket()
-            if not result:
-                _ws_startup_failed = True
-                _ws_startup_attempt_time = time.time()
-            return result
-        
-        return True
-
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).debug(f"WebSocket startup failed: {e}")
-        _ws_startup_failed = True
-        _ws_startup_attempt_time = time.time()
-        return False
-
-
-def _get_data_source() -> str:
-    """
-    Get the current data source being used.
-    
-    Returns:
-        "websocket" if WebSocket is connected, "rest_api" otherwise
-    """
-    return "websocket" if _is_websocket_connected() else "rest_api"
-
-
 def _get_historical_store(env: DataEnv = "live") -> "HistoricalDataStore":
     """
     Get the HistoricalDataStore singleton for a given environment (lazy import).
@@ -324,47 +232,3 @@ def _get_historical_store(env: DataEnv = "live") -> "HistoricalDataStore":
     """
     from ..data.historical_data_store import get_historical_store
     return get_historical_store(env=env)
-
-
-def _get_global_risk_view() -> "GlobalRiskView":
-    """Get the GlobalRiskView singleton (lazy import)."""
-    from ..risk import get_global_risk_view
-    return get_global_risk_view()
-
-
-def _ensure_symbol_subscribed(symbol: str) -> bool:
-    """
-    Ensure a symbol has WebSocket subscription for market data.
-    
-    Call this before trading a symbol to get real-time updates.
-    If WebSocket is not available, returns False (REST fallback will be used).
-    
-    Args:
-        symbol: Symbol to ensure subscription for (e.g., "SOLUSDT")
-        
-    Returns:
-        True if subscribed (or will be), False if WebSocket unavailable
-    """
-    try:
-        from ..data.realtime_bootstrap import get_realtime_bootstrap
-        
-        bootstrap = get_realtime_bootstrap()
-        if bootstrap and bootstrap._running:
-            return bootstrap.ensure_symbol_subscribed(symbol)
-        return False
-
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).debug(f"Symbol subscription failed: {e}")
-        return False
-
-
-def _get_realtime_bootstrap() -> "RealtimeBootstrap | None":
-    """Get the RealtimeBootstrap singleton (lazy import)."""
-    try:
-        from ..data.realtime_bootstrap import get_realtime_bootstrap
-        return get_realtime_bootstrap()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).debug(f"RealtimeBootstrap not available: {e}")
-        return None

@@ -28,11 +28,9 @@ Usage:
 from .index_manager import (
     TFIndexManager,
     TFIndexUpdate,
-    update_tf_indices_impl,
 )
 
 __all__ = [
     "TFIndexManager",
     "TFIndexUpdate",
-    "update_tf_indices_impl",
 ]

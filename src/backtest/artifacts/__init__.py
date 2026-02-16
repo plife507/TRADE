@@ -1,23 +1,14 @@
 """
 Backtest artifacts module.
 
-Provides lossless run recording for debugging and reproducibility:
-- ManifestWriter: Writes run_manifest.json with config and metadata
-- EventLogWriter: Streams events.jsonl during simulation
-- EquityWriter: Optional equity_curve.csv export
+Provides artifact standards, validation, and parquet utilities
+for run recording, debugging, and reproducibility.
 
 ISOLATION RULE:
 This module is wired ONLY from tools/entrypoints.
 Core engine/sim/runtime must NOT import from artifacts.
-
-Artifact version tracks the schema evolution:
-- 0.1.0-dev: Initial development version
-- 1.0.0: Current stable schema
 """
 
-from .manifest_writer import ManifestWriter
-from .eventlog_writer import EventLogWriter
-from .equity_writer import EquityWriter
 from .artifact_standards import (
     STANDARD_FILES,
     REQUIRED_FILES,
@@ -30,12 +21,8 @@ from .artifact_standards import (
     validate_artifact_path_config,
     ResultsSummary,
     compute_results_summary,
-    VersionMismatchError,
-    MANIFEST_SCHEMA_VERSION,
 )
 from .parquet_writer import (
-    PARQUET_VERSION,
-    DEFAULT_COMPRESSION,
     write_parquet,
     read_parquet,
     compare_csv_parquet,
@@ -45,9 +32,6 @@ from .parquet_writer import (
 ARTIFACT_VERSION = "1.0.0"
 
 __all__ = [
-    "ManifestWriter",
-    "EventLogWriter",
-    "EquityWriter",
     "ARTIFACT_VERSION",
     # Artifact standards (Phase 7.5)
     "STANDARD_FILES",
@@ -61,12 +45,7 @@ __all__ = [
     "validate_artifact_path_config",
     "ResultsSummary",
     "compute_results_summary",
-    # Version safety (Phase 1 fixes)
-    "VersionMismatchError",
-    "MANIFEST_SCHEMA_VERSION",
-    # Parquet format constants and utilities
-    "PARQUET_VERSION",
-    "DEFAULT_COMPRESSION",
+    # Parquet utilities
     "write_parquet",
     "read_parquet",
     "compare_csv_parquet",
