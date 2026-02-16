@@ -312,6 +312,54 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             # Clear break level - require NEW swing to form before next BOS
             self._break_level_low = float("nan")
 
+    def reset(self) -> None:
+        """Reset all mutable state to initial values."""
+        self.bias = 0
+        self._break_level_high = float("nan")
+        self._break_level_low = float("nan")
+        self._last_high_idx = -1
+        self._last_low_idx = -1
+        self._prev_swing_high = float("nan")
+        self._prev_swing_low = float("nan")
+        self._prev_prev_swing_high = float("nan")
+        self._prev_prev_swing_low = float("nan")
+        self._broken_high_idx = -1
+        self._broken_low_idx = -1
+        self._last_bos_idx = -1
+        self._last_bos_level = float("nan")
+        self._bos_direction = "none"
+        self._last_choch_idx = -1
+        self._last_choch_level = float("nan")
+        self._choch_direction = "none"
+        self._bos_this_bar = False
+        self._choch_this_bar = False
+        self._version = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize state for crash recovery."""
+        return {
+            "bias": self.bias,
+            "break_level_high": self._break_level_high,
+            "break_level_low": self._break_level_low,
+            "last_high_idx": self._last_high_idx,
+            "last_low_idx": self._last_low_idx,
+            "prev_swing_high": self._prev_swing_high,
+            "prev_swing_low": self._prev_swing_low,
+            "prev_prev_swing_high": self._prev_prev_swing_high,
+            "prev_prev_swing_low": self._prev_prev_swing_low,
+            "broken_high_idx": self._broken_high_idx,
+            "broken_low_idx": self._broken_low_idx,
+            "last_bos_idx": self._last_bos_idx,
+            "last_bos_level": self._last_bos_level,
+            "bos_direction": self._bos_direction,
+            "last_choch_idx": self._last_choch_idx,
+            "last_choch_level": self._last_choch_level,
+            "choch_direction": self._choch_direction,
+            "bos_this_bar": self._bos_this_bar,
+            "choch_this_bar": self._choch_this_bar,
+            "version": self._version,
+        }
+
     def get_output_keys(self) -> list[str]:
         """
         List of readable output keys.

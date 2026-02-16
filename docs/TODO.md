@@ -1,7 +1,7 @@
 # TRADE TODO
 
 Single source of truth for all open work, known bugs, and session context.
-All gates G0-G17 complete (2026-01-27 through 2026-02-15). Full history in Claude Code memory: `completed_work.md`.
+All gates G0-G17 complete (2026-01-27 through 2026-02-15). P5 cleanup done (2026-02-16). Full history in Claude Code memory: `completed_work.md`.
 
 ---
 
@@ -11,6 +11,26 @@ All gates G0-G17 complete (2026-01-27 through 2026-02-15). Full history in Claud
 - [ ] Define live parity rubric: backtest results as gold standard for live comparison
 - [ ] Demo mode 24h validation
 - [ ] Verify sub-loop activation in live mode
+
+### P0-R: Exchange Config Reconciliation
+
+Play YAML config is for backtesting. In live/demo, the exchange is the source of truth. Replace scattered `_preflight_*` hacks with a single `_reconcile_config_with_exchange()` method in `LiveExchange.connect()` that patches **both** `Play.account` (frozen dataclass via `replace()`) **and** `PlayEngineConfig` (mutable, direct `setattr`).
+
+| Field | Exchange Source | Currently Handled? |
+|-------|---------------|-------------------|
+| `starting_equity_usdt` | `get_balance()` → wallet total | Partial — patches Play.account but NOT PlayEngineConfig.initial_equity |
+| `fee_model` (taker/maker bps) | `_actual_fee_rates` from `get_fee_rates()` | Partial — patches Play.account but NOT PlayEngineConfig.taker_fee_rate/maker_fee_rate |
+| `max_leverage` | `get_risk_limits(symbol)` → tier 1 `maxLeverage` | NO — YAML value used uncapped; liq math may be wrong |
+| `maintenance_margin_rate` | `get_risk_limits(symbol)` → tier 1 `maintenanceMarginRate` | NO — hardcoded default 0.5%; wrong for higher tiers |
+| `min_trade_notional_usdt` | `_get_instrument_info(symbol)` → `lotSizeFilter.minNotionalValue` | NO — YAML default used; orders may fail at exchange |
+
+**Implementation:** COMPLETE (2026-02-16)
+- [x] Delete `_preflight_equity_check()` and `_preflight_fee_check()` (replaced)
+- [x] Add `_reconcile_config_with_exchange()` — single method, queries all 5 values, patches Play.account + PlayEngineConfig
+- [x] Call it in `connect()` after `ExchangeManager()` + `_bootstrap_balance_from_rest()`, before `_build_risk_config()`
+- [x] Update GAP-3/5 entries
+
+**Out of scope:** `max_notional_usdt` / `max_margin_usdt` (dead fields, user-set caps not exchange values), cross-margin branch (dead code), `slippage_bps` / `max_drawdown_pct` (model/strategy params)
 
 ## P1: Live Trading Integration
 
@@ -43,30 +63,9 @@ Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 
 ---
 
-## P5: Codebase Cleanup — Dead Code, Legacy, and Simplification (COMPLETE 2026-02-16)
+## P5: Codebase Cleanup (COMPLETE 2026-02-16)
 
-Full codebase audit + execution. 5 parallel Opus agents, each gate grep-verified before deletion.
-~2,500+ lines removed. pyright 0 errors. ALL FORWARD — no legacy wrappers.
-
-### Gate C1: `src/engine/` — COMPLETE (19/19 items, ~307 lines)
-All 19 dead functions/methods/properties deleted. Re-export cleaned from `timeframe/__init__.py`.
-
-### Gate C2: `src/indicators/` — COMPLETE (11/11 items, ~870 lines)
-Deleted `compute.py` (339-line duplicate), `provider.py` (257 lines), metadata export/validation functions (~220 lines), unused imports, `INCREMENTAL_INDICATORS` frozenset. Added `IncrementalAnchoredVWAP` to top-level exports. Facade re-exports kept (used by `src/forge/audits/`).
-
-### Gate C3: `src/backtest/` — COMPLETE (10/15 items done, facade items deferred)
-Deleted: `rationalization/` (6 files), `sim/adapters/` (3 files), `prices/engine.py` + `validation.py` + `backtest_source.py` + `demo_source.py`, `gates/` partial (kept `indicator_requirements_gate.py`), `rules/dsl_warmup.py`. Removed `StrategyInstanceSummary`, dead `system_config.py` functions, dead `artifacts/__init__.py` exports. Updated `market_structure/types.py` consumers to import from `structure_types.py`.
-
-### Gate C4: `src/structures/` + `src/data/` — COMPLETE (8/10 items, ~620 lines)
-Deleted `backend_protocol.py`, `sessions.py`. Cleaned 6 dead re-exports from `data/__init__.py`. Removed `create_detector_with_deps` + `STRUCTURE_WARMUP_FORMULAS` from `structures/__init__.py`. `realtime_models.py` merge deferred (low priority).
-
-### Gate C5: `src/tools/` + `scripts/` — COMPLETE (11/12 items)
-Deleted duplicate constants, 5 dead `shared.py` helpers, `backtest_audit_in_memory_parity_tool`, `scripts/add_validation_blocks.py`, `TIME_RANGE_PARAMS`, `ToolRegistry.execute_batch()`, 4 unreachable tools. `TradingEnvMismatchError` left as-is (low priority).
-
-### Gate C6: Cross-Module — COMPLETE (partial, ~7 items)
-Deleted `src/core/prices/` package. Cleaned dead exports from `core/__init__.py`, `risk/__init__.py`, `exchanges/__init__.py`. Deleted `config/defaults.yml` `window_bars_ceiling`. Deleted 8 feature-spec factory functions from `feature_spec.py`. Cleaned `indicators/__init__.py` and `backtest/features/__init__.py` dead re-exports.
-
-**Audit corrections:** `notifications.py` and `journal.py` were NOT dead (used by `live_runner.py`). `FeatureSpecSet` was NOT dead (used by `feature_frame_builder.py`). Audit had incorrectly flagged these.
+69 files changed, 7,817+ lines removed across 6 gates (C1-C6). All deferred items resolved. pyright 0. Full details in Claude Code memory: `completed_work.md`.
 
 ---
 
@@ -78,26 +77,50 @@ Deleted `src/core/prices/` package. Cleaned dead exports from `core/__init__.py`
 |---|----------|-------|-----|
 | GAP-1 | **CRITICAL** | `LiveDataProvider._warmup_bars` hardcoded to 100 regardless of Play needs | Wire `get_warmup_from_specs()` into `LiveDataProvider.__init__()` |
 | GAP-2 | HIGH | No REST API fallback for warmup data -- `_load_tf_bars()` tries buffer -> DuckDB -> gives up | Add REST `get_klines()` fallback |
-| GAP-3 | MEDIUM | Play's `starting_equity_usdt` ignored in live -- real exchange balance used silently | Add preflight equity reconciliation warning |
-| GAP-4 | MEDIUM | Leverage set per-order only, not during account init | Call `set_leverage()` in `LiveExchange.connect()` |
-| GAP-5 | LOW | Play `taker_bps` vs actual Bybit VIP tier fees not compared | Add preflight fee reconciliation |
+| ~~GAP-3~~ | ~~MEDIUM~~ | ~~Play config not reconciled with exchange in live~~ | **RESOLVED 2026-02-16** — `_reconcile_config_with_exchange()` overrides equity, fees, leverage, MMR, min notional from exchange into both Play.account and PlayEngineConfig |
+| ~~GAP-4~~ | ~~MEDIUM~~ | ~~`RiskConfig.max_leverage` defaulted to 3, ignoring Play~~ | **RESOLVED 2026-02-16** — `_build_risk_config()` wires `max_leverage` + `max_drawdown_pct` from Play |
+| ~~GAP-5~~ | ~~LOW~~ | ~~`PlayEngineConfig` not updated with exchange values~~ | **RESOLVED 2026-02-16** — merged into GAP-3 fix; `_reconcile_config_with_exchange()` patches PlayEngineConfig directly |
 
-### VWAP / Anchored VWAP (from 2026-02-15 audit, line refs updated 2026-02-16)
+### VWAP / Anchored VWAP (ALL RESOLVED 2026-02-16)
 
-| # | Severity | Issue | Location |
-|---|----------|-------|----------|
-| V-1 | DESIGN | Non-swing detectors missing `reset()` / `to_dict()` for crash recovery | `trend.py`, `zone.py`, `fibonacci.py`, `derived_zone.py`, `rolling_window.py`, `market_structure.py` |
-| V-2 | DESIGN | Multiple swing structures on exec TF: first wins, no way to select | `play_engine.py:1026` |
-| V-3 | DESIGN | `near_pct` tolerance has two conversion paths (play.py /100, dsl_parser.py raw) -- fragile | `play.py:215`, `dsl_parser.py:578` |
-| V-4 | EDGE | Anchored VWAP on non-exec TF cannot wire to non-exec swing structure | `play_engine.py:1026` |
-| V-5 | EDGE | Batch pre-computation for anchored_vwap is wasted work (engine overwrites every bar) | `indicator_vendor.py:217-454` |
-| V-6 | EDGE | Parity audits would false-fail for anchored_vwap (batch vs engine divergence) | `audit_incremental_parity.py` |
-| V-7 | EDGE | No test coverage for VWAP session boundary resets | Validation plays |
-| V-8 | EDGE | `swing.high_version` / `swing.low_version` accessible but undocumented in DSL reference | `PLAY_DSL_REFERENCE.md` |
+V-1 through V-8 resolved: crash recovery, swing selection, near_pct fix, batch skip, parity exclusion, session boundary test, docs. Details in Claude Code memory.
 
 ### Platform
 
 - **DuckDB file locking on Windows** -- all scripts run sequentially, `run_full_suite.py` has retry logic (5 attempts, 3-15s backoff)
+
+---
+
+## Session Handoff — 2026-02-16
+
+**Completed this session:**
+
+1. **VWAP audit (V-1 through V-8)** — all 8 items resolved:
+   - V-1: Added `reset()` + `to_dict()` crash recovery to 6 non-swing detectors (trend, zone, fibonacci, derived_zone, rolling_window, market_structure)
+   - V-2/V-4: `anchor_structure` param for explicit swing selection + non-exec TF wiring
+   - V-3: `near_pct` tolerance unified — verbose DSL path now divides by 100 like shorthand
+   - V-5: Batch anchored_vwap replaced with NaN placeholders (engine overwrites every bar)
+   - V-6: Parity audit excludes anchored_vwap with explanatory comment
+   - V-7: New validation play `IND_044_vwap_session_boundary.yml`
+   - V-8: `swing.high_version` / `swing.low_version` documented in DSL reference
+
+2. **Exchange config reconciliation (P0-R)** — new `_reconcile_config_with_exchange()`:
+   - Single method replaces scattered `_preflight_*` hacks
+   - Patches 5 fields from exchange: equity, fees, leverage, MMR, min notional
+   - Updates both `Play.account` (frozen dataclass) and `PlayEngineConfig` (mutable)
+   - GAP-3, GAP-4, GAP-5 resolved
+
+3. **P5 codebase cleanup finalized** — removed legacy aliases (`create_backtest_engine`, `PlayRunResult`), dead exports from `backtest/__init__.py`, condensed TODO sections
+
+**State of the codebase:**
+- pyright: 0 errors
+- All 170/170 synthetic plays passing, 60/60 real-data plays passing
+- Branch: `feature/unified-engine`, up to date with remote
+
+**Next session priorities:**
+- GAP-1 (CRITICAL): Wire `get_warmup_from_specs()` into `LiveDataProvider`
+- GAP-2 (HIGH): REST API fallback for warmup data
+- P0 remaining: live parity rubric, demo 24h validation, sub-loop activation
 
 ---
 

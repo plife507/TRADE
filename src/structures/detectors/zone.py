@@ -217,6 +217,27 @@ class IncrementalZone(BaseIncrementalDetector):
                 self.state = "broken"
                 self._version += 1
 
+    def reset(self) -> None:
+        """Reset all mutable state to initial values."""
+        self.state = "none"
+        self.upper = np.nan
+        self.lower = np.nan
+        self.anchor_idx = -1
+        self._last_swing_idx = -1
+        self._version = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize state for crash recovery."""
+        return {
+            "zone_type": self.zone_type,
+            "state": self.state,
+            "upper": self.upper,
+            "lower": self.lower,
+            "anchor_idx": self.anchor_idx,
+            "last_swing_idx": self._last_swing_idx,
+            "version": self._version,
+        }
+
     def get_output_keys(self) -> list[str]:
         """
         Return list of output keys.

@@ -523,6 +523,37 @@ class IncrementalFibonacci(BaseIncrementalDetector):
                 # Formula: low - (ratio x range)
                 self._values[key] = low - (range_val * lvl)
 
+    def reset(self) -> None:
+        """Reset all mutable state to initial values."""
+        for lvl in self.levels:
+            key = self._format_level_key(lvl)
+            self._values[key] = float("nan")
+        self._values["anchor_high"] = float("nan")
+        self._values["anchor_low"] = float("nan")
+        self._values["range"] = float("nan")
+        self._values["anchor_direction"] = ""
+        self._values["anchor_hash"] = ""
+        self._values["anchor_trend_direction"] = 0
+        self._last_high_idx = -1
+        self._last_low_idx = -1
+        self._last_pair_version = -1
+        if self.use_trend_anchor:
+            self._last_trend_version = -1
+            self._last_trend_pair_version = -1
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize state for crash recovery."""
+        state: dict[str, Any] = {
+            "values": dict(self._values),
+            "last_high_idx": self._last_high_idx,
+            "last_low_idx": self._last_low_idx,
+            "last_pair_version": self._last_pair_version,
+        }
+        if self.use_trend_anchor:
+            state["last_trend_version"] = self._last_trend_version
+            state["last_trend_pair_version"] = self._last_trend_pair_version
+        return state
+
     def get_output_keys(self) -> list[str]:
         """
         Return list of output keys.

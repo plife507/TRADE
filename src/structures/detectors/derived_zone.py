@@ -427,6 +427,20 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
         """
         return bar.close
 
+    def reset(self) -> None:
+        """Reset all mutable state to initial values."""
+        self._zones.clear()
+        self._source_version = 0
+        self._current_bar_idx = -1
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize state for crash recovery."""
+        return {
+            "zones": [dict(z) for z in self._zones],
+            "source_version": self._source_version,
+            "current_bar_idx": self._current_bar_idx,
+        }
+
     def get_output_keys(self) -> list[str]:
         """
         Return list of all output keys (slots + aggregates).

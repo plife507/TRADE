@@ -222,48 +222,26 @@ def _compute_anchored_vwap(
     **kwargs: Any,
 ) -> dict[str, pd.Series]:
     """
-    Compute anchored VWAP using incremental class in batch mode.
+    Return NaN-filled placeholder columns for anchored VWAP.
 
-    Anchored VWAP has no pandas_ta equivalent - it resets on structure
-    events (swing pivots) rather than time boundaries. We use the
-    IncrementalAnchoredVWAP class directly for batch computation.
+    Anchored VWAP batch precomputation is intentionally skipped because
+    the engine's _update_anchored_vwap() overwrites every value bar-by-bar
+    using live swing structure versions. Batch computation without swing
+    state produces wrong values that are immediately discarded.
+
+    The placeholder columns ensure FeedStore has the expected column shape.
 
     Args:
-        high, low, close, volume: Price series
-        **kwargs: anchor_source, swing_high_version/swing_low_version arrays,
-                  swing_pair_version/swing_pair_direction arrays
+        high, low, close, volume: Price series (used only for index/length)
+        **kwargs: Ignored (anchor_source, swing versions not needed)
 
     Returns:
-        Dict with "value" and "bars_since_anchor" Series.
+        Dict with NaN-filled "value" and "bars_since_anchor" Series.
     """
-    from src.indicators.incremental import IncrementalAnchoredVWAP
+    import numpy as np
 
-    anchor_source = kwargs.get("anchor_source", "swing_any")
-    avwap = IncrementalAnchoredVWAP(anchor_source=anchor_source)
-
-    n = len(close)
-    values = pd.Series(index=close.index, dtype=float)
-    bars_since = pd.Series(index=close.index, dtype=float)
-
-    def _get_dict_val(key: str, idx: int, default: Any = -1) -> Any:
-        mapping = kwargs.get(key)
-        if isinstance(mapping, dict):
-            return mapping.get(idx, default)
-        return default
-
-    for i in range(n):
-        avwap.update(
-            high=float(high.iloc[i]),
-            low=float(low.iloc[i]),
-            close=float(close.iloc[i]),
-            volume=float(volume.iloc[i]),
-            swing_high_version=_get_dict_val("swing_high_version", i),
-            swing_low_version=_get_dict_val("swing_low_version", i),
-            swing_pair_version=_get_dict_val("swing_pair_version", i),
-            swing_pair_direction=_get_dict_val("swing_pair_direction", i, ""),
-        )
-        values.iloc[i] = avwap.value
-        bars_since.iloc[i] = float(avwap.bars_since_anchor)
+    values = pd.Series(np.nan, index=close.index, dtype=float)
+    bars_since = pd.Series(np.nan, index=close.index, dtype=float)
 
     return {"value": values, "bars_since_anchor": bars_since}
 

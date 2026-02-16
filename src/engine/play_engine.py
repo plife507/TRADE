@@ -1013,23 +1013,47 @@ class PlayEngine:
         if self._feature_registry is None:
             return cache
 
-        # Find anchored_vwap features
+        # Find anchored_vwap features; collect explicit anchor_structure preferences
+        anchor_structure_pref: str | None = None
         for feature in self._feature_registry.all_features():
             if feature.indicator_type == "anchored_vwap":
                 anchor_source = feature.params.get("anchor_source", "swing_any")
                 avwap = IncrementalAnchoredVWAP(anchor_source=anchor_source)
                 cache["indicators"][feature.id] = avwap
+                # Allow user to specify which swing structure to wire to
+                if "anchor_structure" in feature.params:
+                    anchor_structure_pref = feature.params["anchor_structure"]
 
         if not cache["indicators"]:
             return cache
 
-        # Find the first swing structure on exec TF
+        # Find the swing structure on exec TF
         if self._incremental_state is not None:
-            for key in self._incremental_state.exec.list_structures():
-                detector = self._incremental_state.exec.structures[key]
-                if getattr(detector, "_type", "") == "swing":
-                    cache["swing_key"] = key
-                    break
+            # If user specified anchor_structure, use that directly
+            if anchor_structure_pref is not None:
+                # Search all TF states (exec, then others) for the named structure
+                for tf_state in [self._incremental_state.exec] + list(
+                    getattr(self._incremental_state, "_non_exec_states", {}).values()
+                ):
+                    if anchor_structure_pref in tf_state.structures:
+                        detector = tf_state.structures[anchor_structure_pref]
+                        if getattr(detector, "_type", "") == "swing":
+                            cache["swing_key"] = anchor_structure_pref
+                            cache["swing_tf_state"] = tf_state
+                            break
+                if cache["swing_key"] is None:
+                    self.logger.warning(
+                        f"anchor_structure='{anchor_structure_pref}' not found or not a "
+                        f"swing structure. Falling back to auto-detection on exec TF."
+                    )
+
+            # Fallback: find the first swing structure on exec TF
+            if cache["swing_key"] is None:
+                for key in self._incremental_state.exec.list_structures():
+                    detector = self._incremental_state.exec.structures[key]
+                    if getattr(detector, "_type", "") == "swing":
+                        cache["swing_key"] = key
+                        break
 
         if cache["swing_key"] is None:
             avwap_names = list(cache["indicators"].keys())
@@ -1060,15 +1084,18 @@ class PlayEngine:
 
         swing_key: str | None = self._anchored_vwap_cache["swing_key"]
 
-        # Extract swing versions from exec structure state
+        # Extract swing versions from the appropriate TF structure state
         swing_kwargs: dict[str, Any] = {}
         if swing_key is not None and self._incremental_state is not None:
             try:
-                exec_state = self._incremental_state.exec
-                swing_kwargs["swing_high_version"] = exec_state.get_value(swing_key, "high_version")
-                swing_kwargs["swing_low_version"] = exec_state.get_value(swing_key, "low_version")
-                swing_kwargs["swing_pair_version"] = exec_state.get_value(swing_key, "pair_version")
-                swing_kwargs["swing_pair_direction"] = exec_state.get_value(swing_key, "pair_direction")
+                # Use custom tf_state if anchor_structure pointed to a non-exec TF
+                swing_state = self._anchored_vwap_cache.get(
+                    "swing_tf_state", self._incremental_state.exec
+                )
+                swing_kwargs["swing_high_version"] = swing_state.get_value(swing_key, "high_version")
+                swing_kwargs["swing_low_version"] = swing_state.get_value(swing_key, "low_version")
+                swing_kwargs["swing_pair_version"] = swing_state.get_value(swing_key, "pair_version")
+                swing_kwargs["swing_pair_direction"] = swing_state.get_value(swing_key, "pair_direction")
             except KeyError:
                 pass  # Swing structure not ready yet
 

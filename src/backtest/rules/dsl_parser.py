@@ -559,6 +559,10 @@ def parse_cond(data: dict) -> Cond:
     rhs = parse_rhs(rhs_normalized)
 
     tolerance = data.get("tolerance")
+    # Normalize tolerance: verbose form uses percentage (like shorthand),
+    # evaluator expects ratio. 3 -> 0.03 (3%).
+    if tolerance is not None and op == "near_pct":
+        tolerance = tolerance / 100.0
 
     # Validate operator
     if op not in VALID_OPERATORS:

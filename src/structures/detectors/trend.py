@@ -499,6 +499,65 @@ class IncrementalTrend(BaseIncrementalDetector):
 
     # G6.4.9: Removed unused _is_bullish_wave and _is_bearish_wave methods
 
+    def reset(self) -> None:
+        """Reset all mutable state to initial values."""
+        self._waves.clear()
+        self._prev_high = float("nan")
+        self._prev_low = float("nan")
+        self._last_high_idx = -1
+        self._last_low_idx = -1
+        self._pending_type = None
+        self._pending_level = float("nan")
+        self._pending_idx = -1
+        self.direction = 0
+        self.strength = 0
+        self.bars_in_trend = 0
+        self.wave_count = 0
+        self.last_wave_direction = "none"
+        self.last_hh = False
+        self.last_hl = False
+        self.last_lh = False
+        self.last_ll = False
+        self._version = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize state for crash recovery."""
+        return {
+            "waves": [
+                {
+                    "start_type": w.start_type,
+                    "start_level": w.start_level,
+                    "start_idx": w.start_idx,
+                    "end_type": w.end_type,
+                    "end_level": w.end_level,
+                    "end_idx": w.end_idx,
+                    "direction": w.direction,
+                    "is_higher_high": w.is_higher_high,
+                    "is_higher_low": w.is_higher_low,
+                    "is_lower_high": w.is_lower_high,
+                    "is_lower_low": w.is_lower_low,
+                }
+                for w in self._waves
+            ],
+            "prev_high": self._prev_high,
+            "prev_low": self._prev_low,
+            "last_high_idx": self._last_high_idx,
+            "last_low_idx": self._last_low_idx,
+            "pending_type": self._pending_type,
+            "pending_level": self._pending_level,
+            "pending_idx": self._pending_idx,
+            "direction": self.direction,
+            "strength": self.strength,
+            "bars_in_trend": self.bars_in_trend,
+            "wave_count": self.wave_count,
+            "last_wave_direction": self.last_wave_direction,
+            "last_hh": self.last_hh,
+            "last_hl": self.last_hl,
+            "last_lh": self.last_lh,
+            "last_ll": self.last_ll,
+            "version": self._version,
+        }
+
     def get_output_keys(self) -> list[str]:
         """
         List of readable output keys.

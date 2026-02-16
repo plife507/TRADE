@@ -1863,6 +1863,9 @@ def run_incremental_parity_audit(
             # Phase 7: Volume complex
             audit_kvo_parity,
             audit_vwap_parity,
+            # NOTE: anchored_vwap is intentionally excluded. Batch precomputation
+            # returns NaN placeholders; the engine overwrites with live swing state.
+            # Parity testing batch vs incremental would always fail (by design).
         ]
 
         results = []

@@ -1694,6 +1694,9 @@ class LiveExchange:
             # Bootstrap balance from REST FIRST so risk config uses real balance
             self._bootstrap_balance_from_rest()
 
+            # Override Play config with exchange reality
+            self._reconcile_config_with_exchange()
+
             # Initialize position manager
             self._position_manager = PositionManager(self._exchange_manager)
 
@@ -1795,7 +1798,98 @@ class LiveExchange:
             config.max_position_size_usdt = 0.0
             config.max_total_exposure_usd = 0.0
 
+        # GAP-4: Wire Play leverage + drawdown into risk config
+        config.max_leverage = int(account.max_leverage)
+        config.max_drawdown_pct = account.max_drawdown_pct
+
         return config
+
+    def _reconcile_config_with_exchange(self) -> None:
+        """Override Play config with exchange reality.
+
+        Play YAML is for backtesting. In live/demo the exchange is
+        the source of truth for: equity, fees, leverage limits, MMR,
+        and minimum trade size.
+
+        Patches both Play.account (frozen, via replace()) and
+        self._config (PlayEngineConfig, mutable) so all downstream
+        code uses real values.
+        """
+        from dataclasses import replace
+        from ...backtest.play.config_models import FeeModel
+
+        assert self._exchange_manager is not None
+        account = self._play.account
+        assert account is not None, "Play.account is required for live trading"
+
+        # --- Equity: use real exchange balance ---
+        actual_equity = self._last_known_equity
+        if actual_equity > 0 and abs(actual_equity - account.starting_equity_usdt) > 0.01:
+            logger.info(
+                f"Equity: Play ${account.starting_equity_usdt:,.2f} "
+                f"-> exchange ${actual_equity:,.2f}"
+            )
+            account = replace(account, starting_equity_usdt=actual_equity)
+            self._config.initial_equity = actual_equity
+
+        # --- Fees: use actual exchange rates ---
+        actual_rates = getattr(self._exchange_manager, '_actual_fee_rates', None)
+        if actual_rates:
+            actual_taker = float(actual_rates[0].get("takerFeeRate", 0))
+            actual_maker = float(actual_rates[0].get("makerFeeRate", 0))
+            taker_bps = actual_taker * 10000
+            maker_bps = actual_maker * 10000
+            need_update = (
+                account.fee_model is None
+                or abs(actual_taker - account.fee_model.taker_rate) > 0.000001
+            )
+            if need_update:
+                logger.info(
+                    f"Fees: -> exchange taker={taker_bps:.1f} bps, "
+                    f"maker={maker_bps:.1f} bps"
+                )
+                account = replace(
+                    account, fee_model=FeeModel(taker_bps=taker_bps, maker_bps=maker_bps)
+                )
+                self._config.taker_fee_rate = actual_taker
+                self._config.maker_fee_rate = actual_maker
+
+        # --- Leverage + MMR: from risk limit tiers ---
+        try:
+            tiers = self._exchange_manager.get_risk_limits(self._symbol)
+            if tiers:
+                tier1 = next(
+                    (t for t in tiers if t.get("isLowestRisk") == 1), tiers[0]
+                )
+                exchange_max_lev = int(tier1.get("maxLeverage", 100))
+                exchange_mmr = float(tier1.get("maintenanceMarginRate", "0.005"))
+
+                if account.max_leverage > exchange_max_lev:
+                    raise RuntimeError(
+                        f"Play max_leverage={account.max_leverage}x exceeds "
+                        f"exchange maximum={exchange_max_lev}x for {self._symbol}. "
+                        f"Fix your Play YAML."
+                    )
+
+                logger.info(f"MMR: -> exchange {exchange_mmr:.4f} (tier 1)")
+                self._config.maintenance_margin_rate = exchange_mmr
+        except Exception as e:
+            logger.warning(f"Could not fetch risk limits (non-fatal): {e}")
+
+        # --- Min trade notional: from instrument info ---
+        try:
+            info = self._exchange_manager._get_instrument_info(self._symbol)
+            lot_size = info.get("lotSizeFilter", {})
+            min_notional = float(lot_size.get("minNotionalValue", "0"))
+            if min_notional > 0:
+                logger.info(f"Min notional: -> exchange ${min_notional:.2f}")
+                account = replace(account, min_trade_notional_usdt=min_notional)
+                self._config.min_trade_usdt = min_notional
+        except Exception as e:
+            logger.warning(f"Could not fetch instrument info (non-fatal): {e}")
+
+        # Commit patched account back to Play
+        self._play.account = account
 
     def _apply_leverage_and_margin(self) -> None:
         """

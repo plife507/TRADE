@@ -145,6 +145,19 @@ class IncrementalRollingWindow(BaseIncrementalDetector):
         value = getattr(bar, self.source)
         self._deque.push(bar_idx, value)
 
+    def reset(self) -> None:
+        """Reset all mutable state to initial values."""
+        self._deque = MonotonicDeque(self.size, self.mode)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize state for crash recovery."""
+        return {
+            "size": self.size,
+            "source": self.source,
+            "mode": self.mode,
+            "deque_entries": list(self._deque._deque),
+        }
+
     def get_output_keys(self) -> list[str]:
         """
         Return list of output keys.

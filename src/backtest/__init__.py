@@ -41,9 +41,6 @@ from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
 from .engine_factory import (
     create_engine_from_play,
     run_engine_with_play,
-    # Professional naming aliases
-    create_backtest_engine,
-    PlayRunResult,
 )
 from .risk_policy import (
     RiskPolicy,
@@ -127,8 +124,6 @@ __all__ = [
     "PreparedFrame",
     "MultiTFPreparedFrames",
     # Factory functions
-    "create_backtest_engine",  # Professional alias
-    "PlayRunResult",  # Professional alias
     # Risk policies
     "RiskPolicy",
     "NoneRiskPolicy",

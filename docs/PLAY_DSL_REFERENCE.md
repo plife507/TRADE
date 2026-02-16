@@ -240,6 +240,7 @@ structures:
 **swing** (no deps)
 - Params: `left`, `right`, optional `atr_key`, `min_atr_move`, `major_threshold`
 - Primary outputs: `high_level`, `high_idx`, `low_level`, `low_idx`, `version`
+- Version outputs: `high_version` (increments only on confirmed high pivot), `low_version` (increments only on confirmed low pivot). Unlike `version` which increments on any pivot, these track individual pivot types. Used internally by anchored VWAP for anchor resets.
 - Significance outputs (require `atr_key`): `high_significance`, `low_significance`, `high_is_major`, `low_is_major`
 - Paired pivot outputs: `pair_high_level`, `pair_high_idx`, `pair_low_level`, `pair_low_idx`, `pair_direction` ("bullish"/"bearish"), `pair_version`, `pair_anchor_hash`
 - Tracking outputs: `last_confirmed_pivot_idx`, `last_confirmed_pivot_type` ("high"/"low")

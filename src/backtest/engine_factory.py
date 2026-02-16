@@ -512,12 +512,3 @@ def _get_play_result_class():
     """
     return PlayBacktestResult
 
-
-# =============================================================================
-# PROFESSIONAL NAMING ALIASES
-# See docs/specs/ENGINE_NAMING_CONVENTION.md for full naming standards
-# =============================================================================
-
-# Canonical factory function names
-create_backtest_engine = create_engine_from_play  # Preferred name
-PlayRunResult = PlayBacktestResult  # Play-native result wrapper
