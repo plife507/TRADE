@@ -164,6 +164,11 @@ class EngineManager:
             # Check instance limits
             self._check_limits(play, mode)
 
+            # C7: Validate live mode safety before creating engine
+            if mode == "live":
+                from .factory import PlayEngineFactory
+                PlayEngineFactory._validate_live_mode(confirm_live=True)
+
             # Generate instance ID
             instance_id = f"{play.name}_{mode}_{uuid.uuid4().hex[:8]}"
             symbol = play.symbol_universe[0]
@@ -396,6 +401,15 @@ class EngineManager:
             pass
         except Exception as e:
             logger.error(f"Instance {instance.instance_id} error: {e}")
+            # M9: Clean up crashed instance so it doesn't block new starts
+            iid = instance.instance_id
+            symbol = instance.play.symbol_universe[0]
+            mode = instance.mode.value
+            if iid in self._instances:
+                del self._instances[iid]
+                self._update_counts(mode, symbol, -1)
+                self._remove_instance_file(iid)
+                logger.info(f"Cleaned up crashed instance: {iid}")
 
     async def stop_all(self) -> int:
         """

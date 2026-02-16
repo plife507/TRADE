@@ -115,6 +115,52 @@ class TickerData:
             timestamp=time.time(),
         )
     
+    def merge_delta(self, delta_data: dict) -> 'TickerData':
+        """Merge a delta update into this ticker, keeping existing values for missing fields.
+
+        Bybit delta messages only contain changed fields. Creating a new
+        TickerData via ``from_bybit`` would zero-out every field not present
+        in the delta. This method copies the current ticker and only overwrites
+        fields that actually appear in ``delta_data``.
+
+        Returns:
+            A new TickerData with merged values.
+        """
+        # Map from Bybit field names to our dataclass field names + converter
+        _FIELD_MAP: dict[str, tuple[str, type]] = {
+            "symbol": ("symbol", str),
+            "lastPrice": ("last_price", float),
+            "bid1Price": ("bid_price", float),
+            "ask1Price": ("ask_price", float),
+            "bid1Size": ("bid_size", float),
+            "ask1Size": ("ask_size", float),
+            "highPrice24h": ("high_24h", float),
+            "lowPrice24h": ("low_24h", float),
+            "volume24h": ("volume_24h", float),
+            "turnover24h": ("turnover_24h", float),
+            "markPrice": ("mark_price", float),
+            "indexPrice": ("index_price", float),
+            "fundingRate": ("funding_rate", float),
+            "nextFundingTime": ("next_funding_time", int),
+            "openInterest": ("open_interest", float),
+        }
+
+        # Start from a shallow copy of self (all fields preserved)
+        import dataclasses
+        merged = dataclasses.replace(self, timestamp=time.time())
+
+        for bybit_key, (attr_name, converter) in _FIELD_MAP.items():
+            if bybit_key in delta_data:
+                setattr(merged, attr_name, converter(delta_data[bybit_key]))
+
+        # Special: price24hPcnt needs * 100 scaling for both fields
+        if "price24hPcnt" in delta_data:
+            pct = float(delta_data["price24hPcnt"]) * 100
+            merged.price_change_24h = pct
+            merged.price_change_percent_24h = pct
+
+        return merged
+
     @property
     def spread(self) -> float:
         return self.ask_price - self.bid_price

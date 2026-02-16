@@ -280,15 +280,27 @@ class ExchangeManager:
         """Get account balance."""
         balance = self.bybit.get_balance()
         total = available = 0.0
-        
-        for coin in balance.get("coin", []):
+
+        coins = balance.get("coin", [])
+        for coin in coins:
             if coin.get("coin") == "USDT":
                 total = safe_float(coin.get("walletBalance", 0))
                 available = safe_float(coin.get("availableToWithdraw")) or \
                            safe_float(coin.get("availableToBorrow")) or \
                            safe_float(coin.get("equity")) or total
                 break
-        
+        else:
+            # for/else: no USDT coin found in response
+            if coins:
+                coin_names = [c.get("coin", "?") for c in coins]
+                self.logger.warning(
+                    f"No USDT in balance response. Coins present: {coin_names}"
+                )
+            else:
+                self.logger.warning(
+                    f"Empty coin list in balance response: {balance}"
+                )
+
         return {"total": total, "available": available, "used": total - available}
     
     def get_account_value(self) -> float:
@@ -317,13 +329,13 @@ class ExchangeManager:
         from . import exchange_positions as pos
         return pos.set_trailing_stop(self, symbol, trailing_stop, active_price)
     
-    def set_leverage(self, symbol: str, leverage: int) -> bool:
+    def set_leverage(self, symbol: str, leverage: int) -> None:
         from . import exchange_positions as pos
-        return pos.set_leverage(self, symbol, leverage)
-    
-    def set_margin_mode(self, symbol: str, mode: str, leverage: float = 1.0) -> bool:
+        pos.set_leverage(self, symbol, leverage)
+
+    def set_margin_mode(self, symbol: str, mode: str, leverage: float = 1.0) -> None:
         from . import exchange_positions as pos
-        return pos.set_margin_mode(self, symbol, mode, leverage=leverage)
+        pos.set_margin_mode(self, symbol, mode, leverage=leverage)
     
     def set_position_mode(self, mode: str = "MergedSingle") -> bool:
         from . import exchange_positions as pos

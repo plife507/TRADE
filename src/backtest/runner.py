@@ -140,18 +140,23 @@ def _setup_synthetic_provider(
     use_synthetic: bool = False,
 ) -> "SyntheticDataProvider | None":
     """
-    Setup synthetic data provider if Play has synthetic config.
+    Setup synthetic data provider if Play has a validation: block.
 
     Returns updated synthetic_provider (may be newly created or passed through).
     Also modifies config.window_start/end and config.skip_preflight if synthetic.
 
-    Only auto-creates from play.synthetic when use_synthetic=True.
+    Only auto-creates from play.validation when use_synthetic=True.
+    Bars are auto-computed: warmup(play) + 300 trading bars.
     """
-    if not use_synthetic or play.synthetic is None or synthetic_provider is not None:
+    if not use_synthetic or play.validation is None or synthetic_provider is not None:
         return synthetic_provider
 
     from src.forge.validation import generate_synthetic_candles
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+    from src.backtest.execution_validation import compute_synthetic_bars
+
+    # Auto-compute bars from indicator/structure warmup requirements
+    synthetic_bars = compute_synthetic_bars(play)
 
     # Collect required timeframes
     exec_tf = play.exec_tf
@@ -165,17 +170,17 @@ def _setup_synthetic_provider(
     for tf in play.feature_registry.get_all_tfs():
         required_tfs.add(tf)
 
-    print(f"[SYNTHETIC] Auto-generating data for Play with synthetic config")
-    print(f"[SYNTHETIC] Pattern: {play.synthetic.pattern}, Bars: {play.synthetic.bars}, Seed: {play.synthetic.seed}")
+    print(f"[SYNTHETIC] Auto-generating data ({synthetic_bars} bars from indicator/structure warmup)")
+    print(f"[SYNTHETIC] Pattern: {play.validation.pattern}, Bars: {synthetic_bars}")
     print(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
 
     # Generate synthetic candles
     candles = generate_synthetic_candles(
         symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
         timeframes=list(required_tfs),
-        bars_per_tf=play.synthetic.bars,
-        seed=play.synthetic.seed,
-        pattern=cast("PatternType", play.synthetic.pattern),
+        bars_per_tf=synthetic_bars,
+        seed=42,
+        pattern=cast("PatternType", play.validation.pattern),
     )
 
     # Create provider and set window from synthetic data
@@ -509,10 +514,6 @@ def _execute_backtest(
         trades = [t.to_dict() if hasattr(t, 'to_dict') else t for t in engine_result.trades]
     if hasattr(engine_result, 'equity_curve'):
         equity_curve = [e.to_dict() if hasattr(e, 'to_dict') else e for e in engine_result.equity_curve]
-    if hasattr(engine_result, 'play_hash'):
-        ctx.play_hash = engine_result.play_hash
-    else:
-        ctx.play_hash = compute_play_hash(ctx.play)
 
     ctx.engine = engine
     ctx.engine_result = engine_result
@@ -614,7 +615,7 @@ def _write_results_summary(ctx: _RunContext) -> ResultsSummary:
         equity_curve=ctx.equity_curve,
         artifact_path=str(ctx.artifact_path),
         run_duration_seconds=run_duration,
-        idea_hash=ctx.play_hash,
+        play_hash=ctx.play_hash,
         pipeline_version=PIPELINE_VERSION,
         resolved_idea_path=resolved_idea_path,
         trades_hash=trades_hash,
@@ -985,8 +986,23 @@ def run_backtest_with_gates(
             net_pnl=summary.net_pnl_usdt if summary else None,
             trades_count=summary.trades_count if summary else None,
             status="success",
+            trades_hash=summary.trades_hash if summary else None,
+            run_hash=summary.run_hash if summary else None,
         )
         set_run_logger(None)
+
+        # Emit debug hash summary (TRADE_DEBUG=1 only)
+        from src.utils.debug import debug_run_complete
+        run_duration = time.time() - ctx.run_start_time
+        debug_run_complete(
+            ctx.play_hash,
+            summary.run_hash if summary else None,
+            trades_hash=summary.trades_hash if summary else None,
+            equity_hash=summary.equity_hash if summary else None,
+            trades_count=summary.trades_count if summary else None,
+            elapsed_seconds=run_duration,
+            artifact_path=str(ctx.artifact_path) if ctx.artifact_path else None,
+        )
 
         # Print risk mode warning and summary
         real_engine = getattr(ctx.engine, 'engine', ctx.engine)

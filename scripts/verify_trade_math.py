@@ -42,15 +42,15 @@ PLAYS_ROOT = ROOT / "plays"
 RESULTS_DIR = ROOT / "backtests" / "_verification"
 
 SUITE_DIRS = {
-    "indicator": PLAYS_ROOT / "indicator_suite",
-    "operator": PLAYS_ROOT / "operator_suite",
-    "structure": PLAYS_ROOT / "structure_suite",
-    "pattern": PLAYS_ROOT / "pattern_suite",
-    "cl": PLAYS_ROOT / "complexity_ladder",
-    "rv_accumulation": PLAYS_ROOT / "real_verification" / "accumulation",
-    "rv_markup": PLAYS_ROOT / "real_verification" / "markup",
-    "rv_distribution": PLAYS_ROOT / "real_verification" / "distribution",
-    "rv_markdown": PLAYS_ROOT / "real_verification" / "markdown",
+    "indicator": PLAYS_ROOT / "validation" / "indicators",
+    "operator": PLAYS_ROOT / "validation" / "operators",
+    "structure": PLAYS_ROOT / "validation" / "structures",
+    "pattern": PLAYS_ROOT / "validation" / "patterns",
+    "cl": PLAYS_ROOT / "validation" / "complexity",
+    "rv_accumulation": PLAYS_ROOT / "validation" / "real_data" / "accumulation",
+    "rv_markup": PLAYS_ROOT / "validation" / "real_data" / "markup",
+    "rv_distribution": PLAYS_ROOT / "validation" / "real_data" / "distribution",
+    "rv_markdown": PLAYS_ROOT / "validation" / "real_data" / "markdown",
 }
 
 # Pattern map (same as run_full_suite.py)

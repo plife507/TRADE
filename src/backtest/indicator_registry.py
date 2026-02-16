@@ -554,7 +554,9 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
     "anchored_vwap": {
         "inputs": {"high", "low", "close", "volume"},
         "params": {"anchor_source"},  # anchor_source: "swing_high", "swing_low", "swing_any", "manual"
-        "multi_output": False,
+        "multi_output": True,
+        "output_keys": ("value", "bars_since_anchor"),
+        "primary_output": "value",
         "warmup_formula": _warmup_minimal,  # Cumulative from anchor point
         "incremental_class": "IncrementalAnchoredVWAP",
     },
@@ -607,7 +609,10 @@ INDICATOR_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
     "ohlc4": {"value": FeatureOutputType.FLOAT},
     "uo": {"value": FeatureOutputType.FLOAT},
     "vwap": {"value": FeatureOutputType.FLOAT},
-    "anchored_vwap": {"value": FeatureOutputType.FLOAT},
+    "anchored_vwap": {
+        "value": FeatureOutputType.FLOAT,
+        "bars_since_anchor": FeatureOutputType.INT,
+    },
 
     # -------------------------------------------------------------------------
     # Multi-Output Indicators

@@ -351,64 +351,65 @@ class RealtimeBootstrap:
     def subscribe_symbol_dynamic(self, symbol: str) -> bool:
         """
         Dynamically subscribe to public streams for a symbol.
-        
+
         Call this when opening a position on a new symbol to get
         real-time market data for it.
-        
+
         Args:
             symbol: Symbol to subscribe to (e.g., "SOLUSDT")
-            
+
         Returns:
             True if subscribed successfully, False otherwise
         """
         symbol = symbol.upper()
-        
-        # Check if already subscribed
+
+        # Hold the lock for the entire check-then-subscribe sequence
+        # to prevent TOCTOU race where _ws_public disconnects between
+        # the check and the actual subscribe calls.
         with self._lock:
             if symbol in self._symbols:
                 return True  # Already tracking
-            
+
             # Check if WebSocket is connected
             if not self._public_connected or not self.client._ws_public:
                 self.logger.debug(f"WebSocket not connected - {symbol} will use REST")
                 return False
-        
-        try:
-            self.logger.info(f"Dynamically subscribing to {symbol}...")
-            
-            # Subscribe to ticker (most important for position tracking)
-            if self.sub_config.enable_ticker:
-                self.client.subscribe_ticker(symbol, self._on_ticker)
-            
-            # Subscribe to other streams based on config
-            if self.sub_config.enable_orderbook:
-                self.client.subscribe_orderbook(
-                    symbol, self._on_orderbook, 
-                    depth=self.sub_config.orderbook_depth
-                )
-            
-            if self.sub_config.enable_trades:
-                self.client.subscribe_trades(symbol, self._on_trades)
-            
-            if self.sub_config.enable_klines:
-                for interval in self.sub_config.kline_intervals:
-                    try:
-                        interval_val: int | str = int(interval)
-                    except ValueError:
-                        # Non-numeric intervals like "D", "W"
-                        interval_val = interval
-                    self.client.subscribe_klines(symbol, interval_val, self._on_kline)
-            
-            # Track that we're now subscribed
-            with self._lock:
+
+            try:
+                self.logger.info(f"Dynamically subscribing to {symbol}...")
+
+                # Subscribe to ticker (most important for position tracking)
+                if self.sub_config.enable_ticker:
+                    self.client.subscribe_ticker(symbol, self._on_ticker)
+
+                # Subscribe to other streams based on config
+                if self.sub_config.enable_orderbook:
+                    self.client.subscribe_orderbook(
+                        symbol, self._on_orderbook,
+                        depth=self.sub_config.orderbook_depth
+                    )
+
+                if self.sub_config.enable_trades:
+                    self.client.subscribe_trades(symbol, self._on_trades)
+
+                if self.sub_config.enable_klines:
+                    for interval in self.sub_config.kline_intervals:
+                        try:
+                            interval_val: int | str = int(interval)
+                        except ValueError:
+                            # Non-numeric intervals like "D", "W"
+                            interval_val = interval
+                        self.client.subscribe_klines(symbol, interval_val, self._on_kline)
+
+                # Track that we're now subscribed
                 self._symbols.add(symbol)
-            
-            self.logger.info(f"Subscribed to {symbol} streams")
-            return True
-            
-        except Exception as e:
-            self.logger.warning(f"Failed to subscribe to {symbol}: {e}")
-            return False
+
+                self.logger.info(f"Subscribed to {symbol} streams")
+                return True
+
+            except Exception as e:
+                self.logger.warning(f"Failed to subscribe to {symbol}: {e}")
+                return False
     
     def ensure_symbol_subscribed(self, symbol: str) -> bool:
         """
@@ -445,6 +446,9 @@ class RealtimeBootstrap:
         """
         symbol = symbol.upper()
 
+        # Hold the lock for the entire check-then-subscribe sequence
+        # to prevent TOCTOU race where _ws_public disconnects between
+        # the check and the actual subscribe calls.
         with self._lock:
             already = set(self.sub_config.kline_intervals)
             new_intervals = [iv for iv in intervals if iv not in already]
@@ -459,15 +463,14 @@ class RealtimeBootstrap:
                 )
                 return
 
-        for interval in new_intervals:
-            try:
-                interval_int: int | str = int(interval)
-            except ValueError:
-                interval_int = interval
-            self.client.subscribe_klines(symbol, interval_int, self._on_kline)
-            self.logger.info(f"Subscribed to kline.{interval}.{symbol}")
+            for interval in new_intervals:
+                try:
+                    interval_int: int | str = int(interval)
+                except ValueError:
+                    interval_int = interval
+                self.client.subscribe_klines(symbol, interval_int, self._on_kline)
+                self.logger.info(f"Subscribed to kline.{interval}.{symbol}")
 
-        with self._lock:
             self.sub_config.kline_intervals.extend(new_intervals)
 
     # ==========================================================================
@@ -560,10 +563,24 @@ class RealtimeBootstrap:
                 self._stale_logged = False
                 self.logger.info("Public WebSocket reconnected (data resumed)")
 
-            # Handle both snapshot and delta
-            ticker = TickerData.from_bybit(data)
+            msg_type = msg.get("type", "")
+            symbol = data.get("symbol", "")
+
+            if msg_type == "delta" and symbol:
+                # Delta messages only contain changed fields.
+                # Merge into existing ticker to avoid zeroing out missing fields.
+                existing = self.state.get_ticker(symbol)
+                if existing:
+                    ticker = existing.merge_delta(data)
+                else:
+                    # No existing ticker yet -- treat delta as snapshot
+                    ticker = TickerData.from_bybit(data)
+            else:
+                # Snapshot: full replace
+                ticker = TickerData.from_bybit(data)
+
             self.state.update_ticker(ticker)
-            
+
         except Exception as e:
             self.logger.warning(f"Error processing ticker: {e}")
     
@@ -757,61 +774,86 @@ class RealtimeBootstrap:
             if self.sub_config.enable_wallet:
                 self.client.subscribe_wallet(self._on_wallet)
             
+            # Fetch initial state via REST API BEFORE marking connected.
+            # Bybit WebSocket does NOT send initial snapshots for private streams.
+            # We must load the REST snapshot first so that WebSocket deltas
+            # (which start arriving after set_private_ws_connected) don't
+            # overwrite the REST snapshot with stale data.
+            self._fetch_initial_private_state()
+
             self._private_connected = True
             self.state.set_private_ws_connected()
             self.logger.info("Private WebSocket streams started")
-            
-            # Fetch initial state via REST API
-            # Bybit WebSocket does NOT send initial snapshots for private streams
-            self._fetch_initial_private_state()
             
         except Exception as e:
             self.logger.error(f"Failed to start private streams: {e}")
             self.state.set_private_ws_disconnected(str(e))
             raise
     
+    def _detect_private_reconnection(self):
+        """Detect if private WS reconnected (pybit internal retry).
+
+        Mirrors the public reconnection detection in _on_ticker/_on_kline.
+        If data arrives but _private_connected was cleared (by stale handler),
+        the connection has been restored by pybit's internal retry.
+        """
+        if not self._private_connected:
+            self._private_connected = True
+            self.state.set_private_ws_connected()
+            self._stale_logged = False
+            self.logger.info("Private WebSocket reconnected (data resumed)")
+
     def _on_position(self, msg: dict):
         """Handle position update from WebSocket."""
         try:
             data = msg.get("data", [])
-            
             if not isinstance(data, list):
                 data = [data]
-            
+            if not data:
+                return
+
+            self._detect_private_reconnection()
+
             for pos_data in data:
                 position = PositionData.from_bybit(pos_data)
                 self.state.update_position(position)
-            
+
         except Exception as e:
             self.logger.warning(f"Error processing position: {e}")
-    
+
     def _on_order(self, msg: dict):
         """Handle order update from WebSocket."""
         try:
             data = msg.get("data", [])
-            
             if not isinstance(data, list):
                 data = [data]
-            
+            if not data:
+                return
+
+            self._detect_private_reconnection()
+
             for order_data in data:
                 order = OrderData.from_bybit(order_data)
                 self.state.update_order(order)
-            
+
         except Exception as e:
             self.logger.warning(f"Error processing order: {e}")
-    
+
     def _on_execution(self, msg: dict):
         """Handle execution update from WebSocket."""
         try:
             data = msg.get("data", [])
-            
             if not isinstance(data, list):
                 data = [data]
-            
+            if not data:
+                return
+
+            self._detect_private_reconnection()
+
             for exec_data in data:
                 execution = ExecutionData.from_bybit(exec_data)
                 self.state.add_execution(execution)
-            
+
         except Exception as e:
             self.logger.warning(f"Error processing execution: {e}")
     
@@ -949,19 +991,23 @@ class RealtimeBootstrap:
     def _on_wallet(self, msg: dict):
         """
         Handle wallet update from WebSocket.
-        
+
         The wallet stream contains both:
         1. Account-level unified metrics (accountIMRate, totalEquity, etc.)
         2. Per-coin balances and margins
-        
+
         We parse both and update RealtimeState accordingly.
         """
         try:
             data = msg.get("data", [])
-            
+
             if not isinstance(data, list):
                 data = [data]
-            
+            if not data:
+                return
+
+            self._detect_private_reconnection()
+
             for wallet_data in data:
                 # Parse account-level metrics (unified account view)
                 # These are at the top level of each wallet message
@@ -1031,21 +1077,41 @@ class RealtimeBootstrap:
         self.logger.debug("Connection monitor loop stopped")
     
     def _handle_stale_connection(self):
-        """Handle a potentially stale WebSocket connection."""
-        # Only log once per stale event to avoid flooding terminal
+        """Handle a potentially stale WebSocket connection.
+
+        When no WS data has been received for 60s, refresh wallet/position
+        data via REST so the risk manager and balance checks stay current.
+        Also marks connections as reconnecting so the health check reflects
+        the degraded state.
+        """
         if not getattr(self, '_stale_logged', False):
-            self.logger.warning("WebSocket stale - switching to REST fallback")
+            self.logger.warning(
+                "WebSocket stale (60s no data) — refreshing via REST"
+            )
             self._stale_logged = True
-        
+        else:
+            self.logger.debug("WebSocket still stale — refreshing via REST")
+
+        # Refresh wallet/positions via REST to keep data current
+        try:
+            self._fetch_initial_wallet()
+        except Exception as e:
+            self.logger.warning(f"REST wallet refresh failed: {e}")
+
+        try:
+            self._fetch_initial_positions()
+        except Exception as e:
+            self.logger.warning(f"REST position refresh failed: {e}")
+
         # Update connection status
         if self._public_connected:
             self.state.set_public_ws_reconnecting()
             self._public_connected = False
-        
+
         if self._private_connected:
             self.state.set_private_ws_reconnecting()
             self._private_connected = False
-        
+
         # Track last disconnect for agents
         self._last_disconnect_time = time.time()
         self._disconnect_count = getattr(self, '_disconnect_count', 0) + 1

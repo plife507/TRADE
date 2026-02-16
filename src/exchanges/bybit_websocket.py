@@ -67,7 +67,7 @@ def connect_public_ws(
         retries=5,
         restart_on_error=True,
         ping_interval=20,
-        ping_timeout=10,
+        ping_timeout=15,
     )
     
     client.logger.info(f"Connected to public WebSocket ({channel_type}, {stream_type})")
@@ -91,7 +91,7 @@ def connect_private_ws(client: "BybitClient") -> WebSocket:
         retries=5,
         restart_on_error=True,
         ping_interval=20,
-        ping_timeout=10,
+        ping_timeout=15,
     )
     
     # Only two modes: DEMO or LIVE
@@ -123,9 +123,18 @@ def subscribe_trades(client: "BybitClient", symbol: str | list[str], callback: C
 
 
 def subscribe_klines(client: "BybitClient", symbol: str | list[str], interval: int | str, callback: Callable):
-    """Subscribe to kline/candlestick updates."""
+    """Subscribe to kline/candlestick updates.
+
+    Bybit accepts numeric intervals (1, 5, 15, 60, ...) and string intervals
+    ("D", "W", "M") for daily/weekly/monthly candles.
+    """
     ws = connect_public_ws(client)
-    ws.kline_stream(interval=int(interval), symbol=symbol, callback=callback)
+    # Convert to int for numeric intervals, keep string for D/W/M
+    try:
+        bybit_interval: int | str = int(interval)
+    except (ValueError, TypeError):
+        bybit_interval = interval
+    ws.kline_stream(interval=bybit_interval, symbol=symbol, callback=callback)  # type: ignore[arg-type]
     client.logger.info(f"Subscribed to klines({interval}): {symbol}")
 
 

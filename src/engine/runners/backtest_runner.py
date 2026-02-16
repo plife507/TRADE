@@ -640,12 +640,29 @@ class BacktestRunner:
         # - Order submission returns before fill (async in backtest flow)
         # - Actual fill price only known after process_bar completes
         # - Live mode logs from PlayEngine since exchange returns fill immediately
+        from ...utils.debug import is_debug_enabled, debug_trade
         for fill in step_result.fills:
             if fill.reason.value == "entry":
                 self._engine.logger.info(
                     f"Order filled: {fill.side.name} {fill.symbol} "
                     f"price={fill.price:.2f} size={fill.size_usdt:.2f} USDT"
                 )
+            else:
+                reason_label = fill.reason.value.upper().replace("_", " ")
+                self._engine.logger.info(
+                    f"Exit filled: {reason_label} {fill.symbol} "
+                    f"price={fill.price:.2f} size={fill.size_usdt:.2f} USDT"
+                )
+
+                # 7.3: Log SL/TP/exit fills via debug_trade
+                if is_debug_enabled():
+                    debug_trade(
+                        self._engine._play_hash, bar_idx,
+                        event=fill.reason.value,
+                        trade_num=self._engine._total_trades,
+                        exit=fill.price,
+                        pnl=fill.pnl if hasattr(fill, "pnl") else None,
+                    )
 
     def _close_remaining_position(
         self,

@@ -40,11 +40,11 @@ console = Console()
 
 def market_data_menu(cli: "TradeCLI"):
     """Market data menu."""
-    from trade_cli import (
-        clear_screen, print_header, get_input, get_choice,
-        run_tool_action, print_result, print_data_result, print_error_below_menu, BACK
+    from src.cli.utils import (
+        clear_screen, print_header, get_input, get_choice, get_int_input,
+        run_tool_action, print_result, print_data_result, print_error_below_menu, BACK,
+        get_symbol_input,
     )
-    from src.cli.utils import get_int_input
     
     while True:
         clear_screen()
@@ -86,14 +86,14 @@ def market_data_menu(cli: "TradeCLI"):
         
         try:
             if choice == 1:
-                symbol = get_input("Symbol")
+                symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
                 result = run_tool_action("market.price", get_price_tool, symbol=symbol)
                 print_data_result("market.price", result)
                 Prompt.ask("\nPress Enter to continue")
             elif choice == 2:
-                symbol = get_input("Symbol")
+                symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
                 interval = get_input("Interval", "15")
@@ -107,21 +107,21 @@ def market_data_menu(cli: "TradeCLI"):
                 print_data_result("market.ohlcv", result)
                 Prompt.ask("\nPress Enter to continue")
             elif choice == 3:
-                symbol = get_input("Symbol")
+                symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
                 result = run_tool_action("market.funding", get_funding_rate_tool, symbol=symbol)
                 print_data_result("market.funding", result)
                 Prompt.ask("\nPress Enter to continue")
             elif choice == 4:
-                symbol = get_input("Symbol")
+                symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
                 result = run_tool_action("market.open_interest", get_open_interest_tool, symbol=symbol)
                 print_data_result("market.open_interest", result)
                 Prompt.ask("\nPress Enter to continue")
             elif choice == 5:
-                symbol = get_input("Symbol")
+                symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
                 limit = get_int_input("Depth Limit", "25")
@@ -136,7 +136,7 @@ def market_data_menu(cli: "TradeCLI"):
                 print_data_result("market.instruments", result)
                 Prompt.ask("\nPress Enter to continue")
             elif choice == 7:
-                symbol = get_input("Symbol")
+                symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
                 result = run_tool_action("market.test", run_market_data_tests_tool, symbol=symbol)

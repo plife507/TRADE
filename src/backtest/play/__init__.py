@@ -22,15 +22,16 @@ from .risk_model import (
     BreakEvenConfig,
 )
 from .play import (
-    SyntheticConfig,
+    ValidationConfig,
     PositionMode,
     PositionPolicy,
     Play,
+    PlayInfo,
     load_play,
     list_plays,
+    list_play_dirs,
+    peek_play_yaml,
     PLAYS_DIR,
-    VALIDATION_PLAYS_DIR,
-    STRESS_PLAYS_DIR,
 )
 
 __all__ = [
@@ -49,13 +50,14 @@ __all__ = [
     "TrailingConfig",
     "BreakEvenConfig",
     # Play
-    "SyntheticConfig",
+    "ValidationConfig",
     "PositionMode",
     "PositionPolicy",
     "Play",
+    "PlayInfo",
     "load_play",
     "list_plays",
+    "list_play_dirs",
+    "peek_play_yaml",
     "PLAYS_DIR",
-    "VALIDATION_PLAYS_DIR",
-    "STRESS_PLAYS_DIR",
 ]

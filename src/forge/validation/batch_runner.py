@@ -9,7 +9,7 @@ Architecture Principle: Pure Math
 Usage:
     from src.forge.validation import validate_batch
 
-    result = validate_batch("tests/functional/plays/_validation")
+    result = validate_batch("plays/validation")
 
     print(f"Passed: {result.passed}/{result.total}")
     for fail in result.failed:

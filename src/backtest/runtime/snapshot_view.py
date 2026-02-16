@@ -989,11 +989,23 @@ class RuntimeSnapshotView:
         # - Single-output indicators: field is None/empty/"value" -> key = feature_id
         #   ("value" is the DSL default field for single-output indicators)
         # - Multi-output indicators: field is set to actual output -> key = feature_id + "_" + field
+        #   For multi-output with field=None/"value", resolve to feature_id + "_" + primary_output
         #   The field values come from INDICATOR_REGISTRY output_keys (e.g., "histogram", "signal")
         if field and field != "value":
             indicator_key = f"{feature_id}_{field}"
         else:
+            # Check if this is a multi-output indicator (e.g., anchored_vwap with "value"+"bars_since_anchor")
+            # If so, bare feature_id won't match FeedStore — resolve to primary output key
             indicator_key = feature_id
+            if self._feature_registry is not None:
+                feat = self._feature_registry.get_or_none(feature_id)
+                if feat is not None and feat.indicator_type:
+                    from src.backtest.indicator_registry import get_registry
+                    reg = get_registry()
+                    if reg.is_multi_output(feat.indicator_type):
+                        primary = reg.get_primary_output(feat.indicator_type)
+                        if primary:
+                            indicator_key = f"{feature_id}_{primary}"
 
         # Determine TF role from feature registry
         tf_role = "exec"  # Default

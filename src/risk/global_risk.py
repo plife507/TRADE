@@ -251,6 +251,14 @@ class GlobalRiskView:
                 # Track how long we've been unhealthy
                 if self._ws_unhealthy_since is None:
                     self._ws_unhealthy_since = now
+                    # Log diagnostic detail on first unhealthy detection
+                    priv = self.state.is_private_ws_connected
+                    metrics_stale = self.state.is_account_metrics_stale(30.0)
+                    wallet_stale = self.state.is_wallet_stale(max_age_seconds=30.0)
+                    self.logger.warning(
+                        f"WS became unhealthy: private_connected={priv} "
+                        f"metrics_stale={metrics_stale} wallet_stale={wallet_stale}"
+                    )
 
                 unhealthy_duration = now - self._ws_unhealthy_since
 

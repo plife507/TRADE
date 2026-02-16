@@ -25,7 +25,7 @@ import queue
 import threading
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -60,7 +60,7 @@ VALID_TRANSITIONS: dict[RunnerState, set[RunnerState]] = {
     RunnerState.STOPPED: {RunnerState.STARTING},
     RunnerState.STARTING: {RunnerState.RUNNING, RunnerState.ERROR},
     RunnerState.RUNNING: {RunnerState.STOPPING, RunnerState.RECONNECTING, RunnerState.ERROR},
-    RunnerState.RECONNECTING: {RunnerState.RUNNING, RunnerState.STOPPING, RunnerState.ERROR},
+    RunnerState.RECONNECTING: {RunnerState.RUNNING, RunnerState.RECONNECTING, RunnerState.STOPPING, RunnerState.ERROR},
     RunnerState.STOPPING: {RunnerState.STOPPED, RunnerState.ERROR},
     RunnerState.ERROR: {RunnerState.STOPPED},  # Can only reset from error
 }
@@ -167,6 +167,10 @@ class LiveRunner:
 
         # Max drawdown tracking (B5)
         self._peak_equity: float = 0.0
+        self._equity_initialized: bool = False
+
+        # H4: Track whether exchange has an existing position for our symbol
+        self._has_existing_position: bool = False
 
         # G17.1: Trade journal (initialized in start())
         self._journal = None
@@ -190,6 +194,10 @@ class LiveRunner:
         self._candle_queue: queue.Queue = queue.Queue(maxsize=0)
         self._subscription_task: asyncio.Task | None = None
         self._kline_callback_registered = False
+
+        # H3: Candle deduplication -- keyed by TF, each value is a set of ts_open_epoch
+        self._seen_candles: dict[str, set[float]] = {}
+        self._SEEN_CANDLE_MAX_PER_TF = 100
 
     @property
     def _debug(self) -> bool:
@@ -257,6 +265,11 @@ class LiveRunner:
         self._stats = LiveRunnerStats(started_at=datetime.now())
         self._stop_event.clear()
         self._reconnect_attempts = 0
+
+        # Set play_hash for debug log correlation
+        from ...backtest.execution_validation import compute_play_hash
+        play_hash = compute_play_hash(self._engine.play)
+        self._engine.set_play_hash(play_hash)
 
         logger.info(
             f"LiveRunner starting: {self._engine.symbol} {self._engine.timeframe} "
@@ -458,11 +471,16 @@ class LiveRunner:
                     logger.info(f"Position sync: {len(positions)} existing position(s)")
                     for pos in positions:
                         if pos.symbol == self._engine.symbol:
-                            logger.info(
-                                f"  {pos.symbol}: {pos.side} {pos.size} @ {pos.entry_price}"
+                            self._has_existing_position = True
+                            logger.warning(
+                                f"ENGINE STARTING WITH OPEN POSITION: "
+                                f"{pos.symbol} {pos.side} size={pos.size} "
+                                f"entry={pos.entry_price} -- engine will avoid "
+                                f"opening duplicates"
                             )
                 else:
                     logger.info("Position sync: no existing positions")
+                    self._has_existing_position = False
         except Exception as e:
             logger.warning(f"Position sync warning (non-fatal): {e}")
 
@@ -518,6 +536,19 @@ class LiveRunner:
         # Only process closed candles
         if not kline_data.is_closed:
             return
+
+        # H3: Deduplicate candles (WebSocket reconnect can re-deliver)
+        ts_open_epoch = float(kline_data.start_time)
+        seen_for_tf = self._seen_candles.setdefault(kline_tf, set())
+        if ts_open_epoch in seen_for_tf:
+            logger.debug(f"Duplicate candle skipped: {kline_tf} ts_open={ts_open_epoch}")
+            return
+        seen_for_tf.add(ts_open_epoch)
+        # Bound set size per TF
+        if len(seen_for_tf) > self._SEEN_CANDLE_MAX_PER_TF:
+            # Remove oldest entries (smallest timestamps)
+            to_remove = sorted(seen_for_tf)[: len(seen_for_tf) - self._SEEN_CANDLE_MAX_PER_TF]
+            seen_for_tf.difference_update(to_remove)
 
         if self._debug:
             logger.debug(
@@ -590,6 +621,17 @@ class LiveRunner:
                 # Wait for next candle close
                 result = await self._wait_for_candle()
                 if result is None:
+                    # Heartbeat: show we're alive while waiting for candles
+                    elapsed = self._stats.duration_seconds
+                    mins, secs = divmod(int(elapsed), 60)
+                    hrs, mins = divmod(mins, 60)
+                    last_ts = self._stats.last_candle_ts
+                    last_str = last_ts.strftime("%H:%M:%S") if last_ts else "none"
+                    logger.info(
+                        f"Waiting for candle... | {self._engine.symbol} {self._exec_tf} "
+                        f"| uptime={hrs}h{mins:02d}m | bars={self._stats.bars_processed} "
+                        f"signals={self._stats.signals_generated} | last={last_str}"
+                    )
                     continue
 
                 candle, timeframe = result
@@ -604,6 +646,8 @@ class LiveRunner:
                 await self._maybe_reconcile_positions()
 
             except asyncio.CancelledError:
+                self._transition_state(RunnerState.STOPPING)
+                self._stop_event.set()
                 break
 
             except (ConnectionError, TimeoutError, OSError) as e:
@@ -621,6 +665,8 @@ class LiveRunner:
                     await self._reconnect()
                 else:
                     logger.error("Max reconnection attempts reached, stopping")
+                    self._transition_state(RunnerState.ERROR)
+                    self._stop_event.set()
                     break
 
             except Exception as e:
@@ -635,6 +681,8 @@ class LiveRunner:
                     self._on_error(e)
 
                 # Logic errors are not recoverable by reconnection -- stop
+                self._transition_state(RunnerState.ERROR)
+                self._stop_event.set()
                 break
 
     async def _wait_for_candle(self):
@@ -664,7 +712,7 @@ class LiveRunner:
             # No candle received in timeout period
             # Check if we've exceeded health threshold
             if self._stats.last_candle_ts:
-                since_last = (datetime.now() - self._stats.last_candle_ts).total_seconds()
+                since_last = (datetime.now(timezone.utc) - self._stats.last_candle_ts).total_seconds()
                 expected_interval = tf_mins * 60
 
                 if since_last > expected_interval * 2:
@@ -719,17 +767,23 @@ class LiveRunner:
 
         # Check if data provider is ready (warmup complete)
         if not data_provider.is_ready():
-            if self._debug:
-                logger.debug(
-                    f"[DBG] Warmup pending: bars={data_provider.num_bars} "
-                    f"ready={data_provider.is_ready()}"
-                )
-            else:
-                logger.debug(
-                    f"Data provider not ready (warmup), skipping signal evaluation. "
-                    f"Bars: {data_provider.num_bars}"
-                )
+            # Show warmup progress per TF buffer
+            warmup_target = getattr(data_provider, '_warmup_bars', '?')
+            low_n = len(getattr(data_provider, '_low_tf_buffer', []))
+            med_n = len(getattr(data_provider, '_med_tf_buffer', []))
+            high_n = len(getattr(data_provider, '_high_tf_buffer', []))
+            logger.info(
+                f"Warmup: {data_provider.num_bars}/{warmup_target} bars "
+                f"(low_tf={low_n} med_tf={med_n} high_tf={high_n}) "
+                f"| close={candle.close}"
+            )
             return
+
+        # Status line on each exec TF candle
+        logger.info(
+            f"Bar #{self._stats.bars_processed} | {self._engine.symbol} {timeframe} "
+            f"close={candle.close} | signals={self._stats.signals_generated}"
+        )
 
         # G17.3: Check pause state -- skip signal evaluation but keep receiving data
         if self.is_paused:
@@ -1004,6 +1058,17 @@ class LiveRunner:
 
         try:
             equity = self._engine._exchange.get_equity()
+
+            # H5: Skip drawdown check until first REAL equity confirmed.
+            # On WS/REST failure, get_equity() may return the default initial_equity
+            # which can cause a false 80%+ drawdown panic.
+            if not self._equity_initialized:
+                if equity != self._peak_equity and equity > 0:
+                    self._equity_initialized = True
+                    self._peak_equity = equity
+                    logger.info(f"Equity initialized from exchange: ${equity:.2f}")
+                return
+
             self._peak_equity = max(self._peak_equity, equity)
 
             if self._peak_equity <= 0:

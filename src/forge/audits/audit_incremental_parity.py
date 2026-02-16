@@ -335,7 +335,7 @@ def audit_rsi_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicator
         inc.update(close=close)
         inc_values.append(inc.value)
 
-    vec = compute_indicator("rsi", close=df["close"], length=length)
+    vec = compute_indicator("rsi", close=df["close"], length=length, talib=False)
 
     passed, max_diff, mean_diff, valid = _compare_series(
         inc_values, vec, warmup, tolerance
@@ -440,7 +440,7 @@ def audit_bbands_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndica
         inc_middle.append(inc.middle)
         inc_upper.append(inc.upper)
 
-    vec = compute_indicator("bbands", close=df["close"], length=length, std=std_dev)
+    vec = compute_indicator("bbands", close=df["close"], length=length, std=std_dev, talib=False)
 
     results = []
     for inc_vals, vec_key, name in [
@@ -640,6 +640,7 @@ def audit_supertrend_parity(
         close=df["close"],
         length=length,
         multiplier=multiplier,
+        talib=False,
     )
 
     passed, max_diff, mean_diff, valid = _compare_series(
@@ -785,7 +786,7 @@ def audit_obv_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicator
         inc.update(close=row["close"], volume=row["volume"])
         inc_values.append(inc.value)
 
-    vec = compute_indicator("obv", close=df["close"], volume=df["volume"])
+    vec = compute_indicator("obv", close=df["close"], volume=df["volume"], talib=False)
 
     passed, max_diff, mean_diff, valid = _compare_series(
         inc_values, vec, warmup, tolerance
@@ -849,7 +850,7 @@ def audit_dema_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicato
         inc.update(close=close)
         inc_values.append(inc.value)
 
-    vec = compute_indicator("dema", close=df["close"], length=length)
+    vec = compute_indicator("dema", close=df["close"], length=length, talib=False)
 
     passed, max_diff, mean_diff, valid = _compare_series(
         inc_values, vec, warmup, tolerance
@@ -877,7 +878,7 @@ def audit_tema_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicato
         inc.update(close=close)
         inc_values.append(inc.value)
 
-    vec = compute_indicator("tema", close=df["close"], length=length)
+    vec = compute_indicator("tema", close=df["close"], length=length, talib=False)
 
     passed, max_diff, mean_diff, valid = _compare_series(
         inc_values, vec, warmup, tolerance
@@ -908,7 +909,7 @@ def audit_ppo_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicator
         inc_hist.append(inc.histogram_value)
 
     vec = compute_indicator(
-        "ppo", close=df["close"], fast=fast, slow=slow, signal=signal
+        "ppo", close=df["close"], fast=fast, slow=slow, signal=signal, talib=False
     )
 
     results = []
@@ -949,7 +950,7 @@ def audit_trix_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicato
         inc_trix.append(inc.trix_value)
         inc_signal.append(inc.signal_value)
 
-    vec = compute_indicator("trix", close=df["close"], length=length, signal=signal)
+    vec = compute_indicator("trix", close=df["close"], length=length, signal=signal, talib=False)
 
     results = []
     for inc_vals, vec_key, name in [
@@ -987,7 +988,7 @@ def audit_tsi_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicator
         inc_tsi.append(inc.tsi_value)
         inc_signal.append(inc.signal_value)
 
-    vec = compute_indicator("tsi", close=df["close"], fast=fast, slow=slow, signal=signal)
+    vec = compute_indicator("tsi", close=df["close"], fast=fast, slow=slow, signal=signal, talib=False)
 
     results = []
     for inc_vals, vec_key, name in [
@@ -1057,7 +1058,7 @@ def audit_trima_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicat
         inc.update(close=close)
         inc_values.append(inc.value)
 
-    vec = compute_indicator("trima", close=df["close"], length=length)
+    vec = compute_indicator("trima", close=df["close"], length=length, talib=False)
 
     passed, max_diff, mean_diff, valid = _compare_series(
         inc_values, vec, warmup, tolerance
@@ -1143,7 +1144,7 @@ def audit_cmo_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicator
         inc.update(close=close)
         inc_values.append(inc.value)
 
-    vec = compute_indicator("cmo", close=df["close"], length=length)
+    vec = compute_indicator("cmo", close=df["close"], length=length, talib=False)
 
     passed, max_diff, mean_diff, valid = _compare_series(
         inc_values, vec, warmup, tolerance
@@ -1295,7 +1296,7 @@ def audit_kc_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicatorR
 
     vec = compute_indicator(
         "kc", high=df["high"], low=df["low"], close=df["close"],
-        length=length, scalar=scalar
+        length=length, scalar=scalar, talib=False
     )
 
     results = []
@@ -1335,7 +1336,7 @@ def audit_dm_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicatorR
         inc_dmp.append(inc.dmp_value)
         inc_dmn.append(inc.dmn_value)
 
-    vec = compute_indicator("dm", high=df["high"], low=df["low"], length=length)
+    vec = compute_indicator("dm", high=df["high"], low=df["low"], length=length, talib=False)
 
     results = []
     for inc_vals, vec_key, name in [
@@ -1475,7 +1476,7 @@ def audit_zlma_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicato
         inc.update(close=close)
         inc_values.append(inc.value)
 
-    vec = compute_indicator("zlma", close=df["close"], length=length)
+    vec = compute_indicator("zlma", close=df["close"], length=length, talib=False)
 
     passed, max_diff, mean_diff, valid = _compare_series(
         inc_values, vec, warmup, tolerance
@@ -1750,7 +1751,7 @@ def audit_stochrsi_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndi
 
     vec = compute_indicator(
         "stochrsi", close=df["close"],
-        length=length, rsi_length=rsi_length, k=k, d=d
+        length=length, rsi_length=rsi_length, k=k, d=d, talib=False
     )
 
     results = []
@@ -1770,7 +1771,7 @@ def audit_stochrsi_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndi
         indicator="StochRSI",
         passed=all_passed,
         max_abs_diff=max_diff,
-        mean_abs_diff=mean_diff,
+        mean_abs_diff=float(mean_diff),
         valid_comparisons=valid,
         warmup_bars=warmup,
         outputs_checked=["%K", "%D"],
@@ -1798,6 +1799,13 @@ def run_incremental_parity_audit(
     Returns:
         IncrementalParityAuditResult with all indicator results
     """
+    # Force TA-Lib off during parity testing. pandas_ta compound indicators
+    # (ADX, SuperTrend, KC, StochRSI) don't propagate talib=False to internal
+    # calls (atr, true_range, rsi), causing TA-Lib-contaminated reference values.
+    # Our incremental implementations match the pure Python pandas_ta path.
+    import pandas_ta as _pta
+    _talib_prev: bool = bool(_pta.Imports.get("talib", False))
+    _pta.Imports["talib"] = False
     try:
         # Generate synthetic data
         df = generate_synthetic_ohlcv(bars=bars, seed=seed)
@@ -1905,6 +1913,9 @@ def run_incremental_parity_audit(
             bars_tested=bars,
             error_message=f"Audit failed: {str(e)}\n{traceback.format_exc()}",
         )
+    finally:
+        # Restore TA-Lib state
+        _pta.Imports["talib"] = _talib_prev
 
 
 # CLI entry point

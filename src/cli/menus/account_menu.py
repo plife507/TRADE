@@ -43,10 +43,11 @@ console = Console()
 
 def account_menu(cli: "TradeCLI"):
     """Account and balance menu."""
-    from trade_cli import (
+    from src.cli.utils import (
         clear_screen, print_header, get_input, get_choice,
         print_error_below_menu, run_tool_action, print_result, print_data_result,
-        select_time_range_cli, BACK
+        select_time_range_cli, BACK,
+        get_symbol_input,
     )
     
     while True:
@@ -103,7 +104,7 @@ def account_menu(cli: "TradeCLI"):
             time_selection = select_time_range_cli(max_days=7, default="7d", endpoint_name="order history")
             if time_selection.is_back:
                 continue
-            symbol = get_input("Symbol (blank for all)", "")
+            symbol = get_symbol_input("Symbol (blank for all)")
             if symbol is BACK:
                 continue
             limit_input = get_input("Limit (1-50)", "50")
@@ -129,7 +130,7 @@ def account_menu(cli: "TradeCLI"):
             time_selection = select_time_range_cli(max_days=7, default="7d", endpoint_name="closed PnL")
             if time_selection.is_back:
                 continue
-            symbol = get_input("Symbol (blank for all)", "")
+            symbol = get_symbol_input("Symbol (blank for all)")
             if symbol is BACK:
                 continue
             limit_input = get_input("Limit (1-50)", "50")

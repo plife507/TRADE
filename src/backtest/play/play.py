@@ -48,38 +48,30 @@ if TYPE_CHECKING:
 # =============================================================================
 
 @dataclass(frozen=True)
-class SyntheticConfig:
+class ValidationConfig:
     """
-    Configuration for synthetic data generation.
+    Configuration for synthetic validation testing.
 
-    When present in a Play, the backtest uses generated synthetic data
-    instead of loading from DuckDB. This enables deterministic, reproducible
-    validation testing.
+    When present in a Play, enables synthetic backtest mode.
+    Only the pattern is specified; bars are auto-computed from
+    warmup requirements of the play's indicators and structures.
 
     Attributes:
         pattern: Price pattern to generate (e.g., "trend_up_clean", "choppy")
-        bars: Number of bars to generate beyond warmup
-        seed: Random seed for reproducibility
     """
     pattern: str = "trend_up_clean"
-    bars: int = 300
-    seed: int = 42
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "SyntheticConfig":
+    def from_dict(cls, d: dict[str, Any]) -> "ValidationConfig":
         """Create from dict."""
         return cls(
             pattern=d.get("pattern", "trend_up_clean"),
-            bars=d.get("bars", 300),
-            seed=d.get("seed", 42),
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict."""
         return {
             "pattern": self.pattern,
-            "bars": self.bars,
-            "seed": self.seed,
         }
 
 
@@ -422,9 +414,13 @@ class Play:
     # Used for auto-resolving structure references without "structure." prefix
     structure_keys: tuple = field(default_factory=tuple)
 
-    # Synthetic data config (for validation plays)
-    # When set, backtest uses generated synthetic data instead of DuckDB
-    synthetic: SyntheticConfig | None = None
+    # Reusable condition blocks (parsed from setups: section)
+    # Values are Expr objects (typed as Any to avoid TYPE_CHECKING import at field level)
+    setups: dict[str, Any] = field(default_factory=dict)
+
+    # Validation config (for synthetic validation plays)
+    # When set, enables synthetic backtest mode with auto-computed warmup
+    validation: ValidationConfig | None = None
 
     # Entry order configuration
     entry_order_type: str = "MARKET"       # "MARKET" | "LIMIT"
@@ -495,6 +491,9 @@ class Play:
             type_errors = self._validate_action_types()
             errors.extend(type_errors)
 
+            ref_errors = self._validate_action_references()
+            errors.extend(ref_errors)
+
         return errors
 
     def _validate_action_types(self) -> list[str]:
@@ -513,10 +512,25 @@ class Play:
         try:
             registry = self.feature_registry
             return validate_blocks_types(self.actions, registry.get_output_type)
-        except Exception:
-            # If registry building fails, skip type validation
-            # (other validation will catch the root cause)
-            return []
+        except Exception as exc:
+            return [f"Type validation failed: {exc}"]
+
+    def _validate_action_references(self) -> list[str]:
+        """
+        Validate that all FeatureRef/SetupRef nodes reference declared features/setups.
+
+        Returns:
+            List of error messages (empty if valid).
+        """
+        from ..rules.dsl_validator import validate_dsl_references
+
+        try:
+            registry = self.feature_registry
+            return validate_dsl_references(
+                self.actions, registry, self.setups if self.setups else None,
+            )
+        except Exception as exc:
+            return [f"Reference validation failed: {exc}"]
 
     @property
     def feature_registry(self) -> FeatureRegistry:
@@ -712,6 +726,26 @@ class Play:
             return tuple(features_list)
         else:
             return tuple(Feature.from_dict(f) for f in features_raw)
+
+    @staticmethod
+    def _parse_setups(setups_data: dict[str, Any]) -> dict[str, Any]:
+        """Parse setups: section into {setup_id: Expr} dict.
+
+        Each setup is a condition tree using the same format as action conditions.
+        Uses _convert_shorthand_conditions() + parse_expr() for parsing.
+        """
+        if not setups_data:
+            return {}
+
+        from ..rules.dsl_parser import parse_expr
+
+        parsed: dict[str, Any] = {}
+        for setup_id, setup_content in setups_data.items():
+            converted = _convert_shorthand_conditions(setup_content)
+            expr = parse_expr(converted)
+            parsed[setup_id] = expr
+
+        return parsed
 
     @staticmethod
     def _parse_actions(actions_data: dict | list) -> list:
@@ -946,6 +980,9 @@ class Play:
         pp_dict = d.get("position_policy", {})
         position_policy = PositionPolicy.from_dict(pp_dict) if pp_dict else PositionPolicy()
 
+        # Parse setups (before actions, so setup refs can be validated)
+        setups = cls._parse_setups(d.get("setups", {}))
+
         # Parse actions
         actions = cls._parse_actions(d.get("actions", {}))
 
@@ -971,9 +1008,9 @@ class Play:
             if symbol:
                 symbol_universe = [symbol]
 
-        # Parse synthetic config (for validation plays)
-        synthetic_dict = d.get("synthetic")
-        synthetic = SyntheticConfig.from_dict(synthetic_dict) if synthetic_dict else None
+        # Parse validation config (for synthetic validation plays)
+        validation_dict = d.get("validation")
+        validation = ValidationConfig.from_dict(validation_dict) if validation_dict else None
 
         # Parse entry order configuration
         entry_cfg = d.get("entry", {})
@@ -1003,7 +1040,8 @@ class Play:
             variables=variables,
             has_structures=has_structures,
             structure_keys=tuple(structure_keys),
-            synthetic=synthetic,
+            setups=setups,
+            validation=validation,
             entry_order_type=entry_order_type,
             limit_offset_pct=limit_offset_pct,
             time_in_force=time_in_force,
@@ -1017,11 +1055,9 @@ class Play:
 # Loader
 # =============================================================================
 
-# Default Play directories
+# Default Play directory -- all plays live under plays/ (including plays/validation/)
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 PLAYS_DIR = _PROJECT_ROOT / "plays"
-VALIDATION_PLAYS_DIR = _PROJECT_ROOT / "tests" / "validation" / "plays"
-STRESS_PLAYS_DIR = _PROJECT_ROOT / "tests" / "stress" / "plays"
 
 
 def load_play(play_id: str, base_dir: Path | None = None) -> Play:
@@ -1039,11 +1075,7 @@ def load_play(play_id: str, base_dir: Path | None = None) -> Play:
     if base_dir:
         search_paths = [base_dir]
     else:
-        search_paths = [
-            PLAYS_DIR,
-            VALIDATION_PLAYS_DIR,
-            STRESS_PLAYS_DIR,
-        ]
+        search_paths = [PLAYS_DIR]
 
     path = None
     for search_path in search_paths:
@@ -1066,7 +1098,7 @@ def load_play(play_id: str, base_dir: Path | None = None) -> Play:
     if not path:
         available = list_plays()
         raise FileNotFoundError(
-            f"Play '{play_id}' not found in tests/*/plays/. Available: {available[:20]}..."
+            f"Play '{play_id}' not found in plays/. Available: {available[:20]}..."
         )
 
     with open(path, "r", encoding="utf-8") as f:
@@ -1079,7 +1111,7 @@ def load_play(play_id: str, base_dir: Path | None = None) -> Play:
 
 
 def list_plays(base_dir: Path | None = None, recursive: bool = True) -> list[str]:
-    """List all available Play files from tests/*/plays/ directories.
+    """List all available Play files from plays/ directory.
 
     Args:
         base_dir: Optional base directory to search
@@ -1088,15 +1120,10 @@ def list_plays(base_dir: Path | None = None, recursive: bool = True) -> list[str
     Returns:
         Sorted list of Play IDs (filenames without extension)
     """
-    # Search all known Play directories
     if base_dir:
         search_paths = [base_dir]
     else:
-        search_paths = [
-            PLAYS_DIR,
-            VALIDATION_PLAYS_DIR,
-            STRESS_PLAYS_DIR,
-        ]
+        search_paths = [PLAYS_DIR]
 
     cards = set()
     for search_path in search_paths:
@@ -1111,3 +1138,101 @@ def list_plays(base_dir: Path | None = None, recursive: bool = True) -> list[str
                 cards.add(path.stem)
 
     return sorted(cards)
+
+
+@dataclass
+class PlayInfo:
+    """Lightweight play metadata for browsing without full parse."""
+    id: str
+    name: str
+    description: str
+    symbol: str
+    exec_tf: str
+    direction: str
+    path: Path
+
+
+def list_play_dirs(exclude_validation: bool = True) -> dict[str, list[Path]]:
+    """List play directories grouped by folder.
+
+    Args:
+        exclude_validation: If True (default), skip plays/validation/ entirely.
+
+    Returns:
+        Dict mapping folder label to sorted list of play file paths.
+        Root-level plays use "." as key.
+    """
+    if not PLAYS_DIR.exists():
+        return {}
+
+    groups: dict[str, list[Path]] = {}
+
+    for ext in ("*.yml", "*.yaml"):
+        for path in PLAYS_DIR.rglob(ext):
+            if path.stem.startswith("_") and not path.stem.startswith("_V"):
+                continue
+
+            # Relative path from plays/ root
+            rel = path.relative_to(PLAYS_DIR)
+            parts = rel.parts
+
+            # Skip validation tree
+            if exclude_validation and len(parts) > 1 and parts[0] == "validation":
+                continue
+
+            # Group key = parent folder relative to plays/ ("." for root)
+            folder = str(rel.parent) if len(parts) > 1 else "."
+            groups.setdefault(folder, []).append(path)
+
+    # Sort each group
+    for key in groups:
+        groups[key] = sorted(groups[key], key=lambda p: p.stem)
+
+    return groups
+
+
+def peek_play_yaml(path: Path) -> PlayInfo:
+    """Read just the header metadata from a play YAML without full parsing.
+
+    Fast -- only reads the YAML dict, does not construct a Play object.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+
+    if not raw or not isinstance(raw, dict):
+        return PlayInfo(
+            id=path.stem, name=path.stem, description="(invalid YAML)",
+            symbol="?", exec_tf="?", direction="?", path=path,
+        )
+
+    # Determine direction from actions
+    actions = raw.get("actions", {})
+    has_long = "entry_long" in actions
+    has_short = "entry_short" in actions
+    if has_long and has_short:
+        direction = "long/short"
+    elif has_long:
+        direction = "long"
+    elif has_short:
+        direction = "short"
+    else:
+        direction = "?"
+
+    # Resolve exec TF
+    tfs = raw.get("timeframes", {})
+    exec_pointer = tfs.get("exec", "low_tf")
+    exec_tf = tfs.get(exec_pointer, tfs.get("low_tf", "?"))
+
+    symbol = raw.get("symbol", "?")
+    if isinstance(symbol, list):
+        symbol = symbol[0] if symbol else "?"
+
+    return PlayInfo(
+        id=raw.get("name", path.stem),
+        name=raw.get("name", path.stem),
+        description=(raw.get("description") or "").strip().split("\n")[0][:80],
+        symbol=symbol,
+        exec_tf=exec_tf,
+        direction=direction,
+        path=path,
+    )

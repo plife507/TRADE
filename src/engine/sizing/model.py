@@ -48,10 +48,12 @@ class SizingConfig:
           Still capped by max leverage.
 
     Position Cap (IMPORTANT):
-        - max_position_equity_pct caps TOTAL position as % of equity
-        - This prevents runaway compounding and over-exposure
-        - Default 95% leaves buffer for fees (entry + potential exit)
-        - Example: with 95% cap and $10K equity, max position = $9,500
+        - max_position_equity_pct caps MARGIN USAGE as % of equity
+        - Max notional = (equity × max_position_equity_pct/100) × leverage
+        - This prevents over-committing equity as margin
+        - Default 95% leaves 5% buffer for fees (entry + potential exit)
+        - Example: with 95% cap, $10K equity, 5x leverage:
+          max margin = $9,500, max notional = $47,500
 
     Fee Reservation:
         - reserve_fee_buffer reserves equity for entry/exit fees
@@ -70,7 +72,8 @@ class SizingConfig:
     max_leverage: float = 2.0
     min_trade_usdt: float = 1.0
 
-    # Position cap: max position as % of equity (prevents 100% exposure)
+    # Position cap: max MARGIN as % of equity (Bybit isolated margin model)
+    # Max notional = (equity × pct/100) × leverage
     # Default 95% leaves 5% buffer for fees and safety margin
     max_position_equity_pct: float = 95.0
 
@@ -284,7 +287,7 @@ class SizingModel:
             - position = $1,000 * 10 = $10,000 (your exposure)
 
         IMPORTANT: Position is capped by:
-            1. max_position_equity_pct (default 95%) of equity
+            1. max_position_equity_pct (default 95%) of equity AS MARGIN, × leverage
             2. Fee buffer reservation (entry + exit fees)
             3. free_margin * max_leverage (max borrowing)
 
@@ -300,9 +303,9 @@ class SizingModel:
         # Calculate free margin (what's available for new positions)
         free_margin = equity - used_margin
 
-        # Cap 1: Maximum position as % of total equity
-        # This prevents runaway compounding regardless of leverage
-        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+        # Cap 1: Maximum MARGIN as % of equity (Bybit isolated margin model)
+        # margin_cap = equity × pct/100, then notional = margin_cap × leverage
+        max_by_equity_pct = equity * (max_pos_pct / 100.0) * max_lev
 
         # Cap 2: Fee reservation
         # Reserve balance for entry fee + potential exit fee
@@ -389,7 +392,8 @@ class SizingModel:
         free_margin = equity - used_margin
 
         # Calculate max size with all caps (same as percent_equity)
-        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+        # Cap margin at pct% of equity, then notional = margin_cap × leverage
+        max_by_equity_pct = equity * (max_pos_pct / 100.0) * max_lev
         if self._config.reserve_fee_buffer:
             fee_factor = 1.0 + 2.0 * taker_fee
             max_by_fees = free_margin * max_lev / fee_factor
@@ -459,8 +463,8 @@ class SizingModel:
         max_lev = self._config.max_leverage
         max_pos_pct = self._config.max_position_equity_pct
 
-        # Cap by equity percentage and leverage
-        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+        # Cap margin at pct% of equity, then notional = margin_cap × leverage
+        max_by_equity_pct = equity * (max_pos_pct / 100.0) * max_lev
         max_by_leverage = equity * max_lev
         max_size = min(max_by_equity_pct, max_by_leverage)
 

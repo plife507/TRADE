@@ -165,6 +165,10 @@ class IncrementalVWAP(IncrementalIndicator):
 
         self._count += 1
 
+        # Guard: skip NaN inputs to prevent permanent poisoning of cumulative sums
+        if np.isnan(high) or np.isnan(low) or np.isnan(close) or np.isnan(volume):
+            return
+
         tp = (high + low + close) / 3.0
         self._cum_tp_vol += tp * volume
         self._cum_vol += volume
@@ -174,16 +178,17 @@ class IncrementalVWAP(IncrementalIndicator):
 
         Returns an integer that changes when the session boundary crosses.
         For daily anchor, returns the day number (ts_ms // ms_per_day).
-        For weekly anchor, returns the week number.
+        For weekly anchor, returns the ISO week number (Monday-based).
         """
         ms_per_day = 86_400_000
         if self.anchor == "D":
             return ts_ms // ms_per_day
         elif self.anchor == "W":
-            # ISO week boundary (Monday-based)
-            return ts_ms // (ms_per_day * 7)
-        # Default: daily
-        return ts_ms // ms_per_day
+            # ISO week boundary (Monday-based).
+            # Unix epoch (1970-01-01) is a Thursday (day 0). Adding 3 days
+            # shifts so that the 7-day division boundary falls on Monday.
+            return (ts_ms + 3 * ms_per_day) // (ms_per_day * 7)
+        raise ValueError(f"Unknown VWAP anchor: {self.anchor!r}. Use 'D', 'W', or None.")
 
     def reset(self) -> None:
         """Reset VWAP (call at session boundaries)."""
@@ -298,6 +303,10 @@ class IncrementalAnchoredVWAP(IncrementalIndicator):
 
         self._count += 1
         self._bars_since_anchor += 1
+
+        # Guard: skip NaN inputs to prevent permanent poisoning of cumulative sums
+        if np.isnan(high) or np.isnan(low) or np.isnan(close) or np.isnan(volume):
+            return
 
         tp = (high + low + close) / 3.0
         self._cum_tp_vol += tp * volume

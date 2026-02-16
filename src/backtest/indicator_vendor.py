@@ -219,8 +219,8 @@ def _compute_anchored_vwap(
     low: pd.Series,
     close: pd.Series,
     volume: pd.Series,
-    **kwargs,
-) -> pd.Series:
+    **kwargs: Any,
+) -> dict[str, pd.Series]:
     """
     Compute anchored VWAP using incremental class in batch mode.
 
@@ -234,7 +234,7 @@ def _compute_anchored_vwap(
                   swing_pair_version/swing_pair_direction arrays
 
     Returns:
-        Anchored VWAP Series
+        Dict with "value" and "bars_since_anchor" Series.
     """
     from src.indicators.incremental import IncrementalAnchoredVWAP
 
@@ -242,7 +242,8 @@ def _compute_anchored_vwap(
     avwap = IncrementalAnchoredVWAP(anchor_source=anchor_source)
 
     n = len(close)
-    result = pd.Series(index=close.index, dtype=float)
+    values = pd.Series(index=close.index, dtype=float)
+    bars_since = pd.Series(index=close.index, dtype=float)
 
     def _get_dict_val(key: str, idx: int, default: Any = -1) -> Any:
         mapping = kwargs.get(key)
@@ -261,9 +262,45 @@ def _compute_anchored_vwap(
             swing_pair_version=_get_dict_val("swing_pair_version", i),
             swing_pair_direction=_get_dict_val("swing_pair_direction", i, ""),
         )
-        result.iloc[i] = avwap.value
+        values.iloc[i] = avwap.value
+        bars_since.iloc[i] = float(avwap.bars_since_anchor)
 
-    return result
+    return {"value": values, "bars_since_anchor": bars_since}
+
+
+def _compute_cci(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    **kwargs,
+) -> pd.Series:
+    """
+    Compute CCI with correct formula (bypasses pandas_ta operator-precedence bug).
+
+    pandas_ta.cci computes: tp - sma(tp) / (c * mad)  (WRONG - missing parens)
+    Correct formula:        (tp - sma(tp)) / (c * mad)
+
+    Args:
+        high, low, close: Price series
+        length: CCI period (default 14)
+        c: Scaling constant (default 0.015)
+
+    Returns:
+        CCI Series
+    """
+    import numpy as np
+
+    length = kwargs.get("length", 14)
+    c = kwargs.get("c", 0.015)
+
+    tp = (high + low + close) / 3.0
+    tp_sma = ta.sma(tp, length=length, talib=False)
+    tp_mad = ta.mad(tp, length=length)
+
+    cci = (tp - tp_sma) / (c * tp_mad)
+
+    cci.name = f"CCI_{length}_{c}"
+    return cci
 
 
 # =============================================================================
@@ -392,6 +429,15 @@ def compute_indicator(
         result = _compute_anchored_vwap(
             high=high, low=low, close=close, volume=volume, **kwargs
         )
+    elif indicator_name == "cci":
+        # pandas_ta.cci has an operator-precedence bug (missing parens):
+        #   buggy:   tp - sma(tp) / (c * mad)
+        #   correct: (tp - sma(tp)) / (c * mad)
+        # Compute CCI correctly here.
+        assert high is not None, "CCI requires 'high' series"
+        assert low is not None, "CCI requires 'low' series"
+        assert close is not None, "CCI requires 'close' series"
+        result = _compute_cci(high=high, low=low, close=close, **kwargs)
     else:
         # Compute indicator via pandas_ta
         if indicator_fn is None:
@@ -404,7 +450,10 @@ def compute_indicator(
         return pd.Series(index=index, dtype=float)
 
     # Handle result type
-    if isinstance(result, pd.DataFrame):
+    if isinstance(result, dict):
+        # Multi-output dict (e.g., anchored_vwap returns {"value": Series, "bars_since_anchor": Series})
+        return result
+    elif isinstance(result, pd.DataFrame):
         # Multi-output: normalize column names
         return _normalize_multi_output(result, indicator_name)
     elif isinstance(result, pd.Series):

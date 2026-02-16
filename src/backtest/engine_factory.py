@@ -232,11 +232,15 @@ def create_engine_from_play(
         params=strategy_params,
     )
 
-    # Auto-create synthetic provider from Play's synthetic config
+    # Auto-create synthetic provider from Play's validation: block
     # Only when use_synthetic=True (explicit opt-in via --synthetic flag)
-    if use_synthetic and synthetic_provider is None and play.synthetic is not None:
+    if use_synthetic and synthetic_provider is None and play.validation is not None:
         from src.forge.validation.synthetic_data import generate_synthetic_candles
         from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+        from src.backtest.execution_validation import compute_synthetic_bars
+
+        # Auto-compute bars from indicator/structure warmup requirements
+        synthetic_bars = compute_synthetic_bars(play)
 
         # Gather all required timeframes from tf_mapping
         tf_mapping_resolved = play.tf_mapping or {
@@ -253,13 +257,13 @@ def create_engine_from_play(
         # Always include 1m for intrabar/mark price
         required_tfs.add("1m")
 
-        # Generate synthetic candles using Play's config
+        # Generate synthetic candles with auto-computed bars
         candles = generate_synthetic_candles(
             symbol=symbol,
             timeframes=sorted(required_tfs),
-            bars_per_tf=play.synthetic.bars,
-            seed=play.synthetic.seed,
-            pattern=cast("PatternType", play.synthetic.pattern),
+            bars_per_tf=synthetic_bars,
+            seed=42,
+            pattern=cast("PatternType", play.validation.pattern),
             align_multi_tf=True,
         )
         synthetic_provider = SyntheticCandlesProvider(candles)
@@ -461,8 +465,8 @@ def run_engine_with_play(
     # Run the backtest via unified runner
     backtest_result = runner.run()
 
-    # Compute Play hash
-    play_hash = compute_play_hash(play)
+    # Use play_hash from engine if set (runner pipeline), otherwise compute
+    play_hash = engine._play_hash or compute_play_hash(play)
 
     # Use metrics from BacktestResult (has compatibility mapping via .metrics property)
     metrics = backtest_result.metrics

@@ -243,17 +243,17 @@ class IncrementalKC(IncrementalIndicator):
         # Always update close EMA
         self._ema_close.update(close=close)
 
-        # Calculate True Range - pandas_ta skips first bar (NaN)
+        # Calculate True Range
+        # pandas_ta true_range(prenan=False): bar 0 uses high-low (no prev_close)
         if self._count == 1:
-            # First bar: no TR yet (matches pandas_ta true_range which returns NaN)
-            pass
+            tr = high - low
         else:
             tr = max(
                 high - low,
                 abs(high - self._prev_close),
                 abs(low - self._prev_close)
             )
-            self._ema_tr.update(close=tr)
+        self._ema_tr.update(close=tr)
 
         self._prev_close = close
 
@@ -299,26 +299,28 @@ class IncrementalDM(IncrementalIndicator):
     """
     Directional Movement with O(1) updates.
 
-    Formula (TA-Lib compatible):
+    Formula:
         +DM = max(high - prev_high, 0) if (high - prev_high) > (prev_low - low) else 0
         -DM = max(prev_low - low, 0) if (prev_low - low) > (high - prev_high) else 0
 
-    Smoothing (Wilder's cumulative method):
-        First value = sum of first 'length' DM values
-        Subsequent = prev - (prev / length) + current
+    Smoothing: RMA (Wilder's Moving Average) = ewm(alpha=1/length, adjust=False)
+        y[0] = x[0] (first valid DM value seeds the RMA)
+        y[i] = alpha * x[i] + (1 - alpha) * y[i-1]
 
-    This matches TA-Lib's PLUS_DM/MINUS_DM which pandas_ta uses by default.
+    Matches pandas_ta.dm(mamode="rma") output (default).
     """
 
     length: int = 14
+    _alpha: float = field(init=False)
     _prev_high: float = field(default=np.nan, init=False)
     _prev_low: float = field(default=np.nan, init=False)
     _smoothed_plus_dm: float = field(default=np.nan, init=False)
     _smoothed_minus_dm: float = field(default=np.nan, init=False)
     _dm_count: int = field(default=0, init=False)
-    _warmup_plus: list = field(default_factory=list, init=False)
-    _warmup_minus: list = field(default_factory=list, init=False)
     _count: int = field(default=0, init=False)
+
+    def __post_init__(self) -> None:
+        self._alpha = 1.0 / self.length
 
     def update(self, high: float, low: float, **kwargs: Any) -> None:
         """Update with new high/low data."""
@@ -339,22 +341,16 @@ class IncrementalDM(IncrementalIndicator):
         self._prev_high = high
         self._prev_low = low
 
-        # Wilder's cumulative smoothing (TA-Lib style)
-        # TA-Lib first valid at index (length-1), using (length-1) raw DM values
+        # RMA smoothing: ewm(alpha=1/length, adjust=False)
         self._dm_count += 1
 
-        if self._dm_count < self.length:
-            self._warmup_plus.append(plus_dm)
-            self._warmup_minus.append(minus_dm)
-
-            if self._dm_count == self.length - 1:
-                # First smoothed value is sum of first (length-1) values
-                self._smoothed_plus_dm = sum(self._warmup_plus)
-                self._smoothed_minus_dm = sum(self._warmup_minus)
+        if self._dm_count == 1:
+            # Seed with first DM value
+            self._smoothed_plus_dm = plus_dm
+            self._smoothed_minus_dm = minus_dm
         else:
-            # Decay formula: prev - (prev / length) + current
-            self._smoothed_plus_dm = self._smoothed_plus_dm - (self._smoothed_plus_dm / self.length) + plus_dm
-            self._smoothed_minus_dm = self._smoothed_minus_dm - (self._smoothed_minus_dm / self.length) + minus_dm
+            self._smoothed_plus_dm = self._alpha * plus_dm + (1 - self._alpha) * self._smoothed_plus_dm
+            self._smoothed_minus_dm = self._alpha * minus_dm + (1 - self._alpha) * self._smoothed_minus_dm
 
     def reset(self) -> None:
         self._prev_high = np.nan
@@ -362,8 +358,6 @@ class IncrementalDM(IncrementalIndicator):
         self._smoothed_plus_dm = np.nan
         self._smoothed_minus_dm = np.nan
         self._dm_count = 0
-        self._warmup_plus.clear()
-        self._warmup_minus.clear()
         self._count = 0
 
     @property
@@ -387,7 +381,7 @@ class IncrementalDM(IncrementalIndicator):
 
     @property
     def is_ready(self) -> bool:
-        return self._dm_count >= self.length - 1
+        return self._dm_count >= 1
 
 
 @dataclass

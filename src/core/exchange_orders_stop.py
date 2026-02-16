@@ -283,11 +283,7 @@ def open_position_with_rr(
     result = {"success": False, "position_order": None, "tp_orders": [], "levels": {}, "error": None}
 
     try:
-        try:
-            manager.set_leverage(symbol, leverage)
-        except Exception as e:
-            if "not modified" not in str(e).lower():
-                manager.logger.warning(f"Leverage set warning: {e}")
+        manager.set_leverage(symbol, leverage)
 
         entry_price = manager.get_price(symbol)
         is_long = side == "Buy"

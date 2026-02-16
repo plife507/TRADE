@@ -51,6 +51,18 @@ class ValidationErrorCode(str, Enum):
     UNDECLARED_STRUCTURE = "UNDECLARED_STRUCTURE"
     DUPLICATE_STRUCTURE_KEY = "DUPLICATE_STRUCTURE_KEY"
     INVALID_ENUM_TOKEN = "INVALID_ENUM_TOKEN"
+    # Unified validator codes
+    INVALID_TIMEFRAME_VALUE = "INVALID_TIMEFRAME_VALUE"
+    INVALID_EXEC_POINTER = "INVALID_EXEC_POINTER"
+    INVALID_ACCOUNT_FIELD = "INVALID_ACCOUNT_FIELD"
+    DSL_PARSE_ERROR = "DSL_PARSE_ERROR"
+    PLAY_CONSTRUCTION_FAILED = "PLAY_CONSTRUCTION_FAILED"
+    PLAY_FIELD_ERROR = "PLAY_FIELD_ERROR"
+    # DSL reference validation codes
+    UNDECLARED_DSL_FEATURE = "UNDECLARED_DSL_FEATURE"
+    INVALID_STRUCTURE_FIELD = "INVALID_STRUCTURE_FIELD"
+    UNDECLARED_SETUP = "UNDECLARED_SETUP"
+    CIRCULAR_SETUP = "CIRCULAR_SETUP"
 
 
 @dataclass
@@ -705,6 +717,229 @@ def format_validation_errors(errors: list[ValidationError]) -> str:
     lines.append("=" * 60)
 
     return "\n".join(lines)
+
+
+# =============================================================================
+# Unified Validator: Dict-Level Checks
+# =============================================================================
+# These functions validate raw user YAML dicts directly, providing rich errors
+# with locations and suggestions. They run BEFORE Play.from_dict() to catch
+# problems that from_dict() either misses or crashes on.
+
+# Canonical timeframes — imported lazily to avoid circular imports
+_CANONICAL_TFS: set[str] | None = None
+
+def _get_canonical_tfs() -> set[str]:
+    """Get canonical timeframe set from TF_MINUTES (lazy import)."""
+    global _CANONICAL_TFS
+    if _CANONICAL_TFS is None:
+        from src.data.historical_data_store import TF_MINUTES
+        _CANONICAL_TFS = {k for k in TF_MINUTES if k != "d"}  # exclude lowercase alias
+    return _CANONICAL_TFS
+
+
+def validate_required_keys(play_dict: dict[str, Any]) -> list[ValidationError]:
+    """
+    Validate that all required top-level keys are present.
+
+    Required: id, version, symbol, timeframes, account, actions,
+    and (features OR structures).
+    """
+    errors: list[ValidationError] = []
+
+    # id or name is required (from_dict uses id || name)
+    if not play_dict.get("id") and not play_dict.get("name"):
+        errors.append(ValidationError(
+            code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+            message="Missing required top-level key: 'id' (or 'name').",
+            location="id",
+        ))
+
+    for key in ("version", "timeframes", "account", "actions"):
+        if not play_dict.get(key):
+            errors.append(ValidationError(
+                code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                message=f"Missing required top-level key: '{key}'.",
+                location=key,
+            ))
+
+    # symbol or symbol_universe
+    if not play_dict.get("symbol") and not play_dict.get("symbol_universe"):
+        errors.append(ValidationError(
+            code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+            message="Missing 'symbol' (or 'symbol_universe').",
+            location="symbol",
+        ))
+
+    # features OR structures
+    if not play_dict.get("features") and not play_dict.get("structures"):
+        errors.append(ValidationError(
+            code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+            message="Play must declare at least one 'features' or 'structures' section.",
+            location="features",
+        ))
+
+    return errors
+
+
+def validate_timeframes_section(play_dict: dict[str, Any]) -> list[ValidationError]:
+    """
+    Validate the timeframes section of a Play dict.
+
+    Checks:
+    - All 4 required keys present (low_tf, med_tf, high_tf, exec)
+    - TF values are canonical (against TF_MINUTES keys)
+    - exec is a valid pointer ("low_tf", "med_tf", "high_tf")
+    """
+    errors: list[ValidationError] = []
+    tf_section = play_dict.get("timeframes")
+
+    if not tf_section or not isinstance(tf_section, dict):
+        # Already caught by validate_required_keys
+        return errors
+
+    canonical = _get_canonical_tfs()
+    valid_pointers = {"low_tf", "med_tf", "high_tf"}
+
+    # Check required sub-keys
+    for key in ("low_tf", "med_tf", "high_tf", "exec"):
+        if key not in tf_section:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                message=f"timeframes section missing required key: '{key}'.",
+                location=f"timeframes.{key}",
+            ))
+
+    # Validate concrete TF values are canonical
+    for key in ("low_tf", "med_tf", "high_tf"):
+        value = tf_section.get(key)
+        if value and value not in canonical:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.INVALID_TIMEFRAME_VALUE,
+                message=f"timeframes.{key} = '{value}' is not a canonical timeframe.",
+                location=f"timeframes.{key}",
+                suggestions=sorted(canonical),
+            ))
+
+    # Validate exec is a pointer, not a raw value
+    exec_val = tf_section.get("exec")
+    if exec_val and exec_val not in valid_pointers:
+        errors.append(ValidationError(
+            code=ValidationErrorCode.INVALID_EXEC_POINTER,
+            message=(
+                f"timeframes.exec = '{exec_val}' must be a pointer to a TF role, "
+                f"not a raw timeframe value."
+            ),
+            location="timeframes.exec",
+            suggestions=sorted(valid_pointers),
+        ))
+
+    return errors
+
+
+def validate_account_section(play_dict: dict[str, Any]) -> list[ValidationError]:
+    """
+    Validate the account section of a Play dict.
+
+    Checks:
+    - starting_equity_usdt > 0 (if present)
+    - max_leverage > 0 (if present)
+    """
+    errors: list[ValidationError] = []
+    account = play_dict.get("account")
+
+    if not account or not isinstance(account, dict):
+        # Already caught by validate_required_keys
+        return errors
+
+    equity = account.get("starting_equity_usdt")
+    if equity is not None:
+        try:
+            if float(equity) <= 0:
+                errors.append(ValidationError(
+                    code=ValidationErrorCode.INVALID_ACCOUNT_FIELD,
+                    message=f"account.starting_equity_usdt must be > 0, got {equity}.",
+                    location="account.starting_equity_usdt",
+                ))
+        except (TypeError, ValueError):
+            errors.append(ValidationError(
+                code=ValidationErrorCode.INVALID_ACCOUNT_FIELD,
+                message=f"account.starting_equity_usdt must be a number, got '{equity}'.",
+                location="account.starting_equity_usdt",
+            ))
+
+    leverage = account.get("max_leverage")
+    if leverage is not None:
+        try:
+            if float(leverage) <= 0:
+                errors.append(ValidationError(
+                    code=ValidationErrorCode.INVALID_ACCOUNT_FIELD,
+                    message=f"account.max_leverage must be > 0, got {leverage}.",
+                    location="account.max_leverage",
+                ))
+        except (TypeError, ValueError):
+            errors.append(ValidationError(
+                code=ValidationErrorCode.INVALID_ACCOUNT_FIELD,
+                message=f"account.max_leverage must be a number, got '{leverage}'.",
+                location="account.max_leverage",
+            ))
+
+    return errors
+
+
+def validate_features_section(play_dict: dict[str, Any]) -> list[ValidationError]:
+    """
+    Validate the features section of a Play dict.
+
+    Checks:
+    - Each feature's 'indicator' type is supported by IndicatorRegistry
+    - Params are accepted by the indicator (via registry.validate_params())
+    """
+    errors: list[ValidationError] = []
+    features = play_dict.get("features")
+
+    if not features or not isinstance(features, dict):
+        return errors
+
+    registry = get_registry()
+
+    for feat_id, feat_def in features.items():
+        if not isinstance(feat_def, dict):
+            continue
+
+        indicator_type = feat_def.get("indicator", "")
+        location = f"features.{feat_id}"
+
+        if not indicator_type:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                message=f"Feature '{feat_id}' missing 'indicator' field.",
+                location=location,
+            ))
+            continue
+
+        if not registry.is_supported(indicator_type):
+            errors.append(ValidationError(
+                code=ValidationErrorCode.UNSUPPORTED_INDICATOR,
+                message=f"Indicator type '{indicator_type}' is not supported.",
+                location=f"{location}.indicator",
+                suggestions=registry.list_indicators(),
+            ))
+            continue
+
+        # Validate params
+        params = feat_def.get("params", {})
+        if params and isinstance(params, dict):
+            try:
+                registry.validate_params(indicator_type, params)
+            except ValueError as e:
+                errors.append(ValidationError(
+                    code=ValidationErrorCode.INVALID_PARAM,
+                    message=str(e),
+                    location=f"{location}.params",
+                ))
+
+    return errors
 
 
 # =============================================================================

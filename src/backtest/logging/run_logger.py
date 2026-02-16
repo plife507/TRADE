@@ -201,6 +201,8 @@ class RunLogger:
         net_pnl: float | None = None,
         trades_count: int | None = None,
         status: str = "success",
+        trades_hash: str | None = None,
+        run_hash: str | None = None,
     ) -> None:
         """
         Finalize run logging.
@@ -213,6 +215,8 @@ class RunLogger:
             net_pnl: Net PnL in USDT
             trades_count: Number of trades
             status: Run status (success, error, stopped)
+            trades_hash: Determinism hash of trades output
+            run_hash: Combined run hash (trades + equity + play)
         """
         self._ts_end = datetime.now(timezone.utc)
 
@@ -249,6 +253,8 @@ class RunLogger:
             trades_count=trades_count,
             artifact_path=str(self.artifact_dir) if self.artifact_dir else None,
             status=status,
+            trades_hash=trades_hash,
+            run_hash=run_hash,
         )
 
 
@@ -261,6 +267,8 @@ def write_run_index_entry(
     trades_count: int | None = None,
     artifact_path: str | None = None,
     status: str = "success",
+    trades_hash: str | None = None,
+    run_hash: str | None = None,
 ) -> None:
     """
     Append entry to play-indexed index.jsonl.
@@ -274,13 +282,15 @@ def write_run_index_entry(
         trades_count: Number of trades
         artifact_path: Path to artifacts
         status: Run status
+        trades_hash: Determinism hash of trades output
+        run_hash: Combined run hash (trades + equity + play)
     """
     play_log_dir = GLOBAL_LOGS_DIR / short_hash(play_hash)
     play_log_dir.mkdir(parents=True, exist_ok=True)
 
     index_path = play_log_dir / "index.jsonl"
 
-    entry = {
+    entry: dict[str, Any] = {
         "run_id": run_id,
         "ts_start": ts_start.isoformat(),
         "ts_end": ts_end.isoformat(),
@@ -291,6 +301,10 @@ def write_run_index_entry(
     }
     if artifact_path:
         entry["path"] = artifact_path
+    if trades_hash:
+        entry["trades_hash"] = trades_hash
+    if run_hash:
+        entry["run_hash"] = run_hash
 
     with open(index_path, "a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(entry, separators=(",", ":")) + "\n")

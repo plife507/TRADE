@@ -51,22 +51,43 @@ def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
-def print_header():
-    """Print CLI header with clear environment indication and $100 bill art styling."""
+def print_header(connected: bool = True):
+    """Print CLI header with clear environment indication and $100 bill art styling.
+
+    Args:
+        connected: Whether the app is connected to an exchange.
+                   When False, shows an [Offline] indicator instead of account details.
+    """
     config = get_config()
-    
+
     is_demo = config.bybit.use_demo
-    mode_str = "DEMO" if is_demo else "LIVE"
     trading_mode = config.trading.mode
+
+    # Print top art decoration
+    BillArtWrapper.print_header_art(is_demo)
+
+    if not connected:
+        # Offline header -- minimal info, no exchange details
+        offline_color = BillArtColors.GOLD_METALLIC if CLIStyles.use_art_wrapper else CLIColors.DIM_TEXT
+        grid = Table.grid(expand=True, padding=(0, 2))
+        grid.add_column(justify="center", ratio=1)
+        grid.add_row(
+            CLIStyles.status_badge("OFFLINE - No Exchange Connection", offline_color),
+        )
+        console.print(CLIStyles.get_title_panel("Offline Mode | Backtest & Data Available | v1.0", True))
+        console.print(Align.center(grid))
+        BillArtWrapper.print_header_art_bottom(True)
+        console.print()
+        return
+
+    # Connected header -- full details
+    mode_str = "DEMO" if is_demo else "LIVE"
     account_type = "UNIFIED"
-    
+
     api_env = config.bybit.get_api_environment_summary()
     trading_url = api_env["trading"]["base_url"]
     data_url = api_env["data"]["base_url"]
-    
-    # Print top art decoration
-    BillArtWrapper.print_header_art(is_demo)
-    
+
     # Use art wrapper colors if enabled
     if CLIStyles.use_art_wrapper:
         demo_color = BillArtColors.GREEN_BRIGHT
@@ -78,36 +99,46 @@ def print_header():
         live_color = CLIColors.NEON_RED
         mode_color = CLIColors.NEON_YELLOW if trading_mode == "paper" else CLIColors.NEON_RED
         account_color = CLIColors.NEON_CYAN
-    
+
     # Status Grid (HUD style)
     grid = Table.grid(expand=True, padding=(0, 2))
     grid.add_column(justify="center", ratio=1)
     grid.add_column(justify="center", ratio=1)
     grid.add_column(justify="center", ratio=1)
-    
+
     grid.add_row(
         CLIStyles.status_badge(f"{mode_str} Account", demo_color if is_demo else live_color),
         CLIStyles.status_badge(f"MODE: {trading_mode.upper()}", mode_color),
         CLIStyles.status_badge(account_type, account_color)
     )
-    
-    # Warning for live mode
+
+    # Warning for live mode -- enhanced red banner
     warning_panel = None
     if not is_demo:
         warning_panel = Panel(
-            f"[bold {BillArtColors.GOLD_BRIGHT}]⚠  CAUTION: Connected to LIVE account - REAL MONEY ⚠[/]",
-            border_style=BillArtColors.GOLD_BRIGHT,
+            f"[bold red on #330000] LIVE TRADING - REAL MONEY - USE CAUTION [/]",
+            border_style="red",
             expand=False
         )
 
     subtitle_text = f"REST: {mode_str}({trading_url}) | DATA: LIVE({data_url}) | Session Mode | v1.0"
-    
+
     console.print(CLIStyles.get_title_panel(subtitle_text, is_demo))
     console.print(Align.center(grid))
-    
+
     if warning_panel:
         console.print(Align.center(warning_panel))
-    
+
+    # Running plays display
+    plays_summary = get_running_plays_summary()
+    if plays_summary:
+        plays_panel = Panel(
+            f"[bold]Running Plays:[/] {plays_summary}",
+            border_style=BillArtColors.BLUE_BRIGHT,
+            expand=False,
+        )
+        console.print(Align.center(plays_panel))
+
     # Print bottom art decoration
     BillArtWrapper.print_header_art_bottom(is_demo)
     console.print()  # Spacer
@@ -506,9 +537,8 @@ def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, 
         try:
             console.print(f"\n[bold cyan]{status_msg}[/]")
             console.print("[dim]Press Ctrl+C to cancel gracefully[/]\n")
-            
-            with console.status(f"[bold green]▶ {get_action_label(action_key)} in progress...[/]", spinner="dots"):
-                result = tool_fn(*args, **kwargs)
+
+            result = tool_fn(*args, **kwargs)
             
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             
@@ -734,6 +764,138 @@ def print_data_result(action_key: str, result: ToolResult):
     
     if footer:
         console.print(f"[{CLIColors.DIM_TEXT}]{footer}[/]")
+
+
+def get_symbol_input(prompt: str = "Symbol") -> str | BackCommand:
+    """
+    Get symbol input with recent symbols as quick picks.
+
+    Shows numbered list of recently used symbols plus option for new input.
+    If no recent symbols exist, falls back to plain get_input().
+    Records the selected symbol for future quick-picks.
+    """
+    from .symbol_memory import RecentSymbols
+
+    recent = RecentSymbols.get_instance()
+    symbols = recent.get_recent()
+
+    if not symbols:
+        result = get_input(prompt)
+        if isinstance(result, BackCommand):
+            return result
+        symbol = result.upper().strip()
+        if symbol:
+            recent.record(symbol)
+        return symbol
+
+    # Show quick picks
+    console.print(f"\n[dim]Recent symbols:[/]")
+    for i, sym in enumerate(symbols, 1):
+        console.print(f"  [{CLIColors.NEON_CYAN}]{i}[/]) {sym}")
+    console.print(f"  [{CLIColors.NEON_CYAN}]n[/]) New symbol")
+
+    choice = get_input(f"{prompt} (number, symbol, or 'n' for new)")
+    if isinstance(choice, BackCommand):
+        return choice
+
+    # Check if it's a numeric quick-pick
+    try:
+        idx = int(choice)
+        if 1 <= idx <= len(symbols):
+            selected = symbols[idx - 1]
+            recent.record(selected)
+            return selected
+    except ValueError:
+        pass
+
+    # Check if they typed 'n' explicitly
+    if choice.lower().strip() == "n":
+        result = get_input("Enter symbol")
+        if isinstance(result, BackCommand):
+            return result
+        symbol = result.upper().strip()
+        if symbol:
+            recent.record(symbol)
+        return symbol
+
+    # They typed a symbol directly
+    symbol = choice.upper().strip()
+    if symbol:
+        recent.record(symbol)
+    return symbol
+
+
+def get_symbols_input(prompt: str = "Symbol(s)") -> list[str] | BackCommand:
+    """
+    Get one or more symbols with recent symbols as quick picks.
+
+    Accepts comma-separated input for multi-symbol operations.
+    Each symbol is recorded for future quick-picks.
+    """
+    from .symbol_memory import RecentSymbols
+
+    recent = RecentSymbols.get_instance()
+    symbols_list = recent.get_recent()
+
+    if symbols_list:
+        console.print(f"\n[dim]Recent symbols:[/]")
+        for i, sym in enumerate(symbols_list, 1):
+            console.print(f"  [{CLIColors.NEON_CYAN}]{i}[/]) {sym}")
+        console.print(f"  [{CLIColors.NEON_CYAN}]a[/]) All recent: {', '.join(symbols_list)}")
+
+    result = get_input(f"{prompt} (comma-separated, or number for recent)")
+    if isinstance(result, BackCommand):
+        return result
+
+    # Check for 'a' = all recent
+    if result.lower().strip() == "a" and symbols_list:
+        for s in symbols_list:
+            recent.record(s)
+        return list(symbols_list)
+
+    # Check for numeric quick-pick (single symbol)
+    try:
+        idx = int(result)
+        if symbols_list and 1 <= idx <= len(symbols_list):
+            selected = symbols_list[idx - 1]
+            recent.record(selected)
+            return [selected]
+    except ValueError:
+        pass
+
+    # Parse comma-separated
+    parsed = [s.upper().strip() for s in result.split(",") if s.strip()]
+    for s in parsed:
+        recent.record(s)
+    return parsed
+
+
+def get_running_plays_summary() -> str | None:
+    """
+    Get a one-line summary of running plays for display in headers/menus.
+
+    Returns formatted string like "play_id(demo) | play_id(live)" or None.
+    Catches all exceptions -- must NEVER crash (header depends on it).
+    """
+    try:
+        from ..engine.manager import EngineManager
+
+        manager = EngineManager.get_instance()
+        instances = manager.list_all()
+        if not instances:
+            return None
+        parts = []
+        for inst in instances:
+            mode = getattr(inst, "mode", None)
+            mode_str = mode.value if mode is not None and hasattr(mode, "value") else str(mode) if mode else "?"
+            play_id = getattr(inst, "play_id", "?")
+            if mode_str in ("real", "live"):
+                parts.append(f"[bold red]{play_id}({mode_str})[/]")
+            else:
+                parts.append(f"[green]{play_id}({mode_str})[/]")
+        return " | ".join(parts)
+    except Exception:
+        return None
 
 
 def print_order_preview(order_type: str, symbol: str, side: str, qty_usd: float, price: float | None = None, **kwargs: Any):

@@ -684,42 +684,48 @@ class RealtimeState:
     
     def set_public_ws_connected(self):
         """Mark public WebSocket as connected."""
-        self._public_ws_status.state = ConnectionState.CONNECTED
-        self._public_ws_status.connected_at = time.time()
+        with self._lock:
+            self._public_ws_status.state = ConnectionState.CONNECTED
+            self._public_ws_status.connected_at = time.time()
         self._emit_event(EventType.CONNECTED, {"stream": "public"})
-    
+
     def set_public_ws_disconnected(self, error: str | None = None):
         """Mark public WebSocket as disconnected."""
-        self._public_ws_status.state = ConnectionState.DISCONNECTED
-        self._public_ws_status.disconnected_at = time.time()
-        if error:
-            self._public_ws_status.last_error = error
+        with self._lock:
+            self._public_ws_status.state = ConnectionState.DISCONNECTED
+            self._public_ws_status.disconnected_at = time.time()
+            if error:
+                self._public_ws_status.last_error = error
         self._emit_event(EventType.DISCONNECTED, {"stream": "public", "error": error})
-    
+
     def set_public_ws_reconnecting(self):
         """Mark public WebSocket as reconnecting."""
-        self._public_ws_status.state = ConnectionState.RECONNECTING
-        self._public_ws_status.reconnect_count += 1
+        with self._lock:
+            self._public_ws_status.state = ConnectionState.RECONNECTING
+            self._public_ws_status.reconnect_count += 1
         self._emit_event(EventType.RECONNECTING, {"stream": "public"})
-    
+
     def set_private_ws_connected(self):
         """Mark private WebSocket as connected."""
-        self._private_ws_status.state = ConnectionState.CONNECTED
-        self._private_ws_status.connected_at = time.time()
+        with self._lock:
+            self._private_ws_status.state = ConnectionState.CONNECTED
+            self._private_ws_status.connected_at = time.time()
         self._emit_event(EventType.CONNECTED, {"stream": "private"})
-    
+
     def set_private_ws_disconnected(self, error: str | None = None):
         """Mark private WebSocket as disconnected."""
-        self._private_ws_status.state = ConnectionState.DISCONNECTED
-        self._private_ws_status.disconnected_at = time.time()
-        if error:
-            self._private_ws_status.last_error = error
+        with self._lock:
+            self._private_ws_status.state = ConnectionState.DISCONNECTED
+            self._private_ws_status.disconnected_at = time.time()
+            if error:
+                self._private_ws_status.last_error = error
         self._emit_event(EventType.DISCONNECTED, {"stream": "private", "error": error})
-    
+
     def set_private_ws_reconnecting(self):
         """Mark private WebSocket as reconnecting."""
-        self._private_ws_status.state = ConnectionState.RECONNECTING
-        self._private_ws_status.reconnect_count += 1
+        with self._lock:
+            self._private_ws_status.state = ConnectionState.RECONNECTING
+            self._private_ws_status.reconnect_count += 1
         self._emit_event(EventType.RECONNECTING, {"stream": "private"})
     
     def get_public_ws_status(self) -> ConnectionStatus:
@@ -732,36 +738,53 @@ class RealtimeState:
     
     @property
     def is_public_ws_connected(self) -> bool:
-        return self._public_ws_status.is_connected
-    
+        with self._lock:
+            return self._public_ws_status.is_connected
+
     @property
     def is_private_ws_connected(self) -> bool:
-        return self._private_ws_status.is_connected
+        with self._lock:
+            return self._private_ws_status.is_connected
 
-    def is_websocket_healthy(self, max_stale_seconds: float = 30.0) -> bool:
+    def is_websocket_healthy(self, max_stale_seconds: float = 30.0) -> bool:  # noqa: ARG002
         """
         G1-4: Check if WebSocket connections are healthy.
 
         Healthy means:
-        - Private WebSocket is connected (for account data)
-        - Account metrics are not stale
+        - Private WebSocket is connected
+        - We have received wallet/account data at least once
+
+        NOTE: Bybit private streams are event-driven — wallet updates only
+        arrive when the balance actually changes. We cannot use data freshness
+        as a health signal because idle accounts won't receive updates for
+        minutes or hours. Connection state is the only reliable indicator.
 
         Args:
-            max_stale_seconds: Max age before data is considered stale
+            max_stale_seconds: Not used for health (kept for API compat).
+                Use is_wallet_stale() / is_account_metrics_stale() directly
+                when you need data-freshness checks.
 
         Returns:
-            True if WebSocket is healthy and receiving data
+            True if private WebSocket is connected and has seeded data
         """
         # Check private WebSocket connection (needed for trading)
         if not self.is_private_ws_connected:
+            self.logger.debug(
+                "WS health: private WS not connected "
+                f"(state={self._private_ws_status.state.value}, "
+                f"last_error={self._private_ws_status.last_error})"
+            )
             return False
 
-        # Check if we're receiving account data
-        if self.is_account_metrics_stale(max_stale_seconds):
-            return False
+        # Require that we received wallet data at least once (REST seed or WS)
+        with self._lock:
+            has_wallet = bool(self._wallet.get("USDT"))
+            has_metrics = self._account_metrics is not None
 
-        # Check if wallet data is stale
-        if self.is_wallet_stale(max_age_seconds=max_stale_seconds):
+        if not has_wallet and not has_metrics:
+            self.logger.debug(
+                "WS health: no wallet or account metrics data received yet"
+            )
             return False
 
         return True
@@ -856,11 +879,12 @@ class RealtimeState:
             self._orders.clear()
             self._executions.clear()
             self._wallet.clear()
+            self._account_metrics = None
             self._update_counts.clear()
-        
+
         self.clear_event_queue()
         self.logger.info("RealtimeState cleared")
-    
+
     def clear_market_data(self):
         """Clear only market data (public streams)."""
         with self._lock:
@@ -868,7 +892,7 @@ class RealtimeState:
             self._orderbooks.clear()
             self._klines.clear()
             self._recent_trades.clear()
-    
+
     def clear_account_data(self):
         """Clear only account data (private streams)."""
         with self._lock:
@@ -876,6 +900,7 @@ class RealtimeState:
             self._orders.clear()
             self._executions.clear()
             self._wallet.clear()
+            self._account_metrics = None
     
     # ==========================================================================
     # Portfolio Risk Snapshot

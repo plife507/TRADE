@@ -212,41 +212,37 @@ def set_trailing_stop(
 # Leverage & Margin Mode
 # =============================================================================
 
-def set_leverage(manager: "ExchangeManager", symbol: str, leverage: int) -> bool:
+def set_leverage(manager: "ExchangeManager", symbol: str, leverage: int) -> None:
     """
     Set leverage for a symbol.
-    
+
     Args:
         manager: ExchangeManager instance
         symbol: Trading symbol
         leverage: Leverage multiplier
-    
-    Returns:
-        True if successful
+
+    Raises:
+        RuntimeError: If leverage cannot be set on the exchange
     """
     # Enforce config limit
     max_leverage = manager.config.risk.max_leverage
     if leverage > max_leverage:
         manager.logger.warning(f"Leverage {leverage} exceeds max {max_leverage}, using {max_leverage}")
         leverage = max_leverage
-    
+
+    manager._validate_trading_operation()
+
     try:
-        manager._validate_trading_operation()
-        
         manager.bybit.set_leverage(symbol, leverage)
-        return True
     except BybitAPIError as e:
-        # Leverage might already be set - not an error
+        # "leverage not modified" = already at requested level, not an error
         if "leverage not modified" in str(e).lower():
-            return True
-        manager.logger.error(f"Set leverage failed: {e}")
-        return False
-    except Exception as e:
-        manager.logger.error(f"Set leverage error: {e}")
-        return False
+            manager.logger.info(f"Leverage already {leverage}x for {symbol}")
+            return
+        raise RuntimeError(f"Failed to set leverage {leverage}x for {symbol}: {e}") from e
 
 
-def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str, leverage: float = 1.0) -> bool:
+def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str, leverage: float = 1.0) -> None:
     """
     Set margin mode for a symbol.
 
@@ -256,14 +252,14 @@ def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str, leverage
         mode: "ISOLATED_MARGIN" or "REGULAR_MARGIN" (cross)
         leverage: Leverage to set (from Play risk model)
 
-    Returns:
-        True if successful
+    Raises:
+        RuntimeError: If margin mode cannot be set on the exchange
     """
-    try:
-        manager._validate_trading_operation()
+    manager._validate_trading_operation()
 
-        lev_str = str(int(leverage)) if leverage == int(leverage) else str(leverage)
-        trade_mode = 0 if mode == "REGULAR_MARGIN" else 1  # 0=cross, 1=isolated
+    lev_str = str(int(leverage)) if leverage == int(leverage) else str(leverage)
+    trade_mode = 0 if mode == "REGULAR_MARGIN" else 1  # 0=cross, 1=isolated
+    try:
         manager.bybit.switch_cross_isolated_margin(
             symbol=symbol,
             trade_mode=trade_mode,
@@ -271,13 +267,14 @@ def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str, leverage
             sell_leverage=lev_str,
         )
         manager.logger.info(f"Set margin mode for {symbol} to {mode} at {lev_str}x leverage")
-        return True
     except Exception as e:
-        # Mode might already be set
+        # "margin mode is not modified" = already at requested mode, not an error
         if "margin mode is not modified" in str(e).lower():
-            return True
-        manager.logger.error(f"Set margin mode failed: {e}")
-        return False
+            manager.logger.info(f"Margin mode already {mode} for {symbol}")
+            return
+        raise RuntimeError(
+            f"Failed to set margin mode {mode} at {lev_str}x for {symbol}: {e}"
+        ) from e
 
 
 def set_position_mode(manager: "ExchangeManager", mode: str = "MergedSingle") -> bool:

@@ -33,7 +33,6 @@ class PlayRunResult:
     preflight_passed: bool = False
     evaluation_executed: bool = False
     artifacts_exist: bool = False
-    deterministic_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

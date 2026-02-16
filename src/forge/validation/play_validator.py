@@ -13,7 +13,7 @@ Usage:
     result = validate_play(play_dict)
 
     # From file
-    result = validate_play_file("tests/functional/plays/my_play.yml")
+    result = validate_play_file("plays/my_play.yml")
 
     if not result.is_valid:
         print(result.format_errors())
@@ -31,6 +31,10 @@ from src.backtest.play_yaml_builder import (
     ValidationError,
     ValidationErrorCode,
     format_validation_errors,
+    validate_required_keys,
+    validate_timeframes_section,
+    validate_account_section,
+    validate_features_section,
 )
 
 
@@ -169,5 +173,111 @@ def validate_play_file(file_path: str | Path) -> PlayValidationResult:
         )
 
     result = validate_play(play_dict)
+    result.source_path = path
+    return result
+
+
+# =============================================================================
+# Unified Validator: Full Pipeline
+# =============================================================================
+
+def validate_play_unified(play_dict: dict[str, Any]) -> PlayValidationResult:
+    """
+    Full pipeline: dict-level checks -> Play.from_dict() -> all errors collected.
+
+    Two-phase approach:
+    - Phase 1 (dict-level): Validate the raw YAML dict directly. Provides rich,
+      user-friendly errors with locations and suggestions.
+    - Phase 2 (construction): Try Play.from_dict() to exercise the full parser +
+      DSL + validate. Only runs if Phase 1 found no errors.
+
+    Args:
+        play_dict: Raw Play YAML dict
+
+    Returns:
+        PlayValidationResult with all errors collected
+    """
+    errors: list[ValidationError] = []
+
+    # Phase 1: Dict-level validation (rich errors)
+    errors.extend(validate_required_keys(play_dict))
+    errors.extend(validate_timeframes_section(play_dict))
+    errors.extend(validate_account_section(play_dict))
+    errors.extend(validate_features_section(play_dict))
+
+    # Phase 2: Full construction (only if Phase 1 clean)
+    if not errors:
+        try:
+            from src.backtest.play import Play
+            Play.from_dict(play_dict)  # includes __post_init__ -> validate()
+        except (ValueError, KeyError, TypeError) as e:
+            errors.append(ValidationError(
+                code=ValidationErrorCode.PLAY_CONSTRUCTION_FAILED,
+                message=str(e),
+            ))
+
+    play_id = play_dict.get("id") or play_dict.get("name", "<unknown>")
+    return PlayValidationResult(
+        play_id=play_id,
+        is_valid=len(errors) == 0,
+        errors=errors,
+    )
+
+
+def validate_play_file_unified(file_path: str | Path) -> PlayValidationResult:
+    """
+    Validate a Play from a YAML file using the unified pipeline.
+
+    Args:
+        file_path: Path to Play YAML file
+
+    Returns:
+        PlayValidationResult with all errors collected
+    """
+    path = Path(file_path)
+
+    if not path.exists():
+        return PlayValidationResult(
+            play_id=path.stem,
+            is_valid=False,
+            errors=[
+                ValidationError(
+                    code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                    message=f"File not found: {path}",
+                )
+            ],
+            source_path=path,
+        )
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            play_dict = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        return PlayValidationResult(
+            play_id=path.stem,
+            is_valid=False,
+            errors=[
+                ValidationError(
+                    code=ValidationErrorCode.DSL_PARSE_ERROR,
+                    message=f"YAML parse error: {e}",
+                )
+            ],
+            source_path=path,
+        )
+
+    if not isinstance(play_dict, dict):
+        return PlayValidationResult(
+            play_id=path.stem,
+            is_valid=False,
+            errors=[
+                ValidationError(
+                    code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                    message="YAML file must contain a dict at root level.",
+                )
+            ],
+            source_path=path,
+        )
+
+    result = validate_play_unified(play_dict)
     result.source_path = path
     return result

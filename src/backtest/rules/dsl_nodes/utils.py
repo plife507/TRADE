@@ -213,10 +213,16 @@ def validate_expr_types(
                 lhs_type = get_output_type(e.lhs.feature_id, e.lhs.field)
                 cond_errors = validate_operator_type_compatibility(e, lhs_type)
                 errors.extend(cond_errors)
-            except (KeyError, ValueError):
-                # Feature not found or field not found - skip type validation
-                # (other validation will catch missing features)
-                pass
+            except (KeyError, ValueError) as exc:
+                # OHLCV builtins are always FLOAT -- skip type validation
+                _BUILTINS = {
+                    "open", "high", "low", "close", "volume", "timestamp",
+                    "mark_price", "last_price", "open_interest", "funding_rate",
+                }
+                if e.lhs.feature_id not in _BUILTINS:
+                    errors.append(
+                        f"Cannot resolve type for '{e.lhs.feature_id}.{e.lhs.field}': {exc}"
+                    )
 
         elif isinstance(e, AllExpr):
             for child in e.children:

@@ -9,7 +9,7 @@ Folder structure (hash-based, deterministic):
     └── {category}/                    # _validation or strategies
         └── {play_id}/
             └── {symbol}/
-                └── {8-char-input-hash}/
+                └── {12-char-input-hash}/
                     ├── run_manifest.json      # Full hash + all inputs
                     ├── result.json            # Final metrics
                     ├── trades.parquet         # Trade log
@@ -24,7 +24,7 @@ Categories:
 Hash determinism:
 - Same inputs = same folder = same results
 - Full hash stored in run_manifest.json
-- Folder name uses 8-char short hash
+- Folder name uses 12-char short hash
 """
 
 from dataclasses import dataclass, field
@@ -215,7 +215,7 @@ class ArtifactPathConfig:
     window_end: datetime | None = None    # Stored in manifest
     run_id: str = ""  # 8-char (or 12-char) input hash
     play_hash: str = ""  # Required for hash computation
-    short_hash_length: int = 8  # Default 8, use 12 for collision recovery
+    short_hash_length: int = 12  # Match DEFAULT_SHORT_HASH_LENGTH in hashes.py
     attempt_id: str | None = None  # Timestamp for strategies category
     
     def __post_init__(self):
@@ -537,7 +537,7 @@ class RunManifest:
             # Hash identity
             full_hash=data["full_hash"],
             short_hash=data["short_hash"],
-            short_hash_length=data.get("short_hash_length", 8),
+            short_hash_length=data.get("short_hash_length", 12),
             hash_algorithm=data.get("hash_algorithm", "sha256"),
             
             # Strategy config
@@ -998,7 +998,7 @@ class ResultsSummary:
     run_duration_seconds: float = 0.0
     
     # Gate D required fields (for artifact validation)
-    idea_hash: str = ""
+    play_hash: str = ""
     pipeline_version: str = ""
     resolved_idea_path: str = ""
     
@@ -1064,7 +1064,7 @@ class ResultsSummary:
             "artifact_path": self.artifact_path,
             "run_duration_seconds": round(self.run_duration_seconds, 2),
             # Gate D required fields
-            "idea_hash": self.idea_hash,
+            "play_hash": self.play_hash,
             "pipeline_version": self.pipeline_version,
             "resolved_idea_path": self.resolved_idea_path,
             # Determinism hashes (Phase 3)
@@ -1127,6 +1127,10 @@ class ResultsSummary:
         print(f"  Fees:        {self.total_fees_usdt:.2f} USDT")
         print("-" * 60)
         print(f"  Artifacts:   {self.artifact_path}")
+        if self.play_hash or self.trades_hash or self.run_hash:
+            print(f"  Play Hash:   {self.play_hash[:8] if self.play_hash else '--'}")
+            print(f"  Trades Hash: {self.trades_hash[:8] if self.trades_hash else '--'}")
+            print(f"  Run Hash:    {self.run_hash[:8] if self.run_hash else '--'}")
         print("=" * 60 + "\n")
 
 
@@ -1142,7 +1146,7 @@ def compute_results_summary(
     artifact_path: str = "",
     run_duration_seconds: float = 0.0,
     # Gate D required fields
-    idea_hash: str = "",
+    play_hash: str = "",
     pipeline_version: str = "",
     resolved_idea_path: str = "",
     # Determinism hashes (Phase 3)
@@ -1169,7 +1173,7 @@ def compute_results_summary(
         equity_curve: List of equity point dicts with equity field
         artifact_path: Path to artifact folder
         run_duration_seconds: Run duration
-        idea_hash: Play hash for determinism tracking
+        play_hash: Play hash for determinism tracking
         pipeline_version: Pipeline version string
         resolved_idea_path: Path where Play was loaded from
         trades_hash: SHA256 hash of trades output
@@ -1189,7 +1193,7 @@ def compute_results_summary(
         run_id=run_id,
         artifact_path=artifact_path,
         run_duration_seconds=run_duration_seconds,
-        idea_hash=idea_hash,
+        play_hash=play_hash,
         pipeline_version=pipeline_version,
         resolved_idea_path=resolved_idea_path,
         trades_hash=trades_hash,

@@ -69,11 +69,12 @@ def forge_menu(cli: "TradeCLI"):
 
         # Navigation
         menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- Navigation ---[/]", "")
+        menu.add_row("8", "Go to Backtest Engine", "Open the Backtest menu")
         menu.add_row("0", "Back", "Return to main menu")
 
         console.print(menu)
 
-        choice = get_choice(range(0, 8))
+        choice = get_choice(range(0, 9))
 
         if choice is BACK or choice == 0:
             break
@@ -88,16 +89,22 @@ def forge_menu(cli: "TradeCLI"):
             _validate_all()
 
         elif choice == 4:
-            _run_toolkit_audit()
+            from src.cli.menus._shared_audits import run_toolkit_audit
+            run_toolkit_audit()
 
         elif choice == 5:
-            _run_rollup_audit()
+            from src.cli.menus._shared_audits import run_rollup_audit
+            run_rollup_audit()
 
         elif choice == 6:
             _run_stress_test()
 
         elif choice == 7:
             _run_synthetic_backtest()
+
+        elif choice == 8:
+            from src.cli.menus.backtest_menu import backtest_menu
+            backtest_menu(cli)
 
 
 def _validate_single_play():
@@ -203,40 +210,6 @@ def _validate_all():
     Prompt.ask("\n[dim]Press Enter to continue[/]")
 
 
-def _run_toolkit_audit():
-    """Run the toolkit contract audit."""
-    from src.tools.backtest_audit_tools import backtest_audit_toolkit_tool
-
-    console.print()
-    console.print(f"[{CLIColors.DIM_TEXT}]Running toolkit contract audit...[/]\n")
-
-    result = backtest_audit_toolkit_tool()
-
-    if result.success:
-        console.print(f"[bold {CLIColors.NEON_GREEN}]PASS[/] {result.message}")
-    else:
-        console.print(f"[bold {CLIColors.NEON_RED}]FAIL[/] {result.error}")
-
-    Prompt.ask("\n[dim]Press Enter to continue[/]")
-
-
-def _run_rollup_audit():
-    """Run the rollup parity audit."""
-    from src.tools.backtest_audit_tools import backtest_audit_rollup_parity_tool
-
-    console.print()
-    console.print(f"[{CLIColors.DIM_TEXT}]Running rollup parity audit...[/]\n")
-
-    result = backtest_audit_rollup_parity_tool()
-
-    if result.success:
-        console.print(f"[bold {CLIColors.NEON_GREEN}]PASS[/] {result.message}")
-    else:
-        console.print(f"[bold {CLIColors.NEON_RED}]FAIL[/] {result.error}")
-
-    Prompt.ask("\n[dim]Press Enter to continue[/]")
-
-
 def _run_synthetic_backtest():
     """Run a single Play with synthetic data (no DB required)."""
     from src.backtest.play import PLAYS_DIR, load_play
@@ -287,9 +260,9 @@ def _run_synthetic_backtest():
         # Try to find the play in various locations
         play = None
         for base_dir in [
-            Path("tests/validation/plays/indicators"),
-            Path("tests/validation/plays/structures"),
-            Path("tests/validation/plays"),
+            Path("plays/validation/indicators"),
+            Path("plays/validation/structures"),
+            Path("plays/validation"),
             PLAYS_DIR / "_validation",
             PLAYS_DIR,
         ]:

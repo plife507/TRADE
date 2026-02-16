@@ -94,11 +94,12 @@ class IncrementalTRIMA(IncrementalIndicator):
     """
     Triangular Moving Average with O(1) updates.
 
-    Formula:
-        trima = sma(sma(close, ceil(length/2)), floor(length/2)+1)
+    Formula (matching pandas_ta):
+        half_length = round(0.5 * (length + 1))
+        trima = sma(sma(close, half_length), half_length)
 
-    Uses two incremental SMAs.
-    Matches pandas_ta.trima() output.
+    Uses two incremental SMAs with identical window sizes.
+    Matches pandas_ta.trima(talib=False) output.
     """
 
     length: int = 20
@@ -107,11 +108,10 @@ class IncrementalTRIMA(IncrementalIndicator):
     _count: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
-        # TRIMA uses ceil(length/2) and floor(length/2)+1
-        sma1_len = math.ceil(self.length / 2)
-        sma2_len = (self.length // 2) + 1
-        self._sma1 = IncrementalSMA(length=sma1_len)
-        self._sma2 = IncrementalSMA(length=sma2_len)
+        # pandas_ta uses round(0.5 * (length + 1)) for both SMA windows
+        half_length = round(0.5 * (self.length + 1))
+        self._sma1 = IncrementalSMA(length=half_length)
+        self._sma2 = IncrementalSMA(length=half_length)
 
     def update(self, close: float, **kwargs: Any) -> None:
         """Update with new close price."""
@@ -295,21 +295,18 @@ class IncrementalCMO(IncrementalIndicator):
     """
     Chande Momentum Oscillator with O(1) updates.
 
-    Formula (using RMA/Wilder's smoothing for pandas_ta default):
-        pos = rma(positive_changes)
-        neg = rma(abs(negative_changes))
-        cmo = ((pos - neg) / (pos + neg)) * 100
-
-    Uses RMA (Wilder's smoothing) to match pandas_ta.cmo(talib=True) default.
-    Matches pandas_ta.cmo() output.
+    Formula (rolling sum, matches pandas_ta.cmo(talib=False)):
+        pos_sum = rolling_sum(positive_changes, length)
+        neg_sum = rolling_sum(abs(negative_changes), length)
+        cmo = ((pos_sum - neg_sum) / (pos_sum + neg_sum)) * 100
     """
 
     length: int = 14
     _prev_close: float = field(default=np.nan, init=False)
-    _pos_rma: float = field(default=np.nan, init=False)
-    _neg_rma: float = field(default=np.nan, init=False)
-    _warmup_pos: list = field(default_factory=list, init=False)
-    _warmup_neg: list = field(default_factory=list, init=False)
+    _pos_buf: list[float] = field(default_factory=list, init=False)
+    _neg_buf: list[float] = field(default_factory=list, init=False)
+    _pos_sum: float = field(default=0.0, init=False)
+    _neg_sum: float = field(default=0.0, init=False)
     _change_count: int = field(default=0, init=False)
     _count: int = field(default=0, init=False)
 
@@ -328,25 +325,22 @@ class IncrementalCMO(IncrementalIndicator):
         pos = max(0.0, change)
         neg = max(0.0, -change)
 
-        # RMA (Wilder's smoothing): first value is SMA, then exponential
-        if self._change_count <= self.length:
-            self._warmup_pos.append(pos)
-            self._warmup_neg.append(neg)
+        self._pos_buf.append(pos)
+        self._neg_buf.append(neg)
+        self._pos_sum += pos
+        self._neg_sum += neg
 
-            if self._change_count == self.length:
-                self._pos_rma = sum(self._warmup_pos) / self.length
-                self._neg_rma = sum(self._warmup_neg) / self.length
-        else:
-            alpha = 1.0 / self.length
-            self._pos_rma = alpha * pos + (1 - alpha) * self._pos_rma
-            self._neg_rma = alpha * neg + (1 - alpha) * self._neg_rma
+        # Evict oldest when buffer exceeds length
+        if len(self._pos_buf) > self.length:
+            self._pos_sum -= self._pos_buf.pop(0)
+            self._neg_sum -= self._neg_buf.pop(0)
 
     def reset(self) -> None:
         self._prev_close = np.nan
-        self._pos_rma = np.nan
-        self._neg_rma = np.nan
-        self._warmup_pos.clear()
-        self._warmup_neg.clear()
+        self._pos_buf = []
+        self._neg_buf = []
+        self._pos_sum = 0.0
+        self._neg_sum = 0.0
         self._change_count = 0
         self._count = 0
 
@@ -355,11 +349,11 @@ class IncrementalCMO(IncrementalIndicator):
         if not self.is_ready:
             return np.nan
 
-        total = self._pos_rma + self._neg_rma
+        total = self._pos_sum + self._neg_sum
         if total == 0:
             return 0.0
 
-        return ((self._pos_rma - self._neg_rma) / total) * 100.0
+        return ((self._pos_sum - self._neg_sum) / total) * 100.0
 
     @property
     def is_ready(self) -> bool:

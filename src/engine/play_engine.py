@@ -51,7 +51,7 @@ from .signal import SubLoopEvaluator
 from .sizing import SizingModel, SizingConfig
 
 from ..utils.logger import get_logger
-from ..utils.debug import is_debug_enabled
+from ..utils.debug import is_debug_enabled, debug_log, debug_signal, debug_trade, debug_snapshot
 from .timeframe import TFIndexManager
 
 
@@ -264,6 +264,11 @@ class PlayEngine:
         # Limit order expiry tracking: list of (order_id, submit_bar_index)
         self._pending_limit_orders: list[tuple[str, int]] = []
 
+        # Anchored VWAP post-structure update cache
+        # These indicators depend on swing structure versions and must be updated
+        # AFTER structures, not during batch pre-computation.
+        self._anchored_vwap_cache: dict[str, Any] | None = None  # Lazy init
+
         self.logger.info(
             f"PlayEngine initialized: {self.engine_id} "
             f"mode={config.mode} symbol={play.symbol_universe[0]}"
@@ -401,6 +406,15 @@ class PlayEngine:
             self.logger.warning(f"Bar index {bar_index} out of bounds")
             return None
 
+        # 7.3: Log bar OHLCV when debug enabled
+        if is_debug_enabled() and self.is_backtest:
+            debug_log(
+                self._play_hash, "Bar OHLCV",
+                bar_idx=bar_index,
+                O=candle.open, H=candle.high, L=candle.low,
+                C=candle.close, V=candle.volume,
+            )
+
         # Update high_tf/med_tf indices (forward-fill logic)
         self._update_high_tf_med_tf_indices(candle)
 
@@ -451,6 +465,29 @@ class PlayEngine:
         if signal:
             self._total_signals += 1
             self._last_signal_ts = candle.ts_close
+
+            # 7.3: Log signal evaluation result
+            if is_debug_enabled() and self.is_backtest:
+                sl = signal.metadata.get("stop_loss") if signal.metadata else None
+                tp = signal.metadata.get("take_profit") if signal.metadata else None
+                fv: dict[str, float] = {}
+                if isinstance(sl, (int, float)):
+                    fv["sl"] = float(sl)
+                if isinstance(tp, (int, float)):
+                    fv["tp"] = float(tp)
+                debug_signal(
+                    self._play_hash, bar_index,
+                    action=signal.direction,
+                    feature_values=fv if fv else None,
+                )
+        elif is_debug_enabled() and self.is_backtest and bar_index % 100 == 0:
+            # Log periodic "no signal" milestone so user knows engine is running
+            pos_str = "FLAT" if position is None else f"{position.side} {position.size_qty}"
+            debug_log(
+                self._play_hash, "No signal",
+                bar_idx=bar_index,
+                position=pos_str,
+            )
 
         # 6. Persist state if configured
         if self.config.persist_state:
@@ -504,6 +541,15 @@ class PlayEngine:
             self.logger.info(
                 f"Exit signal: {self.symbol} close {exit_percent}%"
             )
+
+            # 7.3: Log position close via debug_trade
+            if is_debug_enabled() and self.is_backtest:
+                debug_trade(
+                    self._play_hash, self._current_bar_index,
+                    event="close_signal",
+                    trade_num=self._total_trades,
+                )
+
             return OrderResult(
                 success=True,
                 order_id=f"close_{uuid.uuid4().hex[:8]}",
@@ -615,6 +661,17 @@ class PlayEngine:
                 self.logger.info(
                     f"Order filled: {signal.direction} {self.symbol} "
                     f"price={result.fill_price:.2f} size={result.fill_usdt:.2f} USDT"
+                )
+
+            # 7.3: Log position open via debug_trade
+            if is_debug_enabled() and self.is_backtest:
+                debug_trade(
+                    self._play_hash, self._current_bar_index,
+                    event="opened",
+                    trade_num=self._total_trades,
+                    entry=result.fill_price or order.limit_price,
+                    sl=order.stop_loss,
+                    tp=order.take_profit,
                 )
         else:
             self.logger.warning(f"Order failed: {result.error}")
@@ -940,6 +997,120 @@ class PlayEngine:
         assert self._incremental_state is not None
         self._incremental_state.update_exec(bar_data)
 
+        # Post-structure update: wire anchored VWAP to swing versions
+        self._update_anchored_vwap(bar_index, candle)
+
+    def _init_anchored_vwap_cache(self) -> dict[str, Any]:
+        """Lazy-init anchored VWAP indicators that need swing structure wiring.
+
+        Scans the play's feature registry for anchored_vwap features and creates
+        IncrementalAnchoredVWAP instances. Also identifies the swing structure
+        key on the exec TF to extract version counters from.
+
+        Returns:
+            Dict with 'indicators' (name -> IncrementalAnchoredVWAP) and
+            'swing_key' (str or None).
+        """
+        from src.indicators.incremental.volume import IncrementalAnchoredVWAP
+
+        cache: dict[str, Any] = {"indicators": {}, "swing_key": None}
+
+        if self._feature_registry is None:
+            return cache
+
+        # Find anchored_vwap features
+        for feature in self._feature_registry.all_features():
+            if feature.indicator_type == "anchored_vwap":
+                anchor_source = feature.params.get("anchor_source", "swing_any")
+                avwap = IncrementalAnchoredVWAP(anchor_source=anchor_source)
+                cache["indicators"][feature.id] = avwap
+
+        if not cache["indicators"]:
+            return cache
+
+        # Find the first swing structure on exec TF
+        if self._incremental_state is not None:
+            for key in self._incremental_state.exec.list_structures():
+                detector = self._incremental_state.exec.structures[key]
+                if getattr(detector, "_type", "") == "swing":
+                    cache["swing_key"] = key
+                    break
+
+        if cache["swing_key"] is None:
+            avwap_names = list(cache["indicators"].keys())
+            self.logger.warning(
+                f"anchored_vwap features {avwap_names} declared but no swing structure "
+                f"found on exec TF. Anchored VWAP will never reset and degrades to "
+                f"cumulative VWAP. Add a swing structure to exec to enable anchor resets."
+            )
+
+        return cache
+
+    def _update_anchored_vwap(self, bar_index: int, candle: Candle) -> None:
+        """Update anchored VWAP indicators with swing structure versions.
+
+        Called AFTER structures are updated so swing versions are fresh.
+        Writes corrected values back to FeedStore (backtest) or
+        LiveIndicatorCache (live), overwriting any stale batch-computed values.
+        """
+        import numpy as np
+
+        # Lazy init
+        if self._anchored_vwap_cache is None:
+            self._anchored_vwap_cache = self._init_anchored_vwap_cache()
+
+        indicators: dict = self._anchored_vwap_cache["indicators"]
+        if not indicators:
+            return
+
+        swing_key: str | None = self._anchored_vwap_cache["swing_key"]
+
+        # Extract swing versions from exec structure state
+        swing_kwargs: dict[str, Any] = {}
+        if swing_key is not None and self._incremental_state is not None:
+            try:
+                exec_state = self._incremental_state.exec
+                swing_kwargs["swing_high_version"] = exec_state.get_value(swing_key, "high_version")
+                swing_kwargs["swing_low_version"] = exec_state.get_value(swing_key, "low_version")
+                swing_kwargs["swing_pair_version"] = exec_state.get_value(swing_key, "pair_version")
+                swing_kwargs["swing_pair_direction"] = exec_state.get_value(swing_key, "pair_direction")
+            except KeyError:
+                pass  # Swing structure not ready yet
+
+        # Update each anchored VWAP and write back (multi-output: value + bars_since_anchor)
+        for name, avwap in indicators.items():
+            avwap.update(
+                high=candle.high,
+                low=candle.low,
+                close=candle.close,
+                volume=candle.volume,
+                **swing_kwargs,
+            )
+            # Multi-output expanded keys: {name}_value, {name}_bars_since_anchor
+            outputs = {
+                f"{name}_value": avwap.value,
+                f"{name}_bars_since_anchor": float(avwap.bars_since_anchor),
+            }
+
+            # Write corrected values back to data store
+            from .adapters.backtest import BacktestDataProvider
+            if isinstance(self._data_provider, BacktestDataProvider):
+                feed_store = self._data_provider._feed_store
+                if feed_store is not None:
+                    for key, val in outputs.items():
+                        if key in feed_store.indicators:
+                            if bar_index < len(feed_store.indicators[key]):
+                                feed_store.indicators[key][bar_index] = val
+            else:
+                from .adapters.live import LiveDataProvider
+                if isinstance(self._data_provider, LiveDataProvider):
+                    cache = self._data_provider._exec_indicators
+                    if cache is not None:
+                        with cache._lock:
+                            for key, val in outputs.items():
+                                if key in cache._indicators and len(cache._indicators[key]) > 0:
+                                    cache._indicators[key][-1] = val
+
     def _evaluate_rules(
         self,
         bar_index: int,
@@ -1132,6 +1303,11 @@ class PlayEngine:
                 except (IndexError, RuntimeError):
                     prev_last_price = candle.close
 
+            # Use exec feed as quote_feed fallback for last_price lookback
+            # In live mode there's no 1m quote_feed, so window operators
+            # referencing last_price with offset > 1 use exec TF close prices
+            exec_feed_for_quote = feeds.exec_feed
+
             snapshot = RuntimeSnapshotView(
                 feeds=feeds,
                 exec_idx=exec_idx,
@@ -1146,6 +1322,8 @@ class PlayEngine:
                 feature_registry=self._feature_registry,
                 last_price=live_last_price,
                 prev_last_price=prev_last_price,
+                quote_feed=exec_feed_for_quote,
+                quote_idx=exec_idx,
             )
             return snapshot
 
@@ -1518,6 +1696,9 @@ class PlayEngine:
         if self._signal_evaluator is None:
             try:
                 self._signal_evaluator = PlaySignalEvaluator(self.play)
+                # Wire setup expressions into evaluator cache
+                if self.play.setups:
+                    self._signal_evaluator._blocks_executor._evaluator._setup_expr_cache = dict(self.play.setups)
             except ValueError as e:
                 self.logger.error(f"Failed to create signal evaluator: {e}")
                 return None
@@ -1544,6 +1725,27 @@ class PlayEngine:
                 f"has_pos={has_position} pos_side={position_side} "
                 f"sl={result.stop_loss_price} tp={result.take_profit_price}"
             )
+
+        # 7.4: Dump indicator snapshot at signal bars (backtest debug)
+        if is_debug_enabled() and self.is_backtest and result.decision != SignalDecision.NO_ACTION:
+            if snapshot is not None:
+                snapshot_data: dict[str, Any] = {
+                    "decision": result.decision.value,
+                    "close": candle.close,
+                }
+                if result.stop_loss_price is not None:
+                    snapshot_data["sl"] = result.stop_loss_price
+                if result.take_profit_price is not None:
+                    snapshot_data["tp"] = result.take_profit_price
+                # Add indicator values from snapshot
+                try:
+                    for key in snapshot.available_indicators:
+                        val = snapshot.indicator(key)
+                        if val is not None:
+                            snapshot_data[key] = val
+                except Exception:
+                    pass  # Don't fail on snapshot read errors
+                debug_snapshot(self._play_hash, bar_index, snapshot_data)
 
         # Convert evaluation result to Signal
         return self._result_to_signal(result, position)
@@ -1684,6 +1886,90 @@ class PlayEngine:
             )
             return snapshot
 
+        # Live mode: build 1m snapshot from LiveDataProvider buffers
+        from .adapters.live import LiveDataProvider
+
+        if isinstance(self._data_provider, LiveDataProvider):
+            from ..backtest.runtime.snapshot_view import RuntimeSnapshotView
+            from ..backtest.runtime.feed_store import MultiTFFeedStore
+
+            provider = self._data_provider
+
+            # Build FeedStore from live buffers (same pattern as _build_snapshot_view)
+            low_tf_feed = self._build_live_feed_store(
+                provider.low_tf_buffer,
+                provider._low_tf_indicators,
+                provider._tf_mapping["low_tf"],
+                provider.symbol,
+            )
+            if low_tf_feed is None:
+                return None
+
+            med_tf_feed = None
+            if provider._multi_tf_mode and provider._tf_mapping["med_tf"] != provider._tf_mapping["low_tf"]:
+                med_tf_feed = self._build_live_feed_store(
+                    provider.med_tf_buffer,
+                    provider._med_tf_indicators,
+                    provider._tf_mapping["med_tf"],
+                    provider.symbol,
+                )
+
+            high_tf_feed = None
+            if provider._multi_tf_mode and provider._tf_mapping["high_tf"] != provider._tf_mapping["med_tf"]:
+                high_tf_feed = self._build_live_feed_store(
+                    provider.high_tf_buffer,
+                    provider._high_tf_indicators,
+                    provider._tf_mapping["high_tf"],
+                    provider.symbol,
+                )
+
+            feeds = MultiTFFeedStore(
+                low_tf_feed=low_tf_feed,
+                med_tf_feed=med_tf_feed,
+                high_tf_feed=high_tf_feed,
+                tf_mapping=provider._tf_mapping,
+                exec_role=provider._tf_mapping.get("exec", "low_tf"),
+            )
+
+            # Use exec buffer length - 1 as exec_idx (latest bar)
+            exec_buffer = provider._exec_buffer
+            exec_idx = len(exec_buffer) - 1 if exec_buffer else 0
+
+            # Determine high_tf/med_tf indices
+            high_tf_idx = None
+            med_tf_idx = None
+            if high_tf_feed is not None:
+                high_tf_idx = self._current_high_tf_idx
+            if med_tf_feed is not None:
+                med_tf_idx = self._current_med_tf_idx
+
+            # Build exec TF close array as quote_feed fallback for last_price lookback
+            quote_feed = self._build_live_feed_store(
+                provider._exec_buffer,
+                provider._exec_indicators,
+                provider._tf_mapping[provider._exec_role],
+                provider.symbol,
+            )
+
+            snapshot = RuntimeSnapshotView(
+                feeds=feeds,
+                exec_idx=exec_idx,
+                high_tf_idx=high_tf_idx,
+                med_tf_idx=med_tf_idx,
+                exchange=self._build_live_exchange_state(),
+                mark_price=last_price,
+                mark_price_source="1m_quote_live",
+                history_config=None,
+                history_ready=True,
+                incremental_state=self._incremental_state,
+                feature_registry=self._feature_registry,
+                last_price=last_price,
+                prev_last_price=prev_last_price,
+                quote_feed=quote_feed,
+                quote_idx=quote_idx,
+            )
+            return snapshot
+
         return None
 
 
@@ -1711,6 +1997,9 @@ class _PlayEngineSubLoopContext:
             from ..backtest.execution_validation import PlaySignalEvaluator
             try:
                 engine._signal_evaluator = PlaySignalEvaluator(engine.play)
+                # Wire setup expressions into evaluator cache
+                if engine.play.setups:
+                    engine._signal_evaluator._blocks_executor._evaluator._setup_expr_cache = dict(engine.play.setups)
             except ValueError as e:
                 engine.logger.error(f"Failed to create signal evaluator: {e}")
 
@@ -1750,6 +2039,27 @@ class _PlayEngineSubLoopContext:
         result = self._engine._signal_evaluator.evaluate(
             snapshot, has_position, position_side
         )
+
+        # 7.4: Dump indicator snapshot at signal bars (sub-loop path)
+        from ..backtest.execution_validation import SignalDecision
+        if is_debug_enabled() and self._engine.is_backtest and result.decision != SignalDecision.NO_ACTION:
+            if snapshot is not None:
+                snap_data: dict[str, Any] = {
+                    "decision": result.decision.value,
+                    "close": self._candle.close,
+                }
+                if result.stop_loss_price is not None:
+                    snap_data["sl"] = result.stop_loss_price
+                if result.take_profit_price is not None:
+                    snap_data["tp"] = result.take_profit_price
+                try:
+                    for key in snapshot.available_indicators:
+                        val = snapshot.indicator(key)
+                        if val is not None:
+                            snap_data[key] = val
+                except Exception:
+                    pass
+                debug_snapshot(self._engine._play_hash, self._bar_index, snap_data)
 
         # Convert to Signal
         return self._engine._result_to_signal(result, self._position)

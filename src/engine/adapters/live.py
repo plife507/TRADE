@@ -11,7 +11,7 @@ Integrates with existing RealtimeState/RealtimeBootstrap infrastructure.
 
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -75,6 +75,9 @@ class LiveIndicatorCache:
         # Specs that don't support incremental computation
         self._vectorized_specs: list[dict] = []
 
+        # Indicator keys managed by engine (e.g., anchored_vwap needs structure state)
+        self._engine_managed_keys: set[str] = set()
+
         # OHLCV arrays for vectorized computation fallback
         self._open: np.ndarray = np.array([], dtype=np.float64)
         self._high: np.ndarray = np.array([], dtype=np.float64)
@@ -111,12 +114,19 @@ class LiveIndicatorCache:
         self._close = np.zeros(n, dtype=np.float64)
         self._volume = np.zeros(n, dtype=np.float64)
 
+        # ts_open in milliseconds for session-boundary indicators (VWAP)
+        self._ts_open_ms = np.zeros(n, dtype=np.int64)
+
         for i, candle in enumerate(candles):
             self._open[i] = float(candle.open)
             self._high[i] = float(candle.high)
             self._low[i] = float(candle.low)
             self._close[i] = float(candle.close)
             self._volume[i] = float(candle.volume)
+            # BarRecord has .timestamp, Candle has .ts_open
+            ts = getattr(candle, 'ts_open', None) or getattr(candle, 'timestamp', None)
+            if ts is not None:
+                self._ts_open_ms[i] = int(ts.timestamp() * 1000)
 
         self._bar_count = n
 
@@ -133,6 +143,17 @@ class LiveIndicatorCache:
                 ind_type = feature.indicator_type.lower()
 
                 if supports_incremental(ind_type):
+                    # anchored_vwap depends on structure state (swing versions)
+                    # which isn't available during indicator warmup. The engine
+                    # handles it in _update_anchored_vwap() after structures update.
+                    # We allocate a NaN array here; engine fills correct values.
+                    if ind_type == "anchored_vwap":
+                        # Multi-output: allocate NaN arrays for each expanded key
+                        for expanded_key in feature.output_keys_list:
+                            self._indicators[expanded_key] = np.full(n, np.nan)
+                            self._engine_managed_keys.add(expanded_key)
+                        continue
+
                     # Create incremental indicator
                     inc_ind = create_incremental_indicator(ind_type, feature.params)
                     if inc_ind is not None:
@@ -161,6 +182,9 @@ class LiveIndicatorCache:
                                 )
                                 if needs_volume:
                                     kwargs["volume"] = self._volume[i]
+                                # Pass ts_open for session-boundary indicators (VWAP)
+                                if self._ts_open_ms[i] > 0:
+                                    kwargs["ts_open"] = int(self._ts_open_ms[i])
                                 inc_ind.update(**kwargs)
                             else:
                                 # Route primary input by feature's input_source
@@ -200,6 +224,8 @@ class LiveIndicatorCache:
             return float(candle.high)
         elif source_str == "low":
             return float(candle.low)
+        elif source_str == "hl2":
+            return float(candle.hl2)
         elif source_str == "hlc3":
             return float(candle.hlc3)
         elif source_str == "ohlc4":
@@ -218,6 +244,8 @@ class LiveIndicatorCache:
             return float(self._high[idx])
         elif source_str == "low":
             return float(self._low[idx])
+        elif source_str == "hl2":
+            return (float(self._high[idx]) + float(self._low[idx])) / 2.0
         elif source_str == "hlc3":
             return (float(self._high[idx]) + float(self._low[idx]) + float(self._close[idx])) / 3.0
         elif source_str == "ohlc4":
@@ -272,6 +300,9 @@ class LiveIndicatorCache:
                     )
                     if info.requires_volume:
                         kwargs["volume"] = float(candle.volume)
+                    # Pass ts_open for session-boundary indicators (VWAP)
+                    if candle.ts_open is not None:
+                        kwargs["ts_open"] = int(candle.ts_open.timestamp() * 1000)
                     inc_ind.update(**kwargs)
                 else:
                     # Route primary input by feature's input_source
@@ -289,6 +320,12 @@ class LiveIndicatorCache:
                         self._indicators[key] = np.append(self._indicators[key], value)
                 else:
                     self._indicators[name] = np.append(self._indicators[name], inc_ind.value)
+
+            # Append NaN placeholder for engine-managed indicators (e.g., anchored_vwap).
+            # Engine fills correct values after structure update via _update_anchored_vwap().
+            for key in self._engine_managed_keys:
+                if key in self._indicators:
+                    self._indicators[key] = np.append(self._indicators[key], np.nan)
 
             # Recompute vectorized indicators (still O(n) but only for non-incremental)
             if self._vectorized_specs:
@@ -431,6 +468,8 @@ class LiveIndicatorCache:
                         primary_input = high_s
                     elif source_str == "low":
                         primary_input = low_s
+                    elif source_str == "hl2":
+                        primary_input = (high_s + low_s) / 2.0
                     elif source_str == "hlc3":
                         primary_input = (high_s + low_s + close_s) / 3.0
                     elif source_str == "ohlc4":
@@ -584,12 +623,21 @@ class LiveDataProvider:
         # Key: (tf_role, struct_key, field) -> deque of (bar_idx, value)
         self._structure_history: dict[tuple[str, str, str], deque] = {}
 
+        # H7: Monotonic global bar counter per TF (never resets on trim)
+        self._global_bar_count: dict[str, int] = {
+            "low_tf": 0,
+            "med_tf": 0,
+            "high_tf": 0,
+        }
+
         # Tracking
         self._ready = False
-        # WU-01, WU-06: Configurable warmup bars (default 100)
-        # Reads from Play.warmup_bars if present, otherwise defaults to 100
-        # 100 bars ensures most indicators (EMA, RSI, etc.) have sufficient history
-        self._warmup_bars = getattr(play, 'warmup_bars', 100)
+        # WU-01: Compute warmup from Play's actual indicator/structure requirements
+        from src.backtest.execution_validation import compute_warmup_requirements
+        warmup_req = compute_warmup_requirements(play)
+        self._warmup_bars = max(warmup_req.max_warmup_bars, 1)
+        self._warmup_by_role = warmup_req.warmup_by_role
+        logger.info(f"Warmup requirements: max={self._warmup_bars}, by_role={self._warmup_by_role}")
         self._current_bar_index: int = -1
 
         # WU-02: Track warmup state per TF for multi-TF sync
@@ -708,7 +756,8 @@ class LiveDataProvider:
             # Ensure our symbol is tracked
             self._bootstrap.ensure_symbol_subscribed(self._symbol)
 
-            # Load historical bars from bar buffer
+            # Sync warmup data to DuckDB, then load
+            self._sync_warmup_data()
             await self._load_initial_bars()
 
             logger.info(f"LiveDataProvider connected: {self._symbol}")
@@ -722,6 +771,49 @@ class LiveDataProvider:
         # We don't stop the bootstrap as other components may be using it
         self._ready = False
         logger.info(f"LiveDataProvider disconnected: {self._symbol}")
+
+    def _sync_warmup_data(self) -> None:
+        """Sync warmup bars to DuckDB for all play TFs before loading.
+
+        Computes how far back each TF needs, then calls sync_range() to
+        ensure DuckDB has enough data.  Runs once during connect().
+        """
+        from ...data.historical_data_store import get_historical_store
+        from ...data.historical_sync import sync_range
+        from src.backtest.runtime.timeframe import tf_minutes as _tf_minutes
+
+        store = get_historical_store(env=self._env)
+        now = datetime.now(timezone.utc)
+
+        # Collect unique TFs and their warmup requirements
+        unique_tfs: dict[str, int] = {}
+        for role in ("low_tf", "med_tf", "high_tf"):
+            tf_str = self._tf_mapping.get(role)
+            if tf_str and tf_str not in unique_tfs:
+                needed = self._warmup_by_role.get(tf_str, self._warmup_bars)
+                unique_tfs[tf_str] = needed
+
+        for tf_str, needed_bars in unique_tfs.items():
+            mins = _tf_minutes(tf_str)
+            # Add 10% safety margin
+            fetch_bars = int(needed_bars * 1.1) + 10
+            start = now - timedelta(minutes=mins * fetch_bars)
+
+            logger.info(
+                f"Syncing {tf_str} warmup data: {fetch_bars} bars "
+                f"({start.date()} to {now.date()})"
+            )
+            try:
+                sync_range(
+                    store,
+                    symbols=self._symbol,
+                    start=start,
+                    end=now,
+                    timeframes=[tf_str],
+                    show_spinner=False,
+                )
+            except Exception as e:
+                logger.warning(f"Warmup sync failed for {tf_str} (will try REST fallback): {e}")
 
     async def _load_initial_bars(self) -> None:
         """Load initial bars from bar buffer, DuckDB, or REST API for all TFs."""
@@ -773,6 +865,9 @@ class LiveDataProvider:
         else:
             return
 
+        # Minimum bars needed for this TF role
+        needed = self._warmup_by_role.get(tf_str, self._warmup_bars)
+
         # Try to get from bar buffer first (hot in-memory cache)
         bars = self._realtime_state.get_bar_buffer(
             env=self._env,
@@ -781,9 +876,19 @@ class LiveDataProvider:
             limit=self._buffer_size,
         )
 
-        # Fall back to DuckDB if bar buffer is empty
-        if not bars:
-            bars = await self._load_bars_from_db_for_tf(tf_str)
+        # Fall back to DuckDB if bar buffer is empty or insufficient
+        if len(bars) < needed:
+            db_bars = await self._load_bars_from_db_for_tf(tf_str)
+            if len(db_bars) > len(bars):
+                bars = db_bars
+
+        # Fall back to REST API if still insufficient
+        if len(bars) < needed:
+            rest_bars = await self._load_bars_from_rest_api(tf_str)
+            if len(rest_bars) > len(bars):
+                bars = rest_bars
+
+        logger.info(f"Loaded {len(bars)} bars for {tf_role} ({tf_str}) warm-up")
 
         if bars:
             # Convert BarRecords to interface Candles
@@ -804,6 +909,9 @@ class LiveDataProvider:
                 # Get indicator specs for this TF from Play
                 tf_specs = self._get_indicator_specs_for_tf(tf_role)
                 indicator_cache.initialize_from_history(bars, tf_specs)
+
+            # H7: Initialize global bar counter from loaded history
+            self._global_bar_count[tf_role] = len(bars)
 
             logger.info(f"Loaded {len(bars)} bars for {tf_role} ({tf_str}) warm-up")
 
@@ -897,6 +1005,68 @@ class LiveDataProvider:
 
         except Exception as e:
             logger.warning(f"Failed to load bars from DuckDB for {tf_str}: {e}")
+            return []
+
+    async def _load_bars_from_rest_api(self, tf_str: str) -> list:
+        """Load bars from Bybit REST API for warm-up.
+
+        Third fallback when both bar buffer and DuckDB are empty (e.g. fresh
+        demo account with no historical data synced).
+        """
+        from ...data.historical_data_store import get_historical_store, TIMEFRAMES
+        from ...data.realtime_state import BarRecord
+        from datetime import datetime, timedelta
+
+        bybit_tf = TIMEFRAMES.get(tf_str)
+        if bybit_tf is None:
+            logger.warning(f"No Bybit interval mapping for {tf_str}, skipping REST warmup")
+            return []
+
+        try:
+            store = get_historical_store(env=self._env)
+
+            end = datetime.now(timezone.utc)
+            tf_mins = tf_minutes(tf_str)
+            # Fetch enough bars for warmup (capped at 1000 per Bybit API limit)
+            fetch_count = min(self._warmup_bars + 10, 1000)
+            start = end - timedelta(minutes=tf_mins * fetch_count)
+
+            end_ms = int(end.timestamp() * 1000)
+            start_ms = int(start.timestamp() * 1000)
+
+            logger.info(f"Fetching {fetch_count} bars from REST API for {self._symbol} {tf_str}...")
+            df = store.client.get_klines(
+                symbol=self._symbol,
+                interval=bybit_tf,
+                limit=fetch_count,
+                start=start_ms,
+                end=end_ms,
+            )
+
+            if df is None or df.empty:
+                logger.warning(f"REST API returned no bars for {self._symbol} {tf_str}")
+                return []
+
+            bars = []
+            for _, row in df.iterrows():
+                ts = row['timestamp']
+                if not isinstance(ts, datetime):
+                    ts = datetime.fromisoformat(str(ts))
+                bar = BarRecord(
+                    timestamp=ts,
+                    open=float(row['open']),
+                    high=float(row['high']),
+                    low=float(row['low']),
+                    close=float(row['close']),
+                    volume=float(row['volume']),
+                )
+                bars.append(bar)
+
+            logger.info(f"Loaded {len(bars)} bars from REST API for {tf_str} warm-up")
+            return bars
+
+        except Exception as e:
+            logger.warning(f"Failed to load bars from REST API for {tf_str}: {e}")
             return []
 
     def _get_structure_specs_by_tf_role(self) -> dict[str, list[dict]]:
@@ -1078,8 +1248,12 @@ class LiveDataProvider:
             return self._low_tf_indicators
         elif tf_role == "med_tf" and self._med_tf_indicators:
             return self._med_tf_indicators
-        elif tf_role == "high_tf" and self._high_tf_indicators:
-            return self._high_tf_indicators
+        elif tf_role == "high_tf":
+            if self._high_tf_indicators:
+                return self._high_tf_indicators
+            # M1: high_tf==med_tf but !=low_tf — use med_tf cache, not exec
+            if self._med_tf_indicators:
+                return self._med_tf_indicators
         return self._exec_indicators
 
     def get_structure(self, key: str, field: str) -> float:
@@ -1200,13 +1374,13 @@ class LiveDataProvider:
         """
         # Check low_tf (always required)
         self._low_tf_ready = self._check_tf_warmup(
-            self._low_tf_buffer, self._low_tf_indicators
+            self._low_tf_buffer, self._low_tf_indicators, self._low_tf_structure
         )
 
         # Check med_tf only if different from low_tf
         if self._tf_mapping["med_tf"] != self._tf_mapping["low_tf"]:
             self._med_tf_ready = self._check_tf_warmup(
-                self._med_tf_buffer, self._med_tf_indicators
+                self._med_tf_buffer, self._med_tf_indicators, self._med_tf_structure
             )
         else:
             self._med_tf_ready = True  # Same as low_tf, already checked
@@ -1214,7 +1388,7 @@ class LiveDataProvider:
         # Check high_tf only if different from med_tf
         if self._tf_mapping["high_tf"] != self._tf_mapping["med_tf"]:
             self._high_tf_ready = self._check_tf_warmup(
-                self._high_tf_buffer, self._high_tf_indicators
+                self._high_tf_buffer, self._high_tf_indicators, self._high_tf_structure
             )
         else:
             self._high_tf_ready = True  # Same as med_tf, already checked
@@ -1236,6 +1410,7 @@ class LiveDataProvider:
         self,
         buffer: list[Candle],
         indicator_cache: LiveIndicatorCache | None,
+        structure_state: "TFIncrementalState | None" = None,
     ) -> bool:
         """
         WU-04: Check if a single TF is warmed up.
@@ -1243,10 +1418,12 @@ class LiveDataProvider:
         A TF is ready when:
         1. Buffer has >= warmup_bars
         2. Indicators have valid (non-NaN) values at the latest bar
+        3. Structures have processed enough bars for valid output
 
         Args:
             buffer: Candle buffer for this TF
             indicator_cache: Indicator cache for this TF (may be None)
+            structure_state: Structure state for this TF (may be None)
 
         Returns:
             True if TF is warmed up, False otherwise
@@ -1266,6 +1443,12 @@ class LiveDataProvider:
                             f"Indicator {name} has NaN at latest bar, warmup incomplete"
                         )
                         return False
+
+        # C2: Check structure readiness (must have processed bars)
+        if structure_state is not None:
+            if structure_state._bar_idx < 0:
+                logger.debug("Structure state has not processed any bars, warmup incomplete")
+                return False
 
         return True
 
@@ -1332,15 +1515,17 @@ class LiveDataProvider:
             if len(buffer) > self._buffer_size:
                 del buffer[:-self._buffer_size]
 
-            buffer_len = len(buffer)
+            # H7: Use monotonic global bar counter (never resets on trim)
+            global_idx = self._global_bar_count[tf_role]
+            self._global_bar_count[tf_role] = global_idx + 1
 
         # Update indicators (has its own lock)
         if indicator_cache is not None:
             indicator_cache.update(candle)
 
-        # Update structure state
+        # Update structure state using global bar index (not buffer position)
         if structure_state is not None:
-            self._update_structure_state_for_tf(structure_state, buffer_len - 1, candle, tf_role)
+            self._update_structure_state_for_tf(structure_state, global_idx, candle, tf_role)
 
     def _update_structure_state_for_tf(
         self,
@@ -1426,7 +1611,20 @@ class LiveExchange:
             play: Play instance
             config: Engine configuration
             demo: If True, use demo API
+
+        Raises:
+            ValueError: If demo flag doesn't match global config
         """
+        # C4: Verify demo flag matches global config
+        from ...config.config import get_config
+        global_config = get_config()
+        if demo != global_config.bybit.use_demo:
+            raise ValueError(
+                f"LiveExchange demo={demo} conflicts with config "
+                f"BYBIT_USE_DEMO={global_config.bybit.use_demo}. "
+                f"These must match to prevent accidental live/demo mismatch."
+            )
+
         self._play = play
         self._config = config
         self._demo = demo
@@ -1441,9 +1639,11 @@ class LiveExchange:
         # RealtimeState for account data
         self._realtime_state = None
 
-        # Last known good equity/balance (prevents fallback to initial_equity)
-        self._last_known_equity: float = config.initial_equity
-        self._last_known_balance: float = config.initial_equity
+        # Last known good equity/balance — starts at 0 (unknown) until
+        # bootstrapped from REST on connect(). Never uses Play initial_equity;
+        # in live trading, balance comes exclusively from the exchange account.
+        self._last_known_equity: float = 0.0
+        self._last_known_balance: float = 0.0
         self._equity_stale_count: int = 0
 
         # Tracking
@@ -1455,14 +1655,21 @@ class LiveExchange:
         )
 
     def _is_ws_data_fresh(self, max_age_s: float = 60.0) -> bool:
-        """Check if WebSocket data is fresh enough to trust."""
+        """Check if WebSocket wallet data is fresh enough to trust.
+
+        Uses the actual staleness checks on RealtimeState rather than
+        a non-existent timestamp attribute. Returns False when the WS
+        wallet data is stale so callers fall through to REST.
+        """
         if not self._realtime_state:
             return False
-        last_update = getattr(self._realtime_state, '_last_update_ts', None)
-        if last_update is None:
-            return True  # No timestamp tracking, assume fresh
-        age = (datetime.now(timezone.utc) - last_update).total_seconds()
-        return age < max_age_s
+        # Private WS must be connected
+        if not self._realtime_state.is_private_ws_connected:
+            return False
+        # Wallet data must exist and not be stale
+        if self._realtime_state.is_wallet_stale(max_age_seconds=max_age_s):
+            return False
+        return True
 
     async def connect(self) -> None:
         """
@@ -1472,7 +1679,7 @@ class LiveExchange:
         OrderExecutor, and PositionManager.
         """
         from ...core.exchange_manager import ExchangeManager
-        from ...core.risk_manager import RiskManager, RiskConfig
+        from ...core.risk_manager import RiskManager
         from ...core.order_executor import OrderExecutor
         from ...core.position_manager import PositionManager
         from ...data.realtime_state import get_realtime_state
@@ -1484,17 +1691,30 @@ class LiveExchange:
             # Initialize exchange manager
             self._exchange_manager = ExchangeManager()
 
+            # Bootstrap balance from REST FIRST so risk config uses real balance
+            self._bootstrap_balance_from_rest()
+
             # Initialize position manager
             self._position_manager = PositionManager(self._exchange_manager)
 
             # Initialize risk manager with config from Play
-            # G0.2: Remove invalid position_manager param, G0.3: pass exchange_manager
+            # Uses _last_known_balance (seeded above) for position sizing
             risk_config = self._build_risk_config()
             self._risk_manager = RiskManager(
                 config=risk_config,
                 enable_global_risk=True,
                 exchange_manager=self._exchange_manager,
             )
+
+            # Sync GlobalRiskView limits with play-derived values
+            grv = self._risk_manager._global_risk_view
+            account = self._play.account
+            if grv is not None and account is not None:
+                grv.update_limits(
+                    max_position_size_usdt=risk_config.max_position_size_usdt,
+                    max_leverage=float(account.max_leverage),
+                    max_total_exposure_usd=risk_config.max_total_exposure_usd,
+                )
 
             # Initialize order executor
             self._order_executor = OrderExecutor(
@@ -1504,6 +1724,9 @@ class LiveExchange:
                 use_ws_feedback=True,  # Use WebSocket for fast feedback
             )
 
+            # Set leverage and margin mode on the exchange
+            self._apply_leverage_and_margin()
+
             self._connected = True
             logger.info(f"LiveExchange connected: {self._symbol}")
 
@@ -1511,8 +1734,44 @@ class LiveExchange:
             logger.error(f"Failed to connect LiveExchange: {e}")
             raise
 
+    def _bootstrap_balance_from_rest(self) -> None:
+        """Fetch initial balance from REST API on connect.
+
+        In live trading the balance comes from the exchange account,
+        never from the Play's starting_equity_usdt. This seeds
+        _last_known_balance/equity so the risk manager has a real
+        value before the WebSocket delivers its first wallet update.
+        """
+        assert self._exchange_manager is not None
+        try:
+            balance = self._exchange_manager.get_balance()
+            if balance:
+                avail = balance.get("available", 0.0)
+                total = balance.get("total", 0.0)
+                if total > 0:
+                    self._last_known_balance = avail
+                    self._last_known_equity = total
+                    logger.info(
+                        f"Balance bootstrapped from REST: "
+                        f"equity=${total:.2f} available=${avail:.2f}"
+                    )
+                else:
+                    logger.warning(
+                        f"REST balance returned $0 — account may be unfunded. "
+                        f"raw={balance}"
+                    )
+            else:
+                logger.warning("REST balance returned empty response")
+        except Exception as e:
+            logger.error(f"Failed to bootstrap balance from REST: {e}")
+
     def _build_risk_config(self):
-        """Build RiskConfig from Play settings."""
+        """Build RiskConfig from Play settings.
+
+        Sets hard caps only. Actual position sizing is dynamic
+        (balance * risk_per_trade_pct) and computed per-trade in
+        the risk manager / sizing model — not frozen at connect time.
+        """
         from ...core.risk_manager import RiskConfig
 
         # Start with defaults
@@ -1522,14 +1781,64 @@ class LiveExchange:
         account = self._play.account
         assert account is not None, "Play.account is required for live trading"
 
-        # G6.0.1: Use SizingConfig max_position_equity_pct (default 95%)
-        # The PlayEngineConfig doesn't have max_position_pct - use default
-        max_position_pct = 95.0  # SizingConfig default
-        config.max_position_size_usdt = account.starting_equity_usdt * (
-            max_position_pct / 100.0
-        )
+        # Hard cap: use real balance for the ceiling, not Play starting_equity.
+        # This is a safety cap, not the sizing formula.
+        balance = self._last_known_balance
+        if balance > 0:
+            config.max_position_size_usdt = balance * 0.95
+            config.max_total_exposure_usd = balance * 2.0
+        else:
+            logger.warning(
+                "Building risk config with balance=$0 — "
+                "trades will be blocked until a valid balance is received"
+            )
+            config.max_position_size_usdt = 0.0
+            config.max_total_exposure_usd = 0.0
 
         return config
+
+    def _apply_leverage_and_margin(self) -> None:
+        """
+        Set leverage and margin mode on the exchange from Play config.
+
+        Called during connect(). Raises RuntimeError if leverage cannot be
+        set — the runner MUST NOT start with incorrect leverage.
+        """
+        assert self._exchange_manager is not None
+        account = self._play.account
+        assert account is not None, "Play.account is required for live trading"
+
+        leverage = int(account.max_leverage)
+        margin_mode = account.margin_mode  # e.g. "isolated_usdt", "cross"
+
+        # Map play margin_mode to Bybit API values
+        if "cross" in margin_mode.lower():
+            bybit_mode = "REGULAR_MARGIN"
+        else:
+            bybit_mode = "ISOLATED_MARGIN"
+
+        # Set margin mode + leverage.
+        # Bybit demo API does not support switch_margin_mode (error 10032).
+        # In demo mode, skip margin mode switch and just set leverage.
+        try:
+            self._exchange_manager.set_margin_mode(
+                self._symbol, bybit_mode, leverage=float(leverage)
+            )
+            logger.info(
+                f"Exchange configured: {self._symbol} "
+                f"margin={bybit_mode} leverage={leverage}x"
+            )
+        except RuntimeError as e:
+            if self._demo and "10032" in str(e):
+                logger.warning(
+                    f"Demo API does not support margin mode switch for {self._symbol}, "
+                    f"setting leverage only ({leverage}x)"
+                )
+                self._exchange_manager.set_leverage(
+                    self._symbol, leverage
+                )
+            else:
+                raise
 
     async def disconnect(self) -> None:
         """Disconnect from exchange."""
@@ -1868,15 +2177,34 @@ class LiveExchange:
             return
 
         try:
-            # Use ExchangeManager to close position
-            result = self._exchange_manager.close_position(
-                symbol=self._symbol,
-            )
+            if percent >= 100.0:
+                # Full close: use ExchangeManager.close_position (cancels conditional orders)
+                result = self._exchange_manager.close_position(
+                    symbol=self._symbol,
+                )
+            else:
+                # Partial close: send reduce-only market order with computed qty
+                from ...core.exchange_manager import OrderResult
+                raw = self._exchange_manager.bybit.create_order(
+                    symbol=self._symbol,
+                    side=close_side,
+                    order_type="Market",
+                    qty=close_qty,
+                    reduce_only=True,
+                )
+                result = OrderResult(
+                    success=True,
+                    order_id=raw.get("orderId"),
+                    symbol=self._symbol,
+                    side=close_side,
+                    qty=close_qty,
+                    raw_response=raw,
+                )
 
             if result and result.success:
                 logger.info(
                     f"Close order submitted: order_id={result.order_id} "
-                    f"(PnL tracked by exchange)"
+                    f"qty={close_qty:.6f} ({percent}%) (PnL tracked by exchange)"
                 )
             else:
                 error_msg = result.error if result else "Unknown error"

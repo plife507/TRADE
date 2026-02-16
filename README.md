@@ -217,11 +217,11 @@ The engine is validated by 170 plays across 5 suites, tested on both synthetic p
 
 | Suite | Plays | Coverage |
 |-------|-------|----------|
-| `plays/indicator_suite/` | 84 | All 44 indicators in long/short/crossover configurations |
-| `plays/pattern_suite/` | 34 | 34 synthetic market patterns (trending, ranging, volatile, reversals, etc.) |
-| `plays/operator_suite/` | 25 | All DSL operators (comparison, crossover, arithmetic, window, control flow) |
-| `plays/structure_suite/` | 14 | All 7 structure types with dependency chains |
-| `plays/complexity_ladder/` | 13 | Progressive complexity from 0% to 100% DSL coverage |
+| `plays/validation/indicators/` | 84 | All 44 indicators in long/short/crossover configurations |
+| `plays/validation/patterns/` | 34 | 34 synthetic market patterns (trending, ranging, volatile, reversals, etc.) |
+| `plays/validation/operators/` | 25 | All DSL operators (comparison, crossover, arithmetic, window, control flow) |
+| `plays/validation/structures/` | 14 | All 7 structure types with dependency chains |
+| `plays/validation/complexity/` | 13 | Progressive complexity from 0% to 100% DSL coverage |
 
 Results: 170/170 pass on synthetic data, 170/170 pass on real data (BTC, ETH, SOL, ARB, OP).
 

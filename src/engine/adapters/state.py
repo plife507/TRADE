@@ -8,6 +8,8 @@ Provides state persistence for engine recovery:
 
 
 import json
+import os
+import tempfile
 
 from datetime import datetime
 from pathlib import Path
@@ -82,15 +84,32 @@ class FileStateStore:
         return self._state_dir / f"{safe_id}.json"
 
     def save_state(self, engine_id: str, state: EngineState) -> None:
-        """Save state to file."""
+        """Save state to file atomically (write to temp, then os.replace)."""
         state_file = self._state_file(engine_id)
 
         # Convert to serializable dict
         state_dict = self._state_to_dict(state)
 
-        # Write with newline for LF endings
-        with open(state_file, "w", newline="\n") as f:
-            json.dump(state_dict, f, indent=2, default=str)
+        # H1: Atomic write -- temp file in same dir, then os.replace()
+        fd = tempfile.NamedTemporaryFile(
+            mode="w",
+            newline="\n",
+            dir=self._state_dir,
+            suffix=".tmp",
+            delete=False,
+        )
+        try:
+            json.dump(state_dict, fd, indent=2, default=str)
+            fd.close()
+            os.replace(fd.name, state_file)
+        except BaseException:
+            fd.close()
+            # Clean up temp file on failure
+            try:
+                os.unlink(fd.name)
+            except OSError:
+                pass
+            raise
 
         logger.debug(f"State saved: {state_file}")
 

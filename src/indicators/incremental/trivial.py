@@ -191,12 +191,13 @@ class IncrementalOBV(IncrementalIndicator):
     On Balance Volume with O(1) updates.
 
     Formula:
-        First bar: obv = volume (signed by close direction vs 0)
-        Subsequent: if close > prev_close: obv += volume
-                   if close < prev_close: obv -= volume
-                   if close == prev_close: obv unchanged
+        signed_volume = sign(close.diff()) * volume
+        obv = cumsum(signed_volume)
 
-    Matches pandas_ta.obv() output.
+    pandas_ta behavior: first bar has NaN diff (no previous close), so
+    OBV starts accumulating from bar 1. Bar 0 produces NaN.
+
+    Matches pandas_ta.obv(talib=False) output.
     """
 
     _prev_close: float = field(default=np.nan, init=False)
@@ -208,17 +209,23 @@ class IncrementalOBV(IncrementalIndicator):
         self._count += 1
 
         if self._count == 1:
-            # First bar - OBV starts with first volume (pandas_ta behavior)
-            self._obv = volume
+            # First bar: no previous close, sign is NaN -> OBV stays NaN
             self._prev_close = close
             return
 
-        # Compare with previous close
+        # Sign of close change: +1, -1, or 0
         if close > self._prev_close:
-            self._obv += volume
+            signed_vol = volume
         elif close < self._prev_close:
-            self._obv -= volume
-        # else: unchanged
+            signed_vol = -volume
+        else:
+            signed_vol = 0.0
+
+        if self._count == 2:
+            # Second bar: first valid signed volume, start accumulation
+            self._obv = signed_vol
+        else:
+            self._obv += signed_vol
 
         self._prev_close = close
 
@@ -235,7 +242,7 @@ class IncrementalOBV(IncrementalIndicator):
 
     @property
     def is_ready(self) -> bool:
-        return self._count >= 1
+        return self._count >= 2
 
 
 @dataclass

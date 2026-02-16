@@ -205,7 +205,17 @@ class RiskManager:
         # Skip if signal is to flatten
         if signal.direction == "FLAT":
             return RiskCheckResult(allowed=True, reason="Close position allowed")
-        
+
+        # Reject zero/negative size in live mode.
+        # In backtest mode, size_usdt may be 0 because the engine computes
+        # size later -- so we only enforce this for live/demo trading.
+        is_backtest = signal.metadata.get("backtest", False) if signal.metadata else False
+        if signal.size_usdt <= 0 and not is_backtest:
+            return RiskCheckResult(
+                allowed=False,
+                reason=f"Invalid size_usdt={signal.size_usdt} (must be > 0 in live mode)",
+            )
+
         # Check 0: Global risk check (if enabled and available)
         # This catches account-level risks like margin overuse, liquidation danger
         if self._global_risk_view:

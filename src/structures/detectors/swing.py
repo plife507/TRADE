@@ -319,6 +319,8 @@ class IncrementalSwing(BaseIncrementalDetector):
 
         # Version tracking: increments on ANY confirmed pivot
         self._version: int = 0
+        self._high_version: int = 0  # Increments only on confirmed HIGH pivots
+        self._low_version: int = 0   # Increments only on confirmed LOW pivots
         self._last_confirmed_pivot_idx: int = -1
         self._last_confirmed_pivot_type: str = ""  # "high" or "low"
 
@@ -420,6 +422,7 @@ class IncrementalSwing(BaseIncrementalDetector):
                     self.high_level = new_high_level
                     self.high_idx = pivot_bar_idx
                     self._version += 1
+                    self._high_version += 1
                     self._last_confirmed_pivot_idx = pivot_bar_idx
                     self._last_confirmed_pivot_type = "high"
                     confirmed_high = True
@@ -459,6 +462,7 @@ class IncrementalSwing(BaseIncrementalDetector):
                     self.low_level = new_low_level
                     self.low_idx = pivot_bar_idx
                     self._version += 1
+                    self._low_version += 1
                     self._last_confirmed_pivot_idx = pivot_bar_idx
                     self._last_confirmed_pivot_type = "low"
                     confirmed_low = True
@@ -542,6 +546,7 @@ class IncrementalSwing(BaseIncrementalDetector):
                         self.high_level = pivot_level
                         self.high_idx = pivot_bar_idx
                         self._version += 1
+                        self._high_version += 1
                         self._last_confirmed_pivot_idx = pivot_bar_idx
                         self._last_confirmed_pivot_type = "high"
                         confirmed_high = True
@@ -591,6 +596,7 @@ class IncrementalSwing(BaseIncrementalDetector):
                         self.low_level = pivot_level
                         self.low_idx = pivot_bar_idx
                         self._version += 1
+                        self._low_version += 1
                         self._last_confirmed_pivot_idx = pivot_bar_idx
                         self._last_confirmed_pivot_type = "low"
                         confirmed_low = True
@@ -984,6 +990,8 @@ class IncrementalSwing(BaseIncrementalDetector):
             "low_level",
             "low_idx",
             "version",
+            "high_version",
+            "low_version",
             "last_confirmed_pivot_idx",
             "last_confirmed_pivot_type",
             # Gate 0: Significance outputs (require atr_key)
@@ -1030,6 +1038,10 @@ class IncrementalSwing(BaseIncrementalDetector):
             return self.low_idx
         elif key == "version":
             return self._version
+        elif key == "high_version":
+            return self._high_version
+        elif key == "low_version":
+            return self._low_version
         elif key == "last_confirmed_pivot_idx":
             return self._last_confirmed_pivot_idx
         elif key == "last_confirmed_pivot_type":
@@ -1069,6 +1081,127 @@ class IncrementalSwing(BaseIncrementalDetector):
             return self._pair_anchor_hash
         else:
             raise KeyError(key)
+
+    def reset(self) -> None:
+        """Reset all mutable state to initial values.
+
+        Called by TFIncrementalState.reset() between backtest runs or
+        when detectors are reused across parameter sweeps.
+        """
+        # Fractal ring buffers
+        if self._high_buf is not None:
+            self._high_buf = RingBuffer(self.left + self.right + 1)
+        if self._low_buf is not None:
+            self._low_buf = RingBuffer(self.left + self.right + 1)
+
+        # Gate 2: Alternation state
+        self._alt_last_pivot_type = None
+        self._alt_pending_level = float("nan")
+        self._alt_pending_idx = -1
+        self._high_accepted = False
+        self._low_accepted = False
+        self._high_replaced_pending = False
+        self._low_replaced_pending = False
+
+        # Gate 3: ATR ZigZag state
+        self._zigzag_direction = 0
+        self._zigzag_extreme_price = float("nan")
+        self._zigzag_extreme_idx = -1
+        self._zigzag_initialized = False
+
+        # Individual pivot outputs
+        self.high_level = float("nan")
+        self.high_idx = -1
+        self.low_level = float("nan")
+        self.low_idx = -1
+
+        # Gate 0: Significance tracking
+        self._prev_confirmed_high = float("nan")
+        self._prev_confirmed_low = float("nan")
+        self._high_significance = float("nan")
+        self._low_significance = float("nan")
+        self._high_is_major = False
+        self._low_is_major = False
+
+        # Version tracking
+        self._version = 0
+        self._high_version = 0
+        self._low_version = 0
+        self._last_confirmed_pivot_idx = -1
+        self._last_confirmed_pivot_type = ""
+
+        # Paired pivot state machine
+        self._pair_state = PairState.AWAITING_FIRST
+        self._pending_type = ""
+        self._pending_level = float("nan")
+        self._pending_idx = -1
+        self._pair_high_level = float("nan")
+        self._pair_high_idx = -1
+        self._pair_low_level = float("nan")
+        self._pair_low_idx = -1
+        self._pair_direction = ""
+        self._pair_version = 0
+        self._pair_anchor_hash = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize state for crash recovery.
+
+        Returns all mutable state needed to restore the detector.
+        Called by TFIncrementalState.to_json() for state persistence.
+        """
+        return {
+            "mode": self._mode,
+            # Fractal ring buffers serialized as lists
+            "high_buf": self._high_buf.to_array().tolist() if self._high_buf is not None else None,
+            "high_buf_head": self._high_buf._head if self._high_buf is not None else None,
+            "high_buf_count": self._high_buf._count if self._high_buf is not None else None,
+            "low_buf": self._low_buf.to_array().tolist() if self._low_buf is not None else None,
+            "low_buf_head": self._low_buf._head if self._low_buf is not None else None,
+            "low_buf_count": self._low_buf._count if self._low_buf is not None else None,
+            # Gate 2: Alternation
+            "alt_last_pivot_type": self._alt_last_pivot_type,
+            "alt_pending_level": self._alt_pending_level,
+            "alt_pending_idx": self._alt_pending_idx,
+            "high_accepted": self._high_accepted,
+            "low_accepted": self._low_accepted,
+            "high_replaced_pending": self._high_replaced_pending,
+            "low_replaced_pending": self._low_replaced_pending,
+            # Gate 3: ZigZag
+            "zigzag_direction": self._zigzag_direction,
+            "zigzag_extreme_price": self._zigzag_extreme_price,
+            "zigzag_extreme_idx": self._zigzag_extreme_idx,
+            "zigzag_initialized": self._zigzag_initialized,
+            # Individual pivot outputs
+            "high_level": self.high_level,
+            "high_idx": self.high_idx,
+            "low_level": self.low_level,
+            "low_idx": self.low_idx,
+            # Gate 0: Significance
+            "prev_confirmed_high": self._prev_confirmed_high,
+            "prev_confirmed_low": self._prev_confirmed_low,
+            "high_significance": self._high_significance,
+            "low_significance": self._low_significance,
+            "high_is_major": self._high_is_major,
+            "low_is_major": self._low_is_major,
+            # Versions
+            "version": self._version,
+            "high_version": self._high_version,
+            "low_version": self._low_version,
+            "last_confirmed_pivot_idx": self._last_confirmed_pivot_idx,
+            "last_confirmed_pivot_type": self._last_confirmed_pivot_type,
+            # Paired pivot state machine
+            "pair_state": str(self._pair_state),
+            "pending_type": self._pending_type,
+            "pending_level": self._pending_level,
+            "pending_idx": self._pending_idx,
+            "pair_high_level": self._pair_high_level,
+            "pair_high_idx": self._pair_high_idx,
+            "pair_low_level": self._pair_low_level,
+            "pair_low_idx": self._pair_low_idx,
+            "pair_direction": self._pair_direction,
+            "pair_version": self._pair_version,
+            "pair_anchor_hash": self._pair_anchor_hash,
+        }
 
     def __repr__(self) -> str:
         """Return string representation for debugging."""

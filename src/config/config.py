@@ -736,11 +736,30 @@ class Config:
             oi_interval=os.getenv("TRADE_SMOKE_OI_INTERVAL", "1h"),
         )
     
-    def reload(self, env_file: str = ".env"):
-        """Reload configuration from environment."""
+    def reload(self, env_file: str = ".env") -> None:
+        """Reload configuration from environment in-place.
+
+        Re-reads env files and updates all sub-configs on the existing
+        instance so that existing references remain valid.
+        """
         self._initialized = False
-        Config._instance = None
-        return Config(env_file)
+
+        # Re-read environment files (same priority as __init__)
+        for env_name in ["api_keys.env", ".env", env_file]:
+            env_path = Path(env_name)
+            if env_path.exists():
+                load_dotenv(env_path, override=True)
+
+        # Update sub-configs in-place on the existing singleton
+        self.bybit = self._load_bybit_config()
+        self.risk = self._load_risk_config()
+        self.data = self._load_data_config()
+        self.log = self._load_log_config()
+        self.trading = self._load_trading_config()
+        self.websocket = self._load_websocket_config()
+        self.smoke = self._load_smoke_config()
+
+        self._initialized = True
     
     def validate(self) -> tuple[bool, list[str]]:
         """

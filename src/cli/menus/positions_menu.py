@@ -47,9 +47,10 @@ console = Console()
 
 def positions_menu(cli: "TradeCLI"):
     """Positions management menu."""
-    from trade_cli import (
+    from src.cli.utils import (
         clear_screen, print_header, get_input, get_choice,
-        print_error_below_menu, run_tool_action, print_result, print_data_result, BACK
+        print_error_below_menu, run_tool_action, print_result, print_data_result, BACK,
+        get_symbol_input,
     )
     
     while True:
@@ -109,14 +110,14 @@ def positions_menu(cli: "TradeCLI"):
             print_data_result("positions.list", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 2:
-            symbol = get_input("Symbol (e.g. BTCUSDT, SOLUSDT, ETHUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             result = run_tool_action("positions.detail", get_position_detail_tool, symbol)
             print_data_result("positions.detail", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 3:
-            symbol = get_input("Symbol (e.g. BTCUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             price_input = get_input("Stop Loss Price (USD, e.g. 85000.50)")
@@ -131,7 +132,7 @@ def positions_menu(cli: "TradeCLI"):
                 print_error_below_menu(f"'{price_input}' is not a valid number")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 4:
-            symbol = get_input("Symbol (e.g. BTCUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             price_input = get_input("Take Profit Price (USD, e.g. 95000.00)")
@@ -146,7 +147,7 @@ def positions_menu(cli: "TradeCLI"):
                 print_error_below_menu(f"'{price_input}' is not a valid number")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 5:
-            symbol = get_input("Symbol (e.g. BTCUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             console.print("[dim]Leave blank to skip either TP or SL[/]")
@@ -169,7 +170,7 @@ def positions_menu(cli: "TradeCLI"):
                 print_error_below_menu(f"Invalid price format - {e}")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 6:
-            symbol = get_input("Symbol (e.g. BTCUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             percent_input = get_input("Close Percentage (0-100, e.g. 50 for 50%)", "50")
@@ -194,7 +195,7 @@ def positions_menu(cli: "TradeCLI"):
                 print_error_below_menu(f"'{percent_input}' is not a valid number")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 7:
-            symbol = get_input("Symbol")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             if Confirm.ask(f"[yellow]Close entire {symbol} position?[/]"):
@@ -211,7 +212,7 @@ def positions_menu(cli: "TradeCLI"):
                 console.print("[yellow]Cancelled.[/]")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 9:
-            symbol = get_input("Symbol (e.g. BTCUSDT, SOLUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             result = run_tool_action("positions.risk_limits", get_risk_limits_tool, symbol)
@@ -234,7 +235,7 @@ def positions_menu(cli: "TradeCLI"):
                 print_data_result("positions.risk_limits", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 10:
-            symbol = get_input("Symbol (e.g. BTCUSDT, SOLUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             # First show available risk limits
@@ -268,7 +269,7 @@ def positions_menu(cli: "TradeCLI"):
                     print_error_below_menu(f"'{risk_id_input}' is not a valid integer. Please enter a number.")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 11:
-            symbol = get_input("Symbol (e.g. BTCUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             console.print("\n[bold]TP/SL Modes:[/]")
@@ -282,7 +283,7 @@ def positions_menu(cli: "TradeCLI"):
             print_data_result("positions.set_tpsl_mode", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 12:
-            symbol = get_input("Symbol (e.g. BTCUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             console.print("\n[bold]Margin Modes:[/]")
@@ -307,7 +308,7 @@ def positions_menu(cli: "TradeCLI"):
                 print_error_below_menu(f"'{leverage_input}' is not a valid integer")
             Prompt.ask("\nPress Enter to continue")
         elif choice == 13:
-            symbol = get_input("Symbol (e.g. BTCUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             console.print("\n[yellow]Auto-add margin automatically adds margin when position is at risk[/]")
@@ -316,7 +317,7 @@ def positions_menu(cli: "TradeCLI"):
             print_data_result("positions.auto_add_margin", result)
             Prompt.ask("\nPress Enter to continue")
         elif choice == 14:
-            symbol = get_input("Symbol (e.g. BTCUSDT)")
+            symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
             console.print("\n[yellow]Enter positive amount to ADD margin, negative to REDUCE margin[/]")

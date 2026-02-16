@@ -326,7 +326,7 @@ class Application:
             
         except Exception as e:
             self.logger.error(f"Error during shutdown: {e}")
-            
+
             # Emit app.stop.end event (with error)
             self.logger.event(
                 "app.stop.end",
@@ -335,9 +335,6 @@ class Application:
                 success=False,
                 error=str(e),
             )
-        
-        finally:
-            self._shutting_down = False
     
     # ==================== Component Initialization ====================
     

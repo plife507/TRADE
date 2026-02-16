@@ -791,6 +791,33 @@ def compute_warmup_requirements(play: "Play") -> WarmupRequirements:
     )
 
 
+# Minimum trading bars beyond warmup for synthetic validation runs.
+# Ensures even simple plays (low warmup) get enough bars to produce trades.
+SYNTHETIC_MIN_TRADING_BARS = 200
+
+# Multiplier: trading bars = warmup * this factor (2x buffer).
+# Complex plays with higher warmup get proportionally more trading bars.
+SYNTHETIC_TRADING_MULTIPLIER = 2
+
+
+def compute_synthetic_bars(play: "Play") -> int:
+    """Compute total synthetic bars for a play.
+
+    Trading bars scale with play complexity: max(warmup * 2, 200 minimum).
+    Total = warmup + trading_bars.
+
+    Examples:
+        EMA(50):        warmup=50,  trading=200, total=250
+        MACD(26,12,9):  warmup=35,  trading=200, total=235
+        Complex multi:  warmup=150, trading=300, total=450
+
+    Every synthetic code path should call this instead of hardcoding bar counts.
+    """
+    warmup = compute_warmup_requirements(play).max_warmup_bars
+    trading_bars = max(warmup * SYNTHETIC_TRADING_MULTIPLIER, SYNTHETIC_MIN_TRADING_BARS)
+    return warmup + trading_bars
+
+
 # =============================================================================
 # Gate 8.4: Pre-Evaluation Validation Gates
 # =============================================================================

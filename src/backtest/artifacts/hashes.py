@@ -321,10 +321,10 @@ class InputHashComponents:
     def compute_short_hash(self, length: int = DEFAULT_SHORT_HASH_LENGTH) -> str:
         """
         Compute short hash for folder naming.
-        
+
         Args:
-            length: Number of chars (default 8, use 12 for collision recovery)
-            
+            length: Number of chars (default 12)
+
         Returns:
             First N chars of full hash
         """
@@ -373,7 +373,7 @@ def compute_input_hash(
         data_version: Data snapshot/version reference
         candle_policy: Candle handling policy
         seed: Random seed if any
-        short_hash_length: Length of short hash (default 8, use 12 for collisions)
+        short_hash_length: Length of short hash (default 12)
         
     Returns:
         SHA256 hash (first N chars) - short for folder names

@@ -41,7 +41,6 @@ Usage:
 """
 
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -193,6 +192,9 @@ class PlayEngineFactory:
         """
         Validate that live trading is properly configured.
 
+        Checks the Config singleton (not raw env vars) to ensure
+        trading mode is "real" and API keys are present.
+
         Raises:
             ValueError: If confirmation not provided
             RuntimeError: If environment not configured for live
@@ -204,26 +206,26 @@ class PlayEngineFactory:
                 "This ensures you understand you're trading with real money."
             )
 
-        # Check environment variables
-        use_demo = os.getenv("BYBIT_USE_DEMO", "true").lower()
-        trading_mode = os.getenv("TRADING_MODE", "paper").lower()
+        # C6: Check Config singleton, not raw env vars
+        from ..config.config import get_config
+        config = get_config()
 
-        if use_demo == "true":
+        if config.bybit.use_demo:
             raise RuntimeError(
                 "Cannot use live mode with BYBIT_USE_DEMO=true. "
                 "Set BYBIT_USE_DEMO=false for live trading."
             )
 
-        if trading_mode != "live":
+        if config.trading.mode != "real":
             raise RuntimeError(
-                f"TRADING_MODE must be 'live' for live trading, got '{trading_mode}'"
+                f"TRADING_MODE must be 'real' for live trading, got '{config.trading.mode}'"
             )
 
         # Check for live API keys
-        if not os.getenv("BYBIT_LIVE_API_KEY"):
+        if not config.bybit.live_api_key:
             raise RuntimeError("BYBIT_LIVE_API_KEY not set for live trading")
 
-        if not os.getenv("BYBIT_LIVE_API_SECRET"):
+        if not config.bybit.live_api_secret:
             raise RuntimeError("BYBIT_LIVE_API_SECRET not set for live trading")
 
         logger.warning(

@@ -433,7 +433,12 @@ class OrderExecutor:
                 self._last_cleanup_time = current_time
         
         # Step 3: Record trade (immediate REST feedback)
-        if order_result and order_result.success:
+        # For limit orders, do NOT record immediately -- the order is not yet
+        # filled.  The fill will be recorded when the execution WebSocket
+        # message arrives (via _on_execution).  Only market orders have an
+        # actual fill price (avgPrice) available at this point.
+        is_limit_order = order_type == "limit" and limit_price is not None
+        if order_result and order_result.success and not is_limit_order:
             # Validate price before recording
             if not order_result.price or order_result.price <= 0:
                 self.logger.warning(
@@ -472,12 +477,12 @@ class OrderExecutor:
                     order_id=order_result.order_id,
                     strategy=signal.strategy,
                 )
-            
+
             self.logger.info(
                 f"Order executed: {signal.symbol} {signal.direction} "
                 f"${exec_size:.2f} @ {order_result.price}"
             )
-            
+
             # Emit order.execute.end event (success)
             self.logger.event(
                 "order.execute.end",
@@ -488,6 +493,25 @@ class OrderExecutor:
                 executed_size=exec_size,
                 price=order_result.price,
                 order_id=order_result.order_id,
+            )
+        elif order_result and order_result.success and is_limit_order:
+            self.logger.info(
+                f"Limit order submitted: {signal.symbol} {signal.direction} "
+                f"${exec_size:.2f} @ {limit_price} (order_id={order_result.order_id}) "
+                "-- fill will be recorded via WebSocket execution callback"
+            )
+
+            # Emit order.execute.end event (limit submitted)
+            self.logger.event(
+                "order.execute.end",
+                component="order_executor",
+                symbol=signal.symbol,
+                direction=signal.direction,
+                success=True,
+                executed_size=exec_size,
+                price=limit_price,
+                order_id=order_result.order_id,
+                order_type="limit",
             )
         
         result = ExecutionResult(

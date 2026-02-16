@@ -12,6 +12,8 @@ presenting the results as matching properties.
 
 from dataclasses import dataclass
 
+from ...core.safety import get_panic_state
+
 
 @dataclass(frozen=True, slots=True)
 class _SnapshotPosition:
@@ -62,10 +64,14 @@ class LiveExchangeStateAdapter:
             )
             unrealized_pnl = raw_pos.unrealized_pnl if raw_pos.unrealized_pnl else 0.0
 
+        # Check panic state — LiveRunner._check_max_drawdown() triggers panic
+        # when max drawdown is hit, which should disable new entries
+        entries_disabled = get_panic_state().is_triggered
+
         return cls(
             equity_usdt=equity,
             available_balance_usdt=balance,
             position=position,
             unrealized_pnl_usdt=unrealized_pnl,
-            entries_disabled=False,  # Live exchange handles risk limits externally
+            entries_disabled=entries_disabled,
         )

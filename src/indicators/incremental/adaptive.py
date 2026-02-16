@@ -14,7 +14,6 @@ from typing import Any
 import numpy as np
 
 from .base import IncrementalIndicator
-from .core import IncrementalEMA
 
 
 @dataclass
@@ -163,51 +162,85 @@ class IncrementalZLMA(IncrementalIndicator):
     """
     Zero Lag Moving Average with O(1) updates.
 
-    Formula:
-        lag = (length - 1) / 2
-        zlma = ema(2 * close - close[lag])
+    Formula (matching pandas_ta.zlma with mamode='ema')):
+        lag = int(0.5 * (length - 1))
+        close_ = 2 * close - close.shift(lag)
+        zlma = ema(close_, length)
+
+    pandas_ta EMA seeds with ``close_.iloc[0:length].mean()`` which uses
+    ``pd.Series.mean()`` (skipna=True). Since the first ``lag`` positions are
+    NaN, the seed is the mean of positions ``lag..length-1`` (i.e. ``length - lag``
+    adjusted values). The first output appears at index ``length - 1``.
+
+    We replicate this by collecting the first ``length - lag`` adjusted values
+    for the SMA seed, then switching to standard EMA updates.
 
     Matches pandas_ta.zlma() output.
     """
 
     length: int = 20
-    _buffer: deque = field(default_factory=deque, init=False)
-    _ema: IncrementalEMA = field(init=False)
+    _close_buffer: deque = field(default_factory=deque, init=False)
     _lag: int = field(init=False)
+    _alpha: float = field(init=False)
+    _seed_count: int = field(init=False)
+    _warmup_sum: float = field(default=0.0, init=False)
+    _warmup_received: int = field(default=0, init=False)
+    _ema_val: float = field(default=np.nan, init=False)
     _count: int = field(default=0, init=False)
+    _ready: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
-        self._lag = (self.length - 1) // 2
-        self._ema = IncrementalEMA(length=self.length)
+        self._lag = int(0.5 * (self.length - 1))
+        self._alpha = 2.0 / (self.length + 1)
+        # Number of non-NaN adjusted values in positions 0..length-1
+        self._seed_count = self.length - self._lag
 
     def update(self, close: float, **kwargs: Any) -> None:
         """Update with new close price."""
         self._count += 1
-        self._buffer.append(close)
+        self._close_buffer.append(close)
 
-        if len(self._buffer) > self._lag + 1:
-            self._buffer.popleft()
+        if len(self._close_buffer) > self._lag + 1:
+            self._close_buffer.popleft()
 
-        # Compute lag-adjusted value
-        if len(self._buffer) > self._lag:
-            lagged = self._buffer[0]
-            adjusted = 2 * close - lagged
-            self._ema.update(close=adjusted)
+        # Before lag bars, adjusted value is NaN (no lagged close available)
+        if len(self._close_buffer) <= self._lag:
+            return
+
+        # Compute lag-adjusted value: 2 * close - close[lag bars ago]
+        lagged = self._close_buffer[0]
+        adjusted = 2.0 * close - lagged
+
+        if not self._ready:
+            # Warmup: accumulate for SMA seed
+            self._warmup_sum += adjusted
+            self._warmup_received += 1
+
+            if self._warmup_received == self._seed_count:
+                # Seed EMA with SMA of first seed_count adjusted values
+                self._ema_val = self._warmup_sum / self._seed_count
+                self._ready = True
+        else:
+            # Standard EMA update
+            self._ema_val = self._alpha * adjusted + (1.0 - self._alpha) * self._ema_val
 
     def reset(self) -> None:
-        self._buffer.clear()
-        self._ema.reset()
+        self._close_buffer.clear()
+        self._warmup_sum = 0.0
+        self._warmup_received = 0
+        self._ema_val = np.nan
         self._count = 0
+        self._ready = False
 
     @property
     def value(self) -> float:
-        if not self.is_ready:
+        if not self._ready:
             return np.nan
-        return self._ema.value
+        return self._ema_val
 
     @property
     def is_ready(self) -> bool:
-        return self._ema.is_ready
+        return self._ready
 
 
 @dataclass

@@ -66,6 +66,8 @@ def backtest_menu(cli: "TradeCLI"):
         menu.add_row("", "", "")
 
         # Navigation
+        menu.add_row("", f"[{CLIColors.DIM_TEXT}]--- Navigation ---[/]", "")
+        menu.add_row("4", "The Forge", "Play development & validation environment")
         menu.add_row("9", f"{CLIIcons.BACK} Back to Main Menu", "Return to main menu")
 
         BillArtWrapper.print_menu_top()
@@ -87,6 +89,10 @@ def backtest_menu(cli: "TradeCLI"):
         elif choice == 3:
             # Analytics & Results submenu
             backtest_analytics_menu(cli)
+
+        elif choice == 4:
+            from src.cli.menus.forge_menu import forge_menu
+            forge_menu(cli)
 
         elif choice == 9:
             return

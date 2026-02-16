@@ -28,7 +28,7 @@ def _normalize_to_naive_utc(dt: datetime | None) -> datetime | None:
     return dt
 
 if TYPE_CHECKING:
-    from .historical_data_store import HistoricalDataStore
+    from .historical_data_store import HistoricalDataStore, ActivitySpinner as _ActivitySpinner
 
 
 # Import constants from main module when running
@@ -59,6 +59,9 @@ def sync(
 
     store.reset_cancellation()
 
+    total_pairs = len(symbols) * len(timeframes)
+    pair_idx = 0
+
     for symbol in symbols:
         for tf in timeframes:
             if store._cancelled:
@@ -66,45 +69,47 @@ def sync(
                 break
 
             key = f"{symbol}_{tf}"
-            
+            pair_idx += 1
+            step_label = f"[{pair_idx}/{total_pairs}] {symbol} {tf}"
+
             if progress_callback:
                 progress_callback(symbol, tf, f"{ActivityEmoji.SYNC} starting")
-            
+
             spinner = None
             if show_spinner and not progress_callback:
-                spinner = ActivitySpinner(f"Fetching {symbol} {tf}", ActivityEmoji.CANDLE)
+                spinner = ActivitySpinner(f"{step_label}", ActivityEmoji.CANDLE)
                 spinner.start()
-            
+
             try:
-                count = _sync_symbol_timeframe(store, symbol, tf, target_start, datetime.now())
+                count = _sync_symbol_timeframe(store, symbol, tf, target_start, datetime.now(), spinner=spinner)
                 results[key] = count
-                
+
                 if spinner:
-                    spinner.stop(f"{symbol} {tf}: {count} candles {ActivityEmoji.SPARKLE}")
+                    spinner.stop(f"{step_label}: {count:,} candles {ActivityEmoji.SPARKLE}")
                 elif progress_callback:
                     emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
                     progress_callback(symbol, tf, f"{emoji} done ({count:,} candles)")
-                    
+
             except KeyboardInterrupt:
                 store._cancelled = True
                 store.logger.info("Sync interrupted by user")
                 if spinner:
-                    spinner.stop(f"{symbol} {tf}: cancelled", success=False)
+                    spinner.stop(f"{step_label}: cancelled", success=False)
                 elif progress_callback:
                     progress_callback(symbol, tf, f"{ActivityEmoji.WARNING} cancelled")
                 break
             except Exception as e:
                 store.logger.error(f"Failed to sync {key}: {e}")
                 results[key] = -1
-                
+
                 if spinner:
-                    spinner.stop(f"{symbol} {tf}: error", success=False)
+                    spinner.stop(f"{step_label}: error", success=False)
                 elif progress_callback:
                     progress_callback(symbol, tf, f"{ActivityEmoji.ERROR} error: {e}")
-        
+
         if store._cancelled:
             break
-    
+
     return results
 
 
@@ -129,45 +134,49 @@ def sync_range(
     total_synced = 0
     
     store.logger.info(f"Syncing {len(symbols)} symbol(s) x {len(timeframes)} TF(s): {start.date()} to {end.date()}")
-    
+
+    total_pairs = len(symbols) * len(timeframes)
+    pair_idx = 0
+
     for symbol in symbols:
         for tf in timeframes:
             key = f"{symbol}_{tf}"
-            
+            pair_idx += 1
+            step_label = f"[{pair_idx}/{total_pairs}] {symbol} {tf} ({start.date()} to {end.date()})"
+
             spinner = None
             if show_spinner and not progress_callback:
-                spinner = ActivitySpinner(f"Fetching {symbol} {tf} ({start.date()} to {end.date()})", ActivityEmoji.CANDLE)
+                spinner = ActivitySpinner(f"{step_label}", ActivityEmoji.CANDLE)
                 spinner.start()
-            
+
             try:
-                count = _sync_symbol_timeframe(store, symbol, tf, start, end)
+                count = _sync_symbol_timeframe(store, symbol, tf, start, end, spinner=spinner)
                 results[key] = count
                 total_synced += max(0, count)
-                
+
                 if spinner:
-                    spinner.stop(f"{symbol} {tf}: {count:,} candles {ActivityEmoji.SPARKLE}")
+                    spinner.stop(f"{step_label}: {count:,} candles {ActivityEmoji.SPARKLE}")
                 elif progress_callback:
                     emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
                     progress_callback(symbol, tf, f"{emoji} done ({count:,} candles)")
                 else:
-                    # Log progress even without spinner/callback
                     store.logger.info(f"  {symbol} {tf}: {count:,} candles synced")
-                    
+
             except KeyboardInterrupt:
                 store._cancelled = True
                 store.logger.info("Sync interrupted by user")
                 if spinner:
-                    spinner.stop(f"{symbol} {tf}: cancelled", success=False)
+                    spinner.stop(f"{step_label}: cancelled", success=False)
                 break
             except Exception as e:
                 store.logger.error(f"Failed to sync {key}: {e}")
                 results[key] = -1
                 if spinner:
-                    spinner.stop(f"{symbol} {tf}: error", success=False)
-        
+                    spinner.stop(f"{step_label}: error", success=False)
+
         if store._cancelled:
             break
-    
+
     store.logger.info(f"Sync complete: {total_synced:,} total candles")
     return results
 
@@ -189,51 +198,61 @@ def sync_forward(
     timeframes = timeframes or list(TIMEFRAMES.keys())
     results = {}
 
+    total_pairs = len(symbols) * len(timeframes)
+    pair_idx = 0
+
     for symbol in symbols:
         for tf in timeframes:
             key = f"{symbol}_{tf}"
+            pair_idx += 1
+            step_label = f"[{pair_idx}/{total_pairs}] {symbol} {tf} forward"
 
             if progress_callback:
                 progress_callback(symbol, tf, f"{ActivityEmoji.SYNC} syncing forward")
 
             spinner = None
             if show_spinner and not progress_callback:
-                spinner = ActivitySpinner(f"Syncing {symbol} {tf} forward", ActivityEmoji.CANDLE)
+                spinner = ActivitySpinner(f"{step_label}", ActivityEmoji.CANDLE)
                 spinner.start()
 
             try:
-                count = _sync_forward_symbol_timeframe(store, symbol, tf)
+                count = _sync_forward_symbol_timeframe(store, symbol, tf, spinner=spinner)
                 results[key] = count
-                
+
                 if spinner:
                     if count > 0:
-                        spinner.stop(f"{symbol} {tf}: +{count} candles {ActivityEmoji.SPARKLE}")
+                        spinner.stop(f"{step_label}: +{count:,} candles {ActivityEmoji.SPARKLE}")
                     else:
-                        spinner.stop(f"{symbol} {tf}: already current {ActivityEmoji.SUCCESS}")
+                        spinner.stop(f"{step_label}: already current {ActivityEmoji.SUCCESS}")
                 elif progress_callback:
                     emoji = ActivityEmoji.SUCCESS if count >= 0 else ActivityEmoji.ERROR
                     progress_callback(symbol, tf, f"{emoji} done (+{count} candles)")
-                    
+
             except Exception as e:
                 store.logger.error(f"Failed to sync forward {key}: {e}")
                 results[key] = -1
-                
+
                 if spinner:
-                    spinner.stop(f"{symbol} {tf}: error", success=False)
+                    spinner.stop(f"{step_label}: error", success=False)
                 elif progress_callback:
                     progress_callback(symbol, tf, f"{ActivityEmoji.ERROR} error: {e}")
     
     return results
 
 
-def _sync_forward_symbol_timeframe(store: "HistoricalDataStore", symbol: str, timeframe: str) -> int:
+def _sync_forward_symbol_timeframe(
+    store: "HistoricalDataStore",
+    symbol: str,
+    timeframe: str,
+    spinner: "_ActivitySpinner | None" = None,
+) -> int:
     """Sync a single symbol/timeframe forward from last timestamp to now."""
     TIMEFRAMES, TF_MINUTES, _, _ = _get_constants()
-    
+
     symbol = symbol.upper()
     bybit_tf = TIMEFRAMES.get(timeframe, timeframe)
     tf_minutes = TF_MINUTES.get(timeframe, 15)
-    
+
     existing = store.conn.execute(f"""
         SELECT MAX(timestamp) as last_ts
         FROM {store.table_ohlcv}
@@ -251,8 +270,8 @@ def _sync_forward_symbol_timeframe(store: "HistoricalDataStore", symbol: str, ti
 
     if start >= end:
         return 0
-    
-    df = _fetch_from_api(store, symbol, bybit_tf, start, end)
+
+    df = _fetch_from_api(store, symbol, bybit_tf, start, end, spinner=spinner)
     
     if not df.empty:
         _store_dataframe(store, symbol, timeframe, df)
@@ -268,6 +287,7 @@ def _sync_symbol_timeframe(
     timeframe: str,
     target_start: datetime,
     target_end: datetime,
+    spinner: "_ActivitySpinner | None" = None,
 ) -> int:
     """Sync a single symbol/timeframe combination."""
     TIMEFRAMES, TF_MINUTES, _, _ = _get_constants()
@@ -315,8 +335,8 @@ def _sync_symbol_timeframe(
         if store._cancelled:
             break
         
-        df = _fetch_from_api(store, symbol, bybit_tf, range_start, range_end)
-        
+        df = _fetch_from_api(store, symbol, bybit_tf, range_start, range_end, spinner=spinner)
+
         if not df.empty:
             _store_dataframe(store, symbol, timeframe, df)
             total_synced += len(df)
@@ -332,6 +352,14 @@ def _sync_symbol_timeframe(
     return total_synced
 
 
+def _estimate_candle_count(start: datetime, end: datetime, bybit_tf: str) -> int:
+    """Estimate total candles for a date range and timeframe."""
+    bybit_to_minutes = {"1": 1, "3": 3, "5": 5, "15": 15, "30": 30, "60": 60, "120": 120, "240": 240, "360": 360, "720": 720, "D": 1440}
+    minutes = bybit_to_minutes.get(bybit_tf, 60)
+    total_minutes = (end - start).total_seconds() / 60
+    return max(1, int(total_minutes / minutes))
+
+
 def _fetch_from_api(
     store: "HistoricalDataStore",
     symbol: str,
@@ -340,21 +368,29 @@ def _fetch_from_api(
     end: datetime,
     show_progress: bool = True,
     progress_prefix: str | None = None,
+    spinner: "_ActivitySpinner | None" = None,
 ) -> pd.DataFrame:
-    """Fetch data from Bybit API with visual progress."""
+    """Fetch data from Bybit API with progress tracking.
+
+    Args:
+        spinner: An ActivitySpinner instance. If provided, progress is
+                 reported via spinner.set_progress().
+    """
     all_data = []
-    
+    total_fetched = 0
+    total_estimate = _estimate_candle_count(start, end, bybit_tf)
+
     start_ts = cast(pd.Timestamp, pd.Timestamp(start, tz='UTC') if start.tzinfo is None else pd.Timestamp(start))
     end_ts = cast(pd.Timestamp, pd.Timestamp(end, tz='UTC') if end.tzinfo is None else pd.Timestamp(end))
     current_end_ts = end_ts
-    
+
     while current_end_ts > start_ts:
         if store._cancelled:
             break
 
         # current_end_ts is always valid (constructed from datetime arg)
         end_ms = int(current_end_ts.value // 10**6)
-        
+
         try:
             df = store.client.get_klines(
                 symbol=symbol,
@@ -365,32 +401,37 @@ def _fetch_from_api(
         except Exception as e:
             store.logger.error(f"API error fetching {symbol}: {e}")
             break
-        
+
         if df.empty:
             break
-        
+
         df = df[df["timestamp"] >= start_ts]
-        
+
         if df.empty:
             break
-        
+
         all_data.append(df)
-        
+        total_fetched += len(df)
+
+        # Report progress to spinner
+        if spinner is not None:
+            spinner.set_progress(total_fetched, total_estimate)
+
         oldest = df["timestamp"].min()
         if oldest <= start_ts:
             break
-        
+
         current_end_ts = oldest - pd.Timedelta(milliseconds=1)
 
         time.sleep(0.05)
-    
+
     if not all_data:
         return pd.DataFrame()
-    
+
     combined = pd.concat(all_data, ignore_index=True)
     combined = combined.drop_duplicates(subset=["timestamp"], keep="last")
     combined = combined.sort_values("timestamp").reset_index(drop=True)
-    
+
     return combined
 
 
