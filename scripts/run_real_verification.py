@@ -1,7 +1,7 @@
 """
 Run the Real-Data Verification suite (60 RV plays).
 
-Discovers plays in plays/real_verification/ (accumulation, markup, distribution,
+Discovers plays in plays/validation/real_data/ (accumulation, markup, distribution,
 markdown), runs each through CLI, optionally runs math verification, and records
 results to CSV + markdown report.
 
@@ -29,7 +29,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-PLAYS_ROOT = ROOT / "plays" / "real_verification"
+PLAYS_ROOT = ROOT / "plays" / "validation" / "real_data"
 CSV_PATH = ROOT / "backtests" / "real_verification_report.csv"
 REPORT_PATH = ROOT / "docs" / "REAL_VERIFICATION_REPORT.md"
 
@@ -97,7 +97,7 @@ def run_play(
     cmd = [
         sys.executable, "trade_cli.py", "backtest", "run",
         "--play", play_stem,
-        "--fix-gaps",
+        "--sync",
         "--start", start_date,
         "--end", end_date,
         "--json",

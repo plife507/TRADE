@@ -12,7 +12,7 @@ from ..utils.datetime_utils import normalize_time_range_params as _normalize_tim
 
 
 # Import tools for composite operations
-from .data_tools_sync import sync_symbols_tool, sync_funding_tool, sync_open_interest_tool, fill_gaps_tool
+from .data_tools_sync import sync_symbols_tool, sync_funding_tool, sync_open_interest_tool, sync_data_tool
 
 
 def get_funding_history_tool(
@@ -413,25 +413,25 @@ def sync_to_now_tool(
 
 
 
-def sync_to_now_and_fill_gaps_tool(
+def sync_forward_tool(
     symbols: list[str],
     timeframes: list[str] | None = None,
     env: DataEnv = DEFAULT_DATA_ENV,
 ) -> ToolResult:
     """
     Sync data forward to now AND fill any gaps in existing data.
-    
+
     This is a comprehensive sync that:
     1. First syncs forward from last timestamp to now
     2. Then scans for and fills any gaps in the historical data
-    
+
     Use this when you want to ensure data is both current AND complete.
-    
+
     Args:
         symbols: List of symbols to sync and heal
         timeframes: List of timeframes (e.g., ["15m", "1h", "4h"]) or None for all
         env: Data environment ("live" or "demo"). Defaults to "live".
-    
+
     Returns:
         ToolResult with combined sync and gap-fill summary
     """
@@ -468,7 +468,7 @@ def sync_to_now_and_fill_gaps_tool(
     try:
         gap_results = {}
         for symbol in symbols:
-            gap_result = fill_gaps_tool(
+            gap_result = sync_data_tool(
                 symbol=symbol,
                 timeframe=None,  # All timeframes for this symbol
                 env=env,

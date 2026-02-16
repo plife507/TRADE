@@ -150,7 +150,7 @@ def sync_range_tool(
 
 
 
-def fill_gaps_tool(
+def sync_data_tool(
     symbol: str | None = None,
     timeframe: str | None = None,
     progress_callback: Callable | None = None,
@@ -795,7 +795,7 @@ def sync_full_from_launch_tool(
                 progress_callback(symbol, "Filling gaps...")
             
             try:
-                gap_result = fill_gaps_tool(symbol=symbol, env=env)
+                gap_result = sync_data_tool(symbol=symbol, env=env)
                 if gap_result.success:
                     results["gaps_filled"] = gap_result.data.get("total_filled", 0) if gap_result.data else 0
             except Exception as e:

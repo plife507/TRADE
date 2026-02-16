@@ -2,9 +2,10 @@
 Argument parser setup for TRADE CLI.
 
 Defines all subcommands and their arguments:
-- backtest: Play-based backtesting (run, preflight, indicators, data-fix, list, audits)
+- backtest: Play-based backtesting (run, preflight, indicators, data-fix, list, normalize)
 - play: Unified Play engine (backtest/demo/live/shadow)
-- test: Indicator validation testing agent
+- validate: Unified validation suite (quick/standard/full/pre-live/exchange)
+- debug: Diagnostic tools (math-parity, snapshot-plumbing, determinism, metrics)
 """
 
 import argparse
@@ -15,13 +16,20 @@ def setup_argparse() -> argparse.Namespace:
     Parse command-line arguments for trade_cli.
 
     Supports:
-      --smoke data   Run data builder smoke test only
-      --smoke full   Run full CLI smoke test (data + trading + diagnostics)
+      validate quick       Run quick validation (~10s)
+      validate standard    Run standard validation (~2min)
+      validate full        Run full validation (~10min)
+      validate exchange    Run exchange integration tests (~30s)
 
-      backtest run   Run Play-based backtest (golden path)
+      backtest run         Run Play-based backtest (golden path)
       backtest preflight   Check data/config without running
       backtest data-fix    Fix data gaps/coverage
       backtest list        List available Plays
+
+      debug math-parity    Per-play real-data math verification
+      debug snapshot-plumbing  Snapshot field correctness
+      debug determinism    Compare two specific run hashes
+      debug metrics        Standalone metrics audit
     """
     parser = argparse.ArgumentParser(
         description="TRADE - Bybit Unified Trading Account CLI",
@@ -29,30 +37,17 @@ def setup_argparse() -> argparse.Namespace:
         epilog="""
 Examples:
   python trade_cli.py                              # Interactive mode (default)
-  python trade_cli.py --smoke data                 # Data builder smoke test
-  python trade_cli.py --smoke full                 # Full CLI smoke test
+  python trade_cli.py validate quick               # Quick validation (~10s)
+  python trade_cli.py validate exchange             # Exchange integration tests
 
   # Play-based backtest (golden path):
   python trade_cli.py backtest run --play SOLUSDT_15m_ema_crossover
-  python trade_cli.py backtest run --play SOLUSDT_15m_ema_crossover --smoke
   python trade_cli.py backtest preflight --play SOLUSDT_15m_ema_crossover
-  python trade_cli.py backtest data-fix --play SOLUSDT_15m_ema_crossover
-  python trade_cli.py backtest list
+
+  # Debug tools:
+  python trade_cli.py debug math-parity --play X --start 2025-01-01 --end 2025-06-30
+  python trade_cli.py debug determinism --run-a A --run-b B
         """
-    )
-
-    parser.add_argument(
-        "--smoke",
-        choices=["data", "full", "data_extensive", "orders", "live_check", "backtest", "forge"],
-        default=None,
-        help="Run non-interactive smoke test. 'data'/'full'/'data_extensive'/'orders'/'backtest'/'forge' use DEMO. 'live_check' tests LIVE connectivity (opt-in, requires LIVE keys)."
-    )
-
-    parser.add_argument(
-        "--fresh-db",
-        action="store_true",
-        default=False,
-        help="For backtest smoke: wipe database before preparing data"
     )
 
     parser.add_argument(
@@ -67,8 +62,8 @@ Examples:
 
     _setup_backtest_subcommands(subparsers)
     _setup_play_subcommands(subparsers)
-    _setup_test_subcommands(subparsers)
     _setup_validate_subcommand(subparsers)
+    _setup_debug_subcommands(subparsers)
     _setup_account_subcommands(subparsers)
     _setup_position_subcommands(subparsers)
     _setup_panic_subcommand(subparsers)
@@ -77,7 +72,7 @@ Examples:
 
 
 def _setup_backtest_subcommands(subparsers) -> None:
-    """Set up backtest subcommand and all its sub-subcommands."""
+    """Set up backtest subcommand and all its sub-subcommands (operational only)."""
     backtest_parser = subparsers.add_parser("backtest", help="Play-based backtest (golden path)")
     backtest_subparsers = backtest_parser.add_subparsers(dest="backtest_command", help="Backtest commands")
 
@@ -94,18 +89,19 @@ def _setup_backtest_subcommands(subparsers) -> None:
     run_parser.add_argument("--artifacts-dir", help="Override artifacts directory")
     run_parser.add_argument("--no-artifacts", action="store_true", help="Skip writing artifacts")
     run_parser.add_argument("--emit-snapshots", action="store_true", help="Emit snapshot artifacts (OHLCV + computed indicators)")
-    run_parser.add_argument("--fix-gaps", action="store_true", default=True, help="Auto-fetch missing data (default: True)")
-    run_parser.add_argument("--no-fix-gaps", action="store_false", dest="fix_gaps", help="Disable auto-fetch of missing data")
+    run_parser.add_argument("--sync", action="store_true", default=True, help="Auto-fetch missing data (default: True)")
+    run_parser.add_argument("--no-sync", action="store_false", dest="sync", help="Disable auto-fetch of missing data")
     run_parser.add_argument("--validate", action="store_true", default=True, help="Validate artifacts after run (default: True)")
     run_parser.add_argument("--no-validate", action="store_false", dest="validate", help="Skip artifact validation (faster, less safe)")
     run_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
     # Synthetic data mode (for validation without DB)
-    run_parser.add_argument("--synthetic", action="store_true", help="Use synthetic data instead of DB (for validation runs)")
-    run_parser.add_argument("--synthetic-bars", type=int, default=1000, help="Number of bars per timeframe for synthetic data (default: 1000)")
-    run_parser.add_argument("--synthetic-seed", type=int, default=42, help="Random seed for synthetic data generation (default: 42)")
+    run_parser.add_argument("--synthetic", action="store_true", help="Use synthetic data from play's synthetic: block (required). Fails if block missing.")
+    run_parser.add_argument("--synthetic-bars", type=int, default=None, help="Override bars per TF from play's synthetic.bars")
+    run_parser.add_argument("--synthetic-seed", type=int, default=None, help="Override seed from play's synthetic.seed")
     # Import available patterns from synthetic data module
     from src.forge.validation import PATTERN_GENERATORS
-    run_parser.add_argument("--synthetic-pattern", choices=list(PATTERN_GENERATORS.keys()), default="trending", help="Pattern for synthetic data (default: trending). Use --list-patterns to see all.")
+    run_parser.add_argument("--synthetic-pattern", choices=list(PATTERN_GENERATORS.keys()), default=None, help="Override pattern from play's synthetic.pattern")
+    run_parser.add_argument("--debug", action="store_true", default=False, help="Enable verbose engine tracing (bar OHLCV, signal results, position changes)")
 
     # backtest preflight
     preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")
@@ -113,7 +109,7 @@ def _setup_backtest_subcommands(subparsers) -> None:
     preflight_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     preflight_parser.add_argument("--start", help="Window start")
     preflight_parser.add_argument("--end", help="Window end")
-    preflight_parser.add_argument("--fix-gaps", action="store_true", help="Auto-fix data gaps using existing tools")
+    preflight_parser.add_argument("--sync", action="store_true", help="Auto-sync missing data using existing tools")
     preflight_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
 
     # backtest indicators (indicator key discovery)
@@ -144,7 +140,7 @@ def _setup_backtest_subcommands(subparsers) -> None:
     datafix_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
     datafix_parser.add_argument("--start", help="Sync from this date")
     datafix_parser.add_argument("--sync-to-now", action="store_true", help="Sync data to current time")
-    datafix_parser.add_argument("--fill-gaps", action="store_true", default=True, help="Fill gaps after sync")
+    datafix_parser.add_argument("--sync", action="store_true", default=True, help="Sync gaps after range sync")
     datafix_parser.add_argument("--heal", action="store_true", help="Run full heal after sync")
     datafix_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
 
@@ -171,140 +167,6 @@ def _setup_backtest_subcommands(subparsers) -> None:
     batch_normalize_parser.add_argument("--dir", dest="plays_dir", required=True, help="Directory containing Play YAML files")
     batch_normalize_parser.add_argument("--write", action="store_true", help="Write normalized YAML in-place")
     batch_normalize_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
-
-    # backtest verify-suite (global verification suite)
-    verify_suite_parser = backtest_subparsers.add_parser(
-        "verify-suite",
-        help="Run global indicator & strategy verification suite or artifact parity check"
-    )
-    # Standard verification mode (Play directory)
-    verify_suite_parser.add_argument("--dir", dest="plays_dir", help="Directory containing verification Play YAML files")
-    verify_suite_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
-    verify_suite_parser.add_argument("--start", help="Fixed window start (YYYY-MM-DD)")
-    verify_suite_parser.add_argument("--end", help="Fixed window end (YYYY-MM-DD)")
-    verify_suite_parser.add_argument("--strict", action="store_true", default=True, help="Strict indicator access")
-    verify_suite_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
-    verify_suite_parser.add_argument("--skip-toolkit-audit", action="store_true", help="Skip Gate 1 toolkit contract audit")
-    # Phase 3.1: CSV vs Parquet parity verification mode
-    verify_suite_parser.add_argument("--compare-csv-parquet", action="store_true", help="Verify CSV vs Parquet artifact parity")
-    verify_suite_parser.add_argument("--play", dest="parity_play", help="Play ID for parity check")
-    verify_suite_parser.add_argument("--symbol", dest="parity_symbol", help="Symbol for parity check")
-    verify_suite_parser.add_argument("--run", dest="parity_run", help="Run ID (e.g., run-001 or 'latest')")
-
-    # backtest audit-toolkit (indicator registry audit)
-    audit_parser = backtest_subparsers.add_parser(
-        "audit-toolkit",
-        help="Run toolkit contract audit over all registry indicators"
-    )
-    audit_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
-    audit_parser.add_argument("--sample-bars", type=int, default=2000, help="Number of synthetic OHLCV bars (default: 2000)")
-    audit_parser.add_argument("--seed", type=int, default=1337, help="Random seed for synthetic data (default: 1337)")
-    audit_parser.add_argument("--fail-on-extras", action="store_true", help="Treat extras as failures")
-    audit_parser.add_argument("--strict", action="store_true", default=True, help="Fail on any contract breach")
-
-    # backtest audit-incremental-parity (G3-1 - incremental vs vectorized parity)
-    inc_parity_parser = backtest_subparsers.add_parser(
-        "audit-incremental-parity",
-        help="Run G3-1 incremental vs vectorized indicator parity audit (11 indicators)"
-    )
-    inc_parity_parser.add_argument("--bars", type=int, default=1000, help="Number of synthetic bars (default: 1000)")
-    inc_parity_parser.add_argument("--tolerance", type=float, default=1e-6, help="Max allowed difference (default: 1e-6)")
-    inc_parity_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
-    inc_parity_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
-
-    # backtest audit-structure-parity (Structure detector vectorized parity)
-    struct_parity_parser = backtest_subparsers.add_parser(
-        "audit-structure-parity",
-        help="Run structure detector vectorized vs incremental parity audit (7 detectors)"
-    )
-    struct_parity_parser.add_argument("--bars", type=int, default=2000, help="Number of synthetic bars (default: 2000)")
-    struct_parity_parser.add_argument("--tolerance", type=float, default=1e-10, help="Max allowed difference (default: 1e-10)")
-    struct_parity_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
-    struct_parity_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
-
-    # backtest metadata-smoke (Indicator Metadata v1 smoke test)
-    metadata_parser = backtest_subparsers.add_parser(
-        "metadata-smoke",
-        help="Run Indicator Metadata v1 smoke test (validates metadata capture and export)"
-    )
-    metadata_parser.add_argument("--symbol", default="BTCUSDT", help="Symbol for synthetic data (default: BTCUSDT)")
-    metadata_parser.add_argument("--tf", default="15m", help="Timeframe (default: 15m)")
-    metadata_parser.add_argument("--sample-bars", type=int, default=2000, help="Number of synthetic bars (default: 2000)")
-    metadata_parser.add_argument("--seed", type=int, default=1337, help="Random seed for reproducibility (default: 1337)")
-    metadata_parser.add_argument("--export", dest="export_path", default="artifacts/indicator_metadata.jsonl", help="Export path (default: artifacts/indicator_metadata.jsonl)")
-    metadata_parser.add_argument("--format", dest="export_format", choices=["jsonl", "json", "csv"], default="jsonl", help="Export format (default: jsonl)")
-
-    # backtest mark-price-smoke (Mark Price Engine smoke test)
-    mark_price_parser = backtest_subparsers.add_parser(
-        "mark-price-smoke",
-        help="Run Mark Price Engine smoke test (validates MarkPriceEngine and snapshot.get())"
-    )
-    mark_price_parser.add_argument("--sample-bars", type=int, default=500, help="Number of synthetic bars (default: 500)")
-    mark_price_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
-
-    # backtest structure-smoke (Structure smoke test via production engine)
-    structure_parser = backtest_subparsers.add_parser(
-        "structure-smoke",
-        help="Run structure smoke test (validates swing, trend, fibonacci, derived_zone via engine)"
-    )
-    structure_parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
-
-    # backtest math-parity (contract audit + in-memory math parity)
-    math_parity_parser = backtest_subparsers.add_parser(
-        "math-parity",
-        help="Validate indicator math parity (contract + in-memory comparison)"
-    )
-    math_parity_parser.add_argument("--play", required=True, help="Path to Play YAML for parity audit")
-    math_parity_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
-    math_parity_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
-    math_parity_parser.add_argument("--output-dir", help="Output directory for diff reports (optional)")
-    math_parity_parser.add_argument("--contract-sample-bars", type=int, default=2000, help="Synthetic bars for contract audit (default: 2000)")
-    math_parity_parser.add_argument("--contract-seed", type=int, default=1337, help="Random seed for contract audit (default: 1337)")
-    math_parity_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
-
-    # backtest audit-snapshot-plumbing (Phase 4 snapshot plumbing parity)
-    plumbing_parser = backtest_subparsers.add_parser(
-        "audit-snapshot-plumbing",
-        help="Run Phase 4 snapshot plumbing parity audit"
-    )
-    plumbing_parser.add_argument("--play", required=True, help="Play identifier or path")
-    plumbing_parser.add_argument("--symbol", help="Override symbol (optional, inferred from Play)")
-    plumbing_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
-    plumbing_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
-    plumbing_parser.add_argument("--max-samples", type=int, default=2000, help="Max exec samples (default: 2000)")
-    plumbing_parser.add_argument("--tolerance", type=float, default=1e-12, help="Tolerance for float comparison (default: 1e-12)")
-    plumbing_parser.add_argument("--strict", action="store_true", default=True, help="Stop at first mismatch (default: True)")
-    plumbing_parser.add_argument("--no-strict", action="store_false", dest="strict", help="Continue after mismatches")
-    plumbing_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
-
-    # backtest verify-determinism (Phase 3 - hash-based determinism verification)
-    determinism_parser = backtest_subparsers.add_parser(
-        "verify-determinism",
-        help="Verify backtest determinism by comparing run hashes"
-    )
-    determinism_parser.add_argument("--run-a", required=False, help="Path to first run's artifact folder")
-    determinism_parser.add_argument("--run-b", required=False, help="Path to second run's artifact folder (for compare mode)")
-    determinism_parser.add_argument("--re-run", action="store_true", help="Re-run the Play and compare to existing run")
-    determinism_parser.add_argument("--fix-gaps", action="store_true", default=False, help="Allow data sync during re-run")
-    determinism_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
-
-    # backtest metrics-audit
-    metrics_audit_parser = backtest_subparsers.add_parser(
-        "metrics-audit",
-        help="Validate financial metrics calculation (drawdown, Calmar, TF handling)"
-    )
-    metrics_audit_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
-
-    # backtest audit-rollup (1m rollup parity audit)
-    rollup_parser = backtest_subparsers.add_parser(
-        "audit-rollup",
-        help="Run 1m rollup parity audit (ExecRollupBucket + snapshot accessors)"
-    )
-    rollup_parser.add_argument("--intervals", type=int, default=10, help="Number of exec intervals to test (default: 10)")
-    rollup_parser.add_argument("--quotes", type=int, default=15, help="Quotes per interval (default: 15)")
-    rollup_parser.add_argument("--seed", type=int, default=1337, help="Random seed (default: 1337)")
-    rollup_parser.add_argument("--tolerance", type=float, default=1e-10, help="Tolerance (default: 1e-10)")
-    rollup_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
 
 
 def _setup_play_subcommands(subparsers) -> None:
@@ -359,52 +221,16 @@ def _setup_play_subcommands(subparsers) -> None:
     play_resume_parser.add_argument("--play", required=True, help="Play ID or instance ID to resume")
 
 
-def _setup_test_subcommands(subparsers) -> None:
-    """Set up test subcommand and all its sub-subcommands."""
-    test_parser = subparsers.add_parser("test", help="Indicator validation testing agent")
-    test_subparsers = test_parser.add_subparsers(dest="test_command", help="Test commands")
-
-    # test indicators - Run indicator test suite
-    test_indicators_parser = test_subparsers.add_parser("indicators", help="Run indicator validation suite")
-    test_indicators_parser.add_argument("--symbol", default="BTCUSDT", help="Symbol to test (default: BTCUSDT)")
-    test_indicators_parser.add_argument("--tier", choices=["tier19", "tier20", "tier21", "tier22", "tier23", "tier24", "tier25"], help="Run specific tier only")
-    test_indicators_parser.add_argument("--condition", choices=["bull", "bear", "range", "volatile"], help="Market condition filter")
-    test_indicators_parser.add_argument("--fix-gaps", action="store_true", default=True, help="Auto-fetch missing data (default: True)")
-    test_indicators_parser.add_argument("--no-fix-gaps", action="store_false", dest="fix_gaps", help="Disable auto-fetch")
-    test_indicators_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
-
-    # test parity - Run incremental vs vectorized parity
-    test_parity_parser = test_subparsers.add_parser("parity", help="Incremental vs vectorized parity check")
-    test_parity_parser.add_argument("--bars", type=int, default=2000, help="Number of synthetic bars (default: 2000)")
-    test_parity_parser.add_argument("--tolerance", type=float, default=1e-6, help="Max allowed difference (default: 1e-6)")
-    test_parity_parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
-    test_parity_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
-
-    # test live-parity - Live vs backtest comparison
-    test_live_parity_parser = test_subparsers.add_parser("live-parity", help="Live vs backtest parity check")
-    test_live_parity_parser.add_argument("--tier", choices=["tier19", "tier20", "tier21", "tier22", "tier23", "tier24", "tier25"], default="tier19", help="Tier to test (default: tier19)")
-    test_live_parity_parser.add_argument("--fix-gaps", action="store_true", default=True, help="Auto-fetch missing data")
-    test_live_parity_parser.add_argument("--no-fix-gaps", action="store_false", dest="fix_gaps", help="Disable auto-fetch")
-    test_live_parity_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
-
-    # test agent - Full testing agent
-    test_agent_parser = test_subparsers.add_parser("agent", help="Run full testing agent")
-    test_agent_parser.add_argument("--mode", choices=["full", "btc", "l2"], default="full", help="Agent mode (default: full)")
-    test_agent_parser.add_argument("--fix-gaps", action="store_true", default=True, help="Auto-fetch missing data")
-    test_agent_parser.add_argument("--no-fix-gaps", action="store_false", dest="fix_gaps", help="Disable auto-fetch")
-    test_agent_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
-
-
 def _setup_validate_subcommand(subparsers) -> None:
     """Set up validate subcommand for unified validation."""
     validate_parser = subparsers.add_parser(
         "validate",
-        help="Unified validation suite (quick/standard/full/pre-live)"
+        help="Unified validation suite (quick/standard/full/pre-live/exchange)"
     )
     validate_parser.add_argument(
         "tier",
-        choices=["quick", "standard", "full", "pre-live"],
-        help="Validation tier: quick (~10s), standard (~2min), full (~10min), pre-live (readiness gate)"
+        choices=["quick", "standard", "full", "pre-live", "exchange"],
+        help="Validation tier: quick (~10s), standard (~2min), full (~10min), pre-live (readiness gate), exchange (~30s)"
     )
     validate_parser.add_argument(
         "--play",
@@ -421,6 +247,58 @@ def _setup_validate_subcommand(subparsers) -> None:
         dest="json_output",
         help="Output results as JSON"
     )
+
+
+def _setup_debug_subcommands(subparsers) -> None:
+    """Set up debug subcommand for diagnostic tools."""
+    debug_parser = subparsers.add_parser("debug", help="Diagnostic tools (math-parity, snapshot, determinism, metrics)")
+    debug_subparsers = debug_parser.add_subparsers(dest="debug_command", help="Debug commands")
+
+    # debug math-parity
+    math_parity_parser = debug_subparsers.add_parser(
+        "math-parity",
+        help="Validate indicator math parity (contract + in-memory comparison)"
+    )
+    math_parity_parser.add_argument("--play", required=True, help="Play identifier for parity audit")
+    math_parity_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
+    math_parity_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
+    math_parity_parser.add_argument("--output-dir", help="Output directory for diff reports (optional)")
+    math_parity_parser.add_argument("--contract-sample-bars", type=int, default=2000, help="Synthetic bars for contract audit (default: 2000)")
+    math_parity_parser.add_argument("--contract-seed", type=int, default=1337, help="Random seed for contract audit (default: 1337)")
+    math_parity_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+
+    # debug snapshot-plumbing
+    plumbing_parser = debug_subparsers.add_parser(
+        "snapshot-plumbing",
+        help="Run snapshot plumbing parity audit"
+    )
+    plumbing_parser.add_argument("--play", required=True, help="Play identifier or path")
+    plumbing_parser.add_argument("--symbol", help="Override symbol (optional, inferred from Play)")
+    plumbing_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
+    plumbing_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
+    plumbing_parser.add_argument("--max-samples", type=int, default=2000, help="Max exec samples (default: 2000)")
+    plumbing_parser.add_argument("--tolerance", type=float, default=1e-12, help="Tolerance for float comparison (default: 1e-12)")
+    plumbing_parser.add_argument("--strict", action="store_true", default=True, help="Stop at first mismatch (default: True)")
+    plumbing_parser.add_argument("--no-strict", action="store_false", dest="strict", help="Continue after mismatches")
+    plumbing_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # debug determinism
+    determinism_parser = debug_subparsers.add_parser(
+        "determinism",
+        help="Verify backtest determinism by comparing run hashes"
+    )
+    determinism_parser.add_argument("--run-a", required=False, help="Path to first run's artifact folder")
+    determinism_parser.add_argument("--run-b", required=False, help="Path to second run's artifact folder (for compare mode)")
+    determinism_parser.add_argument("--re-run", action="store_true", help="Re-run the Play and compare to existing run")
+    determinism_parser.add_argument("--sync", action="store_true", default=False, help="Allow data sync during re-run")
+    determinism_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+
+    # debug metrics
+    metrics_parser = debug_subparsers.add_parser(
+        "metrics",
+        help="Validate financial metrics calculation (drawdown, Calmar, TF handling)"
+    )
+    metrics_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
 
 
 def _setup_account_subcommands(subparsers) -> None:

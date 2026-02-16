@@ -6,8 +6,9 @@ They are dispatched from main() in trade_cli.py.
 
 Sections:
 - Backtest handlers (handle_backtest_*)
+- Debug handlers (handle_debug_*)
 - Play handlers (handle_play_*)
-- Test handlers (handle_test_*)
+- Account/Position handlers
 """
 
 from __future__ import annotations
@@ -116,20 +117,22 @@ def _print_preflight_diagnostics(diag: dict):
 # =============================================================================
 
 def _handle_synthetic_backtest_run(args) -> int:
-    """Handle synthetic backtest run (no DB access)."""
+    """Handle synthetic backtest run (no DB access).
+
+    Bars are auto-computed: warmup(play) + 300 trading bars.
+    Pattern comes from play's validation: block (CLI can override).
+    """
     import json
     import yaml
     from pathlib import Path
     from src.backtest.play import load_play, Play
     from src.backtest.runner import run_backtest_with_gates, RunnerConfig
+    from src.backtest.execution_validation import compute_synthetic_bars
     from src.forge.validation import generate_synthetic_candles
     from src.forge.validation.synthetic_data import PatternType
     from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
 
     plays_dir = Path(args.plays_dir) if getattr(args, "plays_dir", None) else None
-    synthetic_bars = getattr(args, "synthetic_bars", 1000)
-    synthetic_seed = getattr(args, "synthetic_seed", 42)
-    synthetic_pattern = getattr(args, "synthetic_pattern", "trending")
 
     # Load Play - check if it's a file path first
     play_path = Path(args.play)
@@ -139,6 +142,25 @@ def _handle_synthetic_backtest_run(args) -> int:
         play = Play.from_dict(raw)
     else:
         play = load_play(args.play, base_dir=plays_dir)
+
+    # Require validation: block in play YAML
+    if play.validation is None:
+        console.print(
+            f"[bold red]ERROR:[/] Play '{args.play}' has no validation: block.\n"
+            f"Add a validation: section with pattern: to the play YAML.",
+        )
+        return 1
+
+    # CLI overrides (optional)
+    cli_bars = getattr(args, "synthetic_bars", None)
+    cli_seed = getattr(args, "synthetic_seed", None)
+    cli_pattern = getattr(args, "synthetic_pattern", None)
+
+    # Auto-compute bars from indicator/structure warmup requirements
+    synthetic_bars = cli_bars if cli_bars is not None else compute_synthetic_bars(play)
+    synthetic_seed = cli_seed if cli_seed is not None else 42
+    synthetic_pattern = cli_pattern if cli_pattern is not None else play.validation.pattern
+
     exec_tf = play.exec_tf
     required_tfs = {exec_tf, "1m"}  # Always need 1m for intrabar
 
@@ -155,11 +177,13 @@ def _handle_synthetic_backtest_run(args) -> int:
         if hasattr(f, "tf") and f.tf:
             required_tfs.add(f.tf)
 
+    has_cli_overrides = any(x is not None for x in [cli_bars, cli_seed, cli_pattern])
+    source = "play+CLI" if has_cli_overrides else "auto (from indicator/structure warmup)"
     if not getattr(args, "json_output", False):
         console.print(Panel(
             f"[bold cyan]BACKTEST RUN (SYNTHETIC)[/]\n"
             f"Play: {args.play}\n"
-            f"Bars: {synthetic_bars} | Seed: {synthetic_seed} | Pattern: {synthetic_pattern}\n"
+            f"Bars: {synthetic_bars} | Seed: {synthetic_seed} | Pattern: {synthetic_pattern} ({source})\n"
             f"TFs: {sorted(required_tfs)}",
             border_style="cyan"
         ))
@@ -220,9 +244,21 @@ def _handle_synthetic_backtest_run(args) -> int:
 def handle_backtest_run(args) -> int:
     """Handle `backtest run` subcommand."""
     import json
+    import logging
     from pathlib import Path
     from src.tools.backtest_play_tools import backtest_run_play_tool
     from src.tools.shared import ToolResult
+
+    # 7.2/7.5: Enable debug tracing if --debug flag on backtest run
+    if getattr(args, "debug", False):
+        from src.utils.debug import enable_debug
+        enable_debug(True)
+        # Set console handler to DEBUG so trace output is visible
+        trade_logger = logging.getLogger("trade")
+        trade_logger.setLevel(logging.DEBUG)
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setLevel(logging.DEBUG)
 
     start = _parse_datetime(args.start) if args.start else None
     end = _parse_datetime(args.end) if args.end else None
@@ -252,7 +288,7 @@ def handle_backtest_run(args) -> int:
         artifacts_dir=artifacts_dir,
         plays_dir=plays_dir,
         emit_snapshots=args.emit_snapshots,
-        fix_gaps=args.fix_gaps,
+        sync=args.sync,
         validate_artifacts_after=args.validate,
     )
 
@@ -265,9 +301,8 @@ def handle_backtest_run(args) -> int:
         print(json.dumps(output, indent=2, default=str))
         return 0 if result.success else 1
 
-    if result.data and "preflight" in result.data:
-        preflight = result.data["preflight"]
-        _print_preflight_diagnostics(preflight)
+    if result.data and result.data.get("preflight"):
+        _print_preflight_diagnostics(result.data["preflight"])
 
     if result.success:
         console.print(f"\n[bold green]OK {result.message}[/]")
@@ -294,7 +329,7 @@ def handle_backtest_preflight(args) -> int:
             border_style="cyan"
         ))
 
-    if args.fix_gaps and not args.json_output:
+    if args.sync and not args.json_output:
         console.print("[dim]Auto-sync enabled: will fetch missing data if needed[/]")
 
     result = backtest_preflight_play_tool(
@@ -302,7 +337,7 @@ def handle_backtest_preflight(args) -> int:
         env=args.data_env,
         start=start,
         end=end,
-        fix_gaps=args.fix_gaps,
+        sync=args.sync,
     )
 
     if args.json_output:
@@ -466,7 +501,7 @@ def handle_backtest_data_fix(args) -> int:
         console.print(Panel(
             f"[bold cyan]BACKTEST DATA FIX[/]\n"
             f"Play: {args.play} | DataEnv: {args.data_env}\n"
-            f"Sync to now: {args.sync_to_now} | Fill gaps: {args.fill_gaps} | Heal: {args.heal}",
+            f"Sync to now: {args.sync_to_now} | Sync: {args.sync} | Heal: {args.heal}",
             border_style="cyan"
         ))
 
@@ -475,7 +510,7 @@ def handle_backtest_data_fix(args) -> int:
         env=args.data_env,
         start=start,
         sync_to_now=args.sync_to_now,
-        fill_gaps=args.fill_gaps,
+        sync=args.sync,
         heal=args.heal,
     )
 
@@ -580,319 +615,6 @@ def handle_backtest_normalize(args) -> int:
         return 1
 
 
-def _handle_parity_verification(args, verify_artifact_parity_tool) -> int:
-    """Handle CSV vs Parquet artifact parity verification (Phase 3.1)."""
-    import json
-
-    if not getattr(args, 'parity_play', None):
-        console.print("[red]Error: --play is required for parity verification[/]")
-        return 1
-    if not getattr(args, 'parity_symbol', None):
-        console.print("[red]Error: --symbol is required for parity verification[/]")
-        return 1
-
-    play_id = args.parity_play
-    symbol = args.parity_symbol.upper()
-    run_id = getattr(args, 'parity_run', None)
-    if run_id and run_id.lower() == 'latest':
-        run_id = None
-
-    if not getattr(args, 'json_output', False):
-        console.print(Panel(
-            f"[bold cyan]CSV vs PARQUET PARITY VERIFICATION[/]\n"
-            f"Play: {play_id}\n"
-            f"Symbol: {symbol}\n"
-            f"Run: {run_id or 'latest'}",
-            border_style="cyan"
-        ))
-
-    result = verify_artifact_parity_tool(
-        play_id=play_id,
-        symbol=symbol,
-        run_id=run_id,
-    )
-
-    if getattr(args, 'json_output', False):
-        output = {
-            "command": "verify-suite",
-            "mode": "compare-csv-parquet",
-            "success": result.success,
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2))
-        return 0 if result.success else 1
-
-    if result.success:
-        console.print(f"\n[bold green]PARITY PASSED[/] {result.message}")
-        if result.data:
-            for ar in result.data.get("artifact_results", []):
-                icon = "PASS" if ar.get("passed") else "FAIL"
-                console.print(f"  {icon} {ar.get('artifact_name')}")
-        return 0
-    else:
-        console.print(f"\n[bold red]PARITY FAILED[/] {result.error}")
-        if result.data:
-            for ar in result.data.get("artifact_results", []):
-                status = "PASS" if ar.get("passed") else "FAIL"
-                console.print(f"  {status} {ar.get('artifact_name')}")
-                for err in ar.get("errors", []):
-                    console.print(f"      - {err}")
-        return 1
-
-
-def handle_backtest_verify_suite(args) -> int:
-    """Handle `backtest verify-suite` subcommand - global verification suite or parity check."""
-    import json
-    from pathlib import Path
-    from src.tools.backtest_play_tools import (
-        backtest_play_normalize_batch_tool,
-        backtest_run_play_tool,
-    )
-    from src.tools.backtest_audit_tools import (
-        backtest_audit_math_from_snapshots_tool,
-        backtest_audit_toolkit_tool,
-        verify_artifact_parity_tool,
-    )
-
-    # Phase 3.1: CSV vs Parquet Parity Verification Mode
-    if getattr(args, 'compare_csv_parquet', False):
-        return _handle_parity_verification(args, verify_artifact_parity_tool)
-
-    # Standard Verification Suite Mode
-    if not args.plays_dir:
-        console.print("[red]Error: --dir is required for verification suite mode[/]")
-        console.print("[dim]Use --compare-csv-parquet for artifact parity mode[/]")
-        return 1
-
-    if not args.start or not args.end:
-        console.print("[red]Error: --start and --end are required for verification suite mode[/]")
-        return 1
-
-    plays_dir = Path(args.plays_dir)
-    start = _parse_datetime(args.start)
-    end = _parse_datetime(args.end)
-    skip_toolkit_audit = getattr(args, 'skip_toolkit_audit', False)
-
-    if not args.json_output:
-        console.print(Panel(
-            f"[bold cyan]GLOBAL VERIFICATION SUITE[/]\n"
-            f"Directory: {args.plays_dir}\n"
-            f"Window: {args.start} -> {args.end}\n"
-            f"DataEnv: {args.data_env} | Strict: {args.strict}\n"
-            f"Toolkit Audit: {'SKIPPED' if skip_toolkit_audit else 'ENABLED (Gate 1)'}",
-            border_style="cyan"
-        ))
-
-    suite_results = {
-        "suite_config": {
-            "plays_dir": str(plays_dir),
-            "data_env": args.data_env,
-            "window_start": args.start,
-            "window_end": args.end,
-            "strict": args.strict,
-            "skip_toolkit_audit": skip_toolkit_audit,
-        },
-        "phases": {},
-        "summary": {},
-    }
-
-    # PHASE 0 (Gate 1): Toolkit Contract Audit (unless skipped)
-    if not skip_toolkit_audit:
-        console.print("\n[bold]Phase 0 (Gate 1): Toolkit Contract Audit[/]")
-
-        toolkit_result = backtest_audit_toolkit_tool(
-            sample_bars=2000,
-            seed=1337,
-            fail_on_extras=False,
-            strict=True,
-        )
-
-        suite_results["phases"]["toolkit_audit"] = {
-            "success": toolkit_result.success,
-            "message": toolkit_result.message if toolkit_result.success else toolkit_result.error,
-            "data": toolkit_result.data,
-        }
-
-        if not toolkit_result.success:
-            console.print(f"[red]FAIL Toolkit audit failed: {toolkit_result.error}[/]")
-            if args.json_output:
-                suite_results["summary"] = {"overall_success": False, "failure_phase": "toolkit_audit"}
-                print(json.dumps(suite_results, indent=2, default=str))
-            return 1
-
-        console.print(f"[green]PASS Toolkit audit: {toolkit_result.message}[/]")
-    else:
-        console.print("\n[dim]Phase 0 (Gate 1): Toolkit Contract Audit - SKIPPED[/]")
-        suite_results["phases"]["toolkit_audit"] = {"skipped": True}
-
-    # PHASE 1: Batch normalize all cards
-    console.print("\n[bold]Phase 1: Batch Normalization[/]")
-
-    normalize_result = backtest_play_normalize_batch_tool(
-        plays_dir=plays_dir,
-        write_in_place=True,
-    )
-
-    suite_results["phases"]["normalization"] = {
-        "success": normalize_result.success,
-        "message": normalize_result.message if normalize_result.success else normalize_result.error,
-        "data": normalize_result.data,
-    }
-
-    if not normalize_result.success:
-        console.print(f"[red]FAIL Normalization failed: {normalize_result.error}[/]")
-        if args.json_output:
-            suite_results["summary"] = {"overall_success": False, "failure_phase": "normalization"}
-            print(json.dumps(suite_results, indent=2, default=str))
-        return 1
-
-    assert normalize_result.data is not None
-    console.print(f"[green]PASS Normalization successful: {normalize_result.data['summary']['passed']}/{normalize_result.data['summary']['total_cards']} cards[/]")
-
-    # PHASE 2: Run backtests with snapshot emission
-    console.print("\n[bold]Phase 2: Backtest Runs with Snapshots[/]")
-
-    backtest_results = []
-    failed_backtests = []
-
-    play_ids = normalize_result.data["results"]
-    for card_result in play_ids:
-        if not card_result["success"]:
-            continue
-
-        play_id = card_result["play_id"]
-        console.print(f"  Running {play_id}...")
-
-        run_result = backtest_run_play_tool(
-            play_id=play_id,
-            env=args.data_env,
-            start=start,
-            end=end,
-            smoke=False,
-            strict=args.strict,
-            write_artifacts=False,
-            plays_dir=plays_dir,
-            emit_snapshots=True,
-        )
-
-        backtest_result = {
-            "play_id": play_id,
-            "success": run_result.success,
-            "message": run_result.message if run_result.success else run_result.error,
-            "run_dir": run_result.data.get("artifact_dir") if run_result.data else None,
-        }
-
-        if run_result.success:
-            console.print(f"    [green]PASS {play_id}: {run_result.message}[/]")
-        else:
-            console.print(f"    [red]FAIL {play_id}: {run_result.error}[/]")
-            failed_backtests.append(play_id)
-
-        backtest_results.append(backtest_result)
-
-    suite_results["phases"]["backtests"] = {
-        "results": backtest_results,
-        "total_cards": len(backtest_results),
-        "successful_runs": len(backtest_results) - len(failed_backtests),
-        "failed_runs": len(failed_backtests),
-    }
-
-    if failed_backtests:
-        console.print(f"[red]FAIL Backtests failed: {len(failed_backtests)}/{len(backtest_results)} cards[/]")
-        if args.json_output:
-            suite_results["summary"] = {"overall_success": False, "failure_phase": "backtests"}
-            print(json.dumps(suite_results, indent=2, default=str))
-        return 1
-    else:
-        console.print(f"[green]PASS Backtests successful: {len(backtest_results)}/{len(backtest_results)} cards[/]")
-
-    # PHASE 3: Math parity audits
-    console.print("\n[bold]Phase 3: Math Parity Audits[/]")
-
-    audit_results = []
-    failed_audits = []
-
-    for backtest_result in backtest_results:
-        play_id = backtest_result["play_id"]
-        run_dir = backtest_result["run_dir"]
-
-        if not run_dir:
-            console.print(f"  [red]FAIL {play_id}: No run directory[/]")
-            failed_audits.append(play_id)
-            continue
-
-        console.print(f"  Auditing {play_id}...")
-
-        audit_result = backtest_audit_math_from_snapshots_tool(run_dir=Path(run_dir))
-
-        audit_summary = {
-            "play_id": play_id,
-            "success": audit_result.success,
-            "message": audit_result.message if audit_result.success else audit_result.error,
-            "run_dir": run_dir,
-        }
-
-        if audit_result.success and audit_result.data:
-            summary = audit_result.data.get("summary", {})
-            audit_summary.update({
-                "total_columns": summary.get("total_columns", 0),
-                "passed_columns": summary.get("passed_columns", 0),
-                "failed_columns": summary.get("failed_columns", 0),
-                "max_abs_diff": summary.get("max_abs_diff", 0),
-                "mean_abs_diff": summary.get("mean_abs_diff", 0),
-            })
-
-            if audit_result.success:
-                console.print(f"    [green]PASS {play_id}: {summary.get('passed_columns', 0)}/{summary.get('total_columns', 0)} columns passed[/]")
-            else:
-                console.print(f"    [red]FAIL {play_id}: {summary.get('failed_columns', 0)}/{summary.get('total_columns', 0)} columns failed[/]")
-                failed_audits.append(play_id)
-        else:
-            console.print(f"    [red]FAIL {play_id}: {audit_result.error}[/]")
-            failed_audits.append(play_id)
-
-        audit_results.append(audit_summary)
-
-    suite_results["phases"]["audits"] = {
-        "results": audit_results,
-        "total_cards": len(audit_results),
-        "successful_audits": len(audit_results) - len(failed_audits),
-        "failed_audits": len(failed_audits),
-    }
-
-    # FINAL SUMMARY
-    overall_success = len(failed_audits) == 0
-
-    suite_results["summary"] = {
-        "overall_success": overall_success,
-        "total_cards": len(backtest_results),
-        "normalization_passed": suite_results["phases"]["normalization"]["success"],
-        "backtests_passed": len(failed_backtests) == 0,
-        "audits_passed": len(failed_audits) == 0,
-        "failed_cards": failed_audits,
-    }
-
-    if not args.json_output:
-        console.print(f"\n[bold]Suite Summary:[/]")
-        console.print(f"  Total cards: {len(backtest_results)}")
-        console.print(f"  Normalization: {'PASS' if suite_results['summary']['normalization_passed'] else 'FAIL'}")
-        console.print(f"  Backtests: {'PASS' if suite_results['summary']['backtests_passed'] else 'FAIL'} ({len(backtest_results) - len(failed_backtests)}/{len(backtest_results)})")
-        console.print(f"  Audits: {'PASS' if suite_results['summary']['audits_passed'] else 'FAIL'} ({len(audit_results) - len(failed_audits)}/{len(audit_results)})")
-
-        if overall_success:
-            console.print(f"\n[bold green]GLOBAL VERIFICATION SUITE PASSED![/]")
-            console.print("All indicators compute correctly and match pandas_ta exactly.")
-        else:
-            console.print(f"\n[bold red]GLOBAL VERIFICATION SUITE FAILED[/]")
-            if failed_audits:
-                console.print(f"Failed cards: {', '.join(failed_audits)}")
-    else:
-        print(json.dumps(suite_results, indent=2, default=str))
-
-    return 0 if overall_success else 1
-
-
 def handle_backtest_normalize_batch(args) -> int:
     """Handle `backtest play-normalize-batch` subcommand."""
     import json
@@ -942,108 +664,12 @@ def handle_backtest_normalize_batch(args) -> int:
         return 1
 
 
-def handle_backtest_audit_toolkit(args) -> int:
-    """Handle `backtest audit-toolkit` subcommand - Gate 1 toolkit contract audit."""
-    import json
-    from src.tools.backtest_audit_tools import backtest_audit_toolkit_tool
+# =============================================================================
+# DEBUG SUBCOMMAND HANDLERS
+# =============================================================================
 
-    if not args.json_output:
-        console.print(Panel(
-            f"[bold cyan]TOOLKIT CONTRACT AUDIT (Gate 1)[/]\n"
-            f"Sample: {args.sample_bars} bars | Seed: {args.seed}\n"
-            f"Strict: {args.strict} | Fail on extras: {args.fail_on_extras}",
-            border_style="cyan"
-        ))
-
-    result = backtest_audit_toolkit_tool(
-        sample_bars=args.sample_bars,
-        seed=args.seed,
-        fail_on_extras=args.fail_on_extras,
-        strict=args.strict,
-    )
-
-    if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
-
-    if result.success:
-        console.print(f"\n[bold green]PASS {result.message}[/]")
-        if result.data:
-            console.print(f"[dim]Total indicators: {result.data.get('total_indicators', 0)}[/]")
-            console.print(f"[dim]Passed: {result.data.get('passed_indicators', 0)}[/]")
-            console.print(f"[dim]With extras dropped: {result.data.get('indicators_with_extras', 0)}[/]")
-        return 0
-    else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        if result.data and result.data.get("indicator_results"):
-            console.print("\n[bold]Failed Indicators:[/]")
-            for r in result.data["indicator_results"]:
-                if not r["passed"]:
-                    console.print(f"  [red]- {r['indicator_type']}: missing={r['missing_outputs']}, collisions={r['collisions']}, error={r['error_message']}[/]")
-        return 1
-
-
-def handle_backtest_audit_incremental_parity(args) -> int:
-    """Handle `backtest audit-incremental-parity` subcommand - G3-1 incremental vs vectorized parity."""
-    import json
-    from src.forge.audits import run_incremental_parity_audit
-
-    if not args.json_output:
-        console.print(Panel(
-            f"[bold cyan]INCREMENTAL vs VECTORIZED PARITY AUDIT (G3-1)[/]\n"
-            f"Bars: {args.bars} | Tolerance: {args.tolerance} | Seed: {args.seed}\n"
-            f"Tests 11 O(1) incremental indicators against pandas_ta",
-            border_style="cyan"
-        ))
-
-    result = run_incremental_parity_audit(
-        bars=args.bars,
-        tolerance=args.tolerance,
-        seed=args.seed,
-    )
-
-    if args.json_output:
-        print(json.dumps(result.to_dict(), indent=2, default=str))
-        return 0 if result.success else 1
-
-    result.print_summary()
-    return 0 if result.success else 1
-
-
-def handle_backtest_audit_structure_parity(args) -> int:
-    """Handle `backtest audit-structure-parity` subcommand - structure detector parity."""
-    import json
-    from src.forge.audits.audit_structure_parity import run_structure_parity_audit
-
-    if not args.json_output:
-        console.print(Panel(
-            f"[bold cyan]STRUCTURE DETECTOR PARITY AUDIT[/]\n"
-            f"Bars: {args.bars} | Tolerance: {args.tolerance} | Seed: {args.seed}\n"
-            f"Tests 7 structure detectors against vectorized references",
-            border_style="cyan"
-        ))
-
-    result = run_structure_parity_audit(
-        bars=args.bars,
-        tolerance=args.tolerance,
-        seed=args.seed,
-    )
-
-    if args.json_output:
-        print(json.dumps(result.to_dict(), indent=2, default=str))
-        return 0 if result.success else 1
-
-    result.print_summary()
-    return 0 if result.success else 1
-
-
-def handle_backtest_math_parity(args) -> int:
-    """Handle `backtest math-parity` subcommand - indicator math parity audit."""
+def handle_debug_math_parity(args) -> int:
+    """Handle `debug math-parity` subcommand - indicator math parity audit."""
     import json
     from src.tools.backtest_audit_tools import backtest_math_parity_tool
 
@@ -1097,38 +723,8 @@ def handle_backtest_math_parity(args) -> int:
         return 1
 
 
-def handle_backtest_metadata_smoke(args) -> int:
-    """Handle `backtest metadata-smoke` subcommand - Indicator Metadata v1 smoke test."""
-    from src.cli.smoke_tests import run_metadata_smoke
-
-    return run_metadata_smoke(
-        symbol=args.symbol,
-        tf=args.tf,
-        sample_bars=args.sample_bars,
-        seed=args.seed,
-        export_path=args.export_path,
-        export_format=args.export_format,
-    )
-
-
-def handle_backtest_mark_price_smoke(args) -> int:
-    """Handle `backtest mark-price-smoke` subcommand - Mark Price Engine smoke test."""
-    from src.cli.smoke_tests import run_mark_price_smoke
-
-    return run_mark_price_smoke(
-        sample_bars=args.sample_bars,
-        seed=args.seed,
-    )
-
-
-def handle_backtest_structure_smoke(args) -> int:
-    """Handle `backtest structure-smoke` subcommand - Structure smoke test."""
-    from src.cli.smoke_tests import run_structure_smoke
-    return run_structure_smoke(seed=args.seed)
-
-
-def handle_backtest_audit_snapshot_plumbing(args) -> int:
-    """Handle `backtest audit-snapshot-plumbing` subcommand - Phase 4 plumbing parity."""
+def handle_debug_snapshot_plumbing(args) -> int:
+    """Handle `debug snapshot-plumbing` subcommand - Phase 4 plumbing parity."""
     import json
     from src.tools.backtest_audit_tools import backtest_audit_snapshot_plumbing_tool
 
@@ -1186,53 +782,8 @@ def handle_backtest_audit_snapshot_plumbing(args) -> int:
         return 1
 
 
-def handle_backtest_audit_rollup(args) -> int:
-    """Handle `backtest audit-rollup` subcommand - 1m rollup parity audit."""
-    import json
-    from src.tools.backtest_audit_tools import backtest_audit_rollup_parity_tool
-
-    if not args.json_output:
-        console.print(Panel(
-            f"[bold cyan]ROLLUP PARITY AUDIT (1m Price Feed)[/]\n"
-            f"Intervals: {args.intervals} | Quotes/interval: {args.quotes}\n"
-            f"Seed: {args.seed} | Tolerance: {args.tolerance:.0e}",
-            border_style="cyan"
-        ))
-
-    result = backtest_audit_rollup_parity_tool(
-        n_intervals=args.intervals,
-        quotes_per_interval=args.quotes,
-        seed=args.seed,
-        tolerance=args.tolerance,
-    )
-
-    if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
-
-    if result.success:
-        console.print(f"\nPASS {result.message}")
-        if result.data:
-            console.print(f"  Total intervals: {result.data.get('total_intervals', 0)}")
-            console.print(f"  Total comparisons: {result.data.get('total_comparisons', 0)}")
-            console.print(f"  Bucket tests: {'PASS' if result.data.get('bucket_tests_passed') else 'FAIL'}")
-            console.print(f"  Accessor tests: {'PASS' if result.data.get('accessor_tests_passed') else 'FAIL'}")
-        return 0
-    else:
-        console.print(f"\nFAIL {result.error}")
-        if result.data:
-            console.print(f"  Failed intervals: {result.data.get('failed_intervals', 0)}")
-            console.print(f"  Failed comparisons: {result.data.get('failed_comparisons', 0)}")
-        return 1
-
-
-def handle_backtest_verify_determinism(args) -> int:
-    """Handle `backtest verify-determinism` subcommand - Phase 3 hash-based verification."""
+def handle_debug_determinism(args) -> int:
+    """Handle `debug determinism` subcommand - Phase 3 hash-based verification."""
     import json
     from pathlib import Path
     from src.backtest.artifacts.determinism import compare_runs, verify_determinism_rerun
@@ -1260,7 +811,7 @@ def handle_backtest_verify_determinism(args) -> int:
 
         result = verify_determinism_rerun(
             run_path=run_path,
-            fix_gaps=args.fix_gaps,
+            sync=args.sync,
         )
     else:
         if not args.run_a or not args.run_b:
@@ -1292,253 +843,23 @@ def handle_backtest_verify_determinism(args) -> int:
     return 0 if result.passed else 1
 
 
-def handle_backtest_metrics_audit(args) -> int:
-    """
-    Handle `backtest metrics-audit` subcommand.
-
-    Runs embedded test scenarios to validate financial metrics calculations:
-    - Drawdown: max_dd_abs and max_dd_pct tracked independently
-    - Calmar: uses CAGR, not arithmetic return
-    - TF: unknown timeframes raise errors in strict mode
-    - Edge cases: proper handling of zero/inf scenarios
-
-    This is CLI validation - no pytest files per project rules.
-    """
+def handle_debug_metrics(args) -> int:
+    """Handle `debug metrics` subcommand - standalone metrics audit."""
     import json
-    from src.backtest.metrics import (
-        _compute_drawdown_metrics,
-        _compute_cagr,
-        _compute_calmar,
-        get_bars_per_year,
-        normalize_tf_string,
-    )
-    from src.backtest.types import EquityPoint
-    from datetime import datetime
+    from src.cli.validate import _gate_metrics_audit
 
-    results = []
-    all_passed = True
+    result = _gate_metrics_audit()
 
-    if not args.json_output:
-        console.print(Panel(
-            "[bold cyan]METRICS AUDIT[/]\n"
-            "Validating financial metrics calculations",
-            title="Backtest Metrics",
-            border_style="cyan"
-        ))
+    if getattr(args, "json_output", False):
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0 if result.passed else 1
 
-    # TEST 1: Drawdown Independent Maxima
-    test_name = "Drawdown Independent Maxima"
-    try:
-        equity_curve = [
-            EquityPoint(timestamp=datetime(2024, 1, 1, 0, 0), equity=10.0),
-            EquityPoint(timestamp=datetime(2024, 1, 1, 1, 0), equity=1.0),
-            EquityPoint(timestamp=datetime(2024, 1, 1, 2, 0), equity=1000.0),
-            EquityPoint(timestamp=datetime(2024, 1, 1, 3, 0), equity=900.0),
-        ]
-
-        max_dd_abs, max_dd_pct, _ = _compute_drawdown_metrics(equity_curve)
-
-        abs_correct = abs(max_dd_abs - 100.0) < 0.01
-        pct_correct = abs(max_dd_pct - 0.90) < 0.01
-
-        passed = abs_correct and pct_correct
-        detail = f"max_dd_abs={max_dd_abs:.2f} (expected 100), max_dd_pct={max_dd_pct:.4f} (expected 0.90)"
-
-        results.append({"test": test_name, "passed": passed, "detail": detail})
-        if not passed:
-            all_passed = False
-
-        if not args.json_output:
-            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
-            console.print(f"  {status} {test_name}")
-            console.print(f"       {detail}")
-
-    except Exception as e:
-        results.append({"test": test_name, "passed": False, "detail": str(e)})
-        all_passed = False
-        if not args.json_output:
-            console.print(f"  [red]FAIL[/] {test_name}: {e}")
-
-    # TEST 2: CAGR Calculation
-    test_name = "CAGR Geometric Formula"
-    try:
-        cagr = _compute_cagr(
-            initial_equity=10000.0,
-            final_equity=12100.0,
-            total_bars=365,
-            bars_per_year=365,
-        )
-
-        expected_cagr = 0.21
-        passed = abs(cagr - expected_cagr) < 0.01
-        detail = f"CAGR={cagr:.4f} (expected {expected_cagr})"
-
-        results.append({"test": test_name, "passed": passed, "detail": detail})
-        if not passed:
-            all_passed = False
-
-        if not args.json_output:
-            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
-            console.print(f"  {status} {test_name}")
-            console.print(f"       {detail}")
-
-    except Exception as e:
-        results.append({"test": test_name, "passed": False, "detail": str(e)})
-        all_passed = False
-        if not args.json_output:
-            console.print(f"  [red]FAIL[/] {test_name}: {e}")
-
-    # TEST 3: Calmar Uses CAGR
-    test_name = "Calmar Uses CAGR"
-    try:
-        calmar = _compute_calmar(
-            initial_equity=10000.0,
-            final_equity=12100.0,
-            max_dd_pct_decimal=0.10,
-            total_bars=365,
-            tf="D",
-            strict_tf=True,
-        )
-
-        expected_calmar = 2.1
-        passed = abs(calmar - expected_calmar) < 0.1
-        detail = f"Calmar={calmar:.2f} (expected ~{expected_calmar})"
-
-        results.append({"test": test_name, "passed": passed, "detail": detail})
-        if not passed:
-            all_passed = False
-
-        if not args.json_output:
-            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
-            console.print(f"  {status} {test_name}")
-            console.print(f"       {detail}")
-
-    except Exception as e:
-        results.append({"test": test_name, "passed": False, "detail": str(e)})
-        all_passed = False
-        if not args.json_output:
-            console.print(f"  [red]FAIL[/] {test_name}: {e}")
-
-    # TEST 4: TF Strict Mode
-    test_name = "TF Strict Mode (Unknown TF Raises)"
-    try:
-        try:
-            _ = get_bars_per_year("unknown_tf", strict=True)
-            passed = False
-            detail = "Expected ValueError for unknown TF, but none raised"
-        except ValueError as e:
-            passed = True
-            detail = f"Correctly raised ValueError: {str(e)[:60]}..."
-
-        results.append({"test": test_name, "passed": passed, "detail": detail})
-        if not passed:
-            all_passed = False
-
-        if not args.json_output:
-            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
-            console.print(f"  {status} {test_name}")
-            console.print(f"       {detail}")
-
-    except Exception as e:
-        results.append({"test": test_name, "passed": False, "detail": str(e)})
-        all_passed = False
-        if not args.json_output:
-            console.print(f"  [red]FAIL[/] {test_name}: {e}")
-
-    # TEST 5: TF Normalization
-    test_name = "TF Normalization (Bybit formats)"
-    try:
-        test_cases = [
-            ("60", "1h"),
-            ("240", "4h"),
-            ("D", "D"),
-            ("1h", "1h"),
-        ]
-
-        all_correct = True
-        details = []
-        for input_tf, expected in test_cases:
-            normalized = normalize_tf_string(input_tf)
-            if normalized != expected:
-                all_correct = False
-                details.append(f"{input_tf}->{normalized} (expected {expected})")
-            else:
-                details.append(f"{input_tf}->{normalized} OK")
-
-        try:
-            normalize_tf_string("1d")
-            all_correct = False
-            details.append("1d should raise ValueError")
-        except ValueError:
-            details.append("1d rejected OK")
-
-        passed = all_correct
-        detail = ", ".join(details)
-
-        results.append({"test": test_name, "passed": passed, "detail": detail})
-        if not passed:
-            all_passed = False
-
-        if not args.json_output:
-            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
-            console.print(f"  {status} {test_name}")
-            console.print(f"       {detail}")
-
-    except Exception as e:
-        results.append({"test": test_name, "passed": False, "detail": str(e)})
-        all_passed = False
-        if not args.json_output:
-            console.print(f"  [red]FAIL[/] {test_name}: {e}")
-
-    # TEST 6: Edge Case - Zero Max DD (Calmar capped)
-    test_name = "Edge Case: Zero Max DD (Calmar capped)"
-    try:
-        calmar = _compute_calmar(
-            initial_equity=10000.0,
-            final_equity=12100.0,
-            max_dd_pct_decimal=0.0,
-            total_bars=365,
-            tf="D",
-            strict_tf=True,
-        )
-
-        passed = calmar == 100.0
-        detail = f"Calmar={calmar} (expected 100.0 when no DD)"
-
-        results.append({"test": test_name, "passed": passed, "detail": detail})
-        if not passed:
-            all_passed = False
-
-        if not args.json_output:
-            status = "[green]PASS[/]" if passed else "[red]FAIL[/]"
-            console.print(f"  {status} {test_name}")
-            console.print(f"       {detail}")
-
-    except Exception as e:
-        results.append({"test": test_name, "passed": False, "detail": str(e)})
-        all_passed = False
-        if not args.json_output:
-            console.print(f"  [red]FAIL[/] {test_name}: {e}")
-
-    # SUMMARY
-    passed_count = sum(1 for r in results if r["passed"])
-    total_count = len(results)
-
-    if args.json_output:
-        output = {
-            "passed": all_passed,
-            "summary": f"{passed_count}/{total_count} tests passed",
-            "tests": results,
-        }
-        print(json.dumps(output, indent=2))
-    else:
-        console.print(f"\n[bold]Summary: {passed_count}/{total_count} tests passed[/]")
-        if all_passed:
-            console.print("[bold green]OK All metrics audit tests PASSED[/]")
-        else:
-            console.print("[bold red]FAIL Some metrics audit tests FAILED[/]")
-
-    return 0 if all_passed else 1
+    status = "[bold green]PASS[/]" if result.passed else "[bold red]FAIL[/]"
+    console.print(f"\n{status} Metrics Audit: {result.checked} scenarios")
+    if result.failures:
+        for f in result.failures:
+            console.print(f"  [red]{f}[/]")
+    return 0 if result.passed else 1
 
 
 # =============================================================================
@@ -1625,25 +946,25 @@ def handle_play_run(args) -> int:
 
     from src.engine import PlayEngineFactory, EngineManager
 
-    try:
-        # B2: Forward confirm_live to factory
-        engine = PlayEngineFactory.create(
-            play, mode=mode, confirm_live=getattr(args, "confirm", False),
-        )
-    except Exception as e:
-        from src.utils.debug import is_debug_enabled
-        if is_debug_enabled():
-            import traceback
-            console.print(f"[red]Failed to create engine:[/]")
-            console.print(f"[red]{traceback.format_exc()}[/]")
-        else:
-            console.print(f"[red]Failed to create engine: {e}[/]")
-        return 1
-
     if mode == "shadow":
+        # Shadow mode: factory creates engine directly (no manager)
+        try:
+            engine = PlayEngineFactory.create(
+                play, mode=mode, confirm_live=False,
+            )
+        except Exception as e:
+            from src.utils.debug import is_debug_enabled
+            if is_debug_enabled():
+                import traceback
+                console.print(f"[red]Failed to create engine:[/]")
+                console.print(f"[red]{traceback.format_exc()}[/]")
+            else:
+                console.print(f"[red]Failed to create engine: {e}[/]")
+            return 1
         return _run_play_shadow(engine, play, args)
     elif mode in ("demo", "live"):
-        # B7: Route through EngineManager for instance limits
+        # C5: Manager creates the engine -- do NOT create one here via factory
+        # (the old code created a factory engine that was thrown away)
         return _run_play_live(play, args, manager=EngineManager.get_instance())
 
     return 0
@@ -1719,103 +1040,144 @@ def _run_play_shadow(engine, play, args) -> int:
 
 
 def _run_play_live(play, args, manager=None) -> int:
-    """Run Play in live or demo mode via EngineManager."""
+    """Run Play in live or demo mode via EngineManager.
+
+    Launches the engine in a background thread and runs the Rich Live
+    dashboard in the main thread for flicker-free rendering.
+    """
     import asyncio
+    import logging
     import signal
+    import threading
     from src.engine import EngineManager
+    from src.cli.live_dashboard import (
+        DashboardLogHandler,
+        DashboardState,
+        populate_play_meta,
+        run_dashboard,
+    )
 
     mode = args.mode
     if manager is None:
         manager = EngineManager.get_instance()
 
-    if mode == "live":
-        console.print(Panel(
-            "[bold red]LIVE TRADING -- REAL MONEY[/]\n"
-            f"[red]Play: {play.name} | Symbol: {play.symbol_universe[0]}[/]\n"
-            "[dim]Press Ctrl+C to stop[/]",
-            border_style="red",
-        ))
-    else:
-        console.print(Panel(
-            "[bold blue]DEMO TRADING -- PAPER MONEY[/]\n"
-            f"[blue]Play: {play.name} | Symbol: {play.symbol_universe[0]}[/]\n"
-            "[dim]Press Ctrl+C to stop[/]",
-            border_style="blue",
-        ))
+    symbol = play.symbol_universe[0] if play.symbol_universe else "N/A"
 
+    # --- Dashboard state (shared between engine thread + display thread) ---
+    dash_state = DashboardState(
+        play_name=play.name,
+        description=play.description.split("\n")[0].strip() if play.description else "",
+        symbol=symbol,
+        mode=mode.upper(),
+        exec_tf=play.exec_tf,
+        leverage=play.account.max_leverage,
+    )
+
+    # --- Populate static play metadata ---
+    populate_play_meta(dash_state, play)
+
+    # --- Log handler: intercept logger output for the dashboard ---
+    dash_handler = DashboardLogHandler(max_lines=50, max_actions=20)
+    dash_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
+
+    # Attach to the main trading logger and suppress its console handler
+    trade_logger = logging.getLogger("trade")
+    original_handlers = list(trade_logger.handlers)
+    console_handlers = [h for h in trade_logger.handlers if isinstance(h, logging.StreamHandler)
+                        and not isinstance(h, logging.FileHandler)]
+    for h in console_handlers:
+        trade_logger.removeHandler(h)
+    trade_logger.addHandler(dash_handler)
+
+    stop_event = threading.Event()
     instance_id: str | None = None
+    engine_error: Exception | None = None
+    captured_info: object = None
+    captured_runner_stats: dict | None = None
 
-    async def _run_live():
-        nonlocal instance_id
-        instance_id = await manager.start(play, mode=mode)
-        console.print(f"[dim]Instance: {instance_id}[/]")
+    def _engine_thread():
+        """Run the async engine in a background thread.
 
-        # Wait for the instance to complete
-        instance = manager._instances.get(instance_id)
-        if instance and instance.task:
-            await instance.task
-
-    # B1: Single event loop for start + wait
-    # B6: Register signal handlers for graceful shutdown
-    loop: asyncio.AbstractEventLoop | None = None
-    try:
+        Watches stop_event and performs graceful shutdown on its OWN
+        event loop (avoids 'Future attached to a different loop').
+        """
+        nonlocal instance_id, engine_error, captured_info, captured_runner_stats
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        try:
+            async def _run():
+                nonlocal instance_id, captured_info, captured_runner_stats
+                instance_id = await manager.start(play, mode=mode)
+                instance = manager._instances.get(instance_id)
+                if not instance or not instance.task:
+                    return
 
-        # B6: Wire SIGINT/SIGTERM for graceful stop
-        def _signal_handler():
-            console.print(f"\n[yellow]{mode.upper()} mode: shutdown signal received[/]")
-            if instance_id:
-                loop.create_task(manager.stop(instance_id))
+                # Wait for engine task OR stop signal from dashboard
+                while not instance.task.done():
+                    if stop_event.is_set():
+                        captured_info = manager.get(instance_id)
+                        captured_runner_stats = manager.get_runner_stats(instance_id)
+                        try:
+                            await asyncio.wait_for(
+                                manager.stop(instance_id), timeout=15.0
+                            )
+                        except (asyncio.TimeoutError, Exception):
+                            pass
+                        return
+                    await asyncio.sleep(0.25)
 
-        import sys
-        if sys.platform == "win32":
-            # Windows: use signal.signal() instead of loop.add_signal_handler()
-            signal.signal(signal.SIGINT, lambda s, f: _signal_handler())
-        else:
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                loop.add_signal_handler(sig, _signal_handler)
-
-        loop.run_until_complete(_run_live())
-
-    except KeyboardInterrupt:
-        console.print(f"\n[yellow]{mode.upper()} mode stopped by user[/]")
-        if instance_id and loop is not None:
-            loop.run_until_complete(manager.stop(instance_id))
-    except Exception as e:
-        from src.utils.debug import is_debug_enabled
-        if is_debug_enabled():
-            import traceback
-            console.print(f"\n[red]{mode.upper()} mode error:[/]")
-            console.print(f"[red]{traceback.format_exc()}[/]")
-        else:
-            console.print(f"\n[red]{mode.upper()} mode error: {e}[/]")
-        if instance_id and loop is not None:
-            try:
-                loop.run_until_complete(manager.stop(instance_id))
-            except Exception:
-                pass
-        return 1
-    finally:
-        if loop is not None:
+            loop.run_until_complete(_run())
+        except Exception as e:
+            engine_error = e
+        finally:
             loop.close()
+            stop_event.set()
 
-    # Print stats from the instance if available
-    info = manager.get(instance_id) if instance_id else None
-    if info:
-        console.print(f"\n[green]{mode.upper()} run complete:[/]")
-        console.print(f"  Bars: {info.bars_processed}")
-        console.print(f"  Signals: {info.signals_generated}")
+    # --- Start engine in background thread ---
+    engine_thread = threading.Thread(target=_engine_thread, daemon=True)
+    engine_thread.start()
 
-        # Show errors in debug mode
+    # --- Run dashboard in main thread (blocks until stop_event) ---
+    try:
+        run_dashboard(
+            manager=manager,
+            state=dash_state,
+            handler=dash_handler,
+            stop_event=stop_event,
+            refresh_hz=4.0,
+        )
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop_event.set()  # Signal engine thread to shut down
+
+    # Wait for engine thread to finish (it handles its own stop on its loop)
+    engine_thread.join(timeout=20.0)
+
+    # --- Restore logger handlers ---
+    trade_logger.removeHandler(dash_handler)
+    for h in console_handlers:
+        trade_logger.addHandler(h)
+
+    # --- Print final summary ---
+    if engine_error:
         from src.utils.debug import is_debug_enabled
         if is_debug_enabled():
-            assert instance_id is not None
-            stats = manager.get_runner_stats(instance_id)
-            if stats and stats.get("errors"):
-                console.print(f"\n[yellow]Errors ({len(stats['errors'])}):[/]")
-                for err in stats["errors"]:
-                    console.print(f"  [red]{err}[/]")
+            import traceback as tb
+            console.print(f"\n[red]{mode.upper()} mode error:[/]")
+            console.print(f"[red]{tb.format_exception(engine_error)}[/]")
+        else:
+            console.print(f"\n[red]{mode.upper()} mode error: {engine_error}[/]")
+        return 1
+
+    if captured_info:
+        console.print(f"\n[green]{mode.upper()} run complete:[/]")
+        console.print(f"  Bars: {captured_info.bars_processed}")
+        console.print(f"  Signals: {captured_info.signals_generated}")
+        if captured_runner_stats:
+            fills = captured_runner_stats.get("orders_filled", 0)
+            if fills:
+                console.print(f"  Fills: {fills}")
     else:
         console.print(f"\n[green]{mode.upper()} run complete.[/]")
 
@@ -2232,166 +1594,6 @@ def handle_play_resume(args) -> int:
 
     console.print(f"[red]No running instance found matching '{play_id}'.[/]")
     return 1
-
-
-# =============================================================================
-# TEST SUBCOMMAND HANDLERS
-# =============================================================================
-
-def handle_test_indicators(args) -> int:
-    """Handle `test indicators` subcommand - run indicator validation suite."""
-    import json
-
-    tier = getattr(args, "tier", None)
-    symbol = getattr(args, "symbol", "BTCUSDT")
-    condition = getattr(args, "condition", None)
-    fix_gaps = getattr(args, "fix_gaps", True)
-
-    if not args.json_output:
-        title = f"INDICATOR TEST SUITE"
-        if tier:
-            title += f" ({tier})"
-        console.print(Panel(
-            f"[bold cyan]{title}[/]\n"
-            f"Symbol: {symbol} | Fix gaps: {fix_gaps}\n"
-            f"Condition: {condition or 'all'}",
-            border_style="cyan"
-        ))
-
-    from src.testing_agent.runner import run_indicator_suite, run_tier_tests
-    from src.testing_agent.reporting import print_suite_report, print_tier_report
-
-    if tier:
-        result = run_tier_tests(tier=tier, fix_gaps=fix_gaps, symbol=symbol, condition=condition)
-        if args.json_output:
-            output = {
-                "status": "pass" if result.success else "fail",
-                "tier": tier,
-                "plays_passed": result.plays_passed,
-                "plays_failed": result.plays_failed,
-                "indicators": result.indicators_tested,
-            }
-            print(json.dumps(output, indent=2))
-        else:
-            print_tier_report(result, tier)
-    else:
-        result = run_indicator_suite(fix_gaps=fix_gaps, symbol=symbol)
-        if args.json_output:
-            output = {
-                "status": "pass" if result.success else "fail",
-                "tiers_passed": result.tiers_passed,
-                "tiers_failed": result.tiers_failed,
-                "plays_passed": result.plays_passed,
-                "plays_failed": result.plays_failed,
-                "indicators_covered": result.indicators_covered,
-                "duration_seconds": result.duration_seconds,
-            }
-            print(json.dumps(output, indent=2))
-        else:
-            print_suite_report(result)
-
-    return 0 if result.success else 1
-
-
-def handle_test_parity(args) -> int:
-    """Handle `test parity` subcommand - incremental vs vectorized parity check."""
-    import json
-
-    bars = getattr(args, "bars", 2000)
-    tolerance = getattr(args, "tolerance", 1e-6)
-    seed = getattr(args, "seed", 42)
-
-    if not args.json_output:
-        console.print(Panel(
-            f"[bold cyan]INCREMENTAL vs VECTORIZED PARITY[/]\n"
-            f"Bars: {bars} | Tolerance: {tolerance} | Seed: {seed}",
-            border_style="cyan"
-        ))
-
-    from src.testing_agent.runner import run_parity_check
-    from src.testing_agent.reporting import print_parity_report
-
-    result = run_parity_check(bars=bars, tolerance=tolerance, seed=seed)
-
-    if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "indicators_passed": result.indicators_passed,
-            "indicators_failed": result.indicators_failed,
-            "max_diff": result.max_diff,
-            "mean_diff": result.mean_diff,
-        }
-        print(json.dumps(output, indent=2))
-    else:
-        print_parity_report(result)
-
-    return 0 if result.success else 1
-
-
-def handle_test_live_parity(args) -> int:
-    """Handle `test live-parity` subcommand - live vs backtest comparison."""
-    import json
-
-    tier = getattr(args, "tier", "tier19")
-    fix_gaps = getattr(args, "fix_gaps", True)
-
-    if not args.json_output:
-        console.print(Panel(
-            f"[bold cyan]LIVE vs BACKTEST PARITY[/]\n"
-            f"Tier: {tier} | Fix gaps: {fix_gaps}",
-            border_style="cyan"
-        ))
-
-    from src.testing_agent.runner import run_live_parity
-    from src.testing_agent.reporting import print_live_parity_report
-
-    result = run_live_parity(tier=tier, fix_gaps=fix_gaps)
-
-    if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "tier": tier,
-            "plays_passed": result.plays_passed,
-            "plays_failed": result.plays_failed,
-        }
-        print(json.dumps(output, indent=2))
-    else:
-        print_live_parity_report(result, tier)
-
-    return 0 if result.success else 1
-
-
-def handle_test_agent(args) -> int:
-    """Handle `test agent` subcommand - run full testing agent."""
-    import json
-
-    mode = getattr(args, "mode", "full")
-    fix_gaps = getattr(args, "fix_gaps", True)
-
-    if not args.json_output:
-        mode_desc = {
-            "full": "Full Suite (BTC + L2 alts)",
-            "btc": "BTC Baseline",
-            "l2": "L2 Alts (ETH, SOL, LTC, AVAX)",
-        }.get(mode, mode)
-
-        console.print(Panel(
-            f"[bold cyan]TESTING AGENT[/]\n"
-            f"Mode: {mode_desc} | Fix gaps: {fix_gaps}",
-            border_style="cyan"
-        ))
-
-    from src.testing_agent.runner import run_agent
-    from src.testing_agent.reporting import print_agent_report, format_agent_report_json
-
-    result = run_agent(mode=cast(Literal["full", "btc", "l2"], mode), fix_gaps=fix_gaps)
-
-    if args.json_output:
-        print(json.dumps(format_agent_report_json(result), indent=2))
-    else:
-        print_agent_report(result)
-
-    return 0 if result.success else 1
 
 
 # =============================================================================

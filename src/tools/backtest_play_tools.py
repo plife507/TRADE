@@ -119,7 +119,7 @@ def backtest_preflight_play_tool(
     start: datetime | None = None,
     end: datetime | None = None,
     plays_dir: Path | None = None,
-    fix_gaps: bool = False,
+    sync: bool = False,
 ) -> ToolResult:
     """
     Run preflight check for an Play backtest using production preflight gate.
@@ -132,7 +132,7 @@ def backtest_preflight_play_tool(
         start: Window start (required)
         end: Window end (default: now)
         plays_dir: Override Play directory
-        fix_gaps: If True, auto-fetch and fix missing data (uses data tools)
+        sync: If True, auto-fetch and fix missing data (uses data tools)
 
     Returns:
         ToolResult with PreflightReport.to_dict() in data
@@ -237,7 +237,7 @@ def backtest_preflight_play_tool(
 
         # Run production preflight gate with optional auto-sync
         auto_sync_config = None
-        if fix_gaps:
+        if sync:
             auto_sync_config = AutoSyncConfig(
                 enabled=True,
                 max_attempts=2,
@@ -250,7 +250,7 @@ def backtest_preflight_play_tool(
             data_loader=data_loader,
             window_start=start,
             window_end=end,
-            auto_sync_missing=fix_gaps,
+            auto_sync_missing=sync,
             auto_sync_config=auto_sync_config,
         )
 
@@ -514,7 +514,7 @@ def backtest_run_play_tool(
     initial_equity_override: float | None = None,
     max_leverage_override: float | None = None,
     emit_snapshots: bool = False,
-    fix_gaps: bool = True,
+    sync: bool = True,
     validate_artifacts_after: bool = True,
     skip_preflight: bool = False,
     use_synthetic: bool = False,
@@ -540,7 +540,7 @@ def backtest_run_play_tool(
         plays_dir: Override Play directory
         initial_equity_override: Override starting equity (defaults to Play.account.starting_equity_usdt)
         max_leverage_override: Override max leverage (defaults to Play.account.max_leverage)
-        fix_gaps: If True (default), auto-fetch and fix missing data during preflight
+        sync: If True (default), auto-fetch and fix missing data during preflight
         validate_artifacts_after: If True (default), validate artifacts after run (HARD FAIL if invalid)
         skip_preflight: If True, skip preflight checks. Use for parallel execution where
                        data was already synced by the parent process.
@@ -619,14 +619,14 @@ def backtest_run_play_tool(
             logger.warning("[WARN] Use only for testing. Production runs MUST use preflight gate.")
             preflight_data = {}
         else:
-            # Run preflight first (with auto-sync if fix_gaps=True)
+            # Run preflight first (with auto-sync if sync=True)
             preflight_result = backtest_preflight_play_tool(
                 play_id=play_id,
                 env=env,
                 start=start,
                 end=end,
                 plays_dir=plays_dir,
-                fix_gaps=fix_gaps,
+                sync=sync,
             )
 
             if not preflight_result.success:
@@ -983,7 +983,7 @@ def backtest_data_fix_tool(
     end: datetime | None = None,
     max_lookback_days: int = 7,
     sync_to_now: bool = False,
-    fill_gaps: bool = True,
+    sync: bool = True,
     heal: bool = False,
     plays_dir: Path | None = None,
 ) -> ToolResult:
@@ -999,7 +999,7 @@ def backtest_data_fix_tool(
         end: Sync to this date (required for bounded mode)
         max_lookback_days: Max lookback days (default 7). If (end - start) > this, clamp start.
         sync_to_now: If True, sync data to current time
-        fill_gaps: If True, fill gaps after sync
+        sync: If True, sync gaps after range sync
         heal: If True, run full heal after sync
         plays_dir: Override Play directory
 
@@ -1012,8 +1012,8 @@ def backtest_data_fix_tool(
     """
     from .data_tools import (
         sync_range_tool,
-        sync_to_now_and_fill_gaps_tool,
-        fill_gaps_tool,
+        sync_forward_tool,
+        sync_data_tool,
         heal_data_tool,
     )
 
@@ -1097,30 +1097,30 @@ def backtest_data_fix_tool(
             # Count as progress line
             progress_lines_count += 1
 
-        # Sync to now + fill gaps
+        # Sync to now + sync gaps
         if sync_to_now:
-            result = sync_to_now_and_fill_gaps_tool(
+            result = sync_forward_tool(
                 symbols=[symbol],
                 timeframes=tfs,
                 env=env,
             )
             operations.append({
-                "name": "sync_to_now_and_fill_gaps",
+                "name": "sync_forward",
                 "success": result.success,
                 "message": result.message if result.success else result.error,
             })
             progress_lines_count += 1
 
-        # Fill gaps
-        if fill_gaps and not sync_to_now:
+        # Sync gaps
+        if sync and not sync_to_now:
             for tf in tfs:
-                result = fill_gaps_tool(
+                result = sync_data_tool(
                     symbol=symbol,
                     timeframe=tf,
                     env=env,
                 )
                 operations.append({
-                    "name": "fill_gaps",
+                    "name": "sync_data",
                     "tf": tf,
                     "success": result.success,
                     "message": result.message if result.success else result.error,

@@ -15,10 +15,10 @@ from ...tools import (
     list_cached_symbols_tool,
     get_symbol_status_tool,
     get_symbol_timeframe_ranges_tool,
-    fill_gaps_tool,
+    sync_data_tool,
     heal_data_tool,
     sync_to_now_tool,
-    sync_to_now_and_fill_gaps_tool,
+    sync_to_now_and_sync_data_tool,
     cleanup_empty_symbols_tool,
     vacuum_database_tool,
     delete_all_data_tool,
@@ -103,11 +103,11 @@ def run_data_builder_smoke(smoke_config, app, config) -> int:
             failures += 1
 
         console.print(f"\n  [dim]Testing gap fill functionality...[/]")
-        result = fill_gaps_tool(symbol=test_symbol, timeframe="1h")
+        result = sync_data_tool(symbol=test_symbol, timeframe="1h")
         if result.success:
-            console.print(f"  [green]OK[/] Gap fill: {result.message}")
+            console.print(f"  [green]OK[/] Sync data: {result.message}")
         else:
-            console.print(f"  [red]FAIL[/] Gap fill failed: {result.error}")
+            console.print(f"  [red]FAIL[/] Sync data failed: {result.error}")
             failures += 1
 
         console.print(f"\n  [dim]Testing data heal functionality...[/]")
@@ -226,7 +226,7 @@ def run_extensive_data_smoke(env: str = "live") -> int:
     1. Deletes ALL existing data (clean slate)
     2. Builds sparse history with intentional gaps
     3. Verifies gaps exist in the data
-    4. Fills gaps using fill_gaps_tool
+    4. Fills gaps using sync_data_tool
     5. Syncs data to current using sync_to_now_tool
     6. Queries all data types (OHLCV, funding, OI)
     7. Runs maintenance tools
@@ -407,9 +407,9 @@ def run_extensive_data_smoke(env: str = "live") -> int:
     console.print(f"[bold yellow]PHASE 4: FILL GAPS[/]")
     console.print(f"[bold yellow]{'='*60}[/]")
 
-    console.print(f"\n[bold cyan]4.1: Fill Gaps for All Symbols ({env_label})[/]")
+    console.print(f"\n[bold cyan]4.1: Sync Data for All Symbols ({env_label})[/]")
     for sym in SYMBOLS:
-        result = fill_gaps_tool(symbol=sym, env=env)
+        result = sync_data_tool(symbol=sym, env=env)
         if result.success:
             console.print(f"  [green]OK[/] {sym}: {result.message}")
         else:
@@ -450,8 +450,8 @@ def run_extensive_data_smoke(env: str = "live") -> int:
         console.print(f"  [red]FAIL[/] {result.error}")
         failures += 1
 
-    console.print(f"\n[bold cyan]5.2: Sync + Fill Gaps (Combined) ({env_label})[/]")
-    result = sync_to_now_and_fill_gaps_tool(symbols=SYMBOLS, timeframes=TIMEFRAMES, env=env)
+    console.print(f"\n[bold cyan]5.2: Sync Forward (Combined) ({env_label})[/]")
+    result = sync_to_now_and_sync_data_tool(symbols=SYMBOLS, timeframes=TIMEFRAMES, env=env)
     if result.success:
         console.print(f"  [green]OK[/] {result.message}")
     else:

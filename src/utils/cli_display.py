@@ -381,11 +381,11 @@ ACTION_REGISTRY: dict[str, ActionDescriptor] = {
         running_template="Syncing {symbols} forward to now (new candles only)...",
         complete_template="Forward sync complete"
     ),
-    "data.sync_to_now_fill_gaps": ActionDescriptor(
+    "data.sync_forward": ActionDescriptor(
         emoji="🔄🔧",
-        label="Sync + Fill Gaps",
+        label="Sync Forward",
         running_template="Syncing {symbols} forward and filling gaps...",
-        complete_template="Sync and gap fill complete"
+        complete_template="Sync forward complete"
     ),
     "data.sync_ohlcv_period": ActionDescriptor(
         emoji="📊",
@@ -411,11 +411,11 @@ ACTION_REGISTRY: dict[str, ActionDescriptor] = {
         running_template="Syncing open interest for {symbols} ({period}, {interval})...",
         complete_template="Open interest sync complete"
     ),
-    "data.fill_gaps": ActionDescriptor(
+    "data.sync_data": ActionDescriptor(
         emoji="🔧",
-        label="Fill Gaps",
-        running_template="Detecting and filling gaps in data{for_symbol}...",
-        complete_template="Gap fill complete"
+        label="Sync Data",
+        running_template="Detecting and syncing gaps in data{for_symbol}...",
+        complete_template="Data sync complete"
     ),
     "data.heal": ActionDescriptor(
         emoji="🩹",
@@ -671,12 +671,12 @@ def format_data_result(action_key: str, result_data: Any, message: str = "") -> 
         "data.timeframe_ranges": _format_timeframe_ranges_result,
         "data.build_full_history": _format_build_history_result,
         "data.sync_to_now": _format_sync_forward_result,
-        "data.sync_to_now_fill_gaps": _format_sync_fill_result,
+        "data.sync_forward": _format_sync_fill_result,
         "data.sync_ohlcv_period": _format_sync_result,
         "data.sync_ohlcv_range": _format_sync_result,
         "data.sync_funding": _format_sync_result,
         "data.sync_open_interest": _format_sync_result,
-        "data.fill_gaps": _format_fill_gaps_result,
+        "data.sync_data": _format_sync_data_result,
         "data.heal": _format_heal_result,
         "data.delete_symbol": _format_delete_result,
         "data.cleanup_empty": _format_cleanup_result,
@@ -1065,7 +1065,7 @@ def _format_sync_result(data: Any, message: str) -> dict[str, Any]:
     }
 
 
-def _format_fill_gaps_result(data: Any, message: str) -> dict[str, Any]:
+def _format_sync_data_result(data: Any, message: str) -> dict[str, Any]:
     """Format gap fill results."""
     if not data or not isinstance(data, dict):
         return None

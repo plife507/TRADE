@@ -24,6 +24,7 @@ from math import ceil
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, cast
 import json
+import sys
 import pandas as pd
 import numpy as np
 
@@ -75,8 +76,7 @@ class AutoSyncConfig:
 
     # Tool hooks for dependency injection (used in testing)
     sync_range_tool: Callable | None = None
-    fill_gaps_tool: Callable | None = None
-    heal_data_tool: Callable | None = None
+    sync_data_tool: Callable | None = None
 
 
 @dataclass
@@ -298,6 +298,7 @@ class PreflightReport:
                 for warn in result.warnings:
                     print(f"      [WARN] {warn}")
         print()
+        sys.stdout.flush()
 
 
 def parse_tf_to_minutes(tf: str) -> int:
@@ -523,18 +524,18 @@ def validate_tf_data(
     return result
 
 
-def _get_default_tools() -> tuple[Callable, Callable, Callable]:
+def _get_default_tools() -> tuple[Callable, Callable]:
     """
     Get the default data tools for auto-sync.
-    
+
     Returns:
-        Tuple of (sync_range_tool, fill_gaps_tool, heal_data_tool)
-        
+        Tuple of (sync_range_tool, sync_data_tool)
+
     These are imported lazily to avoid circular imports and allow
     dependency injection in tests.
     """
-    from src.tools.data_tools import sync_range_tool, fill_gaps_tool, heal_data_tool
-    return sync_range_tool, fill_gaps_tool, heal_data_tool
+    from src.tools.data_tools import sync_range_tool, sync_data_tool
+    return sync_range_tool, sync_data_tool
 
 
 def _run_auto_sync(
@@ -543,46 +544,41 @@ def _run_auto_sync(
 ) -> AutoSyncResult:
     """
     Run auto-sync for failed TF pairs via data tools.
-    
+
     TOOL DISCIPLINE:
-    - All data fixes MUST go through tools (sync_range_tool, fill_gaps_tool, heal_data_tool)
+    - All data fixes MUST go through tools (sync_range_tool, sync_data_tool)
     - Simulator/backtest MUST NOT modify DuckDB directly
     - All tool calls MUST pass explicit parameters (no implicit defaults)
-    
+
     Args:
         pairs_to_sync: List of (symbol, tf, start, end) tuples that need sync
         auto_sync_config: Configuration for auto-sync behavior
-        
+
     Returns:
         AutoSyncResult with tool call records
     """
     result = AutoSyncResult(attempted=True)
-    
+
     # Get tools (from config for DI, or default imports)
     if auto_sync_config.sync_range_tool:
         sync_range = auto_sync_config.sync_range_tool
     else:
-        sync_range, _, _ = _get_default_tools()
-    
-    if auto_sync_config.fill_gaps_tool:
-        fill_gaps = auto_sync_config.fill_gaps_tool
+        sync_range, _ = _get_default_tools()
+
+    if auto_sync_config.sync_data_tool:
+        sync_data = auto_sync_config.sync_data_tool
     else:
-        _, fill_gaps, _ = _get_default_tools()
-    
-    if auto_sync_config.heal_data_tool:
-        heal_data = auto_sync_config.heal_data_tool
-    else:
-        _, _, heal_data = _get_default_tools()
-    
+        _, sync_data = _get_default_tools()
+
     data_env = auto_sync_config.data_env
-    
+
     # Group by symbol for batching
     symbols_tfs: dict[str, list[tuple[str, datetime, datetime]]] = {}
     for symbol, tf, start, end in pairs_to_sync:
         if symbol not in symbols_tfs:
             symbols_tfs[symbol] = []
         symbols_tfs[symbol].append((tf, start, end))
-    
+
     # Step 1: Sync missing data ranges via sync_range_tool
     for symbol, tf_ranges in symbols_tfs.items():
         for tf, start, end in tf_ranges:
@@ -594,7 +590,7 @@ def _run_auto_sync(
                 "timeframes": [tf],
                 "env": data_env,
             }
-            
+
             try:
                 tool_result = sync_range(**params)
                 record = ToolCallRecord(
@@ -610,10 +606,10 @@ def _run_auto_sync(
                     success=False,
                     message=f"Exception: {str(e)}",
                 )
-            
+
             result.tool_calls.append(record)
-    
-    # Step 2: Fill gaps via fill_gaps_tool
+
+    # Step 2: Sync (fill gaps) via sync_data_tool
     for symbol in symbols_tfs.keys():
         for tf, _, _ in symbols_tfs[symbol]:
             # EXPLICIT parameters
@@ -622,57 +618,29 @@ def _run_auto_sync(
                 "timeframe": tf,
                 "env": data_env,
             }
-            
+
             try:
-                tool_result = fill_gaps(**params)
+                tool_result = sync_data(**params)
                 record = ToolCallRecord(
-                    tool_name="fill_gaps_tool",
+                    tool_name="sync_data_tool",
                     params=params,
                     success=tool_result.success,
                     message=tool_result.message if tool_result.success else (tool_result.error or ""),
                 )
             except Exception as e:
                 record = ToolCallRecord(
-                    tool_name="fill_gaps_tool",
+                    tool_name="sync_data_tool",
                     params=params,
                     success=False,
                     message=f"Exception: {str(e)}",
                 )
-            
+
             result.tool_calls.append(record)
-    
-    # Step 3: Heal data via heal_data_tool
-    for symbol in symbols_tfs.keys():
-        # EXPLICIT parameters
-        params = {
-            "symbol": symbol,
-            "fix_issues": True,
-            "fill_gaps_after": False,  # Already filled gaps
-            "env": data_env,
-        }
-        
-        try:
-            tool_result = heal_data(**params)
-            record = ToolCallRecord(
-                tool_name="heal_data_tool",
-                params=params,
-                success=tool_result.success,
-                message=tool_result.message if tool_result.success else (tool_result.error or ""),
-            )
-        except Exception as e:
-            record = ToolCallRecord(
-                tool_name="heal_data_tool",
-                params=params,
-                success=False,
-                message=f"Exception: {str(e)}",
-            )
-        
-        result.tool_calls.append(record)
-    
+
     # Determine overall success (all tool calls succeeded)
     result.success = all(tc.success for tc in result.tool_calls)
     result.attempts_made = 1
-    
+
     return result
 
 
@@ -866,7 +834,7 @@ def run_preflight_gate(
     
     TOOL DISCIPLINE (MANDATORY):
     - When auto_sync_missing=True, preflight MUST call data tools to fix issues
-    - All data fixes go through sync_range_tool, fill_gaps_tool, heal_data_tool
+    - All data fixes go through sync_range_tool, sync_data_tool
     - Simulator/backtest MUST NOT modify DuckDB directly
     
     Args:

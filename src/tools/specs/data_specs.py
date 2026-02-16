@@ -15,9 +15,9 @@ def get_imports():
         get_symbol_timeframe_ranges_tool,
         sync_symbols_tool, sync_range_tool,
         sync_funding_tool, sync_open_interest_tool,
-        sync_to_now_tool, sync_to_now_and_fill_gaps_tool,
+        sync_to_now_tool, sync_forward_tool,
         build_symbol_history_tool,
-        fill_gaps_tool, heal_data_tool,
+        sync_data_tool, heal_data_tool,
         delete_symbol_tool, cleanup_empty_symbols_tool, vacuum_database_tool,
         delete_all_data_tool,
         get_funding_history_tool, get_open_interest_history_tool, get_ohlcv_history_tool,
@@ -33,9 +33,9 @@ def get_imports():
         "sync_funding": sync_funding_tool,
         "sync_open_interest": sync_open_interest_tool,
         "sync_to_now": sync_to_now_tool,
-        "sync_to_now_and_fill_gaps": sync_to_now_and_fill_gaps_tool,
+        "sync_forward": sync_forward_tool,
         "build_symbol_history": build_symbol_history_tool,
-        "fill_gaps": fill_gaps_tool,
+        "sync_data": sync_data_tool,
         "heal_data": heal_data_tool,
         "delete_symbol": delete_symbol_tool,
         "cleanup_empty_symbols": cleanup_empty_symbols_tool,
@@ -151,7 +151,7 @@ SPECS = [
         "required": ["symbols"],
     },
     {
-        "name": "sync_to_now_and_fill_gaps",
+        "name": "sync_forward",
         "description": "Sync forward to now AND fill any gaps in existing data",
         "category": "data.sync",
         "parameters": {
@@ -176,8 +176,8 @@ SPECS = [
     },
     # Maintenance tools
     {
-        "name": "fill_gaps",
-        "description": "Auto-detect and fill gaps in cached data",
+        "name": "sync_data",
+        "description": "Auto-detect and sync gaps in cached data",
         "category": "data.maintenance",
         "parameters": {
             "symbol": {"type": "string", "description": "Specific symbol (None for all)", "optional": True},

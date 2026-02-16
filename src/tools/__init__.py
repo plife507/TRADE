@@ -157,7 +157,7 @@ from .data_tools import (
     get_symbol_timeframe_ranges_tool,
     sync_symbols_tool,
     sync_range_tool,
-    fill_gaps_tool,
+    sync_data_tool,
     heal_data_tool,
     delete_symbol_tool,
     cleanup_empty_symbols_tool,
@@ -173,7 +173,7 @@ from .data_tools import (
     get_ohlcv_history_tool,
     # Sync to now tools
     sync_to_now_tool,
-    sync_to_now_and_fill_gaps_tool,
+    sync_forward_tool,
     # Composite build tools
     build_symbol_history_tool,
 )
@@ -301,7 +301,7 @@ __all__ = [
     "get_symbol_timeframe_ranges_tool",
     "sync_symbols_tool",
     "sync_range_tool",
-    "fill_gaps_tool",
+    "sync_data_tool",
     "heal_data_tool",
     "delete_symbol_tool",
     "cleanup_empty_symbols_tool",
@@ -317,7 +317,7 @@ __all__ = [
     "get_ohlcv_history_tool",
     # Sync to now tools
     "sync_to_now_tool",
-    "sync_to_now_and_fill_gaps_tool",
+    "sync_forward_tool",
     # Composite build tools
     "build_symbol_history_tool",
 

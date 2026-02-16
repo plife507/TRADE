@@ -162,7 +162,7 @@ def compare_runs(
         )
     
     # Compare hashes
-    hash_fields = ["trades_hash", "equity_hash", "run_hash", "idea_hash"]
+    hash_fields = ["trades_hash", "equity_hash", "run_hash", "play_hash"]
     
     for field_name in hash_fields:
         val_a = result_a.get(field_name, "")
@@ -188,14 +188,14 @@ def compare_runs(
 
 def verify_determinism_rerun(
     run_path: Path,
-    fix_gaps: bool = False,
+    sync: bool = False,
 ) -> DeterminismResult:
     """
     Verify determinism by re-running the same Play and comparing outputs.
-    
+
     Args:
         run_path: Path to existing run's artifact folder
-        fix_gaps: Whether to allow data sync during re-run
+        sync: Whether to allow data sync during re-run
         
     Returns:
         DeterminismResult with comparison details
@@ -236,7 +236,7 @@ def verify_determinism_rerun(
         play_id=play_id,
         start=window_start,
         end=window_end,
-        fix_gaps=fix_gaps,
+        sync=sync,
     )
     
     if not rerun_result.success:

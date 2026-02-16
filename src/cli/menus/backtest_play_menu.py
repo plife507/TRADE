@@ -23,7 +23,6 @@ from rich.text import Text
 
 from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper
 from src.tools import (
-    backtest_list_plays_tool,
     backtest_preflight_play_tool,
     backtest_run_play_tool,
     backtest_data_fix_tool,
@@ -42,10 +41,8 @@ console = Console()
 
 def backtest_play_menu(cli: "TradeCLI"):
     """Play backtest submenu."""
-    from trade_cli import (
-        clear_screen, print_header, get_input, get_choice, BACK,
-        print_error_below_menu, run_tool_action, run_long_action,
-        print_data_result,
+    from src.cli.utils import (
+        clear_screen, print_header, get_choice, BACK,
     )
 
     while True:
@@ -107,56 +104,122 @@ def backtest_play_menu(cli: "TradeCLI"):
 
 
 def _select_play(prompt_text: str = "Select Play") -> str | None:
-    """
-    Show numbered list of Plays and let user select by number.
+    """Interactive play selection with directory browsing and metadata preview.
+
+    Flow: pick folder -> pick play from table with metadata -> confirm.
+    Validation plays are excluded from browsing.
 
     Returns:
         Selected play_id or None if cancelled
     """
-    result = backtest_list_plays_tool()
+    from src.backtest.play import list_play_dirs, peek_play_yaml
 
-    if not result.success or not result.data:
-        console.print(f"[{CLIColors.NEON_RED}]Error loading Plays: {result.error}[/]")
-        return None
-
-    cards = result.data.get("plays", [])
-
-    if not cards:
-        console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in tests/functional/plays/[/]")
-        return None
-
-    # Display numbered list
-    table = Table(title="Available Plays", show_header=True, header_style="bold")
-    table.add_column("#", style="dim", width=4)
-    table.add_column("Play ID", style=CLIColors.NEON_CYAN)
-
-    for i, card_id in enumerate(cards, 1):
-        table.add_row(str(i), card_id)
-
-    console.print(table)
-    console.print()
-
-    # Get selection
-    selection = Prompt.ask(
-        f"[{CLIColors.NEON_CYAN}]{prompt_text} (number or 'q' to cancel)[/]"
-    )
-
-    if selection.lower() == 'q':
-        return None
-
-    try:
-        idx = int(selection) - 1
-        if 0 <= idx < len(cards):
-            return cards[idx]
-        else:
-            console.print(f"[{CLIColors.NEON_RED}]Invalid selection[/]")
+    while True:
+        groups = list_play_dirs(exclude_validation=True)
+        if not groups:
+            console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in plays/[/]")
             return None
-    except ValueError:
-        # Try direct ID match
-        if selection in cards:
-            return selection
-        console.print(f"[{CLIColors.NEON_RED}]Invalid selection: {selection}[/]")
-        return None
+
+        folder_keys = sorted(groups.keys(), key=lambda k: ("" if k == "." else k))
+        total = sum(len(v) for v in groups.values())
+
+        console.print()
+        table = Table(
+            title=f"{prompt_text} -- Pick a folder ({total} plays)",
+            show_header=True, header_style="bold", padding=(0, 1),
+        )
+        table.add_column("#", style="dim", width=4)
+        table.add_column("Folder", style=CLIColors.NEON_CYAN)
+        table.add_column("Plays", justify="right", style=CLIColors.NEON_GREEN)
+
+        for i, key in enumerate(folder_keys, 1):
+            label = "plays/ (root)" if key == "." else f"plays/{key}/"
+            table.add_row(str(i), label, str(len(groups[key])))
+
+        console.print(table)
+        console.print()
+
+        selection = Prompt.ask(
+            f"[{CLIColors.NEON_CYAN}]Folder number (or 'q' to cancel)[/]"
+        )
+        if selection.lower() in ("q", "b", "back"):
+            return None
+
+        try:
+            idx = int(selection)
+            if not (1 <= idx <= len(folder_keys)):
+                console.print(f"[{CLIColors.NEON_RED}]Invalid number. Must be 1-{len(folder_keys)}.[/]")
+                continue
+        except ValueError:
+            console.print(f"[{CLIColors.NEON_RED}]Enter a number.[/]")
+            continue
+
+        folder_key = folder_keys[idx - 1]
+        paths = groups[folder_key]
+
+        # Show plays in the chosen folder with metadata columns
+        selected = _select_play_from_folder(folder_key, paths)
+        if selected is None:
+            continue  # Back to folder selection
+
+        return selected
+
+
+def _select_play_from_folder(folder_key: str, paths: list) -> str | None:
+    """Show plays inside a folder with metadata. Returns play_id or None (back)."""
+    from src.backtest.play import peek_play_yaml
+
+    folder_label = "plays/ (root)" if folder_key == "." else f"plays/{folder_key}/"
+
+    while True:
+        console.print()
+        table = Table(
+            title=f"{folder_label} ({len(paths)} plays)",
+            show_header=True, header_style="bold", padding=(0, 1),
+        )
+        table.add_column("#", style="dim", width=4)
+        table.add_column("Play ID", style=CLIColors.NEON_CYAN, min_width=28)
+        table.add_column("Symbol", style=CLIColors.NEON_YELLOW, width=10)
+        table.add_column("TF", style=CLIColors.NEON_GREEN, width=5)
+        table.add_column("Dir", width=10)
+        table.add_column("Description", style=CLIColors.DIM_TEXT, max_width=40)
+
+        infos = [peek_play_yaml(p) for p in paths]
+        for i, info in enumerate(infos, 1):
+            dir_style = (
+                CLIColors.NEON_GREEN if info.direction == "long"
+                else CLIColors.NEON_RED if info.direction == "short"
+                else CLIColors.NEON_YELLOW
+            )
+            table.add_row(
+                str(i),
+                info.id,
+                info.symbol,
+                info.exec_tf,
+                f"[{dir_style}]{info.direction}[/]",
+                info.description[:40] if info.description else "",
+            )
+
+        console.print(table)
+        console.print()
+
+        selection = Prompt.ask(
+            f"[{CLIColors.NEON_CYAN}]Play number (or 'b' for back)[/]"
+        )
+        if selection.lower() in ("b", "back", "q"):
+            return None
+
+        try:
+            idx = int(selection)
+            if 1 <= idx <= len(paths):
+                return infos[idx - 1].id
+            console.print(f"[{CLIColors.NEON_RED}]Invalid number. Must be 1-{len(paths)}.[/]")
+        except ValueError:
+            # Try direct name match
+            for info in infos:
+                if info.id == selection.strip():
+                    return info.id
+            console.print(f"[{CLIColors.NEON_RED}]No match. Enter a number or exact play name.[/]")
 
 
 def _get_date_range() -> tuple[datetime | None, datetime | None]:
@@ -194,42 +257,58 @@ def _get_date_range() -> tuple[datetime | None, datetime | None]:
 
 
 def _list_plays(cli: "TradeCLI"):
-    """List all available Plays."""
-    from trade_cli import run_tool_action, print_data_result
+    """List all available Plays grouped by directory with metadata."""
+    from src.backtest.play import list_play_dirs, peek_play_yaml
 
     console.print()
     console.print(f"[{CLIColors.NEON_CYAN}]Loading Plays...[/]")
 
-    result = backtest_list_plays_tool()
+    groups = list_play_dirs(exclude_validation=True)
+    if not groups:
+        console.print(f"[{CLIColors.NEON_YELLOW}]No Plays found in plays/[/]")
+        Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
+        return
 
-    if result.success:
-        assert result.data is not None
-        cards = result.data.get("plays", [])
-        directory = result.data.get("directory", "")
+    total = sum(len(v) for v in groups.values())
+    console.print(f"\n[{CLIColors.NEON_GREEN}]Found {total} Plays (validation excluded)[/]\n")
 
+    for folder_key in sorted(groups.keys(), key=lambda k: ("" if k == "." else k)):
+        paths = groups[folder_key]
+        folder_label = "plays/ (root)" if folder_key == "." else f"plays/{folder_key}/"
+
+        table = Table(
+            title=folder_label, show_header=True, header_style="bold", padding=(0, 1),
+        )
+        table.add_column("Play ID", style=CLIColors.NEON_CYAN, min_width=28)
+        table.add_column("Symbol", style=CLIColors.NEON_YELLOW, width=10)
+        table.add_column("TF", style=CLIColors.NEON_GREEN, width=5)
+        table.add_column("Dir", width=10)
+        table.add_column("Description", style=CLIColors.DIM_TEXT, max_width=44)
+
+        for p in paths:
+            info = peek_play_yaml(p)
+            dir_style = (
+                CLIColors.NEON_GREEN if info.direction == "long"
+                else CLIColors.NEON_RED if info.direction == "short"
+                else CLIColors.NEON_YELLOW
+            )
+            table.add_row(
+                info.id,
+                info.symbol,
+                info.exec_tf,
+                f"[{dir_style}]{info.direction}[/]",
+                info.description[:44] if info.description else "",
+            )
+
+        console.print(table)
         console.print()
-        console.print(f"[{CLIColors.NEON_GREEN}]Found {len(cards)} Plays in {directory}[/]")
-        console.print()
 
-        if cards:
-            table = Table(show_header=True, header_style="bold")
-            table.add_column("#", style="dim", width=4)
-            table.add_column("Play ID", style=CLIColors.NEON_CYAN)
-
-            for i, card_id in enumerate(cards, 1):
-                table.add_row(str(i), card_id)
-
-            console.print(table)
-    else:
-        console.print(f"[{CLIColors.NEON_RED}]Error: {result.error}[/]")
-
-    console.print()
     Prompt.ask(f"[{CLIColors.DIM_TEXT}]Press Enter to continue[/]")
 
 
 def _run_play_backtest(cli: "TradeCLI"):
     """Run a full Play backtest."""
-    from trade_cli import run_long_action
+    from src.cli.utils import run_long_action
 
     console.print()
 
@@ -301,7 +380,7 @@ def _run_play_backtest(cli: "TradeCLI"):
 
 def _preflight_check(cli: "TradeCLI"):
     """Run preflight check for an Play."""
-    from trade_cli import run_long_action
+    from src.cli.utils import run_long_action
 
     console.print()
 
@@ -316,8 +395,8 @@ def _preflight_check(cli: "TradeCLI"):
         return
 
     # Ask about auto-fix
-    fix_gaps = Confirm.ask(
-        f"[{CLIColors.NEON_YELLOW}]Auto-fix missing data if found?[/]",
+    sync = Confirm.ask(
+        f"[{CLIColors.NEON_YELLOW}]Auto-sync missing data if found?[/]",
         default=False
     )
 
@@ -328,7 +407,7 @@ def _preflight_check(cli: "TradeCLI"):
         play_id=play_id,
         start=start_date,
         end=end_date,
-        fix_gaps=fix_gaps,
+        sync=sync,
     )
 
     console.print()
@@ -366,7 +445,7 @@ def _preflight_check(cli: "TradeCLI"):
 
 def _data_fix(cli: "TradeCLI"):
     """Run data fix/sync for an Play."""
-    from trade_cli import run_long_action
+    from src.cli.utils import run_long_action
 
     console.print()
 

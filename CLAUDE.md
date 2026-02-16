@@ -45,6 +45,26 @@ When running parallel agents or sub-tasks, NEVER use parallel file access to Duc
 | Engine | Always use `create_engine_from_play()` + `run_engine_with_play()` |
 | Indicators | Declare in Play YAML, access via snapshot |
 | Database | Sequential access only (DuckDB limitation) |
+| Hashing | Always use `compute_trades_hash()` from `hashes.py` -- never ad-hoc `repr()`/`hash()` |
+
+## Hash Tracing
+
+Deterministic hashes flow through the entire pipeline for reproducibility and debugging.
+
+| Hash | Source | Length | Purpose |
+|------|--------|--------|---------|
+| `play_hash` | `compute_play_hash(play)` SHA256 | 16 hex | Play config identity |
+| `input_hash` | `compute_input_hash(components)` SHA256 | 12 hex | Artifact folder name |
+| `trades_hash` | `compute_trades_hash(trades)` SHA256 | 16 hex | Output determinism |
+| `equity_hash` | `compute_equity_hash(curve)` SHA256 | 16 hex | Output determinism |
+| `run_hash` | `compute_run_hash(trades, equity, play)` | 16 hex | Combined fingerprint |
+| `data_hash` | SHA256 of synthetic data | 12 hex | Synthetic data integrity |
+
+**Canonical functions**: All in `src/backtest/artifacts/hashes.py`. `DEFAULT_SHORT_HASH_LENGTH = 12`.
+
+**Pipeline flow**: runner computes `play_hash` → sets on engine via `set_play_hash()` → engine uses in debug logging → after run, computes `trades_hash`/`equity_hash`/`run_hash` → stored in `result.json` → displayed in console → logged to `index.jsonl`.
+
+**Field naming**: The field is `play_hash` everywhere (not `idea_hash`). `ResultsSummary.play_hash`, `result.json["play_hash"]`, `determinism.py` hash_fields.
 
 ## Trading Domain Rules
 
@@ -53,6 +73,8 @@ For trading logic: Take Profit (TP) and Stop Loss (SL) orders fire BEFORE signal
 ## Type Checking
 
 When fixing type errors or pyright issues, run the full pyright check after each batch of fixes to catch cascading errors early. Fixing one category of errors often exposes hidden ones.
+
+**Config ownership**: `pyrightconfig.json` is the single source of truth for all type checking settings. When it exists, Pylance **ignores** all `python.analysis.*` settings in `.vscode/settings.json`. Never duplicate type checking config in both files. VS Code settings should only contain interpreter path and language server choice.
 
 ## Code Cleanup Rules
 
@@ -99,22 +121,25 @@ timeframes:
 ## Quick Commands
 
 ```bash
-# Validation (unified, preferred)
-python trade_cli.py validate quick                  # Core validation plays (~30s)
-python trade_cli.py validate standard               # Core + audits (~2min)
-python trade_cli.py validate full                   # Everything (~10min)
-python trade_cli.py validate pre-live --play X      # Real-data check before deploy
-
-# Validation (legacy, still functional)
-python trade_cli.py --smoke full                    # Full CLI smoke test
-python trade_cli.py backtest audit-toolkit          # Check indicators
+# Validation (single entry point)
+python trade_cli.py validate quick                    # Pre-commit (~10s)
+python trade_cli.py validate standard                 # Pre-merge (~2min)
+python trade_cli.py validate full                     # Pre-release (~10min)
+python trade_cli.py validate pre-live --play X        # Deployment gate
+python trade_cli.py validate exchange                  # Exchange integration (~30s)
 
 # Backtest
-python trade_cli.py backtest run --play X --fix-gaps  # Run single backtest
-python scripts/run_full_suite.py                    # 170-play synthetic suite
+python trade_cli.py backtest run --play X --sync  # Run single backtest
+python scripts/run_full_suite.py                      # 170-play synthetic suite
 python scripts/run_full_suite.py --real --start 2025-01-01 --end 2025-06-30  # Real data suite
-python scripts/run_real_verification.py             # 60-play real verification
-python scripts/verify_trade_math.py --play X        # Math verification for a play
+python scripts/run_real_verification.py               # 60-play real verification
+python scripts/verify_trade_math.py --play X          # Math verification for a play
+
+# Debug (diagnostic tools)
+python trade_cli.py debug math-parity --play X        # Real-data math audit
+python trade_cli.py debug snapshot-plumbing --play X   # Snapshot field check
+python trade_cli.py debug determinism --run-a A --run-b B  # Compare runs
+python trade_cli.py debug metrics                      # Financial calc audit
 
 # Live/Demo
 python trade_cli.py play run --play X --mode demo   # Demo mode (no real money)
@@ -125,9 +150,10 @@ python trade_cli.py play run --play X --mode live --confirm  # Live (REAL MONEY)
 
 | Topic | Location |
 |-------|----------|
-| Session context | `docs/SESSION_HANDOFF.md` |
-| Project status | `docs/TODO.md` |
+| Project status & session context | `docs/TODO.md` |
 | DSL syntax | `docs/PLAY_DSL_REFERENCE.md` |
+| Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
+| CLI redesign open gates | `docs/CLI_REDESIGN.md` |
 | System defaults | `config/defaults.yml` |
 
 ## Reference Documentation
