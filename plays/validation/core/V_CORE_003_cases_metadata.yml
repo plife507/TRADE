@@ -59,7 +59,7 @@ actions:
       - when:
           all:
             - ["ema_9", "cross_above", "ema_21"]
-            - ["rsi_14", "<", 50]
+            - ["rsi_14", "<", 75]
             - ["trend.direction", "==", 1]
         emit:
           - action: entry_long
@@ -70,7 +70,7 @@ actions:
       - when:
           all:
             - ["ema_9", "cross_below", "ema_21"]
-            - ["rsi_14", ">", 50]
+            - ["rsi_14", ">", 25]
             - ["trend.direction", "==", -1]
         emit:
           - action: entry_short
@@ -107,7 +107,5 @@ risk:
   stop_loss_pct: 3.0
   take_profit_pct: 6.0
 
-synthetic:
-  pattern: "trend_stairs"
-  bars: 500
-  seed: 202
+validation:
+  pattern: "trending"

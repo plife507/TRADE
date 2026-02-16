@@ -16,6 +16,7 @@ CLI and agents should use these tools, not direct engine access.
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, cast
 import traceback
 
@@ -558,12 +559,22 @@ def backtest_run_play_tool(
         # Load Play FIRST to check for synthetic config
         play = load_play(play_id, base_dir=plays_dir)
 
-        # Check if Play has synthetic config - use synthetic data path
-        # Only when use_synthetic=True (explicit --synthetic flag)
+        # Synthetic mode requires play to have a validation: block
         synthetic_provider = None
-        if use_synthetic and play.synthetic is not None:
+        if use_synthetic:
+            if play.validation is None:
+                raise ValueError(
+                    f"Play '{play_id}' has no validation: block. "
+                    f"Add a validation: section with pattern: to the play YAML."
+                )
+
             from src.forge.validation import generate_synthetic_candles
             from src.forge.validation.synthetic_provider import SyntheticCandlesProvider
+            from src.backtest.execution_validation import compute_synthetic_bars
+
+            # Auto-compute bars from indicator/structure warmup requirements
+            synthetic_bars = compute_synthetic_bars(play)
+            synthetic_pattern = play.validation.pattern
 
             # Collect required timeframes
             exec_tf = play.exec_tf
@@ -577,8 +588,8 @@ def backtest_run_play_tool(
             for tf in play.feature_registry.get_all_tfs():
                 required_tfs.add(tf)
 
-            print(f"[SYNTHETIC] Auto-generating data for Play with synthetic config")
-            print(f"[SYNTHETIC] Pattern: {play.synthetic.pattern}, Bars: {play.synthetic.bars}, Seed: {play.synthetic.seed}")
+            print(f"[SYNTHETIC] Auto-generating data ({synthetic_bars} bars from indicator/structure warmup)")
+            print(f"[SYNTHETIC] Pattern: {synthetic_pattern}, Bars: {synthetic_bars}")
             print(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
 
             # Generate synthetic candles
@@ -586,9 +597,9 @@ def backtest_run_play_tool(
             candles = generate_synthetic_candles(
                 symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
                 timeframes=list(required_tfs),
-                bars_per_tf=play.synthetic.bars,
-                seed=play.synthetic.seed,
-                pattern=cast(PatternType, play.synthetic.pattern),
+                bars_per_tf=synthetic_bars,
+                seed=42,
+                pattern=cast(PatternType, synthetic_pattern),
             )
 
             # Create provider and set window from synthetic data
@@ -685,16 +696,19 @@ def backtest_run_play_tool(
             artifacts_dir = Path("backtests")
 
         # Create data_loader from HistoricalDataStore
-        # Note: For parallel execution, each process has isolated store singletons
-        # after reset_stores() is called in parallel.py
-        store = get_historical_store(env=env)
+        # Skip DuckDB entirely for synthetic runs (no DB access needed)
+        data_loader_fn: Callable[[str, str, datetime, datetime], pd.DataFrame] | None = None
+        if synthetic_provider is None:
+            store = get_historical_store(env=env)
 
-        def data_loader(symbol: str, tf: str, start_dt: datetime, end_dt: datetime) -> pd.DataFrame:
-            """Load OHLCV data from DuckDB."""
-            df = store.get_ohlcv(symbol, tf, start=start_dt, end=end_dt)
-            if df is None:
-                return pd.DataFrame()
-            return df
+            def data_loader(symbol: str, tf: str, start_dt: datetime, end_dt: datetime) -> pd.DataFrame:
+                """Load OHLCV data from DuckDB."""
+                df = store.get_ohlcv(symbol, tf, start=start_dt, end=end_dt)
+                if df is None:
+                    return pd.DataFrame()
+                return df
+
+            data_loader_fn = data_loader
 
         # Build runner config with correct field names
         # NOTE: skip_preflight=True because CLI wrapper already ran its own preflight
@@ -710,7 +724,7 @@ def backtest_run_play_tool(
             plays_dir=plays_dir,
             skip_preflight=True,  # CLI wrapper already validated
             skip_artifact_validation=True,  # Skip because preflight is skipped (no preflight_report.json)
-            data_loader=data_loader,
+            data_loader=data_loader_fn,
             emit_snapshots=emit_snapshots,
             data_env=env,  # Pass data environment for correct DB selection
         )

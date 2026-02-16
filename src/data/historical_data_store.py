@@ -15,6 +15,7 @@ Architecture:
 - Demo history is isolated for demo testing sessions
 """
 
+import atexit
 import duckdb
 import os
 import pandas as pd
@@ -110,19 +111,49 @@ class ActivityEmoji:
 
 class ActivitySpinner:
     """
-    Animated spinner for long-running operations.
-    Shows user that something is happening!
+    Animated progress display for long-running operations.
+    Shows a compact progress bar with percentage when total is known,
+    falls back to a spinner with fetched count when unknown.
+
+    All output stays under 75 chars to avoid line-wrap breaking \\r overwrites.
     """
-    
+
+    _MAX_LINE = 75  # stay under 80-col terminals
+
     def __init__(self, message: str = "Working", emoji: str = "💰"):
         self.message = message
         self.emoji = emoji
         self.running = False
         self.thread = None
         self.frame = 0
-    
+        self._progress: float = 0.0  # 0.0 to 1.0
+        self._fetched: int = 0
+        self._total_estimate: int = 0  # 0 = unknown
+        self._phase: str = ""
+
+    @staticmethod
+    def _compact(n: int) -> str:
+        """Format number compactly: 53280 -> '53.3k', 1200000 -> '1.2M'."""
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f}M"
+        if n >= 10_000:
+            return f"{n / 1_000:.1f}k"
+        if n >= 1_000:
+            return f"{n / 1_000:.1f}k"
+        return str(n)
+
+    def _render_bar(self, width: int = 10) -> str:
+        """Render a compact progress bar: [████░░░░░░] 42%."""
+        filled = int(self._progress * width)
+        if _USE_ASCII:
+            bar = "#" * filled + "-" * (width - filled)
+        else:
+            bar = "\u2588" * filled + "\u2591" * (width - filled)
+        pct = int(self._progress * 100)
+        return f"[{bar}] {pct}%"
+
     def _spin(self):
-        """Spinner animation loop."""
+        """Spinner animation loop with progress awareness."""
         ascii_spinners = ["|", "/", "-", "\\"]
         unicode_spinners = ActivityEmoji.DOTS
         use_ascii = False
@@ -131,23 +162,38 @@ class ActivitySpinner:
             spinners = ascii_spinners if use_ascii else unicode_spinners
             frame = spinners[self.frame % len(spinners)]
             emoji = "[*]" if use_ascii else self.emoji
+
+            if self._total_estimate > 0:
+                bar = self._render_bar()
+                fetched_s = self._compact(self._fetched)
+                total_s = self._compact(self._total_estimate)
+                line = f"\r  {emoji} {self.message} {bar} {fetched_s}/{total_s}"
+            elif self._fetched > 0:
+                fetched_s = self._compact(self._fetched)
+                line = f"\r  {emoji} {frame} {self.message} ({fetched_s} fetched)"
+            else:
+                line = f"\r  {emoji} {frame} {self.message}..."
+
+            # Pad to overwrite previous content, clamp to max width
+            line = line.ljust(self._MAX_LINE)[:self._MAX_LINE]
+
             try:
-                sys.stdout.write(f"\r  {emoji} {frame} {self.message}...   ")
+                sys.stdout.write(line)
                 sys.stdout.flush()
             except UnicodeEncodeError:
-                # Switch to ASCII mode permanently for this spinner
                 use_ascii = True
-                sys.stdout.write(f"\r  [*] | {self.message}...   ")
+                fallback = f"\r  [*] | {self.message}..."
+                sys.stdout.write(fallback.ljust(self._MAX_LINE)[:self._MAX_LINE])
                 sys.stdout.flush()
             self.frame += 1
             time.sleep(0.1)
-    
+
     def start(self):
         """Start the spinner."""
         self.running = True
         self.thread = threading.Thread(target=self._spin, daemon=True)
         self.thread.start()
-    
+
     def stop(self, final_message: str | None = None, success: bool = True):
         """Stop the spinner and show final message."""
         self.running = False
@@ -156,18 +202,28 @@ class ActivitySpinner:
 
         emoji = ActivityEmoji.SUCCESS if success else ActivityEmoji.ERROR
         msg = final_message or self.message
+        line = f"\r  {emoji} {msg}"
+        line = line.ljust(self._MAX_LINE)
         try:
-            sys.stdout.write(f"\r  {emoji} {msg}                    \n")
+            sys.stdout.write(f"{line}\n")
             sys.stdout.flush()
         except UnicodeEncodeError:
-            # Fallback to ASCII on encoding error (Windows terminals)
             ascii_emoji = "[OK]" if success else "[ERR]"
-            sys.stdout.write(f"\r  {ascii_emoji} {msg}                    \n")
+            line = f"\r  {ascii_emoji} {msg}".ljust(self._MAX_LINE)
+            sys.stdout.write(f"{line}\n")
             sys.stdout.flush()
-    
+
     def update(self, message: str):
         """Update the spinner message."""
         self.message = message
+
+    def set_progress(self, fetched: int, total_estimate: int, phase: str = ""):
+        """Update progress state (thread-safe via simple assignment)."""
+        self._fetched = fetched
+        self._total_estimate = total_estimate
+        if total_estimate > 0:
+            self._progress = min(fetched / total_estimate, 1.0)
+        self._phase = phase
 
 
 def print_activity(message: str, emoji: str = "💰", end: str = "\n") -> None:
@@ -935,55 +991,58 @@ class HistoricalDataStore:
         target_start = datetime.now() - self.parse_period(period)
         
         results = {}
-        
-        for symbol in symbols:
-            # Check for cancellation
+        total_symbols = len(symbols)
+
+        for sym_idx, symbol in enumerate(symbols, 1):
             if self._cancelled:
                 self.logger.info("Funding sync cancelled by user")
                 break
-            
+
+            step_label = f"[{sym_idx}/{total_symbols}] {symbol} funding"
+
             if progress_callback:
                 progress_callback(symbol, f"{ActivityEmoji.SYNC} syncing funding rates")
-            
+
             spinner = None
             if show_spinner and not progress_callback:
-                spinner = ActivitySpinner(f"Fetching {symbol} funding rates", ActivityEmoji.DOLLAR)
+                spinner = ActivitySpinner(f"{step_label}", ActivityEmoji.DOLLAR)
                 spinner.start()
-            
+
             try:
-                count = self._sync_funding_symbol(symbol, target_start)
+                count = self._sync_funding_symbol(symbol, target_start, spinner=spinner)
                 results[symbol] = count
-                
+
                 if spinner:
-                    spinner.stop(f"{symbol} funding: {count} records {ActivityEmoji.SPARKLE}")
+                    spinner.stop(f"{step_label}: {count:,} records {ActivityEmoji.SPARKLE}")
                 elif progress_callback:
                     emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
                     progress_callback(symbol, f"{emoji} done ({count:,} records)")
-                    
+
             except KeyboardInterrupt:
                 self._cancelled = True
                 self.logger.info("Funding sync interrupted by user")
                 if spinner:
-                    spinner.stop(f"{symbol} funding: cancelled", success=False)
+                    spinner.stop(f"{step_label}: cancelled", success=False)
                 elif progress_callback:
                     progress_callback(symbol, f"{ActivityEmoji.WARNING} cancelled")
                 break
             except Exception as e:
                 self.logger.error(f"Failed to sync funding for {symbol}: {e}")
                 results[symbol] = -1
-                
+
                 if spinner:
-                    spinner.stop(f"{symbol} funding: error", success=False)
+                    spinner.stop(f"{step_label}: error", success=False)
                 elif progress_callback:
                     progress_callback(symbol, f"{ActivityEmoji.ERROR} error: {e}")
-        
+
         return results
     
-    def _sync_funding_symbol(self, symbol: str, target_start: datetime) -> int:
+    def _sync_funding_symbol(
+        self, symbol: str, target_start: datetime, spinner: "ActivitySpinner | None" = None,
+    ) -> int:
         """Sync funding rate data for a single symbol."""
         symbol = symbol.upper()
-        
-        # Check existing data
+
         existing = self.conn.execute(f"""
             SELECT MAX(timestamp) as last_ts
             FROM {self.table_funding}
@@ -991,44 +1050,34 @@ class HistoricalDataStore:
         """, [symbol]).fetchone()
 
         last_ts = existing[0] if existing and existing[0] else None
-        
-        # Determine start point
+
         if last_ts and last_ts > target_start:
-            # Only fetch newer data
             fetch_start = last_ts
         else:
             fetch_start = target_start
-        
-        # Fetch from API
-        all_records = []
+
+        # Estimate total records (funding every 8h)
+        total_hours = (datetime.now() - fetch_start).total_seconds() / 3600
+        estimated_records = max(1, int(total_hours / 8))
+
+        all_records: list[dict] = []
         current_end = datetime.now()
         request_count = 0
-        
-        # Bybit funding API returns max 200 records per request
+
         while current_end > fetch_start:
-            # Check for cancellation
             if self._cancelled:
                 break
-            
+
             try:
-                # Show progress
-                dots = ActivityEmoji.DOTS[request_count % len(ActivityEmoji.DOTS)]
-                records_count = request_count * 200
-                sys.stdout.write(f"\r    {ActivityEmoji.DOWNLOAD} {dots} {symbol} funding: Fetching records... ({records_count}+)   ")
-                sys.stdout.flush()
-                
-                # Pass endTime to paginate backwards through history
-                # Bybit: "Passing only endTime returns 200 records up till endTime"
                 records = self.client.get_funding_rate(
                     symbol=symbol,
                     limit=200,
                     end_time=int(current_end.timestamp() * 1000),
                 )
-                
+
                 if not records:
                     break
-                
-                # Parse records
+
                 for r in records:
                     ts = datetime.fromtimestamp(int(r.get("fundingRateTimestamp", 0)) / 1000)
                     if ts >= fetch_start and ts <= current_end:
@@ -1037,10 +1086,12 @@ class HistoricalDataStore:
                             "timestamp": ts,
                             "funding_rate": float(r.get("fundingRate", 0)),
                         })
-                
+
                 request_count += 1
-                
-                # Move window back
+
+                if spinner:
+                    spinner.set_progress(len(all_records), estimated_records)
+
                 if records:
                     earliest_ts = min(
                         int(r.get("fundingRateTimestamp", 0)) for r in records
@@ -1048,34 +1099,22 @@ class HistoricalDataStore:
                     current_end = datetime.fromtimestamp(earliest_ts / 1000) - timedelta(hours=1)
                 else:
                     break
-                
-                time.sleep(0.1)  # Rate limiting
-                
+
+                time.sleep(0.1)
+
             except KeyboardInterrupt:
                 self._cancelled = True
-                if request_count > 0:
-                    sys.stdout.write(f"\r    {ActivityEmoji.WARNING} Interrupted fetching {symbol} funding                    \n")
-                    sys.stdout.flush()
                 break
             except Exception as e:
                 self.logger.warning(f"Funding API error for {symbol}: {e}")
                 break
-        
-        # Clear progress line
-        if request_count > 0 and not self._cancelled:
-            sys.stdout.write(f"\r    {ActivityEmoji.SUCCESS} {symbol} funding: Fetched {request_count} batches ({len(all_records):,} records)                    \n")
-            sys.stdout.flush()
-        elif self._cancelled and request_count > 0:
-            sys.stdout.write(f"\r    {ActivityEmoji.WARNING} Cancelled fetching {symbol} funding                    \n")
-            sys.stdout.flush()
-        
+
         if not all_records:
             return 0
-        
-        # Store in DuckDB
+
         df = pd.DataFrame(all_records)
         self._store_funding(symbol, df)
-        
+
         return len(all_records)
     
     def _store_funding(self, symbol: str, df: pd.DataFrame):
@@ -1195,55 +1234,59 @@ class HistoricalDataStore:
         target_start = datetime.now() - self.parse_period(period)
         
         results = {}
-        
-        for symbol in symbols:
-            # Check for cancellation
+        total_symbols = len(symbols)
+
+        for sym_idx, symbol in enumerate(symbols, 1):
             if self._cancelled:
                 self.logger.info("Open interest sync cancelled by user")
                 break
-            
+
+            step_label = f"[{sym_idx}/{total_symbols}] {symbol} OI ({interval})"
+
             if progress_callback:
                 progress_callback(symbol, f"{ActivityEmoji.SYNC} syncing open interest")
-            
+
             spinner = None
             if show_spinner and not progress_callback:
-                spinner = ActivitySpinner(f"Fetching {symbol} open interest", ActivityEmoji.CHART)
+                spinner = ActivitySpinner(f"{step_label}", ActivityEmoji.CHART)
                 spinner.start()
-            
+
             try:
-                count = self._sync_open_interest_symbol(symbol, target_start, interval)
+                count = self._sync_open_interest_symbol(symbol, target_start, interval, spinner=spinner)
                 results[symbol] = count
-                
+
                 if spinner:
-                    spinner.stop(f"{symbol} OI: {count} records {ActivityEmoji.SPARKLE}")
+                    spinner.stop(f"{step_label}: {count:,} records {ActivityEmoji.SPARKLE}")
                 elif progress_callback:
                     emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
                     progress_callback(symbol, f"{emoji} done ({count:,} records)")
-                    
+
             except KeyboardInterrupt:
                 self._cancelled = True
                 self.logger.info("Open interest sync interrupted by user")
                 if spinner:
-                    spinner.stop(f"{symbol} OI: cancelled", success=False)
+                    spinner.stop(f"{step_label}: cancelled", success=False)
                 elif progress_callback:
                     progress_callback(symbol, f"{ActivityEmoji.WARNING} cancelled")
                 break
             except Exception as e:
                 self.logger.error(f"Failed to sync OI for {symbol}: {e}")
                 results[symbol] = -1
-                
+
                 if spinner:
-                    spinner.stop(f"{symbol} OI: error", success=False)
+                    spinner.stop(f"{step_label}: error", success=False)
                 elif progress_callback:
                     progress_callback(symbol, f"{ActivityEmoji.ERROR} error: {e}")
-        
+
         return results
     
-    def _sync_open_interest_symbol(self, symbol: str, target_start: datetime, interval: str) -> int:
+    def _sync_open_interest_symbol(
+        self, symbol: str, target_start: datetime, interval: str,
+        spinner: "ActivitySpinner | None" = None,
+    ) -> int:
         """Sync open interest data for a single symbol."""
         symbol = symbol.upper()
-        
-        # Check existing data
+
         existing = self.conn.execute(f"""
             SELECT MAX(timestamp) as last_ts
             FROM {self.table_oi}
@@ -1251,43 +1294,37 @@ class HistoricalDataStore:
         """, [symbol]).fetchone()
 
         last_ts = existing[0] if existing and existing[0] else None
-        
-        # Determine start point
+
         if last_ts and last_ts > target_start:
             fetch_start = last_ts
         else:
             fetch_start = target_start
-        
-        # Fetch from API
-        all_records = []
+
+        # Estimate total records based on interval
+        oi_intervals_per_hour = {"5min": 12, "15min": 4, "30min": 2, "1h": 1, "4h": 0.25, "D": 1/24}
+        records_per_hour = oi_intervals_per_hour.get(interval, 1)
+        total_hours = (datetime.now() - fetch_start).total_seconds() / 3600
+        estimated_records = max(1, int(total_hours * records_per_hour))
+
+        all_records: list[dict] = []
         current_end = datetime.now()
         request_count = 0
-        
-        # Bybit OI API returns max 200 records per request
+
         while current_end > fetch_start:
-            # Check for cancellation
             if self._cancelled:
                 break
-            
+
             try:
-                # Show progress
-                dots = ActivityEmoji.DOTS[request_count % len(ActivityEmoji.DOTS)]
-                records_count = request_count * 200
-                sys.stdout.write(f"\r    {ActivityEmoji.DOWNLOAD} {dots} {symbol} OI ({interval}): Fetching records... ({records_count}+)   ")
-                sys.stdout.flush()
-                
-                # Pass endTime to paginate backwards through history
                 records = self.client.get_open_interest(
                     symbol=symbol,
                     interval=interval,
                     limit=200,
                     end_time=int(current_end.timestamp() * 1000),
                 )
-                
+
                 if not records:
                     break
-                
-                # Parse records
+
                 for r in records:
                     ts = datetime.fromtimestamp(int(r.get("timestamp", 0)) / 1000)
                     if ts >= fetch_start and ts <= current_end:
@@ -1296,43 +1333,33 @@ class HistoricalDataStore:
                             "timestamp": ts,
                             "open_interest": float(r.get("openInterest", 0)),
                         })
-                
+
                 request_count += 1
-                
-                # Move window back
+
+                if spinner:
+                    spinner.set_progress(len(all_records), estimated_records)
+
                 if records:
                     earliest_ts = min(int(r.get("timestamp", 0)) for r in records)
                     current_end = datetime.fromtimestamp(earliest_ts / 1000) - timedelta(hours=1)
                 else:
                     break
-                
-                time.sleep(0.1)  # Rate limiting
-                
+
+                time.sleep(0.1)
+
             except KeyboardInterrupt:
                 self._cancelled = True
-                if request_count > 0:
-                    sys.stdout.write(f"\r    {ActivityEmoji.WARNING} Interrupted fetching {symbol} OI                    \n")
-                    sys.stdout.flush()
                 break
             except Exception as e:
                 self.logger.warning(f"OI API error for {symbol}: {e}")
                 break
-        
-        # Clear progress line
-        if request_count > 0 and not self._cancelled:
-            sys.stdout.write(f"\r    {ActivityEmoji.SUCCESS} {symbol} OI ({interval}): Fetched {request_count} batches ({len(all_records):,} records)                    \n")
-            sys.stdout.flush()
-        elif self._cancelled and request_count > 0:
-            sys.stdout.write(f"\r    {ActivityEmoji.WARNING} Cancelled fetching {symbol} OI                    \n")
-            sys.stdout.flush()
-        
+
         if not all_records:
             return 0
-        
-        # Store in DuckDB
+
         df = pd.DataFrame(all_records)
         self._store_open_interest(symbol, df)
-        
+
         return len(all_records)
     
     def _store_open_interest(self, symbol: str, df: pd.DataFrame):
@@ -2023,6 +2050,27 @@ def get_live_historical_store() -> HistoricalDataStore:
 def get_demo_historical_store() -> HistoricalDataStore:
     """Get the demo environment HistoricalDataStore (convenience function)."""
     return get_historical_store(env="demo")
+
+
+def _atexit_close_stores() -> None:
+    """Close all singleton DuckDB connections on process exit.
+
+    Ensures DuckDB WAL files and file locks are properly released,
+    preventing lock errors when running sequential subprocess backtests.
+    """
+    global _store_backtest, _store_live, _store_demo
+    for store in (_store_backtest, _store_live, _store_demo):
+        if store is not None:
+            try:
+                store.close()
+            except Exception:
+                pass
+    _store_backtest = None
+    _store_live = None
+    _store_demo = None
+
+
+atexit.register(_atexit_close_stores)
 
 
 # ==============================================================================

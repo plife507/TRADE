@@ -202,7 +202,9 @@ class DataBuilder:
         quote_feed = self._build_quote_feed(config, prepared_frame)
 
         # Step 4: Build market data (funding, OI) into exec feed
-        self._build_market_data(config, prepared_frame, resolved_exec_feed)
+        # Skip DuckDB access for synthetic runs (no funding/OI data available)
+        if self.synthetic_provider is None:
+            self._build_market_data(config, prepared_frame, resolved_exec_feed)
 
         # Step 5: Build SimulatedExchange
         sim_exchange = self._build_sim_exchange(config)
