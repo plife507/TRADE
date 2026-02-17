@@ -126,9 +126,9 @@ def shift_expr(expr: Expr, offset: int) -> Expr:
         )
 
     elif isinstance(expr, SetupRef):
-        # SetupRef cannot be shifted - the setup's condition will be
-        # evaluated as-is. This may need revision if setups should
-        # support historical lookback.
+        # SetupRef cannot be shifted — its internal FeatureRefs would
+        # evaluate at current-bar values, not historical. The DSL validator
+        # rejects SetupRef inside window operators at compile time.
         return expr
 
     else:

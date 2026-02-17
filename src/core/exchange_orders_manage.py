@@ -105,8 +105,12 @@ def cancel_all_orders(manager: "ExchangeManager", symbol: str | None = None) -> 
                 except Exception as e:
                     manager.logger.warning(f"Failed to cancel orders for {sym}: {e}")
             
-            manager.logger.warning(f"Cancelled orders for {success_count}/{len(symbols)} symbol(s)")
-            return success_count > 0
+            total = len(symbols)
+            if success_count < total:
+                manager.logger.error(f"Partial cancel: only {success_count}/{total} symbol(s) succeeded")
+            else:
+                manager.logger.info(f"Cancelled orders for all {total} symbol(s)")
+            return success_count == total
         else:
             manager.bybit.cancel_all_orders(symbol)
             manager.logger.warning(f"Cancelled all orders for {symbol}")
@@ -293,11 +297,22 @@ def batch_market_orders(
     """Execute multiple market orders in a batch."""
     from .exchange_manager import OrderResult
     from . import exchange_instruments as inst
-    
+
     try:
         manager._validate_trading_operation()
     except ValueError as e:
         return [OrderResult(success=False, error=str(e))]
+
+    # Safety: check panic state before batch execution
+    from .safety import get_panic_state
+    if get_panic_state().is_triggered:
+        return [OrderResult(success=False, error="Batch rejected: panic state active")]
+
+    # Validate all order amounts
+    for order in orders:
+        amt = order.get("usd_amount", 0)
+        if not isinstance(amt, (int, float)) or amt <= 0:
+            return [OrderResult(success=False, error=f"Invalid usd_amount in batch: {amt}")]
     
     if len(orders) > 10:
         manager.logger.warning("Batch orders limited to 10, splitting...")
@@ -307,23 +322,26 @@ def batch_market_orders(
         return results
     
     batch_orders = []
+    results_skipped: list[OrderResult] = []
     for order in orders:
         symbol = order["symbol"]
         price = manager.get_price(symbol)
         qty = inst.calculate_qty(manager, symbol, order["usd_amount"], price)
-        
+
         if qty <= 0:
+            manager.logger.warning(f"Batch order skipped: qty={qty} for {symbol} (usd_amount={order['usd_amount']})")
+            results_skipped.append(OrderResult(success=False, error=f"Calculated qty <= 0 for {symbol}"))
             continue
-        
+
         batch_order = {"symbol": symbol, "side": order["side"], "orderType": "Market", "qty": str(qty)}
         if order.get("take_profit"):
             batch_order["takeProfit"] = str(order["take_profit"])
         if order.get("stop_loss"):
             batch_order["stopLoss"] = str(order["stop_loss"])
         batch_orders.append(batch_order)
-    
+
     if not batch_orders:
-        return []
+        return results_skipped
     
     try:
         result = manager.bybit.batch_create_orders(batch_orders)
@@ -341,7 +359,7 @@ def batch_market_orders(
             ))
         
         manager.logger.info(f"Batch created {sum(1 for r in results if r.success)}/{len(results)} market orders")
-        return results
+        return results_skipped + results
         
     except Exception as e:
         manager.logger.error(f"Batch market orders failed: {e}")
@@ -355,11 +373,22 @@ def batch_limit_orders(
     """Execute multiple limit orders in a batch."""
     from .exchange_manager import OrderResult
     from . import exchange_instruments as inst
-    
+
     try:
         manager._validate_trading_operation()
     except ValueError as e:
         return [OrderResult(success=False, error=str(e))]
+
+    # Safety: check panic state before batch execution
+    from .safety import get_panic_state
+    if get_panic_state().is_triggered:
+        return [OrderResult(success=False, error="Batch rejected: panic state active")]
+
+    # Validate all order amounts
+    for order in orders:
+        amt = order.get("usd_amount", 0)
+        if not isinstance(amt, (int, float)) or amt <= 0:
+            return [OrderResult(success=False, error=f"Invalid usd_amount in batch: {amt}")]
     
     if len(orders) > 10:
         manager.logger.warning("Batch orders limited to 10, splitting...")

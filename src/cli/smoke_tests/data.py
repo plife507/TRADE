@@ -18,7 +18,7 @@ from ...tools import (
     sync_data_tool,
     heal_data_tool,
     sync_to_now_tool,
-    sync_to_now_and_sync_data_tool,
+    sync_forward_tool,
     cleanup_empty_symbols_tool,
     vacuum_database_tool,
     delete_all_data_tool,
@@ -451,7 +451,7 @@ def run_extensive_data_smoke(env: str = "live") -> int:
         failures += 1
 
     console.print(f"\n[bold cyan]5.2: Sync Forward (Combined) ({env_label})[/]")
-    result = sync_to_now_and_sync_data_tool(symbols=SYMBOLS, timeframes=TIMEFRAMES, env=env)
+    result = sync_forward_tool(symbols=SYMBOLS, timeframes=TIMEFRAMES, env=env)
     if result.success:
         console.print(f"  [green]OK[/] {result.message}")
     else:

@@ -252,6 +252,10 @@ class PlayEngine:
         self._total_trades: int = 0
         self._bars_processed: int = 0
 
+        # Max drawdown enforcement
+        self._peak_equity: float = config.initial_equity
+        self._drawdown_halted: bool = False
+
         # Live mode multi-TF index tracking (set by _update_live_tf_indices)
         self._prev_med_tf_len: int = 0
         self._prev_high_tf_len: int = 0
@@ -427,7 +431,8 @@ class PlayEngine:
         if self._phase == EnginePhase.READY:
             self._transition_phase(EnginePhase.RUNNING)
 
-        # 3. Step exchange (process pending orders, check TP/SL)
+        # 3. Step exchange (in backtest this is a no-op — fills/TP/SL are
+        #    handled by BacktestRunner._process_bar_fills() BEFORE process_bar)
         self.exchange.step(candle)
 
         # 3b. Prune filled limit orders and check expiry (after fills are processed)
@@ -443,6 +448,20 @@ class PlayEngine:
             # Check expiry
             if self._pending_limit_orders and self.play.expire_after_bars > 0:
                 self._check_limit_expiry(bar_index)
+
+        # 3c. Max drawdown check — halt engine if drawdown exceeds threshold
+        if self.config.max_drawdown_pct > 0:
+            equity = self.exchange.get_equity()
+            if equity > self._peak_equity:
+                self._peak_equity = equity
+            drawdown_pct = (self._peak_equity - equity) / self._peak_equity * 100 if self._peak_equity > 0 else 0.0
+            if drawdown_pct >= self.config.max_drawdown_pct:
+                if not self._drawdown_halted:
+                    self.logger.warning(
+                        f"Max drawdown {drawdown_pct:.2f}% >= limit {self.config.max_drawdown_pct:.1f}% — halting engine"
+                    )
+                    self._drawdown_halted = True
+                return None
 
         # 4. Get current position
         position = self.exchange.get_position(self.symbol)
@@ -644,7 +663,9 @@ class PlayEngine:
         result = self.exchange.submit_order(order)
 
         if result.success:
-            self._total_trades += 1
+            # Only count market orders as trades; limit orders are counted when filled
+            if order_type != "LIMIT":
+                self._total_trades += 1
             # Track pending limit orders for expiry (use exchange_order_id for sim exchange)
             if order_type == "LIMIT" and self.play.expire_after_bars > 0:
                 track_id = result.exchange_order_id or result.order_id
@@ -821,7 +842,9 @@ class PlayEngine:
                 )
 
             # Update indices via shared manager (single source of truth)
-            update = self._tf_index_manager.update_indices(candle.ts_close)
+            update = self._tf_index_manager.update_indices(
+                candle.ts_close, exec_idx=self._current_bar_index,
+            )
 
             # Update med_tf incremental state when med_tf bar closes (for structures)
             if update.med_tf_changed:
@@ -1585,6 +1608,10 @@ class PlayEngine:
             if current_bar - submit_bar >= expire_bars:
                 if self.exchange.cancel_order(order_id):
                     self.logger.info(f"Expired limit order {order_id} after {expire_bars} bars")
+                else:
+                    # Cancel failed — keep tracking to retry next bar
+                    self.logger.warning(f"Failed to cancel expired limit order {order_id}, will retry")
+                    remaining.append((order_id, submit_bar))
             else:
                 remaining.append((order_id, submit_bar))
         self._pending_limit_orders = remaining
@@ -1719,10 +1746,11 @@ class PlayEngine:
                 self.logger.error(f"Failed to create signal evaluator: {e}")
                 return None
 
-        # Build snapshot view for evaluation
+        # Build snapshot view for evaluation and persist for trailing stop ATR access
         snapshot = self._build_snapshot_view(bar_index, candle)
         if snapshot is None:
             return None
+        self._snapshot_view = snapshot
 
         # Call audit callback if registered
         if self._on_snapshot is not None:

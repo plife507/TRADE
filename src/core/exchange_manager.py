@@ -265,14 +265,21 @@ class ExchangeManager:
     # ==================== Market Data ====================
     
     def get_price(self, symbol: str) -> float:
-        """Get current market price."""
+        """Get current market price. Raises ValueError if no valid price available."""
         ticker = self.bybit.get_ticker(symbol)
-        return float(ticker.get("lastPrice", 0))
-    
+        price = float(ticker.get("lastPrice", 0))
+        if price <= 0:
+            raise ValueError(f"Invalid price {price} for {symbol} — exchange returned no valid lastPrice")
+        return price
+
     def get_bid_ask(self, symbol: str) -> tuple[float, float]:
-        """Get current bid and ask prices."""
+        """Get current bid and ask prices. Raises ValueError if no valid prices available."""
         ticker = self.bybit.get_ticker(symbol)
-        return (float(ticker.get("bid1Price", 0)), float(ticker.get("ask1Price", 0)))
+        bid = float(ticker.get("bid1Price", 0))
+        ask = float(ticker.get("ask1Price", 0))
+        if bid <= 0 or ask <= 0:
+            raise ValueError(f"Invalid bid/ask ({bid}/{ask}) for {symbol} — exchange returned no valid prices")
+        return (bid, ask)
     
     # ==================== Account ====================
     

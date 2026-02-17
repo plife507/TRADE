@@ -94,6 +94,76 @@ Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 
 ## Known Bugs & Architecture Gaps
 
+### Full Codebase Audit (2026-02-17)
+
+94 issues found across 6 subsystems. P0s all fixed. P1/P2 second pass completed 2026-02-17.
+
+#### P0 Critical — Engine Core
+
+| # | Status | File | Issue |
+|---|--------|------|-------|
+| BUG-E1 | **FIXED** | `engine/play_engine.py:232` | `_snapshot_view` never assigned — ATR trailing stops silently broken for all backtests |
+| BUG-E2 | **FIXED** | `engine/play_engine.py:824` | `_update_high_tf_med_tf_indices()` never passes `exec_idx` to `update_indices()` — exec TF index stuck at 0 |
+| BUG-E3 | **FIXED** | `engine/play_engine.py:373` | Misleading comment says `exchange.step()` handles TP/SL — it's a no-op in backtest; fills happen in runner before engine |
+
+#### P0 Critical — Sim/Exchange
+
+| # | Status | File | Issue |
+|---|--------|------|-------|
+| BUG-S1 | **FIXED** | `sim/liquidation/liquidation_model.py:151-198` | Liquidation price formula ignores MM at mark price — missing `(1 ± MMR)` denominator |
+| BUG-S2 | **FIXED** | `simulated_risk_manager.py:36-75` | Same liquidation formula error in simplified version |
+
+#### P0 Critical — Security / Live Safety (must fix before live)
+
+| # | Status | File | Issue |
+|---|--------|------|-------|
+| BUG-SEC1 | **FIXED** | `core/exchange_orders_stop.py:288` | TP/SL calculated from pre-fill price, not actual fill price — SL at wrong distance in volatile markets |
+| BUG-SEC2 | **FIXED** | `core/exchange_orders_stop.py:356-385` | Position left unprotected if SL order + emergency close_position both fail |
+| BUG-SEC3 | **FIXED** | `core/order_executor.py:753-757` | Price deviation guard fails open — allows orders when price check errors |
+| BUG-SEC4 | **FIXED** | `core/exchange_orders_market.py` etc. | No validation of negative/zero `usd_amount` in order functions |
+| BUG-SEC5 | **FIXED** | `core/safety.py:118-122` | `DailyLossTracker.seed_from_exchange` failure silently resets to $0 — bot can exceed daily loss limit on restart |
+| BUG-SEC6 | **FIXED** | `core/safety.py:174` | `PanicState.trigger_time` uses naive `datetime.now()` instead of `datetime.now(timezone.utc)` |
+| BUG-SEC7 | **FIXED** | `core/exchange_orders_manage.py:289-416` | Batch order functions bypass ALL risk controls (RiskManager, SafetyChecks, panic check, price deviation) |
+
+#### P0 Critical — Runtime/Rules
+
+| # | Status | File | Issue |
+|---|--------|------|-------|
+| BUG-R1 | **FIXED** | `rules/evaluation/shift_ops.py:128-132` | `SetupRef` not shifted inside window operators — evaluates at current-bar values instead of historical |
+
+#### Validation Fix
+
+| # | Status | File | Issue |
+|---|--------|------|-------|
+| BUG-V1 | **FIXED** | `cli/smoke_tests/data.py:21,454` | Stale import `sync_to_now_and_sync_data_tool` → `sync_forward_tool` — broke `validate standard` |
+
+#### P1 High — Second Pass (2026-02-17)
+
+| # | Status | File | Issue |
+|---|--------|------|-------|
+| BUG-P1-1 | **FIXED** | `engine/play_engine.py:1586` | Expired limit orders dropped from tracking when cancel fails — phantom orders on exchange |
+| BUG-P1-2 | **FIXED** | `sim/exchange.py:944` | Limit fill position uses `order.size_usdt` not actual fill notional (`qty × fill_price`) |
+| BUG-P1-3 | **FIXED** | `core/safety.py:248` | `panic_close_all` timestamp uses local time instead of UTC |
+| BUG-P1-4 | **FIXED** | `core/safety.py:193` | Panic callback catches only 3 exception types — any other kills remaining callbacks |
+| BUG-P1-5 | **FIXED** | `core/exchange_manager.py:270` | `get_price` returns 0.0 on missing ticker — downstream division by zero / free orders |
+| BUG-P1-6 | **FIXED** | `core/exchange_orders_manage.py:109` | `cancel_all_orders` partial success (1/N symbols) reports as success |
+| BUG-P1-7 | **FIXED** | `core/exchange_orders_stop.py:416` | Orphan TP orders placed after SL failure + emergency close |
+| BUG-P1-8 | **FIXED** | `core/safety.py:316` | `panic_close_all` position verification uses `p.size > 0` — misses short positions |
+
+#### P2 Medium — Second Pass (2026-02-17)
+
+| # | Status | File | Issue |
+|---|--------|------|-------|
+| BUG-P2-1 | **FIXED** | `engine/play_engine.py:648` | `_total_trades` inflated for unfilled limit order submissions |
+| BUG-P2-2 | **FIXED** | `simulated_risk_manager.py:294` | Cap 1 formula missing `× leverage` — inconsistent with SizingModel |
+| BUG-P2-3 | **FIXED** | `engine/play_engine.py` | `max_drawdown_pct` declared but never enforced — now halts engine at threshold |
+| BUG-P2-4 | **FIXED** | `sim/exchange.py:1189` | Partial close doesn't pro-rate `funding_pnl_cumulative` — double-counts on final close |
+| BUG-P2-5 | **FIXED** | `core/exchange_orders_market.py:34` | `avgPrice = "0"` treated as valid fill price |
+| BUG-P2-6 | **FIXED** | `core/safety.py:52` | `record_loss` silently ignores positive amounts — now uses `abs()` |
+| BUG-P2-7 | **FIXED** | `engine/signal/subloop.py:149` | `TF_MINUTES` missing `1d`/`1w` aliases, silent fallback to 15m — now raises ValueError |
+| BUG-P2-8 | **FIXED** | `core/exchange_orders_manage.py:326` | Batch orders silently skip `qty<=0` — now logs warning + returns failed result |
+| BUG-P2-9 | **FIXED** | `core/exchange_orders_market.py:38` | `_extract_fill_price` fallback to quote price without logging |
+
 ### Live/Demo Gaps (from 2026-02-11 audit)
 
 | # | Severity | Issue | Fix |
@@ -114,36 +184,25 @@ V-1 through V-8 resolved: crash recovery, swing selection, near_pct fix, batch s
 
 ---
 
-## Session Handoff — 2026-02-16
+## Session Handoff — 2026-02-17
 
 **Completed this session:**
 
-1. **VWAP audit (V-1 through V-8)** — all 8 items resolved:
-   - V-1: Added `reset()` + `to_dict()` crash recovery to 6 non-swing detectors (trend, zone, fibonacci, derived_zone, rolling_window, market_structure)
-   - V-2/V-4: `anchor_structure` param for explicit swing selection + non-exec TF wiring
-   - V-3: `near_pct` tolerance unified — verbose DSL path now divides by 100 like shorthand
-   - V-5: Batch anchored_vwap replaced with NaN placeholders (engine overwrites every bar)
-   - V-6: Parity audit excludes anchored_vwap with explanatory comment
-   - V-7: New validation play `IND_044_vwap_session_boundary.yml`
-   - V-8: `swing.high_version` / `swing.low_version` documented in DSL reference
-
-2. **Exchange config reconciliation (P0-R)** — new `_reconcile_config_with_exchange()`:
-   - Single method replaces scattered `_preflight_*` hacks
-   - Patches 5 fields from exchange: equity, fees, leverage, MMR, min notional
-   - Updates both `Play.account` (frozen dataclass) and `PlayEngineConfig` (mutable)
-   - GAP-3, GAP-4, GAP-5 resolved
-
-3. **P5 codebase cleanup finalized** — removed legacy aliases (`create_backtest_engine`, `PlayRunResult`), dead exports from `backtest/__init__.py`, condensed TODO sections
+1. **Full codebase audit** — 94 issues found across 6 subsystems
+2. **P0 critical bug fixes (15 bugs)** — engine core, sim/exchange, security/live safety, runtime/rules, validation
+3. **P1 high bug fixes (8 bugs)** — limit order tracking, fill notional, panic timestamps/callbacks, price validation, cancel semantics, orphan TPs, position verification
+4. **P2 medium bug fixes (9 bugs)** — trade counting, sizing formula parity, max drawdown enforcement, funding pro-rating, avgPrice validation, record_loss semantics, TF aliases, batch logging, fill price logging
 
 **State of the codebase:**
 - pyright: 0 errors
-- All 170/170 synthetic plays passing, 60/60 real-data plays passing
-- Branch: `feature/unified-engine`, up to date with remote
+- `validate quick`: 4/4 gates passing
+- Max drawdown enforcement now active (visible in validation logs)
 
 **Next session priorities:**
 - GAP-1 (CRITICAL): Wire `get_warmup_from_specs()` into `LiveDataProvider`
 - GAP-2 (HIGH): REST API fallback for warmup data
 - P0 remaining: live parity rubric, demo 24h validation, sub-loop activation
+- Run `validate standard` and `run_full_suite.py` to confirm no regressions from sim formula changes
 
 ---
 

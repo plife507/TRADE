@@ -128,7 +128,7 @@ class SubLoopEvaluator:
     TF_MINUTES: dict[str, int] = {
         "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
         "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720,
-        "d": 1440, "w": 10080, "m": 43200,
+        "d": 1440, "1d": 1440, "w": 10080, "1w": 10080, "m": 43200,
     }
 
     def __init__(
@@ -146,7 +146,13 @@ class SubLoopEvaluator:
         """
         self._quote_feed = quote_feed
         self._exec_tf = exec_tf.lower()
-        self._exec_tf_minutes = self.TF_MINUTES.get(self._exec_tf, 15)
+        minutes = self.TF_MINUTES.get(self._exec_tf)
+        if minutes is None:
+            raise ValueError(
+                f"Unknown exec timeframe '{exec_tf}' for sub-loop. "
+                f"Valid: {', '.join(sorted(self.TF_MINUTES.keys()))}"
+            )
+        self._exec_tf_minutes: int = minutes
         self._logger = logger
         self._fallback_warned = False
 

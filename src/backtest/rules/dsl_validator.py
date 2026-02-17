@@ -337,4 +337,60 @@ def validate_dsl_references(
         circular_errors = detect_circular_setups(setups)
         errors.extend(circular_errors)
 
+    # 5. Reject SetupRef inside window operators (shift_expr cannot shift them)
+    window_errors = _check_setup_in_windows(actions, setups)
+    errors.extend(window_errors)
+
+    return errors
+
+
+def _check_setup_in_windows(
+    actions: list["Block"],
+    setups: dict[str, Expr] | None,
+) -> list[str]:
+    """Reject SetupRef nodes nested inside window operators (holds_for, occurred_within, count_true).
+
+    shift_expr cannot offset SetupRef internals, so the setup would evaluate
+    at current-bar values for every historical iteration — silently wrong.
+    """
+    errors: list[str] = []
+
+    def _walk(expr: Expr, inside_window: bool, location: str) -> None:
+        if isinstance(expr, SetupRef):
+            if inside_window:
+                errors.append(
+                    f"{location}: SetupRef '{expr.setup_id}' is not supported inside "
+                    "window operators (holds_for/occurred_within/count_true). "
+                    "Inline the setup conditions instead."
+                )
+
+        elif isinstance(expr, Cond):
+            pass  # Leaf node, no children to walk
+
+        elif isinstance(expr, AllExpr):
+            for child in expr.children:
+                _walk(child, inside_window, location)
+
+        elif isinstance(expr, AnyExpr):
+            for child in expr.children:
+                _walk(child, inside_window, location)
+
+        elif isinstance(expr, NotExpr):
+            _walk(expr.child, inside_window, location)
+
+        elif isinstance(expr, (HoldsFor, OccurredWithin, CountTrue)):
+            _walk(expr.expr, True, location)
+
+        elif isinstance(expr, (HoldsForDuration, OccurredWithinDuration, CountTrueDuration)):
+            _walk(expr.expr, True, location)
+
+    for block in actions:
+        for case_idx, case in enumerate(block.cases):
+            loc = f"block '{block.id}' case {case_idx}"
+            _walk(case.when, False, loc)
+
+    if setups:
+        for setup_id, expr in setups.items():
+            _walk(expr, False, f"setup '{setup_id}'")
+
     return errors

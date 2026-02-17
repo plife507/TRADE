@@ -332,10 +332,29 @@ def open_position_with_rr(
             manager, symbol=symbol, usd_amount=notional_usd, stop_loss=stop_loss,
         )
         result["position_order"] = position_result
-        
+
         if not position_result.success:
             result["error"] = f"Failed to open position: {position_result.error}"
             return result
+
+        # Recalculate SL/TP from actual fill price (not pre-trade quote)
+        actual_fill = getattr(position_result, 'price', None) or entry_price
+        if actual_fill != entry_price:
+            manager.logger.info(
+                f"Fill price deviation: quoted={entry_price:.4f} actual={actual_fill:.4f}, "
+                "recalculating SL/TP from actual fill"
+            )
+            risk_distance_actual = actual_fill * sl_price_pct
+            stop_loss = round(actual_fill - risk_distance_actual if is_long else actual_fill + risk_distance_actual, precision)
+            # Recalculate TP levels from actual fill
+            for tp_cfg in tp_orders_config:
+                tp_roi_pct = stop_loss_roi_pct * tp_cfg["rr"]
+                tp_price_pct_actual = tp_roi_pct / leverage / 100
+                tp_distance_actual = actual_fill * tp_price_pct_actual
+                tp_cfg["price"] = round(actual_fill + tp_distance_actual if is_long else actual_fill - tp_distance_actual, precision)
+            result["levels"]["entry"] = actual_fill
+            result["levels"]["stop_loss"] = stop_loss
+            result["levels"]["take_profits"] = tp_orders_config
 
         # G0.5: Explicit SL order as backup (TPSL mode may not be reliable)
         # Place SL conditional order immediately after entry for atomicity
@@ -380,21 +399,32 @@ def open_position_with_rr(
                     result["sl_order"] = sl_result
                     if not sl_result.success:
                         manager.logger.error("CRITICAL: SL retry also failed! Closing position as emergency measure.")
-                        manager.close_position(symbol)
+                        try:
+                            manager.close_position(symbol)
+                        except Exception as close_err:
+                            manager.logger.error(
+                                f"EMERGENCY: close_position also failed: {close_err}. "
+                                "Triggering panic to halt all trading."
+                            )
+                            from .safety import get_panic_state
+                            get_panic_state().trigger(
+                                f"SL + emergency close both failed for {symbol}"
+                            )
             except Exception as e:
                 manager.logger.error(f"SL verification failed: {e}")
 
-        # Place TPs
-        for i, tp_config in enumerate(tp_orders_config):
-            tp_result = create_conditional_order(
-                manager, symbol=symbol, side=close_side, qty=tp_config["qty"],
-                trigger_price=tp_config["price"], trigger_direction=trigger_direction,
-                order_type="Market", reduce_only=True,
-                order_link_id=f"TP{i+1}_{symbol}_{int(time.time())}",
-            )
-            result["tp_orders"].append(tp_result)
-            if not tp_result.success:
-                manager.logger.warning(f"TP{i+1} order failed: {tp_result.error}")
+        # Place TPs only if SL succeeded (no orphan TPs for a closed/unprotected position)
+        if sl_result.success:
+            for i, tp_config in enumerate(tp_orders_config):
+                tp_result = create_conditional_order(
+                    manager, symbol=symbol, side=close_side, qty=tp_config["qty"],
+                    trigger_price=tp_config["price"], trigger_direction=trigger_direction,
+                    order_type="Market", reduce_only=True,
+                    order_link_id=f"TP{i+1}_{symbol}_{int(time.time())}",
+                )
+                result["tp_orders"].append(tp_result)
+                if not tp_result.success:
+                    manager.logger.warning(f"TP{i+1} order failed: {tp_result.error}")
 
         # Success requires entry + SL both placed
         result["success"] = position_result.success and sl_result.success

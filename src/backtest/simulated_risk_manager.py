@@ -42,14 +42,18 @@ def calculate_liquidation_price_simple(
     """
     Calculate liquidation price for a leveraged position.
 
-    Uses simplified formula assuming position fills at entry_price with
-    initial margin = 1/leverage.
+    Uses simplified formula assuming isolated margin where
+    initial margin = entry × size / leverage = entry / leverage (for size=1).
 
-    For LONG:
-      liq_price = entry × (1 - 1/leverage + mmr)
+    Derivation (long): cash + (liq - entry) = liq × MMR
+      → cash = entry/leverage, so entry/leverage + liq - entry = liq × MMR
+      → liq × (1 - MMR) = entry × (1 - 1/leverage)
+      → liq = entry × (1 - 1/leverage) / (1 - MMR)
 
-    For SHORT:
-      liq_price = entry × (1 + 1/leverage - mmr)
+    Derivation (short): cash + (entry - liq) = liq × MMR
+      → entry/leverage + entry - liq = liq × MMR
+      → liq × (1 + MMR) = entry × (1 + 1/leverage)
+      → liq = entry × (1 + 1/leverage) / (1 + MMR)
 
     Args:
         entry_price: Entry fill price
@@ -66,11 +70,13 @@ def calculate_liquidation_price_simple(
     imr = 1.0 / leverage  # Initial margin rate
 
     if direction == 1:  # Long
-        # Longs liquidate when price drops
-        liq_price = entry_price * (1 - imr + mmr)
+        denominator = 1.0 - mmr
+        if denominator <= 0:
+            return 0.0
+        liq_price = entry_price * (1.0 - imr) / denominator
     else:  # Short
-        # Shorts liquidate when price rises
-        liq_price = entry_price * (1 + imr - mmr)
+        denominator = 1.0 + mmr
+        liq_price = entry_price * (1.0 + imr) / denominator
 
     return max(0.0, liq_price)
 
@@ -283,9 +289,9 @@ class SimulatedRiskManager:
         reserve_fees = getattr(self._profile, "reserve_fee_buffer", True)
         taker_fee = self._profile.taker_fee_rate or 0.00055  # Default 5.5 bps
 
-        # Cap 1: Maximum position as % of total equity
-        # This prevents runaway compounding regardless of leverage
-        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+        # Cap 1: Maximum MARGIN as % of equity, then × leverage for notional
+        # Matches SizingModel (Bybit isolated margin model)
+        max_by_equity_pct = equity * (max_pos_pct / 100.0) * max_lev
 
         # Cap 2: Fee reservation
         # Reserve balance for entry fee + potential exit fee

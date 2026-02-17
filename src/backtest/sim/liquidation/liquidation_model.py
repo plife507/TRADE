@@ -156,44 +156,48 @@ class LiquidationModel:
     ) -> float:
         """
         Calculate the liquidation price for a position.
-        
-        Liquidation occurs when:
-        - equity = maintenance_margin
-        - equity = cash + unrealized_pnl
-        - maintenance_margin = position_value × MMR
-        
-        For longs: liq_price = entry - (cash - size × entry × MMR) / size
-        For shorts: liq_price = entry + (cash - size × entry × MMR) / size
-        
+
+        Liquidation occurs when equity = maintenance_margin:
+          equity = cash + unrealized_pnl
+          maintenance_margin = size × mark × MMR
+
+        Solving for mark price at liquidation:
+          cash + size × (liq - entry) = size × liq × MMR       [long]
+          cash + size × (entry - liq) = size × liq × MMR       [short]
+
+        For longs:  liq = (cash - size × entry) / (size × (MMR - 1))
+        For shorts: liq = (cash + size × entry) / (size × (MMR + 1))
+
         Args:
             position: Open position
             cash_balance_usdt: Current cash balance
             maintenance_margin_rate: MMR as decimal
-            
+
         Returns:
             Estimated liquidation price
         """
         entry = position.entry_price
         size = position.size
-        
-        # MM at entry = size × entry × MMR
-        mm_at_entry = size * entry * maintenance_margin_rate
-        
-        # Buffer = cash - MM at entry
-        buffer = cash_balance_usdt - mm_at_entry
-        
+
         if size == 0:
             return 0.0
-        
-        # Price move that would exhaust buffer
-        price_buffer = buffer / size
-        
+
         if position.side == OrderSide.LONG:
-            # Longs liquidate when price drops
-            liq_price = entry - price_buffer
+            # cash + size*(liq - entry) = size*liq*MMR
+            # liq*(size - size*MMR) = size*entry - cash
+            # liq = (size*entry - cash) / (size*(1 - MMR))
+            denominator = size * (1.0 - maintenance_margin_rate)
+            if denominator == 0:
+                return 0.0
+            liq_price = (size * entry - cash_balance_usdt) / denominator
         else:
-            # Shorts liquidate when price rises
-            liq_price = entry + price_buffer
-        
+            # cash + size*(entry - liq) = size*liq*MMR
+            # cash + size*entry = size*liq*(1 + MMR)
+            # liq = (cash + size*entry) / (size*(1 + MMR))
+            denominator = size * (1.0 + maintenance_margin_rate)
+            if denominator == 0:
+                return 0.0
+            liq_price = (cash_balance_usdt + size * entry) / denominator
+
         return max(0.0, liq_price)
 

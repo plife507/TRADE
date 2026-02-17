@@ -751,8 +751,15 @@ class OrderExecutor:
                 )
 
         except Exception as e:
-            # Fail open: if we can't check, log warning but allow the order
-            self.logger.warning(f"Price deviation check failed (allowing order): {e}")
+            # Fail closed: if we can't verify price, reject the order for safety
+            reason = f"Price deviation check failed (rejecting order for safety): {e}"
+            self.logger.error(reason)
+            return ExecutionResult(
+                success=False,
+                signal=signal,
+                risk_check=RiskCheckResult(allowed=True, reason="passed"),
+                error=reason,
+            )
 
         return None
 

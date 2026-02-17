@@ -32,6 +32,7 @@ class DailyLossTracker:
         self._daily_pnl: float = 0.0
         self._daily_trades: int = 0
         self._last_reset = datetime.now(timezone.utc).date()
+        self._seed_failed: bool = False
 
     def _reset_if_needed(self):
         """Reset counters if a new day has started. Must hold _lock."""
@@ -49,11 +50,11 @@ class DailyLossTracker:
             self._daily_trades += 1
 
     def record_loss(self, amount: float):
-        """Record a realized loss (amount should be negative or will be negated)."""
+        """Record a realized loss. Accepts positive or negative — always subtracts from PnL."""
         with self._lock:
             self._reset_if_needed()
-            if amount < 0:
-                self._daily_pnl += amount
+            self._daily_pnl -= abs(amount)
+            self._daily_trades += 1
 
     @property
     def daily_pnl(self) -> float:
@@ -67,10 +68,17 @@ class DailyLossTracker:
             self._reset_if_needed()
             return self._daily_trades
 
+    @property
+    def seed_failed(self) -> bool:
+        """True if seed_from_exchange failed — trading should be blocked."""
+        return self._seed_failed
+
     def check_limit(self, max_daily_loss_usd: float) -> tuple[bool, str]:
         """Check if daily loss limit has been reached."""
         with self._lock:
             self._reset_if_needed()
+            if self._seed_failed:
+                return False, "Daily loss tracker seed failed — cannot verify daily limits"
             if self._daily_pnl <= -max_daily_loss_usd:
                 return False, f"Daily loss limit reached: ${self._daily_pnl:.2f} >= -${max_daily_loss_usd:.2f}"
             return True, ""
@@ -116,9 +124,11 @@ class DailyLossTracker:
                 f"pnl=${total:.2f}, trades={len(records)}"
             )
         except Exception as e:
+            self._seed_failed = True
             logger.error(
                 f"Failed to seed daily PnL from exchange: {e}. "
-                "Daily loss tracker starts at $0 -- trades from earlier today are NOT counted."
+                "Daily loss tracker starts at $0 -- trades from earlier today are NOT counted. "
+                "Trading will be blocked until seed succeeds."
             )
 
 
@@ -171,7 +181,7 @@ class PanicState:
         """Trigger panic state."""
         with self._lock:
             self._triggered = True
-            self._trigger_time = datetime.now()
+            self._trigger_time = datetime.now(timezone.utc)
             self._reason = reason
 
         # Execute callbacks (copy-under-lock for thread safety)
@@ -180,9 +190,9 @@ class PanicState:
         for callback in callbacks_copy:
             try:
                 callback(reason)
-            except (RuntimeError, TypeError, ValueError) as e:
-                # BUG-004 fix: Specific exceptions for panic callbacks
-                # Log but continue executing other callbacks - panic must complete
+            except Exception as e:
+                # Panic callbacks MUST all execute — catch broadly so one failure
+                # does not prevent subsequent callbacks (e.g., position close) from running
                 import logging
                 logging.getLogger(__name__).error(f"Panic callback failed: {e}")
 
@@ -235,7 +245,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
     results = {
         "success": False,
         "reason": reason,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "orders_cancelled": False,
         "positions_closed": [],
         "errors": [],
@@ -303,7 +313,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
     # Verify positions are actually closed
     try:
         remaining = exchange_manager.get_all_positions()
-        open_positions = [p for p in remaining if hasattr(p, 'size') and p.size > 0]
+        open_positions = [p for p in remaining if hasattr(p, 'is_open') and p.is_open]
         if open_positions:
             for pos in open_positions:
                 results["errors"].append(f"Position still open: {pos.symbol} size={pos.size}")

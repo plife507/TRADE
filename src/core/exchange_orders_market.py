@@ -32,9 +32,16 @@ def _extract_fill_price(result: dict, fallback_price: float) -> float:
     try:
         avg_price = result.get("avgPrice")
         if avg_price:
-            return float(avg_price)
+            parsed = float(avg_price)
+            if parsed > 0:
+                return parsed
+            # avgPrice=0 means order not yet filled — use fallback
     except (TypeError, ValueError):
         pass
+    import logging
+    logging.getLogger(__name__).warning(
+        f"avgPrice missing or invalid in order response, using quote price {fallback_price:.4f}"
+    )
     return fallback_price
 
 
@@ -42,6 +49,9 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "O
     """Place a market buy order."""
     from .exchange_manager import OrderResult
     from . import exchange_websocket as ws
+
+    if usd_amount <= 0:
+        return OrderResult(success=False, error=f"Invalid usd_amount: {usd_amount} (must be > 0)")
 
     try:
         manager._validate_trading_operation()
@@ -81,6 +91,9 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "
     """Place a market sell order (short)."""
     from .exchange_manager import OrderResult
     from . import exchange_websocket as ws
+
+    if usd_amount <= 0:
+        return OrderResult(success=False, error=f"Invalid usd_amount: {usd_amount} (must be > 0)")
 
     try:
         manager._validate_trading_operation()
@@ -129,6 +142,9 @@ def market_buy_with_tpsl(
     """Place a market buy order with TP/SL."""
     from .exchange_manager import OrderResult
     from . import exchange_websocket as ws
+
+    if usd_amount <= 0:
+        return OrderResult(success=False, error=f"Invalid usd_amount: {usd_amount} (must be > 0)")
 
     try:
         manager._validate_trading_operation()
@@ -185,6 +201,9 @@ def market_sell_with_tpsl(
     """Place a market sell order with TP/SL (short)."""
     from .exchange_manager import OrderResult
     from . import exchange_websocket as ws
+
+    if usd_amount <= 0:
+        return OrderResult(success=False, error=f"Invalid usd_amount: {usd_amount} (must be > 0)")
 
     try:
         manager._validate_trading_operation()

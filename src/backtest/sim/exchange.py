@@ -934,6 +934,10 @@ class SimulatedExchange:
         self._ledger.apply_entry_fee(fill.fee)
         self._position_counter += 1
         
+        # Use actual filled notional (qty × fill price), not the requested size_usdt,
+        # because price improvement on limit orders means the actual notional differs.
+        actual_notional = fill.size * fill.price
+
         self.position = Position(
             position_id=f"pos_{self._position_counter:04d}",
             symbol=order.symbol,
@@ -941,7 +945,7 @@ class SimulatedExchange:
             entry_price=fill.price,
             entry_time=fill.timestamp,
             size=fill.size,
-            size_usdt=order.size_usdt,
+            size_usdt=actual_notional,
             stop_loss=order.stop_loss,
             take_profit=order.take_profit,
             fees_paid=fill.fee,
@@ -1181,11 +1185,12 @@ class SimulatedExchange:
         # so we only apply the exit fee; the entry_fee_portion is for tracking only)
         self._ledger.apply_partial_exit(realized_pnl, fill.fee)
 
-        # Reduce position size and adjust remaining entry fee
+        # Reduce position size and adjust remaining entry fee / funding
         remaining_ratio = 1.0 - close_ratio
         pos.size = pos.size * remaining_ratio
         pos.size_usdt = pos.size_usdt * remaining_ratio
         pos.entry_fee = pos.entry_fee * remaining_ratio  # Remaining entry fee
+        pos.funding_pnl_cumulative = pos.funding_pnl_cumulative * remaining_ratio
         pos.fees_paid += fill.fee
 
         return fill
