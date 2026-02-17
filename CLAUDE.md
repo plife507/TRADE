@@ -76,6 +76,8 @@ When fixing type errors or pyright issues, run the full pyright check after each
 
 **Config ownership**: `pyrightconfig.json` is the single source of truth for all type checking settings. When it exists, Pylance **ignores** all `python.analysis.*` settings in `.vscode/settings.json`. Never duplicate type checking config in both files. VS Code settings should only contain interpreter path and language server choice.
 
+**Pyright vs Cursor/Pylance phantom errors**: Cursor (and VS Code with Pylance) may show phantom "import not found" errors that pyright CLI does not produce. This is because `pyrightconfig.json` sets `"reportMissingImports": "none"` and `"extraPaths": [".", "src"]`, which pyright CLI respects but Pylance may ignore or override. Always trust `pyright` CLI output over in-editor squiggles. The Claude Code hook (`.claude/hooks/scripts/pyright_check.py`) runs pyright from the project root to ensure correct config resolution.
+
 ## Code Cleanup Rules
 
 Before claiming code is 'dead' or unused, verify by grepping for all references including dynamic imports, CLI entry points, and test fixtures. Do not remove code without confirmed zero references.
