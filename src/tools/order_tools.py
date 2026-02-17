@@ -370,14 +370,14 @@ def partial_close_position_tool(
                 result = exchange.market_sell(
                     symbol=symbol,
                     usd_amount=close_amount_usd,
+                    reduce_only=True,
                 )
             else:
                 result = exchange.market_buy(
                     symbol=symbol,
                     usd_amount=close_amount_usd,
+                    reduce_only=True,
                 )
-            # Mark as reduce_only for market orders
-            result.reduce_only = True
         
         if result.success:
             order_type = "Limit" if price else "Market"

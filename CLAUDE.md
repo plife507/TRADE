@@ -70,6 +70,12 @@ Deterministic hashes flow through the entire pipeline for reproducibility and de
 
 For trading logic: Take Profit (TP) and Stop Loss (SL) orders fire BEFORE signal-based closes. Do not assume signal closes have priority over TP/SL.
 
+## Live Safety Principles
+
+- **Fail-closed**: Safety guards (price deviation, WS health, position sync) must block trading when data is unavailable, not allow it.
+- **Reduce-only for closes**: All close/partial-close market orders must pass `reduce_only=True` to the exchange. Never set flags on result objects after the order is placed.
+- **Position sync gate**: LiveRunner blocks signal execution until `_position_sync_ok` is True. Periodic reconciliation can unblock.
+
 ## Type Checking
 
 When fixing type errors or pyright issues, run the full pyright check after each batch of fixes to catch cascading errors early. Fixing one category of errors often exposes hidden ones.

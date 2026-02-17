@@ -354,13 +354,13 @@ class ExchangeManager:
     
     # ==================== Market Orders (delegated) ====================
     
-    def market_buy(self, symbol: str, usd_amount: float) -> OrderResult:
+    def market_buy(self, symbol: str, usd_amount: float, reduce_only: bool = False) -> OrderResult:
         from . import exchange_orders_market as mkt
-        return mkt.market_buy(self, symbol, usd_amount)
-    
-    def market_sell(self, symbol: str, usd_amount: float) -> OrderResult:
+        return mkt.market_buy(self, symbol, usd_amount, reduce_only=reduce_only)
+
+    def market_sell(self, symbol: str, usd_amount: float, reduce_only: bool = False) -> OrderResult:
         from . import exchange_orders_market as mkt
-        return mkt.market_sell(self, symbol, usd_amount)
+        return mkt.market_sell(self, symbol, usd_amount, reduce_only=reduce_only)
     
     def market_buy_with_tpsl(self, symbol: str, usd_amount: float, take_profit: float | None = None, stop_loss: float | None = None, tpsl_mode: str = "Full", tp_order_type: str = "Market", sl_order_type: str = "Market") -> OrderResult:
         from . import exchange_orders_market as mkt

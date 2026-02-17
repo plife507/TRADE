@@ -45,7 +45,7 @@ def _extract_fill_price(result: dict, fallback_price: float) -> float:
     return fallback_price
 
 
-def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "OrderResult":
+def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float, reduce_only: bool = False) -> "OrderResult":
     """Place a market buy order."""
     from .exchange_manager import OrderResult
     from . import exchange_websocket as ws
@@ -62,6 +62,7 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "O
 
         result = manager.bybit.create_order(
             symbol=symbol, side="Buy", order_type="Market", qty=qty,
+            reduce_only=reduce_only,
         )
 
         # Use actual fill price from response, fallback to quote price
@@ -87,7 +88,7 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "O
         return OrderResult(success=False, error=str(e))
 
 
-def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "OrderResult":
+def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float, reduce_only: bool = False) -> "OrderResult":
     """Place a market sell order (short)."""
     from .exchange_manager import OrderResult
     from . import exchange_websocket as ws
@@ -104,6 +105,7 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float) -> "
 
         result = manager.bybit.create_order(
             symbol=symbol, side="Sell", order_type="Market", qty=qty,
+            reduce_only=reduce_only,
         )
 
         # Use actual fill price from response, fallback to quote price

@@ -282,11 +282,11 @@ class GlobalRiskView:
                     return True, ""
 
         except Exception as e:
-            # If we can't check health, be conservative
+            # Fail-closed: if we can't check health, block trading
             self.logger.warning(f"Could not check WebSocket health: {e}")
             if self._ws_unhealthy_since is None:
                 self._ws_unhealthy_since = now
-            return True, ""  # Allow within grace period
+            return False, f"WebSocket health check failed: {e}. Blocking trades for safety."
 
     def check_pre_trade(
         self,

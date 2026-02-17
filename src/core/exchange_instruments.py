@@ -131,6 +131,9 @@ def calculate_qty(
     if price is None:
         price = manager.get_price(symbol)
 
+    if price is None:
+        raise ValueError(f"Cannot calculate qty for {symbol}: price is None (exchange returned no data)")
+
     if price <= 0:
         raise ValueError(f"Invalid price for {symbol}: {price}")
 

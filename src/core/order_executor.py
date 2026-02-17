@@ -699,8 +699,14 @@ class OrderExecutor:
         try:
             ticker = self.exchange.bybit.get_ticker(signal.symbol)
             if not ticker:
-                self.logger.warning("Price deviation check: no ticker data, allowing order")
-                return None
+                reason = "Price deviation check: no ticker data, blocking entry for safety"
+                self.logger.warning(reason)
+                return ExecutionResult(
+                    success=False,
+                    signal=signal,
+                    risk_check=RiskCheckResult(allowed=False, reason=reason),
+                    error=reason,
+                )
 
             # Bybit ticker response: list with lastPrice field
             last_price_str = None
@@ -713,12 +719,25 @@ class OrderExecutor:
                 last_price_str = ticker.get("lastPrice")
 
             if not last_price_str:
-                self.logger.warning("Price deviation check: no lastPrice in ticker, allowing order")
-                return None
+                reason = "Price deviation check: no lastPrice in ticker, blocking entry for safety"
+                self.logger.warning(reason)
+                return ExecutionResult(
+                    success=False,
+                    signal=signal,
+                    risk_check=RiskCheckResult(allowed=False, reason=reason),
+                    error=reason,
+                )
 
             last_price = float(last_price_str)
             if last_price <= 0:
-                return None
+                reason = f"Price deviation check: lastPrice={last_price} is invalid, blocking entry"
+                self.logger.warning(reason)
+                return ExecutionResult(
+                    success=False,
+                    signal=signal,
+                    risk_check=RiskCheckResult(allowed=False, reason=reason),
+                    error=reason,
+                )
 
             # For market orders we don't have an explicit price, but we can
             # check that the market hasn't moved absurdly from recent data.

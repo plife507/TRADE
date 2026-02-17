@@ -172,6 +172,9 @@ class LiveRunner:
         # H4: Track whether exchange has an existing position for our symbol
         self._has_existing_position: bool = False
 
+        # GAP-LS4: Track whether position sync completed successfully
+        self._position_sync_ok: bool = False
+
         # G17.1: Trade journal (initialized in start())
         self._journal = None
 
@@ -481,8 +484,13 @@ class LiveRunner:
                 else:
                     logger.info("Position sync: no existing positions")
                     self._has_existing_position = False
+            self._position_sync_ok = True
         except Exception as e:
-            logger.warning(f"Position sync warning (non-fatal): {e}")
+            self._position_sync_ok = False
+            logger.error(
+                f"Position sync FAILED: {e} -- signal execution blocked "
+                f"until a successful reconciliation occurs"
+            )
 
         self._last_reconcile_ts = datetime.now()
 
@@ -513,6 +521,10 @@ class LiveRunner:
                     logger.debug("Periodic position reconciliation...")
                     await asyncio.to_thread(pm.reconcile_with_rest)
                     self._last_reconcile_ts = now
+                    # GAP-LS4: successful reconciliation unblocks signal execution
+                    if not self._position_sync_ok:
+                        logger.info("Position reconciliation succeeded, unblocking signal execution")
+                        self._position_sync_ok = True
 
         except Exception as e:
             logger.warning(f"Periodic reconciliation failed (non-fatal): {e}")
@@ -784,6 +796,14 @@ class LiveRunner:
             f"Bar #{self._stats.bars_processed} | {self._engine.symbol} {timeframe} "
             f"close={candle.close} | signals={self._stats.signals_generated}"
         )
+
+        # GAP-LS4: Block signal execution if position sync has not succeeded
+        if not self._position_sync_ok:
+            logger.warning(
+                "Signal execution blocked: position sync has not succeeded. "
+                "Waiting for next reconciliation cycle."
+            )
+            return
 
         # G17.3: Check pause state -- skip signal evaluation but keep receiving data
         if self.is_paused:

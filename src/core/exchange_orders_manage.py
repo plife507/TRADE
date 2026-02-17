@@ -398,12 +398,15 @@ def batch_limit_orders(
         return results
     
     batch_orders = []
+    results_skipped: list[OrderResult] = []
     for order in orders:
         symbol = order["symbol"]
         price = inst.round_price(manager, symbol, order["price"])
         qty = inst.calculate_qty(manager, symbol, order["usd_amount"], price)
-        
+
         if qty <= 0:
+            manager.logger.warning(f"Batch limit order skipped: qty={qty} for {symbol} (usd_amount={order['usd_amount']})")
+            results_skipped.append(OrderResult(success=False, error=f"Calculated qty <= 0 for {symbol}"))
             continue
         
         batch_order = {
@@ -420,11 +423,11 @@ def batch_limit_orders(
         batch_orders.append(batch_order)
     
     if not batch_orders:
-        return []
-    
+        return results_skipped
+
     try:
         result = manager.bybit.batch_create_orders(batch_orders)
-        
+
         results = []
         batch_list = result.get("list", []) if isinstance(result, dict) else []
         for item in batch_list:
@@ -436,13 +439,13 @@ def batch_limit_orders(
                 order_link_id=item.get("orderLinkId"), symbol=item.get("symbol"),
                 order_type="Limit", error=item.get("msg") if not is_success else None,
             ))
-        
+
         manager.logger.info(f"Batch created {sum(1 for r in results if r.success)}/{len(results)} limit orders")
-        return results
-        
+        return results_skipped + results
+
     except Exception as e:
         manager.logger.error(f"Batch limit orders failed: {e}")
-        return [OrderResult(success=False, error=str(e))]
+        return results_skipped + [OrderResult(success=False, error=str(e))]
 
 
 def batch_cancel_orders(
