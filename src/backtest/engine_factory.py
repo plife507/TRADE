@@ -168,12 +168,15 @@ def create_engine_from_play(
         )
     min_trade_usdt = play.account.min_trade_notional_usdt
 
-    # Extract slippage from Play if present (flows to ExecutionConfig)
-    slippage_bps = 5.0  # Default only if not specified
-    if play.account.slippage_bps is not None:
-        if play.account.slippage_bps < 0:
-            raise ValueError(f"slippage_bps must be non-negative, got {play.account.slippage_bps}")
-        slippage_bps = play.account.slippage_bps
+    # Extract slippage from Play (always set by AccountConfig.from_dict)
+    if play.account.slippage_bps is None:
+        raise ValueError(
+            f"Play '{play.id}' is missing account.slippage_bps. "
+            "AccountConfig.from_dict() should always populate this from defaults.yml."
+        )
+    if play.account.slippage_bps < 0:
+        raise ValueError(f"slippage_bps must be non-negative, got {play.account.slippage_bps}")
+    slippage_bps = play.account.slippage_bps
 
     # Extract maker fee from Play
     maker_fee_bps = play.account.fee_model.maker_bps
@@ -187,10 +190,13 @@ def create_engine_from_play(
         if play.risk_model.sizing.max_leverage:
             max_leverage = play.risk_model.sizing.max_leverage
 
-    # Extract maintenance margin rate from Play if present
-    maintenance_margin_rate = 0.005  # Default: Bybit lowest tier (0.5%)
-    if play.account.maintenance_margin_rate is not None:
-        maintenance_margin_rate = play.account.maintenance_margin_rate
+    # Extract maintenance margin rate from Play (always set by AccountConfig.from_dict)
+    if play.account.maintenance_margin_rate is None:
+        raise ValueError(
+            f"Play '{play.id}' is missing account.maintenance_margin_rate. "
+            "AccountConfig.from_dict() should always populate this from defaults.yml."
+        )
+    maintenance_margin_rate = play.account.maintenance_margin_rate
 
     # Build RiskProfileConfig
     risk_profile = RiskProfileConfig(

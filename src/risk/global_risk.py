@@ -101,12 +101,21 @@ class RiskLimits:
     
     @classmethod
     def from_config(cls, config: Config) -> 'RiskLimits':
-        """Load limits from config."""
+        """Load limits from config.
+
+        Note: RiskConfig values are intentionally conservative LIVE SAFETY caps,
+        deliberately stricter than backtest defaults in defaults.yml.
+        Fields not present in RiskConfig use conservative dataclass defaults.
+        """
         return cls(
             max_leverage=float(config.risk.max_leverage),
             max_position_size_usdt=float(config.risk.max_position_size_usdt),
+            max_total_exposure_usd=float(config.risk.max_total_exposure_usd),
             max_daily_loss_usd=float(config.risk.max_daily_loss_usd),
             min_available_balance_usd=float(config.risk.min_balance_usd),
+            # max_account_im_rate, max_account_mm_rate, max_positions,
+            # min_liq_distance_pct, max_single_asset_pct: use conservative
+            # dataclass defaults (not in RiskConfig — live safety hardcodes)
         )
 
 

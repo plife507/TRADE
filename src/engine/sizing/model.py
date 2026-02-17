@@ -63,12 +63,12 @@ class SizingConfig:
         - Example: at 10x leverage, liq is ~10% away, so min_liq_distance_pct=10 blocks it
     """
 
-    # Core sizing parameters
+    # Core sizing parameters (defaults match config/defaults.yml)
     initial_equity: float = 10000.0
     sizing_model: str = "percent_equity"
     risk_per_trade_pct: float = 1.0
-    max_leverage: float = 2.0
-    min_trade_usdt: float = 1.0
+    max_leverage: float = 1.0       # defaults.yml: risk.max_leverage
+    min_trade_usdt: float = 10.0    # defaults.yml: execution.min_trade_notional_usdt
 
     # Position cap: max MARGIN as % of equity (Bybit isolated margin model)
     # Max notional = (equity × pct/100) × leverage
@@ -87,7 +87,7 @@ class SizingConfig:
     # Default 10% means at 10x leverage (liq ~10% away), entry is blocked
     min_liq_distance_pct: float = 10.0
 
-    # Maintenance margin rate for liquidation calculation (Bybit default ~0.5%)
+    # Maintenance margin rate for liquidation calculation (defaults.yml: margin.maintenance_margin_rate)
     maintenance_margin_rate: float = 0.005
 
     def __post_init__(self) -> None:

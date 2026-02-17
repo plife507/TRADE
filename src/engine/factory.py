@@ -95,16 +95,32 @@ def _build_config_from_play(
         if play.risk_model.sizing.max_leverage:
             max_leverage = play.risk_model.sizing.max_leverage
 
+    # All fields are guaranteed populated by AccountConfig.from_dict() — no fallbacks
     fee_model = account.fee_model
+    if fee_model is None:
+        raise ValueError(
+            "Play account.fee_model is None. "
+            "AccountConfig.from_dict() should always populate this from defaults.yml."
+        )
+    if account.min_trade_notional_usdt is None:
+        raise ValueError(
+            "Play account.min_trade_notional_usdt is None. "
+            "AccountConfig.from_dict() should always populate this from defaults.yml."
+        )
+    if account.slippage_bps is None:
+        raise ValueError(
+            "Play account.slippage_bps is None. "
+            "AccountConfig.from_dict() should always populate this from defaults.yml."
+        )
     config = PlayEngineConfig(
         mode=mode,
         initial_equity=account.starting_equity_usdt,
         risk_per_trade_pct=risk_per_trade_pct,
         max_leverage=max_leverage,
-        min_trade_usdt=account.min_trade_notional_usdt or 5.0,
-        taker_fee_rate=fee_model.taker_bps / 10000.0 if fee_model else 0.0006,
-        maker_fee_rate=fee_model.maker_bps / 10000.0 if fee_model else 0.0001,
-        slippage_bps=account.slippage_bps or 2.0,
+        min_trade_usdt=account.min_trade_notional_usdt,
+        taker_fee_rate=fee_model.taker_bps / 10000.0,
+        maker_fee_rate=fee_model.maker_bps / 10000.0,
+        slippage_bps=account.slippage_bps,
         persist_state=persist_state,
         state_save_interval=state_save_interval,
         on_sl_beyond_liq="reject",

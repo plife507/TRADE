@@ -431,12 +431,46 @@ class RiskDefaults:
     risk_per_trade_pct: float
     max_drawdown_pct: float
     stop_equity_usdt: float
+    max_position_equity_pct: float
+    reserve_fee_buffer: bool
+    max_daily_loss_usdt: float
+    max_funding_cost_pct: float
 
 
 @dataclass(frozen=True)
 class AccountDefaults:
     """Account defaults from config/defaults.yml."""
     starting_equity_usdt: float
+
+
+@dataclass(frozen=True)
+class EngineDefaults:
+    """Engine defaults from config/defaults.yml."""
+    warmup_bars: int
+    state_save_interval: int
+    max_warmup_bars: int
+
+
+@dataclass(frozen=True)
+class WindowingDefaults:
+    """Windowing defaults from config/defaults.yml."""
+    high_tf_safety_closes: int
+    med_tf_safety_closes: int
+    max_window_bars: int
+
+
+@dataclass(frozen=True)
+class ImpactDefaults:
+    """Impact model defaults from config/defaults.yml."""
+    max_impact_bps: float
+
+
+@dataclass(frozen=True)
+class PositionPolicyDefaults:
+    """Position policy defaults from config/defaults.yml."""
+    mode: str
+    exit_mode: str
+    max_positions_per_symbol: int
 
 
 @dataclass(frozen=True)
@@ -447,6 +481,10 @@ class SystemDefaults:
     execution: ExecutionDefaults
     risk: RiskDefaults
     account: AccountDefaults
+    engine: EngineDefaults
+    windowing: WindowingDefaults
+    impact: ImpactDefaults
+    position_policy: PositionPolicyDefaults
     exchange_name: str
     instrument_type: str
     quote_ccy: str
@@ -482,6 +520,18 @@ def load_system_defaults() -> SystemDefaults:
     if not data:
         raise ValueError(f"Empty or invalid defaults file: {defaults_path}")
 
+    # Validate all required sections exist
+    required_sections = [
+        "fees", "margin", "execution", "risk", "account",
+        "engine", "windowing", "impact", "position_policy", "exchange",
+    ]
+    missing = [s for s in required_sections if s not in data]
+    if missing:
+        raise ValueError(
+            f"defaults.yml missing required sections: {missing}. "
+            "All sections must be present — no silent fallbacks."
+        )
+
     return SystemDefaults(
         fees=FeeDefaults(
             taker_bps=float(data["fees"]["taker_bps"]),
@@ -503,9 +553,31 @@ def load_system_defaults() -> SystemDefaults:
             risk_per_trade_pct=float(data["risk"]["risk_per_trade_pct"]),
             max_drawdown_pct=float(data["risk"]["max_drawdown_pct"]),
             stop_equity_usdt=float(data["risk"]["stop_equity_usdt"]),
+            max_position_equity_pct=float(data["risk"]["max_position_equity_pct"]),
+            reserve_fee_buffer=bool(data["risk"]["reserve_fee_buffer"]),
+            max_daily_loss_usdt=float(data["risk"]["max_daily_loss_usdt"]),
+            max_funding_cost_pct=float(data["risk"]["max_funding_cost_pct"]),
         ),
         account=AccountDefaults(
             starting_equity_usdt=float(data["account"]["starting_equity_usdt"]),
+        ),
+        engine=EngineDefaults(
+            warmup_bars=int(data["engine"]["warmup_bars"]),
+            state_save_interval=int(data["engine"]["state_save_interval"]),
+            max_warmup_bars=int(data["engine"]["max_warmup_bars"]),
+        ),
+        windowing=WindowingDefaults(
+            high_tf_safety_closes=int(data["windowing"]["high_tf_safety_closes"]),
+            med_tf_safety_closes=int(data["windowing"]["med_tf_safety_closes"]),
+            max_window_bars=int(data["windowing"]["max_window_bars"]),
+        ),
+        impact=ImpactDefaults(
+            max_impact_bps=float(data["impact"]["max_impact_bps"]),
+        ),
+        position_policy=PositionPolicyDefaults(
+            mode=str(data["position_policy"]["mode"]),
+            exit_mode=str(data["position_policy"]["exit_mode"]),
+            max_positions_per_symbol=int(data["position_policy"]["max_positions_per_symbol"]),
         ),
         exchange_name=str(data["exchange"]["name"]),
         instrument_type=str(data["exchange"]["instrument_type"]),

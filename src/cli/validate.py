@@ -818,6 +818,68 @@ def _gate_pre_live_no_conflicts(play_id: str) -> GateResult:
     )
 
 
+def _gate_pre_live_explicit_config(play_id: str) -> GateResult:
+    """PL4: Play YAML must have explicit values for all critical account fields.
+
+    Rejects Plays that rely on defaults.yml for production-critical values.
+    Backtest/dev can use defaults for convenience, but pre-live must be explicit.
+    """
+    start = time.perf_counter()
+    failures: list[str] = []
+
+    try:
+        from src.backtest.play import load_play
+        import yaml
+
+        play = load_play(play_id)
+
+        # Re-read raw YAML to check what was actually specified
+        from pathlib import Path
+        plays_dir = Path("plays")
+        play_path = plays_dir / f"{play_id}.yml"
+        if not play_path.exists():
+            # Try recursive search
+            matches = list(plays_dir.rglob(f"{play_id}.yml"))
+            if matches:
+                play_path = matches[0]
+
+        if play_path.exists():
+            with open(play_path, encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+
+            account_raw = raw.get("account", {})
+            if not account_raw:
+                failures.append("No explicit 'account' section in Play YAML")
+            else:
+                required_fields = {
+                    "starting_equity_usdt": "Starting capital",
+                    "max_leverage": "Maximum leverage",
+                    "max_drawdown_pct": "Max drawdown percentage",
+                    "slippage_bps": "Slippage in basis points",
+                }
+                for field_name, label in required_fields.items():
+                    if field_name not in account_raw:
+                        failures.append(f"Missing explicit '{field_name}' ({label})")
+
+                if "fee_model" not in account_raw or not account_raw.get("fee_model"):
+                    failures.append("Missing explicit 'fee_model' (taker_bps, maker_bps)")
+        else:
+            failures.append(f"Play YAML not found: {play_path}")
+
+    except Exception as e:
+        failures.append(f"Config check: {e}")
+
+    return GateResult(
+        gate_id="PL4",
+        name="Explicit Config (No Defaults)",
+        passed=len(failures) == 0,
+        checked=1,
+        duration_sec=time.perf_counter() - start,
+        detail=f"Play: {play_id}",
+        failures=failures,
+    )
+
+
 # ── Tier orchestration ────────────────────────────────────────────────
 
 def _run_gates(gates: list, fail_fast: bool = True) -> list[GateResult]:
@@ -867,6 +929,7 @@ def run_validation(
             console.print("[bold red]pre-live tier requires --play[/]")
             return 1
         gates = [
+            lambda: _gate_pre_live_explicit_config(play_id),
             _gate_pre_live_connectivity,
             lambda: _gate_pre_live_balance(play_id),
             lambda: _gate_pre_live_no_conflicts(play_id),

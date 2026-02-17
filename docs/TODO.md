@@ -32,6 +32,29 @@ Play YAML config is for backtesting. In live/demo, the exchange is the source of
 
 **Out of scope:** `max_notional_usdt` / `max_margin_usdt` (dead fields, user-set caps not exchange values), cross-margin branch (dead code), `slippage_bps` / `max_drawdown_pct` (model/strategy params)
 
+### P0-D: Config Defaults — Hybrid Approach
+
+**Design:** `AccountConfig.from_dict()` already fills missing Play fields from `DEFAULTS` at parse time. Engine code should trust Play values — no secondary fallbacks. For backtest/dev: defaults fill in for convenience with warnings. For pre-live: `validate pre-live` rejects Plays missing explicit values.
+
+**Stage 1: Kill engine-level fallbacks (real bugs)** — COMPLETE
+Engine code had secondary `or` fallbacks that contradicted defaults.yml and were unreachable since `AccountConfig.from_dict()` always populates fields. Replaced with fail-loud `ValueError` if None.
+- [x] `src/backtest/engine_factory.py`: Removed `slippage_bps = 5.0` and `maintenance_margin_rate = 0.005` fallbacks — fail-loud if None
+- [x] `src/engine/factory.py`: Removed `or 5.0`, `or 2.0`, `0.0006`, `0.0001` fallbacks — fail-loud if None
+- [x] `src/engine/sizing/model.py`: Fixed `SizingConfig` defaults: `max_leverage=1.0`, `min_trade_usdt=10.0`
+
+**Stage 2: Extend `SystemDefaults` to load ALL `defaults.yml` sections** — COMPLETE
+- [x] Extended `RiskDefaults` with 4 fields, added `EngineDefaults`, `WindowingDefaults`, `ImpactDefaults`, `PositionPolicyDefaults`
+- [x] Wired into `SystemDefaults` + `load_system_defaults()` with required-section validation
+
+**Stage 3: Add warnings + pre-live gate** — COMPLETE
+- [x] `AccountConfig.from_dict()`: logs warning listing each field filled from DEFAULTS
+- [x] `validate pre-live` gate PL4: rejects Plays missing explicit account fields (equity, leverage, fees, slippage, drawdown)
+
+**Stage 4: Wire remaining references** — COMPLETE
+- [x] `src/risk/global_risk.py`: Wired `max_total_exposure_usd` in `RiskLimits.from_config()`
+
+**NOT changing (intentional):** `src/config/config.py` RiskConfig conservative caps ($20 daily loss, $50 position) — LIVE SAFETY limits, deliberately stricter than backtest defaults.
+
 ## P1: Live Trading Integration
 
 - [ ] Test LiveIndicatorProvider with real WebSocket data

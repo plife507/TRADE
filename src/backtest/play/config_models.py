@@ -142,17 +142,38 @@ class AccountConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "AccountConfig":
-        """Create from dict, using defaults from config/defaults.yml when not specified."""
+        """Create from dict, using defaults from config/defaults.yml when not specified.
+
+        Logs a warning for each field filled from defaults (hybrid approach:
+        convenient for backtest/dev, but `validate pre-live` rejects implicit defaults).
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        defaulted: list[str] = []
+
         # All defaults come from config/defaults.yml - single source of truth
-        starting_equity = d.get("starting_equity_usdt", DEFAULTS.account.starting_equity_usdt)
-        max_leverage = d.get("max_leverage", DEFAULTS.risk.max_leverage)
+        if "starting_equity_usdt" in d:
+            starting_equity = d["starting_equity_usdt"]
+        else:
+            starting_equity = DEFAULTS.account.starting_equity_usdt
+            defaulted.append(f"starting_equity_usdt={starting_equity}")
+
+        if "max_leverage" in d:
+            max_leverage = d["max_leverage"]
+        else:
+            max_leverage = DEFAULTS.risk.max_leverage
+            defaulted.append(f"max_leverage={max_leverage}")
 
         # max_drawdown_pct in defaults.yml is 0.20 (decimal), convert to percentage if needed
         default_drawdown = DEFAULTS.risk.max_drawdown_pct
         if default_drawdown < 1.0:
-            # Convert from decimal (0.20) to percentage (20.0)
             default_drawdown = default_drawdown * 100.0
-        max_drawdown = d.get("max_drawdown_pct", default_drawdown)
+        if "max_drawdown_pct" in d:
+            max_drawdown = d["max_drawdown_pct"]
+        else:
+            max_drawdown = default_drawdown
+            defaulted.append(f"max_drawdown_pct={max_drawdown}")
 
         # Margin mode: defaults.yml uses "isolated", we use "isolated_usdt"
         default_margin_mode = DEFAULTS.margin.mode
@@ -165,18 +186,37 @@ class AccountConfig:
         if "fee_model" in d and d["fee_model"]:
             fee_model = FeeModel.from_dict(d["fee_model"])
         else:
-            # Build from defaults.yml
             fee_model = FeeModel(
                 taker_bps=DEFAULTS.fees.taker_bps,
                 maker_bps=DEFAULTS.fees.maker_bps,
             )
+            defaulted.append(f"fee_model(taker={DEFAULTS.fees.taker_bps}, maker={DEFAULTS.fees.maker_bps})")
 
         # Execution defaults
-        slippage = d.get("slippage_bps", DEFAULTS.execution.slippage_bps)
-        min_notional = d.get("min_trade_notional_usdt", DEFAULTS.execution.min_trade_notional_usdt)
+        if "slippage_bps" in d:
+            slippage = d["slippage_bps"]
+        else:
+            slippage = DEFAULTS.execution.slippage_bps
+            defaulted.append(f"slippage_bps={slippage}")
+
+        if "min_trade_notional_usdt" in d:
+            min_notional = d["min_trade_notional_usdt"]
+        else:
+            min_notional = DEFAULTS.execution.min_trade_notional_usdt
+            defaulted.append(f"min_trade_notional_usdt={min_notional}")
 
         # Margin defaults
-        mmr = d.get("maintenance_margin_rate", DEFAULTS.margin.maintenance_margin_rate)
+        if "maintenance_margin_rate" in d:
+            mmr = d["maintenance_margin_rate"]
+        else:
+            mmr = DEFAULTS.margin.maintenance_margin_rate
+            defaulted.append(f"maintenance_margin_rate={mmr}")
+
+        if defaulted:
+            logger.warning(
+                "AccountConfig using defaults from defaults.yml: %s",
+                ", ".join(defaulted),
+            )
 
         return cls(
             starting_equity_usdt=float(starting_equity),
