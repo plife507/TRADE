@@ -59,6 +59,12 @@ Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 | GAP-LS5 | MEDIUM | `core/exchange_orders_manage.py:406-407` | `batch_limit_orders` silently drops qty<=0 orders (`continue` with no log/error). `batch_market_orders` was fixed (BUG-P2-8) but limit path was missed |
 | GAP-LS6 | MEDIUM | `core/exchange_instruments.py:131-135` | `calculate_qty()` — if `get_price()` returns None, `price <= 0` raises uncontrolled TypeError instead of explicit validation |
 
+### Accepted Behavior
+
+| # | Severity | File | Note |
+|---|----------|------|------|
+| GAP-BD2 | LOW | `trade_cli.py:863` | `os._exit(0)` is correct — pybit WS threads are non-daemon, `sys.exit()` would hang. Revisit only if thread model changes |
+
 ### Platform
 
 - **DuckDB file locking on Windows** -- all scripts run sequentially, `run_full_suite.py` has retry logic (5 attempts, 3-15s backoff)

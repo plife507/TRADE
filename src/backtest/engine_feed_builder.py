@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
 from .runtime.feed_store import FeedStore, MultiTFFeedStore
@@ -25,6 +25,35 @@ from .runtime.quote_state import QuoteState
 from .indicators import get_required_indicator_columns_from_specs
 
 from ..utils.logger import get_logger
+
+def _to_naive_datetime(ts: datetime | np.datetime64 | pd.Timestamp) -> datetime:
+    """Normalize any timestamp type to a tz-naive datetime for safe comparison."""
+    # Note: pandas Timestamp subclasses datetime, so avoid calling Timestamp-only
+    # methods on a value typed as datetime; normalize via pd.Timestamp(...).
+    dt = cast(datetime, pd.Timestamp(ts).to_pydatetime())
+    # Normalize tz-aware -> UTC naive; treat tz-naive as UTC naive.
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _datetime_to_epoch_ms(ts: datetime) -> int:
+    """Convert datetime to epoch ms (tz-naive assumed UTC)."""
+    ts_utc = ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts.astimezone(timezone.utc)
+    return int(ts_utc.timestamp() * 1000)
+
+
+def _sort_by_timestamp(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort by 'timestamp' + reset index, with pandas typing safety."""
+    sorted_df = df.sort_values("timestamp")
+    if sorted_df is None:
+        # pandas typing allows None for inplace=True; we never use inplace here.
+        sorted_df = df
+    reset_df = sorted_df.reset_index(drop=True)
+    if reset_df is None:
+        reset_df = sorted_df
+    return reset_df
+
 
 if TYPE_CHECKING:
     from .engine_data_prep import PreparedFrame, MultiTFPreparedFrames
@@ -329,19 +358,16 @@ def build_market_data_arrays_impl(
 
     # Build funding rate array
     if funding_df is not None and not funding_df.empty:
-        funding_rate_array = np.zeros(n_bars, dtype=np.float64)
+        funding_rate_arr = np.zeros(n_bars, dtype=np.float64)
 
         # Sort funding events by timestamp
-        funding_df = funding_df.sort_values("timestamp").reset_index(drop=True)
+        funding_sorted = _sort_by_timestamp(funding_df)
 
         # Convert funding timestamps to epoch ms for O(1) lookup
         funding_ts_ms_to_rate: dict[int, float] = {}
-        for _, row in funding_df.iterrows():
-            ts: datetime = cast(datetime, row["timestamp"])
-            if hasattr(ts, "timestamp"):
-                ts_ms = int(ts.timestamp() * 1000)
-            else:
-                ts_ms = int(cast(float, cast(pd.Timestamp, pd.Timestamp(ts)).timestamp()) * 1000)
+        for _, row in funding_sorted.iterrows():
+            dt = _to_naive_datetime(cast(datetime | np.datetime64 | pd.Timestamp, row["timestamp"]))
+            ts_ms = _datetime_to_epoch_ms(dt)
             funding_ts_ms_to_rate[ts_ms] = float(row["funding_rate"])
             funding_settlement_times.add(ts_ms)
 
@@ -349,24 +375,16 @@ def build_market_data_arrays_impl(
         # Also mark which bars are funding settlement times
         last_rate = 0.0
         funding_idx = 0
-        funding_timestamps = funding_df["timestamp"].values
-        funding_rates = funding_df["funding_rate"].values
+        funding_timestamps = funding_sorted["timestamp"].values
+        funding_rates = funding_sorted["funding_rate"].values
 
         for i in range(n_bars):
-            # Get exec bar ts_close
-            ts_close = exec_feed.ts_close[i]
-            if isinstance(ts_close, np.datetime64):
-                ts_close_dt = pd.Timestamp(ts_close).to_pydatetime()
-            else:
-                ts_close_dt = ts_close
+            # Get exec bar ts_close (normalized to tz-naive)
+            ts_close_dt = _to_naive_datetime(exec_feed.ts_close[i])
 
             # Advance through funding events up to ts_close
             while funding_idx < len(funding_timestamps):
-                funding_ts = funding_timestamps[funding_idx]
-                if hasattr(funding_ts, "to_pydatetime"):
-                    funding_ts = funding_ts.to_pydatetime()
-                elif isinstance(funding_ts, np.datetime64):
-                    funding_ts = pd.Timestamp(funding_ts).to_pydatetime()
+                funding_ts = _to_naive_datetime(cast(datetime | np.datetime64 | pd.Timestamp, funding_timestamps[funding_idx]))
 
                 if funding_ts <= ts_close_dt:
                     last_rate = float(funding_rates[funding_idx])
@@ -374,41 +392,34 @@ def build_market_data_arrays_impl(
                 else:
                     break
 
-            funding_rate_array[i] = last_rate
+            funding_rate_arr[i] = last_rate
 
         logger.info(
             f"Built funding rate array: {n_bars} bars, "
             f"{len(funding_settlement_times)} settlement times"
         )
+        funding_rate_array = funding_rate_arr
 
     # Build open interest array
     if oi_df is not None and not oi_df.empty:
-        open_interest_array = np.zeros(n_bars, dtype=np.float64)
+        open_interest_arr = np.zeros(n_bars, dtype=np.float64)
 
         # Sort OI data by timestamp
-        oi_df = oi_df.sort_values("timestamp").reset_index(drop=True)
+        oi_sorted = _sort_by_timestamp(oi_df)
 
         # For each exec bar, forward-fill from last OI at or before ts_close
         last_oi = 0.0
         oi_idx = 0
-        oi_timestamps = oi_df["timestamp"].values
-        oi_values = oi_df["open_interest"].values
+        oi_timestamps = oi_sorted["timestamp"].values
+        oi_values = oi_sorted["open_interest"].values
 
         for i in range(n_bars):
-            # Get exec bar ts_close
-            ts_close = exec_feed.ts_close[i]
-            if isinstance(ts_close, np.datetime64):
-                ts_close_dt = pd.Timestamp(ts_close).to_pydatetime()
-            else:
-                ts_close_dt = ts_close
+            # Get exec bar ts_close (normalized to tz-naive)
+            ts_close_dt = _to_naive_datetime(exec_feed.ts_close[i])
 
             # Advance through OI records up to ts_close
             while oi_idx < len(oi_timestamps):
-                oi_ts = oi_timestamps[oi_idx]
-                if hasattr(oi_ts, "to_pydatetime"):
-                    oi_ts = oi_ts.to_pydatetime()
-                elif isinstance(oi_ts, np.datetime64):
-                    oi_ts = pd.Timestamp(oi_ts).to_pydatetime()
+                oi_ts = _to_naive_datetime(cast(datetime | np.datetime64 | pd.Timestamp, oi_timestamps[oi_idx]))
 
                 if oi_ts <= ts_close_dt:
                     last_oi = float(oi_values[oi_idx])
@@ -416,11 +427,12 @@ def build_market_data_arrays_impl(
                 else:
                     break
 
-            open_interest_array[i] = last_oi
+            open_interest_arr[i] = last_oi
 
         logger.info(
             f"Built open interest array: {n_bars} bars, "
-            f"range [{open_interest_array.min():.0f}, {open_interest_array.max():.0f}]"
+            f"range [{open_interest_arr.min():.0f}, {open_interest_arr.max():.0f}]"
         )
+        open_interest_array = open_interest_arr
 
     return funding_rate_array, open_interest_array, funding_settlement_times
