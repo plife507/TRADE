@@ -16,6 +16,16 @@ Parallelism:
   - Play suites (G8-G13) run plays in parallel via ProcessPoolExecutor
   - Independent gates within a stage run concurrently via ThreadPoolExecutor
   - Real-data tier: sync DuckDB once (serial), then all plays in parallel (read-only)
+
+Timeouts:
+  - Per-play timeout: 120s default (--timeout to override)
+  - Per-gate timeout: 300s default
+  - Hung plays/gates report as FAIL with TIMEOUT error, never block forever
+
+Incremental reporting:
+  - Each gate result prints immediately as it completes
+  - Partial report written to .validate_report.json after each gate
+  - If process hangs/dies, partial results are on disk
 """
 
 from __future__ import annotations
@@ -23,8 +33,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    Future,
+    ProcessPoolExecutor,
+    ThreadPoolExecutor,
+    TimeoutError as FuturesTimeoutError,
+    as_completed,
+)
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -33,6 +50,15 @@ from typing import Any, Callable
 from rich.console import Console
 
 console = Console()
+
+# ── Timeout defaults ─────────────────────────────────────────────────
+
+PLAY_TIMEOUT_SEC = 120    # per-play timeout (synthetic or real)
+GATE_TIMEOUT_SEC = 300    # per-gate timeout (for ThreadPoolExecutor stages)
+
+# ── Report file (incremental checkpoint) ─────────────────────────────
+
+REPORT_FILE = Path(".validate_report.json")
 
 # ── Core validation play IDs ──────────────────────────────────────────
 
@@ -138,6 +164,58 @@ class ValidationReport:
         }
 
 
+# ── Incremental reporting ─────────────────────────────────────────────
+
+def _print_gate_result(gate: GateResult) -> None:
+    """Print a single gate result immediately to console."""
+    status = "[bold green]PASS[/]" if gate.passed else "[bold red]FAIL[/]"
+    name_padded = f"{gate.name} ".ljust(26, ".")
+    detail = f"[dim]{gate.detail}[/]"
+    timing = f"[dim]{gate.duration_sec:.1f}s[/]"
+    console.print(f" {gate.gate_id:4s} {name_padded} {status}  {detail:30s} {timing}")
+
+    if gate.failures:
+        for f in gate.failures[:5]:
+            console.print(f"       [red]{f}[/]")
+        if len(gate.failures) > 5:
+            console.print(f"       [dim]... and {len(gate.failures) - 5} more[/]")
+
+
+def _checkpoint_report(tier: str, gates: list[GateResult], start_time: float) -> None:
+    """Write partial report to disk after each gate completes."""
+    report = {
+        "tier": tier,
+        "status": "in_progress",
+        "duration_sec": round(time.perf_counter() - start_time, 2),
+        "gates_completed": len(gates),
+        "gates_passed": sum(1 for g in gates if g.passed),
+        "gates_failed": sum(1 for g in gates if not g.passed),
+        "gates": [g.to_dict() for g in gates],
+    }
+    try:
+        REPORT_FILE.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
+    except Exception:
+        pass  # non-critical
+
+
+def _finalize_report(tier: str, gates: list[GateResult], start_time: float) -> None:
+    """Write final report to disk."""
+    all_passed = all(g.passed for g in gates)
+    report = {
+        "tier": tier,
+        "status": "passed" if all_passed else "failed",
+        "duration_sec": round(time.perf_counter() - start_time, 2),
+        "gates_completed": len(gates),
+        "gates_passed": sum(1 for g in gates if g.passed),
+        "gates_failed": sum(1 for g in gates if not g.passed),
+        "gates": [g.to_dict() for g in gates],
+    }
+    try:
+        REPORT_FILE.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
+    except Exception:
+        pass
+
+
 # ── Module-level worker functions (must be top-level for Windows spawn) ──
 
 def _run_single_play_synthetic(play_id: str) -> tuple[str, int, str | None]:
@@ -198,11 +276,54 @@ def _get_max_workers() -> int:
     return max(1, cpu - 1)
 
 
+def _collect_futures_with_timeout(
+    futures: dict[Future, str],
+    play_timeout: int,
+    gate_label: str = "",
+) -> tuple[int, list[str]]:
+    """Collect results from play futures with per-play timeout.
+
+    Prints progress as each play completes.
+    Returns (total_trades, failures).
+    """
+    total_trades = 0
+    failures: list[str] = []
+    total = len(futures)
+    done = 0
+
+    try:
+        for future in as_completed(futures, timeout=play_timeout * total):
+            pid = futures[future]
+            done += 1
+            try:
+                _, trades, error = future.result(timeout=play_timeout)
+                total_trades += trades
+                status = "[red]FAIL[/]" if error else "[green]ok[/]"
+                if error:
+                    failures.append(error)
+            except FuturesTimeoutError:
+                status = "[red]TIMEOUT[/]"
+                failures.append(f"{pid}: TIMEOUT after {play_timeout}s")
+            except Exception as e:
+                status = "[red]ERROR[/]"
+                failures.append(f"{pid}: {type(e).__name__}: {e}")
+            console.print(f"       [dim]{gate_label}[/] {done}/{total} {pid} {status}", highlight=False)
+    except FuturesTimeoutError:
+        # Overall as_completed timeout -- mark remaining as timed out
+        for future, pid in futures.items():
+            if not future.done():
+                failures.append(f"{pid}: TIMEOUT (pool deadline)")
+                console.print(f"       [dim]{gate_label}[/] {pid} [red]TIMEOUT[/]", highlight=False)
+
+    return total_trades, failures
+
+
 def _gate_play_suite(
     suite_name: str,
     gate_id: str,
     gate_name: str,
     max_workers: int | None = None,
+    play_timeout: int = PLAY_TIMEOUT_SEC,
 ) -> GateResult:
     """Run all plays in a suite directory through the engine in parallel."""
     start = time.perf_counter()
@@ -225,7 +346,8 @@ def _gate_play_suite(
 
     # For small suites (<=3 plays), run sequentially to avoid process overhead
     if checked <= 3:
-        for pid in play_ids:
+        for i, pid in enumerate(play_ids, 1):
+            console.print(f"       [dim]{gate_id}[/] {i}/{checked} {pid}...", highlight=False)
             _, trades, error = _run_single_play_synthetic(pid)
             total_trades += trades
             if error:
@@ -233,11 +355,9 @@ def _gate_play_suite(
     else:
         with ProcessPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(_run_single_play_synthetic, pid): pid for pid in play_ids}
-            for future in as_completed(futures):
-                pid, trades, error = future.result()
-                total_trades += trades
-                if error:
-                    failures.append(error)
+            trades, fails = _collect_futures_with_timeout(futures, play_timeout, gate_id)
+            total_trades += trades
+            failures.extend(fails)
 
     return GateResult(
         gate_id=gate_id,
@@ -338,7 +458,9 @@ def _gate_core_plays() -> GateResult:
     from src.backtest.play import load_play
     from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
 
-    for pid in CORE_PLAY_IDS:
+    total = len(CORE_PLAY_IDS)
+    for i, pid in enumerate(CORE_PLAY_IDS, 1):
+        console.print(f"       [dim]G4[/] {i}/{total} {pid}...", highlight=False)
         try:
             play = load_play(pid)
             engine = create_engine_from_play(play)
@@ -369,7 +491,9 @@ def _gate_risk_stops() -> GateResult:
     from src.backtest.play import load_play
     from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
 
-    for pid, expected in RISK_PLAY_EXPECTATIONS.items():
+    total = len(RISK_PLAY_EXPECTATIONS)
+    for i, (pid, expected) in enumerate(RISK_PLAY_EXPECTATIONS.items(), 1):
+        console.print(f"       [dim]G4b[/] {i}/{total} {pid}...", highlight=False)
         try:
             play = load_play(pid)
             engine = create_engine_from_play(play)
@@ -651,8 +775,10 @@ def _gate_determinism() -> GateResult:
     from src.backtest.artifacts.hashes import compute_trades_hash
 
     checked = 0
+    total = len(CORE_PLAY_IDS)
     for pid in CORE_PLAY_IDS:
         checked += 1
+        console.print(f"       [dim]G14[/] {checked}/{total} {pid} (run A+B)...", highlight=False)
         try:
             # Run A
             play_a = load_play(pid)
@@ -1150,6 +1276,7 @@ def _gate_real_data_phase(
     phase: str,
     gate_id: str,
     max_workers: int | None = None,
+    play_timeout: int = PLAY_TIMEOUT_SEC,
 ) -> GateResult:
     """Run all real-data plays in a phase directory in parallel."""
     start = time.perf_counter()
@@ -1180,7 +1307,8 @@ def _gate_real_data_phase(
     workers = max_workers or _get_max_workers()
 
     if len(tasks) <= 2:
-        for pid, s, e in tasks:
+        for i, (pid, s, e) in enumerate(tasks, 1):
+            console.print(f"       [dim]{gate_id}[/] {i}/{len(tasks)} {pid}...", highlight=False)
             _, trades, error = _run_single_play_real(pid, s, e)
             total_trades += trades
             if error:
@@ -1191,11 +1319,9 @@ def _gate_real_data_phase(
                 pool.submit(_run_single_play_real, pid, s, e): pid
                 for pid, s, e in tasks
             }
-            for future in as_completed(futures):
-                pid, trades, error = future.result()
-                total_trades += trades
-                if error:
-                    failures.append(error)
+            trades, fails = _collect_futures_with_timeout(futures, play_timeout, gate_id)
+            total_trades += trades
+            failures.extend(fails)
 
     return GateResult(
         gate_id=gate_id,
@@ -1213,12 +1339,22 @@ def _gate_real_data_phase(
 def _run_staged_gates(
     schedule: list[list[Callable[[], GateResult]]],
     fail_fast: bool = True,
+    tier: str = "",
+    start_time: float = 0.0,
+    json_output: bool = False,
+    gate_timeout: int = GATE_TIMEOUT_SEC,
 ) -> list[GateResult]:
     """Run gates in stages. Gates within a stage run concurrently.
+
+    Each gate result is printed immediately and checkpointed to disk.
 
     Args:
         schedule: List of stages. Each stage is a list of gate functions.
         fail_fast: If True, stop after a stage with any failure.
+        tier: Tier name for checkpoint reporting.
+        start_time: perf_counter() at validation start, for checkpoint timing.
+        json_output: If True, suppress incremental console output.
+        gate_timeout: Timeout in seconds for each gate in a concurrent stage.
 
     Returns:
         All GateResults from all completed stages.
@@ -1233,14 +1369,34 @@ def _run_staged_gates(
             # Single gate -- run directly, no thread overhead
             result = stage[0]()
             all_results.append(result)
+            if not json_output:
+                _print_gate_result(result)
+            _checkpoint_report(tier, all_results, start_time)
         else:
-            # Multiple gates -- run concurrently in threads
-            stage_results: list[GateResult] = []
+            # Multiple gates -- run concurrently in threads with timeout
             with ThreadPoolExecutor(max_workers=len(stage)) as pool:
                 futures = {pool.submit(fn): fn for fn in stage}
-                for future in as_completed(futures):
-                    stage_results.append(future.result())
-            all_results.extend(stage_results)
+                for future in as_completed(futures, timeout=gate_timeout):
+                    try:
+                        result = future.result(timeout=gate_timeout)
+                        all_results.append(result)
+                        if not json_output:
+                            _print_gate_result(result)
+                        _checkpoint_report(tier, all_results, start_time)
+                    except FuturesTimeoutError:
+                        timeout_result = GateResult(
+                            gate_id="??",
+                            name="TIMEOUT",
+                            passed=False,
+                            checked=0,
+                            duration_sec=gate_timeout,
+                            detail=f"gate exceeded {gate_timeout}s",
+                            failures=[f"TIMEOUT after {gate_timeout}s"],
+                        )
+                        all_results.append(timeout_result)
+                        if not json_output:
+                            _print_gate_result(timeout_result)
+                        _checkpoint_report(tier, all_results, start_time)
 
         # Check for failures in this stage
         if fail_fast and any(not r.passed for r in all_results):
@@ -1249,12 +1405,21 @@ def _run_staged_gates(
     return all_results
 
 
-def _run_gates(gates: list, fail_fast: bool = True) -> list[GateResult]:
-    """Run a list of gate functions sequentially (legacy, used by pre-live/exchange)."""
+def _run_gates(
+    gates: list,
+    fail_fast: bool = True,
+    tier: str = "",
+    start_time: float = 0.0,
+    json_output: bool = False,
+) -> list[GateResult]:
+    """Run a list of gate functions sequentially with incremental reporting."""
     results: list[GateResult] = []
     for gate_fn in gates:
         result = gate_fn()
         results.append(result)
+        if not json_output:
+            _print_gate_result(result)
+        _checkpoint_report(tier, results, start_time)
         if not result.passed and fail_fast:
             break
     return results
@@ -1262,32 +1427,36 @@ def _run_gates(gates: list, fail_fast: bool = True) -> list[GateResult]:
 
 # ── Module definitions ───────────────────────────────────────────────
 
-def _make_module_definitions(max_workers: int | None = None) -> dict[str, list[Callable[[], GateResult]]]:
+def _make_module_definitions(
+    max_workers: int | None = None,
+    play_timeout: int = PLAY_TIMEOUT_SEC,
+) -> dict[str, list[Callable[[], GateResult]]]:
     """Build module name -> gate function list mapping.
 
-    Uses closures to capture max_workers for play suite gates.
+    Uses closures to capture max_workers and play_timeout for play suite gates.
     """
     w = max_workers
+    t = play_timeout
 
     return {
         "core": [_gate_core_plays],
         "risk": [_gate_risk_stops],
         "audits": [_gate_registry_contract, _gate_incremental_parity],
-        "operators": [lambda: _gate_play_suite("validation/operators", "G8", "Operator Suite", w)],
-        "structures": [lambda: _gate_play_suite("validation/structures", "G9", "Structure Suite", w)],
-        "complexity": [lambda: _gate_play_suite("validation/complexity", "G10", "Complexity Ladder", w)],
-        "indicators": [lambda: _gate_play_suite("validation/indicators", "G12", "Indicator Suite", w)],
-        "patterns": [lambda: _gate_play_suite("validation/patterns", "G13", "Pattern Suite", w)],
+        "operators": [lambda: _gate_play_suite("validation/operators", "G8", "Operator Suite", w, t)],
+        "structures": [lambda: _gate_play_suite("validation/structures", "G9", "Structure Suite", w, t)],
+        "complexity": [lambda: _gate_play_suite("validation/complexity", "G10", "Complexity Ladder", w, t)],
+        "indicators": [lambda: _gate_play_suite("validation/indicators", "G12", "Indicator Suite", w, t)],
+        "patterns": [lambda: _gate_play_suite("validation/patterns", "G13", "Pattern Suite", w, t)],
         "parity": [_gate_structure_parity, _gate_rollup_parity],
         "sim": [_gate_sim_orders],
         "metrics": [_gate_metrics_audit],
         "determinism": [_gate_determinism],
         "coverage": [_gate_coverage_check],
         # Real-data modules
-        "real-accumulation": [lambda: _gate_real_data_phase("accumulation", "RD1", w)],
-        "real-markup": [lambda: _gate_real_data_phase("markup", "RD2", w)],
-        "real-distribution": [lambda: _gate_real_data_phase("distribution", "RD3", w)],
-        "real-markdown": [lambda: _gate_real_data_phase("markdown", "RD4", w)],
+        "real-accumulation": [lambda: _gate_real_data_phase("accumulation", "RD1", w, t)],
+        "real-markup": [lambda: _gate_real_data_phase("markup", "RD2", w, t)],
+        "real-distribution": [lambda: _gate_real_data_phase("distribution", "RD3", w, t)],
+        "real-markdown": [lambda: _gate_real_data_phase("markdown", "RD4", w, t)],
     }
 
 
@@ -1305,6 +1474,7 @@ def run_module_validation(
     module_name: str,
     max_workers: int | None = None,
     json_output: bool = False,
+    play_timeout: int = PLAY_TIMEOUT_SEC,
 ) -> int:
     """Run a single validation module independently.
 
@@ -1318,13 +1488,14 @@ def run_module_validation(
     for name in ["src", "src.backtest", "src.engine", "src.data", "src.indicators"]:
         logging.getLogger(name).setLevel(logging.WARNING)
 
-    modules = _make_module_definitions(max_workers)
+    modules = _make_module_definitions(max_workers, play_timeout)
     if module_name not in modules:
         console.print(f"[bold red]Unknown module: {module_name}[/]")
         console.print(f"[dim]Available: {', '.join(MODULE_NAMES)}[/]")
         return 1
 
     start = time.perf_counter()
+    tier_label = f"module:{module_name}"
 
     if not json_output:
         console.print(f"\n[bold cyan]TRADE VALIDATION[/]  [dim]\\[module: {module_name}][/]")
@@ -1333,18 +1504,24 @@ def run_module_validation(
     gate_fns = modules[module_name]
     results: list[GateResult] = []
     for fn in gate_fns:
-        results.append(fn())
+        result = fn()
+        results.append(result)
+        if not json_output:
+            _print_gate_result(result)
+        _checkpoint_report(tier_label, results, start)
 
     report = ValidationReport(
-        tier=f"module:{module_name}",
+        tier=tier_label,
         gates=results,
         duration_sec=time.perf_counter() - start,
     )
 
+    _finalize_report(tier_label, results, start)
+
     if json_output:
         console.print(json.dumps(report.to_dict(), indent=2))
     else:
-        _print_report(report)
+        _print_summary(report)
 
     return 0 if report.passed else 1
 
@@ -1358,6 +1535,8 @@ def run_validation(
     json_output: bool = False,
     max_workers: int | None = None,
     module_name: str | None = None,
+    play_timeout: int = PLAY_TIMEOUT_SEC,
+    gate_timeout: int = GATE_TIMEOUT_SEC,
 ) -> int:
     """
     Run the unified validation suite at the specified tier.
@@ -1372,7 +1551,10 @@ def run_validation(
         if not module_name:
             console.print("[bold red]module tier requires --module[/]")
             return 1
-        return run_module_validation(module_name, max_workers=max_workers, json_output=json_output)
+        return run_module_validation(
+            module_name, max_workers=max_workers,
+            json_output=json_output, play_timeout=play_timeout,
+        )
 
     # Suppress noisy logging for validation runs (except exchange tier which needs app init)
     if tier != Tier.EXCHANGE:
@@ -1383,6 +1565,7 @@ def run_validation(
 
     start = time.perf_counter()
     w = max_workers
+    t = play_timeout
 
     if not json_output:
         console.print(f"\n[bold cyan]TRADE VALIDATION[/]  [dim]\\[{tier.value}][/]")
@@ -1401,7 +1584,10 @@ def run_validation(
             _gate_yaml_parse,
             _gate_core_plays,
         ]
-        results = _run_gates(gates, fail_fast=fail_fast)
+        results = _run_gates(
+            gates, fail_fast=fail_fast,
+            tier=tier.value, start_time=start, json_output=json_output,
+        )
 
     elif tier == Tier.EXCHANGE:
         gates = [
@@ -1411,7 +1597,10 @@ def run_validation(
             _gate_exchange_order_flow,
             _gate_exchange_diagnostics,
         ]
-        results = _run_gates(gates, fail_fast=fail_fast)
+        results = _run_gates(
+            gates, fail_fast=fail_fast,
+            tier=tier.value, start_time=start, json_output=json_output,
+        )
 
     elif tier == Tier.REAL:
         # Real-data tier: sync phase (serial) then run phase (parallel)
@@ -1422,21 +1611,44 @@ def run_validation(
             console.print(" [dim]Syncing real data...[/]")
         sync_result = _sync_real_data_manifest()
         results.append(sync_result)
+        if not json_output:
+            _print_gate_result(sync_result)
+        _checkpoint_report(tier.value, results, start)
+
         if not sync_result.passed and fail_fast:
             pass  # skip run phase
         else:
-            # Phase 2: Run all phases in parallel
+            # Phase 2: Run all phases in parallel with timeout
             phase_gates = [
-                lambda: _gate_real_data_phase("accumulation", "RD1", w),
-                lambda: _gate_real_data_phase("markup", "RD2", w),
-                lambda: _gate_real_data_phase("distribution", "RD3", w),
-                lambda: _gate_real_data_phase("markdown", "RD4", w),
+                lambda: _gate_real_data_phase("accumulation", "RD1", w, t),
+                lambda: _gate_real_data_phase("markup", "RD2", w, t),
+                lambda: _gate_real_data_phase("distribution", "RD3", w, t),
+                lambda: _gate_real_data_phase("markdown", "RD4", w, t),
             ]
-            # Run all 4 phase gates concurrently
+            # Run all 4 phase gates concurrently with timeout
             with ThreadPoolExecutor(max_workers=4) as pool:
                 futures = {pool.submit(fn): fn for fn in phase_gates}
-                for future in as_completed(futures):
-                    results.append(future.result())
+                for future in as_completed(futures, timeout=gate_timeout):
+                    try:
+                        result = future.result(timeout=gate_timeout)
+                        results.append(result)
+                        if not json_output:
+                            _print_gate_result(result)
+                        _checkpoint_report(tier.value, results, start)
+                    except FuturesTimeoutError:
+                        timeout_result = GateResult(
+                            gate_id="RD?",
+                            name="Real Data TIMEOUT",
+                            passed=False,
+                            checked=0,
+                            duration_sec=gate_timeout,
+                            detail=f"phase exceeded {gate_timeout}s",
+                            failures=[f"TIMEOUT after {gate_timeout}s"],
+                        )
+                        results.append(timeout_result)
+                        if not json_output:
+                            _print_gate_result(timeout_result)
+                        _checkpoint_report(tier.value, results, start)
 
     else:
         # Staged schedule for quick/standard/full
@@ -1458,9 +1670,9 @@ def run_validation(
 
             # Stage 4: operator/structure/complexity suites (parallel, each internally parallel)
             schedule.append([
-                lambda: _gate_play_suite("validation/operators", "G8", "Operator Suite", w),
-                lambda: _gate_play_suite("validation/structures", "G9", "Structure Suite", w),
-                lambda: _gate_play_suite("validation/complexity", "G10", "Complexity Ladder", w),
+                lambda: _gate_play_suite("validation/operators", "G8", "Operator Suite", w, t),
+                lambda: _gate_play_suite("validation/structures", "G9", "Structure Suite", w, t),
+                lambda: _gate_play_suite("validation/complexity", "G10", "Complexity Ladder", w, t),
             ])
 
             # Stage 5: metrics
@@ -1469,14 +1681,18 @@ def run_validation(
         if tier == Tier.FULL:
             # Stage 6: indicator + pattern suites (parallel, each internally parallel)
             schedule.append([
-                lambda: _gate_play_suite("validation/indicators", "G12", "Indicator Suite", w),
-                lambda: _gate_play_suite("validation/patterns", "G13", "Pattern Suite", w),
+                lambda: _gate_play_suite("validation/indicators", "G12", "Indicator Suite", w, t),
+                lambda: _gate_play_suite("validation/patterns", "G13", "Pattern Suite", w, t),
             ])
 
             # Stage 7: determinism
             schedule.append([_gate_determinism])
 
-        results = _run_staged_gates(schedule, fail_fast=fail_fast)
+        results = _run_staged_gates(
+            schedule, fail_fast=fail_fast,
+            tier=tier.value, start_time=start,
+            json_output=json_output, gate_timeout=gate_timeout,
+        )
 
     report = ValidationReport(
         tier=tier.value,
@@ -1484,44 +1700,30 @@ def run_validation(
         duration_sec=time.perf_counter() - start,
     )
 
+    _finalize_report(tier.value, results, start)
+
     if json_output:
         console.print(json.dumps(report.to_dict(), indent=2))
     else:
-        _print_report(report)
+        _print_summary(report)
 
     return 0 if report.passed else 1
 
 
 # ── Reporting ─────────────────────────────────────────────────────────
 
-def _print_report(report: ValidationReport) -> None:
-    """Print rich console report."""
-    for gate in report.gates:
-        status = "[bold green]PASS[/]" if gate.passed else "[bold red]FAIL[/]"
-        name_padded = f"{gate.name} ".ljust(26, ".")
-        detail = f"[dim]{gate.detail}[/]"
-        timing = f"[dim]{gate.duration_sec:.1f}s[/]"
-        console.print(f" {gate.gate_id:4s} {name_padded} {status}  {detail:30s} {timing}")
-
-        if gate.failures:
-            for f in gate.failures[:5]:
-                console.print(f"       [red]{f}[/]")
-            if len(gate.failures) > 5:
-                console.print(f"       [dim]... and {len(gate.failures) - 5} more[/]")
-
+def _print_summary(report: ValidationReport) -> None:
+    """Print final summary line (gate lines already printed incrementally)."""
     console.print(f"[dim]{'=' * 54}[/]")
-
-    passed_count = sum(1 for g in report.gates if g.passed)
-    total_count = len(report.gates)
 
     if report.passed:
         console.print(
-            f" [bold green]RESULT: ALL {total_count} GATES PASSED[/]"
+            f" [bold green]RESULT: ALL {len(report.gates)} GATES PASSED[/]"
             f"  [dim]({report.duration_sec:.1f}s)[/]"
         )
     else:
         console.print(
-            f" [bold red]RESULT: {report.failed_count} of {total_count} GATES FAILED[/]"
+            f" [bold red]RESULT: {report.failed_count} of {len(report.gates)} GATES FAILED[/]"
             f"  [dim]({report.duration_sec:.1f}s)[/]"
         )
 

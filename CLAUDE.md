@@ -130,15 +130,17 @@ timeframes:
 ## Quick Commands
 
 ```bash
-# Validation (parallel staged execution)
+# Validation (parallel staged execution, with timeouts + incremental reporting)
 python trade_cli.py validate quick                    # Pre-commit (~7s)
 python trade_cli.py validate standard                 # Pre-merge (~20s)
 python trade_cli.py validate full                     # Pre-release (~50s)
 python trade_cli.py validate real                     # Real-data verification (~2min)
-python trade_cli.py validate module --module X --json # Single module (for agents)
+python trade_cli.py validate module --module X --json # Single module (PREFERRED for agents)
 python trade_cli.py validate module --module coverage # Check for missing indicator/structure plays
 python trade_cli.py validate pre-live --play X        # Deployment gate
 python trade_cli.py validate exchange                  # Exchange integration (~30s)
+python trade_cli.py validate full --timeout 60        # Per-play timeout (default 120s)
+python trade_cli.py validate full --gate-timeout 180  # Per-gate timeout (default 300s)
 
 # Backtest
 python trade_cli.py backtest run --play X --sync  # Run single backtest

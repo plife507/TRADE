@@ -59,6 +59,15 @@ Validation is the #1 development bottleneck. Current: `quick` ~10s, `standard` ~
 - [x] Update TODO.md + CLAUDE.md validation commands sections
 - [x] Rewrite `.claude/commands/validate.md` + `.claude/agents/validate.md`
 
+### Phase 7: Timeout protection + incremental reporting (2026-02-18)
+- [x] Add per-play timeout (`PLAY_TIMEOUT_SEC=120`, `--timeout` CLI flag)
+- [x] Add per-gate timeout (`GATE_TIMEOUT_SEC=300`, `--gate-timeout` CLI flag)
+- [x] All `future.result()` calls have timeouts -- hung plays/gates fail with TIMEOUT, never block
+- [x] Incremental gate reporting: each gate prints result immediately + checkpoints to `.validate_report.json`
+- [x] Play-level progress: `G4 3/5 V_CORE_003_cases_metadata...` shows which play is running
+- [x] Update validate agent instructions: NEVER run `validate full` as background agent, use individual modules
+- [x] **GATE**: `python trade_cli.py validate quick --timeout 60` -- 5/5 gates pass
+
 **Note**: STR_001/009/010 and CL_006 zero-trade failures are pre-existing (confirmed via serial run). Not caused by parallelization.
 
 ## P1: Live Engine Rubric
@@ -170,15 +179,20 @@ python trade_cli.py validate real               # Real-data verification (~2min)
 python trade_cli.py validate pre-live --play X  # Deployment gate
 python trade_cli.py validate exchange           # Exchange integration (~30s)
 
-# Single module (for parallel agent execution)
+# Single module (PREFERRED for agent/background execution)
 python trade_cli.py validate module --module core --json
 python trade_cli.py validate module --module indicators --json
 python trade_cli.py validate module --module metrics --json
 
 # Options
-python trade_cli.py validate full --workers 4        # Control parallelism
+python trade_cli.py validate full --workers 4         # Control parallelism
+python trade_cli.py validate full --timeout 60        # Per-play timeout (default 120s)
+python trade_cli.py validate full --gate-timeout 180  # Per-gate timeout (default 300s)
 python trade_cli.py validate standard --no-fail-fast  # Run all gates
 python trade_cli.py validate quick --json             # JSON output for CI
+
+# Incremental checkpoint (partial results on disk if run hangs/dies)
+cat .validate_report.json
 
 # Backtest / verification
 python trade_cli.py backtest run --play X --sync      # Single backtest

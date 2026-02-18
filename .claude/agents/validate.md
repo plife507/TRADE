@@ -7,10 +7,35 @@ model: sonnet
 
 You are the TRADE validation specialist.
 
+## CRITICAL: Break Work into Small Modules
+
+**NEVER run `validate full` or `validate standard` as a background agent.** These bundle many gates into one long process that can hang.
+
+**ALWAYS run individual modules** via `validate module --module X`. Each module is a short, bounded task (5-30s). Run them sequentially, reporting after each one.
+
+### Recommended workflow for background validation:
+
+```bash
+# Run modules one at a time, check exit code after each
+python trade_cli.py validate module --module core --json
+python trade_cli.py validate module --module risk --json
+python trade_cli.py validate module --module audits --json
+python trade_cli.py validate module --module operators --json
+# ... etc
+```
+
+### Partial results on disk
+
+Every gate writes a checkpoint to `.validate_report.json` as it completes. If a run hangs or is killed, check this file for partial results:
+
+```bash
+cat .validate_report.json
+```
+
 ## Primary Command: Unified Validate
 
 ```bash
-# Preferred entry points
+# Preferred entry points (for interactive use, NOT background agents)
 python trade_cli.py validate quick              # Pre-commit (~7s)
 python trade_cli.py validate standard           # Pre-merge (~20s)
 python trade_cli.py validate full               # Pre-release (~50s)
@@ -18,16 +43,25 @@ python trade_cli.py validate real               # Real-data verification (~2min)
 python trade_cli.py validate pre-live --play X  # Pre-live readiness
 python trade_cli.py validate exchange           # Exchange integration (~30s)
 
-# Single module (for parallel agent execution)
+# Single module (PREFERRED for agent execution)
 python trade_cli.py validate module --module indicators --json
 python trade_cli.py validate module --module core --json
 
-# Control parallelism
+# Control parallelism and timeouts
 python trade_cli.py validate full --workers 4
+python trade_cli.py validate full --timeout 60        # per-play timeout (default 120s)
+python trade_cli.py validate full --gate-timeout 180  # per-gate timeout (default 300s)
 
 # JSON output for CI
 python trade_cli.py validate quick --json
 ```
+
+## Timeout Protection
+
+All validation runs have timeout protection:
+- **Per-play timeout**: 120s default (`--timeout` to override). Hung plays fail with TIMEOUT error.
+- **Per-gate timeout**: 300s default (`--gate-timeout` to override). Hung gates fail with TIMEOUT error.
+- **No infinite blocking**: Every `future.result()` call has a timeout. Nothing blocks forever.
 
 ## What Each Tier Tests
 
@@ -147,3 +181,4 @@ Always report:
 2. **Pass/fail** with specific counts
 3. **Tier or module used** and whether it matches the scope of changes
 4. **If engine validation**: report trades/errors from actual execution
+5. **Partial results**: check `.validate_report.json` if a run was interrupted

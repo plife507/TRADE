@@ -255,6 +255,18 @@ def _setup_validate_subcommand(subparsers) -> None:
         help="Run all gates even if one fails (default: stop on first failure)"
     )
     validate_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=120,
+        help="Per-play timeout in seconds (default: 120). Hung plays fail instead of blocking."
+    )
+    validate_parser.add_argument(
+        "--gate-timeout",
+        type=int,
+        default=300,
+        help="Per-gate timeout in seconds for concurrent stages (default: 300)."
+    )
+    validate_parser.add_argument(
         "--json",
         action="store_true",
         dest="json_output",

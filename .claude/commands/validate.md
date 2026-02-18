@@ -23,6 +23,19 @@ Run the unified TRADE validation suite at the specified tier.
 - `pre-live` - Connectivity + readiness gate for specific play
 - `exchange` - Exchange integration (~30s)
 
+## Timeout Protection
+
+All runs have timeout protection -- hung plays/gates fail with TIMEOUT, never block forever:
+- `--timeout N` - Per-play timeout in seconds (default: 120)
+- `--gate-timeout N` - Per-gate timeout in seconds (default: 300)
+
+## Incremental Reporting
+
+- Each gate prints its result immediately as it completes (not batched at end)
+- Play-level progress: `G4 3/5 V_CORE_003_cases_metadata...` shows which play is running
+- Partial results checkpoint to `.validate_report.json` after each gate
+- If process hangs or dies, check `.validate_report.json` for partial results
+
 ## Execution Strategy
 
 ### Quick (direct CLI call)
@@ -101,6 +114,13 @@ python trade_cli.py validate standard --no-fail-fast
 
 # Control parallelism
 python trade_cli.py validate full --workers 4
+
+# Timeouts (prevent hangs)
+python trade_cli.py validate full --timeout 60        # Per-play (default 120s)
+python trade_cli.py validate full --gate-timeout 180  # Per-gate (default 300s)
+
+# Check partial results if a run was interrupted
+cat .validate_report.json
 ```
 
 ## Debug Commands
@@ -116,15 +136,16 @@ python trade_cli.py debug metrics
 
 ## Report Format
 
+Gate results print incrementally as they complete:
 ```
-## Validation Report
-
-### Quick Tier
-- G1 YAML Parse: PASS (5/5)
-- G2 Registry Contract: PASS (44/44)
-- G3 Incremental Parity: PASS
-- G4 Core Plays: PASS (5/5, 2134 trades)
-
-### Summary
-All gates passed.
+ G1   YAML Parse ............... PASS  5 plays                0.0s
+ G2   Registry Contract ........ PASS  44 indicators          0.6s
+       G4 1/5 V_CORE_001_indicator_cross...
+       G4 2/5 V_CORE_002_structure_chain...
+       G4b 3/9 V_RISK_003_drawdown_50pct...
+ G4b  Risk Stops ............... PASS  9 risk plays           12.3s
+       G4 5/5 V_CORE_005_arithmetic_window...
+ G4   Core Engine Plays ........ PASS  5 plays, 2473 trades   15.1s
+======================================================
+ RESULT: ALL 5 GATES PASSED  (15.2s)
 ```

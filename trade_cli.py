@@ -821,6 +821,8 @@ def main():
             json_output=getattr(args, "json_output", False),
             max_workers=getattr(args, "workers", None),
             module_name=getattr(args, "module", None),
+            play_timeout=getattr(args, "timeout", 120),
+            gate_timeout=getattr(args, "gate_timeout", 300),
         ))
 
     # ===== ACCOUNT SUBCOMMANDS =====

@@ -82,6 +82,7 @@ backtests/
 !backtests/.gitkeep
 !backtests/README.md
 artifacts/
+.validate_report.json
 
 # -----------------------------------------------------------------------------
 # Reference Materials (vendor docs, external repos)
