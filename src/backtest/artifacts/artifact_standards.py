@@ -1006,6 +1006,10 @@ class ResultsSummary:
     trades_hash: str = ""     # SHA256 hash of trades.parquet content
     equity_hash: str = ""     # SHA256 hash of equity.parquet content
     run_hash: str = ""        # Combined hash (trades + equity + play)
+
+    # Stop fields (terminal risk events)
+    stopped_early: bool = False
+    stop_reason: str | None = None
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
@@ -1071,6 +1075,9 @@ class ResultsSummary:
             "trades_hash": self.trades_hash,
             "equity_hash": self.equity_hash,
             "run_hash": self.run_hash,
+            # Stop fields
+            "stopped_early": self.stopped_early,
+            "stop_reason": self.stop_reason,
         }
     
     def write_json(self, path: Path) -> None:
@@ -1158,6 +1165,9 @@ def compute_results_summary(
     # Risk/Position Config from Play
     leverage: int = 1,
     initial_equity: float = 10000.0,
+    # Stop fields (terminal risk events)
+    stopped_early: bool = False,
+    stop_reason: str | None = None,
 ) -> ResultsSummary:
     """
     Compute results summary from trades and equity curve.
@@ -1201,6 +1211,8 @@ def compute_results_summary(
         run_hash=run_hash,
         leverage=leverage,
         initial_equity=initial_equity,
+        stopped_early=stopped_early,
+        stop_reason=stop_reason,
     )
     
     # If pre-computed metrics provided, use them directly

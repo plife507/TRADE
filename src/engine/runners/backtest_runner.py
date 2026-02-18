@@ -52,7 +52,7 @@ from ..play_engine import PlayEngine
 # Import metrics calculation for proper Sharpe/Sortino/etc computation
 from ...backtest.metrics import compute_backtest_metrics
 from ...backtest.runtime.timeframe import tf_minutes
-from ...backtest.types import EquityPoint
+from ...backtest.types import EquityPoint, StopReason
 
 if TYPE_CHECKING:
     from ...backtest.play import Play
@@ -366,12 +366,23 @@ class BacktestRunner:
 
             # 1. Process fills from previous bar's orders (fill at THIS bar's open)
             # Also updates trailing/BE stops using previous bar's ATR
-            self._process_bar_fills(
+            _liquidated = self._process_bar_fills(
                 bar_idx,
                 trailing_config=trailing_config,
                 break_even_config=break_even_config,
                 atr_value=prev_atr_value,
             )
+
+            if _liquidated:
+                stopped_early = True
+                stop_reason = "liquidated"
+                stop_classification = StopReason.LIQUIDATED.value
+                stop_reason_detail = (
+                    f"Liquidation at bar {bar_idx} ({candle.ts_close}): "
+                    f"equity fell to or below maintenance margin"
+                )
+                self._engine.logger.warning(stop_reason_detail)
+                break
 
             # 2. Process bar through engine (signal generation at bar close)
             signal = self._engine.process_bar(bar_idx)
@@ -407,7 +418,7 @@ class BacktestRunner:
                     # Max drawdown hit - stop backtest
                     stopped_early = True
                     stop_reason = "max_drawdown"
-                    stop_classification = "MAX_DRAWDOWN_HIT"
+                    stop_classification = StopReason.MAX_DRAWDOWN_HIT.value
                     stop_reason_detail = (
                         f"Max drawdown hit: {current_dd_pct:.2f}% >= {max_drawdown_pct:.2f}% "
                         f"(equity ${equity:.2f}, peak ${peak_equity:.2f})"
@@ -554,7 +565,7 @@ class BacktestRunner:
         trailing_config: dict | None = None,
         break_even_config: dict | None = None,
         atr_value: float | None = None,
-    ) -> None:
+    ) -> bool:
         """
         Process order fills and TP/SL for a bar.
 
@@ -572,7 +583,7 @@ class BacktestRunner:
         """
         sim_exchange = self._exchange_adapter._sim_exchange
         if sim_exchange is None:
-            return
+            return False
 
         # Build Bar for SimulatedExchange
         from ...backtest.sim.types import Bar
@@ -663,6 +674,8 @@ class BacktestRunner:
                         exit=fill.price,
                         pnl=fill.pnl if hasattr(fill, "pnl") else None,
                     )
+
+        return step_result.liquidation_result.liquidated
 
     def _close_remaining_position(
         self,

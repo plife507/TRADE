@@ -40,6 +40,14 @@ Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 
 ## Open Bugs & Architecture Gaps
 
+### Backtest Safety Gaps (from CODEBASE_REVIEW.md, 2026-02-17)
+
+| # | Severity | Issue | File(s) | Status |
+|---|----------|-------|---------|--------|
+| GAP-3 | **CRITICAL** | Max drawdown stop not propagated: `run_engine_with_play()` drops stop fields when converting `BacktestResult` → `PlayBacktestResult` | `engine_factory.py` | **FIXED** — reads stop fields from `backtest_result.metadata` |
+| GAP-4 | **CRITICAL** | Liquidation not treated as terminal stop -- backtest returns success after liquidation events | `sim/exchange.py`, `backtest_runner.py` | **FIXED** — `_check_liquidation` returns `LiquidationResult`, runner breaks on liquidation |
+| GAP-5 | **HIGH** | `run_backtest_with_gates()` marks success based on gates/artifacts, ignores terminal risk events | `backtest/runner.py` | **FIXED** — Phase 9b risk gate raises `GateFailure` on terminal `StopReason` |
+
 ### Live/Demo Gaps
 
 | # | Severity | Issue | Fix |

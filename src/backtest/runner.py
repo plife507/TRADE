@@ -39,6 +39,7 @@ def _utcnow() -> datetime:
 import pandas as pd
 
 from .play import Play, load_play
+from .types import StopReason
 from .runtime.preflight import (
     PreflightStatus,
     PreflightReport,
@@ -624,6 +625,8 @@ def _write_results_summary(ctx: _RunContext) -> ResultsSummary:
         metrics=ctx.engine_result.metrics,
         leverage=play_leverage,
         initial_equity=play_initial_equity,
+        stopped_early=ctx.engine_result.stopped_early,
+        stop_reason=ctx.engine_result.stop_reason,
     )
 
     # Write result.json
@@ -958,6 +961,18 @@ def run_backtest_with_gates(
 
         # Phase 9: Execute backtest
         _execute_backtest(ctx, synthetic_provider)
+
+        # Phase 9b: Terminal risk gate
+        if ctx.engine_result.stopped_early:
+            _classification = ctx.engine_result.stop_classification
+            if _classification is not None:
+                try:
+                    if StopReason(_classification).is_terminal():
+                        raise GateFailure(
+                            f"Terminal risk event: {ctx.engine_result.stop_reason_detail or _classification}"
+                        )
+                except ValueError:
+                    pass  # Unknown classification — non-terminal
 
         # Phase 10: Write trade artifacts
         eval_start_ts_ms = _write_trade_artifacts(ctx)

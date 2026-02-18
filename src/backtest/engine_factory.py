@@ -485,11 +485,10 @@ def run_engine_with_play(
         play_hash=play_hash,
         metrics=metrics,
         description=f"{play.id} backtest",
-        # BacktestRunner result doesn't have stop fields yet
-        stop_reason=None,
-        stop_classification=None,
-        stop_reason_detail=None,
-        stopped_early=False,
+        stop_reason=backtest_result.metadata.get("stop_reason"),
+        stop_classification=backtest_result.metadata.get("stop_classification"),
+        stop_reason_detail=backtest_result.metadata.get("stop_reason_detail"),
+        stopped_early=bool(backtest_result.metadata.get("stopped_early", False)),
     )
 
 

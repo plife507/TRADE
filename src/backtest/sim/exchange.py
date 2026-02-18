@@ -39,6 +39,7 @@ from .types import (
     Fill,
     FillReason,
     FundingEvent,
+    LiquidationResult,
     StepResult,
     SimulatorExchangeState,
     StopReason,
@@ -654,13 +655,14 @@ class SimulatedExchange:
         mark_price: float,
         step_time: datetime,
         prices: "PriceSnapshot",
-    ) -> tuple[list[Trade], list[Fill]]:
+    ) -> tuple[list[Trade], list[Fill], LiquidationResult]:
         """Check and execute liquidation if needed."""
-        closed_trades = []
-        fills = []
+        closed_trades: list[Trade] = []
+        fills: list[Fill] = []
+        liq_out = LiquidationResult()
 
         if not self.position:
-            return closed_trades, fills
+            return closed_trades, fills, liq_out
 
         # Compute projected equity at this mark price
         projected_unrealized_pnl = self.position.unrealized_pnl(mark_price)
@@ -675,6 +677,7 @@ class SimulatedExchange:
                 self._ledger.state, prices, self.position
             )
             if liq_result.liquidated and liq_result.event:
+                liq_out = liq_result
                 result = self._close_position(
                     mark_price, step_time, "liquidation", "mark_price"
                 )
@@ -684,7 +687,7 @@ class SimulatedExchange:
                     fills.append(exit_fill)
                     self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
 
-        return closed_trades, fills
+        return closed_trades, fills, liq_out
 
     # ─────────────────────────────────────────────────────────────────────────
     # Bar Processing (Main Loop)
@@ -773,7 +776,7 @@ class SimulatedExchange:
         self._ledger.update_for_mark_price(self.position, mark_price)
 
         # 9. Check liquidation (uses up-to-date ledger state from step 8)
-        liq_trades, liq_fills = self._check_liquidation(bar, mark_price, step_time, prices)
+        liq_trades, liq_fills, liq_result = self._check_liquidation(bar, mark_price, step_time, prices)
         fills.extend(liq_fills)
 
         return StepResult(
@@ -784,6 +787,7 @@ class SimulatedExchange:
             fills=fills,
             rejections=[],
             funding_result=funding_result if funding_result.funding_pnl != 0 else FundingResult(),
+            liquidation_result=liq_result,
             prices=prices,
         )
     
@@ -1027,7 +1031,11 @@ class SimulatedExchange:
             return None
         
         # Map string reason to FillReason
-        reason_map = {"sl": FillReason.STOP_LOSS, "tp": FillReason.TAKE_PROFIT}
+        reason_map = {
+            "sl": FillReason.STOP_LOSS,
+            "tp": FillReason.TAKE_PROFIT,
+            "liquidation": FillReason.LIQUIDATION,
+        }
         fill_reason = reason_map.get(reason, FillReason.SIGNAL)
         
         # Phase 4: Determine exit_price_source if not provided
