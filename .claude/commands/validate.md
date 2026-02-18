@@ -1,7 +1,7 @@
 ---
 allowed-tools: Bash, Read, Grep, Glob
 description: Run TRADE validation suite (Play normalize, audits, smoke tests)
-argument-hint: [tier: quick|standard|full|pre-live|exchange]
+argument-hint: [tier: quick|standard|full|real|module]
 ---
 
 # Validate Command
@@ -14,102 +14,103 @@ Run the unified TRADE validation suite at the specified tier.
 /validate [tier]
 ```
 
-- `quick` - Core plays + audits (~10s, default)
-- `standard` - + structure/rollup/sim/suite/metrics (~2min)
-- `full` - + full indicator/pattern suites, determinism (~10min)
+- `quick` - Core plays + audits (~7s, default)
+- `standard` - + structure/rollup/sim/suite/metrics (~20s)
+- `full` - + full indicator/pattern suites, determinism (~50s)
+- `real` - Real-data verification, sync-once + parallel (~2min)
+- `module --module X` - Run a single module independently
 - `pre-live` - Connectivity + readiness gate for specific play
-- `exchange` - Exchange integration (API, account, market data, order flow) (~30s)
+- `exchange` - Exchange integration (~30s)
 
-## Execution
+## Execution Strategy
+
+### Quick (direct CLI call)
+```bash
+python trade_cli.py validate quick
+```
+
+### Standard (staged orchestration)
+Step 1: Run critical path serially
+```bash
+python trade_cli.py validate module --module audits --json
+python trade_cli.py validate module --module core --json
+python trade_cli.py validate module --module risk --json
+```
+
+Step 2: If Step 1 passes, run remaining modules as parallel background Bash tasks
+```bash
+# Launch all in parallel background:
+python trade_cli.py validate module --module operators --json
+python trade_cli.py validate module --module structures --json
+python trade_cli.py validate module --module complexity --json
+python trade_cli.py validate module --module parity --json
+python trade_cli.py validate module --module sim --json
+python trade_cli.py validate module --module metrics --json
+```
+
+### Full (staged orchestration)
+Same as standard, plus additional parallel background tasks:
+```bash
+python trade_cli.py validate module --module indicators --json
+python trade_cli.py validate module --module patterns --json
+python trade_cli.py validate module --module determinism --json
+```
+
+### Real-data (direct CLI call, handles sync + parallel internally)
+```bash
+python trade_cli.py validate real
+```
+
+### Single module (direct CLI call)
+```bash
+python trade_cli.py validate module --module indicators --json
+python trade_cli.py validate module --module core
+```
+
+## Available Modules
+
+| Module | Gates | What it tests |
+|--------|-------|---------------|
+| `core` | G4 | 5 core plays |
+| `risk` | G4b | 9 risk plays |
+| `audits` | G2 + G3 | registry + parity audits |
+| `operators` | G8 | 25 operator plays |
+| `structures` | G9 | 14 structure plays |
+| `complexity` | G10 | 13 complexity plays |
+| `indicators` | G12 | 84 indicator plays |
+| `patterns` | G13 | 34 pattern plays |
+| `parity` | G5 + G6 | structure + rollup parity |
+| `sim` | G7 | sim order smoke |
+| `metrics` | G11 | financial math audit |
+| `determinism` | G14 | 5 plays x2 runs |
+| `real-accumulation` | RD1 | 15 accumulation plays |
+| `real-markup` | RD2 | 16 markup plays |
+| `real-distribution` | RD3 | 15 distribution plays |
+| `real-markdown` | RD4 | 15 markdown plays |
+
+## CLI Options
 
 ```bash
-# Quick (pre-commit)
-python trade_cli.py validate quick
-
-# Standard (pre-merge)
-python trade_cli.py validate standard
-
-# Full (pre-release)
-python trade_cli.py validate full
-
-# Pre-live (specific play readiness)
-python trade_cli.py validate pre-live --play <play_name>
-
-# Exchange integration
-python trade_cli.py validate exchange
-
-# JSON output for CI
+# JSON output for CI/parsing
 python trade_cli.py validate quick --json
 
 # Skip fail-fast (run all gates even on failure)
 python trade_cli.py validate standard --no-fail-fast
+
+# Control parallelism
+python trade_cli.py validate full --workers 4
 ```
-
-## What Each Tier Tests
-
-### Quick (G1-G4)
-- G1: YAML parse + normalize all 5 core plays
-- G2: Indicator registry contract audit (44 indicators)
-- G3: Incremental vs vectorized parity audit (43 indicators)
-- G4: Run 5 core plays with synthetic data (all must produce trades)
-
-### Standard (G5-G11)
-- G5: Structure detector parity (7 detectors)
-- G6: 1m rollup bucket parity
-- G7: Simulator order type smoke tests (6 order types)
-- G8: Operator suite (plays/validation/operators/)
-- G9: Structure suite (plays/validation/structures/)
-- G10: Complexity ladder (plays/validation/complexity/)
-- G11: Financial metrics audit (drawdown, CAGR, Calmar, TF normalization)
-
-### Full (G12-G14)
-- G12: Full indicator suite (plays/validation/indicators/)
-- G13: Full pattern suite (plays/validation/patterns/)
-- G14: Engine determinism (same input = same output, 5 plays x2 runs)
-
-### Pre-Live (PL1-PL3 + G1 + G4)
-- PL1: Bybit API connectivity
-- PL2: Account balance sufficiency for play
-- PL3: No conflicting open positions
-- G1: YAML parse (core plays)
-- G4: Core engine plays (synthetic)
-
-### Exchange (EX1-EX5)
-- EX1: API connectivity + server time offset
-- EX2: Account balance, exposure, portfolio, collateral
-- EX3: Market data (prices, OHLCV, funding, open interest, orderbook)
-- EX4: Order flow (place limit buy -> verify -> cancel, demo mode only)
-- EX5: Diagnostics (rate limits, WebSocket status, health check)
 
 ## Debug Commands
 
 For targeted investigation when a gate fails:
 
 ```bash
-# Indicator math parity for a specific play
 python trade_cli.py debug math-parity --play <play_name> --start <date> --end <date>
-
-# Snapshot plumbing parity
 python trade_cli.py debug snapshot-plumbing --play <play_name> --start <date> --end <date>
-
-# Engine determinism comparison
 python trade_cli.py debug determinism --run-a <path_a> --run-b <path_b>
-
-# Standalone metrics audit
 python trade_cli.py debug metrics
 ```
-
-## Core Validation Plays
-
-Located in `plays/validation/core/`:
-
-| Play | Exercises |
-|------|-----------|
-| V_CORE_001_indicator_cross | EMA crossover, swing/trend structures, first_hit exit |
-| V_CORE_002_structure_chain | swing -> trend -> market_structure, BOS/CHoCH |
-| V_CORE_003_cases_metadata | cases/when/emit, metadata capture, bbands multi-output |
-| V_CORE_004_multi_tf | Higher timeframe features + structures, forward-fill |
-| V_CORE_005_arithmetic_window | holds_for, occurred_within, between, near_pct, rolling_window |
 
 ## Report Format
 

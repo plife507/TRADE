@@ -819,6 +819,8 @@ def main():
             play_id=getattr(args, "play", None),
             fail_fast=not getattr(args, "no_fail_fast", False),
             json_output=getattr(args, "json_output", False),
+            max_workers=getattr(args, "workers", None),
+            module_name=getattr(args, "module", None),
         ))
 
     # ===== ACCOUNT SUBCOMMANDS =====

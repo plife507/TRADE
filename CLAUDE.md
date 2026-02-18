@@ -16,6 +16,7 @@ This is a Python project. Primary language is Python with YAML for configuration
 - **LF LINE ENDINGS** - Use `newline='\n'` on Windows
 - **TODO-DRIVEN** - Every change maps to `docs/TODO.md`
 - **CLI VALIDATION** - Use CLI commands, not pytest
+- **PLAN → TODO.md** - Every plan mode output MUST be written into `docs/TODO.md` (see Plan Mode Rules below)
 
 ## Project Structure
 
@@ -129,10 +130,12 @@ timeframes:
 ## Quick Commands
 
 ```bash
-# Validation (single entry point)
-python trade_cli.py validate quick                    # Pre-commit (~10s)
-python trade_cli.py validate standard                 # Pre-merge (~2min)
-python trade_cli.py validate full                     # Pre-release (~10min)
+# Validation (parallel staged execution)
+python trade_cli.py validate quick                    # Pre-commit (~7s)
+python trade_cli.py validate standard                 # Pre-merge (~20s)
+python trade_cli.py validate full                     # Pre-release (~50s)
+python trade_cli.py validate real                     # Real-data verification (~2min)
+python trade_cli.py validate module --module X --json # Single module (for agents)
 python trade_cli.py validate pre-live --play X        # Deployment gate
 python trade_cli.py validate exchange                  # Exchange integration (~30s)
 
@@ -153,6 +156,46 @@ python trade_cli.py debug metrics                      # Financial calc audit
 python trade_cli.py play run --play X --mode demo   # Demo mode (no real money)
 python trade_cli.py play run --play X --mode live --confirm  # Live (REAL MONEY)
 ```
+
+## Plan Mode Rules (ENFORCED)
+
+When exiting plan mode, the plan MUST be written into `docs/TODO.md` as a new gated section. This is the **only** persistent record — conversation context gets compacted and lost.
+
+**Format requirements:**
+
+1. **New section** in TODO.md with a clear title and priority (e.g., `## P0: Liquidation Parity`)
+2. **Gated phases** — each phase is a group of checkboxes that must ALL pass before the next phase starts
+3. **Validation gate** between phases — a checkbox like `- [ ] **GATE**: validate quick passes` or `- [ ] **GATE**: backtest run --play X succeeds`
+4. **Reference doc** — if the plan produced a detailed review/analysis, link it (e.g., `See docs/LIQUIDATION_PARITY_REVIEW.md`)
+
+**Example structure:**
+
+```markdown
+## P0: Liquidation Parity
+
+See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
+
+### Phase 1: Fix IM/MM formulas
+- [ ] Add fee-to-close term to MM calculation in `ledger.py`
+- [ ] Add mmDeduction to MM calculation
+- [ ] Wire tiered MMR from risk-limit config
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+### Phase 2: Bankruptcy price settlement
+- [ ] Implement bankruptcy price calculation in `liquidation_model.py`
+- [ ] Change exchange sim to settle at bankruptcy price (not mark)
+- [ ] **GATE**: `python scripts/run_full_suite.py` — 170/170 pass
+
+### Phase 3: Unify liquidation price formulas
+- [ ] Remove `calculate_liquidation_price_simple()`, use single canonical formula
+- [ ] **GATE**: `python trade_cli.py validate standard` passes
+```
+
+**Rules:**
+- Do NOT write plans only to temp plan files or conversation — they vanish on compaction
+- Do NOT create separate plan markdown files — `docs/TODO.md` is the single source of truth
+- Supporting analysis docs (like reviews, audits) go in `docs/` and are linked from TODO.md
+- Mark items `[x]` as they are completed during implementation
 
 ## Where to Find Details
 

@@ -223,18 +223,31 @@ def _setup_play_subcommands(subparsers) -> None:
 
 def _setup_validate_subcommand(subparsers) -> None:
     """Set up validate subcommand for unified validation."""
+    from src.cli.validate import MODULE_NAMES
+
     validate_parser = subparsers.add_parser(
         "validate",
-        help="Unified validation suite (quick/standard/full/pre-live/exchange)"
+        help="Unified validation suite (quick/standard/full/real/module/pre-live/exchange)"
     )
     validate_parser.add_argument(
         "tier",
-        choices=["quick", "standard", "full", "pre-live", "exchange"],
-        help="Validation tier: quick (~10s), standard (~2min), full (~10min), pre-live (readiness gate), exchange (~30s)"
+        choices=["quick", "standard", "full", "real", "module", "pre-live", "exchange"],
+        help="Validation tier: quick (~7s), standard (~20s), full (~50s), real (~2min), module (single module), pre-live, exchange (~30s)"
     )
     validate_parser.add_argument(
         "--play",
         help="Play identifier (required for pre-live tier)"
+    )
+    validate_parser.add_argument(
+        "--module",
+        choices=MODULE_NAMES,
+        help="Module name (required for module tier)"
+    )
+    validate_parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Max parallel workers for play suites (default: cpu_count - 1)"
     )
     validate_parser.add_argument(
         "--no-fail-fast",
