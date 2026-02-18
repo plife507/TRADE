@@ -136,6 +136,7 @@ python trade_cli.py validate standard                 # Pre-merge (~20s)
 python trade_cli.py validate full                     # Pre-release (~50s)
 python trade_cli.py validate real                     # Real-data verification (~2min)
 python trade_cli.py validate module --module X --json # Single module (for agents)
+python trade_cli.py validate module --module coverage # Check for missing indicator/structure plays
 python trade_cli.py validate pre-live --play X        # Deployment gate
 python trade_cli.py validate exchange                  # Exchange integration (~30s)
 
@@ -156,6 +157,22 @@ python trade_cli.py debug metrics                      # Financial calc audit
 python trade_cli.py play run --play X --mode demo   # Demo mode (no real money)
 python trade_cli.py play run --play X --mode live --confirm  # Live (REAL MONEY)
 ```
+
+## Validation Coverage
+
+The `coverage` module (gate G15) automatically detects which indicators and structures lack validation plays. It compares the indicator registry (44 indicators) and structure registry (7 types) against the plays in `plays/validation/indicators/` and `plays/validation/structures/`.
+
+```bash
+# Check for gaps (human-readable)
+python trade_cli.py validate module --module coverage
+
+# Check for gaps (JSON, for agents)
+python trade_cli.py validate module --module coverage --json
+```
+
+**When to run**: After adding a new indicator or structure detector. The gate fails if any registered indicator/structure has no corresponding validation play.
+
+**Fixing gaps**: Use the `validate_updater` agent, which has templates and workflows for creating missing plays. Or create plays manually following existing examples in `plays/validation/indicators/` and `plays/validation/structures/`.
 
 ## Plan Mode Rules (ENFORCED)
 
@@ -202,6 +219,7 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 | Topic | Location |
 |-------|----------|
 | Project status & session context | `docs/TODO.md` |
+| Validation best practices | `docs/VALIDATION_BEST_PRACTICES.md` |
 | DSL syntax | `docs/PLAY_DSL_REFERENCE.md` |
 | Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
 | CLI redesign open gates | `docs/CLI_REDESIGN.md` |

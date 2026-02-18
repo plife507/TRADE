@@ -566,6 +566,81 @@ def _gate_metrics_audit() -> GateResult:
     )
 
 
+def _gate_coverage_check() -> GateResult:
+    """G15: Check that all registered indicators and structures have validation plays."""
+    import yaml
+
+    start = time.perf_counter()
+    failures: list[str] = []
+
+    # ── Gather registered indicators ──
+    from src.backtest.indicator_registry import get_registry
+
+    registry = get_registry()
+    registered_indicators = set(registry.list_indicators())
+
+    # ── Gather registered structures ──
+    from src.structures.registry import list_structure_types
+
+    registered_structures = set(list_structure_types())
+
+    # ── Scan indicator validation plays for indicator names ──
+    covered_indicators: set[str] = set()
+    ind_dir = Path("plays/validation/indicators")
+    if ind_dir.exists():
+        for play_file in ind_dir.glob("*.yml"):
+            try:
+                with open(play_file, encoding="utf-8") as f:
+                    raw = yaml.safe_load(f) or {}
+                features = raw.get("features", {})
+                if isinstance(features, dict):
+                    for feat in features.values():
+                        if isinstance(feat, dict) and "indicator" in feat:
+                            covered_indicators.add(feat["indicator"])
+            except Exception:
+                pass
+
+    # ── Scan structure validation plays for structure types ──
+    covered_structures: set[str] = set()
+    str_dir = Path("plays/validation/structures")
+    if str_dir.exists():
+        for play_file in str_dir.glob("*.yml"):
+            try:
+                with open(play_file, encoding="utf-8") as f:
+                    raw = yaml.safe_load(f) or {}
+                structures = raw.get("structures", {})
+                if isinstance(structures, dict):
+                    for tf_structs in structures.values():
+                        if isinstance(tf_structs, list):
+                            for s in tf_structs:
+                                if isinstance(s, dict) and "type" in s:
+                                    covered_structures.add(s["type"])
+            except Exception:
+                pass
+
+    # ── Compute gaps ──
+    missing_indicators = sorted(registered_indicators - covered_indicators)
+    missing_structures = sorted(registered_structures - covered_structures)
+
+    for ind in missing_indicators:
+        failures.append(f"Missing validation: indicator '{ind}' has no play in plays/validation/indicators/")
+    for st in missing_structures:
+        failures.append(f"Missing validation: structure '{st}' has no play in plays/validation/structures/")
+
+    checked = len(registered_indicators) + len(registered_structures)
+
+    return GateResult(
+        gate_id="G15",
+        name="Coverage Check",
+        passed=len(failures) == 0,
+        checked=checked,
+        duration_sec=time.perf_counter() - start,
+        detail=f"{len(registered_indicators)} indicators, {len(registered_structures)} structures; "
+               f"{len(missing_indicators)} indicator gaps, {len(missing_structures)} structure gaps",
+        failures=failures,
+    )
+
+
 def _gate_determinism() -> GateResult:
     """G14: Engine determinism - same input = same output."""
     start = time.perf_counter()
@@ -1207,6 +1282,7 @@ def _make_module_definitions(max_workers: int | None = None) -> dict[str, list[C
         "sim": [_gate_sim_orders],
         "metrics": [_gate_metrics_audit],
         "determinism": [_gate_determinism],
+        "coverage": [_gate_coverage_check],
         # Real-data modules
         "real-accumulation": [lambda: _gate_real_data_phase("accumulation", "RD1", w)],
         "real-markup": [lambda: _gate_real_data_phase("markup", "RD2", w)],
@@ -1218,6 +1294,7 @@ def _make_module_definitions(max_workers: int | None = None) -> dict[str, list[C
 MODULE_NAMES = [
     "core", "risk", "audits", "operators", "structures", "complexity",
     "indicators", "patterns", "parity", "sim", "metrics", "determinism",
+    "coverage",
     "real-accumulation", "real-markup", "real-distribution", "real-markdown",
 ]
 

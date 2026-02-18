@@ -19,6 +19,7 @@ Run the unified TRADE validation suite at the specified tier.
 - `full` - + full indicator/pattern suites, determinism (~50s)
 - `real` - Real-data verification, sync-once + parallel (~2min)
 - `module --module X` - Run a single module independently
+- `coverage` - Check for missing indicator/structure validation plays
 - `pre-live` - Connectivity + readiness gate for specific play
 - `exchange` - Exchange integration (~30s)
 
@@ -83,6 +84,7 @@ python trade_cli.py validate module --module core
 | `sim` | G7 | sim order smoke |
 | `metrics` | G11 | financial math audit |
 | `determinism` | G14 | 5 plays x2 runs |
+| `coverage` | G15 | indicator + structure gap detection |
 | `real-accumulation` | RD1 | 15 accumulation plays |
 | `real-markup` | RD2 | 16 markup plays |
 | `real-distribution` | RD3 | 15 distribution plays |

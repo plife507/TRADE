@@ -76,6 +76,7 @@ Run any module independently with `validate module --module <name>`:
 | `sim` | G7 | sim order smoke |
 | `metrics` | G11 | financial math audit |
 | `determinism` | G14 | 5 plays x2 runs |
+| `coverage` | G15 | indicator + structure gap detection |
 | `real-accumulation` | RD1 | 15 accumulation plays |
 | `real-markup` | RD2 | 16 markup plays |
 | `real-distribution` | RD3 | 15 distribution plays |
@@ -108,6 +109,7 @@ python trade_cli.py debug metrics
 | `src/backtest/metrics.py` | `validate module --module metrics` |
 | Play YAML files | `validate quick` |
 | Multiple modules | `validate standard` or `full` |
+| New indicator/structure added | `validate module --module coverage` |
 | Exchange/API code | `validate exchange` |
 | Pre-deploy play | `validate pre-live --play X` |
 
@@ -125,6 +127,16 @@ python trade_cli.py debug metrics
 | `plays/validation/patterns/` | 34 | Synthetic pattern coverage |
 | `plays/validation/complexity/` | 13 | Increasing complexity |
 | `plays/validation/real_data/` | 61 | Real-data Wyckoff verification |
+
+---
+
+## Coverage Gaps
+
+If you detect coverage gaps (e.g., after a new indicator or structure is added):
+
+1. Run `python trade_cli.py validate module --module coverage --json`
+2. If gaps are found, escalate to the **validate_updater** agent to create missing plays
+3. The validate_updater has templates and workflows for creating new validation plays
 
 ---
 
