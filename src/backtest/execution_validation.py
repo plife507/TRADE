@@ -423,7 +423,9 @@ def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
     """
     from .rules.dsl_nodes import (
         Expr, Cond, AllExpr, AnyExpr, NotExpr,
-        HoldsFor, OccurredWithin, CountTrue, FeatureRef, ArithmeticExpr,
+        HoldsFor, OccurredWithin, CountTrue,
+        HoldsForDuration, OccurredWithinDuration, CountTrueDuration,
+        FeatureRef, ArithmeticExpr,
     )
 
     refs: list[FeatureReference] = []
@@ -488,7 +490,8 @@ def extract_rule_feature_refs(play: "Play") -> list[FeatureReference]:
                 _extract_from_expr(child, f"{location}.any[{i}]")
         elif isinstance(expr, NotExpr):
             _extract_from_expr(expr.child, f"{location}.not")
-        elif isinstance(expr, (HoldsFor, OccurredWithin, CountTrue)):
+        elif isinstance(expr, (HoldsFor, OccurredWithin, CountTrue,
+                                HoldsForDuration, OccurredWithinDuration, CountTrueDuration)):
             _extract_from_expr(expr.expr, f"{location}.window")
 
     # Extract from all actions

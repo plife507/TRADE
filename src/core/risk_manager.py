@@ -289,11 +289,13 @@ class RiskManager:
                     reason=f"Funding rate cost too high ({effective_cost:.2f}% > {max_funding_cost}% daily)"
                 )
 
-        # Check 1: Daily loss limit
-        if self._daily_pnl <= -self.config.max_daily_loss_usd:
+        # Check 1: Daily loss limit (DATA-016: use check_limit() which
+        # respects _seed_failed — direct _daily_pnl reads bypass the guard)
+        limit_ok, limit_reason = self._daily_tracker.check_limit(self.config.max_daily_loss_usd)
+        if not limit_ok:
             self.logger.risk(
                 "BLOCKED",
-                f"Daily loss limit reached: ${self._daily_pnl:.2f}",
+                limit_reason,
                 limit=self.config.max_daily_loss_usd
             )
             # Emit structured event
@@ -310,7 +312,7 @@ class RiskManager:
             )
             return RiskCheckResult(
                 allowed=False,
-                reason=f"Daily loss limit reached (${self._daily_pnl:.2f} lost today)"
+                reason=limit_reason,
             )
         
         # Check 2: Minimum balance

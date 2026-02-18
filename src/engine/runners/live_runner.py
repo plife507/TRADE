@@ -491,6 +491,9 @@ class LiveRunner:
                 f"Position sync FAILED: {e} -- signal execution blocked "
                 f"until a successful reconciliation occurs"
             )
+            # ENG-006: Do NOT set _last_reconcile_ts on failure — allow
+            # immediate retry on next candle instead of waiting 5 minutes.
+            return
 
         self._last_reconcile_ts = datetime.now()
 
@@ -993,11 +996,24 @@ class LiveRunner:
         await asyncio.sleep(delay)
 
         try:
+            # ENG-009: Drain stale candles queued before disconnect
+            drained = 0
+            while not self._candle_queue.empty():
+                try:
+                    self._candle_queue.get_nowait()
+                    drained += 1
+                except queue.Empty:
+                    break
+            if drained:
+                logger.info(f"Drained {drained} stale candle(s) from queue before reconnect")
+
             await self._disconnect()
             await self._connect()
             await self._sync_positions_on_startup()
             self._transition_state(RunnerState.RUNNING)
             self._reconnect_attempts = 0  # Reset on success
+            # ENG-BUG-010: Clear deduplication set so catch-up candles are accepted
+            self._seen_candles.clear()
             logger.info("Reconnection successful")
         except Exception as e:
             logger.error(f"Reconnection failed: {e}")

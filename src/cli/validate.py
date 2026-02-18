@@ -4,9 +4,9 @@ Unified validation for TRADE.
 Single entry point: python trade_cli.py validate [tier]
 
 Tiers:
-  quick     (~7s)   - pre-commit: YAML parse, registry, parity, 5 core plays, 9 risk plays
-  standard  (~20s)  - pre-merge: + structures, rollup, sim, suites, metrics audit
-  full      (~50s)  - pre-release: + full indicator/pattern suites, determinism
+  quick     (~2min) - pre-commit: YAML parse, registry, parity, 5 core plays, 9 risk plays
+  standard  (~4min) - pre-merge: + structures, rollup, sim, suites, metrics audit
+  full      (~6min) - pre-release: + full indicator/pattern suites, determinism
   real      (~2min) - real-data: sync-once then parallel 61 RV plays
   module            - run a single validation module independently
   pre-live          - connectivity + readiness gate for a specific play
@@ -54,7 +54,7 @@ console = Console()
 # ── Timeout defaults ─────────────────────────────────────────────────
 
 PLAY_TIMEOUT_SEC = 120    # per-play timeout (synthetic or real)
-GATE_TIMEOUT_SEC = 300    # per-gate timeout (for ThreadPoolExecutor stages)
+GATE_TIMEOUT_SEC = 600    # per-gate timeout (G4 core plays can take ~330s sequential)
 
 # ── Report file (incremental checkpoint) ─────────────────────────────
 
@@ -240,6 +240,34 @@ def _run_single_play_synthetic(play_id: str) -> tuple[str, int, str | None]:
         return (play_id, trades, None)
     except Exception as e:
         return (play_id, 0, f"{play_id}: {type(e).__name__}: {e}")
+
+
+def _run_single_risk_play(
+    play_id: str, expected: str,
+) -> tuple[str, str | None]:
+    """Run a single risk play and validate stop classification.
+
+    Returns (play_id, error_or_None).
+    Must be module-level for ProcessPoolExecutor on Windows (spawn).
+    """
+    import logging
+    os.environ["TRADE_LOG_LEVEL"] = "WARNING"
+    logging.disable(logging.INFO)
+
+    try:
+        from src.backtest.play import load_play
+        from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
+
+        play = load_play(play_id)
+        engine = create_engine_from_play(play, use_synthetic=True)
+        result = run_engine_with_play(engine, play)
+        if not result.stopped_early:
+            return (play_id, f"{play_id}: expected stopped_early=True, got False")
+        if result.stop_classification != expected:
+            return (play_id, f"{play_id}: expected {expected}, got {result.stop_classification}")
+        return (play_id, None)
+    except Exception as e:
+        return (play_id, f"{play_id}: {type(e).__name__}: {e}")
 
 
 def _run_single_play_real(play_id: str, start: str, end: str) -> tuple[str, int, str | None]:
@@ -450,27 +478,17 @@ def _gate_incremental_parity() -> GateResult:
 
 
 def _gate_core_plays() -> GateResult:
-    """G4: Run 5 core validation plays through engine (synthetic data)."""
+    """G4: Run 5 core validation plays through engine (synthetic data, parallel)."""
     start = time.perf_counter()
     failures: list[str] = []
     total_trades = 0
+    workers = _get_max_workers()
 
-    from src.backtest.play import load_play
-    from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
-
-    total = len(CORE_PLAY_IDS)
-    for i, pid in enumerate(CORE_PLAY_IDS, 1):
-        console.print(f"       [dim]G4[/] {i}/{total} {pid}...", highlight=False)
-        try:
-            play = load_play(pid)
-            engine = create_engine_from_play(play)
-            result = run_engine_with_play(engine, play)
-            trades = len(result.trades) if hasattr(result, "trades") else 0
-            total_trades += trades
-            if trades == 0:
-                failures.append(f"{pid}: zero trades")
-        except Exception as e:
-            failures.append(f"{pid}: {type(e).__name__}: {e}")
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_run_single_play_synthetic, pid): pid for pid in CORE_PLAY_IDS}
+        trades, fails = _collect_futures_with_timeout(futures, PLAY_TIMEOUT_SEC, "G4")
+        total_trades += trades
+        failures.extend(fails)
 
     return GateResult(
         gate_id="G4",
@@ -484,28 +502,40 @@ def _gate_core_plays() -> GateResult:
 
 
 def _gate_risk_stops() -> GateResult:
-    """G4b: Verify terminal risk events fire correctly on synthetic data."""
+    """G4b: Verify terminal risk events fire correctly on synthetic data (parallel)."""
     start = time.perf_counter()
     failures: list[str] = []
-
-    from src.backtest.play import load_play
-    from src.backtest.engine_factory import create_engine_from_play, run_engine_with_play
+    workers = _get_max_workers()
 
     total = len(RISK_PLAY_EXPECTATIONS)
-    for i, (pid, expected) in enumerate(RISK_PLAY_EXPECTATIONS.items(), 1):
-        console.print(f"       [dim]G4b[/] {i}/{total} {pid}...", highlight=False)
+    done = 0
+
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_run_single_risk_play, pid, expected): pid
+            for pid, expected in RISK_PLAY_EXPECTATIONS.items()
+        }
         try:
-            play = load_play(pid)
-            engine = create_engine_from_play(play)
-            result = run_engine_with_play(engine, play)
-            if not result.stopped_early:
-                failures.append(f"{pid}: expected stopped_early=True, got False")
-            elif result.stop_classification != expected:
-                failures.append(
-                    f"{pid}: expected {expected}, got {result.stop_classification}"
-                )
-        except Exception as e:
-            failures.append(f"{pid}: {type(e).__name__}: {e}")
+            for future in as_completed(futures, timeout=PLAY_TIMEOUT_SEC * total):
+                pid = futures[future]
+                done += 1
+                try:
+                    _, error = future.result(timeout=PLAY_TIMEOUT_SEC)
+                    status = "[red]FAIL[/]" if error else "[green]ok[/]"
+                    if error:
+                        failures.append(error)
+                except FuturesTimeoutError:
+                    status = "[red]TIMEOUT[/]"
+                    failures.append(f"{pid}: TIMEOUT after {PLAY_TIMEOUT_SEC}s")
+                except Exception as e:
+                    status = "[red]ERROR[/]"
+                    failures.append(f"{pid}: {type(e).__name__}: {e}")
+                console.print(f"       [dim]G4b[/] {done}/{total} {pid} {status}", highlight=False)
+        except FuturesTimeoutError:
+            for future, pid in futures.items():
+                if not future.done():
+                    failures.append(f"{pid}: TIMEOUT (pool deadline)")
+                    console.print(f"       [dim]G4b[/] {pid} [red]TIMEOUT[/]", highlight=False)
 
     return GateResult(
         gate_id="G4b",
@@ -1380,17 +1410,38 @@ def _run_staged_gates(
             # Multiple gates -- run concurrently in threads with timeout
             with ThreadPoolExecutor(max_workers=len(stage)) as pool:
                 futures = {pool.submit(fn): fn for fn in stage}
-                for future in as_completed(futures, timeout=gate_timeout):
-                    try:
-                        result = future.result()
-                        all_results.append(result)
-                        if not json_output:
-                            _print_gate_result(result)
-                        _checkpoint_report(tier, all_results, start_time)
-                    except FuturesTimeoutError:
+                try:
+                    for future in as_completed(futures, timeout=gate_timeout):
+                        try:
+                            result = future.result()
+                            all_results.append(result)
+                            if not json_output:
+                                _print_gate_result(result)
+                            _checkpoint_report(tier, all_results, start_time)
+                        except Exception as e:
+                            timeout_result = GateResult(
+                                gate_id="??",
+                                name="ERROR",
+                                passed=False,
+                                checked=0,
+                                duration_sec=gate_timeout,
+                                detail=f"gate error: {e}",
+                                failures=[str(e)],
+                            )
+                            all_results.append(timeout_result)
+                            if not json_output:
+                                _print_gate_result(timeout_result)
+                            _checkpoint_report(tier, all_results, start_time)
+                except (FuturesTimeoutError, TimeoutError):
+                    # as_completed raises TimeoutError when deadline is hit
+                    # and there are still unfinished futures
+                    unfinished = [f for f in futures if not f.done()]
+                    for future in unfinished:
+                        fn = futures[future]
+                        name = getattr(fn, '__name__', '??')
                         timeout_result = GateResult(
                             gate_id="??",
-                            name="TIMEOUT",
+                            name=f"TIMEOUT ({name})",
                             passed=False,
                             checked=0,
                             duration_sec=gate_timeout,
@@ -1400,7 +1451,7 @@ def _run_staged_gates(
                         all_results.append(timeout_result)
                         if not json_output:
                             _print_gate_result(timeout_result)
-                        _checkpoint_report(tier, all_results, start_time)
+                    _checkpoint_report(tier, all_results, start_time)
 
         # Check for failures in this stage
         if fail_fast and any(not r.passed for r in all_results):
@@ -1632,14 +1683,31 @@ def run_validation(
             # Run all 4 phase gates concurrently with timeout
             with ThreadPoolExecutor(max_workers=4) as pool:
                 futures = {pool.submit(fn): fn for fn in phase_gates}
-                for future in as_completed(futures, timeout=gate_timeout):
-                    try:
-                        result = future.result()
-                        results.append(result)
-                        if not json_output:
-                            _print_gate_result(result)
-                        _checkpoint_report(tier.value, results, start)
-                    except FuturesTimeoutError:
+                try:
+                    for future in as_completed(futures, timeout=gate_timeout):
+                        try:
+                            result = future.result()
+                            results.append(result)
+                            if not json_output:
+                                _print_gate_result(result)
+                            _checkpoint_report(tier.value, results, start)
+                        except Exception as e:
+                            timeout_result = GateResult(
+                                gate_id="RD?",
+                                name="Real Data ERROR",
+                                passed=False,
+                                checked=0,
+                                duration_sec=gate_timeout,
+                                detail=f"phase error: {e}",
+                                failures=[str(e)],
+                            )
+                            results.append(timeout_result)
+                            if not json_output:
+                                _print_gate_result(timeout_result)
+                            _checkpoint_report(tier.value, results, start)
+                except (FuturesTimeoutError, TimeoutError):
+                    unfinished = [f for f in futures if not f.done()]
+                    for future in unfinished:
                         timeout_result = GateResult(
                             gate_id="RD?",
                             name="Real Data TIMEOUT",
@@ -1652,7 +1720,7 @@ def run_validation(
                         results.append(timeout_result)
                         if not json_output:
                             _print_gate_result(timeout_result)
-                        _checkpoint_report(tier.value, results, start)
+                    _checkpoint_report(tier.value, results, start)
 
     else:
         # Staged schedule for quick/standard/full

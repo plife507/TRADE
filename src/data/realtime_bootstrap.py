@@ -562,6 +562,8 @@ class RealtimeBootstrap:
                 self.state.set_public_ws_connected()
                 self._stale_logged = False
                 self.logger.info("Public WebSocket reconnected (data resumed)")
+                # DATA-010: Re-subscribe all symbols on reconnect
+                self._resubscribe_all_symbols()
 
             msg_type = msg.get("type", "")
             symbol = data.get("symbol", "")
@@ -1076,6 +1078,42 @@ class RealtimeBootstrap:
         
         self.logger.debug("Connection monitor loop stopped")
     
+    def _resubscribe_all_symbols(self) -> None:
+        """DATA-010: Re-subscribe all tracked symbols after WS reconnect.
+
+        pybit's internal reconnect may only replay the initial subscription set.
+        Dynamically added symbols (via subscribe_symbol_dynamic) need explicit
+        re-subscription. Duplicate subscribes are idempotent on the exchange.
+        """
+        with self._lock:
+            symbols = set(self._symbols)
+            intervals = list(self.sub_config.kline_intervals)
+
+        if not symbols:
+            return
+
+        self.logger.info(f"Re-subscribing {len(symbols)} symbol(s) after reconnect...")
+        for symbol in symbols:
+            try:
+                if self.sub_config.enable_ticker:
+                    self.client.subscribe_ticker(symbol, self._on_ticker)
+                if self.sub_config.enable_orderbook:
+                    self.client.subscribe_orderbook(
+                        symbol, self._on_orderbook,
+                        depth=self.sub_config.orderbook_depth,
+                    )
+                if self.sub_config.enable_trades:
+                    self.client.subscribe_trades(symbol, self._on_trades)
+                if self.sub_config.enable_klines:
+                    for interval in intervals:
+                        try:
+                            interval_val: int | str = int(interval)
+                        except ValueError:
+                            interval_val = interval
+                        self.client.subscribe_klines(symbol, interval_val, self._on_kline)
+            except Exception as e:
+                self.logger.warning(f"Failed to re-subscribe {symbol}: {e}")
+
     def _handle_stale_connection(self):
         """Handle a potentially stale WebSocket connection.
 
@@ -1133,11 +1171,12 @@ class RealtimeBootstrap:
         pub_status = self.state.get_public_ws_status()
         priv_status = self.state.get_private_ws_status()
         
-        # Determine if using fallback
+        # DATA-012: using_rest_fallback should NOT make us "healthy" at startup
+        # before any actual data has been received from either WS or REST.
         using_rest_fallback = not (self._public_connected or self._private_connected)
-        
+
         return {
-            "healthy": has_data or using_rest_fallback,  # Healthy if has data OR using REST fallback
+            "healthy": has_data,  # Only healthy when we've actually received data
             "websocket_connected": self._public_connected or self._private_connected,
             "using_rest_fallback": using_rest_fallback,
             "public_connected": self._public_connected,

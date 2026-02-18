@@ -187,31 +187,41 @@ def close_position(
     if position is None or not position.is_open:
         return OrderResult(success=True, error="No position to close")
     
-    cancelled_orders = []
-    if cancel_conditional_orders:
-        cancelled_orders = pos.cancel_position_conditional_orders(
-            manager, symbol=symbol, position_side=position.side,
-        )
-    
     close_side = "Sell" if position.side == "long" else "Buy"
-    
+
     try:
+        # DATA-018: Close position FIRST, then cancel conditionals.
+        # If close fails, TP/SL remain active to protect the position.
         result = manager.bybit.create_order(
             symbol=symbol, side=close_side, order_type="Market",
             qty=position.size, reduce_only=True,
         )
-        
+
+        # Close succeeded — now safe to cancel remaining conditional orders
+        cancelled_orders = []
+        if cancel_conditional_orders:
+            try:
+                cancelled_orders = pos.cancel_position_conditional_orders(
+                    manager, symbol=symbol, position_side=position.side,
+                )
+            except Exception as cancel_err:
+                # Non-fatal: position is closed, stale conditionals will be
+                # rejected by exchange (reduce_only on a closed position).
+                manager.logger.warning(
+                    f"Position closed but failed to cancel conditionals for {symbol}: {cancel_err}"
+                )
+
         manager.logger.trade("POSITION_CLOSED", symbol=symbol, side=close_side,
                             size=position.size_usdt, pnl=position.unrealized_pnl,
                             cancelled_conditional_orders=len(cancelled_orders))
-        
+
         ws.remove_symbol_from_websocket(manager, symbol)
-        
+
         return OrderResult(
             success=True, order_id=result.get("orderId"), symbol=symbol,
             side=close_side, qty=position.size, raw_response=result,
         )
-        
+
     except Exception as e:
         manager.logger.error(f"Close position failed for {symbol}: {e}")
         return OrderResult(success=False, error=str(e))

@@ -17,6 +17,7 @@ NOTE on Trading Environment:
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, asdict
 from typing import TYPE_CHECKING, Any
 
@@ -57,9 +58,15 @@ class ToolResult:
 # Lazy Import Helpers (Avoid Circular Dependencies)
 # ==============================================================================
 
+_em_lock = threading.Lock()
+
+
 def _get_exchange_manager() -> "ExchangeManager":
     """
     Get the ExchangeManager singleton (lazy import).
+
+    CLI-020: Uses double-checked locking to prevent race condition where
+    two threads create duplicate ExchangeManager instances.
 
     NOTE: Per-process trading env is fixed at startup. The returned ExchangeManager
     is either configured for DEMO or LIVE based on BYBIT_USE_DEMO and TRADING_MODE.
@@ -67,7 +74,9 @@ def _get_exchange_manager() -> "ExchangeManager":
     """
     from ..core.exchange_manager import ExchangeManager
     if not hasattr(_get_exchange_manager, "_instance"):
-        _get_exchange_manager._instance = ExchangeManager()
+        with _em_lock:
+            if not hasattr(_get_exchange_manager, "_instance"):
+                _get_exchange_manager._instance = ExchangeManager()
     return _get_exchange_manager._instance
 
 
@@ -211,11 +220,20 @@ def _get_realtime_state() -> "RealtimeState":
 
 
 def _is_websocket_connected() -> bool:
-    """Check if WebSocket is connected and receiving data."""
+    """Check if WebSocket is connected and receiving non-stale data.
+
+    DATA-003: Also checks ticker staleness so that a connected-but-silent
+    WebSocket (e.g., dropped subscription) is treated as disconnected.
+    """
     try:
         state = _get_realtime_state()
         priv_status = state.get_private_ws_status()
-        return priv_status.is_connected
+        if not priv_status.is_connected:
+            return False
+        # DATA-003: Check data freshness — connected but stale = not healthy
+        if state.is_wallet_stale(max_age_seconds=60.0):
+            return False
+        return True
     except Exception:
         return False
 

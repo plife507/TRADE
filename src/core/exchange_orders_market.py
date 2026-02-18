@@ -131,6 +131,33 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float, redu
         return OrderResult(success=False, error=str(e))
 
 
+def market_close(
+    manager: "ExchangeManager",
+    symbol: str,
+    usd_amount: float,
+    position_side: str,
+) -> "OrderResult":
+    """
+    Place a market close order with enforced reduce_only=True.
+
+    DATA-007: Dedicated close function that cannot accidentally open a reverse
+    position. Always passes reduce_only=True to the exchange.
+
+    Args:
+        manager: ExchangeManager instance
+        symbol: Trading symbol
+        usd_amount: Size to close in USD
+        position_side: Current position side ("long" or "short")
+
+    Returns:
+        OrderResult with fill details
+    """
+    close_side = "Sell" if position_side.lower() == "long" else "Buy"
+    if close_side == "Buy":
+        return market_buy(manager, symbol, usd_amount, reduce_only=True)
+    return market_sell(manager, symbol, usd_amount, reduce_only=True)
+
+
 def market_buy_with_tpsl(
     manager: "ExchangeManager",
     symbol: str,

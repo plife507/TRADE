@@ -216,10 +216,10 @@ class TradingLogger:
     
     def _setup_jsonl_handler(self):
         """Setup the JSONL event stream file."""
-        date_str = datetime.now().strftime('%Y%m%d')
-        jsonl_filename = f"events_{date_str}_{self._hostname}_{self._pid}.jsonl"
+        self._jsonl_date_str = datetime.now().strftime('%Y%m%d')
+        jsonl_filename = f"events_{self._jsonl_date_str}_{self._hostname}_{self._pid}.jsonl"
         jsonl_path = self.log_dir / jsonl_filename
-        
+
         try:
             # G6.3.2: Use LF line endings for Windows compatibility
             self._jsonl_file = open(jsonl_path, 'a', encoding='utf-8', newline='\n')
@@ -454,10 +454,19 @@ class TradingLogger:
         return " | ".join(parts)
     
     def _write_jsonl(self, record: dict[str, Any]) -> None:
-        """Write a record to the JSONL file."""
+        """Write a record to the JSONL file.
+
+        FORGE-007b: Rotates to a new file at midnight so each calendar day
+        gets its own event log.
+        """
         if not self._jsonl_file:
             return
-        
+
+        # Check for midnight rotation
+        current_date = datetime.now().strftime('%Y%m%d')
+        if current_date != getattr(self, '_jsonl_date_str', current_date):
+            self._rotate_jsonl(current_date)
+
         try:
             line = json.dumps(record, default=str, ensure_ascii=False)
             self._jsonl_file.write(line + "\n")
@@ -465,6 +474,24 @@ class TradingLogger:
         except Exception as e:
             # Don't crash on logging errors, but warn
             self.main_logger.warning(f"Failed to write JSONL event: {e}")
+
+    def _rotate_jsonl(self, new_date_str: str) -> None:
+        """Rotate JSONL file to a new date."""
+        try:
+            if self._jsonl_file:
+                self._jsonl_file.close()
+        except Exception:
+            pass
+
+        self._jsonl_date_str = new_date_str
+        jsonl_filename = f"events_{new_date_str}_{self._hostname}_{self._pid}.jsonl"
+        jsonl_path = self.log_dir / jsonl_filename
+
+        try:
+            self._jsonl_file = open(jsonl_path, 'a', encoding='utf-8', newline='\n')
+        except Exception as e:
+            self.main_logger.warning(f"Failed to rotate JSONL file: {e}")
+            self._jsonl_file = None
     
     def close(self) -> None:
         """Close the logger and flush all handlers."""

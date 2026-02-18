@@ -58,14 +58,14 @@ These 5 bugs break core Play functionality. Setup references fail, valid operato
 
 12 bugs that must be fixed before any live trading. Close ordering, WS reconnect, stale data, broken pre-live gates.
 
-- [ ] **DATA-018** `src/core/exchange_orders_manage.py` — TP/SL cancelled BEFORE close market order. If close fails, position has no protection. Fix: close first, cancel conditionals after.
-- [ ] **DATA-010** `src/data/realtime_bootstrap.py:559` — Dynamic symbol subscriptions lost after WS reconnect. Trades execute blind. Fix: persist and re-subscribe on reconnect.
-- [ ] **ENG-009** `src/engine/runners/live_runner.py:995` — Stale queued candles processed after reconnect against stale indicator state. Fix: drain queue on reconnect, re-warm.
+- [x] **DATA-018** Fixed: close market order placed FIRST, conditional orders cancelled AFTER success. If close fails, TP/SL remain active to protect position.
+- [x] **DATA-010** Fixed: added `_resubscribe_all_symbols()` method, called on reconnect detection in `_on_ticker`. All tracked symbols re-subscribed idempotently.
+- [x] **ENG-009** Fixed: stale candles drained from `_candle_queue` before reconnect. Prevents processing outdated data against stale indicator state.
 - [x] **ENG-013** Fixed: warmup candles now compute `ts_close = ts_open + tf_duration` instead of `ts_close = ts_open`.
-- [ ] **ENG-006** `src/engine/runners/live_runner.py:176` — Position sync gate blocks trading 5 min without retry. Fix: add exponential backoff retry.
-- [ ] **ENG-008** `src/engine/adapters/live.py:2287` — `reduce_only` only set on one close path. Other paths risk accidental reverse. Fix: audit all close paths, enforce `reduce_only=True`.
-- [ ] **DATA-005** `src/core/safety.py:86` — `DailyLossTracker` seed failure permanently blocks trading. Fix: add retry with backoff.
-- [ ] **DATA-007** `src/core/exchange_orders_market.py:48` — `reduce_only` defaults to `False`. Fix: add dedicated `market_close_tool` with enforced `reduce_only=True`.
+- [x] **ENG-006** Fixed: `_last_reconcile_ts` no longer set on sync failure. Allows immediate retry on next candle instead of 5-min wait.
+- [x] **ENG-008** NOT A BUG — both close paths (full via `close_position()` and partial via `submit_close()`) already set `reduce_only=True`. Audited all call sites; no bypass possible.
+- [x] **DATA-005** Fixed: `seed_from_exchange()` now retries 3x with exponential backoff (2s, 4s, 8s). `_seed_failed` only set after all retries exhausted. Successful seed clears previous failure.
+- [x] **DATA-007** Fixed: added `market_close()` function with enforced `reduce_only=True`. Wraps `market_buy/sell` with no override possible.
 - [x] **CLI-011** Fixed conflict detection: `raw_data.get("positions", [])` for dict return type.
 - [x] **CLI-010** Fixed balance key: `available_balance` → `available`.
 - [x] **IND-004** Fixed: added `_VALID_PARAMS` registry to indicator factory. Unknown params (e.g., `af_start` instead of `af0`) now raise `ValueError`.
@@ -92,9 +92,9 @@ These 5 bugs break core Play functionality. Setup references fail, valid operato
 - [x] **ENG-BUG-002** NOT A BUG — `exchange.step()` is a no-op in both backtest and live modes.
 - [x] **ENG-BUG-004** NOT A BUG — already handled with try/catch + error log, uses last known equity.
 - [x] **ENG-BUG-014** NOT A BUG — when TFs equal, sharing cache is correct optimization.
-- [ ] **DSL-EXEC-002** Real gap — warmup doesn't account for DSL window durations. Deferred to Gate 3.
-- [ ] **ENG-BUG-010** Deferred to Gate 4 (ENG-009 reconnect handling).
-- [ ] **ENG-BUG-015** Real but low impact — np.append O(n) on 500-element arrays, ~20KB/min. Deferred.
+- [x] **DSL-EXEC-002** Fixed: added `HoldsForDuration`, `OccurredWithinDuration`, `CountTrueDuration` to import and isinstance check in `extract_rule_feature_refs()`. Duration window nodes no longer invisible to warmup walker.
+- [x] **ENG-BUG-010** Fixed: `_seen_candles.clear()` called after successful reconnect. Catch-up candles no longer silently dropped. Independent of ENG-009 (both fixed).
+- [ ] **ENG-BUG-015** Real but low impact — np.append O(n) on 500-element arrays, ~3-10 MB/hour GC pressure. Correct behavior, optimize before sustained live sessions. Deferred.
 - [x] **GATE**: `python trade_cli.py validate standard` ALL 12 GATES PASSED
 - [x] **GATE**: pyright 0 errors
 
@@ -115,8 +115,8 @@ These 5 bugs break core Play functionality. Setup references fail, valid operato
 - [x] **BT-WARN-4** NOT A BUG — `calculate_warmup_start()` is a thin wrapper delegating to canonical function, actively used.
 - [x] **SIM-001** COSMETIC — exit timestamp uses exec bar ts_open instead of 1m trigger time. Fixing requires SubLoop to return trigger bar timestamp. Deferred.
 - [x] **SIM-MED-1** NOT A BUG — engine processes one signal per exec bar, so stale margin from partial exit can't cause incorrect rejection in same bar.
-- [ ] **SIM-MED-3** `ExchangeMetrics` infrastructure built but not wired. Future feature.
-- [ ] **SIM-MED-4** `Constraints` infrastructure built but not wired. Future feature.
+- [ ] **SIM-MED-3** FUTURE FEATURE — `ExchangeMetrics` class (217 lines) fully implemented but zero callers. Missing analytics, not a correctness bug. Needs result schema wiring to surface metrics.
+- [ ] **SIM-MED-4** FUTURE FEATURE — `Constraints` class (193 lines) fully implemented but not wired. Parity risk only on altcoins/small accounts. Needs per-symbol constraint config from exchange instrument info.
 - [x] **GATE**: `python trade_cli.py validate standard` ALL 12 GATES PASSED
 
 ### Gate 7: Data, CLI & Forge MED Fixes
@@ -130,13 +130,13 @@ These 5 bugs break core Play functionality. Setup references fail, valid operato
 - [x] **IND-007** BY DESIGN — Anchored VWAP excluded from parity audit (live-computed, NaN placeholders in batch).
 - [x] **FORGE-001** KNOWN — Multi-TF bar dilation documented. Use `near_pct` for structure comparisons.
 - [x] **DATA-001** MITIGATED — DuckDB file locking on Windows, sequential access + retry logic in place.
-- [ ] **DATA-003** No staleness enforcement on WS data reads. Live safety, deferred.
-- [ ] **DATA-006** `panic_close_all` doesn't retry `get_all_positions`. Live safety, deferred.
-- [ ] **DATA-016** `RiskManager.check()` bypasses `_seed_failed` block. Live safety, deferred.
-- [ ] **DATA-011** `_handle_stale_connection()` never triggers reconnect. Live safety, deferred.
-- [ ] **CLI-004** No dedicated `market_close_tool` with `reduce_only=True`. Live safety, deferred.
+- [x] **DATA-003** Fixed: `_is_websocket_connected()` now checks `is_wallet_stale(60s)` in addition to connection flag. Connected-but-silent WS treated as disconnected at tool layer.
+- [x] **DATA-006** Fixed: verification `get_all_positions()` call in `panic_close_all()` now retries 3x with delay.
+- [x] **DATA-016** Fixed: `RiskManager.check()` now calls `_daily_tracker.check_limit()` instead of reading `_daily_pnl` directly. `_seed_failed` guard properly enforced on all code paths.
+- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh + marks state as unhealthy but does not force pybit reconnect. `GlobalRiskView._check_ws_health()` blocks trading after 30s unhealthy. Adding active reconnect is risky without integration testing. Deferred.
+- [x] **CLI-004** NOT A BUG — `close_position()` in `exchange_orders_manage.py` hardcodes `reduce_only=True`. No caller can bypass it. Additionally, `market_close()` function added in `exchange_orders_market.py`.
 - [x] **CLI-008** LOW IMPACT — gate-level timeout (300s) catches hangs. Per-play timeout improves error message only. Deferred.
-- [ ] **CLI-020** `_get_exchange_manager()` singleton not thread-safe. Live safety, deferred.
+- [x] **CLI-020** Fixed: `_get_exchange_manager()` now uses double-checked locking with `threading.Lock()` to prevent race condition on concurrent construction.
 - [x] **CLI-027** Fixed batch tools (market, limit, cancel) — `success=(failed_count == 0)`.
 - [x] **FORGE-007** Fixed error code: `MISSING_REQUIRED_FIELD` → `DSL_PARSE_ERROR` for YAML parse errors in `validate_play_file()`.
 - [x] **FORGE-010** Fixed `validate_no_lookahead()` — now checks ALL pivots.
@@ -196,11 +196,11 @@ Full list in `docs/architecture/FINDINGS_SUMMARY.md` under "LOW (44)".
 - [x] **FORGE-013b** NOT A BUG — `generate_synthetic_bars()` is dead code (never called); production uses `generate_synthetic_candles()` with all 34 patterns.
 - [x] **FORGE-027** Fixed: added `bearer`, `jwt`, `x-api-key`, `x-api-secret` to `REDACT_KEY_PATTERNS`.
 
-**Deferred to Gate 4 (live safety):**
-- [ ] **DATA-008** `_extract_fill_price` falls back to quote price silently (best available estimate)
-- [ ] **DATA-012** `get_health()` returns healthy before any data at startup
-- [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering (same as DATA-018)
-- [ ] **FORGE-007b** JSONL event file never rotates across midnight (operational, not functional)
+**Deferred / Resolved:**
+- [x] **DATA-008** ACCEPTABLE — `_extract_fill_price` falls back to quote price with warning. Best available estimate given Bybit's `avgPrice=0` on pending fills. Actual fill arrives via WS execution callback.
+- [x] **DATA-012** Fixed: `get_health()` now returns `healthy: has_data` (must have received actual data). Previous `using_rest_fallback` proxy gave false-positive at startup before any data arrived.
+- [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering is a defensible tradeoff. Reversing to close-first is safe only if exchange reliably rejects TP-after-close on reduce-only positions. DCP provides partial mitigation. Deferred pending integration test.
+- [x] **FORGE-007b** Fixed: JSONL logger now rotates at midnight. `_write_jsonl()` checks date on every write, `_rotate_jsonl()` closes old file and opens new date-stamped file.
 - [ ] **GATE**: `python trade_cli.py validate full` passes
 - [ ] **GATE**: pyright 0 errors
 
@@ -257,9 +257,9 @@ Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 
 ```bash
 # Unified tiers (parallel staged execution, with timeouts + incremental reporting)
-python trade_cli.py validate quick              # Pre-commit (~7s)
-python trade_cli.py validate standard           # Pre-merge (~20s)
-python trade_cli.py validate full               # Pre-release (~50s)
+python trade_cli.py validate quick              # Pre-commit (~2min)
+python trade_cli.py validate standard           # Pre-merge (~4min)
+python trade_cli.py validate full               # Pre-release (~6min)
 python trade_cli.py validate real               # Real-data verification (~2min)
 python trade_cli.py validate module --module X --json  # Single module (PREFERRED for agents)
 python trade_cli.py validate pre-live --play X  # Deployment gate
@@ -268,7 +268,7 @@ python trade_cli.py validate exchange           # Exchange integration (~30s)
 # Options
 python trade_cli.py validate full --workers 4         # Control parallelism
 python trade_cli.py validate full --timeout 60        # Per-play timeout (default 120s)
-python trade_cli.py validate full --gate-timeout 180  # Per-gate timeout (default 300s)
+python trade_cli.py validate full --gate-timeout 300  # Per-gate timeout (default 600s)
 
 # Backtest / verification
 python trade_cli.py backtest run --play X --sync      # Single backtest

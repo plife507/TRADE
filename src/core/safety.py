@@ -83,53 +83,80 @@ class DailyLossTracker:
                 return False, f"Daily loss limit reached: ${self._daily_pnl:.2f} >= -${max_daily_loss_usd:.2f}"
             return True, ""
 
-    def seed_from_exchange(self, exchange_manager, symbol: str | None = None) -> None:
+    def seed_from_exchange(
+        self,
+        exchange_manager,
+        symbol: str | None = None,
+        max_retries: int = 3,
+        retry_delay: float = 2.0,
+    ) -> None:
         """
         Seed daily PnL from Bybit closed PnL records for today.
 
         Should be called once at startup so the tracker reflects any trades
         already executed today before this process started.
 
+        DATA-005: Retries on transient failures with exponential backoff.
+        Only sets _seed_failed after all retries are exhausted.
+
         Args:
             exchange_manager: ExchangeManager instance
             symbol: Optional symbol filter
+            max_retries: Number of retry attempts (default 3)
+            retry_delay: Base delay between retries in seconds (default 2.0)
         """
         logger = get_logger()
-        try:
-            from ..utils.time_range import TimeRange
+        last_error: Exception | None = None
 
-            today_start = datetime.now(timezone.utc).replace(
-                hour=0, minute=0, second=0, microsecond=0,
-            )
-            start_ms = int(today_start.timestamp() * 1000)
-            end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-            time_range = TimeRange(
-                start_ms=start_ms,
-                end_ms=end_ms,
-                label="daily_seed",
-                endpoint_type="closed_pnl",
-            )
+        for attempt in range(1, max_retries + 1):
+            try:
+                from ..utils.time_range import TimeRange
 
-            records = exchange_manager.get_closed_pnl(
-                time_range=time_range, symbol=symbol,
-            )
-            total = sum(float(r.get("closedPnl", 0)) for r in records)
+                today_start = datetime.now(timezone.utc).replace(
+                    hour=0, minute=0, second=0, microsecond=0,
+                )
+                start_ms = int(today_start.timestamp() * 1000)
+                end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+                time_range = TimeRange(
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    label="daily_seed",
+                    endpoint_type="closed_pnl",
+                )
 
-            with self._lock:
-                self._daily_pnl = total
-                self._daily_trades = len(records)
+                records = exchange_manager.get_closed_pnl(
+                    time_range=time_range, symbol=symbol,
+                )
+                total = sum(float(r.get("closedPnl", 0)) for r in records)
 
-            logger.info(
-                f"DailyLossTracker seeded from exchange: "
-                f"pnl=${total:.2f}, trades={len(records)}"
-            )
-        except Exception as e:
-            self._seed_failed = True
-            logger.error(
-                f"Failed to seed daily PnL from exchange: {e}. "
-                "Daily loss tracker starts at $0 -- trades from earlier today are NOT counted. "
-                "Trading will be blocked until seed succeeds."
-            )
+                with self._lock:
+                    self._daily_pnl = total
+                    self._daily_trades = len(records)
+                    self._seed_failed = False  # Clear any previous failure
+
+                logger.info(
+                    f"DailyLossTracker seeded from exchange: "
+                    f"pnl=${total:.2f}, trades={len(records)}"
+                )
+                return  # Success
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    delay = retry_delay * (2 ** (attempt - 1))
+                    logger.warning(
+                        f"Seed attempt {attempt}/{max_retries} failed: {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+
+        # All retries exhausted
+        self._seed_failed = True
+        logger.error(
+            f"Failed to seed daily PnL from exchange after {max_retries} attempts: {last_error}. "
+            "Daily loss tracker starts at $0 -- trades from earlier today are NOT counted. "
+            "Trading will be blocked until seed succeeds."
+        )
 
 
 _daily_loss_tracker: DailyLossTracker | None = None
@@ -310,16 +337,24 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
         results["errors"].append(error)
         logger.error(error)
 
-    # Verify positions are actually closed
-    try:
-        remaining = exchange_manager.get_all_positions()
-        open_positions = [p for p in remaining if hasattr(p, 'is_open') and p.is_open]
-        if open_positions:
-            for pos in open_positions:
-                results["errors"].append(f"Position still open: {pos.symbol} size={pos.size}")
-            logger.error(f"PANIC INCOMPLETE: {len(open_positions)} position(s) still open after close attempts")
-    except Exception as e:
-        results["errors"].append(f"Failed to verify position closure: {e}")
+    # DATA-006: Verify positions are actually closed (with retry)
+    verified = False
+    for verify_attempt in range(1, PANIC_RETRY_ATTEMPTS + 1):
+        try:
+            remaining = exchange_manager.get_all_positions()
+            open_positions = [p for p in remaining if hasattr(p, 'is_open') and p.is_open]
+            if open_positions:
+                for p in open_positions:
+                    results["errors"].append(f"Position still open: {p.symbol} size={p.size}")
+                logger.error(f"PANIC INCOMPLETE: {len(open_positions)} position(s) still open after close attempts")
+            verified = True
+            break
+        except Exception as e:
+            if verify_attempt == PANIC_RETRY_ATTEMPTS:
+                results["errors"].append(f"Failed to verify position closure after {verify_attempt} attempts: {e}")
+            else:
+                logger.warning(f"Verify attempt {verify_attempt} failed, retrying: {e}")
+                time.sleep(PANIC_RETRY_DELAY)
 
     # Determine overall success
     results["success"] = results["orders_cancelled"] and len(results["errors"]) == 0
