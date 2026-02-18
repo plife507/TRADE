@@ -496,6 +496,7 @@ def _execute_backtest(
     print("\n[RUN] Running Backtest...")
 
     # Create engine and run
+    # use_synthetic=True only when a synthetic_provider was explicitly set up
     engine = create_engine_from_play(
         play=ctx.play,
         window_start=ctx.config.window_start,
@@ -503,6 +504,7 @@ def _execute_backtest(
         warmup_by_tf=ctx.preflight_warmup_by_role,
         synthetic_provider=synthetic_provider,
         data_env=ctx.config.data_env,
+        use_synthetic=(synthetic_provider is not None),
     )
     engine.set_play_hash(ctx.play_hash)
     engine_result = run_engine_with_play(engine, ctx.play)

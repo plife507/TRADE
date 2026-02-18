@@ -181,8 +181,10 @@ def create_engine_from_play(
     # Extract maker fee from Play
     maker_fee_bps = play.account.fee_model.maker_bps
 
-    # Extract risk params from Play risk_model
+    # Extract risk params from Play risk_model or account override
     risk_per_trade_pct = 1.0
+    if play.account.risk_per_trade_pct is not None:
+        risk_per_trade_pct = play.account.risk_per_trade_pct
     if play.risk_model:
         if play.risk_model.sizing.model.value == "percent_equity":
             risk_per_trade_pct = play.risk_model.sizing.value
@@ -197,6 +199,7 @@ def create_engine_from_play(
             "AccountConfig.from_dict() should always populate this from defaults.yml."
         )
     maintenance_margin_rate = play.account.maintenance_margin_rate
+    mm_deduction = play.account.mm_deduction
 
     # Build RiskProfileConfig
     risk_profile = RiskProfileConfig(
@@ -206,6 +209,7 @@ def create_engine_from_play(
         taker_fee_rate=taker_fee_rate,
         min_trade_usdt=min_trade_usdt,
         maintenance_margin_rate=maintenance_margin_rate,
+        mm_deduction=mm_deduction,
     )
 
     # Compute warmup from registry if not provided

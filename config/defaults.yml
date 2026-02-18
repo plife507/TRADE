@@ -31,10 +31,15 @@ fees:
 # -----------------------------------------------------------------------------
 # Margin Model (Bybit Perpetuals)
 # -----------------------------------------------------------------------------
+# Defaults match Bybit BTCUSDT risk tier 1 (lowest tier):
+#   Tier 1: maxLeverage=125, IMR=0.008, MMR=0.005, mmDeduction=0
+# See: GET /v5/market/risk-limit for full tier table.
+# Plays can override maintenance_margin_rate and mm_deduction for higher tiers.
 margin:
   mode: "isolated"        # isolated only (no cross-margin)
   position_mode: "oneway" # one-way only (no hedge mode)
-  maintenance_margin_rate: 0.005  # 0.5% MMR - Bybit lowest tier
+  maintenance_margin_rate: 0.005  # 0.5% MMR - Bybit BTCUSDT tier 1
+  mm_deduction: 0.0               # Bybit mmDeduction (0 for tier 1)
   mark_price_source: "close"      # Use close as mark proxy in backtest
 
 # -----------------------------------------------------------------------------
@@ -50,7 +55,7 @@ execution:
 risk:
   max_leverage: 1.0       # Conservative default
   risk_per_trade_pct: 1.0 # 1% risk per trade
-  max_drawdown_pct: 0.20  # 20% max drawdown stop
+  max_drawdown_pct: 100.0  # No drawdown stop by default (opt-in)
   stop_equity_usdt: 0.0   # No equity floor by default
   # Position sizing caps (Bybit-aligned)
   max_position_equity_pct: 95.0  # Max position as % of equity (leaves room for fees)

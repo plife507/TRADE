@@ -324,13 +324,15 @@ class FundingEvent:
 class LiquidationEvent:
     """
     Liquidation event.
-    
+
     Records when a position was liquidated.
+    Bybit: mark price triggers liquidation, settlement at bankruptcy price.
     """
     timestamp: datetime
     symbol: str
     side: OrderSide
     mark_price: float
+    bankruptcy_price: float
     equity_usdt: float
     maintenance_margin_usdt: float
     liquidation_fee: float
@@ -341,6 +343,7 @@ class LiquidationEvent:
             "symbol": self.symbol,
             "side": self.side.value,
             "mark_price": self.mark_price,
+            "bankruptcy_price": self.bankruptcy_price,
             "equity_usdt": self.equity_usdt,
             "maintenance_margin_usdt": self.maintenance_margin_usdt,
             "liquidation_fee": self.liquidation_fee,

@@ -1,0 +1,48 @@
+version: "3.0.0"
+name: "v_risk_rd_002_drawdown_50pct"
+description: |
+  Real-Data Risk Play 2 - 50% Max Drawdown at 3x Leverage
+
+  Enters long immediately (ema > 0 is always true) with 95% of equity
+  at 3x leverage ($28,500 notional). No exit signal — position stays
+  until risk event fires. A ~17.5% BTC drop triggers the 50% drawdown
+  gate. Liquidation at 3x is ~34.5%, so drawdown fires first.
+
+  Requires a BTC window with >17.5% decline.
+  Feb 2025: BTC dropped ~$105K to ~$78K (~25%).
+  Run with: --start 2025-02-01 --end 2025-03-15
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  max_drawdown_pct: 50.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+  risk_per_trade_pct: 95.0
+
+features:
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", ">", 0]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1

@@ -12,7 +12,7 @@ REQUIRES RuntimeSnapshotView — legacy RuntimeSnapshot is not supported.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from ..core.risk_manager import Signal
 from .system_config import RiskProfileConfig
@@ -33,60 +33,13 @@ class StopLiqValidationResult:
     liq_distance_pct: float | None = None
 
 
-def calculate_liquidation_price_simple(
-    entry_price: float,
-    leverage: float,
-    direction: int,  # 1 for long, -1 for short
-    mmr: float = 0.004,  # Bybit maintenance margin rate (0.4%)
-) -> float:
-    """
-    Calculate liquidation price for a leveraged position.
-
-    Uses simplified formula assuming isolated margin where
-    initial margin = entry × size / leverage = entry / leverage (for size=1).
-
-    Derivation (long): cash + (liq - entry) = liq × MMR
-      → cash = entry/leverage, so entry/leverage + liq - entry = liq × MMR
-      → liq × (1 - MMR) = entry × (1 - 1/leverage)
-      → liq = entry × (1 - 1/leverage) / (1 - MMR)
-
-    Derivation (short): cash + (entry - liq) = liq × MMR
-      → entry/leverage + entry - liq = liq × MMR
-      → liq × (1 + MMR) = entry × (1 + 1/leverage)
-      → liq = entry × (1 + 1/leverage) / (1 + MMR)
-
-    Args:
-        entry_price: Entry fill price
-        leverage: Position leverage (e.g., 50 for 50x)
-        direction: 1 for long, -1 for short
-        mmr: Maintenance margin rate (default 0.4% for Bybit)
-
-    Returns:
-        Estimated liquidation price
-    """
-    if leverage <= 0:
-        return 0.0
-
-    imr = 1.0 / leverage  # Initial margin rate
-
-    if direction == 1:  # Long
-        denominator = 1.0 - mmr
-        if denominator <= 0:
-            return 0.0
-        liq_price = entry_price * (1.0 - imr) / denominator
-    else:  # Short
-        denominator = 1.0 + mmr
-        liq_price = entry_price * (1.0 + imr) / denominator
-
-    return max(0.0, liq_price)
-
-
 def validate_stop_vs_liquidation(
     entry_price: float,
     stop_price: float,
     direction: int,  # 1 for long, -1 for short
     leverage: float,
-    mmr: float = 0.004,
+    mmr: float = 0.005,
+    taker_fee_rate: float = 0.00055,
     safety_buffer_pct: float = 0.1,  # 0.1% safety buffer
 ) -> StopLiqValidationResult:
     """
@@ -96,31 +49,39 @@ def validate_stop_vs_liquidation(
     stop distance exceeds the liquidation distance.
 
     Example: 50x leverage, 2% SL on long
-    - Liquidation at ~1.6% (1/50 = 2% - 0.4% mmr)
+    - Liquidation at ~1.5% (1/50 = 2% - 0.5% mmr)
     - 2% SL is BEYOND liquidation -> position liquidates first
+
+    Uses ``LiquidationModel.estimate_liquidation_price`` as the single
+    canonical liquidation price formula.
 
     Args:
         entry_price: Entry fill price
         stop_price: Stop-loss price
         direction: 1 for long, -1 for short
         leverage: Position leverage
-        mmr: Maintenance margin rate
+        mmr: Maintenance margin rate (default 0.005 = 0.5%,
+            matching ``config/defaults.yml``)
+        taker_fee_rate: Taker fee rate for fee-to-close term
         safety_buffer_pct: Extra buffer to ensure SL fires before liq
 
     Returns:
         StopLiqValidationResult with validation status
     """
+    from .sim.liquidation.liquidation_model import LiquidationModel
+
     if entry_price <= 0 or stop_price <= 0:
         return StopLiqValidationResult(
             valid=False,
             reason="Invalid entry or stop price (must be > 0)",
         )
 
-    liq_price = calculate_liquidation_price_simple(
+    liq_price = LiquidationModel.estimate_liquidation_price(
         entry_price=entry_price,
         leverage=leverage,
         direction=direction,
-        mmr=mmr,
+        maintenance_margin_rate=mmr,
+        taker_fee_rate=taker_fee_rate,
     )
 
     # Calculate distances as percentages

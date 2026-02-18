@@ -1,0 +1,48 @@
+version: "3.0.0"
+name: "v_risk_006_short_drawdown_50pct"
+description: |
+  Risk Validation Play 6 - Short Max Drawdown 50%
+
+  Enters short into a clean uptrend via always-true condition (ema > 0).
+  5x leverage with 95% of equity deployed. No exit signal — position stays
+  until risk event fires. Price rises against the short, triggering 50%
+  drawdown. Verifies the engine terminates with
+  stop_classification = max_drawdown_hit.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 5.0
+  max_drawdown_pct: 50.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+  risk_per_trade_pct: 95.0
+
+features:
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+
+actions:
+  entry_short:
+    all:
+      - ["ema_9", ">", 0]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+validation:
+  pattern: "trend_up_clean"

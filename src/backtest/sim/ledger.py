@@ -35,9 +35,15 @@ if TYPE_CHECKING:
 
 @dataclass
 class LedgerConfig:
-    """Configuration for ledger accounting."""
+    """Configuration for ledger accounting.
+
+    Bybit isolated margin model (2025+):
+    - IM uses entry price: IM = posVal_entry * (IMR + takerFeeRate)
+    - MM uses mark price:  MM = posVal_mark * (MMR + takerFeeRate) - mmDeduction
+    """
     initial_margin_rate: float = 0.5  # IMR = 1/leverage
     maintenance_margin_rate: float = 0.005  # MMR (0.5% Bybit default)
+    mm_deduction: float = 0.0  # Bybit mmDeduction (0 for tier 1)
     taker_fee_rate: float | None = None  # Loaded from DEFAULTS if None
     debug_check_invariants: bool = False  # Check invariants after every mutation
 
@@ -45,13 +51,14 @@ class LedgerConfig:
         if self.taker_fee_rate is None:
             from src.config.constants import DEFAULTS
             object.__setattr__(self, 'taker_fee_rate', DEFAULTS.fees.taker_rate)
-    
+
     @classmethod
     def from_risk_profile(cls, risk_profile: "RiskProfileConfig") -> "LedgerConfig":
         """Create LedgerConfig from RiskProfileConfig."""
         return cls(
             initial_margin_rate=risk_profile.initial_margin_rate,
             maintenance_margin_rate=risk_profile.maintenance_margin_rate,
+            mm_deduction=risk_profile.mm_deduction,
             taker_fee_rate=risk_profile.taker_fee_rate,
         )
 
@@ -159,13 +166,15 @@ class Ledger:
     ) -> LedgerUpdate:
         """
         Update ledger for current mark price (MTM valuation).
-        
-        Updates unrealized PnL and margins based on position and mark price.
-        
+
+        Bybit isolated margin model (2025+):
+        - IM uses entry price: IM = posVal_entry * (IMR + takerFeeRate)
+        - MM uses mark price:  MM = posVal_mark * (MMR + takerFeeRate) - mmDeduction
+
         Args:
             position: Current open position (or None)
             mark_price: Current mark price
-            
+
         Returns:
             LedgerUpdate with current state
         """
@@ -176,18 +185,29 @@ class Ledger:
         else:
             # Calculate unrealized PnL
             self._unrealized_pnl_usdt = position.unrealized_pnl(mark_price)
-            
-            # Calculate position value at mark
-            position_value = position.size * mark_price
-            
-            # Position IM = position_value × IMR
-            self._used_margin_usdt = position_value * self._config.initial_margin_rate
-            
-            # Maintenance margin = position_value × MMR
-            self._maintenance_margin_usdt = position_value * self._config.maintenance_margin_rate
-        
+
+            assert self._config.taker_fee_rate is not None
+            fee_rate = self._config.taker_fee_rate
+
+            # Position IM = posVal_entry * (IMR + feeToCloseRate)
+            # Bybit isolated: IM stays based on entry price (not mark)
+            position_value_entry = position.size * position.entry_price
+            self._used_margin_usdt = position_value_entry * (
+                self._config.initial_margin_rate + fee_rate
+            )
+
+            # Maintenance margin = posVal_mark * (MMR + feeToCloseRate) - mmDeduction
+            # Bybit 2025+: MM uses mark price
+            position_value_mark = position.size * mark_price
+            self._maintenance_margin_usdt = max(
+                0.0,
+                position_value_mark * (
+                    self._config.maintenance_margin_rate + fee_rate
+                ) - self._config.mm_deduction,
+            )
+
         self._recompute_derived()
-        
+
         return LedgerUpdate(
             state=self.state,
             realized_pnl=0.0,

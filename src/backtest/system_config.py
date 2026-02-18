@@ -279,6 +279,7 @@ class RiskProfileConfig:
     # Margin model fields
     _initial_margin_rate: float | None = None  # If None, derived from max_leverage
     maintenance_margin_rate: float = 0.005  # 0.5% - Bybit lowest tier default
+    mm_deduction: float = 0.0  # Bybit mmDeduction (0 for tier 1)
     mark_price_source: str = "close"
 
     # Fee model fields (loaded from DEFAULTS if None)

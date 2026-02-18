@@ -100,6 +100,9 @@ class AccountConfig:
     max_notional_usdt: float | None = None
     max_margin_usdt: float | None = None
     maintenance_margin_rate: float | None = None
+    mm_deduction: float = 0.0  # Bybit mmDeduction (0 for tier 1)
+    on_sl_beyond_liq: str = "reject"  # "reject", "adjust", or "warn"
+    risk_per_trade_pct: float | None = None  # Override sizing without risk_model
 
     def __post_init__(self):
         """Validate account config."""
@@ -116,6 +119,11 @@ class AccountConfig:
             raise ValueError(
                 f"margin_mode must be 'isolated_usdt'. Got: '{self.margin_mode}'. "
                 "Note: 'isolated' is deprecated, use 'isolated_usdt'."
+            )
+        if self.on_sl_beyond_liq not in ("reject", "adjust", "warn"):
+            raise ValueError(
+                f"on_sl_beyond_liq must be 'reject', 'adjust', or 'warn'. "
+                f"Got: '{self.on_sl_beyond_liq}'"
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -138,6 +146,12 @@ class AccountConfig:
             result["max_margin_usdt"] = self.max_margin_usdt
         if self.maintenance_margin_rate is not None:
             result["maintenance_margin_rate"] = self.maintenance_margin_rate
+        if self.mm_deduction != 0.0:
+            result["mm_deduction"] = self.mm_deduction
+        if self.on_sl_beyond_liq != "reject":
+            result["on_sl_beyond_liq"] = self.on_sl_beyond_liq
+        if self.risk_per_trade_pct is not None:
+            result["risk_per_trade_pct"] = self.risk_per_trade_pct
         return result
 
     @classmethod
@@ -212,6 +226,8 @@ class AccountConfig:
             mmr = DEFAULTS.margin.maintenance_margin_rate
             defaulted.append(f"maintenance_margin_rate={mmr}")
 
+        mm_deduction = float(d.get("mm_deduction", DEFAULTS.margin.mm_deduction))
+
         if defaulted:
             logger.warning(
                 "AccountConfig using defaults from defaults.yml: %s",
@@ -229,4 +245,7 @@ class AccountConfig:
             max_notional_usdt=float(d["max_notional_usdt"]) if "max_notional_usdt" in d else None,
             max_margin_usdt=float(d["max_margin_usdt"]) if "max_margin_usdt" in d else None,
             maintenance_margin_rate=float(mmr),
+            mm_deduction=mm_deduction,
+            on_sl_beyond_liq=str(d.get("on_sl_beyond_liq", "reject")),
+            risk_per_trade_pct=float(d["risk_per_trade_pct"]) if "risk_per_trade_pct" in d else None,
         )

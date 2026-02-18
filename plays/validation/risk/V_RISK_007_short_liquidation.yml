@@ -1,0 +1,49 @@
+version: "3.0.0"
+name: "v_risk_007_short_liquidation"
+description: |
+  Risk Validation Play 7 - Short Liquidation at 50x Leverage
+
+  Enters short immediately (ema > 0 is always true) on trend_up_clean
+  (sustained rally). 95% of equity deployed at 50x leverage creates a
+  $475K notional short. At 50x, equity breaches maintenance margin at
+  ~1.55% adverse move upward. The drawdown gate is set to 100% so it
+  cannot fire before liquidation.
+  Verifies the engine terminates with stop_classification = liquidated.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 50.0
+  max_drawdown_pct: 100.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+  risk_per_trade_pct: 95.0
+
+features:
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+
+actions:
+  entry_short:
+    all:
+      - ["ema_9", ">", 0]
+
+position_policy:
+  mode: short_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+validation:
+  pattern: "trend_up_clean"

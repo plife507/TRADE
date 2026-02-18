@@ -111,6 +111,7 @@ class SimulatedExchange:
             self._leverage = risk_profile.leverage
             self._imr = risk_profile.initial_margin_rate
             self._mmr = risk_profile.maintenance_margin_rate
+            self._mm_deduction = risk_profile.mm_deduction
             self._fee_rate = risk_profile.taker_fee_rate
             self._include_close_fee = risk_profile.include_est_close_fee_in_entry_gate
             self._mark_source = risk_profile.mark_price_source
@@ -118,15 +119,16 @@ class SimulatedExchange:
             self._leverage = max(1.0, leverage)
             self._imr = 1.0 / self._leverage
             self._mmr = 0.005
+            self._mm_deduction = 0.0
             from src.config.constants import DEFAULTS
             self._fee_rate = DEFAULTS.fees.taker_rate
             self._include_close_fee = False
             self._mark_source = "close"
-        
+
         # Initialize modules
         self._ledger = Ledger(
             initial_capital,
-            LedgerConfig(self._imr, self._mmr, self._fee_rate),
+            LedgerConfig(self._imr, self._mmr, self._mm_deduction, self._fee_rate),
         )
         self._price_model = PriceModel(PriceModelConfig(self._mark_source))
         self._spread_model = SpreadModel()
@@ -656,7 +658,12 @@ class SimulatedExchange:
         step_time: datetime,
         prices: "PriceSnapshot",
     ) -> tuple[list[Trade], list[Fill], LiquidationResult]:
-        """Check and execute liquidation if needed."""
+        """Check and execute liquidation if needed.
+
+        Bybit mechanics:
+        - Trigger: equity <= MM (at mark price)
+        - Settlement: close at bankruptcy price (not mark)
+        """
         closed_trades: list[Trade] = []
         fills: list[Fill] = []
         liq_out = LiquidationResult()
@@ -668,18 +675,25 @@ class SimulatedExchange:
         projected_unrealized_pnl = self.position.unrealized_pnl(mark_price)
         projected_equity = self._ledger.state.cash_balance_usdt + projected_unrealized_pnl
 
-        # Check maintenance margin threshold
+        # Check maintenance margin threshold (includes fee-to-close)
+        assert self._fee_rate is not None
         position_value = self.position.size * mark_price
-        maintenance_margin = position_value * self._ledger._config.maintenance_margin_rate
+        maintenance_margin = max(
+            0.0,
+            position_value * (self._mmr + self._fee_rate) - self._mm_deduction,
+        )
 
         if projected_equity <= maintenance_margin:
             liq_result = self._liquidation.check_liquidation(
-                self._ledger.state, prices, self.position
+                self._ledger.state, prices, self.position,
+                leverage=self._leverage,
             )
             if liq_result.liquidated and liq_result.event:
                 liq_out = liq_result
+                # Settle at bankruptcy price (Bybit parity)
+                bankruptcy_price = liq_result.event.bankruptcy_price
                 result = self._close_position(
-                    mark_price, step_time, "liquidation", "mark_price"
+                    bankruptcy_price, step_time, "liquidation", "bankruptcy_price"
                 )
                 if result:
                     trade, exit_fill = result

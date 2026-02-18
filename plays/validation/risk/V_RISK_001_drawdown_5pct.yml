@@ -1,0 +1,52 @@
+version: "3.0.0"
+name: "v_risk_001_drawdown_5pct"
+description: |
+  Risk Validation Play 1 - Max Drawdown 5%
+
+  Enters long into a clean downtrend via EMA cross. No SL/TP so losses
+  accumulate until the 5% drawdown limit fires. Verifies the engine
+  terminates with stop_classification = max_drawdown_hit.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  max_drawdown_pct: 5.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_9:
+    indicator: ema
+    params: {length: 9}
+  ema_21:
+    indicator: ema
+    params: {length: 21}
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", "cross_above", "ema_21"]
+
+  exit_long:
+    any:
+      - ["ema_9", "cross_below", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: signal
+  max_positions_per_symbol: 1
+
+validation:
+  pattern: "trend_down_clean"

@@ -87,9 +87,11 @@ def _build_config_from_play(
     account = play.account
     assert account is not None, "Play must have an account config to build engine config"
 
-    # Extract sizing from risk_model if present
+    # Extract sizing from account override or risk_model
     risk_per_trade_pct = 1.0
     max_leverage = account.max_leverage
+    if account.risk_per_trade_pct is not None:
+        risk_per_trade_pct = account.risk_per_trade_pct
     if play.risk_model and play.risk_model.sizing:
         risk_per_trade_pct = play.risk_model.sizing.value
         if play.risk_model.sizing.max_leverage:
@@ -123,7 +125,7 @@ def _build_config_from_play(
         slippage_bps=account.slippage_bps,
         persist_state=persist_state,
         state_save_interval=state_save_interval,
-        on_sl_beyond_liq="reject",
+        on_sl_beyond_liq=account.on_sl_beyond_liq,
         max_drawdown_pct=account.max_drawdown_pct,
     )
 

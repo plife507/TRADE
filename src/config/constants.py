@@ -414,6 +414,7 @@ class MarginDefaults:
     mode: str
     position_mode: str
     maintenance_margin_rate: float
+    mm_deduction: float
     mark_price_source: str
 
 
@@ -542,6 +543,7 @@ def load_system_defaults() -> SystemDefaults:
             mode=str(data["margin"]["mode"]),
             position_mode=str(data["margin"]["position_mode"]),
             maintenance_margin_rate=float(data["margin"]["maintenance_margin_rate"]),
+            mm_deduction=float(data["margin"]["mm_deduction"]),
             mark_price_source=str(data["margin"]["mark_price_source"]),
         ),
         execution=ExecutionDefaults(

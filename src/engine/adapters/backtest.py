@@ -396,8 +396,12 @@ class BacktestExchange:
         # Calculate liquidation price using LiquidationModel
         cash_balance = self._sim_exchange.cash_balance_usdt
         mmr = self._sim_exchange.maintenance_margin_rate
+        fee_rate = self._sim_exchange.taker_fee_rate
+        mm_deduction = self._sim_exchange._mm_deduction
         liq_price = self._sim_exchange._liquidation.calculate_liquidation_price(
-            sim_pos, cash_balance, mmr
+            sim_pos, cash_balance, mmr,
+            taker_fee_rate=fee_rate,
+            mm_deduction=mm_deduction,
         )
 
         # Get mark price from exchange (last computed during process_bar)
