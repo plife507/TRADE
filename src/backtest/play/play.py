@@ -212,8 +212,7 @@ def _convert_shorthand_condition(cond: list) -> dict:
     # Handle tolerance for near_* operators (4th element)
     if len(cond) > 3 and op in ("near_pct", "near_abs"):
         tol = cond[3]
-        if op == "near_pct":
-            tol = tol / 100.0  # Shorthand uses percentage, eval expects ratio (0.5 -> 0.005)
+        # No conversion here - parse_cond() handles percentage-to-ratio conversion
         result["tolerance"] = tol
 
     return result

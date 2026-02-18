@@ -7,7 +7,6 @@ used by both backtest and live trading systems.
 Components:
 - registry: Indicator metadata, validation, warmup calculation
 - vendor: pandas_ta wrapper (only pandas_ta import point)
-- compute: DataFrame-based indicator application (canonical: src/backtest/indicators.py)
 - spec: FeatureSpec declarative indicator definitions
 - builder: FeatureFrameBuilder for vectorized computation
 - metadata: Provenance tracking for indicator values

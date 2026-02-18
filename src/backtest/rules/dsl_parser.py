@@ -632,6 +632,9 @@ def parse_condition_shorthand(data: list) -> Cond:
     rhs_normalized = _normalize_rhs_for_operator(rhs_raw, op)
     rhs = parse_rhs(rhs_normalized)
 
+    if op == "near_pct" and tolerance is not None:
+        tolerance = tolerance / 100.0
+
     return Cond(lhs=lhs, op=op, rhs=rhs, tolerance=tolerance)
 
 
@@ -985,7 +988,7 @@ def validate_blocks_types(
         List of error messages (empty if valid).
 
     Example:
-        >>> blocks = parse_blocks(yaml_data["blocks"])
+        >>> blocks = parse_blocks(yaml_data["actions"])
         >>> errors = validate_blocks_types(blocks, registry.get_output_type)
         >>> if errors:
         ...     raise ValueError("Type validation failed:\\n" + "\\n".join(errors))

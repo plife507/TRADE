@@ -93,7 +93,7 @@ from ..types import StopReason
 # Bar type alias (canonical Bar from runtime.types)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Re-export canonical Bar from runtime.types for backward compatibility
+# Re-export canonical Bar from runtime.types for convenience
 from ..runtime.types import Bar
 
 

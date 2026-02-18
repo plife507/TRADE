@@ -481,8 +481,10 @@ class BacktestRunner:
         if self._pre_built_feed_store is not None:
             self._data_provider.set_feed_store(self._pre_built_feed_store)
         else:
-            # Build FeedStore from Play (requires data loading)
-            self._build_feed_store()
+            raise RuntimeError(
+                "BacktestRunner requires pre-built FeedStore. "
+                "Use create_engine_from_play() which returns a PlayEngine with pre-built data."
+            )
 
         # Set up SimulatedExchange
         if self._pre_built_sim_exchange is not None:
@@ -490,18 +492,6 @@ class BacktestRunner:
         else:
             # Build SimulatedExchange from config
             self._build_sim_exchange()
-
-    def _build_feed_store(self) -> None:
-        """
-        Build FeedStore from Play configuration.
-
-        NOTE: This method is deprecated. Use DataBuilder via create_engine_from_play()
-        to get pre-built FeedStore, then pass to BacktestRunner constructor.
-        """
-        raise RuntimeError(
-            "BacktestRunner requires pre-built FeedStore. "
-            "Use create_engine_from_play() which returns a PlayEngine with pre-built data."
-        )
 
     def _build_sim_exchange(self) -> None:
         """

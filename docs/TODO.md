@@ -92,6 +92,41 @@ Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 - [ ] Phase 5: Statistical regime detection -- HMM-based (optional, requires hmmlearn)
 - [ ] Future: Agent-based play selector that consumes sentiment tracker output
 
+## P0: Health Audit Fixes (2026-02-18)
+
+See `docs/HEALTH_REPORT_2026_02_18.md` for full audit report.
+
+### Phase 1: Fix `near_pct` double-divide bug (CRITICAL)
+- [x] Remove `/100` from `play.py:_convert_shorthand_condition()` line 216 -- it's an intermediate converter, `parse_cond()` already handles conversion
+- [x] Add `/100` to `dsl_parser.py:parse_condition_shorthand()` for consistency with `parse_cond()` (currently does no conversion)
+- [x] **GATE**: `python trade_cli.py validate quick` passes
+- [x] **GATE**: `python trade_cli.py backtest run --play OP_010_near_pct --sync` produces trades (265 trades -- confirms tolerance is effective)
+
+### Phase 2: Remove legacy code (NO LEGACY violations)
+- [x] Remove `evaluate_condition()` and `evaluate_condition_dict()` from `src/backtest/rules/eval.py` (deprecated, zero external callers)
+- [x] Remove `evaluate_condition` from `src/backtest/rules/__init__.py` imports and `__all__`
+- [x] `FeedStore.__post_init__` (feed_store.py:150-163): Change metadata mismatch from `logger.warning()` to `raise ValueError()`
+- [x] `_calculate_funding()` (funding_model.py:111): Make `mark_price` required (`float`), remove `None` default and fallback
+- [x] Remove "backward compatibility" comment from `sim/types.py:96` -- change to "Re-export from runtime.types for convenience"
+- [x] **GATE**: `python trade_cli.py validate quick` passes
+- [x] **GATE**: pyright 0 errors
+
+### Phase 3: Stale comments and dead code cleanup
+- [x] Remove stale `compute.py` reference in `indicator_vendor.py:612` comment
+- [x] Remove redundant `from datetime import datetime, timezone` in `live_runner.py:575` (already imported at module level)
+- [x] Remove dead `_build_feed_store()` method from `backtest_runner.py:494-504` (always raises RuntimeError)
+- [x] Remove stale P1.2 refactor comments from `backtest/runner.py:803-808`
+- [x] Replace `datetime.now()` fallback in `backtest.py:263` with `raise RuntimeError("Bar timestamp not set")`
+- [x] Update `indicators/__init__.py:10` docstring -- remove reference to deleted `compute` module
+- [x] Update `dsl_parser.py:988` docstring -- change `yaml_data["blocks"]` to `yaml_data["actions"]`
+- [x] Add `backtest_play_normalize_batch_tool` to `src/tools/__init__.py` exports
+- [x] **GATE**: `python trade_cli.py validate quick` passes
+- [x] **GATE**: pyright 0 errors
+
+### Phase 4: Live safety hardening
+- [x] Add explicit `is_websocket_healthy()` check in `live_runner.py:_process_candle()` before signal execution
+- [x] **GATE**: pyright 0 errors
+
 ---
 
 ## Open Bugs & Architecture Gaps

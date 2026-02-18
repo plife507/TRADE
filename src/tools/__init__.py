@@ -187,6 +187,7 @@ from .backtest_play_tools import (
     backtest_list_plays_tool,
     backtest_indicators_tool,
     backtest_play_normalize_tool,
+    backtest_play_normalize_batch_tool,
 )
 
 # Backtest Audit tools
@@ -327,6 +328,7 @@ __all__ = [
     "backtest_list_plays_tool",
     "backtest_indicators_tool",
     "backtest_play_normalize_tool",
+    "backtest_play_normalize_batch_tool",
     "verify_artifact_parity_tool",
     # Audit tools
     "backtest_audit_toolkit_tool",

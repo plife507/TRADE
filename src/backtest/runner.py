@@ -800,13 +800,6 @@ def _emit_snapshots(ctx: _RunContext) -> None:
         import traceback
         print(f"\n[SNAPSHOTS] Failed to emit snapshots: {e}")
         print(f"[SNAPSHOTS] Traceback: {traceback.format_exc()}")
-# P1.2 Refactor: PlayBacktestResult moved to engine_factory.py (single definition)
-# Use from src.backtest.engine_factory import PlayBacktestResult if needed
-# =============================================================================
-# P1.2 Refactor: These adapter classes have been deleted.
-# Use engine.create_engine_from_play() and engine.run_engine_with_play()
-# directly from src.backtest.engine module.
-# =============================================================================
 
 
 @dataclass

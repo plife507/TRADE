@@ -260,7 +260,7 @@ class BacktestExchange:
         """Get timestamp for order submission (deterministic in backtest)."""
         if self._current_bar_ts is not None:
             return self._current_bar_ts
-        return datetime.now()  # Fallback for cases where ts not set
+        raise RuntimeError("Bar timestamp not set — call set_current_bar_timestamp() before submitting orders")
 
     def set_simulated_exchange(self, sim_exchange) -> None:
         """

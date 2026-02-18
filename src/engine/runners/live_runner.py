@@ -572,7 +572,6 @@ class LiveRunner:
 
         # Convert to Candle and enqueue with timeframe
         from ..interfaces import Candle
-        from datetime import datetime, timezone
 
         try:
             if kline_data.end_time > 0:
@@ -802,6 +801,14 @@ class LiveRunner:
             logger.warning(
                 "Signal execution blocked: position sync has not succeeded. "
                 "Waiting for next reconciliation cycle."
+            )
+            return
+
+        # Block signal execution if WebSocket is not healthy (fail-closed)
+        if self._realtime_state is not None and not self._realtime_state.is_websocket_healthy():
+            logger.warning(
+                "Signal execution blocked: WebSocket not healthy. "
+                "Waiting for connection to recover."
             )
             return
 

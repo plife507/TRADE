@@ -58,7 +58,7 @@ class FundingModel:
         prev_ts: datetime | None,
         ts: datetime,
         position: Position | None,
-        mark_price: float | None = None,
+        mark_price: float,
     ) -> FundingResult:
         """
         Apply funding events to a position.
@@ -108,7 +108,7 @@ class FundingModel:
         self,
         position: Position,
         event: FundingEvent,
-        mark_price: float | None = None,
+        mark_price: float,
     ) -> float:
         """
         Calculate funding payment for a single event.
@@ -121,14 +121,13 @@ class FundingModel:
         Args:
             position: Open position
             event: Funding event
-            mark_price: Mark price at funding time (falls back to entry_price if None)
+            mark_price: Mark price at funding time
 
         Returns:
             Funding PnL (positive = received, negative = paid)
         """
         # Position value at mark price (Bybit uses mark price, not entry price)
-        # Fall back to entry_price if mark_price not provided (backward compat)
-        price = mark_price if mark_price is not None else position.entry_price
+        price = mark_price
         position_value = position.size * price
 
         # Direction: longs pay positive funding, shorts receive

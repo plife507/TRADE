@@ -23,10 +23,6 @@ from .compile import (
     validate_ref_path,
     RefNamespace,
 )
-from .eval import (
-    evaluate_condition,
-    OPERATORS,
-)
 from .registry import (
     OperatorSpec,
     OpCategory,
@@ -49,9 +45,6 @@ __all__ = [
     "compile_ref",
     "validate_ref_path",
     "RefNamespace",
-    # Evaluation
-    "evaluate_condition",
-    "OPERATORS",
     # Registry
     "OperatorSpec",
     "OpCategory",

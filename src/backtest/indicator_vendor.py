@@ -606,10 +606,9 @@ def _extract_column_key(col_name: str, indicator_name: str) -> str:
 
 
 # =============================================================================
-# Explicit Wrapper Functions (backward compatibility)
+# Explicit Wrapper Functions
 # =============================================================================
-# These thin wrappers forward to pandas_ta for explicit parameter documentation
-# and type safety. compute.py's fast-path uses these directly.
+# Thin wrappers for explicit parameter documentation and type safety.
 
 
 def ema(close: pd.Series, length: int = 20, **kwargs: Any) -> pd.Series:

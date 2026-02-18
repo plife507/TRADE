@@ -147,20 +147,16 @@ class FeedStore:
             assert len(arr) == self.length, f"indicator {name} length mismatch"
         
         # Metadata coverage check (if metadata is provided, it must match indicators)
-        # NOTE: This is a soft check - legacy paths may not have metadata
         if self.indicator_metadata:
             indicator_keys = set(self.indicators.keys())
             metadata_keys = set(self.indicator_metadata.keys())
             if indicator_keys != metadata_keys:
                 missing = indicator_keys - metadata_keys
                 extra = metadata_keys - indicator_keys
-                # Log warning but don't fail for backward compatibility
-                import logging
-                logger = logging.getLogger(__name__)
-                if missing:
-                    logger.warning(f"FeedStore: Missing metadata for indicators: {missing}")
-                if extra:
-                    logger.warning(f"FeedStore: Extra metadata without indicators: {extra}")
+                raise ValueError(
+                    f"FeedStore indicator/metadata mismatch: "
+                    f"missing metadata for {missing}, extra metadata without indicators: {extra}"
+                )
 
         # Build sorted list of close timestamps for O(log n) binary search
         # This is built once and cached for get_last_closed_idx_at_or_before()
