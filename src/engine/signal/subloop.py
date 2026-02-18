@@ -124,12 +124,8 @@ class SubLoopEvaluator:
         )
     """
 
-    # TF_MINUTES mapping (duplicated to avoid circular imports)
-    TF_MINUTES: dict[str, int] = {
-        "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
-        "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720,
-        "d": 1440, "1d": 1440, "w": 10080, "1w": 10080, "m": 43200,
-    }
+    # Import canonical TF_MINUTES from data layer (no circular import)
+    from ...data.historical_data_store import TF_MINUTES
 
     def __init__(
         self,
@@ -193,6 +189,11 @@ class SubLoopEvaluator:
 
         # Clamp to available 1m data (both start and end)
         max_valid_idx = self._quote_feed.length - 1
+        if end_1m > max_valid_idx and self._logger:
+            self._logger.debug(
+                f"1m data truncated for exec bar {exec_idx}: "
+                f"end_1m={end_1m} > max_valid={max_valid_idx}"
+            )
         start_1m = min(start_1m, max_valid_idx)
         end_1m = min(end_1m, max_valid_idx)
 

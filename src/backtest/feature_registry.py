@@ -493,13 +493,10 @@ class FeatureRegistry:
                     )
                     max_warmup = max(max_warmup, warmup)
                 except (KeyError, ValueError) as e:
-                    # BUG-003 fix: Specific exceptions for indicator lookup
-                    # Use default warmup for unknown or misconfigured indicators
-                    import logging
-                    logging.getLogger(__name__).debug(
-                        f"Warmup lookup failed for {feature.indicator_type}: {e}, using default"
-                    )
-                    max_warmup = max(max_warmup, 50)
+                    raise ValueError(
+                        f"Warmup lookup failed for indicator '{feature.indicator_type}': {e}. "
+                        f"Ensure the indicator is registered and params are valid."
+                    ) from e
 
             elif feature.is_structure:
                 try:
@@ -512,12 +509,10 @@ class FeatureRegistry:
                     struct_warmup = (left + right + 1) * 5
                     max_warmup = max(max_warmup, struct_warmup)
                 except (KeyError, ValueError) as e:
-                    # BUG-003 fix: Specific exceptions for structure lookup
-                    import logging
-                    logging.getLogger(__name__).debug(
-                        f"Structure info lookup failed for {feature.structure_type}: {e}, using default"
-                    )
-                    max_warmup = max(max_warmup, 50)
+                    raise ValueError(
+                        f"Structure info lookup failed for '{feature.structure_type}': {e}. "
+                        f"Ensure the structure type is registered."
+                    ) from e
 
         self._warmup_cache[tf] = max_warmup
         return max_warmup

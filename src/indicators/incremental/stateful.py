@@ -353,4 +353,6 @@ class IncrementalFisher(IncrementalIndicator):
 
     @property
     def is_ready(self) -> bool:
-        return len(self._hl2_buffer) >= self.length
+        # Needs length+1 bars: length bars to fill buffer, then one more
+        # for the first real computed Fisher value (seeding bar is 0.0)
+        return self._count > self.length

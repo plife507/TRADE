@@ -93,6 +93,10 @@ class ExprEvaluator:
         # Stack to detect circular setup references (for recursion guard)
         self._setup_eval_stack: set[str] = set()
 
+    def set_setup_cache(self, setups: dict[str, Expr]) -> None:
+        """Populate setup expression cache from compiled Play setups."""
+        self._setup_expr_cache = dict(setups)
+
     def evaluate(self, expr: Expr, snapshot: "RuntimeSnapshotView") -> EvalResult:
         """
         Evaluate an expression tree against a snapshot.

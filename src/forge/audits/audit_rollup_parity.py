@@ -109,13 +109,14 @@ def compute_expected_rollups(quotes: list[QuoteState]) -> dict[str, float]:
         Dict with px.rollup.* keys and their expected values
     """
     if not quotes:
+        nan = float('nan')
         return {
-            "px.rollup.min_1m": float('inf'),
-            "px.rollup.max_1m": float('-inf'),
+            "px.rollup.min_1m": nan,
+            "px.rollup.max_1m": nan,
             "px.rollup.bars_1m": 0.0,
-            "px.rollup.open_1m": 0.0,
-            "px.rollup.close_1m": 0.0,
-            "px.rollup.volume_1m": 0.0,
+            "px.rollup.open_1m": nan,
+            "px.rollup.close_1m": nan,
+            "px.rollup.volume_1m": nan,
         }
 
     min_price = min(q.low_1m for q in quotes)
@@ -165,14 +166,20 @@ def validate_bucket_accumulation(
         obs_val = observed.get(key, float('nan'))
         exp_val = expected.get(key, float('nan'))
 
-        # Handle inf values for empty rollups
-        if np.isinf(obs_val) and np.isinf(exp_val):
+        # Handle NaN values for empty rollups (both NaN = match)
+        if np.isnan(obs_val) and np.isnan(exp_val):
+            abs_diff = 0.0
+            passed = True
+        elif np.isinf(obs_val) and np.isinf(exp_val):
             if (obs_val > 0) == (exp_val > 0):  # Same sign infinity
                 abs_diff = 0.0
                 passed = True
             else:
                 abs_diff = float('inf')
                 passed = False
+        elif np.isnan(obs_val) or np.isnan(exp_val):
+            abs_diff = float('nan')
+            passed = False
         else:
             abs_diff = abs(obs_val - exp_val)
             passed = abs_diff <= tolerance
@@ -324,18 +331,24 @@ def validate_snapshot_accessors(
 
         # Handle default values for missing keys
         if key == "px.rollup.min_1m" and key not in rollups:
-            expected = float('inf')
+            expected = float('nan')
         elif key == "px.rollup.max_1m" and key not in rollups:
-            expected = float('-inf')
+            expected = float('nan')
 
-        # Handle inf comparison
-        if np.isinf(accessor_value) and np.isinf(expected):
+        # Handle NaN/inf comparison
+        if np.isnan(accessor_value) and np.isnan(expected):
+            abs_diff = 0.0
+            passed = True
+        elif np.isinf(accessor_value) and np.isinf(expected):
             if (accessor_value > 0) == (expected > 0):
                 abs_diff = 0.0
                 passed = True
             else:
                 abs_diff = float('inf')
                 passed = False
+        elif np.isnan(accessor_value) or np.isnan(expected):
+            abs_diff = float('nan')
+            passed = False
         else:
             abs_diff = abs(accessor_value - expected)
             passed = abs_diff <= tolerance

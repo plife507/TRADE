@@ -805,7 +805,7 @@ class IncrementalADX(IncrementalIndicator):
     _dm_count: int = field(default=0, init=False)  # Counts DM values (starts at bar 1)
     _dx_count: int = field(default=0, init=False)  # Counts DX values
     _count: int = field(default=0, init=False)
-    _adx_history: list = field(default_factory=list, init=False)  # G5.6: For ADXR
+    _adx_history: deque = field(default_factory=deque, init=False)  # G5.6: For ADXR
 
     def __post_init__(self) -> None:
         # pandas_ta ADX uses atr(..., prenan=True) internally (default kwarg)
@@ -881,7 +881,7 @@ class IncrementalADX(IncrementalIndicator):
                 # G5.6: Track ADX history for ADXR calculation
                 self._adx_history.append(self._smoothed_dx)
                 if len(self._adx_history) > self.length:
-                    self._adx_history.pop(0)
+                    self._adx_history.popleft()
 
     def reset(self) -> None:
         self._atr.reset()
@@ -893,7 +893,7 @@ class IncrementalADX(IncrementalIndicator):
         self._dm_count = 0
         self._dx_count = 0
         self._count = 0
-        self._adx_history = []
+        self._adx_history.clear()
 
     @property
     def value(self) -> float:

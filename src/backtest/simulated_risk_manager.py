@@ -327,7 +327,7 @@ class SimulatedRiskManager:
         taker_fee = self._profile.taker_fee_rate or 0.00055
 
         # Calculate max size with all caps
-        max_by_equity_pct = equity * (max_pos_pct / 100.0)
+        max_by_equity_pct = equity * (max_pos_pct / 100.0) * max_lev
         if reserve_fees:
             fee_factor = 1.0 + 2.0 * taker_fee
             max_by_fees = equity * max_lev / fee_factor

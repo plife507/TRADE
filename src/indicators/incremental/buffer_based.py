@@ -302,8 +302,8 @@ class IncrementalCMO(IncrementalIndicator):
 
     length: int = 14
     _prev_close: float = field(default=np.nan, init=False)
-    _pos_buf: list[float] = field(default_factory=list, init=False)
-    _neg_buf: list[float] = field(default_factory=list, init=False)
+    _pos_buf: deque[float] = field(default_factory=deque, init=False)
+    _neg_buf: deque[float] = field(default_factory=deque, init=False)
     _pos_sum: float = field(default=0.0, init=False)
     _neg_sum: float = field(default=0.0, init=False)
     _change_count: int = field(default=0, init=False)
@@ -331,13 +331,13 @@ class IncrementalCMO(IncrementalIndicator):
 
         # Evict oldest when buffer exceeds length
         if len(self._pos_buf) > self.length:
-            self._pos_sum -= self._pos_buf.pop(0)
-            self._neg_sum -= self._neg_buf.pop(0)
+            self._pos_sum -= self._pos_buf.popleft()
+            self._neg_sum -= self._neg_buf.popleft()
 
     def reset(self) -> None:
         self._prev_close = np.nan
-        self._pos_buf = []
-        self._neg_buf = []
+        self._pos_buf.clear()
+        self._neg_buf.clear()
         self._pos_sum = 0.0
         self._neg_sum = 0.0
         self._change_count = 0

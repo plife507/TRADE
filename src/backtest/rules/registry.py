@@ -109,6 +109,34 @@ OPERATOR_REGISTRY = {
         category=OpCategory.NUMERIC,
         needs_prev_value=True,
     ),
+
+    # Proximity operators (float, require tolerance)
+    "near_pct": OperatorSpec(
+        name="near_pct",
+        supported=True,
+        category=OpCategory.FLOAT_ONLY,
+        needs_tolerance=True,
+    ),
+    "near_abs": OperatorSpec(
+        name="near_abs",
+        supported=True,
+        category=OpCategory.FLOAT_ONLY,
+        needs_tolerance=True,
+    ),
+
+    # Range operator
+    "between": OperatorSpec(
+        name="between",
+        supported=True,
+        category=OpCategory.NUMERIC,
+    ),
+
+    # Set membership operator
+    "in": OperatorSpec(
+        name="in",
+        supported=True,
+        category=OpCategory.BOOL_INT_ENUM,
+    ),
 }
 
 # Canonical names only (excludes aliases)

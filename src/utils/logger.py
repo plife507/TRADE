@@ -52,6 +52,7 @@ LOG_INCLUDE_AGENT_TEXT = os.environ.get("LOG_INCLUDE_AGENT_TEXT", "false").lower
 REDACT_KEY_PATTERNS = [
     "api_key", "apikey", "secret", "token", "password",
     "private_key", "privatekey", "auth", "credential",
+    "bearer", "jwt", "x-api-key", "x-api-secret",
 ]
 
 # Keys that contain agent text (only logged if LOG_INCLUDE_AGENT_TEXT is true)

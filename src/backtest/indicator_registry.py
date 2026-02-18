@@ -152,8 +152,8 @@ def _warmup_aroon(p: dict[str, Any]) -> int:
 
 
 def _warmup_fisher(p: dict[str, Any]) -> int:
-    """Fisher Transform needs length."""
-    return p.get("length", 9)
+    """Fisher Transform needs length+1 (seeding bar + first real value)."""
+    return p.get("length", 9) + 1
 
 
 def _warmup_tsi(p: dict[str, Any]) -> int:

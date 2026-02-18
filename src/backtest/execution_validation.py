@@ -209,12 +209,11 @@ def _play_has_exit_actions(play: "Play") -> bool:
                     for intent in case.emit:
                         if hasattr(intent, 'action') and intent.action in exit_actions:
                             return True
-        # Check else clause
-        if hasattr(action_block, 'else_clause') and action_block.else_clause:
-            if hasattr(action_block.else_clause, 'emit') and action_block.else_clause.emit:
-                for intent in action_block.else_clause.emit:
-                    if hasattr(intent, 'action') and intent.action in exit_actions:
-                        return True
+        # Check else_emit (tuple[Intent, ...] | None on Block)
+        if hasattr(action_block, 'else_emit') and action_block.else_emit:
+            for intent in action_block.else_emit:
+                if hasattr(intent, 'action') and intent.action in exit_actions:
+                    return True
 
     return False
 
@@ -1011,6 +1010,10 @@ class PlaySignalEvaluator:
         from .rules.evaluation import ExprEvaluator
         self._blocks_executor = StrategyBlocksExecutor()
         self._expr_evaluator = ExprEvaluator()  # For resolve_metadata()
+
+        # Wire setup expressions if Play has setups
+        if play.setups:
+            self._blocks_executor._evaluator.set_setup_cache(play.setups)
 
     def evaluate(
         self,

@@ -1258,36 +1258,7 @@ def compute_results_summary(
         summary.time_in_market_pct = metrics.time_in_market_pct
         return summary
     
-    # Legacy: compute from trades/equity if no metrics provided
-    summary.trades_count = len(trades)
-    
-    if trades:
-        pnls = [t.get("net_pnl", 0.0) for t in trades]
-        summary.winning_trades = sum(1 for p in pnls if p > 0)
-        summary.losing_trades = sum(1 for p in pnls if p < 0)
-        summary.win_rate = summary.winning_trades / summary.trades_count if summary.trades_count > 0 else 0.0
-        summary.net_pnl_usdt = sum(pnls)
-        summary.gross_profit_usdt = sum(p for p in pnls if p > 0)
-        summary.gross_loss_usdt = sum(p for p in pnls if p < 0)
-    
-    # Drawdown from equity curve
-    if equity_curve:
-        equities = [e.get("equity", 0.0) for e in equity_curve]
-        if equities:
-            peak = equities[0]
-            max_dd = 0.0
-            max_dd_pct = 0.0
-            
-            for eq in equities:
-                if eq > peak:
-                    peak = eq
-                dd = peak - eq
-                dd_pct = dd / peak if peak > 0 else 0.0
-                if dd > max_dd:
-                    max_dd = dd
-                    max_dd_pct = dd_pct
-            
-            summary.max_drawdown_usdt = max_dd
-            summary.max_drawdown_pct = max_dd_pct
-    
-    return summary
+    raise ValueError(
+        "metrics parameter is required. Pass BacktestMetrics from the runner. "
+        "Legacy compute-from-trades path has been removed."
+    )

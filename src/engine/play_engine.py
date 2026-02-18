@@ -423,8 +423,6 @@ class PlayEngine:
 
         # 2. Check readiness (warmup complete, data available)
         if not self._is_ready():
-            if bar_index == 100:  # Debug: log early on why not ready
-                self.logger.debug(f"Not ready at bar {bar_index}: data.is_ready={self.data.is_ready()}")
             return None
 
         # G5.8: Transition to RUNNING when processing post-warmup bars
@@ -1739,9 +1737,6 @@ class PlayEngine:
         if self._signal_evaluator is None:
             try:
                 self._signal_evaluator = PlaySignalEvaluator(self.play)
-                # Wire setup expressions into evaluator cache
-                if self.play.setups:
-                    self._signal_evaluator._blocks_executor._evaluator._setup_expr_cache = dict(self.play.setups)
             except ValueError as e:
                 self.logger.error(f"Failed to create signal evaluator: {e}")
                 return None
@@ -2041,9 +2036,6 @@ class _PlayEngineSubLoopContext:
             from ..backtest.execution_validation import PlaySignalEvaluator
             try:
                 engine._signal_evaluator = PlaySignalEvaluator(engine.play)
-                # Wire setup expressions into evaluator cache
-                if engine.play.setups:
-                    engine._signal_evaluator._blocks_executor._evaluator._setup_expr_cache = dict(engine.play.setups)
             except ValueError as e:
                 engine.logger.error(f"Failed to create signal evaluator: {e}")
 

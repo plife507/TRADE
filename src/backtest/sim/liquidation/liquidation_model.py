@@ -69,20 +69,25 @@ class LiquidationModel:
         entry_price: float,
         leverage: float,
         direction: int,
+        fee_rate: float = 0.0,
     ) -> float:
         """
         Calculate bankruptcy price (0% margin level).
 
-        At bankruptcy price, the trader's entire initial margin is consumed.
-        Bybit settles liquidated positions at this price.
+        At bankruptcy price, the trader's entire initial margin is consumed
+        including the closing fee. Bybit settles liquidated positions here.
 
-            Long:  BP = EntryPrice * (1 - 1/leverage)
-            Short: BP = EntryPrice * (1 + 1/leverage)
+            Long:  BP = EP * (1 - 1/leverage) / (1 - fee_rate)
+            Short: BP = EP * (1 + 1/leverage) / (1 + fee_rate)
+
+        The fee_rate term ensures margin + PnL - close_fee = 0 exactly
+        at the bankruptcy price.
 
         Args:
             entry_price: Position entry price.
             leverage: Position leverage.
             direction: 1 for long, -1 for short.
+            fee_rate: Taker fee rate for closing (e.g. 0.00055).
 
         Returns:
             Bankruptcy price (>= 0).
@@ -92,9 +97,12 @@ class LiquidationModel:
 
         imr = 1.0 / leverage
         if direction == 1:  # Long
-            return max(0.0, entry_price * (1.0 - imr))
+            denom = 1.0 - fee_rate
+            if denom <= 0:
+                return 0.0
+            return max(0.0, entry_price * (1.0 - imr) / denom)
         else:  # Short
-            return entry_price * (1.0 + imr)
+            return entry_price * (1.0 + imr) / (1.0 + fee_rate)
 
     def check_liquidation(
         self,
@@ -131,10 +139,12 @@ class LiquidationModel:
         # Liquidation triggered
         result.liquidated = True
 
-        # Calculate bankruptcy price (settlement price)
+        # Calculate bankruptcy price (settlement price, includes fee term)
         direction = 1 if position.side == OrderSide.LONG else -1
+        assert self._config.liquidation_fee_rate is not None
         bankruptcy_price = self.calculate_bankruptcy_price(
-            position.entry_price, leverage, direction
+            position.entry_price, leverage, direction,
+            fee_rate=self._config.liquidation_fee_rate,
         )
 
         # Liquidation fee based on position value at bankruptcy price

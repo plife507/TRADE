@@ -143,13 +143,15 @@ class ExecRollupBucket:
             Strategies should check px.rollup.bars_1m > 0 before using
             price extremes.
         """
+        nan = float('nan')
+        empty = self.bar_count_1m == 0
         return {
-            "px.rollup.min_1m": self.min_price_1m,
-            "px.rollup.max_1m": self.max_price_1m,
-            "px.rollup.bars_1m": float(self.bar_count_1m),  # float for consistency
-            "px.rollup.open_1m": self.open_price_1m,
-            "px.rollup.close_1m": self.close_price_1m,
-            "px.rollup.volume_1m": self.volume_1m,
+            "px.rollup.min_1m": nan if empty else self.min_price_1m,
+            "px.rollup.max_1m": nan if empty else self.max_price_1m,
+            "px.rollup.bars_1m": float(self.bar_count_1m),
+            "px.rollup.open_1m": nan if empty else self.open_price_1m,
+            "px.rollup.close_1m": nan if empty else self.close_price_1m,
+            "px.rollup.volume_1m": nan if empty else self.volume_1m,
         }
 
     def reset(self) -> None:

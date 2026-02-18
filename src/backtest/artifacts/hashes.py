@@ -36,15 +36,9 @@ def compute_trades_hash(trades: list[Trade]) -> str:
         elif isinstance(t, dict):
             trades_data.append(t)
         else:
-            # Fallback: extract key fields
-            trades_data.append({
-                "entry_time": str(getattr(t, 'entry_time', '')),
-                "exit_time": str(getattr(t, 'exit_time', '')),
-                "side": getattr(t, 'side', ''),
-                "entry_price": getattr(t, 'entry_price', 0),
-                "exit_price": getattr(t, 'exit_price', 0),
-                "net_pnl": getattr(t, 'net_pnl', 0),
-            })
+            raise TypeError(
+                f"Trade must have to_dict() or be a dict, got {type(t).__name__}"
+            )
     
     # Sort keys for determinism
     serialized = json.dumps(trades_data, sort_keys=True, default=str)
@@ -69,11 +63,9 @@ def compute_equity_hash(equity_curve: list[EquityPoint]) -> str:
         elif isinstance(e, dict):
             equity_data.append(e)
         else:
-            # Fallback: extract key fields
-            equity_data.append({
-                "timestamp": str(getattr(e, 'timestamp', '')),
-                "equity": getattr(e, 'equity', 0),
-            })
+            raise TypeError(
+                f"EquityPoint must have to_dict() or be a dict, got {type(e).__name__}"
+            )
     
     serialized = json.dumps(equity_data, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode('utf-8')).hexdigest()[:16]

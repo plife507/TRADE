@@ -925,7 +925,7 @@ def batch_market_orders_tool(orders: list[dict[str, object]], trading_env: str |
             })
         
         return ToolResult(
-            success=success_count > 0,
+            success=(failed_count == 0),
             message=f"Batch market orders: {success_count}/{len(orders)} succeeded",
             data={
                 "results": result_data,
@@ -1000,7 +1000,7 @@ def batch_limit_orders_tool(orders: list[dict[str, object]], trading_env: str | 
             })
         
         return ToolResult(
-            success=success_count > 0,
+            success=(failed_count == 0),
             message=f"Batch limit orders: {success_count}/{len(orders)} succeeded",
             data={
                 "results": result_data,
@@ -1053,7 +1053,7 @@ def batch_cancel_orders_tool(orders: list[dict[str, str]], trading_env: str | No
         failed_count = len(results) - success_count
         
         return ToolResult(
-            success=success_count > 0,
+            success=(failed_count == 0),
             message=f"Batch cancel: {success_count}/{len(orders)} orders cancelled",
             data={
                 "results": results,

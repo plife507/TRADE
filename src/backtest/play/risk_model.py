@@ -178,7 +178,7 @@ class StopLossRule:
         return cls(
             type=StopLossType(d["type"]),
             value=float(d["value"]),
-            atr_feature_id=d.get("atr_feature_id") or d.get("atr_key"),  # Support old key name
+            atr_feature_id=d.get("atr_feature_id"),
             buffer_pct=float(d.get("buffer_pct", 0.0)),
         )
 
@@ -222,7 +222,7 @@ class TakeProfitRule:
         return cls(
             type=TakeProfitType(d["type"]),
             value=float(d["value"]),
-            atr_feature_id=d.get("atr_feature_id") or d.get("atr_key"),
+            atr_feature_id=d.get("atr_feature_id"),
         )
 
 

@@ -1557,19 +1557,24 @@ def audit_psar_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicato
     long_valid = ~np.isnan(inc_long_arr) & ~np.isnan(vec_long_arr)
     short_valid = ~np.isnan(inc_short_arr) & ~np.isnan(vec_short_arr)
 
+    all_diffs: list[np.ndarray] = []
+
     if long_valid.sum() > 0:
         long_diff = np.abs(inc_long_arr[long_valid] - vec_long_arr[long_valid])
         max_long = float(np.max(long_diff))
+        all_diffs.append(long_diff)
     else:
         max_long = 0.0
 
     if short_valid.sum() > 0:
         short_diff = np.abs(inc_short_arr[short_valid] - vec_short_arr[short_valid])
         max_short = float(np.max(short_diff))
+        all_diffs.append(short_diff)
     else:
         max_short = 0.0
 
     max_diff = max(max_long, max_short)
+    mean_diff = float(np.mean(np.concatenate(all_diffs))) if all_diffs else 0.0
     passed = max_diff <= tolerance
     valid = int(long_valid.sum() + short_valid.sum())
 
@@ -1577,7 +1582,7 @@ def audit_psar_parity(df: pd.DataFrame, tolerance: float) -> IncrementalIndicato
         indicator="PSAR",
         passed=passed,
         max_abs_diff=max_diff,
-        mean_abs_diff=max_diff / 2 if max_diff > 0 else 0.0,
+        mean_abs_diff=mean_diff,
         valid_comparisons=valid,
         warmup_bars=warmup,
         outputs_checked=["long", "short"],

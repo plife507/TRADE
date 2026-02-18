@@ -179,14 +179,10 @@ class AccountConfig:
             max_leverage = DEFAULTS.risk.max_leverage
             defaulted.append(f"max_leverage={max_leverage}")
 
-        # max_drawdown_pct in defaults.yml is 0.20 (decimal), convert to percentage if needed
-        default_drawdown = DEFAULTS.risk.max_drawdown_pct
-        if default_drawdown < 1.0:
-            default_drawdown = default_drawdown * 100.0
         if "max_drawdown_pct" in d:
             max_drawdown = d["max_drawdown_pct"]
         else:
-            max_drawdown = default_drawdown
+            max_drawdown = DEFAULTS.risk.max_drawdown_pct
             defaulted.append(f"max_drawdown_pct={max_drawdown}")
 
         # Margin mode: defaults.yml uses "isolated", we use "isolated_usdt"

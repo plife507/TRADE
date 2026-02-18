@@ -892,10 +892,11 @@ class LiveDataProvider:
 
         if bars:
             # Convert BarRecords to interface Candles
+            tf_duration = timedelta(minutes=tf_minutes(tf_str))
             for bar_record in bars:
                 candle = Candle(
                     ts_open=bar_record.timestamp,
-                    ts_close=bar_record.timestamp,  # Approximate
+                    ts_close=bar_record.timestamp + tf_duration,
                     open=bar_record.open,
                     high=bar_record.high,
                     low=bar_record.low,

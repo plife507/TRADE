@@ -26,7 +26,7 @@ from __future__ import annotations
 import bisect
 import numpy as np
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 import pandas as pd
 
@@ -38,9 +38,9 @@ def _np_dt64_to_epoch_ms(ts: np.datetime64) -> int:
 
 
 def _np_dt64_to_datetime(ts: np.datetime64) -> datetime:
-    """Convert numpy datetime64 to Python datetime."""
+    """Convert numpy datetime64 to Python datetime (UTC)."""
     epoch_ms = _np_dt64_to_epoch_ms(ts)
-    return datetime.utcfromtimestamp(epoch_ms / 1000.0)
+    return datetime.fromtimestamp(epoch_ms / 1000.0, tz=timezone.utc).replace(tzinfo=None)
 
 if TYPE_CHECKING:
     from ..features.feature_frame_builder import FeatureArrays

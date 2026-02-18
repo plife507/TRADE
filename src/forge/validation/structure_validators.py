@@ -64,29 +64,26 @@ def validate_no_lookahead(
     level_arr = structure_outputs[confirmation_field]
     n_bars = len(level_arr)
 
-    # Find first bar where we have a confirmed pivot
-    first_confirm_bar = None
-    first_pivot_bar = None
-
+    # Check ALL pivots for lookahead violations, not just the first
+    checked = 0
     for i in range(n_bars):
-        if not np.isnan(level_arr[i]) and not np.isnan(pivot_idx_arr[i]):
-            first_confirm_bar = i
-            first_pivot_bar = int(pivot_idx_arr[i])
-            break
+        if np.isnan(level_arr[i]) or np.isnan(pivot_idx_arr[i]):
+            continue
+        confirm_bar = i
+        pivot_bar = int(pivot_idx_arr[i])
+        expected_min_confirm = pivot_bar + right_bars
+        checked += 1
 
-    if first_confirm_bar is None or first_pivot_bar is None:
+        if confirm_bar < expected_min_confirm:
+            return False, (
+                f"LOOKAHEAD: pivot at bar {pivot_bar}, confirmed at bar {confirm_bar} "
+                f"(expected >= {expected_min_confirm})"
+            )
+
+    if checked == 0:
         return True, "No pivots confirmed (not enough data for validation)"
 
-    # Pivot at bar P should not be confirmed until bar >= P + right_bars
-    expected_min_confirm = first_pivot_bar + right_bars
-
-    if first_confirm_bar >= expected_min_confirm:
-        return True, f"OK: pivot at bar {first_pivot_bar}, confirmed at bar {first_confirm_bar}"
-    else:
-        return False, (
-            f"LOOKAHEAD: pivot at bar {first_pivot_bar}, confirmed at bar {first_confirm_bar} "
-            f"(expected >= {expected_min_confirm})"
-        )
+    return True, f"OK: {checked} pivots checked, no lookahead violations"
 
 
 def validate_determinism(
@@ -115,14 +112,23 @@ def validate_determinism(
     # Load play
     play = load_play(str(play_path))
 
-    # Generate synthetic data
-    timeframes = [play.exec_tf]
+    # Generate synthetic data with all play TFs (not just exec)
+    timeframes: list[str] = []
+    for tf in [play.low_tf, play.med_tf, play.high_tf]:
+        if tf and tf not in timeframes:
+            timeframes.append(tf)
+    if not timeframes:
+        timeframes = [play.exec_tf]
+    if "1m" not in timeframes:
+        timeframes.append("1m")
+
     candles = generate_synthetic_candles(
         symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
-        timeframes=timeframes,
+        timeframes=sorted(timeframes),
         bars_per_tf=500,
         seed=seed,
         pattern="trending",
+        align_multi_tf=True,
     )
 
     # Run multiple times

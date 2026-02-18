@@ -596,10 +596,18 @@ class Config:
         
         # Load environment variables from multiple files
         # Priority: .env > api_keys.env (later files override earlier)
+        loaded_env_files: list[str] = []
         for env_name in ["api_keys.env", ".env", env_file]:
             env_path = Path(env_name)
             if env_path.exists():
                 load_dotenv(env_path, override=True)
+                loaded_env_files.append(env_name)
+        if "api_keys.env" in loaded_env_files and ".env" in loaded_env_files:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Both .env and api_keys.env found. "
+                ".env values override api_keys.env (load order: api_keys.env → .env)."
+            )
         
         # Initialize sub-configs
         self.bybit = self._load_bybit_config()

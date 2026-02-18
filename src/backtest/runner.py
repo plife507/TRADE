@@ -1048,6 +1048,5 @@ def _finalize_logger_on_error(ctx: _RunContext, status: str) -> None:
             ctx.run_logger.finalize(status=status)
             set_run_logger(None)
     except (OSError, IOError, AttributeError) as e:
-        # BUG-004 fix: Specific exceptions for logger cleanup
-        # File may be closed or logger already finalized
-        pass
+        import logging
+        logging.getLogger(__name__).debug(f"Logger cleanup failed: {e}")

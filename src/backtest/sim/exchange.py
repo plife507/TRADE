@@ -699,7 +699,6 @@ class SimulatedExchange:
                     trade, exit_fill = result
                     closed_trades.append(trade)
                     fills.append(exit_fill)
-                    self._ledger.apply_liquidation_fee(liq_result.event.liquidation_fee)
 
         return closed_trades, fills, liq_out
 
@@ -1049,6 +1048,9 @@ class SimulatedExchange:
             "sl": FillReason.STOP_LOSS,
             "tp": FillReason.TAKE_PROFIT,
             "liquidation": FillReason.LIQUIDATION,
+            "end_of_data": FillReason.END_OF_DATA,
+            "force_close": FillReason.FORCE_CLOSE,
+            "force": FillReason.FORCE_CLOSE,
         }
         fill_reason = reason_map.get(reason, FillReason.SIGNAL)
         

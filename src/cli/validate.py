@@ -1108,7 +1108,7 @@ def _gate_pre_live_balance(play_id: str) -> GateResult:
         if not result.success:
             failures.append(f"Balance check: {result.error}")
         elif result.data:
-            available = float(result.data.get("available_balance", 0))
+            available = float(result.data.get("available", 0))
             assert play.account is not None
             required = play.account.starting_equity_usdt
             if available < required:
@@ -1141,7 +1141,11 @@ def _gate_pre_live_no_conflicts(play_id: str) -> GateResult:
         result = list_open_positions_tool()
         if result.success and result.data:
             raw_data = result.data
-            positions: list[dict[str, Any]] = raw_data if isinstance(raw_data, list) else []
+            positions: list[dict[str, Any]] = (
+                raw_data.get("positions", []) if isinstance(raw_data, dict)
+                else raw_data if isinstance(raw_data, list)
+                else []
+            )
             for pos in positions:
                 if isinstance(pos, dict) and pos.get("symbol") == symbol:
                     failures.append(f"Open position exists for {symbol}")
@@ -1378,7 +1382,7 @@ def _run_staged_gates(
                 futures = {pool.submit(fn): fn for fn in stage}
                 for future in as_completed(futures, timeout=gate_timeout):
                     try:
-                        result = future.result(timeout=gate_timeout)
+                        result = future.result()
                         all_results.append(result)
                         if not json_output:
                             _print_gate_result(result)
@@ -1630,7 +1634,7 @@ def run_validation(
                 futures = {pool.submit(fn): fn for fn in phase_gates}
                 for future in as_completed(futures, timeout=gate_timeout):
                     try:
-                        result = future.result(timeout=gate_timeout)
+                        result = future.result()
                         results.append(result)
                         if not json_output:
                             _print_gate_result(result)

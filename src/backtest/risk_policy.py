@@ -271,7 +271,10 @@ def create_risk_policy(
         return NoneRiskPolicy(risk_profile)
     elif risk_mode == "rules":
         if risk_profile is None:
-            risk_profile = RiskProfileConfig(initial_equity=10000.0)
+            raise ValueError(
+                "risk_mode='rules' requires a risk_profile. "
+                "Pass a RiskProfileConfig with explicit initial_equity."
+            )
         return RulesRiskPolicy(risk_profile, enforce_daily_loss=enforce_daily_loss)
     else:
         raise ValueError(

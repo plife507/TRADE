@@ -48,6 +48,24 @@ if TYPE_CHECKING:
 # Data Structures
 # =============================================================================
 
+# Valid action names for Intent
+VALID_ACTIONS = frozenset({
+    # Entry actions
+    "entry_long",
+    "entry_short",
+    # Exit actions
+    "exit_long",
+    "exit_short",
+    "exit_all",
+    # Adjustment actions
+    "adjust_stop",
+    "adjust_target",
+    "adjust_size",
+    # No-op
+    "no_action",
+})
+
+
 @dataclass(frozen=True)
 class Intent:
     """
@@ -72,6 +90,11 @@ class Intent:
         """Validate action name and percent."""
         if not self.action:
             raise ValueError("Intent: action is required")
+        if self.action not in VALID_ACTIONS:
+            raise ValueError(
+                f"Intent: unknown action '{self.action}'. "
+                f"Valid: {sorted(VALID_ACTIONS)}"
+            )
         # FAIL LOUD: Validate percent strictly
         if self.percent <= 0 or self.percent > 100:
             raise ValueError(
@@ -94,24 +117,6 @@ class Intent:
         if self.metadata:
             result["metadata"] = dict(self.metadata)
         return result
-
-
-# Valid action names for Intent
-VALID_ACTIONS = frozenset({
-    # Entry actions
-    "entry_long",
-    "entry_short",
-    # Exit actions
-    "exit_long",
-    "exit_short",
-    "exit_all",
-    # Adjustment actions
-    "adjust_stop",
-    "adjust_target",
-    "adjust_size",
-    # No-op
-    "no_action",
-})
 
 
 @dataclass(frozen=True)

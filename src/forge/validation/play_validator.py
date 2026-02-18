@@ -152,7 +152,7 @@ def validate_play_file(file_path: str | Path) -> PlayValidationResult:
             is_valid=False,
             errors=[
                 ValidationError(
-                    code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                    code=ValidationErrorCode.DSL_PARSE_ERROR,
                     message=f"YAML parse error: {e}",
                 )
             ],
@@ -165,7 +165,7 @@ def validate_play_file(file_path: str | Path) -> PlayValidationResult:
             is_valid=False,
             errors=[
                 ValidationError(
-                    code=ValidationErrorCode.MISSING_REQUIRED_FIELD,
+                    code=ValidationErrorCode.DSL_PARSE_ERROR,
                     message="YAML file must contain a dict at root level",
                 )
             ],

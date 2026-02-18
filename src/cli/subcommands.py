@@ -987,9 +987,14 @@ def _run_play_backtest(play, args) -> int:
 
     result = backtest_run_play_tool(
         play_id=play.id,
+        env=getattr(args, "data_env", "live"),
         start=start,
         end=end,
+        smoke=getattr(args, "smoke", False),
+        write_artifacts=not getattr(args, "no_artifacts", False),
         plays_dir=plays_dir,
+        emit_snapshots=getattr(args, "emit_snapshots", False),
+        sync=getattr(args, "sync", True),
     )
 
     if json_output:
@@ -1638,7 +1643,7 @@ def handle_account_exposure(args) -> int:
         console.print(json.dumps(result.data, indent=2))
     else:
         data = result.data or {}
-        total = data.get("total_exposure_usdt", "N/A")
+        total = data.get("exposure_usd", "N/A")
         console.print(f"[bold]Total Exposure:[/] ${total}")
     return 0
 

@@ -77,6 +77,67 @@ from .volume import (
 # =============================================================================
 
 
+_VALID_PARAMS: dict[str, frozenset[str]] = {
+    "ema": frozenset({"length"}),
+    "sma": frozenset({"length"}),
+    "rsi": frozenset({"length"}),
+    "atr": frozenset({"length"}),
+    "macd": frozenset({"fast", "slow", "signal"}),
+    "bbands": frozenset({"length", "std"}),
+    "willr": frozenset({"length"}),
+    "cci": frozenset({"length"}),
+    "stoch": frozenset({"k", "smooth_k", "d"}),
+    "stochrsi": frozenset({"length", "rsi_length", "k", "d"}),
+    "adx": frozenset({"length"}),
+    "supertrend": frozenset({"length", "multiplier"}),
+    "ohlc4": frozenset(),
+    "midprice": frozenset({"length"}),
+    "roc": frozenset({"length"}),
+    "mom": frozenset({"length"}),
+    "obv": frozenset(),
+    "natr": frozenset({"length"}),
+    "dema": frozenset({"length"}),
+    "tema": frozenset({"length"}),
+    "ppo": frozenset({"fast", "slow", "signal"}),
+    "trix": frozenset({"length", "signal"}),
+    "tsi": frozenset({"fast", "slow", "signal"}),
+    "wma": frozenset({"length"}),
+    "trima": frozenset({"length"}),
+    "linreg": frozenset({"length"}),
+    "cmf": frozenset({"length"}),
+    "cmo": frozenset({"length"}),
+    "mfi": frozenset({"length"}),
+    "aroon": frozenset({"length"}),
+    "donchian": frozenset({"lower_length", "upper_length"}),
+    "kc": frozenset({"length", "scalar"}),
+    "dm": frozenset({"length"}),
+    "vortex": frozenset({"length"}),
+    "kama": frozenset({"length"}),
+    "alma": frozenset({"length", "sigma", "offset"}),
+    "zlma": frozenset({"length"}),
+    "uo": frozenset({"fast", "medium", "slow"}),
+    "psar": frozenset({"af0", "af", "max_af"}),
+    "squeeze": frozenset({"bb_length", "bb_std", "kc_length", "kc_scalar"}),
+    "fisher": frozenset({"length"}),
+    "kvo": frozenset({"fast", "slow", "signal"}),
+    "vwap": frozenset({"anchor"}),
+    "anchored_vwap": frozenset({"anchor_source"}),
+}
+
+
+def _validate_params(indicator_type: str, params: dict[str, Any]) -> None:
+    """Raise ValueError if params contains unknown keys for this indicator."""
+    valid = _VALID_PARAMS.get(indicator_type)
+    if valid is None:
+        return
+    unknown = set(params.keys()) - valid
+    if unknown:
+        raise ValueError(
+            f"Unknown params for '{indicator_type}': {sorted(unknown)}. "
+            f"Valid: {sorted(valid)}"
+        )
+
+
 def create_incremental_indicator(
     indicator_type: str,
     params: dict[str, Any],
@@ -85,8 +146,10 @@ def create_incremental_indicator(
     Create an incremental indicator from type and params.
 
     Returns None if the indicator type is not supported incrementally.
+    Raises ValueError if params contains unknown keys.
     """
     indicator_type = indicator_type.lower()
+    _validate_params(indicator_type, params)
 
     # =============================================================================
     # Core indicators

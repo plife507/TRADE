@@ -345,9 +345,9 @@ def _convert_shorthand_conditions(block_content: dict | list) -> dict:
     if isinstance(block_content, dict):
         unknown = set(block_content.keys()) - _KNOWN_CONDITION_KEYS
         if unknown:
-            import logging
-            logging.getLogger(__name__).warning(
-                f"Unrecognized keys in condition block (passed through): {sorted(unknown)}"
+            raise ValueError(
+                f"Unrecognized keys in condition block: {sorted(unknown)}. "
+                f"Valid keys: {sorted(_KNOWN_CONDITION_KEYS)}"
             )
     return block_content
 
@@ -694,8 +694,11 @@ class Play:
                 indicator_type = spec.get("indicator", "")
                 params = spec.get("params", {})
                 feature_tf = spec.get("tf", exec_tf)
-                # Resolve role names (low_tf, med_tf, high_tf) to concrete TFs
-                if tf_mapping and feature_tf in tf_mapping and feature_tf != "exec":
+                # Resolve role names (low_tf, med_tf, high_tf, exec) to concrete TFs
+                if feature_tf == "exec" and tf_mapping:
+                    exec_role = tf_mapping.get("exec", "low_tf")
+                    feature_tf = tf_mapping.get(exec_role, exec_tf)
+                elif tf_mapping and feature_tf in tf_mapping:
                     feature_tf = tf_mapping[feature_tf]
 
                 # Parse input source (e.g. source: volume)

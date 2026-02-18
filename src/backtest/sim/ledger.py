@@ -83,6 +83,10 @@ class Ledger:
                 All values are in USDT (quote currency).
             config: Optional ledger configuration
         """
+        if initial_capital <= 0:
+            raise ValueError(
+                f"initial_capital must be positive, got {initial_capital}"
+            )
         self._config = config or LedgerConfig()
         self._initial_capital = initial_capital
         
@@ -315,17 +319,6 @@ class Ledger:
             fees_paid=0.0,
             funding_paid=funding_pnl,
         )
-    
-    def apply_liquidation_fee(self, fee: float) -> None:
-        """
-        Apply liquidation fee.
-        
-        Args:
-            fee: Liquidation fee in USD
-        """
-        self._cash_balance_usdt -= fee
-        self._total_fees_paid += fee
-        self._recompute_derived()
     
     def compute_required_for_entry(
         self,
