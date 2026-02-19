@@ -35,7 +35,7 @@ from .system_config import (
 from .indicators import (
     apply_feature_spec_indicators,
     get_warmup_from_specs,
-    get_required_indicator_columns_from_specs,
+    get_validity_check_columns_from_specs,
     find_first_valid_bar,
 )
 
@@ -258,7 +258,7 @@ def _compute_sim_start(
         required_cols = list(config.required_indicators_by_role['exec'])
     elif config.feature_specs_by_role:
         exec_specs = config.feature_specs_by_role.get('exec', [])
-        required_cols = get_required_indicator_columns_from_specs(exec_specs)
+        required_cols = get_validity_check_columns_from_specs(exec_specs)
     else:
         required_cols = []
 
@@ -604,7 +604,7 @@ def prepare_multi_tf_frames_impl(
     elif config.feature_specs_by_role:
         # Fallback to expanding all feature_specs if no required_indicators declared
         exec_specs = config.feature_specs_by_role.get('exec', [])
-        required_cols = get_required_indicator_columns_from_specs(exec_specs)
+        required_cols = get_validity_check_columns_from_specs(exec_specs)
     else:
         required_cols = []  # Will fail validation
 
@@ -797,7 +797,7 @@ def get_tf_features_at_close_impl(
         # Fallback to expanding all feature_specs if no required_indicators declared
         specs = (config.feature_specs_by_role.get(tf_role) if tf_role else None) or \
                 config.feature_specs_by_role.get('exec', [])
-        required_cols = get_required_indicator_columns_from_specs(specs)
+        required_cols = get_validity_check_columns_from_specs(specs)
 
     all_valid = all(col in features for col in required_cols)
 

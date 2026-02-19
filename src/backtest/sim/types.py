@@ -146,6 +146,9 @@ class Order:
     submission_bar_index: int | None = None
     tp_order_type: str = "Market"
     sl_order_type: str = "Market"
+    # Reference price used for SL/TP computation (signal bar close).
+    # Used at fill time to adjust SL/TP for the actual fill price.
+    sl_tp_ref_price: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -244,6 +244,7 @@ class SimulatedExchange:
         timestamp: datetime | None = None,
         tp_order_type: str = "Market",
         sl_order_type: str = "Market",
+        sl_tp_ref_price: float | None = None,
     ) -> OrderId | None:
         """Submit a market order to be filled on next bar."""
         self.entry_attempts_count += 1
@@ -276,6 +277,7 @@ class SimulatedExchange:
             submission_bar_index=self._current_bar_index,
             tp_order_type=tp_order_type,
             sl_order_type=sl_order_type,
+            sl_tp_ref_price=sl_tp_ref_price,
         )
 
         self._order_book.add_order(order)
@@ -950,10 +952,23 @@ class SimulatedExchange:
         """Handle position creation from entry fill."""
         self._ledger.apply_entry_fee(fill.fee)
         self._position_counter += 1
-        
-        # Use actual filled notional (qty × fill price), not the requested size_usdt,
+
+        # Use actual filled notional (qty x fill price), not the requested size_usdt,
         # because price improvement on limit orders means the actual notional differs.
         actual_notional = fill.size * fill.price
+
+        # Adjust SL/TP for the difference between the reference price (signal bar
+        # close) and the actual fill price.  SL/TP distances are preserved so the
+        # intended risk/reward is maintained regardless of the open-close gap.
+        sl = order.stop_loss
+        tp = order.take_profit
+        ref_price = order.sl_tp_ref_price
+        if ref_price is not None and ref_price > 0:
+            price_shift = fill.price - ref_price
+            if sl is not None:
+                sl += price_shift
+            if tp is not None:
+                tp += price_shift
 
         self.position = Position(
             position_id=f"pos_{self._position_counter:04d}",
@@ -963,8 +978,8 @@ class SimulatedExchange:
             entry_time=fill.timestamp,
             size=fill.size,
             size_usdt=actual_notional,
-            stop_loss=order.stop_loss,
-            take_profit=order.take_profit,
+            stop_loss=sl,
+            take_profit=tp,
             fees_paid=fill.fee,
             entry_fee=fill.fee,  # Track original entry fee for partial close pro-rating
             entry_bar_index=self._current_bar_index,

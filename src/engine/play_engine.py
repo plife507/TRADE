@@ -1802,10 +1802,12 @@ class PlayEngine:
             return None
 
         elif result.decision == SignalDecision.ENTRY_LONG:
-            metadata = {
+            metadata: dict = {
                 "stop_loss": result.stop_loss_price,
                 "take_profit": result.take_profit_price,
             }
+            if result.sl_tp_ref_price is not None:
+                metadata["sl_tp_ref_price"] = result.sl_tp_ref_price
             if result.resolved_metadata:
                 metadata.update(result.resolved_metadata)
             strategy = self.play.name or ""
@@ -1823,6 +1825,8 @@ class PlayEngine:
                 "stop_loss": result.stop_loss_price,
                 "take_profit": result.take_profit_price,
             }
+            if result.sl_tp_ref_price is not None:
+                metadata["sl_tp_ref_price"] = result.sl_tp_ref_price
             if result.resolved_metadata:
                 metadata.update(result.resolved_metadata)
             strategy = self.play.name or ""

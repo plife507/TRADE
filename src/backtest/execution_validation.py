@@ -952,6 +952,7 @@ class EvaluationResult:
     # For entry signals
     stop_loss_price: float | None = None
     take_profit_price: float | None = None
+    sl_tp_ref_price: float | None = None  # Reference price used for SL/TP computation
     size_usdt: float | None = None
 
     # For exit signals (partial exits)
@@ -1094,26 +1095,28 @@ class PlaySignalEvaluator:
             if action == "entry_long" and not has_position:
                 if not self.play.position_policy.allows_long():
                     continue
-                sl_price, tp_price = self._compute_sl_tp(snapshot, "long")
+                sl_price, tp_price, ref_price = self._compute_sl_tp(snapshot, "long")
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.ENTRY_LONG,
                     reason="Block emitted entry_long",
                     stop_loss_price=sl_price,
                     take_profit_price=tp_price,
+                    sl_tp_ref_price=ref_price,
                     resolved_metadata=resolved_meta,
                 )
 
             elif action == "entry_short" and not has_position:
                 if not self.play.position_policy.allows_short():
                     continue
-                sl_price, tp_price = self._compute_sl_tp(snapshot, "short")
+                sl_price, tp_price, ref_price = self._compute_sl_tp(snapshot, "short")
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.ENTRY_SHORT,
                     reason="Block emitted entry_short",
                     stop_loss_price=sl_price,
                     take_profit_price=tp_price,
+                    sl_tp_ref_price=ref_price,
                     resolved_metadata=resolved_meta,
                 )
 
@@ -1186,7 +1189,7 @@ class PlaySignalEvaluator:
         self,
         snapshot: "SnapshotView",
         direction: str,
-    ) -> tuple[float | None, float | None]:
+    ) -> tuple[float | None, float | None, float | None]:
         """
         Compute stop loss and take profit prices from risk model.
 
@@ -1194,23 +1197,27 @@ class PlaySignalEvaluator:
         This means with 10x leverage and 2% SL, you lose 2% of your margin when
         the price moves 0.2% against you.
 
-        Formula: price_distance = entry_price × (roi_pct / 100) / leverage
+        Formula: price_distance = entry_price x (roi_pct / 100) / leverage
+
+        SL/TP levels use the signal bar's close as reference. The third return
+        value is that reference price so the caller can adjust when the actual
+        fill price differs (next bar's open for market orders).
 
         Args:
             snapshot: Runtime snapshot
             direction: "long" or "short"
 
         Returns:
-            Tuple of (stop_loss_price, take_profit_price)
+            Tuple of (stop_loss_price, take_profit_price, reference_price)
         """
         risk_model = self.play.risk_model
         if risk_model is None:
-            return None, None
+            return None, None, None
 
         # Use close price as entry reference
         entry_price = self._get_snapshot_value(snapshot, "close", "exec")
         if entry_price is None:
-            return None, None
+            return None, None, None
 
         # Get leverage from account config (required for ROI-based SL/TP)
         leverage = 1.0
@@ -1281,7 +1288,7 @@ class PlaySignalEvaluator:
             else:
                 tp_price = entry_price - tp_distance
 
-        return sl_price, tp_price
+        return sl_price, tp_price, entry_price
 
     def check_warmup_satisfied(self, bar_counts: dict[str, int]) -> bool:
         """

@@ -160,25 +160,49 @@ def apply_feature_spec_indicators(
 
 def get_required_indicator_columns_from_specs(feature_specs: list) -> list[str]:
     """
-    Get list of indicator columns from FeatureSpecs.
-    
-    Used to determine which columns must be non-NaN for simulation to start.
+    Get list of ALL indicator columns from FeatureSpecs.
+
+    Used for FeedStore building (all columns needed, even runtime-only ones
+    that start as NaN and get filled bar-by-bar by the engine).
+
     Uses the FeatureSpec's output_keys_list property for consistency with
     the actual computed column names (including multi-output expansion).
-    
+
     Args:
         feature_specs: List of FeatureSpec objects
-        
+
     Returns:
         List of indicator column names
     """
     columns = []
-    
     for spec in feature_specs:
-        # Use the FeatureSpec's output key generation for consistency
-        # output_keys_list returns single key for single-output, list for multi-output
         columns.extend(spec.output_keys_list)
-    
+    return columns
+
+
+# Indicators whose batch output is intentionally all-NaN (filled at runtime).
+# anchored_vwap: engine fills bar-by-bar via _update_anchored_vwap().
+RUNTIME_ONLY_INDICATORS = frozenset({"anchored_vwap"})
+
+
+def get_validity_check_columns_from_specs(feature_specs: list) -> list[str]:
+    """
+    Get indicator columns that must be non-NaN for simulation to start.
+
+    Like get_required_indicator_columns_from_specs but excludes runtime-only
+    indicators (e.g. anchored_vwap) whose batch output is intentionally NaN.
+
+    Args:
+        feature_specs: List of FeatureSpec objects
+
+    Returns:
+        List of indicator column names (excluding runtime-only)
+    """
+    columns = []
+    for spec in feature_specs:
+        if spec.indicator_type in RUNTIME_ONLY_INDICATORS:
+            continue
+        columns.extend(spec.output_keys_list)
     return columns
 
 

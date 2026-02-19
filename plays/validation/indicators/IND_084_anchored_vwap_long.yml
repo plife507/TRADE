@@ -29,6 +29,7 @@ features:
   ema_20:
     indicator: ema
     params: {length: 20}
+
 structures:
   exec:
     - type: swing
@@ -38,8 +39,9 @@ structures:
 actions:
   entry_long:
     all:
-      - ["close", ">", "avwap"]
+      - ["close", ">", "avwap.value"]
       - ["avwap.bars_since_anchor", ">", 3]
+
 position_policy:
   mode: "long_only"
   exit_mode: "sl_tp_only"
