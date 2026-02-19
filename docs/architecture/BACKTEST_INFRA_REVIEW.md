@@ -1,5 +1,8 @@
 # Backtest Infrastructure Review
 
+> **STATUS (2026-02-18):** All findings resolved. 1 CRIT not-a-bug (GAP-1), 1 CRIT fixed (BT-CRIT-1), 4 MED fixed, 4 LOW OK/not-a-bug.
+> See `FINDINGS_SUMMARY.md` for current status of each finding.
+
 ## Module Overview
 
 The backtest infrastructure (`src/backtest/`) provides the runner, engine factory, data preparation, metrics computation, preflight validation, and feed store. It is NOT an engine -- the engine lives in `src/engine/`.

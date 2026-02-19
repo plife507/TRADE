@@ -4,6 +4,9 @@
 **Date:** 2026-02-18
 **Scope:** src/indicators/incremental/, src/structures/detectors/, src/structures/primitives.py, src/backtest/indicator_registry.py
 
+> **STATUS (2026-02-18):** All findings resolved. 1 HIGH fixed (IND-004), 1 HIGH deferred (IND-006), 3 MED fixed, 3 MED not-a-bug/by-design, 3 LOW fixed/OK.
+> See `FINDINGS_SUMMARY.md` for current status of each finding.
+
 ---
 
 ## Module Overview

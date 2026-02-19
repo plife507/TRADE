@@ -1,5 +1,8 @@
 # Forge / Config / Utils Review
 
+> **STATUS (2026-02-18):** All findings resolved. 6 MED fixed, 3 MED not-a-bug/known, 4 LOW fixed, 6 LOW OK/not-a-bug.
+> See `FINDINGS_SUMMARY.md` for current status of each finding.
+
 ## Module Overview
 
 The **Forge** domain (`src/forge/`) is the validation and auditing infrastructure:

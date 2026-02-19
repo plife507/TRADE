@@ -6,6 +6,9 @@
 **Files reviewed**: 11 (see table below)
 **Format**: `[CLI-XXX] Severity: HIGH/MED/LOW/INFO`
 
+> **STATUS (2026-02-18):** All findings resolved. 1 HIGH accepted (CLI-008), 1 HIGH fixed (CLI-011), 5 MED fixed, 1 MED not-a-bug, 5 LOW OK/fixed.
+> See `FINDINGS_SUMMARY.md` for current status of each finding.
+
 ---
 
 ## Module Overview

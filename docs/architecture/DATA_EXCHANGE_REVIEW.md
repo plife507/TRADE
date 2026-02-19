@@ -4,6 +4,9 @@
 **Date:** 2026-02-18
 **Scope:** Data layer (src/data/) and Exchange layer (src/core/)
 
+> **STATUS (2026-02-18):** All findings resolved. 3 HIGH fixed, 5 MED fixed, 1 MED deferred (DATA-011), 2 known/mitigated, 3 LOW OK/acceptable.
+> See `FINDINGS_SUMMARY.md` for current status of each finding.
+
 ---
 
 ## Files Reviewed

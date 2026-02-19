@@ -1,5 +1,8 @@
 # Simulation Domain Review
 
+> **STATUS (2026-02-18):** All findings resolved. 3 HIGH fixed, 2 MED fixed, 2 MED deferred (future features), 3 not-a-bug, 3 OK.
+> See `FINDINGS_SUMMARY.md` for current status of each finding.
+
 ## Module Overview
 
  is the simulated exchange used for backtesting. It implements a Bybit-aligned USDT linear perpetual exchange (isolated margin mode). The domain is a thin orchestrator () that coordinates modular components: pricing, execution, funding, liquidation, ledger, metrics, and constraints.

@@ -1,8 +1,11 @@
 # Engine Domain Review
 
-**Reviewer:** engine-reviewer  
-**Date:** 2026-02-18  
+**Reviewer:** engine-reviewer
+**Date:** 2026-02-18
 **Scope:** src/engine/ -- PlayEngine, SubLoopEvaluator, LiveRunner, live/backtest adapters, factory, interfaces
+
+> **STATUS (2026-02-18):** All findings resolved. 6 fixed, 5 not-a-bug, 1 deferred (ENG-BUG-015 optimization), 3 OK.
+> See `FINDINGS_SUMMARY.md` for current status of each finding.
 
 ---
 

@@ -1,8 +1,11 @@
 # DSL / Play Domain Review
 
-**Reviewer:** dsl-reviewer  
-**Date:** 2026-02-18  
+**Reviewer:** dsl-reviewer
+**Date:** 2026-02-18
 **Scope:** src/backtest/rules/, src/backtest/play/, src/backtest/execution_validation.py, src/backtest/play_yaml_builder.py, src/backtest/feature_registry.py
+
+> **STATUS (2026-02-18):** All findings resolved. 3 CRIT fixed, 1 HIGH deferred (DSL-006), 8 MED fixed, 2 not-a-bug.
+> See `FINDINGS_SUMMARY.md` for current status of each finding.
 
 ---
 
