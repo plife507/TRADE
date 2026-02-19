@@ -88,14 +88,6 @@ See `docs/CLI_REDESIGN.md` for full details.
 - [ ] **Gate 5**: Data menu top-level rewrite (delegate to sub-menu files already created)
 - [ ] **Gate 8**: Final manual validation (offline menu, connect flow, quick-picks, cross-links)
 
-### P4.5: CLI & Tools Module Splitting (deferred items only)
-
-Phases 1-5 DONE (see Completed Work table). Remaining low-priority items:
-
-- `order_tools.py` (1,069 lines) — could split batch/conditional orders but not urgent
-- `src/cli/validate.py` (1,802 lines) — self-contained validation orchestration, split only if it grows further
-- `src/cli/utils.py` (927 lines) — cohesive utility collection, leave as-is
-
 ### P5: Market Sentiment Tracker
 
 Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
