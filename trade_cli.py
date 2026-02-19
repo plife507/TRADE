@@ -109,6 +109,55 @@ from src.cli.subcommands import (
 from src.cli.argparser import setup_argparse
 
 
+def _print_api_environment(*, include_safety: bool = False) -> None:
+    """Print API environment table (shared by connection_test and health_check)."""
+    console.print("\n[bold]API Environment:[/]")
+    api_result = get_api_environment_tool()
+    if not api_result.success or api_result.data is None:
+        return
+
+    data = api_result.data
+    trading = data["trading"]
+    data_api = data["data"]
+    ws = data["websocket"]
+
+    env_table = Table(show_header=False, box=None)
+    env_table.add_column("Type", style="dim")
+    env_table.add_column("Mode", style="bold")
+    env_table.add_column("URL", style="dim")
+    env_table.add_column("Key", style="dim")
+
+    trading_style = "green" if trading["is_demo"] else "red"
+    env_table.add_row(
+        "Trading REST",
+        f"[{trading_style}]{trading['mode']}[/]",
+        trading["base_url"],
+        "V" if trading["key_configured"] else "X"
+    )
+    env_table.add_row(
+        "Data REST",
+        f"[green]{data_api['mode']}[/]",
+        data_api["base_url"],
+        "V" if data_api["key_configured"] else "Warning: public"
+    )
+    env_table.add_row(
+        "WebSocket",
+        f"[{trading_style}]{ws['mode']}[/]",
+        ws["public_url"],
+        "V enabled" if ws.get("enabled") else "- disabled"
+    )
+    console.print(env_table)
+
+    if include_safety:
+        safety = data["safety"]
+        if safety["mode_consistent"]:
+            console.print("[green]V Mode consistency: OK[/]")
+        else:
+            console.print("[yellow]Warning: Mode consistency warnings:[/]")
+            for msg in safety["messages"]:
+                console.print(f"  [dim]{msg}[/]")
+
+
 class TradeCLI:
     """
     Main CLI class.
@@ -571,41 +620,7 @@ class TradeCLI:
         try:
             console.print(Panel("Running Connectivity Diagnostic...", title="[bold]CONNECTION TEST[/]", border_style="blue"))
 
-            # Show API environment first
-            console.print("\n[bold]API Environment:[/]")
-            api_result = get_api_environment_tool()
-            if api_result.success and api_result.data is not None:
-                data = api_result.data
-                trading = data["trading"]
-                data_api = data["data"]
-                ws = data["websocket"]
-
-                env_table = Table(show_header=False, box=None)
-                env_table.add_column("Type", style="dim")
-                env_table.add_column("Mode", style="bold")
-                env_table.add_column("URL", style="dim")
-                env_table.add_column("Key", style="dim")
-
-                trading_style = "green" if trading["is_demo"] else "red"
-                env_table.add_row(
-                    "Trading REST",
-                    f"[{trading_style}]{trading['mode']}[/]",
-                    trading["base_url"],
-                    "V" if trading["key_configured"] else "X"
-                )
-                env_table.add_row(
-                    "Data REST",
-                    f"[green]{data_api['mode']}[/]",
-                    data_api["base_url"],
-                    "V" if data_api["key_configured"] else "Warning: public"
-                )
-                env_table.add_row(
-                    "WebSocket",
-                    f"[{trading_style}]{ws['mode']}[/]",
-                    ws["public_url"],
-                    "V enabled" if ws.get("enabled") else "- disabled"
-                )
-                console.print(env_table)
+            _print_api_environment()
 
             result = run_tool_action("diagnostics.connection", test_connection_tool)
             print_data_result("diagnostics.connection", result)
@@ -638,50 +653,7 @@ class TradeCLI:
         try:
             console.print(Panel("System Health Diagnostic", title="[bold]HEALTH CHECK[/]", border_style="blue"))
 
-            # Show API environment first
-            console.print("\n[bold]API Environment:[/]")
-            api_result = get_api_environment_tool()
-            if api_result.success and api_result.data is not None:
-                data = api_result.data
-                trading = data["trading"]
-                data_api = data["data"]
-                ws = data["websocket"]
-                safety = data["safety"]
-
-                env_table = Table(show_header=False, box=None)
-                env_table.add_column("Type", style="dim")
-                env_table.add_column("Mode", style="bold")
-                env_table.add_column("URL", style="dim")
-                env_table.add_column("Key", style="dim")
-
-                trading_style = "green" if trading["is_demo"] else "red"
-                env_table.add_row(
-                    "Trading REST",
-                    f"[{trading_style}]{trading['mode']}[/]",
-                    trading["base_url"],
-                    "V" if trading["key_configured"] else "X"
-                )
-                env_table.add_row(
-                    "Data REST",
-                    f"[green]{data_api['mode']}[/]",
-                    data_api["base_url"],
-                    "V" if data_api["key_configured"] else "Warning: public"
-                )
-                env_table.add_row(
-                    "WebSocket",
-                    f"[{trading_style}]{ws['mode']}[/]",
-                    ws["public_url"],
-                    "V enabled" if ws.get("enabled") else "- disabled"
-                )
-                console.print(env_table)
-
-                # Safety check
-                if safety["mode_consistent"]:
-                    console.print("[green]V Mode consistency: OK[/]")
-                else:
-                    console.print("[yellow]Warning: Mode consistency warnings:[/]")
-                    for msg in safety["messages"]:
-                        console.print(f"  [dim]{msg}[/]")
+            _print_api_environment(include_safety=True)
 
             symbol = get_symbol_input("Symbol to test")
             if symbol is not BACK:

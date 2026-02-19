@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from rich.panel import Panel
 from rich.table import Table
 
@@ -10,7 +12,6 @@ from src.cli.utils import console
 
 def handle_account_balance(args) -> int:
     """Handle `account balance` subcommand."""
-    import json
     from src.tools.account_tools import get_account_balance_tool
 
     result = get_account_balance_tool()
@@ -34,7 +35,6 @@ def handle_account_balance(args) -> int:
 
 def handle_account_exposure(args) -> int:
     """Handle `account exposure` subcommand."""
-    import json
     from src.tools.account_tools import get_total_exposure_tool
 
     result = get_total_exposure_tool()
@@ -53,7 +53,6 @@ def handle_account_exposure(args) -> int:
 
 def handle_position_list(args) -> int:
     """Handle `position list` subcommand."""
-    import json
     from src.tools.position_tools import list_open_positions_tool
 
     result = list_open_positions_tool()

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from rich.panel import Panel
 
 from src.cli.utils import console
+from src.cli.subcommands._helpers import _json_result
 
 
 def handle_debug_math_parity(args) -> int:
     """Handle `debug math-parity` subcommand - indicator math parity audit."""
-    import json
     from src.tools.backtest_audit_tools import backtest_math_parity_tool
 
     if not args.json_output:
@@ -31,13 +34,7 @@ def handle_debug_math_parity(args) -> int:
     )
 
     if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
     if result.success:
         console.print(f"\n[bold green]PASS {result.message}[/]")
@@ -64,7 +61,6 @@ def handle_debug_math_parity(args) -> int:
 
 def handle_debug_snapshot_plumbing(args) -> int:
     """Handle `debug snapshot-plumbing` subcommand - Phase 4 plumbing parity."""
-    import json
     from src.tools.backtest_audit_tools import backtest_audit_snapshot_plumbing_tool
 
     if not args.json_output:
@@ -86,13 +82,7 @@ def handle_debug_snapshot_plumbing(args) -> int:
     )
 
     if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
     if result.success:
         console.print(f"\n[bold green]PASS[/] {result.message}")
@@ -123,8 +113,6 @@ def handle_debug_snapshot_plumbing(args) -> int:
 
 def handle_debug_determinism(args) -> int:
     """Handle `debug determinism` subcommand - Phase 3 hash-based verification."""
-    import json
-    from pathlib import Path
     from src.backtest.artifacts.determinism import compare_runs, verify_determinism_rerun
 
     if not args.json_output:
@@ -184,7 +172,6 @@ def handle_debug_determinism(args) -> int:
 
 def handle_debug_metrics(args) -> int:
     """Handle `debug metrics` subcommand - standalone metrics audit."""
-    import json
     from src.cli.validate import _gate_metrics_audit
 
     result = _gate_metrics_audit()

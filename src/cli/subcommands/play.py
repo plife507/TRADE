@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from rich.panel import Panel
 from rich.table import Table
 
 from src.cli.utils import console
-from src.cli.subcommands._helpers import _parse_datetime, _print_preflight_diagnostics
+from src.cli.subcommands._helpers import _json_result, _print_result, _parse_datetime, _print_preflight_diagnostics
 
 
 def handle_play_run(args) -> int:
@@ -19,9 +22,7 @@ def handle_play_run(args) -> int:
         live: Real-time data with Bybit live API (real money)
         shadow: Real-time data with signal logging only (no execution)
     """
-    import json
     import yaml
-    from pathlib import Path
     from datetime import datetime, timedelta
 
     mode = args.mode
@@ -119,8 +120,6 @@ def _run_play_backtest(play, args) -> int:
     Delegates to the same tool that ``backtest run`` uses, so behaviour is
     identical regardless of which CLI entry-point the user chooses.
     """
-    import json
-    from pathlib import Path
     from src.tools.backtest_play_tools import backtest_run_play_tool
 
     start = _parse_datetime(args.start) if args.start else None
@@ -141,25 +140,15 @@ def _run_play_backtest(play, args) -> int:
     )
 
     if json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
     if result.data and "preflight" in result.data:
         _print_preflight_diagnostics(result.data["preflight"])
 
-    if result.success:
-        console.print(f"\n[bold green]OK {result.message}[/]")
-        if result.data and "artifact_dir" in result.data:
-            console.print(f"[dim]Artifacts: {result.data['artifact_dir']}[/]")
-        return 0
-    else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        return 1
+    rc = _print_result(result)
+    if result.success and result.data and "artifact_dir" in result.data:
+        console.print(f"[dim]Artifacts: {result.data['artifact_dir']}[/]")
+    return rc
 
 
 def _run_play_shadow(engine, play, args) -> int:
@@ -334,7 +323,6 @@ def _run_play_live(play, args, manager=None) -> int:
 
 def handle_play_status(args) -> int:
     """Handle `play status` subcommand - show running instances."""
-    import json
     from src.engine import EngineManager
 
     manager = EngineManager.get_instance()
@@ -509,7 +497,6 @@ def handle_play_stop(args) -> int:
 
 def handle_play_watch(args) -> int:
     """Handle `play watch` subcommand - live dashboard for running instances."""
-    import json
     import time as _time
     from src.engine import EngineManager
     from rich.live import Live
@@ -593,9 +580,7 @@ def handle_play_watch(args) -> int:
 
 def handle_play_logs(args) -> int:
     """Handle `play logs` subcommand - stream journal/log for an instance."""
-    import json
     import time as _time
-    from pathlib import Path
 
     play_id = args.play
     follow = getattr(args, "follow", False)
@@ -687,9 +672,6 @@ def handle_play_logs(args) -> int:
 
 def handle_play_pause(args) -> int:
     """Handle `play pause` subcommand."""
-    import json
-    from pathlib import Path
-
     play_id = args.play
     pause_dir = Path.home() / ".trade" / "instances"
     pause_dir.mkdir(parents=True, exist_ok=True)
@@ -714,9 +696,6 @@ def handle_play_pause(args) -> int:
 
 def handle_play_resume(args) -> int:
     """Handle `play resume` subcommand."""
-    import json
-    from pathlib import Path
-
     play_id = args.play
     pause_dir = Path.home() / ".trade" / "instances"
 

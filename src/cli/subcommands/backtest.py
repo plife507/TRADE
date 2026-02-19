@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import cast
 
 from rich.panel import Panel
 
 from src.cli.utils import console
-from src.cli.subcommands._helpers import _parse_datetime, _print_preflight_diagnostics
+from src.cli.subcommands._helpers import _json_result, _print_result, _parse_datetime, _print_preflight_diagnostics
 
 
 def _handle_synthetic_backtest_run(args) -> int:
@@ -16,9 +18,7 @@ def _handle_synthetic_backtest_run(args) -> int:
     Bars are auto-computed: warmup(play) + 300 trading bars.
     Pattern comes from play's validation: block (CLI can override).
     """
-    import json
     import yaml
-    from pathlib import Path
     from src.backtest.play import load_play, Play
     from src.backtest.runner import run_backtest_with_gates, RunnerConfig
     from src.backtest.execution_validation import compute_synthetic_bars
@@ -137,9 +137,7 @@ def _handle_synthetic_backtest_run(args) -> int:
 
 def handle_backtest_run(args) -> int:
     """Handle `backtest run` subcommand."""
-    import json
     import logging
-    from pathlib import Path
     from src.tools.backtest_play_tools import backtest_run_play_tool
     from src.tools.shared import ToolResult
 
@@ -187,30 +185,19 @@ def handle_backtest_run(args) -> int:
     )
 
     if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
     if result.data and result.data.get("preflight"):
         _print_preflight_diagnostics(result.data["preflight"])
 
-    if result.success:
-        console.print(f"\n[bold green]OK {result.message}[/]")
-        if result.data and "artifact_dir" in result.data:
-            console.print(f"[dim]Artifacts: {result.data['artifact_dir']}[/]")
-        return 0
-    else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        return 1
+    rc = _print_result(result)
+    if result.success and result.data and "artifact_dir" in result.data:
+        console.print(f"[dim]Artifacts: {result.data['artifact_dir']}[/]")
+    return rc
 
 
 def handle_backtest_preflight(args) -> int:
     """Handle `backtest preflight` subcommand."""
-    import json
     from src.tools.backtest_play_tools import backtest_preflight_play_tool
     from src.tools.backtest_play_data_tools import backtest_data_fix_tool
 
@@ -252,19 +239,11 @@ def handle_backtest_preflight(args) -> int:
     if result.data:
         _print_preflight_diagnostics(result.data)
 
-    if result.success:
-        console.print(f"\n[bold green]OK {result.message}[/]")
-        return 0
-    else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        return 1
+    return _print_result(result)
 
 
 def handle_backtest_indicators(args) -> int:
     """Handle `backtest indicators` subcommand."""
-    import json
-    from pathlib import Path
-
     # Validate arguments
     if hasattr(args, '_validate'):
         args._validate(args)
@@ -289,13 +268,7 @@ def handle_backtest_indicators(args) -> int:
         result = backtest_audit_math_from_snapshots_tool(run_dir=run_dir)
 
         if args.json_output:
-            output = {
-                "status": "pass" if result.success else "fail",
-                "message": result.message if result.success else result.error,
-                "data": result.data,
-            }
-            print(json.dumps(output, indent=2, default=str))
-            return 0 if result.success else 1
+            return _json_result(result)
 
         if result.success:
             console.print(f"\n[bold green]OK {result.message}[/]")
@@ -340,13 +313,7 @@ def handle_backtest_indicators(args) -> int:
     )
 
     if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
     if result.success and result.data:
         data = result.data
@@ -381,13 +348,11 @@ def handle_backtest_indicators(args) -> int:
         console.print(f"\n[bold green]OK {result.message}[/]")
         return 0
     else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        return 1
+        return _print_result(result)
 
 
 def handle_backtest_data_fix(args) -> int:
     """Handle `backtest data-fix` subcommand."""
-    import json
     from src.tools.backtest_play_data_tools import backtest_data_fix_tool
 
     start = _parse_datetime(args.start) if args.start else None
@@ -410,30 +375,18 @@ def handle_backtest_data_fix(args) -> int:
     )
 
     if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
-    if result.success:
-        console.print(f"\n[bold green]OK {result.message}[/]")
-        if result.data and "operations" in result.data:
-            for op in result.data["operations"]:
-                status = "OK" if op["success"] else "FAIL"
-                console.print(f"  {status} {op['name']}: {op['message']}")
-        return 0
-    else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        return 1
+    rc = _print_result(result)
+    if result.success and result.data and "operations" in result.data:
+        for op in result.data["operations"]:
+            status = "OK" if op["success"] else "FAIL"
+            console.print(f"  {status} {op['name']}: {op['message']}")
+    return rc
 
 
 def handle_backtest_list(args) -> int:
     """Handle `backtest list` subcommand."""
-    import json
-    from pathlib import Path
     from src.tools.backtest_play_data_tools import backtest_list_plays_tool
 
     plays_dir = Path(args.plays_dir) if args.plays_dir else None
@@ -441,13 +394,7 @@ def handle_backtest_list(args) -> int:
     result = backtest_list_plays_tool(plays_dir=plays_dir)
 
     if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
     if result.success:
         console.print(f"\n[bold cyan]Available Plays:[/]")
@@ -460,14 +407,11 @@ def handle_backtest_list(args) -> int:
         console.print(f"\n[dim]Total: {len(result.data['plays'])} Plays[/]")
         return 0
     else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        return 1
+        return _print_result(result)
 
 
 def handle_backtest_normalize(args) -> int:
     """Handle `backtest play-normalize` subcommand."""
-    import json
-    from pathlib import Path
     from src.tools.backtest_play_normalize_tools import backtest_play_normalize_tool
 
     plays_dir = Path(args.plays_dir) if args.plays_dir else None
@@ -486,34 +430,22 @@ def handle_backtest_normalize(args) -> int:
     )
 
     if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
-    if result.success:
-        console.print(f"\n[bold green]OK {result.message}[/]")
-        if result.data:
-            if result.data.get("written"):
-                console.print(f"[dim]Written to: {result.data.get('yaml_path')}[/]")
-            if result.data.get("warnings"):
-                for w in result.data["warnings"]:
-                    console.print(f"[yellow]Warning: {w}[/]")
-        return 0
-    else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        if result.data and result.data.get("error_details"):
-            console.print(result.data["error_details"])
-        return 1
+    rc = _print_result(result)
+    if result.success and result.data:
+        if result.data.get("written"):
+            console.print(f"[dim]Written to: {result.data.get('yaml_path')}[/]")
+        if result.data.get("warnings"):
+            for w in result.data["warnings"]:
+                console.print(f"[yellow]Warning: {w}[/]")
+    elif not result.success and result.data and result.data.get("error_details"):
+        console.print(result.data["error_details"])
+    return rc
 
 
 def handle_backtest_normalize_batch(args) -> int:
     """Handle `backtest play-normalize-batch` subcommand."""
-    import json
-    from pathlib import Path
     from src.tools.backtest_play_normalize_tools import backtest_play_normalize_batch_tool
 
     plays_dir = Path(args.plays_dir)
@@ -531,29 +463,19 @@ def handle_backtest_normalize_batch(args) -> int:
     )
 
     if args.json_output:
-        output = {
-            "status": "pass" if result.success else "fail",
-            "message": result.message if result.success else result.error,
-            "data": result.data,
-        }
-        print(json.dumps(output, indent=2, default=str))
-        return 0 if result.success else 1
+        return _json_result(result)
 
-    if result.success:
-        console.print(f"\n[bold green]OK {result.message}[/]")
-        if result.data:
-            summary = result.data.get("summary", {})
-            console.print(f"\n[dim]Processed: {summary.get('total_cards', 0)} cards[/]")
-            console.print(f"[dim]Passed: {summary.get('passed', 0)}[/]")
-            console.print(f"[dim]Failed: {summary.get('failed', 0)}[/]")
-            if summary.get("failed", 0) > 0:
-                console.print(f"\n[yellow]Failed cards:[/]")
-                for card_result in result.data.get("results", []):
-                    if not card_result.get("success"):
-                        console.print(f"  [red]- {card_result.get('play_id')}: {card_result.get('error', 'Unknown error')}[/]")
-        return 0
-    else:
-        console.print(f"\n[bold red]FAIL {result.error}[/]")
-        if result.data and result.data.get("error_details"):
-            console.print(result.data["error_details"])
-        return 1
+    rc = _print_result(result)
+    if result.success and result.data:
+        summary = result.data.get("summary", {})
+        console.print(f"\n[dim]Processed: {summary.get('total_cards', 0)} cards[/]")
+        console.print(f"[dim]Passed: {summary.get('passed', 0)}[/]")
+        console.print(f"[dim]Failed: {summary.get('failed', 0)}[/]")
+        if summary.get("failed", 0) > 0:
+            console.print(f"\n[yellow]Failed cards:[/]")
+            for card_result in result.data.get("results", []):
+                if not card_result.get("success"):
+                    console.print(f"  [red]- {card_result.get('play_id')}: {card_result.get('error', 'Unknown error')}[/]")
+    elif not result.success and result.data and result.data.get("error_details"):
+        console.print(result.data["error_details"])
+    return rc

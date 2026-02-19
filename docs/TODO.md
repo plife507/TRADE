@@ -122,10 +122,10 @@ Architecture is sound — this is purely about file size and navigability.
 - [x] **GATE**: `python trade_cli.py validate quick` passes (5/5 gates, 83.4s) + pyright 0 errors
 
 #### Phase 5: Quick wins (opportunistic, no gate needed)
-- [ ] Extract `_json_result(result) -> int` helper in subcommands (12 duplicate blocks, ~60 lines)
-- [ ] Extract `_print_result(result) -> int` helper in subcommands (21 duplicate blocks, ~40 lines)
-- [ ] Extract `_print_api_environment()` in `trade_cli.py` (duplicated in `connection_test` and `health_check`)
-- [ ] Move deferred-import `json`/`pathlib` to module-level in subcommands
+- [x] Extract `_json_result(result) -> int` helper in subcommands (12 duplicate blocks, ~60 lines)
+- [x] Extract `_print_result(result) -> int` helper in subcommands (21 duplicate blocks, ~40 lines)
+- [x] Extract `_print_api_environment()` in `trade_cli.py` (duplicated in `connection_test` and `health_check`)
+- [x] Move deferred-import `json`/`pathlib` to module-level in subcommands
 
 #### Deferred (low priority, well-organized as-is)
 - `order_tools.py` (1,069 lines) — could split batch/conditional orders but not urgent

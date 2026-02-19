@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from typing import TYPE_CHECKING
 
 from rich.panel import Panel
@@ -11,6 +13,32 @@ from src.cli.utils import console, BACK
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from src.tools.shared import ToolResult
+
+
+def _json_result(result: ToolResult) -> int:
+    """Print ToolResult as JSON and return exit code.
+
+    Standard JSON envelope for --json-output mode:
+    ``{"status": "pass"|"fail", "message": "...", "data": {...}}``
+    """
+    output = {
+        "status": "pass" if result.success else "fail",
+        "message": result.message if result.success else result.error,
+        "data": result.data,
+    }
+    print(json.dumps(output, indent=2, default=str))
+    return 0 if result.success else 1
+
+
+def _print_result(result: ToolResult) -> int:
+    """Print OK/FAIL status line for a ToolResult and return exit code."""
+    if result.success:
+        console.print(f"\n[bold green]OK {result.message}[/]")
+        return 0
+    else:
+        console.print(f"\n[bold red]FAIL {result.error}[/]")
+        return 1
 
 
 def _parse_datetime(dt_str: str) -> datetime:
