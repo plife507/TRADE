@@ -21,6 +21,7 @@ Single source of truth for all open work, bugs, and task progress.
 | Codebase Review Gate 6: Sim & Backtest MED | DONE | 2026-02-17 | 13 fixes + validate standard 12/12. 2 future features deferred |
 | Codebase Review Gate 7: Data/CLI/Forge MED | DONE | 2026-02-17 | 18 fixes. 1 deferred (DATA-011) |
 | Codebase Review Gate 8: LOW Cleanup | DONE | 2026-02-17 | 12 fixed, 18 evaluated OK, 8 not-a-bug. 1 deferred (DATA-017) |
+| CLI & Tools Module Splitting (P4.5) | DONE | 2026-02-19 | Phases 1-5 complete. 5 gates passed. Net -113 lines deduplication |
 
 Full gate details with per-item descriptions: `memory/completed_work.md`
 
@@ -87,47 +88,10 @@ See `docs/CLI_REDESIGN.md` for full details.
 - [ ] **Gate 5**: Data menu top-level rewrite (delegate to sub-menu files already created)
 - [ ] **Gate 8**: Final manual validation (offline menu, connect flow, quick-picks, cross-links)
 
-### P4.5: CLI & Tools Module Splitting
+### P4.5: CLI & Tools Module Splitting (deferred items only)
 
-Audit (2026-02-19) found 6 files over 900 lines in CLI+tools layers (~23K lines total).
-Architecture is sound — this is purely about file size and navigability.
+Phases 1-5 DONE (see Completed Work table). Remaining low-priority items:
 
-#### Phase 1: Extract shared infrastructure
-- [x] Move `CANONICAL_TIMEFRAMES`, `BYBIT_API_INTERVALS`, `BYBIT_TO_CANONICAL`, `validate_canonical_tf()` from `backtest_play_tools.py` to `src/utils/timeframes.py`
-- [x] Move `normalize_timestamp()` from `backtest_play_tools.py` to `src/utils/datetime_utils.py`
-- [x] Update all imports (only internal to `backtest_play_tools.py` — no external consumers)
-- [x] **GATE**: `python trade_cli.py validate quick` passes (5/5 gates, 79.9s)
-
-#### Phase 2: Split `src/tools/backtest_play_tools.py` (1,464 → 777)
-- [x] Extract `backtest_play_normalize_tool()` + `backtest_play_normalize_batch_tool()` → `backtest_play_normalize_tools.py` (268 lines)
-- [x] Extract `backtest_data_fix_tool()` + `backtest_list_plays_tool()` + `backtest_indicators_tool()` → `backtest_play_data_tools.py` (398 lines)
-- [x] Update `src/tools/__init__.py` re-exports
-- [x] Update all imports in `subcommands.py` (6 sites) and `backtest_play_menu.py` (1 site)
-- [x] **GATE**: `python trade_cli.py validate quick` passes (5/5 gates, 89.9s) + pyright 0 errors
-
-#### Phase 3: Split `src/tools/position_tools.py` (1,165 → 844)
-- [x] Extract 7 config tools (risk limits, TP/SL mode, auto-margin, modify margin, switch margin/position mode) → `position_config_tools.py` (341 lines)
-- [x] Update `src/tools/__init__.py` re-exports
-- [x] `positions_menu.py` imports via `__init__.py` — no change needed
-- [x] **GATE**: `python trade_cli.py validate quick` passes (5/5 gates, 90.5s) + pyright 0 errors
-
-#### Phase 4: Split `src/cli/subcommands.py` (1,732 → subpackage)
-- [x] Create `src/cli/subcommands/` package
-- [x] Extract `handle_backtest_*` (7 handlers) → `subcommands/backtest.py` (~430 lines)
-- [x] Extract `handle_play_*` (7 handlers) → `subcommands/play.py` (~740 lines)
-- [x] Extract `handle_debug_*` (4 handlers) → `subcommands/debug.py` (~200 lines)
-- [x] Extract `handle_account_*`, `handle_position_*`, `handle_panic` → `subcommands/trading.py` (~130 lines)
-- [x] Extract `_parse_datetime`, `_print_preflight_diagnostics`, shared helpers → `subcommands/_helpers.py` (~230 lines)
-- [x] Create `subcommands/__init__.py` with re-exports (preserve existing import paths)
-- [x] **GATE**: `python trade_cli.py validate quick` passes (5/5 gates, 83.4s) + pyright 0 errors
-
-#### Phase 5: Quick wins (opportunistic, no gate needed)
-- [x] Extract `_json_result(result) -> int` helper in subcommands (12 duplicate blocks, ~60 lines)
-- [x] Extract `_print_result(result) -> int` helper in subcommands (21 duplicate blocks, ~40 lines)
-- [x] Extract `_print_api_environment()` in `trade_cli.py` (duplicated in `connection_test` and `health_check`)
-- [x] Move deferred-import `json`/`pathlib` to module-level in subcommands
-
-#### Deferred (low priority, well-organized as-is)
 - `order_tools.py` (1,069 lines) — could split batch/conditional orders but not urgent
 - `src/cli/validate.py` (1,802 lines) — self-contained validation orchestration, split only if it grows further
 - `src/cli/utils.py` (927 lines) — cohesive utility collection, leave as-is
