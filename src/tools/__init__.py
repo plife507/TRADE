@@ -69,7 +69,8 @@ from .position_tools import (
     set_position_tpsl_tool,
     close_position_tool,
     panic_close_all_tool,
-    # Position configuration tools
+)
+from .position_config_tools import (
     set_risk_limit_tool,
     get_risk_limits_tool,
     set_tp_sl_mode_tool,
@@ -183,9 +184,13 @@ from .data_tools import (
 from .backtest_play_tools import (
     backtest_preflight_play_tool,
     backtest_run_play_tool,
+)
+from .backtest_play_data_tools import (
     backtest_data_fix_tool,
     backtest_list_plays_tool,
     backtest_indicators_tool,
+)
+from .backtest_play_normalize_tools import (
     backtest_play_normalize_tool,
     backtest_play_normalize_batch_tool,
 )

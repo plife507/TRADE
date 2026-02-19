@@ -149,6 +149,13 @@ def normalize_datetime_for_storage(dt: datetime | str | None) -> str | None:
     return normalized.strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def normalize_timestamp(ts: datetime) -> datetime:
+    """Normalize timestamp to be timezone-naive."""
+    if ts.tzinfo is not None:
+        return ts.replace(tzinfo=None)
+    return ts
+
+
 def datetime_to_epoch_ms(dt: datetime | None) -> int | None:
     """
     Convert datetime to epoch milliseconds.

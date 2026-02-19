@@ -28,7 +28,7 @@ from src.tools import (
     backtest_data_fix_tool,
     backtest_indicators_tool,
 )
-from src.tools.backtest_play_tools import (
+from src.tools.backtest_play_normalize_tools import (
     backtest_play_normalize_tool,
 )
 
