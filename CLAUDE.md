@@ -48,6 +48,53 @@ When running parallel agents or sub-tasks, NEVER use parallel file access to Duc
 | Database | Sequential access only (DuckDB limitation) |
 | Hashing | Always use `compute_trades_hash()` from `hashes.py` -- never ad-hoc `repr()`/`hash()` |
 
+## Logging & Debugging
+
+### Logger Hierarchy
+
+All loggers live under `trade.*`. Never create orphan loggers.
+
+| Do | Don't |
+|----|-------|
+| `from src.utils.logger import get_module_logger` | `import logging` |
+| `logger = get_module_logger(__name__)` | `logger = logging.getLogger(__name__)` |
+
+`get_module_logger("src.backtest.runner")` → `logging.getLogger("trade.backtest.runner")`.
+
+### Key Functions (all in `src/utils/`)
+
+| Function | Module | Purpose |
+|----------|--------|---------|
+| `get_module_logger(name)` | `logger.py` | Create child logger under `trade.*` |
+| `suppress_for_validation()` | `logger.py` | Set `trade.*` to WARNING (for validation workers) |
+| `get_logger()` / `setup_logger()` | `logger.py` | Get/create the `TradingLogger` singleton |
+| `verbose_log(play_hash, msg, **fields)` | `debug.py` | Log at INFO gated on verbose mode |
+| `debug_log(play_hash, msg, **fields)` | `debug.py` | Log at DEBUG gated on debug mode |
+| `is_verbose_enabled()` | `debug.py` | Check if `-v` or `--debug` is active |
+| `is_debug_enabled()` | `debug.py` | Check if `--debug` is active |
+
+### Verbosity Levels
+
+| Flag | Level | When to use |
+|------|-------|-------------|
+| `-q` / `--quiet` | WARNING only | CI, scripted runs, validation workers |
+| (default) | INFO | Normal interactive use |
+| `-v` / `--verbose` | INFO + signal/structure traces | Debugging why signals don't fire |
+| `--debug` | DEBUG + all traces | Full hash-traced debugging |
+
+### Rules
+
+- **NEVER** use `logging.disable()` — use `suppress_for_validation()` instead
+- **NEVER** use bare `logging.getLogger(__name__)` — use `get_module_logger(__name__)`
+- **NEVER** add per-bar logging without gating on `is_verbose_enabled()` or `is_debug_enabled()` — per-bar logs on 25k+ bars destroy performance
+- **Env var**: `TRADE_LOG_LEVEL` controls global level (fallback: `LOG_LEVEL`, then `"INFO"`)
+- **Validation workers** (ProcessPoolExecutor): call `suppress_for_validation()` at the top of each worker function
+- **Verbose-only code**: use `verbose_log()` for signal traces, structure events, NaN warnings. Zero overhead when verbose is off (early return)
+
+### Backtest Event Journal
+
+Every backtest writes `events.jsonl` to its artifact folder via `BacktestJournal` (in `src/engine/journal.py`). Records fill and close events per trade. Live/demo uses `TradeJournal` which writes to `data/journal/`.
+
 ## Hash Tracing
 
 Deterministic hashes flow through the entire pipeline for reproducibility and debugging.
@@ -130,6 +177,11 @@ timeframes:
 ## Quick Commands
 
 ```bash
+# Verbosity flags (apply to any command)
+python trade_cli.py -q ...                            # Quiet (WARNING only)
+python trade_cli.py -v ...                            # Verbose (signal traces, structure events)
+python trade_cli.py --debug ...                       # Debug (full hash tracing)
+
 # Validation (parallel staged execution, with timeouts + incremental reporting)
 python trade_cli.py validate quick                    # Pre-commit (~2min)
 python trade_cli.py validate standard                 # Pre-merge (~4min)
@@ -144,12 +196,13 @@ python trade_cli.py validate full --gate-timeout 300  # Per-gate timeout (defaul
 
 # Backtest
 python trade_cli.py backtest run --play X --sync  # Run single backtest
+python trade_cli.py -v backtest run --play X --synthetic  # Verbose: see signal traces
 python scripts/run_full_suite.py                      # 170-play synthetic suite
 python scripts/run_full_suite.py --real --start 2025-01-01 --end 2025-06-30  # Real data suite
 python scripts/run_real_verification.py               # 60-play real verification
 python scripts/verify_trade_math.py --play X          # Math verification for a play
 
-# Debug (diagnostic tools)
+# Debug (diagnostic tools — all --json use {"status","message","data"} envelope)
 python trade_cli.py debug math-parity --play X        # Real-data math audit
 python trade_cli.py debug snapshot-plumbing --play X   # Snapshot field check
 python trade_cli.py debug determinism --run-a A --run-b B  # Compare runs

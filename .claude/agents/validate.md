@@ -127,7 +127,71 @@ python trade_cli.py debug math-parity --play <play_name> --start <date> --end <d
 python trade_cli.py debug snapshot-plumbing --play <play_name> --start <date> --end <date>
 python trade_cli.py debug determinism --run-a <path_a> --run-b <path_b>
 python trade_cli.py debug metrics
+
+# All debug --json commands return {"status","message","data"} envelope
+python trade_cli.py debug metrics --json
+python trade_cli.py debug determinism --run-a A --run-b B --json
 ```
+
+---
+
+## Verbosity Flags
+
+Use CLI verbosity flags to control log output during validation and debugging:
+
+| Flag | Level | Effect |
+|------|-------|--------|
+| `-q` / `--quiet` | WARNING | Minimal output, suppress INFO. Good for CI/scripted runs |
+| (default) | INFO | Normal behavior |
+| `-v` / `--verbose` | INFO + traces | Signal evaluation traces, structure detection events, NaN warnings |
+| `--debug` | DEBUG + traces | Full debug with hash tracing (implies verbose) |
+
+```bash
+# Quiet validation (CI-friendly, no INFO noise)
+python trade_cli.py -q validate quick
+
+# Verbose backtest (see WHY signals fired or didn't)
+python trade_cli.py -v backtest run --play V_CORE_001_indicator_cross --synthetic
+
+# Full debug with hash tracing
+python trade_cli.py --debug backtest run --play V_CORE_001_indicator_cross --synthetic
+```
+
+**Verbose mode shows:**
+- Signal evaluation traces: which conditions passed/failed per bar, why no signal
+- Structure detection events: new swing highs/lows, trend changes, zone activations
+- Subloop 1m ranges: which 1m bars map to each exec bar
+- Indicator NaN warnings: which indicators still have NaN past warmup
+
+**When to use verbose for debugging:**
+- Signal not firing? Use `-v` to see per-bar condition results
+- Structure not detecting? Use `-v` to see version changes on each detector
+- Indicator producing NaN? Use `-v` to see NaN-past-warmup warnings
+
+---
+
+## Logging Architecture
+
+- **Logger hierarchy**: All loggers live under `trade.*` (e.g., `trade.backtest.runner`, `trade.engine.play_engine`)
+- **`get_module_logger(__name__)`**: Creates child loggers under `trade.*`. NEVER use bare `logging.getLogger(__name__)`
+- **`suppress_for_validation()`**: Sets `trade.*` to WARNING without `logging.disable()`. Used by all validation workers
+- **`TRADE_LOG_LEVEL` env var**: Controls log level globally. Fallback chain: `TRADE_LOG_LEVEL` → `LOG_LEVEL` → `"INFO"`
+- **Backtest journal**: Every backtest writes `events.jsonl` to its artifact folder (fills, closes, signals)
+
+---
+
+## Backtest Artifacts
+
+Every backtest run produces artifacts in its hash-based folder:
+
+| File | Purpose |
+|------|---------|
+| `result.json` | Full metrics (21 new fields: tail risk, leverage, MAE/MFE, funding, etc.) |
+| `trades.parquet` | Trade log |
+| `equity.parquet` | Equity curve |
+| `events.jsonl` | Signal/fill/close event journal |
+| `pipeline_signature.json` | Pipeline version fingerprint |
+| `run_manifest.json` | Full hash identity + inputs |
 
 ---
 
@@ -141,6 +205,7 @@ python trade_cli.py debug metrics
 | `src/backtest/runtime/` | `validate module --module core` |
 | `src/structures/` | `validate module --module parity` |
 | `src/backtest/metrics.py` | `validate module --module metrics` |
+| `src/utils/logger.py` or `debug.py` | `validate module --module core` (verifies log plumbing doesn't break engine) |
 | Play YAML files | `validate quick` |
 | Multiple modules | `validate standard` or `full` |
 | New indicator/structure added | `validate module --module coverage` |
