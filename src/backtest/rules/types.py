@@ -289,24 +289,20 @@ class EvaluationTrace:
     """Full trace of strategy block execution for verbose logging."""
     block_traces: list[BlockTrace]
 
-    def format_lines(self, play_hash: str | None, bar_idx: int | None) -> list[str]:
-        """Format trace as human-readable log lines."""
-        from src.utils.debug import format_hash_prefix
-        prefix = format_hash_prefix(play_hash, bar_idx=bar_idx)
+    def format_lines(self) -> list[str]:
+        """Format trace as human-readable log lines (no prefix — caller adds it)."""
         lines: list[str] = []
         for bt in self.block_traces:
             if bt.matched_case is not None:
                 mc = bt.case_traces[bt.matched_case]
                 actions = ", ".join(bt.emitted_actions)
                 lines.append(
-                    f"{prefix} SIGNAL TRACE: {bt.block_id} case[{mc.case_index}]: "
+                    f"SIGNAL TRACE: {bt.block_id} case[{mc.case_index}]: "
                     f"{mc.summary()} -> {actions}"
                 )
             else:
-                # Show first failed case for "why no signal"
                 if bt.case_traces:
                     fc = bt.case_traces[0]
-                    # Find first failing condition
                     fail_parts: list[str] = []
                     for i, r in enumerate(fc.cond_results):
                         if not r.ok:
@@ -317,6 +313,6 @@ class EvaluationTrace:
                             break
                     fail_str = ", ".join(fail_parts) if fail_parts else "all conditions failed"
                     lines.append(
-                        f"{prefix} NO SIGNAL: {bt.block_id} case[0] FAILED at {fail_str}"
+                        f"NO SIGNAL: {bt.block_id} case[0] FAILED at {fail_str}"
                     )
         return lines

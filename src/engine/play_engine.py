@@ -1172,8 +1172,19 @@ class PlayEngine:
         # Use 1m sub-loop when quote_feed is available (matches old engine behavior)
         if self._quote_feed is not None:
             signal, signal_ts = self._evaluate_with_1m_subloop(bar_index, candle, position)
-            # Note: signal_ts is available for logging but signal execution
-            # happens at bar close (order submitted for next bar fill)
+
+            # Verbose: one-shot exec-bar trace after subloop completes
+            if is_verbose_enabled() and self._signal_evaluator is not None:
+                snapshot = self._build_snapshot_view(bar_index, candle)
+                if snapshot is not None:
+                    has_pos = position is not None
+                    pos_side = position.side.lower() if position else None
+                    _, trace = self._signal_evaluator.evaluate_with_trace(
+                        snapshot, has_pos, pos_side
+                    )
+                    for line in trace.format_lines():
+                        verbose_log(self._play_hash, line, bar_idx=bar_index)
+
             return signal
 
         # Fallback: single evaluation at exec bar close
@@ -1760,7 +1771,7 @@ class PlayEngine:
             result, trace = self._signal_evaluator.evaluate_with_trace(
                 snapshot, has_position, position_side
             )
-            for line in trace.format_lines(self._play_hash, bar_index):
+            for line in trace.format_lines():
                 verbose_log(self._play_hash, line, bar_idx=bar_index)
         else:
             result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
