@@ -206,6 +206,30 @@ Full list in `docs/architecture/FINDINGS_SUMMARY.md` under "LOW (44)".
 
 ---
 
+## Known Issues (non-blocking)
+
+### pandas_ta `'H'` Deprecation Warning
+
+**Status**: Cosmetic warning, no impact on correctness. Will become error in future pandas release.
+
+**Root cause**: `pandas_ta.vwap()` calls `anchor.upper()` internally (line 54 of `pandas_ta/overlap/vwap.py`), then passes the uppercased anchor to `index.to_period(anchor)`. Any hourly-based anchor (`"4h"` → `"4H"`, or even `"h"` → `"H"`) triggers the pandas `FutureWarning` because pandas deprecated uppercase `'H'` in favor of lowercase `'h'` for frequency aliases.
+
+**Affected plays**: Any play using VWAP with an hourly anchor (e.g., `IND_044_vwap_session_boundary` uses `anchor: "4h"`). Daily (`"D"`) and weekly (`"W"`) anchors are not affected.
+
+**Scope of investigation**:
+- Searched all `src/` for deprecated pandas frequency aliases (`'H'`, `'T'`, `'S'`, `'M'` as freq params) — **none found** in our code.
+- Our `"D"`, `"W"`, `"M"` strings are Bybit API / timeframe identifiers, NOT pandas frequency aliases. They are never passed to `pd.date_range()`, `df.resample()`, etc.
+- All `pd.date_range()` calls use `freq="1min"` or `freq="15min"` (lowercase, not deprecated).
+- All `pd.Timedelta()` calls use `minutes=` kwarg (not frequency strings).
+- Tested all 9 `pandas_ta` functions we call (`ema`, `sma`, `rsi`, `atr`, `macd`, `bbands`, `stoch`, `stochrsi`, `vwap`) — only `vwap` with hourly anchors triggers warnings.
+- Our `IncrementalVWAP` (live mode) does NOT use pandas frequency aliases — it uses integer timestamp division for session boundary detection. **Not affected.**
+
+**Fix options** (when pandas removes `'H'`):
+1. Upgrade `pandas_ta` if they fix the `.upper()` call upstream.
+2. If no upstream fix: monkey-patch or fork `pandas_ta.vwap()` to use lowercase anchor.
+
+---
+
 ## Open Feature Work
 
 ### P1: Live Engine Rubric
