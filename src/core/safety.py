@@ -220,8 +220,8 @@ class PanicState:
             except Exception as e:
                 # Panic callbacks MUST all execute — catch broadly so one failure
                 # does not prevent subsequent callbacks (e.g., position close) from running
-                import logging
-                logging.getLogger(__name__).error(f"Panic callback failed: {e}")
+                from src.utils.logger import get_module_logger
+                get_module_logger(__name__).error(f"Panic callback failed: {e}")
 
     def reset(self):
         """Reset panic state (use with caution)."""

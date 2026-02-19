@@ -524,6 +524,36 @@ def _execute_backtest(
     ctx.equity_curve = equity_curve
 
 
+def _write_backtest_journal(ctx: _RunContext) -> None:
+    """Write backtest events to events.jsonl in the artifact folder."""
+    if ctx.artifact_path is None or not ctx.trades:
+        return
+
+    from src.engine.journal import BacktestJournal
+
+    journal = BacktestJournal(
+        artifact_dir=ctx.artifact_path,
+        play_id=ctx.play.id if ctx.play else "",
+        symbol=ctx.symbol or "",
+    )
+
+    for i, trade in enumerate(ctx.trades):
+        side = trade.get("side", "")
+        entry_price = trade.get("entry_price", 0.0)
+        exit_price = trade.get("exit_price", 0.0)
+        size = trade.get("entry_size_usdt", 0.0)
+        pnl = trade.get("net_pnl", 0.0)
+        sl = trade.get("stop_loss")
+        tp = trade.get("take_profit")
+        reason = trade.get("exit_reason", "")
+
+        journal.record_fill(bar_idx=i, side=side, price=entry_price, size_usdt=size, sl=sl, tp=tp)
+        journal.record_close(
+            bar_idx=i, side=side,
+            entry_price=entry_price, exit_price=exit_price, pnl=pnl, reason=reason,
+        )
+
+
 def _write_trade_artifacts(ctx: _RunContext) -> int | None:
     """
     Write trades.parquet and equity.parquet.
@@ -969,6 +999,9 @@ def run_backtest_with_gates(
                 except ValueError:
                     pass  # Unknown classification — non-terminal
 
+        # Phase 9c: Write backtest journal (events.jsonl)
+        _write_backtest_journal(ctx)
+
         # Phase 10: Write trade artifacts
         eval_start_ts_ms = _write_trade_artifacts(ctx)
 
@@ -986,6 +1019,10 @@ def run_backtest_with_gates(
 
         # Phase 14: Run artifact validation gate
         _run_artifact_validation(ctx)
+
+        # Phase 14b: Log artifact path at INFO
+        import logging
+        logging.getLogger("trade").info(f"Artifacts written to: {ctx.artifact_path}")
 
         # Phase 15: Emit snapshots (if requested)
         _emit_snapshots(ctx)
@@ -1048,5 +1085,5 @@ def _finalize_logger_on_error(ctx: _RunContext, status: str) -> None:
             ctx.run_logger.finalize(status=status)
             set_run_logger(None)
     except (OSError, IOError, AttributeError) as e:
-        import logging
-        logging.getLogger(__name__).debug(f"Logger cleanup failed: {e}")
+        from src.utils.logger import get_module_logger
+        get_module_logger(__name__).debug(f"Logger cleanup failed: {e}")

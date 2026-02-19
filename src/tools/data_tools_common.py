@@ -10,11 +10,11 @@ prefixed with '_' to indicate they're internal utilities, not public tools.
 
 from datetime import datetime, timedelta
 from typing import Any
-import logging
 
 from .shared import _get_historical_store
+from src.utils.logger import get_module_logger
 
-_logger = logging.getLogger(__name__)
+_logger = get_module_logger(__name__)
 
 
 # ==================== CONSTANTS ====================

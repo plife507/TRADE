@@ -1449,10 +1449,10 @@ def validate_registry() -> list[str]:
 
     # Log warnings but don't fail
     if warnings:
-        import logging
-        logger = logging.getLogger(__name__)
+        from src.utils.logger import get_module_logger
+        _logger = get_module_logger(__name__)
         for w in warnings:
-            logger.warning(f"Registry warning: {w}")
+            _logger.warning(f"Registry warning: {w}")
 
     return errors
 

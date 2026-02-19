@@ -223,9 +223,8 @@ def _run_single_play_synthetic(play_id: str) -> tuple[str, int, str | None]:
 
     Must be a module-level function for ProcessPoolExecutor on Windows (spawn).
     """
-    import logging
-    os.environ["TRADE_LOG_LEVEL"] = "WARNING"
-    logging.disable(logging.INFO)
+    from src.utils.logger import suppress_for_validation
+    suppress_for_validation()
 
     try:
         from src.backtest.play import load_play
@@ -250,9 +249,8 @@ def _run_single_risk_play(
     Returns (play_id, error_or_None).
     Must be module-level for ProcessPoolExecutor on Windows (spawn).
     """
-    import logging
-    os.environ["TRADE_LOG_LEVEL"] = "WARNING"
-    logging.disable(logging.INFO)
+    from src.utils.logger import suppress_for_validation
+    suppress_for_validation()
 
     try:
         from src.backtest.play import load_play
@@ -276,9 +274,8 @@ def _run_single_play_real(play_id: str, start: str, end: str) -> tuple[str, int,
     Must be a module-level function for ProcessPoolExecutor on Windows (spawn).
     Assumes data is already synced -- runs with sync=False.
     """
-    import logging
-    os.environ["TRADE_LOG_LEVEL"] = "WARNING"
-    logging.disable(logging.INFO)
+    from src.utils.logger import suppress_for_validation
+    suppress_for_validation()
 
     try:
         from src.backtest.play import load_play
@@ -1536,12 +1533,8 @@ def run_module_validation(
     Returns:
         Exit code: 0 if all gates pass, 1 if any fail.
     """
-    import logging
-
-    os.environ["TRADE_LOG_LEVEL"] = "WARNING"
-    logging.disable(logging.INFO)
-    for name in ["src", "src.backtest", "src.engine", "src.data", "src.indicators"]:
-        logging.getLogger(name).setLevel(logging.WARNING)
+    from src.utils.logger import suppress_for_validation
+    suppress_for_validation()
 
     modules = _make_module_definitions(max_workers, play_timeout)
     if module_name not in modules:
@@ -1599,8 +1592,6 @@ def run_validation(
     Returns:
         Exit code: 0 if all gates pass, 1 if any fail.
     """
-    import logging
-
     # Module tier delegates to run_module_validation
     if tier == Tier.MODULE:
         if not module_name:
@@ -1613,10 +1604,8 @@ def run_validation(
 
     # Suppress noisy logging for validation runs (except exchange tier which needs app init)
     if tier != Tier.EXCHANGE:
-        os.environ["TRADE_LOG_LEVEL"] = "WARNING"
-        logging.disable(logging.INFO)
-        for name in ["src", "src.backtest", "src.engine", "src.data", "src.indicators"]:
-            logging.getLogger(name).setLevel(logging.WARNING)
+        from src.utils.logger import suppress_for_validation
+        suppress_for_validation()
 
     start = time.perf_counter()
     w = max_workers

@@ -208,8 +208,29 @@ class TFIncrementalState:
             )
         self._bar_idx = bar.idx
 
+        from src.utils.debug import is_verbose_enabled, verbose_log
+
+        _verbose = is_verbose_enabled()
+
         for key in self._update_order:
-            self.structures[key].update(bar.idx, bar)
+            detector = self.structures[key]
+            # Capture version before update (if available)
+            ver_before = getattr(detector, "_version", None)
+
+            detector.update(bar.idx, bar)
+
+            # Log structure change events at verbose level
+            if _verbose and ver_before is not None:
+                ver_after = getattr(detector, "_version", None)
+                if ver_after != ver_before:
+                    # Build a compact summary of what changed
+                    dtype = type(detector).__name__
+                    parts = [f"{dtype}({key})"]
+                    for attr in ("high_level", "low_level", "trend_direction"):
+                        val = getattr(detector, attr, None)
+                        if val is not None:
+                            parts.append(f"{attr}={val}")
+                    verbose_log(None, f"Structure update: {', '.join(parts)}", bar_idx=bar.idx)
 
     def get_value(self, struct_key: str, output_key: str) -> float | int | str:
         """

@@ -51,7 +51,7 @@ from .signal import SubLoopEvaluator
 from .sizing import SizingModel, SizingConfig
 
 from ..utils.logger import get_logger
-from ..utils.debug import is_debug_enabled, debug_log, debug_signal, debug_trade, debug_snapshot
+from ..utils.debug import is_debug_enabled, is_verbose_enabled, verbose_log, debug_log, debug_signal, debug_trade, debug_snapshot
 from .timeframe import TFIndexManager
 
 
@@ -1755,8 +1755,15 @@ class PlayEngine:
         has_position = position is not None
         position_side = position.side.lower() if position else None
 
-        # Evaluate using PlaySignalEvaluator
-        result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
+        # Evaluate using PlaySignalEvaluator (with trace if verbose)
+        if is_verbose_enabled():
+            result, trace = self._signal_evaluator.evaluate_with_trace(
+                snapshot, has_position, position_side
+            )
+            for line in trace.format_lines(self._play_hash, bar_index):
+                verbose_log(self._play_hash, line, bar_idx=bar_index)
+        else:
+            result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
 
         if is_debug_enabled() and not self.is_backtest:
             self.logger.debug(

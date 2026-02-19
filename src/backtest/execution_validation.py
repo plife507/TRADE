@@ -19,7 +19,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .play import Play
@@ -556,8 +556,8 @@ def get_declared_features_by_role(play: "Play") -> dict[str, set[str]]:
                 keys.update(feature.output_keys)
     except Exception as e:
         # If registry fails to build, return just OHLCV/builtin
-        import logging
-        logging.getLogger(__name__).debug(f"Registry build failed, using OHLCV only: {e}")
+        from src.utils.logger import get_module_logger
+        get_module_logger(__name__).debug(f"Registry build failed, using OHLCV only: {e}")
 
     # All features are accessible from "exec" context in new schema
     return {"exec": keys}
@@ -772,8 +772,8 @@ def compute_warmup_requirements(play: "Play") -> WarmupRequirements:
 
     except Exception as e:
         # Fallback if registry fails
-        import logging
-        logging.getLogger(__name__).debug(f"Warmup calculation failed, using defaults: {e}")
+        from src.utils.logger import get_module_logger
+        get_module_logger(__name__).debug(f"Warmup calculation failed, using defaults: {e}")
         if play.exec_tf:
             warmup_by_role[play.exec_tf] = structure_warmup
             delay_by_role[play.exec_tf] = 0
@@ -1044,6 +1044,116 @@ class PlaySignalEvaluator:
         return EvaluationResult(
             decision=SignalDecision.NO_ACTION,
             reason="No actions defined in Play",
+        )
+
+    def evaluate_with_trace(
+        self,
+        snapshot: "SnapshotView",
+        has_position: bool,
+        position_side: str | None = None,
+    ) -> tuple["EvaluationResult", Any]:
+        """Evaluate blocks and return both the result and a verbose trace.
+
+        The trace is an EvaluationTrace from strategy_blocks.execute_with_trace().
+        Only call this when verbose mode is active — it has extra overhead.
+        """
+        from .rules.types import EvaluationTrace
+
+        if not self.play.actions:
+            return (
+                EvaluationResult(
+                    decision=SignalDecision.NO_ACTION,
+                    reason="No actions defined in Play",
+                ),
+                EvaluationTrace(block_traces=[]),
+            )
+
+        # Execute with trace
+        intents, trace = self._blocks_executor.execute_with_trace(
+            self.play.actions, snapshot
+        )
+
+        # Map intents to decision (same logic as _evaluate_actions)
+        for intent in intents:
+            action = intent.action
+            if action == "entry_long" and not has_position:
+                if not self.play.position_policy.allows_long():
+                    continue
+                sl_price, tp_price, ref_price = self._compute_sl_tp(snapshot, "long")
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
+                return (
+                    EvaluationResult(
+                        decision=SignalDecision.ENTRY_LONG,
+                        reason="Block emitted entry_long",
+                        stop_loss_price=sl_price,
+                        take_profit_price=tp_price,
+                        sl_tp_ref_price=ref_price,
+                        resolved_metadata=resolved_meta,
+                    ),
+                    trace,
+                )
+            elif action == "entry_short" and not has_position:
+                if not self.play.position_policy.allows_short():
+                    continue
+                sl_price, tp_price, ref_price = self._compute_sl_tp(snapshot, "short")
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
+                return (
+                    EvaluationResult(
+                        decision=SignalDecision.ENTRY_SHORT,
+                        reason="Block emitted entry_short",
+                        stop_loss_price=sl_price,
+                        take_profit_price=tp_price,
+                        sl_tp_ref_price=ref_price,
+                        resolved_metadata=resolved_meta,
+                    ),
+                    trace,
+                )
+            elif action == "exit_long" and has_position and position_side == "long":
+                reason = "Block emitted exit_long"
+                if intent.percent != 100.0:
+                    reason = f"Block emitted exit_long ({intent.percent}%)"
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
+                return (
+                    EvaluationResult(
+                        decision=SignalDecision.EXIT,
+                        reason=reason,
+                        exit_percent=intent.percent,
+                        resolved_metadata=resolved_meta,
+                    ),
+                    trace,
+                )
+            elif action == "exit_short" and has_position and position_side == "short":
+                reason = "Block emitted exit_short"
+                if intent.percent != 100.0:
+                    reason = f"Block emitted exit_short ({intent.percent}%)"
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
+                return (
+                    EvaluationResult(
+                        decision=SignalDecision.EXIT,
+                        reason=reason,
+                        exit_percent=intent.percent,
+                        resolved_metadata=resolved_meta,
+                    ),
+                    trace,
+                )
+            elif action == "exit_all" and has_position:
+                resolved_meta = self._resolve_intent_metadata(intent, snapshot)
+                return (
+                    EvaluationResult(
+                        decision=SignalDecision.EXIT,
+                        reason="Block emitted exit_all",
+                        exit_percent=intent.percent,
+                        resolved_metadata=resolved_meta,
+                    ),
+                    trace,
+                )
+
+        return (
+            EvaluationResult(
+                decision=SignalDecision.NO_ACTION,
+                reason="No actionable intents from blocks",
+            ),
+            trace,
         )
 
     def _resolve_intent_metadata(

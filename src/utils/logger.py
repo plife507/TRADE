@@ -511,11 +511,22 @@ class TradingLogger:
 _logger: TradingLogger | None = None
 
 
+def _resolve_log_level(explicit_level: str | None = None) -> str:
+    """Resolve log level from explicit arg > TRADE_LOG_LEVEL > LOG_LEVEL > INFO."""
+    if explicit_level and explicit_level.upper() != "INFO":
+        return explicit_level.upper()
+    return os.environ.get(
+        "TRADE_LOG_LEVEL",
+        os.environ.get("LOG_LEVEL", "INFO"),
+    ).upper()
+
+
 def get_logger(log_dir: str = "logs", log_level: str = "INFO") -> TradingLogger:
     """Get or create the global logger instance."""
     global _logger
     if _logger is None:
-        _logger = TradingLogger(log_dir, log_level)
+        resolved = _resolve_log_level(log_level)
+        _logger = TradingLogger(log_dir, resolved)
         _configure_third_party_loggers()
     return _logger
 
@@ -526,9 +537,41 @@ def setup_logger(log_dir: str = "logs", log_level: str = "INFO") -> TradingLogge
     TradingLogger._initialized = False
     _logger = None  # Force recreation with new format
     TradingLogger._instance = None
-    _logger = TradingLogger(log_dir, log_level)
+    resolved = _resolve_log_level(log_level)
+    _logger = TradingLogger(log_dir, resolved)
     _configure_third_party_loggers()
     return _logger
+
+
+def get_module_logger(module_name: str) -> logging.Logger:
+    """Get a logger that's a child of the 'trade' hierarchy.
+
+    Replaces bare ``logging.getLogger(__name__)`` calls which create orphan
+    loggers with no handlers.  By parenting under ``trade.*`` every module
+    logger inherits the root trade handler configuration.
+    """
+    # Map dotted module paths (src.backtest.runner) → trade.backtest.runner
+    suffix = module_name
+    for prefix in ("src.", "src\\"):
+        if suffix.startswith(prefix):
+            suffix = suffix[len(prefix):]
+            break
+    return logging.getLogger(f"trade.{suffix}")
+
+
+def suppress_for_validation() -> None:
+    """Set the trade.* logger tree to WARNING for clean validation output.
+
+    Unlike ``logging.disable(logging.INFO)`` this is scoped to our loggers
+    only and does not affect third-party libraries.  It also doesn't need
+    to be re-enabled — subsequent ``setup_logger()`` calls will recreate
+    the root logger with the correct level.
+    """
+    trade_root = logging.getLogger("trade")
+    trade_root.setLevel(logging.WARNING)
+    # Also suppress known sub-trees that may have been created already
+    for name in ("trade.backtest", "trade.engine", "trade.data", "trade.indicators"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def _configure_third_party_loggers():

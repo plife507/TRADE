@@ -110,3 +110,62 @@ class TradeJournal:
     def path(self) -> Path:
         """Path to the journal file."""
         return self._path
+
+
+class BacktestJournal:
+    """Lightweight journal for backtest runs.
+
+    Writes signal/fill/error events to ``events.jsonl`` inside the artifact
+    folder so that backtest runs produce the same event log as live/demo runs.
+    """
+
+    def __init__(self, artifact_dir: Path, play_id: str, symbol: str):
+        self._path = artifact_dir / "events.jsonl"
+        self._play_id = play_id
+        self._symbol = symbol
+        self._count = 0
+
+    def record(self, event: str, bar_idx: int, **fields) -> None:
+        """Record a generic backtest event."""
+        entry = {
+            "event": event,
+            "play_id": self._play_id,
+            "symbol": self._symbol,
+            "bar_idx": bar_idx,
+            **fields,
+        }
+        try:
+            with open(self._path, "a", encoding="utf-8", newline="\n") as f:
+                f.write(json.dumps(entry, default=str) + "\n")
+            self._count += 1
+        except Exception:
+            pass  # Never crash on journal write
+
+    def record_signal(self, bar_idx: int, decision: str, reason: str) -> None:
+        """Record a signal evaluation that produced an action."""
+        self.record("signal", bar_idx, decision=decision, reason=reason)
+
+    def record_fill(
+        self, bar_idx: int, side: str, price: float, size_usdt: float,
+        sl: float | None = None, tp: float | None = None,
+    ) -> None:
+        """Record a simulated fill."""
+        self.record("fill", bar_idx, side=side, price=price, size_usdt=size_usdt, sl=sl, tp=tp)
+
+    def record_close(
+        self, bar_idx: int, side: str, entry_price: float, exit_price: float, pnl: float,
+        reason: str = "",
+    ) -> None:
+        """Record a position close."""
+        self.record(
+            "close", bar_idx, side=side,
+            entry_price=entry_price, exit_price=exit_price, pnl=pnl, reason=reason,
+        )
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    @property
+    def event_count(self) -> int:
+        return self._count

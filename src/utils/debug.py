@@ -40,6 +40,9 @@ from typing import Any, Callable
 _DEBUG_ENV = os.environ.get("TRADE_DEBUG", "").lower() in ("1", "true", "yes")
 _debug_enabled = _DEBUG_ENV
 
+# Verbose mode (signal traces, structure events)
+_verbose_enabled = False
+
 # Hash display length (first N chars of 16-char hashes)
 HASH_DISPLAY_LENGTH = 8
 
@@ -60,6 +63,44 @@ def enable_debug(enabled: bool = True) -> None:
     # Also set log level to DEBUG if enabling
     if enabled:
         logging.getLogger("trade").setLevel(logging.DEBUG)
+
+
+def is_verbose_enabled() -> bool:
+    """Check if verbose mode is enabled (or debug, which implies verbose)."""
+    return _verbose_enabled or _debug_enabled
+
+
+def enable_verbose(enabled: bool = True) -> None:
+    """Enable or disable verbose mode programmatically."""
+    global _verbose_enabled
+    _verbose_enabled = enabled
+
+
+def verbose_log(
+    play_hash: str | None,
+    message: str,
+    *,
+    bar_idx: int | None = None,
+    **fields: Any,
+) -> None:
+    """Log a verbose message with hash prefix.
+
+    Only logs if verbose or debug mode is enabled.
+    Uses INFO level so it's visible with normal log handlers.
+    """
+    if not is_verbose_enabled():
+        return
+
+    prefix = format_hash_prefix(play_hash, bar_idx=bar_idx)
+
+    if fields:
+        field_strs = [f"{k}={_format_value(v)}" for k, v in fields.items()]
+        full_msg = f"{message}: {', '.join(field_strs)}"
+    else:
+        full_msg = message
+
+    logger = logging.getLogger("trade")
+    logger.info(f"{prefix} {full_msg}")
 
 
 def short_hash(full_hash: str | None) -> str:

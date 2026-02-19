@@ -161,8 +161,8 @@ class AccountConfig:
         Logs a warning for each field filled from defaults (hybrid approach:
         convenient for backtest/dev, but `validate pre-live` rejects implicit defaults).
         """
-        import logging
-        logger = logging.getLogger(__name__)
+        from src.utils.logger import get_module_logger
+        logger = get_module_logger(__name__)
 
         defaulted: list[str] = []
 

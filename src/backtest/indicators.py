@@ -154,7 +154,17 @@ def apply_feature_spec_indicators(
                 f"INDICATOR_COMPUTATION_FAILED: {ind_type} (output_key={output_key}) failed: {e}. "
                 f"Check params={params} and input_source={input_col}."
             ) from e
-    
+
+    # Verbose: warn once per indicator that has NaN past warmup
+    from src.utils.debug import is_verbose_enabled, verbose_log
+    if is_verbose_enabled() and len(df) > 0:
+        warmup = max(50, len(df) // 4)  # conservative warmup estimate
+        for spec in feature_specs:
+            key = spec.output_key
+            if key in df.columns and df[key].iloc[warmup:].isna().any():
+                nan_count = int(df[key].iloc[warmup:].isna().sum())
+                verbose_log(None, f"NaN past warmup: {key} has {nan_count} NaN values after bar {warmup}")
+
     return df
 
 

@@ -22,6 +22,7 @@ Single source of truth for all open work, bugs, and task progress.
 | Codebase Review Gate 7: Data/CLI/Forge MED | DONE | 2026-02-17 | 18 fixes. 1 deferred (DATA-011) |
 | Codebase Review Gate 8: LOW Cleanup | DONE | 2026-02-17 | 12 fixed, 18 evaluated OK, 8 not-a-bug. 1 deferred (DATA-017) |
 | CLI & Tools Module Splitting (P4.5) | DONE | 2026-02-19 | Phases 1-5 complete. 5 gates passed. Net -113 lines deduplication |
+| Debug & Logging Redesign (P6) | DONE | 2026-02-19 | 8 phases: log plumbing, verbosity flags, signal trace, metrics surfacing, JSON consistency, backtest journal |
 
 Full gate details with per-item descriptions: `memory/completed_work.md`
 
@@ -67,6 +68,50 @@ Items evaluated during codebase review, confirmed low-risk, deferred to appropri
 ---
 
 ## Open Feature Work
+
+### P6: Debug & Logging Redesign — DONE (2026-02-19)
+
+All 8 phases complete. `validate quick` passes, all flags (`-q`, `-v`, `--debug`) work.
+
+#### Phase 1: Fix Broken Log Level Plumbing — DONE
+- [x] `src/utils/logger.py`: `_resolve_log_level()` reads `TRADE_LOG_LEVEL` > `LOG_LEVEL` > `"INFO"`
+- [x] `src/utils/logger.py`: `suppress_for_validation()` sets `trade.*` to WARNING (no `logging.disable()`)
+- [x] `src/utils/logger.py`: `get_module_logger(module_name)` maps `src.X` → `trade.X`
+- [x] `src/config/config.py`: Reads `TRADE_LOG_LEVEL` env var
+- [x] `src/cli/validate.py`: 5x `logging.disable(INFO)` → `suppress_for_validation()`
+
+#### Phase 2: Verbosity Levels — DONE
+- [x] `-q`/`--quiet`, `-v`/`--verbose` (mutually exclusive with `--debug`)
+- [x] `verbose_log()`, `is_verbose_enabled()`, `enable_verbose()` in `debug.py`
+- [x] `trade_cli.py`: `-q` → suppress, `-v` → verbose, `--debug` → both
+
+#### Phase 3: Fix Module-Level Logger Leakage — DONE
+- [x] 12 orphan `logging.getLogger(__name__)` → `get_module_logger(__name__)`
+
+#### Phase 4: Signal Trace at Verbose Level — DONE
+- [x] `EvaluationTrace`, `BlockTrace`, `CaseTrace` dataclasses in `rules/types.py`
+- [x] `execute_with_trace()` in `StrategyBlocksExecutor`
+- [x] `evaluate_with_trace()` in `PlaySignalEvaluator`
+- [x] Engine wired: verbose → trace path, normal → zero overhead
+- [x] Subloop verbose logging (first bars only)
+
+#### Phase 5: Metric Surfacing — DONE
+- [x] 21 new fields on `ResultsSummary` (benchmark, tail risk, leverage, MAE/MFE, friction, margin, funding)
+- [x] Wired in `compute_results_summary()` via `getattr()` for SimpleNamespace compat
+- [x] `print_summary()` expanded with conditional sections
+- [x] `to_dict()` includes all new fields
+
+#### Phase 6: JSON Output Consistency — DONE
+- [x] `debug determinism` and `debug metrics` JSON wrapped in `{"status","message","data"}` envelope
+
+#### Phase 7: Cross-References and Backtest Journal — DONE
+- [x] `BacktestJournal` class in `journal.py` writes `events.jsonl` to artifact folder
+- [x] `_write_backtest_journal()` in runner records fill+close per trade
+- [x] Artifact path logged at INFO after writing
+
+#### Phase 8: Indicator/Structure Diagnostic Logging — DONE
+- [x] NaN-past-warmup warning in `indicators.py` (verbose only)
+- [x] Structure version-change detection in `state.py` (verbose only)
 
 ### P1: Live Engine Rubric
 

@@ -306,6 +306,74 @@ class StrategyBlocksExecutor:
         """
         return self._execute_block(block, snapshot)
 
+    def execute_with_trace(
+        self,
+        blocks: list[Block],
+        snapshot: "RuntimeSnapshotView",
+    ) -> tuple[list[Intent], Any]:
+        """Execute blocks and collect a verbose trace.
+
+        Separate method from execute() so the normal path has zero overhead.
+
+        Returns:
+            (intents, EvaluationTrace) tuple.
+        """
+        from .types import EvaluationTrace, BlockTrace, CaseTrace
+        from .dsl_nodes import AllExpr, AnyExpr
+
+        all_intents: list[Intent] = []
+        block_traces: list[BlockTrace] = []
+
+        for block in blocks:
+            case_traces: list[CaseTrace] = []
+            matched_case_idx: int | None = None
+            emitted: list[str] = []
+
+            for case_idx, case in enumerate(block.cases):
+                # Evaluate the case's when expression
+                result = self._evaluator.evaluate(case.when, snapshot)
+
+                # Collect per-condition results for the trace
+                cond_results = []
+                expr = case.when
+                if isinstance(expr, AllExpr):
+                    for sub in expr.children:
+                        cond_results.append(self._evaluator.evaluate(sub, snapshot))
+                elif isinstance(expr, AnyExpr):
+                    for sub in expr.children:
+                        cond_results.append(self._evaluator.evaluate(sub, snapshot))
+                else:
+                    cond_results.append(result)
+
+                ct = CaseTrace(
+                    case_index=case_idx,
+                    matched=result.ok,
+                    cond_results=cond_results,
+                )
+                case_traces.append(ct)
+
+                if result.ok and matched_case_idx is None:
+                    matched_case_idx = case_idx
+                    block_intents = list(case.emit)
+                    emitted = [i.action for i in block_intents]
+                    all_intents.extend(block_intents)
+                    break  # first match wins
+
+            if matched_case_idx is None and block.else_emit:
+                block_intents = list(block.else_emit)
+                emitted = [i.action for i in block_intents]
+                all_intents.extend(block_intents)
+
+            block_traces.append(BlockTrace(
+                block_id=block.id,
+                case_traces=case_traces,
+                matched_case=matched_case_idx,
+                emitted_actions=emitted,
+            ))
+
+        trace = EvaluationTrace(block_traces=block_traces)
+        return all_intents, trace
+
 
 # =============================================================================
 # Intent Helpers

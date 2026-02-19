@@ -50,11 +50,25 @@ Examples:
         """
     )
 
-    parser.add_argument(
+    # Verbosity: mutually exclusive group (-q / -v / --debug)
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        default=False,
+        help="Quiet mode: WARNING only, minimal output"
+    )
+    verbosity.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        default=False,
+        help="Verbose mode: INFO + signal evaluation traces"
+    )
+    verbosity.add_argument(
         "--debug",
         action="store_true",
         default=False,
-        help="Enable debug logging with hash tracing (sets TRADE_DEBUG=1)"
+        help="Debug mode: full DEBUG + hash tracing (sets TRADE_DEBUG=1)"
     )
 
     # Add subcommands

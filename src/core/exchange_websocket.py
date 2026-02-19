@@ -155,8 +155,8 @@ def ensure_symbol_tracked(manager: "ExchangeManager", symbol: str):
     except (ConnectionError, OSError, RuntimeError) as e:
         # BUG-001 fix: WebSocket not available, REST fallback will be used
         # Log but don't fail - this is expected when WS is down
-        import logging
-        logging.getLogger(__name__).debug(f"WebSocket unavailable for {symbol}: {e}")
+        from src.utils.logger import get_module_logger
+        get_module_logger(__name__).debug(f"WebSocket unavailable for {symbol}: {e}")
 
 
 def remove_symbol_from_websocket(manager: "ExchangeManager", symbol: str):

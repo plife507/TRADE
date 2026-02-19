@@ -10,10 +10,11 @@ Fully integrated with existing backtest engine infrastructure.
 """
 
 
-import logging
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+from src.utils.logger import get_module_logger
+
+logger = get_module_logger(__name__)
 from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np

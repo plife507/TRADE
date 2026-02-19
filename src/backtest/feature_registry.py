@@ -558,8 +558,8 @@ class FeatureRegistry:
                 except (KeyError, ValueError, AttributeError) as e:
                     # BUG-003 fix: Specific exceptions for indicator expansion
                     # Keep original if expansion fails (indicator may not have multi-output)
-                    import logging
-                    logging.getLogger(__name__).debug(
+                    from src.utils.logger import get_module_logger
+                    get_module_logger(__name__).debug(
                         f"Output key expansion failed for {feature.indicator_type}: {e}"
                     )
                     updated[feature_id] = feature

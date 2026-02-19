@@ -163,7 +163,12 @@ def handle_debug_determinism(args) -> int:
         result = compare_runs(run_a, run_b)
 
     if args.json_output:
-        print(json.dumps(result.to_dict(), indent=2))
+        envelope = {
+            "status": "pass" if result.passed else "fail",
+            "message": "Determinism verified" if result.passed else "Determinism mismatch",
+            "data": result.to_dict(),
+        }
+        print(json.dumps(envelope, indent=2, default=str))
         return 0 if result.passed else 1
 
     result.print_report()
@@ -177,7 +182,12 @@ def handle_debug_metrics(args) -> int:
     result = _gate_metrics_audit()
 
     if getattr(args, "json_output", False):
-        print(json.dumps(result.to_dict(), indent=2))
+        envelope = {
+            "status": "pass" if result.passed else "fail",
+            "message": f"Metrics audit: {result.checked} scenarios",
+            "data": result.to_dict(),
+        }
+        print(json.dumps(envelope, indent=2, default=str))
         return 0 if result.passed else 1
 
     status = "[bold green]PASS[/]" if result.passed else "[bold red]FAIL[/]"

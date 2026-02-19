@@ -603,8 +603,8 @@ class Config:
                 load_dotenv(env_path, override=True)
                 loaded_env_files.append(env_name)
         if "api_keys.env" in loaded_env_files and ".env" in loaded_env_files:
-            import logging
-            logging.getLogger(__name__).warning(
+            from src.utils.logger import get_module_logger
+            get_module_logger(__name__).warning(
                 "Both .env and api_keys.env found. "
                 ".env values override api_keys.env (load order: api_keys.env → .env)."
             )
@@ -668,7 +668,7 @@ class Config:
     def _load_log_config(self) -> LogConfig:
         """Load logging configuration from environment."""
         return LogConfig(
-            level=os.getenv("LOG_LEVEL", "INFO"),
+            level=os.getenv("TRADE_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO")),
             log_dir=os.getenv("LOG_DIR", "logs"),
         )
     

@@ -1010,6 +1010,43 @@ class ResultsSummary:
     # Stop fields (terminal risk events)
     stopped_early: bool = False
     stop_reason: str | None = None
+
+    # Benchmark/Alpha
+    benchmark_return_pct: float = 0.0
+    alpha_pct: float = 0.0
+
+    # Tail Risk
+    skewness: float = 0.0
+    kurtosis: float = 0.0
+    var_95_pct: float = 0.0
+    cvar_95_pct: float = 0.0
+
+    # Extended Risk
+    ulcer_index: float = 0.0
+    omega_ratio: float = 0.0
+
+    # Leverage / Margin
+    avg_leverage_used: float = 0.0
+    max_gross_exposure_pct: float = 0.0
+
+    # Trade Quality (MAE/MFE)
+    mae_avg_pct: float = 0.0
+    mfe_avg_pct: float = 0.0
+
+    # Entry Friction
+    entry_attempts: int = 0
+    entry_rejections: int = 0
+    entry_rejection_rate: float = 0.0
+
+    # Margin Stress
+    margin_calls: int = 0
+    min_margin_ratio: float = 1.0
+    closest_liquidation_pct: float = 100.0
+
+    # Funding
+    total_funding_paid_usdt: float = 0.0
+    total_funding_received_usdt: float = 0.0
+    net_funding_usdt: float = 0.0
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
@@ -1078,6 +1115,35 @@ class ResultsSummary:
             # Stop fields
             "stopped_early": self.stopped_early,
             "stop_reason": self.stop_reason,
+            # Benchmark/Alpha
+            "benchmark_return_pct": round(self.benchmark_return_pct, 2),
+            "alpha_pct": round(self.alpha_pct, 2),
+            # Tail Risk
+            "skewness": round(self.skewness, 4),
+            "kurtosis": round(self.kurtosis, 4),
+            "var_95_pct": round(self.var_95_pct, 4),
+            "cvar_95_pct": round(self.cvar_95_pct, 4),
+            # Extended Risk
+            "ulcer_index": round(self.ulcer_index, 4),
+            "omega_ratio": round(self.omega_ratio, 2),
+            # Leverage / Margin
+            "avg_leverage_used": round(self.avg_leverage_used, 2),
+            "max_gross_exposure_pct": round(self.max_gross_exposure_pct, 2),
+            # Trade Quality
+            "mae_avg_pct": round(self.mae_avg_pct, 4),
+            "mfe_avg_pct": round(self.mfe_avg_pct, 4),
+            # Entry Friction
+            "entry_attempts": self.entry_attempts,
+            "entry_rejections": self.entry_rejections,
+            "entry_rejection_rate": round(self.entry_rejection_rate, 4),
+            # Margin Stress
+            "margin_calls": self.margin_calls,
+            "min_margin_ratio": round(self.min_margin_ratio, 4),
+            "closest_liquidation_pct": round(self.closest_liquidation_pct, 2),
+            # Funding
+            "total_funding_paid_usdt": round(self.total_funding_paid_usdt, 2),
+            "total_funding_received_usdt": round(self.total_funding_received_usdt, 2),
+            "net_funding_usdt": round(self.net_funding_usdt, 2),
         }
     
     def write_json(self, path: Path) -> None:
@@ -1100,35 +1166,85 @@ class ResultsSummary:
         print(f"  Window:      {self.window_start.date()} -> {self.window_end.date()} ({window_days}d)")
         print(f"  Leverage:    {self.leverage}x | Equity: ${self.initial_equity:,.0f}")
         print("-" * 60)
-        
+
         # Trade Summary
         print(f"  Trades:      {self.trades_count} ({self.winning_trades}W / {self.losing_trades}L)")
         print(f"  Win Rate:    {self.win_rate * 100:.1f}%")
         print(f"  {pnl_icon} Net PnL:    {self.net_pnl_usdt:+.2f} USDT ({self.net_return_pct:+.1f}%)")
         print(f"  Max DD:      {self.max_drawdown_usdt:.2f} USDT ({self.max_drawdown_pct * 100:.1f}%)")
+        if self.ulcer_index > 0:
+            print(f"  Ulcer Index: {self.ulcer_index:.4f}")
+        if self.recovery_factor != 0:
+            print(f"  Recovery:    {self.recovery_factor:.2f}")
         print("-" * 60)
-        
+
         # Risk-Adjusted Metrics
         print(f"  Sharpe:      {self.sharpe:.2f}")
         print(f"  Sortino:     {self.sortino:.2f}")
         print(f"  Calmar:      {self.calmar:.2f}")
         print(f"  Profit Factor: {self.profit_factor:.2f}")
+        if self.omega_ratio != 0:
+            print(f"  Omega Ratio: {self.omega_ratio:.2f}")
         print("-" * 60)
-        
+
         # Trade Analytics
         print(f"  Avg Win:     {self.avg_win_usdt:.2f} USDT")
         print(f"  Avg Loss:    {self.avg_loss_usdt:.2f} USDT")
+        print(f"  Largest Win: {self.largest_win_usdt:.2f} USDT")
+        print(f"  Largest Loss:{self.largest_loss_usdt:.2f} USDT")
         print(f"  Payoff Ratio: {self.payoff_ratio:.2f}")
         print(f"  Expectancy:  {self.expectancy_usdt:.2f} USDT/trade")
         print(f"  Max Consec:  {self.max_consecutive_wins}W / {self.max_consecutive_losses}L")
+
+        # Trade Quality (MAE/MFE) — show if non-zero
+        if self.mae_avg_pct != 0 or self.mfe_avg_pct != 0:
+            print(f"  MAE avg:     {self.mae_avg_pct:.2f}%")
+            print(f"  MFE avg:     {self.mfe_avg_pct:.2f}%")
         print("-" * 60)
-        
+
+        # Benchmark / Alpha — show if non-zero
+        if self.benchmark_return_pct != 0 or self.alpha_pct != 0:
+            print(f"  Benchmark:   {self.benchmark_return_pct:+.2f}%")
+            print(f"  Alpha:       {self.alpha_pct:+.2f}%")
+            print("-" * 60)
+
+        # Tail Risk — show if computed
+        if self.skewness != 0 or self.kurtosis != 0:
+            print(f"  Skewness:    {self.skewness:.4f}")
+            print(f"  Kurtosis:    {self.kurtosis:.4f}")
+            print(f"  VaR 95%:     {self.var_95_pct:.4f}%")
+            print(f"  CVaR 95%:    {self.cvar_95_pct:.4f}%")
+            print("-" * 60)
+
         # Long/Short Breakdown
         if self.long_trades > 0 or self.short_trades > 0:
             print(f"  Long:        {self.long_trades} trades, {self.long_win_rate:.1f}% WR, {self.long_pnl:+.2f} USDT")
             print(f"  Short:       {self.short_trades} trades, {self.short_win_rate:.1f}% WR, {self.short_pnl:+.2f} USDT")
             print("-" * 60)
-        
+
+        # Leverage / Margin — show only if leverage > 1
+        if self.leverage > 1:
+            print(f"  Avg Leverage:{self.avg_leverage_used:.2f}x")
+            print(f"  Max Exposure:{self.max_gross_exposure_pct:.1f}%")
+            if self.closest_liquidation_pct < 100:
+                print(f"  Closest Liq: {self.closest_liquidation_pct:.1f}%")
+            if self.margin_calls > 0:
+                print(f"  Margin Calls:{self.margin_calls}")
+            print("-" * 60)
+
+        # Entry Friction — show only if rejections occurred
+        if self.entry_rejections > 0:
+            print(f"  Entry Tries: {self.entry_attempts}")
+            print(f"  Rejections:  {self.entry_rejections} ({self.entry_rejection_rate * 100:.1f}%)")
+            print("-" * 60)
+
+        # Funding — show only if any funding
+        if self.total_funding_paid_usdt != 0 or self.total_funding_received_usdt != 0:
+            print(f"  Funding Paid:{self.total_funding_paid_usdt:.2f} USDT")
+            print(f"  Funding Recv:{self.total_funding_received_usdt:.2f} USDT")
+            print(f"  Net Funding: {self.net_funding_usdt:+.2f} USDT")
+            print("-" * 60)
+
         # Time Metrics
         print(f"  Time in Mkt: {self.time_in_market_pct:.1f}% ({self.bars_in_position}/{self.total_bars} bars)")
         print(f"  Fees:        {self.total_fees_usdt:.2f} USDT")
@@ -1256,6 +1372,28 @@ def compute_results_summary(
         summary.total_bars = metrics.total_bars
         summary.bars_in_position = metrics.bars_in_position
         summary.time_in_market_pct = metrics.time_in_market_pct
+        # Extended metrics (use getattr for compatibility with SimpleNamespace)
+        summary.benchmark_return_pct = getattr(metrics, "benchmark_return_pct", 0.0)
+        summary.alpha_pct = getattr(metrics, "alpha_pct", 0.0)
+        summary.skewness = getattr(metrics, "skewness", 0.0)
+        summary.kurtosis = getattr(metrics, "kurtosis", 0.0)
+        summary.var_95_pct = getattr(metrics, "var_95_pct", 0.0)
+        summary.cvar_95_pct = getattr(metrics, "cvar_95_pct", 0.0)
+        summary.ulcer_index = getattr(metrics, "ulcer_index", 0.0)
+        summary.omega_ratio = getattr(metrics, "omega_ratio", 0.0)
+        summary.avg_leverage_used = getattr(metrics, "avg_leverage_used", 0.0)
+        summary.max_gross_exposure_pct = getattr(metrics, "max_gross_exposure_pct", 0.0)
+        summary.mae_avg_pct = getattr(metrics, "mae_avg_pct", 0.0)
+        summary.mfe_avg_pct = getattr(metrics, "mfe_avg_pct", 0.0)
+        summary.entry_attempts = getattr(metrics, "entry_attempts", 0)
+        summary.entry_rejections = getattr(metrics, "entry_rejections", 0)
+        summary.entry_rejection_rate = getattr(metrics, "entry_rejection_rate", 0.0)
+        summary.margin_calls = getattr(metrics, "margin_calls", 0)
+        summary.min_margin_ratio = getattr(metrics, "min_margin_ratio", 1.0)
+        summary.closest_liquidation_pct = getattr(metrics, "closest_liquidation_pct", 100.0)
+        summary.total_funding_paid_usdt = getattr(metrics, "total_funding_paid_usdt", 0.0)
+        summary.total_funding_received_usdt = getattr(metrics, "total_funding_received_usdt", 0.0)
+        summary.net_funding_usdt = getattr(metrics, "net_funding_usdt", 0.0)
         return summary
     
     raise ValueError(

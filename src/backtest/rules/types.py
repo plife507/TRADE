@@ -254,3 +254,69 @@ class EvalResult:
             "operator": self.operator,
             "message": self.message,
         }
+
+
+@dataclass
+class CaseTrace:
+    """Trace of a single case evaluation within a block."""
+    case_index: int
+    matched: bool
+    cond_results: list[EvalResult]
+
+    def summary(self) -> str:
+        """One-line summary of condition results."""
+        parts: list[str] = []
+        for r in self.cond_results:
+            lhs = r.lhs_path or "?"
+            op = r.operator or "?"
+            rhs = r.rhs_repr or "?"
+            status = "PASS" if r.ok else "FAIL"
+            parts.append(f"{lhs} {op} {rhs} = {status}")
+        return ", ".join(parts)
+
+
+@dataclass
+class BlockTrace:
+    """Trace of a single block evaluation."""
+    block_id: str
+    case_traces: list[CaseTrace]
+    matched_case: int | None  # index of matched case, or None
+    emitted_actions: list[str]
+
+
+@dataclass
+class EvaluationTrace:
+    """Full trace of strategy block execution for verbose logging."""
+    block_traces: list[BlockTrace]
+
+    def format_lines(self, play_hash: str | None, bar_idx: int | None) -> list[str]:
+        """Format trace as human-readable log lines."""
+        from src.utils.debug import format_hash_prefix
+        prefix = format_hash_prefix(play_hash, bar_idx=bar_idx)
+        lines: list[str] = []
+        for bt in self.block_traces:
+            if bt.matched_case is not None:
+                mc = bt.case_traces[bt.matched_case]
+                actions = ", ".join(bt.emitted_actions)
+                lines.append(
+                    f"{prefix} SIGNAL TRACE: {bt.block_id} case[{mc.case_index}]: "
+                    f"{mc.summary()} -> {actions}"
+                )
+            else:
+                # Show first failed case for "why no signal"
+                if bt.case_traces:
+                    fc = bt.case_traces[0]
+                    # Find first failing condition
+                    fail_parts: list[str] = []
+                    for i, r in enumerate(fc.cond_results):
+                        if not r.ok:
+                            lhs = r.lhs_path or "?"
+                            op = r.operator or "?"
+                            rhs = r.rhs_repr or "?"
+                            fail_parts.append(f"cond[{i}]: {lhs} {op} {rhs} = FAIL")
+                            break
+                    fail_str = ", ".join(fail_parts) if fail_parts else "all conditions failed"
+                    lines.append(
+                        f"{prefix} NO SIGNAL: {bt.block_id} case[0] FAILED at {fail_str}"
+                    )
+        return lines

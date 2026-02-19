@@ -714,10 +714,17 @@ def main():
     # Parse CLI arguments FIRST (before any config or logging)
     args = setup_argparse()
 
-    # Enable debug mode if --debug flag is set
-    if getattr(args, "debug", False):
-        from src.utils.debug import enable_debug
+    # Wire verbosity flags
+    if getattr(args, "quiet", False):
+        from src.utils.logger import suppress_for_validation
+        suppress_for_validation()
+    elif getattr(args, "verbose", False):
+        from src.utils.debug import enable_verbose
+        enable_verbose(True)
+    elif getattr(args, "debug", False):
+        from src.utils.debug import enable_debug, enable_verbose
         enable_debug(True)
+        enable_verbose(True)
         import os as _os
         _os.environ["TRADE_DEBUG"] = "1"
 
