@@ -187,7 +187,7 @@ def _run_play_live(play, args, manager=None) -> int:
     import signal
     import threading
     from src.engine import EngineManager
-    from src.cli.live_dashboard import (
+    from src.cli.dashboard import (
         DashboardLogHandler,
         DashboardState,
         populate_play_meta,
@@ -288,13 +288,14 @@ def _run_play_live(play, args, manager=None) -> int:
     finally:
         stop_event.set()  # Signal engine thread to shut down
 
-    # Wait for engine thread to finish (it handles its own stop on its loop)
-    engine_thread.join(timeout=20.0)
-
-    # --- Restore logger handlers ---
+    # Restore logger BEFORE join so background daemon threads
+    # (e.g. RealtimeBootstrap._monitor_loop) don't leak DEBUG to console.
     trade_logger.removeHandler(dash_handler)
     for h in console_handlers:
         trade_logger.addHandler(h)
+
+    # Wait for engine thread to finish (it handles its own stop on its loop)
+    engine_thread.join(timeout=20.0)
 
     # --- Print final summary ---
     if engine_error:

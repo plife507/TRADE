@@ -23,7 +23,7 @@ from src.cli.styles import CLIStyles, CLIColors, CLIIcons, BillArtWrapper
 if TYPE_CHECKING:
     from trade_cli import TradeCLI
     from src.backtest.play import PlayInfo
-    from src.cli.live_dashboard import OrderTracker
+    from src.cli.dashboard import OrderTracker
 
 # Local console
 console = Console()
@@ -395,7 +395,7 @@ def _run_play(cli: "TradeCLI") -> None:
     from typing import Literal
     from src.backtest.play import Play, load_play
     from src.engine import EngineManager
-    from src.cli.live_dashboard import (
+    from src.cli.dashboard import (
         DashboardLogHandler,
         DashboardState,
         OrderTracker,
@@ -490,15 +490,15 @@ def _run_play(cli: "TradeCLI") -> None:
         logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
     )
 
-    # Enable debug so runner logs full tracebacks into dashboard
-    from src.utils.debug import enable_debug, is_debug_enabled
-    was_debug = is_debug_enabled()
-    enable_debug(True)
+    # DashboardLogHandler captures at DEBUG regardless of global level,
+    # so no need to force enable_debug(True) globally — that leaks DEBUG
+    # logs to console from background threads after handler restoration.
+    from src.utils.debug import is_debug_enabled
 
-    # Swap console StreamHandlers on "trade" logger to dashboard handler
+    # Swap console StreamHandlers on "trade" logger to dashboard handler.
+    # Don't force setLevel(DEBUG) — the handler captures at its own level,
+    # and forcing DEBUG globally causes noise from background threads.
     trade_logger = logging.getLogger("trade")
-    prev_level = trade_logger.level
-    trade_logger.setLevel(logging.DEBUG)
     console_handlers = [
         h for h in trade_logger.handlers
         if isinstance(h, logging.StreamHandler)
@@ -576,15 +576,14 @@ def _run_play(cli: "TradeCLI") -> None:
     finally:
         stop_event.set()  # Signal engine thread to shut down
 
-    # Wait for engine thread to finish (it handles its own stop on its loop)
-    engine_thread.join(timeout=20.0)
-
-    # --- Restore logger and debug state ---
+    # Restore logger BEFORE join so background daemon threads
+    # (e.g. RealtimeBootstrap._monitor_loop) don't leak DEBUG to console.
     trade_logger.removeHandler(dash_handler)
     for h in console_handlers:
         trade_logger.addHandler(h)
-    trade_logger.setLevel(prev_level)
-    enable_debug(was_debug)
+
+    # Wait for engine thread to finish (it handles its own stop on its loop)
+    engine_thread.join(timeout=20.0)
 
     # --- Print final summary ---
     if engine_error:

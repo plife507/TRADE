@@ -113,6 +113,60 @@ All 8 phases complete. `validate quick` passes, all flags (`-q`, `-v`, `--debug`
 - [x] NaN-past-warmup warning in `indicators.py` (verbose only)
 - [x] Structure version-change detection in `state.py` (verbose only)
 
+### P7: Live Dashboard Redesign — DONE
+
+Redesigned the demo/live trading dashboard from monolithic `src/cli/live_dashboard.py` (1,388 lines) into modular `src/cli/dashboard/` package with Rich Group/Panel/Table rendering, tiered refresh, signal proximity, sparklines, and graceful lifecycle.
+
+#### Phase 1: Module Split — DONE
+- [x] Split into `src/cli/dashboard/` package (13 modules)
+- [x] `__init__.py` — re-exports `run_dashboard`, `DashboardState`, `OrderTracker`, etc.
+- [x] `state.py` — `DashboardState`, `refresh_ticker()`, `refresh_account()`, `refresh_engine_data()`
+- [x] `widgets.py` — formatting helpers, status badge, tab bar, sparkline
+- [x] `tabs/` — 6 tab builders in separate files (overview, indicators, structures, log, play_yaml, orders)
+- [x] `input.py` — `TabState`, key listener with quit confirmation, `f` filter key
+- [x] `runner.py` — entry point with Group/Panel composition
+- [x] `log_handler.py` — `DashboardLogHandler`
+- [x] `order_tracker.py` — `OrderEvent`, `OrderTracker` with W/L stats
+- [x] `play_meta.py` — `populate_play_meta()`
+- [x] `signal_proximity.py` — condition evaluator reusing P6 trace system
+- [x] Updated callers: `play.py`, `plays_menu.py`
+- [x] Deleted `src/cli/live_dashboard.py`
+- [x] **GATE**: `validate quick` passes, zero `live_dashboard` imports remain
+
+#### Phase 2: Rich Group Rendering — DONE
+- [x] `_build()` returns `Group` instead of `Text`
+- [x] Status header in `Panel(border_style="cyan")`
+- [x] Tab content in `Panel(border_style="dim")`
+- [x] Indicators/structures/orders tabs use `rich.table.Table` with auto-sizing
+
+#### Phase 3: Tiered Refresh Intervals — DONE
+- [x] Ticker: 250ms cadence (`refresh_ticker()`)
+- [x] Account/runner stats: 2s cadence (`refresh_account()`)
+- [x] Indicators/structures: on bar close (bars_processed change)
+- [x] 50ms base poller loop
+- [x] Staleness indicator on indicators + structures tabs
+- [x] Warmup ETA: bars_remaining * tf_seconds
+
+#### Phase 4: Enhanced Tabs — DONE
+- [x] Sparklines (Unicode `▁▂▃▅▇`) from indicator history ring buffer (depth=20)
+- [x] Log severity filter (`f` key cycles all/warn+/error)
+- [x] Session P&L summary on overview tab
+- [x] W/L stats method on OrderTracker
+
+#### Phase 5: Signal Proximity Display — DONE
+- [x] `signal_proximity.py` with `evaluate_proximity()` using `evaluate_with_trace()`
+- [x] `ConditionStatus`, `BlockStatus`, `SignalProximity` dataclasses
+- [x] Overview tab renders condition checklist (green=pass, red=fail, % ratio)
+- [x] Evaluates at account refresh cadence (2s)
+
+#### Phase 6: Graceful Enter/Exit — DONE
+- [x] Quit with position: first `q` shows yellow warning, second `q` confirms
+- [x] Shutdown messaging: "Shutting down engine..." on exit
+- [x] Pause file cleanup in `finally` block
+- [x] R-multiple display (`(+1.3R)`) when SL is set
+- [x] Time-in-trade display since position opened
+- [x] `position_opened_at` and `risk_per_trade` tracked in state
+
 ### P1: Live Engine Rubric
 
 - [ ] Define live parity rubric: backtest results as gold standard for live comparison

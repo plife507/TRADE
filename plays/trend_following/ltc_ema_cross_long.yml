@@ -1,0 +1,113 @@
+# concept: trend_following
+version: "3.0.0"
+name: "ltc_ema_cross_long"
+description: |
+  LTC long-only trend following on 5m exec.
+  Entry: EMA 20/50 crossover on 5m, confirmed by exec-TF trend direction,
+  with 1h EMA 50 bias and daily trend filter. Crossover must hold for 3 bars
+  to filter whipsaw entries.
+  Exit: first-hit (signal cross-back OR SL/TP).
+  Multi-timeframe: 5m execution, 1h structure/bias, D trend context.
+
+symbol: "LTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 5.0
+  max_drawdown_pct: 25.0
+  margin_mode: "isolated_usdt"
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  # Exec TF (5m) indicators
+  ema_20:
+    indicator: ema
+    params: { length: 20 }
+  ema_50:
+    indicator: ema
+    params: { length: 50 }
+  rsi_14:
+    indicator: rsi
+    params: { length: 14 }
+
+  # Medium TF (1h) bias filter
+  ema_50_1h:
+    indicator: ema
+    params: { length: 50 }
+    tf: "med_tf"
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: { left: 5, right: 5 }
+    - type: trend
+      key: trend
+      uses: swing
+  high_tf:
+    - type: swing
+      key: swing_D
+      params: { left: 3, right: 3 }
+    - type: trend
+      key: trend_D
+      uses: swing_D
+
+setups:
+  daily_bias_up:
+    any:
+      - ["trend_D.direction", "==", 1]
+      - ["trend_D.direction", "==", 0]
+
+  hourly_bias_up:
+    all:
+      - ["close", ">", "ema_50_1h"]
+
+  exec_trend_up:
+    all:
+      - ["trend.direction", "==", 1]
+
+actions:
+  entry_long:
+    all:
+      - setup: daily_bias_up
+      - setup: hourly_bias_up
+      - setup: exec_trend_up
+      - ["rsi_14", "<", 65]
+      - holds_for:
+          bars: 3
+          expr:
+            - ["ema_20", ">", "ema_50"]
+
+  exit_long:
+    any:
+      - ["ema_20", "cross_below", "ema_50"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0
+
+synthetic:
+  pattern: "trend_up_clean"
+  bars: 500
+  seed: 42
+
+expected:
+  min_trades: 1
+
+validation:
+  pattern: "trend_up_clean"
