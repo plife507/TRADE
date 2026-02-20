@@ -1069,8 +1069,7 @@ class RealtimeBootstrap:
                 
                 # Log stats periodically (at debug level)
                 self.logger.debug(
-                    f"RealtimeState stats: updates={current_update_counts}, "
-                    f"queue_size={stats.get('event_queue_size', 0)}"
+                    f"RealtimeState stats: updates={current_update_counts}"
                 )
                 
             except Exception as e:

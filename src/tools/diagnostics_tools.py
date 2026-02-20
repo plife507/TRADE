@@ -245,7 +245,6 @@ def get_websocket_status_tool() -> ToolResult:
                     "orderbook_count": stats.get("orderbook_count", 0),
                     "position_count": stats.get("position_count", 0),
                     "open_order_count": stats.get("open_order_count", 0),
-                    "event_queue_size": stats.get("event_queue_size", 0),
                     "update_counts": stats.get("update_counts", {}),
                 },
             },

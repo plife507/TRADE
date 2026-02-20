@@ -30,7 +30,6 @@ import time
 import threading
 from collections.abc import Callable
 from collections import defaultdict, deque
-from queue import Queue, Empty
 from typing import Any
 
 import pandas as pd
@@ -126,19 +125,14 @@ class RealtimeState:
         state.on_ticker_update(lambda t: print(f"New price: {t.last_price}"))
     """
     
-    def __init__(self, enable_event_queue: bool = True):
-        """
-        Initialize realtime state manager.
-        
-        Args:
-            enable_event_queue: Enable event queue for event-driven processing
-        """
+    def __init__(self):
+        """Initialize realtime state manager."""
         self.logger = get_logger()
-        
+
         # Locks for thread-safety
         self._lock = threading.RLock()
         self._callback_lock = threading.Lock()
-        
+
         # Public market data state
         self._tickers: dict[str, TickerData] = {}
         self._orderbooks: dict[str, OrderbookData] = {}
@@ -151,14 +145,11 @@ class RealtimeState:
         self._executions: deque[ExecutionData] = deque(maxlen=500)
         self._wallet: dict[str, WalletData] = {}  # {coin: wallet}
         self._account_metrics: AccountMetrics | None = None  # Unified account-level metrics
-        
+
         # Connection status
         self._public_ws_status = ConnectionStatus()
         self._private_ws_status = ConnectionStatus()
-        
-        self._event_queue_enabled = enable_event_queue
-        self._event_queue: Queue | None = Queue(maxsize=10000) if enable_event_queue else None
-        
+
         # Callbacks
         self._ticker_callbacks: list[Callable[[TickerData], None]] = []
         self._orderbook_callbacks: list[Callable[[OrderbookData], None]] = []
@@ -198,7 +189,7 @@ class RealtimeState:
             self._tickers[ticker.symbol] = ticker
             self._update_counts["ticker"] += 1
         
-        self._emit_event(EventType.TICKER_UPDATE, ticker, ticker.symbol)
+
         self._invoke_callbacks(self._ticker_callbacks, ticker)
     
     def get_ticker(self, symbol: str) -> TickerData | None:
@@ -249,8 +240,6 @@ class RealtimeState:
             self._update_counts["orderbook"] += 1
             callback_data = self._orderbooks.get(orderbook.symbol)
 
-        event_type = EventType.ORDERBOOK_SNAPSHOT if is_snapshot else EventType.ORDERBOOK_DELTA
-        self._emit_event(event_type, orderbook, orderbook.symbol)
         self._invoke_callbacks(self._orderbook_callbacks, callback_data)
     
     def apply_orderbook_delta(self, symbol: str, delta: dict):
@@ -260,7 +249,7 @@ class RealtimeState:
             if existing:
                 existing.apply_delta(delta)
                 self._update_counts["orderbook"] += 1
-                self._emit_event(EventType.ORDERBOOK_DELTA, existing, symbol)
+
                 self._invoke_callbacks(self._orderbook_callbacks, existing)
     
     def get_orderbook(self, symbol: str) -> OrderbookData | None:
@@ -292,8 +281,6 @@ class RealtimeState:
             self._klines[kline.symbol][kline.interval] = kline
             self._update_counts["kline"] += 1
         
-        event_type = EventType.KLINE_CLOSED if kline.is_closed else EventType.KLINE_UPDATE
-        self._emit_event(event_type, kline, kline.symbol)
         self._invoke_callbacks(self._kline_callbacks, kline)
     
     def get_kline(self, symbol: str, interval: str) -> KlineData | None:
@@ -494,8 +481,7 @@ class RealtimeState:
         with self._lock:
             self._recent_trades[trade.symbol].append(trade)
             self._update_counts["trade"] += 1
-        
-        self._emit_event(EventType.TRADE, trade, trade.symbol)
+
         self._invoke_callbacks(self._trade_callbacks, trade)
     
     def get_recent_trades(self, symbol: str, limit: int = 50) -> list[TradeData]:
@@ -522,8 +508,7 @@ class RealtimeState:
             else:
                 self._positions.pop(position.symbol, None)
             self._update_counts["position"] += 1
-        
-        self._emit_event(EventType.POSITION_UPDATE, position, position.symbol)
+
         self._invoke_callbacks(self._position_callbacks, position)
     
     def get_position(self, symbol: str) -> PositionData | None:
@@ -562,8 +547,7 @@ class RealtimeState:
             else:
                 self._orders.pop(order.order_id, None)
             self._update_counts["order"] += 1
-        
-        self._emit_event(EventType.ORDER_UPDATE, order, order.symbol)
+
         self._invoke_callbacks(self._order_callbacks, order)
     
     def get_order(self, order_id: str) -> OrderData | None:
@@ -593,8 +577,7 @@ class RealtimeState:
         with self._lock:
             self._executions.append(execution)
             self._update_counts["execution"] += 1
-        
-        self._emit_event(EventType.EXECUTION, execution, execution.symbol)
+
         self._invoke_callbacks(self._execution_callbacks, execution)
     
     def get_recent_executions(self, symbol: str | None = None, limit: int = 50) -> list[ExecutionData]:
@@ -619,8 +602,7 @@ class RealtimeState:
         with self._lock:
             self._wallet[wallet.coin] = wallet
             self._update_counts["wallet"] += 1
-        
-        self._emit_event(EventType.WALLET_UPDATE, wallet, wallet.coin)
+
         self._invoke_callbacks(self._wallet_callbacks, wallet)
     
     def get_wallet(self, coin: str = "USDT") -> WalletData | None:
@@ -656,8 +638,7 @@ class RealtimeState:
         with self._lock:
             self._account_metrics = metrics
             self._update_counts["account_metrics"] += 1
-        
-        self._emit_event(EventType.WALLET_UPDATE, metrics, "account")
+
         self._invoke_callbacks(self._account_metrics_callbacks, metrics)
     
     def get_account_metrics(self) -> AccountMetrics | None:
@@ -687,7 +668,6 @@ class RealtimeState:
         with self._lock:
             self._public_ws_status.state = ConnectionState.CONNECTED
             self._public_ws_status.connected_at = time.time()
-        self._emit_event(EventType.CONNECTED, {"stream": "public"})
 
     def set_public_ws_disconnected(self, error: str | None = None):
         """Mark public WebSocket as disconnected."""
@@ -696,21 +676,18 @@ class RealtimeState:
             self._public_ws_status.disconnected_at = time.time()
             if error:
                 self._public_ws_status.last_error = error
-        self._emit_event(EventType.DISCONNECTED, {"stream": "public", "error": error})
 
     def set_public_ws_reconnecting(self):
         """Mark public WebSocket as reconnecting."""
         with self._lock:
             self._public_ws_status.state = ConnectionState.RECONNECTING
             self._public_ws_status.reconnect_count += 1
-        self._emit_event(EventType.RECONNECTING, {"stream": "public"})
 
     def set_private_ws_connected(self):
         """Mark private WebSocket as connected."""
         with self._lock:
             self._private_ws_status.state = ConnectionState.CONNECTED
             self._private_ws_status.connected_at = time.time()
-        self._emit_event(EventType.CONNECTED, {"stream": "private"})
 
     def set_private_ws_disconnected(self, error: str | None = None):
         """Mark private WebSocket as disconnected."""
@@ -719,15 +696,13 @@ class RealtimeState:
             self._private_ws_status.disconnected_at = time.time()
             if error:
                 self._private_ws_status.last_error = error
-        self._emit_event(EventType.DISCONNECTED, {"stream": "private", "error": error})
 
     def set_private_ws_reconnecting(self):
         """Mark private WebSocket as reconnecting."""
         with self._lock:
             self._private_ws_status.state = ConnectionState.RECONNECTING
             self._private_ws_status.reconnect_count += 1
-        self._emit_event(EventType.RECONNECTING, {"stream": "private"})
-    
+
     def get_public_ws_status(self) -> ConnectionStatus:
         """Get public WebSocket status."""
         return self._public_ws_status
@@ -790,54 +765,6 @@ class RealtimeState:
         return True
 
     # ==========================================================================
-    # Event Queue
-    # ==========================================================================
-    
-    def _emit_event(self, event_type: EventType, data, symbol: str = ""):
-        """Emit event to the queue if enabled."""
-        if self._event_queue_enabled and self._event_queue:
-            event = RealtimeEvent(
-                event_type=event_type,
-                data=data,
-                symbol=symbol,
-            )
-            try:
-                self._event_queue.put_nowait(event)
-            except Exception:
-                self.logger.warning("Event queue full, dropping event")
-    
-    def get_event(self, timeout: float | None = None) -> RealtimeEvent | None:
-        """Get next event from queue (blocking)."""
-        if not self._event_queue:
-            return None
-        try:
-            return self._event_queue.get(timeout=timeout)
-        except Empty:
-            return None
-
-    def get_event_nowait(self) -> RealtimeEvent | None:
-        """Get next event from queue (non-blocking)."""
-        if not self._event_queue:
-            return None
-        try:
-            return self._event_queue.get_nowait()
-        except Empty:
-            return None
-    
-    def event_queue_size(self) -> int:
-        """Get current event queue size."""
-        return self._event_queue.qsize() if self._event_queue else 0
-    
-    def clear_event_queue(self):
-        """Clear all pending events."""
-        if self._event_queue:
-            while not self._event_queue.empty():
-                try:
-                    self._event_queue.get_nowait()
-                except Empty:
-                    break
-    
-    # ==========================================================================
     # Callbacks
     # ==========================================================================
     
@@ -882,7 +809,6 @@ class RealtimeState:
             self._account_metrics = None
             self._update_counts.clear()
 
-        self.clear_event_queue()
         self.logger.info("RealtimeState cleared")
 
     def clear_market_data(self):
@@ -935,7 +861,6 @@ class RealtimeState:
                 "open_order_count": len(self._orders),
                 "execution_count": len(self._executions),
                 "update_counts": dict(self._update_counts),
-                "event_queue_size": self.event_queue_size(),
                 "public_ws": self._public_ws_status.to_dict(),
                 "private_ws": self._private_ws_status.to_dict(),
             }
