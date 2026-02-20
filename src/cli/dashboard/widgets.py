@@ -140,41 +140,56 @@ def _state_badge(state: DashboardState) -> Text:
     ep = state.engine_phase
     t = Text()
 
+    badge = ""
+    hint = ""
+    badge_style = "dim"
+
     if rs == "ERROR" or ep == "ERROR":
-        t.append(" ERROR ", style="bold white on red")
+        badge, badge_style = " ERROR ", "bold white on red"
+        hint = "engine encountered an error"
     elif state.is_paused:
-        t.append(" PAUSED ", style="bold black on yellow")
+        badge, badge_style = " PAUSED ", "bold black on yellow"
+        hint = "signal evaluation paused, indicators still updating"
     elif rs == "RECONNECTING":
-        t.append(" RECONNECTING ", style="bold white on red")
+        badge, badge_style = " RECONNECTING ", "bold white on red"
+        hint = "lost connection, attempting to reconnect"
     elif rs == "STOPPING":
-        t.append(" SHUTTING DOWN ", style="bold white on yellow")
+        badge, badge_style = " SHUTTING DOWN ", "bold white on yellow"
+        hint = "engine is stopping gracefully"
     elif rs == "STOPPED":
-        t.append(" STOPPED ", style="bold white on rgb(80,80,80)")
+        badge, badge_style = " STOPPED ", "bold white on rgb(80,80,80)"
+        hint = "engine has stopped"
     elif rs == "STARTING":
-        t.append(" STARTING ", style="bold black on cyan")
+        badge, badge_style = " STARTING ", "bold black on cyan"
+        hint = "connecting to exchange"
+    elif rs == "RUNNING" and state.bars_processed > 0:
+        badge, badge_style = " RUNNING ", "bold white on green"
+        hint = "live, evaluating signals each bar"
     elif rs == "RUNNING" and state.bars_processed == 0:
-        # Runner is live but no bars yet — show warmup or waiting
         if state.warmup_target > 0 and state.warmup_bars < state.warmup_target:
             pct = int(state.warmup_bars / state.warmup_target * 100)
             remaining = state.warmup_target - state.warmup_bars
             eta = _fmt_eta(remaining, state.exec_tf) if remaining > 0 else ""
             eta_str = f" {eta}" if eta else ""
-            t.append(f" WARMING UP {pct}%{eta_str} ", style="bold black on cyan")
+            badge, badge_style = f" WARMING UP {pct}%{eta_str} ", "bold black on cyan"
+            hint = "computing indicators from historical data"
         else:
-            tf = state.exec_tf or "candle"
-            t.append(f" WAITING {tf} CLOSE ", style="bold black on yellow")
+            badge, badge_style = " READY ", "bold white on green"
+            hint = f"indicators loaded, waiting for next {state.exec_tf} candle close"
     elif ep in ("CREATED", "WARMING"):
         if state.warmup_target > 0:
             pct = min(100, int(state.warmup_bars / max(state.warmup_target, 1) * 100))
-            t.append(f" WARMING UP {pct}% ", style="bold black on cyan")
+            badge, badge_style = f" WARMING UP {pct}% ", "bold black on cyan"
+            hint = "loading historical data for indicators"
         else:
-            t.append(" WARMING UP ", style="bold black on cyan")
-    elif rs == "RUNNING" and ep == "READY":
-        t.append(" WAITING ", style="bold black on yellow")
-    elif rs == "RUNNING" and ep == "RUNNING":
-        t.append(" RUNNING ", style="bold white on green")
+            badge, badge_style = " WARMING UP ", "bold black on cyan"
+            hint = "loading historical data"
     else:
-        t.append(f" {rs} ", style="dim")
+        badge, badge_style = f" {rs} ", "dim"
+
+    t.append(badge, style=badge_style)
+    if hint:
+        t.append(f"  {hint}", style="dim italic")
 
     return t
 

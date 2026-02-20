@@ -839,12 +839,15 @@ class LiveDataProvider:
             await self._load_tf_bars("high_tf", unique_tfs["high_tf"])
 
         # WU-05: Initialize structure states for each TF if Play has structures
-        # Track structure warmup readiness alongside indicator warmup
         if self._play.has_structures:
             self._init_structure_states()
 
+        # WU-06: Warm up structure detectors with historical bars
+        # Must happen AFTER _init_structure_states (creates the objects)
+        # AND after indicator init (structures need indicator values)
+        self._warmup_structures()
+
         # WU-02, WU-04: Check warmup for all TFs (not just exec)
-        # All active TFs must have sufficient bars with valid (non-NaN) indicators
         self._check_all_tf_warmup()
 
     async def _load_tf_bars(self, tf_role: str, tf_str: str) -> None:
@@ -915,6 +918,50 @@ class LiveDataProvider:
             self._global_bar_count[tf_role] = len(bars)
 
             logger.info(f"Loaded {len(bars)} bars for {tf_role} ({tf_str}) warm-up")
+
+    def _warmup_structures(self) -> None:
+        """Feed historical bars through structure detectors for warmup.
+
+        Must be called AFTER _init_structure_states() and indicator initialization.
+        """
+        from src.structures import BarData
+
+        roles = [
+            ("low_tf", self._low_tf_buffer, self._low_tf_indicators, self._low_tf_structure),
+            ("med_tf", self._med_tf_buffer, self._med_tf_indicators, self._med_tf_structure),
+            ("high_tf", self._high_tf_buffer, self._high_tf_indicators, self._high_tf_structure),
+        ]
+
+        for tf_role, buffer, indicator_cache, structure_state in roles:
+            if structure_state is None or indicator_cache is None or not buffer:
+                continue
+
+            for bar_idx, candle in enumerate(buffer):
+                ind_vals: dict[str, float] = {}
+                for name in indicator_cache._indicators.keys():
+                    try:
+                        val = indicator_cache.get(name, bar_idx)
+                        if not np.isnan(val):
+                            ind_vals[name] = val
+                    except (IndexError, KeyError):
+                        pass
+
+                bar_data = BarData(
+                    idx=bar_idx,
+                    open=candle.open,
+                    high=candle.high,
+                    low=candle.low,
+                    close=candle.close,
+                    volume=candle.volume,
+                    indicators=ind_vals,
+                )
+                try:
+                    structure_state.update(bar_data)
+                except Exception as e:
+                    if bar_idx == 0:
+                        logger.warning(f"Structure warmup error on {tf_role} bar {bar_idx}: {e}")
+
+            logger.info(f"Warmed up {tf_role} structures with {len(buffer)} bars")
 
     def _get_indicator_specs_for_tf(self, tf_role: str) -> list[dict]:
         """Get indicator specs for a specific TF role from Play.
@@ -1862,7 +1909,7 @@ class LiveExchange:
                 tier1 = next(
                     (t for t in tiers if t.get("isLowestRisk") == 1), tiers[0]
                 )
-                exchange_max_lev = int(tier1.get("maxLeverage", 100))
+                exchange_max_lev = int(float(tier1.get("maxLeverage", 100)))
                 exchange_mmr = float(tier1.get("maintenanceMarginRate", "0.005"))
 
                 if account.max_leverage > exchange_max_lev:

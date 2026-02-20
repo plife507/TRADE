@@ -9,7 +9,11 @@ from rich.text import Text
 from src.cli.dashboard.order_tracker import OrderTracker
 
 
-def build_orders_text(tracker: OrderTracker, max_lines: int = 40) -> RenderableType:
+def build_orders_text(
+    tracker: OrderTracker,
+    scroll_offset: int = 0,
+    max_lines: int = 40,
+) -> RenderableType:
     """Tab 6: Order status and history, using Rich Table."""
     # Summary line
     submitted, filled, failed = tracker.get_summary()
@@ -24,9 +28,18 @@ def build_orders_text(tracker: OrderTracker, max_lines: int = 40) -> RenderableT
     else:
         summary.append("0 failed", style="dim")
 
-    events = tracker.get_events(n=max_lines)
+    events = tracker.get_events(n=200)
     if not events:
         return Group(summary, Text(" No order events yet...", style="dim italic"))
+
+    total = len(events)
+    max_offset = max(0, total - max_lines)
+    offset = min(scroll_offset, max_offset)
+    visible = events[offset:offset + max_lines]
+
+    # Scroll indicator
+    if total > max_lines:
+        summary.append(f"  {offset + 1}-{offset + len(visible)}/{total} (up/down)", style="dim")
 
     table = Table(
         show_header=True,
@@ -43,7 +56,7 @@ def build_orders_text(tracker: OrderTracker, max_lines: int = 40) -> RenderableT
     table.add_column("Price", justify="right", width=12)
     table.add_column("Order ID", style="dim", width=13)
 
-    for event in events:
+    for event in visible:
         ts_str = time.strftime("%H:%M:%S", time.localtime(event.timestamp))
 
         # Direction

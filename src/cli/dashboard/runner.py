@@ -117,31 +117,43 @@ def run_dashboard(
 
     interval = 1.0 / refresh_hz
 
-    # Content height budget: terminal minus status(5) + tab_bar(1) + stats(1) + help(1) + padding(2)
-    content_lines = max(10, console.height - 10)
-
     def _build() -> RenderableType:
         try:
+            # Recalculate content height every frame (tracks terminal resize)
+            # Budget: terminal height minus chrome
+            #   status panel: 7 (5 lines + 2 border)
+            #   tab bar: 1
+            #   tab panel border: 2
+            #   stats: 1
+            #   help: 1
+            #   quit confirm (if shown): 3
+            #   table headers per TF group: ~3 each (title + header + separator)
+            # Conservative: subtract 18 for chrome, leave rest for data rows
+            maxl = max(8, console.height - 18)
+
             # Status header (Panel with cyan border)
             status_panel = build_status_panel(state, handler)
 
             # Tab bar
             tab_bar = build_tab_bar(tab_state.current_tab)
 
-            # Tab content
+            # Scroll params passed to each tab
+            offset = tab_state.scroll_offset
+
+            # Tab content — each builder handles its own scrolling
             tab_content: RenderableType
             if tab_state.current_tab == 1:
-                tab_content = build_overview_text(state, tab_state.meta_mode)
+                tab_content = build_overview_text(state, tab_state.meta_mode, scroll_offset=offset, max_lines=maxl)
             elif tab_state.current_tab == 2:
-                tab_content = build_indicators_text(state)
+                tab_content = build_indicators_text(state, scroll_offset=offset, max_lines=maxl)
             elif tab_state.current_tab == 3:
-                tab_content = build_structures_text(state)
+                tab_content = build_structures_text(state, scroll_offset=offset, max_lines=maxl)
             elif tab_state.current_tab == 4:
-                tab_content = build_log_text(handler, max_lines=content_lines, log_filter=tab_state.log_filter)
+                tab_content = build_log_text(handler, max_lines=maxl, log_filter=tab_state.log_filter, scroll_offset=offset)
             elif tab_state.current_tab == 5:
-                tab_content = build_play_text(state, max_lines=content_lines, scroll_offset=tab_state.scroll_offset)
+                tab_content = build_play_text(state, scroll_offset=offset, max_lines=maxl)
             elif tab_state.current_tab == 6:
-                tab_content = build_orders_text(tracker, max_lines=content_lines)
+                tab_content = build_orders_text(tracker, scroll_offset=offset, max_lines=maxl)
             else:
                 tab_content = Text("")
 

@@ -1,0 +1,175 @@
+version: "3.0.0"
+name: "dashboard_test"
+description: |
+  Kitchen-sink play for dashboard testing.
+  Loads many indicators and all structure types across 3 timeframes.
+  Not a real strategy — just exercises the dashboard display.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "4h"
+  high_tf: "12h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 3.0
+  max_drawdown_pct: 50.0
+  margin_mode: "isolated_usdt"
+  fee_model: { taker_bps: 5.5, maker_bps: 2.0 }
+  slippage_bps: 2.0
+
+features:
+  # --- Exec TF (5m) indicators ---
+  ema_9:
+    indicator: ema
+    params: { length: 9 }
+  ema_21:
+    indicator: ema
+    params: { length: 21 }
+  ema_50:
+    indicator: ema
+    params: { length: 50 }
+  rsi_14:
+    indicator: rsi
+    params: { length: 14 }
+  atr_14:
+    indicator: atr
+    params: { length: 14 }
+  macd_12_26_9:
+    indicator: macd
+    params: { fast: 12, slow: 26, signal: 9 }
+  bbands_20:
+    indicator: bbands
+    params: { length: 20, std: 2.0 }
+  adx_14:
+    indicator: adx
+    params: { length: 14 }
+  stoch_14:
+    indicator: stoch
+    params: { k: 14, d: 3, smooth_k: 3 }
+  supertrend_10:
+    indicator: supertrend
+    params: { length: 10, multiplier: 3.0 }
+  vwap:
+    indicator: vwap
+  obv:
+    indicator: obv
+  cmf_20:
+    indicator: cmf
+    params: { length: 20 }
+  cci_20:
+    indicator: cci
+    params: { length: 20 }
+
+  # --- Med TF (4h) indicators ---
+  ema_50_4h:
+    indicator: ema
+    params: { length: 50 }
+    tf: "4h"
+  rsi_14_4h:
+    indicator: rsi
+    params: { length: 14 }
+    tf: "4h"
+  atr_14_4h:
+    indicator: atr
+    params: { length: 14 }
+    tf: "4h"
+
+  # --- High TF (12h) indicators ---
+  ema_50_12h:
+    indicator: ema
+    params: { length: 50 }
+    tf: "12h"
+  rsi_14_12h:
+    indicator: rsi
+    params: { length: 14 }
+    tf: "12h"
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: { left: 5, right: 5 }
+    - type: trend
+      key: trend
+      uses: swing
+    - type: market_structure
+      key: ms
+      uses: swing
+    - type: zone
+      key: demand
+      uses: swing
+      params: { zone_type: demand, width_atr: 1.0 }
+    - type: zone
+      key: supply
+      uses: swing
+      params: { zone_type: supply, width_atr: 1.0 }
+    - type: rolling_window
+      key: rolling_high_20
+      params: { mode: max, size: 20, source: high }
+
+  med_tf:
+    - type: swing
+      key: swing_4h
+      params: { left: 5, right: 5 }
+    - type: trend
+      key: trend_4h
+      uses: swing_4h
+    - type: fibonacci
+      key: fib_4h
+      uses: [swing_4h, trend_4h]
+      params:
+        levels: [0.382, 0.5, 0.618, 0.786]
+        mode: retracement
+        use_trend_anchor: true
+        use_paired_anchor: false
+
+  high_tf:
+    - type: swing
+      key: swing_12h
+      params: { left: 3, right: 3 }
+    - type: trend
+      key: trend_12h
+      uses: swing_12h
+    - type: fibonacci
+      key: fib_12h
+      uses: [swing_12h, trend_12h]
+      params:
+        levels: [0.382, 0.5, 0.618]
+        mode: retracement
+        use_trend_anchor: true
+        use_paired_anchor: false
+
+actions:
+  entry_long:
+    all:
+      - ["ema_9", ">", "ema_21"]
+      - ["rsi_14", "<", 70]
+      - ["supertrend_10.direction", "==", 1]
+  exit_long:
+    all:
+      - ["ema_9", "<", "ema_21"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+
+risk_model:
+  stop_loss:
+    type: percent
+    value: 3.0
+  take_profit:
+    type: percent
+    value: 6.0
+  sizing:
+    model: percent_equity
+    value: 50.0
+    max_leverage: 3.0
+
+synthetic:
+  pattern: trending_up
+  bars_per_tf: 500
+  seed: 42

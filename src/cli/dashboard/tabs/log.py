@@ -15,7 +15,6 @@ def _filter_lines(lines: list[str], log_filter: int) -> list[str]:
     if label == "all":
         return lines
     if label == "info+":
-        # Exclude DEBUG lines
         return [l for l in lines if "[DEBUG]" not in l]
     if label == "warn+":
         return [l for l in lines if any(
@@ -32,23 +31,30 @@ def build_log_text(
     handler: DashboardLogHandler,
     max_lines: int = 40,
     log_filter: int = 0,
+    scroll_offset: int = 0,
 ) -> RenderableType:
-    """Tab 4: Scrolling log output with severity filter.
-
-    Args:
-        handler: Log handler with buffered lines.
-        max_lines: Max visible lines.
-        log_filter: Index into LOG_FILTERS.
-    """
+    """Tab 4: Scrolling log output with severity filter and scroll support."""
     lines = handler.get_lines()
     lines = _filter_lines(lines, log_filter)
-    visible = lines[-max_lines:]
 
+    total = len(lines)
     label = LOG_FILTERS[log_filter] if log_filter < len(LOG_FILTERS) else "?"
-    header = Text(f" Filter: [{label}]  (press f to cycle)", style="dim")
 
-    if not visible:
+    header = Text()
+    header.append(f" Filter: [{label}] (f to cycle)", style="dim")
+
+    if not lines:
         return Group(header, Text(" No log output yet...", style="dim italic"))
+
+    # Scroll: default to bottom (newest logs), scroll_offset moves up from bottom
+    # offset=0 means "show the last max_lines" (tail behavior)
+    # offset>0 means "scroll up N lines from the bottom"
+    end = max(0, total - scroll_offset)
+    start = max(0, end - max_lines)
+    visible = lines[start:end]
+
+    if total > max_lines:
+        header.append(f"  {start + 1}-{end}/{total} (up/down)", style="dim")
 
     t = Text()
     for line in visible:
