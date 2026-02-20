@@ -115,7 +115,7 @@ def _setup_backtest_subcommands(subparsers) -> None:
     # Import available patterns from synthetic data module
     from src.forge.validation import PATTERN_GENERATORS
     run_parser.add_argument("--synthetic-pattern", choices=list(PATTERN_GENERATORS.keys()), default=None, help="Override pattern from play's synthetic.pattern")
-    run_parser.add_argument("--debug", action="store_true", default=False, help="Enable verbose engine tracing (bar OHLCV, signal results, position changes)")
+    run_parser.add_argument("--trace", action="store_true", default=False, dest="engine_trace", help="Enable verbose engine tracing (bar OHLCV, signal results, position changes)")
 
     # backtest preflight
     preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")

@@ -478,6 +478,21 @@ class PlayEngine:
             self._total_signals += 1
             self._last_signal_ts = candle.ts_close
 
+            # Verbose: log indicator snapshot at signal bars (useful for "what triggered this?")
+            if is_verbose_enabled() and self.is_backtest:
+                snapshot = self._build_snapshot_view(bar_index, candle)
+                if snapshot is not None:
+                    snap_vals: dict[str, Any] = {}
+                    try:
+                        for key in snapshot.available_indicators:
+                            val = snapshot.indicator(key)
+                            if val is not None:
+                                snap_vals[key] = val
+                    except Exception:
+                        pass
+                    if snap_vals:
+                        verbose_log(self._play_hash, "Indicator snapshot at signal", bar_idx=bar_index, **snap_vals)
+
             # 7.3: Log signal evaluation result
             if is_debug_enabled() and self.is_backtest:
                 sl = signal.metadata.get("stop_loss") if signal.metadata else None
@@ -1173,17 +1188,20 @@ class PlayEngine:
         if self._quote_feed is not None:
             signal, signal_ts = self._evaluate_with_1m_subloop(bar_index, candle, position)
 
-            # Verbose: one-shot exec-bar trace after subloop completes
+            # Verbose: exec-bar signal trace (only when signal fires or first 3 bars)
             if is_verbose_enabled() and self._signal_evaluator is not None:
-                snapshot = self._build_snapshot_view(bar_index, candle)
-                if snapshot is not None:
-                    has_pos = position is not None
-                    pos_side = position.side.lower() if position else None
-                    _, trace = self._signal_evaluator.evaluate_with_trace(
-                        snapshot, has_pos, pos_side
-                    )
-                    for line in trace.format_lines():
-                        verbose_log(self._play_hash, line, bar_idx=bar_index)
+                # Only trace when: signal fired, or first 3 post-warmup bars
+                should_trace = (signal is not None) or (self._bars_processed <= 3)
+                if should_trace:
+                    snapshot = self._build_snapshot_view(bar_index, candle)
+                    if snapshot is not None:
+                        has_pos = position is not None
+                        pos_side = position.side.lower() if position else None
+                        _, trace = self._signal_evaluator.evaluate_with_trace(
+                            snapshot, has_pos, pos_side
+                        )
+                        for line in trace.format_lines():
+                            verbose_log(self._play_hash, line, bar_idx=bar_index)
 
             return signal
 
