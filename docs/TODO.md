@@ -25,6 +25,7 @@ Single source of truth for all open work, bugs, and task progress.
 | Debug & Logging Redesign (P6) | DONE | 2026-02-19 | 8 phases: log plumbing, verbosity flags, signal trace, metrics surfacing, JSON consistency, backtest journal |
 | Live Dashboard Redesign (P7) | DONE | 2026-02-19 | Modular dashboard package, Rich rendering, tiered refresh, signal proximity |
 | Structure Detection Audit | DONE | 2026-02-20 | Audit of swing/trend/MS on real BTC data. See `docs/STRUCTURE_DETECTION_AUDIT.md` |
+| Dead Code Audit | DONE | 2026-02-20 | 44 findings, ~800 lines dead code in live path. See `docs/DEAD_CODE_AUDIT.md` |
 
 Full gate details with per-item descriptions: `memory/completed_work.md`
 
@@ -70,6 +71,24 @@ Items evaluated during codebase review, confirmed low-risk, deferred to appropri
 ---
 
 ## Open Feature Work
+
+### P9: Dead Code Cleanup
+
+See `docs/DEAD_CODE_AUDIT.md` for full findings (44 items, ~800 lines).
+
+#### Phase 1: Delete Obviously Dead Code
+- [ ] Remove stub methods, dead attributes, SubscriptionConfig factories
+- [ ] Remove MarketData convenience methods (zero callers)
+- [ ] Remove RealtimeState unused callbacks and granular clear methods
+- [ ] Remove PositionManager dead methods (`set_prefer_websocket`, `get_trade_history`, `get_performance_summary`)
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+#### Phase 2: Evaluate for P2 Before Deleting
+- [ ] Decide: keep or delete RiskManager RR utilities (needed for live position sizing?)
+- [ ] Decide: keep or delete OrderExecutor `wait_for_fill()` (needed for live order management?)
+- [ ] Decide: keep or delete ExchangeManager `reconcile_orphaned_orders()` (needed for live safety?)
+- [ ] Delete anything not needed for P2
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
 
 ### P6: Debug & Logging Redesign — DONE (2026-02-19)
 
