@@ -23,6 +23,8 @@ Single source of truth for all open work, bugs, and task progress.
 | Codebase Review Gate 8: LOW Cleanup | DONE | 2026-02-17 | 12 fixed, 18 evaluated OK, 8 not-a-bug. 1 deferred (DATA-017) |
 | CLI & Tools Module Splitting (P4.5) | DONE | 2026-02-19 | Phases 1-5 complete. 5 gates passed. Net -113 lines deduplication |
 | Debug & Logging Redesign (P6) | DONE | 2026-02-19 | 8 phases: log plumbing, verbosity flags, signal trace, metrics surfacing, JSON consistency, backtest journal |
+| Live Dashboard Redesign (P7) | DONE | 2026-02-19 | Modular dashboard package, Rich rendering, tiered refresh, signal proximity |
+| Structure Detection Audit | DONE | 2026-02-20 | Audit of swing/trend/MS on real BTC data. See `docs/STRUCTURE_DETECTION_AUDIT.md` |
 
 Full gate details with per-item descriptions: `memory/completed_work.md`
 
@@ -166,6 +168,36 @@ Redesigned the demo/live trading dashboard from monolithic `src/cli/live_dashboa
 - [x] R-multiple display (`(+1.3R)`) when SL is set
 - [x] Time-in-trade display since position opened
 - [x] `position_opened_at` and `risk_per_trade` tracked in state
+
+### P8: Structure Detection Fixes
+
+See `docs/STRUCTURE_DETECTION_AUDIT.md` for full audit report.
+Audit script: `scripts/analysis/structure_audit.py`
+
+#### Phase 1: Fix Config Defaults
+- [ ] Change `confirmation_close` default to `True` in `market_structure.py` (or document that ICT/SMC plays MUST set it)
+- [ ] Add recommended defaults to play templates: `min_atr_move: 0.5` or `strict_alternation: true`
+- [ ] Document trend/MS timing mismatch in `docs/PLAY_DSL_REFERENCE.md` — plays must not expect both to agree on same bar
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+#### Phase 2: Trend Detector Review
+- [ ] Investigate why `strength=2` never fires on real BTC data (4h/12h/D, 6 months)
+- [ ] Consider reducing consecutive-pair requirement or increasing wave history size
+- [ ] Re-run `scripts/analysis/structure_audit.py` to verify improvement
+- [ ] **GATE**: Trend reaches `strength=2` at least once on 6-month BTC 4h data
+
+#### Phase 3: Trend/MS Synchronization (Design Decision)
+- [ ] Decide approach: (a) accept mismatch as intentional, (b) make MS depend on trend, (c) add pending CHoCH, (d) speed up trend, (e) slow down MS
+- [ ] Implement chosen approach
+- [ ] Re-run audit — trend/MS agreement should exceed 50%
+- [ ] **GATE**: `python trade_cli.py validate standard` passes
+
+#### Phase 4: CHoCH Correctness
+- [ ] Track which swing produced the last BOS (not just most recent swing)
+- [ ] CHoCH only valid when breaking the BOS-producing swing level
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+---
 
 ### P1: Live Engine Rubric
 
