@@ -165,7 +165,7 @@ def handle_backtest_run(args) -> int:
         console.print(Panel(
             f"[bold cyan]BACKTEST RUN[/]\n"
             f"Play: {args.play}\n"
-            f"DataEnv: {args.data_env} | Smoke: {args.smoke} | Strict: {args.strict}",
+            f"DataEnv: {args.data_env} | Smoke: {args.smoke}",
             border_style="cyan"
         ))
 
@@ -175,7 +175,6 @@ def handle_backtest_run(args) -> int:
         start=start,
         end=end,
         smoke=args.smoke,
-        strict=args.strict,
         write_artifacts=not args.no_artifacts,
         artifacts_dir=artifacts_dir,
         plays_dir=plays_dir,

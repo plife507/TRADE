@@ -118,6 +118,10 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "anchor_high": FeatureOutputType.FLOAT,  # Swing high (0% reference)
         "anchor_low": FeatureOutputType.FLOAT,   # Swing low (100% reference)
         "range": FeatureOutputType.FLOAT,        # high - low
+        # Anchor metadata
+        "anchor_direction": FeatureOutputType.ENUM,   # "bullish", "bearish", ""
+        "anchor_hash": FeatureOutputType.ENUM,        # Unique hash for anchor pair
+        "anchor_trend_direction": FeatureOutputType.INT,  # Trend direction at anchor (1/-1/0)
     },
     "rolling_window": {
         "value": FeatureOutputType.FLOAT,         # Rolling min/max value

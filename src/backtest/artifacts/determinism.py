@@ -202,6 +202,7 @@ def compare_runs(
 def verify_determinism_rerun(
     run_path: Path,
     sync: bool = False,
+    plays_dir: Path | None = None,
 ) -> DeterminismResult:
     """
     Verify determinism by re-running the same Play and comparing outputs.
@@ -209,7 +210,8 @@ def verify_determinism_rerun(
     Args:
         run_path: Path to existing run's artifact folder
         sync: Whether to allow data sync during re-run
-        
+        plays_dir: Override Play directory (propagated to re-run)
+
     Returns:
         DeterminismResult with comparison details
     """
@@ -233,23 +235,32 @@ def verify_determinism_rerun(
     play_id = manifest.get("play_id", "")
     window_start = manifest.get("window_start", "")
     window_end = manifest.get("window_end", "")
-    
+
     if not play_id:
         result.passed = False
         result.errors.append("Manifest missing play_id")
         return result
-    
+
+    # Extract data_env from manifest's data_source_id (e.g., "duckdb_live" -> "live")
+    data_source_id = manifest.get("data_source_id", "duckdb_live")
+    if data_source_id.startswith("duckdb_"):
+        data_env = data_source_id.removeprefix("duckdb_")
+    else:
+        data_env = "live"  # Default for non-duckdb sources
+
     result.run_a_play_id = play_id
-    
+
     # Import here to avoid circular imports
     from src.tools.backtest_play_tools import backtest_run_play_tool
-    
-    # Re-run the Play with the same window
+
+    # Re-run the Play with the same window, env, and plays_dir
     rerun_result = backtest_run_play_tool(
         play_id=play_id,
+        env=data_env,
         start=window_start,
         end=window_end,
         sync=sync,
+        plays_dir=plays_dir,
     )
     
     if not rerun_result.success:

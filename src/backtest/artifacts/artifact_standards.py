@@ -825,7 +825,14 @@ def validate_artifacts(run_folder: Path) -> ArtifactValidationResult:
     if result.files_missing:
         result.passed = False
         result.errors.append(f"Missing required files: {', '.join(sorted(result.files_missing))}")
-    
+
+    # Verify run folder hash integrity (manifest vs folder name)
+    if "run_manifest.json" in result.files_found:
+        folder_ok, folder_error = verify_run_folder(run_folder)
+        if not folder_ok:
+            result.passed = False
+            result.errors.append(f"Run folder verification failed: {folder_error}")
+
     # Validate trades.parquet columns (Phase 3.2: Parquet primary)
     trades_path = run_folder / "trades.parquet"
     if trades_path.exists():

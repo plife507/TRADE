@@ -227,8 +227,9 @@ class IncrementalDerivedZone(BaseIncrementalDetector):
 
         # REGEN PATH: Only on source version change (new swing pivot confirmed)
         if current_source_version != self._source_version:
-            self._regenerate_zones(bar_idx, bar)
+            # Update version BEFORE regen so _compute_zone_hash uses current version
             self._source_version = current_source_version  # type: ignore[assignment]
+            self._regenerate_zones(bar_idx, bar)
 
         # INTERACTION PATH: Every exec close (check touches, breaks, age updates)
         self._update_zone_interactions(bar_idx, bar)

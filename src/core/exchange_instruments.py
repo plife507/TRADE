@@ -8,6 +8,7 @@ Handles:
 - Price precision utilities
 """
 
+import math
 import time
 from typing import TYPE_CHECKING
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
@@ -68,10 +69,10 @@ def round_price(manager: "ExchangeManager", symbol: str, price: float) -> float:
     info = get_instrument_info(manager, symbol)
     price_filter = info.get("priceFilter", {})
     tick_size = float(price_filter.get("tickSize", "0.01"))
-    
-    # Round to tick size
-    rounded = float(Decimal(str(price)).quantize(
-        Decimal(str(tick_size)), 
+
+    # Round to nearest tick-size multiple (works for non-power-of-10 steps too)
+    rounded = float(Decimal(str(round(price / tick_size) * tick_size)).quantize(
+        Decimal(str(tick_size)),
         rounding=ROUND_HALF_UP
     ))
     return rounded
@@ -148,8 +149,10 @@ def calculate_qty(
     # Calculate base quantity
     qty = usd_amount / price
 
-    # Round down to step size
-    qty = float(Decimal(str(qty)).quantize(Decimal(str(qty_step)), rounding=ROUND_DOWN))
+    # Round down to step-size multiple (works for non-power-of-10 steps too)
+    qty = float(Decimal(str(math.floor(qty / qty_step) * qty_step)).quantize(
+        Decimal(str(qty_step)), rounding=ROUND_DOWN
+    ))
 
     # Ensure minimum - raise detailed error
     if qty < min_qty:

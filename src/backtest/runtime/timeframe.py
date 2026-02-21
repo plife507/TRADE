@@ -192,9 +192,17 @@ def ceil_to_tf_close(dt: datetime, tf: str) -> datetime:
     # tzinfo in the returned datetime.
     original_tz = dt.tzinfo
 
+    # H20 FIX: For naive datetimes, assume UTC to avoid local-timezone drift.
+    # Python's datetime.timestamp() treats naive datetimes as local time,
+    # but all TRADE datetimes are UTC by convention.
+    if original_tz is None:
+        from datetime import timezone
+        dt_for_ts = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt_for_ts = dt
+
     # Convert to minutes since epoch for modulo calculation
-    # Note: timestamp() returns UTC epoch seconds for both naive and aware datetimes
-    total_minutes = int(dt.timestamp() // 60)
+    total_minutes = int(dt_for_ts.timestamp() // 60)
 
     # Check if already on boundary
     remainder = total_minutes % tf_min

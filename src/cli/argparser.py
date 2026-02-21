@@ -98,8 +98,6 @@ def _setup_backtest_subcommands(subparsers) -> None:
     run_parser.add_argument("--start", help="Window start (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
     run_parser.add_argument("--end", help="Window end (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
     run_parser.add_argument("--smoke", action="store_true", help="Smoke mode: fast wiring check with small window")
-    run_parser.add_argument("--strict", action="store_true", default=True, help="Strict indicator access (default: True)")
-    run_parser.add_argument("--no-strict", action="store_false", dest="strict", help="Disable strict indicator checks")
     run_parser.add_argument("--artifacts-dir", help="Override artifacts directory")
     run_parser.add_argument("--no-artifacts", action="store_true", help="Skip writing artifacts")
     run_parser.add_argument("--emit-snapshots", action="store_true", help="Emit snapshot artifacts (OHLCV + computed indicators)")
@@ -145,8 +143,8 @@ def _setup_backtest_subcommands(subparsers) -> None:
         if args.audit_math_from_snapshots and not args.run_dir:
             indicators_parser.error("--run-dir is required when using --audit-math-from-snapshots")
 
-    # Store validator for later use
-    indicators_parser._validate = validate_indicators_args
+    # Propagate validator to Namespace via set_defaults (not direct attribute)
+    indicators_parser.set_defaults(_validate=validate_indicators_args)
 
     # backtest data-fix
     datafix_parser = backtest_subparsers.add_parser("data-fix", help="Fix data for an Play")

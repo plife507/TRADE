@@ -334,6 +334,9 @@ class Application:
                 success=False,
                 error=str(e),
             )
+        finally:
+            # Reset shutdown flag so the application can be restarted in-process
+            self._shutting_down = False
     
     # ==================== Component Initialization ====================
     

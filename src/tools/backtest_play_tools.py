@@ -439,7 +439,6 @@ def backtest_run_play_tool(
     start: datetime | None = None,
     end: datetime | None = None,
     smoke: bool = False,
-    strict: bool = True,
     write_artifacts: bool = True,
     artifacts_dir: Path | None = None,
     plays_dir: Path | None = None,
@@ -466,7 +465,6 @@ def backtest_run_play_tool(
         start: Window start
         end: Window end
         smoke: If True, run fast smoke check (small window if not provided)
-        strict: If True, use strict indicator access (default: True)
         write_artifacts: If True, write result artifacts
         artifacts_dir: Override artifacts directory
         plays_dir: Override Play directory
@@ -694,7 +692,6 @@ def backtest_run_play_tool(
             "start": start.isoformat() if start else None,
             "end": end.isoformat() if end else None,
             "smoke": smoke,
-            "strict": strict,
             "trades_count": trades_count,
             "run_id": run_result.run_id,
         }

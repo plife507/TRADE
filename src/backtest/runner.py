@@ -255,7 +255,7 @@ def _create_artifact_setup(
     assert config.window_end is not None, "window_end must be set before artifact setup"
 
     # Determine data source ID
-    data_source_id = "synthetic" if synthetic_provider is not None else "duckdb_live"
+    data_source_id = "synthetic" if synthetic_provider is not None else f"duckdb_{config.data_env}"
 
     # Build input hash components
     input_components = InputHashComponents(

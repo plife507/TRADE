@@ -25,6 +25,7 @@ Single source of truth for all open work, bugs, and task progress.
 | P10 Phase 3: Exchange Integration | 2026-02-21 | 4 fixes (H11, H14, M6, M14) |
 | P10 Phase 4: Backtest/Engine | 2026-02-21 | 7 fixes + H22 deferred + M16 not-a-bug |
 | P10 Phase 5: Data/CLI/Artifacts | 2026-02-21 | 8 fixes (H12, H13, H15, H19, M1, M2, M11, M15) |
+| P10 Phase 6: Low Priority | 2026-02-21 | 11 fixes (C5, H5, H16, H18, H20, M3, M9, M10, M12, M17, M19) |
 
 Full details: `docs/architecture/CODEBASE_REVIEW_ONGOING.md`
 
@@ -40,20 +41,6 @@ Confirmed issues, low-risk, deferred to appropriate milestones.
 - [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but doesn't force pybit reconnect. Adding active reconnect risky without integration testing.
 - [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering — defensible tradeoff, needs integration test to reverse.
 - [ ] **H22** `backtest_runner.py` — Sim accepts `funding_events` kwarg but no funding event generation pipeline exists yet.
-
-### P10 Phase 6: Low Priority (11 items)
-
-- [ ] **C5** `historical_data_store.py` — Validate PID in lock file before stale eviction
-- [ ] **H5** `application.py` — Reset `_shutting_down=False` after successful shutdown
-- [ ] **H16** `exchange_instruments.py` — `round(value/step)*step` for non-power-of-10 tick/qty steps (rare pairs)
-- [ ] **H18** `runner.py` — Use `f"duckdb_{config.data_env}"` instead of hardcoded `"duckdb_live"`
-- [ ] **H20** `timeframe.py` — For naive datetimes, assume UTC
-- [ ] **M3** `backtest_play_tools.py` — Wire `strict` flag to RunnerConfig or remove
-- [ ] **M9** `derived_zone.py` — Update `_source_version` before computing zone hash
-- [ ] **M10** `registry.py` — Add fibonacci anchor metadata fields to STRUCTURE_OUTPUT_TYPES
-- [ ] **M12** `argparser.py` — Fix or remove dead `_validate` path
-- [ ] **M17** `artifact_standards.py` — Wire `verify_run_folder()`/`verify_hash_integrity()` into artifact path
-- [ ] **M19** `determinism.py` — Propagate `data_env` and `plays_dir` to determinism re-run
 
 ### Optimization (before sustained live sessions)
 

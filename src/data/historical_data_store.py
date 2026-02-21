@@ -493,12 +493,20 @@ class HistoricalDataStore:
                     self._lock_file.flush()
                     return True
                 except FileExistsError:
-                    # Lock file exists - check if stale (> 5 minutes old)
+                    # Lock file exists - check PID and age before eviction
                     try:
+                        lock_pid = self._read_lock_pid()
+                        if lock_pid is not None and not self._is_pid_alive(lock_pid):
+                            self.logger.warning(
+                                f"Removing stale lock file (pid={lock_pid} dead): {self._lock_file_path}"
+                            )
+                            self._lock_file_path.unlink()
+                            continue  # Retry
+                        # PID alive or unreadable — fall back to age check
                         age = time.time() - self._lock_file_path.stat().st_mtime
                         if age > 300:  # 5 minutes
                             self.logger.warning(
-                                f"Removing stale lock file (age={age:.0f}s): {self._lock_file_path}"
+                                f"Removing stale lock file (age={age:.0f}s, pid={lock_pid}): {self._lock_file_path}"
                             )
                             self._lock_file_path.unlink()
                             continue  # Retry
@@ -527,6 +535,28 @@ class HistoricalDataStore:
                     self._lock_file_path.unlink()
                 except OSError:
                     pass
+
+    def _read_lock_pid(self) -> int | None:
+        """Read PID from lock file. Returns None if unreadable."""
+        try:
+            text = self._lock_file_path.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if line.startswith("pid="):
+                    return int(line.split("=", 1)[1])
+        except (OSError, ValueError):
+            pass
+        return None
+
+    @staticmethod
+    def _is_pid_alive(pid: int) -> bool:
+        """Check if a process with the given PID is still running."""
+        try:
+            os.kill(pid, 0)  # Signal 0: probe without killing
+            return True
+        except ProcessLookupError:
+            return False  # No such process
+        except PermissionError:
+            return True  # Process exists but we can't signal it
 
     def __del__(self):
         """Cleanup: release lock on deletion."""
