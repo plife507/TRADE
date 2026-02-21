@@ -4,58 +4,66 @@ Single source of truth for all open work, bugs, and task progress.
 
 ---
 
-## Completed Work (archived)
+## Completed Work
 
-| Item | Status | Date | Reference |
-|------|--------|------|-----------|
-| Liquidation Parity (Bybit) | DONE | 2026-02 | Liquidation parity review complete |
-| Fast Parallel Validation | DONE | 2026-02 | Phases 1-7 complete |
-| Health Audit Fixes | DONE | 2026-02-18 | near_pct fixed, legacy cleanup done |
-| Backtest Safety Gaps 3-6 | DONE | 2026-02 | GAP-3/4/5/6 all FIXED |
-| Full Codebase Review | DONE | 2026-02-17 | `docs/architecture/` (10 files, 253 KB, 120 findings) |
-| Codebase Review Gate 1: DSL Critical | DONE | 2026-02-17 | 5 CRIT fixes (setup cache, operators, else_emit, auto-conversion, risk policy) |
-| Codebase Review Gate 2: Sim Parity | DONE | 2026-02-17 | 3 HIGH fixes (liquidation fee, bankruptcy price, close reasons) |
-| Codebase Review Gate 3: Warmup | DONE | 2026-02-17 | 2 items resolved (ENG-001, BT-007). 2 deferred (see below) |
-| Codebase Review Gate 4: Live Safety | DONE | 2026-02-17 | 12 fixes (close ordering, WS reconnect, stale data, pre-live gates) |
-| Codebase Review Gate 5: DSL & Engine MED | DONE | 2026-02-17 | 17 fixes + pyright 0 + validate standard 12/12 |
-| Codebase Review Gate 6: Sim & Backtest MED | DONE | 2026-02-17 | 13 fixes + validate standard 12/12. 2 future features deferred |
-| Codebase Review Gate 7: Data/CLI/Forge MED | DONE | 2026-02-17 | 18 fixes. 1 deferred (DATA-011) |
-| Codebase Review Gate 8: LOW Cleanup | DONE | 2026-02-17 | 12 fixed, 18 evaluated OK, 8 not-a-bug. 1 deferred (DATA-017) |
-| CLI & Tools Module Splitting (P4.5) | DONE | 2026-02-19 | Phases 1-5 complete. 5 gates passed. Net -113 lines deduplication |
-| Debug & Logging Redesign (P6) | DONE | 2026-02-19 | 8 phases: log plumbing, verbosity flags, signal trace, metrics surfacing, JSON consistency, backtest journal |
-| Live Dashboard Redesign (P7) | DONE | 2026-02-19 | Modular dashboard package, Rich rendering, tiered refresh, signal proximity |
-| Structure Detection Audit | DONE | 2026-02-20 | Audit of swing/trend/MS on real BTC data. See `docs/STRUCTURE_DETECTION_AUDIT.md` |
-| Dead Code Audit | DONE | 2026-02-20 | 44 findings, ~800 lines dead code in live path. See `docs/DEAD_CODE_AUDIT.md` |
-| Codebase Review Pass 3: Verification | DONE | 2026-02-21 | 51 findings verified by 5 parallel agents. 49 confirmed, 1 partial, 1 duplicate. See P10 |
-| P10 Phase 2: High Live Safety | DONE | 2026-02-21 | 10 fixes: fail-closed gaps, pre-trade gates, reconnection safety, submit_close interface |
-| P10 Phase 3: Exchange Integration | DONE | 2026-02-21 | 4 fixes: batch order unwrap, transferable amount API, structure types, WS kline keys |
-| P10 Phase 4: Backtest/Engine | DONE | 2026-02-21 | 7 fixes + 1 deferred (H22 funding) + 1 not-a-bug (M16). Zone parity reference updated |
-| P10 Phase 5: Data/CLI/Artifacts | DONE | 2026-02-21 | 8 fixes: DuckDB locking, pagination, play resolution, indicator params |
+| Item | Date | Summary |
+|------|------|---------|
+| Liquidation Parity (Bybit) | 2026-02 | Full parity review |
+| Fast Parallel Validation | 2026-02 | Phases 1-7 |
+| Health Audit Fixes | 2026-02-18 | near_pct fixed, legacy cleanup |
+| Backtest Safety Gaps 3-6 | 2026-02 | GAP-3/4/5/6 all fixed |
+| Full Codebase Review | 2026-02-17 | 10 files, 253 KB, 120 findings |
+| Codebase Review Gates 1-8 | 2026-02-17 | 80+ fixes across DSL, sim, warmup, live safety, data, CLI |
+| CLI & Tools Module Splitting (P4.5) | 2026-02-19 | 5 gates, -113 lines dedup |
+| Debug & Logging Redesign (P6) | 2026-02-19 | 8 phases: plumbing, verbosity, trace, metrics, journal |
+| Live Dashboard Redesign (P7) | 2026-02-19 | Modular package, Rich rendering, tiered refresh, signal proximity |
+| Dead Code Audit + Cleanup (P9) | 2026-02-20 | 44 findings, 471 lines deleted. See `docs/DEAD_CODE_AUDIT.md` |
+| Structure Detection Audit | 2026-02-20 | Swing/trend/MS on real BTC data. See `docs/STRUCTURE_DETECTION_AUDIT.md` |
+| Codebase Review Pass 3 | 2026-02-21 | 51 findings, 49 confirmed by agent verification |
+| P10 Phase 1: Critical Live Blockers | 2026-02-21 | 5 fixes (C1, C4, C6, H1, H17) |
+| P10 Phase 2: High Live Safety | 2026-02-21 | 10 fixes (C2, C3, H2-H4, H6-H10) |
+| P10 Phase 3: Exchange Integration | 2026-02-21 | 4 fixes (H11, H14, M6, M14) |
+| P10 Phase 4: Backtest/Engine | 2026-02-21 | 7 fixes + H22 deferred + M16 not-a-bug |
+| P10 Phase 5: Data/CLI/Artifacts | 2026-02-21 | 8 fixes (H12, H13, H15, H19, M1, M2, M11, M15) |
 
-Full gate details with per-item descriptions: `memory/completed_work.md`
+Full details: `docs/architecture/CODEBASE_REVIEW_ONGOING.md`
 
 ---
 
 ## Deferred Items
 
-Items evaluated during codebase review, confirmed low-risk, deferred to appropriate milestones.
+Confirmed issues, low-risk, deferred to appropriate milestones.
 
-### Pre-Deployment (must fix before live trading)
+### Pre-Deployment (fix before live trading)
 
-- [ ] **GAP-2** No REST API fallback for warmup data. `_load_tf_bars()` tries buffer -> DuckDB -> fails. Needed for cold-start live scenarios.
-- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but does not force pybit reconnect. `GlobalRiskView._check_ws_health()` blocks trading after 30s unhealthy. Adding active reconnect risky without integration testing.
-- [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering is a defensible tradeoff. Reversing to close-first needs integration test to confirm exchange rejects TP-after-close on reduce-only positions.
-- [ ] **GATE**: `python trade_cli.py validate pre-live --play X` passes
+- [ ] **GAP-2** No REST API fallback for warmup data. `_load_tf_bars()` tries buffer -> DuckDB -> fails. Needed for cold-start live.
+- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but doesn't force pybit reconnect. Adding active reconnect risky without integration testing.
+- [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering — defensible tradeoff, needs integration test to reverse.
+- [ ] **H22** `backtest_runner.py` — Sim accepts `funding_events` kwarg but no funding event generation pipeline exists yet.
+
+### P10 Phase 6: Low Priority (11 items)
+
+- [ ] **C5** `historical_data_store.py` — Validate PID in lock file before stale eviction
+- [ ] **H5** `application.py` — Reset `_shutting_down=False` after successful shutdown
+- [ ] **H16** `exchange_instruments.py` — `round(value/step)*step` for non-power-of-10 tick/qty steps (rare pairs)
+- [ ] **H18** `runner.py` — Use `f"duckdb_{config.data_env}"` instead of hardcoded `"duckdb_live"`
+- [ ] **H20** `timeframe.py` — For naive datetimes, assume UTC
+- [ ] **M3** `backtest_play_tools.py` — Wire `strict` flag to RunnerConfig or remove
+- [ ] **M9** `derived_zone.py` — Update `_source_version` before computing zone hash
+- [ ] **M10** `registry.py` — Add fibonacci anchor metadata fields to STRUCTURE_OUTPUT_TYPES
+- [ ] **M12** `argparser.py` — Fix or remove dead `_validate` path
+- [ ] **M17** `artifact_standards.py` — Wire `verify_run_folder()`/`verify_hash_integrity()` into artifact path
+- [ ] **M19** `determinism.py` — Propagate `data_env` and `plays_dir` to determinism re-run
 
 ### Optimization (before sustained live sessions)
 
-- [ ] **ENG-BUG-015** `np.append` O(n) on 500-element arrays, ~3-10 MB/hour GC pressure. Correct behavior, optimize before sustained live sessions.
+- [ ] **ENG-BUG-015** `np.append` O(n) on 500-element arrays, ~3-10 MB/hour GC pressure
 
 ### Future Features (no correctness impact)
 
-- [ ] **IND-006** Validation that warmup estimates match actual `is_ready()` thresholds. Not a bug (indicators output NaN until ready, which propagates safely).
-- [ ] **SIM-MED-3** `ExchangeMetrics` class (217 lines) fully implemented but zero callers. Needs result schema wiring to surface metrics.
-- [ ] **SIM-MED-4** `Constraints` class (193 lines) fully implemented but not wired. Needs per-symbol constraint config from exchange instrument info.
+- [ ] **IND-006** Validate warmup estimates match actual `is_ready()` thresholds
+- [ ] **SIM-MED-3** `ExchangeMetrics` class (217 lines) — needs result schema wiring
+- [ ] **SIM-MED-4** `Constraints` class (193 lines) — needs per-symbol constraint config
 
 ---
 
@@ -63,262 +71,40 @@ Items evaluated during codebase review, confirmed low-risk, deferred to appropri
 
 ### pandas_ta `'H'` Deprecation Warning
 
-**Status**: Cosmetic warning, no impact on correctness. Will become error in future pandas release.
-
-**Root cause**: `pandas_ta.vwap()` calls `anchor.upper()` internally, passing uppercase `'H'` to `index.to_period()`. Pandas deprecated uppercase `'H'` in favor of lowercase `'h'`.
-
-**Affected**: Only VWAP with hourly anchors (e.g., `anchor: "4h"`). Daily/weekly unaffected. Our `IncrementalVWAP` (live mode) unaffected.
-
-**Fix options** (when pandas removes `'H'`):
-1. Upgrade `pandas_ta` if they fix the `.upper()` call upstream.
-2. If no upstream fix: monkey-patch or fork `pandas_ta.vwap()` to use lowercase anchor.
+Cosmetic warning, no impact. `pandas_ta.vwap()` passes uppercase `'H'` to `index.to_period()`. Only affects VWAP with hourly anchors. Our `IncrementalVWAP` (live) is unaffected.
 
 ---
 
 ## Open Feature Work
 
-### P9: Dead Code Cleanup
-
-See `docs/DEAD_CODE_AUDIT.md` for full findings (44 items, ~800 lines).
-
-#### Phase 1: Delete Obviously Dead Code — DONE (2026-02-20)
-- [x] Remove stub methods, dead attributes, SubscriptionConfig factories
-- [x] Remove MarketData convenience methods (zero callers) — 10 methods, -205 lines
-- [x] Remove RealtimeState unused callbacks and granular clear methods — 16 methods, -127 lines
-- [x] Remove PositionManager `set_prefer_websocket()` — -5 lines
-- [x] Remove ExchangeManager 4 dead methods + `_trading_mode` attr — -22 lines
-- [x] Remove Application `get_websocket_health()`, `on_shutdown()`, `_lock` — -35 lines
-- [x] Remove RiskManager `start_websocket_if_needed()` — -31 lines
-- [x] Remove `ConnectionStatus.last_message_at` — -5 lines
-- [x] Remove SubscriptionConfig factories (3) — -47 lines
-- [x] **GATE**: `python trade_cli.py validate quick` passes (5/5 gates)
-- **Total: 471 lines deleted across 8 files**
-
-#### Phase 2: P2 Candidates — KEPT (decision: keep for live trading)
-- [x] RiskManager RR utilities (`calculate_trade_levels`, SL/TP, `get_max_position_size`) — **KEEP for P2**
-- [x] OrderExecutor `wait_for_fill()`, `execute_with_leverage()`, pending order API — **KEEP for P2**
-- [x] ExchangeManager `reconcile_orphaned_orders()`, `open_position_with_rr()` — **KEEP for P2**
-- [x] PositionManager `get_performance_summary()`, `get_trade_history()` — **KEEP for P2**
-- [x] RiskManager `get_global_risk_snapshot()`, `get_global_risk_summary()` — **KEEP for P2**
-
-### P6: Debug & Logging Redesign — DONE (2026-02-19)
-
-All 8 phases complete. `validate quick` passes, all flags (`-q`, `-v`, `--debug`) work.
-
-#### Phase 1: Fix Broken Log Level Plumbing — DONE
-- [x] `src/utils/logger.py`: `_resolve_log_level()` reads `TRADE_LOG_LEVEL` > `LOG_LEVEL` > `"INFO"`
-- [x] `src/utils/logger.py`: `suppress_for_validation()` sets `trade.*` to WARNING (no `logging.disable()`)
-- [x] `src/utils/logger.py`: `get_module_logger(module_name)` maps `src.X` → `trade.X`
-- [x] `src/config/config.py`: Reads `TRADE_LOG_LEVEL` env var
-- [x] `src/cli/validate.py`: 5x `logging.disable(INFO)` → `suppress_for_validation()`
-
-#### Phase 2: Verbosity Levels — DONE
-- [x] `-q`/`--quiet`, `-v`/`--verbose` (mutually exclusive with `--debug`)
-- [x] `verbose_log()`, `is_verbose_enabled()`, `enable_verbose()` in `debug.py`
-- [x] `trade_cli.py`: `-q` → suppress, `-v` → verbose, `--debug` → both
-
-#### Phase 3: Fix Module-Level Logger Leakage — DONE
-- [x] 12 orphan `logging.getLogger(__name__)` → `get_module_logger(__name__)`
-
-#### Phase 4: Signal Trace at Verbose Level — DONE
-- [x] `EvaluationTrace`, `BlockTrace`, `CaseTrace` dataclasses in `rules/types.py`
-- [x] `execute_with_trace()` in `StrategyBlocksExecutor`
-- [x] `evaluate_with_trace()` in `PlaySignalEvaluator`
-- [x] Engine wired: verbose → trace path, normal → zero overhead
-- [x] Subloop verbose logging (first bars only)
-
-#### Phase 5: Metric Surfacing — DONE
-- [x] 21 new fields on `ResultsSummary` (benchmark, tail risk, leverage, MAE/MFE, friction, margin, funding)
-- [x] Wired in `compute_results_summary()` via `getattr()` for SimpleNamespace compat
-- [x] `print_summary()` expanded with conditional sections
-- [x] `to_dict()` includes all new fields
-
-#### Phase 6: JSON Output Consistency — DONE
-- [x] `debug determinism` and `debug metrics` JSON wrapped in `{"status","message","data"}` envelope
-
-#### Phase 7: Cross-References and Backtest Journal — DONE
-- [x] `BacktestJournal` class in `journal.py` writes `events.jsonl` to artifact folder
-- [x] `_write_backtest_journal()` in runner records fill+close per trade
-- [x] Artifact path logged at INFO after writing
-
-#### Phase 8: Indicator/Structure Diagnostic Logging — DONE
-- [x] NaN-past-warmup warning in `indicators.py` (verbose only)
-- [x] Structure version-change detection in `state.py` (verbose only)
-
-### P7: Live Dashboard Redesign — DONE
-
-Redesigned the demo/live trading dashboard from monolithic `src/cli/live_dashboard.py` (1,388 lines) into modular `src/cli/dashboard/` package with Rich Group/Panel/Table rendering, tiered refresh, signal proximity, sparklines, and graceful lifecycle.
-
-#### Phase 1: Module Split — DONE
-- [x] Split into `src/cli/dashboard/` package (13 modules)
-- [x] `__init__.py` — re-exports `run_dashboard`, `DashboardState`, `OrderTracker`, etc.
-- [x] `state.py` — `DashboardState`, `refresh_ticker()`, `refresh_account()`, `refresh_engine_data()`
-- [x] `widgets.py` — formatting helpers, status badge, tab bar, sparkline
-- [x] `tabs/` — 6 tab builders in separate files (overview, indicators, structures, log, play_yaml, orders)
-- [x] `input.py` — `TabState`, key listener with quit confirmation, `f` filter key
-- [x] `runner.py` — entry point with Group/Panel composition
-- [x] `log_handler.py` — `DashboardLogHandler`
-- [x] `order_tracker.py` — `OrderEvent`, `OrderTracker` with W/L stats
-- [x] `play_meta.py` — `populate_play_meta()`
-- [x] `signal_proximity.py` — condition evaluator reusing P6 trace system
-- [x] Updated callers: `play.py`, `plays_menu.py`
-- [x] Deleted `src/cli/live_dashboard.py`
-- [x] **GATE**: `validate quick` passes, zero `live_dashboard` imports remain
-
-#### Phase 2: Rich Group Rendering — DONE
-- [x] `_build()` returns `Group` instead of `Text`
-- [x] Status header in `Panel(border_style="cyan")`
-- [x] Tab content in `Panel(border_style="dim")`
-- [x] Indicators/structures/orders tabs use `rich.table.Table` with auto-sizing
-
-#### Phase 3: Tiered Refresh Intervals — DONE
-- [x] Ticker: 250ms cadence (`refresh_ticker()`)
-- [x] Account/runner stats: 2s cadence (`refresh_account()`)
-- [x] Indicators/structures: on bar close (bars_processed change)
-- [x] 50ms base poller loop
-- [x] Staleness indicator on indicators + structures tabs
-- [x] Warmup ETA: bars_remaining * tf_seconds
-
-#### Phase 4: Enhanced Tabs — DONE
-- [x] Sparklines (Unicode `▁▂▃▅▇`) from indicator history ring buffer (depth=20)
-- [x] Log severity filter (`f` key cycles all/warn+/error)
-- [x] Session P&L summary on overview tab
-- [x] W/L stats method on OrderTracker
-
-#### Phase 5: Signal Proximity Display — DONE
-- [x] `signal_proximity.py` with `evaluate_proximity()` using `evaluate_with_trace()`
-- [x] `ConditionStatus`, `BlockStatus`, `SignalProximity` dataclasses
-- [x] Overview tab renders condition checklist (green=pass, red=fail, % ratio)
-- [x] Evaluates at account refresh cadence (2s)
-
-#### Phase 6: Graceful Enter/Exit — DONE
-- [x] Quit with position: first `q` shows yellow warning, second `q` confirms
-- [x] Shutdown messaging: "Shutting down engine..." on exit
-- [x] Pause file cleanup in `finally` block
-- [x] R-multiple display (`(+1.3R)`) when SL is set
-- [x] Time-in-trade display since position opened
-- [x] `position_opened_at` and `risk_per_trade` tracked in state
-
 ### P8: Structure Detection Fixes
 
-See `docs/STRUCTURE_DETECTION_AUDIT.md` for full audit report.
-Audit script: `scripts/analysis/structure_audit.py`
+See `docs/STRUCTURE_DETECTION_AUDIT.md` for full audit.
 
 #### Phase 1: Fix Config Defaults
-- [ ] Change `confirmation_close` default to `True` in `market_structure.py` (or document that ICT/SMC plays MUST set it)
+- [ ] Change `confirmation_close` default to `True` in `market_structure.py`
 - [ ] Add recommended defaults to play templates: `min_atr_move: 0.5` or `strict_alternation: true`
-- [ ] Document trend/MS timing mismatch in `docs/PLAY_DSL_REFERENCE.md` — plays must not expect both to agree on same bar
+- [ ] Document trend/MS timing mismatch in `docs/PLAY_DSL_REFERENCE.md`
 - [ ] **GATE**: `python trade_cli.py validate quick` passes
 
 #### Phase 2: Trend Detector Review
 - [ ] Investigate why `strength=2` never fires on real BTC data (4h/12h/D, 6 months)
 - [ ] Consider reducing consecutive-pair requirement or increasing wave history size
-- [ ] Re-run `scripts/analysis/structure_audit.py` to verify improvement
 - [ ] **GATE**: Trend reaches `strength=2` at least once on 6-month BTC 4h data
 
 #### Phase 3: Trend/MS Synchronization (Design Decision)
-- [ ] Decide approach: (a) accept mismatch as intentional, (b) make MS depend on trend, (c) add pending CHoCH, (d) speed up trend, (e) slow down MS
+- [ ] Decide approach: accept mismatch / make MS depend on trend / add pending CHoCH / speed up trend / slow down MS
 - [ ] Implement chosen approach
-- [ ] Re-run audit — trend/MS agreement should exceed 50%
 - [ ] **GATE**: `python trade_cli.py validate standard` passes
 
 #### Phase 4: CHoCH Correctness
-- [ ] Track which swing produced the last BOS (not just most recent swing)
+- [ ] Track which swing produced the last BOS
 - [ ] CHoCH only valid when breaking the BOS-producing swing level
 - [ ] **GATE**: `python trade_cli.py validate quick` passes
 
-### P10: Codebase Review Pass 3 — Verified Bug Fixes
-
-Source: `docs/architecture/CODEBASE_REVIEW_ONGOING.md` (51 findings, 49 confirmed by agent verification 2026-02-21).
-
-#### Phase 1: Critical Live Blockers (5 fixes)
-
-These prevent safe live trading. Must fix before any deployment.
-
-- [x] **C1** `realtime_state.py` — Add missing callback methods `on_order_update()`, `on_execution()`, `on_position_update()` to RealtimeState (callers crash with AttributeError)
-- [x] **C4** `adapters/live.py` — Fix anchored VWAP readiness deadlock: exclude engine-managed keys from `_check_tf_warmup()` NaN check (live stalls forever)
-- [x] **C6** `bybit_client.py` + `exchange_orders_*.py` — Generate deterministic `order_link_id` before every `create_order()` call so retries are idempotent (duplicate market orders on timeout)
-- [x] **H1** `live_runner.py:65` — Add `ERROR → STOPPING` to `VALID_TRANSITIONS` so `stop()` cleanup runs from error state (open orders left on exchange)
-- [x] **H17** `bybit_client.py:255` — Re-raise `RuntimeError` from `_sync_server_time()` instead of swallowing fatal clock drift (bot starts with broken auth)
-- [x] **GATE**: `pyright` 0 errors + `python trade_cli.py validate quick` passes
-
-#### Phase 2: High Live Safety (10 fixes) — DONE (2026-02-21)
-
-Pre-deployment safety. Each was a fail-open or silent-failure path in live trading.
-
-- [x] **C2** `realtime_bootstrap.py` — Split stale detection into per-stream (public vs private) update counters so dead private stream is detected independently
-- [x] **C3** `play_engine.py` + `interfaces.py` + adapters — `submit_close()` returns `OrderResult`, propagated through interface/backtest/live adapters
-- [x] **H2** `safety.py` — Check return value of `cancel_all_orders()` before setting `orders_cancelled=True` (with retry loop)
-- [x] **H3** `exchange_orders_manage.py` + `safety.py` — `get_closed_pnl()` propagates exceptions; `seed_from_exchange()` distinguishes real-zero from API error
-- [x] **H4** `application.py` — `_start_websocket()` accepts `risk_needs_ws` param; starts private streams even with no symbols
-- [x] **H6** `application.py` — Pass `exchange_manager=self._exchange_manager` to `RiskManager()` constructor
-- [x] **H7** `live_runner.py` — `_run_safety_checks()` accepts `additional_exposure`, caller passes `signal.size_usdt`
-- [x] **H8** `live_runner.py` — Drawdown check exception triggers panic state + sets stop_event (fail-closed)
-- [x] **H9** `realtime_bootstrap.py` — `_detect_private_reconnection()` calls `_fetch_initial_private_state()` after reconnect
-- [x] **H10** `realtime_bootstrap.py` — `_handle_stale_connection()` also refreshes open orders via `_fetch_initial_orders()`
-- [x] **GATE**: `python trade_cli.py validate quick` passes
-
-#### Phase 3: High Exchange Integration (4 fixes) — DONE (2026-02-21)
-
-Exchange communication bugs that caused silent data corruption.
-
-- [x] **H11** `exchange_orders_manage.py` — Fixed double-unwrap in batch cancel/amend (was always returning empty lists)
-- [x] **H14** `bybit_account.py` + `exchange_positions.py` — Use `get_coin_balance(accountType="UNIFIED")` for transferable amount
-- [x] **M6** `adapters/live.py` — Removed `float()` coercion on structure values; preserves original types for DSL comparison
-- [x] **M14** `market_data.py` — Normalize WS kline interval keys using `KlineData._normalize_interval()` before lookup
-- [x] **GATE**: `python trade_cli.py validate quick` passes
-
-#### Phase 4: Medium Backtest/Engine Correctness (9 fixes) — DONE (2026-02-21)
-
-Backtest accuracy and DSL correctness issues. 7 fixed, 1 deferred, 1 not-a-bug.
-
-- [x] **H21** `engine_factory.py` — `warmup_bars_by_role["exec"]` follows exec pointer, not hardcoded `low_tf`
-- [ ] **H22** `backtest_runner.py` — DEFERRED: sim accepts `funding_events` kwarg but no funding event generation pipeline exists yet
-- [x] **H23** `dsl_parser.py` — `between` operator with `[lo, hi]` list correctly converts to `RangeValue`
-- [x] **M4** `play.py` — Raises `ValueError` on invalid feature `source` instead of silent fallback to `close`
-- [x] **M7** `adapters/live.py` — Returns `float("nan")` on out-of-range lookback instead of current value
-- [x] **M8** `zone.py` + `zone_reference.py` — Skip zone creation when ATR is NaN (both incremental and vectorized reference)
-- [x] **M13** `backtest_play_menu.py` — Fixed both key (`"overall_status"`) and value (`"passed"`) in preflight check
-- [x] **M16** — NOT-A-BUG: `long_win_rate`/`short_win_rate` are consistently percentage-scale throughout pipeline
-- [x] **M18** `determinism.py` — Check hash field presence before comparing; missing fields logged as warnings
-- [x] **GATE**: `python trade_cli.py validate quick` passes
-
-#### Phase 5: Medium Data/CLI/Artifacts (8 fixes) — DONE (2026-02-21)
-
-Data integrity, CLI UX, and artifact correctness.
-
-- [x] **H12** `historical_sync.py` — Wrapped store writes in `_write_operation()` context manager for DuckDB locking
-- [x] **H13** `historical_sync.py` — Added `was_partial` flag; skips `_update_metadata()` when fetch interrupted
-- [x] **H15** `bybit_trading.py` — Added cursor-based pagination loop to `get_open_orders()`
-- [x] **H19** `runner.py` — Pass `env=config.data_env` to `get_historical_store()` in `_resolve_window()`
-- [x] **M1** `play.py` — Moved pre-live validation gate to after play resolution, passes `play.id`
-- [x] **M2** `play.py` — Verified: M1 fix ensures `play.id` is always valid for re-resolution
-- [x] **M11** `factory.py` — Added `kama.fast/slow`, `fisher.signal`, `squeeze.mom_length/mom_smooth` to `_VALID_PARAMS`
-- [x] **M15** `bybit_account.py` — Added cursor pagination to `get_positions()`
-- [x] **GATE**: `python trade_cli.py validate quick` passes
-
-#### Phase 6: Low Priority / Deferred (12 items)
-
-Non-blocking. Fix opportunistically or before specific milestones.
-
-- [ ] **C5** `historical_data_store.py:496` — Validate PID in lock file before stale eviction (low practical risk)
-- [ ] **H5** `application.py:296` — Reset `_shutting_down=False` after successful shutdown (retry-only scenario)
-- [ ] **H16** `exchange_instruments.py:73` — Use `round(value/step)*step` for non-power-of-10 tick/qty steps (rare pairs only)
-- [ ] **H18** `runner.py:257` — Use `f"duckdb_{config.data_env}"` instead of hardcoded `"duckdb_live"`
-- [ ] **H20** `timeframe.py:196` — For naive datetimes, assume UTC: `dt.replace(tzinfo=timezone.utc).timestamp()`
-- [ ] **M3** `backtest_play_tools.py` — Either wire `strict` flag to RunnerConfig or remove from API signature
-- [ ] **M9** `derived_zone.py:295` — Update `_source_version` before computing zone hash, not after
-- [ ] **M10** `registry.py:102` — Add fibonacci anchor metadata fields to STRUCTURE_OUTPUT_TYPES
-- [ ] **M12** `argparser.py:149` — Fix or remove dead `_validate` path (attached to parser, never reaches args namespace)
-- [ ] **M17** `artifact_standards.py` — Wire `verify_run_folder()`/`verify_hash_integrity()` into artifact creation path
-- [ ] **M19** `determinism.py:235` — Propagate `data_env` and `plays_dir` to determinism re-run
-- [x] **M20** DUPLICATE of M15 — resolved (cursor pagination added)
-
----
-
 ### P1: Live Engine Rubric
 
-- [ ] Define live parity rubric: backtest results as gold standard for live comparison
+- [ ] Define live parity rubric: backtest results as gold standard
 - [ ] Demo mode 24h validation
 - [ ] Verify sub-loop activation in live mode
 
@@ -332,20 +118,19 @@ Non-blocking. Fix opportunistically or before specific milestones.
 
 See `docs/CLI_REDESIGN.md` for full details.
 
-- [ ] **Gate 4**: Unified `_place_order()` flow (type selector, side, symbol, amount, preview, confirm)
-- [ ] **Gate 5**: Data menu top-level rewrite (delegate to sub-menu files already created)
-- [ ] **Gate 8**: Final manual validation (offline menu, connect flow, quick-picks, cross-links)
+- [ ] **Gate 4**: Unified `_place_order()` flow
+- [ ] **Gate 5**: Data menu top-level rewrite
+- [ ] **Gate 8**: Final manual validation
 
 ### P5: Market Sentiment Tracker
 
 Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 
-- [ ] Phase 1: Price-derived sentiment (Tier 0) -- existing indicators + structures, zero new deps
-- [ ] Phase 2: Bybit exchange sentiment (Tier 1) -- funding rate, OI, L/S ratio, liquidations, OBI
-- [ ] Phase 3: External data (Tier 2) -- Fear & Greed Index, DeFiLlama stablecoin supply
+- [ ] Phase 1: Price-derived sentiment (Tier 0)
+- [ ] Phase 2: Bybit exchange sentiment (Tier 1)
+- [ ] Phase 3: External data (Tier 2)
 - [ ] Phase 4: Historical sentiment for backtesting
-- [ ] Phase 5: Statistical regime detection -- HMM-based (optional, requires hmmlearn)
-- [ ] Future: Agent-based play selector that consumes sentiment tracker output
+- [ ] Phase 5: Statistical regime detection (HMM-based)
 
 ---
 
@@ -353,21 +138,21 @@ Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 
 | ID | File | Note |
 |----|------|------|
-| GAP-BD2 | `trade_cli.py` | `os._exit(0)` is correct -- pybit WS threads are non-daemon, `sys.exit()` would hang |
+| GAP-BD2 | `trade_cli.py` | `os._exit(0)` correct — pybit WS threads are non-daemon |
 
 ## Platform Issues
 
-- **DuckDB file locking on Windows** -- all scripts run sequentially, `run_full_suite.py` has retry logic (5 attempts, 3-15s backoff)
+- **DuckDB file locking on Windows** — sequential scripts, `run_full_suite.py` has retry logic
 
 ---
 
 ## Validation Commands
 
 ```bash
-# Unified tiers (parallel staged execution, with timeouts + incremental reporting)
+# Tiers
 python trade_cli.py validate quick              # Pre-commit (~2min)
-python trade_cli.py validate standard           # Pre-merge (~4min)
-python trade_cli.py validate full               # Pre-release (~6min)
+python trade_cli.py validate standard           # Pre-merge (~6.5min)
+python trade_cli.py validate full               # Pre-release (~10min)
 python trade_cli.py validate real               # Real-data verification (~2min)
 python trade_cli.py validate module --module X --json  # Single module (PREFERRED for agents)
 python trade_cli.py validate pre-live --play X  # Deployment gate
@@ -376,7 +161,7 @@ python trade_cli.py validate exchange           # Exchange integration (~30s)
 # Options
 python trade_cli.py validate full --workers 4         # Control parallelism
 python trade_cli.py validate full --timeout 60        # Per-play timeout (default 120s)
-python trade_cli.py validate full --gate-timeout 300  # Per-gate timeout (default 600s)
+python trade_cli.py validate full --gate-timeout 600  # Per-gate timeout (default 600s)
 
 # Backtest / verification
 python trade_cli.py backtest run --play X --sync      # Single backtest
