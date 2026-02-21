@@ -189,7 +189,9 @@ class IncrementalZone(BaseIncrementalDetector):
         if swing_idx != self._last_swing_idx and swing_idx >= 0:  # type: ignore[operator]
             # Get ATR from indicators using configurable key (default to 0 if not available)
             atr = bar.indicators.get(self.atr_key, np.nan)
-            width = atr * self.width_atr if not np.isnan(atr) else 0.0
+            if np.isnan(atr):
+                return
+            width = atr * self.width_atr
 
             # Calculate zone boundaries
             if self.zone_type == "demand":

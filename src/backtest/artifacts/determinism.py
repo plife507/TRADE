@@ -165,9 +165,22 @@ def compare_runs(
     hash_fields = ["trades_hash", "equity_hash", "run_hash", "play_hash"]
     
     for field_name in hash_fields:
-        val_a = result_a.get(field_name, "")
-        val_b = result_b.get(field_name, "")
-        
+        a_missing = field_name not in result_a
+        b_missing = field_name not in result_b
+        if a_missing or b_missing:
+            missing_in = []
+            if a_missing:
+                missing_in.append("run_a")
+            if b_missing:
+                missing_in.append("run_b")
+            result.warnings.append(
+                f"Hash field '{field_name}' missing from {', '.join(missing_in)}"
+            )
+            continue
+
+        val_a = result_a[field_name]
+        val_b = result_b[field_name]
+
         matches = val_a == val_b
         
         comparison = HashComparison(

@@ -504,7 +504,7 @@ class BacktestExchange:
         # This method is mainly for interface compliance and live mode
         pass
 
-    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> None:
+    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> "OrderResult":
         """
         Request to close position on next bar.
 
@@ -512,9 +512,11 @@ class BacktestExchange:
             reason: Close reason
             percent: Percentage to close (1-100)
         """
+        from ..interfaces import OrderResult
         if self._sim_exchange is None:
-            return
+            return OrderResult(success=False, error="SimExchange not initialized")
         self._sim_exchange.submit_close(reason=reason, percent=percent)
+        return OrderResult(success=True)
 
     @property
     def has_position(self) -> bool:
@@ -576,9 +578,10 @@ class ShadowExchange:
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
         return []
 
-    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> None:
+    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> "OrderResult":
         """No-op in shadow mode - no positions to close."""
-        pass
+        from ..interfaces import OrderResult
+        return OrderResult(success=True, metadata={"shadow": True})
 
     def get_realized_pnl(self) -> float:
         """Shadow mode has no realized PnL."""

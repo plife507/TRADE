@@ -256,7 +256,7 @@ class Application:
                     self.logger.info("Starting WebSocket for Risk Manager (GlobalRiskView)")
                 else:
                     self.logger.info("Starting WebSocket (auto_start enabled)")
-                self._start_websocket()
+                self._start_websocket(risk_needs_ws=risk_needs_ws)
             
             self._running = True
             self.logger.info("Application started")
@@ -349,6 +349,7 @@ class Application:
         self._risk_manager = RiskManager(
             config=self.config.risk,
             enable_global_risk=self.config.websocket.enable_global_risk_view,
+            exchange_manager=self._exchange_manager,
         )
         self.logger.debug("RiskManager initialized")
     
@@ -408,27 +409,33 @@ class Application:
         
         return list(symbols)
     
-    def _start_websocket(self) -> bool:
+    def _start_websocket(self, risk_needs_ws: bool = False) -> bool:
         """
         Start WebSocket connections.
-        
+
+        Args:
+            risk_needs_ws: If True, always start private streams even if no symbols to monitor.
+
         Returns:
             True if started successfully
         """
         if not self._realtime_bootstrap:
             self.logger.warning("RealtimeBootstrap not initialized")
             return False
-        
+
         if self._realtime_bootstrap.is_running:
             self.logger.debug("WebSocket already running")
             return True
-        
+
         # Get symbols to monitor: open positions + configured defaults
         symbols = self._get_symbols_to_monitor()
-        if not symbols:
+        if not symbols and not risk_needs_ws:
             self.logger.info("No positions or symbols to monitor - WebSocket not needed")
             return True  # Not an error, just nothing to monitor
-        
+
+        if not symbols and risk_needs_ws:
+            self.logger.info("No symbols to monitor, but risk manager requires private WS streams")
+
         self.logger.info(f"Starting WebSocket for symbols: {symbols}")
         
         try:

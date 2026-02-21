@@ -751,12 +751,19 @@ class RealtimeBootstrap:
         Mirrors the public reconnection detection in _on_ticker/_on_kline.
         If data arrives but _private_connected was cleared (by stale handler),
         the connection has been restored by pybit's internal retry.
+
+        Re-fetches initial private state on reconnection because Bybit WS
+        private streams do NOT send initial snapshots on (re)connect.
         """
         if not self._private_connected:
             self._private_connected = True
             self.state.set_private_ws_connected()
             self._stale_logged = False
-            self.logger.info("Private WebSocket reconnected (data resumed)")
+            self.logger.info("Private WebSocket reconnected — re-fetching state via REST")
+            try:
+                self._fetch_initial_private_state()
+            except Exception as e:
+                self.logger.warning(f"Failed to re-fetch private state after reconnection: {e}")
 
     def _on_position(self, msg: dict):
         """Handle position update from WebSocket."""
@@ -983,51 +990,73 @@ class RealtimeBootstrap:
     # Connection Monitoring
     # ==========================================================================
     
+    # Keys used to classify update_counts into public vs private buckets
+    _PUBLIC_KEYS = frozenset({"ticker", "orderbook", "kline", "trade"})
+    _PRIVATE_KEYS = frozenset({"position", "order", "execution", "wallet", "account_metrics"})
+
     def _monitor_loop(self):
         """Background thread to monitor connection health."""
         self.logger.debug("Starting connection monitor loop")
-        
-        last_update_counts = {}
-        stale_check_count = 0
-        
+
+        last_update_counts: dict[str, int] = {}
+        public_stale_count = 0
+        private_stale_count = 0
+
         while not self._stop_event.is_set():
             try:
                 # Check connection health every 30 seconds
                 self._stop_event.wait(30)
-                
+
                 if not self._running:
                     break
-                
+
                 # Get current stats
                 stats = self.state.get_stats()
-                current_update_counts = stats.get('update_counts', {})
-                
-                # Check if we're receiving data (stale check)
+                current_update_counts: dict[str, int] = stats.get('update_counts', {})
+
+                # Check staleness independently for public and private streams
                 if last_update_counts:
-                    has_new_data = False
-                    for key, count in current_update_counts.items():
-                        if count > last_update_counts.get(key, 0):
-                            has_new_data = True
-                            break
-                    
-                    if not has_new_data:
-                        stale_check_count += 1
-                        if stale_check_count >= 2:  # 2 consecutive checks (60s) with no data
-                            self._handle_stale_connection()
-                            stale_check_count = 0
+                    has_new_public = any(
+                        current_update_counts.get(k, 0) > last_update_counts.get(k, 0)
+                        for k in self._PUBLIC_KEYS
+                    )
+                    has_new_private = any(
+                        current_update_counts.get(k, 0) > last_update_counts.get(k, 0)
+                        for k in self._PRIVATE_KEYS
+                    )
+
+                    if has_new_public:
+                        public_stale_count = 0
                     else:
-                        stale_check_count = 0
-                
+                        public_stale_count += 1
+
+                    if has_new_private:
+                        private_stale_count = 0
+                    else:
+                        private_stale_count += 1
+
+                    # Trigger stale handler if EITHER bucket is stale for 60s
+                    if public_stale_count >= 2 or private_stale_count >= 2:
+                        stale_parts = []
+                        if public_stale_count >= 2:
+                            stale_parts.append("public")
+                        if private_stale_count >= 2:
+                            stale_parts.append("private")
+                        self.logger.debug(f"Stale streams detected: {', '.join(stale_parts)}")
+                        self._handle_stale_connection()
+                        public_stale_count = 0
+                        private_stale_count = 0
+
                 last_update_counts = dict(current_update_counts)
-                
+
                 # Log stats periodically (at debug level)
                 self.logger.debug(
                     f"RealtimeState stats: updates={current_update_counts}"
                 )
-                
+
             except Exception as e:
                 self.logger.warning(f"Error in monitor loop: {e}")
-        
+
         self.logger.debug("Connection monitor loop stopped")
     
     def _resubscribe_all_symbols(self) -> None:
@@ -1082,7 +1111,7 @@ class RealtimeBootstrap:
         else:
             self.logger.debug("WebSocket still stale — refreshing via REST")
 
-        # Refresh wallet/positions via REST to keep data current
+        # Refresh wallet/positions/orders via REST to keep data current
         try:
             self._fetch_initial_wallet()
         except Exception as e:
@@ -1092,6 +1121,11 @@ class RealtimeBootstrap:
             self._fetch_initial_positions()
         except Exception as e:
             self.logger.warning(f"REST position refresh failed: {e}")
+
+        try:
+            self._fetch_initial_orders()
+        except Exception as e:
+            self.logger.warning(f"REST orders refresh failed: {e}")
 
         # Update connection status
         if self._public_connected:

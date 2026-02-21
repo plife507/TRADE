@@ -314,7 +314,7 @@ def create_engine_from_play(
     # Build warmup_bars_by_role from warmup_by_tf using tf_mapping
     # CRITICAL: Use tf_mapping to get correct TF for each role
     warmup_bars_by_role = {
-        "exec": warmup_by_tf.get(tf_mapping.get("low_tf", exec_tf), 0),
+        "exec": warmup_by_tf.get(tf_mapping.get(tf_mapping.get("exec", "low_tf"), exec_tf), 0),
         "low_tf": warmup_by_tf.get(tf_mapping.get("low_tf", exec_tf), 0),
         "med_tf": warmup_by_tf.get(tf_mapping.get("med_tf", exec_tf), 0),
         "high_tf": warmup_by_tf.get(tf_mapping.get("high_tf", exec_tf), 0),

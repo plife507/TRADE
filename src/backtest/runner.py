@@ -38,6 +38,7 @@ def _utcnow() -> datetime:
 
 import pandas as pd
 
+from src.config.constants import DataEnv
 from .play import Play, load_play
 from .types import StopReason
 from .runtime.preflight import (
@@ -215,7 +216,7 @@ def _resolve_window(play: Play, config: "RunnerConfig") -> None:
     symbol = play.symbol_universe[0]
     tf = play.exec_tf
 
-    store = get_historical_store()
+    store = get_historical_store(env=config.data_env)
     status = store.status(symbol)
     key = f"{symbol}_{tf}"
 
@@ -862,7 +863,7 @@ class RunnerConfig:
     emit_snapshots: bool = False
 
     # Data environment (backtest, live, demo) - determines which DuckDB to use
-    data_env: str = "backtest"
+    data_env: DataEnv = "backtest"
     
     def load_play(self) -> Play:
         """Load the Play if not already loaded."""

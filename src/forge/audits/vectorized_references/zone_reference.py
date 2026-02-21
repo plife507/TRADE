@@ -60,25 +60,29 @@ def vectorized_zone(
 
         # Check for new swing
         if swing_idx != last_swing_idx and swing_idx >= 0:
-            atr = 0.0
+            atr = np.nan
             if atr_values is not None and i < len(atr_values):
                 val = atr_values[i]
                 if not np.isnan(val):
                     atr = val
 
-            width = atr * width_atr
-
-            if zone_type == "demand":
-                lower = swing_level - width
-                upper = swing_level
+            # Skip zone creation when ATR is NaN (matches incremental detector)
+            if np.isnan(atr):
+                last_swing_idx = swing_idx
             else:
-                lower = swing_level
-                upper = swing_level + width
+                width = atr * width_atr
 
-            state = 1  # active
-            anchor_idx = swing_idx
-            last_swing_idx = swing_idx
-            version += 1
+                if zone_type == "demand":
+                    lower = swing_level - width
+                    upper = swing_level
+                else:
+                    lower = swing_level
+                    upper = swing_level + width
+
+                state = 1  # active
+                anchor_idx = swing_idx
+                last_swing_idx = swing_idx
+                version += 1
 
         # Check for break
         if state == 1:

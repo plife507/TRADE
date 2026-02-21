@@ -183,26 +183,39 @@ def get_open_orders(
     limit: int = 50,
     category: str = "linear",
 ) -> list[dict]:
-    """Get open orders."""
-    client._private_limiter.acquire()
+    """Get open orders with cursor-based pagination."""
+    all_orders: list[dict] = []
+    cursor: str | None = None
 
-    kwargs: dict = {
-        "category": category,
-        "limit": min(limit, 50),
-        "openOnly": open_only,
-    }
-    if symbol:
-        kwargs["symbol"] = symbol
-    else:
-        kwargs["settleCoin"] = "USDT"
-    if order_id:
-        kwargs["orderId"] = order_id
-    if order_link_id:
-        kwargs["orderLinkId"] = order_link_id
+    while True:
+        client._private_limiter.acquire()
 
-    response = client._session.get_open_orders(**kwargs)
-    result = client._extract_result(response)
-    return result.get("list", [])
+        kwargs: dict = {
+            "category": category,
+            "limit": min(limit, 50),
+            "openOnly": open_only,
+        }
+        if symbol:
+            kwargs["symbol"] = symbol
+        else:
+            kwargs["settleCoin"] = "USDT"
+        if order_id:
+            kwargs["orderId"] = order_id
+        if order_link_id:
+            kwargs["orderLinkId"] = order_link_id
+        if cursor:
+            kwargs["cursor"] = cursor
+
+        response = client._session.get_open_orders(**kwargs)
+        result = client._extract_result(response)
+        page = result.get("list", [])
+        all_orders.extend(page)
+
+        cursor = result.get("nextPageCursor")
+        if not cursor or not page:
+            break
+
+    return all_orders
 
 
 def get_order_history(

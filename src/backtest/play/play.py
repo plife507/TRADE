@@ -706,7 +706,7 @@ class Play:
                 try:
                     input_source = InputSource(source_str)
                 except ValueError:
-                    input_source = InputSource.CLOSE
+                    raise ValueError(f"Unknown feature source '{source_str}'")
 
                 output_keys = ()
                 if registry.is_supported(indicator_type):

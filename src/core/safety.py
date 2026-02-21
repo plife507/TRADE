@@ -292,10 +292,19 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
     # Step 1: Cancel all open orders (with retry)
     for attempt in range(1, PANIC_RETRY_ATTEMPTS + 1):
         try:
-            exchange_manager.cancel_all_orders()
-            results["orders_cancelled"] = True
-            logger.info("✓ All orders cancelled")
-            break
+            cancelled = exchange_manager.cancel_all_orders()
+            if cancelled:
+                results["orders_cancelled"] = True
+                logger.info("All orders cancelled")
+                break
+            else:
+                if attempt == PANIC_RETRY_ATTEMPTS:
+                    error = f"cancel_all_orders returned False after {attempt} attempts"
+                    results["errors"].append(error)
+                    logger.error(error)
+                else:
+                    logger.warning(f"Cancel orders attempt {attempt} returned False, retrying")
+                    time.sleep(PANIC_RETRY_DELAY)
         except Exception as e:
             if attempt == PANIC_RETRY_ATTEMPTS:
                 error = f"Failed to cancel orders after {attempt} attempts: {e}"

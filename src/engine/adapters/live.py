@@ -1304,7 +1304,7 @@ class LiveDataProvider:
                 return self._med_tf_indicators
         return self._exec_indicators
 
-    def get_structure(self, key: str, field: str) -> float:
+    def get_structure(self, key: str, field: str) -> float | int | str:
         """
         Get current structure field value (DataProvider protocol).
 
@@ -1313,11 +1313,11 @@ class LiveDataProvider:
             field: Field name
 
         Returns:
-            Structure field value
+            Structure field value in its original type
         """
         return self.get_structure_for_tf(key, field, tf_role=None)
 
-    def get_structure_for_tf(self, key: str, field: str, tf_role: str | None = None) -> float:
+    def get_structure_for_tf(self, key: str, field: str, tf_role: str | None = None) -> float | int | str:
         """
         Get current structure field value for a specific TF.
 
@@ -1327,13 +1327,13 @@ class LiveDataProvider:
             tf_role: TF role (low_tf, med_tf, high_tf). If None, uses exec structure.
 
         Returns:
-            Structure field value
+            Structure field value in its original type
         """
         structure = self._get_structure_for_role(tf_role)
         if structure is None:
             raise RuntimeError(f"Structure state not initialized for {tf_role or 'exec'}")
 
-        return float(structure.get_value(key, field))
+        return structure.get_value(key, field)
 
     def _get_structure_for_role(self, tf_role: str | None) -> "TFIncrementalState | None":
         """Get the structure state for a TF role."""
@@ -1350,7 +1350,7 @@ class LiveDataProvider:
             return self._med_tf_structure
         return self._low_tf_structure
 
-    def get_structure_at(self, key: str, field: str, index: int) -> float:
+    def get_structure_at(self, key: str, field: str, index: int) -> float | int | str:
         """
         Get structure field at specific index (DataProvider protocol).
 
@@ -1360,13 +1360,13 @@ class LiveDataProvider:
             index: Bar index
 
         Returns:
-            Structure field value
+            Structure field value in its original type
         """
         return self.get_structure_at_for_tf(key, field, index, tf_role=None)
 
     def get_structure_at_for_tf(
         self, key: str, field: str, index: int, tf_role: str | None = None
-    ) -> float:
+    ) -> float | int | str:
         """
         Get structure field at specific index for a specific TF.
 
@@ -1379,7 +1379,7 @@ class LiveDataProvider:
             tf_role: TF role (low_tf, med_tf, high_tf). If None, uses exec structure.
 
         Returns:
-            Structure field value
+            Structure field value in its original type
         """
         structure = self._get_structure_for_role(tf_role)
         if structure is None:
@@ -1396,9 +1396,15 @@ class LiveDataProvider:
             abs_idx = len(buf) + index
             if 0 <= abs_idx < len(buf):
                 return buf[abs_idx][1]
+            # Out-of-range lookback: return NaN instead of falling through
+            return float("nan")
 
-        # Fall through to current value for non-negative index or empty buffer
-        return float(structure.get_value(key, field))
+        if index < 0:
+            # Negative index but no buffer — return NaN
+            return float("nan")
+
+        # Non-negative index: return current value
+        return structure.get_value(key, field)
 
     def has_indicator(self, name: str, tf_role: str | None = None) -> bool:
         """Check if indicator exists in specified TF cache."""
@@ -2293,7 +2299,7 @@ class LiveExchange:
         """
         pass  # Exchange handles fills via WebSocket
 
-    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> None:
+    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> OrderResult:
         """
         Submit close order for current position.
 
@@ -2301,12 +2307,15 @@ class LiveExchange:
             reason: Reason for close (e.g., "signal", "stop_loss", "take_profit")
             percent: Percentage of position to close (1-100)
 
+        Returns:
+            OrderResult indicating success or failure of the close submission.
+
         Called by PlayEngine when exit signal triggers.
         """
         position = self.get_position(self._symbol)
         if position is None:
             logger.warning(f"submit_close called but no position for {self._symbol}")
-            return
+            return OrderResult(success=False, error=f"No position for {self._symbol}")
 
         # Calculate close size
         close_qty = position.size_qty * (percent / 100.0)
@@ -2321,7 +2330,7 @@ class LiveExchange:
 
         if self._exchange_manager is None:
             logger.error("Exchange not connected. Cannot close position.")
-            return
+            return OrderResult(success=False, error="Exchange not connected")
 
         try:
             if percent >= 100.0:
@@ -2331,7 +2340,7 @@ class LiveExchange:
                 )
             else:
                 # Partial close: send reduce-only market order with computed qty
-                from ...core.exchange_manager import OrderResult
+                from ...core.exchange_manager import OrderResult as ExchangeOrderResult
                 raw = self._exchange_manager.bybit.create_order(
                     symbol=self._symbol,
                     side=close_side,
@@ -2339,7 +2348,7 @@ class LiveExchange:
                     qty=close_qty,
                     reduce_only=True,
                 )
-                result = OrderResult(
+                result = ExchangeOrderResult(
                     success=True,
                     order_id=raw.get("orderId"),
                     symbol=self._symbol,
@@ -2353,12 +2362,19 @@ class LiveExchange:
                     f"Close order submitted: order_id={result.order_id} "
                     f"qty={close_qty:.6f} ({percent}%) (PnL tracked by exchange)"
                 )
+                return OrderResult(
+                    success=True,
+                    order_id=result.order_id,
+                    metadata={"close": True, "percent": percent, "reason": reason},
+                )
             else:
                 error_msg = result.error if result else "Unknown error"
                 logger.error(f"Close order failed: {error_msg}")
+                return OrderResult(success=False, error=error_msg)
 
         except Exception as e:
             logger.error(f"Failed to submit close order: {e}")
+            return OrderResult(success=False, error=str(e))
 
     @property
     def has_position(self) -> bool:

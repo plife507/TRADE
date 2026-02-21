@@ -358,13 +358,16 @@ class ExchangeAdapter(Protocol):
         """
         ...
 
-    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> None:
+    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> "OrderResult":
         """
         Submit close order for current position.
 
         Args:
             reason: Reason for close (e.g., "signal", "stop_loss", "take_profit")
             percent: Percentage of position to close (1-100)
+
+        Returns:
+            OrderResult indicating success or failure of the close submission.
 
         Called by PlayEngine when exit signal triggers.
         """

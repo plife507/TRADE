@@ -112,13 +112,13 @@ _VALID_PARAMS: dict[str, frozenset[str]] = {
     "kc": frozenset({"length", "scalar"}),
     "dm": frozenset({"length"}),
     "vortex": frozenset({"length"}),
-    "kama": frozenset({"length"}),
+    "kama": frozenset({"length", "fast", "slow"}),
     "alma": frozenset({"length", "sigma", "offset"}),
     "zlma": frozenset({"length"}),
     "uo": frozenset({"fast", "medium", "slow"}),
     "psar": frozenset({"af0", "af", "max_af"}),
-    "squeeze": frozenset({"bb_length", "bb_std", "kc_length", "kc_scalar"}),
-    "fisher": frozenset({"length"}),
+    "squeeze": frozenset({"bb_length", "bb_std", "kc_length", "kc_scalar", "mom_length", "mom_smooth"}),
+    "fisher": frozenset({"length", "signal"}),
     "kvo": frozenset({"fast", "slow", "signal"}),
     "vwap": frozenset({"anchor"}),
     "anchored_vwap": frozenset({"anchor_source"}),
@@ -274,7 +274,11 @@ def create_incremental_indicator(
     # Complex adaptive indicators
     # =============================================================================
     elif indicator_type == "kama":
-        return IncrementalKAMA(length=params.get("length", 10))
+        return IncrementalKAMA(
+            length=params.get("length", 10),
+            fast=params.get("fast", 2),
+            slow=params.get("slow", 30),
+        )
     elif indicator_type == "alma":
         return IncrementalALMA(
             length=params.get("length", 10),
@@ -304,9 +308,14 @@ def create_incremental_indicator(
             bb_std=params.get("bb_std", 2.0),
             kc_length=params.get("kc_length", 20),
             kc_scalar=params.get("kc_scalar", 1.5),
+            mom_length=params.get("mom_length", 12),
+            mom_smooth=params.get("mom_smooth", 6),
         )
     elif indicator_type == "fisher":
-        return IncrementalFisher(length=params.get("length", 9))
+        return IncrementalFisher(
+            length=params.get("length", 9),
+            signal=params.get("signal", 1),
+        )
     # =============================================================================
     # Volume complex indicators
     # =============================================================================

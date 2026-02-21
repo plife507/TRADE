@@ -499,6 +499,10 @@ def _normalize_rhs_for_operator(rhs: Any, op: str) -> Any:
     """
     from .dsl_nodes import NUMERIC_OPERATORS, DISCRETE_OPERATORS
 
+    # Convert 2-element list to range dict for 'between' operator
+    if op == "between" and isinstance(rhs, list) and len(rhs) == 2:
+        return {"low": rhs[0], "high": rhs[1]}
+
     # Only normalize string RHS values
     if not isinstance(rhs, str):
         return rhs

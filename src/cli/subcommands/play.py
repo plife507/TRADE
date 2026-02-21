@@ -37,16 +37,6 @@ def handle_play_run(args) -> int:
         ))
         return 1
 
-    # G15.1: Auto-run pre-live validation gate for live mode
-    if mode == "live":
-        from src.cli.validate import run_validation, Tier
-        console.print("[cyan]Running pre-live validation gate...[/]")
-        gate_result = run_validation(Tier.PRE_LIVE, play_id=args.play)
-        if gate_result != 0:
-            console.print("[bold red]Pre-live validation FAILED. Cannot start live trading.[/]")
-            return 1
-        console.print("[green]Pre-live validation passed.[/]")
-
     from src.backtest.play import Play, load_play
 
     plays_dir = Path(args.plays_dir) if getattr(args, "plays_dir", None) else None
@@ -62,6 +52,16 @@ def handle_play_run(args) -> int:
     except Exception as e:
         console.print(f"[red]Failed to load Play: {e}[/]")
         return 1
+
+    # G15.1: Auto-run pre-live validation gate for live mode (after play resolution)
+    if mode == "live":
+        from src.cli.validate import run_validation, Tier
+        console.print("[cyan]Running pre-live validation gate...[/]")
+        gate_result = run_validation(Tier.PRE_LIVE, play_id=play.id)
+        if gate_result != 0:
+            console.print("[bold red]Pre-live validation FAILED. Cannot start live trading.[/]")
+            return 1
+        console.print("[green]Pre-live validation passed.[/]")
 
     symbols = play.symbol_universe if play.symbol_universe else ["N/A"]
     symbol_str = symbols[0] if len(symbols) == 1 else f"{symbols[0]} (+{len(symbols)-1} more)"

@@ -399,9 +399,17 @@ class MarketData:
         """
         if df.empty or not self._prefer_websocket or not self.realtime_state:
             return df
-        
+
+        # Normalize Bybit interval (e.g. "15") to our format (e.g. "15m")
+        # since KlineData stores under normalized keys
+        from .realtime_models import KlineData
+        try:
+            normalized = KlineData._normalize_interval(interval)
+        except ValueError:
+            normalized = interval  # Already normalized or unknown — try as-is
+
         # Try to get WebSocket kline
-        ws_kline = self.realtime_state.get_kline(symbol, interval)
+        ws_kline = self.realtime_state.get_kline(symbol, normalized)
         if not ws_kline:
             return df
         

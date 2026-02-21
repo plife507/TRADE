@@ -287,13 +287,12 @@ def get_closed_pnl(
     symbol: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
-    """Get closed position PnL history. TimeRange is REQUIRED."""
-    try:
-        result = manager.bybit.get_closed_pnl(time_range=time_range, symbol=symbol, limit=limit)
-        return result.get("list", [])
-    except Exception as e:
-        manager.logger.error(f"Get closed PnL failed: {e}")
-        return []
+    """Get closed position PnL history. TimeRange is REQUIRED.
+
+    Raises on failure so callers can distinguish real-zero from errors.
+    """
+    result = manager.bybit.get_closed_pnl(time_range=time_range, symbol=symbol, limit=limit)
+    return result.get("list", [])
 
 
 # =============================================================================
@@ -477,7 +476,7 @@ def batch_cancel_orders(
     
     try:
         result = manager.bybit.batch_cancel_orders(orders)
-        results = [item.get("code") == 0 for item in result.get("result", {}).get("list", [])]
+        results = [item.get("code") == 0 for item in result.get("list", [])]
         manager.logger.info(f"Batch cancelled {sum(results)}/{len(results)} orders")
         return results
     except Exception as e:
@@ -515,7 +514,7 @@ def batch_amend_orders(
     
     try:
         result = manager.bybit.batch_amend_orders(formatted_orders)
-        results = [item.get("code") == 0 for item in result.get("result", {}).get("list", [])]
+        results = [item.get("code") == 0 for item in result.get("list", [])]
         manager.logger.info(f"Batch amended {sum(results)}/{len(results)} orders")
         return results
     except Exception as e:

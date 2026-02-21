@@ -877,7 +877,7 @@ class LiveRunner:
                 )
 
             # B4: Run safety checks before execution
-            if not self._run_safety_checks():
+            if not self._run_safety_checks(additional_exposure=signal.size_usdt):
                 logger.warning("Safety checks failed, skipping signal execution")
                 return
 
@@ -1019,9 +1019,12 @@ class LiveRunner:
             logger.error(f"Reconnection failed: {e}")
             self._stats.errors.append(f"Reconnect error: {e}")
 
-    def _run_safety_checks(self) -> bool:
+    def _run_safety_checks(self, additional_exposure: float = 0) -> bool:
         """
         B4: Run SafetyChecks before order execution.
+
+        Args:
+            additional_exposure: USD exposure of the pending signal.
 
         Returns True if all checks pass, False to skip execution.
         Fail-closed: if safety checks cannot run, trading is halted.
@@ -1039,7 +1042,7 @@ class LiveRunner:
                 return False
 
             checks = SafetyChecks(em, em.config)
-            passed, failures = checks.run_all_checks()
+            passed, failures = checks.run_all_checks(additional_exposure=additional_exposure)
             if not passed:
                 for reason in failures:
                     logger.error(f"Safety check failed: {reason}")
@@ -1137,4 +1140,7 @@ class LiveRunner:
                 self._stop_event.set()
 
         except Exception as e:
-            logger.warning(f"Max drawdown check failed (non-fatal): {e}")
+            logger.error(f"Max drawdown check failed — halting trading: {e}")
+            panic = get_panic_state()
+            panic.trigger(f"Max drawdown check error: {e}")
+            self._stop_event.set()

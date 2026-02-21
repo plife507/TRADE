@@ -413,9 +413,9 @@ def _preflight_check(cli: "TradeCLI"):
     console.print()
     if result.success:
         data = result.data or {}
-        status = data.get("status", "unknown")
+        status = data.get("overall_status", "unknown")
 
-        if status == "pass":
+        if status == "passed":
             console.print(f"[{CLIColors.NEON_GREEN}]{CLIIcons.SUCCESS} Preflight PASSED[/]")
         else:
             console.print(f"[{CLIColors.NEON_RED}]{CLIIcons.ERROR} Preflight FAILED[/]")

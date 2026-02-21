@@ -956,7 +956,8 @@ def get_transferable_amount(manager: "ExchangeManager", coin: str) -> float:
     """
     try:
         result = manager.bybit.get_transferable_amount(coin)
-        return safe_float(result.get("transferableAmount", 0))
+        balance = result.get("balance", {})
+        return safe_float(balance.get("transferBalance", 0))
     except Exception as e:
         manager.logger.error(f"Get transferable amount failed: {e}")
         return 0.0

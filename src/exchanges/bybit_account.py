@@ -29,19 +29,31 @@ def get_balance(client: "BybitClient", account_type: str = "UNIFIED") -> dict:
 def get_positions(
     client: "BybitClient", symbol: str | None = None, settle_coin: str = "USDT", category: str = "linear"
 ) -> list[dict]:
-    """Get open positions."""
-    client._private_limiter.acquire()
+    """Get open positions with cursor-based pagination."""
+    all_positions: list[dict] = []
+    cursor: str | None = None
 
-    kwargs: dict[str, str] = {"category": category}
-    if symbol:
-        kwargs["symbol"] = symbol
-    else:
-        kwargs["settleCoin"] = settle_coin
+    while True:
+        client._private_limiter.acquire()
 
-    response = client._session.get_positions(**kwargs)
+        kwargs: dict[str, str] = {"category": category}
+        if symbol:
+            kwargs["symbol"] = symbol
+        else:
+            kwargs["settleCoin"] = settle_coin
+        if cursor:
+            kwargs["cursor"] = cursor
 
-    result = client._extract_result(response)
-    return result.get("list", [])
+        response = client._session.get_positions(**kwargs)
+        result = client._extract_result(response)
+        page = result.get("list", [])
+        all_positions.extend(page)
+
+        cursor = result.get("nextPageCursor")
+        if not cursor or not page:
+            break
+
+    return all_positions
 
 
 def get_account_info(client: "BybitClient") -> dict:
@@ -208,12 +220,13 @@ def upgrade_to_unified_account(client: "BybitClient") -> dict:
 
 
 def get_transferable_amount(client: "BybitClient", coin: str) -> dict:
-    """Get amount available to transfer out."""
+    """Get amount available to transfer out using Bybit V5 asset coin balance API."""
     client._private_limiter.acquire()
 
-    # pybit generates this method dynamically at runtime
-    get_borrow_amount_fn = getattr(client._session, "get_spot_margin_trade_borrow_amount")
-    response = get_borrow_amount_fn(coin=coin)
+    response = client._session.get_coin_balance(
+        accountType="UNIFIED",
+        coin=coin,
+    )
     result = client._extract_result(response)
     return result
 

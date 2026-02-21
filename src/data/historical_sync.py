@@ -314,6 +314,7 @@ def _sync_symbol_timeframe(
     target_end = target_end_norm
 
     total_synced = 0
+    was_partial = False
 
     ranges_to_fetch = []
 
@@ -325,30 +326,33 @@ def _sync_symbol_timeframe(
             older_end = first_ts - timedelta(minutes=tf_minutes)
             if target_start <= older_end:
                 ranges_to_fetch.append((target_start, older_end))
-        
+
         if target_end > last_ts:
             newer_start = last_ts + timedelta(minutes=tf_minutes)
             if newer_start <= target_end:
                 ranges_to_fetch.append((newer_start, target_end))
-    
+
     for range_start, range_end in ranges_to_fetch:
         if store._cancelled:
+            was_partial = True
             break
-        
+
         df = _fetch_from_api(store, symbol, bybit_tf, range_start, range_end, spinner=spinner)
 
         if not df.empty:
             _store_dataframe(store, symbol, timeframe, df)
             total_synced += len(df)
-    
-    count_row = store.conn.execute(f"""
-        SELECT COUNT(*) FROM {store.table_ohlcv} WHERE symbol = ? AND timeframe = ?
-    """, [symbol, timeframe]).fetchone()
-    has_data = (count_row[0] > 0) if count_row else False
-    
-    if has_data:
-        _update_metadata(store, symbol, timeframe)
-    
+
+    # Only update metadata if fetch completed fully (not interrupted)
+    if not was_partial:
+        count_row = store.conn.execute(f"""
+            SELECT COUNT(*) FROM {store.table_ohlcv} WHERE symbol = ? AND timeframe = ?
+        """, [symbol, timeframe]).fetchone()
+        has_data = (count_row[0] > 0) if count_row else False
+
+        if has_data:
+            _update_metadata(store, symbol, timeframe)
+
     return total_synced
 
 
@@ -450,34 +454,36 @@ def _store_dataframe(store: "HistoricalDataStore", symbol: str, timeframe: str, 
     if "turnover" not in temp_df.columns:
         temp_df["turnover"] = 0.0
 
-    store.conn.execute(f"""
-        INSERT OR REPLACE INTO {store.table_ohlcv}
-        (symbol, timeframe, timestamp, open, high, low, close, volume, turnover)
-        SELECT symbol, timeframe, timestamp, open, high, low, close, volume, turnover
-        FROM temp_df
-    """)
+    with store._write_operation():
+        store.conn.execute(f"""
+            INSERT OR REPLACE INTO {store.table_ohlcv}
+            (symbol, timeframe, timestamp, open, high, low, close, volume, turnover)
+            SELECT symbol, timeframe, timestamp, open, high, low, close, volume, turnover
+            FROM temp_df
+        """)
 
 
 def _update_metadata(store: "HistoricalDataStore", symbol: str, timeframe: str):
     """Update sync metadata for a symbol/timeframe."""
     symbol = symbol.upper()
-    
+
     stats = store.conn.execute(f"""
-        SELECT 
+        SELECT
             MIN(timestamp) as first_ts,
             MAX(timestamp) as last_ts,
             COUNT(*) as count
         FROM {store.table_ohlcv}
         WHERE symbol = ? AND timeframe = ?
     """, [symbol, timeframe]).fetchone()
-    
+
     assert stats is not None
     first_ts, last_ts, count = stats
-    
+
     if first_ts and last_ts:
-        store.conn.execute(f"""
-            INSERT OR REPLACE INTO {store.table_sync_metadata}
-            (symbol, timeframe, first_timestamp, last_timestamp, candle_count, last_sync)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, [symbol, timeframe, first_ts, last_ts, count, datetime.now()])
+        with store._write_operation():
+            store.conn.execute(f"""
+                INSERT OR REPLACE INTO {store.table_sync_metadata}
+                (symbol, timeframe, first_timestamp, last_timestamp, candle_count, last_sync)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, [symbol, timeframe, first_ts, last_ts, count, datetime.now()])
 

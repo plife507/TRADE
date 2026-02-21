@@ -564,7 +564,7 @@ class PlayEngine:
                 exit_percent = signal.metadata["exit_percent"]
 
             # Submit close request (will be processed on next bar)
-            self.exchange.submit_close(reason="signal", percent=exit_percent)
+            close_result = self.exchange.submit_close(reason="signal", percent=exit_percent)
             self.logger.info(
                 f"Exit signal: {self.symbol} close {exit_percent}%"
             )
@@ -577,11 +577,11 @@ class PlayEngine:
                     trade_num=self._total_trades,
                 )
 
-            return OrderResult(
-                success=True,
-                order_id=f"close_{uuid.uuid4().hex[:8]}",
-                metadata={"close": True, "percent": exit_percent},
-            )
+            if close_result.order_id is None:
+                close_result.order_id = f"close_{uuid.uuid4().hex[:8]}"
+            if not close_result.metadata:
+                close_result.metadata = {"close": True, "percent": exit_percent}
+            return close_result
 
         # Entry signals (LONG/SHORT)
         # Apply risk policy filtering (if risk_mode=rules)
