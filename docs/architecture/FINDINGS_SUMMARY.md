@@ -1,10 +1,13 @@
-# Findings Summary
+# Findings Summary (Archived)
 
-All bugs and issues from the 8-domain architecture review, sorted by severity.
+All bugs and issues from the 8-domain architecture review (pass 1), sorted by severity.
 
 **Date**: 2026-02-18 (review), updated 2026-02-18 (status reconciliation)
+**Archived**: 2026-02-21. Domain review files moved to `archived/`.
 **Scope**: Full codebase review across engine, sim, backtest, DSL, indicators, data, CLI, and forge domains.
 **Resolution**: 105/120 findings resolved. 8 deferred, 7 accepted/known.
+
+**Active review**: See `CODEBASE_REVIEW_ONGOING.md` for current pass-3 findings.
 
 ---
 
@@ -173,3 +176,20 @@ All bugs and issues from the 8-domain architecture review, sorted by severity.
 - 7 accepted/known: DATA-001, CLI-001, FORGE-001, FORGE-008, CLI-008, SIM-001, IND-007
 
 See `docs/TODO.md` "Deferred Items" section for tracking of open items.
+
+---
+
+## Archived Domain Reviews
+
+Detailed per-file reviews preserved in `archived/` for reference:
+
+| File | Domain | Original Findings |
+|------|--------|-------------------|
+| `archived/ENGINE_REVIEW.md` | Engine, SubLoop, LiveRunner, adapters | 20 findings |
+| `archived/SIM_REVIEW.md` | SimulatedExchange, ledger, liquidation, fills | 22 findings |
+| `archived/BACKTEST_INFRA_REVIEW.md` | Runner, factory, metrics, preflight, feed store | 10 findings |
+| `archived/DATA_EXCHANGE_REVIEW.md` | DuckDB, RealtimeState, WebSocket, safety, orders | 24 findings |
+| `archived/DSL_PLAY_REVIEW.md` | Parser, evaluator, strategy blocks, Play config | 23 findings |
+| `archived/INDICATORS_STRUCTURES_REVIEW.md` | 44 indicators, 7 structure detectors | 25 findings |
+| `archived/CLI_TOOLS_REVIEW.md` | CLI menus, validation gates, tool layer | 30 findings |
+| `archived/FORGE_CONFIG_REVIEW.md` | Synthetic data, config, logger, suite runner | 38 findings |

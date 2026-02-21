@@ -6,10 +6,21 @@ Handles:
 - Market orders with TP/SL
 """
 
+import uuid
 from typing import TYPE_CHECKING
 
 from ..exchanges.bybit_client import BybitAPIError
 from . import exchange_instruments as inst
+
+
+def _generate_order_link_id(prefix: str, symbol: str) -> str:
+    """Generate a deterministic, unique order_link_id for idempotent retries.
+
+    C1-C6: BybitClient.create_order() has @with_retry. Without a stable
+    order_link_id, a timeout after exchange acceptance causes duplicate orders
+    on retry. Bybit deduplicates by order_link_id within a 3-min window.
+    """
+    return f"{prefix}_{symbol}_{uuid.uuid4().hex[:12]}"
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager, OrderResult
@@ -63,6 +74,7 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float, reduc
         result = manager.bybit.create_order(
             symbol=symbol, side="Buy", order_type="Market", qty=qty,
             reduce_only=reduce_only,
+            order_link_id=_generate_order_link_id("MB", symbol),
         )
 
         # Use actual fill price from response, fallback to quote price
@@ -106,6 +118,7 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float, redu
         result = manager.bybit.create_order(
             symbol=symbol, side="Sell", order_type="Market", qty=qty,
             reduce_only=reduce_only,
+            order_link_id=_generate_order_link_id("MS", symbol),
         )
 
         # Use actual fill price from response, fallback to quote price
@@ -189,6 +202,7 @@ def market_buy_with_tpsl(
             tpsl_mode=tpsl_mode if (take_profit or stop_loss) else None,
             tp_order_type=tp_order_type if take_profit else None,
             sl_order_type=sl_order_type if stop_loss else None,
+            order_link_id=_generate_order_link_id("MBT", symbol),
         )
 
         # Use actual fill price from response, fallback to quote price
@@ -248,6 +262,7 @@ def market_sell_with_tpsl(
             tpsl_mode=tpsl_mode if (take_profit or stop_loss) else None,
             tp_order_type=tp_order_type if take_profit else None,
             sl_order_type=sl_order_type if stop_loss else None,
+            order_link_id=_generate_order_link_id("MST", symbol),
         )
 
         # Use actual fill price from response, fallback to quote price

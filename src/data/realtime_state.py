@@ -284,7 +284,32 @@ class RealtimeState:
         """Register callback for kline updates."""
         with self._callback_lock:
             self._kline_callbacks.append(callback)
-    
+
+    def on_ticker_update(self, callback: Callable[[TickerData], None]):
+        """Register callback for ticker updates."""
+        with self._callback_lock:
+            self._ticker_callbacks.append(callback)
+
+    def on_position_update(self, callback: Callable[[PositionData], None]):
+        """Register callback for position updates."""
+        with self._callback_lock:
+            self._position_callbacks.append(callback)
+
+    def on_order_update(self, callback: Callable[[OrderData], None]):
+        """Register callback for order updates."""
+        with self._callback_lock:
+            self._order_callbacks.append(callback)
+
+    def on_execution(self, callback: Callable[[ExecutionData], None]):
+        """Register callback for execution updates."""
+        with self._callback_lock:
+            self._execution_callbacks.append(callback)
+
+    def on_wallet_update(self, callback: Callable[[WalletData], None]):
+        """Register callback for wallet updates."""
+        with self._callback_lock:
+            self._wallet_callbacks.append(callback)
+
     # ==========================================================================
     # Bar Buffers - Environment-scoped bar storage for any timeframe
     # ==========================================================================

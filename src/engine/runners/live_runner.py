@@ -62,7 +62,7 @@ VALID_TRANSITIONS: dict[RunnerState, set[RunnerState]] = {
     RunnerState.RUNNING: {RunnerState.STOPPING, RunnerState.RECONNECTING, RunnerState.ERROR},
     RunnerState.RECONNECTING: {RunnerState.RUNNING, RunnerState.RECONNECTING, RunnerState.STOPPING, RunnerState.ERROR},
     RunnerState.STOPPING: {RunnerState.STOPPED, RunnerState.ERROR},
-    RunnerState.ERROR: {RunnerState.STOPPED},  # Can only reset from error
+    RunnerState.ERROR: {RunnerState.STOPPED, RunnerState.STOPPING},  # C1-H1: Allow cleanup from error
 }
 
 

@@ -1483,8 +1483,13 @@ class LiveDataProvider:
         # WU-04: Check for NaN in indicator values
         if indicator_cache is not None and indicator_cache.length > 0:
             # Check all indicators at the latest bar for NaN
+            # C1-C4: Skip engine-managed keys (e.g. anchored_vwap) — they are
+            # filled by the engine AFTER warmup, so NaN is expected here.
+            engine_managed = getattr(indicator_cache, '_engine_managed_keys', set())
             with indicator_cache._lock:
                 for name, arr in indicator_cache._indicators.items():
+                    if name in engine_managed:
+                        continue
                     if len(arr) > 0 and np.isnan(arr[-1]):
                         # Found NaN at latest bar - warmup not complete
                         logger.debug(

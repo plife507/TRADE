@@ -26,6 +26,7 @@ Single source of truth for all open work, bugs, and task progress.
 | Live Dashboard Redesign (P7) | DONE | 2026-02-19 | Modular dashboard package, Rich rendering, tiered refresh, signal proximity |
 | Structure Detection Audit | DONE | 2026-02-20 | Audit of swing/trend/MS on real BTC data. See `docs/STRUCTURE_DETECTION_AUDIT.md` |
 | Dead Code Audit | DONE | 2026-02-20 | 44 findings, ~800 lines dead code in live path. See `docs/DEAD_CODE_AUDIT.md` |
+| Codebase Review Pass 3: Verification | DONE | 2026-02-21 | 51 findings verified by 5 parallel agents. 49 confirmed, 1 partial, 1 duplicate. See P10 |
 
 Full gate details with per-item descriptions: `memory/completed_work.md`
 
@@ -221,6 +222,93 @@ Audit script: `scripts/analysis/structure_audit.py`
 - [ ] Track which swing produced the last BOS (not just most recent swing)
 - [ ] CHoCH only valid when breaking the BOS-producing swing level
 - [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+### P10: Codebase Review Pass 3 — Verified Bug Fixes
+
+Source: `docs/architecture/CODEBASE_REVIEW_ONGOING.md` (51 findings, 49 confirmed by agent verification 2026-02-21).
+
+#### Phase 1: Critical Live Blockers (5 fixes)
+
+These prevent safe live trading. Must fix before any deployment.
+
+- [x] **C1** `realtime_state.py` — Add missing callback methods `on_order_update()`, `on_execution()`, `on_position_update()` to RealtimeState (callers crash with AttributeError)
+- [x] **C4** `adapters/live.py` — Fix anchored VWAP readiness deadlock: exclude engine-managed keys from `_check_tf_warmup()` NaN check (live stalls forever)
+- [x] **C6** `bybit_client.py` + `exchange_orders_*.py` — Generate deterministic `order_link_id` before every `create_order()` call so retries are idempotent (duplicate market orders on timeout)
+- [x] **H1** `live_runner.py:65` — Add `ERROR → STOPPING` to `VALID_TRANSITIONS` so `stop()` cleanup runs from error state (open orders left on exchange)
+- [x] **H17** `bybit_client.py:255` — Re-raise `RuntimeError` from `_sync_server_time()` instead of swallowing fatal clock drift (bot starts with broken auth)
+- [x] **GATE**: `pyright` 0 errors + `python trade_cli.py validate quick` passes
+
+#### Phase 2: High Live Safety (10 fixes)
+
+Pre-deployment safety. Each is a fail-open or silent-failure path in live trading.
+
+- [ ] **C2** `realtime_bootstrap.py` — Split stale detection into per-stream (public vs private) update counters so dead private stream is detected independently
+- [ ] **C3** `play_engine.py:580` — Propagate `submit_close()` result; do NOT hardcode `OrderResult(success=True)` when close may have failed
+- [ ] **H2** `safety.py:296` — Check return value of `cancel_all_orders()` before setting `orders_cancelled=True`
+- [ ] **H3** `safety.py:127` + `exchange_orders_manage.py:294` — `get_closed_pnl()` must propagate exceptions (or return None sentinel); `seed_from_exchange()` must not clear `_seed_failed` on empty result
+- [ ] **H4** `application.py:428` — Always start private WS streams when `risk_needs_ws=True`, even with no open positions
+- [ ] **H6** `application.py:346` — Pass `exchange_manager=self._exchange_manager` to `RiskManager()` constructor
+- [ ] **H7** `live_runner.py:1042` — Pass `additional_exposure=signal.size_usdt` to `run_all_checks()` so max-exposure is a pre-trade gate
+- [ ] **H8** `live_runner.py:1139` — Fail-closed on drawdown check exception: halt trading instead of `logger.warning` + continue
+- [ ] **H9** `realtime_bootstrap.py:748` — Call `_fetch_initial_private_state()` on private reconnection detection (stale wallet/positions after WS reconnect)
+- [ ] **H10** `realtime_bootstrap.py:1085` — Add `_fetch_initial_orders()` call to `_handle_stale_connection()` after positions refresh
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+#### Phase 3: High Exchange Integration (4 fixes)
+
+Exchange communication bugs that cause silent data corruption.
+
+- [ ] **H11** `exchange_orders_manage.py:480,518` — Fix double-unwrap: change `result.get("result",{}).get("list",[])` to `result.get("list",[])` (batch cancel/amend always returns empty)
+- [ ] **H14** `bybit_account.py:215` — Use correct Bybit API for transferable amount (currently calls spot margin borrow endpoint; always returns 0)
+- [ ] **M6** `adapters/live.py:1336,1401` — Don't coerce structure values to `float()`; preserve original types for DSL comparison (crashes on enum/string fields)
+- [ ] **M14** `market_data.py:356` — Normalize WS kline interval keys to match RealtimeState format (`"15"` → `"15m"`, `"60"` → `"1h"`) so WS cache is actually used
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+#### Phase 4: Medium Backtest/Engine Correctness (9 fixes)
+
+Backtest accuracy and DSL correctness issues.
+
+- [ ] **H21** `engine_factory.py:317` — `warmup_bars_by_role["exec"]` should follow `tf_mapping["exec"]` pointer, not always use `low_tf`
+- [ ] **H22** `backtest_runner.py:629` — Pass `funding_events` to `SimulatedExchange.process_bar()` (funding charges never applied in backtests)
+- [ ] **H23** `dsl_parser.py:286` — Handle list RHS for `between` operator: convert `[lo, hi]` list to `RangeValue` in `_normalize_rhs_for_operator()`
+- [ ] **M4** `play.py:708` — Raise or warn on invalid feature `source` instead of silent fallback to `close`
+- [ ] **M7** `adapters/live.py:1400` — Raise or return NaN on out-of-range lookback instead of silently returning current value
+- [ ] **M8** `zone.py:192` — Skip zone creation when ATR is NaN instead of creating zero-width zone
+- [ ] **M13** `backtest_play_menu.py:418` — Fix key: check `data["overall_status"]=="passed"` not `data["status"]=="pass"`
+- [ ] **M16** `artifact_standards.py:1367` — Normalize `long_win_rate`/`short_win_rate` to decimal (divide by 100) to match `win_rate` convention
+- [ ] **M18** `determinism.py:168` — Check hash field presence/non-empty before comparing; missing fields → indeterminate, not equal
+- [ ] **GATE**: `python trade_cli.py validate standard` passes
+
+#### Phase 5: Medium Data/CLI/Artifacts (8 fixes)
+
+Data integrity, CLI UX, and artifact correctness.
+
+- [ ] **H12** `historical_sync.py:453` — Wrap `_store_dataframe`/`_update_metadata` calls in `store._write_operation()` context manager
+- [ ] **H13** `historical_sync.py:401` — Propagate partial-fetch flag; skip `_update_metadata()` when fetch was incomplete
+- [ ] **H15** `bybit_trading.py:186` — Add `while nextPageCursor` pagination loop to `get_open_orders()` (>50 orders silently missed)
+- [ ] **H19** `runner.py:218` — Pass `env=config.data_env` to `get_historical_store()` in `_resolve_window()`
+- [ ] **M1** `play.py:44` — Resolve play path-vs-id before pre-live validation gate
+- [ ] **M2** `play.py:131` — Use resolved play object for execution, not re-resolve by `play.id`
+- [ ] **M11** `factory.py:115` — Expand `_VALID_PARAMS` to include `kama.fast/slow`, `fisher.signal`, `squeeze.mom_length/mom_smooth`
+- [ ] **M15** `bybit_account.py:29` — Add cursor pagination to `get_positions()` (>200 positions silently dropped)
+- [ ] **GATE**: `python trade_cli.py validate standard` passes
+
+#### Phase 6: Low Priority / Deferred (12 items)
+
+Non-blocking. Fix opportunistically or before specific milestones.
+
+- [ ] **C5** `historical_data_store.py:496` — Validate PID in lock file before stale eviction (low practical risk)
+- [ ] **H5** `application.py:296` — Reset `_shutting_down=False` after successful shutdown (retry-only scenario)
+- [ ] **H16** `exchange_instruments.py:73` — Use `round(value/step)*step` for non-power-of-10 tick/qty steps (rare pairs only)
+- [ ] **H18** `runner.py:257` — Use `f"duckdb_{config.data_env}"` instead of hardcoded `"duckdb_live"`
+- [ ] **H20** `timeframe.py:196` — For naive datetimes, assume UTC: `dt.replace(tzinfo=timezone.utc).timestamp()`
+- [ ] **M3** `backtest_play_tools.py` — Either wire `strict` flag to RunnerConfig or remove from API signature
+- [ ] **M9** `derived_zone.py:295` — Update `_source_version` before computing zone hash, not after
+- [ ] **M10** `registry.py:102` — Add fibonacci anchor metadata fields to STRUCTURE_OUTPUT_TYPES
+- [ ] **M12** `argparser.py:149` — Fix or remove dead `_validate` path (attached to parser, never reaches args namespace)
+- [ ] **M17** `artifact_standards.py` — Wire `verify_run_folder()`/`verify_hash_integrity()` into artifact creation path
+- [ ] **M19** `determinism.py:235` — Propagate `data_env` and `plays_dir` to determinism re-run
+- [ ] **M20** DUPLICATE of M15 (cursor pagination on get_positions)
 
 ---
 
