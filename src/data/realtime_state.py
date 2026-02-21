@@ -211,10 +211,6 @@ class RealtimeState:
                 return True
             return (time.time() - ticker.timestamp) > max_age
     
-    def on_ticker_update(self, callback: Callable[[TickerData], None]):
-        """Register callback for ticker updates."""
-        with self._callback_lock:
-            self._ticker_callbacks.append(callback)
     
     # ==========================================================================
     # Public Data - Orderbooks
@@ -252,24 +248,6 @@ class RealtimeState:
 
                 self._invoke_callbacks(self._orderbook_callbacks, existing)
     
-    def get_orderbook(self, symbol: str) -> OrderbookData | None:
-        """Get orderbook for a symbol (thread-safe)."""
-        with self._lock:
-            return self._orderbooks.get(symbol)
-    
-    def is_orderbook_stale(self, symbol: str, max_age_seconds: float | None = None) -> bool:
-        """Check if orderbook is stale."""
-        max_age = max_age_seconds or STALENESS_THRESHOLDS["orderbook"]
-        with self._lock:
-            ob = self._orderbooks.get(symbol)
-            if not ob:
-                return True
-            return (time.time() - ob.timestamp) > max_age
-    
-    def on_orderbook_update(self, callback: Callable[[OrderbookData], None]):
-        """Register callback for orderbook updates."""
-        with self._callback_lock:
-            self._orderbook_callbacks.append(callback)
     
     # ==========================================================================
     # Public Data - Klines
@@ -457,21 +435,6 @@ class RealtimeState:
 
             return stats
 
-    def clear_bar_buffers(self, env: DataEnv | None = None, symbol: str | None = None):
-        """Clear bar buffers."""
-        with self._lock:
-            if env is None:
-                self._bar_buffers = {
-                    "live": defaultdict(lambda: defaultdict(deque)),
-                    "demo": defaultdict(lambda: defaultdict(deque)),
-                }
-            elif symbol is None:
-                self._bar_buffers[env] = defaultdict(lambda: defaultdict(deque))
-            else:
-                symbol = symbol.upper()
-                if symbol in self._bar_buffers[env]:
-                    del self._bar_buffers[env][symbol]
-    
     # ==========================================================================
     # Public Data - Trades
     # ==========================================================================
@@ -484,17 +447,6 @@ class RealtimeState:
 
         self._invoke_callbacks(self._trade_callbacks, trade)
     
-    def get_recent_trades(self, symbol: str, limit: int = 50) -> list[TradeData]:
-        """Get recent trades for a symbol."""
-        with self._lock:
-            trades = self._recent_trades.get(symbol, [])
-            trade_list = list(trades)
-            return trade_list[-limit:]
-    
-    def on_trade(self, callback: Callable[[TradeData], None]):
-        """Register callback for trades."""
-        with self._callback_lock:
-            self._trade_callbacks.append(callback)
     
     # ==========================================================================
     # Private Data - Positions
@@ -521,19 +473,6 @@ class RealtimeState:
         with self._lock:
             return dict(self._positions)
     
-    def is_position_stale(self, symbol: str, max_age_seconds: float | None = None) -> bool:
-        """Check if position data is stale."""
-        max_age = max_age_seconds or STALENESS_THRESHOLDS["position"]
-        with self._lock:
-            pos = self._positions.get(symbol)
-            if not pos:
-                return True
-            return (time.time() - pos.timestamp) > max_age
-    
-    def on_position_update(self, callback: Callable[[PositionData], None]):
-        """Register callback for position updates."""
-        with self._callback_lock:
-            self._position_callbacks.append(callback)
     
     # ==========================================================================
     # Private Data - Orders
@@ -550,11 +489,6 @@ class RealtimeState:
 
         self._invoke_callbacks(self._order_callbacks, order)
     
-    def get_order(self, order_id: str) -> OrderData | None:
-        """Get order by ID."""
-        with self._lock:
-            return self._orders.get(order_id)
-
     def get_open_orders(self, symbol: str | None = None) -> list[OrderData]:
         """Get open orders, optionally filtered by symbol."""
         with self._lock:
@@ -563,10 +497,6 @@ class RealtimeState:
                 orders = [o for o in orders if o.symbol == symbol]
             return orders
     
-    def on_order_update(self, callback: Callable[[OrderData], None]):
-        """Register callback for order updates."""
-        with self._callback_lock:
-            self._order_callbacks.append(callback)
     
     # ==========================================================================
     # Private Data - Executions
@@ -580,18 +510,6 @@ class RealtimeState:
 
         self._invoke_callbacks(self._execution_callbacks, execution)
     
-    def get_recent_executions(self, symbol: str | None = None, limit: int = 50) -> list[ExecutionData]:
-        """Get recent executions, optionally filtered by symbol."""
-        with self._lock:
-            execs = list(self._executions)
-            if symbol:
-                execs = [e for e in execs if e.symbol == symbol]
-            return execs[-limit:]
-    
-    def on_execution(self, callback: Callable[[ExecutionData], None]):
-        """Register callback for executions."""
-        with self._callback_lock:
-            self._execution_callbacks.append(callback)
     
     # ==========================================================================
     # Private Data - Wallet
@@ -610,11 +528,6 @@ class RealtimeState:
         with self._lock:
             return self._wallet.get(coin)
 
-    def get_all_wallets(self) -> dict[str, WalletData]:
-        """Get all wallet balances."""
-        with self._lock:
-            return dict(self._wallet)
-    
     def is_wallet_stale(self, coin: str = "USDT", max_age_seconds: float | None = None) -> bool:
         """Check if wallet data is stale."""
         max_age = max_age_seconds or STALENESS_THRESHOLDS["wallet"]
@@ -624,10 +537,6 @@ class RealtimeState:
                 return True
             return (time.time() - wallet.timestamp) > max_age
     
-    def on_wallet_update(self, callback: Callable[[WalletData], None]):
-        """Register callback for wallet updates."""
-        with self._callback_lock:
-            self._wallet_callbacks.append(callback)
     
     # ==========================================================================
     # Private Data - Account Metrics (Unified Account-Level)
@@ -654,10 +563,6 @@ class RealtimeState:
                 return True
             return (time.time() - self._account_metrics.timestamp) > max_age
     
-    def on_account_metrics_update(self, callback: Callable[[AccountMetrics], None]):
-        """Register callback for account metrics updates."""
-        with self._callback_lock:
-            self._account_metrics_callbacks.append(callback)
     
     # ==========================================================================
     # Connection Status
@@ -778,23 +683,10 @@ class RealtimeState:
             except Exception as e:
                 self.logger.error(f"Callback error: {e}")
     
-    def clear_callbacks(self):
-        """Clear all registered callbacks."""
-        with self._callback_lock:
-            self._ticker_callbacks.clear()
-            self._orderbook_callbacks.clear()
-            self._trade_callbacks.clear()
-            self._kline_callbacks.clear()
-            self._position_callbacks.clear()
-            self._order_callbacks.clear()
-            self._execution_callbacks.clear()
-            self._wallet_callbacks.clear()
-            self._account_metrics_callbacks.clear()
-
     # ==========================================================================
     # State Management
     # ==========================================================================
-    
+
     def clear_all(self):
         """Clear all state data."""
         with self._lock:
@@ -810,23 +702,6 @@ class RealtimeState:
             self._update_counts.clear()
 
         self.logger.info("RealtimeState cleared")
-
-    def clear_market_data(self):
-        """Clear only market data (public streams)."""
-        with self._lock:
-            self._tickers.clear()
-            self._orderbooks.clear()
-            self._klines.clear()
-            self._recent_trades.clear()
-
-    def clear_account_data(self):
-        """Clear only account data (private streams)."""
-        with self._lock:
-            self._positions.clear()
-            self._orders.clear()
-            self._executions.clear()
-            self._wallet.clear()
-            self._account_metrics = None
     
     # ==========================================================================
     # Portfolio Risk Snapshot

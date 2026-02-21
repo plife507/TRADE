@@ -105,53 +105,6 @@ class SubscriptionConfig:
     # Market data (tickers, orderbook, klines) is the same on LIVE and DEMO
     use_live_for_public_streams: bool = False
     
-    @classmethod
-    def market_data_only(cls) -> 'SubscriptionConfig':
-        """Config for public market data only."""
-        return cls(
-            enable_ticker=True,
-            enable_orderbook=False,
-            enable_trades=False,
-            enable_klines=True,
-            enable_positions=False,
-            enable_orders=False,
-            enable_executions=False,
-            enable_wallet=False,
-        )
-    
-    @classmethod
-    def full(cls) -> 'SubscriptionConfig':
-        """Config for all streams."""
-        return cls(
-            enable_ticker=True,
-            enable_orderbook=True,
-            enable_trades=True,
-            enable_klines=True,
-            enable_positions=True,
-            enable_orders=True,
-            enable_executions=True,
-            enable_wallet=True,
-        )
-    
-    @classmethod
-    def demo_safe(cls) -> 'SubscriptionConfig':
-        """
-        Config optimized for DEMO mode (FAKE MONEY).
-        
-        Uses LIVE streams for public data (more reliable) while keeping
-        private streams on DEMO for account data.
-        """
-        return cls(
-            enable_ticker=True,
-            enable_orderbook=False,
-            enable_trades=False,
-            enable_klines=True,
-            enable_positions=True,
-            enable_orders=True,
-            enable_executions=True,
-            enable_wallet=True,
-            use_live_for_public_streams=True,  # Use LIVE streams for market data
-        )
 
 
 class RealtimeBootstrap:

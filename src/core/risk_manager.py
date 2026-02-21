@@ -102,37 +102,6 @@ class RiskManager:
         """
         return self._enable_global_risk and self._global_risk_view is not None
     
-    def start_websocket_if_needed(self) -> bool:
-        """
-        Start WebSocket if RiskManager needs it for GlobalRiskView.
-        
-        Returns True if websocket was started or already running, False otherwise.
-        """
-        if not self.needs_websocket():
-            return False
-        
-        try:
-            from ..core.application import get_application
-            app = get_application()
-            
-            # Initialize app if needed
-            if not app.is_initialized:
-                if not app.initialize():
-                    return False
-            
-            # Start websocket if not already running
-            if not app.is_running:
-                return app.start_websocket()
-            
-            # Check if websocket is connected
-            from ..data.realtime_bootstrap import get_realtime_bootstrap
-            bootstrap = get_realtime_bootstrap()
-            return bootstrap.is_running if bootstrap else False
-            
-        except Exception as e:
-            self.logger.warning(f"Failed to start websocket for risk manager: {e}")
-            return False
-    
     @property
     def _daily_pnl(self) -> float:
         """Daily PnL from shared tracker."""

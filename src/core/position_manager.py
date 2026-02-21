@@ -186,11 +186,6 @@ class PositionManager:
             return False
         return not self.realtime_state.is_wallet_stale("USDT", self._staleness_threshold)
     
-    def set_prefer_websocket(self, prefer: bool):
-        """Enable or disable WebSocket preference."""
-        self._prefer_websocket = prefer
-        self.logger.info(f"PositionManager WebSocket preference set to: {prefer}")
-    
     # ==================== Core Position Methods ====================
     
     def _check_daily_reset(self):

@@ -80,8 +80,7 @@ class Application:
     """
     
     _instance: 'Application | None' = None
-    _lock = threading.Lock()
-    
+
     def __init__(self, config: Config | None = None):
         """
         Initialize application manager.
@@ -512,27 +511,6 @@ class Application:
         """Public method to stop WebSocket on demand."""
         self._stop_websocket()
     
-    def get_websocket_health(self) -> dict:
-        """
-        Get WebSocket connection health status.
-        
-        Returns:
-            Dict with health status information
-        """
-        if not self._realtime_bootstrap:
-            return {
-                "healthy": False,
-                "error": "RealtimeBootstrap not initialized",
-            }
-        
-        try:
-            return self._realtime_bootstrap.get_health()
-        except Exception as e:
-            return {
-                "healthy": False,
-                "error": str(e),
-            }
-    
     # ==================== Signal Handling ====================
     
     def _register_signal_handlers(self):
@@ -578,17 +556,6 @@ class Application:
         """Handle process exit."""
         if self._running and not self._shutting_down:
             self.stop()
-    
-    # ==================== Callbacks ====================
-    
-    def on_shutdown(self, callback: Callable) -> None:
-        """
-        Register a callback to be called on shutdown.
-        
-        Args:
-            callback: Function to call during shutdown
-        """
-        self._shutdown_callbacks.append(callback)
     
     # ==================== Status & Accessors ====================
     

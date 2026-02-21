@@ -1035,8 +1035,7 @@ class ConnectionStatus:
     disconnected_at: float | None = None
     reconnect_count: int = 0
     last_error: str | None = None
-    last_message_at: float | None = None
-    
+
     @property
     def is_connected(self) -> bool:
         return self.state == ConnectionState.CONNECTED
@@ -1051,6 +1050,6 @@ class ConnectionStatus:
         return {
             "state": self.state.value, "connected_at": self.connected_at,
             "uptime_seconds": self.uptime_seconds, "reconnect_count": self.reconnect_count,
-            "last_error": self.last_error, "last_message_at": self.last_message_at,
+            "last_error": self.last_error,
         }
 

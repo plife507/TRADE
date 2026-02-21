@@ -210,7 +210,6 @@ class ExchangeManager:
         # G14.4: Activate Disconnect Cancel All (DCP) for live mode.
         # If our process crashes, the exchange will cancel all open orders
         # after time_window seconds of disconnection.
-        self._trading_mode = trading_mode
         if trading_mode == TradingMode.REAL:
             try:
                 self.bybit.set_disconnect_cancel_all(time_window=10)
@@ -272,15 +271,6 @@ class ExchangeManager:
             raise ValueError(f"Invalid price {price} for {symbol} — exchange returned no valid lastPrice")
         return price
 
-    def get_bid_ask(self, symbol: str) -> tuple[float, float]:
-        """Get current bid and ask prices. Raises ValueError if no valid prices available."""
-        ticker = self.bybit.get_ticker(symbol)
-        bid = float(ticker.get("bid1Price", 0))
-        ask = float(ticker.get("ask1Price", 0))
-        if bid <= 0 or ask <= 0:
-            raise ValueError(f"Invalid bid/ask ({bid}/{ask}) for {symbol} — exchange returned no valid prices")
-        return (bid, ask)
-    
     # ==================== Account ====================
     
     def get_balance(self) -> dict[str, float]:
@@ -309,10 +299,6 @@ class ExchangeManager:
                 )
 
         return {"total": total, "available": available, "used": total - available}
-    
-    def get_account_value(self) -> float:
-        """Get total account value in USD."""
-        return float(self.get_balance().get("total", 0.0))
     
     # ==================== Positions (delegated) ====================
     
@@ -343,14 +329,6 @@ class ExchangeManager:
     def set_margin_mode(self, symbol: str, mode: str, leverage: float = 1.0) -> None:
         from . import exchange_positions as pos
         pos.set_margin_mode(self, symbol, mode, leverage=leverage)
-    
-    def set_position_mode(self, mode: str = "MergedSingle") -> bool:
-        from . import exchange_positions as pos
-        return pos.set_position_mode(self, mode)
-    
-    def add_margin(self, symbol: str, amount: float) -> bool:
-        from . import exchange_positions as pos
-        return pos.add_margin(self, symbol, amount)
     
     # ==================== Market Orders (delegated) ====================
     

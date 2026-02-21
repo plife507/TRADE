@@ -76,19 +76,25 @@ Items evaluated during codebase review, confirmed low-risk, deferred to appropri
 
 See `docs/DEAD_CODE_AUDIT.md` for full findings (44 items, ~800 lines).
 
-#### Phase 1: Delete Obviously Dead Code
-- [ ] Remove stub methods, dead attributes, SubscriptionConfig factories
-- [ ] Remove MarketData convenience methods (zero callers)
-- [ ] Remove RealtimeState unused callbacks and granular clear methods
-- [ ] Remove PositionManager dead methods (`set_prefer_websocket`, `get_trade_history`, `get_performance_summary`)
-- [ ] **GATE**: `python trade_cli.py validate quick` passes
+#### Phase 1: Delete Obviously Dead Code — DONE (2026-02-20)
+- [x] Remove stub methods, dead attributes, SubscriptionConfig factories
+- [x] Remove MarketData convenience methods (zero callers) — 10 methods, -205 lines
+- [x] Remove RealtimeState unused callbacks and granular clear methods — 16 methods, -127 lines
+- [x] Remove PositionManager `set_prefer_websocket()` — -5 lines
+- [x] Remove ExchangeManager 4 dead methods + `_trading_mode` attr — -22 lines
+- [x] Remove Application `get_websocket_health()`, `on_shutdown()`, `_lock` — -35 lines
+- [x] Remove RiskManager `start_websocket_if_needed()` — -31 lines
+- [x] Remove `ConnectionStatus.last_message_at` — -5 lines
+- [x] Remove SubscriptionConfig factories (3) — -47 lines
+- [x] **GATE**: `python trade_cli.py validate quick` passes (5/5 gates)
+- **Total: 471 lines deleted across 8 files**
 
-#### Phase 2: Evaluate for P2 Before Deleting
-- [ ] Decide: keep or delete RiskManager RR utilities (needed for live position sizing?)
-- [ ] Decide: keep or delete OrderExecutor `wait_for_fill()` (needed for live order management?)
-- [ ] Decide: keep or delete ExchangeManager `reconcile_orphaned_orders()` (needed for live safety?)
-- [ ] Delete anything not needed for P2
-- [ ] **GATE**: `python trade_cli.py validate quick` passes
+#### Phase 2: P2 Candidates — KEPT (decision: keep for live trading)
+- [x] RiskManager RR utilities (`calculate_trade_levels`, SL/TP, `get_max_position_size`) — **KEEP for P2**
+- [x] OrderExecutor `wait_for_fill()`, `execute_with_leverage()`, pending order API — **KEEP for P2**
+- [x] ExchangeManager `reconcile_orphaned_orders()`, `open_position_with_rr()` — **KEEP for P2**
+- [x] PositionManager `get_performance_summary()`, `get_trade_history()` — **KEEP for P2**
+- [x] RiskManager `get_global_risk_snapshot()`, `get_global_risk_summary()` — **KEEP for P2**
 
 ### P6: Debug & Logging Redesign — DONE (2026-02-19)
 

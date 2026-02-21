@@ -16,19 +16,14 @@ Environment-aware:
 
 Usage:
     from src.data.market_data import get_market_data
-    
+
     data = get_market_data()  # Default: live environment
-    demo_data = get_market_data(env="demo")  # Demo environment (future)
-    
+
     # Get price (uses WebSocket if available, else REST)
     price = data.get_latest_price("BTCUSDT")
-    
-    # Check data source
-    print(data.get_data_source("BTCUSDT"))  # "websocket" or "rest"
 """
 
 import time
-from datetime import datetime
 from threading import Lock
 from typing import Any
 
@@ -200,15 +195,6 @@ class MarketData:
         if not self._prefer_websocket or not self.realtime_state:
             return False
         return not self.realtime_state.is_kline_stale(symbol, interval, self._ws_kline_staleness)
-    
-    def get_data_source(self, symbol: str) -> str:
-        """Get the data source used for last query of this symbol."""
-        return self._last_source.get(symbol, "not queried yet")
-    
-    def set_prefer_websocket(self, prefer: bool):
-        """Enable or disable WebSocket preference."""
-        self._prefer_websocket = prefer
-        self.logger.info(f"WebSocket preference set to: {prefer}")
     
     # ==================== Price Data ====================
     
@@ -442,53 +428,6 @@ class MarketData:
         
         return df
     
-    def get_latest_candle(self, symbol: str, timeframe: str = "15") -> dict[str, Any]:
-        """
-        Get the most recent completed candle.
-        
-        Uses WebSocket for the current candle if available.
-        
-        Args:
-            symbol: Trading symbol
-            timeframe: Candle interval
-        
-        Returns:
-            Dict with candle data
-        """
-        # Check WebSocket for current kline
-        if self._has_fresh_ws_kline(symbol, timeframe):
-            assert self.realtime_state is not None
-            ws_kline = self.realtime_state.get_kline(symbol, timeframe)
-            if ws_kline and ws_kline.is_closed:
-                self._last_source[symbol] = "websocket"
-                return {
-                    "timestamp": pd.Timestamp(ws_kline.start_time, unit="ms", tz="UTC"),
-                    "open": ws_kline.open,
-                    "high": ws_kline.high,
-                    "low": ws_kline.low,
-                    "close": ws_kline.close,
-                    "volume": ws_kline.volume,
-                }
-        
-        # Fall back to REST
-        self._last_source[symbol] = "rest"
-        
-        df = self.get_ohlcv(symbol, timeframe, bars=2)
-        
-        if df.empty or len(df) < 2:
-            return {}
-        
-        # Return second-to-last (most recently completed)
-        row = df.iloc[-2]
-        return {
-            "timestamp": row["timestamp"],
-            "open": row["open"],
-            "high": row["high"],
-            "low": row["low"],
-            "close": row["close"],
-            "volume": row["volume"],
-        }
-    
     # ==================== Funding & OI ====================
     
     def get_funding_rate(self, symbol: str) -> dict[str, Any]:
@@ -592,141 +531,6 @@ class MarketData:
         self._cache.set(cache_key, result, 60)  # 1 minute cache
         return result
     
-    # ==================== Market Snapshot ====================
-    
-    def get_market_snapshot(self, symbols: list[str] | None = None) -> dict[str, dict]:
-        """
-        Get comprehensive market snapshot for multiple symbols.
-        
-        Uses WebSocket data where available for low latency.
-        
-        Args:
-            symbols: List of symbols (None = use config defaults)
-        
-        Returns:
-            Dict mapping symbol to market data
-        """
-        if symbols is None:
-            symbols = self.config.trading.default_symbols
-        
-        snapshot = {}
-        
-        for symbol in symbols:
-            try:
-                ticker = self.get_ticker(symbol)
-                funding = self.get_funding_rate(symbol)
-                
-                snapshot[symbol] = {
-                    **ticker,
-                    "funding_rate": funding.get("rate", 0),
-                    "funding_rate_percent": funding.get("rate_percent", 0),
-                }
-            except Exception as e:
-                self.logger.warning(f"Failed to get data for {symbol}: {e}")
-                snapshot[symbol] = {"symbol": symbol, "error": str(e)}
-        
-        return snapshot
-    
-    # ==================== Multi-Timeframe Data ====================
-    
-    def get_multi_tf_ohlcv(
-        self,
-        symbol: str,
-        high_tf: str = "4h",
-        med_tf: str = "1h",
-        low_tf: str = "15m",
-        bars: int = 100,
-    ) -> dict[str, pd.DataFrame]:
-        """
-        Get OHLCV data for multiple timeframes at once.
-
-        This is optimized for multi-timeframe strategies that need
-        high_tf (Higher), med_tf (Medium), and low_tf (Lower) timeframe data.
-
-        Args:
-            symbol: Trading symbol
-            high_tf: Higher timeframe (default: 4h)
-            med_tf: Medium timeframe (default: 1h)
-            low_tf: Lower timeframe (default: 15m)
-            bars: Number of bars per timeframe
-
-        Returns:
-            Dict with keys 'high_tf', 'med_tf', 'low_tf' mapping to DataFrames
-        """
-        return {
-            "high_tf": self.get_ohlcv(symbol, high_tf, bars),
-            "med_tf": self.get_ohlcv(symbol, med_tf, bars),
-            "low_tf": self.get_ohlcv(symbol, low_tf, bars),
-        }
-    
-    def get_multiple_timeframes(
-        self,
-        symbol: str,
-        timeframes: list[str],
-        bars: int = 100,
-    ) -> dict[str, pd.DataFrame]:
-        """
-        Get OHLCV data for arbitrary list of timeframes.
-        
-        Args:
-            symbol: Trading symbol
-            timeframes: List of timeframe strings (e.g., ["1d", "4h", "1h", "15m"])
-            bars: Number of bars per timeframe
-        
-        Returns:
-            Dict mapping timeframe string to DataFrame
-        """
-        result = {}
-        for tf in timeframes:
-            try:
-                result[tf] = self.get_ohlcv(symbol, tf, bars)
-            except Exception as e:
-                self.logger.warning(f"Failed to get {tf} data for {symbol}: {e}")
-                result[tf] = pd.DataFrame()
-        return result
-    
-    # ==================== Cache Management ====================
-    
-    def clear_cache(self, symbol: str | None = None):
-        """
-        Clear cached data.
-        
-        Args:
-            symbol: Specific symbol to clear (None = clear all)
-        """
-        if symbol:
-            # Clear all cache keys for this symbol
-            for prefix in ["price:", "bidask:", "ticker:", "ohlcv:", "funding:", "oi:"]:
-                self._cache.clear(f"{prefix}{symbol}")
-        else:
-            self._cache.clear()
-    
-    # ==================== Diagnostics ====================
-    
-    def get_source_stats(self) -> dict[str, Any]:
-        """Get statistics on data sources used."""
-        ws_count = sum(1 for s in self._last_source.values() if s == "websocket")
-        rest_count = sum(1 for s in self._last_source.values() if s == "rest")
-        
-        return {
-            "websocket_preference": self._prefer_websocket,
-            "websocket_queries": ws_count,
-            "rest_queries": rest_count,
-            "last_sources": dict(self._last_source),
-        }
-    
-    def get_realtime_status(self) -> dict[str, Any]:
-        """Get status of realtime data connection."""
-        if not self.realtime_state:
-            return {"available": False, "error": "RealtimeState not available"}
-        
-        return {
-            "available": True,
-            "public_ws_connected": self.realtime_state.is_public_ws_connected,
-            "private_ws_connected": self.realtime_state.is_private_ws_connected,
-            "ticker_count": len(self.realtime_state.get_all_tickers()),
-            "stats": self.realtime_state.get_stats(),
-        }
 
 
 # ==============================================================================
@@ -770,11 +574,6 @@ def get_market_data(env: DataEnv = DEFAULT_DATA_ENV) -> MarketData:
 def get_live_market_data() -> MarketData:
     """Get the live environment MarketData (convenience function)."""
     return get_market_data(env="live")
-
-
-def get_demo_market_data() -> MarketData:
-    """Get the demo environment MarketData (convenience function)."""
-    return get_market_data(env="demo")
 
 
 def reset_market_data(env: DataEnv | None = None):
