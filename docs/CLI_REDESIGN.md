@@ -65,3 +65,14 @@ Remaining:
 - [ ] Manual: symbol quick-picks appear after first use
 - [ ] Manual: data sub-menus accessible, all 24 operations reachable
 - [ ] Manual: cross-links between Forge and Backtest work
+
+---
+
+## Related: P13 CLI Agent Autonomy
+
+A separate effort (P13 in `docs/TODO.md`) adds non-interactive CLI flag coverage for
+autonomous agent operation. While P4 improves the interactive menu, P13 adds subcommand
+flags for the same tool functions. Both efforts share the same `src/tools/` layer.
+
+See `docs/brainstorm/CLI_AGENT_AUTONOMY.md` for the full audit: 110+ tool functions,
+18 identified gaps, concurrent session architecture, and implementation plan.

@@ -150,6 +150,39 @@ See `docs/CLI_REDESIGN.md` for full details.
 - [ ] **Gate 5**: Data menu top-level rewrite
 - [ ] **Gate 8**: Final manual validation
 
+### P13: CLI Agent Autonomy — Full Flag Coverage
+
+See `docs/brainstorm/CLI_AGENT_AUTONOMY.md` for full audit (110+ tools, 18 gaps, concurrency analysis).
+
+**Context:** Audit found CLI is ~85% agent-ready via subcommands. Gaps are missing CLI flag
+wiring for tool functions that already exist in `src/tools/`.
+
+#### Phase 1: Order Subcommand Group
+- [ ] Add `order buy` / `order sell` with `--symbol`, `--amount`, `--type`, `--price`, `--trigger`, `--tp`, `--sl` flags
+- [ ] Add `order list [--symbol X] --json`
+- [ ] Add `order amend --symbol X --order-id ID [--qty] [--price] --json`
+- [ ] Add `order cancel --symbol X --order-id ID --json` / `order cancel-all`
+- [ ] Add `order leverage --symbol X --leverage N --json`
+- [ ] **GATE**: Place and cancel a limit order via CLI flags only
+
+#### Phase 2: Data Subcommand Group
+- [ ] Add `data sync --symbols X --period 30d [--start D --end D] [--heal] --json`
+- [ ] Add `data info --json` / `data symbols --json` / `data status --symbol X --json`
+- [ ] Add `data query --symbol X --tf 1m [--period 7d | --start D --end D] --json`
+- [ ] Add `data heal --symbol X --json` / `data vacuum --json` / `data delete --symbol X --confirm`
+- [ ] **GATE**: Sync 7 days of BTCUSDT 1m data via CLI flags only
+
+#### Phase 3: Market & Account Extensions
+- [ ] Add `market price|ohlcv|funding|oi|orderbook|instruments --symbol X --json`
+- [ ] Add `account history|pnl|transactions --days 7 --json` (with `--start`/`--end` alternative)
+- [ ] Add `account collateral [--currency USDT] --json`
+- [ ] **GATE**: Query BTCUSDT price + 7-day PnL via CLI flags only
+
+#### Phase 4: Position Config & Health
+- [ ] Add `position set-tp|set-sl|set-tpsl|trailing|partial-close|margin` with symbol + value flags
+- [ ] Add `health check|connection|rate-limit|ws --json`
+- [ ] **GATE**: Set TP/SL on demo position via CLI flags only
+
 ### P5: Market Sentiment Tracker
 
 Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
