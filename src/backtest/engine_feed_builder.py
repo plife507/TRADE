@@ -20,7 +20,9 @@ import pandas as pd
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
-from .runtime.feed_store import FeedStore, MultiTFFeedStore
+from .runtime.feed_store import (
+    FeedStore, MultiTFFeedStore, _datetime_to_epoch_ms, _np_dt64_to_epoch_ms,
+)
 from .runtime.quote_state import QuoteState
 from .indicators import get_required_indicator_columns_from_specs
 
@@ -35,12 +37,6 @@ def _to_naive_datetime(ts: datetime | np.datetime64 | pd.Timestamp) -> datetime:
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
-
-
-def _datetime_to_epoch_ms(ts: datetime) -> int:
-    """Convert datetime to epoch ms (tz-naive assumed UTC)."""
-    ts_utc = ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts.astimezone(timezone.utc)
-    return int(ts_utc.timestamp() * 1000)
 
 
 def _sort_by_timestamp(df: pd.DataFrame) -> pd.DataFrame:
@@ -297,9 +293,9 @@ def get_quote_at_exec_close(
     # Extract 1m bar data
     ts_close = quote_feed.get_ts_close_datetime(idx)
     if isinstance(ts_close, np.datetime64):
-        ts_ms = int(cast(float, cast(pd.Timestamp, pd.Timestamp(ts_close)).timestamp()) * 1000)
+        ts_ms = _np_dt64_to_epoch_ms(ts_close)
     else:
-        ts_ms = int(ts_close.timestamp() * 1000)
+        ts_ms = _datetime_to_epoch_ms(ts_close)
 
     return QuoteState(
         ts_ms=ts_ms,

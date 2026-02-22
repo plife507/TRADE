@@ -344,17 +344,13 @@ class TradeCLI:
             Prompt.ask("\nPress Enter to continue")
             return False
 
-        # Start application (including WebSocket if enabled)
+        # Start application (REST-only — WebSocket starts on demand when a play runs
+        # or when account monitoring is explicitly requested)
         if not app.start():
             console.print("\n[bold yellow]Warning: Application start had issues[/]")
             console.print("[yellow]Continuing with REST API fallback...[/]")
 
-        # Show WebSocket status
-        status = app.get_status()
-        if status.websocket_connected:
-            console.print(f"[green]WebSocket connected[/] [dim](public: {status.websocket_public}, private: {status.websocket_private})[/]")
-        elif app.config.websocket.enable_websocket and app.config.websocket.auto_start:
-            console.print("[yellow]WebSocket not connected - using REST API[/]")
+        console.print("[green]Connected via REST API[/] [dim](WebSocket starts when a play runs)[/]")
 
         Prompt.ask("\n[dim]Press Enter to continue[/]")
 
@@ -636,6 +632,8 @@ class TradeCLI:
             if symbol is not BACK:
                 result = run_tool_action("diagnostics.ticker", get_ticker_tool, symbol=symbol)
                 print_data_result("diagnostics.ticker", result)
+
+            console.print("\n[dim]WebSocket: Starts on demand when a play runs[/]")
         except KeyboardInterrupt:
             console.print("\n[yellow]Test cancelled.[/]")
         except Exception as e:
@@ -660,8 +658,13 @@ class TradeCLI:
                 result = run_tool_action("diagnostics.health_check", exchange_health_check_tool, symbol=symbol)
                 print_data_result("diagnostics.health_check", result)
 
-                result = run_tool_action("diagnostics.websocket", get_websocket_status_tool)
-                print_data_result("diagnostics.websocket", result)
+                # Show WS status — brief message when not started, full detail otherwise
+                bootstrap = self._app.realtime_bootstrap if self._app else None
+                if bootstrap and bootstrap.is_running:
+                    result = run_tool_action("diagnostics.websocket", get_websocket_status_tool)
+                    print_data_result("diagnostics.websocket", result)
+                else:
+                    console.print("\n[dim]WebSocket: Not started (starts when a play runs)[/]")
         except KeyboardInterrupt:
             console.print("\n[yellow]Health check cancelled.[/]")
         except Exception as e:

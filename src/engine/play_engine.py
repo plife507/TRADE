@@ -1437,8 +1437,18 @@ class PlayEngine:
         n = len(buffer)
 
         # Build OHLCV arrays from candle buffer
-        ts_open = np.array([c.ts_open for c in buffer], dtype="datetime64[ms]")
-        ts_close = np.array([c.ts_close for c in buffer], dtype="datetime64[ms]")
+        # Candle.ts_open/ts_close are UTC-naive datetimes; convert to epoch ms
+        # via _datetime_to_epoch_ms (timegm-based, avoids datetime.timestamp()
+        # which assumes local time on naive datetimes)
+        from ..backtest.runtime.feed_store import _datetime_to_epoch_ms
+        ts_open_ms = np.array(
+            [_datetime_to_epoch_ms(c.ts_open) for c in buffer], dtype=np.int64,
+        )
+        ts_close_ms = np.array(
+            [_datetime_to_epoch_ms(c.ts_close) for c in buffer], dtype=np.int64,
+        )
+        ts_open = ts_open_ms.view("datetime64[ms]")
+        ts_close = ts_close_ms.view("datetime64[ms]")
         open_arr = np.array([c.open for c in buffer], dtype=np.float64)
         high_arr = np.array([c.high for c in buffer], dtype=np.float64)
         low_arr = np.array([c.low for c in buffer], dtype=np.float64)
@@ -1462,12 +1472,12 @@ class PlayEngine:
                         indicators[name] = padded
 
         # Build ts_close_ms_to_idx mapping for TF index lookups
+        # Use pre-computed int64 epoch ms (avoids datetime.timestamp() local-time assumption)
         ts_close_ms_to_idx: dict[int, int] = {}
-        close_ts_set: set = set()
-        for i, c in enumerate(buffer):
-            ts_ms = int(c.ts_close.timestamp() * 1000)
-            ts_close_ms_to_idx[ts_ms] = i
-            close_ts_set.add(c.ts_close)
+        close_ts_set: set[datetime] = set()
+        for i in range(n):
+            ts_close_ms_to_idx[int(ts_close_ms[i])] = i
+            close_ts_set.add(buffer[i].ts_close)
 
         # Build market data arrays (forward-filled from latest ticker value)
         funding_arr = None

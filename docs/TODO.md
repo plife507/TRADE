@@ -27,6 +27,10 @@ Single source of truth for all open work, bugs, and task progress.
 | P10 Phase 5: Data/CLI/Artifacts | 2026-02-21 | 8 fixes (H12, H13, H15, H19, M1, M2, M11, M15) |
 | P10 Phase 6: Low Priority | 2026-02-21 | 11 fixes (C5, H5, H16, H18, H20, M3, M9, M10, M12, M17, M19) |
 | Codebase Review Pass 4 | 2026-02-21 | 6-agent team, 319 files, 89 findings. See `docs/CODEBASE_REVIEW_2026_02_21.md` |
+| P11 Phase 1-3: Codebase Review Fixes | 2026-02-21 | 27 fixes across live safety, correctness, architecture. See `docs/CODEBASE_REVIEW_2026_02_21.md` |
+| P11 Phase 4: Performance & Polish | 2026-02-21 | MonotonicDeque, SMA drift guard, factory dict, dead code, naive datetime fix |
+| P12 Phase 1-5 items (partial) | 2026-02-21 | Stale monitor fix, tri-state WS, lazy WS, dashboard log tab. Manual verification pending |
+| Timestamp & WS Subscription Fix | 2026-02-21 | 7 files: tz-naive UTC convention, canonical `_datetime_to_epoch_ms`, kline sub default `[]` |
 
 Full details: `docs/architecture/CODEBASE_REVIEW_ONGOING.md`
 
@@ -38,8 +42,8 @@ Confirmed issues, low-risk, deferred to appropriate milestones.
 
 ### Pre-Deployment (fix before live trading)
 
-- [ ] **GAP-2** No REST API fallback for warmup data. `_load_tf_bars()` tries buffer -> DuckDB -> fails. Needed for cold-start live.
-- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but doesn't force pybit reconnect. Adding active reconnect risky without integration testing.
+- [ ] **GAP-2** No REST API fallback for warmup data. `_load_tf_bars()` tries buffer -> DuckDB -> fails. Needed for cold-start live. *(P12: REST path now forces UTC-naive timestamps, but fallback still not wired in _load_tf_bars.)*
+- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but doesn't force pybit reconnect. Adding active reconnect risky without integration testing. *(Partially addressed 2026-02-21: stale handler no longer falsely marks connections as RECONNECTING, but active reconnect still not implemented.)*
 - [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering — defensible tradeoff, needs integration test to reverse.
 - [ ] **H22** `backtest_runner.py` — Sim accepts `funding_events` kwarg but no funding event generation pipeline exists yet.
 
@@ -94,42 +98,37 @@ See `docs/STRUCTURE_DETECTION_AUDIT.md` for full audit.
 
 Full review: `docs/CODEBASE_REVIEW_2026_02_21.md` — 89 findings (5 critical, 19 high, 32 medium, 33 low).
 
-#### Phase 1: Live Safety (immediate)
-- [x] **C1**: Already handled — `exchange_orders_manage.close_position()` hardcodes `reduce_only=True` at line 197
-- [x] **C2-C4**: Add proper locking in live adapter indicator cache access (`src/engine/adapters/live.py:941,1494,1608`)
-- [x] **C5**: Remove duplicate log line in `_load_tf_bars` (`src/engine/adapters/live.py:894`)
-- [x] **H-S2**: Unify daily PnL tracking — `GlobalRiskView` now delegates to `DailyLossTracker`
-- [x] **M-S6**: Wire `reference_price` on Signal so price deviation guard actually functions
-- [x] **GATE**: `python trade_cli.py validate quick` passes
+Phases 1-4 complete (27 fixes). Remaining:
 
-#### Phase 2: Correctness Bugs
-- [x] **C5**: (moved from Phase 1) Remove duplicate log line in `_load_tf_bars`
-- [x] **H-B1**: Fix `get_structure` prefix stripping — `.removeprefix("high_tf_")` in `snapshot_view.py:1189`
-- [x] **H-C2**: Fix gate timeout default — argparser 300 → 600 in `cli/argparser.py:276`
-- [x] **H-C3**: Fix timeframe validation for "D" — case-insensitive matching in `utils/timeframes.py`
-- [x] **H-E6**: Fix DailyLossTracker error message — use absolute values for clarity
-- [x] **H-E7**: Add `ws.ensure_symbol_tracked` to both `limit_buy/sell_with_tpsl` in `exchange_orders_limit.py`
-- [x] **H-I1**: Fix MFI first-bar buffer/sum desync — don't append placeholder to buffers
-- [x] **GATE**: `python trade_cli.py validate standard` passes (G5 derived_zone parity is pre-existing)
-
-#### Phase 3: Architecture & Quality
-- [x] **H-E4**: Add `_validate_trading_operation()` + `ws.ensure_symbol_tracked()` to partial close path
-- [x] **H-X1**: Remove duplicate `short_hash()` in `run_logger.py` — imports from `utils/debug.py`
-- [x] **H-X3**: Standardize `Path.home()` over `os.path.expanduser` (4 files + unused `os` imports removed)
-- [x] **M-I7**: Not applicable — MarketStructure uses scalar fields, not growing lists
-- [x] **M-B3**: Use `deque(maxlen=...)` for `state_tracker.py` block_history — O(1) eviction
-- [x] **M-C3**: Not applicable — all file accesses in flagged files are reads; writes already have `newline='\n'`
 - [ ] **M-C4**: Replace ~48 bare `assert isinstance(...)` with explicit checks in `cli/menus/*.py` (deferred — large mechanical change)
-- [x] **GATE**: `python trade_cli.py validate standard` passes (G5 derived_zone parity is pre-existing)
-
-#### Phase 4: Performance & Polish
-- [x] **M-I1**: Use `MonotonicDeque` for O(1) min/max in 5 indicators (WilliamsR, Stochastic, StochRSI, Midprice, Fisher)
-- [x] **H-I2**: Add periodic sum recomputation for SMA/BBands floating-point drift
-- [x] **M-I3**: Move debug import to module level in `structures/state.py`
-- [x] **L-I1**: Replace factory if/elif chain with dict lookup in `indicators/incremental/factory.py`
-- [x] **L-B3**: Remove dead `compute_warmup_bars` passthrough in `backtest/runtime/windowing.py`
-- [x] **M-B5**: Fix `sync_forward` naive `datetime.now()` → `datetime.now(timezone.utc)` in `data/historical_sync.py`
 - [ ] **GATE**: `python scripts/run_full_suite.py` — 170/170 pass
+
+### P12: Lazy WebSocket & Live WS Health — Full Audit
+
+**Context:** Session 2026-02-21 implemented lazy WS (REST-first, WS on demand) and found critical bugs
+in the stale monitor / health check chain that **blocked all signal execution in demo/live mode**.
+Fixes applied across 14 files. Timestamp/subscription cleanup also done in this session.
+
+**Completed (2026-02-21):**
+- [x] `ConnectionState.NOT_STARTED` to distinguish "never started" from "lost connection"
+- [x] Fixed `WebSocketConfig.auto_start` default (`True` → `False`)
+- [x] Tri-state WS status in diagnostics tool + CLI display formatter
+- [x] Renamed `setup_websocket_cleanup` → `setup_position_close_cleanup`
+- [x] Added `app.stop_websocket()` after engine thread joins in BOTH `play.py` and `plays_menu.py`
+- [x] **CRITICAL**: Fixed stale monitor — was tracking private stream silence as "stale" (false positive every 60s)
+- [x] **CRITICAL**: Fixed stale handler — was marking connections as RECONNECTING, breaking `is_websocket_healthy()`
+- [x] Fixed Log tab scroll direction (Up=older, Down=newer), added LIVE indicator, filter-empty message
+- [x] Downgraded "already subscribed" re-subscribe errors to DEBUG
+- [x] **Timestamp fix**: Enforced UTC-naive convention across live path (7 files), canonical `_datetime_to_epoch_ms()`
+- [x] **Kline subscription fix**: Default `kline_intervals` changed from `["15"]` to `[]`, LiveRunner subscribes only play TFs
+- [x] **REST/DuckDB bar loading**: Force UTC-naive on `fromisoformat()` output
+
+#### Remaining: Manual verification
+- [ ] Run demo play 10+ minutes — confirm NO "Signal execution blocked" warnings
+- [ ] Confirm `is_websocket_healthy()` returns `True` throughout
+- [ ] Run play A → stop → play B → verify no stale symbols leak
+- [ ] Health Check shows correct tri-state WS display (not started / connected / stopped)
+- [ ] **GATE**: Two sequential demo plays, zero post-exit warnings
 
 ### P1: Live Engine Rubric
 

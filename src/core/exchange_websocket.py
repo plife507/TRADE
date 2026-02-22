@@ -14,25 +14,28 @@ if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager
 
 
-def setup_websocket_cleanup(manager: "ExchangeManager"):
+def setup_position_close_cleanup(manager: "ExchangeManager"):
     """
-    Setup WebSocket callbacks for automatic conditional order cleanup.
-    
+    Setup callbacks for automatic conditional order cleanup on position close.
+
     When a position closes (SL hit, TP filled, manual close), this automatically
     cancels any remaining conditional TP orders to prevent orphaned orders.
+
+    Registers a RealtimeState position-update callback. The callback fires
+    whenever the WebSocket receives a position update (only while WS is running).
     """
     try:
         from ..data.realtime_state import get_realtime_state
         state = get_realtime_state()
-        
+
         # Register callback for position updates
         state.on_position_update(lambda pos_data: on_position_update_cleanup(manager, pos_data))
-        
-        manager.logger.info("WebSocket cleanup callback registered for position updates")
+
+        manager.logger.info("Position-close cleanup callback registered")
     except ImportError:
-        manager.logger.debug("RealtimeState not available - WebSocket cleanup disabled")
+        manager.logger.debug("RealtimeState not available - position cleanup disabled")
     except Exception as e:
-        manager.logger.warning(f"Could not setup WebSocket cleanup: {e}")
+        manager.logger.warning(f"Could not setup position-close cleanup: {e}")
 
 
 def on_position_update_cleanup(manager: "ExchangeManager", position_data):

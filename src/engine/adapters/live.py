@@ -123,10 +123,11 @@ class LiveIndicatorCache:
             self._low[i] = float(candle.low)
             self._close[i] = float(candle.close)
             self._volume[i] = float(candle.volume)
-            # BarRecord has .timestamp, Candle has .ts_open
+            # BarRecord has .timestamp, Candle has .ts_open (both UTC-naive)
+            from src.backtest.runtime.feed_store import _datetime_to_epoch_ms
             ts = getattr(candle, 'ts_open', None) or getattr(candle, 'timestamp', None)
             if ts is not None:
-                self._ts_open_ms[i] = int(ts.timestamp() * 1000)
+                self._ts_open_ms[i] = _datetime_to_epoch_ms(ts)
 
         self._bar_count = n
 
@@ -302,7 +303,8 @@ class LiveIndicatorCache:
                         kwargs["volume"] = float(candle.volume)
                     # Pass ts_open for session-boundary indicators (VWAP)
                     if candle.ts_open is not None:
-                        kwargs["ts_open"] = int(candle.ts_open.timestamp() * 1000)
+                        from src.backtest.runtime.feed_store import _datetime_to_epoch_ms
+                        kwargs["ts_open"] = _datetime_to_epoch_ms(candle.ts_open)
                     inc_ind.update(**kwargs)
                 else:
                     # Route primary input by feature's input_source
@@ -1039,6 +1041,9 @@ class LiveDataProvider:
                 ts = rec['timestamp']
                 if not isinstance(ts, datetime):
                     ts = datetime.fromisoformat(str(ts))
+                # Force UTC-naive (fromisoformat/DuckDB may return tz-aware)
+                if ts.tzinfo is not None:
+                    ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
                 bar = BarRecord(
                     timestamp=ts,
                     open=float(rec['open']),
@@ -1101,6 +1106,9 @@ class LiveDataProvider:
                 ts = rec['timestamp']
                 if not isinstance(ts, datetime):
                     ts = datetime.fromisoformat(str(ts))
+                # Force UTC-naive (fromisoformat/DuckDB may return tz-aware)
+                if ts.tzinfo is not None:
+                    ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
                 bar = BarRecord(
                     timestamp=ts,
                     open=float(rec['open']),

@@ -297,6 +297,17 @@ def _run_play_live(play, args, manager=None) -> int:
     # Wait for engine thread to finish (it handles its own stop on its loop)
     engine_thread.join(timeout=20.0)
 
+    # Stop WebSocket bootstrap — LiveRunner.stop() only disconnects the data
+    # provider/exchange but leaves the bootstrap daemon threads running, which
+    # causes stale-data warnings to leak into the menu prompt.
+    try:
+        from src.core.application import get_application
+        app = get_application()
+        if app is not None:
+            app.stop_websocket()
+    except Exception:
+        pass
+
     # --- Print final summary ---
     if engine_error:
         from src.utils.debug import is_debug_enabled

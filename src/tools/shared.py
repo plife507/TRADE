@@ -222,6 +222,9 @@ def _get_realtime_state() -> "RealtimeState":
 def _is_websocket_connected() -> bool:
     """Check if WebSocket is connected and receiving non-stale data.
 
+    Under lazy WS, returning False is the expected default — callers fall
+    through to REST. WS only connects when a play is running.
+
     DATA-003: Also checks ticker staleness so that a connected-but-silent
     WebSocket (e.g., dropped subscription) is treated as disconnected.
     """

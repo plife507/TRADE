@@ -582,8 +582,8 @@ class LiveRunner:
             else:
                 close_ts_ms = kline_data.start_time + tf_minutes(kline_tf) * 60 * 1000
             candle = Candle(
-                ts_open=datetime.fromtimestamp(kline_data.start_time / 1000.0, tz=timezone.utc),
-                ts_close=datetime.fromtimestamp(close_ts_ms / 1000.0, tz=timezone.utc),
+                ts_open=datetime.fromtimestamp(kline_data.start_time / 1000.0, tz=timezone.utc).replace(tzinfo=None),
+                ts_close=datetime.fromtimestamp(close_ts_ms / 1000.0, tz=timezone.utc).replace(tzinfo=None),
                 open=kline_data.open,
                 high=kline_data.high,
                 low=kline_data.low,

@@ -203,9 +203,9 @@ class ExchangeManager:
         self._previous_positions: dict[str, bool] = {}
         self._position_tracking_lock = threading.Lock()  # Protects _previous_positions
 
-        # Setup WebSocket cleanup
+        # Setup position-close cleanup (cancels orphaned TP orders)
         from . import exchange_websocket as ws
-        ws.setup_websocket_cleanup(self)
+        ws.setup_position_close_cleanup(self)
 
         # G14.4: Activate Disconnect Cancel All (DCP) for live mode.
         # If our process crashes, the exchange will cancel all open orders

@@ -24,6 +24,7 @@ METADATA:
 from __future__ import annotations
 
 import bisect
+from calendar import timegm
 import numpy as np
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -37,8 +38,21 @@ def _np_dt64_to_epoch_ms(ts: np.datetime64) -> int:
     return int(ts.astype("datetime64[ms]").astype("int64"))
 
 
+def _datetime_to_epoch_ms(dt: datetime) -> int:
+    """Convert datetime to epoch milliseconds.
+
+    Accepts both tz-naive (assumed UTC) and tz-aware datetimes.
+    Uses calendar.timegm for tz-naive (interprets as UTC, unlike
+    datetime.timestamp() which assumes local time on naive datetimes).
+    Uses .timestamp() for tz-aware (correctly converts to UTC epoch).
+    """
+    if dt.tzinfo is not None:
+        return int(dt.timestamp() * 1000)
+    return timegm(dt.timetuple()) * 1000 + dt.microsecond // 1000
+
+
 def _np_dt64_to_datetime(ts: np.datetime64) -> datetime:
-    """Convert numpy datetime64 to Python datetime (UTC)."""
+    """Convert numpy datetime64 to Python datetime (UTC-naive)."""
     epoch_ms = _np_dt64_to_epoch_ms(ts)
     return datetime.fromtimestamp(epoch_ms / 1000.0, tz=timezone.utc).replace(tzinfo=None)
 
@@ -198,11 +212,11 @@ class FeedStore:
         Returns:
             Array index or None if not found
         """
-        # Convert to epoch ms
+        # Convert to epoch ms (timegm-based for tz-naive UTC correctness)
         if isinstance(ts, np.datetime64):
             ts_ms = _np_dt64_to_epoch_ms(ts)
         else:
-            ts_ms = int(ts.timestamp() * 1000)
+            ts_ms = _datetime_to_epoch_ms(ts)
         return self.ts_close_ms_to_idx.get(ts_ms)
 
     def get_last_closed_idx_at_or_before(self, ts: datetime) -> int | None:
@@ -224,7 +238,7 @@ class FeedStore:
         if isinstance(ts, np.datetime64):
             ts_ms = _np_dt64_to_epoch_ms(ts)
         else:
-            ts_ms = int(ts.timestamp() * 1000)
+            ts_ms = _datetime_to_epoch_ms(ts)
 
         # Binary search: find rightmost value <= ts_ms
         # bisect_right returns insertion point, so pos-1 is the last value <= ts_ms
@@ -242,14 +256,14 @@ class FeedStore:
         ts = self.ts_close[idx]
         if isinstance(ts, np.datetime64):
             return _np_dt64_to_epoch_ms(ts)
-        return int(ts.timestamp() * 1000)
+        return _datetime_to_epoch_ms(ts)
 
     @staticmethod
     def _ts_to_ms(ts: datetime | np.datetime64) -> int:
         """Convert a timestamp to epoch milliseconds."""
         if isinstance(ts, np.datetime64):
             return _np_dt64_to_epoch_ms(ts)
-        return int(ts.timestamp() * 1000)
+        return _datetime_to_epoch_ms(ts)
 
     def get_1m_indices_for_exec(
         self,
@@ -463,7 +477,7 @@ class FeedStore:
                 ts_ms = _np_dt64_to_epoch_ms(ts)
             else:
                 dt = ts
-                ts_ms = int(ts.timestamp() * 1000)
+                ts_ms = _datetime_to_epoch_ms(ts)
             close_ts_set.add(dt)
             ts_close_ms_to_idx[ts_ms] = i
 
@@ -544,7 +558,7 @@ class FeedStore:
                 ts_ms = _np_dt64_to_epoch_ms(ts)
             else:
                 dt = ts
-                ts_ms = int(ts.timestamp() * 1000)
+                ts_ms = _datetime_to_epoch_ms(ts)
             close_ts_set.add(dt)
             ts_close_ms_to_idx_features[ts_ms] = i
 

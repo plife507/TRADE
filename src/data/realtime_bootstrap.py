@@ -89,7 +89,8 @@ class SubscriptionConfig:
     enable_klines: bool = True
     
     # Kline intervals to subscribe (Bybit format: 1, 5, 15, 60, etc.)
-    kline_intervals: list[str] = field(default_factory=lambda: ["15"])
+    # Empty by default — LiveRunner subscribes to exactly the play's timeframes
+    kline_intervals: list[str] = field(default_factory=list)
     
     # Orderbook depth (1, 25, 50, 100, 200)
     orderbook_depth: int = 50
@@ -222,8 +223,8 @@ class RealtimeBootstrap:
             self._running = True
             self._stop_event.clear()
         
-        # Determine symbols
-        if symbols:
+        # Determine symbols — respect explicit empty list (private-only mode)
+        if symbols is not None:
             self._symbols = set(symbols)
         else:
             self._symbols = set(self.app_config.trading.default_symbols)
@@ -1000,7 +1001,6 @@ class RealtimeBootstrap:
 
         last_update_counts: dict[str, int] = {}
         public_stale_count = 0
-        private_stale_count = 0
 
         while not self._stop_event.is_set():
             try:
@@ -1014,15 +1014,16 @@ class RealtimeBootstrap:
                 stats = self.state.get_stats()
                 current_update_counts: dict[str, int] = stats.get('update_counts', {})
 
-                # Check staleness independently for public and private streams
+                # Only track PUBLIC stream staleness.
+                # Private streams are event-driven (Bybit only sends position/
+                # order/wallet updates when something changes). Zero private
+                # updates for minutes is completely normal during idle trading.
+                # Treating private silence as "stale" caused false reconnect
+                # cycles that blocked all signal execution.
                 if last_update_counts:
                     has_new_public = any(
                         current_update_counts.get(k, 0) > last_update_counts.get(k, 0)
                         for k in self._PUBLIC_KEYS
-                    )
-                    has_new_private = any(
-                        current_update_counts.get(k, 0) > last_update_counts.get(k, 0)
-                        for k in self._PRIVATE_KEYS
                     )
 
                     if has_new_public:
@@ -1030,22 +1031,11 @@ class RealtimeBootstrap:
                     else:
                         public_stale_count += 1
 
-                    if has_new_private:
-                        private_stale_count = 0
-                    else:
-                        private_stale_count += 1
-
-                    # Trigger stale handler if EITHER bucket is stale for 60s
-                    if public_stale_count >= 2 or private_stale_count >= 2:
-                        stale_parts = []
-                        if public_stale_count >= 2:
-                            stale_parts.append("public")
-                        if private_stale_count >= 2:
-                            stale_parts.append("private")
-                        self.logger.debug(f"Stale streams detected: {', '.join(stale_parts)}")
+                    # Trigger stale handler only when public data stops for 60s
+                    if public_stale_count >= 2:
+                        self.logger.debug("Public stream stale (60s no data)")
                         self._handle_stale_connection()
                         public_stale_count = 0
-                        private_stale_count = 0
 
                 last_update_counts = dict(current_update_counts)
 
@@ -1093,23 +1083,33 @@ class RealtimeBootstrap:
                             interval_val = interval
                         self.client.subscribe_klines(symbol, interval_val, self._on_kline)
             except Exception as e:
-                self.logger.warning(f"Failed to re-subscribe {symbol}: {e}")
+                err_msg = str(e)
+                if "already subscribed" in err_msg.lower():
+                    self.logger.debug(f"Already subscribed: {symbol} (expected after reconnect)")
+                else:
+                    self.logger.warning(f"Failed to re-subscribe {symbol}: {e}")
 
     def _handle_stale_connection(self):
-        """Handle a potentially stale WebSocket connection.
+        """Handle a potentially stale public WebSocket stream.
 
-        When no WS data has been received for 60s, refresh wallet/position
-        data via REST so the risk manager and balance checks stay current.
-        Also marks connections as reconnecting so the health check reflects
-        the degraded state.
+        When no public WS data has been received for 60s, refresh wallet/
+        position data via REST so the risk manager and balance checks stay
+        current.
+
+        IMPORTANT: Do NOT mark connections as RECONNECTING or clear
+        _public_connected/_private_connected. The WS connection is likely
+        still alive (just temporarily quiet). Marking it RECONNECTING
+        breaks is_websocket_healthy() which blocks signal execution, and
+        triggers false "reconnected" detection + re-subscribe spam when
+        data resumes.
         """
         if not getattr(self, '_stale_logged', False):
             self.logger.warning(
-                "WebSocket stale (60s no data) — refreshing via REST"
+                "Public stream quiet (60s no data) — refreshing account via REST"
             )
             self._stale_logged = True
         else:
-            self.logger.debug("WebSocket still stale — refreshing via REST")
+            self.logger.debug("Public stream still quiet — refreshing account via REST")
 
         # Refresh wallet/positions/orders via REST to keep data current
         try:
@@ -1126,19 +1126,6 @@ class RealtimeBootstrap:
             self._fetch_initial_orders()
         except Exception as e:
             self.logger.warning(f"REST orders refresh failed: {e}")
-
-        # Update connection status
-        if self._public_connected:
-            self.state.set_public_ws_reconnecting()
-            self._public_connected = False
-
-        if self._private_connected:
-            self.state.set_private_ws_reconnecting()
-            self._private_connected = False
-
-        # Track last disconnect for agents
-        self._last_disconnect_time = time.time()
-        self._disconnect_count = getattr(self, '_disconnect_count', 0) + 1
     
     def get_health(self) -> dict[str, object]:
         """

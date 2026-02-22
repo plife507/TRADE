@@ -7,6 +7,7 @@ These tools provide exchange connection testing, health checks, and status repor
 import sys
 from .shared import ToolResult, _get_exchange_manager, _get_realtime_state
 from src.config.config import get_config
+from ..data.realtime_models import ConnectionState
 
 # Windows-safe symbols: always use ASCII on Windows because Rich's legacy
 # renderer encodes via cp1252 even inside Windows Terminal (WT_SESSION).
@@ -212,30 +213,40 @@ def get_websocket_status_tool() -> ToolResult:
         pub_status = state.get_public_ws_status()
         priv_status = state.get_private_ws_status()
         stats = state.get_stats()
-        
+
         ws_connected = pub_status.is_connected or priv_status.is_connected
-        using_rest_fallback = not ws_connected
-        
+        ws_not_started = (
+            pub_status.state == ConnectionState.NOT_STARTED
+            and priv_status.state == ConnectionState.NOT_STARTED
+        )
+        # REST fallback only applies when WS was started and lost connection
+        using_rest_fallback = not ws_connected and not ws_not_started
+
         if ws_connected:
             status_msg = "WebSocket connected"
+        elif ws_not_started:
+            status_msg = "WebSocket not started (starts when a play runs)"
         else:
-            status_msg = "Using REST API fallback"
-        
+            status_msg = "WebSocket disconnected — using REST API"
+
         return ToolResult(
             success=True,
             message=status_msg,
             data={
                 "websocket_connected": ws_connected,
+                "ws_not_started": ws_not_started,
                 "using_rest_fallback": using_rest_fallback,
                 "healthy": True,  # Either WS or REST works
                 "public": {
                     "is_connected": pub_status.is_connected,
+                    "state": pub_status.state.value,
                     "uptime_seconds": pub_status.uptime_seconds,
                     "reconnect_count": pub_status.reconnect_count,
                     "last_error": pub_status.last_error,
                 },
                 "private": {
                     "is_connected": priv_status.is_connected,
+                    "state": priv_status.state.value,
                     "uptime_seconds": priv_status.uptime_seconds,
                     "reconnect_count": priv_status.reconnect_count,
                     "last_error": priv_status.last_error,

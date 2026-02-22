@@ -34,27 +34,35 @@ def build_log_text(
     scroll_offset: int = 0,
 ) -> RenderableType:
     """Tab 4: Scrolling log output with severity filter and scroll support."""
-    lines = handler.get_lines()
-    lines = _filter_lines(lines, log_filter)
+    raw_lines = handler.get_lines()
+    lines = _filter_lines(raw_lines, log_filter)
 
     total = len(lines)
     label = LOG_FILTERS[log_filter] if log_filter < len(LOG_FILTERS) else "?"
 
     header = Text()
-    header.append(f" Filter: [{label}] (f to cycle)", style="dim")
+    header.append(f" Filter: [{label}]", style="dim")
 
     if not lines:
+        header.append("  (f to cycle)", style="dim")
+        if raw_lines:
+            return Group(header, Text(f" No lines match filter [{label}]", style="dim italic"))
         return Group(header, Text(" No log output yet...", style="dim italic"))
 
     # Scroll: default to bottom (newest logs), scroll_offset moves up from bottom
-    # offset=0 means "show the last max_lines" (tail behavior)
-    # offset>0 means "scroll up N lines from the bottom"
-    end = max(0, total - scroll_offset)
+    # offset=0 means "show the last max_lines" (tail behavior / auto-scroll)
+    # offset>0 means "scrolled up N lines from the bottom" (frozen view)
+    # Clamp offset to prevent empty display after filter narrows results
+    clamped_offset = min(scroll_offset, max(0, total - 1))
+    end = total - clamped_offset
     start = max(0, end - max_lines)
     visible = lines[start:end]
 
-    if total > max_lines:
-        header.append(f"  {start + 1}-{end}/{total} (up/down)", style="dim")
+    if clamped_offset == 0:
+        header.append("  LIVE", style="bold green")
+    else:
+        header.append(f"  {start + 1}-{end}/{total}", style="dim")
+        header.append("  (down=newer, up=older)", style="dim")
 
     t = Text()
     for line in visible:

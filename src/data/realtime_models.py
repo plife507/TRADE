@@ -49,6 +49,7 @@ class EventType(Enum):
 
 class ConnectionState(Enum):
     """WebSocket connection states."""
+    NOT_STARTED = "not_started"
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -1030,7 +1031,7 @@ class RealtimeEvent:
 @dataclass
 class ConnectionStatus:
     """WebSocket connection status."""
-    state: ConnectionState = ConnectionState.DISCONNECTED
+    state: ConnectionState = ConnectionState.NOT_STARTED
     connected_at: float | None = None
     disconnected_at: float | None = None
     reconnect_count: int = 0

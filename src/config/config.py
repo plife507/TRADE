@@ -389,7 +389,7 @@ class WebSocketConfig:
     enable_websocket: bool = True
 
     # Auto-start WebSocket on application initialization
-    auto_start: bool = True
+    auto_start: bool = False
 
     # Timeout settings (seconds)
     startup_timeout: float = 10.0   # Max wait for WebSocket connection
@@ -403,7 +403,8 @@ class WebSocketConfig:
     enable_orderbook_stream: bool = False  # High frequency, disabled by default
     enable_trades_stream: bool = False     # High frequency, disabled by default
     enable_klines_stream: bool = True
-    kline_intervals: list[str] = field(default_factory=lambda: ["15"])
+    # Empty default — LiveRunner subscribes to exactly the play's timeframes
+    kline_intervals: list[str] = field(default_factory=list)
     
     # Private stream options
     enable_position_stream: bool = True
@@ -685,7 +686,7 @@ class Config:
     def _load_websocket_config(self) -> WebSocketConfig:
         """Load WebSocket configuration from environment."""
         # Parse kline intervals
-        kline_intervals_str = os.getenv("WS_KLINE_INTERVALS", "15")
+        kline_intervals_str = os.getenv("WS_KLINE_INTERVALS", "")
         kline_intervals = [s.strip() for s in kline_intervals_str.split(",") if s.strip()]
         
         return WebSocketConfig(

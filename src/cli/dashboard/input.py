@@ -53,6 +53,10 @@ def _has_open_position(manager: object) -> bool:
 
 SCROLL_STEP = 5
 
+# Log tab (tab 4) uses offset-from-bottom (0 = tail/latest).
+# All other tabs use offset-from-top (0 = beginning).
+_LOG_TAB = 4
+
 
 def _tab_prev(tab_state: TabState) -> None:
     """Move to previous tab (wraps around)."""
@@ -67,11 +71,21 @@ def _tab_next(tab_state: TabState) -> None:
 
 
 def _scroll_up(tab_state: TabState) -> None:
-    tab_state.scroll_offset = max(0, tab_state.scroll_offset - SCROLL_STEP)
+    """Arrow Up: show older content (up the log / up the page)."""
+    if tab_state.current_tab == _LOG_TAB:
+        # Log tab: offset-from-bottom → increase to see older
+        tab_state.scroll_offset += SCROLL_STEP
+    else:
+        tab_state.scroll_offset = max(0, tab_state.scroll_offset - SCROLL_STEP)
 
 
 def _scroll_down(tab_state: TabState) -> None:
-    tab_state.scroll_offset += SCROLL_STEP
+    """Arrow Down: show newer content (down the log / down the page)."""
+    if tab_state.current_tab == _LOG_TAB:
+        # Log tab: offset-from-bottom → decrease to see newer (0 = live tail)
+        tab_state.scroll_offset = max(0, tab_state.scroll_offset - SCROLL_STEP)
+    else:
+        tab_state.scroll_offset += SCROLL_STEP
 
 
 def _handle_quit(
@@ -118,6 +132,7 @@ def _handle_key(
         tab_state.meta_mode = (tab_state.meta_mode + 1) % 3
     elif ch == "f":
         tab_state.log_filter = (tab_state.log_filter + 1) % len(LOG_FILTERS)
+        tab_state.scroll_offset = 0  # Reset scroll when filter changes
     elif ch in "123456":
         tab_state.current_tab = int(ch)
 

@@ -47,6 +47,7 @@ When running parallel agents or sub-tasks, NEVER use parallel file access to Duc
 | Indicators | Declare in Play YAML, access via snapshot |
 | Database | Sequential access only (DuckDB limitation) |
 | Hashing | Always use `compute_trades_hash()` from `hashes.py` -- never ad-hoc `repr()`/`hash()` |
+| Timestamps | UTC-naive datetimes everywhere. Use `_datetime_to_epoch_ms()` from `feed_store.py` -- never `dt.timestamp() * 1000` on naive datetimes |
 
 ## Logging & Debugging
 
@@ -113,6 +114,22 @@ Deterministic hashes flow through the entire pipeline for reproducibility and de
 **Pipeline flow**: runner computes `play_hash` → sets on engine via `set_play_hash()` → engine uses in debug logging → after run, computes `trades_hash`/`equity_hash`/`run_hash` → stored in `result.json` → displayed in console → logged to `index.jsonl`.
 
 **Field naming**: The field is `play_hash` everywhere (not `idea_hash`). `ResultsSummary.play_hash`, `result.json["play_hash"]`, `determinism.py` hash_fields.
+
+## Timestamp Convention (ENFORCED)
+
+All timestamps in the system are **UTC-naive** `datetime` objects. This is enforced at every data entry point (WebSocket, REST API, DuckDB).
+
+| Do | Don't |
+|----|-------|
+| `datetime.fromtimestamp(ms/1000, tz=utc).replace(tzinfo=None)` | `datetime.fromtimestamp(ms/1000, tz=utc)` (tz-aware) |
+| `_datetime_to_epoch_ms(dt)` from `feed_store.py` | `int(dt.timestamp() * 1000)` (local-time bug on naive datetimes) |
+| `_np_dt64_to_epoch_ms(ts)` for numpy datetime64 | `np.array([...], dtype="datetime64[ms]")` from tz-aware datetimes |
+| `ts.astimezone(utc).replace(tzinfo=None)` at entry points | Passing tz-aware datetimes into FeedStore/Candle |
+
+**Canonical conversion functions** (all in `src/backtest/runtime/feed_store.py`):
+- `_datetime_to_epoch_ms(dt)` — handles both tz-naive (timegm) and tz-aware (.timestamp())
+- `_np_dt64_to_epoch_ms(ts)` — numpy datetime64 → int64 ms
+- `_np_dt64_to_datetime(ts)` — numpy datetime64 → UTC-naive datetime
 
 ## Trading Domain Rules
 

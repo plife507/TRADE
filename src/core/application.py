@@ -6,7 +6,7 @@ for all core trading bot components.
 
 This is the single entry point for:
 - Component initialization in correct dependency order
-- WebSocket auto-start (if enabled)
+- WebSocket on-demand start (starts when a play runs)
 - Graceful shutdown with cleanup
 - Signal handling (SIGINT/SIGTERM)
 
@@ -72,7 +72,7 @@ class Application:
     
     Manages:
     - Component initialization in correct order
-    - WebSocket auto-start
+    - WebSocket on-demand start
     - Graceful shutdown
     - Signal handling
     
@@ -212,12 +212,13 @@ class Application:
     
     def start(self) -> bool:
         """
-        Start the application (including WebSocket if risk manager needs it).
-        
-        WebSocket is only started if:
-        1. Risk Manager has GlobalRiskView enabled (needs real-time data)
-        2. OR auto_start is explicitly enabled in config
-        
+        Start the application (REST-only by default).
+
+        WebSocket is NOT started automatically. It starts on demand when:
+        1. A play is started (LiveRunner handles bootstrap)
+        2. User requests account monitoring from CLI
+        3. WS_AUTO_START=true is set in config
+
         Returns:
             True if started successfully, False otherwise
         """
@@ -238,26 +239,20 @@ class Application:
         )
         
         try:
-            # Check if risk manager needs websocket
-            risk_needs_ws = False
-            if self._risk_manager:
-                risk_needs_ws = self._risk_manager.needs_websocket()
-            
-            # Start WebSocket if:
-            # 1. Risk manager needs it (GlobalRiskView enabled)
-            # 2. OR auto_start is explicitly enabled
+            # WebSocket is NOT started automatically at connect time.
+            # It starts on demand when:
+            #   1. A play is started (LiveRunner._connect() calls bootstrap.start())
+            #   2. User explicitly requests account monitoring from CLI
+            #   3. auto_start is explicitly enabled in config (WS_AUTO_START=true)
             should_start_ws = (
-                self.config.websocket.enable_websocket and 
-                (risk_needs_ws or self.config.websocket.auto_start)
+                self.config.websocket.enable_websocket
+                and self.config.websocket.auto_start
             )
-            
+
             if should_start_ws:
-                if risk_needs_ws:
-                    self.logger.info("Starting WebSocket for Risk Manager (GlobalRiskView)")
-                else:
-                    self.logger.info("Starting WebSocket (auto_start enabled)")
-                self._start_websocket(risk_needs_ws=risk_needs_ws)
-            
+                self.logger.info("Starting WebSocket (auto_start enabled)")
+                self._start_websocket()
+
             self._running = True
             self.logger.info("Application started")
             
@@ -412,12 +407,15 @@ class Application:
         
         return list(symbols)
     
-    def _start_websocket(self, risk_needs_ws: bool = False) -> bool:
+    def _start_websocket(self, symbols: list[str] | None = None, include_private: bool = True) -> bool:
         """
-        Start WebSocket connections.
+        Start WebSocket connections on demand.
+
+        Called when a play starts or when account monitoring is requested.
 
         Args:
-            risk_needs_ws: If True, always start private streams even if no symbols to monitor.
+            symbols: Symbols to subscribe to. None = use open positions + defaults.
+            include_private: Whether to start private streams (positions, wallet, orders).
 
         Returns:
             True if started successfully
@@ -430,14 +428,9 @@ class Application:
             self.logger.debug("WebSocket already running")
             return True
 
-        # Get symbols to monitor: open positions + configured defaults
-        symbols = self._get_symbols_to_monitor()
-        if not symbols and not risk_needs_ws:
-            self.logger.info("No positions or symbols to monitor - WebSocket not needed")
-            return True  # Not an error, just nothing to monitor
-
-        if not symbols and risk_needs_ws:
-            self.logger.info("No symbols to monitor, but risk manager requires private WS streams")
+        # Determine symbols: explicit list, or fall back to open positions
+        if symbols is None:
+            symbols = self._get_symbols_to_monitor()
 
         self.logger.info(f"Starting WebSocket for symbols: {symbols}")
         
@@ -445,7 +438,7 @@ class Application:
             # Start the bootstrap
             self._realtime_bootstrap.start(
                 symbols=symbols,
-                include_private=True,
+                include_private=include_private,
             )
             
             # Wait for connection (with timeout)
@@ -508,14 +501,20 @@ class Application:
         except Exception as e:
             self.logger.warning(f"Error stopping WebSocket: {e}")
     
-    def start_websocket(self) -> bool:
+    def start_websocket(self, symbols: list[str] | None = None, include_private: bool = True) -> bool:
         """
         Public method to start WebSocket on demand.
-        
+
+        Called by CLI account monitor or play startup.
+
+        Args:
+            symbols: Symbols to subscribe to. None = use open positions.
+            include_private: Whether to start private streams.
+
         Returns:
             True if WebSocket is now running
         """
-        return self._start_websocket()
+        return self._start_websocket(symbols=symbols, include_private=include_private)
     
     def stop_websocket(self) -> None:
         """Public method to stop WebSocket on demand."""

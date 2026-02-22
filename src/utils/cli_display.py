@@ -1981,35 +1981,58 @@ def _format_health_check_result(data: Any, message: str) -> dict[str, Any]:
 
 
 def _format_websocket_status_result(data: Any, message: str) -> dict[str, Any]:
-    """Format WebSocket status."""
+    """Format WebSocket status with tri-state awareness.
+
+    Three states:
+    - Not started (normal REST-only mode, no alarm)
+    - Connected (play running, show stats)
+    - Disconnected (was running, lost connection — genuine fallback)
+    """
     if not data or not isinstance(data, dict):
         return None
-    
+
     ws_connected = data.get("websocket_connected", False)
+    ws_not_started = data.get("ws_not_started", False)
     using_rest = data.get("using_rest_fallback", False)
-    
-    # Get public/private status if available
+
     pub = data.get("public", {})
     priv = data.get("private", {})
     stats = data.get("stats", {})
-    
-    rows = [
-        {"Component": "WebSocket Connected", "Status": "✓ Yes" if ws_connected else "✗ No"},
-        {"Component": "REST Fallback", "Status": "✓ Active" if using_rest else "○ Not needed"},
-    ]
-    
-    if pub:
-        pub_connected = pub.get("is_connected", False)
-        rows.append({"Component": "Public Stream", "Status": "✓ Connected" if pub_connected else "○ Not connected"})
-        if pub.get("uptime_seconds"):
-            rows.append({"Component": "Public Uptime", "Status": f"{pub.get('uptime_seconds', 0):.0f}s"})
-    
-    if priv:
-        priv_connected = priv.get("is_connected", False)
-        rows.append({"Component": "Private Stream", "Status": "✓ Connected" if priv_connected else "○ Not connected"})
-        if priv.get("uptime_seconds"):
-            rows.append({"Component": "Private Uptime", "Status": f"{priv.get('uptime_seconds', 0):.0f}s"})
-    
+
+    rows: list[dict[str, str]] = []
+
+    if ws_not_started:
+        # WS was never started — this is normal REST-only operation
+        rows.append({"Component": "WebSocket", "Status": "Not started (on demand)"})
+        rows.append({"Component": "Data Source", "Status": "REST API (normal)"})
+        if pub:
+            rows.append({"Component": "Public Stream", "Status": "Not started"})
+        if priv:
+            rows.append({"Component": "Private Stream", "Status": "Not started"})
+    elif ws_connected:
+        # WS is actively connected
+        rows.append({"Component": "WebSocket", "Status": "✓ Connected"})
+        if pub:
+            pub_connected = pub.get("is_connected", False)
+            rows.append({"Component": "Public Stream", "Status": "✓ Connected" if pub_connected else "✗ Disconnected"})
+            if pub.get("uptime_seconds"):
+                rows.append({"Component": "Public Uptime", "Status": f"{pub.get('uptime_seconds', 0):.0f}s"})
+        if priv:
+            priv_connected = priv.get("is_connected", False)
+            rows.append({"Component": "Private Stream", "Status": "✓ Connected" if priv_connected else "✗ Disconnected"})
+            if priv.get("uptime_seconds"):
+                rows.append({"Component": "Private Uptime", "Status": f"{priv.get('uptime_seconds', 0):.0f}s"})
+    else:
+        # WS was running but lost connection — genuine fallback
+        rows.append({"Component": "WebSocket", "Status": "✗ Disconnected"})
+        rows.append({"Component": "REST Fallback", "Status": "✓ Active"})
+        if pub:
+            pub_connected = pub.get("is_connected", False)
+            rows.append({"Component": "Public Stream", "Status": "✓ Connected" if pub_connected else "✗ Disconnected"})
+        if priv:
+            priv_connected = priv.get("is_connected", False)
+            rows.append({"Component": "Private Stream", "Status": "✓ Connected" if priv_connected else "✗ Disconnected"})
+
     if stats:
         ticker_count = stats.get("ticker_count", 0)
         position_count = stats.get("position_count", 0)
@@ -2017,10 +2040,10 @@ def _format_websocket_status_result(data: Any, message: str) -> dict[str, Any]:
             rows.append({"Component": "Ticker Updates", "Status": f"{ticker_count:,}"})
         if position_count > 0:
             rows.append({"Component": "Positions Tracked", "Status": str(position_count)})
-    
-    healthy = data.get("healthy", ws_connected or using_rest)
+
+    healthy = data.get("healthy", ws_connected or using_rest or ws_not_started)
     footer = "✓ System healthy" if healthy else "⚠ Check connection"
-    
+
     return {
         "type": "table",
         "title": "🔗 WebSocket Status",
