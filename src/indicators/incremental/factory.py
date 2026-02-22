@@ -7,6 +7,7 @@ indicator from a type string and parameter dict, plus registry query functions.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from .base import IncrementalIndicator
@@ -138,6 +139,64 @@ def _validate_params(indicator_type: str, params: dict[str, Any]) -> None:
         )
 
 
+# L-I1: Dict-based factory — O(1) lookup replaces 44-branch if/elif chain.
+# Each entry maps indicator type string to a callable(params) -> IncrementalIndicator.
+_FACTORY: dict[str, Callable[[dict[str, Any]], IncrementalIndicator]] = {
+    # Core indicators
+    "ema": lambda p: IncrementalEMA(length=p.get("length", 20)),
+    "sma": lambda p: IncrementalSMA(length=p.get("length", 20)),
+    "rsi": lambda p: IncrementalRSI(length=p.get("length", 14)),
+    "atr": lambda p: IncrementalATR(length=p.get("length", 14)),
+    "macd": lambda p: IncrementalMACD(fast=p.get("fast", 12), slow=p.get("slow", 26), signal=p.get("signal", 9)),
+    "bbands": lambda p: IncrementalBBands(length=p.get("length", 20), std_dev=p.get("std", 2.0)),
+    "willr": lambda p: IncrementalWilliamsR(length=p.get("length", 14)),
+    "cci": lambda p: IncrementalCCI(length=p.get("length", 14)),
+    "stoch": lambda p: IncrementalStochastic(k_period=p.get("k", 14), smooth_k=p.get("smooth_k", 3), d_period=p.get("d", 3)),
+    "stochrsi": lambda p: IncrementalStochRSI(length=p.get("length", 14), rsi_length=p.get("rsi_length", 14), k=p.get("k", 3), d=p.get("d", 3)),
+    "adx": lambda p: IncrementalADX(length=p.get("length", 14)),
+    "supertrend": lambda p: IncrementalSuperTrend(length=p.get("length", 10), multiplier=p.get("multiplier", 3.0)),
+    # Trivial indicators
+    "ohlc4": lambda _: IncrementalOHLC4(),
+    "midprice": lambda p: IncrementalMidprice(length=p.get("length", 14)),
+    "roc": lambda p: IncrementalROC(length=p.get("length", 10)),
+    "mom": lambda p: IncrementalMOM(length=p.get("length", 10)),
+    "obv": lambda _: IncrementalOBV(),
+    "natr": lambda p: IncrementalNATR(length=p.get("length", 14)),
+    # EMA-composable indicators
+    "dema": lambda p: IncrementalDEMA(length=p.get("length", 20)),
+    "tema": lambda p: IncrementalTEMA(length=p.get("length", 20)),
+    "ppo": lambda p: IncrementalPPO(fast=p.get("fast", 12), slow=p.get("slow", 26), signal=p.get("signal", 9)),
+    "trix": lambda p: IncrementalTRIX(length=p.get("length", 18), signal=p.get("signal", 9)),
+    "tsi": lambda p: IncrementalTSI(fast=p.get("fast", 13), slow=p.get("slow", 25), signal=p.get("signal", 13)),
+    # Buffer-based indicators
+    "wma": lambda p: IncrementalWMA(length=p.get("length", 20)),
+    "trima": lambda p: IncrementalTRIMA(length=p.get("length", 20)),
+    "linreg": lambda p: IncrementalLINREG(length=p.get("length", 14)),
+    "cmf": lambda p: IncrementalCMF(length=p.get("length", 20)),
+    "cmo": lambda p: IncrementalCMO(length=p.get("length", 14)),
+    "mfi": lambda p: IncrementalMFI(length=p.get("length", 14)),
+    # Lookback-based indicators
+    "aroon": lambda p: IncrementalAROON(length=p.get("length", 25)),
+    "donchian": lambda p: IncrementalDonchian(lower_length=p.get("lower_length", 20), upper_length=p.get("upper_length", 20)),
+    "kc": lambda p: IncrementalKC(length=p.get("length", 20), scalar=p.get("scalar", 2.0)),
+    "dm": lambda p: IncrementalDM(length=p.get("length", 14)),
+    "vortex": lambda p: IncrementalVortex(length=p.get("length", 14)),
+    # Adaptive indicators
+    "kama": lambda p: IncrementalKAMA(length=p.get("length", 10), fast=p.get("fast", 2), slow=p.get("slow", 30)),
+    "alma": lambda p: IncrementalALMA(length=p.get("length", 10), sigma=p.get("sigma", 6.0), offset=p.get("offset", 0.85)),
+    "zlma": lambda p: IncrementalZLMA(length=p.get("length", 20)),
+    "uo": lambda p: IncrementalUO(fast=p.get("fast", 7), medium=p.get("medium", 14), slow=p.get("slow", 28)),
+    # Stateful multi-output indicators
+    "psar": lambda p: IncrementalPSAR(af0=p.get("af0", 0.02), af=p.get("af", 0.02), max_af=p.get("max_af", 0.2)),
+    "squeeze": lambda p: IncrementalSqueeze(bb_length=p.get("bb_length", 20), bb_std=p.get("bb_std", 2.0), kc_length=p.get("kc_length", 20), kc_scalar=p.get("kc_scalar", 1.5), mom_length=p.get("mom_length", 12), mom_smooth=p.get("mom_smooth", 6)),
+    "fisher": lambda p: IncrementalFisher(length=p.get("length", 9), signal=p.get("signal", 1)),
+    # Volume indicators
+    "kvo": lambda p: IncrementalKVO(fast=p.get("fast", 34), slow=p.get("slow", 55), signal=p.get("signal", 13)),
+    "vwap": lambda p: IncrementalVWAP(anchor=p.get("anchor", "D")),
+    "anchored_vwap": lambda p: IncrementalAnchoredVWAP(anchor_source=p.get("anchor_source", "swing_any")),
+}
+
+
 def create_incremental_indicator(
     indicator_type: str,
     params: dict[str, Any],
@@ -151,189 +210,10 @@ def create_incremental_indicator(
     indicator_type = indicator_type.lower()
     _validate_params(indicator_type, params)
 
-    # =============================================================================
-    # Core indicators
-    # =============================================================================
-    if indicator_type == "ema":
-        return IncrementalEMA(length=params.get("length", 20))
-    elif indicator_type == "sma":
-        return IncrementalSMA(length=params.get("length", 20))
-    elif indicator_type == "rsi":
-        return IncrementalRSI(length=params.get("length", 14))
-    elif indicator_type == "atr":
-        return IncrementalATR(length=params.get("length", 14))
-    elif indicator_type == "macd":
-        return IncrementalMACD(
-            fast=params.get("fast", 12),
-            slow=params.get("slow", 26),
-            signal=params.get("signal", 9),
-        )
-    elif indicator_type == "bbands":
-        return IncrementalBBands(
-            length=params.get("length", 20),
-            std_dev=params.get("std", 2.0),
-        )
-    elif indicator_type == "willr":
-        return IncrementalWilliamsR(length=params.get("length", 14))
-    elif indicator_type == "cci":
-        return IncrementalCCI(length=params.get("length", 14))
-    elif indicator_type == "stoch":
-        return IncrementalStochastic(
-            k_period=params.get("k", 14),
-            smooth_k=params.get("smooth_k", 3),
-            d_period=params.get("d", 3),
-        )
-    elif indicator_type == "stochrsi":
-        return IncrementalStochRSI(
-            length=params.get("length", 14),
-            rsi_length=params.get("rsi_length", 14),
-            k=params.get("k", 3),
-            d=params.get("d", 3),
-        )
-    elif indicator_type == "adx":
-        return IncrementalADX(length=params.get("length", 14))
-    elif indicator_type == "supertrend":
-        return IncrementalSuperTrend(
-            length=params.get("length", 10),
-            multiplier=params.get("multiplier", 3.0),
-        )
-    # =============================================================================
-    # Trivial indicators
-    # =============================================================================
-    elif indicator_type == "ohlc4":
-        return IncrementalOHLC4()
-    elif indicator_type == "midprice":
-        return IncrementalMidprice(length=params.get("length", 14))
-    elif indicator_type == "roc":
-        return IncrementalROC(length=params.get("length", 10))
-    elif indicator_type == "mom":
-        return IncrementalMOM(length=params.get("length", 10))
-    elif indicator_type == "obv":
-        return IncrementalOBV()
-    elif indicator_type == "natr":
-        return IncrementalNATR(length=params.get("length", 14))
-    # =============================================================================
-    # EMA-composable indicators
-    # =============================================================================
-    elif indicator_type == "dema":
-        return IncrementalDEMA(length=params.get("length", 20))
-    elif indicator_type == "tema":
-        return IncrementalTEMA(length=params.get("length", 20))
-    elif indicator_type == "ppo":
-        return IncrementalPPO(
-            fast=params.get("fast", 12),
-            slow=params.get("slow", 26),
-            signal=params.get("signal", 9),
-        )
-    elif indicator_type == "trix":
-        return IncrementalTRIX(
-            length=params.get("length", 18),
-            signal=params.get("signal", 9),
-        )
-    elif indicator_type == "tsi":
-        return IncrementalTSI(
-            fast=params.get("fast", 13),
-            slow=params.get("slow", 25),
-            signal=params.get("signal", 13),
-        )
-    # =============================================================================
-    # SMA/Buffer-based indicators
-    # =============================================================================
-    elif indicator_type == "wma":
-        return IncrementalWMA(length=params.get("length", 20))
-    elif indicator_type == "trima":
-        return IncrementalTRIMA(length=params.get("length", 20))
-    elif indicator_type == "linreg":
-        return IncrementalLINREG(length=params.get("length", 14))
-    elif indicator_type == "cmf":
-        return IncrementalCMF(length=params.get("length", 20))
-    elif indicator_type == "cmo":
-        return IncrementalCMO(length=params.get("length", 14))
-    elif indicator_type == "mfi":
-        return IncrementalMFI(length=params.get("length", 14))
-    # =============================================================================
-    # Lookback-based indicators
-    # =============================================================================
-    elif indicator_type == "aroon":
-        return IncrementalAROON(length=params.get("length", 25))
-    elif indicator_type == "donchian":
-        return IncrementalDonchian(
-            lower_length=params.get("lower_length", 20),
-            upper_length=params.get("upper_length", 20),
-        )
-    elif indicator_type == "kc":
-        return IncrementalKC(
-            length=params.get("length", 20),
-            scalar=params.get("scalar", 2.0),
-        )
-    elif indicator_type == "dm":
-        return IncrementalDM(length=params.get("length", 14))
-    elif indicator_type == "vortex":
-        return IncrementalVortex(length=params.get("length", 14))
-    # =============================================================================
-    # Complex adaptive indicators
-    # =============================================================================
-    elif indicator_type == "kama":
-        return IncrementalKAMA(
-            length=params.get("length", 10),
-            fast=params.get("fast", 2),
-            slow=params.get("slow", 30),
-        )
-    elif indicator_type == "alma":
-        return IncrementalALMA(
-            length=params.get("length", 10),
-            sigma=params.get("sigma", 6.0),
-            offset=params.get("offset", 0.85),
-        )
-    elif indicator_type == "zlma":
-        return IncrementalZLMA(length=params.get("length", 20))
-    elif indicator_type == "uo":
-        return IncrementalUO(
-            fast=params.get("fast", 7),
-            medium=params.get("medium", 14),
-            slow=params.get("slow", 28),
-        )
-    # =============================================================================
-    # Stateful multi-output indicators
-    # =============================================================================
-    elif indicator_type == "psar":
-        return IncrementalPSAR(
-            af0=params.get("af0", 0.02),
-            af=params.get("af", 0.02),
-            max_af=params.get("max_af", 0.2),
-        )
-    elif indicator_type == "squeeze":
-        return IncrementalSqueeze(
-            bb_length=params.get("bb_length", 20),
-            bb_std=params.get("bb_std", 2.0),
-            kc_length=params.get("kc_length", 20),
-            kc_scalar=params.get("kc_scalar", 1.5),
-            mom_length=params.get("mom_length", 12),
-            mom_smooth=params.get("mom_smooth", 6),
-        )
-    elif indicator_type == "fisher":
-        return IncrementalFisher(
-            length=params.get("length", 9),
-            signal=params.get("signal", 1),
-        )
-    # =============================================================================
-    # Volume complex indicators
-    # =============================================================================
-    elif indicator_type == "kvo":
-        return IncrementalKVO(
-            fast=params.get("fast", 34),
-            slow=params.get("slow", 55),
-            signal=params.get("signal", 13),
-        )
-    elif indicator_type == "vwap":
-        return IncrementalVWAP(anchor=params.get("anchor", "D"))
-    elif indicator_type == "anchored_vwap":
-        return IncrementalAnchoredVWAP(
-            anchor_source=params.get("anchor_source", "swing_any"),
-        )
-    else:
-        # Not supported incrementally - will fall back to vectorized
+    factory_fn = _FACTORY.get(indicator_type)
+    if factory_fn is None:
         return None
+    return factory_fn(params)
 
 
 # =============================================================================

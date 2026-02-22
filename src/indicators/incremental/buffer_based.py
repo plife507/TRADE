@@ -394,9 +394,8 @@ class IncrementalMFI(IncrementalIndicator):
 
         if self._count == 1:
             self._prev_tp = tp
-            # First bar: no previous TP, no flow direction
-            self._pos_mf_buffer.append(0.0)
-            self._neg_mf_buffer.append(0.0)
+            # H-I1: First bar has no previous TP, so no flow direction.
+            # Don't append to buffers — keeps buffer length and sum in sync.
             return
 
         # Determine flow direction

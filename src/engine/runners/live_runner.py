@@ -20,7 +20,6 @@ Usage:
 
 
 import asyncio
-import os
 import queue
 import threading
 import traceback
@@ -182,7 +181,7 @@ class LiveRunner:
         self._notifier = None
 
         # G17.3: Pause file-based IPC
-        self._pause_dir = Path(os.path.expanduser("~/.trade/instances"))
+        self._pause_dir = Path.home() / ".trade" / "instances"
         self._instance_id: str = ""  # Set by EngineManager after construction
 
         # Multi-timeframe routing

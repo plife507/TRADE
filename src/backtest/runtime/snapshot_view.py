@@ -1186,7 +1186,7 @@ class RuntimeSnapshotView:
         # Check if it's a high_tf path (starts with high_tf_)
         if struct_key.startswith("high_tf_"):
             # Path format: "high_tf_<tf>.<struct_key>.<output_key>"
-            tf_name = parts[0][4:]  # Remove "high_tf_" prefix
+            tf_name = parts[0].removeprefix("high_tf_")
             # P2-005 FIX: Validate high_tf path has enough parts before accessing
             if len(parts) < 3:
                 raise KeyError(

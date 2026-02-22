@@ -891,8 +891,6 @@ class LiveDataProvider:
             if len(rest_bars) > len(bars):
                 bars = rest_bars
 
-        logger.info(f"Loaded {len(bars)} bars for {tf_role} ({tf_str}) warm-up")
-
         if bars:
             # Convert BarRecords to interface Candles
             tf_duration = timedelta(minutes=tf_minutes(tf_str))
@@ -938,7 +936,10 @@ class LiveDataProvider:
 
             for bar_idx, candle in enumerate(buffer):
                 ind_vals: dict[str, float] = {}
-                for name in indicator_cache._indicators.keys():
+                # C3: Snapshot keys under lock to avoid RuntimeError from concurrent WS mutation
+                with indicator_cache._lock:
+                    ind_keys = list(indicator_cache._indicators.keys())
+                for name in ind_keys:
                     try:
                         val = indicator_cache.get(name, bar_idx)
                         if not np.isnan(val):
@@ -1034,17 +1035,17 @@ class LiveDataProvider:
 
             # Convert DataFrame rows to BarRecord objects
             bars = []
-            for _, row in df.iterrows():
-                ts = row['timestamp']
+            for rec in df.to_dict('records'):
+                ts = rec['timestamp']
                 if not isinstance(ts, datetime):
                     ts = datetime.fromisoformat(str(ts))
                 bar = BarRecord(
                     timestamp=ts,
-                    open=float(row['open']),
-                    high=float(row['high']),
-                    low=float(row['low']),
-                    close=float(row['close']),
-                    volume=float(row['volume']),
+                    open=float(rec['open']),
+                    high=float(rec['high']),
+                    low=float(rec['low']),
+                    close=float(rec['close']),
+                    volume=float(rec['volume']),
                 )
                 bars.append(bar)
 
@@ -1096,17 +1097,17 @@ class LiveDataProvider:
                 return []
 
             bars = []
-            for _, row in df.iterrows():
-                ts = row['timestamp']
+            for rec in df.to_dict('records'):
+                ts = rec['timestamp']
                 if not isinstance(ts, datetime):
                     ts = datetime.fromisoformat(str(ts))
                 bar = BarRecord(
                     timestamp=ts,
-                    open=float(row['open']),
-                    high=float(row['high']),
-                    low=float(row['low']),
-                    close=float(row['close']),
-                    volume=float(row['volume']),
+                    open=float(rec['open']),
+                    high=float(rec['high']),
+                    low=float(rec['low']),
+                    close=float(rec['close']),
+                    volume=float(rec['volume']),
                 )
                 bars.append(bar)
 
@@ -1491,8 +1492,8 @@ class LiveDataProvider:
             # Check all indicators at the latest bar for NaN
             # C1-C4: Skip engine-managed keys (e.g. anchored_vwap) — they are
             # filled by the engine AFTER warmup, so NaN is expected here.
-            engine_managed = getattr(indicator_cache, '_engine_managed_keys', set())
             with indicator_cache._lock:
+                engine_managed = getattr(indicator_cache, '_engine_managed_keys', set())
                 for name, arr in indicator_cache._indicators.items():
                     if name in engine_managed:
                         continue
@@ -1605,7 +1606,10 @@ class LiveDataProvider:
             indicator_cache = self._high_tf_indicators
 
         indicator_values: dict[str, float] = {}
-        for name in indicator_cache._indicators.keys():
+        # C4: Snapshot keys under lock to avoid RuntimeError from concurrent WS mutation
+        with indicator_cache._lock:
+            ind_keys = list(indicator_cache._indicators.keys())
+        for name in ind_keys:
             try:
                 val = indicator_cache.get(name, -1)
                 if not np.isnan(val):
@@ -2042,6 +2046,13 @@ class LiveExchange:
             signal_metadata["tp_order_type"] = order.tp_order_type
             signal_metadata["sl_order_type"] = order.sl_order_type
 
+            # M-S6: Preserve reference_price from original signal for deviation guard
+            ref_price = (
+                original_signal.reference_price
+                if original_signal and hasattr(original_signal, "reference_price")
+                else None
+            )
+
             # Convert unified Order to Signal format (only valid Signal fields)
             signal = Signal(
                 symbol=order.symbol,
@@ -2050,6 +2061,7 @@ class LiveExchange:
                 strategy=strategy,
                 confidence=confidence,
                 metadata=signal_metadata,
+                reference_price=ref_price,
             )
 
             # Execute through OrderExecutor
@@ -2339,8 +2351,11 @@ class LiveExchange:
                     symbol=self._symbol,
                 )
             else:
-                # Partial close: send reduce-only market order with computed qty
+                # H-E4: Partial close — validate trading state and WS tracking first
                 from ...core.exchange_manager import OrderResult as ExchangeOrderResult
+                from ...core import exchange_websocket as ws
+                self._exchange_manager._validate_trading_operation()
+                ws.ensure_symbol_tracked(self._exchange_manager, self._symbol)
                 raw = self._exchange_manager.bybit.create_order(
                     symbol=self._symbol,
                     side=close_side,

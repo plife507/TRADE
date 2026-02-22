@@ -26,6 +26,7 @@ Single source of truth for all open work, bugs, and task progress.
 | P10 Phase 4: Backtest/Engine | 2026-02-21 | 7 fixes + H22 deferred + M16 not-a-bug |
 | P10 Phase 5: Data/CLI/Artifacts | 2026-02-21 | 8 fixes (H12, H13, H15, H19, M1, M2, M11, M15) |
 | P10 Phase 6: Low Priority | 2026-02-21 | 11 fixes (C5, H5, H16, H18, H20, M3, M9, M10, M12, M17, M19) |
+| Codebase Review Pass 4 | 2026-02-21 | 6-agent team, 319 files, 89 findings. See `docs/CODEBASE_REVIEW_2026_02_21.md` |
 
 Full details: `docs/architecture/CODEBASE_REVIEW_ONGOING.md`
 
@@ -88,6 +89,47 @@ See `docs/STRUCTURE_DETECTION_AUDIT.md` for full audit.
 - [ ] Track which swing produced the last BOS
 - [ ] CHoCH only valid when breaking the BOS-producing swing level
 - [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+### P11: Codebase Review 2026-02-21 Fixes
+
+Full review: `docs/CODEBASE_REVIEW_2026_02_21.md` — 89 findings (5 critical, 19 high, 32 medium, 33 low).
+
+#### Phase 1: Live Safety (immediate)
+- [x] **C1**: Already handled — `exchange_orders_manage.close_position()` hardcodes `reduce_only=True` at line 197
+- [x] **C2-C4**: Add proper locking in live adapter indicator cache access (`src/engine/adapters/live.py:941,1494,1608`)
+- [x] **C5**: Remove duplicate log line in `_load_tf_bars` (`src/engine/adapters/live.py:894`)
+- [x] **H-S2**: Unify daily PnL tracking — `GlobalRiskView` now delegates to `DailyLossTracker`
+- [x] **M-S6**: Wire `reference_price` on Signal so price deviation guard actually functions
+- [x] **GATE**: `python trade_cli.py validate quick` passes
+
+#### Phase 2: Correctness Bugs
+- [x] **C5**: (moved from Phase 1) Remove duplicate log line in `_load_tf_bars`
+- [x] **H-B1**: Fix `get_structure` prefix stripping — `.removeprefix("high_tf_")` in `snapshot_view.py:1189`
+- [x] **H-C2**: Fix gate timeout default — argparser 300 → 600 in `cli/argparser.py:276`
+- [x] **H-C3**: Fix timeframe validation for "D" — case-insensitive matching in `utils/timeframes.py`
+- [x] **H-E6**: Fix DailyLossTracker error message — use absolute values for clarity
+- [x] **H-E7**: Add `ws.ensure_symbol_tracked` to both `limit_buy/sell_with_tpsl` in `exchange_orders_limit.py`
+- [x] **H-I1**: Fix MFI first-bar buffer/sum desync — don't append placeholder to buffers
+- [x] **GATE**: `python trade_cli.py validate standard` passes (G5 derived_zone parity is pre-existing)
+
+#### Phase 3: Architecture & Quality
+- [x] **H-E4**: Add `_validate_trading_operation()` + `ws.ensure_symbol_tracked()` to partial close path
+- [x] **H-X1**: Remove duplicate `short_hash()` in `run_logger.py` — imports from `utils/debug.py`
+- [x] **H-X3**: Standardize `Path.home()` over `os.path.expanduser` (4 files + unused `os` imports removed)
+- [x] **M-I7**: Not applicable — MarketStructure uses scalar fields, not growing lists
+- [x] **M-B3**: Use `deque(maxlen=...)` for `state_tracker.py` block_history — O(1) eviction
+- [x] **M-C3**: Not applicable — all file accesses in flagged files are reads; writes already have `newline='\n'`
+- [ ] **M-C4**: Replace ~48 bare `assert isinstance(...)` with explicit checks in `cli/menus/*.py` (deferred — large mechanical change)
+- [x] **GATE**: `python trade_cli.py validate standard` passes (G5 derived_zone parity is pre-existing)
+
+#### Phase 4: Performance & Polish
+- [x] **M-I1**: Use `MonotonicDeque` for O(1) min/max in 5 indicators (WilliamsR, Stochastic, StochRSI, Midprice, Fisher)
+- [x] **H-I2**: Add periodic sum recomputation for SMA/BBands floating-point drift
+- [x] **M-I3**: Move debug import to module level in `structures/state.py`
+- [x] **L-I1**: Replace factory if/elif chain with dict lookup in `indicators/incremental/factory.py`
+- [x] **L-B3**: Remove dead `compute_warmup_bars` passthrough in `backtest/runtime/windowing.py`
+- [x] **M-B5**: Fix `sync_forward` naive `datetime.now()` → `datetime.now(timezone.utc)` in `data/historical_sync.py`
+- [ ] **GATE**: `python scripts/run_full_suite.py` — 170/170 pass
 
 ### P1: Live Engine Rubric
 

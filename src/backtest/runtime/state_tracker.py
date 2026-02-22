@@ -25,6 +25,7 @@ Usage in engine:
         self._state_tracker.on_bar_end()
 """
 
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -115,8 +116,9 @@ class StateTracker:
         self._size_computed = False
         self._size_usdt = 0.0
 
-        # History for auditing
-        self.block_history: list[BlockState] = []
+        # M-B3: History for auditing — deque(maxlen) for O(1) eviction
+        max_hist = self.config.max_history
+        self.block_history: deque[BlockState] = deque(maxlen=max_hist if max_hist > 0 else None)
         self._block_index: dict[int, BlockState] = {}  # O(1) lookup by bar_idx
 
     def reset(self) -> None:
@@ -134,7 +136,7 @@ class StateTracker:
         self._order_rejected = False
         self._size_computed = False
         self._size_usdt = 0.0
-        self.block_history = []
+        self.block_history.clear()
         self._block_index = {}
 
     def on_bar_start(self, bar_idx: int) -> None:
@@ -325,22 +327,13 @@ class StateTracker:
         self._signal_state = new_signal_state
         self._action_state = new_action_state
 
-        # Record in history
+        # M-B3: Record in history — deque(maxlen) handles eviction automatically.
+        # Clean up _block_index for the item about to be evicted.
+        if self.block_history.maxlen and len(self.block_history) == self.block_history.maxlen:
+            evicted = self.block_history[0]
+            self._block_index.pop(evicted.bar_idx, None)
         self.block_history.append(block_state)
         self._block_index[self._current_bar_idx] = block_state
-
-        # Prune old history if max_history exceeded (prevents unbounded memory growth)
-        # P2-006 FIX: More efficient pruning - only clean up index entries we remove
-        max_hist = self.config.max_history
-        if max_hist > 0 and len(self.block_history) > max_hist:
-            # Calculate how many entries to remove
-            excess = len(self.block_history) - max_hist
-            # Get bar_idx values to remove from index (O(excess) instead of O(n))
-            for i in range(excess):
-                old_bar_idx = self.block_history[i].bar_idx
-                self._block_index.pop(old_bar_idx, None)
-            # Slice the history (creates new list - unavoidable with list)
-            self.block_history = self.block_history[excess:]
 
         return block_state
 

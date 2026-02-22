@@ -126,13 +126,15 @@ def limit_buy_with_tpsl(
 ) -> "OrderResult":
     """Place a limit buy order with TP/SL."""
     from .exchange_manager import OrderResult
+    from . import exchange_websocket as ws
 
     try:
         manager._validate_trading_operation()
+        ws.ensure_symbol_tracked(manager, symbol)
 
         price = inst.round_price(manager, symbol, price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)
-        
+
         result = manager.bybit.create_order(
             symbol=symbol, side="Buy", order_type="Limit", qty=qty,
             price=str(price), time_in_force=time_in_force,
@@ -182,9 +184,11 @@ def limit_sell_with_tpsl(
 ) -> "OrderResult":
     """Place a limit sell order with TP/SL (short)."""
     from .exchange_manager import OrderResult
+    from . import exchange_websocket as ws
 
     try:
         manager._validate_trading_operation()
+        ws.ensure_symbol_tracked(manager, symbol)
 
         price = inst.round_price(manager, symbol, price)
         qty = inst.calculate_qty(manager, symbol, usd_amount, price)

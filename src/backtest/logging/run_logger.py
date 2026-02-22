@@ -50,11 +50,7 @@ class RunLogContext:
     tf: str | None = None
 
 
-def short_hash(full_hash: str | None, length: int = 8) -> str:
-    """Format a hash for display (first N chars)."""
-    if not full_hash:
-        return "--"
-    return full_hash[:length]
+from ...utils.debug import short_hash
 
 
 class RunLogger:

@@ -53,7 +53,7 @@ def sync(
 
     symbols = [s.upper() for s in symbols]
     timeframes = timeframes or list(TIMEFRAMES.keys())
-    target_start = datetime.now() - store.parse_period(period)
+    target_start = datetime.now(timezone.utc).replace(tzinfo=None) - store.parse_period(period)
 
     results = {}
 
@@ -81,7 +81,7 @@ def sync(
                 spinner.start()
 
             try:
-                count = _sync_symbol_timeframe(store, symbol, tf, target_start, datetime.now(), spinner=spinner)
+                count = _sync_symbol_timeframe(store, symbol, tf, target_start, datetime.now(timezone.utc).replace(tzinfo=None), spinner=spinner)
                 results[key] = count
 
                 if spinner:
@@ -266,7 +266,7 @@ def _sync_forward_symbol_timeframe(
         return 0
 
     start = last_ts + timedelta(minutes=tf_minutes)
-    end = datetime.now()  # Already naive
+    end = datetime.now(timezone.utc).replace(tzinfo=None)
 
     if start >= end:
         return 0
@@ -485,5 +485,5 @@ def _update_metadata(store: "HistoricalDataStore", symbol: str, timeframe: str):
                 INSERT OR REPLACE INTO {store.table_sync_metadata}
                 (symbol, timeframe, first_timestamp, last_timestamp, candle_count, last_sync)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, [symbol, timeframe, first_ts, last_ts, count, datetime.now()])
+            """, [symbol, timeframe, first_ts, last_ts, count, datetime.now(timezone.utc).replace(tzinfo=None)])
 

@@ -1822,13 +1822,14 @@ class PlayEngine:
                     pass  # Don't fail on snapshot read errors
                 debug_snapshot(self._play_hash, bar_index, snapshot_data)
 
-        # Convert evaluation result to Signal
-        return self._result_to_signal(result, position)
+        # Convert evaluation result to Signal (with reference price for deviation guard)
+        return self._result_to_signal(result, position, candle.close)
 
     def _result_to_signal(
         self,
         result: "EvaluationResult",
         position: "Position | None",
+        reference_price: float | None = None,
     ) -> "Signal | None":
         """Convert EvaluationResult to Signal."""
         from ..core.risk_manager import Signal
@@ -1854,6 +1855,7 @@ class PlayEngine:
                 strategy=strategy,
                 confidence=1.0,
                 metadata=metadata,
+                reference_price=reference_price,
             )
 
         elif result.decision == SignalDecision.ENTRY_SHORT:
@@ -1873,6 +1875,7 @@ class PlayEngine:
                 strategy=strategy,
                 confidence=1.0,
                 metadata=metadata,
+                reference_price=reference_price,
             )
 
         elif result.decision == SignalDecision.EXIT:
@@ -1889,6 +1892,7 @@ class PlayEngine:
                 strategy=strategy,
                 confidence=1.0,
                 metadata=metadata if metadata else None,
+                reference_price=reference_price,
             )
 
         return None
@@ -2137,8 +2141,8 @@ class _PlayEngineSubLoopContext:
                     pass
                 debug_snapshot(self._engine._play_hash, self._bar_index, snap_data)
 
-        # Convert to Signal
-        return self._engine._result_to_signal(result, self._position)
+        # Convert to Signal (with reference price for deviation guard)
+        return self._engine._result_to_signal(result, self._position, self._candle.close)
 
     def should_skip_entry(self) -> bool:
         """Check if entries are disabled and no position exists."""

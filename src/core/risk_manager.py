@@ -25,6 +25,8 @@ class Signal:
     strategy: str
     confidence: float = 1.0
     metadata: dict | None = None
+    # M-S6: Reference price at signal generation time for price deviation guard
+    reference_price: float | None = None
 
     def __post_init__(self):
         self.metadata = self.metadata or {}
@@ -144,13 +146,11 @@ class RiskManager:
     
     def record_pnl(self, amount: float):
         """Record realized PnL for daily tracking."""
+        # H-S2: Single source of truth — DailyLossTracker.
+        # GlobalRiskView now reads from the same tracker, no separate recording needed.
         self._daily_tracker.record_pnl(amount)
         if amount < 0:
             self.logger.risk("WARNING", f"Recorded loss: ${amount:.2f}")
-        
-        # Also record in GlobalRiskView if available
-        if self._global_risk_view:
-            self._global_risk_view.record_realized_pnl(amount)
     
     def check(
         self,

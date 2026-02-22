@@ -19,7 +19,7 @@ Parallelism:
 
 Timeouts:
   - Per-play timeout: 120s default (--timeout to override)
-  - Per-gate timeout: 300s default
+  - Per-gate timeout: 600s default
   - Hung plays/gates report as FAIL with TIMEOUT error, never block forever
 
 Incremental reporting:

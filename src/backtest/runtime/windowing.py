@@ -17,7 +17,7 @@ All buffers are config-driven with sensible defaults.
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from .timeframe import tf_duration, tf_minutes
+from .timeframe import tf_duration
 
 
 # Safety buffer: extra closed candles to keep per timeframe
@@ -82,24 +82,6 @@ class LoadWindow:
         }
 
 
-def compute_warmup_bars(max_lookback: int) -> int:
-    """
-    Compute warmup bars from max indicator lookback.
-
-    Warmup is now computed directly in FeatureSpec.warmup_bars based on
-    indicator type, so this function just returns the lookback as-is.
-
-    Args:
-        max_lookback: Maximum indicator lookback in bars
-
-    Returns:
-        Number of warmup bars needed
-    """
-    if max_lookback <= 0:
-        return 0
-    return max_lookback
-
-
 def compute_warmup_span(
     tf_mapping: dict[str, str],
     indicator_lookbacks: dict[str, int],
@@ -122,10 +104,9 @@ def compute_warmup_span(
     
     max_span = timedelta(0)
 
-    for role, tf in tf_mapping.items():
+    for _, tf in tf_mapping.items():
         lookback = indicator_lookbacks.get(tf, 0)
-        warmup_bars = compute_warmup_bars(lookback)
-        span = warmup_bars * tf_duration(tf)
+        span = max(0, lookback) * tf_duration(tf)
 
         if span > max_span:
             max_span = span
@@ -221,7 +202,7 @@ def compute_load_window(
     warmup_bars_by_tf = {}
     max_lookback = 0
     for tf, lookback in indicator_lookbacks.items():
-        warmup_bars_by_tf[tf] = compute_warmup_bars(lookback)
+        warmup_bars_by_tf[tf] = max(0, lookback)
         if lookback > max_lookback:
             max_lookback = lookback
     

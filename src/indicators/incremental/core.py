@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 
+from src.structures.primitives import MonotonicDeque
+
 from .base import IncrementalIndicator
 
 
@@ -79,6 +81,7 @@ class IncrementalSMA(IncrementalIndicator):
     _buffer: deque = field(default_factory=deque, init=False)
     _running_sum: float = field(default=0.0, init=False)
     _count: int = field(default=0, init=False)
+    _since_recompute: int = field(default=0, init=False)
 
     def update(self, close: float, **kwargs: Any) -> None:
         """Update with new close price."""
@@ -90,10 +93,18 @@ class IncrementalSMA(IncrementalIndicator):
             oldest = self._buffer.popleft()
             self._running_sum -= oldest
 
+        # H-I2: Periodic recomputation to prevent floating-point drift.
+        # Every `length` updates, recompute sum from buffer (amortized O(1)).
+        self._since_recompute += 1
+        if self._since_recompute >= self.length:
+            self._running_sum = sum(self._buffer)
+            self._since_recompute = 0
+
     def reset(self) -> None:
         self._buffer.clear()
         self._running_sum = 0.0
         self._count = 0
+        self._since_recompute = 0
 
     @property
     def value(self) -> float:
@@ -358,6 +369,7 @@ class IncrementalBBands(IncrementalIndicator):
     _running_sum: float = field(default=0.0, init=False)
     _running_sq_sum: float = field(default=0.0, init=False)
     _count: int = field(default=0, init=False)
+    _since_recompute: int = field(default=0, init=False)
 
     def update(self, close: float, **kwargs: Any) -> None:
         """Update with new close price."""
@@ -371,11 +383,20 @@ class IncrementalBBands(IncrementalIndicator):
             self._running_sum -= oldest
             self._running_sq_sum -= oldest * oldest
 
+        # H-I2: Periodic recomputation to prevent floating-point drift.
+        # Every `length` updates, recompute sums from buffer (amortized O(1)).
+        self._since_recompute += 1
+        if self._since_recompute >= self.length:
+            self._running_sum = sum(self._buffer)
+            self._running_sq_sum = sum(v * v for v in self._buffer)
+            self._since_recompute = 0
+
     def reset(self) -> None:
         self._buffer.clear()
         self._running_sum = 0.0
         self._running_sq_sum = 0.0
         self._count = 0
+        self._since_recompute = 0
 
     @property
     def value(self) -> float:
@@ -467,7 +488,7 @@ class IncrementalBBands(IncrementalIndicator):
 @dataclass
 class IncrementalWilliamsR(IncrementalIndicator):
     """
-    Williams %R with O(1) updates using ring buffers.
+    Williams %R with true O(1) updates using monotonic deques.
 
     Formula:
         highest_high = max(high over length periods)
@@ -478,28 +499,27 @@ class IncrementalWilliamsR(IncrementalIndicator):
     """
 
     length: int = 14
-    _high_buffer: deque = field(default_factory=deque, init=False)
-    _low_buffer: deque = field(default_factory=deque, init=False)
     _last_close: float = field(default=np.nan, init=False)
     _count: int = field(default=0, init=False)
+    _max_high: MonotonicDeque = field(init=False)
+    _min_low: MonotonicDeque = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._max_high = MonotonicDeque(window_size=self.length, mode="max")
+        self._min_low = MonotonicDeque(window_size=self.length, mode="min")
 
     def update(
         self, high: float, low: float, close: float, **kwargs: Any
     ) -> None:
         """Update with new OHLC data."""
+        self._max_high.push(self._count, high)
+        self._min_low.push(self._count, low)
+        self._last_close = close
         self._count += 1
 
-        self._high_buffer.append(high)
-        self._low_buffer.append(low)
-        self._last_close = close
-
-        if len(self._high_buffer) > self.length:
-            self._high_buffer.popleft()
-            self._low_buffer.popleft()
-
     def reset(self) -> None:
-        self._high_buffer.clear()
-        self._low_buffer.clear()
+        self._max_high.clear()
+        self._min_low.clear()
         self._last_close = np.nan
         self._count = 0
 
@@ -508,8 +528,11 @@ class IncrementalWilliamsR(IncrementalIndicator):
         if not self.is_ready:
             return np.nan
 
-        highest_high = max(self._high_buffer)
-        lowest_low = min(self._low_buffer)
+        highest_high = self._max_high.get()
+        lowest_low = self._min_low.get()
+
+        if highest_high is None or lowest_low is None:
+            return np.nan
 
         if highest_high == lowest_low:
             return -50.0  # Midpoint when no range
@@ -518,7 +541,7 @@ class IncrementalWilliamsR(IncrementalIndicator):
 
     @property
     def is_ready(self) -> bool:
-        return len(self._high_buffer) >= self.length
+        return self._count >= self.length
 
 
 @dataclass
@@ -592,7 +615,7 @@ class IncrementalCCI(IncrementalIndicator):
 @dataclass
 class IncrementalStochastic(IncrementalIndicator):
     """
-    Stochastic Oscillator with O(1) updates.
+    Stochastic Oscillator with true O(1) updates using monotonic deques.
 
     Formula:
         lowest_low = min(low over k_period)
@@ -607,32 +630,33 @@ class IncrementalStochastic(IncrementalIndicator):
     k_period: int = 14
     smooth_k: int = 3
     d_period: int = 3
-    _high_buffer: deque = field(default_factory=deque, init=False)
-    _low_buffer: deque = field(default_factory=deque, init=False)
     _fast_k_buffer: deque = field(default_factory=deque, init=False)
     _k_buffer: deque = field(default_factory=deque, init=False)
     _last_close: float = field(default=np.nan, init=False)
     _count: int = field(default=0, init=False)
+    _max_high: MonotonicDeque = field(init=False)
+    _min_low: MonotonicDeque = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._max_high = MonotonicDeque(window_size=self.k_period, mode="max")
+        self._min_low = MonotonicDeque(window_size=self.k_period, mode="min")
 
     def update(
         self, high: float, low: float, close: float, **kwargs: Any
     ) -> None:
         """Update with new OHLC data."""
+        self._max_high.push(self._count, high)
+        self._min_low.push(self._count, low)
+        self._last_close = close
         self._count += 1
 
-        # Update high/low buffers
-        self._high_buffer.append(high)
-        self._low_buffer.append(low)
-        self._last_close = close
-
-        if len(self._high_buffer) > self.k_period:
-            self._high_buffer.popleft()
-            self._low_buffer.popleft()
-
         # Compute fast %K once we have enough data
-        if len(self._high_buffer) >= self.k_period:
-            highest_high = max(self._high_buffer)
-            lowest_low = min(self._low_buffer)
+        if self._count >= self.k_period:
+            highest_high = self._max_high.get()
+            lowest_low = self._min_low.get()
+
+            if highest_high is None or lowest_low is None:
+                return
 
             if highest_high == lowest_low:
                 fast_k = 50.0
@@ -651,8 +675,8 @@ class IncrementalStochastic(IncrementalIndicator):
                     self._k_buffer.popleft()
 
     def reset(self) -> None:
-        self._high_buffer.clear()
-        self._low_buffer.clear()
+        self._max_high.clear()
+        self._min_low.clear()
         self._fast_k_buffer.clear()
         self._k_buffer.clear()
         self._last_close = np.nan
@@ -685,7 +709,7 @@ class IncrementalStochastic(IncrementalIndicator):
 @dataclass
 class IncrementalStochRSI(IncrementalIndicator):
     """
-    Stochastic RSI with O(1) updates.
+    Stochastic RSI with true O(1) updates using monotonic deques.
 
     Formula:
         rsi = RSI(close, rsi_length)
@@ -702,13 +726,17 @@ class IncrementalStochRSI(IncrementalIndicator):
     k: int = 3
     d: int = 3
     _rsi: IncrementalRSI = field(init=False)
-    _rsi_buffer: deque = field(default_factory=deque, init=False)
     _fast_k_buffer: deque = field(default_factory=deque, init=False)
     _k_buffer: deque = field(default_factory=deque, init=False)
     _count: int = field(default=0, init=False)
+    _rsi_count: int = field(default=0, init=False)
+    _min_rsi: MonotonicDeque = field(init=False)
+    _max_rsi: MonotonicDeque = field(init=False)
 
     def __post_init__(self) -> None:
         self._rsi = IncrementalRSI(length=self.rsi_length)
+        self._min_rsi = MonotonicDeque(window_size=self.length, mode="min")
+        self._max_rsi = MonotonicDeque(window_size=self.length, mode="max")
 
     def update(self, close: float, **kwargs: Any) -> None:
         """Update with new close price."""
@@ -718,17 +746,19 @@ class IncrementalStochRSI(IncrementalIndicator):
         if not self._rsi.is_ready:
             return
 
-        # Store RSI values
+        # Store RSI values in monotonic deques
         rsi_val = self._rsi.value
-        self._rsi_buffer.append(rsi_val)
-
-        if len(self._rsi_buffer) > self.length:
-            self._rsi_buffer.popleft()
+        self._min_rsi.push(self._rsi_count, rsi_val)
+        self._max_rsi.push(self._rsi_count, rsi_val)
+        self._rsi_count += 1
 
         # Compute stochastic RSI when we have enough RSI values
-        if len(self._rsi_buffer) >= self.length:
-            min_rsi = min(self._rsi_buffer)
-            max_rsi = max(self._rsi_buffer)
+        if self._rsi_count >= self.length:
+            min_rsi = self._min_rsi.get()
+            max_rsi = self._max_rsi.get()
+
+            if min_rsi is None or max_rsi is None:
+                return
 
             if max_rsi == min_rsi:
                 fast_k = 50.0
@@ -748,10 +778,12 @@ class IncrementalStochRSI(IncrementalIndicator):
 
     def reset(self) -> None:
         self._rsi.reset()
-        self._rsi_buffer.clear()
+        self._min_rsi.clear()
+        self._max_rsi.clear()
         self._fast_k_buffer.clear()
         self._k_buffer.clear()
         self._count = 0
+        self._rsi_count = 0
 
     @property
     def value(self) -> float:

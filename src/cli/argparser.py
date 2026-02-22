@@ -275,8 +275,8 @@ def _setup_validate_subcommand(subparsers) -> None:
     validate_parser.add_argument(
         "--gate-timeout",
         type=int,
-        default=300,
-        help="Per-gate timeout in seconds for concurrent stages (default: 300)."
+        default=600,
+        help="Per-gate timeout in seconds for concurrent stages (default: 600)."
     )
     validate_parser.add_argument(
         "--json",

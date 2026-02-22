@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from .base import BaseIncrementalDetector
 from .registry import STRUCTURE_REGISTRY
+from ..utils.debug import is_debug_enabled, is_verbose_enabled, verbose_log
 
 if TYPE_CHECKING:
     from .base import BarData
@@ -207,8 +208,6 @@ class TFIncrementalState:
                 "Fix: Ensure bars are processed in chronological order."
             )
         self._bar_idx = bar.idx
-
-        from src.utils.debug import is_debug_enabled, is_verbose_enabled, verbose_log
 
         _verbose = is_verbose_enabled()
         _debug = is_debug_enabled()

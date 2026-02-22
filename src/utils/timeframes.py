@@ -42,10 +42,20 @@ def validate_canonical_tf(tf: str) -> str:
     Raises:
         ValueError: If tf is not canonical (with fix-it message)
     """
-    tf_lower = tf.lower().strip()
+    tf_clean = tf.strip()
 
+    # H-C3: Check original case first — "D" is canonical but "d".lower() isn't in the set
+    if tf_clean in CANONICAL_TIMEFRAMES:
+        return tf_clean
+
+    # Try lowercase for case-insensitive matching (e.g. "1H" → "1h")
+    tf_lower = tf_clean.lower()
     if tf_lower in CANONICAL_TIMEFRAMES:
         return tf_lower
+
+    # "d" is commonly typed but canonical is "D"
+    if tf_lower == "d":
+        return "D"
 
     # Check if it's a Bybit API interval
     if tf in BYBIT_API_INTERVALS:

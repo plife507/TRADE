@@ -129,7 +129,7 @@ class EngineManager:
         self._demo_by_symbol: dict[str, int] = {}
 
         # G16.4: Cross-process instance tracking
-        self._instances_dir = Path(os.path.expanduser("~/.trade/instances"))
+        self._instances_dir = Path.home() / ".trade" / "instances"
         self._instances_dir.mkdir(parents=True, exist_ok=True)
 
     @classmethod

@@ -80,7 +80,7 @@ class DailyLossTracker:
             if self._seed_failed:
                 return False, "Daily loss tracker seed failed — cannot verify daily limits"
             if self._daily_pnl <= -max_daily_loss_usd:
-                return False, f"Daily loss limit reached: ${self._daily_pnl:.2f} >= -${max_daily_loss_usd:.2f}"
+                return False, f"Daily loss limit reached: loss ${abs(self._daily_pnl):.2f} >= limit ${max_daily_loss_usd:.2f}"
             return True, ""
 
     def seed_from_exchange(

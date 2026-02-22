@@ -203,10 +203,9 @@ def run_dashboard(
         console.print("[dim]Shutting down engine...[/]")
 
         # Clean up pause files for all instances
-        import os
         from pathlib import Path
 
-        pause_dir = Path(os.path.expanduser("~/.trade/instances"))
+        pause_dir = Path.home() / ".trade" / "instances"
         instances: dict = getattr(manager, "_instances", {})
         for iid in instances:
             pause_file = pause_dir / f"{iid}.pause"

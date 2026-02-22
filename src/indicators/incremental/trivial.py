@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 
+from src.structures.primitives import MonotonicDeque
+
 from .base import IncrementalIndicator
 from .core import IncrementalEMA
 
@@ -54,7 +56,7 @@ class IncrementalOHLC4(IncrementalIndicator):
 @dataclass
 class IncrementalMidprice(IncrementalIndicator):
     """
-    Midprice with O(1) updates using ring buffer.
+    Midprice with true O(1) updates using monotonic deques.
 
     Formula:
         midprice = (max(high over length) + min(low over length)) / 2
@@ -66,37 +68,38 @@ class IncrementalMidprice(IncrementalIndicator):
     """
 
     length: int = 14
-    _high_buffer: deque = field(default_factory=deque, init=False)
-    _low_buffer: deque = field(default_factory=deque, init=False)
     _count: int = field(default=0, init=False)
+    _max_high: MonotonicDeque = field(init=False)
+    _min_low: MonotonicDeque = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._max_high = MonotonicDeque(window_size=self.length, mode="max")
+        self._min_low = MonotonicDeque(window_size=self.length, mode="min")
 
     def update(self, high: float, low: float, **kwargs: Any) -> None:
         """Update with new high/low data."""
+        self._max_high.push(self._count, high)
+        self._min_low.push(self._count, low)
         self._count += 1
 
-        self._high_buffer.append(high)
-        self._low_buffer.append(low)
-
-        if len(self._high_buffer) > self.length:
-            self._high_buffer.popleft()
-            self._low_buffer.popleft()
-
     def reset(self) -> None:
-        self._high_buffer.clear()
-        self._low_buffer.clear()
+        self._max_high.clear()
+        self._min_low.clear()
         self._count = 0
 
     @property
     def value(self) -> float:
         if not self.is_ready:
             return np.nan
-        highest = max(self._high_buffer)
-        lowest = min(self._low_buffer)
+        highest = self._max_high.get()
+        lowest = self._min_low.get()
+        if highest is None or lowest is None:
+            return np.nan
         return (highest + lowest) / 2.0
 
     @property
     def is_ready(self) -> bool:
-        return len(self._high_buffer) >= self.length
+        return self._count >= self.length
 
 
 @dataclass

@@ -742,7 +742,7 @@ class OrderExecutor:
             # For market orders we don't have an explicit price, but we can
             # check that the market hasn't moved absurdly from recent data.
             # If signal carries a reference price, compare against it.
-            ref_price = getattr(signal, 'reference_price', None)
+            ref_price = signal.reference_price
             if ref_price and ref_price > 0:
                 deviation_pct = abs(last_price - ref_price) / ref_price * 100
                 if deviation_pct > self.MAX_PRICE_DEVIATION_PCT:

@@ -15,7 +15,6 @@ Design principles:
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -167,9 +166,9 @@ class GlobalRiskView:
         self._cache_timestamp: float = 0.0
         self._min_cache_interval: float = 1.0  # Minimum seconds between rebuilds
 
-        # Daily PnL tracking
-        self._daily_realized_pnl: float = 0.0
-        self._daily_pnl_reset_date = datetime.now(timezone.utc).date()
+        # H-S2: Delegate daily PnL to canonical DailyLossTracker (single source of truth)
+        from ..core.safety import get_daily_loss_tracker
+        self._daily_tracker = get_daily_loss_tracker()
 
         # High-water mark tracking
         self._equity_high_water_mark: float = 0.0
@@ -377,12 +376,13 @@ class GlobalRiskView:
                 limit=self.limits.max_total_exposure_usd,
             )
         
-        # Check 6: Daily loss limit
-        if self._daily_realized_pnl <= -self.limits.max_daily_loss_usd:
+        # Check 6: Daily loss limit (reads from canonical DailyLossTracker)
+        daily_pnl = self._daily_tracker.daily_pnl
+        if daily_pnl <= -self.limits.max_daily_loss_usd:
             return RiskDecision.deny(
                 RiskVeto.DAILY_LOSS_LIMIT,
-                f"Daily loss limit reached: ${self._daily_realized_pnl:.2f}",
-                daily_pnl=self._daily_realized_pnl,
+                f"Daily loss limit reached: ${daily_pnl:.2f}",
+                daily_pnl=daily_pnl,
                 limit=self.limits.max_daily_loss_usd,
             )
         
@@ -460,26 +460,19 @@ class GlobalRiskView:
         """
         Record realized PnL for daily tracking.
 
-        Should be called by OrderExecutor when trades are closed.
-        Thread-safe: uses _cache_lock to prevent race conditions.
-        Resets at midnight UTC.
+        H-S2: Delegates to canonical DailyLossTracker. RiskManager already
+        records there too, so this is a no-op if called from RiskManager.
+        Kept for direct callers that bypass RiskManager.
         """
-        with self._cache_lock:
-            # Reset daily PnL if new UTC day
-            today = datetime.now(timezone.utc).date()
-            if today > self._daily_pnl_reset_date:
-                self._daily_realized_pnl = 0.0
-                self._daily_pnl_reset_date = today
+        self._daily_tracker.record_pnl(pnl)
 
-            self._daily_realized_pnl += pnl
-    
     def get_daily_pnl(self) -> dict[str, Any]:
         """Get daily realized PnL info."""
+        pnl = self._daily_tracker.daily_pnl
         return {
-            "daily_realized_pnl": self._daily_realized_pnl,
+            "daily_realized_pnl": pnl,
             "daily_loss_limit": self.limits.max_daily_loss_usd,
-            "remaining_loss_budget": self.limits.max_daily_loss_usd + self._daily_realized_pnl,
-            "reset_date": self._daily_pnl_reset_date.isoformat(),
+            "remaining_loss_budget": self.limits.max_daily_loss_usd + pnl,
         }
     
     def get_risk_summary(self) -> dict[str, Any]:

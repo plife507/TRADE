@@ -1,6 +1,5 @@
 """Keyboard input handling for the dashboard."""
 
-import os
 import threading
 import time
 from dataclasses import dataclass
@@ -29,7 +28,7 @@ def _toggle_pause(manager: object) -> None:
         return
 
     instance_id = next(iter(instances))
-    pause_dir = Path(os.path.expanduser("~/.trade/instances"))
+    pause_dir = Path.home() / ".trade" / "instances"
     pause_dir.mkdir(parents=True, exist_ok=True)
     pause_file = pause_dir / f"{instance_id}.pause"
 

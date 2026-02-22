@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 
+from src.structures.primitives import MonotonicDeque
+
 from .base import IncrementalIndicator
 from .core import IncrementalBBands, IncrementalSMA
 from .lookback import IncrementalKC
@@ -264,25 +266,27 @@ class IncrementalFisher(IncrementalIndicator):
 
     length: int = 9
     signal: int = 1
-    _hl2_buffer: deque = field(default_factory=deque, init=False)
     _v: float = field(default=0.0, init=False)
     _fisher: float = field(default=np.nan, init=False)
     _fisher_hist: deque = field(default_factory=deque, init=False)
     _signal_val: float = field(default=np.nan, init=False)
     _count: int = field(default=0, init=False)
     _initialized: bool = field(default=False, init=False)
+    _max_hl2: MonotonicDeque = field(init=False)
+    _min_hl2: MonotonicDeque = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._max_hl2 = MonotonicDeque(window_size=self.length, mode="max")
+        self._min_hl2 = MonotonicDeque(window_size=self.length, mode="min")
 
     def update(self, high: float, low: float, **kwargs: Any) -> None:
         """Update with new high/low data."""
+        hl2 = (high + low) / 2.0
+        self._max_hl2.push(self._count, hl2)
+        self._min_hl2.push(self._count, hl2)
         self._count += 1
 
-        hl2 = (high + low) / 2.0
-        self._hl2_buffer.append(hl2)
-
-        if len(self._hl2_buffer) > self.length:
-            self._hl2_buffer.popleft()
-
-        if len(self._hl2_buffer) < self.length:
+        if self._count < self.length:
             return
 
         if not self._initialized:
@@ -294,8 +298,11 @@ class IncrementalFisher(IncrementalIndicator):
             return
 
         # Subsequent bars - compute fisher
-        highest_hl2 = max(self._hl2_buffer)
-        lowest_hl2 = min(self._hl2_buffer)
+        highest_hl2 = self._max_hl2.get()
+        lowest_hl2 = self._min_hl2.get()
+
+        if highest_hl2 is None or lowest_hl2 is None:
+            return
 
         hlr = highest_hl2 - lowest_hl2
         if hlr < 0.001:
@@ -324,7 +331,8 @@ class IncrementalFisher(IncrementalIndicator):
             self._signal_val = self._fisher_hist[-self.signal - 1]
 
     def reset(self) -> None:
-        self._hl2_buffer.clear()
+        self._max_hl2.clear()
+        self._min_hl2.clear()
         self._v = 0.0
         self._fisher = np.nan
         self._fisher_hist.clear()
