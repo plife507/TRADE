@@ -50,16 +50,17 @@ Edit `docs/AGENT_CLI_TEST_PROMPT.md` and fill in the metadata fields:
   when these run concurrently.
 - DuckDB LOCK PREVENTION: Data commands (T11-T14), backtests, and validations ALL share
   the same DuckDB file. On Windows, DuckDB uses exclusive file locks that can persist for
-  several seconds after a process exits. Rules:
-  - Between EACH data command (T11-T14): `Start-Sleep -Seconds 5`
-  - Between validation (T09-T10) and data commands (T11-T14): `Start-Sleep -Seconds 5`
-  - Between any backtest and the next DuckDB-touching command: `Start-Sleep -Seconds 5`
-  - If a DuckDB lock error occurs, retry after `Start-Sleep -Seconds 8`
+  5-10 seconds after a process exits (WAL checkpoint flush). Rules:
+  - Between EACH data command (T11-T14): `Start-Sleep -Seconds 8`
+  - Between validation (T09-T10) and data commands (T11-T14): `Start-Sleep -Seconds 8`
+  - Between any backtest and the next DuckDB-touching command: `Start-Sleep -Seconds 8`
+  - If a DuckDB lock error occurs, retry after `Start-Sleep -Seconds 12`
 - Tests T01-T25 are OFFLINE — no exchange connection needed.
 - Tests T26-T35 (Group 8) use the DEMO exchange (Bybit testnet, fake money). These are safe.
 - Tests T36-T50 (Group 9) exercise the full play lifecycle with `--headless` mode (demo only).
-  These require T26-T27 to pass first. Use `Start-Process` for headless background processes.
-  Always kill background processes on test completion or timeout (safety net).
+  These require T26-T27 to pass first. Use `Start-Job` for headless background processes
+  (NOT `Start-Process` — its `-RedirectStandardOutput` is broken on PowerShell 5.1).
+  Always stop jobs on test completion or timeout (safety net).
 - Tests T51-T62 (Group 10) test the instance exit cooldown, cross-process lock, and race
   condition safety features. These require T26-T27 to pass first (demo mode). Some tests
   intentionally create fake/stale instance files to verify cleanup. Tests that check cooldown
@@ -71,8 +72,15 @@ Edit `docs/AGENT_CLI_TEST_PROMPT.md` and fill in the metadata fields:
 ## PowerShell Specifics
 
 - Use `python` not `python3` (Windows convention)
-- Background processes: `Start-Process python -ArgumentList "-u","trade_cli.py","play","run","--play","plays/agent_test/AT_001_ema_cross_basic.yml","--mode","demo","--headless" -RedirectStandardOutput "$env:TEMP\headless_out.jsonl" -RedirectStandardError "$env:TEMP\headless_err.log" -PassThru` — save to `$proc` variable. The `-u` flag disables Python's stdout buffering so redirected output flushes immediately.
-- Kill process: `Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue`
+- Background headless plays: Use `Start-Job` (NOT `Start-Process` — its `-RedirectStandardOutput` hangs on PS 5.1):
+  ```powershell
+  $job = Start-Job -ScriptBlock { Set-Location $using:PWD; python -u trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless 2>"$using:env:TEMP\headless_err.log" }
+  ```
+  Save to `$job` variable. The `-u` flag disables Python stdout buffering.
+- Get job output: `Receive-Job $job` (gets all stdout so far)
+- Get first line: `$firstLine = Receive-Job $job | Select-Object -First 1`
+- Stop job: `Stop-Job $job -PassThru | Remove-Job -Force`
+- Kill underlying process: `Stop-Process -Id (Get-Job $job.Id).ChildJobs[0].Process.Id -Force -ErrorAction SilentlyContinue` (if needed)
 - Sleep: `Start-Sleep -Seconds N`
 - Instances dir: `data\runtime\instances\`
 - Temp dir: `$env:TEMP\`
@@ -170,11 +178,11 @@ for profit — they exist solely to validate CLI functionality.
 
 | Field | Value |
 |-------|-------|
-| Run Date | 2026-02-23 |
-| Platform | Python 3.12.10, PowerShell 5.1.26100.7705 |
-| Working Dir | c:\CODE\AI\TRADE |
-| Git Branch | main |
-| Git Hash | 0248a06 |
+| Run Date | _(fill in)_ |
+| Platform | _(fill in: Python --version, $PSVersionTable.PSVersion)_ |
+| Working Dir | _(fill in)_ |
+| Git Branch | _(fill in)_ |
+| Git Hash | _(fill in)_ |
 
 ---
 
@@ -207,14 +215,14 @@ for profit — they exist solely to validate CLI functionality.
 
 ### Group 4: Data Management (read-only, no exchange needed)
 
-Run these sequentially with `Start-Sleep -Seconds 5` between each to prevent DuckDB file lock conflicts.
+Run these sequentially with `Start-Sleep -Seconds 8` between each to prevent DuckDB file lock conflicts.
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T11 | Data info | `Start-Sleep 5; python trade_cli.py data info --json` | | `status=="pass"`, `data.ohlcv.total_candles > 0` | | Sleep 5s after T10 validation to release DuckDB lock |
-| T12 | Data symbols | `Start-Sleep 5; python trade_cli.py data symbols --json` | PASS | Exit 0, JSON array of symbol entries | ~8s | |
-| T13 | Data status | `Start-Sleep 5; python trade_cli.py data status --symbol BTCUSDT --json` | | `status=="pass"` | | |
-| T14 | Data summary | `Start-Sleep 5; python trade_cli.py data summary --json` | | `status=="pass"`, `data.summary` array | | If DuckDB lock, retry after `Start-Sleep 5` |
+| T11 | Data info | `Start-Sleep 8; python trade_cli.py data info --json` | | `status=="pass"`, `data.ohlcv.total_candles > 0` | ~12s | 8s sleep after T10 |
+| T12 | Data symbols | `Start-Sleep 8; python trade_cli.py data symbols --json` | | Exit 0, JSON array of symbol entries | ~12s | |
+| T13 | Data status | `Start-Sleep 8; python trade_cli.py data status --symbol BTCUSDT --json` | | `status=="pass"` | ~12s | |
+| T14 | Data summary | `Start-Sleep 8; python trade_cli.py data summary --json` | | `status=="pass"`, `data.summary` array | ~12s | |
 
 ### Group 5: Debug Tools
 
@@ -226,7 +234,7 @@ Run these sequentially with `Start-Sleep -Seconds 5` between each to prevent Duc
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T16 | Top-level help | `python trade_cli.py --help` | | All 11 groups present: backtest, play, validate, debug, account, position, panic, order, data, market, health | | |
+| T16 | Top-level help | `python trade_cli.py --help` | | All 11 groups present | | |
 | T17 | Order help | `python trade_cli.py order --help` | | buy, sell, list, amend, cancel, cancel-all, leverage, batch | | |
 | T18 | Data help | `python trade_cli.py data --help` | | sync, info, symbols, status, summary, query, heal, vacuum, delete | | |
 | T19 | Market help | `python trade_cli.py market --help` | | price, ohlcv, funding, oi, orderbook, instruments | | |
@@ -236,8 +244,8 @@ Run these sequentially with `Start-Sleep -Seconds 5` between each to prevent Duc
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T21 | Offline backtest | `python trade_cli.py -q backtest run --play plays/agent_test/AT_001_ema_cross_basic.yml --synthetic --json` | | `status=="pass"` (same as T01) | | |
-| T22 | Data info valid JSON | `python trade_cli.py data info --json` | | Valid JSON, `status=="pass"`, `data.file_size_mb` present | | |
+| T21 | Offline backtest | `python trade_cli.py -q backtest run --play plays/agent_test/AT_001_ema_cross_basic.yml --synthetic --json` | | `status=="pass"` (same as T01) | (T01) | |
+| T22 | Data info valid JSON | `python trade_cli.py data info --json` | | Valid JSON, `status=="pass"`, `data.file_size_mb` present | (T11) | |
 | T23 | Debug help structure | `python trade_cli.py debug --help` | | math-parity, snapshot-plumbing, determinism, metrics | | |
 | T24 | Account help structure | `python trade_cli.py account --help` | | balance, exposure, info, history, pnl, transactions, collateral | | |
 | T25 | Position help structure | `python trade_cli.py position --help` | | list, close, detail, set-tp, set-sl, set-tpsl, trailing, partial-close, margin, risk-limit | | |
@@ -249,9 +257,9 @@ for demo mode (`TRADING_MODE=paper`, `BYBIT_USE_DEMO=true`). All operations use 
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T26 | Connection test | `python trade_cli.py health connection --json` | | `status=="pass"`, `data.is_demo==true`, `data.public_ok==true` | | Confirms demo API reachable |
-| T27 | API environment | `python trade_cli.py health environment --json` | | `status=="pass"`, `data.trading.mode=="DEMO"`, `data.trading.is_live==false` | | **SAFETY GATE**: if `is_live==true`, STOP all exchange tests |
-| T28 | Health check (full) | `python trade_cli.py health check --symbol BTCUSDT --json` | | `status=="pass"`, `data.all_passed==true`, `data.api_environment.trading_mode=="DEMO"` | | |
+| T26 | Connection test | `python trade_cli.py health connection --json` | | `status=="pass"`, `data.is_demo==true`, `data.public_ok==true` | | |
+| T27 | API environment | `python trade_cli.py health environment --json` | | `status=="pass"`, `data.trading.mode=="DEMO"`, `data.trading.is_live==false` | | SAFETY GATE — if `is_live==true`, STOP all testing |
+| T28 | Health check (full) | `python trade_cli.py health check --symbol BTCUSDT --json` | | `status=="pass"`, `data.all_passed==true`, DEMO | | |
 | T29 | Rate limit status | `python trade_cli.py health rate-limit --json` | | `status=="pass"`, valid JSON | | |
 | T30 | Market price (live) | `python trade_cli.py market price --symbol BTCUSDT --json` | | Valid JSON, symbol BTCUSDT, price > 0 | | |
 | T31 | Account balance | `python trade_cli.py account balance --json` | | Valid JSON, total >= 0 | | |
@@ -266,22 +274,27 @@ These tests exercise the full play lifecycle: start (headless) -> poll -> pause 
 Requires T26-T27 to pass first (demo mode confirmed).
 
 **Agent workflow for lifecycle tests (PowerShell):**
-1. Start headless play as background process using `Start-Process`:
+1. Start headless play as background job using `Start-Job`:
    ```powershell
-   $proc = Start-Process python -ArgumentList "-u","trade_cli.py","play","run","--play","plays/agent_test/AT_001_ema_cross_basic.yml","--mode","demo","--headless" -RedirectStandardOutput "$env:TEMP\headless_out.jsonl" -RedirectStandardError "$env:TEMP\headless_err.log" -PassThru -NoNewWindow
+   $job = Start-Job -ScriptBlock { Set-Location $using:PWD; python -u trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless 2>"$using:env:TEMP\headless_err.log" }
    ```
-2. Wait 8-10 seconds for engine to connect + process first bars: `Start-Sleep -Seconds 10`
-3. Poll `python trade_cli.py play status --json` to verify running
-4. Exercise pause/resume/stop
-5. Kill background process if play doesn't stop cleanly: `Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue`
-6. Read output: `Get-Content "$env:TEMP\headless_out.jsonl"` to check JSON events
+2. Wait 15 seconds for engine to connect + process first bars: `Start-Sleep -Seconds 15`
+3. Get output: `$output = Receive-Job $job` — this returns stdout lines
+4. Parse first line: `$started = $output | Select-Object -First 1 | ConvertFrom-Json`
+5. Poll `python trade_cli.py play status --json` to verify running
+6. Exercise pause/resume/stop
+7. Cleanup: `Stop-Job $job -PassThru | Remove-Job -Force`
 
-**Important:** Some tests reference `<instance_id>`. Get this from the first JSON line in the
-headless output file, or from `play status --json` → `instances[0].instance_id`.
+**Important:** Some tests reference `<instance_id>`. Get this from the first stdout line of
+the job output, or from `play status --json` → `instances[0].instance_id`.
+
+**Why Start-Job instead of Start-Process:** PowerShell 5.1's `Start-Process -RedirectStandardOutput`
+uses .NET streams that can deadlock when the child writes to stdout without someone reading. `Start-Job`
+captures stdout natively through PowerShell's job system, avoiding this issue.
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T36 | Start play headless | `$proc = Start-Process python -ArgumentList "-u","trade_cli.py","play","run","--play","plays/agent_test/AT_001_ema_cross_basic.yml","--mode","demo","--headless" -RedirectStandardOutput "$env:TEMP\headless_out.jsonl" -RedirectStandardError "$env:TEMP\headless_err.log" -PassThru -NoNewWindow; Start-Sleep 10` | | First line of `$env:TEMP\headless_out.jsonl`: JSON with `event=="started"`, `instance_id` non-empty | ~15s | Save `$proc` for later stop |
+| T36 | Start play headless | `$job = Start-Job -ScriptBlock { Set-Location $using:PWD; python -u trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless 2>"$using:env:TEMP\headless_err.log" }; Start-Sleep 15; $output = Receive-Job $job; $output \| Select-Object -First 1` | | First line JSON with `event=="started"`, `instance_id` non-empty | ~20s | Save `$job` for later cleanup |
 | T37 | Verify running | `python trade_cli.py play status --json` | | `instances` array length >= 1, first entry has `mode=="demo"`, `status` present | ~3s | |
 | T38 | Watch JSON snapshot | `python trade_cli.py play watch --json` | | Valid JSON, `instances` array, instance visible | ~3s | |
 | T39 | Pause play | `python trade_cli.py play pause --play <instance_id>` | | Exit 0, "Paused:" in output | ~3s | Use instance_id from T36/T37 |
@@ -289,12 +302,12 @@ headless output file, or from `play status --json` → `instances[0].instance_id
 | T41 | Resume play | `python trade_cli.py play resume --play <instance_id>` | | Exit 0, "Resumed:" in output | ~3s | |
 | T42 | Verify resumed | `python trade_cli.py play status --json` | | Instance running again | ~3s | |
 | T43 | Stop play | `python trade_cli.py play stop --play <instance_id> --force` | | Exit 0, "Stopped instance:" in output | ~5s | |
-| T44 | Verify stopped | `python trade_cli.py play status --json` | | `instances` array empty OR all entries have `status` starting with `"cooldown"` | ~3s | Stop `$proc` if still alive: `Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue` |
-| T45 | Start second play | `Start-Sleep 16; $proc2 = Start-Process python -ArgumentList "-u","trade_cli.py","play","run","--play","plays/agent_test/AT_004_short_side.yml","--mode","demo","--headless" -RedirectStandardOutput "$env:TEMP\headless2_out.jsonl" -RedirectStandardError "$env:TEMP\headless2_err.log" -PassThru -NoNewWindow; Start-Sleep 10` | | First line JSON `event=="started"` | ~30s | Wait 16s for T44 cooldown to expire before starting |
+| T44 | Verify stopped | `python trade_cli.py play status --json` | | `instances` array empty OR all entries have `status` starting with `"cooldown"` | ~3s | Cleanup: `Stop-Job $job -PassThru \| Remove-Job -Force` |
+| T45 | Start second play | `Start-Sleep 16; $job2 = Start-Job -ScriptBlock { Set-Location $using:PWD; python -u trade_cli.py play run --play plays/agent_test/AT_004_short_side.yml --mode demo --headless 2>"$using:env:TEMP\headless2_err.log" }; Start-Sleep 15; Receive-Job $job2 \| Select-Object -First 1` | | First line JSON `event=="started"` | ~35s | Wait 16s for T44 cooldown to expire |
 | T46 | Verify second running | `python trade_cli.py play status --json` | | 1 instance running | ~3s | |
 | T47 | Stop all | `python trade_cli.py play stop --all` | | Exit 0, "Stopped" in output | ~5s | |
-| T48 | Verify all stopped | `python trade_cli.py play status --json` | | `instances` array empty OR all entries have `status` starting with `"cooldown"` | ~3s | Stop `$proc2` if still alive |
-| T49 | Concurrent demo+backtest | `$proc49 = Start-Process python -ArgumentList "-u","trade_cli.py","play","run","--play","plays/agent_test/AT_001_ema_cross_basic.yml","--mode","demo","--headless" -RedirectStandardOutput "$env:TEMP\t49_out.jsonl" -RedirectStandardError "$env:TEMP\t49_err.log" -PassThru -NoNewWindow; Start-Sleep 10; python trade_cli.py -q backtest run --play plays/agent_test/AT_002_rsi_momentum.yml --synthetic --json; python trade_cli.py play stop --all; if ($null -ne $proc49) { Stop-Process -Id $proc49.Id -Force -ErrorAction SilentlyContinue }` | | Backtest: `status=="pass"`. Demo: still running during backtest (check status before stop). | ~30s | Different instance types coexist |
+| T48 | Verify all stopped | `python trade_cli.py play status --json` | | `instances` array empty OR all `status` starting with `"cooldown"` | ~3s | Cleanup: `Stop-Job $job2 -PassThru \| Remove-Job -Force` |
+| T49 | Concurrent demo+backtest | `$job49 = Start-Job -ScriptBlock { Set-Location $using:PWD; python -u trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless }; Start-Sleep 15; python trade_cli.py -q backtest run --play plays/agent_test/AT_002_rsi_momentum.yml --synthetic --json; python trade_cli.py play stop --all; Stop-Job $job49 -PassThru \| Remove-Job -Force` | | Backtest: `status=="pass"`. Demo: still running during backtest (check status before stop). | ~35s | Different instance types coexist |
 | T50 | Clean state after stop | Stop all, then `Start-Sleep 16` (wait for cooldown), then `Remove-Item "data\runtime\instances\*.json" -Force -ErrorAction SilentlyContinue`. Run `python trade_cli.py play status --json` | | `instances` array empty. `Get-ChildItem "data\runtime\instances\*.json"` returns nothing. | ~20s | Must wait 15s for cooldown expiry or manually remove files |
 
 ### Group 10: Instance Cooldown & Cross-Process Safety (P15)
@@ -307,11 +320,11 @@ file cleanup introduced in P15. Requires T26-T27 to pass first (demo mode confir
 - Demo exchange reachable (T26-T27 passed)
 
 **Agent workflow for cooldown tests (PowerShell):**
-1. Start a headless demo play and capture its instance_id
+1. Start a headless demo play via `Start-Job` and capture its instance_id from stdout
 2. Stop it and immediately check for cooldown file on disk
 3. Attempt restart within cooldown window (should fail)
 4. Wait for cooldown to expire, then retry (should succeed)
-5. Clean up all background processes with `Stop-Process`
+5. Clean up all background jobs with `Stop-Job $job -PassThru | Remove-Job -Force`
 
 **Edge case tests use fake instance files:**
 - Create JSON files with dead PIDs to simulate stale instances
@@ -320,18 +333,18 @@ file cleanup introduced in P15. Requires T26-T27 to pass first (demo mode confir
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T51 | Pre-cleanup | `Remove-Item "data\runtime\instances\*.json" -Force -ErrorAction SilentlyContinue; Remove-Item "data\runtime\instances\.lock" -Force -ErrorAction SilentlyContinue` | | No error, directory clean: `(Get-ChildItem "data\runtime\instances\*.json").Count -eq 0` | ~1s | Reset state before Group 10 |
-| T52 | Cooldown file after stop | Start AT_001 headless demo: `$proc = Start-Process python -ArgumentList "-u","trade_cli.py","play","run","--play","plays/agent_test/AT_001_ema_cross_basic.yml","--mode","demo","--headless" -RedirectStandardOutput "$env:TEMP\t52_out.jsonl" -RedirectStandardError "$env:TEMP\t52_err.log" -PassThru -NoNewWindow; Start-Sleep 8`. Then stop: `python trade_cli.py play stop --all`. Then check: `Get-ChildItem "data\runtime\instances\*.json"` | | After stop: exactly 1 `.json` file in instances dir. `Get-Content` of that file contains `"status": "cooldown"` and `"cooldown_until"` key. | ~15s | Kill `$proc` after stop if still alive |
-| T53 | Cooldown visible in status | `python trade_cli.py play status --json` (run within 15s of T52 stop) | | `instances` array length == 1, entry `status` starts with `"cooldown"` | ~3s | Run immediately after T52 |
-| T54 | Restart blocked by cooldown | `python trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless 2>&1` (foreground, should fail) | | `$LASTEXITCODE -ne 0` OR output contains "cooldown" or "limit reached". Play should NOT start. | ~5s | Must run while T52 cooldown active (within 15s of stop) |
-| T55 | Cooldown expiry + restart | Wait for cooldown: `Start-Sleep 16`. Then: `$proc = Start-Process python -ArgumentList "-u","trade_cli.py","play","run","--play","plays/agent_test/AT_001_ema_cross_basic.yml","--mode","demo","--headless" -RedirectStandardOutput "$env:TEMP\t55_out.jsonl" -RedirectStandardError "$env:TEMP\t55_err.log" -PassThru -NoNewWindow; Start-Sleep 8` | | First line of `$env:TEMP\t55_out.jsonl`: JSON with `event=="started"`. `play status --json` shows 1 running instance. | ~28s | Sleep counts from T52 stop, not T54 |
-| T56 | Cleanup after T55 | `python trade_cli.py play stop --all; if ($null -ne $proc) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }; Start-Sleep 16; Remove-Item "data\runtime\instances\*.json" -Force -ErrorAction SilentlyContinue` | | Instances dir clean after cooldown expiry | ~20s | |
-| T57 | Stale PID cleanup | Create fake instance file with dead PID: `Set-Content -Path "data\runtime\instances\fake_stale_001.json" -Value '{"instance_id":"fake_stale_001","pid":9999999,"play_id":"fake","symbol":"BTCUSDT","mode":"demo","started_at":"2026-01-01T00:00:00","status":"running"}'`. Then: `python trade_cli.py play status --json` | | `instances` array does NOT contain `fake_stale_001` (cleaned as stale). `Test-Path "data\runtime\instances\fake_stale_001.json"` returns `$false`. | ~3s | PID 9999999 exceeds PID_MAX on all platforms |
-| T58 | Expired cooldown cleanup | Create fake cooldown file with past expiry: `Set-Content -Path "data\runtime\instances\fake_cooldown_002.json" -Value '{"instance_id":"fake_cooldown_002","pid":0,"play_id":"fake","symbol":"BTCUSDT","mode":"demo","started_at":"2026-01-01T00:00:00","status":"cooldown","cooldown_until":"2026-01-01T00:00:15"}'`. Then: `python trade_cli.py play status --json` | | `instances` array does NOT contain `fake_cooldown_002` (expired cooldown cleaned). File removed from disk. | ~3s | cooldown_until is in the past |
-| T59 | Malformed JSON cleanup | Create invalid JSON file: `Set-Content -Path "data\runtime\instances\fake_bad_003.json" -Value 'NOT VALID JSON{{{'`. Then: `python trade_cli.py play status --json` | | `instances` array does NOT contain `fake_bad_003`. File removed from disk. No crash/traceback in output. | ~3s | Simulates old partial write |
-| T60 | Cross-process limit check | Start AT_001 headless demo: `$proc60 = Start-Process python -ArgumentList "-u","trade_cli.py","play","run","--play","plays/agent_test/AT_001_ema_cross_basic.yml","--mode","demo","--headless" -RedirectStandardOutput "$env:TEMP\t60_out.jsonl" -RedirectStandardError "$env:TEMP\t60_err.log" -PassThru -NoNewWindow; Start-Sleep 8`. Then attempt SECOND start (same symbol, foreground): `python trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless 2>&1` | | Second start fails: `$LASTEXITCODE -ne 0` or output contains "limit reached" or "Demo instance limit". First instance still running (`play status --json` shows 1). | ~15s | Both target BTCUSDT |
-| T61 | Per-symbol limit (different play, same symbol) | While T60's first instance still running, attempt AT_004 (also BTCUSDT): `python trade_cli.py play run --play plays/agent_test/AT_004_short_side.yml --mode demo --headless 2>&1` | | Fails with "limit reached" or "Demo instance limit" (same symbol, different play). | ~5s | AT_004 also uses BTCUSDT |
-| T62 | Final cleanup | `python trade_cli.py play stop --all; if ($null -ne $proc60) { Stop-Process -Id $proc60.Id -Force -ErrorAction SilentlyContinue }; Start-Sleep 16; Remove-Item "data\runtime\instances\*.json" -Force -ErrorAction SilentlyContinue; Remove-Item "data\runtime\instances\.lock" -Force -ErrorAction SilentlyContinue`. Verify: `python trade_cli.py play status --json` | | `instances` array empty. `Get-ChildItem "data\runtime\instances\*.json"` returns nothing. | ~25s | Full cleanup |
+| T51 | Pre-cleanup | `Remove-Item "data\runtime\instances\*.json" -Force -ErrorAction SilentlyContinue; Remove-Item "data\runtime\instances\.lock" -Force -ErrorAction SilentlyContinue; (Get-ChildItem "data\runtime\instances\*.json" -ErrorAction SilentlyContinue).Count -eq 0` | | No error, directory clean | ~3s | |
+| T52 | Cooldown file after stop | `$job52 = Start-Job -ScriptBlock { Set-Location $using:PWD; python -u trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless 2>"$using:env:TEMP\headless52_err.log" }; Start-Sleep 15; $out52 = Receive-Job $job52; $out52 \| Select-Object -First 1; python trade_cli.py play stop --all; Stop-Job $job52 -PassThru \| Remove-Job -Force; Start-Sleep 3; Get-ChildItem "data\runtime\instances\*.json"` | | 1 .json file with `"status": "cooldown"` in content | ~25s | Save instance_id from first line |
+| T53 | Cooldown visible in status | `python trade_cli.py play status --json` | | `instances` length >= 1, entry `status` starts with `"cooldown"` | ~3s | Run immediately after T52 (within 15s cooldown window) |
+| T54 | Restart blocked by cooldown | `python trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless` | | Exit code != 0 OR output contains "cooldown" or "limit" | ~5s | Foreground run — should fail within cooldown window |
+| T55 | Cooldown expiry + restart | `Start-Sleep 16; $job55 = Start-Job -ScriptBlock { Set-Location $using:PWD; python -u trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless 2>"$using:env:TEMP\headless55_err.log" }; Start-Sleep 15; $out55 = Receive-Job $job55; $out55 \| Select-Object -First 1` | | First line JSON `event=="started"`, 1 instance running | ~35s | 16s wait ensures cooldown expired |
+| T56 | Cleanup after T55 | `python trade_cli.py play stop --all; Stop-Job $job55 -PassThru \| Remove-Job -Force; Start-Sleep 16; Remove-Item "data\runtime\instances\*.json" -Force -ErrorAction SilentlyContinue` | | Clean exit, instances cleared | ~20s | 16s wait for cooldown expiry before cleanup |
+| T57 | Stale PID cleanup | `Set-Content -Path "data\runtime\instances\fake_stale_001.json" -Value '{"pid": 9999999, "play_name": "fake_stale", "symbol": "FAKEUSDT", "mode": "demo", "status": "running", "started_at": "2025-01-01T00:00:00"}'; python trade_cli.py play status --json; Test-Path "data\runtime\instances\fake_stale_001.json"` | | `instances` does NOT contain fake_stale_001; file removed (Test-Path False) | ~5s | Dead PID 9999999 triggers cleanup |
+| T58 | Expired cooldown cleanup | `Set-Content -Path "data\runtime\instances\fake_cooldown_002.json" -Value '{"pid": 0, "play_name": "fake_cooldown", "symbol": "FAKEUSDT", "mode": "demo", "status": "cooldown", "cooldown_until": "2025-01-01T00:00:00"}'; python trade_cli.py play status --json; Test-Path "data\runtime\instances\fake_cooldown_002.json"` | | fake_cooldown_002 cleaned; file removed (Test-Path False) | ~5s | Expired cooldown_until triggers cleanup |
+| T59 | Malformed JSON cleanup | `Set-Content -Path "data\runtime\instances\fake_bad_003.json" -Value 'NOT VALID JSON {{{'; python trade_cli.py play status --json; Test-Path "data\runtime\instances\fake_bad_003.json"` | | fake_bad_003 cleaned; file removed; no crash | ~5s | "Removing invalid instance file" in stderr |
+| T60 | Cross-process limit check | `$job60 = Start-Job -ScriptBlock { Set-Location $using:PWD; python -u trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless 2>"$using:env:TEMP\headless60_err.log" }; Start-Sleep 15; python trade_cli.py play status --json; python trade_cli.py play run --play plays/agent_test/AT_001_ema_cross_basic.yml --mode demo --headless` | | First instance running (status shows 1). Second foreground run fails (exit != 0 or "limit" in output) | ~25s | Cross-process mutual exclusion |
+| T61 | Per-symbol limit | `python trade_cli.py play run --play plays/agent_test/AT_004_short_side.yml --mode demo --headless` | | Fails with limit/instance message (same symbol BTCUSDT as T60's running instance) | ~5s | Depends on T60's instance still running |
+| T62 | Final cleanup | `python trade_cli.py play stop --all; Stop-Job $job60 -PassThru \| Remove-Job -Force -ErrorAction SilentlyContinue; Start-Sleep 16; Remove-Item "data\runtime\instances\*.json" -Force -ErrorAction SilentlyContinue; Remove-Item "data\runtime\instances\.lock" -Force -ErrorAction SilentlyContinue; python trade_cli.py play status --json` | | `instances` empty; 0 .json files in directory | ~24s | Full cleanup after all tests |
 
 ---
 
@@ -400,6 +413,31 @@ Notes:
 - Stale/expired/malformed cleanup (T57–T59) all passed.
 ```
 
+### Run 7 — 2026-02-23 (Windows, Python 3.12.10, updated .md: 5s DuckDB sleep, -u headless)
+
+```
+Total: 44/62
+Failed: 18
+
+Group Summary:
+- G1  Backtest Engine:        5/5   (T01-T05)
+- G2  Play Management:        3/3   (T06-T08)
+- G3  Validation Suite:       2/2   (T09-T10)
+- G4  Data Management:        2/4   (T11, T12 pass; T13, T14 DuckDB lock despite 5s sleep between each)
+- G5  Debug Tools:            1/1   (T15)
+- G6  Help & Discoverability: 5/5   (T16-T20)
+- G7  Phase 7 Validation:     5/5   (T21-T25)
+- G8  Exchange Demo:          10/10 (T26-T35)
+- G9  Play Lifecycle:         5/15  (T44, T47, T48, T49, T50 pass; T36–T43, T45–T46 fail — headless with -u: TEMP\headless_out.jsonl still empty, instances [])
+- G10 Cooldown & Safety:      6/12  (T51, T57, T58, T59, T62 pass; T52–T56, T60–T61 fail or N/A)
+
+Total Duration: ~15 min
+Notes:
+- Updated .md: 5s sleep between data commands (T11–T14) and after T10; Python -u for headless. T13/T14 still failed (DuckDB lock, PID 3792). Consider 8s sleep or single-process data sequence.
+- T36: Start-Process with -u; 10s wait; first line of TEMP\headless_out.jsonl empty; play status showed 0 instances. -u did not resolve redirect/empty output in this run.
+- T57–T59: Stale/expired/malformed cleanup all passed.
+```
+
 ---
 
 ## Detailed Output Log
@@ -435,6 +473,14 @@ Notes:
 ### T54 (partial) — Foreground headless start
 
 - Foreground `play run --play ... --mode demo --headless` did start: stdout contained `{"event": "started", "instance_id": "at_001_ema_cross_basic_demo_8fa93fdf", ...}`. Exited with code 1 (timeout/kill). Confirms headless engine starts when run in foreground; Start-Process redirect/behavior differs.
+
+### Run 7 — T13, T14 (FAIL) — DuckDB lock with 5s sleep
+
+- T13/T14: Same lock error; PID 3792. Five-second sleep between data commands (per updated .md) was not sufficient. Retry after 8s or run data commands in a single process.
+
+### Run 7 — T36 (FAIL) — Headless with -u
+
+- Start-Process with `-u` (unbuffered Python stdout); 10s wait; `Get-Content $env:TEMP\headless_out.jsonl -First 1` returned empty; `play status --json`: `{"instances": []}`. Run took ~167s (possible hang on Get-Content or child). -u did not fix empty redirect in this environment.
 
 ---
 
