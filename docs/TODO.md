@@ -379,6 +379,37 @@ On Windows default encoding is cp1252. Non-ASCII content produces mojibake.
 - [x] T57 (line 330): Change fake PID from 99999 to 9999999 (exceeds PID_MAX, guarantees dead)
 - [x] Remove unused `$instDir` shorthand definition (lines 317-320) or use it in all test cells
 
+### P17: Play Stop Process Kill + Pre-Launch Duplicate Check
+
+**Context:** WSL agent test run (2026-02-22) scored 53/62. All 9 failures trace to 2 bugs:
+1. `play stop --force` removes the instance file but doesn't kill the OS process. The background
+   Python process keeps running (holding DuckDB locks, WebSocket connections). Next instance launch
+   crashes on DuckDB lock instead of starting cleanly.
+2. No pre-launch per-symbol duplicate check. When a second instance is requested for an already-running
+   symbol, the system lets it start up and crash on DuckDB lock instead of failing fast with a clean
+   "already running" error.
+
+**Test results:** See `docs/AGENT_CLI_TEST_PROMPT.md` — WSL Run (53/62), Windows Run 8 (45/62).
+
+#### Phase 1: Process kill on `play stop`
+- [ ] `stop()` in `manager.py`: after writing cooldown file, `os.kill(pid, signal.SIGTERM)` the stored PID
+- [ ] `stop_cross_process()`: same — SIGTERM then wait 3s, then SIGKILL if still alive
+- [ ] Handle `ProcessLookupError` (already dead) and `PermissionError` (different user) gracefully
+- [ ] **GATE**: `pyright src/engine/manager.py` — 0 errors
+
+#### Phase 2: Pre-launch duplicate symbol check
+- [ ] In `start()` or `_check_limits()`: read disk instances, reject if same symbol already has `status=running` with alive PID
+- [ ] Clean error message: "Instance already running for BTCUSDT (PID 12345). Use `play stop` first."
+- [ ] **GATE**: `pyright src/engine/manager.py` — 0 errors
+
+#### Phase 3: Verification
+- [ ] WSL test: start headless → stop → verify PID killed → start second headless (should succeed)
+- [ ] WSL test: start headless → attempt second start same symbol (should fail with clean error)
+- [ ] Stale cleanup still works (fake dead PID file → play status → cleaned)
+- [ ] `python3 trade_cli.py validate quick` passes
+- [ ] Re-run full T36-T62 agent test suite — target 62/62
+- [ ] **GATE**: Full test suite passes
+
 ### P5: Market Sentiment Tracker
 
 Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
