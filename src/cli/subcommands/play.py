@@ -63,10 +63,20 @@ def handle_play_run(args) -> int:
             return 1
         console.print("[green]Pre-live validation passed.[/]")
 
+    headless = getattr(args, "headless", False)
+
+    # In headless mode, redirect Rich console to stderr so stdout stays pure JSON
+    if headless:
+        import sys
+        from rich.console import Console as _Console
+        stderr_console = _Console(file=sys.stderr)
+    else:
+        stderr_console = console
+
     symbols = play.symbol_universe if play.symbol_universe else ["N/A"]
     symbol_str = symbols[0] if len(symbols) == 1 else f"{symbols[0]} (+{len(symbols)-1} more)"
 
-    console.print(Panel(
+    stderr_console.print(Panel(
         f"[bold cyan]Play: {play.name}[/]\n"
         f"[dim]Mode: {mode.upper()}[/]\n"
         f"[dim]Symbol: {symbol_str} | Exec TF: {play.exec_tf}[/]",
@@ -75,7 +85,7 @@ def handle_play_run(args) -> int:
 
     from src.utils.debug import is_debug_enabled
     if is_debug_enabled() and mode in ("demo", "live"):
-        console.print(Panel(
+        stderr_console.print(Panel(
             "[bold yellow]DEBUG MODE ACTIVE[/]\n"
             "[dim]Full tracebacks, indicator snapshots, and rule evaluation details enabled.\n"
             "Log level: DEBUG | All output goes to console + log file.[/]",
@@ -179,12 +189,154 @@ def _run_play_shadow(engine, play, args) -> int:
 def _run_play_live(play, args, manager=None) -> int:
     """Run Play in live or demo mode via EngineManager.
 
-    Launches the engine in a background thread and runs the Rich Live
-    dashboard in the main thread for flicker-free rendering.
+    Supports two UI modes:
+    - Dashboard (default): Rich Live dashboard in main thread
+    - Headless (--headless): JSON events on stdout, blocks until stopped
+    """
+    headless = getattr(args, "headless", False)
+    if headless:
+        return _run_play_live_headless(play, args, manager)
+    return _run_play_live_dashboard(play, args, manager)
+
+
+def _run_play_live_headless(play, args, manager=None) -> int:
+    """Run Play in headless mode — no dashboard, JSON events on stdout.
+
+    Prints a JSON 'started' event, blocks until Ctrl+C or `play stop`,
+    then prints a JSON 'stopped' event with final stats.
     """
     import asyncio
+    import signal as _signal
+    import sys
+    import time
+    import threading
+    from typing import Literal
+    from src.engine import EngineManager
+
+    # Force line-buffered stdout so Start-Process redirect works on Windows.
+    # sys.stdout is typed as TextIO but at runtime it's an io.TextIOWrapper.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+
+    mode: Literal["live", "demo", "shadow", "backtest"] = args.mode
+    if manager is None:
+        manager = EngineManager.get_instance()
+
+    symbol: str = play.symbol_universe[0] if play.symbol_universe else "N/A"
+
+    stop_event: threading.Event = threading.Event()
+
+    # Handle SIGTERM (from `play stop` cross-process) for clean shutdown
+    def _sigterm_handler(signum: int, frame: object) -> None:
+        stop_event.set()
+
+    _signal.signal(_signal.SIGTERM, _sigterm_handler)
+    instance_id: str | None = None
+    engine_error: Exception | None = None
+
+    def _engine_thread() -> None:
+        nonlocal instance_id, engine_error
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            async def _run() -> None:
+                nonlocal instance_id
+                instance_id = await manager.start(play, mode=mode)
+                instance = manager._instances.get(instance_id)
+                if not instance or not instance.task:
+                    return
+
+                while not instance.task.done():
+                    if stop_event.is_set():
+                        try:
+                            await asyncio.wait_for(
+                                manager.stop(instance_id), timeout=15.0
+                            )
+                        except (asyncio.TimeoutError, Exception):
+                            pass
+                        return
+                    await asyncio.sleep(0.25)
+
+            loop.run_until_complete(_run())
+        except Exception as e:
+            engine_error = e
+        finally:
+            loop.close()
+            stop_event.set()
+
+    engine_thread = threading.Thread(target=_engine_thread, daemon=True)
+    engine_thread.start()
+
+    # Wait for instance_id to be set (engine started)
+    _deadline = time.monotonic() + 15.0
+    while instance_id is None and engine_error is None and time.monotonic() < _deadline:
+        time.sleep(0.25)
+
+    if engine_error:
+        sys.stdout.write(json.dumps({"event": "error", "error": str(engine_error)}) + "\n")
+        sys.stdout.flush()
+        return 1
+
+    if instance_id is None:
+        sys.stdout.write(json.dumps({"event": "error", "error": "Timed out waiting for engine to start"}) + "\n")
+        sys.stdout.flush()
+        return 1
+
+    # Emit started event
+    started_msg = json.dumps({
+        "event": "started",
+        "instance_id": instance_id,
+        "play_id": play.name,
+        "symbol": symbol,
+        "mode": mode,
+    })
+    sys.stdout.write(started_msg + "\n")
+    sys.stdout.flush()
+
+    # Block until stop signal (Ctrl+C or play stop)
+    _active_id: str = instance_id  # Copy for use after narrowing
+    try:
+        while not stop_event.is_set():
+            stop_event.wait(timeout=1.0)
+    except KeyboardInterrupt:
+        stop_event.set()
+
+    # Gather final stats before thread exits
+    captured_runner_stats = manager.get_runner_stats(_active_id)
+    captured_info = manager.get(_active_id)
+
+    engine_thread.join(timeout=20.0)
+
+    # Stop WebSocket bootstrap
+    try:
+        from src.core.application import get_application
+        app = get_application()
+        if app is not None:
+            app.stop_websocket()
+    except Exception:
+        pass
+
+    # Emit stopped event
+    stopped_data: dict = {
+        "event": "stopped",
+        "instance_id": _active_id,
+    }
+    if captured_info:
+        stopped_data["bars_processed"] = captured_info.bars_processed
+        stopped_data["signals_generated"] = captured_info.signals_generated
+    if captured_runner_stats:
+        stopped_data["stats"] = captured_runner_stats
+
+    sys.stdout.write(json.dumps(stopped_data) + "\n")
+    sys.stdout.flush()
+
+    return 1 if engine_error else 0
+
+
+def _run_play_live_dashboard(play, args, manager=None) -> int:
+    """Run Play with the Rich Live dashboard (original behavior)."""
+    import asyncio
     import logging
-    import signal
     import threading
     from src.engine import EngineManager
     from src.cli.dashboard import (
@@ -414,16 +566,22 @@ def handle_play_status(args) -> int:
 
 
 def handle_play_stop(args) -> int:
-    """Handle `play stop` subcommand - stop a running instance."""
+    """Handle `play stop` subcommand - stop a running instance.
+
+    Supports both in-process instances (dashboard mode) and cross-process
+    instances (headless mode) via PID-based signaling.
+    """
     import asyncio
     from src.engine import EngineManager
 
     manager = EngineManager.get_instance()
 
-    # If --all flag, stop everything
+    # If --all flag, stop everything (in-process + cross-process)
     if getattr(args, "all", False):
-        instances = manager.list()
-        if not instances:
+        in_process = manager.list()
+        all_instances = manager.list_all()
+
+        if not all_instances:
             console.print("[dim]No running instances to stop.[/]")
             return 0
 
@@ -445,7 +603,16 @@ def handle_play_stop(args) -> int:
             except Exception as e:
                 console.print(f"[yellow]Could not check positions: {e}[/]")
 
+        # Stop in-process instances via manager
         count = asyncio.run(manager.stop_all())
+
+        # Stop cross-process instances via SIGTERM
+        in_process_ids = {i.instance_id for i in in_process}
+        for info in all_instances:
+            if info.instance_id not in in_process_ids:
+                if manager.stop_cross_process(info.instance_id):
+                    count += 1
+
         console.print(f"[green]Stopped {count} instance(s).[/]")
         return 0
 
@@ -454,13 +621,23 @@ def handle_play_stop(args) -> int:
         console.print("[red]Specify --play ID or --all to stop instances.[/]")
         return 1
 
-    # Try to find the instance by ID or play name
-    instances = manager.list()
+    # Try to find the instance — check in-process first, then cross-process
+    in_process = manager.list()
     match = None
-    for info in instances:
+    is_cross_process = False
+    for info in in_process:
         if info.instance_id == target or info.play_id == target:
             match = info
             break
+
+    if match is None:
+        # Check cross-process instances
+        all_instances = manager.list_all()
+        for info in all_instances:
+            if info.instance_id == target or info.play_id == target:
+                match = info
+                is_cross_process = True
+                break
 
     if match is None:
         console.print(f"[red]No running instance found matching '{target}'.[/]")
@@ -498,7 +675,12 @@ def handle_play_stop(args) -> int:
         except Exception as e:
             console.print(f"[yellow]Could not close position: {e}[/]")
 
-    stopped = asyncio.run(manager.stop(match.instance_id))
+    # Stop the instance
+    if is_cross_process:
+        stopped = manager.stop_cross_process(match.instance_id)
+    else:
+        stopped = asyncio.run(manager.stop(match.instance_id))
+
     if stopped:
         console.print(f"[green]Stopped instance: {match.instance_id}[/]")
         return 0
@@ -512,11 +694,25 @@ def handle_play_watch(args) -> int:
     import time as _time
     from src.engine import EngineManager
     from rich.live import Live
-    from rich.layout import Layout
 
     manager = EngineManager.get_instance()
     interval = getattr(args, "interval", 2.0)
     play_filter = getattr(args, "play", None)
+
+    # --json: single snapshot and exit (agent-friendly)
+    if getattr(args, "json_output", False):
+        instances = manager.list_all()
+        if play_filter:
+            instances = [i for i in instances if i.play_id == play_filter or i.instance_id == play_filter]
+        data = []
+        for info in instances:
+            entry = info.to_dict()
+            stats = manager.get_runner_stats(info.instance_id)
+            if stats:
+                entry["stats"] = stats
+            data.append(entry)
+        console.print(json.dumps({"instances": data}, indent=2))
+        return 0
 
     def _build_display() -> Table:
         """Build the dashboard table."""
@@ -598,8 +794,9 @@ def handle_play_logs(args) -> int:
     follow = getattr(args, "follow", False)
     num_lines = getattr(args, "lines", 50)
 
-    # Find journal file in ~/.trade/journal/
-    journal_dir = Path.home() / ".trade" / "journal"
+    # Find journal file
+    from src.config.constants import JOURNAL_DIR
+    journal_dir = JOURNAL_DIR
     if not journal_dir.exists():
         console.print("[dim]No journal directory found.[/]")
         return 0
@@ -608,7 +805,8 @@ def handle_play_logs(args) -> int:
     matches = list(journal_dir.glob(f"*{play_id}*.jsonl"))
     if not matches:
         # Also check instance files to resolve play_id -> instance_id
-        instances_dir = Path.home() / ".trade" / "instances"
+        from src.config.constants import INSTANCES_DIR
+        instances_dir = INSTANCES_DIR
         if instances_dir.exists():
             for path in instances_dir.glob("*.json"):
                 try:
@@ -684,8 +882,9 @@ def handle_play_logs(args) -> int:
 
 def handle_play_pause(args) -> int:
     """Handle `play pause` subcommand."""
+    from src.config.constants import INSTANCES_DIR
     play_id = args.play
-    pause_dir = Path.home() / ".trade" / "instances"
+    pause_dir = INSTANCES_DIR
     pause_dir.mkdir(parents=True, exist_ok=True)
 
     # Find matching instance
@@ -695,7 +894,7 @@ def handle_play_pause(args) -> int:
             if data.get("play_id") == play_id or data.get("instance_id") == play_id:
                 instance_id = data.get("instance_id", play_id)
                 pause_file = pause_dir / f"{instance_id}.pause"
-                pause_file.touch()
+                pause_file.write_text("paused", encoding="utf-8", newline="\n")
                 console.print(f"[yellow]Paused: {instance_id}[/]")
                 console.print("[dim]Indicators continue updating. Use 'play resume' to resume signal evaluation.[/]")
                 return 0
@@ -708,8 +907,9 @@ def handle_play_pause(args) -> int:
 
 def handle_play_resume(args) -> int:
     """Handle `play resume` subcommand."""
+    from src.config.constants import INSTANCES_DIR
     play_id = args.play
-    pause_dir = Path.home() / ".trade" / "instances"
+    pause_dir = INSTANCES_DIR
 
     if not pause_dir.exists():
         console.print(f"[red]No running instance found matching '{play_id}'.[/]")

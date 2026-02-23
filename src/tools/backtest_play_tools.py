@@ -13,7 +13,7 @@ CLI and agents should use these tools, not direct engine access.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, cast
@@ -135,7 +135,7 @@ def backtest_preflight_play_tool(
         if end:
             end = normalize_timestamp(end)
         else:
-            end = datetime.now().replace(tzinfo=None)
+            end = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # If start is None, query DB for coverage and use last 100 bars (smoke mode support)
         if start is None:
@@ -599,7 +599,7 @@ def backtest_run_play_tool(
         if end:
             end = normalize_timestamp(end)
         else:
-            end = datetime.now().replace(tzinfo=None)
+            end = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Validate indicator requirements gate
         gate_passed, gate_result_dict, gate_error = _validate_indicator_gate(play)

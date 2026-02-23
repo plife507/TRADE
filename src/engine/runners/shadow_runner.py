@@ -21,7 +21,7 @@ Usage:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ..play_engine import PlayEngine
@@ -163,7 +163,7 @@ class ShadowRunner:
             return
 
         self._running = True
-        self._stats = ShadowStats(started_at=datetime.now())
+        self._stats = ShadowStats(started_at=datetime.now(timezone.utc).replace(tzinfo=None))
         self._stop_event.clear()
 
         logger.info(
@@ -185,7 +185,7 @@ class ShadowRunner:
 
         self._stop_event.set()
         self._running = False
-        self._stats.stopped_at = datetime.now()
+        self._stats.stopped_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         logger.info(
             f"ShadowRunner stopped: {self._stats.signals_generated} signals "
@@ -251,7 +251,7 @@ class ShadowRunner:
         except Exception as e:
             logger.warning(f"Failed to get candle at bar_idx={bar_idx}, using fallback: {e}")
             candle_close = 0.0
-            timestamp = datetime.now()
+            timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Create shadow signal record
         shadow_signal = ShadowSignal(

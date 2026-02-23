@@ -25,7 +25,6 @@ Identifier model:
 import json
 import hashlib
 from enum import Enum
-from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any
@@ -37,10 +36,6 @@ from .window_presets import get_window_preset, has_preset
 
 if TYPE_CHECKING:
     from .feature_registry import FeatureRegistry
-
-
-# Path to system configs directory
-CONFIGS_DIR = Path(__file__).parent.parent / "strategies" / "configs"
 
 
 # =============================================================================

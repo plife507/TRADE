@@ -117,11 +117,36 @@ def _handle_synthetic_backtest_run(args) -> int:
             "seed": synthetic_seed,
         }
         if result.summary:
+            s = result.summary
             output["metrics"] = {
-                "trades_count": result.summary.trades_count,
-                "win_rate": result.summary.win_rate,
-                "net_pnl_usdt": result.summary.net_pnl_usdt,
+                "trades_count": s.trades_count,
+                "win_rate": s.win_rate,
+                "net_pnl_usdt": s.net_pnl_usdt,
             }
+            if getattr(args, "json_verbose", False):
+                output["play_id"] = s.play_id
+                output["symbol"] = s.symbol
+                output["timeframe"] = s.tf_exec
+                output["metrics"].update({
+                    "winning_trades": s.winning_trades,
+                    "losing_trades": s.losing_trades,
+                    "net_return_pct": s.net_return_pct,
+                    "max_drawdown_usdt": s.max_drawdown_usdt,
+                    "max_drawdown_pct": s.max_drawdown_pct,
+                    "sharpe": s.sharpe,
+                    "sortino": s.sortino,
+                    "calmar": s.calmar,
+                    "profit_factor": s.profit_factor,
+                    "total_fees_usdt": s.total_fees_usdt,
+                    "long_trades": s.long_trades,
+                    "short_trades": s.short_trades,
+                })
+                output["hashes"] = {
+                    "play_hash": s.play_hash,
+                    "trades_hash": s.trades_hash,
+                    "run_hash": s.run_hash,
+                }
+                output["artifact_path"] = s.artifact_path
         print(json.dumps(output, indent=2, default=str))
         return 0 if result.success else 1
 

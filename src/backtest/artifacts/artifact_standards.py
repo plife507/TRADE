@@ -510,7 +510,7 @@ class RunManifest:
     
     def write_json(self, path: Path) -> None:
         """Write manifest to JSON file."""
-        path.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True))
+        path.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8", newline="\n")
     
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RunManifest":
@@ -1156,7 +1156,7 @@ class ResultsSummary:
     def write_json(self, path: Path) -> None:
         """Write summary to JSON file."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(self.to_dict(), f, indent=2, sort_keys=True)
     
     def print_summary(self) -> None:

@@ -4,6 +4,10 @@ Multi-Instance Engine Manager.
 Enables concurrent engine instances for live, demo, and backtest modes.
 Enforces instance limits and provides state isolation.
 
+Cross-process safety:
+- Advisory file lock (data/runtime/instances/.lock) serializes check+write
+- Atomic file writes (tempfile + os.replace) prevent partial JSON reads
+- 15s cooldown after stop prevents restart during cleanup
 
 Instance Limits:
 - Max 1 live instance (safety)
@@ -31,22 +35,33 @@ import asyncio
 import json
 import os
 import sys
+import tempfile
+import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+# Cross-platform file locking
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
+
 from .play_engine import PlayEngine
 from .runners.live_runner import LiveRunner
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 if TYPE_CHECKING:
     from ..backtest.play import Play
 
-logger = get_logger()
+logger = get_module_logger(__name__)
+
+_INSTANCE_COOLDOWN_SECONDS = 15.0  # Post-stop cooldown before same slot reopens
 
 
 class InstanceMode(str, Enum):
@@ -85,6 +100,20 @@ class InstanceInfo:
 
 
 @dataclass
+class _DiskInstance:
+    """Typed representation of a parsed instance file from disk."""
+    instance_id: str
+    symbol: str
+    mode: str
+    pid: int
+    status: str  # "running", "cooldown", "starting"
+    cooldown_until: datetime | None
+    started_at: datetime
+    play_id: str
+    path: Path
+
+
+@dataclass
 class _EngineInstance:
     """Internal tracking of an engine instance."""
     instance_id: str
@@ -105,10 +134,12 @@ class EngineManager:
     - Max 1 demo per symbol (prevents duplicate signals)
     - Max 1 backtest at a time (DuckDB sequential access limitation)
 
-    Provides:
-    - Instance lifecycle management (start/stop)
-    - State isolation between instances
-    - Status monitoring
+    Cross-process safety:
+    - Advisory file lock serializes check+write (prevents two processes
+      both passing the limit check simultaneously)
+    - 15s cooldown after stop (lets old process cancel orders, close WS,
+      release DuckDB locks)
+    - Atomic file writes (prevents partial JSON from being visible)
     """
 
     _instance: "EngineManager | None" = None
@@ -128,9 +159,14 @@ class EngineManager:
         self._backtest_count = 0
         self._demo_by_symbol: dict[str, int] = {}
 
-        # G16.4: Cross-process instance tracking
-        self._instances_dir = Path.home() / ".trade" / "instances"
+        # Cross-process instance tracking (project-relative, not user profile)
+        from ..config.constants import INSTANCES_DIR
+        self._instances_dir = INSTANCES_DIR
         self._instances_dir.mkdir(parents=True, exist_ok=True)
+        self._lock_path = self._instances_dir / ".lock"
+
+        # Clean stale files from previous crashes on startup
+        self._read_disk_instances(clean_stale=True)
 
     @classmethod
     def get_instance(cls) -> "EngineManager":
@@ -138,6 +174,357 @@ class EngineManager:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    # ------------------------------------------------------------------
+    # Cross-process file lock
+    # ------------------------------------------------------------------
+
+    @contextmanager
+    def _instance_lock(self) -> Generator[None]:
+        """Cross-process advisory file lock on data/runtime/instances/.lock.
+
+        Uses fcntl.flock(LOCK_EX) on Unix, msvcrt.locking(LK_LOCK) on Windows.
+        Held only during the critical section (check limits + write reservation
+        file). Auto-releases on fd close or process exit.
+        """
+        fd = os.open(str(self._lock_path), os.O_CREAT | os.O_RDWR)
+        try:
+            if sys.platform == "win32":
+                deadline = time.monotonic() + 30.0
+                while True:
+                    try:
+                        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)  # type: ignore[possibly-undefined]
+                        break
+                    except OSError:
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError("Failed to acquire instance lock within 30s")
+                        time.sleep(0.1)
+            else:
+                fcntl.flock(fd, fcntl.LOCK_EX)  # type: ignore[possibly-undefined]
+            yield
+        finally:
+            if sys.platform == "win32":
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)  # type: ignore[possibly-undefined]
+                except OSError:
+                    pass  # Already unlocked or fd closing will release
+            else:
+                fcntl.flock(fd, fcntl.LOCK_UN)  # type: ignore[possibly-undefined]
+            os.close(fd)
+
+    # ------------------------------------------------------------------
+    # Disk instance reader
+    # ------------------------------------------------------------------
+
+    def _read_disk_instances(self, *, clean_stale: bool = True) -> list[_DiskInstance]:
+        """Read all instance files from disk.
+
+        Centralized disk reader — replaces inline glob+read loops.
+        Parses *.json files, validates, and optionally cleans stale entries:
+        - Dead PIDs not in cooldown → remove
+        - Expired cooldown_until timestamps → remove
+        - Invalid JSON (partial writes from old code) → remove
+
+        Returns list of _DiskInstance for active constraints (running,
+        cooldown, starting).
+        """
+        result: list[_DiskInstance] = []
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        try:
+            paths = list(self._instances_dir.glob("*.json"))
+        except Exception as e:
+            logger.warning(f"Failed to list instance files: {e}")
+            return result
+
+        for path in paths:
+            try:
+                raw = path.read_text(encoding="utf-8")
+                data = json.loads(raw)
+            except (json.JSONDecodeError, OSError) as e:
+                # Invalid JSON (from old partial writes) or read error
+                if clean_stale:
+                    logger.info(f"Removing invalid instance file {path.name}: {e}")
+                    path.unlink(missing_ok=True)
+                continue
+
+            iid = data.get("instance_id", "")
+            pid = data.get("pid", 0)
+            status = data.get("status", "running")
+            cooldown_until_str = data.get("cooldown_until")
+            cooldown_until: datetime | None = None
+
+            if cooldown_until_str:
+                try:
+                    cooldown_until = datetime.fromisoformat(cooldown_until_str)
+                except ValueError:
+                    cooldown_until = None
+
+            # Check if this entry is still relevant
+            if status == "cooldown":
+                if cooldown_until and now >= cooldown_until:
+                    # Cooldown expired — clean up
+                    if clean_stale:
+                        path.unlink(missing_ok=True)
+                    continue
+                # Cooldown still active — counts as a constraint
+            else:
+                # Running or starting — check if PID is alive
+                if not self._is_pid_alive(pid):
+                    if clean_stale:
+                        path.unlink(missing_ok=True)
+                    continue
+
+            try:
+                started_at = datetime.fromisoformat(data.get("started_at", now.isoformat()))
+            except ValueError:
+                started_at = now
+
+            result.append(_DiskInstance(
+                instance_id=iid,
+                symbol=data.get("symbol", "?"),
+                mode=data.get("mode", "demo"),
+                pid=pid,
+                status=status,
+                cooldown_until=cooldown_until,
+                started_at=started_at,
+                play_id=data.get("play_id", "?"),
+                path=path,
+            ))
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Atomic file writes
+    # ------------------------------------------------------------------
+
+    def _write_instance_file(
+        self,
+        instance_id: str,
+        instance: _EngineInstance,
+        *,
+        status: str = "running",
+        cooldown_until: datetime | None = None,
+    ) -> None:
+        """Write instance state to disk atomically.
+
+        Uses tempfile.mkstemp + os.replace for atomic rename.
+        The file is either fully written or not visible at all.
+        """
+        data: dict = {
+            "instance_id": instance_id,
+            "pid": os.getpid(),
+            "play_id": instance.play.name,
+            "symbol": instance.play.symbol_universe[0],
+            "mode": instance.mode.value,
+            "started_at": instance.started_at.isoformat(),
+            "status": status,
+        }
+        if cooldown_until is not None:
+            data["cooldown_until"] = cooldown_until.isoformat()
+
+        target = self._instances_dir / f"{instance_id}.json"
+        self._atomic_write_json(target, data)
+
+    def _write_reservation_file(
+        self,
+        instance_id: str,
+        play: "Play",
+        mode: str,
+    ) -> None:
+        """Write a reservation file (status=starting) before engine setup.
+
+        Reserves the slot on disk so other processes see it during
+        the check+write critical section.
+        """
+        data: dict = {
+            "instance_id": instance_id,
+            "pid": os.getpid(),
+            "play_id": play.name,
+            "symbol": play.symbol_universe[0],
+            "mode": mode,
+            "started_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "status": "starting",
+        }
+        target = self._instances_dir / f"{instance_id}.json"
+        self._atomic_write_json(target, data)
+
+    def _write_cooldown_file(
+        self,
+        instance_id: str,
+        instance: _EngineInstance,
+    ) -> None:
+        """Write a cooldown file after instance stops.
+
+        Occupies the slot for _INSTANCE_COOLDOWN_SECONDS, preventing
+        immediate restart while the old process cleans up (cancel orders,
+        close WebSocket, release DuckDB locks).
+        """
+        cooldown_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=_INSTANCE_COOLDOWN_SECONDS)
+        try:
+            data: dict = {
+                "instance_id": instance_id,
+                "pid": os.getpid(),
+                "play_id": instance.play.name,
+                "symbol": instance.play.symbol_universe[0],
+                "mode": instance.mode.value,
+                "started_at": instance.started_at.isoformat(),
+                "status": "cooldown",
+                "cooldown_until": cooldown_until.isoformat(),
+            }
+            target = self._instances_dir / f"{instance_id}.json"
+            self._atomic_write_json(target, data)
+        except Exception as e:
+            # If we can't write the cooldown file (filesystem full, etc.),
+            # fall back to just removing the instance file
+            logger.warning(f"Failed to write cooldown file for {instance_id}: {e}")
+            self._remove_instance_file(instance_id)
+
+    def _write_cooldown_file_raw(
+        self,
+        instance_id: str,
+        *,
+        play_id: str,
+        symbol: str,
+        mode: str,
+        started_at: str,
+    ) -> None:
+        """Write a cooldown file from raw data (no _EngineInstance needed).
+
+        Used by stop_cross_process where we only have the disk data.
+        """
+        cooldown_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=_INSTANCE_COOLDOWN_SECONDS)
+        try:
+            data: dict = {
+                "instance_id": instance_id,
+                "pid": 0,  # original process is dead
+                "play_id": play_id,
+                "symbol": symbol,
+                "mode": mode,
+                "started_at": started_at,
+                "status": "cooldown",
+                "cooldown_until": cooldown_until.isoformat(),
+            }
+            target = self._instances_dir / f"{instance_id}.json"
+            self._atomic_write_json(target, data)
+        except Exception as e:
+            logger.warning(f"Failed to write cooldown file for {instance_id}: {e}")
+            self._remove_instance_file(instance_id)
+
+    def _atomic_write_json(self, target: Path, data: dict) -> None:
+        """Write JSON to target path atomically via tempfile + os.replace."""
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(self._instances_dir),
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp_path, str(target))
+        except Exception:
+            # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    def _remove_instance_file(self, instance_id: str) -> None:
+        """Remove instance file on stop."""
+        path = self._instances_dir / f"{instance_id}.json"
+        try:
+            path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning(f"Failed to remove instance file {path.name}: {e}")
+
+    # ------------------------------------------------------------------
+    # Limit checking (cross-process aware)
+    # ------------------------------------------------------------------
+
+    def _check_limits(self, play: "Play", mode: str | InstanceMode) -> None:
+        """Check if starting a new instance would exceed limits.
+
+        Reads disk instances (running + cooldown + starting) for cross-process
+        awareness. Excludes instances already tracked in self._instances to
+        avoid double-counting.
+        """
+        mode = InstanceMode(mode)
+        symbol = play.symbol_universe[0]
+
+        # Get all disk instances (running, cooldown, starting)
+        disk_instances = self._read_disk_instances(clean_stale=True)
+
+        # Exclude instances we already track in-memory (avoid double-count)
+        in_memory_ids = set(self._instances.keys())
+        cross_process = [d for d in disk_instances if d.instance_id not in in_memory_ids]
+
+        if mode is InstanceMode.LIVE:
+            # Count: in-memory + cross-process live instances
+            total_live = self._live_count + sum(
+                1 for d in cross_process if d.mode == "live"
+            )
+            if total_live >= self._max_live:
+                # Provide informative error with cooldown details
+                cooldown_info = self._cooldown_info(cross_process, "live")
+                raise ValueError(
+                    f"Live instance limit reached ({self._max_live}). "
+                    f"Stop existing live instance first.{cooldown_info}"
+                )
+
+        elif mode is InstanceMode.DEMO:
+            # Count: in-memory + cross-process demo for same symbol
+            in_memory_demo = self._demo_by_symbol.get(symbol, 0)
+            cross_demo = sum(
+                1 for d in cross_process
+                if d.mode == "demo" and d.symbol == symbol
+            )
+            total_demo = in_memory_demo + cross_demo
+            if total_demo >= self._max_demo_per_symbol:
+                cooldown_info = self._cooldown_info(
+                    [d for d in cross_process if d.symbol == symbol],
+                    "demo",
+                )
+                raise ValueError(
+                    f"Demo instance limit for {symbol} reached ({self._max_demo_per_symbol}). "
+                    f"Stop existing demo instance first.{cooldown_info}"
+                )
+
+        elif mode is InstanceMode.BACKTEST:
+            total_bt = self._backtest_count + sum(
+                1 for d in cross_process if d.mode == "backtest"
+            )
+            if total_bt >= self._max_backtest:
+                cooldown_info = self._cooldown_info(cross_process, "backtest")
+                raise ValueError(
+                    f"Backtest instance limit reached ({self._max_backtest}). "
+                    f"DuckDB requires sequential access. Wait for current backtest to complete.{cooldown_info}"
+                )
+
+    @staticmethod
+    def _cooldown_info(disk_instances: list[_DiskInstance], mode: str) -> str:
+        """Build informative cooldown suffix for error messages."""
+        for d in disk_instances:
+            if d.mode == mode and d.status == "cooldown" and d.cooldown_until:
+                remaining = (d.cooldown_until - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds()
+                if remaining > 0:
+                    return f" (cooldown: {remaining:.0f}s remaining)"
+        return ""
+
+    def _update_counts(self, mode: str | InstanceMode, symbol: str, delta: int) -> None:
+        """Update instance counts."""
+        mode = InstanceMode(mode)
+        if mode is InstanceMode.LIVE:
+            self._live_count += delta
+        elif mode is InstanceMode.DEMO:
+            self._demo_by_symbol[symbol] = self._demo_by_symbol.get(symbol, 0) + delta
+            if self._demo_by_symbol[symbol] <= 0:
+                del self._demo_by_symbol[symbol]
+        elif mode is InstanceMode.BACKTEST:
+            self._backtest_count += delta
+
+    # ------------------------------------------------------------------
+    # Instance lifecycle
+    # ------------------------------------------------------------------
 
     async def start(
         self,
@@ -147,6 +534,11 @@ class EngineManager:
     ) -> str:
         """
         Start a new engine instance.
+
+        Two-phase slot reservation:
+        1. Under cross-process file lock: check limits + write reservation
+        2. Outside file lock: create engine, upgrade to "running"
+        3. On failure: remove reservation file
 
         Args:
             play: Play configuration
@@ -161,25 +553,30 @@ class EngineManager:
             RuntimeError: If engine fails to start
         """
         async with self._lock:
-            # Check instance limits
-            self._check_limits(play, mode)
+            # Generate instance ID early (needed for reservation file)
+            instance_id = f"{play.name}_{mode}_{uuid.uuid4().hex[:8]}"
+            symbol = play.symbol_universe[0]
+
+            # Phase 1: Cross-process check + reservation
+            with self._instance_lock():
+                self._check_limits(play, mode)
+                self._write_reservation_file(instance_id, play, mode)
+            # File lock released — slot reserved on disk
 
             # C7: Validate live mode safety before creating engine
             if mode == "live":
                 from .factory import PlayEngineFactory
-                PlayEngineFactory._validate_live_mode(confirm_live=True)
-
-            # Generate instance ID
-            instance_id = f"{play.name}_{mode}_{uuid.uuid4().hex[:8]}"
-            symbol = play.symbol_universe[0]
+                try:
+                    PlayEngineFactory._validate_live_mode(confirm_live=True)
+                except Exception:
+                    self._remove_instance_file(instance_id)
+                    raise
 
             logger.info(f"Starting engine instance: {instance_id}")
 
             try:
                 if mode == "backtest":
-                    # Backtest uses different runner (BacktestRunner)
-                    # For now, just track that a backtest is running
-                    # Actual backtest is run via CLI tools
+                    self._remove_instance_file(instance_id)
                     raise ValueError(
                         "Use CLI 'backtest run' command for backtests. "
                         "EngineManager tracks concurrent instances."
@@ -205,7 +602,7 @@ class EngineManager:
                 # Create engine
                 engine = PlayEngine(
                     play=play,
-                    data_provider=data_provider,
+                    data_provider=data_provider,  # type: ignore[arg-type]  # LiveDataProvider protocol mismatch (pre-existing)
                     exchange=exchange,
                     state_store=state_store,
                     config=config,
@@ -227,8 +624,11 @@ class EngineManager:
                     engine=engine,
                     runner=runner,
                     mode=InstanceMode(mode),
-                    started_at=datetime.now(),
+                    started_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
+
+                self._instances[instance_id] = instance
+                self._update_counts(mode, symbol, +1)
 
                 # Start runner in background task
                 instance.task = asyncio.create_task(
@@ -236,22 +636,28 @@ class EngineManager:
                     name=f"engine_{instance_id}",
                 )
 
-                self._instances[instance_id] = instance
-                self._update_counts(mode, symbol, +1)
-
-                # G16.4: Write cross-process instance file
-                self._write_instance_file(instance_id, instance)
+                # Phase 2: Upgrade reservation to "running"
+                self._write_instance_file(instance_id, instance, status="running")
 
                 logger.info(f"Engine instance started: {instance_id}")
                 return instance_id
 
             except Exception as e:
+                # Rollback in-memory tracking if it was registered
+                if instance_id in self._instances:
+                    del self._instances[instance_id]
+                    self._update_counts(mode, symbol, -1)
+                # Release reservation on failure
+                self._remove_instance_file(instance_id)
                 logger.error(f"Failed to start engine: {e}")
                 raise RuntimeError(f"Failed to start engine: {e}") from e
 
     async def stop(self, instance_id: str) -> bool:
         """
         Stop a running engine instance.
+
+        Writes a cooldown file instead of deleting the instance file,
+        preventing immediate restart during cleanup.
 
         Args:
             instance_id: Instance ID to stop
@@ -284,13 +690,14 @@ class EngineManager:
                 symbol = instance.play.symbol_universe[0]
                 self._update_counts(instance.mode.value, symbol, -1)
 
-                # G16.4: Remove cross-process instance file
-                self._remove_instance_file(instance_id)
+                # Write cooldown file instead of removing
+                with self._instance_lock():
+                    self._write_cooldown_file(instance_id, instance)
 
                 # Remove from tracking
                 del self._instances[instance_id]
 
-                logger.info(f"Engine instance stopped: {instance_id}")
+                logger.info(f"Engine instance stopped: {instance_id} (cooldown {_INSTANCE_COOLDOWN_SECONDS:.0f}s)")
                 return True
 
             except Exception as e:
@@ -299,7 +706,7 @@ class EngineManager:
 
     def list(self) -> list[InstanceInfo]:
         """
-        List all running instances.
+        List all running instances (in-process only).
 
         Returns:
             List of InstanceInfo for each running instance
@@ -352,44 +759,9 @@ class EngineManager:
         """Number of running instances."""
         return len(self._instances)
 
-    def _check_limits(self, play: "Play", mode: str | InstanceMode) -> None:
-        """Check if starting a new instance would exceed limits."""
-        mode = InstanceMode(mode)
-        symbol = play.symbol_universe[0]
-
-        if mode is InstanceMode.LIVE:
-            if self._live_count >= self._max_live:
-                raise ValueError(
-                    f"Live instance limit reached ({self._max_live}). "
-                    "Stop existing live instance first."
-                )
-
-        elif mode is InstanceMode.DEMO:
-            current = self._demo_by_symbol.get(symbol, 0)
-            if current >= self._max_demo_per_symbol:
-                raise ValueError(
-                    f"Demo instance limit for {symbol} reached ({self._max_demo_per_symbol}). "
-                    "Stop existing demo instance first."
-                )
-
-        elif mode is InstanceMode.BACKTEST:
-            if self._backtest_count >= self._max_backtest:
-                raise ValueError(
-                    f"Backtest instance limit reached ({self._max_backtest}). "
-                    "DuckDB requires sequential access. Wait for current backtest to complete."
-                )
-
-    def _update_counts(self, mode: str | InstanceMode, symbol: str, delta: int) -> None:
-        """Update instance counts."""
-        mode = InstanceMode(mode)
-        if mode is InstanceMode.LIVE:
-            self._live_count += delta
-        elif mode is InstanceMode.DEMO:
-            self._demo_by_symbol[symbol] = self._demo_by_symbol.get(symbol, 0) + delta
-            if self._demo_by_symbol[symbol] <= 0:
-                del self._demo_by_symbol[symbol]
-        elif mode is InstanceMode.BACKTEST:
-            self._backtest_count += delta
+    # ------------------------------------------------------------------
+    # Background instance runner
+    # ------------------------------------------------------------------
 
     async def _run_instance(self, instance: _EngineInstance) -> None:
         """Run an instance until stopped."""
@@ -405,11 +777,16 @@ class EngineManager:
             iid = instance.instance_id
             symbol = instance.play.symbol_universe[0]
             mode = instance.mode.value
-            if iid in self._instances:
-                del self._instances[iid]
+            if self._instances.pop(iid, None) is not None:
                 self._update_counts(mode, symbol, -1)
-                self._remove_instance_file(iid)
-                logger.info(f"Cleaned up crashed instance: {iid}")
+                # Write cooldown instead of removing — prevents crash-restart loops
+                with self._instance_lock():
+                    self._write_cooldown_file(iid, instance)
+                logger.info(f"Cleaned up crashed instance: {iid} (cooldown {_INSTANCE_COOLDOWN_SECONDS:.0f}s)")
+
+    # ------------------------------------------------------------------
+    # Stop all / cross-process stop
+    # ------------------------------------------------------------------
 
     async def stop_all(self) -> int:
         """
@@ -424,30 +801,98 @@ class EngineManager:
                 stopped += 1
         return stopped
 
-    # ------------------------------------------------------------------
-    # G16.4: Cross-process instance tracking via PID files
-    # ------------------------------------------------------------------
+    def stop_cross_process(self, instance_id: str) -> bool:
+        """Stop a cross-process instance by sending SIGTERM to its PID.
 
-    def _write_instance_file(self, instance_id: str, instance: _EngineInstance) -> None:
-        """Write instance state to disk for cross-process visibility."""
-        data = {
-            "instance_id": instance_id,
-            "pid": os.getpid(),
-            "play_id": instance.play.name,
-            "symbol": instance.play.symbol_universe[0],
-            "mode": instance.mode.value,
-            "started_at": instance.started_at.isoformat(),
-        }
-        path = self._instances_dir / f"{instance_id}.json"
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
+        Used when `play stop` targets an instance running in a different
+        process (e.g. a headless background play).
 
-    def _remove_instance_file(self, instance_id: str) -> None:
-        """Remove instance file on stop."""
+        Writes a cooldown file after the remote process exits, preventing
+        immediate restart.
+
+        Returns True if the signal was sent and instance file cleaned up.
+        """
         path = self._instances_dir / f"{instance_id}.json"
+        if not path.exists():
+            return False
+
         try:
-            path.unlink(missing_ok=True)
+            data = json.loads(path.read_text(encoding="utf-8"))
+            pid = data.get("pid", 0)
+            if pid <= 0:
+                return False
+
+            # Capture data for cooldown file before we potentially lose it
+            play_id = data.get("play_id", "?")
+            symbol = data.get("symbol", "?")
+            mode = data.get("mode", "demo")
+            started_at = data.get("started_at", datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
+
+            if not self._is_pid_alive(pid):
+                # Already dead — write cooldown instead of just unlinking
+                with self._instance_lock():
+                    self._write_cooldown_file_raw(
+                        instance_id,
+                        play_id=play_id,
+                        symbol=symbol,
+                        mode=mode,
+                        started_at=started_at,
+                    )
+                return True
+
+            # Send SIGTERM (graceful shutdown)
+            import signal as _signal
+            if sys.platform == "win32":
+                # Windows: terminate process
+                import ctypes
+                kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+                PROCESS_TERMINATE = 0x0001
+                handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+                if handle:
+                    kernel32.TerminateProcess(handle, 1)
+                    kernel32.CloseHandle(handle)
+            else:
+                os.kill(pid, _signal.SIGTERM)
+
+            # Wait briefly for process to exit and clean up its own file
+            for _ in range(20):  # 5s max
+                time.sleep(0.25)
+                if not self._is_pid_alive(pid):
+                    break
+
+            # Write cooldown file (replaces instance file)
+            with self._instance_lock():
+                self._write_cooldown_file_raw(
+                    instance_id,
+                    play_id=play_id,
+                    symbol=symbol,
+                    mode=mode,
+                    started_at=started_at,
+                )
+
+            # Also clean up any pause file
+            pause_path = self._instances_dir / f"{instance_id}.pause"
+            pause_path.unlink(missing_ok=True)
+
+            return True
         except Exception as e:
-            logger.warning(f"Failed to remove instance file {path.name}: {e}")
+            logger.warning(f"Failed to stop cross-process instance {instance_id}: {e}")
+            return False
+
+    def get_cross_process_pid(self, instance_id: str) -> int:
+        """Get the PID of a cross-process instance, or 0 if not found."""
+        path = self._instances_dir / f"{instance_id}.json"
+        if not path.exists():
+            return 0
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data.get("pid", 0)
+        except Exception:
+            return 0
+
+    # ------------------------------------------------------------------
+    # Cross-process instance listing
+    # ------------------------------------------------------------------
 
     def list_all(self) -> list[InstanceInfo]:
         """List all instances including cross-process ones from disk."""
@@ -456,38 +901,43 @@ class EngineManager:
         known_ids = {info.instance_id for info in result}
 
         # Read disk instances for cross-process visibility
-        try:
-            for path in self._instances_dir.glob("*.json"):
-                try:
-                    data = json.loads(path.read_text(encoding="utf-8"))
-                    iid = data.get("instance_id", "")
-                    if iid in known_ids:
-                        continue  # Already in our process
+        disk_instances = self._read_disk_instances(clean_stale=True)
 
-                    # Check if PID is still alive
-                    pid = data.get("pid", 0)
-                    if not self._is_pid_alive(pid):
-                        # Stale file, clean up
-                        path.unlink(missing_ok=True)
-                        continue
+        for d in disk_instances:
+            if d.instance_id in known_ids:
+                continue  # Already in our process
 
-                    result.append(InstanceInfo(
-                        instance_id=iid,
-                        play_id=data.get("play_id", "?"),
-                        symbol=data.get("symbol", "?"),
-                        mode=InstanceMode(data.get("mode", "demo")),
-                        started_at=datetime.fromisoformat(data["started_at"]),
-                        status=data.get("status", "unknown"),
-                        bars_processed=data.get("stats", {}).get("bars_processed", 0) if "stats" in data else 0,
-                        signals_generated=data.get("stats", {}).get("signals_generated", 0) if "stats" in data else 0,
-                    ))
-                except Exception as e:
-                    logger.warning(f"Failed to read instance file {path.name}: {e}")
-                    continue
-        except Exception as e:
-            logger.warning(f"Failed to list instance files: {e}")
+            # Determine display status
+            if d.status == "cooldown":
+                if d.cooldown_until:
+                    remaining = (d.cooldown_until - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds()
+                    display_status = f"cooldown ({remaining:.0f}s)" if remaining > 0 else "cooldown"
+                else:
+                    display_status = "cooldown"
+            elif d.status == "starting":
+                display_status = "starting"
+            else:
+                display_status = "running"
+
+            try:
+                inst_mode = InstanceMode(d.mode)
+            except ValueError:
+                continue
+
+            result.append(InstanceInfo(
+                instance_id=d.instance_id,
+                play_id=d.play_id,
+                symbol=d.symbol,
+                mode=inst_mode,
+                started_at=d.started_at,
+                status=display_status,
+            ))
 
         return result
+
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _is_pid_alive(pid: int) -> bool:
@@ -498,14 +948,22 @@ class EngineManager:
             import ctypes
             kernel32 = ctypes.windll.kernel32
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            STILL_ACTIVE = 259
             handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-            if handle:
-                kernel32.CloseHandle(handle)
+            if not handle:
+                return False
+            try:
+                exit_code = ctypes.c_ulong()
+                if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    return exit_code.value == STILL_ACTIVE
                 return True
-            return False
+            finally:
+                kernel32.CloseHandle(handle)
         else:
             try:
                 os.kill(pid, 0)
+                return True
+            except PermissionError:
                 return True
             except OSError:
                 return False

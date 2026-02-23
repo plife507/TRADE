@@ -31,6 +31,11 @@ Single source of truth for all open work, bugs, and task progress.
 | P11 Phase 4: Performance & Polish | 2026-02-21 | MonotonicDeque, SMA drift guard, factory dict, dead code, naive datetime fix |
 | P12 Phase 1-5 items (partial) | 2026-02-21 | Stale monitor fix, tri-state WS, lazy WS, dashboard log tab. Manual verification pending |
 | Timestamp & WS Subscription Fix | 2026-02-21 | 7 files: tz-naive UTC convention, canonical `_datetime_to_epoch_ms`, kline sub default `[]` |
+| CLI Redesign P4 Gates 4-5 | 2026-02-22 | Unified `_place_order()` + data sub-menus implemented. Only G8 (final validation) remains |
+| CLI Architecture Audit | 2026-02-22 | 103 tools inventoried, 84 unwired. See `docs/CLI_ARCHITECTURE_AUDIT.md` |
+| P15 Phases 1-4: Cooldown & Race Fixes | 2026-02-22 | Cross-process locking, atomic writes, 15s cooldown, two-phase reservation |
+| Path Migration: ~/.trade → data/runtime/ | 2026-02-22 | 10 files migrated, centralized constants, test prompt updated |
+| Cross-Platform Newline Compliance | 2026-02-22 | 4 artifact writers fixed, 21/21 write ops verified |
 
 Full details: `docs/architecture/CODEBASE_REVIEW_ONGOING.md`
 
@@ -142,46 +147,237 @@ Fixes applied across 14 files. Timestamp/subscription cleanup also done in this 
 - [ ] Paper trading integration
 - [ ] Complete live adapter stubs
 
-### P4: CLI Redesign (Gates 4, 5, 8 open)
+### P4+P13: Unified CLI — Full Agent Autonomy + Human Menu Cleanup
 
-See `docs/CLI_REDESIGN.md` for full details.
+See `docs/CLI_ARCHITECTURE_AUDIT.md` for full architecture reference.
+See `docs/brainstorm/CLI_AGENT_AUTONOMY.md` for original gap audit (103 tools, 84 unwired).
 
-- [ ] **Gate 4**: Unified `_place_order()` flow
-- [ ] **Gate 5**: Data menu top-level rewrite
-- [ ] **Gate 8**: Final manual validation
+**Context:** P4 (interactive menu redesign) Gates 4-5 are DONE — `_place_order()` and data sub-menus
+are fully implemented. P13 (agent CLI flags) implemented 2026-02-22: 6 phases wiring 50+ tool functions
+into argparse subcommands. Both efforts share the same `src/tools/` layer.
 
-### P13: CLI Agent Autonomy — Full Flag Coverage
+**Architecture:** Each new subcommand follows the established 3-layer pattern:
+1. Argparse definition in `src/cli/argparser.py` via `_setup_{domain}_subcommands()`
+2. Handler function in `src/cli/subcommands/{domain}.py` (parse args → call tool → format output)
+3. Export in `__init__.py` + dispatch in `trade_cli.py`
 
-See `docs/brainstorm/CLI_AGENT_AUTONOMY.md` for full audit (110+ tools, 18 gaps, concurrency analysis).
+#### Phase 1: Order Subcommand Group (DONE 2026-02-22)
 
-**Context:** Audit found CLI is ~85% agent-ready via subcommands. Gaps are missing CLI flag
-wiring for tool functions that already exist in `src/tools/`.
+- [x] `order buy/sell` — market, limit, stop, stop-limit with all flags
+- [x] `order list/amend/cancel/cancel-all/leverage/batch`
+- [x] Wire into `argparser.py`, `__init__.py`, `trade_cli.py` dispatch
+- [x] `pyright src/cli/subcommands/order.py` — 0 errors
 
-#### Phase 1: Order Subcommand Group
-- [ ] Add `order buy` / `order sell` with `--symbol`, `--amount`, `--type`, `--price`, `--trigger`, `--tp`, `--sl` flags
-- [ ] Add `order list [--symbol X] --json`
-- [ ] Add `order amend --symbol X --order-id ID [--qty] [--price] --json`
-- [ ] Add `order cancel --symbol X --order-id ID --json` / `order cancel-all`
-- [ ] Add `order leverage --symbol X --leverage N --json`
-- [ ] **GATE**: Place and cancel a limit order via CLI flags only
+#### Phase 2: Data Subcommand Group (DONE 2026-02-22)
 
-#### Phase 2: Data Subcommand Group
-- [ ] Add `data sync --symbols X --period 30d [--start D --end D] [--heal] --json`
-- [ ] Add `data info --json` / `data symbols --json` / `data status --symbol X --json`
-- [ ] Add `data query --symbol X --tf 1m [--period 7d | --start D --end D] --json`
-- [ ] Add `data heal --symbol X --json` / `data vacuum --json` / `data delete --symbol X --confirm`
-- [ ] **GATE**: Sync 7 days of BTCUSDT 1m data via CLI flags only
+- [x] `data sync/info/symbols/status/summary/query/heal/vacuum/delete`
+- [x] Wire into `argparser.py`, `__init__.py`, `trade_cli.py` dispatch
+- [x] `pyright src/cli/subcommands/data.py` — 0 errors
 
-#### Phase 3: Market & Account Extensions
-- [ ] Add `market price|ohlcv|funding|oi|orderbook|instruments --symbol X --json`
-- [ ] Add `account history|pnl|transactions --days 7 --json` (with `--start`/`--end` alternative)
-- [ ] Add `account collateral [--currency USDT] --json`
-- [ ] **GATE**: Query BTCUSDT price + 7-day PnL via CLI flags only
+#### Phase 3: Market Data Subcommand Group (DONE 2026-02-22)
 
-#### Phase 4: Position Config & Health
-- [ ] Add `position set-tp|set-sl|set-tpsl|trailing|partial-close|margin` with symbol + value flags
-- [ ] Add `health check|connection|rate-limit|ws --json`
-- [ ] **GATE**: Set TP/SL on demo position via CLI flags only
+- [x] `market price/ohlcv/funding/oi/orderbook/instruments`
+- [x] Wire into `argparser.py`, `__init__.py`, `trade_cli.py` dispatch
+- [x] `pyright src/cli/subcommands/market.py` — 0 errors
+
+#### Phase 4: Account History Extensions (DONE 2026-02-22)
+
+- [x] `account info/history/pnl/transactions/collateral`
+- [x] Extended argparse group + dispatch
+- [x] `pyright src/cli/subcommands/trading.py` — 0 errors
+
+#### Phase 5: Position Config Extensions (DONE 2026-02-22)
+
+- [x] `position detail/set-tp/set-sl/set-tpsl/trailing/partial-close/margin/risk-limit`
+- [x] Extended argparse group + dispatch
+- [x] `pyright src/cli/subcommands/trading.py` — 0 errors
+
+#### Phase 6: Health & Diagnostics Subcommand Group (DONE 2026-02-22)
+
+- [x] `health check/connection/rate-limit/ws/environment`
+- [x] Wire into `argparser.py`, `__init__.py`, `trade_cli.py` dispatch
+- [x] `pyright src/cli/subcommands/health.py` — 0 errors
+
+#### Phase 7: Final Validation (P4 G8 + P13 completion)
+
+- [x] `python trade_cli.py validate quick` passes (74.1s, all 5 gates)
+- [x] CLI: all new subcommand groups respond to `--help`
+- [x] pyright: 0 errors across all 8 modified files
+- [ ] Manual: app starts → offline menu → backtest works without connection
+- [ ] Manual: "Connect to Exchange" (demo) → full menu appears
+- [ ] Manual: place market order via unified form (P4 G4 verification)
+- [ ] Manual: symbol quick-picks appear after first use (P4 G3 verification)
+- [ ] Manual: data sub-menus accessible, all operations reachable (P4 G5 verification)
+- [ ] Manual: cross-links between Forge and Backtest work (P4 G7 verification)
+- [ ] CLI: `order buy --symbol BTCUSDT --amount 100 --type market --json` succeeds on demo
+- [ ] CLI: `data info --json` returns valid JSON
+- [ ] CLI: `market price --symbol BTCUSDT --json` returns valid JSON
+- [ ] CLI: `health check --json` returns valid JSON
+- [ ] **GATE**: Full manual test pass
+
+### P14: Play Lifecycle — Headless Mode + Agent Test
+
+**Context:** `play run --mode demo` blocks on a Rich Live dashboard, making it impossible
+for agents to start a play, poll its status, then stop it. Added `--headless` flag and
+`play watch --json` for agent-friendly lifecycle control.
+
+#### Phase 1: Add `--headless` flag to `play run` (DONE 2026-02-22)
+- [x] `--headless` flag in argparser for `play run`
+- [x] `_run_play_live_headless()` — JSON events on stdout, blocks until stopped
+- [x] `_run_play_live_dashboard()` — extracted original dashboard behavior unchanged
+- [x] Pyright: 0 errors
+
+#### Phase 2: Add `--json` to `play watch` (DONE 2026-02-22)
+- [x] `--json` flag in argparser for `play watch`
+- [x] One-shot JSON snapshot mode (consistent with `play status --json`)
+- [x] Smoke test: `play watch --json` returns `{"instances": []}` when idle
+
+#### Phase 3: Play Lifecycle Test Prompt (DONE 2026-02-22)
+- [x] Group 9 (T36-T50) added to `docs/AGENT_CLI_TEST_PROMPT.md`
+- [x] System prompt updated with headless workflow instructions
+
+#### Phase 4: Verification
+- [ ] Smoke test: `play run --play AT_001 --mode demo --headless` prints JSON, Ctrl+C stops cleanly
+- [ ] Smoke test: While headless running, `play watch --json` shows instance
+- [ ] Smoke test: `play stop --all` cleans up headless instance
+- [ ] Full T36-T50 test sweep
+- [ ] **GATE**: All 50 tests pass
+
+### P15: Instance Exit Cooldown & Race Condition Fixes
+
+**Context:** `EngineManager._check_limits()` was process-local only — it checked in-memory counters
+but never read cross-process PID files. Two terminal sessions could both pass the limit check
+and start live instances simultaneously, violating the "max 1 live" safety rule. Additionally,
+after SIGTERM, a new instance could start immediately while the old process was still cancelling
+orders (up to 10s), closing WebSocket (up to 5.5s), or holding DuckDB locks.
+
+**File:** `src/engine/manager.py` (single file change)
+
+#### Phase 1: Cross-process locking & atomic writes (DONE)
+- [x] Add `fcntl.flock()` advisory file lock on `~/.trade/instances/.lock`
+- [x] Add `_instance_lock()` context manager for cross-process critical section
+- [x] Atomic file writes via `tempfile.mkstemp()` + `os.replace()` (prevents partial JSON)
+- [x] Add `_DiskInstance` dataclass for typed disk instance representation
+- [x] Add `_read_disk_instances(clean_stale=True)` centralized disk reader
+- [x] **GATE**: `pyright src/engine/manager.py` — 0 errors
+
+#### Phase 2: Cooldown system (DONE)
+- [x] Add `_INSTANCE_COOLDOWN_SECONDS = 15.0` constant
+- [x] `_write_cooldown_file()` — writes `status: "cooldown"` + `cooldown_until` timestamp
+- [x] `_write_cooldown_file_raw()` — same but from raw disk data (for cross-process stop)
+- [x] `stop()` writes cooldown file instead of deleting instance file
+- [x] `stop_cross_process()` writes cooldown file after SIGTERM
+- [x] `_run_instance()` crash handler writes cooldown file (prevents crash-restart loops)
+
+#### Phase 3: Cross-process limit checking (DONE)
+- [x] `_check_limits()` reads disk instances (running + cooldown + starting)
+- [x] Excludes in-memory instances to avoid double-counting
+- [x] Informative error messages with cooldown remaining time
+- [x] Two-phase slot reservation in `start()`: lock → check → reserve → unlock → setup → upgrade
+
+#### Phase 4: Cleanup & listing (DONE)
+- [x] `_read_disk_instances()` cleans stale PIDs, expired cooldowns, invalid JSON
+- [x] `list_all()` uses `_read_disk_instances()` (replaces 40-line inline loop)
+- [x] `__init__()` calls cleanup at startup for orphaned files from previous crashes
+- [x] **GATE**: `python3 trade_cli.py validate quick` — 5/5 gates pass
+
+#### Phase 5: Verification
+- [ ] Manual: start demo → stop → verify cooldown file exists → try restart immediately (should fail) → wait 15s → restart succeeds
+- [ ] Manual: start headless → try second start in different terminal (should fail with limit error)
+- [ ] Manual: create fake instance file with dead PID → run `play status` → verify cleaned up
+- [ ] **GATE**: Full manual test pass
+
+### P16: Cross-Platform & Codebase Health Audit
+
+**Context:** Full codebase audit (7 Sonnet 4.6 agents, 323 Python files) found 54 OS-level issues,
+38 `datetime.now()` violations (local time instead of UTC), 5 missing `encoding="utf-8"`, 6 critical
+`manager.py` design bugs, and 3 dead directories at the project root. All findings verified before
+any code changes.
+
+#### Phase 1: datetime.now() → UTC (CRITICAL — live trading correctness)
+
+`datetime.now()` returns local time. On Windows in EST (UTC-5), daily loss reset fires 5 hours late.
+All 38 occurrences must change to `datetime.now(timezone.utc).replace(tzinfo=None)`.
+
+**Priority A — Live trading path (7 fixes):**
+- [x] `src/core/position_manager.py` lines 152, 193, 268, 290, 382, 522 — daily loss reset, portfolio snapshots
+- [x] `src/core/order_executor.py` line 44 — OrderResult timestamp
+- [x] **GATE**: `pyright src/core/position_manager.py src/core/order_executor.py` — 0 errors
+
+**Priority B — Engine/runner infrastructure (19 fixes):**
+- [x] `src/engine/manager.py` lines 225, 339, 356, 389, 501, 620, 819, 903 — cooldown timers, instance tracking
+- [x] `src/engine/runners/live_runner.py` lines 87, 267, 373, 497, 506, 845 — runner stats, reconcile intervals
+- [x] `src/engine/runners/shadow_runner.py` lines 166, 188, 254 — shadow stats
+- [x] `src/engine/runners/backtest_runner.py` lines 289, 448 — artifact timestamps
+- [x] **GATE**: `pyright src/engine/manager.py src/engine/runners/*.py` — 0 errors
+
+**Priority C — CLI/tools/menus (12 fixes):**
+- [x] `src/tools/backtest_play_tools.py` lines 138, 602 — default end date
+- [x] `src/tools/backtest_play_data_tools.py` line 244 — default end date
+- [x] `src/cli/utils.py` lines 273, 296, 336 — CLI date defaults
+- [x] `src/cli/menus/backtest_play_menu.py` line 237 — menu default
+- [x] `src/cli/menus/data_sync_menu.py` line 106 — sync default
+- [x] `src/cli/smoke_tests/data.py` line 315 — smoke test anchor
+- [x] `src/backtest/risk_policy.py` line 227 — risk snapshot
+- [x] `src/backtest/snapshot_artifacts.py` line 59 — manifest
+- [x] `src/backtest/artifacts/manifest_writer.py` lines 67, 136 — created_at, written_at
+- [x] **GATE**: `python3 trade_cli.py validate quick` — 5/5 gates pass
+
+#### Phase 2: manager.py Critical Fixes
+
+- [x] Line 62: Replace `get_logger()` with `get_module_logger(__name__)` per CLAUDE.md
+- [x] Line 266: `_is_pid_alive` — catch `PermissionError` (EPERM) separately, treat as alive (process exists but different user)
+- [x] Line 194: Windows `msvcrt.LK_LOCK` — add retry loop with 30s deadline to match `fcntl.LOCK_EX` blocking semantics
+- [x] Lines 624-629: Move `self._instances[instance_id] = instance` and `_update_counts` BEFORE `asyncio.create_task()`
+- [x] Lines 638-642: Add count rollback in `except` block when `_write_instance_file` raises after `_update_counts`
+- [x] Line 769: Use `self._instances.pop(iid, None)` in `_run_instance` crash handler (idempotent delete)
+- [x] Line 916: Wrap `InstanceMode(d.mode)` in `list_all()` with try/except ValueError
+- [x] Line 940: Windows `_is_pid_alive` — check `GetExitCodeProcess` for `STILL_ACTIVE(259)` to handle zombie PIDs
+- [x] **GATE**: `pyright src/engine/manager.py` — 0 errors
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+
+#### Phase 3: Missing encoding="utf-8" (5 files)
+
+On Windows default encoding is cp1252. Non-ASCII content produces mojibake.
+
+- [x] `src/backtest/snapshot_artifacts.py` line 247 — add `encoding="utf-8"` to write
+- [x] `src/backtest/snapshot_artifacts.py` line 274 — add `encoding="utf-8"` to read
+- [x] `src/forge/audits/audit_in_memory_parity.py` line 74 — add `encoding="utf-8"` to CSV write
+- [x] `src/engine/adapters/state.py` line 92 — add `encoding="utf-8"` to NamedTemporaryFile
+- [x] `src/engine/adapters/state.py` line 122 — add `encoding="utf-8"` to load_state read
+- [x] `src/forge/audits/audit_rollup_parity.py` line 624 — add `encoding="utf-8"` to NamedTemporaryFile
+- [x] `src/backtest/artifacts/artifact_standards.py` line 513 — add `encoding="utf-8"` to write_text
+- [x] `src/backtest/artifacts/pipeline_signature.py` line 83 — add `encoding="utf-8"` to write_text
+- [x] **GATE**: `pyright` on all modified files — 0 errors
+
+#### Phase 4: Stale Docstrings & Path Consistency
+
+- [x] `src/engine/manager.py` lines 8, 184 — update docstrings from `~/.trade/instances/` to `data/runtime/instances/`
+- [x] `src/engine/runners/live_runner.py` line 249 — update `is_paused` docstring
+- [x] `src/config/constants.py` line 18 — fix comment: "process state under data/runtime/, trade journal under data/journal/"
+- [x] `src/cli/validate.py` lines 358, 1204, 1317 — replace relative `Path("plays")` with `PROJECT_ROOT / "plays"`
+- [x] Pause file consistency: `src/cli/subcommands/play.py` line 892 and `src/cli/menus/plays_menu.py` line 844 — change `.touch()` to `.write_text("paused", encoding="utf-8", newline="\n")`
+- [x] `src/cli/dashboard/input.py` line 164 — remove `kbhit()` guard on arrow key second byte, call `getch()` unconditionally
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+
+#### Phase 5: Root Directory Cleanup
+
+- [x] Delete `src.backtest.data_builder/` — orphaned crash artifact (Feb 17 log files, nothing references it)
+- [x] Delete `strategies/` — empty dead shell, `system_config.py:43` CONFIGS_DIR points to nonexistent `src/strategies/configs`
+- [x] Remove dangling `CONFIGS_DIR` from `src/backtest/system_config.py` line 43 and `src/config/config.py` line 488
+- [ ] Evaluate `tests/` — 204 superseded validation plays, canonical plays in `plays/`. Restored after accidental deletion; keep for now
+- [x] Add `demo_run_*.txt` and `market-structure-explorer.html` to `.gitignore`
+- [x] Update `data/README.md` — add `runtime/`, `journal/`, `market_data_backtest.duckdb` to documentation
+- [x] **GATE**: `git status` shows no unexpected untracked files
+
+#### Phase 6: Test Prompt Fixes (AGENT_CLI_TEST_PROMPT.md)
+
+- [x] T45 (line 289): Add `Start-Sleep 16` before Start-Process (cooldown wait)
+- [x] T49 (line 293): Write full Start-Process command instead of prose reference
+- [x] T56 (line 329): Guard `$proc.Id` with `if ($null -ne $proc)` to prevent null dereference
+- [x] T62 (line 335): Same null guard for `$proc60.Id`
+- [x] T57 (line 330): Change fake PID from 99999 to 9999999 (exceeds PID_MAX, guarantees dead)
+- [x] Remove unused `$instDir` shorthand definition (lines 317-320) or use it in all test cells
 
 ### P5: Market Sentiment Tracker
 
@@ -204,6 +400,9 @@ Design document: `docs/brainstorm/MARKET_SENTIMENT_TRACKER.md`
 ## Platform Issues
 
 - **DuckDB file locking on Windows** — sequential scripts, `run_full_suite.py` has retry logic
+- **Windows `os.replace` over open files** — `PermissionError` if another process is mid-read of instance JSON. Retry-on-fail or document as known limitation. (`manager.py:416`)
+- **`datetime.utcnow()` deprecated in Python 3.12** — 2 occurrences in `src/forge/validation/synthetic_data.py:153` and `src/forge/audits/stress_test_suite.py:92`. Semantically correct but should migrate to `datetime.now(timezone.utc).replace(tzinfo=None)`
+- **Logger `datetime.now()` for log rotation** — 5 occurrences in `src/utils/logger.py`. Logs rotate at local midnight instead of UTC. Cosmetic only, low priority
 
 ---
 

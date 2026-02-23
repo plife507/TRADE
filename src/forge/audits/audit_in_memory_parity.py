@@ -71,7 +71,7 @@ class InMemoryParityResult:
         """Write CSV diff report with summary + first N mismatches."""
         import csv
         
-        with open(output_path, "w", newline="") as f:
+        with open(output_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             
             # Summary header

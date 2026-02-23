@@ -622,7 +622,7 @@ risk:
 
         # Write temp play file
         with tempfile.NamedTemporaryFile(
-            mode='w', suffix='.yml', delete=False, newline='\n'
+            mode='w', encoding='utf-8', suffix='.yml', delete=False, newline='\n'
         ) as f:
             f.write(play_yaml)
             temp_play_path = f.name

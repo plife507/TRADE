@@ -3,7 +3,6 @@
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
 
 LOG_FILTERS = ["info+", "all", "warn+", "error"]
@@ -27,8 +26,9 @@ def _toggle_pause(manager: object) -> None:
     if not instances:
         return
 
+    from src.config.constants import INSTANCES_DIR
     instance_id = next(iter(instances))
-    pause_dir = Path.home() / ".trade" / "instances"
+    pause_dir = INSTANCES_DIR
     pause_dir.mkdir(parents=True, exist_ok=True)
     pause_file = pause_dir / f"{instance_id}.pause"
 
@@ -157,11 +157,11 @@ def key_listener(
     try:
         import msvcrt  # Windows
         while not stop_event.is_set():
-            if msvcrt.kbhit():
-                raw = msvcrt.getch()
+            if msvcrt.kbhit():  # type: ignore[attr-defined]
+                raw = msvcrt.getch()  # type: ignore[attr-defined]
                 # Arrow/function keys: two-byte sequence (\xe0 or \x00 prefix)
                 if raw in (b"\xe0", b"\x00"):
-                    second = msvcrt.getch() if msvcrt.kbhit() else b""
+                    second = msvcrt.getch()  # type: ignore[attr-defined]
                     if second:
                         code = second[0]
                         if code == _WIN_ARROW_LEFT:

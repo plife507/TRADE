@@ -1,0 +1,55 @@
+version: "3.0.0"
+name: "at_005_normalize_target"
+description: |
+  Agent Test 005 - Normalize & List Target (3m exec)
+
+  Minimal play for testing play management commands:
+  - backtest list --json: this play should appear in the list
+  - backtest play-normalize --play at_005_normalize_target --json: status == "pass"
+  - backtest play-normalize-batch --dir plays/agent_test --json: status == "pass"
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "3m"
+  med_tf: "15m"
+  high_tf: "1h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 5000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_20:
+    indicator: ema
+    params: {length: 20}
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+
+actions:
+  entry_long:
+    all:
+      - ["ema_20", "cross_above", "ema_50"]
+  exit_long:
+    any:
+      - ["ema_20", "cross_below", "ema_50"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 1.0
+  take_profit_pct: 2.0
+
+validation:
+  pattern: "trending"

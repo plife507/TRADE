@@ -9,7 +9,7 @@ Contains:
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from rich.console import Console
@@ -270,7 +270,7 @@ def _parse_datetime_input(value: str, default_now: bool = False) -> datetime | N
     """Parse a datetime string. If default_now=True, blank input returns current datetime."""
     value = value.strip()
     if not value:
-        return datetime.now() if default_now else None
+        return datetime.now(timezone.utc).replace(tzinfo=None) if default_now else None
     
     formats = ["%Y-%m-%d", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"]
     
@@ -293,7 +293,7 @@ def select_time_range_cli(
     from datetime import timedelta
     
     # Calculate the earliest allowed date
-    now = datetime.now()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     earliest = now - timedelta(days=max_days)
     earliest_str = earliest.strftime("%Y-%m-%d")
     
@@ -332,8 +332,8 @@ def select_time_range_cli(
 def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSelection:
     """Prompt user for custom start and end dates."""
     from datetime import timedelta
-    
-    now = datetime.now()
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     earliest = now - timedelta(days=max_days)
     earliest_str = earliest.strftime("%Y-%m-%d")
     now_str = now.strftime("%Y-%m-%d %H:%M")

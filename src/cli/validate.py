@@ -49,6 +49,8 @@ from typing import Any, Callable
 
 from rich.console import Console
 
+from src.config.constants import PROJECT_ROOT
+
 console = Console()
 
 # ── Timeout defaults ─────────────────────────────────────────────────
@@ -355,7 +357,7 @@ def _gate_play_suite(
     failures: list[str] = []
     total_trades = 0
 
-    suite_dir = Path("plays") / suite_name
+    suite_dir = PROJECT_ROOT / "plays" / suite_name
     play_files = sorted(suite_dir.glob("*.yml"))
     play_ids = [pf.stem for pf in play_files]
     checked = len(play_ids)
@@ -1201,7 +1203,7 @@ def _gate_pre_live_explicit_config(play_id: str) -> GateResult:
 
         play = load_play(play_id)
 
-        plays_dir = Path("plays")
+        plays_dir = PROJECT_ROOT / "plays"
         play_path = plays_dir / f"{play_id}.yml"
         if not play_path.exists():
             matches = list(plays_dir.rglob(f"{play_id}.yml"))
@@ -1314,7 +1316,7 @@ def _gate_real_data_phase(
     failures: list[str] = []
     total_trades = 0
 
-    phase_dir = Path("plays") / "validation" / "real_data" / phase
+    phase_dir = PROJECT_ROOT / "plays" / "validation" / "real_data" / phase
     play_files = sorted(phase_dir.glob("*.yml"))
     checked = len(play_files)
 

@@ -8,7 +8,7 @@ Extracted from backtest_play_tools.py:
 """
 
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -241,7 +241,7 @@ def backtest_data_fix_tool(
         original_start = start
 
         if end is None:
-            end = datetime.now().replace(tzinfo=None)
+            end = datetime.now(timezone.utc).replace(tzinfo=None)
         else:
             end = normalize_timestamp(end)
 

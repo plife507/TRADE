@@ -8,7 +8,7 @@ Handles individual sync operations:
 - Sync Open Interest
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from rich.console import Console
@@ -103,7 +103,7 @@ def data_sync_menu(cli: "TradeCLI", data_env: DataEnv) -> None:
             if start_str is BACK:
                 continue
             assert isinstance(start_str, str)
-            end_str = get_input("End Date (YYYY-MM-DD)", datetime.now().strftime("%Y-%m-%d"))
+            end_str = get_input("End Date (YYYY-MM-DD)", datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d"))
             if end_str is BACK:
                 continue
             assert isinstance(end_str, str)

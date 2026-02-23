@@ -84,6 +84,9 @@ backtests/
 !backtests/README.md
 artifacts/
 .validate_report.json
+demo_run_*.txt
+demo_run_*_err.txt
+market-structure-explorer.html
 
 # -----------------------------------------------------------------------------
 # Reference Materials (vendor docs, external repos)

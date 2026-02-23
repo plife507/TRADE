@@ -10,7 +10,7 @@ Used by verification suite to enable pandas_ta parity audits.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 import json
@@ -56,7 +56,7 @@ class SnapshotManifest:
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.now()
+            self.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""
@@ -244,7 +244,7 @@ def emit_snapshot_artifacts(
     )
 
     manifest_path = snapshots_dir / "snapshot_manifest.json"
-    with open(manifest_path, "w", newline='\n') as f:
+    with open(manifest_path, "w", encoding="utf-8", newline='\n') as f:
         json.dump(manifest.to_dict(), f, indent=2, sort_keys=True)
 
     return snapshots_dir
@@ -271,7 +271,7 @@ def load_snapshot_artifacts(run_dir: Path) -> dict[str, Any] | None:
         return None
 
     # Load manifest
-    with open(manifest_path, "r", newline='\n') as f:
+    with open(manifest_path, "r", encoding="utf-8", newline='\n') as f:
         manifest_data = json.load(f)
 
     # Load DataFrames keyed by role

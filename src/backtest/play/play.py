@@ -1058,8 +1058,9 @@ class Play:
 # =============================================================================
 
 # Default Play directory -- all plays live under plays/ (including plays/validation/)
-_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-PLAYS_DIR = _PROJECT_ROOT / "plays"
+from ...config.constants import PROJECT_ROOT
+
+PLAYS_DIR = PROJECT_ROOT / "plays"
 
 
 def load_play(play_id: str, base_dir: Path | None = None) -> Play:

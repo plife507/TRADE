@@ -13,7 +13,7 @@ Writes run_manifest.json with:
 import json
 import hashlib
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +64,7 @@ class ManifestWriter:
         self.artifact_version = artifact_version
         self._manifest: dict[str, Any] = {
             "artifact_version": artifact_version,
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         }
     
     def set_run_info(
@@ -133,10 +133,10 @@ class ManifestWriter:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         
         # Add final timestamp
-        self._manifest["written_at"] = datetime.now().isoformat()
+        self._manifest["written_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         
         manifest_path = self.run_dir / "run_manifest.json"
-        with open(manifest_path, "w") as f:
+        with open(manifest_path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(self._manifest, f, indent=2, default=str, sort_keys=True)
         
         return manifest_path

@@ -13,6 +13,20 @@ from typing import Literal, cast
 from pathlib import Path
 
 
+# ==================== Project Root & Runtime Paths ====================
+#
+# Process state under data/runtime/, trade journal under data/journal/.
+# Never use Path.home() / ".trade" — that's outside the project.
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Runtime directories (instances, journal, state)
+RUNTIME_DIR = PROJECT_ROOT / "data" / "runtime"
+INSTANCES_DIR = RUNTIME_DIR / "instances"
+JOURNAL_DIR = PROJECT_ROOT / "data" / "journal"
+STATE_DIR = RUNTIME_DIR / "state"
+
+
 # ==================== Trading Environment ====================
 
 # TradingEnv: Identifies which trading API environment we're targeting.
@@ -147,8 +161,8 @@ def validate_data_env(env: str) -> DataEnv:
 #
 # This allows: backtest + demo trading + live trading to run simultaneously
 
-# Base directory for data files (relative to project root)
-DATA_DIR = Path("data")
+# Base directory for data files (absolute, under project root)
+DATA_DIR = PROJECT_ROOT / "data"
 
 # DuckDB file names per environment
 DB_FILENAMES: dict[DataEnv, str] = {
@@ -505,9 +519,7 @@ def load_system_defaults() -> SystemDefaults:
         FileNotFoundError: If defaults.yml not found
         ValueError: If defaults.yml is invalid
     """
-    # Find config/defaults.yml relative to this file
-    config_dir = Path(__file__).parent.parent.parent / "config"
-    defaults_path = config_dir / "defaults.yml"
+    defaults_path = PROJECT_ROOT / "config" / "defaults.yml"
 
     if not defaults_path.exists():
         raise FileNotFoundError(

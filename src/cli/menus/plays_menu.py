@@ -769,9 +769,9 @@ def _view_logs() -> None:
         return
 
     import json
-    from pathlib import Path
+    from src.config.constants import JOURNAL_DIR, INSTANCES_DIR
 
-    journal_dir = Path.home() / ".trade" / "journal"
+    journal_dir = JOURNAL_DIR
     if not journal_dir.exists():
         console.print("[dim]No journal directory found.[/]")
         Prompt.ask("\nPress Enter to continue")
@@ -781,7 +781,7 @@ def _view_logs() -> None:
     matches = list(journal_dir.glob(f"*{instance_id}*.jsonl"))
     if not matches:
         # Try play_id from instance file
-        instances_dir = Path.home() / ".trade" / "instances"
+        instances_dir = INSTANCES_DIR
         if instances_dir.exists():
             for path in instances_dir.glob("*.json"):
                 try:
@@ -838,12 +838,12 @@ def _pause_play() -> None:
         Prompt.ask("\nPress Enter to continue")
         return
 
-    from pathlib import Path
+    from src.config.constants import INSTANCES_DIR
 
-    pause_dir = Path.home() / ".trade" / "instances"
+    pause_dir = INSTANCES_DIR
     pause_dir.mkdir(parents=True, exist_ok=True)
     pause_file = pause_dir / f"{instance_id}.pause"
-    pause_file.touch()
+    pause_file.write_text("paused", encoding="utf-8", newline="\n")
 
     console.print(f"[yellow]Paused: {instance_id}[/]")
     console.print("[dim]Indicators continue updating. Use Resume to resume signal evaluation.[/]")
@@ -857,9 +857,9 @@ def _resume_play() -> None:
         Prompt.ask("\nPress Enter to continue")
         return
 
-    from pathlib import Path
+    from src.config.constants import INSTANCES_DIR
 
-    pause_dir = Path.home() / ".trade" / "instances"
+    pause_dir = INSTANCES_DIR
     pause_file = pause_dir / f"{instance_id}.pause"
 
     if pause_file.exists():

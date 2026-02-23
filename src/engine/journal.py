@@ -17,10 +17,6 @@ from ..utils.logger import get_logger
 
 logger = get_logger()
 
-# Project root: src/engine/journal.py -> two levels up
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-
-
 class TradeJournal:
     """
     Persistent trade logger writing JSONL files.
@@ -33,7 +29,8 @@ class TradeJournal:
 
     def __init__(self, instance_id: str):
         self._instance_id = instance_id
-        self._journal_dir = _PROJECT_ROOT / "data" / "journal"
+        from ..config.constants import JOURNAL_DIR
+        self._journal_dir = JOURNAL_DIR
         self._journal_dir.mkdir(parents=True, exist_ok=True)
         self._path = self._journal_dir / f"{instance_id}.jsonl"
         logger.info(f"TradeJournal initialized: {self._path}")

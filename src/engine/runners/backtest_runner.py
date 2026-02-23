@@ -43,7 +43,7 @@ Usage:
 from types import SimpleNamespace
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ..adapters.backtest import BacktestDataProvider, BacktestExchange
@@ -286,7 +286,7 @@ class BacktestRunner:
         Returns:
             BacktestResult with metrics and trades
         """
-        started_at = datetime.now()
+        started_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Initialize data and exchange
         self._setup()
@@ -445,7 +445,7 @@ class BacktestRunner:
         })
 
         # Build result
-        finished_at = datetime.now()
+        finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
         final_equity = post_close_equity
         trades = self._exchange_adapter.trades
         actual_bars_processed = last_bar_idx - start_idx + 1

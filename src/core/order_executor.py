@@ -18,7 +18,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .exchange_manager import ExchangeManager, OrderResult
 from .risk_manager import RiskManager, Signal, RiskCheckResult
@@ -41,7 +41,7 @@ class ExecutionResult:
     
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
     
     def to_dict(self) -> dict:
         return {

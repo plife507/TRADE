@@ -81,6 +81,10 @@ Examples:
     _setup_account_subcommands(subparsers)
     _setup_position_subcommands(subparsers)
     _setup_panic_subcommand(subparsers)
+    _setup_order_subcommands(subparsers)
+    _setup_data_subcommands(subparsers)
+    _setup_market_subcommands(subparsers)
+    _setup_health_subcommands(subparsers)
 
     return parser.parse_args()
 
@@ -106,6 +110,7 @@ def _setup_backtest_subcommands(subparsers) -> None:
     run_parser.add_argument("--validate", action="store_true", default=True, help="Validate artifacts after run (default: True)")
     run_parser.add_argument("--no-validate", action="store_false", dest="validate", help="Skip artifact validation (faster, less safe)")
     run_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
+    run_parser.add_argument("--json-verbose", action="store_true", dest="json_verbose", help="Include full metrics, hashes, and artifact path in JSON output")
     # Synthetic data mode (for validation without DB)
     run_parser.add_argument("--synthetic", action="store_true", help="Use synthetic data from play's synthetic: block (required). Fails if block missing.")
     run_parser.add_argument("--synthetic-bars", type=int, default=None, help="Override bars per TF from play's synthetic.bars")
@@ -199,6 +204,8 @@ def _setup_play_subcommands(subparsers) -> None:
     play_run_parser.add_argument("--start", help="Window start (YYYY-MM-DD) for backtest")
     play_run_parser.add_argument("--end", help="Window end (YYYY-MM-DD) for backtest")
     play_run_parser.add_argument("--confirm", action="store_true", help="Confirm live trading (required for --mode live)")
+    play_run_parser.add_argument("--headless", action="store_true",
+        help="Run without Rich dashboard (for agents/scripts). Outputs instance JSON and blocks until stopped.")
     play_run_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
 
     # play status - Check running instances (future)
@@ -217,6 +224,8 @@ def _setup_play_subcommands(subparsers) -> None:
     play_watch_parser = play_subparsers.add_parser("watch", help="Live dashboard for running instances")
     play_watch_parser.add_argument("--play", help="Filter to a specific Play instance")
     play_watch_parser.add_argument("--interval", type=float, default=2.0, help="Refresh interval in seconds (default: 2)")
+    play_watch_parser.add_argument("--json", action="store_true", dest="json_output",
+        help="Output single JSON snapshot and exit (no live dashboard)")
 
     # play logs - Stream logs for running instance
     play_logs_parser = play_subparsers.add_parser("logs", help="Stream logs for a running instance")
@@ -340,7 +349,7 @@ def _setup_debug_subcommands(subparsers) -> None:
 
 def _setup_account_subcommands(subparsers) -> None:
     """Set up account subcommand."""
-    account_parser = subparsers.add_parser("account", help="Account information")
+    account_parser = subparsers.add_parser("account", help="Account information and history")
     account_subparsers = account_parser.add_subparsers(dest="account_command", help="Account commands")
 
     # account balance
@@ -351,10 +360,42 @@ def _setup_account_subcommands(subparsers) -> None:
     exposure_parser = account_subparsers.add_parser("exposure", help="Show total exposure")
     exposure_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
 
+    # account info
+    info_parser = account_subparsers.add_parser("info", help="Show account config (margin mode, etc.)")
+    info_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # account history
+    history_parser = account_subparsers.add_parser("history", help="Order history")
+    history_parser.add_argument("--days", type=int, help="Number of days to look back (default: 7)")
+    history_parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
+    history_parser.add_argument("--end", help="End date (YYYY-MM-DD)")
+    history_parser.add_argument("--symbol", help="Filter by symbol")
+    history_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # account pnl
+    pnl_parser = account_subparsers.add_parser("pnl", help="Closed P&L history")
+    pnl_parser.add_argument("--days", type=int, help="Number of days to look back (default: 7)")
+    pnl_parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
+    pnl_parser.add_argument("--end", help="End date (YYYY-MM-DD)")
+    pnl_parser.add_argument("--symbol", help="Filter by symbol")
+    pnl_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # account transactions
+    tx_parser = account_subparsers.add_parser("transactions", help="Transaction log")
+    tx_parser.add_argument("--days", type=int, help="Number of days to look back (default: 7)")
+    tx_parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
+    tx_parser.add_argument("--end", help="End date (YYYY-MM-DD)")
+    tx_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # account collateral
+    collateral_parser = account_subparsers.add_parser("collateral", help="Collateral information")
+    collateral_parser.add_argument("--currency", help="Filter by currency (e.g., USDT)")
+    collateral_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
 
 def _setup_position_subcommands(subparsers) -> None:
     """Set up position subcommand."""
-    position_parser = subparsers.add_parser("position", help="Position management")
+    position_parser = subparsers.add_parser("position", help="Position management and configuration")
     position_subparsers = position_parser.add_subparsers(dest="position_command", help="Position commands")
 
     # position list
@@ -365,8 +406,247 @@ def _setup_position_subcommands(subparsers) -> None:
     close_parser = position_subparsers.add_parser("close", help="Close a position")
     close_parser.add_argument("symbol", help="Symbol to close (e.g., BTCUSDT)")
 
+    # position detail
+    detail_parser = position_subparsers.add_parser("detail", help="Get detailed position info")
+    detail_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    detail_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # position set-tp
+    tp_parser = position_subparsers.add_parser("set-tp", help="Set take profit on position")
+    tp_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    tp_parser.add_argument("--price", type=float, required=True, help="Take profit price")
+    tp_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # position set-sl
+    sl_parser = position_subparsers.add_parser("set-sl", help="Set stop loss on position")
+    sl_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    sl_parser.add_argument("--price", type=float, required=True, help="Stop loss price")
+    sl_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # position set-tpsl
+    tpsl_parser = position_subparsers.add_parser("set-tpsl", help="Set both TP and SL on position")
+    tpsl_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    tpsl_parser.add_argument("--tp", type=float, help="Take profit price")
+    tpsl_parser.add_argument("--sl", type=float, help="Stop loss price")
+    tpsl_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # position trailing
+    trailing_parser = position_subparsers.add_parser("trailing", help="Set trailing stop on position")
+    trailing_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    trailing_parser.add_argument("--distance", type=float, required=True, help="Trailing distance in price units (0 to remove)")
+    trailing_parser.add_argument("--active-price", type=float, help="Price at which trailing activates")
+    trailing_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # position partial-close
+    partial_parser = position_subparsers.add_parser("partial-close", help="Partially close a position")
+    partial_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    partial_parser.add_argument("--percent", type=float, required=True, help="Percentage to close (1-100)")
+    partial_parser.add_argument("--price", type=float, help="Limit price (omit for market)")
+    partial_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # position margin
+    margin_parser = position_subparsers.add_parser("margin", help="Switch margin mode for symbol")
+    margin_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    margin_parser.add_argument("--mode", required=True, choices=["cross", "isolated"], help="Margin mode")
+    margin_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # position risk-limit
+    rl_parser = position_subparsers.add_parser("risk-limit", help="Set risk limit for symbol")
+    rl_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    rl_parser.add_argument("--id", type=int, required=True, help="Risk limit ID")
+    rl_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
 
 def _setup_panic_subcommand(subparsers) -> None:
     """Set up panic subcommand."""
     panic_parser = subparsers.add_parser("panic", help="Emergency: cancel all orders and close all positions")
     panic_parser.add_argument("--confirm", action="store_true", help="Required confirmation flag")
+
+
+def _setup_order_subcommands(subparsers) -> None:
+    """Set up order subcommand group for non-interactive order management."""
+    order_parser = subparsers.add_parser("order", help="Order management (buy/sell/list/amend/cancel)")
+    order_subparsers = order_parser.add_subparsers(dest="order_command", help="Order commands")
+
+    # Shared order flags (used by buy and sell)
+    def _add_order_flags(p) -> None:
+        p.add_argument("--symbol", required=True, help="Trading symbol (e.g., BTCUSDT)")
+        p.add_argument("--amount", type=float, required=True, help="Position size in USD")
+        p.add_argument("--type", required=True, choices=["market", "limit", "stop", "stop-limit"], help="Order type")
+        p.add_argument("--price", type=float, help="Limit price (required for limit/stop-limit)")
+        p.add_argument("--trigger", type=float, help="Trigger price (required for stop/stop-limit)")
+        p.add_argument("--tp", type=float, help="Take profit price")
+        p.add_argument("--sl", type=float, help="Stop loss price")
+        p.add_argument("--tif", default="GTC", choices=["GTC", "IOC", "FOK", "PostOnly"], help="Time in force (default: GTC)")
+        p.add_argument("--reduce-only", action="store_true", help="Reduce-only order")
+        p.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # order buy
+    buy_parser = order_subparsers.add_parser("buy", help="Place a buy order")
+    _add_order_flags(buy_parser)
+
+    # order sell
+    sell_parser = order_subparsers.add_parser("sell", help="Place a sell order")
+    _add_order_flags(sell_parser)
+
+    # order list
+    list_parser = order_subparsers.add_parser("list", help="List open orders")
+    list_parser.add_argument("--symbol", help="Filter by symbol")
+    list_parser.add_argument("--filter", choices=["Order", "StopOrder"], help="Filter by order type")
+    list_parser.add_argument("--limit", type=int, default=50, help="Max orders to return (default: 50)")
+    list_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # order amend
+    amend_parser = order_subparsers.add_parser("amend", help="Amend an existing order")
+    amend_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    amend_parser.add_argument("--order-id", required=True, help="Order ID to amend")
+    amend_parser.add_argument("--qty", type=float, help="New quantity")
+    amend_parser.add_argument("--price", type=float, help="New price")
+    amend_parser.add_argument("--tp", type=float, help="New take profit")
+    amend_parser.add_argument("--sl", type=float, help="New stop loss")
+    amend_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # order cancel
+    cancel_parser = order_subparsers.add_parser("cancel", help="Cancel a specific order")
+    cancel_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    cancel_parser.add_argument("--order-id", required=True, help="Order ID to cancel")
+    cancel_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # order cancel-all
+    cancel_all_parser = order_subparsers.add_parser("cancel-all", help="Cancel all open orders")
+    cancel_all_parser.add_argument("--symbol", help="Filter by symbol (omit for all)")
+    cancel_all_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # order leverage
+    leverage_parser = order_subparsers.add_parser("leverage", help="Set leverage for a symbol")
+    leverage_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    leverage_parser.add_argument("--leverage", type=int, required=True, help="Leverage value (1-125)")
+    leverage_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # order batch
+    batch_parser = order_subparsers.add_parser("batch", help="Place batch orders from JSON file")
+    batch_parser.add_argument("--file", required=True, help="Path to JSON file with order array")
+    batch_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+
+def _setup_data_subcommands(subparsers) -> None:
+    """Set up data subcommand group for historical data management."""
+    data_parser = subparsers.add_parser("data", help="Historical data management (DuckDB)")
+    data_subparsers = data_parser.add_subparsers(dest="data_command", help="Data commands")
+
+    # data sync
+    sync_parser = data_subparsers.add_parser("sync", help="Sync historical data for symbols")
+    sync_parser.add_argument("--symbols", required=True, help="Comma-separated symbols (e.g., BTCUSDT,ETHUSDT)")
+    sync_parser.add_argument("--period", default="30d", help="Period to sync (e.g., 7d, 30d, 3M, 1Y). Default: 30d")
+    sync_parser.add_argument("--start", help="Start date (YYYY-MM-DD) — overrides --period")
+    sync_parser.add_argument("--end", help="End date (YYYY-MM-DD) — overrides --period")
+    sync_parser.add_argument("--heal", action="store_true", help="Run heal after sync")
+    sync_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # data info
+    info_parser = data_subparsers.add_parser("info", help="Show database statistics")
+    info_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # data symbols
+    symbols_parser = data_subparsers.add_parser("symbols", help="List cached symbols")
+    symbols_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # data status
+    status_parser = data_subparsers.add_parser("status", help="Show status for a symbol")
+    status_parser.add_argument("--symbol", required=True, help="Symbol to check")
+    status_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # data summary
+    summary_parser = data_subparsers.add_parser("summary", help="Show symbol summary across all cached data")
+    summary_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # data query
+    query_parser = data_subparsers.add_parser("query", help="Query OHLCV history from DuckDB")
+    query_parser.add_argument("--symbol", required=True, help="Symbol to query")
+    query_parser.add_argument("--tf", default="1m", help="Timeframe (default: 1m)")
+    query_parser.add_argument("--period", help="Relative period (e.g., 7d, 30d)")
+    query_parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
+    query_parser.add_argument("--end", help="End date (YYYY-MM-DD)")
+    query_parser.add_argument("--limit", type=int, help="Max rows to return")
+    query_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # data heal
+    heal_parser = data_subparsers.add_parser("heal", help="Check and repair data integrity")
+    heal_parser.add_argument("--symbol", help="Symbol to heal (omit for all)")
+    heal_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # data vacuum
+    vacuum_parser = data_subparsers.add_parser("vacuum", help="Vacuum the DuckDB database")
+    vacuum_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # data delete
+    delete_parser = data_subparsers.add_parser("delete", help="Delete all data for a symbol")
+    delete_parser.add_argument("--symbol", required=True, help="Symbol to delete")
+    delete_parser.add_argument("--confirm", action="store_true", required=True, help="Required confirmation flag")
+    delete_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+
+def _setup_market_subcommands(subparsers) -> None:
+    """Set up market data subcommand group for live market queries."""
+    market_parser = subparsers.add_parser("market", help="Live market data (prices, OHLCV, funding, orderbook)")
+    market_subparsers = market_parser.add_subparsers(dest="market_command", help="Market data commands")
+
+    # market price
+    price_parser = market_subparsers.add_parser("price", help="Get current price")
+    price_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    price_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # market ohlcv
+    ohlcv_parser = market_subparsers.add_parser("ohlcv", help="Get OHLCV candlestick data")
+    ohlcv_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    ohlcv_parser.add_argument("--tf", default="15", help="Timeframe interval (e.g., 1, 5, 15, 60, 240, D). Default: 15")
+    ohlcv_parser.add_argument("--limit", type=int, default=100, help="Number of candles (default: 100)")
+    ohlcv_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # market funding
+    funding_parser = market_subparsers.add_parser("funding", help="Get funding rate")
+    funding_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    funding_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # market oi
+    oi_parser = market_subparsers.add_parser("oi", help="Get open interest")
+    oi_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    oi_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # market orderbook
+    ob_parser = market_subparsers.add_parser("orderbook", help="Get orderbook depth")
+    ob_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    ob_parser.add_argument("--depth", type=int, default=25, help="Depth per side (default: 25)")
+    ob_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # market instruments
+    inst_parser = market_subparsers.add_parser("instruments", help="Get instrument info")
+    inst_parser.add_argument("--symbol", help="Specific symbol (omit for all)")
+    inst_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+
+def _setup_health_subcommands(subparsers) -> None:
+    """Set up health & diagnostics subcommand group."""
+    health_parser = subparsers.add_parser("health", help="System health & diagnostics")
+    health_subparsers = health_parser.add_subparsers(dest="health_command", help="Health commands")
+
+    # health check
+    check_parser = health_subparsers.add_parser("check", help="Comprehensive exchange health check")
+    check_parser.add_argument("--symbol", default="BTCUSDT", help="Symbol for testing (default: BTCUSDT)")
+    check_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # health connection
+    conn_parser = health_subparsers.add_parser("connection", help="Test exchange connectivity")
+    conn_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # health rate-limit
+    rl_parser = health_subparsers.add_parser("rate-limit", help="Check rate limit status")
+    rl_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # health ws
+    ws_parser = health_subparsers.add_parser("ws", help="WebSocket connection status")
+    ws_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # health environment
+    env_parser = health_subparsers.add_parser("environment", help="Show API environment configuration")
+    env_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")

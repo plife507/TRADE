@@ -15,7 +15,7 @@ Features:
 import threading
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
 from .exchange_manager import ExchangeManager, Position
@@ -149,7 +149,7 @@ class PositionManager:
         # Daily tracking
         self._daily_realized_pnl = 0.0
         self._daily_trades = 0
-        self._last_reset_date = datetime.now().date()
+        self._last_reset_date = datetime.now(timezone.utc).replace(tzinfo=None).date()
 
         # Thread safety for trade recording
         self._trade_lock = threading.Lock()
@@ -190,7 +190,7 @@ class PositionManager:
     
     def _check_daily_reset(self):
         """Reset daily counters at midnight."""
-        today = datetime.now().date()
+        today = datetime.now(timezone.utc).replace(tzinfo=None).date()
         if today > self._last_reset_date:
             self._daily_realized_pnl = 0.0
             self._daily_trades = 0
@@ -265,7 +265,7 @@ class PositionManager:
             available = balance_info.get("available", 0)
         
         return PortfolioSnapshot(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
             balance=balance,
             available=available,
             total_exposure=total_exposure,
@@ -287,7 +287,7 @@ class PositionManager:
         self._last_rest_sync = time.time()
         
         return PortfolioSnapshot(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
             balance=balance_info.get("total", 0),
             available=balance_info.get("available", 0),
             total_exposure=total_exposure,
@@ -379,7 +379,7 @@ class PositionManager:
             self._check_daily_reset()
 
             trade = TradeRecord(
-                timestamp=datetime.now(),
+                timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
                 symbol=symbol,
                 side=side.upper(),
                 size_usdt=size_usdt,
@@ -519,7 +519,7 @@ class PositionManager:
         rest_snapshot = self._get_snapshot_from_rest()
         
         result = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "rest_positions": rest_snapshot.position_count,
             "rest_balance": rest_snapshot.balance,
             "ws_available": ws_snapshot is not None,

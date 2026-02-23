@@ -23,56 +23,45 @@ The current CLI has 125+ commands across 12+ files. This redesign makes it faste
 | G1: Foundation | `symbol_memory.py`, symbol helpers, running plays helper | DONE |
 | G2: App Entrance | Deferred connection, offline/connected menus, PANIC button | DONE (pyright clean, manual test pending) |
 | G3: Symbol Quick-Pick | Replaced all `get_input("Symbol...")` across 4 menu files | DONE |
+| G4: Orders Menu | Unified `_place_order()` — type/side/symbol/amount/conditionals/TP-SL/preview/confirm | DONE (2026-02-22 audit confirmed) |
+| G5: Data Menu | Top-level delegates to 4 sub-menus, data_env state, all 24 ops accessible | DONE (2026-02-22 audit confirmed) |
 | G6: Context-Aware Header | Offline indicator, running plays panel, LIVE banner | DONE (pyright clean, manual test pending) |
 | G7: Forge/Backtest Cross-Links | Shared audits module, cross-navigation | DONE (pyright clean, manual test pending) |
 | G9: Plays Menu | 9-option plays lifecycle menu, wired to connected main menu | DONE (pyright clean, manual test pending) |
 
 ---
 
-## Open Work
+## Gate 8: Final Validation (In Progress)
 
-### Gate 4: Orders Menu Restructure
+**Automated checks (DONE 2026-02-22):**
+- [x] `python trade_cli.py validate quick` — ALL 5 GATES PASSED (74.1s)
+- [x] All new subcommand groups respond to `--help`
+- [x] `pyright` — 0 errors across all 8 modified files
 
-Build unified `_place_order()` function:
-- [ ] Step 1: Order type selector (Market / Limit / Stop Market / Stop Limit)
-- [ ] Step 2: Side (Buy / Sell)
-- [ ] Step 3: Symbol via `get_symbol_input()`
-- [ ] Step 4: USD amount via `get_float_input()`
-- [ ] Step 5: Conditional fields (price, TIF, reduce-only, trigger)
-- [ ] Step 6: Optional TP/SL (market orders only, blank to skip)
-- [ ] Step 7: Preview via `print_order_preview()`
-- [ ] Step 8: Confirm + execute via existing tool functions
-- [ ] Route to: `market_buy_tool`, `market_sell_tool`, `limit_buy_tool`, etc.
-
-Old sub-menu functions already deleted. Wire option 1 to `_place_order()`.
-
-### Gate 5: Data Menu Reorganization
-
-Sub-menu files already created (`data_sync_menu.py`, `data_info_menu.py`, `data_query_menu.py`, `data_maintenance_menu.py`).
-
-Remaining:
-- [ ] Rewrite `data_menu.py` top level to delegate to sub-menus
-- [ ] `data_env` state passed to all sub-menus
-- [ ] All 24 original operations still accessible
-- [ ] `pyright` on all data menu files = 0 errors
-
-### Gate 8: Final Validation
-
-- [ ] `python trade_cli.py validate quick` passes
-- [ ] Manual: app starts -> offline menu -> backtest works without connection
-- [ ] Manual: "Connect to Exchange" (demo) -> full menu appears
-- [ ] Manual: place market order via unified form
-- [ ] Manual: symbol quick-picks appear after first use
-- [ ] Manual: data sub-menus accessible, all 24 operations reachable
-- [ ] Manual: cross-links between Forge and Backtest work
+**Manual checks (pending):** See Phase 7 in `docs/TODO.md` for full checklist.
 
 ---
 
-## Related: P13 CLI Agent Autonomy
+## Unified with P13: CLI Agent Autonomy
 
-A separate effort (P13 in `docs/TODO.md`) adds non-interactive CLI flag coverage for
-autonomous agent operation. While P4 improves the interactive menu, P13 adds subcommand
-flags for the same tool functions. Both efforts share the same `src/tools/` layer.
+P4 (interactive menus) and P13 (agent CLI flags) merged into **P4+P13: Unified CLI**.
+Both paths share the same `src/tools/` layer. Implementation phases 1-6 completed 2026-02-22.
 
-See `docs/brainstorm/CLI_AGENT_AUTONOMY.md` for the full audit: 110+ tool functions,
-18 identified gaps, concurrent session architecture, and implementation plan.
+**Result:** 50+ tool functions wired into 11 subcommand groups:
+
+| Group | Subcommands | File |
+|-------|-------------|------|
+| backtest | run, preflight, indicators, data-fix, list, normalize, normalize-batch | `subcommands/backtest.py` |
+| debug | math-parity, snapshot-plumbing, determinism, metrics | `subcommands/debug.py` |
+| play | run, status, stop, watch, logs, pause, resume | `subcommands/play.py` |
+| validate | quick, standard, full, real, module, pre-live, exchange | (inline in `trade_cli.py`) |
+| account | balance, exposure, info, history, pnl, transactions, collateral | `subcommands/trading.py` |
+| position | list, close, detail, set-tp, set-sl, set-tpsl, trailing, partial-close, margin, risk-limit | `subcommands/trading.py` |
+| panic | (single command) | `subcommands/trading.py` |
+| order | buy, sell, list, amend, cancel, cancel-all, leverage, batch | `subcommands/order.py` |
+| data | sync, info, symbols, status, summary, query, heal, vacuum, delete | `subcommands/data.py` |
+| market | price, ohlcv, funding, oi, orderbook, instruments | `subcommands/market.py` |
+| health | check, connection, rate-limit, ws, environment | `subcommands/health.py` |
+
+See `docs/CLI_ARCHITECTURE_AUDIT.md` for the original architecture audit (103 tools cataloged).
+See `docs/brainstorm/CLI_AGENT_AUTONOMY.md` for the original gap audit.

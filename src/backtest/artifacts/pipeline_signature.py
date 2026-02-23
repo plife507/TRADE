@@ -80,7 +80,7 @@ class PipelineSignature:
     
     def write_json(self, path: Path) -> None:
         """Write to JSON file."""
-        path.write_text(self.to_json())
+        path.write_text(self.to_json(), encoding="utf-8", newline="\n")
     
     def validate(self) -> list[str]:
         """

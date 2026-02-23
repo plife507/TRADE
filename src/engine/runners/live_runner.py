@@ -26,7 +26,6 @@ import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from ..play_engine import PlayEngine
@@ -85,7 +84,7 @@ class LiveRunnerStats:
     def duration_seconds(self) -> float:
         if self.started_at is None:
             return 0.0
-        end = self.stopped_at or datetime.now()
+        end = self.stopped_at or datetime.now(timezone.utc).replace(tzinfo=None)
         return (end - self.started_at).total_seconds()
 
     def to_dict(self) -> dict:
@@ -181,7 +180,8 @@ class LiveRunner:
         self._notifier = None
 
         # G17.3: Pause file-based IPC
-        self._pause_dir = Path.home() / ".trade" / "instances"
+        from ...config.constants import INSTANCES_DIR
+        self._pause_dir = INSTANCES_DIR
         self._instance_id: str = ""  # Set by EngineManager after construction
 
         # Multi-timeframe routing
@@ -246,7 +246,7 @@ class LiveRunner:
     def is_paused(self) -> bool:
         """G17.3: Check if this runner is paused via file-based IPC.
 
-        Checks for {instance_id}.pause file in ~/.trade/instances/.
+        Checks for {instance_id}.pause file in data/runtime/instances/.
         The instance_id is set by EngineManager after construction.
         """
         if not self._instance_id or not self._pause_dir.exists():
@@ -264,7 +264,7 @@ class LiveRunner:
             logger.warning(f"Cannot start: runner is {self._state.value}")
             return
 
-        self._stats = LiveRunnerStats(started_at=datetime.now())
+        self._stats = LiveRunnerStats(started_at=datetime.now(timezone.utc).replace(tzinfo=None))
         self._stop_event.clear()
         self._reconnect_attempts = 0
 
@@ -370,7 +370,7 @@ class LiveRunner:
         await self._disconnect()
 
         self._transition_state(RunnerState.STOPPED)
-        self._stats.stopped_at = datetime.now()
+        self._stats.stopped_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         logger.info(
             f"LiveRunner stopped: {self._stats.bars_processed} bars, "
@@ -494,7 +494,7 @@ class LiveRunner:
             # immediate retry on next candle instead of waiting 5 minutes.
             return
 
-        self._last_reconcile_ts = datetime.now()
+        self._last_reconcile_ts = datetime.now(timezone.utc).replace(tzinfo=None)
 
     async def _maybe_reconcile_positions(self) -> None:
         """
@@ -503,7 +503,7 @@ class LiveRunner:
         Syncs positions with exchange at regular intervals to catch any
         missed fills or out-of-sync state from WebSocket gaps.
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Skip if recently reconciled
         if self._last_reconcile_ts:
@@ -842,7 +842,7 @@ class LiveRunner:
 
         if signal is not None:
             self._stats.signals_generated += 1
-            self._stats.last_signal_ts = datetime.now()
+            self._stats.last_signal_ts = datetime.now(timezone.utc).replace(tzinfo=None)
 
             logger.info(
                 f"Signal generated: {signal.direction} {self._engine.symbol} "

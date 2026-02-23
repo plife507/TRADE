@@ -100,9 +100,50 @@ from src.cli.subcommands import (
     handle_play_stop,
     handle_account_balance,
     handle_account_exposure,
+    handle_account_info,
+    handle_account_history,
+    handle_account_pnl,
+    handle_account_transactions,
+    handle_account_collateral,
     handle_position_list,
     handle_position_close,
+    handle_position_set_tp,
+    handle_position_set_sl,
+    handle_position_set_tpsl,
+    handle_position_trailing,
+    handle_position_partial_close,
+    handle_position_margin,
+    handle_position_risk_limit,
+    handle_position_detail,
     handle_panic,
+    handle_order_buy,
+    handle_order_sell,
+    handle_order_list,
+    handle_order_amend,
+    handle_order_cancel,
+    handle_order_cancel_all,
+    handle_order_leverage,
+    handle_order_batch,
+    handle_data_sync,
+    handle_data_info,
+    handle_data_symbols,
+    handle_data_status,
+    handle_data_summary,
+    handle_data_query,
+    handle_data_heal,
+    handle_data_vacuum,
+    handle_data_delete,
+    handle_market_price,
+    handle_market_ohlcv,
+    handle_market_funding,
+    handle_market_oi,
+    handle_market_orderbook,
+    handle_market_instruments,
+    handle_health_check,
+    handle_health_connection,
+    handle_health_rate_limit,
+    handle_health_ws,
+    handle_health_environment,
 )
 
 # Argparse setup (extracted to src/cli/argparser.py)
@@ -814,8 +855,18 @@ def main():
             sys.exit(handle_account_balance(args))
         elif args.account_command == "exposure":
             sys.exit(handle_account_exposure(args))
+        elif args.account_command == "info":
+            sys.exit(handle_account_info(args))
+        elif args.account_command == "history":
+            sys.exit(handle_account_history(args))
+        elif args.account_command == "pnl":
+            sys.exit(handle_account_pnl(args))
+        elif args.account_command == "transactions":
+            sys.exit(handle_account_transactions(args))
+        elif args.account_command == "collateral":
+            sys.exit(handle_account_collateral(args))
         else:
-            console.print("[dim]Usage: account [balance|exposure][/]")
+            console.print("[yellow]Usage: trade_cli.py account {balance|exposure|info|history|pnl|transactions|collateral} --help[/]")
             sys.exit(1)
 
     # ===== POSITION SUBCOMMANDS =====
@@ -824,13 +875,109 @@ def main():
             sys.exit(handle_position_list(args))
         elif args.position_command == "close":
             sys.exit(handle_position_close(args))
+        elif args.position_command == "detail":
+            sys.exit(handle_position_detail(args))
+        elif args.position_command == "set-tp":
+            sys.exit(handle_position_set_tp(args))
+        elif args.position_command == "set-sl":
+            sys.exit(handle_position_set_sl(args))
+        elif args.position_command == "set-tpsl":
+            sys.exit(handle_position_set_tpsl(args))
+        elif args.position_command == "trailing":
+            sys.exit(handle_position_trailing(args))
+        elif args.position_command == "partial-close":
+            sys.exit(handle_position_partial_close(args))
+        elif args.position_command == "margin":
+            sys.exit(handle_position_margin(args))
+        elif args.position_command == "risk-limit":
+            sys.exit(handle_position_risk_limit(args))
         else:
-            console.print("[dim]Usage: position [list|close][/]")
+            console.print("[yellow]Usage: trade_cli.py position {list|close|detail|set-tp|set-sl|set-tpsl|trailing|partial-close|margin|risk-limit} --help[/]")
             sys.exit(1)
 
     # ===== PANIC SUBCOMMAND =====
     if args.command == "panic":
         sys.exit(handle_panic(args))
+
+    # ===== DATA SUBCOMMANDS =====
+    if args.command == "data":
+        if args.data_command == "sync":
+            sys.exit(handle_data_sync(args))
+        elif args.data_command == "info":
+            sys.exit(handle_data_info(args))
+        elif args.data_command == "symbols":
+            sys.exit(handle_data_symbols(args))
+        elif args.data_command == "status":
+            sys.exit(handle_data_status(args))
+        elif args.data_command == "summary":
+            sys.exit(handle_data_summary(args))
+        elif args.data_command == "query":
+            sys.exit(handle_data_query(args))
+        elif args.data_command == "heal":
+            sys.exit(handle_data_heal(args))
+        elif args.data_command == "vacuum":
+            sys.exit(handle_data_vacuum(args))
+        elif args.data_command == "delete":
+            sys.exit(handle_data_delete(args))
+        else:
+            console.print("[yellow]Usage: trade_cli.py data {sync|info|symbols|status|summary|query|heal|vacuum|delete} --help[/]")
+            sys.exit(1)
+
+    # ===== MARKET SUBCOMMANDS =====
+    if args.command == "market":
+        if args.market_command == "price":
+            sys.exit(handle_market_price(args))
+        elif args.market_command == "ohlcv":
+            sys.exit(handle_market_ohlcv(args))
+        elif args.market_command == "funding":
+            sys.exit(handle_market_funding(args))
+        elif args.market_command == "oi":
+            sys.exit(handle_market_oi(args))
+        elif args.market_command == "orderbook":
+            sys.exit(handle_market_orderbook(args))
+        elif args.market_command == "instruments":
+            sys.exit(handle_market_instruments(args))
+        else:
+            console.print("[yellow]Usage: trade_cli.py market {price|ohlcv|funding|oi|orderbook|instruments} --help[/]")
+            sys.exit(1)
+
+    # ===== ORDER SUBCOMMANDS =====
+    if args.command == "order":
+        if args.order_command == "buy":
+            sys.exit(handle_order_buy(args))
+        elif args.order_command == "sell":
+            sys.exit(handle_order_sell(args))
+        elif args.order_command == "list":
+            sys.exit(handle_order_list(args))
+        elif args.order_command == "amend":
+            sys.exit(handle_order_amend(args))
+        elif args.order_command == "cancel":
+            sys.exit(handle_order_cancel(args))
+        elif args.order_command == "cancel-all":
+            sys.exit(handle_order_cancel_all(args))
+        elif args.order_command == "leverage":
+            sys.exit(handle_order_leverage(args))
+        elif args.order_command == "batch":
+            sys.exit(handle_order_batch(args))
+        else:
+            console.print("[yellow]Usage: trade_cli.py order {buy|sell|list|amend|cancel|cancel-all|leverage|batch} --help[/]")
+            sys.exit(1)
+
+    # ===== HEALTH SUBCOMMANDS =====
+    if args.command == "health":
+        if args.health_command == "check":
+            sys.exit(handle_health_check(args))
+        elif args.health_command == "connection":
+            sys.exit(handle_health_connection(args))
+        elif args.health_command == "rate-limit":
+            sys.exit(handle_health_rate_limit(args))
+        elif args.health_command == "ws":
+            sys.exit(handle_health_ws(args))
+        elif args.health_command == "environment":
+            sys.exit(handle_health_environment(args))
+        else:
+            console.print("[yellow]Usage: trade_cli.py health {check|connection|rate-limit|ws|environment} --help[/]")
+            sys.exit(1)
 
     # ===== INTERACTIVE MODE (default) - no connection at startup =====
     cli = TradeCLI()

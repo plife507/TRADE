@@ -67,10 +67,11 @@ class FileStateStore:
         Initialize file state store.
 
         Args:
-            state_dir: Directory for state files (default: .trade/state)
+            state_dir: Directory for state files (default: data/runtime/state)
         """
         if state_dir is None:
-            state_dir = Path.home() / ".trade" / "state"
+            from ...config.constants import STATE_DIR
+            state_dir = STATE_DIR
         self._state_dir = Path(state_dir)
         self._state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -90,6 +91,7 @@ class FileStateStore:
         # H1: Atomic write -- temp file in same dir, then os.replace()
         fd = tempfile.NamedTemporaryFile(
             mode="w",
+            encoding="utf-8",
             newline="\n",
             dir=self._state_dir,
             suffix=".tmp",
@@ -118,7 +120,7 @@ class FileStateStore:
             return None
 
         try:
-            with open(state_file) as f:
+            with open(state_file, encoding="utf-8") as f:
                 state_dict = json.load(f)
             return self._dict_to_state(state_dict)
         except Exception as e:
