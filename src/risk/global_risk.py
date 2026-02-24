@@ -26,7 +26,7 @@ from ..data.realtime_state import (
     AccountMetrics,
     PositionData,
 )
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
 class RiskVeto(Enum):
@@ -155,7 +155,7 @@ class GlobalRiskView:
         """
         self.state = realtime_state or get_realtime_state()
         self.config = config or get_config()
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
         
         # Risk limits from config
         self.limits = RiskLimits.from_config(self.config)

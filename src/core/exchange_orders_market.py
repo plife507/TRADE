@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING
 
 from ..exchanges.bybit_client import BybitAPIError
 from . import exchange_instruments as inst
+from ..utils.logger import get_module_logger
+
+logger = get_module_logger(__name__)
 
 
 def _generate_order_link_id(prefix: str, symbol: str) -> str:
@@ -80,8 +83,7 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float, reduc
         # Use actual fill price from response, fallback to quote price
         fill_price = _extract_fill_price(result, quote_price)
 
-        manager.logger.trade("ORDER_FILLED", symbol=symbol, side="BUY",
-                            size=usd_amount, price=fill_price, qty=qty)
+        logger.info("[ORDER_FILLED] symbol=%s side=BUY size=$%.2f price=%.4f qty=%s", symbol, usd_amount, fill_price, qty)
 
         return OrderResult(
             success=True, order_id=result.get("orderId"), symbol=symbol,
@@ -124,8 +126,7 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float, redu
         # Use actual fill price from response, fallback to quote price
         fill_price = _extract_fill_price(result, quote_price)
 
-        manager.logger.trade("ORDER_FILLED", symbol=symbol, side="SELL",
-                            size=usd_amount, price=fill_price, qty=qty)
+        logger.info("[ORDER_FILLED] symbol=%s side=SELL size=$%.2f price=%.4f qty=%s", symbol, usd_amount, fill_price, qty)
 
         return OrderResult(
             success=True, order_id=result.get("orderId"), symbol=symbol,
@@ -208,9 +209,7 @@ def market_buy_with_tpsl(
         # Use actual fill price from response, fallback to quote price
         fill_price = _extract_fill_price(result, quote_price)
 
-        manager.logger.trade("ORDER_FILLED", symbol=symbol, side="BUY",
-                            size=usd_amount, price=fill_price, qty=qty,
-                            tp=take_profit, sl=stop_loss)
+        logger.info("[ORDER_FILLED] symbol=%s side=BUY size=$%.2f price=%.4f qty=%s tp=%s sl=%s", symbol, usd_amount, fill_price, qty, take_profit, stop_loss)
 
         return OrderResult(
             success=True, order_id=result.get("orderId"),
@@ -268,9 +267,7 @@ def market_sell_with_tpsl(
         # Use actual fill price from response, fallback to quote price
         fill_price = _extract_fill_price(result, quote_price)
 
-        manager.logger.trade("ORDER_FILLED", symbol=symbol, side="SELL",
-                            size=usd_amount, price=fill_price, qty=qty,
-                            tp=take_profit, sl=stop_loss)
+        logger.info("[ORDER_FILLED] symbol=%s side=SELL size=$%.2f price=%.4f qty=%s tp=%s sl=%s", symbol, usd_amount, fill_price, qty, take_profit, stop_loss)
 
         return OrderResult(
             success=True, order_id=result.get("orderId"),

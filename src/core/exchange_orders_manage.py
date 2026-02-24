@@ -13,7 +13,10 @@ Handles:
 from typing import Any, TYPE_CHECKING
 
 from ..utils.helpers import safe_float
+from ..utils.logger import get_module_logger
 from ..utils.time_range import TimeRange
+
+logger = get_module_logger(__name__)
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager, OrderResult, Order
@@ -211,9 +214,10 @@ def close_position(
                     f"Position closed but failed to cancel conditionals for {symbol}: {cancel_err}"
                 )
 
-        manager.logger.trade("POSITION_CLOSED", symbol=symbol, side=close_side,
-                            size=position.size_usdt, pnl=position.unrealized_pnl,
-                            cancelled_conditional_orders=len(cancelled_orders))
+        logger.info(
+            "[POSITION_CLOSED] symbol=%s side=%s size=$%.2f pnl=$%.2f cancelled_conditional_orders=%d",
+            symbol, close_side, position.size_usdt, position.unrealized_pnl, len(cancelled_orders),
+        )
 
         ws.remove_symbol_from_websocket(manager, symbol)
 

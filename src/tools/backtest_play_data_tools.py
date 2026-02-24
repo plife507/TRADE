@@ -24,10 +24,10 @@ from ..config.constants import (
 )
 from ..backtest.play import load_play, list_plays
 from ..backtest.execution_validation import validate_play_full
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 # =============================================================================

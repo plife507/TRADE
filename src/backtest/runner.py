@@ -73,6 +73,9 @@ from .execution_validation import (
     compute_play_hash,
 )
 from .logging import RunLogger, set_run_logger
+from src.utils.logger import get_module_logger
+
+logger = get_module_logger(__name__)
 
 if TYPE_CHECKING:
     from ..forge.validation.synthetic_provider import SyntheticDataProvider
@@ -172,9 +175,9 @@ def _setup_synthetic_provider(
     for tf in play.feature_registry.get_all_tfs():
         required_tfs.add(tf)
 
-    print(f"[SYNTHETIC] Auto-generating data ({synthetic_bars} bars from indicator/structure warmup)")
-    print(f"[SYNTHETIC] Pattern: {play.validation.pattern}, Bars: {synthetic_bars}")
-    print(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
+    logger.info(f"Synthetic: auto-generating data ({synthetic_bars} bars from indicator/structure warmup)")
+    logger.info(f"Synthetic: pattern={play.validation.pattern}, bars={synthetic_bars}")
+    logger.info(f"Synthetic: required TFs={sorted(required_tfs)}")
 
     # Generate synthetic candles
     candles = generate_synthetic_candles(
@@ -192,8 +195,8 @@ def _setup_synthetic_provider(
     config.window_end = data_end
     config.skip_preflight = True  # No DB data to validate
 
-    print(f"[SYNTHETIC] Data range: {config.window_start} to {config.window_end}")
-    print(f"[SYNTHETIC] Data hash: {candles.data_hash}")
+    logger.info(f"Synthetic: data range={config.window_start} to {config.window_end}")
+    logger.info(f"Synthetic: data hash={candles.data_hash}")
 
     return new_provider
 
@@ -358,8 +361,8 @@ def _run_preflight_gate(
     result = ctx.result
 
     if config.skip_preflight:
-        print("\n[WARN] --skip-preflight bypasses ALL data validation!")
-        print("[WARN] Use only for testing. Production runs MUST use preflight gate.")
+        logger.warning("--skip-preflight bypasses ALL data validation!")
+        logger.warning("Use only for testing. Production runs MUST use preflight gate.")
         return None
 
     if not config.data_loader:
@@ -368,7 +371,7 @@ def _run_preflight_gate(
     assert config.window_start is not None, "window_start must be set before preflight gate"
     assert config.window_end is not None, "window_end must be set before preflight gate"
 
-    print("\n[PREFLIGHT] Running Data Preflight Gate...")
+    logger.info("Running Data Preflight Gate...")
 
     preflight_report = run_preflight_gate(
         play=play,
@@ -415,10 +418,10 @@ def _run_indicator_gate(play: Play, result: "RunnerResult") -> None:
     has_features = len(list(registry.all_features())) > 0
 
     if not has_features:
-        print("\n[INDICATOR GATE] Skipped - no features declared")
+        logger.info("Indicator gate: skipped — no features declared")
         return
 
-    print("\n[INDICATOR GATE] Validating Indicator Requirements...")
+    logger.info("Indicator gate: validating indicator requirements...")
 
     # Build available keys from feature registry
     available_keys_by_role: dict[str, set] = {}
@@ -437,13 +440,13 @@ def _run_indicator_gate(play: Play, result: "RunnerResult") -> None:
         available_keys_by_role=available_keys_by_role,
     )
 
-    # Print result
+    # Log result
     if indicator_gate_result.passed:
-        print("  [PASS] All required indicators are declared in features")
+        logger.info("Indicator gate: PASS — all required indicators declared")
     elif indicator_gate_result.status == IndicatorGateStatus.SKIPPED:
-        print("  [SKIP] No features declared in Play")
+        logger.info("Indicator gate: SKIP — no features declared in Play")
     else:
-        print(indicator_gate_result.format_error())
+        logger.error(indicator_gate_result.format_error())
         result.gate_failed = "indicator_requirements"
         result.error_message = indicator_gate_result.error_message
         raise GateFailure(result.error_message)
@@ -462,9 +465,9 @@ def _get_warmup_config(
     if result.preflight_report and result.preflight_report.computed_warmup_requirements:
         warmup_by_role = result.preflight_report.computed_warmup_requirements.warmup_by_role
         delay_by_role = result.preflight_report.computed_warmup_requirements.delay_by_role
-        print(f"[WARMUP] Using Preflight warmup: {warmup_by_role}")
+        logger.info(f"Warmup: using preflight warmup={warmup_by_role}")
         if delay_by_role and any(v > 0 for v in delay_by_role.values()):
-            print(f"[DELAY] Using Preflight delay: {delay_by_role}")
+            logger.info(f"Warmup: using preflight delay={delay_by_role}")
         return warmup_by_role, delay_by_role
 
     # Preflight skipped or no warmup computed
@@ -475,7 +478,7 @@ def _get_warmup_config(
         )
 
     # For skip_preflight mode (testing only)
-    print("[WARN] Preflight skipped - computing warmup directly (testing mode only)")
+    logger.warning("Preflight skipped — computing warmup directly (testing mode only)")
     warmup_reqs = compute_warmup_requirements(play)
     return warmup_reqs.warmup_by_role, warmup_reqs.delay_by_role
 
@@ -494,7 +497,7 @@ def _execute_backtest(
 
     from .engine_factory import create_engine_from_play, run_engine_with_play
 
-    print("\n[RUN] Running Backtest...")
+    logger.info("Running backtest...")
 
     # Create engine and run
     # use_synthetic=True only when a synthetic_provider was explicitly set up
@@ -508,7 +511,14 @@ def _execute_backtest(
         use_synthetic=(synthetic_provider is not None),
     )
     engine.set_play_hash(ctx.play_hash)
-    engine_result = run_engine_with_play(engine, ctx.play)
+
+    from src.utils.logging_config import bind_engine_context, clear_engine_context
+    _symbol = ctx.play.symbol_universe[0] if ctx.play.symbol_universe else "UNKNOWN"
+    bind_engine_context(play_hash=ctx.play_hash, symbol=_symbol, mode="backtest")
+    try:
+        engine_result = run_engine_with_play(engine, ctx.play)
+    finally:
+        clear_engine_context()
 
     # Extract trades and equity
     trades: list[dict[str, Any]] = []
@@ -735,7 +745,7 @@ def _run_artifact_validation(ctx: _RunContext) -> None:
     if ctx.config.skip_artifact_validation:
         return
 
-    print("\n[ARTIFACTS] Running Artifact Export Gate...")
+    logger.info("Running Artifact Export Gate...")
 
     artifact_validation = validate_artifacts(ctx.artifact_path)
     ctx.result.artifact_validation = artifact_validation
@@ -825,12 +835,12 @@ def _emit_snapshots(ctx: _RunContext) -> None:
             high_tf_feature_specs=high_tf_specs,
         )
 
-        print(f"\n[SNAPSHOTS] Emitted to {snapshots_dir}")
+        logger.info(f"Snapshots emitted to {snapshots_dir}")
 
     except Exception as e:
         import traceback
-        print(f"\n[SNAPSHOTS] Failed to emit snapshots: {e}")
-        print(f"[SNAPSHOTS] Traceback: {traceback.format_exc()}")
+        logger.error(f"Failed to emit snapshots: {e}")
+        logger.debug(f"Snapshots traceback: {traceback.format_exc()}")
 
 
 @dataclass
@@ -1022,8 +1032,7 @@ def run_backtest_with_gates(
         _run_artifact_validation(ctx)
 
         # Phase 14b: Log artifact path at INFO
-        import logging
-        logging.getLogger("trade").info(f"Artifacts written to: {ctx.artifact_path}")
+        logger.info(f"Artifacts written to: {ctx.artifact_path}")
 
         # Phase 15: Emit snapshots (if requested)
         _emit_snapshots(ctx)
@@ -1056,16 +1065,16 @@ def run_backtest_with_gates(
         real_engine = getattr(ctx.engine, 'engine', ctx.engine)
         if hasattr(real_engine, 'config') and hasattr(real_engine.config, 'risk_mode'):
             if real_engine.config.risk_mode == "none":
-                print("\n[WARN] Risk limits disabled (risk_mode=none)")
-                print("[WARN] Set risk_mode='rules' for production risk management.")
+                logger.warning("Risk limits disabled (risk_mode=none)")
+                logger.warning("Set risk_mode='rules' for production risk management.")
         summary.print_summary()
 
         return result
 
     except GateFailure:
         # Gate failure - already handled
-        print(f"\n[FAILED] Gate Failed: {result.gate_failed}")
-        print(f"   {result.error_message}")
+        logger.error(f"Gate failed: {result.gate_failed}")
+        logger.error(f"  {result.error_message}")
         _finalize_logger_on_error(ctx, "gate_failed")
         return result
 
@@ -1073,8 +1082,8 @@ def run_backtest_with_gates(
         # Unexpected error
         import traceback
         result.error_message = str(e)
-        print(f"\n[ERROR] Error: {e}")
-        traceback.print_exc()
+        logger.error(f"Backtest error: {e}")
+        logger.debug(traceback.format_exc())
         _finalize_logger_on_error(ctx, "error")
         return result
 

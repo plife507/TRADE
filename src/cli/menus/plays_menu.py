@@ -498,6 +498,7 @@ def _run_play(cli: "TradeCLI") -> None:
     # Swap console StreamHandlers on "trade" logger to dashboard handler.
     # Don't force setLevel(DEBUG) — the handler captures at its own level,
     # and forcing DEBUG globally causes noise from background threads.
+    # With structlog, console handler lives on root (not trade), so suppress both.
     trade_logger = logging.getLogger("trade")
     console_handlers = [
         h for h in trade_logger.handlers
@@ -507,6 +508,15 @@ def _run_play(cli: "TradeCLI") -> None:
     for h in console_handlers:
         trade_logger.removeHandler(h)
     trade_logger.addHandler(dash_handler)
+
+    # Suppress root console handler during dashboard (structlog puts it on root)
+    root_logger = logging.getLogger()
+    root_console_handlers = [
+        h for h in root_logger.handlers
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+    ]
+    for h in root_console_handlers:
+        root_logger.removeHandler(h)
 
     # Order tracker for the Orders tab
     order_tracker = OrderTracker(max_events=50)
@@ -576,11 +586,13 @@ def _run_play(cli: "TradeCLI") -> None:
     finally:
         stop_event.set()  # Signal engine thread to shut down
 
-    # Restore logger BEFORE join so background daemon threads
+    # Restore loggers BEFORE join so background daemon threads
     # (e.g. RealtimeBootstrap._monitor_loop) don't leak DEBUG to console.
     trade_logger.removeHandler(dash_handler)
     for h in console_handlers:
         trade_logger.addHandler(h)
+    for h in root_console_handlers:
+        root_logger.addHandler(h)
 
     # Wait for engine thread to finish (it handles its own stop on its loop)
     engine_thread.join(timeout=20.0)

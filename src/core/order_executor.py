@@ -1,15 +1,15 @@
 """
 Order executor - handles trade execution through risk checks.
 
-Flow: Signal → RiskManager.check() → ExchangeManager
+Flow: Signal -> RiskManager.check() -> ExchangeManager
 
 Now supports WebSocket-fed order and execution tracking for faster feedback.
 
 SAFETY GUARD RAILS:
 - Validates trading mode consistency before executing any order
 - Enforces strict mode/API mapping:
-  - PAPER mode → DEMO API only (BYBIT_USE_DEMO=true)
-  - REAL mode → LIVE API only (BYBIT_USE_DEMO=false)
+  - PAPER mode -> DEMO API only (BYBIT_USE_DEMO=true)
+  - REAL mode -> LIVE API only (BYBIT_USE_DEMO=false)
 - Blocks any other combination as invalid configuration
 """
 
@@ -24,7 +24,7 @@ from .exchange_manager import ExchangeManager, OrderResult
 from .risk_manager import RiskManager, Signal, RiskCheckResult
 from .position_manager import PositionManager
 from ..config.config import get_config
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
 @dataclass
@@ -38,11 +38,11 @@ class ExecutionResult:
     error: str | None = None
     timestamp: datetime | None = None
     source: str = "rest"  # "rest" or "websocket"
-    
+
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
-    
+
     def to_dict(self) -> dict:
         return {
             "success": self.success,
@@ -77,19 +77,19 @@ class PendingOrder:
 class OrderExecutor:
     """
     Order execution with integrated risk management and WebSocket support.
-    
+
     All trades flow through:
     1. Risk manager check
     2. Size adjustment if needed
     3. Exchange manager execution
     4. Position manager recording
-    
+
     WebSocket Integration:
     - Tracks pending orders
     - Receives order updates from RealtimeState
     - Provides faster execution feedback via callbacks
     """
-    
+
     def __init__(
         self,
         exchange_manager: ExchangeManager,
@@ -99,7 +99,7 @@ class OrderExecutor:
     ):
         """
         Initialize order executor.
-        
+
         Args:
             exchange_manager: ExchangeManager instance
             risk_manager: RiskManager instance
@@ -109,8 +109,8 @@ class OrderExecutor:
         self.exchange = exchange_manager
         self.risk = risk_manager
         self.position = position_manager
-        self.logger = get_logger()
-        
+        self.logger = get_module_logger(__name__)
+
         # WebSocket integration
         self._use_ws_feedback = use_ws_feedback
         self._realtime_state = None
@@ -127,13 +127,13 @@ class OrderExecutor:
         # Callbacks
         self._execution_callbacks: list[Callable[[ExecutionResult], None]] = []
         self._callback_lock = threading.Lock()  # Protects callback list access
-        
+
         # Setup WebSocket callbacks if enabled
         if use_ws_feedback:
             self._setup_ws_callbacks()
-    
+
     # ==================== WebSocket Integration ====================
-    
+
     @property
     def realtime_state(self):
         """Get RealtimeState instance (lazy import)."""
@@ -144,20 +144,20 @@ class OrderExecutor:
             except ImportError:
                 self._realtime_state = None
         return self._realtime_state
-    
+
     def _setup_ws_callbacks(self):
         """Setup WebSocket callbacks for order/execution updates."""
         if not self.realtime_state:
             return
-        
+
         # Register for order updates
         self.realtime_state.on_order_update(self._on_order_update)
-        
+
         # Register for execution updates
         self.realtime_state.on_execution(self._on_execution)
-        
+
         self.logger.info("OrderExecutor WebSocket callbacks registered")
-    
+
     def _on_order_update(self, order_data):
         """Handle order update from WebSocket."""
         order_id = order_data.order_id
@@ -180,7 +180,7 @@ class OrderExecutor:
                 del self._pending_orders[order_id]
 
         self.logger.debug(f"Order {order_id} status: {order_data.status}")
-    
+
     def _on_execution(self, exec_data):
         """Handle execution update from WebSocket."""
         order_id = exec_data.order_id
@@ -214,31 +214,31 @@ class OrderExecutor:
             f"Execution received via WS: {exec_data.symbol} "
             f"{exec_data.side} {exec_data.qty} @ {exec_data.price}"
         )
-    
+
     # ==================== Core Execution ====================
-    
+
     def _validate_trading_mode(self) -> tuple[bool, str]:
         """
         SAFETY GUARD RAIL: Validate trading mode consistency.
-        
+
         Returns:
             Tuple of (is_valid, error_message)
         """
         config = get_config()
         is_consistent, messages = config.validate_trading_mode_consistency()
-        
+
         if not is_consistent:
             # Return the first error message
             error_msg = messages[0] if messages else "Trading mode consistency check failed"
             return False, error_msg
-        
+
         # Log warnings but don't block
         for msg in messages:
             if "[WARN]" in msg:
                 self.logger.warning(msg.replace("[WARN] ", ""))
-        
+
         return True, ""
-    
+
     def execute(self, signal: Signal) -> ExecutionResult:
         """
         Execute a trading signal through risk checks.
@@ -278,40 +278,31 @@ class OrderExecutor:
             )
             self._invoke_callbacks(result)
             return result
-        
+
         self.logger.info(f"Executing signal: {signal.symbol} {signal.direction} ${signal.size_usdt:.2f}")
-        
+
         # Emit order.execute.start event
-        self.logger.event(
-            "order.execute.start",
-            component="order_executor",
-            symbol=signal.symbol,
-            direction=signal.direction,
-            size_usdt=signal.size_usdt,
-            strategy=signal.strategy,
+        self.logger.info(
+            "[order.execute.start] symbol=%s direction=%s size_usdt=%s strategy=%s",
+            signal.symbol, signal.direction, signal.size_usdt, signal.strategy,
         )
-        
+
         # Get current portfolio state
         portfolio = self.position.get_snapshot()
-        
+
         # Step 1: Risk check
         risk_result = self.risk.check(signal, portfolio)
-        
+
         if not risk_result.allowed:
             self.logger.warning(f"Signal blocked by risk manager: {risk_result.reason}")
-            
+
             # Emit order.execute.end event (blocked by risk)
-            self.logger.event(
-                "order.execute.end",
-                level="WARNING",
-                component="order_executor",
-                symbol=signal.symbol,
-                direction=signal.direction,
-                success=False,
-                blocked_by_risk=True,
-                reason=risk_result.reason,
+            self.logger.warning(
+                "[order.execute.end] symbol=%s direction=%s success=False "
+                "blocked_by_risk=True reason=%s",
+                signal.symbol, signal.direction, risk_result.reason,
             )
-            
+
             result = ExecutionResult(
                 success=False,
                 signal=signal,
@@ -320,11 +311,11 @@ class OrderExecutor:
             )
             self._invoke_callbacks(result)
             return result
-        
+
         # Log any warnings
         for warning in (risk_result.warnings or []):
             self.logger.warning(f"Risk warning: {warning}")
-        
+
         # Determine execution size
         exec_size = risk_result.adjusted_size or signal.size_usdt
 
@@ -390,22 +381,16 @@ class OrderExecutor:
                 )
                 self._invoke_callbacks(result)
                 return result
-            
+
         except Exception as e:
             self.logger.error(f"Order execution failed: {e}")
-            
+
             # Emit order.execute.end event (exception)
-            self.logger.event(
-                "order.execute.end",
-                level="ERROR",
-                component="order_executor",
-                symbol=signal.symbol,
-                direction=signal.direction,
-                success=False,
-                error=str(e),
-                error_type=type(e).__name__,
+            self.logger.error(
+                "[order.execute.end] symbol=%s direction=%s success=False error=%s error_type=%s",
+                signal.symbol, signal.direction, e, type(e).__name__,
             )
-            
+
             result = ExecutionResult(
                 success=False,
                 signal=signal,
@@ -414,7 +399,7 @@ class OrderExecutor:
             )
             self._invoke_callbacks(result)
             return result
-        
+
         # Track pending order for WebSocket confirmation
         if order_result and order_result.order_id and self._use_ws_feedback:
             with self._pending_lock:
@@ -431,7 +416,7 @@ class OrderExecutor:
             if pending_count > 50 or (pending_count > 0 and current_time - self._last_cleanup_time > 60):
                 self.cleanup_old_pending_orders(max_age_seconds=300)
                 self._last_cleanup_time = current_time
-        
+
         # Step 3: Record trade (immediate REST feedback)
         # For limit orders, do NOT record immediately -- the order is not yet
         # filled.  The fill will be recorded when the execution WebSocket
@@ -484,15 +469,11 @@ class OrderExecutor:
             )
 
             # Emit order.execute.end event (success)
-            self.logger.event(
-                "order.execute.end",
-                component="order_executor",
-                symbol=signal.symbol,
-                direction=signal.direction,
-                success=True,
-                executed_size=exec_size,
-                price=order_result.price,
-                order_id=order_result.order_id,
+            self.logger.info(
+                "[order.execute.end] symbol=%s direction=%s success=True "
+                "executed_size=%s price=%s order_id=%s",
+                signal.symbol, signal.direction, exec_size,
+                order_result.price, order_result.order_id,
             )
         elif order_result and order_result.success and is_limit_order:
             self.logger.info(
@@ -502,18 +483,13 @@ class OrderExecutor:
             )
 
             # Emit order.execute.end event (limit submitted)
-            self.logger.event(
-                "order.execute.end",
-                component="order_executor",
-                symbol=signal.symbol,
-                direction=signal.direction,
-                success=True,
-                executed_size=exec_size,
-                price=limit_price,
-                order_id=order_result.order_id,
-                order_type="limit",
+            self.logger.info(
+                "[order.execute.end] symbol=%s direction=%s success=True "
+                "executed_size=%s price=%s order_id=%s order_type=limit",
+                signal.symbol, signal.direction, exec_size,
+                limit_price, order_result.order_id,
             )
-        
+
         result = ExecutionResult(
             success=order_result.success if order_result else False,
             signal=signal,
@@ -523,18 +499,18 @@ class OrderExecutor:
             error=order_result.error if order_result and not order_result.success else None,
             source="rest",
         )
-        
+
         self._invoke_callbacks(result)
         return result
-    
+
     def close_position(self, symbol: str, strategy: str | None = None) -> ExecutionResult:
         """
         Close a position (convenience method).
-        
+
         Args:
             symbol: Symbol to close
             strategy: Strategy requesting close
-        
+
         Returns:
             ExecutionResult
         """
@@ -544,9 +520,9 @@ class OrderExecutor:
             size_usdt=0,  # Size determined by position
             strategy=strategy or "manual",
         )
-        
+
         return self.execute(signal)
-    
+
     def execute_with_leverage(
         self,
         signal: Signal,
@@ -554,25 +530,25 @@ class OrderExecutor:
     ) -> ExecutionResult:
         """
         Execute signal with specific leverage.
-        
+
         Args:
             signal: Trading signal
             leverage: Desired leverage
-        
+
         Returns:
             ExecutionResult
         """
         # Check and cap leverage
         _, capped_leverage = self.risk.check_leverage(signal.symbol, leverage)
-        
+
         # Set leverage before execution
         self.exchange.set_leverage(signal.symbol, capped_leverage)
-        
+
         # Execute normally
         return self.execute(signal)
-    
+
     # ==================== Pending Order Management ====================
-    
+
     def get_pending_order(self, order_id: str) -> PendingOrder | None:
         """Get a pending order by ID."""
         with self._pending_lock:
@@ -677,7 +653,7 @@ class OrderExecutor:
                 self.logger.warning(f"REST fallback query failed for order {order_id}: {e}")
 
         return pending
-    
+
     # ==================== Price Deviation Guard (G14.3) ====================
 
     # Maximum allowed deviation between last traded price and implied entry.

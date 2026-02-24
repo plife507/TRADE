@@ -130,9 +130,9 @@ class DataBuilder:
         Returns:
             DataBuildResult with all pre-built components ready for PlayEngine.
         """
-        from ..utils.logger import get_logger
+        from ..utils.logger import get_module_logger
 
-        self._logger = get_logger(__name__)
+        self._logger = get_module_logger(__name__)
 
         config = self.config
         tf_mapping = self.tf_mapping

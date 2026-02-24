@@ -131,17 +131,17 @@ class RunLogger:
         # Add handler to logger
         self._logger.addHandler(self._run_log_handler)
 
-    def _format_prefix(self, bar_idx: int | None = None) -> str:
-        """Format log line prefix with hashes."""
-        parts = [f"[play:{short_hash(self.play_hash)}]"]
-
-        if self.run_id:
-            parts.append(f"[run:{short_hash(self.run_id)}]")
-
+    def _bind_bar_context(self, bar_idx: int | None = None) -> None:
+        """Temporarily bind bar_idx to structlog context for JSONL output."""
+        import structlog.contextvars
         if bar_idx is not None:
-            parts.append(f"[bar:{bar_idx}]")
+            structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
 
-        return " ".join(parts)
+    def _unbind_bar_context(self, bar_idx: int | None = None) -> None:
+        """Unbind bar_idx from structlog context after logging."""
+        import structlog.contextvars
+        if bar_idx is not None:
+            structlog.contextvars.unbind_contextvars("bar_idx")
 
     def _format_fields(self, fields: dict[str, Any]) -> str:
         """Format key=value fields for log line."""
@@ -162,34 +162,38 @@ class RunLogger:
     def debug(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
-        """Log debug message with hash prefix."""
-        prefix = self._format_prefix(bar_idx)
+        """Log debug message with structured context."""
+        self._bind_bar_context(bar_idx)
         field_str = self._format_fields(fields)
-        self._logger.debug(f"{prefix} {message}{field_str}")
+        self._logger.debug(f"{message}{field_str}")
+        self._unbind_bar_context(bar_idx)
 
     def info(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
-        """Log info message with hash prefix."""
-        prefix = self._format_prefix(bar_idx)
+        """Log info message with structured context."""
+        self._bind_bar_context(bar_idx)
         field_str = self._format_fields(fields)
-        self._logger.info(f"{prefix} {message}{field_str}")
+        self._logger.info(f"{message}{field_str}")
+        self._unbind_bar_context(bar_idx)
 
     def warning(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
-        """Log warning message with hash prefix."""
-        prefix = self._format_prefix(bar_idx)
+        """Log warning message with structured context."""
+        self._bind_bar_context(bar_idx)
         field_str = self._format_fields(fields)
-        self._logger.warning(f"{prefix} {message}{field_str}")
+        self._logger.warning(f"{message}{field_str}")
+        self._unbind_bar_context(bar_idx)
 
     def error(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
-        """Log error message with hash prefix."""
-        prefix = self._format_prefix(bar_idx)
+        """Log error message with structured context."""
+        self._bind_bar_context(bar_idx)
         field_str = self._format_fields(fields)
-        self._logger.error(f"{prefix} {message}{field_str}")
+        self._logger.error(f"{message}{field_str}")
+        self._unbind_bar_context(bar_idx)
 
     def finalize(
         self,

@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Literal
 from .interfaces import DataProvider, StateStore
 from .play_engine import PlayEngine, PlayEngineConfig
 
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from ..structures import MultiTFIncrementalState
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 def _build_config_from_play(

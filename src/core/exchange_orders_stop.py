@@ -12,6 +12,9 @@ from decimal import Decimal, ROUND_DOWN
 
 from ..exchanges.bybit_client import BybitAPIError
 from . import exchange_instruments as inst
+from ..utils.logger import get_module_logger
+
+logger = get_module_logger(__name__)
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager, OrderResult, TriggerDirection
@@ -45,8 +48,7 @@ def stop_market_buy(
             reduce_only=reduce_only, order_link_id=order_link_id,
         )
         
-        manager.logger.trade("STOP_ORDER_PLACED", symbol=symbol, side="BUY",
-                            size=usd_amount, trigger=trigger_price, qty=qty, type="market")
+        logger.info("[STOP_ORDER_PLACED] symbol=%s side=BUY size=$%.2f trigger=%.4f qty=%s type=market", symbol, usd_amount, trigger_price, qty)
         
         return OrderResult(
             success=True, order_id=result_data.get("orderId"),
@@ -95,8 +97,7 @@ def stop_market_sell(
             reduce_only=reduce_only, order_link_id=order_link_id,
         )
         
-        manager.logger.trade("STOP_ORDER_PLACED", symbol=symbol, side="SELL",
-                            size=usd_amount, trigger=trigger_price, qty=qty, type="market")
+        logger.info("[STOP_ORDER_PLACED] symbol=%s side=SELL size=$%.2f trigger=%.4f qty=%s type=market", symbol, usd_amount, trigger_price, qty)
         
         return OrderResult(
             success=True, order_id=result_data.get("orderId"),
@@ -146,8 +147,7 @@ def stop_limit_buy(
             time_in_force=time_in_force, reduce_only=reduce_only, order_link_id=order_link_id,
         )
         
-        manager.logger.trade("STOP_LIMIT_ORDER_PLACED", symbol=symbol, side="BUY",
-                            size=usd_amount, trigger=trigger_price, limit=limit_price, qty=qty)
+        logger.info("[STOP_LIMIT_ORDER_PLACED] symbol=%s side=BUY size=$%.2f trigger=%.4f limit=%.4f qty=%s", symbol, usd_amount, trigger_price, limit_price, qty)
         
         return OrderResult(
             success=True, order_id=result_data.get("orderId"),
@@ -197,8 +197,7 @@ def stop_limit_sell(
             time_in_force=time_in_force, reduce_only=reduce_only, order_link_id=order_link_id,
         )
         
-        manager.logger.trade("STOP_LIMIT_ORDER_PLACED", symbol=symbol, side="SELL",
-                            size=usd_amount, trigger=trigger_price, limit=limit_price, qty=qty)
+        logger.info("[STOP_LIMIT_ORDER_PLACED] symbol=%s side=SELL size=$%.2f trigger=%.4f limit=%.4f qty=%s", symbol, usd_amount, trigger_price, limit_price, qty)
         
         return OrderResult(
             success=True, order_id=result_data.get("orderId"),

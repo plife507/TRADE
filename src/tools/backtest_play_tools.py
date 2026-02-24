@@ -42,10 +42,10 @@ from ..backtest.execution_validation import (
 )
 from ..backtest.system_config import validate_usdt_pair
 from ..backtest.runtime.preflight import run_preflight_gate, PreflightReport, AutoSyncConfig
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 # =============================================================================

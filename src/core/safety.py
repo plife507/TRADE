@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
 # ==============================================================================
@@ -50,7 +50,7 @@ class DailyLossTracker:
             self._daily_trades += 1
 
     def record_loss(self, amount: float):
-        """Record a realized loss. Accepts positive or negative — always subtracts from PnL."""
+        """Record a realized loss. Accepts positive or negative -- always subtracts from PnL."""
         with self._lock:
             self._reset_if_needed()
             self._daily_pnl -= abs(amount)
@@ -70,7 +70,7 @@ class DailyLossTracker:
 
     @property
     def seed_failed(self) -> bool:
-        """True if seed_from_exchange failed — trading should be blocked."""
+        """True if seed_from_exchange failed -- trading should be blocked."""
         return self._seed_failed
 
     def check_limit(self, max_daily_loss_usd: float) -> tuple[bool, str]:
@@ -78,7 +78,7 @@ class DailyLossTracker:
         with self._lock:
             self._reset_if_needed()
             if self._seed_failed:
-                return False, "Daily loss tracker seed failed — cannot verify daily limits"
+                return False, "Daily loss tracker seed failed -- cannot verify daily limits"
             if self._daily_pnl <= -max_daily_loss_usd:
                 return False, f"Daily loss limit reached: loss ${abs(self._daily_pnl):.2f} >= limit ${max_daily_loss_usd:.2f}"
             return True, ""
@@ -105,7 +105,7 @@ class DailyLossTracker:
             max_retries: Number of retry attempts (default 3)
             retry_delay: Base delay between retries in seconds (default 2.0)
         """
-        logger = get_logger()
+        logger = get_module_logger(__name__)
         last_error: Exception | None = None
 
         for attempt in range(1, max_retries + 1):
@@ -203,7 +203,7 @@ class PanicState:
     def reason(self) -> str | None:
         with self._lock:
             return self._reason
-    
+
     def trigger(self, reason: str = "Manual panic button"):
         """Trigger panic state."""
         with self._lock:
@@ -218,9 +218,8 @@ class PanicState:
             try:
                 callback(reason)
             except Exception as e:
-                # Panic callbacks MUST all execute — catch broadly so one failure
+                # Panic callbacks MUST all execute -- catch broadly so one failure
                 # does not prevent subsequent callbacks (e.g., position close) from running
-                from src.utils.logger import get_module_logger
                 get_module_logger(__name__).error(f"Panic callback failed: {e}")
 
     def reset(self):
@@ -253,22 +252,22 @@ def is_panic_triggered() -> bool:
 def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> dict:
     """
     PANIC: Cancel all orders and close all positions immediately.
-    
+
     This is the emergency stop function. It will:
     1. Cancel all open orders
     2. Close all positions with market orders
     3. Trigger global panic state to stop all trading loops
-    
+
     Args:
         exchange_manager: ExchangeManager instance
         reason: Reason for triggering panic
-    
+
     Returns:
         Dict with results of panic actions
     """
-    logger = get_logger()
-    logger.panic(f"PANIC TRIGGERED: {reason}")
-    
+    logger = get_module_logger(__name__)
+    logger.critical("PANIC: %s", reason)
+
     results = {
         "success": False,
         "reason": reason,
@@ -277,7 +276,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
         "positions_closed": [],
         "errors": [],
     }
-    
+
     # Trigger global panic state
     _panic_state.trigger(reason)
 
@@ -320,7 +319,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
         for result in close_results:
             if result.success:
                 results["positions_closed"].append(result.symbol)
-                logger.info(f"✓ Closed position: {result.symbol}")
+                logger.info(f"Closed position: {result.symbol}")
             else:
                 # Retry failed position closes
                 closed = False
@@ -331,7 +330,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
                         retry_result = exchange_manager.close_position(result.symbol)
                         if retry_result.success:
                             results["positions_closed"].append(result.symbol)
-                            logger.info(f"✓ Closed position: {result.symbol} (retry {retry})")
+                            logger.info(f"Closed position: {result.symbol} (retry {retry})")
                             closed = True
                             break
                     except Exception as retry_e:
@@ -369,9 +368,9 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
     results["success"] = results["orders_cancelled"] and len(results["errors"]) == 0
 
     if results["success"]:
-        logger.panic("PANIC COMPLETE: All positions flattened, trading halted")
+        logger.critical("PANIC: All positions flattened, trading halted")
     else:
-        logger.panic(f"PANIC INCOMPLETE: {len(results['errors'])} errors occurred")
+        logger.critical("PANIC: INCOMPLETE - %d errors occurred", len(results["errors"]))
 
     return results
 
@@ -379,14 +378,14 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
 def check_panic_and_halt() -> bool:
     """
     Check if panic is triggered and should halt operations.
-    
+
     Call this at the start of any trading loop iteration.
-    
+
     Returns:
         True if panic is triggered and operations should halt
     """
     if _panic_state.is_triggered:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
         logger.warning(f"HALTED: Panic triggered at {_panic_state.trigger_time} - {_panic_state.reason}")
         return True
     return False
@@ -395,19 +394,18 @@ def check_panic_and_halt() -> bool:
 def reset_panic(confirm: str | None = None) -> bool:
     """
     Reset panic state to allow trading to resume.
-    
+
     Args:
         confirm: Must be "RESET" to confirm
-    
+
     Returns:
         True if reset successful
     """
+    logger = get_module_logger(__name__)
     if confirm != "RESET":
-        logger = get_logger()
         logger.warning("Panic reset requires confirmation: reset_panic('RESET')")
         return False
-    
-    logger = get_logger()
+
     logger.warning("PANIC STATE RESET - Trading can resume")
     _panic_state.reset()
     return True
@@ -424,7 +422,7 @@ class SafetyChecks:
     def __init__(self, exchange_manager, config):
         self.exchange_manager = exchange_manager
         self.config = config
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
 
         # Use shared daily loss tracker (same instance as RiskManager)
         self._tracker = get_daily_loss_tracker()
@@ -437,62 +435,61 @@ class SafetyChecks:
         """Check if daily loss limit has been reached."""
         limit = self.config.risk.max_daily_loss_usd
         return self._tracker.check_limit(limit)
-    
+
     def check_min_balance(self) -> tuple[bool, str]:
         """Check if account has minimum required balance."""
         try:
             balance = self.exchange_manager.get_balance()
             available = balance.get("available", 0)
             min_balance = self.config.risk.min_balance_usd
-            
+
             if available < min_balance:
                 return False, f"Balance too low: ${available:.2f} < ${min_balance:.2f}"
             return True, ""
         except Exception as e:
             return False, f"Failed to check balance: {e}"
-    
+
     def check_max_exposure(self, additional_usd: float = 0) -> tuple[bool, str]:
         """Check if total exposure would exceed limit."""
         try:
             current = self.exchange_manager.get_total_exposure()
             limit = self.config.risk.max_total_exposure_usd
-            
+
             if current + additional_usd > limit:
                 return False, f"Exposure limit exceeded: ${current + additional_usd:.2f} > ${limit:.2f}"
             return True, ""
         except Exception as e:
             return False, f"Failed to check exposure: {e}"
-    
+
     def run_all_checks(self, additional_exposure: float = 0) -> tuple[bool, list[str]]:
         """
         Run all safety checks.
-        
+
         Args:
             additional_exposure: Additional USD exposure being added
-        
+
         Returns:
             Tuple of (all_passed, list of failure reasons)
         """
         failures = []
-        
+
         # Check panic state first
         if is_panic_triggered():
             failures.append("Panic state is active - trading halted")
-        
+
         # Daily loss limit
         ok, reason = self.check_daily_loss_limit()
         if not ok:
             failures.append(reason)
-        
+
         # Minimum balance
         ok, reason = self.check_min_balance()
         if not ok:
             failures.append(reason)
-        
+
         # Maximum exposure
         ok, reason = self.check_max_exposure(additional_exposure)
         if not ok:
             failures.append(reason)
-        
-        return len(failures) == 0, failures
 
+        return len(failures) == 0, failures

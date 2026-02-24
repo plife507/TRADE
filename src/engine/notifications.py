@@ -14,9 +14,9 @@ import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 class NotificationAdapter(ABC):

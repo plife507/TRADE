@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config
 from ..config.constants import DataEnv, validate_data_env
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 from .realtime_state import (
     get_realtime_state,
     RealtimeState,
@@ -145,7 +145,7 @@ class RealtimeBootstrap:
             env: Data environment ("live" or "demo"). If None, inferred from use_demo config.
         """
         self.app_config = get_config()
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
         
         # Determine data environment
         # If not specified, infer from use_demo config (demo trading -> demo env)

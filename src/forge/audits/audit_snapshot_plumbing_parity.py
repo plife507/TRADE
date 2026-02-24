@@ -32,10 +32,10 @@ from src.backtest.play import load_play, Play, PLAYS_DIR
 from src.backtest.execution_validation import compute_warmup_requirements
 from src.backtest.runtime.feed_store import FeedStore
 from src.backtest.runtime.snapshot_view import RuntimeSnapshotView
-from src.utils.logger import get_logger
+from src.utils.logger import get_module_logger
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 # OHLCV keys consistent with FeedStore attribute names
