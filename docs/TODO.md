@@ -470,12 +470,12 @@ process-safe QueueHandler, zero migration for 598 existing `logger.info()` calls
 - [x] **GATE**: JSONL output contains `play_hash`, `symbol`, `mode` as JSON fields (81/81 engine lines)
 - [x] **GATE**: `python trade_cli.py validate quick` — 5/5 pass (76.4s)
 
-#### Phase 4: Cleanup + Disk Recovery
-- [ ] Delete 1,482 orphan `events_*_*.jsonl` files from `logs/`
-- [ ] Delete old `bot_*.log`, `trades_*.log`, `errors_*.log` files
-- [ ] Verify 0-byte file creation stops (TradingLogger fully removed)
-- [ ] **GATE**: `ls logs/` shows only `trade.jsonl` + `backtests/`
-- [ ] **GATE**: `python trade_cli.py validate standard` passes
+#### Phase 4: Cleanup + Disk Recovery (DONE 2026-02-24)
+- [x] Delete 1,485 orphan `events_*_*.jsonl` files from `logs/` (243 MB recovered)
+- [x] Delete 24 old `bot_*.log`, `trades_*.log`, `errors_*.log`, `pybit_*.log` files
+- [x] Verify 0-byte file creation stops (TradingLogger fully removed — grep confirms 0 references)
+- [x] **GATE**: `ls logs/` shows only `trade.jsonl` + `backtests/`
+- [x] **GATE**: `python trade_cli.py validate standard` — 7/8 pass (G5 derived_zone parity pre-existing on main)
 
 ### P5: Market Sentiment Tracker
 
