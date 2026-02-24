@@ -794,6 +794,61 @@ def _gate_coverage_check() -> GateResult:
     )
 
 
+def _gate_logging_lint() -> GateResult:
+    """G16: Banned logging patterns -- enforce get_module_logger() convention.
+
+    Scans src/ for direct structlog logger creation which bypasses the
+    project convention and can cause silent JSONL output failures.
+    """
+    import re
+
+    start = time.perf_counter()
+    failures: list[str] = []
+    checked = 0
+
+    src_dir = Path("src")
+    if not src_dir.exists():
+        return GateResult(
+            gate_id="G16",
+            name="Logging Lint",
+            passed=True,
+            checked=0,
+            duration_sec=time.perf_counter() - start,
+            detail="src/ not found (skipped)",
+            failures=[],
+        )
+
+    # Build pattern dynamically to avoid the gate flagging its own source
+    _sl = "structlog"
+    banned_re = re.compile(rf"{_sl}\.(get_logger|getLogger)\(")
+
+    for py_file in sorted(src_dir.rglob("*.py")):
+        checked += 1
+        try:
+            text = py_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        for line_num, line in enumerate(text.splitlines(), 1):
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                continue
+            m = banned_re.search(line)
+            if m:
+                failures.append(
+                    f"{py_file}:{line_num}: use get_module_logger() not {_sl}.{m.group(1)}()"
+                )
+
+    return GateResult(
+        gate_id="G16",
+        name="Logging Lint",
+        passed=len(failures) == 0,
+        checked=checked,
+        duration_sec=time.perf_counter() - start,
+        detail=f"{checked} files scanned, {len(failures)} violations",
+        failures=failures,
+    )
+
+
 def _gate_determinism() -> GateResult:
     """G14: Engine determinism - same input = same output."""
     start = time.perf_counter()
@@ -1506,6 +1561,7 @@ def _make_module_definitions(
         "metrics": [_gate_metrics_audit],
         "determinism": [_gate_determinism],
         "coverage": [_gate_coverage_check],
+        "lint": [_gate_logging_lint],
         # Real-data modules
         "real-accumulation": [lambda: _gate_real_data_phase("accumulation", "RD1", w, t)],
         "real-markup": [lambda: _gate_real_data_phase("markup", "RD2", w, t)],
@@ -1517,7 +1573,7 @@ def _make_module_definitions(
 MODULE_NAMES = [
     "core", "risk", "audits", "operators", "structures", "complexity",
     "indicators", "patterns", "parity", "sim", "metrics", "determinism",
-    "coverage",
+    "coverage", "lint",
     "real-accumulation", "real-markup", "real-distribution", "real-markdown",
 ]
 
@@ -1718,8 +1774,8 @@ def run_validation(
         # Each stage is a list of gates that can run concurrently
         schedule: list[list[Callable[[], GateResult]]] = []
 
-        # Stage 0: YAML parse (fast, sequential)
-        schedule.append([_gate_yaml_parse])
+        # Stage 0: YAML parse + logging lint (fast, parallel)
+        schedule.append([_gate_yaml_parse, _gate_logging_lint])
 
         # Stage 1: registry + parity audits (parallel)
         schedule.append([_gate_registry_contract, _gate_incremental_parity])

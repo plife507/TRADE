@@ -104,6 +104,10 @@ def vectorized_derived_zone(
 
         # REGEN PATH: source version changed
         if cur_version != source_version:
+            # Update version BEFORE regen so _compute_zone_hash uses current
+            # version (matches incremental: derived_zone.py line 230-231)
+            source_version = cur_version
+
             high_level = hi_level_arr[bar_idx]
             low_level = lo_level_arr[bar_idx]
             high_idx = int(hi_idx_arr[bar_idx])
@@ -144,8 +148,6 @@ def vectorized_derived_zone(
                     # Enforce max_active
                     while len(zones) > max_active:
                         zones.pop()
-
-            source_version = cur_version
 
         # INTERACTION PATH: check touches, breaks, age updates
         price = close_arr[bar_idx]

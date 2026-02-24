@@ -97,6 +97,24 @@ def _inject_snapshot_context(
     return event_dict
 
 
+class _StructlogQueueHandler(logging.handlers.QueueHandler):
+    """QueueHandler that preserves structlog's dict-typed record.msg.
+
+    The stdlib ``QueueHandler.prepare()`` calls ``self.format(record)``
+    which converts ``record.msg`` from a dict to a string.  When the
+    ``QueueListener`` thread later passes the record to a
+    ``ProcessorFormatter``, it expects ``record.msg`` to still be a dict
+    (calls ``.copy()``).  Skipping the format step here keeps the dict
+    intact so both structlog-native and stdlib loggers work correctly.
+    """
+
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        # Only copy — do NOT call self.format() which destroys dict msg
+        record.exc_info = None
+        record.exc_text = None
+        return record
+
+
 def _make_queue_file_handler(
     log_path: Path,
 ) -> logging.handlers.QueueHandler:
@@ -143,9 +161,9 @@ def _make_queue_file_handler(
         )
     )
 
-    # Queue plumbing
+    # Queue plumbing — use _StructlogQueueHandler to preserve dict msg
     _log_queue = queue.Queue(-1)  # unbounded
-    queue_handler = logging.handlers.QueueHandler(_log_queue)
+    queue_handler = _StructlogQueueHandler(_log_queue)
     queue_handler.addFilter(_ContextVarsSnapshotFilter())
 
     _queue_listener = logging.handlers.QueueListener(
