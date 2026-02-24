@@ -369,7 +369,8 @@ def _run_play_live_dashboard(play, args, manager=None) -> int:
     dash_handler = DashboardLogHandler(max_lines=50, max_actions=20)
     dash_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
 
-    # Attach to the main trading logger and suppress its console handler
+    # Attach to the main trading logger and suppress console output.
+    # With structlog, console handler lives on root (not trade), so suppress both.
     trade_logger = logging.getLogger("trade")
     original_handlers = list(trade_logger.handlers)
     console_handlers = [h for h in trade_logger.handlers if isinstance(h, logging.StreamHandler)
@@ -377,6 +378,15 @@ def _run_play_live_dashboard(play, args, manager=None) -> int:
     for h in console_handlers:
         trade_logger.removeHandler(h)
     trade_logger.addHandler(dash_handler)
+
+    # Suppress root console handler during dashboard (structlog puts it on root)
+    root_logger = logging.getLogger()
+    root_console_handlers = [
+        h for h in root_logger.handlers
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+    ]
+    for h in root_console_handlers:
+        root_logger.removeHandler(h)
 
     stop_event = threading.Event()
     instance_id: str | None = None
@@ -440,11 +450,13 @@ def _run_play_live_dashboard(play, args, manager=None) -> int:
     finally:
         stop_event.set()  # Signal engine thread to shut down
 
-    # Restore logger BEFORE join so background daemon threads
+    # Restore loggers BEFORE join so background daemon threads
     # (e.g. RealtimeBootstrap._monitor_loop) don't leak DEBUG to console.
     trade_logger.removeHandler(dash_handler)
     for h in console_handlers:
         trade_logger.addHandler(h)
+    for h in root_console_handlers:
+        root_logger.addHandler(h)
 
     # Wait for engine thread to finish (it handles its own stop on its loop)
     engine_thread.join(timeout=20.0)

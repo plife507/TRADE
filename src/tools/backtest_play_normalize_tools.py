@@ -9,10 +9,10 @@ from pathlib import Path
 
 from .shared import ToolResult
 from ..backtest.play import load_play, list_plays
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 # =============================================================================

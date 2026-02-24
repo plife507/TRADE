@@ -32,14 +32,14 @@ from ..play_engine import PlayEngine
 from src.backtest.runtime.timeframe import tf_minutes
 from ...core.safety import check_panic_and_halt, get_panic_state
 
-from ...utils.logger import get_logger
+from ...utils.logger import get_module_logger
 from ...utils.debug import is_debug_enabled
 
 if TYPE_CHECKING:
     from ...core.risk_manager import Signal
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 class RunnerState(str, Enum):
@@ -268,10 +268,16 @@ class LiveRunner:
         self._stop_event.clear()
         self._reconnect_attempts = 0
 
-        # Set play_hash for debug log correlation
+        # Set play_hash for debug log correlation + structlog context
         from ...backtest.execution_validation import compute_play_hash
+        from ...utils.logging_config import bind_engine_context
         play_hash = compute_play_hash(self._engine.play)
         self._engine.set_play_hash(play_hash)
+        bind_engine_context(
+            play_hash=play_hash,
+            symbol=self._engine.symbol,
+            mode=self._engine.mode,
+        )
 
         logger.info(
             f"LiveRunner starting: {self._engine.symbol} {self._engine.timeframe} "
@@ -371,6 +377,10 @@ class LiveRunner:
 
         self._transition_state(RunnerState.STOPPED)
         self._stats.stopped_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # Clear structlog engine context
+        from ...utils.logging_config import clear_engine_context
+        clear_engine_context()
 
         logger.info(
             f"LiveRunner stopped: {self._stats.bars_processed} bars, "

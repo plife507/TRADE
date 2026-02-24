@@ -83,15 +83,23 @@ def verbose_log(
     bar_idx: int | None = None,
     **fields: Any,
 ) -> None:
-    """Log a verbose message with hash prefix.
+    """Log a verbose message with structured context.
 
     Only logs if verbose or debug mode is enabled.
     Uses INFO level so it's visible with normal log handlers.
+
+    ``play_hash`` is available in the structlog context (bound by the
+    engine runner at startup via ``bind_engine_context``).  ``bar_idx``
+    is temporarily bound so it appears as a JSON field in JSONL output.
     """
     if not is_verbose_enabled():
         return
 
-    prefix = format_hash_prefix(play_hash, bar_idx=bar_idx)
+    import structlog.contextvars
+
+    # Temporarily bind bar_idx to structlog context for JSONL output
+    if bar_idx is not None:
+        structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
 
     if fields:
         field_strs = [f"{k}={_format_value(v)}" for k, v in fields.items()]
@@ -100,7 +108,11 @@ def verbose_log(
         full_msg = message
 
     logger = logging.getLogger("trade")
-    logger.info(f"{prefix} {full_msg}")
+    logger.info(full_msg)
+
+    # Unbind bar_idx so it doesn't leak to non-bar-level messages
+    if bar_idx is not None:
+        structlog.contextvars.unbind_contextvars("bar_idx")
 
 
 def short_hash(full_hash: str | None) -> str:
@@ -143,27 +155,37 @@ def debug_log(
     bar_idx: int | None = None,
     **fields: Any,
 ) -> None:
-    """
-    Log a debug message with hash prefix for exactitude.
+    """Log a debug message with structured context.
 
     Only logs if debug mode is enabled (TRADE_DEBUG=1 or --debug).
 
+    ``play_hash`` is available in the structlog context (bound by the
+    engine runner at startup).  ``bar_idx`` and ``run_hash`` are
+    temporarily bound so they appear as JSON fields in JSONL output.
+
     Args:
-        play_hash: Play configuration hash (16 chars, displays first 8)
-        message: Log message
-        run_hash: Optional run hash (for session start/end)
-        bar_idx: Optional bar index (for bar-level events)
-        **fields: Additional key=value pairs to include
+        play_hash: Play configuration hash (available via context, kept for API compat).
+        message: Log message.
+        run_hash: Optional run hash (for session start/end).
+        bar_idx: Optional bar index (for bar-level events).
+        **fields: Additional key=value pairs to include.
 
     Example:
         debug_log("8f2a9c1d", "Signal generated", bar_idx=247, action="ENTRY_LONG")
-        # Output: [DEBUG] [play:8f2a9c1d] [bar:247] Signal generated: action=ENTRY_LONG
     """
     if not _debug_enabled:
         return
 
-    # Build prefix
-    prefix = format_hash_prefix(play_hash, run_hash, bar_idx)
+    import structlog.contextvars
+
+    # Temporarily bind bar_idx / run_hash to structlog context
+    extra_keys: list[str] = []
+    if bar_idx is not None:
+        structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
+        extra_keys.append("bar_idx")
+    if run_hash is not None:
+        structlog.contextvars.bind_contextvars(run_hash=run_hash)
+        extra_keys.append("run_hash")
 
     # Build message with fields
     if fields:
@@ -172,9 +194,12 @@ def debug_log(
     else:
         full_msg = message
 
-    # Log via standard logger
     logger = logging.getLogger("trade")
-    logger.debug(f"{prefix} {full_msg}")
+    logger.debug(full_msg)
+
+    # Unbind temporary keys
+    if extra_keys:
+        structlog.contextvars.unbind_contextvars(*extra_keys)
 
 
 def _format_value(value: Any) -> str:
@@ -375,26 +400,31 @@ def debug_snapshot(
     *,
     max_features: int = 10,
 ) -> None:
-    """
-    Dump snapshot state for debugging.
+    """Dump snapshot state for debugging.
+
+    ``play_hash`` is available in the structlog context.
 
     Args:
-        play_hash: Play configuration hash
-        bar_idx: Current bar index
-        snapshot_data: Dict of snapshot values to log
-        max_features: Maximum number of features to show
+        play_hash: Play configuration hash (available via context, kept for API compat).
+        bar_idx: Current bar index.
+        snapshot_data: Dict of snapshot values to log.
+        max_features: Maximum number of features to show.
     """
     if not _debug_enabled:
         return
 
-    prefix = format_hash_prefix(play_hash, bar_idx=bar_idx)
+    import structlog.contextvars
+
+    structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
     logger = logging.getLogger("trade")
 
-    logger.debug(f"{prefix} Snapshot dump:")
+    logger.debug("Snapshot dump:")
 
     items = list(snapshot_data.items())[:max_features]
     for key, value in items:
-        logger.debug(f"{prefix}   {key}: {_format_value(value)}")
+        logger.debug(f"  {key}: {_format_value(value)}")
 
     if len(snapshot_data) > max_features:
-        logger.debug(f"{prefix}   ... and {len(snapshot_data) - max_features} more")
+        logger.debug(f"  ... and {len(snapshot_data) - max_features} more")
+
+    structlog.contextvars.unbind_contextvars("bar_idx")

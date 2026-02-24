@@ -82,6 +82,10 @@ def _run_single_backtest_process(
     start_time = time.time()
 
     try:
+        # Suppress INFO logging in worker processes for clean validation output
+        from ...utils.logger import suppress_for_validation
+        suppress_for_validation()
+
         # CRITICAL: Reset singletons and enable read-only mode for all DB access
         # This must happen before any imports that touch the database
         # force_read_only=True enables concurrent readers (DuckDB allows multiple readers)

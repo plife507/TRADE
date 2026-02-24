@@ -38,7 +38,7 @@ from ..config.constants import (
     resolve_db_path,
     resolve_table_name,
 )
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
 # Activity emojis for visual feedback (with Windows-safe fallbacks)
@@ -398,7 +398,7 @@ class HistoricalDataStore:
         # Open connection - read_only mode enables concurrent readers
         self.conn = duckdb.connect(str(self.db_path), read_only=read_only)
         self.config = get_config()
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
         
         # Select API and credentials based on data environment
         # - backtest: Use LIVE API (most accurate historical data for backtests)

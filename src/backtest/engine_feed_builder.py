@@ -26,7 +26,7 @@ from .runtime.feed_store import (
 from .runtime.quote_state import QuoteState
 from .indicators import get_required_indicator_columns_from_specs
 
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 def _to_naive_datetime(ts: datetime | np.datetime64 | pd.Timestamp) -> datetime:
     """Normalize any timestamp type to a tz-naive datetime for safe comparison."""
@@ -110,7 +110,7 @@ def build_feed_stores_impl(
         ValueError: If no prepared frames available
     """
     if logger is None:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
 
     if multi_tf_frames is None and prepared_frame is None:
         raise ValueError("No prepared frames. Call prepare_multi_tf_frames() first.")
@@ -236,7 +236,7 @@ def build_quote_feed_impl(
         ValueError: If DataFrame is empty or missing required columns
     """
     if logger is None:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
 
     if df_1m is None or df_1m.empty:
         raise ValueError("Cannot build quote feed: 1m DataFrame is empty")
@@ -344,7 +344,7 @@ def build_market_data_arrays_impl(
         funding_settlement_times is set of epoch_ms for funding settlement timestamps
     """
     if logger is None:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
 
     funding_rate_array: np.ndarray | None = None
     open_interest_array: np.ndarray | None = None

@@ -22,7 +22,7 @@ import threading
 
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config, TradingMode
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 from ..utils.helpers import safe_float
 from ..utils.time_range import TimeRange
 
@@ -162,7 +162,7 @@ class ExchangeManager:
         if self._initialized:
             return
         self.config = get_config()
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
         
         # === STRICT MODE/API MAPPING ASSERTION ===
         trading_mode = self.config.trading.mode

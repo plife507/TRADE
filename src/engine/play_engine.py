@@ -50,7 +50,7 @@ from .interfaces import (
 from .signal import SubLoopEvaluator
 from .sizing import SizingModel, SizingConfig
 
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 from ..utils.debug import is_debug_enabled, is_verbose_enabled, verbose_log, debug_log, debug_signal, debug_trade, debug_snapshot
 from .timeframe import TFIndexManager
 
@@ -183,7 +183,7 @@ class PlayEngine:
         self.state_store = state_store
         self.config = config
 
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
 
         # Engine identity
         self.engine_id = f"{play.name}_{config.mode}_{uuid.uuid4().hex[:8]}"

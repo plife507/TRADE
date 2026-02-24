@@ -26,13 +26,13 @@ from typing import TYPE_CHECKING, Any
 
 from ..play_engine import PlayEngine
 
-from ...utils.logger import get_logger
+from ...utils.logger import get_module_logger
 
 if TYPE_CHECKING:
     from ...core.risk_manager import Signal
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 @dataclass

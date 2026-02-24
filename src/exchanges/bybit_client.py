@@ -31,7 +31,7 @@ from pybit.exceptions import (
 )
 
 from ..utils.rate_limiter import RateLimiter, create_bybit_limiters
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 from ..utils.time_range import TimeRange
 
 
@@ -93,7 +93,7 @@ def with_retry(max_retries: int = 3, backoff_base: float = 1.0):
                     if attempt == max_retries - 1:
                         raise
                     delay = backoff_base * (2 ** attempt)
-                    logger = get_logger()
+                    logger = get_module_logger(__name__)
                     logger.warning(
                         f"Retry {attempt + 1}/{max_retries} for {func.__name__} "
                         f"after {type(e).__name__}: {e}. Waiting {delay}s..."
@@ -105,7 +105,7 @@ def with_retry(max_retries: int = 3, backoff_base: float = 1.0):
                         if attempt == max_retries - 1:
                             raise
                         delay = backoff_base * (2 ** attempt)
-                        logger = get_logger()
+                        logger = get_module_logger(__name__)
                         logger.warning(
                             f"Retry {attempt + 1}/{max_retries} for {func.__name__} "
                             f"after API error {e.code}. Waiting {delay}s..."
@@ -176,7 +176,7 @@ class BybitClient:
             return_response_headers=True,
         )
         
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
         
         self._sync_server_time()
         

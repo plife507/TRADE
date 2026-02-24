@@ -10,10 +10,10 @@ from pathlib import Path
 
 from .shared import ToolResult
 from ..forge.validation.synthetic_data import PatternType
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 # =============================================================================

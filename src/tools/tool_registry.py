@@ -191,14 +191,14 @@ class ToolRegistry:
             )
 
         # Import logging utilities
-        from ..utils.logger import get_logger, redact_dict
+        from ..utils.logger import get_module_logger, redact_dict
         from ..utils.log_context import (
             new_tool_call_context,
             context_from_meta,
             log_context_scope,
         )
 
-        logger = get_logger()
+        logger = get_module_logger(__name__)
         meta = meta or {}
 
         # Extract context from meta and set up tool call context
@@ -236,13 +236,9 @@ class ToolRegistry:
         started = time.perf_counter()
 
         # Emit tool.call.start event
-        logger.event(
-            "tool.call.start",
-            component="tool_registry",
-            tool_name=name,
-            category=spec.category,
-            args=safe_args,
-            meta=safe_meta,
+        logger.info(
+            "[tool.call.start] tool_name=%s category=%s",
+            name, spec.category,
         )
 
         try:
@@ -250,14 +246,9 @@ class ToolRegistry:
             elapsed_ms = (time.perf_counter() - started) * 1000.0
 
             # Emit tool.call.end event
-            logger.event(
-                "tool.call.end",
-                component="tool_registry",
-                tool_name=name,
-                success=getattr(result, 'success', None),
-                elapsed_ms=elapsed_ms,
-                message=getattr(result, 'message', None),
-                source=getattr(result, 'source', None),
+            logger.info(
+                "[tool.call.end] tool_name=%s success=%s elapsed_ms=%.1f",
+                name, getattr(result, 'success', None), elapsed_ms,
             )
             return result
 
@@ -265,14 +256,9 @@ class ToolRegistry:
             elapsed_ms = (time.perf_counter() - started) * 1000.0
 
             # Emit tool.call.error event
-            logger.event(
-                "tool.call.error",
-                level="ERROR",
-                component="tool_registry",
-                tool_name=name,
-                elapsed_ms=elapsed_ms,
-                error=str(e),
-                error_type=type(e).__name__,
+            logger.error(
+                "[tool.call.error] tool_name=%s elapsed_ms=%.1f error=%s",
+                name, elapsed_ms, e,
             )
             return ToolResult(success=False, error=f"Tool execution failed: {str(e)}")
 

@@ -32,7 +32,7 @@ import pandas as pd
 from ..exchanges.bybit_client import BybitClient
 from ..config.config import get_config
 from ..config.constants import DataEnv, DEFAULT_DATA_ENV, validate_data_env
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 from ..utils.helpers import safe_float
 
 
@@ -108,7 +108,7 @@ class MarketData:
             prefer_websocket: If True, prefer WebSocket data when available
         """
         self.config = get_config()
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
         
         # Validate and store environment
         self.env: DataEnv = validate_data_env(env)

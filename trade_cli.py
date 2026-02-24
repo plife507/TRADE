@@ -22,6 +22,7 @@ Debug mode (hash-traced logging):
   python trade_cli.py --debug backtest run --play V_100  # Debug a specific backtest
 """
 
+import atexit
 import os
 import sys
 
@@ -44,7 +45,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.config.config import get_config
 from src.core.application import Application, get_application
-from src.utils.logger import setup_logger, get_logger
+from src.utils.logger import get_module_logger
+from src.utils.logging_config import configure_logging, shutdown_logging
 from src.cli.menus import (
     data_menu as data_menu_handler,
     market_data_menu as market_data_menu_handler,
@@ -210,7 +212,7 @@ class TradeCLI:
     def __init__(self):
         """Initialize CLI - only config and logger needed."""
         self.config = get_config()
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
         self._connected: bool = False
         self._app: Application | None = None
 
@@ -762,7 +764,8 @@ def main():
     if getattr(args, "debug", False):
         import os as _os
         _os.environ["TRADE_DEBUG"] = "1"
-    setup_logger()
+    configure_logging()
+    atexit.register(shutdown_logging)
 
     # Wire verbosity flags (after logger exists)
     if getattr(args, "quiet", False):

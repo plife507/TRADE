@@ -41,7 +41,7 @@ from .indicators import (
 
 from ..data.historical_data_store import get_historical_store, TF_MINUTES
 from ..config.constants import DataEnv
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 if TYPE_CHECKING:
     from .types import WindowConfig
@@ -358,7 +358,7 @@ def prepare_backtest_frame_impl(
         PreparedFrame with DataFrame and metadata
     """
     if logger is None:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
 
     # 1. Validate inputs (fail fast before data fetch)
     _validate_inputs(config, logger)
@@ -440,7 +440,7 @@ def prepare_multi_tf_frames_impl(
         ValueError: If data is missing or invalid
     """
     if logger is None:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
 
     # Only initialize DB store if not using synthetic provider
     store = None if synthetic_provider else get_historical_store(env=cast(DataEnv, config.data_build.env))
@@ -875,7 +875,7 @@ def load_1m_data_impl(
         ValueError: If no data found or data is insufficient
     """
     if logger is None:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
 
     # Only initialize DB store if not using synthetic provider
     store = None if synthetic_provider else get_historical_store(env=cast(DataEnv, data_env))
@@ -961,7 +961,7 @@ def load_funding_data_impl(
         Sorted by timestamp ascending. Empty DataFrame if no data.
     """
     if logger is None:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
 
     store = get_historical_store(env=cast(DataEnv, data_env))
 
@@ -1019,7 +1019,7 @@ def load_open_interest_data_impl(
         Sorted by timestamp ascending. Empty DataFrame if no data.
     """
     if logger is None:
-        logger = get_logger()
+        logger = get_module_logger(__name__)
 
     store = get_historical_store(env=cast(DataEnv, data_env))
 

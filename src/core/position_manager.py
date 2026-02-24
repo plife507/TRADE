@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
 from .exchange_manager import ExchangeManager, Position
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 
 
 @dataclass
@@ -134,7 +134,7 @@ class PositionManager:
             staleness_threshold: Max age (seconds) for WebSocket data before fallback
         """
         self.exchange = exchange_manager
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
         
         # WebSocket preference
         self._prefer_websocket = prefer_websocket
@@ -396,14 +396,16 @@ class PositionManager:
             if realized_pnl is not None:
                 self._daily_realized_pnl += realized_pnl
 
-        self.logger.trade(
-            "TRADE_RECORDED",
-            symbol=symbol,
-            side=side,
-            size=size_usdt,
-            price=price,
-            pnl=realized_pnl,
-        )
+        if realized_pnl is not None:
+            self.logger.info(
+                "[TRADE_RECORDED] symbol=%s side=%s size=$%.2f price=%.4f pnl=$%.2f",
+                symbol, side, size_usdt, price, realized_pnl,
+            )
+        else:
+            self.logger.info(
+                "[TRADE_RECORDED] symbol=%s side=%s size=$%.2f price=%.4f",
+                symbol, side, size_usdt, price,
+            )
 
     def record_execution_from_ws(self, exec_data) -> TradeRecord | None:
         """

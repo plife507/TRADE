@@ -36,6 +36,7 @@ Single source of truth for all open work, bugs, and task progress.
 | P15 Phases 1-4: Cooldown & Race Fixes | 2026-02-22 | Cross-process locking, atomic writes, 15s cooldown, two-phase reservation |
 | Path Migration: ~/.trade → data/runtime/ | 2026-02-22 | 10 files migrated, centralized constants, test prompt updated |
 | Cross-Platform Newline Compliance | 2026-02-22 | 4 artifact writers fixed, 21/21 write ops verified |
+| structlog Migration Phase 0-3 (P18) | 2026-02-24 | TradingLogger deleted, contextvars binding, JSONL has play_hash/symbol/mode as JSON fields |
 
 Full details: `docs/architecture/CODEBASE_REVIEW_ONGOING.md`
 
@@ -411,6 +412,70 @@ On Windows default encoding is cp1252. Non-ASCII content produces mojibake.
 - [x] `python3 trade_cli.py validate quick` passes
 - [ ] Re-run full T36-T62 agent test suite — target 62/62
 - [ ] **GATE**: Full test suite passes
+
+### P18: structlog Migration — Logging System Overhaul
+
+See `docs/STRUCTLOG_MIGRATION_PLAN.md` for full design document.
+
+**Context:** Custom `TradingLogger` has 5 unrotated file streams (bot.log, trades.log, errors.log,
+pybit.log, events.jsonl) — no rotation, per-PID JSONL explosion (1,482 orphan files, 243 MB).
+Replace with structlog: single rotating JSONL (100 MB × 7 = 700 MB cap), colored console,
+process-safe QueueHandler, zero migration for 598 existing `logger.info()` calls.
+
+#### Phase 0: Fix Pre-Existing Logging Bugs (DONE 2026-02-24)
+- [x] F9: Add `passphrase`, `signature` to `REDACT_KEY_PATTERNS` in `logger.py`
+- [x] F8: Replace `datetime.now().timestamp()` with `time.monotonic()` in `WebSocketErrorFilter`
+- [x] F5: Add `threading.Lock` around `_write_jsonl()` in TradingLogger
+- [x] F2: Add `suppress_for_validation()` to `parallel.py` worker function
+- [x] F6: Fix bare `import logging` in `runner.py:1025` (only actual violation of 5)
+- [x] F7b: Replace all 25 `print()` calls in `runner.py` with proper logger calls
+- [x] F7a: Confirmed false positive in `global_risk.py` (print in docstring)
+- [x] **GATE**: `python trade_cli.py validate quick` — 5/5 pass (77.2s)
+- [x] **GATE**: Legacy check clean
+
+#### Phase 1: Install structlog + Configure (DONE 2026-02-24)
+- [x] Install structlog 25.5.0, add to requirements.txt
+- [x] Create `src/utils/logging_config.py`: `configure_logging()`, `shutdown_logging()`, `is_structlog_configured()`
+- [x] Wire `configure_logging()` into `trade_cli.py` (replaces `setup_logger()`)
+- [x] Add `atexit.register(shutdown_logging)` for clean QueueListener shutdown
+- [x] Guard TradingLogger `_create_logger()` to skip handlers when structlog active
+- [x] Guard TradingLogger `_setup_jsonl_handler()` to skip per-PID files when structlog active
+- [x] Clean up import-time TradingLogger handlers in `configure_logging()` (`trade.*` handlers cleared)
+- [x] Dashboard compatibility: suppress root console handler during Rich Live display (`play.py`, `plays_menu.py`)
+- [x] **GATE**: `python trade_cli.py validate quick` — 5/5 pass (77.0s)
+- [x] **GATE**: trade.jsonl created (933 lines for single backtest, valid JSON)
+- [x] **GATE**: Old bot_*.log/trades_*.log/errors_*.log all 0 bytes
+- [x] **GATE**: Console shows single structlog format (no duplication)
+- [x] **GATE**: `-q` suppresses INFO, `-v` enables verbose traces
+- [x] **GATE**: Legacy check clean
+
+#### Phase 2: Replace TradingLogger (29 files) (DONE 2026-02-24)
+- [x] Delete TradingLogger class, `setup_logger()`, `get_logger()`, `ColoredFormatter`
+- [x] Replace 43 `get_logger()` calls with `get_module_logger(__name__)` (returns stdlib Logger)
+- [x] Remove `_configure_third_party_loggers()` (structlog handles suppression)
+- [x] Replace `.trade()`, `.event()`, `.risk()`, `.panic()` calls with structured `logger.info()`
+- [x] Delete old JSONL handler (`_write_jsonl`, `_setup_jsonl_handler`)
+- [x] **GATE**: `python trade_cli.py validate quick` — 5/5 pass (77.2s)
+- [x] **GATE**: `pyright src/utils/logger.py` — 0 errors
+- [x] **GATE**: No `get_logger()` references remain (grep confirms 0)
+
+#### Phase 3: Structured Context Binding (DONE 2026-02-24)
+- [x] `bind_engine_context()` / `clear_engine_context()` helpers in `logging_config.py`
+- [x] Bound at backtest runner startup (`runner.py`) and live runner startup (`live_runner.py`)
+- [x] `_ContextVarsSnapshotFilter` captures contextvars before QueueHandler serialization
+- [x] `_inject_snapshot_context` processor restores them on QueueListener thread
+- [x] `verbose_log()`, `debug_log()`, `debug_snapshot()` — dropped `[play:hash]` prefix from message
+- [x] `run_logger.py` — dropped `[play:hash]` prefix, uses `_bind_bar_context()`
+- [x] Fixed 4 missed files in `src/data/` still importing `get_logger`
+- [x] **GATE**: JSONL output contains `play_hash`, `symbol`, `mode` as JSON fields (81/81 engine lines)
+- [x] **GATE**: `python trade_cli.py validate quick` — 5/5 pass (76.4s)
+
+#### Phase 4: Cleanup + Disk Recovery (DONE 2026-02-24)
+- [x] Delete 1,485 orphan `events_*_*.jsonl` files from `logs/` (243 MB recovered)
+- [x] Delete 24 old `bot_*.log`, `trades_*.log`, `errors_*.log`, `pybit_*.log` files
+- [x] Verify 0-byte file creation stops (TradingLogger fully removed — grep confirms 0 references)
+- [x] **GATE**: `ls logs/` shows only `trade.jsonl` + `backtests/`
+- [x] **GATE**: `python trade_cli.py validate standard` — 7/8 pass (G5 derived_zone parity pre-existing on main)
 
 ### P5: Market Sentiment Tracker
 

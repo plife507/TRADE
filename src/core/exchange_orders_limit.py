@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING
 
 from ..exchanges.bybit_client import BybitAPIError
 from . import exchange_instruments as inst
+from ..utils.logger import get_module_logger
+
+logger = get_module_logger(__name__)
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager, OrderResult
@@ -41,8 +44,7 @@ def limit_buy(
             reduce_only=reduce_only, order_link_id=order_link_id,
         )
         
-        manager.logger.trade("LIMIT_ORDER_PLACED", symbol=symbol, side="BUY",
-                            size=usd_amount, price=price, qty=qty, tif=time_in_force)
+        logger.info("[LIMIT_ORDER_PLACED] symbol=%s side=BUY size=$%.2f price=%.4f qty=%s tif=%s", symbol, usd_amount, price, qty, time_in_force)
         
         return OrderResult(
             success=True, order_id=result.get("orderId"),
@@ -89,8 +91,7 @@ def limit_sell(
             reduce_only=reduce_only, order_link_id=order_link_id,
         )
         
-        manager.logger.trade("LIMIT_ORDER_PLACED", symbol=symbol, side="SELL",
-                            size=usd_amount, price=price, qty=qty, tif=time_in_force)
+        logger.info("[LIMIT_ORDER_PLACED] symbol=%s side=SELL size=$%.2f price=%.4f qty=%s tif=%s", symbol, usd_amount, price, qty, time_in_force)
         
         return OrderResult(
             success=True, order_id=result.get("orderId"),
@@ -146,9 +147,7 @@ def limit_buy_with_tpsl(
             order_link_id=order_link_id,
         )
         
-        manager.logger.trade("LIMIT_ORDER_PLACED", symbol=symbol, side="BUY",
-                            size=usd_amount, price=price, qty=qty,
-                            tp=take_profit, sl=stop_loss)
+        logger.info("[LIMIT_ORDER_PLACED] symbol=%s side=BUY size=$%.2f price=%.4f qty=%s tp=%s sl=%s", symbol, usd_amount, price, qty, take_profit, stop_loss)
         
         return OrderResult(
             success=True, order_id=result.get("orderId"),
@@ -204,9 +203,7 @@ def limit_sell_with_tpsl(
             order_link_id=order_link_id,
         )
         
-        manager.logger.trade("LIMIT_ORDER_PLACED", symbol=symbol, side="SELL",
-                            size=usd_amount, price=price, qty=qty,
-                            tp=take_profit, sl=stop_loss)
+        logger.info("[LIMIT_ORDER_PLACED] symbol=%s side=SELL size=$%.2f price=%.4f qty=%s tp=%s sl=%s", symbol, usd_amount, price, qty, take_profit, stop_loss)
         
         return OrderResult(
             success=True, order_id=result.get("orderId"),

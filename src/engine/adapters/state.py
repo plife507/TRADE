@@ -17,10 +17,10 @@ from typing import Any
 
 from ..interfaces import EngineState, StateStore, Position, Order
 
-from ...utils.logger import get_logger
+from ...utils.logger import get_module_logger
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 class InMemoryStateStore:

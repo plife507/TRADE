@@ -34,7 +34,7 @@ from typing import Any
 
 import pandas as pd
 
-from ..utils.logger import get_logger
+from ..utils.logger import get_module_logger
 from ..config.constants import DataEnv, validate_data_env
 
 # Import all models from realtime_models
@@ -127,7 +127,7 @@ class RealtimeState:
     
     def __init__(self):
         """Initialize realtime state manager."""
-        self.logger = get_logger()
+        self.logger = get_module_logger(__name__)
 
         # Locks for thread-safety
         self._lock = threading.RLock()

@@ -31,7 +31,7 @@ from ..interfaces import (
 )
 from ..play_engine import PlayEngineConfig
 
-from ...utils.logger import get_logger
+from ...utils.logger import get_module_logger
 
 if TYPE_CHECKING:
     from ...backtest.play import Play
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from src.structures import TFIncrementalState
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 class LiveIndicatorCache:

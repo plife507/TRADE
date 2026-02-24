@@ -23,10 +23,10 @@ import numpy as np
 from src.backtest.runtime.rollup_bucket import ExecRollupBucket, ROLLUP_KEYS
 from src.backtest.runtime.quote_state import QuoteState
 from src.forge.validation.synthetic_data import generate_synthetic_quotes
-from src.utils.logger import get_logger
+from src.utils.logger import get_module_logger
 
 
-logger = get_logger()
+logger = get_module_logger(__name__)
 
 
 @dataclass
