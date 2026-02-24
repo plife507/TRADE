@@ -146,6 +146,7 @@ def _make_queue_file_handler(
     # the snapshot stashed by the filter on the calling thread).
     file_pre_chain: list[structlog.types.Processor] = [
         structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         _inject_snapshot_context,
     ]
