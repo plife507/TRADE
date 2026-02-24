@@ -464,7 +464,12 @@ class EngineManager:
                 1 for d in cross_process if d.mode == "live"
             )
             if total_live >= self._max_live:
-                # Provide informative error with cooldown details
+                running = self._find_running_instance(cross_process, "live")
+                if running:
+                    raise ValueError(
+                        f"Live instance already running (PID {running.pid}). "
+                        f"Use 'play stop' first."
+                    )
                 cooldown_info = self._cooldown_info(cross_process, "live")
                 raise ValueError(
                     f"Live instance limit reached ({self._max_live}). "
@@ -480,6 +485,12 @@ class EngineManager:
             )
             total_demo = in_memory_demo + cross_demo
             if total_demo >= self._max_demo_per_symbol:
+                running = self._find_running_instance(cross_process, "demo", symbol)
+                if running:
+                    raise ValueError(
+                        f"Instance already running for {symbol} (PID {running.pid}). "
+                        f"Use 'play stop' first."
+                    )
                 cooldown_info = self._cooldown_info(
                     [d for d in cross_process if d.symbol == symbol],
                     "demo",
@@ -494,11 +505,31 @@ class EngineManager:
                 1 for d in cross_process if d.mode == "backtest"
             )
             if total_bt >= self._max_backtest:
+                running = self._find_running_instance(cross_process, "backtest")
+                if running:
+                    raise ValueError(
+                        f"Backtest already running (PID {running.pid}). "
+                        f"DuckDB requires sequential access."
+                    )
                 cooldown_info = self._cooldown_info(cross_process, "backtest")
                 raise ValueError(
                     f"Backtest instance limit reached ({self._max_backtest}). "
                     f"DuckDB requires sequential access. Wait for current backtest to complete.{cooldown_info}"
                 )
+
+    def _find_running_instance(
+        self,
+        cross_process: list[_DiskInstance],
+        mode: str,
+        symbol: str | None = None,
+    ) -> _DiskInstance | None:
+        """Find first running cross-process instance matching mode and optional symbol."""
+        for d in cross_process:
+            if d.mode == mode and d.status == "running" and d.pid > 0:
+                if symbol is None or d.symbol == symbol:
+                    if self._is_pid_alive(d.pid):
+                        return d
+        return None
 
     @staticmethod
     def _cooldown_info(disk_instances: list[_DiskInstance], mode: str) -> str:
@@ -841,24 +872,23 @@ class EngineManager:
                 return True
 
             # Send SIGTERM (graceful shutdown)
-            import signal as _signal
-            if sys.platform == "win32":
-                # Windows: terminate process
-                import ctypes
-                kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-                PROCESS_TERMINATE = 0x0001
-                handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
-                if handle:
-                    kernel32.TerminateProcess(handle, 1)
-                    kernel32.CloseHandle(handle)
-            else:
-                os.kill(pid, _signal.SIGTERM)
+            self._terminate_pid(pid)
 
             # Wait briefly for process to exit and clean up its own file
             for _ in range(20):  # 5s max
                 time.sleep(0.25)
                 if not self._is_pid_alive(pid):
                     break
+
+            # SIGKILL fallback if SIGTERM didn't work
+            if self._is_pid_alive(pid):
+                logger.warning(f"PID {pid} didn't exit after SIGTERM, force-killing")
+                self._force_kill_pid(pid)
+                # Brief wait for OS cleanup
+                for _ in range(8):  # 2s max
+                    time.sleep(0.25)
+                    if not self._is_pid_alive(pid):
+                        break
 
             # Write cooldown file (replaces instance file)
             with self._instance_lock():
@@ -967,3 +997,73 @@ class EngineManager:
                 return True
             except OSError:
                 return False
+
+    @staticmethod
+    def _terminate_pid(pid: int) -> bool:
+        """Send SIGTERM (Unix) or TerminateProcess (Windows) to a process.
+
+        Graceful termination — the process can catch this and clean up.
+        On Windows, TerminateProcess is unconditional (no graceful equivalent).
+
+        Returns True if signal was sent successfully, False otherwise.
+        """
+        if pid <= 0:
+            return False
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+                PROCESS_TERMINATE = 0x0001
+                handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+                if handle:
+                    result = kernel32.TerminateProcess(handle, 1)
+                    kernel32.CloseHandle(handle)
+                    return bool(result)
+                return False
+            else:
+                import signal as _signal
+                os.kill(pid, _signal.SIGTERM)
+                return True
+        except ProcessLookupError:
+            return False  # Already dead
+        except PermissionError:
+            logger.warning(f"Permission denied sending SIGTERM to PID {pid}")
+            return False
+        except OSError as e:
+            logger.warning(f"Failed to terminate PID {pid}: {e}")
+            return False
+
+    @staticmethod
+    def _force_kill_pid(pid: int) -> bool:
+        """Send SIGKILL (Unix) or TerminateProcess (Windows) to a process.
+
+        Last-resort kill. On Unix, SIGKILL cannot be caught or ignored.
+        On Windows, TerminateProcess is already unconditional (same as _terminate_pid).
+
+        Returns True if signal was sent successfully, False otherwise.
+        """
+        if pid <= 0:
+            return False
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+                PROCESS_TERMINATE = 0x0001
+                handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+                if handle:
+                    result = kernel32.TerminateProcess(handle, 1)
+                    kernel32.CloseHandle(handle)
+                    return bool(result)
+                return False
+            else:
+                import signal as _signal
+                os.kill(pid, _signal.SIGKILL)
+                return True
+        except ProcessLookupError:
+            return False  # Already dead
+        except PermissionError:
+            logger.warning(f"Permission denied sending SIGKILL to PID {pid}")
+            return False
+        except OSError as e:
+            logger.warning(f"Failed to force-kill PID {pid}: {e}")
+            return False

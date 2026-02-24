@@ -392,21 +392,23 @@ On Windows default encoding is cp1252. Non-ASCII content produces mojibake.
 **Test results:** See `docs/AGENT_CLI_TEST_PROMPT.md` — WSL Run (53/62), Windows Run 8 (45/62).
 
 #### Phase 1: Process kill on `play stop`
-- [ ] `stop()` in `manager.py`: after writing cooldown file, `os.kill(pid, signal.SIGTERM)` the stored PID
-- [ ] `stop_cross_process()`: same — SIGTERM then wait 3s, then SIGKILL if still alive
-- [ ] Handle `ProcessLookupError` (already dead) and `PermissionError` (different user) gracefully
-- [ ] **GATE**: `pyright src/engine/manager.py` — 0 errors
+- [x] `_terminate_pid()` — extracted cross-platform SIGTERM/TerminateProcess helper
+- [x] `_force_kill_pid()` — SIGKILL (Unix) / TerminateProcess (Windows) last-resort kill
+- [x] `stop_cross_process()` refactored: `_terminate_pid()` → 5s wait → `_force_kill_pid()` fallback → 2s wait
+- [x] Handle `ProcessLookupError` (already dead) and `PermissionError` (different user) gracefully
+- [x] **GATE**: `pyright src/engine/manager.py` — 0 errors
+- [x] **GATE**: `python3 trade_cli.py validate quick` — 5/5 gates pass
 
 #### Phase 2: Pre-launch duplicate symbol check
-- [ ] In `start()` or `_check_limits()`: read disk instances, reject if same symbol already has `status=running` with alive PID
-- [ ] Clean error message: "Instance already running for BTCUSDT (PID 12345). Use `play stop` first."
-- [ ] **GATE**: `pyright src/engine/manager.py` — 0 errors
+- [x] In `start()` or `_check_limits()`: read disk instances, reject if same symbol already has `status=running` with alive PID
+- [x] Clean error message: "Instance already running for BTCUSDT (PID 12345). Use `play stop` first."
+- [x] **GATE**: `pyright src/engine/manager.py` — 0 errors
 
 #### Phase 3: Verification
-- [ ] WSL test: start headless → stop → verify PID killed → start second headless (should succeed)
-- [ ] WSL test: start headless → attempt second start same symbol (should fail with clean error)
-- [ ] Stale cleanup still works (fake dead PID file → play status → cleaned)
-- [ ] `python3 trade_cli.py validate quick` passes
+- [x] WSL test: start headless → stop → verify PID killed → start second headless (should succeed)
+- [x] WSL test: start headless → attempt second start same symbol (should fail with clean error)
+- [x] Stale cleanup still works (fake dead PID file → play status → cleaned)
+- [x] `python3 trade_cli.py validate quick` passes
 - [ ] Re-run full T36-T62 agent test suite — target 62/62
 - [ ] **GATE**: Full test suite passes
 
