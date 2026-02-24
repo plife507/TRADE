@@ -1,18 +1,19 @@
 """
 Debug utilities for TRADE with hash tracing.
 
-Provides hash-prefixed logging for exactitude in debugging.
-Every debug log line includes play_hash and optional run_hash
-to enable precise correlation with backtest runs.
+Provides structured logging gated on verbose/debug mode.
+Context fields (play_hash, symbol, mode) are carried automatically
+by structlog contextvars — bound once at engine startup via
+``bind_engine_context()`` in ``logging_config.py``.
 
 Usage:
     from src.utils.debug import debug_log, debug_trace, is_debug_enabled
 
-    # Simple debug logging with hash prefix
-    debug_log(play_hash, "Engine init", bars=1000, tf="15m")
+    # Simple debug logging
+    debug_log("Engine init", bars=1000, tf="15m")
 
     # With run hash (when available)
-    debug_log(play_hash, "Trade opened", run_hash=run_hash, entry=42150.0)
+    debug_log("Trade opened", run_hash=run_hash, entry=42150.0)
 
     # Decorator for function tracing
     @debug_trace
@@ -27,10 +28,11 @@ Enable debugging:
 from __future__ import annotations
 
 import functools
-import logging
 import os
 import time
 from typing import Any, Callable
+
+from .logger import get_module_logger
 
 # =============================================================================
 # Configuration
@@ -49,6 +51,9 @@ HASH_DISPLAY_LENGTH = 8
 # Logging threshold for bar milestones (log every N bars)
 BAR_MILESTONE_INTERVAL = 100
 
+# Module-level logger under trade.* hierarchy
+_logger = get_module_logger(__name__)
+
 
 def is_debug_enabled() -> bool:
     """Check if debug mode is enabled."""
@@ -62,6 +67,7 @@ def enable_debug(enabled: bool = True) -> None:
 
     # Also set log level to DEBUG if enabling
     if enabled:
+        import logging
         logging.getLogger("trade").setLevel(logging.DEBUG)
 
 
@@ -77,7 +83,6 @@ def enable_verbose(enabled: bool = True) -> None:
 
 
 def verbose_log(
-    play_hash: str | None,
     message: str,
     *,
     bar_idx: int | None = None,
@@ -88,9 +93,9 @@ def verbose_log(
     Only logs if verbose or debug mode is enabled.
     Uses INFO level so it's visible with normal log handlers.
 
-    ``play_hash`` is available in the structlog context (bound by the
-    engine runner at startup via ``bind_engine_context``).  ``bar_idx``
-    is temporarily bound so it appears as a JSON field in JSONL output.
+    Engine context (play_hash, symbol, mode) is automatically included
+    via structlog contextvars.  ``bar_idx`` is temporarily bound so it
+    appears as a JSON field in JSONL output.
     """
     if not is_verbose_enabled():
         return
@@ -101,18 +106,17 @@ def verbose_log(
     if bar_idx is not None:
         structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
 
-    if fields:
-        field_strs = [f"{k}={_format_value(v)}" for k, v in fields.items()]
-        full_msg = f"{message}: {', '.join(field_strs)}"
-    else:
-        full_msg = message
+    try:
+        if fields:
+            field_strs = [f"{k}={_format_value(v)}" for k, v in fields.items()]
+            full_msg = f"{message}: {', '.join(field_strs)}"
+        else:
+            full_msg = message
 
-    logger = logging.getLogger("trade")
-    logger.info(full_msg)
-
-    # Unbind bar_idx so it doesn't leak to non-bar-level messages
-    if bar_idx is not None:
-        structlog.contextvars.unbind_contextvars("bar_idx")
+        _logger.info(full_msg)
+    finally:
+        if bar_idx is not None:
+            structlog.contextvars.unbind_contextvars("bar_idx")
 
 
 def short_hash(full_hash: str | None) -> str:
@@ -148,7 +152,6 @@ def format_hash_prefix(
 
 
 def debug_log(
-    play_hash: str | None,
     message: str,
     *,
     run_hash: str | None = None,
@@ -159,19 +162,18 @@ def debug_log(
 
     Only logs if debug mode is enabled (TRADE_DEBUG=1 or --debug).
 
-    ``play_hash`` is available in the structlog context (bound by the
-    engine runner at startup).  ``bar_idx`` and ``run_hash`` are
+    Engine context (play_hash, symbol, mode) is automatically included
+    via structlog contextvars.  ``bar_idx`` and ``run_hash`` are
     temporarily bound so they appear as JSON fields in JSONL output.
 
     Args:
-        play_hash: Play configuration hash (available via context, kept for API compat).
         message: Log message.
         run_hash: Optional run hash (for session start/end).
         bar_idx: Optional bar index (for bar-level events).
         **fields: Additional key=value pairs to include.
 
     Example:
-        debug_log("8f2a9c1d", "Signal generated", bar_idx=247, action="ENTRY_LONG")
+        debug_log("Signal generated", bar_idx=247, action="ENTRY_LONG")
     """
     if not _debug_enabled:
         return
@@ -187,19 +189,19 @@ def debug_log(
         structlog.contextvars.bind_contextvars(run_hash=run_hash)
         extra_keys.append("run_hash")
 
-    # Build message with fields
-    if fields:
-        field_strs = [f"{k}={_format_value(v)}" for k, v in fields.items()]
-        full_msg = f"{message}: {', '.join(field_strs)}"
-    else:
-        full_msg = message
+    try:
+        # Build message with fields
+        if fields:
+            field_strs = [f"{k}={_format_value(v)}" for k, v in fields.items()]
+            full_msg = f"{message}: {', '.join(field_strs)}"
+        else:
+            full_msg = message
 
-    logger = logging.getLogger("trade")
-    logger.debug(full_msg)
-
-    # Unbind temporary keys
-    if extra_keys:
-        structlog.contextvars.unbind_contextvars(*extra_keys)
+        _logger.debug(full_msg)
+    finally:
+        # Unbind temporary keys
+        if extra_keys:
+            structlog.contextvars.unbind_contextvars(*extra_keys)
 
 
 def _format_value(value: Any) -> str:
@@ -212,7 +214,6 @@ def _format_value(value: Any) -> str:
 
 
 def debug_milestone(
-    play_hash: str | None,
     bar_idx: int,
     total_bars: int,
     elapsed_seconds: float,
@@ -223,7 +224,6 @@ def debug_milestone(
     Only logs if bar_idx is a multiple of BAR_MILESTONE_INTERVAL.
 
     Args:
-        play_hash: Play configuration hash
         bar_idx: Current bar index
         total_bars: Total bars to process
         elapsed_seconds: Time elapsed since start
@@ -235,14 +235,12 @@ def debug_milestone(
         return
 
     debug_log(
-        play_hash,
         f"Milestone: {bar_idx}/{total_bars} bars processed ({elapsed_seconds:.1f}s)",
         bar_idx=bar_idx,
     )
 
 
 def debug_signal(
-    play_hash: str | None,
     bar_idx: int,
     action: str,
     feature_values: dict[str, float] | None = None,
@@ -251,7 +249,6 @@ def debug_signal(
     Log a signal generation event.
 
     Args:
-        play_hash: Play configuration hash
         bar_idx: Bar index where signal generated
         action: Signal action (ENTRY_LONG, EXIT_LONG, etc.)
         feature_values: Optional dict of feature values that triggered
@@ -263,11 +260,10 @@ def debug_signal(
     if feature_values:
         fields.update(feature_values)
 
-    debug_log(play_hash, f"Signal {action}", bar_idx=bar_idx, **fields)
+    debug_log(f"Signal {action}", bar_idx=bar_idx, **fields)
 
 
 def debug_trade(
-    play_hash: str | None,
     bar_idx: int,
     event: str,
     *,
@@ -283,7 +279,6 @@ def debug_trade(
     Log a trade event (opened, closed, SL hit, TP hit).
 
     Args:
-        play_hash: Play configuration hash
         bar_idx: Bar index of event
         event: Event type (opened, closed, sl_hit, tp_hit)
         trade_num: Trade number in sequence
@@ -314,11 +309,10 @@ def debug_trade(
         fields["pnl_pct"] = f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%"
 
     trade_label = f"Trade #{trade_num}" if trade_num else "Trade"
-    debug_log(play_hash, f"{trade_label} {event}", bar_idx=bar_idx, **fields)
+    debug_log(f"{trade_label} {event}", bar_idx=bar_idx, **fields)
 
 
 def debug_run_complete(
-    play_hash: str | None,
     run_hash: str | None,
     *,
     trades_hash: str | None = None,
@@ -331,7 +325,6 @@ def debug_run_complete(
     Log run completion with all hashes for verification.
 
     Args:
-        play_hash: Play configuration hash
         run_hash: Combined run hash
         trades_hash: Trade sequence hash
         equity_hash: Equity curve hash
@@ -352,10 +345,10 @@ def debug_run_complete(
     if elapsed_seconds is not None:
         fields["elapsed"] = f"{elapsed_seconds:.1f}s"
 
-    debug_log(play_hash, "Complete", run_hash=run_hash, **fields)
+    debug_log("Complete", run_hash=run_hash, **fields)
 
     if artifact_path:
-        debug_log(play_hash, f"Artifacts: {artifact_path}", run_hash=run_hash)
+        debug_log(f"Artifacts: {artifact_path}", run_hash=run_hash)
 
 
 def debug_trace(func: Callable) -> Callable:
@@ -375,26 +368,24 @@ def debug_trace(func: Callable) -> Callable:
             return func(*args, **kwargs)
 
         func_name = func.__qualname__
-        logger = logging.getLogger("trade")
 
-        logger.debug(f"[trace] ENTER {func_name}")
+        _logger.debug(f"[trace] ENTER {func_name}")
         start = time.perf_counter()
 
         try:
             result = func(*args, **kwargs)
             elapsed = (time.perf_counter() - start) * 1000
-            logger.debug(f"[trace] EXIT {func_name} ({elapsed:.2f}ms)")
+            _logger.debug(f"[trace] EXIT {func_name} ({elapsed:.2f}ms)")
             return result
         except Exception as e:
             elapsed = (time.perf_counter() - start) * 1000
-            logger.debug(f"[trace] RAISE {func_name} ({elapsed:.2f}ms): {type(e).__name__}")
+            _logger.debug(f"[trace] RAISE {func_name} ({elapsed:.2f}ms): {type(e).__name__}")
             raise
 
     return wrapper
 
 
 def debug_snapshot(
-    play_hash: str | None,
     bar_idx: int,
     snapshot_data: dict[str, Any],
     *,
@@ -402,10 +393,10 @@ def debug_snapshot(
 ) -> None:
     """Dump snapshot state for debugging.
 
-    ``play_hash`` is available in the structlog context.
+    Engine context (play_hash, symbol, mode) is automatically included
+    via structlog contextvars.
 
     Args:
-        play_hash: Play configuration hash (available via context, kept for API compat).
         bar_idx: Current bar index.
         snapshot_data: Dict of snapshot values to log.
         max_features: Maximum number of features to show.
@@ -416,15 +407,14 @@ def debug_snapshot(
     import structlog.contextvars
 
     structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
-    logger = logging.getLogger("trade")
+    try:
+        _logger.debug("Snapshot dump:")
 
-    logger.debug("Snapshot dump:")
+        items = list(snapshot_data.items())[:max_features]
+        for key, value in items:
+            _logger.debug(f"  {key}: {_format_value(value)}")
 
-    items = list(snapshot_data.items())[:max_features]
-    for key, value in items:
-        logger.debug(f"  {key}: {_format_value(value)}")
-
-    if len(snapshot_data) > max_features:
-        logger.debug(f"  ... and {len(snapshot_data) - max_features} more")
-
-    structlog.contextvars.unbind_contextvars("bar_idx")
+        if len(snapshot_data) > max_features:
+            _logger.debug(f"  ... and {len(snapshot_data) - max_features} more")
+    finally:
+        structlog.contextvars.unbind_contextvars("bar_idx")

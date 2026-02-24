@@ -52,8 +52,7 @@ def _extract_fill_price(result: dict, fallback_price: float) -> float:
             # avgPrice=0 means order not yet filled — use fallback
     except (TypeError, ValueError):
         pass
-    from src.utils.logger import get_module_logger
-    get_module_logger(__name__).warning(
+    logger.warning(
         f"avgPrice missing or invalid in order response, using quote price {fallback_price:.4f}"
     )
     return fallback_price

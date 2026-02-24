@@ -164,36 +164,44 @@ class RunLogger:
     ) -> None:
         """Log debug message with structured context."""
         self._bind_bar_context(bar_idx)
-        field_str = self._format_fields(fields)
-        self._logger.debug(f"{message}{field_str}")
-        self._unbind_bar_context(bar_idx)
+        try:
+            field_str = self._format_fields(fields)
+            self._logger.debug(f"{message}{field_str}")
+        finally:
+            self._unbind_bar_context(bar_idx)
 
     def info(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
         """Log info message with structured context."""
         self._bind_bar_context(bar_idx)
-        field_str = self._format_fields(fields)
-        self._logger.info(f"{message}{field_str}")
-        self._unbind_bar_context(bar_idx)
+        try:
+            field_str = self._format_fields(fields)
+            self._logger.info(f"{message}{field_str}")
+        finally:
+            self._unbind_bar_context(bar_idx)
 
     def warning(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
         """Log warning message with structured context."""
         self._bind_bar_context(bar_idx)
-        field_str = self._format_fields(fields)
-        self._logger.warning(f"{message}{field_str}")
-        self._unbind_bar_context(bar_idx)
+        try:
+            field_str = self._format_fields(fields)
+            self._logger.warning(f"{message}{field_str}")
+        finally:
+            self._unbind_bar_context(bar_idx)
 
     def error(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
         """Log error message with structured context."""
         self._bind_bar_context(bar_idx)
-        field_str = self._format_fields(fields)
-        self._logger.error(f"{message}{field_str}")
-        self._unbind_bar_context(bar_idx)
+        try:
+            field_str = self._format_fields(fields)
+            self._logger.error(f"{message}{field_str}")
+        finally:
+            self._unbind_bar_context(bar_idx)
 
     def finalize(
         self,

@@ -408,7 +408,7 @@ class PlayEngine:
         # 7.3: Log bar OHLCV when debug enabled
         if is_debug_enabled() and self.is_backtest:
             debug_log(
-                self._play_hash, "Bar OHLCV",
+                "Bar OHLCV",
                 bar_idx=bar_index,
                 O=candle.open, H=candle.high, L=candle.low,
                 C=candle.close, V=candle.volume,
@@ -491,7 +491,7 @@ class PlayEngine:
                     except Exception:
                         pass
                     if snap_vals:
-                        verbose_log(self._play_hash, "Indicator snapshot at signal", bar_idx=bar_index, **snap_vals)
+                        verbose_log("Indicator snapshot at signal", bar_idx=bar_index, **snap_vals)
 
             # 7.3: Log signal evaluation result
             if is_debug_enabled() and self.is_backtest:
@@ -503,7 +503,7 @@ class PlayEngine:
                 if isinstance(tp, (int, float)):
                     fv["tp"] = float(tp)
                 debug_signal(
-                    self._play_hash, bar_index,
+                    bar_index,
                     action=signal.direction,
                     feature_values=fv if fv else None,
                 )
@@ -511,7 +511,7 @@ class PlayEngine:
             # Log periodic "no signal" milestone so user knows engine is running
             pos_str = "FLAT" if position is None else f"{position.side} {position.size_qty}"
             debug_log(
-                self._play_hash, "No signal",
+                "No signal",
                 bar_idx=bar_index,
                 position=pos_str,
             )
@@ -572,7 +572,7 @@ class PlayEngine:
             # 7.3: Log position close via debug_trade
             if is_debug_enabled() and self.is_backtest:
                 debug_trade(
-                    self._play_hash, self._current_bar_index,
+                    self._current_bar_index,
                     event="close_signal",
                     trade_num=self._total_trades,
                 )
@@ -695,7 +695,7 @@ class PlayEngine:
             # 7.3: Log position open via debug_trade
             if is_debug_enabled() and self.is_backtest:
                 debug_trade(
-                    self._play_hash, self._current_bar_index,
+                    self._current_bar_index,
                     event="opened",
                     trade_num=self._total_trades,
                     entry=result.fill_price or order.limit_price,
@@ -1201,7 +1201,7 @@ class PlayEngine:
                             snapshot, has_pos, pos_side
                         )
                         for line in trace.format_lines():
-                            verbose_log(self._play_hash, line, bar_idx=bar_index)
+                            verbose_log(line, bar_idx=bar_index)
 
             return signal
 
@@ -1800,7 +1800,7 @@ class PlayEngine:
                 snapshot, has_position, position_side
             )
             for line in trace.format_lines():
-                verbose_log(self._play_hash, line, bar_idx=bar_index)
+                verbose_log(line, bar_idx=bar_index)
         else:
             result = self._signal_evaluator.evaluate(snapshot, has_position, position_side)
 
@@ -1830,7 +1830,7 @@ class PlayEngine:
                             snapshot_data[key] = val
                 except Exception:
                     pass  # Don't fail on snapshot read errors
-                debug_snapshot(self._play_hash, bar_index, snapshot_data)
+                debug_snapshot(bar_index, snapshot_data)
 
         # Convert evaluation result to Signal (with reference price for deviation guard)
         return self._result_to_signal(result, position, candle.close)
@@ -2149,7 +2149,7 @@ class _PlayEngineSubLoopContext:
                             snap_data[key] = val
                 except Exception:
                     pass
-                debug_snapshot(self._engine._play_hash, self._bar_index, snap_data)
+                debug_snapshot(self._bar_index, snap_data)
 
         # Convert to Signal (with reference price for deviation guard)
         return self._engine._result_to_signal(result, self._position, self._candle.close)

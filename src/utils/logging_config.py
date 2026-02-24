@@ -244,11 +244,6 @@ def configure_logging(
     )
 
 
-def is_structlog_configured() -> bool:
-    """Return True if structlog has been configured via configure_logging()."""
-    return _configured
-
-
 def bind_engine_context(
     *,
     play_hash: str,

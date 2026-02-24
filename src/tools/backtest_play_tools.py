@@ -518,9 +518,9 @@ def backtest_run_play_tool(
             for tf in play.feature_registry.get_all_tfs():
                 required_tfs.add(tf)
 
-            print(f"[SYNTHETIC] Auto-generating data ({synthetic_bars} bars from indicator/structure warmup)")
-            print(f"[SYNTHETIC] Pattern: {synthetic_pattern}, Bars: {synthetic_bars}")
-            print(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
+            logger.info(f"[SYNTHETIC] Auto-generating data ({synthetic_bars} bars from indicator/structure warmup)")
+            logger.info(f"[SYNTHETIC] Pattern: {synthetic_pattern}, Bars: {synthetic_bars}")
+            logger.info(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
 
             # Generate synthetic candles
             from src.forge.validation.synthetic_data import PatternType
@@ -539,8 +539,8 @@ def backtest_run_play_tool(
             end = data_end
             skip_preflight = True  # No DB data to validate
 
-            print(f"[SYNTHETIC] Data range: {start} to {end}")
-            print(f"[SYNTHETIC] Data hash: {candles.data_hash}")
+            logger.info(f"[SYNTHETIC] Data range: {start} to {end}")
+            logger.info(f"[SYNTHETIC] Data hash: {candles.data_hash}")
             preflight_data = {"synthetic": True, "data_hash": candles.data_hash}
 
         # Skip preflight if requested or if using synthetic data

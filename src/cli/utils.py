@@ -433,18 +433,15 @@ def run_tool_action(action_key: str, tool_fn, *args, **kwargs) -> ToolResult:
         ToolResult from the tool execution
     """
     import time
-    from ..utils.logger import get_module_logger, redact_dict
+    from ..utils.logger import get_module_logger
     from ..utils.log_context import new_tool_call_context
 
     logger = get_module_logger(__name__)
     status_msg = format_action_status(action_key, **kwargs)
     tool_name = getattr(tool_fn, '__name__', action_key)
 
-    # Redact args for logging
-    safe_kwargs = redact_dict(kwargs)
-
     # Execute within a tool call context
-    with new_tool_call_context(tool_name) as ctx:
+    with new_tool_call_context(tool_name):
         started = time.perf_counter()
 
         logger.info("[tool.call.start] tool_name=%s action_key=%s", tool_name, action_key)
@@ -489,21 +486,18 @@ def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, 
     """
     import time
     from ..core.application import get_application
-    from ..utils.logger import get_module_logger, redact_dict
+    from ..utils.logger import get_module_logger
     from ..utils.log_context import new_tool_call_context
 
     logger = get_module_logger(__name__)
     status_msg = format_action_status(action_key, **kwargs)
     tool_name = getattr(tool_fn, '__name__', action_key)
 
-    # Redact args for logging
-    safe_kwargs = redact_dict(kwargs)
-
     app = get_application()
     app.suppress_shutdown()
 
     # Execute within a tool call context
-    with new_tool_call_context(tool_name) as ctx:
+    with new_tool_call_context(tool_name):
         started = time.perf_counter()
 
         logger.info("[tool.call.start] tool_name=%s action_key=%s long_running=True", tool_name, action_key)

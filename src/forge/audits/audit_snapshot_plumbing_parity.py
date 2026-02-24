@@ -525,9 +525,8 @@ def audit_snapshot_plumbing_parity(
         
     except Exception as e:
         runtime = time.perf_counter() - start_time
-        logger.error(f"Snapshot plumbing audit failed: {e}")
         import traceback
-        traceback.print_exc()
+        logger.error(f"Snapshot plumbing audit failed: {e}\n{traceback.format_exc()}")
         return PlumbingParityResult(
             success=False,
             total_samples=0,

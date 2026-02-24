@@ -1052,7 +1052,6 @@ def run_backtest_with_gates(
         from src.utils.debug import debug_run_complete
         run_duration = time.time() - ctx.run_start_time
         debug_run_complete(
-            ctx.play_hash,
             summary.run_hash if summary else None,
             trades_hash=summary.trades_hash if summary else None,
             equity_hash=summary.equity_hash if summary else None,

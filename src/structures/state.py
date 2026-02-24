@@ -236,7 +236,7 @@ class TFIncrementalState:
                     trend_after = getattr(detector, "trend_direction", None)
                     trend_changed = trend_before is not None and trend_after != trend_before
                     if _debug or trend_changed or bar.idx <= 50:
-                        verbose_log(None, f"Structure update: {', '.join(parts)}", bar_idx=bar.idx)
+                        verbose_log(f"Structure update: {', '.join(parts)}", bar_idx=bar.idx)
 
     def get_value(self, struct_key: str, output_key: str) -> float | int | str:
         """

@@ -658,7 +658,7 @@ class BacktestRunner:
                 # 7.3: Log SL/TP/exit fills via debug_trade
                 if is_debug_enabled():
                     debug_trade(
-                        self._engine._play_hash, bar_idx,
+                        bar_idx,
                         event=fill.reason.value,
                         trade_num=self._engine._total_trades,
                         exit=fill.price,

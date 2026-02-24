@@ -5,7 +5,6 @@ Provides:
 - get_module_logger(): Create child loggers under the ``trade.*`` hierarchy
 - suppress_for_validation(): Silence trade.* loggers in validation workers
 - redact_value() / redact_dict(): Centralized sensitive-field redaction
-- WebSocketErrorFilter: Suppress repetitive WS error messages
 
 The actual logging pipeline (console + JSONL) is configured by
 ``src.utils.logging_config.configure_logging()``.  All ``trade.*``
@@ -23,7 +22,6 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 from typing import Any
 
 
@@ -152,44 +150,3 @@ def suppress_for_validation() -> None:
     trade_root.setLevel(logging.WARNING)
     for name in ("trade.backtest", "trade.engine", "trade.data", "trade.indicators"):
         logging.getLogger(name).setLevel(logging.WARNING)
-
-
-# =============================================================================
-# WebSocket error filter
-# =============================================================================
-
-class WebSocketErrorFilter(logging.Filter):
-    """Filter to suppress repetitive WebSocket error messages in console.
-
-    Allows first occurrence through, then suppresses repeats for a cooldown
-    period (default 60 s).
-    """
-
-    def __init__(self, cooldown_seconds: float = 60.0):
-        super().__init__()
-        self._seen_messages: dict[str, float] = {}
-        self._cooldown = cooldown_seconds
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        suppress_patterns = [
-            "Too many connection attempts",
-            "connection failed",
-            "pybit will no longer try to reconnect",
-            "WebSocket connection closed",
-            "Reconnecting",
-        ]
-
-        msg = record.getMessage()
-
-        for pattern in suppress_patterns:
-            if pattern.lower() in msg.lower():
-                now = time.monotonic()
-                last_seen = self._seen_messages.get(pattern, 0.0)
-
-                if now - last_seen < self._cooldown:
-                    return False
-                else:
-                    self._seen_messages[pattern] = now
-                    return True
-
-        return True
