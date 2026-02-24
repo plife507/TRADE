@@ -295,6 +295,7 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 | DSL syntax | `docs/PLAY_DSL_REFERENCE.md` |
 | Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
 | CLI redesign open gates | `docs/CLI_REDESIGN.md` |
+| Agent readiness & go-live path | `docs/AGENT_READINESS_EVALUATION.md` |
 | System defaults | `config/defaults.yml` |
 
 ## Reference Documentation
