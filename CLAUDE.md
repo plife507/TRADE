@@ -201,6 +201,81 @@ G17 Category 8 scans all `src/` files for these patterns (same approach as G16 l
 - `validate_timestamps.py` — contains pattern strings in test messages
 - `indicator_vendor.py` — `pandas_ta.vwap()` requires tz-aware DatetimeIndex for session boundaries
 
+### Best Practices (How to Write Timestamp Code)
+
+**Getting current time:**
+```python
+from src.utils.datetime_utils import utc_now
+now = utc_now()  # Always. Never datetime.now() or datetime.utcnow().
+```
+
+**Parsing timestamps from Bybit REST/WS:**
+```python
+from src.utils.datetime_utils import parse_bybit_ts
+dt = parse_bybit_ts(response["createdTime"])  # Returns naive UTC or None
+```
+
+**Converting datetime to epoch milliseconds:**
+```python
+from src.utils.datetime_utils import datetime_to_epoch_ms
+ms = datetime_to_epoch_ms(dt)  # Safe on naive datetimes (uses timegm, not .timestamp())
+```
+
+**Parsing user/config ISO strings:**
+```python
+# Always add .replace(tzinfo=None) — fromisoformat can return tz-aware in Python 3.11+
+dt = datetime.fromisoformat(user_input).replace(tzinfo=None)
+# Or use normalize_datetime() which handles all edge cases:
+from src.utils.datetime_utils import normalize_datetime
+dt, err = normalize_datetime(user_input)
+```
+
+**Converting Bybit epoch-ms integers to datetime:**
+```python
+# Always specify tz=timezone.utc, then strip
+dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+```
+
+**Working with pandas timestamps:**
+```python
+# If you need pd.to_datetime with UTC, strip immediately:
+ts = pd.to_datetime(series, unit="ms", utc=True).tz_localize(None)
+# Exception: pandas_ta functions that require tz-aware DatetimeIndex (VWAP)
+```
+
+**Serializing to JSON/artifacts:**
+```python
+# .isoformat() on naive datetime produces clean strings (no +00:00 suffix)
+d = {"timestamp": dt.isoformat()}  # "2025-06-15T12:30:00"
+# For storage without microseconds, use:
+from src.utils.datetime_utils import normalize_datetime_for_storage
+s = normalize_datetime_for_storage(dt)  # "2025-06-15T12:30:00" (strftime, drops μs)
+```
+
+**Measuring intervals (staleness, rate limiting, cooldowns):**
+```python
+# Use time.time() for interval math — it's a float, not a datetime
+import time
+reception_time = time.time()  # When data arrived
+age = time.time() - reception_time  # Seconds since arrival
+is_stale = age > threshold
+# Use time.monotonic() for durations immune to NTP clock jumps
+```
+
+**Adding a new dataclass with a timestamp field:**
+```python
+@dataclass
+class MyRecord:
+    timestamp: datetime  # Always naive UTC
+    # ...
+    def to_dict(self) -> dict:
+        return {"timestamp": self.timestamp.isoformat(), ...}
+        # G17 Cat 19 will automatically check this produces no tz suffix
+```
+
+**Adding a new exempt file to G17:**
+If your code legitimately needs tz-aware timestamps (e.g., a third-party library requires it), add the file stem to the exempt set in `validate_timestamps.py` Cat 22 (`_cat_static_analysis_warnings`) with a comment explaining why.
+
 ### Why timegm Matters
 
 On a non-UTC system (e.g., UTC-5), `datetime.timestamp()` on a **naive** datetime assumes local time:
