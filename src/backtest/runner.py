@@ -26,15 +26,12 @@ If any gate fails, the runner stops and returns a failure status.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
+
+from src.utils.datetime_utils import datetime_to_epoch_ms
 from typing import Any, TYPE_CHECKING, cast
 from pathlib import Path
 import time
-
-
-def _utcnow() -> datetime:
-    """Get current UTC time as timezone-aware datetime."""
-    return datetime.now(timezone.utc)
 
 import pandas as pd
 
@@ -601,7 +598,7 @@ def _write_trade_artifacts(ctx: _RunContext) -> int | None:
             sim_start = ctx.engine_result.metrics.simulation_start
             if sim_start is not None:
                 if hasattr(sim_start, 'timestamp'):
-                    eval_start_ts_ms = int(sim_start.timestamp() * 1000)
+                    eval_start_ts_ms = datetime_to_epoch_ms(sim_start)
                 elif isinstance(sim_start, (int, float)):
                     eval_start_ts_ms = int(sim_start)
 

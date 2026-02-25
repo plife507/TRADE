@@ -11,7 +11,7 @@ Contains:
 import os
 from datetime import datetime
 
-from ..utils.datetime_utils import utc_now
+from ..utils.datetime_utils import datetime_to_epoch_ms, utc_now
 from typing import Any
 
 from rich.console import Console
@@ -394,8 +394,9 @@ def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSel
         )
         return TimeRangeSelection(is_back=True)
     
-    start_ms = int(start_dt.timestamp() * 1000)
-    end_ms = int(end_dt.timestamp() * 1000)
+    start_ms = datetime_to_epoch_ms(start_dt)
+    end_ms = datetime_to_epoch_ms(end_dt)
+    assert start_ms is not None and end_ms is not None
     
     console.print(f"\n[green]✓ Range: {start_dt.strftime('%Y-%m-%d %H:%M')} → {end_dt.strftime('%Y-%m-%d %H:%M')} ({duration.days}d {duration.seconds // 3600}h)[/]")
     

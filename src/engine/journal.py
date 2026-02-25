@@ -10,9 +10,10 @@ Journal files are stored at {project_root}/data/journal/{instance_id}.jsonl
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
+from ..utils.datetime_utils import utc_now
 from ..utils.logger import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -46,7 +47,7 @@ class TradeJournal:
         """Record a signal event."""
         self._write({
             "event": "signal",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": utc_now().isoformat(),
             "instance_id": self._instance_id,
             "symbol": symbol,
             "direction": direction,
@@ -68,7 +69,7 @@ class TradeJournal:
         """Record an order fill event."""
         self._write({
             "event": "fill",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": utc_now().isoformat(),
             "instance_id": self._instance_id,
             "symbol": symbol,
             "direction": direction,
@@ -88,7 +89,7 @@ class TradeJournal:
         """Record an execution error."""
         self._write({
             "event": "error",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": utc_now().isoformat(),
             "instance_id": self._instance_id,
             "symbol": symbol,
             "direction": direction,

@@ -28,9 +28,11 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from ...utils.datetime_utils import utc_now
 
 # Global logs directory
 GLOBAL_LOGS_DIR = Path("logs/backtests")
@@ -88,7 +90,7 @@ class RunLogger:
         self.symbol = symbol
         self.tf = tf
 
-        self._ts_start = datetime.now(timezone.utc)
+        self._ts_start = utc_now()
         self._ts_end: datetime | None = None
 
         # Get standard logger FIRST (needed by _setup_run_log)
@@ -202,7 +204,7 @@ class RunLogger:
             trades_hash: Determinism hash of trades output
             run_hash: Combined run hash (trades + equity + play)
         """
-        self._ts_end = datetime.now(timezone.utc)
+        self._ts_end = utc_now()
 
         # Close per-run file handler
         if self._run_log_handler:

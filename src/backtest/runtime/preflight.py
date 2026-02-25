@@ -28,16 +28,11 @@ import sys
 import pandas as pd
 import numpy as np
 
-from src.utils.datetime_utils import datetime_to_epoch_ms
+from src.utils.datetime_utils import datetime_to_epoch_ms, utc_now
 
 if TYPE_CHECKING:
     from ..execution_validation import WarmupRequirements
     from ..play import Play
-
-
-def _utcnow() -> datetime:
-    """Get current UTC time as timezone-aware datetime."""
-    return datetime.now(timezone.utc)
 
 
 class PreflightStatus(str, Enum):
@@ -54,7 +49,7 @@ class ToolCallRecord:
     params: dict[str, Any]
     success: bool
     message: str = ""
-    timestamp: datetime = field(default_factory=_utcnow)
+    timestamp: datetime = field(default_factory=utc_now)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
@@ -201,7 +196,7 @@ class PreflightReport:
     window_end: datetime
     overall_status: PreflightStatus
     tf_results: dict[str, TFPreflightResult]  # key: "symbol:tf"
-    run_timestamp: datetime = field(default_factory=_utcnow)
+    run_timestamp: datetime = field(default_factory=utc_now)
     auto_sync_result: AutoSyncResult | None = None
     # Computed warmup requirements (source of truth from Play indicators)
     computed_warmup_requirements: "WarmupRequirements | None" = None

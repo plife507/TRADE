@@ -11,7 +11,9 @@ and SafetyChecks to avoid duplicate/divergent daily loss tracking.
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime
+
+from src.utils.datetime_utils import datetime_to_epoch_ms, utc_now
 
 from ..utils.logger import get_module_logger
 
@@ -31,12 +33,12 @@ class DailyLossTracker:
         self._lock = threading.Lock()
         self._daily_pnl: float = 0.0
         self._daily_trades: int = 0
-        self._last_reset = datetime.now(timezone.utc).date()
+        self._last_reset = utc_now().date()
         self._seed_failed: bool = False
 
     def _reset_if_needed(self):
         """Reset counters if a new day has started. Must hold _lock."""
-        today = datetime.now(timezone.utc).date()
+        today = utc_now().date()
         if today > self._last_reset:
             self._daily_pnl = 0.0
             self._daily_trades = 0
@@ -112,11 +114,12 @@ class DailyLossTracker:
             try:
                 from ..utils.time_range import TimeRange
 
-                today_start = datetime.now(timezone.utc).replace(
+                today_start = utc_now().replace(
                     hour=0, minute=0, second=0, microsecond=0,
                 )
-                start_ms = int(today_start.timestamp() * 1000)
-                end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+                start_ms = datetime_to_epoch_ms(today_start)
+                end_ms = datetime_to_epoch_ms(utc_now())
+                assert start_ms is not None and end_ms is not None
                 time_range = TimeRange(
                     start_ms=start_ms,
                     end_ms=end_ms,
@@ -208,7 +211,7 @@ class PanicState:
         """Trigger panic state."""
         with self._lock:
             self._triggered = True
-            self._trigger_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            self._trigger_time = utc_now()
             self._reason = reason
 
         # Execute callbacks (copy-under-lock for thread safety)
@@ -271,7 +274,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
     results = {
         "success": False,
         "reason": reason,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": utc_now().isoformat(),
         "orders_cancelled": False,
         "positions_closed": [],
         "errors": [],

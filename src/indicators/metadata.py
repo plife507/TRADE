@@ -24,7 +24,9 @@ import hashlib
 import json
 import numpy as np
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime
+
+from src.utils.datetime_utils import utc_now
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -231,7 +233,7 @@ class IndicatorMetadata:
     # Versioning
     pandas_ta_version: str = field(default_factory=get_pandas_ta_version)
     code_version: str = field(default_factory=get_code_version)
-    computed_at_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    computed_at_utc: datetime = field(default_factory=utc_now)
 
     def __post_init__(self):
         """Validate metadata fields."""

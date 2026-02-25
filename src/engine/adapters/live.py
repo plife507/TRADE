@@ -14,6 +14,8 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
+from src.utils.datetime_utils import utc_now, datetime_to_epoch_ms
+
 import numpy as np
 import pandas as pd
 
@@ -804,7 +806,7 @@ class LiveDataProvider:
         from src.backtest.runtime.timeframe import tf_minutes as _tf_minutes
 
         store = get_historical_store(env=self._env)
-        now = datetime.now(timezone.utc)
+        now = utc_now()
 
         # Collect unique TFs and their warmup requirements
         unique_tfs: dict[str, int] = {}
@@ -1037,8 +1039,7 @@ class LiveDataProvider:
             store = get_historical_store(env=self._env)
 
             # Calculate time range (last N bars based on timeframe)
-            # G6.5.1: Use non-deprecated timezone-aware datetime
-            end = datetime.now(timezone.utc)
+            end = utc_now()
             tf_mins = tf_minutes(tf_str)
             start = end - timedelta(minutes=tf_mins * self._buffer_size)
 
@@ -1098,14 +1099,18 @@ class LiveDataProvider:
         try:
             store = get_historical_store(env=self._env)
 
-            end = datetime.now(timezone.utc)
+            end = utc_now()
             tf_mins = tf_minutes(tf_str)
             # Fetch enough bars for warmup (capped at 1000 per Bybit API limit)
             fetch_count = min(self._warmup_bars + 10, 1000)
             start = end - timedelta(minutes=tf_mins * fetch_count)
 
-            end_ms = int(end.timestamp() * 1000)
-            start_ms = int(start.timestamp() * 1000)
+            _end_ms = datetime_to_epoch_ms(end)
+            assert _end_ms is not None
+            end_ms = _end_ms
+            _start_ms = datetime_to_epoch_ms(start)
+            assert _start_ms is not None
+            start_ms = _start_ms
 
             logger.info("Fetching %s bars from REST API for %s %s...", fetch_count, self._symbol, tf_str)
             df = store.client.get_klines(
@@ -1740,7 +1745,9 @@ class LiveExchange:
 
         # Tracking
         self._connected = False
-        self._start_ms: int = int(datetime.now(timezone.utc).timestamp() * 1000)
+        _now_ms = datetime_to_epoch_ms(utc_now())
+        assert _now_ms is not None
+        self._start_ms: int = _now_ms
 
         logger.info(
             f"LiveExchange initialized: {self._symbol} demo={demo}"
@@ -2264,7 +2271,9 @@ class LiveExchange:
         if self._exchange_manager is None:
             return 0.0
         try:
-            now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+            _raw = datetime_to_epoch_ms(utc_now())
+            assert _raw is not None
+            now_ms = _raw
             time_range = TimeRange(
                 start_ms=self._start_ms,
                 end_ms=now_ms,
