@@ -160,8 +160,7 @@ def data_menu(cli: "TradeCLI"):
 | `src/cli/subcommands/_helpers.py` | Shared helpers (_json_result, _print_result, etc.) |
 | `src/cli/menus/` | Interactive menu handlers |
 | `src/tools/` | Tool functions (business logic layer) |
-| `docs/CLI_ARCHITECTURE_AUDIT.md` | Full audit document |
-| `docs/CLI_REDESIGN.md` | P13 autonomy architecture (cross-reference) |
+| `docs/architecture/ARCHITECTURE.md` | System architecture & roadmap |
 
 ## Common Mistakes to Avoid
 
@@ -199,12 +198,7 @@ python trade_cli.py -q domain action --required-arg value
 
 ## Related Documentation
 
-- **`docs/CLI_ARCHITECTURE_AUDIT.md`** — Full audit (10 sections, 40+ pages)
-- **`docs/CLI_REDESIGN.md`** — P13 autonomy features (gates G1-G3, G6-G7, G9)
+- **`docs/architecture/ARCHITECTURE.md`** — System architecture & roadmap
 - **`docs/TODO.md`** — Project status, current gates
 - **`docs/VALIDATION_BEST_PRACTICES.md`** — Validation tier details
 - **`docs/PLAY_DSL_REFERENCE.md`** — Play YAML structure
-
----
-
-**Quick navigation**: For full details, see `docs/CLI_ARCHITECTURE_AUDIT.md` (Parts 1-10).

@@ -91,7 +91,7 @@ loop is fully covered.
 
 ### Agent Test Suite
 
-**Test prompt:** `docs/AGENT_CLI_TEST_PROMPT.md` — 62 tests across 10 groups.
+**Test prompt:** 62 tests across 10 groups (P14 headless mode + P17 kill chain).
 
 | Platform | Score | Key Issues |
 |----------|-------|------------|
@@ -240,7 +240,7 @@ Goal: Confirm all CLI commands work and the full agent test suite passes.
    - `order buy`, `data info`, `market price`, `health check` with `--json`
    - Interactive menu: offline start, connect, symbol picks, data sub-menus
 2. Run P12 verification (10min demo play, confirm no "Signal execution blocked" warnings)
-3. Full 62-test agent suite re-run (`docs/AGENT_CLI_TEST_PROMPT.md`)
+3. Full 62-test agent suite re-run
 4. Mark P4+P13, P12, P14, P15, P17 as fully complete in `docs/TODO.md`
 
 **Deliverable:** Agent can deploy and monitor demo plays with full confidence.
@@ -273,10 +273,8 @@ Goal: First real-money trade.
 
 | Topic | Location |
 |-------|----------|
-| CLI architecture audit | `docs/CLI_ARCHITECTURE_AUDIT.md` |
-| CLI redesign plan | `docs/CLI_REDESIGN.md` |
+| Architecture & roadmap | `docs/architecture/ARCHITECTURE.md` |
 | Agent autonomy brainstorm | `docs/brainstorm/CLI_AGENT_AUTONOMY.md` |
-| Agent test suite | `docs/AGENT_CLI_TEST_PROMPT.md` |
 | Project status | `docs/TODO.md` |
 | Validation best practices | `docs/VALIDATION_BEST_PRACTICES.md` |
 | Play DSL reference | `docs/PLAY_DSL_REFERENCE.md` |

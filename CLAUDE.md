@@ -48,7 +48,7 @@ When running parallel agents or sub-tasks, NEVER use parallel file access to Duc
 | Database | Sequential access only (DuckDB limitation) |
 | Hashing | Always use `compute_trades_hash()` from `hashes.py` -- never ad-hoc `repr()`/`hash()` |
 | Timestamps | UTC-naive datetimes everywhere. Use `_datetime_to_epoch_ms()` from `feed_store.py` -- never `dt.timestamp() * 1000` on naive datetimes |
-| Set iteration | **Never** pass `list(some_set)` to order-sensitive functions. Use `sorted(some_set)`. See `docs/HASHSEED_INVESTIGATION.md` |
+| Set iteration | **Never** pass `list(some_set)` to order-sensitive functions. Use `sorted(some_set)`. |
 
 ## Logging & Debugging
 
@@ -449,7 +449,7 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 | Validation best practices | `docs/VALIDATION_BEST_PRACTICES.md` |
 | DSL syntax | `docs/PLAY_DSL_REFERENCE.md` |
 | Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
-| CLI redesign open gates | `docs/CLI_REDESIGN.md` |
+| Architecture & roadmap | `docs/architecture/ARCHITECTURE.md` |
 | Agent readiness & go-live path | `docs/AGENT_READINESS_EVALUATION.md` |
 | System defaults | `config/defaults.yml` |
 

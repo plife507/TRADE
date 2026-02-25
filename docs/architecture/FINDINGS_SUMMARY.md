@@ -3,11 +3,8 @@
 All bugs and issues from the 8-domain architecture review (pass 1), sorted by severity.
 
 **Date**: 2026-02-18 (review), updated 2026-02-18 (status reconciliation)
-**Archived**: 2026-02-21. Domain review files moved to `archived/`.
 **Scope**: Full codebase review across engine, sim, backtest, DSL, indicators, data, CLI, and forge domains.
 **Resolution**: 105/120 findings resolved. 8 deferred, 7 accepted/known.
-
-**Active review**: See `CODEBASE_REVIEW_ONGOING.md` for current pass-3 findings.
 
 ---
 
