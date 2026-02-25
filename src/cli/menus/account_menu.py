@@ -110,7 +110,8 @@ def account_menu(cli: "TradeCLI"):
             limit_input = get_input("Limit (1-50)", "50")
             if limit_input is BACK:
                 continue
-            assert isinstance(limit_input, str)
+            if not isinstance(limit_input, str):
+                raise TypeError(f"Expected str, got {type(limit_input).__name__}")
             try:
                 limit = int(limit_input)
                 result = run_tool_action(
@@ -136,7 +137,8 @@ def account_menu(cli: "TradeCLI"):
             limit_input = get_input("Limit (1-50)", "50")
             if limit_input is BACK:
                 continue
-            assert isinstance(limit_input, str)
+            if not isinstance(limit_input, str):
+                raise TypeError(f"Expected str, got {type(limit_input).__name__}")
             try:
                 limit = int(limit_input)
                 result = run_tool_action(
@@ -168,7 +170,8 @@ def account_menu(cli: "TradeCLI"):
             limit_input = get_input("Limit (1-50)", "50")
             if limit_input is BACK:
                 continue
-            assert isinstance(limit_input, str)
+            if not isinstance(limit_input, str):
+                raise TypeError(f"Expected str, got {type(limit_input).__name__}")
             try:
                 limit = int(limit_input)
                 result = run_tool_action(
@@ -199,7 +202,8 @@ def account_menu(cli: "TradeCLI"):
             action = get_input("Enable as collateral? (yes/no)", "yes")
             if action is BACK:
                 continue
-            assert isinstance(action, str)
+            if not isinstance(action, str):
+                raise TypeError(f"Expected str, got {type(action).__name__}")
             enabled = action.lower() in ("yes", "y", "true", "1")
             result = run_tool_action("account.set_collateral", set_collateral_coin_tool, coin, enabled)
             print_data_result("account.set_collateral", result)
@@ -215,7 +219,8 @@ def account_menu(cli: "TradeCLI"):
             limit_input = get_input("Limit (1-50)", "50")
             if limit_input is BACK:
                 continue
-            assert isinstance(limit_input, str)
+            if not isinstance(limit_input, str):
+                raise TypeError(f"Expected str, got {type(limit_input).__name__}")
             try:
                 limit = int(limit_input)
                 result = run_tool_action(

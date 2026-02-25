@@ -33,7 +33,7 @@ class TradeJournal:
         self._journal_dir = JOURNAL_DIR
         self._journal_dir.mkdir(parents=True, exist_ok=True)
         self._path = self._journal_dir / f"{instance_id}.jsonl"
-        logger.info(f"TradeJournal initialized: {self._path}")
+        logger.info("TradeJournal initialized: %s", self._path)
 
     def record_signal(
         self,
@@ -101,7 +101,7 @@ class TradeJournal:
             with open(self._path, "a", encoding="utf-8", newline="\n") as f:
                 f.write(json.dumps(data, default=str) + "\n")
         except Exception as e:
-            logger.warning(f"Failed to write journal entry: {e}")
+            logger.warning("Failed to write journal entry: %s", e)
 
     @property
     def path(self) -> Path:

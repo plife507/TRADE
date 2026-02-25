@@ -53,7 +53,7 @@ def _extract_fill_price(result: dict, fallback_price: float) -> float:
     except (TypeError, ValueError):
         pass
     logger.warning(
-        f"avgPrice missing or invalid in order response, using quote price {fallback_price:.4f}"
+        "avgPrice missing or invalid in order response, using quote price %.4f", fallback_price
     )
     return fallback_price
 
@@ -94,10 +94,10 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float, reduc
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Market buy failed: {e}")
+        manager.logger.error("Market buy failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Market buy error: {e}")
+        manager.logger.error("Market buy error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -137,10 +137,10 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float, redu
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Market sell failed: {e}")
+        manager.logger.error("Market sell failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Market sell error: {e}")
+        manager.logger.error("Market sell error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -222,10 +222,10 @@ def market_buy_with_tpsl(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Market buy with TP/SL failed: {e}")
+        manager.logger.error("Market buy with TP/SL failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Market buy with TP/SL error: {e}")
+        manager.logger.error("Market buy with TP/SL error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -280,9 +280,9 @@ def market_sell_with_tpsl(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Market sell with TP/SL failed: {e}")
+        manager.logger.error("Market sell with TP/SL failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Market sell with TP/SL error: {e}")
+        manager.logger.error("Market sell with TP/SL error: %s", e)
         return OrderResult(success=False, error=str(e))
 

@@ -122,16 +122,19 @@ def data_menu(cli: "TradeCLI"):
             period = get_input("Period (1D, 1W, 1M, 3M, 6M, 1Y)", "1M")
             if period is BACK:
                 continue
-            assert isinstance(period, str)
+            if not isinstance(period, str):
+                raise TypeError(f"Expected str, got {type(period).__name__}")
             timeframes_input = get_input("OHLCV Timeframes (comma-separated, blank for all)", "")
             if timeframes_input is BACK:
                 continue
-            assert isinstance(timeframes_input, str)
+            if not isinstance(timeframes_input, str):
+                raise TypeError(f"Expected str, got {type(timeframes_input).__name__}")
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
             oi_interval = get_input("Open Interest Interval (5min, 15min, 30min, 1h, 4h, D)", "1h")
             if oi_interval is BACK:
                 continue
-            assert isinstance(oi_interval, str)
+            if not isinstance(oi_interval, str):
+                raise TypeError(f"Expected str, got {type(oi_interval).__name__}")
 
             result = run_long_action(
                 "data.build_full_history", build_symbol_history_tool,
@@ -153,7 +156,8 @@ def data_menu(cli: "TradeCLI"):
             timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
             if timeframes_input is BACK:
                 continue
-            assert isinstance(timeframes_input, str)
+            if not isinstance(timeframes_input, str):
+                raise TypeError(f"Expected str, got {type(timeframes_input).__name__}")
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
 
             result = run_long_action(
@@ -176,7 +180,8 @@ def data_menu(cli: "TradeCLI"):
             timeframes_input = get_input("Timeframes (comma-separated, blank for all)", "")
             if timeframes_input is BACK:
                 continue
-            assert isinstance(timeframes_input, str)
+            if not isinstance(timeframes_input, str):
+                raise TypeError(f"Expected str, got {type(timeframes_input).__name__}")
             timeframes = [t.strip() for t in timeframes_input.split(",")] if timeframes_input else None
 
             result = run_long_action(

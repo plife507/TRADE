@@ -384,7 +384,7 @@ class BacktestExchange:
         try:
             return self._sim_exchange.cancel_order_by_id(sim_order_id)
         except Exception as e:
-            logger.warning(f"Failed to cancel order {order_id}: {e}")
+            logger.warning("Failed to cancel order %s: %s", order_id, e)
             return False
 
     def get_position(self, symbol: str) -> Position | None:

@@ -7,18 +7,13 @@ by structlog contextvars — bound once at engine startup via
 ``bind_engine_context()`` in ``logging_config.py``.
 
 Usage:
-    from src.utils.debug import debug_log, debug_trace, is_debug_enabled
+    from src.utils.debug import debug_log, is_debug_enabled
 
     # Simple debug logging
     debug_log("Engine init", bars=1000, tf="15m")
 
     # With run hash (when available)
     debug_log("Trade opened", run_hash=run_hash, entry=42150.0)
-
-    # Decorator for function tracing
-    @debug_trace
-    def process_bar(self, bar_idx: int) -> None:
-        ...
 
 Enable debugging:
     - Set environment variable: TRADE_DEBUG=1
@@ -27,10 +22,8 @@ Enable debugging:
 
 from __future__ import annotations
 
-import functools
 import os
-import time
-from typing import Any, Callable
+from typing import Any
 
 from .logger import get_module_logger
 
@@ -47,9 +40,6 @@ _verbose_enabled = False
 
 # Hash display length (first N chars of 16-char hashes)
 HASH_DISPLAY_LENGTH = 8
-
-# Logging threshold for bar milestones (log every N bars)
-BAR_MILESTONE_INTERVAL = 100
 
 # Module-level logger under trade.* hierarchy
 _logger = get_module_logger(__name__)
@@ -94,29 +84,28 @@ def verbose_log(
     Uses INFO level so it's visible with normal log handlers.
 
     Engine context (play_hash, symbol, mode) is automatically included
-    via structlog contextvars.  ``bar_idx`` is temporarily bound so it
-    appears as a JSON field in JSONL output.
+    via structlog contextvars.  ``bar_idx`` and all ``**fields`` are
+    temporarily bound so they appear as individual JSON keys in JSONL.
     """
     if not is_verbose_enabled():
         return
 
     import structlog.contextvars
 
-    # Temporarily bind bar_idx to structlog context for JSONL output
+    # Bind all fields + bar_idx as temporary contextvars for JSONL output
+    bound_keys: list[str] = []
     if bar_idx is not None:
         structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
+        bound_keys.append("bar_idx")
+    if fields:
+        structlog.contextvars.bind_contextvars(**fields)
+        bound_keys.extend(fields.keys())
 
     try:
-        if fields:
-            field_strs = [f"{k}={_format_value(v)}" for k, v in fields.items()]
-            full_msg = f"{message}: {', '.join(field_strs)}"
-        else:
-            full_msg = message
-
-        _logger.info(full_msg)
+        _logger.info(message)
     finally:
-        if bar_idx is not None:
-            structlog.contextvars.unbind_contextvars("bar_idx")
+        if bound_keys:
+            structlog.contextvars.unbind_contextvars(*bound_keys)
 
 
 def short_hash(full_hash: str | None) -> str:
@@ -124,31 +113,6 @@ def short_hash(full_hash: str | None) -> str:
     if not full_hash:
         return "--"
     return full_hash[:HASH_DISPLAY_LENGTH]
-
-
-def format_hash_prefix(
-    play_hash: str | None,
-    run_hash: str | None = None,
-    bar_idx: int | None = None,
-) -> str:
-    """
-    Format consistent hash prefix for debug log lines.
-
-    Examples:
-        [play:8f2a9c1d]
-        [play:8f2a9c1d] [run:e5f6g7h8]
-        [play:8f2a9c1d] [bar:247]
-        [play:8f2a9c1d] [run:e5f6g7h8] [bar:247]
-    """
-    parts = [f"[play:{short_hash(play_hash)}]"]
-
-    if run_hash:
-        parts.append(f"[run:{short_hash(run_hash)}]")
-
-    if bar_idx is not None:
-        parts.append(f"[bar:{bar_idx}]")
-
-    return " ".join(parts)
 
 
 def debug_log(
@@ -163,8 +127,9 @@ def debug_log(
     Only logs if debug mode is enabled (TRADE_DEBUG=1 or --debug).
 
     Engine context (play_hash, symbol, mode) is automatically included
-    via structlog contextvars.  ``bar_idx`` and ``run_hash`` are
-    temporarily bound so they appear as JSON fields in JSONL output.
+    via structlog contextvars.  ``bar_idx``, ``run_hash``, and all
+    ``**fields`` are temporarily bound so they appear as individual
+    JSON keys in JSONL output.
 
     Args:
         message: Log message.
@@ -180,64 +145,23 @@ def debug_log(
 
     import structlog.contextvars
 
-    # Temporarily bind bar_idx / run_hash to structlog context
-    extra_keys: list[str] = []
+    # Bind all fields + bar_idx / run_hash as temporary contextvars
+    bound_keys: list[str] = []
     if bar_idx is not None:
         structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
-        extra_keys.append("bar_idx")
+        bound_keys.append("bar_idx")
     if run_hash is not None:
         structlog.contextvars.bind_contextvars(run_hash=run_hash)
-        extra_keys.append("run_hash")
+        bound_keys.append("run_hash")
+    if fields:
+        structlog.contextvars.bind_contextvars(**fields)
+        bound_keys.extend(fields.keys())
 
     try:
-        # Build message with fields
-        if fields:
-            field_strs = [f"{k}={_format_value(v)}" for k, v in fields.items()]
-            full_msg = f"{message}: {', '.join(field_strs)}"
-        else:
-            full_msg = message
-
-        _logger.debug(full_msg)
+        _logger.debug(message)
     finally:
-        # Unbind temporary keys
-        if extra_keys:
-            structlog.contextvars.unbind_contextvars(*extra_keys)
-
-
-def _format_value(value: Any) -> str:
-    """Format a value for debug output."""
-    if isinstance(value, float):
-        return f"{value:.6g}"
-    if isinstance(value, (list, tuple)) and len(value) > 5:
-        return f"[{len(value)} items]"
-    return str(value)
-
-
-def debug_milestone(
-    bar_idx: int,
-    total_bars: int,
-    elapsed_seconds: float,
-) -> None:
-    """
-    Log a bar processing milestone (every BAR_MILESTONE_INTERVAL bars).
-
-    Only logs if bar_idx is a multiple of BAR_MILESTONE_INTERVAL.
-
-    Args:
-        bar_idx: Current bar index
-        total_bars: Total bars to process
-        elapsed_seconds: Time elapsed since start
-    """
-    if not _debug_enabled:
-        return
-
-    if bar_idx % BAR_MILESTONE_INTERVAL != 0 and bar_idx != total_bars:
-        return
-
-    debug_log(
-        f"Milestone: {bar_idx}/{total_bars} bars processed ({elapsed_seconds:.1f}s)",
-        bar_idx=bar_idx,
-    )
+        if bound_keys:
+            structlog.contextvars.unbind_contextvars(*bound_keys)
 
 
 def debug_signal(
@@ -351,47 +275,13 @@ def debug_run_complete(
         debug_log(f"Artifacts: {artifact_path}", run_hash=run_hash)
 
 
-def debug_trace(func: Callable) -> Callable:
-    """
-    Decorator to trace function entry/exit with timing.
-
-    Only traces if debug mode is enabled.
-
-    Usage:
-        @debug_trace
-        def process_bar(self, bar_idx: int) -> None:
-            ...
-    """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        if not _debug_enabled:
-            return func(*args, **kwargs)
-
-        func_name = func.__qualname__
-
-        _logger.debug(f"[trace] ENTER {func_name}")
-        start = time.perf_counter()
-
-        try:
-            result = func(*args, **kwargs)
-            elapsed = (time.perf_counter() - start) * 1000
-            _logger.debug(f"[trace] EXIT {func_name} ({elapsed:.2f}ms)")
-            return result
-        except Exception as e:
-            elapsed = (time.perf_counter() - start) * 1000
-            _logger.debug(f"[trace] RAISE {func_name} ({elapsed:.2f}ms): {type(e).__name__}")
-            raise
-
-    return wrapper
-
-
 def debug_snapshot(
     bar_idx: int,
     snapshot_data: dict[str, Any],
     *,
     max_features: int = 10,
 ) -> None:
-    """Dump snapshot state for debugging.
+    """Dump snapshot state as a single structured JSONL record.
 
     Engine context (play_hash, symbol, mode) is automatically included
     via structlog contextvars.
@@ -399,22 +289,27 @@ def debug_snapshot(
     Args:
         bar_idx: Current bar index.
         snapshot_data: Dict of snapshot values to log.
-        max_features: Maximum number of features to show.
+        max_features: Maximum number of features to include.
     """
     if not _debug_enabled:
         return
 
     import structlog.contextvars
 
+    # Emit a single log record with all snapshot fields as contextvars
+    items = dict(list(snapshot_data.items())[:max_features])
+    truncated = len(snapshot_data) - len(items)
+
+    bound_keys = ["bar_idx"]
     structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
+    if items:
+        structlog.contextvars.bind_contextvars(**items)
+        bound_keys.extend(items.keys())
+    if truncated > 0:
+        structlog.contextvars.bind_contextvars(truncated=truncated)
+        bound_keys.append("truncated")
+
     try:
-        _logger.debug("Snapshot dump:")
-
-        items = list(snapshot_data.items())[:max_features]
-        for key, value in items:
-            _logger.debug(f"  {key}: {_format_value(value)}")
-
-        if len(snapshot_data) > max_features:
-            _logger.debug(f"  ... and {len(snapshot_data) - max_features} more")
+        _logger.debug("Snapshot dump")
     finally:
-        structlog.contextvars.unbind_contextvars("bar_idx")
+        structlog.contextvars.unbind_contextvars(*bound_keys)

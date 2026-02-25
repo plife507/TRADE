@@ -35,7 +35,7 @@ def setup_position_close_cleanup(manager: "ExchangeManager"):
     except ImportError:
         manager.logger.debug("RealtimeState not available - position cleanup disabled")
     except Exception as e:
-        manager.logger.warning(f"Could not setup position-close cleanup: {e}")
+        manager.logger.warning("Could not setup position-close cleanup: %s", e)
 
 
 def on_position_update_cleanup(manager: "ExchangeManager", position_data):
@@ -48,7 +48,7 @@ def on_position_update_cleanup(manager: "ExchangeManager", position_data):
     """
     try:
         if not hasattr(position_data, 'symbol') or not position_data.symbol:
-            manager.logger.error(f"WS position update missing 'symbol' field: {type(position_data).__name__}")
+            manager.logger.error("WS position update missing 'symbol' field: %s", type(position_data).__name__)
             return
         symbol = position_data.symbol
         is_open = position_data.is_open
@@ -62,8 +62,9 @@ def on_position_update_cleanup(manager: "ExchangeManager", position_data):
         # Detect position closure (was open, now closed) - do cleanup outside lock
         if position_just_closed:
             manager.logger.info(
-                f"Position closed for {symbol} (detected via WebSocket) - "
-                f"cleaning up conditional orders"
+                "Position closed for %s (detected via WebSocket) - "
+                "cleaning up conditional orders",
+                symbol,
             )
 
             # Cancel all bot-generated conditional reduce-only orders for this symbol
@@ -71,7 +72,7 @@ def on_position_update_cleanup(manager: "ExchangeManager", position_data):
 
             if cancelled:
                 manager.logger.info(
-                    f"Auto-cancelled {len(cancelled)} conditional orders for {symbol}"
+                    "Auto-cancelled %s conditional orders for %s", len(cancelled), symbol
                 )
 
             # Remove symbol from websocket tracking (no longer needed)
@@ -80,7 +81,7 @@ def on_position_update_cleanup(manager: "ExchangeManager", position_data):
 
     except Exception as e:
         # Don't let callback errors break WebSocket processing
-        manager.logger.warning(f"Error in position cleanup callback for {getattr(position_data, 'symbol', 'unknown')}: {e}")
+        manager.logger.warning("Error in position cleanup callback for %s: %s", getattr(position_data, 'symbol', 'unknown'), e)
 
 
 def cancel_conditional_orders_for_symbol(manager: "ExchangeManager", symbol: str) -> list[str]:
@@ -124,10 +125,10 @@ def cancel_conditional_orders_for_symbol(manager: "ExchangeManager", symbol: str
                 ):
                     cancelled.append(order.order_link_id or order.order_id)
             except Exception as e:
-                manager.logger.warning(f"Failed to cancel order: {e}")
+                manager.logger.warning("Failed to cancel order: %s", e)
     
     except Exception as e:
-        manager.logger.warning(f"Error cancelling conditional orders for {symbol}: {e}")
+        manager.logger.warning("Error cancelling conditional orders for %s: %s", symbol, e)
     
     return cancelled
 
@@ -158,7 +159,7 @@ def ensure_symbol_tracked(manager: "ExchangeManager", symbol: str):
     except (ConnectionError, OSError, RuntimeError) as e:
         # BUG-001 fix: WebSocket not available, REST fallback will be used
         # Log but don't fail - this is expected when WS is down
-        manager.logger.debug(f"WebSocket unavailable for {symbol}: {e}")
+        manager.logger.debug("WebSocket unavailable for %s: %s", symbol, e)
 
 
 def remove_symbol_from_websocket(manager: "ExchangeManager", symbol: str):
@@ -179,7 +180,7 @@ def remove_symbol_from_websocket(manager: "ExchangeManager", symbol: str):
         bootstrap = get_realtime_bootstrap()
         if bootstrap:
             bootstrap.remove_symbol(symbol)
-            manager.logger.debug(f"Removed {symbol} from websocket tracking (position closed)")
+            manager.logger.debug("Removed %s from websocket tracking (position closed)", symbol)
     except Exception as e:
-        manager.logger.debug(f"Could not remove {symbol} from websocket: {e}")
+        manager.logger.debug("Could not remove %s from websocket: %s", symbol, e)
 

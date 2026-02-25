@@ -515,7 +515,7 @@ class HistoricalDataStore:
 
             time.sleep(0.5)  # Wait before retry
 
-        self.logger.error(f"Could not acquire write lock after {timeout}s")
+        self.logger.error("Could not acquire write lock after %ss", timeout)
         return False
 
     def _release_write_lock(self):
@@ -626,13 +626,13 @@ class HistoricalDataStore:
             self.conn.execute(f"""
                 ALTER TABLE {self.table_ohlcv} ADD COLUMN turnover DOUBLE
             """)
-            self.logger.debug(f"Added 'turnover' column to {self.table_ohlcv}")
+            self.logger.debug("Added 'turnover' column to %s", self.table_ohlcv)
         except duckdb.CatalogException as e:
             if "already exists" not in str(e).lower():
-                self.logger.error(f"Schema migration failed for {self.table_ohlcv}: {e}")
+                self.logger.error("Schema migration failed for %s: %s", self.table_ohlcv, e)
                 raise
         except Exception as e:
-            self.logger.error(f"Unexpected error during schema migration: {e}")
+            self.logger.error("Unexpected error during schema migration: %s", e)
             raise
         
         self.conn.execute(f"""
@@ -728,10 +728,10 @@ class HistoricalDataStore:
                 """)
             except duckdb.CatalogException as e:
                 if "already exists" not in str(e).lower():
-                    self.logger.warning(f"Index creation issue for {idx_name}: {e}")
+                    self.logger.warning("Index creation issue for %s: %s", idx_name, e)
             except Exception as e:
                 # Indexes are performance optimization; log but don't fail initialization
-                self.logger.warning(f"Unexpected error creating index {idx_name}: {e}")
+                self.logger.warning("Unexpected error creating index %s: %s", idx_name, e)
     
     # ==================== PERIOD PARSING ====================
     
@@ -1057,7 +1057,7 @@ class HistoricalDataStore:
                     progress_callback(symbol, f"{ActivityEmoji.WARNING} cancelled")
                 break
             except Exception as e:
-                self.logger.error(f"Failed to sync funding for {symbol}: {e}")
+                self.logger.error("Failed to sync funding for %s: %s", symbol, e)
                 results[symbol] = -1
 
                 if spinner:
@@ -1136,7 +1136,7 @@ class HistoricalDataStore:
                 self._cancelled = True
                 break
             except Exception as e:
-                self.logger.warning(f"Funding API error for {symbol}: {e}")
+                self.logger.warning("Funding API error for %s: %s", symbol, e)
                 break
 
         if not all_records:
@@ -1300,7 +1300,7 @@ class HistoricalDataStore:
                     progress_callback(symbol, f"{ActivityEmoji.WARNING} cancelled")
                 break
             except Exception as e:
-                self.logger.error(f"Failed to sync OI for {symbol}: {e}")
+                self.logger.error("Failed to sync OI for %s: %s", symbol, e)
                 results[symbol] = -1
 
                 if spinner:
@@ -1381,7 +1381,7 @@ class HistoricalDataStore:
                 self._cancelled = True
                 break
             except Exception as e:
-                self.logger.warning(f"OI API error for {symbol}: {e}")
+                self.logger.warning("OI API error for %s: %s", symbol, e)
                 break
 
         if not all_records:

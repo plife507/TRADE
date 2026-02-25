@@ -70,7 +70,7 @@ def connect_public_ws(
         ping_timeout=15,
     )
     
-    client.logger.info(f"Connected to public WebSocket ({channel_type}, {stream_type})")
+    client.logger.info("Connected to public WebSocket (%s, %s)", channel_type, stream_type)
     return client._ws_public
 
 
@@ -97,7 +97,7 @@ def connect_private_ws(client: "BybitClient") -> WebSocket:
     # Only two modes: DEMO or LIVE
     stream_type = "DEMO (FAKE MONEY)" if client.use_demo else "LIVE (REAL MONEY)"
     
-    client.logger.info(f"Connected to private WebSocket ({stream_type})")
+    client.logger.info("Connected to private WebSocket (%s)", stream_type)
     return client._ws_private
 
 
@@ -105,21 +105,21 @@ def subscribe_ticker(client: "BybitClient", symbol: str | list[str], callback: C
     """Subscribe to ticker updates."""
     ws = connect_public_ws(client)
     ws.ticker_stream(symbol=symbol, callback=callback)
-    client.logger.info(f"Subscribed to ticker: {symbol}")
+    client.logger.info("Subscribed to ticker: %s", symbol)
 
 
 def subscribe_orderbook(client: "BybitClient", symbol: str | list[str], callback: Callable, depth: int = 50):
     """Subscribe to orderbook updates."""
     ws = connect_public_ws(client)
     ws.orderbook_stream(depth=depth, symbol=symbol, callback=callback)
-    client.logger.info(f"Subscribed to orderbook({depth}): {symbol}")
+    client.logger.info("Subscribed to orderbook(%s): %s", depth, symbol)
 
 
 def subscribe_trades(client: "BybitClient", symbol: str | list[str], callback: Callable):
     """Subscribe to public trade stream."""
     ws = connect_public_ws(client)
     ws.trade_stream(symbol=symbol, callback=callback)
-    client.logger.info(f"Subscribed to trades: {symbol}")
+    client.logger.info("Subscribed to trades: %s", symbol)
 
 
 def subscribe_klines(client: "BybitClient", symbol: str | list[str], interval: int | str, callback: Callable):
@@ -135,7 +135,7 @@ def subscribe_klines(client: "BybitClient", symbol: str | list[str], interval: i
     except (ValueError, TypeError):
         bybit_interval = interval
     ws.kline_stream(interval=bybit_interval, symbol=symbol, callback=callback)  # type: ignore[arg-type]
-    client.logger.info(f"Subscribed to klines({interval}): {symbol}")
+    client.logger.info("Subscribed to klines(%s): %s", interval, symbol)
 
 
 def subscribe_positions(client: "BybitClient", callback: Callable):
@@ -179,10 +179,10 @@ def close_websockets(client: "BybitClient", suppress_errors: bool = True, wait_f
         except (OSError, RuntimeError, ConnectionError) as e:
             # BUG-001 fix: Specific exceptions for WebSocket cleanup
             # These are expected during shutdown and safe to suppress
-            client.logger.debug(f"Expected error during public WS cleanup: {e}")
+            client.logger.debug("Expected error during public WS cleanup: %s", e)
         except Exception as e:
             # Log unexpected errors before suppressing
-            client.logger.warning(f"Unexpected error during public WS cleanup: {e}")
+            client.logger.warning("Unexpected error during public WS cleanup: %s", e)
         client._ws_public = None
 
     if client._ws_private:
@@ -190,9 +190,9 @@ def close_websockets(client: "BybitClient", suppress_errors: bool = True, wait_f
             client._ws_private.exit()
         except (OSError, RuntimeError, ConnectionError) as e:
             # BUG-001 fix: Specific exceptions for WebSocket cleanup
-            client.logger.debug(f"Expected error during private WS cleanup: {e}")
+            client.logger.debug("Expected error during private WS cleanup: %s", e)
         except Exception as e:
-            client.logger.warning(f"Unexpected error during private WS cleanup: {e}")
+            client.logger.warning("Unexpected error during private WS cleanup: %s", e)
         client._ws_private = None
     
     if wait_for_threads > 0:

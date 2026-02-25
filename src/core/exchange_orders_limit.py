@@ -58,10 +58,10 @@ def limit_buy(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Limit buy failed: {e}")
+        manager.logger.error("Limit buy failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Limit buy error: {e}")
+        manager.logger.error("Limit buy error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -105,10 +105,10 @@ def limit_sell(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Limit sell failed: {e}")
+        manager.logger.error("Limit sell failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Limit sell error: {e}")
+        manager.logger.error("Limit sell error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -161,10 +161,10 @@ def limit_buy_with_tpsl(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Limit buy with TP/SL failed: {e}")
+        manager.logger.error("Limit buy with TP/SL failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Limit buy with TP/SL error: {e}")
+        manager.logger.error("Limit buy with TP/SL error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -217,9 +217,9 @@ def limit_sell_with_tpsl(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Limit sell with TP/SL failed: {e}")
+        manager.logger.error("Limit sell with TP/SL failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Limit sell with TP/SL error: {e}")
+        manager.logger.error("Limit sell with TP/SL error: %s", e)
         return OrderResult(success=False, error=str(e))
 

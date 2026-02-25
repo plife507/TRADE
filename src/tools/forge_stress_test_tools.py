@@ -108,7 +108,7 @@ def forge_stress_test_tool(
             )
 
     except Exception as e:
-        logger.error(f"Stress test failed: {e}\n{traceback.format_exc()}")
+        logger.error("Stress test failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Stress test error: {e}",
@@ -173,7 +173,7 @@ def forge_generate_synthetic_data_tool(
         )
 
     except Exception as e:
-        logger.error(f"Synthetic data generation failed: {e}\n{traceback.format_exc()}")
+        logger.error("Synthetic data generation failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Synthetic data error: {e}",
@@ -272,7 +272,7 @@ def forge_structure_parity_tool(
             )
 
     except Exception as e:
-        logger.error(f"Structure parity failed: {e}\n{traceback.format_exc()}")
+        logger.error("Structure parity failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Structure parity error: {e}",
@@ -370,7 +370,7 @@ def forge_indicator_parity_tool(
             )
 
     except Exception as e:
-        logger.error(f"Indicator parity failed: {e}\n{traceback.format_exc()}")
+        logger.error("Indicator parity failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Indicator parity error: {e}",

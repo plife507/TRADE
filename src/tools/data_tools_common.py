@@ -131,7 +131,7 @@ def _build_extremes_metadata(store, symbol: str, timeframes: list[str]) -> dict[
                     "row_count": stats[2],
                 }
         except (KeyError, AttributeError) as e:
-            _logger.debug(f"OHLCV stats query failed for {symbol}/{tf}: {e}")
+            _logger.debug("OHLCV stats query failed for %s/%s: %s", symbol, tf, e)
 
     # Funding
     try:
@@ -151,7 +151,7 @@ def _build_extremes_metadata(store, symbol: str, timeframes: list[str]) -> dict[
                 "record_count": stats[2],
             }
     except (KeyError, AttributeError) as e:
-        _logger.debug(f"Funding stats query failed for {symbol}: {e}")
+        _logger.debug("Funding stats query failed for %s: %s", symbol, e)
 
     # Open Interest
     try:
@@ -171,7 +171,7 @@ def _build_extremes_metadata(store, symbol: str, timeframes: list[str]) -> dict[
                 "record_count": stats[2],
             }
     except (KeyError, AttributeError) as e:
-        _logger.debug(f"OI stats query failed for {symbol}: {e}")
+        _logger.debug("OI stats query failed for %s: %s", symbol, e)
     
     return extremes
 

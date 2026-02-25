@@ -191,7 +191,7 @@ def delete_symbol(store: "HistoricalDataStore", symbol: str) -> int:
     store.conn.execute(f"DELETE FROM {store.table_oi} WHERE symbol = ?", [symbol])
     store.conn.execute(f"DELETE FROM {store.table_oi_metadata} WHERE symbol = ?", [symbol])
     
-    store.logger.info(f"Deleted {count} candles for {symbol}")
+    store.logger.info("Deleted %s candles for %s", count, symbol)
     return count
 
 
@@ -212,7 +212,7 @@ def delete_symbol_timeframe(store: "HistoricalDataStore", symbol: str, timeframe
         DELETE FROM {store.table_sync_metadata} WHERE symbol = ? AND timeframe = ?
     """, [symbol, timeframe])
     
-    store.logger.info(f"Deleted {count} candles for {symbol} {timeframe}")
+    store.logger.info("Deleted %s candles for %s %s", count, symbol, timeframe)
     return count
 
 
@@ -236,7 +236,7 @@ def cleanup_empty_symbols(store: "HistoricalDataStore") -> list[str]:
         store.conn.execute(f"DELETE FROM {store.table_oi_metadata} WHERE symbol = ?", [sym])
     
     if empty_symbols:
-        store.logger.info(f"Cleaned up {len(empty_symbols)} empty symbols: {empty_symbols}")
+        store.logger.info("Cleaned up %s empty symbols: %s", len(empty_symbols), empty_symbols)
     
     return list(empty_symbols)
 

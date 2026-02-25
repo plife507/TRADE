@@ -386,7 +386,7 @@ def prepare_backtest_frame_impl(
 
     loaded_start = df["timestamp"].iloc[0]
     loaded_end = df["timestamp"].iloc[-1]
-    logger.info(f"Loaded {len(df)} bars: {loaded_start} to {loaded_end}")
+    logger.info("Loaded %s bars: %s to %s", len(df), loaded_start, loaded_end)
 
     # 5. Apply indicators
     df = _apply_indicators_to_frame(df, config)
@@ -517,7 +517,7 @@ def prepare_multi_tf_frames_impl(
     )
 
     # Load data for each unique TF (exclude 'exec' which is a role pointer)
-    unique_tfs = {low_tf, med_tf, high_tf}
+    unique_tfs = sorted({low_tf, med_tf, high_tf})
     frames: dict[str, pd.DataFrame] = {}
     close_ts_maps: dict[str, set[datetime]] = {}
 

@@ -331,7 +331,7 @@ class PlayEngine:
                 return False
             old_phase = self._phase
             self._phase = new_phase
-            self.logger.debug(f"Engine phase: {old_phase.value} -> {new_phase.value}")
+            self.logger.debug("Engine phase: %s -> %s", old_phase.value, new_phase.value)
             return True
 
     @property
@@ -396,13 +396,13 @@ class PlayEngine:
             try:
                 self._sizing_model.update_equity(self.exchange.get_equity())
             except Exception as e:
-                self.logger.error(f"Failed to refresh equity from exchange: {e}. Using last known value.")
+                self.logger.error("Failed to refresh equity from exchange: %s. Using last known value.", e)
 
         # Get current candle
         try:
             candle = self.data.get_candle(bar_index)
         except IndexError:
-            self.logger.warning(f"Bar index {bar_index} out of bounds")
+            self.logger.warning("Bar index %s out of bounds", bar_index)
             return None
 
         # 7.3: Log bar OHLCV when debug enabled
@@ -588,7 +588,7 @@ class PlayEngine:
         if self.config.risk_mode == "rules":
             decision = self._check_risk_policy(signal)
             if not decision.allowed:
-                self.logger.debug(f"Signal blocked by risk policy: {decision.reason}")
+                self.logger.debug("Signal blocked by risk policy: %s", decision.reason)
                 return OrderResult(
                     success=False,
                     error=f"Risk policy blocked: {decision.reason}",
@@ -703,7 +703,7 @@ class PlayEngine:
                     tp=order.take_profit,
                 )
         else:
-            self.logger.warning(f"Order failed: {result.error}")
+            self.logger.warning("Order failed: %s", result.error)
 
         return result
 
@@ -723,7 +723,7 @@ class PlayEngine:
                 import json as _json
                 incremental_json = _json.dumps(self._incremental_state.to_json())
             except Exception as e:
-                self.logger.error(f"Failed to serialize incremental state: {e}")
+                self.logger.error("Failed to serialize incremental state: %s", e)
 
         return EngineState(
             engine_id=self.engine_id,
@@ -785,7 +785,7 @@ class PlayEngine:
                         parsed_data
                     )
             except Exception as e:
-                self.logger.warning(f"Failed to restore incremental state: {e}")
+                self.logger.warning("Failed to restore incremental state: %s", e)
 
         self.logger.info(
             f"State restored: {state.engine_id} "
@@ -818,7 +818,7 @@ class PlayEngine:
         self._warmup_complete = True
         # G5.8: Transition to READY phase
         self._transition_phase(EnginePhase.READY)
-        self.logger.debug(f"Warmup complete at bar {self._current_bar_index}")
+        self.logger.debug("Warmup complete at bar %s", self._current_bar_index)
         return True
 
     def _update_high_tf_med_tf_indices(self, candle: Candle) -> None:
@@ -1010,9 +1010,10 @@ class PlayEngine:
                 cache = self._data_provider._exec_indicators
                 if cache is not None:
                     with cache._lock:
+                        bc = cache._bar_count
                         for name, arr in cache._indicators.items():
-                            if len(arr) > 0 and not np.isnan(arr[-1]):
-                                indicators[name] = float(arr[-1])
+                            if bc > 0 and not np.isnan(arr[bc - 1]):
+                                indicators[name] = float(arr[bc - 1])
 
         bar_data = BarData(
             idx=bar_index,
@@ -1165,9 +1166,10 @@ class PlayEngine:
                     cache = self._data_provider._exec_indicators
                     if cache is not None:
                         with cache._lock:
+                            bc = cache._bar_count
                             for key, val in outputs.items():
-                                if key in cache._indicators and len(cache._indicators[key]) > 0:
-                                    cache._indicators[key][-1] = val
+                                if key in cache._indicators and bc > 0:
+                                    cache._indicators[key][bc - 1] = val
 
     def _evaluate_rules(
         self,
@@ -1263,7 +1265,7 @@ class PlayEngine:
                     prev_candle = self.data.get_candle(bar_index - 1)
                     prev_last_price = prev_candle.close
                 except IndexError as e:
-                    self.logger.warning(f"Could not get prev candle at {bar_index-1}: {e}")
+                    self.logger.warning("Could not get prev candle at %s: %s", bar_index - 1, e)
                     prev_last_price = candle.close  # Fallback to current close
 
             # Create snapshot view with correct parameters
@@ -1459,16 +1461,19 @@ class PlayEngine:
         indicators: dict[str, np.ndarray] = {}
         if indicator_cache is not None:
             with indicator_cache._lock:
+                bc = indicator_cache._bar_count
                 for name, arr in indicator_cache._indicators.items():
+                    # Valid data is arr[:bc] (pre-allocated buffer)
+                    valid = arr[:bc]
                     # Align indicator array length to buffer length
-                    if len(arr) == n:
-                        indicators[name] = arr.copy()
-                    elif len(arr) > n:
-                        indicators[name] = arr[-n:].copy()
+                    if bc == n:
+                        indicators[name] = valid.copy()
+                    elif bc > n:
+                        indicators[name] = valid[-n:].copy()
                     else:
                         # Pad front with NaN if indicator has fewer values
                         padded = np.full(n, np.nan, dtype=np.float64)
-                        padded[n - len(arr):] = arr
+                        padded[n - bc:] = valid
                         indicators[name] = padded
 
         # Build ts_close_ms_to_idx mapping for TF index lookups
@@ -1644,10 +1649,10 @@ class PlayEngine:
         for order_id, submit_bar in self._pending_limit_orders:
             if current_bar - submit_bar >= expire_bars:
                 if self.exchange.cancel_order(order_id):
-                    self.logger.info(f"Expired limit order {order_id} after {expire_bars} bars")
+                    self.logger.info("Expired limit order %s after %s bars", order_id, expire_bars)
                 else:
                     # Cancel failed — keep tracking to retry next bar
-                    self.logger.warning(f"Failed to cancel expired limit order {order_id}, will retry")
+                    self.logger.warning("Failed to cancel expired limit order %s, will retry", order_id)
                     remaining.append((order_id, submit_bar))
             else:
                 remaining.append((order_id, submit_bar))
@@ -1777,7 +1782,7 @@ class PlayEngine:
             try:
                 self._signal_evaluator = PlaySignalEvaluator(self.play)
             except ValueError as e:
-                self.logger.error(f"Failed to create signal evaluator: {e}")
+                self.logger.error("Failed to create signal evaluator: %s", e)
                 return None
 
         # Build snapshot view for evaluation and persist for trailing stop ATR access
@@ -2091,7 +2096,7 @@ class _PlayEngineSubLoopContext:
             try:
                 engine._signal_evaluator = PlaySignalEvaluator(engine.play)
             except ValueError as e:
-                engine.logger.error(f"Failed to create signal evaluator: {e}")
+                engine.logger.error("Failed to create signal evaluator: %s", e)
 
     def build_snapshot_1m(
         self,

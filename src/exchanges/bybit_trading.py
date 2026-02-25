@@ -233,7 +233,7 @@ def get_order_history(
     client._private_limiter.acquire()
 
     time_params = time_range.to_bybit_params()
-    client.logger.debug(f"get_order_history: {time_range.label} ({time_range.format_range()})")
+    client.logger.debug("get_order_history: %s (%s)", time_range.label, time_range.format_range())
 
     kwargs: dict = {
         "category": category,
@@ -379,7 +379,7 @@ def get_executions(
     client._private_limiter.acquire()
 
     time_params = time_range.to_bybit_params()
-    client.logger.debug(f"get_executions: {time_range.label} ({time_range.format_range()})")
+    client.logger.debug("get_executions: %s (%s)", time_range.label, time_range.format_range())
 
     kwargs: dict = {
         "category": category,
@@ -411,7 +411,7 @@ def get_closed_pnl(
     client._private_limiter.acquire()
 
     time_params = time_range.to_bybit_params()
-    client.logger.debug(f"get_closed_pnl: {time_range.label} ({time_range.format_range()})")
+    client.logger.debug("get_closed_pnl: %s (%s)", time_range.label, time_range.format_range())
 
     kwargs: dict = {
         "category": category,

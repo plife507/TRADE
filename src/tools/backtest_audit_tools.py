@@ -58,7 +58,7 @@ def backtest_audit_math_from_snapshots_tool(run_dir: Path) -> ToolResult:
             )
 
     except Exception as e:
-        logger.error(f"Math parity audit failed: {e}\n{traceback.format_exc()}")
+        logger.error("Math parity audit failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Math parity audit error: {e}",
@@ -136,7 +136,7 @@ def backtest_audit_toolkit_tool(
             )
 
     except Exception as e:
-        logger.error(f"Toolkit contract audit failed: {e}\n{traceback.format_exc()}")
+        logger.error("Toolkit contract audit failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Toolkit contract audit error: {e}",
@@ -237,7 +237,7 @@ def backtest_math_parity_tool(
         )
 
     except Exception as e:
-        logger.error(f"Math parity audit failed: {e}\n{traceback.format_exc()}")
+        logger.error("Math parity audit failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Math parity audit error: {e}",
@@ -330,7 +330,7 @@ def verify_artifact_parity_tool(
             )
 
     except Exception as e:
-        logger.error(f"Artifact parity verification failed: {e}\n{traceback.format_exc()}")
+        logger.error("Artifact parity verification failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Parity verification error: {e}",
@@ -403,7 +403,7 @@ def backtest_audit_snapshot_plumbing_tool(
             )
 
     except Exception as e:
-        logger.error(f"Snapshot plumbing parity audit failed: {e}\n{traceback.format_exc()}")
+        logger.error("Snapshot plumbing parity audit failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Plumbing audit error: {e}",
@@ -477,7 +477,7 @@ def backtest_audit_rollup_parity_tool(
             )
 
     except Exception as e:
-        logger.error(f"Rollup parity audit failed: {e}\n{traceback.format_exc()}")
+        logger.error("Rollup parity audit failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Rollup audit error: {e}",

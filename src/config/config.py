@@ -454,15 +454,6 @@ class WebSocketConfig:
 
 
 @dataclass
-class LogConfig:
-    """Logging configuration."""
-    level: str = "INFO"
-    log_dir: str = "logs"
-    log_trades: bool = True
-    log_errors_separately: bool = True
-
-
-@dataclass
 class TradingConfig:
     """
     Main trading configuration.
@@ -614,11 +605,10 @@ class Config:
         self.bybit = self._load_bybit_config()
         self.risk = self._load_risk_config()
         self.data = self._load_data_config()
-        self.log = self._load_log_config()
         self.trading = self._load_trading_config()
         self.websocket = self._load_websocket_config()
         self.smoke = self._load_smoke_config()
-        
+
         self._initialized = True
     
     def _load_bybit_config(self) -> BybitConfig:
@@ -664,13 +654,6 @@ class Config:
             price_cache_seconds=int(os.getenv("PRICE_CACHE_SECONDS", "2")),
             ohlcv_cache_seconds=int(os.getenv("OHLCV_CACHE_SECONDS", "60")),
             funding_cache_seconds=int(os.getenv("FUNDING_CACHE_SECONDS", "300")),
-        )
-    
-    def _load_log_config(self) -> LogConfig:
-        """Load logging configuration from environment."""
-        return LogConfig(
-            level=os.getenv("TRADE_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO")),
-            log_dir=os.getenv("LOG_DIR", "logs"),
         )
     
     def _load_trading_config(self) -> TradingConfig:
@@ -763,13 +746,12 @@ class Config:
         self.bybit = self._load_bybit_config()
         self.risk = self._load_risk_config()
         self.data = self._load_data_config()
-        self.log = self._load_log_config()
         self.trading = self._load_trading_config()
         self.websocket = self._load_websocket_config()
         self.smoke = self._load_smoke_config()
 
         self._initialized = True
-    
+
     def validate(self) -> tuple[bool, list[str]]:
         """
         Validate configuration for Unified Trading Account.

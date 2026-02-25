@@ -123,7 +123,8 @@ def positions_menu(cli: "TradeCLI"):
             price_input = get_input("Stop Loss Price (USD, e.g. 85000.50)")
             if price_input is BACK:
                 continue
-            assert isinstance(price_input, str)
+            if not isinstance(price_input, str):
+                raise TypeError(f"Expected str, got {type(price_input).__name__}")
             try:
                 price = float(price_input)
                 result = run_tool_action("positions.set_stop_loss", set_stop_loss_tool, symbol, price)
@@ -138,7 +139,8 @@ def positions_menu(cli: "TradeCLI"):
             price_input = get_input("Take Profit Price (USD, e.g. 95000.00)")
             if price_input is BACK:
                 continue
-            assert isinstance(price_input, str)
+            if not isinstance(price_input, str):
+                raise TypeError(f"Expected str, got {type(price_input).__name__}")
             try:
                 price = float(price_input)
                 result = run_tool_action("positions.set_take_profit", set_take_profit_tool, symbol, price)
@@ -154,11 +156,13 @@ def positions_menu(cli: "TradeCLI"):
             tp = get_input("Take Profit Price (USD, blank to skip)", "")
             if tp is BACK:
                 continue
-            assert isinstance(tp, str)
+            if not isinstance(tp, str):
+                raise TypeError(f"Expected str, got {type(tp).__name__}")
             sl = get_input("Stop Loss Price (USD, blank to skip)", "")
             if sl is BACK:
                 continue
-            assert isinstance(sl, str)
+            if not isinstance(sl, str):
+                raise TypeError(f"Expected str, got {type(sl).__name__}")
             try:
                 result = run_tool_action(
                     "positions.set_tpsl", set_position_tpsl_tool, symbol,
@@ -176,11 +180,13 @@ def positions_menu(cli: "TradeCLI"):
             percent_input = get_input("Close Percentage (0-100, e.g. 50 for 50%)", "50")
             if percent_input is BACK:
                 continue
-            assert isinstance(percent_input, str)
+            if not isinstance(percent_input, str):
+                raise TypeError(f"Expected str, got {type(percent_input).__name__}")
             price = get_input("Limit Price (USD, blank for Market order)", "")
             if price is BACK:
                 continue
-            assert isinstance(price, str)
+            if not isinstance(price, str):
+                raise TypeError(f"Expected str, got {type(price).__name__}")
             try:
                 percent = float(percent_input)
                 if percent < 0 or percent > 100:
@@ -257,7 +263,8 @@ def positions_menu(cli: "TradeCLI"):
             risk_id_input = get_input("Risk Limit ID (integer number)", "")
             if risk_id_input is BACK:
                 continue
-            assert isinstance(risk_id_input, str)
+            if not isinstance(risk_id_input, str):
+                raise TypeError(f"Expected str, got {type(risk_id_input).__name__}")
             if not risk_id_input:
                 console.print("[yellow]Cancelled - no risk limit ID provided[/]")
             else:
@@ -296,7 +303,8 @@ def positions_menu(cli: "TradeCLI"):
             leverage_input = get_input("Leverage (1-100, blank to keep current)", "")
             if leverage_input is BACK:
                 continue
-            assert isinstance(leverage_input, str)
+            if not isinstance(leverage_input, str):
+                raise TypeError(f"Expected str, got {type(leverage_input).__name__}")
             try:
                 lev_value = int(leverage_input) if leverage_input else None
                 if lev_value and (lev_value < 1 or lev_value > 100):
@@ -324,7 +332,8 @@ def positions_menu(cli: "TradeCLI"):
             margin_input = get_input("Margin amount (USD, e.g. 100 or -50)", "")
             if margin_input is BACK:
                 continue
-            assert isinstance(margin_input, str)
+            if not isinstance(margin_input, str):
+                raise TypeError(f"Expected str, got {type(margin_input).__name__}")
             try:
                 margin = float(margin_input)
                 result = run_tool_action("positions.modify_margin", modify_position_margin_tool, symbol, margin)

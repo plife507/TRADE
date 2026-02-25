@@ -78,14 +78,15 @@ class LiveIndicatorCache:
         # Indicator keys managed by engine (e.g., anchored_vwap needs structure state)
         self._engine_managed_keys: set[str] = set()
 
-        # OHLCV arrays for vectorized computation fallback
-        self._open: np.ndarray = np.array([], dtype=np.float64)
-        self._high: np.ndarray = np.array([], dtype=np.float64)
-        self._low: np.ndarray = np.array([], dtype=np.float64)
-        self._close: np.ndarray = np.array([], dtype=np.float64)
-        self._volume: np.ndarray = np.array([], dtype=np.float64)
+        # OHLCV arrays — pre-allocated at buffer_size to avoid per-append
+        # allocation (ENG-BUG-015). Valid data is in [:_bar_count].
+        self._open: np.ndarray = np.empty(buffer_size, dtype=np.float64)
+        self._high: np.ndarray = np.empty(buffer_size, dtype=np.float64)
+        self._low: np.ndarray = np.empty(buffer_size, dtype=np.float64)
+        self._close: np.ndarray = np.empty(buffer_size, dtype=np.float64)
+        self._volume: np.ndarray = np.empty(buffer_size, dtype=np.float64)
 
-        # Track bar count
+        # Track bar count (valid data in each array is [:_bar_count])
         self._bar_count: int = 0
 
     def initialize_from_history(
@@ -106,17 +107,14 @@ class LiveIndicatorCache:
         if not candles:
             return
 
-        # Convert candles to arrays
-        n = len(candles)
-        self._open = np.zeros(n, dtype=np.float64)
-        self._high = np.zeros(n, dtype=np.float64)
-        self._low = np.zeros(n, dtype=np.float64)
-        self._close = np.zeros(n, dtype=np.float64)
-        self._volume = np.zeros(n, dtype=np.float64)
+        # Convert candles to pre-allocated arrays (keep last buffer_size)
+        n = min(len(candles), self._buffer_size)
+        candles = candles[-n:]  # Keep most recent if more than buffer_size
 
         # ts_open in milliseconds for session-boundary indicators (VWAP)
-        self._ts_open_ms = np.zeros(n, dtype=np.int64)
+        self._ts_open_ms = np.zeros(self._buffer_size, dtype=np.int64)
 
+        from src.backtest.runtime.feed_store import _datetime_to_epoch_ms
         for i, candle in enumerate(candles):
             self._open[i] = float(candle.open)
             self._high[i] = float(candle.high)
@@ -124,7 +122,6 @@ class LiveIndicatorCache:
             self._close[i] = float(candle.close)
             self._volume[i] = float(candle.volume)
             # BarRecord has .timestamp, Candle has .ts_open (both UTC-naive)
-            from src.backtest.runtime.feed_store import _datetime_to_epoch_ms
             ts = getattr(candle, 'ts_open', None) or getattr(candle, 'timestamp', None)
             if ts is not None:
                 self._ts_open_ms[i] = _datetime_to_epoch_ms(ts)
@@ -151,7 +148,7 @@ class LiveIndicatorCache:
                     if ind_type == "anchored_vwap":
                         # Multi-output: allocate NaN arrays for each expanded key
                         for expanded_key in feature.output_keys_list:
-                            self._indicators[expanded_key] = np.full(n, np.nan)
+                            self._indicators[expanded_key] = np.full(self._buffer_size, np.nan)
                             self._engine_managed_keys.add(expanded_key)
                         continue
 
@@ -164,13 +161,13 @@ class LiveIndicatorCache:
                         info = registry.get_indicator_info(ind_type)
                         needs_hlc = info.requires_hlc
 
-                        # Initialize arrays for all outputs
+                        # Initialize arrays for all outputs (pre-allocated)
                         if info.is_multi_output:
                             for suffix in info.output_keys:
                                 key = f"{feature.output_key}_{suffix}"
-                                self._indicators[key] = np.full(n, np.nan)
+                                self._indicators[key] = np.full(self._buffer_size, np.nan)
                         else:
-                            self._indicators[feature.output_key] = np.full(n, np.nan)
+                            self._indicators[feature.output_key] = np.full(self._buffer_size, np.nan)
 
                         # Warmup with historical data
                         needs_volume = info.requires_volume
@@ -208,7 +205,7 @@ class LiveIndicatorCache:
                 else:
                     self._vectorized_specs.append(spec)
             except Exception as e:
-                logger.warning(f"Failed to initialize indicator {spec}: {e}")
+                logger.warning("Failed to initialize indicator %s: %s", spec, e)
 
         # Compute vectorized indicators
         self._compute_vectorized()
@@ -253,36 +250,51 @@ class LiveIndicatorCache:
             return (float(self._open[idx]) + float(self._high[idx]) + float(self._low[idx]) + float(self._close[idx])) / 4.0
         return float(self._close[idx])
 
+    def _buffer_push(self, arr: np.ndarray, value: float) -> None:
+        """Push a value into a pre-allocated rolling buffer, in-place.
+
+        If the buffer is full (_bar_count == _buffer_size), shifts left by 1
+        (single memcpy, zero allocation) and writes at the end. Otherwise
+        writes at _bar_count. Caller must increment _bar_count after all
+        pushes for a given bar are complete.
+        """
+        if self._bar_count < self._buffer_size:
+            arr[self._bar_count] = value
+        else:
+            arr[:-1] = arr[1:]
+            arr[-1] = value
+
     def update(self, candle: Candle) -> None:
         """
         Add new closed candle and update indicators.
 
         Uses O(1) incremental computation for supported indicators.
         Thread-safe: protected by lock for WebSocket callbacks.
+        Zero-allocation in steady state (ENG-BUG-015 fix).
         """
         # G6.2.1: Thread safety - lock all mutations
         with self._lock:
-            # Append to arrays
-            self._open = np.append(self._open, candle.open)
-            self._high = np.append(self._high, candle.high)
-            self._low = np.append(self._low, candle.low)
-            self._close = np.append(self._close, candle.close)
-            self._volume = np.append(self._volume, candle.volume)
+            # At capacity: shift all arrays left by 1 (single memcpy each)
+            at_capacity = self._bar_count >= self._buffer_size
 
-            # Trim if needed
-            if len(self._close) > self._buffer_size:
-                trim_count = len(self._close) - self._buffer_size
-                self._open = self._open[trim_count:]
-                self._high = self._high[trim_count:]
-                self._low = self._low[trim_count:]
-                self._close = self._close[trim_count:]
-                self._volume = self._volume[trim_count:]
+            # Push OHLCV into pre-allocated buffers
+            self._buffer_push(self._open, float(candle.open))
+            self._buffer_push(self._high, float(candle.high))
+            self._buffer_push(self._low, float(candle.low))
+            self._buffer_push(self._close, float(candle.close))
+            self._buffer_push(self._volume, float(candle.volume))
 
-                # Trim indicator arrays too
-                for name in self._indicators:
-                    self._indicators[name] = self._indicators[name][trim_count:]
+            # Shift indicator arrays in sync when at capacity
+            if at_capacity:
+                for arr in self._indicators.values():
+                    arr[:-1] = arr[1:]
 
-            self._bar_count = len(self._close)
+            # Write index for new indicator values
+            write_idx = min(self._bar_count, self._buffer_size - 1)
+
+            # Update bar count
+            if not at_capacity:
+                self._bar_count += 1
 
             # Update incremental indicators (O(1) per indicator)
             from ...backtest.indicator_registry import get_registry
@@ -314,20 +326,19 @@ class LiveIndicatorCache:
                         kwargs["volume"] = float(candle.volume)
                     inc_ind.update(**kwargs)
 
-                # Append new values for all outputs
+                # Write new values at write_idx (no allocation)
                 if info.is_multi_output:
                     for suffix in info.output_keys:
                         key = f"{name}_{suffix}"
-                        value = self._get_incremental_output(inc_ind, suffix)
-                        self._indicators[key] = np.append(self._indicators[key], value)
+                        self._indicators[key][write_idx] = self._get_incremental_output(inc_ind, suffix)
                 else:
-                    self._indicators[name] = np.append(self._indicators[name], inc_ind.value)
+                    self._indicators[name][write_idx] = inc_ind.value
 
-            # Append NaN placeholder for engine-managed indicators (e.g., anchored_vwap).
+            # Write NaN placeholder for engine-managed indicators (e.g., anchored_vwap).
             # Engine fills correct values after structure update via _update_anchored_vwap().
             for key in self._engine_managed_keys:
                 if key in self._indicators:
-                    self._indicators[key] = np.append(self._indicators[key], np.nan)
+                    self._indicators[key][write_idx] = np.nan
 
             # Recompute vectorized indicators (still O(n) but only for non-incremental)
             if self._vectorized_specs:
@@ -368,27 +379,33 @@ class LiveIndicatorCache:
         from ...indicators import FeatureSpec
         from ...backtest.indicator_vendor import compute_indicator
 
+        n = self._bar_count
         for spec in self._vectorized_specs:
             try:
                 feature = FeatureSpec.from_dict(spec)
                 result = compute_indicator(
                     feature.indicator_type,
-                    close=pd.Series(self._close),
-                    high=pd.Series(self._high),
-                    low=pd.Series(self._low),
-                    open_=pd.Series(self._open),
-                    volume=pd.Series(self._volume),
+                    close=pd.Series(self._close[:n]),
+                    high=pd.Series(self._high[:n]),
+                    low=pd.Series(self._low[:n]),
+                    open_=pd.Series(self._open[:n]),
+                    volume=pd.Series(self._volume[:n]),
                     **feature.params,
                 )
                 if isinstance(result, dict):
-                    # Multi-output: store each output separately
                     for suffix, series in result.items():
                         key = f"{feature.output_key}_{suffix}"
-                        self._indicators[key] = series.to_numpy() if hasattr(series, 'to_numpy') else np.asarray(series)
+                        values = series.to_numpy() if hasattr(series, 'to_numpy') else np.asarray(series)
+                        if key not in self._indicators:
+                            self._indicators[key] = np.full(self._buffer_size, np.nan)
+                        self._indicators[key][:n] = values[:n]
                 else:
-                    self._indicators[feature.output_key] = result.to_numpy() if hasattr(result, 'to_numpy') else np.asarray(result)
+                    values = result.to_numpy() if hasattr(result, 'to_numpy') else np.asarray(result)
+                    if feature.output_key not in self._indicators:
+                        self._indicators[feature.output_key] = np.full(self._buffer_size, np.nan)
+                    self._indicators[feature.output_key][:n] = values[:n]
             except Exception as e:
-                logger.warning(f"Failed to compute indicator {spec}: {e}")
+                logger.warning("Failed to compute indicator %s: %s", spec, e)
 
     def get(self, name: str, index: int) -> float:
         """Get indicator value at index. Thread-safe."""
@@ -396,14 +413,14 @@ class LiveIndicatorCache:
             if name not in self._indicators:
                 raise KeyError(f"Indicator '{name}' not found")
 
-            arr = self._indicators[name]
+            n = self._bar_count
             if index < 0:
-                index = len(arr) + index
+                index = n + index
 
-            if index < 0 or index >= len(arr):
+            if index < 0 or index >= n:
                 raise IndexError(f"Index {index} out of bounds")
 
-            return float(arr[index])
+            return float(self._indicators[name][index])
 
     def has_indicator(self, name: str) -> bool:
         """Check if indicator exists. Thread-safe."""
@@ -446,12 +463,13 @@ class LiveIndicatorCache:
             if self._bar_count == 0:
                 return results
 
-            # Build pandas Series from arrays for vectorized computation
-            close_s = pd.Series(self._close)
-            high_s = pd.Series(self._high)
-            low_s = pd.Series(self._low)
-            open_s = pd.Series(self._open)
-            volume_s = pd.Series(self._volume)
+            # Build pandas Series from valid data only
+            n = self._bar_count
+            close_s = pd.Series(self._close[:n])
+            high_s = pd.Series(self._high[:n])
+            low_s = pd.Series(self._low[:n])
+            open_s = pd.Series(self._open[:n])
+            volume_s = pd.Series(self._volume[:n])
 
             # For each incrementally computed indicator, recompute vectorized
             for name, (inc_ind, feature) in self._incremental.items():
@@ -497,8 +515,9 @@ class LiveIndicatorCache:
                     else:
                         vectorized = vec_result.to_numpy()
 
-                    # Get incremental values
-                    incremental = self._indicators.get(name, np.array([]))
+                    # Get incremental values (valid data only)
+                    raw = self._indicators.get(name)
+                    incremental = raw[:n] if raw is not None else np.array([])
 
                     if len(vectorized) == 0 or len(incremental) == 0:
                         results[name] = {
@@ -639,7 +658,7 @@ class LiveDataProvider:
         warmup_req = compute_warmup_requirements(play)
         self._warmup_bars = max(warmup_req.max_warmup_bars, 1)
         self._warmup_by_role = warmup_req.warmup_by_role
-        logger.info(f"Warmup requirements: max={self._warmup_bars}, by_role={self._warmup_by_role}")
+        logger.info("Warmup requirements: max=%s, by_role=%s", self._warmup_bars, self._warmup_by_role)
         self._current_bar_index: int = -1
 
         # WU-02: Track warmup state per TF for multi-TF sync
@@ -762,17 +781,17 @@ class LiveDataProvider:
             self._sync_warmup_data()
             await self._load_initial_bars()
 
-            logger.info(f"LiveDataProvider connected: {self._symbol}")
+            logger.info("LiveDataProvider connected: %s", self._symbol)
 
         except Exception as e:
-            logger.error(f"Failed to connect LiveDataProvider: {e}")
+            logger.error("Failed to connect LiveDataProvider: %s", e)
             raise
 
     async def disconnect(self) -> None:
         """Disconnect from WebSocket."""
         # We don't stop the bootstrap as other components may be using it
         self._ready = False
-        logger.info(f"LiveDataProvider disconnected: {self._symbol}")
+        logger.info("LiveDataProvider disconnected: %s", self._symbol)
 
     def _sync_warmup_data(self) -> None:
         """Sync warmup bars to DuckDB for all play TFs before loading.
@@ -815,7 +834,7 @@ class LiveDataProvider:
                     show_spinner=False,
                 )
             except Exception as e:
-                logger.warning(f"Warmup sync failed for {tf_str} (will try REST fallback): {e}")
+                logger.warning("Warmup sync failed for %s (will try REST fallback): %s", tf_str, e)
 
     async def _load_initial_bars(self) -> None:
         """Load initial bars from bar buffer, DuckDB, or REST API for all TFs."""
@@ -917,7 +936,7 @@ class LiveDataProvider:
             # H7: Initialize global bar counter from loaded history
             self._global_bar_count[tf_role] = len(bars)
 
-            logger.info(f"Loaded {len(bars)} bars for {tf_role} ({tf_str}) warm-up")
+            logger.info("Loaded %s bars for %s (%s) warm-up", len(bars), tf_role, tf_str)
 
     def _warmup_structures(self) -> None:
         """Feed historical bars through structure detectors for warmup.
@@ -962,9 +981,9 @@ class LiveDataProvider:
                     structure_state.update(bar_data)
                 except Exception as e:
                     if bar_idx == 0:
-                        logger.warning(f"Structure warmup error on {tf_role} bar {bar_idx}: {e}")
+                        logger.warning("Structure warmup error on %s bar %s: %s", tf_role, bar_idx, e)
 
-            logger.info(f"Warmed up {tf_role} structures with {len(buffer)} bars")
+            logger.info("Warmed up %s structures with %s bars", tf_role, len(buffer))
 
     def _get_indicator_specs_for_tf(self, tf_role: str) -> list[dict]:
         """Get indicator specs for a specific TF role from Play.
@@ -1032,7 +1051,7 @@ class LiveDataProvider:
             )
 
             if df is None or df.empty:
-                logger.info(f"No bars in DuckDB for {self._symbol} {tf_str}")
+                logger.info("No bars in DuckDB for %s %s", self._symbol, tf_str)
                 return []
 
             # Convert DataFrame rows to BarRecord objects
@@ -1054,11 +1073,11 @@ class LiveDataProvider:
                 )
                 bars.append(bar)
 
-            logger.info(f"Loaded {len(bars)} bars from DuckDB ({self._env}) for {tf_str}")
+            logger.info("Loaded %s bars from DuckDB (%s) for %s", len(bars), self._env, tf_str)
             return bars
 
         except Exception as e:
-            logger.warning(f"Failed to load bars from DuckDB for {tf_str}: {e}")
+            logger.warning("Failed to load bars from DuckDB for %s: %s", tf_str, e)
             return []
 
     async def _load_bars_from_rest_api(self, tf_str: str) -> list:
@@ -1073,7 +1092,7 @@ class LiveDataProvider:
 
         bybit_tf = TIMEFRAMES.get(tf_str)
         if bybit_tf is None:
-            logger.warning(f"No Bybit interval mapping for {tf_str}, skipping REST warmup")
+            logger.warning("No Bybit interval mapping for %s, skipping REST warmup", tf_str)
             return []
 
         try:
@@ -1088,7 +1107,7 @@ class LiveDataProvider:
             end_ms = int(end.timestamp() * 1000)
             start_ms = int(start.timestamp() * 1000)
 
-            logger.info(f"Fetching {fetch_count} bars from REST API for {self._symbol} {tf_str}...")
+            logger.info("Fetching %s bars from REST API for %s %s...", fetch_count, self._symbol, tf_str)
             df = store.client.get_klines(
                 symbol=self._symbol,
                 interval=bybit_tf,
@@ -1098,7 +1117,7 @@ class LiveDataProvider:
             )
 
             if df is None or df.empty:
-                logger.warning(f"REST API returned no bars for {self._symbol} {tf_str}")
+                logger.warning("REST API returned no bars for %s %s", self._symbol, tf_str)
                 return []
 
             bars = []
@@ -1119,11 +1138,11 @@ class LiveDataProvider:
                 )
                 bars.append(bar)
 
-            logger.info(f"Loaded {len(bars)} bars from REST API for {tf_str} warm-up")
+            logger.info("Loaded %s bars from REST API for %s warm-up", len(bars), tf_str)
             return bars
 
         except Exception as e:
-            logger.warning(f"Failed to load bars from REST API for {tf_str}: {e}")
+            logger.warning("Failed to load bars from REST API for %s: %s", tf_str, e)
             return []
 
     def _get_structure_specs_by_tf_role(self) -> dict[str, list[dict]]:
@@ -1192,9 +1211,9 @@ class LiveDataProvider:
                     self._tf_mapping["low_tf"],
                     low_tf_specs,
                 )
-                logger.info(f"Initialized low_tf structure state with {len(low_tf_specs)} specs")
+                logger.info("Initialized low_tf structure state with %s specs", len(low_tf_specs))
             except Exception as e:
-                logger.warning(f"Failed to initialize low_tf structure state: {e}")
+                logger.warning("Failed to initialize low_tf structure state: %s", e)
 
         # med_tf structures (only if different from low_tf)
         if self._tf_mapping["med_tf"] != self._tf_mapping["low_tf"]:
@@ -1205,9 +1224,9 @@ class LiveDataProvider:
                         self._tf_mapping["med_tf"],
                         med_tf_specs,
                     )
-                    logger.info(f"Initialized med_tf structure state with {len(med_tf_specs)} specs")
+                    logger.info("Initialized med_tf structure state with %s specs", len(med_tf_specs))
                 except Exception as e:
-                    logger.warning(f"Failed to initialize med_tf structure state: {e}")
+                    logger.warning("Failed to initialize med_tf structure state: %s", e)
 
         # high_tf structures (only if different from med_tf)
         if self._tf_mapping["high_tf"] != self._tf_mapping["med_tf"]:
@@ -1218,9 +1237,9 @@ class LiveDataProvider:
                         self._tf_mapping["high_tf"],
                         high_tf_specs,
                     )
-                    logger.info(f"Initialized high_tf structure state with {len(high_tf_specs)} specs")
+                    logger.info("Initialized high_tf structure state with %s specs", len(high_tf_specs))
                 except Exception as e:
-                    logger.warning(f"Failed to initialize high_tf structure state: {e}")
+                    logger.warning("Failed to initialize high_tf structure state: %s", e)
 
     def get_candle(self, index: int) -> Candle:
         """
@@ -1502,13 +1521,15 @@ class LiveDataProvider:
             # filled by the engine AFTER warmup, so NaN is expected here.
             with indicator_cache._lock:
                 engine_managed = getattr(indicator_cache, '_engine_managed_keys', set())
+                n = indicator_cache._bar_count
                 for name, arr in indicator_cache._indicators.items():
                     if name in engine_managed:
                         continue
-                    if len(arr) > 0 and np.isnan(arr[-1]):
+                    if n > 0 and np.isnan(arr[n - 1]):
                         # Found NaN at latest bar - warmup not complete
                         logger.debug(
-                            f"Indicator {name} has NaN at latest bar, warmup incomplete"
+                            "Indicator %s has NaN at latest bar, warmup incomplete",
+                            name,
                         )
                         return False
 
@@ -1640,7 +1661,7 @@ class LiveDataProvider:
             # G16.3: Record all structure output values in history ring buffer
             self._record_structure_history(structure_state, tf_role, bar_idx)
         except Exception as e:
-            logger.warning(f"Failed to update structure state: {e}")
+            logger.warning("Failed to update structure state: %s", e)
 
 
     def _record_structure_history(
@@ -1802,10 +1823,10 @@ class LiveExchange:
             self._apply_leverage_and_margin()
 
             self._connected = True
-            logger.info(f"LiveExchange connected: {self._symbol}")
+            logger.info("LiveExchange connected: %s", self._symbol)
 
         except Exception as e:
-            logger.error(f"Failed to connect LiveExchange: {e}")
+            logger.error("Failed to connect LiveExchange: %s", e)
             raise
 
     def _bootstrap_balance_from_rest(self) -> None:
@@ -1837,7 +1858,7 @@ class LiveExchange:
             else:
                 logger.warning("REST balance returned empty response")
         except Exception as e:
-            logger.error(f"Failed to bootstrap balance from REST: {e}")
+            logger.error("Failed to bootstrap balance from REST: %s", e)
 
     def _build_risk_config(self):
         """Build RiskConfig from Play settings.
@@ -1942,10 +1963,10 @@ class LiveExchange:
                         f"Fix your Play YAML."
                     )
 
-                logger.info(f"MMR: -> exchange {exchange_mmr:.4f} (tier 1)")
+                logger.info("MMR: -> exchange %.4f (tier 1)", exchange_mmr)
                 self._config.maintenance_margin_rate = exchange_mmr
         except Exception as e:
-            logger.warning(f"Could not fetch risk limits (non-fatal): {e}")
+            logger.warning("Could not fetch risk limits (non-fatal): %s", e)
 
         # --- Min trade notional: from instrument info ---
         try:
@@ -1953,11 +1974,11 @@ class LiveExchange:
             lot_size = info.get("lotSizeFilter", {})
             min_notional = float(lot_size.get("minNotionalValue", "0"))
             if min_notional > 0:
-                logger.info(f"Min notional: -> exchange ${min_notional:.2f}")
+                logger.info("Min notional: -> exchange $%.2f", min_notional)
                 account = replace(account, min_trade_notional_usdt=min_notional)
                 self._config.min_trade_usdt = min_notional
         except Exception as e:
-            logger.warning(f"Could not fetch instrument info (non-fatal): {e}")
+            logger.warning("Could not fetch instrument info (non-fatal): %s", e)
 
         # Commit patched account back to Play
         self._play.account = account
@@ -2008,7 +2029,7 @@ class LiveExchange:
     async def disconnect(self) -> None:
         """Disconnect from exchange."""
         self._connected = False
-        logger.info(f"LiveExchange disconnected: {self._symbol}")
+        logger.info("LiveExchange disconnected: %s", self._symbol)
 
     def submit_order(self, order: Order) -> OrderResult:
         """Submit order for execution."""
@@ -2101,7 +2122,7 @@ class LiveExchange:
             )
 
         except Exception as e:
-            logger.error(f"Order submission failed: {e}")
+            logger.error("Order submission failed: %s", e)
             return OrderResult(
                 success=False,
                 error=str(e),
@@ -2133,7 +2154,7 @@ class LiveExchange:
             )
             return bool(result)
         except Exception as e:
-            logger.error(f"Cancel order failed: {e}")
+            logger.error("Cancel order failed: %s", e)
             return False
 
     def get_position(self, symbol: str) -> Position | None:
@@ -2201,7 +2222,7 @@ class LiveExchange:
                     self._last_known_balance = balance["available"]
                     return self._last_known_balance
             except Exception as e:
-                logger.error(f"Failed to get balance from exchange, using last known ${self._last_known_balance:.2f}: {e}")
+                logger.error("Failed to get balance from exchange, using last known $%.2f: %s", self._last_known_balance, e)
 
         return self._last_known_balance
 
@@ -2255,7 +2276,7 @@ class LiveExchange:
             )
             return sum(float(r.get("closedPnl", 0)) for r in records)
         except Exception as e:
-            logger.warning(f"Failed to query realized PnL from exchange: {e}")
+            logger.warning("Failed to query realized PnL from exchange: %s", e)
             return 0.0
 
     def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
@@ -2306,7 +2327,7 @@ class LiveExchange:
                         client_order_id=od.order_id,
                     ))
             except Exception as e:
-                logger.warning(f"Failed to get open orders: {e}")
+                logger.warning("Failed to get open orders: %s", e)
 
         return orders
 
@@ -2334,7 +2355,7 @@ class LiveExchange:
         """
         position = self.get_position(self._symbol)
         if position is None:
-            logger.warning(f"submit_close called but no position for {self._symbol}")
+            logger.warning("submit_close called but no position for %s", self._symbol)
             return OrderResult(success=False, error=f"No position for {self._symbol}")
 
         # Calculate close size
@@ -2392,11 +2413,11 @@ class LiveExchange:
                 )
             else:
                 error_msg = result.error if result else "Unknown error"
-                logger.error(f"Close order failed: {error_msg}")
+                logger.error("Close order failed: %s", error_msg)
                 return OrderResult(success=False, error=error_msg)
 
         except Exception as e:
-            logger.error(f"Failed to submit close order: {e}")
+            logger.error("Failed to submit close order: %s", e)
             return OrderResult(success=False, error=str(e))
 
     @property

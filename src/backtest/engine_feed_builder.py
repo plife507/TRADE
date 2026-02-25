@@ -254,7 +254,7 @@ def build_quote_feed_impl(
         indicator_columns=[],  # No indicators for quote feed
     )
 
-    logger.info(f"Built quote feed: {quote_feed.length} 1m bars for {symbol}")
+    logger.info("Built quote feed: %s 1m bars for %s", quote_feed.length, symbol)
 
     return quote_feed
 

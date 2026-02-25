@@ -156,7 +156,7 @@ def backtest_play_normalize_tool(
         )
 
     except Exception as e:
-        logger.error(f"Play normalization failed: {e}\n{traceback.format_exc()}")
+        logger.error("Play normalization failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Normalization error: {e}",
@@ -193,7 +193,7 @@ def backtest_play_normalize_batch_tool(
         passed_count = 0
         failed_count = 0
 
-        logger.info(f"Batch normalizing {len(play_ids)} Plays in {plays_dir}")
+        logger.info("Batch normalizing %s Plays in %s", len(play_ids), plays_dir)
 
         # Process each Play
         for play_id in play_ids:
@@ -220,7 +220,7 @@ def backtest_play_normalize_batch_tool(
                 results.append(card_result)
 
             except Exception as e:
-                logger.error(f"Failed to process {play_id}: {e}")
+                logger.error("Failed to process %s: %s", play_id, e)
                 card_result = {
                     "play_id": play_id,
                     "success": False,
@@ -261,7 +261,7 @@ def backtest_play_normalize_batch_tool(
             )
 
     except Exception as e:
-        logger.error(f"Batch normalization failed: {e}\n{traceback.format_exc()}")
+        logger.error("Batch normalization failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Batch normalization error: {e}",

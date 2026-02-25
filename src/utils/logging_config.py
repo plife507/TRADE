@@ -79,6 +79,18 @@ class _ContextVarsSnapshotFilter(logging.Filter):
         return True
 
 
+def _inject_exc_text(
+    _logger: structlog.types.WrappedLogger,
+    _method_name: str,
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
+    """Inject preserved traceback text from QueueHandler into JSONL output."""
+    record: logging.LogRecord | None = event_dict.get("_record")  # type: ignore[assignment]
+    if record is not None and record.exc_text:
+        event_dict["traceback"] = record.exc_text
+    return event_dict
+
+
 def _inject_snapshot_context(
     _logger: structlog.types.WrappedLogger,
     _method_name: str,
@@ -108,10 +120,14 @@ class _StructlogQueueHandler(logging.handlers.QueueHandler):
     intact so both structlog-native and stdlib loggers work correctly.
     """
 
+    _exc_formatter = logging.Formatter()
+
     def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
-        # Only copy — do NOT call self.format() which destroys dict msg
+        # Preserve traceback as text before clearing exc_info
+        # (exc_info can't survive the queue boundary reliably)
+        if record.exc_info:
+            record.exc_text = self._exc_formatter.formatException(record.exc_info)
         record.exc_info = None
-        record.exc_text = None
         return record
 
 
@@ -149,6 +165,7 @@ def _make_queue_file_handler(
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         _inject_snapshot_context,
+        _inject_exc_text,
     ]
 
     file_handler.setFormatter(

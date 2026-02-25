@@ -67,7 +67,7 @@ class TelegramAdapter(NotificationAdapter):
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.status == 200
         except (urllib.error.URLError, OSError) as e:
-            logger.warning(f"Telegram notification failed: {e}")
+            logger.warning("Telegram notification failed: %s", e)
             return False
 
 
@@ -88,7 +88,7 @@ class DiscordAdapter(NotificationAdapter):
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.status in (200, 204)
         except (urllib.error.URLError, OSError) as e:
-            logger.warning(f"Discord notification failed: {e}")
+            logger.warning("Discord notification failed: %s", e)
             return False
 
 

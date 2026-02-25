@@ -94,7 +94,7 @@ def get_transaction_log(
     client._private_limiter.acquire()
 
     time_params = time_range.to_bybit_params()
-    client.logger.debug(f"get_transaction_log: {time_range.label} ({time_range.format_range()})")
+    client.logger.debug("get_transaction_log: %s (%s)", time_range.label, time_range.format_range())
 
     kwargs: dict = {
         "accountType": account_type,
@@ -162,7 +162,7 @@ def get_borrow_history(
     client._private_limiter.acquire()
 
     time_params = time_range.to_bybit_params()
-    client.logger.debug(f"get_borrow_history: {time_range.label} ({time_range.format_range()})")
+    client.logger.debug("get_borrow_history: %s (%s)", time_range.label, time_range.format_range())
 
     kwargs: dict = {
         "limit": min(limit, 50),

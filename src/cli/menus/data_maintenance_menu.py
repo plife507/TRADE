@@ -114,7 +114,8 @@ def data_maintenance_menu(cli: "TradeCLI", data_env: DataEnv) -> None:
             symbol = get_symbol_input("Symbol to DELETE")
             if symbol is BACK:
                 continue
-            assert isinstance(symbol, str)
+            if not isinstance(symbol, str):
+                raise TypeError(f"Expected str, got {type(symbol).__name__}")
             if symbol:
                 env_label = data_env.upper()
                 if Confirm.ask(f"[bold red]Delete ALL data for {symbol.upper()} in {env_label} env?[/]"):

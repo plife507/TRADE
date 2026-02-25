@@ -110,7 +110,7 @@ class FileStateStore:
                 pass
             raise
 
-        logger.debug(f"State saved: {state_file}")
+        logger.debug("State saved: %s", state_file)
 
     def load_state(self, engine_id: str) -> EngineState | None:
         """Load state from file."""
@@ -124,7 +124,7 @@ class FileStateStore:
                 state_dict = json.load(f)
             return self._dict_to_state(state_dict)
         except Exception as e:
-            logger.warning(f"Failed to load state from {state_file}: {e}")
+            logger.warning("Failed to load state from %s: %s", state_file, e)
             return None
 
     def delete_state(self, engine_id: str) -> bool:
@@ -133,7 +133,7 @@ class FileStateStore:
 
         if state_file.exists():
             state_file.unlink()
-            logger.debug(f"State deleted: {state_file}")
+            logger.debug("State deleted: %s", state_file)
             return True
         return False
 

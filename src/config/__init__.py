@@ -9,7 +9,6 @@ from .config import (
     BybitConfig,
     RiskConfig,
     DataConfig,
-    LogConfig,
     TradingConfig,
 )
 
@@ -35,7 +34,6 @@ __all__ = [
     "BybitConfig",
     "RiskConfig",
     "DataConfig",
-    "LogConfig",
     "TradingConfig",
     # Trading environment
     "TradingEnv",

@@ -192,7 +192,7 @@ class Application:
 
         except Exception as e:
             self._last_error = str(e)
-            self.logger.error(f"Application initialization failed: {e}")
+            self.logger.error("Application initialization failed: %s", e)
 
             # Emit app.init.end event (failure)
             self.logger.error("[app.init.end] success=False error=%s", e)
@@ -247,7 +247,7 @@ class Application:
 
         except Exception as e:
             self._last_error = str(e)
-            self.logger.error(f"Application start failed: {e}")
+            self.logger.error("Application start failed: %s", e)
 
             # Emit app.start.end event (failure)
             self.logger.error("[app.start.end] success=False error=%s", e)
@@ -274,7 +274,7 @@ class Application:
                 try:
                     callback()
                 except Exception as e:
-                    self.logger.warning(f"Shutdown callback error: {e}")
+                    self.logger.warning("Shutdown callback error: %s", e)
 
             # Stop WebSocket
             self._stop_websocket()
@@ -286,7 +286,7 @@ class Application:
             self.logger.info("[app.stop.end] success=True")
 
         except Exception as e:
-            self.logger.error(f"Error during shutdown: {e}")
+            self.logger.error("Error during shutdown: %s", e)
 
             # Emit app.stop.end event (with error)
             self.logger.warning("[app.stop.end] success=False error=%s", e)
@@ -359,9 +359,9 @@ class Application:
                     # Position is a dataclass with .symbol and .size attributes
                     if pos.size != 0:  # Has open position
                         symbols.add(pos.symbol)
-                        self.logger.debug(f"Found open position: {pos.symbol}")
+                        self.logger.debug("Found open position: %s", pos.symbol)
         except Exception as e:
-            self.logger.warning(f"Could not fetch positions for WebSocket: {e}")
+            self.logger.warning("Could not fetch positions for WebSocket: %s", e)
 
         # Do NOT add default symbols - websocket is only for positions
         # Default symbols are for REST API queries, not websocket subscriptions
@@ -393,7 +393,7 @@ class Application:
         if symbols is None:
             symbols = self._get_symbols_to_monitor()
 
-        self.logger.info(f"Starting WebSocket for symbols: {symbols}")
+        self.logger.info("Starting WebSocket for symbols: %s", symbols)
 
         try:
             # Start the bootstrap
@@ -414,8 +414,8 @@ class Application:
 
             # Timeout - log warning but don't fail
             self.logger.warning(
-                f"WebSocket connection timeout after {timeout}s - "
-                "continuing with REST fallback"
+                "WebSocket connection timeout after %ss - "
+                "continuing with REST fallback", timeout
             )
             return True  # Still return True - REST fallback will work
 
@@ -423,9 +423,9 @@ class Application:
             # Suppress verbose rate limit errors
             error_msg = str(e)
             if "Too many connection attempts" in error_msg or "connection failed" in error_msg:
-                self.logger.debug(f"WebSocket connection issue (falling back to REST): {e}")
+                self.logger.debug("WebSocket connection issue (falling back to REST): %s", e)
             else:
-                self.logger.error(f"Failed to start WebSocket: {e}")
+                self.logger.error("Failed to start WebSocket: %s", e)
 
             if self.config.websocket.fallback_to_polling:
                 self.logger.info("Falling back to REST API polling")
@@ -455,12 +455,12 @@ class Application:
             stop_thread.join(timeout=timeout)
 
             if stop_thread.is_alive():
-                self.logger.warning(f"WebSocket shutdown timed out after {timeout}s")
+                self.logger.warning("WebSocket shutdown timed out after %ss", timeout)
             else:
                 self.logger.info("WebSocket stopped")
 
         except Exception as e:
-            self.logger.warning(f"Error stopping WebSocket: {e}")
+            self.logger.warning("Error stopping WebSocket: %s", e)
 
     def start_websocket(self, symbols: list[str] | None = None, include_private: bool = True) -> bool:
         """
@@ -492,7 +492,7 @@ class Application:
             self.logger.debug("Signal handlers registered")
         except Exception as e:
             # Signal handling may fail in non-main threads
-            self.logger.debug(f"Could not register signal handlers: {e}")
+            self.logger.debug("Could not register signal handlers: %s", e)
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""
@@ -503,7 +503,7 @@ class Application:
             raise KeyboardInterrupt("Operation cancelled")
 
         signal_name = signal.Signals(signum).name
-        self.logger.info(f"Received {signal_name} - initiating shutdown")
+        self.logger.info("Received %s - initiating shutdown", signal_name)
         self.stop()
 
     def suppress_shutdown(self):
@@ -520,7 +520,7 @@ class Application:
             except (OSError, ValueError, RuntimeError) as e:
                 # BUG-004 fix: Specific exceptions for signal registration
                 # May fail if called from non-main thread or during shutdown
-                self.logger.debug(f"Could not restore signal handler: {e}")
+                self.logger.debug("Could not restore signal handler: %s", e)
 
     def _atexit_handler(self):
         """Handle process exit."""

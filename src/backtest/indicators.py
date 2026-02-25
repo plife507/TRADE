@@ -163,7 +163,7 @@ def apply_feature_spec_indicators(
             key = spec.output_key
             if key in df.columns and df[key].iloc[warmup:].isna().any():
                 nan_count = int(df[key].iloc[warmup:].isna().sum())
-                verbose_log(f"NaN past warmup: {key} has {nan_count} NaN values after bar {warmup}")
+                verbose_log("NaN past warmup", indicator=key, nan_count=nan_count, warmup_bar=warmup)
 
     return df
 

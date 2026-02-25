@@ -351,14 +351,14 @@ class RealtimeState:
                     buffer.append(bar)
                     count += 1
                 except (KeyError, ValueError, TypeError) as e:
-                    self.logger.debug(f"Skipping malformed row in bar buffer init: {e}")
+                    self.logger.debug("Skipping malformed row in bar buffer init: %s", e)
                     continue
 
             self._bar_buffers[env][symbol][timeframe] = buffer
 
             self.logger.debug(
-                f"Initialized bar buffer: env={env}, symbol={symbol}, "
-                f"tf={timeframe}, bars={count}, max_size={max_size}"
+                "Initialized bar buffer: env=%s, symbol=%s, tf=%s, bars=%s, max_size=%s",
+                env, symbol, timeframe, count, max_size,
             )
 
             return count
@@ -383,7 +383,8 @@ class RealtimeState:
                     maxlen=get_bar_buffer_size(timeframe)
                 )
                 self.logger.warning(
-                    f"Auto-initialized bar buffer: env={env}, symbol={symbol}, tf={timeframe}"
+                    "Auto-initialized bar buffer: env=%s, symbol=%s, tf=%s",
+                    env, symbol, timeframe,
                 )
 
             buffer = self._bar_buffers[env][symbol][timeframe]
@@ -675,9 +676,8 @@ class RealtimeState:
         # Check private WebSocket connection (needed for trading)
         if not self.is_private_ws_connected:
             self.logger.debug(
-                "WS health: private WS not connected "
-                f"(state={self._private_ws_status.state.value}, "
-                f"last_error={self._private_ws_status.last_error})"
+                "WS health: private WS not connected (state=%s, last_error=%s)",
+                self._private_ws_status.state.value, self._private_ws_status.last_error,
             )
             return False
 
@@ -706,7 +706,7 @@ class RealtimeState:
             try:
                 callback(data)
             except Exception as e:
-                self.logger.error(f"Callback error: {e}")
+                self.logger.error("Callback error: %s", e)
     
     # ==========================================================================
     # State Management

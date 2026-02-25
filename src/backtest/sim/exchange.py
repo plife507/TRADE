@@ -52,6 +52,8 @@ from .pricing.intrabar_path import check_tp_sl_1m
 from .execution import ExecutionModel, ExecutionModelConfig, SlippageConfig
 from .funding import FundingModel
 from .liquidation import LiquidationModel
+from .metrics import ExchangeMetrics, ExchangeMetricsSnapshot
+from .constraints import Constraints, ConstraintConfig
 
 from ..types import Trade
 
@@ -79,6 +81,7 @@ class SimulatedExchange:
         execution_config: ExecutionConfig | None = None,
         risk_profile: RiskProfileConfig | None = None,
         leverage: float = 1.0,
+        constraint_config: ConstraintConfig | None = None,
     ):
         """
         Initialize simulated exchange.
@@ -156,6 +159,15 @@ class SimulatedExchange:
         # Phase 4: Snapshot readiness context (set by engine each bar)
         self._current_snapshot_ready: bool = True
         
+        # Exchange-side metrics (slippage, fees, fills, liquidations)
+        self._exchange_metrics = ExchangeMetrics()
+
+        # Exchange constraints (tick size, lot size, min notional)
+        # Default: no-op (passthrough) so existing backtests are deterministic.
+        # Pass explicit ConstraintConfig to enable Bybit-realistic rounding.
+        _NO_OP_CONFIG = ConstraintConfig(tick_size=0, lot_size=0, min_notional_usdt=0)
+        self._constraints = Constraints(constraint_config or _NO_OP_CONFIG)
+
         # Starvation tracking
         self.entries_disabled: bool = False
         self.entries_disabled_reason: StopReason | None = None
@@ -231,6 +243,16 @@ class SimulatedExchange:
         """Last mark price computed during process_bar."""
         return self._last_mark_price
 
+    @property
+    def exchange_metrics(self) -> ExchangeMetricsSnapshot:
+        """Get exchange-side metrics snapshot (slippage, fees, fills, etc.)."""
+        return self._exchange_metrics.get_metrics()
+
+    @property
+    def constraints(self) -> Constraints:
+        """Get exchange constraints (tick size, lot size, min notional)."""
+        return self._constraints
+
     # ─────────────────────────────────────────────────────────────────────────
     # Order Management
     # ─────────────────────────────────────────────────────────────────────────
@@ -252,6 +274,12 @@ class SimulatedExchange:
         if self.entries_disabled:
             self.entry_rejections_count += 1
             self.last_rejection_code = "ENTRIES_DISABLED"
+            return None
+
+        # Check min notional constraint
+        if not self._constraints.validate_notional(size_usdt):
+            self.entry_rejections_count += 1
+            self.last_rejection_code = "BELOW_MIN_NOTIONAL"
             return None
 
         # Check if position or pending market order already exists
@@ -316,16 +344,25 @@ class SimulatedExchange:
             self.entry_rejections_count += 1
             self.last_rejection_code = "ENTRIES_DISABLED"
             return None
-        
+
+        # Check min notional constraint
+        if not self._constraints.validate_notional(size_usdt):
+            self.entry_rejections_count += 1
+            self.last_rejection_code = "BELOW_MIN_NOTIONAL"
+            return None
+
         if not reduce_only and self.position is not None:
             return None  # Cannot open new position while one is open
-        
+
+        # Round limit price to tick size
+        limit_price = self._constraints.round_price(limit_price)
+
         order_side = OrderSide.LONG if side == "long" else OrderSide.SHORT
         self._order_counter += 1
         order_id = f"order_{self._order_counter:04d}"
-        
+
         tif = TimeInForce(time_in_force) if isinstance(time_in_force, str) else time_in_force
-        
+
         order = Order(
             order_id=order_id,
             symbol=self.symbol,
@@ -379,17 +416,28 @@ class SimulatedExchange:
             self.entry_rejections_count += 1
             self.last_rejection_code = "ENTRIES_DISABLED"
             return None
-        
+
+        # Check min notional constraint
+        if not self._constraints.validate_notional(size_usdt):
+            self.entry_rejections_count += 1
+            self.last_rejection_code = "BELOW_MIN_NOTIONAL"
+            return None
+
         if not reduce_only and self.position is not None:
             return None  # Cannot open new position while one is open
-        
+
+        # Round prices to tick size
+        trigger_price = self._constraints.round_price(trigger_price)
+        if limit_price is not None:
+            limit_price = self._constraints.round_price(limit_price)
+
         order_side = OrderSide.LONG if side == "long" else OrderSide.SHORT
         self._order_counter += 1
         order_id = f"order_{self._order_counter:04d}"
-        
+
         order_type = OrderType.STOP_LIMIT if limit_price else OrderType.STOP_MARKET
         direction = TriggerDirection(trigger_direction)
-        
+
         order = Order(
             order_id=order_id,
             symbol=self.symbol,
@@ -794,7 +842,7 @@ class SimulatedExchange:
         liq_trades, liq_fills, liq_result = self._check_liquidation(bar, mark_price, step_time, prices)
         fills.extend(liq_fills)
 
-        return StepResult(
+        step_result = StepResult(
             timestamp=step_time,
             ts_close=step_time,
             mark_price=mark_price,
@@ -805,6 +853,11 @@ class SimulatedExchange:
             liquidation_result=liq_result,
             prices=prices,
         )
+
+        # Record exchange-side metrics (slippage, fees, fills, liquidations)
+        self._exchange_metrics.record_step(step_result)
+
+        return step_result
     
     def _process_order_book(
         self,
@@ -950,12 +1003,18 @@ class SimulatedExchange:
     
     def _handle_entry_fill(self, fill: Fill, order: Order) -> None:
         """Handle position creation from entry fill."""
+        # Round fill qty to lot size (exchange constraint).
+        # With no-op config (lot_size=0), this is a passthrough.
+        fill_size = self._constraints.round_qty(fill.size)
+        if fill_size <= 0:
+            return  # Qty too small after rounding — reject entry
+
         self._ledger.apply_entry_fee(fill.fee)
         self._position_counter += 1
 
         # Use actual filled notional (qty x fill price), not the requested size_usdt,
         # because price improvement on limit orders means the actual notional differs.
-        actual_notional = fill.size * fill.price
+        actual_notional = fill_size * fill.price
 
         # Adjust SL/TP for the difference between the reference price (signal bar
         # close) and the actual fill price.  SL/TP distances are preserved so the
@@ -976,7 +1035,7 @@ class SimulatedExchange:
             side=order.side,
             entry_price=fill.price,
             entry_time=fill.timestamp,
-            size=fill.size,
+            size=fill_size,
             size_usdt=actual_notional,
             stop_loss=sl,
             take_profit=tp,

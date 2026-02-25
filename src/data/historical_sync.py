@@ -99,7 +99,7 @@ def sync(
                     progress_callback(symbol, tf, f"{ActivityEmoji.WARNING} cancelled")
                 break
             except Exception as e:
-                store.logger.error(f"Failed to sync {key}: {e}")
+                store.logger.error("Failed to sync %s: %s", key, e)
                 results[key] = -1
 
                 if spinner:
@@ -133,7 +133,7 @@ def sync_range(
     results = {}
     total_synced = 0
     
-    store.logger.info(f"Syncing {len(symbols)} symbol(s) x {len(timeframes)} TF(s): {start.date()} to {end.date()}")
+    store.logger.info("Syncing %s symbol(s) x %s TF(s): %s to %s", len(symbols), len(timeframes), start.date(), end.date())
 
     total_pairs = len(symbols) * len(timeframes)
     pair_idx = 0
@@ -160,7 +160,7 @@ def sync_range(
                     emoji = ActivityEmoji.SUCCESS if count > 0 else ActivityEmoji.CHART
                     progress_callback(symbol, tf, f"{emoji} done ({count:,} candles)")
                 else:
-                    store.logger.info(f"  {symbol} {tf}: {count:,} candles synced")
+                    store.logger.info("  %s %s: %s candles synced", symbol, tf, f"{count:,}")
 
             except KeyboardInterrupt:
                 store._cancelled = True
@@ -169,7 +169,7 @@ def sync_range(
                     spinner.stop(f"{step_label}: cancelled", success=False)
                 break
             except Exception as e:
-                store.logger.error(f"Failed to sync {key}: {e}")
+                store.logger.error("Failed to sync %s: %s", key, e)
                 results[key] = -1
                 if spinner:
                     spinner.stop(f"{step_label}: error", success=False)
@@ -177,7 +177,7 @@ def sync_range(
         if store._cancelled:
             break
 
-    store.logger.info(f"Sync complete: {total_synced:,} total candles")
+    store.logger.info("Sync complete: %s total candles", f"{total_synced:,}")
     return results
 
 
@@ -229,7 +229,7 @@ def sync_forward(
                     progress_callback(symbol, tf, f"{emoji} done (+{count} candles)")
 
             except Exception as e:
-                store.logger.error(f"Failed to sync forward {key}: {e}")
+                store.logger.error("Failed to sync forward %s: %s", key, e)
                 results[key] = -1
 
                 if spinner:
@@ -403,7 +403,7 @@ def _fetch_from_api(
                 end=end_ms,
             )
         except Exception as e:
-            store.logger.error(f"API error fetching {symbol}: {e}")
+            store.logger.error("API error fetching %s: %s", symbol, e)
             break
 
         if df.empty:

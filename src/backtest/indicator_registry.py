@@ -63,7 +63,12 @@ def _warmup_length(p: dict[str, Any]) -> int:
 
 
 def _warmup_ema(p: dict[str, Any]) -> int:
-    """EMA needs 3x length for stabilization."""
+    """EMA needs 3x length for convergence buffer.
+
+    EMA produces valid output at `length` bars (SMA seed), but the initial
+    seed's influence decays exponentially. 3x length ensures <5% seed
+    influence, giving stable values when the trading window begins.
+    """
     return p.get("length", 20) * 3
 
 
@@ -78,8 +83,12 @@ def _warmup_rsi(p: dict[str, Any]) -> int:
 
 
 def _warmup_atr(p: dict[str, Any]) -> int:
-    """ATR needs length + 1 for previous close."""
-    return p.get("length", 14) + 1
+    """ATR is ready at exactly `length` bars.
+
+    Bar 0 contributes H-L as first TR, bars 1..length-1 contribute full TR,
+    SMA seed computed at bar length-1. Matches is_ready: count >= length.
+    """
+    return p.get("length", 14)
 
 
 def _warmup_macd(p: dict[str, Any]) -> int:
@@ -117,8 +126,8 @@ def _warmup_adx(p: dict[str, Any]) -> int:
 
 
 def _warmup_supertrend(p: dict[str, Any]) -> int:
-    """Supertrend needs ATR warmup."""
-    return p.get("length", 10) + 1
+    """Supertrend is ready when ATR is ready (at `length` bars)."""
+    return p.get("length", 10)
 
 
 def _warmup_psar(p: dict[str, Any]) -> int:
@@ -127,10 +136,16 @@ def _warmup_psar(p: dict[str, Any]) -> int:
 
 
 def _warmup_squeeze(p: dict[str, Any]) -> int:
-    """Squeeze needs max of BB and KC lengths."""
+    """Squeeze needs max of BB, KC, and momentum warmup.
+
+    Momentum SMA requires mom_length + mom_smooth bars (hardcoded at 12 + 6 = 18
+    in IncrementalSqueeze, not exposed as params). Without this floor, setting
+    bb_length < 18 and kc_length < 18 would under-estimate warmup.
+    """
     bb_length = p.get("bb_length", 20)
     kc_length = p.get("kc_length", 20)
-    return max(bb_length, kc_length)
+    mom_warmup = 18  # mom_length(12) + mom_smooth(6), hardcoded in IncrementalSqueeze
+    return max(bb_length, kc_length, mom_warmup)
 
 
 def _warmup_kc(p: dict[str, Any]) -> int:
@@ -1452,7 +1467,7 @@ def validate_registry() -> list[str]:
         from src.utils.logger import get_module_logger
         _logger = get_module_logger(__name__)
         for w in warnings:
-            _logger.warning(f"Registry warning: {w}")
+            _logger.warning("Registry warning: %s", w)
 
     return errors
 

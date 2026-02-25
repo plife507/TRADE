@@ -1054,7 +1054,10 @@ class ResultsSummary:
     total_funding_paid_usdt: float = 0.0
     total_funding_received_usdt: float = 0.0
     net_funding_usdt: float = 0.0
-    
+
+    # Exchange Metrics (slippage, fee breakdown, fills, liquidations)
+    exchange_metrics: dict[str, Any] | None = None
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
@@ -1151,6 +1154,8 @@ class ResultsSummary:
             "total_funding_paid_usdt": round(self.total_funding_paid_usdt, 2),
             "total_funding_received_usdt": round(self.total_funding_received_usdt, 2),
             "net_funding_usdt": round(self.net_funding_usdt, 2),
+            # Exchange Metrics
+            "exchange_metrics": self.exchange_metrics,
         }
     
     def write_json(self, path: Path) -> None:
@@ -1291,6 +1296,8 @@ def compute_results_summary(
     # Stop fields (terminal risk events)
     stopped_early: bool = False,
     stop_reason: str | None = None,
+    # Exchange-side metrics (slippage, fee breakdown, fills, liquidations)
+    exchange_metrics: dict[str, Any] | None = None,
 ) -> ResultsSummary:
     """
     Compute results summary from trades and equity curve.
@@ -1336,6 +1343,7 @@ def compute_results_summary(
         initial_equity=initial_equity,
         stopped_early=stopped_early,
         stop_reason=stop_reason,
+        exchange_metrics=exchange_metrics,
     )
     
     # If pre-computed metrics provided, use them directly

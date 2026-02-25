@@ -513,7 +513,7 @@ def run_rollup_parity_audit(
 
     except Exception as e:
         import traceback
-        logger.error(f"Rollup parity audit failed: {e}\n{traceback.format_exc()}")
+        logger.error("Rollup parity audit failed: %s\n%s", e, traceback.format_exc())
         return RollupParityResult(
             success=False,
             total_intervals=0,
@@ -753,7 +753,7 @@ risk:
 
     except Exception as e:
         import traceback
-        logger.error(f"Rollup parity engine audit failed: {e}\n{traceback.format_exc()}")
+        logger.error("Rollup parity engine audit failed: %s\n%s", e, traceback.format_exc())
         return RollupParityResult(
             success=False,
             total_intervals=0,

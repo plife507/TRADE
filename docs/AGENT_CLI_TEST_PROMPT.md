@@ -239,11 +239,11 @@ for profit — they exist solely to validate CLI functionality.
 
 | Field | Value |
 |-------|-------|
-| Run Date | |
-| Platform | |
-| Working Dir | |
-| Git Branch | |
-| Git Hash | |
+| Run Date | 2026-02-25 00:43 |
+| Platform | Git Bash (MINGW64_NT-10.0-26200), venv Python 3.12.10 |
+| Working Dir | C:/CODE/AI/TRADE |
+| Git Branch | main |
+| Git Hash | 3efcccf |
 
 ---
 
@@ -253,26 +253,26 @@ for profit — they exist solely to validate CLI functionality.
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T01 | Basic backtest run | `python trade_cli.py -q backtest run --play plays/agent_test/AT_001_ema_cross_basic.yml --synthetic --json` | | `status=="pass"`, `metrics.trades_count > 0` | | |
-| T02 | RSI momentum + ATR stop | `python trade_cli.py -q backtest run --play plays/agent_test/AT_002_rsi_momentum.yml --synthetic --json` | | `status=="pass"`, `metrics.trades_count > 0` | | |
-| T03 | Multi-TF + structures | `python trade_cli.py -q backtest run --play plays/agent_test/AT_003_multi_tf_structure.yml --synthetic --json` | | `status=="pass"`, `metrics.trades_count > 0` | | |
-| T04 | Short-side strategy | `python trade_cli.py -q backtest run --play plays/agent_test/AT_004_short_side.yml --synthetic --json` | | `status=="pass"`, `metrics.trades_count > 0` | | |
-| T05 | Verbose JSON output | `python trade_cli.py -q backtest run --play plays/agent_test/AT_001_ema_cross_basic.yml --synthetic --json --json-verbose` | | `status=="pass"`, hashes, artifact_path, sharpe | | |
+| T01 | Basic backtest run | `python trade_cli.py -q backtest run --play plays/agent_test/AT_001_ema_cross_basic.yml --synthetic --json` | PASS | `status=="pass"`, `metrics.trades_count > 0` | ~15s | Run 10 Git Bash |
+| T02 | RSI momentum + ATR stop | `python trade_cli.py -q backtest run --play plays/agent_test/AT_002_rsi_momentum.yml --synthetic --json` | PASS | `status=="pass"`, `metrics.trades_count > 0` | ~6s | |
+| T03 | Multi-TF + structures | `python trade_cli.py -q backtest run --play plays/agent_test/AT_003_multi_tf_structure.yml --synthetic --json` | PASS | `status=="pass"`, `metrics.trades_count > 0` | ~11s | |
+| T04 | Short-side strategy | `python trade_cli.py -q backtest run --play plays/agent_test/AT_004_short_side.yml --synthetic --json` | PASS | `status=="pass"`, `metrics.trades_count > 0` | ~8s | |
+| T05 | Verbose JSON output | `python trade_cli.py -q backtest run --play plays/agent_test/AT_001_ema_cross_basic.yml --synthetic --json --json-verbose` | PASS | `status=="pass"`, hashes, artifact_path, sharpe | ~10s | |
 
 ### Group 2: Play Management
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T06 | List all plays | `python trade_cli.py backtest list --json` | | `status=="pass"`, contains AT_001_ema_cross_basic | | |
-| T07 | Normalize a play | `python trade_cli.py backtest play-normalize --play at_005_normalize_target --dir plays/agent_test --json` | | `status=="pass"` | | |
-| T08 | Batch normalize | `python trade_cli.py backtest play-normalize-batch --dir plays/agent_test --json` | | `status=="pass"` | | |
+| T06 | List all plays | `python trade_cli.py backtest list --json` | PASS | `status=="pass"`, contains AT_001_ema_cross_basic | ~5s | |
+| T07 | Normalize a play | `python trade_cli.py backtest play-normalize --play at_005_normalize_target --dir plays/agent_test --json` | PASS | `status=="pass"` | ~5s | |
+| T08 | Batch normalize | `python trade_cli.py backtest play-normalize-batch --dir plays/agent_test --json` | PASS | `status=="pass"` | ~5s | |
 
 ### Group 3: Validation Suite (run sequentially — each takes 60-120s)
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T09 | Quick validation | `python trade_cli.py validate quick --json` | | `passed==true`, `failed_gates==0` | | |
-| T10 | Module validation (core) | `python trade_cli.py validate module --module core --json` | | `passed==true` | | |
+| T09 | Quick validation | `python trade_cli.py validate quick --json` | PASS | `passed==true`, `failed_gates==0` | ~99s | |
+| T10 | Module validation (core) | `python trade_cli.py validate module --module core --json` | PASS | `passed==true` | ~67s | |
 
 ### Group 4: Data Management (read-only, no exchange needed)
 
@@ -280,36 +280,36 @@ Run these sequentially with 12s sleep between each (`Start-Sleep -Seconds 12` / 
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T11 | Data info | `sleep 12; python trade_cli.py data info --json` | | `status=="pass"`, total_candles > 0 | | |
-| T12 | Data symbols | `sleep 12; python trade_cli.py data symbols --json` | | Exit 0, JSON array | | |
-| T13 | Data status | `sleep 12; python trade_cli.py data status --symbol BTCUSDT --json` | | `status=="pass"` | | |
-| T14 | Data summary | `sleep 12; python trade_cli.py data summary --json` | | `status=="pass"`, data.summary | | |
+| T11 | Data info | `sleep 12; python trade_cli.py data info --json` | PASS | `status=="pass"`, total_candles > 0 | ~17s | |
+| T12 | Data symbols | `sleep 12; python trade_cli.py data symbols --json` | PASS | Exit 0, JSON array | ~17s | |
+| T13 | Data status | `sleep 12; python trade_cli.py data status --symbol BTCUSDT --json` | FAIL | `status=="pass"` | ~15s | DuckDB lock (Windows) |
+| T14 | Data summary | `sleep 12; python trade_cli.py data summary --json` | PASS | `status=="pass"`, data.summary | ~16s | |
 
 ### Group 5: Debug Tools
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T15 | Metrics audit | `python trade_cli.py debug metrics --json` | | `status=="pass"` | | |
+| T15 | Metrics audit | `python trade_cli.py debug metrics --json` | PASS | `status=="pass"` | ~3s | |
 
 ### Group 6: Help & Discoverability
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T16 | Top-level help | `python trade_cli.py --help` | | All 11 groups present | | |
-| T17 | Order help | `python trade_cli.py order --help` | | buy, sell, list, amend, cancel, cancel-all, leverage, batch | | |
-| T18 | Data help | `python trade_cli.py data --help` | | sync, info, symbols, status, summary, query, heal, vacuum, delete | | |
-| T19 | Market help | `python trade_cli.py market --help` | | price, ohlcv, funding, oi, orderbook, instruments | | |
-| T20 | Health help | `python trade_cli.py health --help` | | check, connection, rate-limit, ws, environment | | |
+| T16 | Top-level help | `python trade_cli.py --help` | PASS | All 11 groups present | | |
+| T17 | Order help | `python trade_cli.py order --help` | PASS | buy, sell, list, amend, cancel, cancel-all, leverage, batch | | |
+| T18 | Data help | `python trade_cli.py data --help` | PASS | sync, info, symbols, status, summary, query, heal, vacuum, delete | | |
+| T19 | Market help | `python trade_cli.py market --help` | PASS | price, ohlcv, funding, oi, orderbook, instruments | | |
+| T20 | Health help | `python trade_cli.py health --help` | PASS | check, connection, rate-limit, ws, environment | | |
 
 ### Group 7: Phase 7 Manual Validation (P4+P13 TODO items)
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T21 | Offline backtest | (same as T01) | | `status=="pass"` | | |
-| T22 | Data info valid JSON | (T11) | | Valid JSON, status pass, file_size_mb | | |
-| T23 | Debug help structure | `python trade_cli.py debug --help` | | math-parity, snapshot-plumbing, determinism, metrics | | |
-| T24 | Account help structure | `python trade_cli.py account --help` | | balance, exposure, info, history, pnl, transactions, collateral | | |
-| T25 | Position help structure | `python trade_cli.py position --help` | | list, close, detail, set-tp, set-sl, set-tpsl, trailing, partial-close, margin, risk-limit | | |
+| T21 | Offline backtest | (same as T01) | PASS | `status=="pass"` | | |
+| T22 | Data info valid JSON | (T11) | PASS | Valid JSON, status pass, file_size_mb | | |
+| T23 | Debug help structure | `python trade_cli.py debug --help` | PASS | math-parity, snapshot-plumbing, determinism, metrics | | |
+| T24 | Account help structure | `python trade_cli.py account --help` | PASS | balance, exposure, info, history, pnl, transactions, collateral | | |
+| T25 | Position help structure | `python trade_cli.py position --help` | PASS | list, close, detail, set-tp, set-sl, set-tpsl, trailing, partial-close, margin, risk-limit | | |
 
 ### Group 8: Exchange Connection — DEMO Mode (Bybit testnet, no real money)
 
@@ -318,16 +318,16 @@ for demo mode (`TRADING_MODE=paper`, `BYBIT_USE_DEMO=true`). All operations use 
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T26 | Connection test | `python trade_cli.py health connection --json` | | status pass, is_demo, public_ok | | |
-| T27 | API environment | `python trade_cli.py health environment --json` | | status pass, mode DEMO, is_live false | | SAFETY GATE |
-| T28 | Health check (full) | `python trade_cli.py health check --symbol BTCUSDT --json` | | status pass, all_passed, DEMO | | |
-| T29 | Rate limit status | `python trade_cli.py health rate-limit --json` | | status pass, valid JSON | | |
-| T30 | Market price (live) | `python trade_cli.py market price --symbol BTCUSDT --json` | | Valid JSON, BTCUSDT, price > 0 | | |
-| T31 | Account balance | `python trade_cli.py account balance --json` | | Valid JSON, total >= 0 | | |
-| T32 | Account info | `python trade_cli.py account info --json` | | Valid JSON (exit 0) | | |
-| T33 | Position list | `python trade_cli.py position list --json` | | Valid JSON, positions array | | |
-| T34 | Order list | `python trade_cli.py order list --symbol BTCUSDT --json` | | Valid JSON, orders array | | |
-| T35 | Market orderbook | `python trade_cli.py market orderbook --symbol BTCUSDT --json` | | Valid JSON with bids/asks | | |
+| T26 | Connection test | `python trade_cli.py health connection --json` | PASS | status pass, is_demo, public_ok | | |
+| T27 | API environment | `python trade_cli.py health environment --json` | PASS | status pass, mode DEMO, is_live false | | SAFETY GATE |
+| T28 | Health check (full) | `python trade_cli.py health check --symbol BTCUSDT --json` | PASS | status pass, all_passed, DEMO | | |
+| T29 | Rate limit status | `python trade_cli.py health rate-limit --json` | PASS | status pass, valid JSON | | |
+| T30 | Market price (live) | `python trade_cli.py market price --symbol BTCUSDT --json` | PASS | Valid JSON, BTCUSDT, price > 0 | | |
+| T31 | Account balance | `python trade_cli.py account balance --json` | PASS | Valid JSON, total >= 0 | | |
+| T32 | Account info | `python trade_cli.py account info --json` | PASS | Valid JSON (exit 0) | | |
+| T33 | Position list | `python trade_cli.py position list --json` | PASS | Valid JSON, positions array | | |
+| T34 | Order list | `python trade_cli.py order list --symbol BTCUSDT --json` | PASS | Valid JSON, orders array | | |
+| T35 | Market orderbook | `python trade_cli.py market orderbook --symbol BTCUSDT --json` | PASS | Valid JSON with bids/asks | | |
 
 ### Group 9: Play Lifecycle — Demo Mode (Bybit testnet, headless)
 
@@ -369,21 +369,21 @@ PowerShell's job system, avoiding this issue. On bash, simple `&` backgrounding 
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T36 | Start play headless | Start-Job / bash &; Sleep 15; first line of output | | First line JSON event==started, instance_id | | |
-| T37 | Verify running | `python trade_cli.py play status --json` | | instances length >= 1, mode demo | | |
-| T38 | Watch JSON snapshot | `python trade_cli.py play watch --json` | | instances array, instance visible | | |
-| T39 | Pause play | `python trade_cli.py play pause --play <instance_id>` | | Exit 0, "Paused:" | | |
-| T40 | Verify paused | `python trade_cli.py play status --json` | | Instance in list | | |
-| T41 | Resume play | `python trade_cli.py play resume --play <instance_id>` | | Exit 0, "Resumed:" | | |
-| T42 | Verify resumed | `python trade_cli.py play status --json` | | Instance running | | |
-| T43 | Stop play | `python trade_cli.py play stop --play <instance_id> --force` | | Exit 0, "Stopped instance:" | | |
-| T44 | Verify stopped | `python trade_cli.py play status --json` | | instances empty or cooldown | | |
-| T45 | Start second play | Sleep 16; Start-Job / bash &; second play; first line | | event==started | | |
-| T46 | Verify second running | `python trade_cli.py play status --json` | | 1 instance | | |
-| T47 | Stop all | `python trade_cli.py play stop --all` | | Exit 0 | | |
-| T48 | Verify all stopped | `python trade_cli.py play status --json` | | instances empty or cooldown | | |
-| T49 | Concurrent demo+backtest | Backtest run; stop all | | Backtest status==pass | | |
-| T50 | Clean state after stop | Stop all; Sleep 16; rm/Remove-Item *.json; status | | instances empty, 0 files | | |
+| T36 | Start play headless | Start-Job / bash &; Sleep 15; first line of output | PASS | First line JSON event==started, instance_id | ~22s | nohup, Git Bash |
+| T37 | Verify running | `python trade_cli.py play status --json` | PASS | instances length >= 1, mode demo | | |
+| T38 | Watch JSON snapshot | `python trade_cli.py play watch --json` | PASS | instances array, instance visible | | |
+| T39 | Pause play | `python trade_cli.py play pause --play <instance_id>` | PASS | Exit 0, "Paused:" | | |
+| T40 | Verify paused | `python trade_cli.py play status --json` | PASS | Instance in list | | |
+| T41 | Resume play | `python trade_cli.py play resume --play <instance_id>` | PASS | Exit 0, "Resumed:" | | |
+| T42 | Verify resumed | `python trade_cli.py play status --json` | PASS | Instance running | | |
+| T43 | Stop play | `python trade_cli.py play stop --play <instance_id> --force` | PASS | Exit 0, "Stopped instance:" | | |
+| T44 | Verify stopped | `python trade_cli.py play status --json` | PASS | instances empty or cooldown | | |
+| T45 | Start second play | Sleep 16; Start-Job / bash &; second play; first line | PASS | event==started | | Second instance ran; first line in file |
+| T46 | Verify second running | `python trade_cli.py play status --json` | PASS | 1 instance | | |
+| T47 | Stop all | `python trade_cli.py play stop --all` | PASS | Exit 0 | | |
+| T48 | Verify all stopped | `python trade_cli.py play status --json` | PASS | instances empty or cooldown | | |
+| T49 | Concurrent demo+backtest | Backtest run; stop all | PASS | Backtest status==pass | | |
+| T50 | Clean state after stop | Stop all; Sleep 16; rm/Remove-Item *.json; status | PASS | instances empty, 0 files | | |
 
 ### Group 10: Instance Cooldown & Cross-Process Safety (P15)
 
@@ -412,18 +412,18 @@ file cleanup introduced in P15. Requires T26-T27 to pass first (demo mode confir
 
 | ID | Test | Command | Result | Assertions | Duration | Notes |
 |----|------|---------|--------|------------|----------|-------|
-| T51 | Pre-cleanup | Remove *.json and .lock; verify 0 files | | No error, directory clean | | |
-| T52 | Cooldown file after stop | Background headless; sleep 15; stop all; list instance files | | 1 .json with status cooldown | | |
-| T53 | Cooldown visible in status | `python trade_cli.py play status --json` | | instances length 1, status cooldown | | |
-| T54 | Restart blocked by cooldown | Foreground play run --headless | | Exit != 0 or "cooldown"/"limit" | | |
-| T55 | Cooldown expiry + restart | sleep 16; background headless; first line | | event==started, 1 instance | | |
-| T56 | Cleanup after T55 | stop all; kill background; sleep 16; remove instance files | | | | |
-| T57 | Stale PID cleanup | Create fake_stale_001.json (pid 9999999); play status; check removed | | instances without fake_stale_001; file removed | | |
-| T58 | Expired cooldown cleanup | Create fake_cooldown_002.json; play status; check removed | | fake_cooldown_002 cleaned; file removed | | |
-| T59 | Malformed JSON cleanup | Create fake_bad_003.json; play status; check removed | | fake_bad_003 cleaned; file removed; no crash | | |
-| T60 | Cross-process limit check | Background first; second foreground run | | First running; second fails | | |
-| T61 | Per-symbol limit | Second play same symbol (foreground) | | Fails limit message | | |
-| T62 | Final cleanup | stop all; Sleep 16; rm/Remove-Item *.json and .lock; verify | | instances empty; 0 files | | |
+| T51 | Pre-cleanup | Remove *.json and .lock; verify 0 files | PASS | No error, directory clean | | |
+| T52 | Cooldown file after stop | Background headless; sleep 15; stop all; list instance files | PASS | 1 .json with status cooldown | | |
+| T53 | Cooldown visible in status | `python trade_cli.py play status --json` | PASS | instances length 1, status cooldown | | |
+| T54 | Restart blocked by cooldown | Foreground play run --headless | FAIL | Exit != 0 or "cooldown"/"limit" | | Cooldown had just expired; restart allowed |
+| T55 | Cooldown expiry + restart | sleep 16; background headless; first line | FAIL | event==started, 1 instance | | head: /tmp/h55_out.jsonl No such file |
+| T56 | Cleanup after T55 | stop all; kill background; sleep 16; remove instance files | PASS | | | |
+| T57 | Stale PID cleanup | Create fake_stale_001.json (pid 9999999); play status; check removed | PASS | instances without fake_stale_001; file removed | | |
+| T58 | Expired cooldown cleanup | Create fake_cooldown_002.json; play status; check removed | PASS | fake_cooldown_002 cleaned; file removed | | |
+| T59 | Malformed JSON cleanup | Create fake_bad_003.json; play status; check removed | PASS | fake_bad_003 cleaned; file removed; no crash | | |
+| T60 | Cross-process limit check | Background first; second foreground run | PASS | First running; second fails | | "Instance already running for BTCUSDT" |
+| T61 | Per-symbol limit | Second play same symbol (foreground) | PASS | Fails limit message | | Same as T60 |
+| T62 | Final cleanup | stop all; Sleep 16; rm/Remove-Item *.json and .lock; verify | PASS | instances empty; 0 files | | |
 
 ---
 
@@ -567,6 +567,33 @@ Notes:
 - T14: DuckDB lock (PID 28612) after 8s sleep between data commands.
 - T36: Start-Job emitted first line with event==started, instance_id; T37/T38: play status shows instances [] — headless process in job runspace not visible to main shell or exited before status poll.
 - T57-T59: Stale/expired/malformed cleanup passed. Set-Content -Encoding UTF8 may add BOM; manager removed files (invalid JSON or stale/expired).
+```
+
+### Run 10 — 2026-02-25 (Git Bash MINGW64, venv Python 3.12.10, git 3efcccf)
+
+```
+Total: 59/62
+Failed: 3
+
+Group Summary:
+- G1  Backtest Engine:        5/5   (T01-T05)
+- G2  Play Management:        3/3   (T06-T08)
+- G3  Validation Suite:       2/2   (T09-T10)
+- G4  Data Management:        3/4   (T11, T12, T14 pass; T13 DuckDB lock)
+- G5  Debug Tools:            1/1   (T15)
+- G6  Help & Discoverability: 5/5   (T16-T20)
+- G7  Phase 7 Validation:     5/5   (T21-T25)
+- G8  Exchange Demo:         10/10 (T26-T35)
+- G9  Play Lifecycle:        15/15 (T36-T50; nohup headless worked in Git Bash)
+- G10 Cooldown & Safety:     10/12 (T51-T53, T56-T62 pass; T54, T55 fail)
+
+Total Duration: ~25 min
+Notes:
+- All commands run in Git Bash: "C:\Program Files\Git\bin\bash.exe" -c "cd 'C:/CODE/AI/TRADE' && .venv/Scripts/python.exe ...". Venv used (deps installed first).
+- T13: DuckDB lock (Windows) — same as PowerShell; 12s sleep between data commands.
+- T54: Foreground restart ran just after cooldown_until; restart was allowed (timing).
+- T55: nohup wrote to /tmp/h55_out.jsonl; head could not open file (path or timing in Git Bash).
+- Headless lifecycle (T36-T50): nohup ... & with sleep 15; play status saw instance; pause/resume/stop all worked.
 ```
 
 ### What isn't working in PowerShell (documented from Run 9)

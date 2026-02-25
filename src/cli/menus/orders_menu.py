@@ -119,14 +119,16 @@ def _place_order() -> None:
     symbol = get_symbol_input("Symbol")
     if isinstance(symbol, BackCommand):
         return
-    assert isinstance(symbol, str)
+    if not isinstance(symbol, str):
+        raise TypeError(f"Expected str, got {type(symbol).__name__}")
 
     # 4. USD amount
     usd = get_float_input("USD Amount")
     if isinstance(usd, BackCommand) or usd is None:
         Prompt.ask("\nPress Enter to continue")
         return
-    assert isinstance(usd, float)
+    if not isinstance(usd, float):
+        raise TypeError(f"Expected float, got {type(usd).__name__}")
 
     # 5. Conditional fields
     limit_price: float | None = None
@@ -143,13 +145,15 @@ def _place_order() -> None:
         if isinstance(lp, BackCommand) or lp is None:
             Prompt.ask("\nPress Enter to continue")
             return
-        assert isinstance(lp, float)
+        if not isinstance(lp, float):
+            raise TypeError(f"Expected float, got {type(lp).__name__}")
         limit_price = lp
 
         tif_result = _get_time_in_force_with_hints()
         if isinstance(tif_result, BackCommand):
             return
-        assert isinstance(tif_result, str)
+        if not isinstance(tif_result, str):
+            raise TypeError(f"Expected str, got {type(tif_result).__name__}")
         tif = tif_result
 
         reduce_only = Confirm.ask("Reduce Only?", default=False)
@@ -160,7 +164,8 @@ def _place_order() -> None:
         if isinstance(tp, BackCommand) or tp is None:
             Prompt.ask("\nPress Enter to continue")
             return
-        assert isinstance(tp, float)
+        if not isinstance(tp, float):
+            raise TypeError(f"Expected float, got {type(tp).__name__}")
         trigger_price = tp
 
         default_dir = "1" if side == 1 else "2"
@@ -168,7 +173,8 @@ def _place_order() -> None:
         if isinstance(td, BackCommand) or td is None:
             Prompt.ask("\nPress Enter to continue")
             return
-        assert isinstance(td, int)
+        if not isinstance(td, int):
+            raise TypeError(f"Expected int, got {type(td).__name__}")
         trigger_direction = td
 
     # 6. Optional TP/SL (market orders only)
@@ -176,11 +182,13 @@ def _place_order() -> None:
         tp_str = get_input("Take Profit Price (blank to skip)", "")
         if isinstance(tp_str, BackCommand):
             return
-        assert isinstance(tp_str, str)
+        if not isinstance(tp_str, str):
+            raise TypeError(f"Expected str, got {type(tp_str).__name__}")
         sl_str = get_input("Stop Loss Price (blank to skip)", "")
         if isinstance(sl_str, BackCommand):
             return
-        assert isinstance(sl_str, str)
+        if not isinstance(sl_str, str):
+            raise TypeError(f"Expected str, got {type(sl_str).__name__}")
         tp_val = float(tp_str) if tp_str else None
         sl_val = float(sl_str) if sl_str else None
 
@@ -308,7 +316,8 @@ def orders_menu(cli: "TradeCLI") -> None:
                 symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
-                assert isinstance(symbol, str)
+                if not isinstance(symbol, str):
+                    raise TypeError(f"Expected str, got {type(symbol).__name__}")
                 leverage = get_int_input("Leverage", "3")
                 if leverage is BACK or leverage is None:
                     Prompt.ask("\nPress Enter to continue")
@@ -322,7 +331,8 @@ def orders_menu(cli: "TradeCLI") -> None:
                 symbol = get_symbol_input("Symbol (blank for all)")
                 if symbol is BACK:
                     continue
-                assert isinstance(symbol, str)
+                if not isinstance(symbol, str):
+                    raise TypeError(f"Expected str, got {type(symbol).__name__}")
                 result = run_tool_action("orders.list", get_open_orders_tool, symbol=symbol if symbol else None)
                 print_data_result("orders.list", result)
                 Prompt.ask("\nPress Enter to continue")
@@ -332,29 +342,35 @@ def orders_menu(cli: "TradeCLI") -> None:
                 symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
-                assert isinstance(symbol, str)
+                if not isinstance(symbol, str):
+                    raise TypeError(f"Expected str, got {type(symbol).__name__}")
                 order_id = get_input("Order ID")
                 if order_id is BACK:
                     continue
-                assert isinstance(order_id, str)
+                if not isinstance(order_id, str):
+                    raise TypeError(f"Expected str, got {type(order_id).__name__}")
 
                 console.print("\n[dim]Leave blank to keep unchanged[/]")
                 new_qty = get_input("New Quantity (blank to keep)", "")
                 if new_qty is BACK:
                     continue
-                assert isinstance(new_qty, str)
+                if not isinstance(new_qty, str):
+                    raise TypeError(f"Expected str, got {type(new_qty).__name__}")
                 new_price = get_input("New Price (blank to keep)", "")
                 if new_price is BACK:
                     continue
-                assert isinstance(new_price, str)
+                if not isinstance(new_price, str):
+                    raise TypeError(f"Expected str, got {type(new_price).__name__}")
                 new_tp = get_input("New Take Profit (blank to keep)", "")
                 if new_tp is BACK:
                     continue
-                assert isinstance(new_tp, str)
+                if not isinstance(new_tp, str):
+                    raise TypeError(f"Expected str, got {type(new_tp).__name__}")
                 new_sl = get_input("New Stop Loss (blank to keep)", "")
                 if new_sl is BACK:
                     continue
-                assert isinstance(new_sl, str)
+                if not isinstance(new_sl, str):
+                    raise TypeError(f"Expected str, got {type(new_sl).__name__}")
 
                 qty_val = float(new_qty) if new_qty else None
                 price_val = float(new_price) if new_price else None
@@ -375,11 +391,13 @@ def orders_menu(cli: "TradeCLI") -> None:
                 symbol = get_symbol_input("Symbol")
                 if symbol is BACK:
                     continue
-                assert isinstance(symbol, str)
+                if not isinstance(symbol, str):
+                    raise TypeError(f"Expected str, got {type(symbol).__name__}")
                 order_id = get_input("Order ID")
                 if order_id is BACK:
                     continue
-                assert isinstance(order_id, str)
+                if not isinstance(order_id, str):
+                    raise TypeError(f"Expected str, got {type(order_id).__name__}")
                 if Confirm.ask(f"Cancel order {order_id}?"):
                     result = run_tool_action("orders.cancel", cancel_order_tool, symbol, order_id)
                     print_data_result("orders.cancel", result)
@@ -392,7 +410,8 @@ def orders_menu(cli: "TradeCLI") -> None:
                 symbol = get_symbol_input("Symbol (blank for all)")
                 if symbol is BACK:
                     continue
-                assert isinstance(symbol, str)
+                if not isinstance(symbol, str):
+                    raise TypeError(f"Expected str, got {type(symbol).__name__}")
                 result = run_tool_action("orders.cancel_all", cancel_all_orders_tool, symbol=symbol if symbol else None)
                 print_data_result("orders.cancel_all", result)
                 Prompt.ask("\nPress Enter to continue")

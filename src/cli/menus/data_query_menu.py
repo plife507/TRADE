@@ -70,7 +70,8 @@ def data_query_menu(cli: "TradeCLI", data_env: DataEnv) -> None:
             symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
-            assert isinstance(symbol, str)
+            if not isinstance(symbol, str):
+                raise TypeError(f"Expected str, got {type(symbol).__name__}")
             if not symbol:
                 print_error_below_menu("Symbol is required")
                 Prompt.ask("\nPress Enter to continue")
@@ -79,7 +80,8 @@ def data_query_menu(cli: "TradeCLI", data_env: DataEnv) -> None:
             timeframe = get_input("Timeframe (1m, 5m, 15m, 1h, 4h, D)", "1h")
             if timeframe is BACK:
                 continue
-            assert isinstance(timeframe, str)
+            if not isinstance(timeframe, str):
+                raise TypeError(f"Expected str, got {type(timeframe).__name__}")
 
             console.print("\n[bold cyan]Select data range:[/]")
             console.print("  1) Use period (e.g., 1M = last month)")
@@ -127,7 +129,8 @@ def data_query_menu(cli: "TradeCLI", data_env: DataEnv) -> None:
             symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
-            assert isinstance(symbol, str)
+            if not isinstance(symbol, str):
+                raise TypeError(f"Expected str, got {type(symbol).__name__}")
             if not symbol:
                 print_error_below_menu("Symbol is required")
                 Prompt.ask("\nPress Enter to continue")
@@ -179,7 +182,8 @@ def data_query_menu(cli: "TradeCLI", data_env: DataEnv) -> None:
             symbol = get_symbol_input("Symbol")
             if symbol is BACK:
                 continue
-            assert isinstance(symbol, str)
+            if not isinstance(symbol, str):
+                raise TypeError(f"Expected str, got {type(symbol).__name__}")
             if not symbol:
                 print_error_below_menu("Symbol is required")
                 Prompt.ask("\nPress Enter to continue")

@@ -493,6 +493,7 @@ def run_engine_with_play(
         stop_classification=backtest_result.metadata.get("stop_classification"),
         stop_reason_detail=backtest_result.metadata.get("stop_reason_detail"),
         stopped_early=bool(backtest_result.metadata.get("stopped_early", False)),
+        exchange_metrics=backtest_result.metadata.get("exchange_metrics"),
     )
 
 
@@ -510,6 +511,8 @@ class PlayBacktestResult:
     stop_classification: str | None = None
     stop_reason_detail: str | None = None
     stopped_early: bool = False
+    # Exchange-side metrics (slippage, fee breakdown, fills, liquidations)
+    exchange_metrics: dict[str, Any] | None = None
 
 
 def _get_play_result_class():

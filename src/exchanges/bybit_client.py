@@ -250,13 +250,13 @@ class BybitClient:
                     f"Consider syncing your system clock."
                 )
             else:
-                self.logger.debug(f"Server time offset: {self._time_offset_ms}ms")
+                self.logger.debug("Server time offset: %sms", self._time_offset_ms)
                 
         except RuntimeError:
             # C1-H17: Critical clock drift must not be silently swallowed
             raise
         except Exception as e:
-            self.logger.warning(f"Failed to sync server time: {e}. Using local time.")
+            self.logger.warning("Failed to sync server time: %s. Using local time.", e)
             self._time_offset_ms = 0
     
     def _update_rate_limit_status(self, response_headers):

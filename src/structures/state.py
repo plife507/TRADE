@@ -224,19 +224,20 @@ class TFIncrementalState:
             if _verbose and ver_before is not None:
                 ver_after = getattr(detector, "_version", None)
                 if ver_after != ver_before:
-                    dtype = type(detector).__name__
-                    parts = [f"{dtype}({key})"]
-                    for attr in ("high_level", "low_level", "trend_direction"):
-                        val = getattr(detector, attr, None)
-                        if val is not None:
-                            parts.append(f"{attr}={val}")
-
                     # At verbose: only log trend changes and first 50 bars
                     # At debug: log all structure changes
                     trend_after = getattr(detector, "trend_direction", None)
                     trend_changed = trend_before is not None and trend_after != trend_before
                     if _debug or trend_changed or bar.idx <= 50:
-                        verbose_log(f"Structure update: {', '.join(parts)}", bar_idx=bar.idx)
+                        struct_fields: dict[str, Any] = {
+                            "detector": type(detector).__name__,
+                            "struct_key": key,
+                        }
+                        for attr in ("high_level", "low_level", "trend_direction"):
+                            val = getattr(detector, attr, None)
+                            if val is not None:
+                                struct_fields[attr] = val
+                        verbose_log("Structure update", bar_idx=bar.idx, **struct_fields)
 
     def get_value(self, struct_key: str, output_key: str) -> float | int | str:
         """

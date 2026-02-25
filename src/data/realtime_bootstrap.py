@@ -169,8 +169,8 @@ class RealtimeBootstrap:
         ws_env = "DEMO (stream-demo.bybit.com)" if self.app_config.bybit.use_demo else "LIVE (stream.bybit.com)"
         account_type = "fake-money demo account" if self.app_config.bybit.use_demo else "real-money live account"
         self.logger.info(
-            f"RealtimeBootstrap: data_env={self.env}, "
-            f"WebSocket environment={ws_env}, account={account_type}"
+            "RealtimeBootstrap: data_env=%s, WebSocket environment=%s, account=%s",
+            self.env, ws_env, account_type,
         )
         
         # State management
@@ -232,7 +232,7 @@ class RealtimeBootstrap:
         if not self._symbols:
             self.logger.warning("No symbols configured for WebSocket streams")
         
-        self.logger.info(f"Starting RealtimeBootstrap for symbols: {list(self._symbols)}")
+        self.logger.info("Starting RealtimeBootstrap for symbols: %s", list(self._symbols))
         
         try:
             # Start public streams
@@ -256,7 +256,7 @@ class RealtimeBootstrap:
             # Suppress verbose rate limit errors - already logged once
             error_msg = str(e)
             if "Too many connection attempts" not in error_msg:
-                self.logger.error(f"Failed to start RealtimeBootstrap: {e}")
+                self.logger.error("Failed to start RealtimeBootstrap: %s", e)
             self._running = False
             raise
     
@@ -277,7 +277,7 @@ class RealtimeBootstrap:
         except Exception as e:
             # Ignore WebSocket close errors (expected when connection already closing)
             if "closed" not in str(e).lower():
-                self.logger.warning(f"Error closing WebSockets: {e}")
+                self.logger.warning("Error closing WebSockets: %s", e)
         
         # Wait for monitor thread
         if self._monitor_thread and self._monitor_thread.is_alive():
@@ -326,11 +326,11 @@ class RealtimeBootstrap:
 
             # Check if WebSocket is connected
             if not self._public_connected or not self.client._ws_public:
-                self.logger.debug(f"WebSocket not connected - {symbol} will use REST")
+                self.logger.debug("WebSocket not connected - %s will use REST", symbol)
                 return False
 
             try:
-                self.logger.info(f"Dynamically subscribing to {symbol}...")
+                self.logger.info("Dynamically subscribing to %s...", symbol)
 
                 # Subscribe to ticker (most important for position tracking)
                 if self.sub_config.enable_ticker:
@@ -358,11 +358,11 @@ class RealtimeBootstrap:
                 # Track that we're now subscribed
                 self._symbols.add(symbol)
 
-                self.logger.info(f"Subscribed to {symbol} streams")
+                self.logger.info("Subscribed to %s streams", symbol)
                 return True
 
             except Exception as e:
-                self.logger.warning(f"Failed to subscribe to {symbol}: {e}")
+                self.logger.warning("Failed to subscribe to %s: %s", symbol, e)
                 return False
     
     def ensure_symbol_subscribed(self, symbol: str) -> bool:
@@ -412,8 +412,8 @@ class RealtimeBootstrap:
 
             if not self._public_connected or not self.client._ws_public:
                 self.logger.warning(
-                    f"Cannot subscribe kline intervals {new_intervals} - "
-                    "public WebSocket not connected"
+                    "Cannot subscribe kline intervals %s - public WebSocket not connected",
+                    new_intervals,
                 )
                 return
 
@@ -423,7 +423,7 @@ class RealtimeBootstrap:
                 except ValueError:
                     interval_int = interval
                 self.client.subscribe_klines(symbol, interval_int, self._on_kline)
-                self.logger.info(f"Subscribed to kline.{interval}.{symbol}")
+                self.logger.info("Subscribed to kline.%s.%s", interval, symbol)
 
             self.sub_config.kline_intervals.extend(new_intervals)
 
@@ -447,7 +447,7 @@ class RealtimeBootstrap:
         else:
             stream_mode = "LIVE"
         
-        self.logger.info(f"Starting public WebSocket streams ({stream_mode})...")
+        self.logger.info("Starting public WebSocket streams (%s)...", stream_mode)
         
         try:
             # Connect to public WebSocket with appropriate mode
@@ -498,7 +498,7 @@ class RealtimeBootstrap:
             if "Too many connection attempts" in error_msg:
                 self.logger.warning("WebSocket rate limited - using REST fallback")
             else:
-                self.logger.error(f"Failed to start public streams: {e}")
+                self.logger.error("Failed to start public streams: %s", e)
             self.state.set_public_ws_disconnected(str(e))
             raise
     
@@ -538,7 +538,7 @@ class RealtimeBootstrap:
             self.state.update_ticker(ticker)
 
         except Exception as e:
-            self.logger.warning(f"Error processing ticker: {e}")
+            self.logger.warning("Error processing ticker: %s", e)
     
     def _on_orderbook(self, msg: dict):
         """Handle orderbook update from WebSocket."""
@@ -562,7 +562,7 @@ class RealtimeBootstrap:
                 self.state.apply_orderbook_delta(symbol, data)
             
         except Exception as e:
-            self.logger.warning(f"Error processing orderbook: {e}")
+            self.logger.warning("Error processing orderbook: %s", e)
     
     def _on_trades(self, msg: dict):
         """Handle trade stream from WebSocket."""
@@ -577,7 +577,7 @@ class RealtimeBootstrap:
                 self.state.add_trade(trade)
             
         except Exception as e:
-            self.logger.warning(f"Error processing trades: {e}")
+            self.logger.warning("Error processing trades: %s", e)
     
     def _on_kline(self, msg: dict):
         """Handle kline update from WebSocket."""
@@ -611,7 +611,7 @@ class RealtimeBootstrap:
                     self._on_bar_closed(kline)
 
         except Exception as e:
-            self.logger.warning(f"Error processing kline: {e}")
+            self.logger.warning("Error processing kline: %s", e)
     
     def _get_db_store(self) -> "HistoricalDataStore":
         """Lazy-initialize the database store for real-time persistence."""
@@ -661,7 +661,7 @@ class RealtimeBootstrap:
                 bar=bar,
             )
         except Exception as e:
-            self.logger.debug(f"Error appending to memory buffer: {e}")
+            self.logger.debug("Error appending to memory buffer: %s", e)
 
     def _persist_bar_to_db(self, kline: KlineData):
         """
@@ -695,7 +695,7 @@ class RealtimeBootstrap:
                 volume=kline.volume,
             )
         except Exception as e:
-            self.logger.warning(f"Error persisting bar to DB: {e}")
+            self.logger.warning("Error persisting bar to DB: %s", e)
     
     # ==========================================================================
     # Private Streams
@@ -742,7 +742,7 @@ class RealtimeBootstrap:
             self.logger.info("Private WebSocket streams started")
             
         except Exception as e:
-            self.logger.error(f"Failed to start private streams: {e}")
+            self.logger.error("Failed to start private streams: %s", e)
             self.state.set_private_ws_disconnected(str(e))
             raise
     
@@ -764,7 +764,7 @@ class RealtimeBootstrap:
             try:
                 self._fetch_initial_private_state()
             except Exception as e:
-                self.logger.warning(f"Failed to re-fetch private state after reconnection: {e}")
+                self.logger.warning("Failed to re-fetch private state after reconnection: %s", e)
 
     def _on_position(self, msg: dict):
         """Handle position update from WebSocket."""
@@ -782,7 +782,7 @@ class RealtimeBootstrap:
                 self.state.update_position(position)
 
         except Exception as e:
-            self.logger.warning(f"Error processing position: {e}")
+            self.logger.warning("Error processing position: %s", e)
 
     def _on_order(self, msg: dict):
         """Handle order update from WebSocket."""
@@ -800,7 +800,7 @@ class RealtimeBootstrap:
                 self.state.update_order(order)
 
         except Exception as e:
-            self.logger.warning(f"Error processing order: {e}")
+            self.logger.warning("Error processing order: %s", e)
 
     def _on_execution(self, msg: dict):
         """Handle execution update from WebSocket."""
@@ -818,7 +818,7 @@ class RealtimeBootstrap:
                 self.state.add_execution(execution)
 
         except Exception as e:
-            self.logger.warning(f"Error processing execution: {e}")
+            self.logger.warning("Error processing execution: %s", e)
     
     def _fetch_initial_private_state(self):
         """
@@ -868,8 +868,9 @@ class RealtimeBootstrap:
                 account_metrics = AccountMetrics.from_bybit(account_data)
                 self.state.update_account_metrics(account_metrics)
                 self.logger.info(
-                    f"Initial wallet: Equity=${account_metrics.total_equity:,.2f}, "
-                    f"Available=${account_metrics.total_available_balance:,.2f}"
+                    "Initial wallet: Equity=$%s, Available=$%s",
+                    f"{account_metrics.total_equity:,.2f}",
+                    f"{account_metrics.total_available_balance:,.2f}",
                 )
             
             # Parse per-coin balances
@@ -878,12 +879,12 @@ class RealtimeBootstrap:
                 wallet = WalletData.from_bybit(coin_data)
                 self.state.update_wallet(wallet)
                 if wallet.equity > 0:
-                    self.logger.debug(f"  {wallet.coin}: ${wallet.equity:,.2f}")
+                    self.logger.debug("  %s: $%s", wallet.coin, f"{wallet.equity:,.2f}")
             
             return True
             
         except Exception as e:
-            self.logger.warning(f"Could not fetch initial wallet: {e}")
+            self.logger.warning("Could not fetch initial wallet: %s", e)
             return False
     
     def _fetch_initial_positions(self):
@@ -911,17 +912,18 @@ class RealtimeBootstrap:
                     self.state.update_position(position)
                     count += 1
                     self.logger.debug(
-                        f"  {position.symbol}: {position.side} {position.size} "
-                        f"@ ${position.entry_price:,.2f}"
+                        "  %s: %s %s @ $%s",
+                        position.symbol, position.side, position.size,
+                        f"{position.entry_price:,.2f}",
                     )
             
             if count > 0:
-                self.logger.info(f"Initial positions: {count} open position(s)")
+                self.logger.info("Initial positions: %s open position(s)", count)
             
             return True
             
         except Exception as e:
-            self.logger.warning(f"Could not fetch initial positions: {e}")
+            self.logger.warning("Could not fetch initial positions: %s", e)
             return False
     
     def _fetch_initial_orders(self):
@@ -944,11 +946,11 @@ class RealtimeBootstrap:
                 order = OrderData.from_bybit(order_data)
                 self.state.update_order(order)
             
-            self.logger.info(f"Initial orders: {len(orders)} open order(s)")
+            self.logger.info("Initial orders: %s open order(s)", len(orders))
             return True
             
         except Exception as e:
-            self.logger.warning(f"Could not fetch initial orders: {e}")
+            self.logger.warning("Could not fetch initial orders: %s", e)
             return False
     
     def _on_wallet(self, msg: dict):
@@ -985,7 +987,7 @@ class RealtimeBootstrap:
                     self.state.update_wallet(wallet)
             
         except Exception as e:
-            self.logger.warning(f"Error processing wallet: {e}")
+            self.logger.warning("Error processing wallet: %s", e)
     
     # ==========================================================================
     # Connection Monitoring
@@ -1041,11 +1043,11 @@ class RealtimeBootstrap:
 
                 # Log stats periodically (at debug level)
                 self.logger.debug(
-                    f"RealtimeState stats: updates={current_update_counts}"
+                    "RealtimeState stats: updates=%s", current_update_counts
                 )
 
             except Exception as e:
-                self.logger.warning(f"Error in monitor loop: {e}")
+                self.logger.warning("Error in monitor loop: %s", e)
 
         self.logger.debug("Connection monitor loop stopped")
     
@@ -1063,7 +1065,7 @@ class RealtimeBootstrap:
         if not symbols:
             return
 
-        self.logger.info(f"Re-subscribing {len(symbols)} symbol(s) after reconnect...")
+        self.logger.info("Re-subscribing %s symbol(s) after reconnect...", len(symbols))
         for symbol in symbols:
             try:
                 if self.sub_config.enable_ticker:
@@ -1085,9 +1087,9 @@ class RealtimeBootstrap:
             except Exception as e:
                 err_msg = str(e)
                 if "already subscribed" in err_msg.lower():
-                    self.logger.debug(f"Already subscribed: {symbol} (expected after reconnect)")
+                    self.logger.debug("Already subscribed: %s (expected after reconnect)", symbol)
                 else:
-                    self.logger.warning(f"Failed to re-subscribe {symbol}: {e}")
+                    self.logger.warning("Failed to re-subscribe %s: %s", symbol, e)
 
     def _handle_stale_connection(self):
         """Handle a potentially stale public WebSocket stream.
@@ -1115,17 +1117,17 @@ class RealtimeBootstrap:
         try:
             self._fetch_initial_wallet()
         except Exception as e:
-            self.logger.warning(f"REST wallet refresh failed: {e}")
+            self.logger.warning("REST wallet refresh failed: %s", e)
 
         try:
             self._fetch_initial_positions()
         except Exception as e:
-            self.logger.warning(f"REST position refresh failed: {e}")
+            self.logger.warning("REST position refresh failed: %s", e)
 
         try:
             self._fetch_initial_orders()
         except Exception as e:
-            self.logger.warning(f"REST orders refresh failed: {e}")
+            self.logger.warning("REST orders refresh failed: %s", e)
     
     def get_health(self) -> dict[str, object]:
         """

@@ -93,7 +93,7 @@ class RiskManager:
                 self._global_risk_view = get_global_risk_view()
                 self.logger.debug("GlobalRiskView integrated with RiskManager")
             except Exception as e:
-                self.logger.warning(f"Could not initialize GlobalRiskView: {e}")
+                self.logger.warning("Could not initialize GlobalRiskView: %s", e)
                 self._global_risk_view = None
 
     def needs_websocket(self) -> bool:
@@ -141,7 +141,7 @@ class RiskManager:
 
             return None
         except Exception as e:
-            self.logger.debug(f"Could not get funding rate for {symbol}: {e}")
+            self.logger.debug("Could not get funding rate for %s: %s", symbol, e)
             return None
 
     def record_pnl(self, amount: float):
@@ -399,7 +399,7 @@ class RiskManager:
                 tiers = exchange_positions.get_risk_limits(self._exchange_manager, symbol)
                 self._risk_limit_cache[symbol] = tiers
             except Exception as e:
-                self.logger.debug(f"Could not query risk limits for {symbol}: {e}")
+                self.logger.debug("Could not query risk limits for %s: %s", symbol, e)
                 self._risk_limit_cache[symbol] = []
 
         tiers = self._risk_limit_cache.get(symbol, [])

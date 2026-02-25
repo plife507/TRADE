@@ -191,7 +191,7 @@ class SubLoopEvaluator:
         if not self._fallback_warned:
             from ...utils.debug import is_verbose_enabled, verbose_log
             if is_verbose_enabled() and exec_idx <= 20:
-                verbose_log(f"Subloop 1m range [{start_1m}..{end_1m}] for exec bar {exec_idx}")
+                verbose_log("Subloop 1m range", start_1m=start_1m, end_1m=end_1m, exec_idx=exec_idx)
 
         # Clamp to available 1m data (both start and end)
         max_valid_idx = self._quote_feed.length - 1

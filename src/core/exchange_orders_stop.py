@@ -62,10 +62,10 @@ def stop_market_buy(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Stop market buy failed: {e}")
+        manager.logger.error("Stop market buy failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Stop market buy error: {e}")
+        manager.logger.error("Stop market buy error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -111,10 +111,10 @@ def stop_market_sell(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Stop market sell failed: {e}")
+        manager.logger.error("Stop market sell failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Stop market sell error: {e}")
+        manager.logger.error("Stop market sell error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -161,10 +161,10 @@ def stop_limit_buy(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Stop limit buy failed: {e}")
+        manager.logger.error("Stop limit buy failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Stop limit buy error: {e}")
+        manager.logger.error("Stop limit buy error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -211,10 +211,10 @@ def stop_limit_sell(
         manager.logger.warning(str(e))
         return OrderResult(success=False, error=str(e))
     except BybitAPIError as e:
-        manager.logger.error(f"Stop limit sell failed: {e}")
+        manager.logger.error("Stop limit sell failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Stop limit sell error: {e}")
+        manager.logger.error("Stop limit sell error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -247,7 +247,7 @@ def create_conditional_order(
             reduce_only=reduce_only, order_link_id=order_link_id,
         )
         
-        manager.logger.info(f"Conditional order created: {symbol} {side} {qty} @ trigger ${trigger_price}")
+        manager.logger.info("Conditional order created: %s %s %s @ trigger $%s", symbol, side, qty, trigger_price)
         
         return OrderResult(
             success=True, order_id=result.get("orderId"),
@@ -258,10 +258,10 @@ def create_conditional_order(
         )
         
     except BybitAPIError as e:
-        manager.logger.error(f"Conditional order failed: {e}")
+        manager.logger.error("Conditional order failed: %s", e)
         return OrderResult(success=False, error=str(e))
     except Exception as e:
-        manager.logger.error(f"Conditional order error: {e}")
+        manager.logger.error("Conditional order error: %s", e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -340,8 +340,9 @@ def open_position_with_rr(
         actual_fill = getattr(position_result, 'price', None) or entry_price
         if actual_fill != entry_price:
             manager.logger.info(
-                f"Fill price deviation: quoted={entry_price:.4f} actual={actual_fill:.4f}, "
-                "recalculating SL/TP from actual fill"
+                "Fill price deviation: quoted=%.4f actual=%.4f, "
+                "recalculating SL/TP from actual fill",
+                entry_price, actual_fill,
             )
             risk_distance_actual = actual_fill * sl_price_pct
             stop_loss = round(actual_fill - risk_distance_actual if is_long else actual_fill + risk_distance_actual, precision)
@@ -373,7 +374,7 @@ def open_position_with_rr(
 
         if not sl_result.success:
             manager.logger.error(
-                f"CRITICAL: SL order failed! Position may be unprotected: {sl_result.error}"
+                "CRITICAL: SL order failed! Position may be unprotected: %s", sl_result.error
             )
             result["sl_warning"] = sl_result.error
 
@@ -402,15 +403,16 @@ def open_position_with_rr(
                             manager.close_position(symbol)
                         except Exception as close_err:
                             manager.logger.error(
-                                f"EMERGENCY: close_position also failed: {close_err}. "
-                                "Triggering panic to halt all trading."
+                                "EMERGENCY: close_position also failed: %s. "
+                                "Triggering panic to halt all trading.",
+                                close_err,
                             )
                             from .safety import get_panic_state
                             get_panic_state().trigger(
                                 f"SL + emergency close both failed for {symbol}"
                             )
             except Exception as e:
-                manager.logger.error(f"SL verification failed: {e}")
+                manager.logger.error("SL verification failed: %s", e)
 
         # Place TPs only if SL succeeded (no orphan TPs for a closed/unprotected position)
         if sl_result.success:
@@ -423,15 +425,18 @@ def open_position_with_rr(
                 )
                 result["tp_orders"].append(tp_result)
                 if not tp_result.success:
-                    manager.logger.warning(f"TP{i+1} order failed: {tp_result.error}")
+                    manager.logger.warning("TP%s order failed: %s", i+1, tp_result.error)
 
         # Success requires entry + SL both placed
         result["success"] = position_result.success and sl_result.success
-        manager.logger.info(f"Position opened with RR: {symbol} {side} ${margin_usd} @ {leverage}x, SL={stop_loss}, {len(result['tp_orders'])} TPs")
+        manager.logger.info(
+            "Position opened with RR: %s %s $%s @ %sx, SL=%s, %s TPs",
+            symbol, side, margin_usd, leverage, stop_loss, len(result['tp_orders']),
+        )
         return result
         
     except Exception as e:
         result["error"] = str(e)
-        manager.logger.error(f"Open position with RR failed: {e}")
+        manager.logger.error("Open position with RR failed: %s", e)
         return result
 

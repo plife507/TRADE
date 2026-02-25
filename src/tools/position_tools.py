@@ -790,7 +790,7 @@ def panic_close_all_tool(reason: str | None = None, trading_env: str | None = No
         if reason:
             from ..utils.logger import get_module_logger
             logger = get_module_logger(__name__)
-            logger.warning(f"PANIC triggered: {reason}")
+            logger.warning("PANIC triggered: %s", reason)
         
         # Get current state for reporting
         positions_before = exchange.get_all_positions()

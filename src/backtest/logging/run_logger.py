@@ -131,77 +131,53 @@ class RunLogger:
         # Add handler to logger
         self._logger.addHandler(self._run_log_handler)
 
-    def _bind_bar_context(self, bar_idx: int | None = None) -> None:
-        """Temporarily bind bar_idx to structlog context for JSONL output."""
+    def _log_with_fields(
+        self,
+        level: str,
+        message: str,
+        bar_idx: int | None,
+        fields: dict[str, Any],
+    ) -> None:
+        """Log a message with bar_idx and **fields as temporary contextvars."""
         import structlog.contextvars
+
+        bound_keys: list[str] = []
         if bar_idx is not None:
             structlog.contextvars.bind_contextvars(bar_idx=bar_idx)
+            bound_keys.append("bar_idx")
+        if fields:
+            structlog.contextvars.bind_contextvars(**fields)
+            bound_keys.extend(fields.keys())
 
-    def _unbind_bar_context(self, bar_idx: int | None = None) -> None:
-        """Unbind bar_idx from structlog context after logging."""
-        import structlog.contextvars
-        if bar_idx is not None:
-            structlog.contextvars.unbind_contextvars("bar_idx")
-
-    def _format_fields(self, fields: dict[str, Any]) -> str:
-        """Format key=value fields for log line."""
-        if not fields:
-            return ""
-
-        parts = []
-        for key, value in fields.items():
-            if isinstance(value, float):
-                parts.append(f"{key}={value:.6g}")
-            elif value is None:
-                parts.append(f"{key}=null")
-            else:
-                parts.append(f"{key}={value}")
-
-        return ": " + ", ".join(parts)
+        try:
+            getattr(self._logger, level)(message)
+        finally:
+            if bound_keys:
+                structlog.contextvars.unbind_contextvars(*bound_keys)
 
     def debug(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
         """Log debug message with structured context."""
-        self._bind_bar_context(bar_idx)
-        try:
-            field_str = self._format_fields(fields)
-            self._logger.debug(f"{message}{field_str}")
-        finally:
-            self._unbind_bar_context(bar_idx)
+        self._log_with_fields("debug", message, bar_idx, fields)
 
     def info(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
         """Log info message with structured context."""
-        self._bind_bar_context(bar_idx)
-        try:
-            field_str = self._format_fields(fields)
-            self._logger.info(f"{message}{field_str}")
-        finally:
-            self._unbind_bar_context(bar_idx)
+        self._log_with_fields("info", message, bar_idx, fields)
 
     def warning(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
         """Log warning message with structured context."""
-        self._bind_bar_context(bar_idx)
-        try:
-            field_str = self._format_fields(fields)
-            self._logger.warning(f"{message}{field_str}")
-        finally:
-            self._unbind_bar_context(bar_idx)
+        self._log_with_fields("warning", message, bar_idx, fields)
 
     def error(
         self, message: str, *, bar_idx: int | None = None, **fields: Any
     ) -> None:
         """Log error message with structured context."""
-        self._bind_bar_context(bar_idx)
-        try:
-            field_str = self._format_fields(fields)
-            self._logger.error(f"{message}{field_str}")
-        finally:
-            self._unbind_bar_context(bar_idx)
+        self._log_with_fields("error", message, bar_idx, fields)
 
     def finalize(
         self,
