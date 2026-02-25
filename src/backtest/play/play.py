@@ -562,8 +562,8 @@ class Play:
         """Get exec role pointer (low_tf, med_tf, or high_tf)."""
         return self.tf_mapping.get("exec")
 
-    def get_all_tfs(self) -> set[str]:
-        """Get all unique timeframes from features."""
+    def get_all_tfs(self) -> list[str]:
+        """Get all unique timeframes from features (sorted for determinism)."""
         return self.feature_registry.get_all_tfs()
 
     def to_dict(self) -> dict[str, Any]:

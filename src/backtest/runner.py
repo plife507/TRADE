@@ -175,14 +175,14 @@ def _setup_synthetic_provider(
     for tf in play.feature_registry.get_all_tfs():
         required_tfs.add(tf)
 
-    logger.info(f"Synthetic: auto-generating data ({synthetic_bars} bars from indicator/structure warmup)")
-    logger.info(f"Synthetic: pattern={play.validation.pattern}, bars={synthetic_bars}")
-    logger.info(f"Synthetic: required TFs={sorted(required_tfs)}")
+    logger.info("Synthetic: auto-generating data (%s bars from indicator/structure warmup)", synthetic_bars)
+    logger.info("Synthetic: pattern=%s, bars=%s", play.validation.pattern, synthetic_bars)
+    logger.info("Synthetic: required TFs=%s", sorted(required_tfs))
 
     # Generate synthetic candles
     candles = generate_synthetic_candles(
         symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
-        timeframes=list(required_tfs),
+        timeframes=sorted(required_tfs),
         bars_per_tf=synthetic_bars,
         seed=42,
         pattern=cast("PatternType", play.validation.pattern),
@@ -195,8 +195,8 @@ def _setup_synthetic_provider(
     config.window_end = data_end
     config.skip_preflight = True  # No DB data to validate
 
-    logger.info(f"Synthetic: data range={config.window_start} to {config.window_end}")
-    logger.info(f"Synthetic: data hash={candles.data_hash}")
+    logger.info("Synthetic: data range=%s to %s", config.window_start, config.window_end)
+    logger.info("Synthetic: data hash=%s", candles.data_hash)
 
     return new_provider
 
@@ -465,9 +465,9 @@ def _get_warmup_config(
     if result.preflight_report and result.preflight_report.computed_warmup_requirements:
         warmup_by_role = result.preflight_report.computed_warmup_requirements.warmup_by_role
         delay_by_role = result.preflight_report.computed_warmup_requirements.delay_by_role
-        logger.info(f"Warmup: using preflight warmup={warmup_by_role}")
+        logger.info("Warmup: using preflight warmup=%s", warmup_by_role)
         if delay_by_role and any(v > 0 for v in delay_by_role.values()):
-            logger.info(f"Warmup: using preflight delay={delay_by_role}")
+            logger.info("Warmup: using preflight delay=%s", delay_by_role)
         return warmup_by_role, delay_by_role
 
     # Preflight skipped or no warmup computed
@@ -670,6 +670,7 @@ def _write_results_summary(ctx: _RunContext) -> ResultsSummary:
         initial_equity=play_initial_equity,
         stopped_early=ctx.engine_result.stopped_early,
         stop_reason=ctx.engine_result.stop_reason,
+        exchange_metrics=ctx.engine_result.exchange_metrics,
     )
 
     # Write result.json
@@ -835,12 +836,12 @@ def _emit_snapshots(ctx: _RunContext) -> None:
             high_tf_feature_specs=high_tf_specs,
         )
 
-        logger.info(f"Snapshots emitted to {snapshots_dir}")
+        logger.info("Snapshots emitted to %s", snapshots_dir)
 
     except Exception as e:
         import traceback
-        logger.error(f"Failed to emit snapshots: {e}")
-        logger.debug(f"Snapshots traceback: {traceback.format_exc()}")
+        logger.error("Failed to emit snapshots: %s", e)
+        logger.debug("Snapshots traceback: %s", traceback.format_exc())
 
 
 @dataclass
@@ -1032,7 +1033,7 @@ def run_backtest_with_gates(
         _run_artifact_validation(ctx)
 
         # Phase 14b: Log artifact path at INFO
-        logger.info(f"Artifacts written to: {ctx.artifact_path}")
+        logger.info("Artifacts written to: %s", ctx.artifact_path)
 
         # Phase 15: Emit snapshots (if requested)
         _emit_snapshots(ctx)
@@ -1072,8 +1073,8 @@ def run_backtest_with_gates(
 
     except GateFailure:
         # Gate failure - already handled
-        logger.error(f"Gate failed: {result.gate_failed}")
-        logger.error(f"  {result.error_message}")
+        logger.error("Gate failed: %s", result.gate_failed)
+        logger.error("  %s", result.error_message)
         _finalize_logger_on_error(ctx, "gate_failed")
         return result
 
@@ -1081,7 +1082,7 @@ def run_backtest_with_gates(
         # Unexpected error
         import traceback
         result.error_message = str(e)
-        logger.error(f"Backtest error: {e}")
+        logger.error("Backtest error: %s", e)
         logger.debug(traceback.format_exc())
         _finalize_logger_on_error(ctx, "error")
         return result

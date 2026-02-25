@@ -289,7 +289,7 @@ def _run_synthetic_backtest():
         # Generate synthetic candles
         candles = generate_synthetic_candles(
             symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
-            timeframes=list(required_tfs),
+            timeframes=sorted(required_tfs),
             bars_per_tf=bars,
             seed=seed,
             pattern=cast(PatternType, pattern),

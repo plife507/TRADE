@@ -883,15 +883,15 @@ def run_preflight_gate(
     # Validate that warmup doesn't push data start before earliest available data
     # Collect ALL TFs: feature-declared TFs + play's 3-feed TFs (low/med/high)
     try:
-        all_tfs = play.feature_registry.get_all_tfs()
+        all_tfs_set: set[str] = set(play.feature_registry.get_all_tfs())
     except (AttributeError, TypeError):
-        all_tfs = {play.exec_tf} if play.exec_tf else set()
+        all_tfs_set = {play.exec_tf} if play.exec_tf else set()
     # Always include the play's 3-feed timeframes so auto-sync covers them
     for tf_prop in (play.low_tf, play.med_tf, play.high_tf):
         if tf_prop:
-            all_tfs.add(tf_prop)
+            all_tfs_set.add(tf_prop)
 
-    for tf in all_tfs:
+    for tf in sorted(all_tfs_set):
         warmup = warmup_requirements.warmup_by_role.get(tf, 0)
         safety = _compute_safety_buffer(warmup)
         total_warmup = warmup + safety
@@ -910,7 +910,7 @@ def run_preflight_gate(
     pairs_to_check: list[tuple[str, str, int]] = []  # (symbol, tf, warmup_bars)
 
     for symbol in play.symbol_universe:
-        for tf in all_tfs:
+        for tf in sorted(all_tfs_set):
             # Use computed warmup from WarmupRequirements
             warmup = warmup_requirements.warmup_by_role.get(tf, 0)
             # Add safety buffer
@@ -926,12 +926,12 @@ def run_preflight_gate(
     # The 1m warmup is calculated as: max warmup bars across all roles, converted to 1m.
 
     # Check if 1m is already declared (skip if already in pairs)
-    declared_tfs = {tf.lower() for tf in all_tfs}
+    declared_tfs = {tf.lower() for tf in all_tfs_set}
 
     if "1m" not in declared_tfs:
         # Calculate 1m warmup: max warmup across all roles, converted to 1m bars
         max_warmup_minutes = 0
-        for tf in all_tfs:
+        for tf in sorted(all_tfs_set):
             role_warmup = warmup_requirements.warmup_by_role.get(tf, 0)
             tf_minutes = parse_tf_to_minutes(tf)
             warmup_minutes = role_warmup * tf_minutes

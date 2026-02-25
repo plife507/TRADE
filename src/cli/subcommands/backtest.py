@@ -85,7 +85,7 @@ def _handle_synthetic_backtest_run(args) -> int:
     # Generate synthetic candles
     candles = generate_synthetic_candles(
         symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
-        timeframes=list(required_tfs),
+        timeframes=sorted(required_tfs),
         bars_per_tf=synthetic_bars,
         seed=synthetic_seed,
         pattern=cast(PatternType, synthetic_pattern),
@@ -162,20 +162,8 @@ def _handle_synthetic_backtest_run(args) -> int:
 
 def handle_backtest_run(args) -> int:
     """Handle `backtest run` subcommand."""
-    import logging
     from src.tools.backtest_play_tools import backtest_run_play_tool
     from src.tools.shared import ToolResult
-
-    # 7.2/7.5: Enable debug tracing if --debug flag on backtest run
-    if getattr(args, "debug", False):
-        from src.utils.debug import enable_debug
-        enable_debug(True)
-        # Set console handler to DEBUG so trace output is visible
-        trade_logger = logging.getLogger("trade")
-        trade_logger.setLevel(logging.DEBUG)
-        for handler in logging.getLogger().handlers:
-            if isinstance(handler, logging.StreamHandler):
-                handler.setLevel(logging.DEBUG)
 
     start = _parse_datetime(args.start) if args.start else None
     end = _parse_datetime(args.end) if args.end else None

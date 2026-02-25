@@ -155,7 +155,7 @@ def backtest_preflight_play_tool(
                         tf_minutes = TF_MINUTES.get(exec_tf, 15)
                         assert end is not None
                         start = end - timedelta(minutes=tf_minutes * 100)
-                        logger.info(f"Preflight auto-window: start={start}, end={end} (from DB coverage)")
+                        logger.info("Preflight auto-window: start=%s, end=%s (from DB coverage)", start, end)
                     break
 
             # If still None, fail with clear error
@@ -227,7 +227,7 @@ def backtest_preflight_play_tool(
             )
 
     except Exception as e:
-        logger.error(f"Preflight check failed: {e}\n{traceback.format_exc()}")
+        logger.error("Preflight check failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Preflight check error: {e}",
@@ -312,28 +312,29 @@ def _log_backtest_config(config: ResolvedBacktestConfig, play: Play) -> None:
     logger.info("=" * 60)
     logger.info("RESOLVED CONFIG SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"  symbol: {config.symbol}")
-    logger.info(f"  tf_exec: {config.exec_tf}")
+    logger.info("  symbol: %s", config.symbol)
+    logger.info("  tf_exec: %s", config.exec_tf)
 
     other_tfs = sorted([tf for tf in config.all_tfs if tf != config.exec_tf])
     if other_tfs:
-        logger.info(f"  other_tfs: {', '.join(other_tfs)}")
+        logger.info("  other_tfs: %s", ', '.join(other_tfs))
 
     logger.info("-" * 40)
-    logger.info(f"  starting_equity_usdt: {config.starting_equity:,.2f}")
-    logger.info(f"  max_leverage: {config.max_leverage:.1f}x")
-    logger.info(f"  min_trade_notional_usdt: {config.min_trade:.2f}")
+    starting_equity_str = f"{config.starting_equity:,.2f}"
+    logger.info("  starting_equity_usdt: %s", starting_equity_str)
+    logger.info("  max_leverage: %.1fx", config.max_leverage)
+    logger.info("  min_trade_notional_usdt: %.2f", config.min_trade)
 
     if play.account is not None and play.account.fee_model:
-        logger.info(f"  taker_fee_bps: {play.account.fee_model.taker_bps}")
-        logger.info(f"  maker_fee_bps: {play.account.fee_model.maker_bps}")
+        logger.info("  taker_fee_bps: %s", play.account.fee_model.taker_bps)
+        logger.info("  maker_fee_bps: %s", play.account.fee_model.maker_bps)
     if play.account is not None and play.account.slippage_bps:
-        logger.info(f"  slippage_bps: {play.account.slippage_bps}")
+        logger.info("  slippage_bps: %s", play.account.slippage_bps)
 
     logger.info("-" * 40)
     for tf in sorted(config.all_tfs):
         warmup = config.warmup_by_tf.get(tf, 0)
-        logger.info(f"  warmup_{tf}: {warmup} bars")
+        logger.info("  warmup_%s: %s bars", tf, warmup)
     logger.info("=" * 60)
 
 
@@ -365,13 +366,13 @@ def _compute_smoke_window(
     # Use DB latest as end for smoke (not now(), which is always ahead)
     if end is None:
         end = db_latest_dt
-        logger.info(f"Smoke mode: using DB latest as end={end}")
+        logger.info("Smoke mode: using DB latest as end=%s", end)
 
     # Use last 100 bars for start
     if start is None:
         tf_minutes = TF_MINUTES.get(exec_tf, 15)
         start = db_latest_dt - timedelta(minutes=tf_minutes * 100)
-        logger.info(f"Smoke mode: using last 100 bars, start={start}")
+        logger.info("Smoke mode: using last 100 bars, start=%s", start)
 
     return start, end
 
@@ -424,7 +425,7 @@ def _validate_indicator_gate(play: Play) -> tuple[bool, dict[str, Any] | None, s
 
     # Log declared keys
     exec_tf = play.exec_tf
-    logger.info(f"Declared indicator keys ({exec_tf}): {declared_keys_by_role.get(exec_tf, [])}")
+    logger.info("Declared indicator keys (%s): %s", exec_tf, declared_keys_by_role.get(exec_tf, []))
 
     return True, gate_result.to_dict(), None
 
@@ -518,15 +519,15 @@ def backtest_run_play_tool(
             for tf in play.feature_registry.get_all_tfs():
                 required_tfs.add(tf)
 
-            logger.info(f"[SYNTHETIC] Auto-generating data ({synthetic_bars} bars from indicator/structure warmup)")
-            logger.info(f"[SYNTHETIC] Pattern: {synthetic_pattern}, Bars: {synthetic_bars}")
-            logger.info(f"[SYNTHETIC] Required TFs: {sorted(required_tfs)}")
+            logger.info("[SYNTHETIC] Auto-generating data (%s bars from indicator/structure warmup)", synthetic_bars)
+            logger.info("[SYNTHETIC] Pattern: %s, Bars: %s", synthetic_pattern, synthetic_bars)
+            logger.info("[SYNTHETIC] Required TFs: %s", sorted(required_tfs))
 
             # Generate synthetic candles
             from src.forge.validation.synthetic_data import PatternType
             candles = generate_synthetic_candles(
                 symbol=play.symbol_universe[0] if play.symbol_universe else "BTCUSDT",
-                timeframes=list(required_tfs),
+                timeframes=sorted(required_tfs),
                 bars_per_tf=synthetic_bars,
                 seed=42,
                 pattern=cast(PatternType, synthetic_pattern),
@@ -539,8 +540,8 @@ def backtest_run_play_tool(
             end = data_end
             skip_preflight = True  # No DB data to validate
 
-            logger.info(f"[SYNTHETIC] Data range: {start} to {end}")
-            logger.info(f"[SYNTHETIC] Data hash: {candles.data_hash}")
+            logger.info("[SYNTHETIC] Data range: %s to %s", start, end)
+            logger.info("[SYNTHETIC] Data hash: %s", candles.data_hash)
             preflight_data = {"synthetic": True, "data_hash": candles.data_hash}
 
         # Skip preflight if requested or if using synthetic data
@@ -765,7 +766,7 @@ def backtest_run_play_tool(
         )
 
     except Exception as e:
-        logger.error(f"Backtest run failed: {e}\n{traceback.format_exc()}")
+        logger.error("Backtest run failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Backtest error: {e}",

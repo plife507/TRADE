@@ -220,7 +220,7 @@ class FeatureRegistry:
 
         # Access
         f = registry.get("ema_fast")
-        tfs = registry.get_all_tfs()  # {"15m", "1h"}
+        tfs = registry.get_all_tfs()  # ["15m", "1h"]
         warmup = registry.get_warmup_for_tf("15m")
     """
 
@@ -308,9 +308,9 @@ class FeatureRegistry:
         """
         return self._by_tf.get(tf, [])
 
-    def get_all_tfs(self) -> set[str]:
-        """Get all unique timeframes."""
-        return set(self._by_tf.keys())
+    def get_all_tfs(self) -> list[str]:
+        """Get all unique timeframes (sorted for determinism)."""
+        return sorted(self._by_tf.keys())
 
     def get_indicators(self) -> list[Feature]:
         """Get all indicator features."""
