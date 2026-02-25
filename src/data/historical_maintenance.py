@@ -6,6 +6,8 @@ Contains: detect_gaps, fill_gaps, heal, delete_symbol, cleanup_empty_symbols, va
 
 from datetime import datetime, timedelta
 from collections.abc import Callable
+
+from src.utils.datetime_utils import utc_now
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -267,7 +269,7 @@ def heal_comprehensive(
     print_activity("Starting data integrity check...", ActivityEmoji.SEARCH)
     
     report = {
-        "checked_at": datetime.now().isoformat(),
+        "checked_at": utc_now().isoformat(),
         "symbol_filter": symbol,
         "issues_found": 0,
         "issues_fixed": 0,
@@ -500,7 +502,7 @@ def validate_data_quality(
     from .historical_data_store import ActivityEmoji, print_activity
 
     report = {
-        "checked_at": datetime.now().isoformat(),
+        "checked_at": utc_now().isoformat(),
         "symbol_filter": symbol,
         "timeframe_filter": timeframe,
         "issues": [],

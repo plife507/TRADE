@@ -206,12 +206,12 @@ def _persist_extremes_to_db(
         latest = None
         if tf_data.get("earliest_ts"):
             try:
-                earliest = dt.fromisoformat(tf_data["earliest_ts"])
+                earliest = dt.fromisoformat(tf_data["earliest_ts"]).replace(tzinfo=None)
             except (ValueError, TypeError):
                 pass
         if tf_data.get("latest_ts"):
             try:
-                latest = dt.fromisoformat(tf_data["latest_ts"])
+                latest = dt.fromisoformat(tf_data["latest_ts"]).replace(tzinfo=None)
             except (ValueError, TypeError):
                 pass
         
@@ -234,12 +234,12 @@ def _persist_extremes_to_db(
         latest = None
         if funding_data.get("earliest_ts"):
             try:
-                earliest = dt.fromisoformat(funding_data["earliest_ts"])
+                earliest = dt.fromisoformat(funding_data["earliest_ts"]).replace(tzinfo=None)
             except (ValueError, TypeError):
                 pass
         if funding_data.get("latest_ts"):
             try:
-                latest = dt.fromisoformat(funding_data["latest_ts"])
+                latest = dt.fromisoformat(funding_data["latest_ts"]).replace(tzinfo=None)
             except (ValueError, TypeError):
                 pass
         
@@ -262,12 +262,12 @@ def _persist_extremes_to_db(
         latest = None
         if oi_data.get("earliest_ts"):
             try:
-                earliest = dt.fromisoformat(oi_data["earliest_ts"])
+                earliest = dt.fromisoformat(oi_data["earliest_ts"]).replace(tzinfo=None)
             except (ValueError, TypeError):
                 pass
         if oi_data.get("latest_ts"):
             try:
-                latest = dt.fromisoformat(oi_data["latest_ts"])
+                latest = dt.fromisoformat(oi_data["latest_ts"]).replace(tzinfo=None)
             except (ValueError, TypeError):
                 pass
         

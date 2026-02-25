@@ -421,8 +421,8 @@ def run_in_memory_parity_for_play(
         # Use RunnerConfig to load and prepare the Play
         config = RunnerConfig(
             play_id=play_path,
-            window_start=dt.fromisoformat(start_date),
-            window_end=dt.fromisoformat(end_date),
+            window_start=dt.fromisoformat(start_date).replace(tzinfo=None),
+            window_end=dt.fromisoformat(end_date).replace(tzinfo=None),
         )
         
         # Load the Play

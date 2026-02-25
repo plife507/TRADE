@@ -28,7 +28,9 @@ Hash determinism:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
+
+from src.utils.datetime_utils import utc_now
 from pathlib import Path
 from typing import Any
 import json
@@ -56,10 +58,6 @@ class VersionMismatchError(Exception):
 # Current manifest schema version - increment when RunManifest structure changes
 MANIFEST_SCHEMA_VERSION = "1.0.0"
 
-
-def _utcnow() -> datetime:
-    """Get current UTC time as timezone-aware datetime."""
-    return datetime.now(timezone.utc)
 
 
 # =============================================================================
@@ -236,7 +234,7 @@ class ArtifactPathConfig:
         
         # For strategies category, generate attempt_id if not provided
         if self.category == "strategies" and not self.attempt_id:
-            self.attempt_id = _utcnow().strftime("%Y%m%d_%H%M%S")
+            self.attempt_id = utc_now().strftime("%Y%m%d_%H%M%S")
     
     @property
     def allows_overwrite(self) -> bool:
@@ -425,7 +423,7 @@ class RunManifest:
     def __post_init__(self):
         """Set defaults and enforce invariants."""
         if not self.created_at_utc:
-            self.created_at_utc = _utcnow().isoformat()
+            self.created_at_utc = utc_now().isoformat()
         
         # Enforce category-specific semantics
         if self.category == "_validation":

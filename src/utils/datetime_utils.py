@@ -40,6 +40,9 @@ def normalize_datetime(
         return None, None
 
     if isinstance(value, datetime):
+        # Enforce UTC-naive convention: convert tz-aware to UTC then strip
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
         return value, None
 
     if isinstance(value, str):
@@ -63,8 +66,12 @@ def normalize_datetime(
                 continue
 
         # Try fromisoformat as fallback (handles more edge cases)
+        # Note: "Z" → "+00:00" makes fromisoformat return tz-aware, so strip it
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")), None
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt, None
         except ValueError:
             pass
 
@@ -160,9 +167,13 @@ def normalize_datetime_for_storage(dt: datetime | str | None) -> str | None:
 
 
 def normalize_timestamp(ts: datetime) -> datetime:
-    """Normalize timestamp to be timezone-naive."""
+    """Normalize timestamp to be timezone-naive (UTC).
+
+    If tz-aware, converts to UTC first then strips tzinfo.
+    If tz-naive, assumes already UTC and returns as-is.
+    """
     if ts.tzinfo is not None:
-        return ts.replace(tzinfo=None)
+        return ts.astimezone(timezone.utc).replace(tzinfo=None)
     return ts
 
 
@@ -186,3 +197,17 @@ def datetime_to_epoch_ms(dt: datetime | None) -> int | None:
         return int(dt.timestamp() * 1000)
     # Assume naive datetime is UTC — use timegm (not .timestamp() which assumes local time)
     return timegm(dt.timetuple()) * 1000 + dt.microsecond // 1000
+
+
+def parse_bybit_ts(ms_str: str | None) -> datetime | None:
+    """Parse Bybit epoch-ms string to UTC-naive datetime.
+
+    Bybit returns timestamps as epoch-millisecond strings (e.g., "1684738540559").
+    Returns None for empty/None/invalid inputs.
+    """
+    if not ms_str:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ms_str) / 1000, tz=timezone.utc).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None

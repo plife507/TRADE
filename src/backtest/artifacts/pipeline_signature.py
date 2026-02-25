@@ -8,10 +8,11 @@ Gate D.1 requirement: Every backtest run MUST produce pipeline_signature.json.
 """
 
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 import json
+
+from src.utils.datetime_utils import utc_now
 
 if TYPE_CHECKING:
     from ..play import Play
@@ -62,7 +63,7 @@ class PipelineSignature:
     strict_indicator_access: bool = True
     
     # Timestamps
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: utc_now().isoformat())
     
     def __post_init__(self):
         """Verify feature keys match."""

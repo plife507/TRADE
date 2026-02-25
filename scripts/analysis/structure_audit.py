@@ -11,7 +11,7 @@ This is a READ-ONLY analysis - does NOT modify any bot code.
 
 import sys
 from pathlib import Path
-from datetime import datetime
+from src.utils.datetime_utils import utc_now
 from dataclasses import dataclass
 from typing import Any
 
@@ -621,7 +621,7 @@ def param_sensitivity_test(df: pd.DataFrame, atr_values: list[float], tf: str) -
 def main() -> None:
     print("=" * 70)
     print("  STRUCTURE DETECTION AUDIT — BTCUSDT (6 months)")
-    print(f"  Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"  Date: {utc_now().strftime('%Y-%m-%d %H:%M')} UTC")
     print("=" * 70)
 
     # Load data

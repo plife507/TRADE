@@ -176,8 +176,8 @@ class FileStateStore:
             equity_usdt=d.get("equity_usdt", 0.0),
             realized_pnl=d.get("realized_pnl", 0.0),
             total_trades=d.get("total_trades", 0),
-            last_bar_ts=datetime.fromisoformat(d["last_bar_ts"]) if d.get("last_bar_ts") else None,
-            last_signal_ts=datetime.fromisoformat(d["last_signal_ts"]) if d.get("last_signal_ts") else None,
+            last_bar_ts=datetime.fromisoformat(d["last_bar_ts"]).replace(tzinfo=None) if d.get("last_bar_ts") else None,
+            last_signal_ts=datetime.fromisoformat(d["last_signal_ts"]).replace(tzinfo=None) if d.get("last_signal_ts") else None,
             incremental_state_json=d.get("incremental_state_json"),
             metadata=d.get("metadata", {}),
         )

@@ -23,7 +23,8 @@ import sys
 import time
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from src.utils.datetime_utils import utc_now, datetime_to_epoch_ms
 from pathlib import Path
 from collections.abc import Callable, Generator
 from typing import Any
@@ -489,7 +490,7 @@ class HistoricalDataStore:
                 try:
                     # Try to create lock file exclusively
                     self._lock_file = open(self._lock_file_path, 'x', newline='\n')
-                    self._lock_file.write(f"pid={os.getpid()}\ntime={datetime.now().isoformat()}\n")
+                    self._lock_file.write(f"pid={os.getpid()}\ntime={utc_now().isoformat()}\n")
                     self._lock_file.flush()
                     return True
                 except FileExistsError:
@@ -901,7 +902,7 @@ class HistoricalDataStore:
             self.conn.execute(f"""
                 INSERT OR REPLACE INTO {self.table_sync_metadata}
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, [symbol, timeframe, stats[0], stats[1], stats[2], datetime.now()])
+            """, [symbol, timeframe, stats[0], stats[1], stats[2], utc_now()])
 
     # ==================== REAL-TIME CANDLE PERSISTENCE ====================
 
@@ -1018,8 +1019,8 @@ class HistoricalDataStore:
             symbols = [symbols]
         
         symbols = [s.upper() for s in symbols]
-        target_start = datetime.now() - self.parse_period(period)
-        
+        target_start = utc_now() - self.parse_period(period)
+
         results = {}
         total_symbols = len(symbols)
 
@@ -1087,11 +1088,11 @@ class HistoricalDataStore:
             fetch_start = target_start
 
         # Estimate total records (funding every 8h)
-        total_hours = (datetime.now() - fetch_start).total_seconds() / 3600
+        total_hours = (utc_now() - fetch_start).total_seconds() / 3600
         estimated_records = max(1, int(total_hours / 8))
 
         all_records: list[dict] = []
-        current_end = datetime.now()
+        current_end = utc_now()
         request_count = 0
 
         while current_end > fetch_start:
@@ -1102,14 +1103,14 @@ class HistoricalDataStore:
                 records = self.client.get_funding_rate(
                     symbol=symbol,
                     limit=200,
-                    end_time=int(current_end.timestamp() * 1000),
+                    end_time=datetime_to_epoch_ms(current_end),
                 )
 
                 if not records:
                     break
 
                 for r in records:
-                    ts = datetime.fromtimestamp(int(r.get("fundingRateTimestamp", 0)) / 1000)
+                    ts = datetime.fromtimestamp(int(r.get("fundingRateTimestamp", 0)) / 1000, tz=timezone.utc).replace(tzinfo=None)
                     if ts >= fetch_start and ts <= current_end:
                         all_records.append({
                             "symbol": symbol,
@@ -1126,7 +1127,7 @@ class HistoricalDataStore:
                     earliest_ts = min(
                         int(r.get("fundingRateTimestamp", 0)) for r in records
                     )
-                    current_end = datetime.fromtimestamp(earliest_ts / 1000) - timedelta(hours=1)
+                    current_end = datetime.fromtimestamp(earliest_ts / 1000, tz=timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
                 else:
                     break
 
@@ -1189,7 +1190,7 @@ class HistoricalDataStore:
             self.conn.execute(f"""
                 INSERT OR REPLACE INTO {self.table_funding_metadata}
                 VALUES (?, ?, ?, ?, ?)
-            """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
+            """, [symbol, stats[0], stats[1], stats[2], utc_now()])
 
     def get_funding(
         self,
@@ -1220,7 +1221,7 @@ class HistoricalDataStore:
         params: list[Any] = [symbol]
 
         if period:
-            start = datetime.now() - self.parse_period(period)
+            start = utc_now() - self.parse_period(period)
 
         if start:
             query += " AND timestamp >= ?"
@@ -1261,8 +1262,8 @@ class HistoricalDataStore:
             symbols = [symbols]
         
         symbols = [s.upper() for s in symbols]
-        target_start = datetime.now() - self.parse_period(period)
-        
+        target_start = utc_now() - self.parse_period(period)
+
         results = {}
         total_symbols = len(symbols)
 
@@ -1333,11 +1334,11 @@ class HistoricalDataStore:
         # Estimate total records based on interval
         oi_intervals_per_hour = {"5min": 12, "15min": 4, "30min": 2, "1h": 1, "4h": 0.25, "D": 1/24}
         records_per_hour = oi_intervals_per_hour.get(interval, 1)
-        total_hours = (datetime.now() - fetch_start).total_seconds() / 3600
+        total_hours = (utc_now() - fetch_start).total_seconds() / 3600
         estimated_records = max(1, int(total_hours * records_per_hour))
 
         all_records: list[dict] = []
-        current_end = datetime.now()
+        current_end = utc_now()
         request_count = 0
 
         while current_end > fetch_start:
@@ -1349,14 +1350,14 @@ class HistoricalDataStore:
                     symbol=symbol,
                     interval=interval,
                     limit=200,
-                    end_time=int(current_end.timestamp() * 1000),
+                    end_time=datetime_to_epoch_ms(current_end),
                 )
 
                 if not records:
                     break
 
                 for r in records:
-                    ts = datetime.fromtimestamp(int(r.get("timestamp", 0)) / 1000)
+                    ts = datetime.fromtimestamp(int(r.get("timestamp", 0)) / 1000, tz=timezone.utc).replace(tzinfo=None)
                     if ts >= fetch_start and ts <= current_end:
                         all_records.append({
                             "symbol": symbol,
@@ -1371,7 +1372,7 @@ class HistoricalDataStore:
 
                 if records:
                     earliest_ts = min(int(r.get("timestamp", 0)) for r in records)
-                    current_end = datetime.fromtimestamp(earliest_ts / 1000) - timedelta(hours=1)
+                    current_end = datetime.fromtimestamp(earliest_ts / 1000, tz=timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
                 else:
                     break
 
@@ -1434,7 +1435,7 @@ class HistoricalDataStore:
             self.conn.execute(f"""
                 INSERT OR REPLACE INTO {self.table_oi_metadata}
                 VALUES (?, ?, ?, ?, ?)
-            """, [symbol, stats[0], stats[1], stats[2], datetime.now()])
+            """, [symbol, stats[0], stats[1], stats[2], utc_now()])
 
     def get_open_interest(
         self,
@@ -1465,7 +1466,7 @@ class HistoricalDataStore:
         params: list[Any] = [symbol]
 
         if period:
-            start = datetime.now() - self.parse_period(period)
+            start = utc_now() - self.parse_period(period)
 
         if start:
             query += " AND timestamp >= ?"
@@ -1541,7 +1542,7 @@ class HistoricalDataStore:
         params: list[Any] = [symbol, tf]
 
         if period:
-            start = datetime.now() - self.parse_period(period)
+            start = utc_now() - self.parse_period(period)
 
         # Strip timezone for DuckDB comparison (stores UTC-naive)
         if start:
@@ -1639,7 +1640,7 @@ class HistoricalDataStore:
             gaps = self.detect_gaps(sym, tf)
 
             # Data is current if last candle is within 1 hour of now
-            is_current = last_ts and (datetime.now() - last_ts).total_seconds() < 3600
+            is_current = last_ts and (utc_now() - last_ts).total_seconds() < 3600
 
             status[key] = {
                 "symbol": sym,
@@ -1904,7 +1905,7 @@ class HistoricalDataStore:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 symbol, data_type, tf_value, earliest_ts, latest_ts,
-                row_count, gap_count, launch_time, source, datetime.now()
+                row_count, gap_count, launch_time, source, utc_now()
             ])
     
     def get_extremes(self, symbol: str | None = None) -> dict[str, Any]:
@@ -2156,7 +2157,7 @@ def get_latest_ohlcv(
     store = get_historical_store(env)
     # Compute approximate start time based on limit and tf
     tf_minutes = TF_MINUTES.get(tf, 15)
-    start = datetime.now() - timedelta(minutes=tf_minutes * limit * 2)  # Extra buffer
+    start = utc_now() - timedelta(minutes=tf_minutes * limit * 2)  # Extra buffer
     df = store.get_ohlcv(symbol, tf, start=start)
     return df.tail(limit) if len(df) > limit else df
 

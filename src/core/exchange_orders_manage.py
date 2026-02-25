@@ -10,22 +10,12 @@ Handles:
 - Batch operations
 """
 
-from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
+from ..utils.datetime_utils import parse_bybit_ts as _parse_bybit_ts
 from ..utils.helpers import safe_float
 from ..utils.logger import get_module_logger
 from ..utils.time_range import TimeRange
-
-
-def _parse_bybit_ts(ms_str: str | None) -> datetime | None:
-    """Parse Bybit epoch-ms string to UTC-naive datetime."""
-    if not ms_str:
-        return None
-    try:
-        return datetime.fromtimestamp(int(ms_str) / 1000, tz=timezone.utc).replace(tzinfo=None)
-    except (ValueError, TypeError):
-        return None
 
 logger = get_module_logger(__name__)
 

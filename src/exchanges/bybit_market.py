@@ -42,7 +42,7 @@ def get_klines(
     cols = pd.Index(["timestamp", "open", "high", "low", "close", "volume", "turnover"])
     df = pd.DataFrame(data, columns=cols)
 
-    df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit="ms", utc=True)
+    df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit="ms", utc=True).dt.tz_localize(None)
     for col in ["open", "high", "low", "close", "volume", "turnover"]:
         df[col] = df[col].astype(float)
 

@@ -257,7 +257,7 @@ class EngineManager:
 
             if cooldown_until_str:
                 try:
-                    cooldown_until = datetime.fromisoformat(cooldown_until_str)
+                    cooldown_until = datetime.fromisoformat(cooldown_until_str).replace(tzinfo=None)
                 except ValueError:
                     cooldown_until = None
 
@@ -277,7 +277,7 @@ class EngineManager:
                     continue
 
             try:
-                started_at = datetime.fromisoformat(data.get("started_at", now.isoformat()))
+                started_at = datetime.fromisoformat(data.get("started_at", now.isoformat())).replace(tzinfo=None)
             except ValueError:
                 started_at = now
 

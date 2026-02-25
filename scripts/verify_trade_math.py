@@ -2026,7 +2026,7 @@ def write_progress_file(
 
 def write_audit_report(results: list[dict], report_path: Path):
     """Write comprehensive MATH_AUDIT_REPORT.md."""
-    from datetime import datetime as dt
+    from src.utils.datetime_utils import utc_now
 
     total = len(results)
     passes = sum(1 for r in results if r["status"] == "PASS")
@@ -2048,7 +2048,7 @@ def write_audit_report(results: list[dict], report_path: Path):
 
     lines = [
         f"# Full Math Audit Report - {total} Plays",
-        f"Date: {dt.now().strftime('%Y-%m-%d %H:%M')} | Checks/play: {checks_per_play} | Total checks: {total_checks}",
+        f"Date: {utc_now().strftime('%Y-%m-%d %H:%M')} UTC | Checks/play: {checks_per_play} | Total checks: {total_checks}",
         "",
         "## Summary",
         f"PASS: {passes}/{total} | FAIL: {fails}/{total} | ERROR: {errors}/{total}",

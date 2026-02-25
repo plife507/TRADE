@@ -1060,7 +1060,7 @@ class LiveDataProvider:
             for rec in df.to_dict('records'):
                 ts = rec['timestamp']
                 if not isinstance(ts, datetime):
-                    ts = datetime.fromisoformat(str(ts))
+                    ts = datetime.fromisoformat(str(ts)).replace(tzinfo=None)
                 # Force UTC-naive (fromisoformat/DuckDB may return tz-aware)
                 if ts.tzinfo is not None:
                     ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
@@ -1129,7 +1129,7 @@ class LiveDataProvider:
             for rec in df.to_dict('records'):
                 ts = rec['timestamp']
                 if not isinstance(ts, datetime):
-                    ts = datetime.fromisoformat(str(ts))
+                    ts = datetime.fromisoformat(str(ts)).replace(tzinfo=None)
                 # Force UTC-naive (fromisoformat/DuckDB may return tz-aware)
                 if ts.tzinfo is not None:
                     ts = ts.astimezone(timezone.utc).replace(tzinfo=None)

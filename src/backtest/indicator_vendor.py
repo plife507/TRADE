@@ -187,9 +187,9 @@ def _compute_vwap_with_datetime_index(
     # Convert ts_open to DatetimeIndex
     if pd.api.types.is_integer_dtype(ts_open):
         # Millisecond timestamps
-        dt_index = pd.to_datetime(ts_open, unit='ms', utc=True)
+        dt_index = pd.to_datetime(ts_open, unit='ms', utc=True)  # tz-aware for pandas_ta session boundaries
     else:
-        dt_index = pd.to_datetime(ts_open, utc=True)
+        dt_index = pd.to_datetime(ts_open, utc=True)  # tz-aware for pandas_ta session boundaries
 
     # Create DataFrame with DatetimeIndex
     df = pd.DataFrame({

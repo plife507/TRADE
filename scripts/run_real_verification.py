@@ -23,7 +23,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime
+from src.utils.datetime_utils import utc_now
 from pathlib import Path
 
 import yaml
@@ -287,7 +287,7 @@ def write_report(results: list[dict]) -> None:
     lines = [
         "# Real-Data Verification Report",
         "",
-        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"Generated: {utc_now().strftime('%Y-%m-%d %H:%M')} UTC",
         "",
         "## Summary",
         "",

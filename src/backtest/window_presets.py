@@ -153,15 +153,15 @@ def get_window_preset(
             group_presets = symbol_presets[tf_group]
             if preset_name in group_presets:
                 start_str, end_str = group_presets[preset_name]
-                return datetime.fromisoformat(start_str), datetime.fromisoformat(end_str)
-    
+                return datetime.fromisoformat(start_str).replace(tzinfo=None), datetime.fromisoformat(end_str).replace(tzinfo=None)
+
     # Fall back to defaults
     if tf_group in DEFAULT_PRESETS:
         group_presets = DEFAULT_PRESETS[tf_group]
         if preset_name in group_presets:
             start_str, end_str = group_presets[preset_name]
-            return datetime.fromisoformat(start_str), datetime.fromisoformat(end_str)
-    
+            return datetime.fromisoformat(start_str).replace(tzinfo=None), datetime.fromisoformat(end_str).replace(tzinfo=None)
+
     # Not found
     raise ValueError(
         f"Window preset '{preset_name}' not found for {symbol} {tf} (tf_group={tf_group}). "

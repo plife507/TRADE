@@ -137,9 +137,9 @@ class Bar:
         ts_open = d["ts_open"]
         ts_close = d["ts_close"]
         if isinstance(ts_open, str):
-            ts_open = datetime.fromisoformat(ts_open)
+            ts_open = datetime.fromisoformat(ts_open).replace(tzinfo=None)
         if isinstance(ts_close, str):
-            ts_close = datetime.fromisoformat(ts_close)
+            ts_close = datetime.fromisoformat(ts_close).replace(tzinfo=None)
         return cls(
             symbol=d["symbol"],
             tf=d["tf"],

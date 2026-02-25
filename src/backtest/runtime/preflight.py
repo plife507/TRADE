@@ -751,9 +751,9 @@ def _validate_exec_to_1m_mapping(
     if len(ts_1m_array) == 0:
         return False, "Empty 1m data array"
 
-    # Convert to pandas Timestamp for reliable epoch ms conversion
+    # Convert to epoch ms — use datetime_to_epoch_ms which handles naive UTC correctly
     ts_1m_epoch_ms = np.array([
-        int(pd.Timestamp(ts).timestamp() * 1000) for ts in ts_1m_array  # type: ignore[union-attr]
+        datetime_to_epoch_ms(pd.Timestamp(ts).to_pydatetime().replace(tzinfo=None)) for ts in ts_1m_array  # type: ignore[union-attr]
     ])
 
     # Build set of available 1m close times (for O(1) lookup)
@@ -765,8 +765,8 @@ def _validate_exec_to_1m_mapping(
     ws = window_start.replace(tzinfo=None) if window_start.tzinfo else window_start
     we = window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
 
-    ws_epoch_ms = int(ws.replace(tzinfo=timezone.utc).timestamp() * 1000)
-    we_epoch_ms = int(we.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    ws_epoch_ms = cast(int, datetime_to_epoch_ms(ws))
+    we_epoch_ms = cast(int, datetime_to_epoch_ms(we))
     exec_ms = exec_minutes * 60 * 1000
 
     # Align to first exec close at-or-after window_start
@@ -790,7 +790,7 @@ def _validate_exec_to_1m_mapping(
                     break
 
             if not found_nearby:
-                missing_ts = datetime.fromtimestamp(current_exec_ms / 1000, tz=timezone.utc)
+                missing_ts = datetime.fromtimestamp(current_exec_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
                 missing_mappings.append(missing_ts)
 
                 # Stop after finding first few missing (avoid huge list)
@@ -853,12 +853,12 @@ def run_preflight_gate(
     # ==========================================================================
     # STEP 0: Validate window dates (P2.2: prevent impossible data requests)
     # ==========================================================================
-    earliest_date = datetime(EARLIEST_BYBIT_DATE_YEAR, EARLIEST_BYBIT_DATE_MONTH, 1, tzinfo=timezone.utc)
-    # Ensure window dates are timezone-aware for comparison
-    if window_start.tzinfo is None:
-        window_start = window_start.replace(tzinfo=timezone.utc)
-    if window_end.tzinfo is None:
-        window_end = window_end.replace(tzinfo=timezone.utc)
+    earliest_date = datetime(EARLIEST_BYBIT_DATE_YEAR, EARLIEST_BYBIT_DATE_MONTH, 1)
+    # Ensure window dates are naive UTC for comparison
+    if window_start.tzinfo is not None:
+        window_start = window_start.astimezone(timezone.utc).replace(tzinfo=None)
+    if window_end.tzinfo is not None:
+        window_end = window_end.astimezone(timezone.utc).replace(tzinfo=None)
     if window_start < earliest_date:
         raise ValueError(
             f"Window start ({window_start.date()}) is before earliest available Bybit data "

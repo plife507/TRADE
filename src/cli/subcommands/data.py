@@ -58,8 +58,8 @@ def handle_data_sync(args) -> int:
         from src.tools.data_tools import sync_range_tool
         result = sync_range_tool(
             symbols=symbols,
-            start=datetime.fromisoformat(start),
-            end=datetime.fromisoformat(end),
+            start=datetime.fromisoformat(start).replace(tzinfo=None),
+            end=datetime.fromisoformat(end).replace(tzinfo=None),
         )
     else:
         from src.tools.data_tools import sync_symbols_tool

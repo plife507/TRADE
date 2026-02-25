@@ -19,6 +19,8 @@ Each line is a self-contained JSON object.
 
 import json
 from datetime import datetime
+
+from src.utils.datetime_utils import utc_now
 from pathlib import Path
 from typing import Any
 
@@ -58,9 +60,9 @@ class EventLogWriter:
         
         # Write header event
         self.log_event("log_started", {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": utc_now().isoformat(),
         })
-    
+
     def log_event(
         self,
         event_type: str,
@@ -81,7 +83,7 @@ class EventLogWriter:
         event = {
             "event_type": event_type,
             "event_id": self._event_count,
-            "timestamp": (timestamp or datetime.now()).isoformat(),
+            "timestamp": (timestamp or utc_now()).isoformat(),
             **data,
         }
         

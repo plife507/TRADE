@@ -405,6 +405,9 @@ class BarRecord:
             parsed_dt = pd.Timestamp(ts).to_pydatetime()
             assert isinstance(parsed_dt, datetime), f"Cannot parse timestamp: {ts}"
             ts = parsed_dt
+        # Enforce UTC-naive convention
+        if hasattr(ts, 'tzinfo') and ts.tzinfo is not None:
+            ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
         return cls(
             timestamp=ts,
             open=float(row.get("open", 0)), high=float(row.get("high", 0)),

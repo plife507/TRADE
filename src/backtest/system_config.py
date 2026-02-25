@@ -741,8 +741,8 @@ class SystemConfig:
             )
         
         # Parse ISO date strings
-        start = datetime.fromisoformat(start_str)
-        end = datetime.fromisoformat(end_str)
+        start = datetime.fromisoformat(start_str).replace(tzinfo=None)
+        end = datetime.fromisoformat(end_str).replace(tzinfo=None)
         
         return WindowConfig(
             window_name=window_name,

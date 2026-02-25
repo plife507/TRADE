@@ -118,19 +118,98 @@ Deterministic hashes flow through the entire pipeline for reproducibility and de
 
 ## Timestamp Convention (ENFORCED)
 
-All timestamps in the system are **UTC-naive** `datetime` objects. This is enforced at every data entry point (WebSocket, REST API, DuckDB).
+All timestamps in the system are **UTC-naive** `datetime` objects. This is enforced at every data entry point (WebSocket, REST API, DuckDB) and validated by **G17: Timestamp Correctness** on every commit.
+
+### Rules
 
 | Do | Don't |
 |----|-------|
 | `datetime.fromtimestamp(ms/1000, tz=utc).replace(tzinfo=None)` | `datetime.fromtimestamp(ms/1000, tz=utc)` (tz-aware) |
+| `datetime.fromisoformat(s).replace(tzinfo=None)` | `datetime.fromisoformat(s)` bare (may return tz-aware in 3.11+) |
 | `_datetime_to_epoch_ms(dt)` from `feed_store.py` | `int(dt.timestamp() * 1000)` (local-time bug on naive datetimes) |
+| `pd.to_datetime(..., utc=True).tz_localize(None)` | `pd.to_datetime(..., utc=True)` bare (tz-aware Series) |
 | `_np_dt64_to_epoch_ms(ts)` for numpy datetime64 | `np.array([...], dtype="datetime64[ms]")` from tz-aware datetimes |
 | `ts.astimezone(utc).replace(tzinfo=None)` at entry points | Passing tz-aware datetimes into FeedStore/Candle |
+| `utc_now()` from `datetime_utils.py` | `datetime.now()` or `datetime.utcnow()` |
 
-**Canonical conversion functions** (all in `src/backtest/runtime/feed_store.py`):
-- `_datetime_to_epoch_ms(dt)` — handles both tz-naive (timegm) and tz-aware (.timestamp())
-- `_np_dt64_to_epoch_ms(ts)` — numpy datetime64 → int64 ms
-- `_np_dt64_to_datetime(ts)` — numpy datetime64 → UTC-naive datetime
+### Canonical Functions
+
+| Function | Module | Purpose |
+|----------|--------|---------|
+| `utc_now()` | `src/utils/datetime_utils.py` | Current UTC time as naive datetime |
+| `datetime_to_epoch_ms(dt)` | `src/utils/datetime_utils.py` | Naive/aware datetime → epoch ms (uses `timegm` for naive) |
+| `parse_bybit_ts(ms_str)` | `src/utils/datetime_utils.py` | Bybit epoch-ms string → naive datetime (or None) |
+| `normalize_datetime(value)` | `src/utils/datetime_utils.py` | Parse string/datetime → naive UTC datetime |
+| `normalize_timestamp(ts)` | `src/utils/datetime_utils.py` | Strip tz-aware → naive UTC |
+| `normalize_datetime_for_storage(dt)` | `src/utils/datetime_utils.py` | → ISO string `YYYY-MM-DDTHH:MM:SS` (drops microseconds) |
+| `_datetime_to_epoch_ms(dt)` | `src/backtest/runtime/feed_store.py` | Hot-loop parity version (identical to `datetime_to_epoch_ms`) |
+| `_np_dt64_to_epoch_ms(ts)` | `src/backtest/runtime/feed_store.py` | numpy datetime64 → int64 ms |
+| `_np_dt64_to_datetime(ts)` | `src/backtest/runtime/feed_store.py` | numpy datetime64 → naive datetime |
+| `_normalize_to_naive_utc(dt)` | `src/data/historical_sync.py` | DuckDB tz-aware fetch → naive UTC |
+
+### Validation Gate: G17 Timestamp Correctness
+
+**Location**: `src/cli/validate_timestamps.py` — runs in Stage 0 of every validation tier (quick/standard/full).
+
+```bash
+python trade_cli.py validate module --module timestamps       # Standalone
+python trade_cli.py validate module --module timestamps --json # JSON output
+```
+
+**483 checks across 22 categories, <3 seconds:**
+
+| # | Category | Checks | What it catches |
+|---|----------|--------|-----------------|
+| 1 | Conversion Roundtrip | 6 | `datetime ↔ epoch_ms` breaks, timegm vs .timestamp() divergence |
+| 2 | Timezone Handling | 6 | tz-aware not stripped to naive, normalize_* regressions |
+| 3 | Bybit Parsing | 7 | `parse_bybit_ts()` edge cases: None, empty, invalid, whitespace |
+| 4 | FeedStore Integrity | 6 | Index roundtrips, binary search, ts_close alignment |
+| 5 | numpy/pandas Interop | 4 | Type boundary crossings, ns→ms truncation |
+| 6 | BarRecord Handling | 4 | `from_kline_data()`, `from_df_row()` produce naive UTC |
+| 7 | Artifact Serialization | 5 | Trade/EquityPoint `to_dict()` — no tz suffix in JSON |
+| 8 | Static Analysis (A-D) | ~325 | Scans all src/ for 4 banned patterns (see below) |
+| 9 | Multi-TF Alignment | 4 | `get_1m_indices_for_exec()` correctness |
+| 10 | DST / Edge Cases | 5 | DST immunity, midnight, year boundary, leap second |
+| 11 | Live Candle Conversion | 6 | KlineData → Candle, `end_time + 1` logic, fallback formula |
+| 12 | TimeRange Roundtrip | 8 | `from_dates()` → `to_bybit_params()` → `start_datetime` identity |
+| 13 | Order/Position REST | 5 | `parse_bybit_ts()` → Order/Position dataclass fields |
+| 14 | DuckDB Normalization | 6 | tz-aware fetch → `_normalize_to_naive_utc()` → naive |
+| 15 | WS Staleness Pattern | 6 | `time.time()` interval math, STALENESS_THRESHOLDS |
+| 16 | Sim Exchange Flow | 7 | Bar timestamp → Trade entry/exit → isoformat roundtrip |
+| 17 | Storage Serialization | 7 | `normalize_datetime_for_storage()` strftime behavior |
+| 18 | TimeRange Internals | 11 | `_to_utc()`, `from_timestamps_ms()`, `.timestamp()*1000` on aware |
+| 19 | All to_dict() Timestamps | 9 | AccountCurvePoint, BarRecord, TradeRecord, PortfolioSnapshot |
+| 20 | Tz-Aware DataFrame Strip | 6 | `pd.to_datetime(utc=True)` → FeedStore naive pipeline |
+| 21 | Self-Test Canary | 11 | Proves the gate itself detects known-bad inputs |
+| 22 | Tz-Aware Guards (E/F) | ~31 | Scans for unguarded `.fromisoformat()` and `pd.to_datetime(utc=True)` |
+
+### Banned Patterns (Static Scan)
+
+G17 Category 8 scans all `src/` files for these patterns (same approach as G16 logging lint):
+
+| Pattern | Banned Code | Fix |
+|---------|-------------|-----|
+| A | `datetime.utcnow()` | `utc_now()` from datetime_utils |
+| B | `.timestamp() * 1000` | `datetime_to_epoch_ms()` |
+| C | `datetime.fromtimestamp(x)` without `tz=` | Add `tz=timezone.utc` + `.replace(tzinfo=None)` |
+| D | `datetime.now()` bare | `utc_now()` from datetime_utils |
+| E | `.fromisoformat()` without `.replace(tzinfo=None)` | Add `.replace(tzinfo=None)` guard |
+| F | `pd.to_datetime(utc=True)` without `tz_localize(None)` | Add `.tz_localize(None)` downstream |
+
+**Exempt files** (canonical implementations or justified tz-aware usage):
+- `datetime_utils.py`, `feed_store.py`, `time_range.py` — contain canonical conversion functions
+- `validate_timestamps.py` — contains pattern strings in test messages
+- `indicator_vendor.py` — `pandas_ta.vwap()` requires tz-aware DatetimeIndex for session boundaries
+
+### Why timegm Matters
+
+On a non-UTC system (e.g., UTC-5), `datetime.timestamp()` on a **naive** datetime assumes local time:
+```python
+dt = datetime(2025, 6, 15, 12, 0, 0)          # naive, intended as UTC
+int(dt.timestamp() * 1000)                      # → 1750008600000 (WRONG — 5h shifted)
+timegm(dt.timetuple()) * 1000                   # → 1749990600000 (CORRECT)
+```
+This is the #1 bug the gate exists to prevent. `_datetime_to_epoch_ms()` uses `timegm()` specifically to avoid this.
 
 ## Trading Domain Rules
 

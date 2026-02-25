@@ -849,6 +849,12 @@ def _gate_logging_lint() -> GateResult:
     )
 
 
+def _gate_timestamps() -> GateResult:
+    """G17: Timestamp correctness — conversion, parsing, serialization."""
+    from src.cli.validate_timestamps import gate_timestamps
+    return gate_timestamps()
+
+
 def _gate_determinism() -> GateResult:
     """G14: Engine determinism - same input = same output."""
     start = time.perf_counter()
@@ -1562,6 +1568,7 @@ def _make_module_definitions(
         "determinism": [_gate_determinism],
         "coverage": [_gate_coverage_check],
         "lint": [_gate_logging_lint],
+        "timestamps": [_gate_timestamps],
         # Real-data modules
         "real-accumulation": [lambda: _gate_real_data_phase("accumulation", "RD1", w, t)],
         "real-markup": [lambda: _gate_real_data_phase("markup", "RD2", w, t)],
@@ -1573,7 +1580,7 @@ def _make_module_definitions(
 MODULE_NAMES = [
     "core", "risk", "audits", "operators", "structures", "complexity",
     "indicators", "patterns", "parity", "sim", "metrics", "determinism",
-    "coverage", "lint",
+    "coverage", "lint", "timestamps",
     "real-accumulation", "real-markup", "real-distribution", "real-markdown",
 ]
 
@@ -1774,8 +1781,8 @@ def run_validation(
         # Each stage is a list of gates that can run concurrently
         schedule: list[list[Callable[[], GateResult]]] = []
 
-        # Stage 0: YAML parse + logging lint (fast, parallel)
-        schedule.append([_gate_yaml_parse, _gate_logging_lint])
+        # Stage 0: YAML parse + logging lint + timestamp checks (fast, parallel)
+        schedule.append([_gate_yaml_parse, _gate_logging_lint, _gate_timestamps])
 
         # Stage 1: registry + parity audits (parallel)
         schedule.append([_gate_registry_contract, _gate_incremental_parity])
