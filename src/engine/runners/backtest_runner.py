@@ -43,9 +43,10 @@ Usage:
 from types import SimpleNamespace
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from ...utils.datetime_utils import utc_now
 from ..adapters.backtest import BacktestDataProvider, BacktestExchange
 from ..play_engine import PlayEngine
 
@@ -286,7 +287,7 @@ class BacktestRunner:
         Returns:
             BacktestResult with metrics and trades
         """
-        started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        started_at = utc_now()
 
         # Initialize data and exchange
         self._setup()
@@ -445,10 +446,15 @@ class BacktestRunner:
         })
 
         # Build result
-        finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        finished_at = utc_now()
         final_equity = post_close_equity
         trades = self._exchange_adapter.trades
         actual_bars_processed = last_bar_idx - start_idx + 1
+
+        # Extract exchange-side metrics (slippage, fees, fills, etc.)
+        exchange_metrics_dict = None
+        if self._exchange_adapter._sim_exchange is not None:
+            exchange_metrics_dict = self._exchange_adapter._sim_exchange.exchange_metrics.to_dict()
 
         return self._build_result(
             play_id=self._engine._play.name or "unknown",
@@ -469,6 +475,7 @@ class BacktestRunner:
             stop_reason=stop_reason,
             stop_classification=stop_classification,
             stop_reason_detail=stop_reason_detail,
+            exchange_metrics=exchange_metrics_dict,
         )
 
     def _setup(self) -> None:
@@ -710,6 +717,7 @@ class BacktestRunner:
         stop_reason: str | None = None,
         stop_classification: str | None = None,
         stop_reason_detail: str | None = None,
+        exchange_metrics: dict | None = None,
     ) -> BacktestResult:
         """
         Build BacktestResult from run data.
@@ -775,5 +783,6 @@ class BacktestRunner:
                 "stop_reason": stop_reason,
                 "stop_classification": stop_classification,
                 "stop_reason_detail": stop_reason_detail,
+                "exchange_metrics": exchange_metrics,
             },
         )

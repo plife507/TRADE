@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Callable
 
+from ...utils.datetime_utils import utc_now
+
 from ..play_engine import PlayEngine
 from src.backtest.runtime.timeframe import tf_minutes
 from ...core.safety import check_panic_and_halt, get_panic_state
@@ -84,7 +86,7 @@ class LiveRunnerStats:
     def duration_seconds(self) -> float:
         if self.started_at is None:
             return 0.0
-        end = self.stopped_at or datetime.now(timezone.utc).replace(tzinfo=None)
+        end = self.stopped_at or utc_now()
         return (end - self.started_at).total_seconds()
 
     def to_dict(self) -> dict:
@@ -222,14 +224,17 @@ class LiveRunner:
         with self._state_lock:
             valid_next = VALID_TRANSITIONS.get(self._state, set())
             if new_state not in valid_next:
+                valid_values = [s.value for s in valid_next]
                 logger.warning(
-                    f"Invalid state transition: {self._state.value} -> {new_state.value} "
-                    f"(valid: {[s.value for s in valid_next]})"
+                    "Invalid state transition: %s -> %s (valid: %s)",
+                    self._state.value,
+                    new_state.value,
+                    valid_values,
                 )
                 return False
             old_state = self._state
             self._state = new_state
-            logger.debug(f"State transition: {old_state.value} -> {new_state.value}")
+            logger.debug("State transition: %s -> %s", old_state.value, new_state.value)
             return True
 
     @property
@@ -261,16 +266,16 @@ class LiveRunner:
         Connects to WebSocket and begins processing candles.
         """
         if not self._transition_state(RunnerState.STARTING):
-            logger.warning(f"Cannot start: runner is {self._state.value}")
+            logger.warning("Cannot start: runner is %s", self._state.value)
             return
 
-        self._stats = LiveRunnerStats(started_at=datetime.now(timezone.utc).replace(tzinfo=None))
+        self._stats = LiveRunnerStats(started_at=utc_now())
         self._stop_event.clear()
         self._reconnect_attempts = 0
 
         # Set play_hash for debug log correlation + structlog context
         from ...backtest.execution_validation import compute_play_hash
-        from ...utils.logging_config import bind_engine_context
+        from ...utils.logging_config import bind_engine_context, clear_engine_context
         play_hash = compute_play_hash(self._engine.play)
         self._engine.set_play_hash(play_hash)
         bind_engine_context(
@@ -312,7 +317,7 @@ class LiveRunner:
                     tracker = get_daily_loss_tracker()
                     tracker.seed_from_exchange(em, symbol=self._engine.symbol)
             except Exception as e:
-                logger.warning(f"Failed to seed daily loss tracker (non-fatal): {e}")
+                logger.warning("Failed to seed daily loss tracker (non-fatal): %s", e)
 
             # G17.1: Initialize trade journal
             from ..journal import TradeJournal
@@ -331,12 +336,13 @@ class LiveRunner:
             logger.info("LiveRunner running")
 
         except Exception as e:
+            clear_engine_context()  # Clean up context on startup failure
             self._transition_state(RunnerState.ERROR)
             self._stats.errors.append(str(e))
             if self._debug:
-                logger.error(f"[DBG] Failed to start LiveRunner:\n{traceback.format_exc()}")
+                logger.error("[DBG] Failed to start LiveRunner:\n%s", traceback.format_exc())
             else:
-                logger.error(f"Failed to start LiveRunner: {e}")
+                logger.error("Failed to start LiveRunner: %s", e)
             raise
 
     async def stop(self) -> None:
@@ -368,15 +374,15 @@ class LiveRunner:
             em = getattr(self._engine._exchange, '_exchange_manager', None)
             if em is not None:
                 em.cancel_all_orders(self._engine.symbol)
-            logger.info(f"Cancelled open orders for {self._engine.symbol} on shutdown")
+            logger.info("Cancelled open orders for %s on shutdown", self._engine.symbol)
         except Exception as e:
-            logger.error(f"Failed to cancel orders on shutdown: {e}")
+            logger.error("Failed to cancel orders on shutdown: %s", e)
 
         # Disconnect from data provider
         await self._disconnect()
 
         self._transition_state(RunnerState.STOPPED)
-        self._stats.stopped_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        self._stats.stopped_at = utc_now()
 
         # Clear structlog engine context
         from ...utils.logging_config import clear_engine_context
@@ -436,13 +442,13 @@ class LiveRunner:
         self._bootstrap.subscribe_kline_intervals(self._engine.symbol, bybit_intervals)
 
         if self._debug:
-            logger.debug(f"[DBG] Bybit intervals subscribed: {bybit_intervals}")
+            logger.debug("[DBG] Bybit intervals subscribed: %s", bybit_intervals)
 
         # Register callback for candle closes
         if not self._kline_callback_registered:
             self._realtime_state.on_kline_update(self._on_kline_update)
             self._kline_callback_registered = True
-            logger.info(f"Registered kline callback for {self._engine.symbol}")
+            logger.info("Registered kline callback for %s", self._engine.symbol)
 
         # Connect LiveDataProvider
         data_provider = self._engine._data_provider
@@ -480,7 +486,7 @@ class LiveRunner:
                 # Query all positions via ExchangeManager (has get_all_positions)
                 positions = em.get_all_positions()
                 if positions:
-                    logger.info(f"Position sync: {len(positions)} existing position(s)")
+                    logger.info("Position sync: %s existing position(s)", len(positions))
                     for pos in positions:
                         if pos.symbol == self._engine.symbol:
                             self._has_existing_position = True
@@ -504,7 +510,7 @@ class LiveRunner:
             # immediate retry on next candle instead of waiting 5 minutes.
             return
 
-        self._last_reconcile_ts = datetime.now(timezone.utc).replace(tzinfo=None)
+        self._last_reconcile_ts = utc_now()
 
     async def _maybe_reconcile_positions(self) -> None:
         """
@@ -513,7 +519,7 @@ class LiveRunner:
         Syncs positions with exchange at regular intervals to catch any
         missed fills or out-of-sync state from WebSocket gaps.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = utc_now()
 
         # Skip if recently reconciled
         if self._last_reconcile_ts:
@@ -539,7 +545,7 @@ class LiveRunner:
                         self._position_sync_ok = True
 
         except Exception as e:
-            logger.warning(f"Periodic reconciliation failed (non-fatal): {e}")
+            logger.warning("Periodic reconciliation failed (non-fatal): %s", e)
 
     def _on_kline_update(self, kline_data) -> None:
         """
@@ -565,7 +571,7 @@ class LiveRunner:
         ts_open_epoch = float(kline_data.start_time)
         seen_for_tf = self._seen_candles.setdefault(kline_tf, set())
         if ts_open_epoch in seen_for_tf:
-            logger.debug(f"Duplicate candle skipped: {kline_tf} ts_open={ts_open_epoch}")
+            logger.debug("Duplicate candle skipped: %s ts_open=%s", kline_tf, ts_open_epoch)
             return
         seen_for_tf.add(ts_open_epoch)
         # Bound set size per TF
@@ -605,10 +611,10 @@ class LiveRunner:
             self._candle_queue.put_nowait((candle, kline_data.interval))
             depth = self._candle_queue.qsize()
             if depth > 10:
-                logger.warning(f"Candle queue depth={depth}, processing may be falling behind")
+                logger.warning("Candle queue depth=%s, processing may be falling behind", depth)
 
         except Exception as e:
-            logger.warning(f"Failed to convert kline to candle: {e}")
+            logger.warning("Failed to convert kline to candle: %s", e)
 
     async def _disconnect(self) -> None:
         """Disconnect from data provider."""
@@ -677,9 +683,9 @@ class LiveRunner:
                 # Network/connection errors: attempt reconnection
                 self._stats.errors.append(str(e))
                 if self._debug:
-                    logger.error(f"[DBG] Connection error:\n{traceback.format_exc()}")
+                    logger.error("[DBG] Connection error:\n%s", traceback.format_exc())
                 else:
-                    logger.error(f"Connection error in process loop: {e}")
+                    logger.error("Connection error in process loop: %s", e)
 
                 if self._on_error:
                     self._on_error(e)
@@ -696,9 +702,9 @@ class LiveRunner:
                 # Logic errors (TypeError, AttributeError, etc.): halt trading
                 self._stats.errors.append(str(e))
                 if self._debug:
-                    logger.error(f"[DBG] Fatal error in process loop:\n{traceback.format_exc()}")
+                    logger.error("[DBG] Fatal error in process loop:\n%s", traceback.format_exc())
                 else:
-                    logger.error(f"Fatal error in process loop (non-connection): {e}")
+                    logger.error("Fatal error in process loop (non-connection): %s", e)
 
                 if self._on_error:
                     self._on_error(e)
@@ -735,7 +741,7 @@ class LiveRunner:
             # No candle received in timeout period
             # Check if we've exceeded health threshold
             if self._stats.last_candle_ts:
-                since_last = (datetime.now(timezone.utc) - self._stats.last_candle_ts).total_seconds()
+                since_last = (utc_now() - self._stats.last_candle_ts).total_seconds()
                 expected_interval = tf_mins * 60
 
                 if since_last > expected_interval * 2:
@@ -755,7 +761,7 @@ class LiveRunner:
             raise
 
         except Exception as e:
-            logger.warning(f"Error waiting for candle: {e}")
+            logger.warning("Error waiting for candle: %s", e)
             return None
 
     async def _process_candle(self, candle, timeframe: str) -> None:
@@ -785,7 +791,7 @@ class LiveRunner:
 
         # Only evaluate signals on execution timeframe candles
         if timeframe.lower() != self._exec_tf:
-            logger.debug(f"Non-exec TF candle ({timeframe}), updated indicators only")
+            logger.debug("Non-exec TF candle (%s), updated indicators only", timeframe)
             return
 
         # Check if data provider is ready (warmup complete)
@@ -838,9 +844,9 @@ class LiveRunner:
             signal = self._engine.process_bar(-1)
         except Exception as e:
             if self._debug:
-                logger.error(f"[DBG] Error processing bar:\n{traceback.format_exc()}")
+                logger.error("[DBG] Error processing bar:\n%s", traceback.format_exc())
             else:
-                logger.error(f"Error processing bar: {e}")
+                logger.error("Error processing bar: %s", e)
             self._stats.errors.append(f"Process error: {e}")
             return
 
@@ -852,7 +858,7 @@ class LiveRunner:
 
         if signal is not None:
             self._stats.signals_generated += 1
-            self._stats.last_signal_ts = datetime.now(timezone.utc).replace(tzinfo=None)
+            self._stats.last_signal_ts = utc_now()
 
             logger.info(
                 f"Signal generated: {signal.direction} {self._engine.symbol} "
@@ -947,7 +953,7 @@ class LiveRunner:
                     )
             else:
                 self._stats.orders_failed += 1
-                logger.warning(f"Order failed: {result.error}")
+                logger.warning("Order failed: %s", result.error)
 
                 # G17.1: Record error in journal
                 if self._journal:
@@ -967,9 +973,9 @@ class LiveRunner:
             self._stats.orders_failed += 1
             self._stats.errors.append(f"Execute error: {e}")
             if self._debug:
-                logger.error(f"[DBG] Failed to execute signal:\n{traceback.format_exc()}")
+                logger.error("[DBG] Failed to execute signal:\n%s", traceback.format_exc())
             else:
-                logger.error(f"Failed to execute signal: {e}")
+                logger.error("Failed to execute signal: %s", e)
 
             # G17.1: Record exception in journal
             if self._journal:
@@ -1014,7 +1020,7 @@ class LiveRunner:
                 except queue.Empty:
                     break
             if drained:
-                logger.info(f"Drained {drained} stale candle(s) from queue before reconnect")
+                logger.info("Drained %s stale candle(s) from queue before reconnect", drained)
 
             await self._disconnect()
             await self._connect()
@@ -1025,7 +1031,7 @@ class LiveRunner:
             self._seen_candles.clear()
             logger.info("Reconnection successful")
         except Exception as e:
-            logger.error(f"Reconnection failed: {e}")
+            logger.error("Reconnection failed: %s", e)
             self._stats.errors.append(f"Reconnect error: {e}")
 
     def _run_safety_checks(self, additional_exposure: float = 0) -> bool:
@@ -1054,15 +1060,15 @@ class LiveRunner:
             passed, failures = checks.run_all_checks(additional_exposure=additional_exposure)
             if not passed:
                 for reason in failures:
-                    logger.error(f"Safety check failed: {reason}")
+                    logger.error("Safety check failed: %s", reason)
                     self._stats.errors.append(f"Safety: {reason}")
             return passed
 
         except Exception as e:
             if self._debug:
-                logger.error(f"[DBG] Safety checks exception (fail-closed):\n{traceback.format_exc()}")
+                logger.error("[DBG] Safety checks exception (fail-closed):\n%s", traceback.format_exc())
             else:
-                logger.error(f"Safety checks failed (fail-closed): {e}")
+                logger.error("Safety checks failed (fail-closed): %s", e)
             return False
 
     def _debug_dump_indicators(self, data_provider) -> None:
@@ -1079,9 +1085,10 @@ class LiveRunner:
 
         with cache._lock:
             indicator_snapshot = {}
+            bc = cache._bar_count
             for name, arr in cache._indicators.items():
-                if len(arr) > 0:
-                    val = arr[-1]
+                if bc > 0:
+                    val = arr[bc - 1]
                     try:
                         import math
                         if isinstance(val, (int, float)) and not math.isnan(val):
@@ -1097,7 +1104,8 @@ class LiveRunner:
 
         if indicator_snapshot:
             lines = [f"    {k}: {v}" for k, v in sorted(indicator_snapshot.items())]
-            logger.debug(f"[DBG] Indicator snapshot (exec TF, {len(indicator_snapshot)} values):\n" + "\n".join(lines))
+            snapshot_lines = "\n".join(lines)
+            logger.debug("[DBG] Indicator snapshot (exec TF, %s values):\n%s", len(indicator_snapshot), snapshot_lines)
         else:
             logger.debug("[DBG] Indicator snapshot: empty (no indicators computed)")
 
@@ -1121,7 +1129,7 @@ class LiveRunner:
                 if equity != self._peak_equity and equity > 0:
                     self._equity_initialized = True
                     self._peak_equity = equity
-                    logger.info(f"Equity initialized from exchange: ${equity:.2f}")
+                    logger.info("Equity initialized from exchange: $%.2f", equity)
                 return
 
             self._peak_equity = max(self._peak_equity, equity)
@@ -1149,7 +1157,7 @@ class LiveRunner:
                 self._stop_event.set()
 
         except Exception as e:
-            logger.error(f"Max drawdown check failed — halting trading: {e}")
+            logger.error("Max drawdown check failed — halting trading: %s", e)
             panic = get_panic_state()
             panic.trigger(f"Max drawdown check error: {e}")
             self._stop_event.set()

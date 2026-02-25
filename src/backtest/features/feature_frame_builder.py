@@ -17,7 +17,9 @@ import numpy as np
 import pandas as pd
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
+
+from ...utils.datetime_utils import utc_now
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
@@ -390,7 +392,7 @@ class FeatureFrameBuilder:
         # Cache version info (computed once per build)
         pandas_ta_ver = get_pandas_ta_version()
         code_ver = get_code_version()
-        computed_at = datetime.now(timezone.utc)
+        computed_at = utc_now()
         
         # Extract OHLCV columns (cast to Series for type safety)
         _open = cast(pd.Series, df["open"])

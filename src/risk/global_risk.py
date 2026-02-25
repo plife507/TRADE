@@ -175,6 +175,7 @@ class GlobalRiskView:
         self._hwm_timestamp: float = 0.0
 
         # G1-4: WebSocket health tracking for fail-closed behavior
+        # Uses time.monotonic() — immune to NTP backward clock jumps
         self._ws_unhealthy_since: float | None = None
         self._ws_unhealthy_threshold_sec: float = 30.0  # Block trading after 30s unhealthy
     
@@ -232,9 +233,9 @@ class GlobalRiskView:
                 snapshot.total_wallet_balance = balance.get('total', 0)
                 snapshot.total_available_balance = balance.get('available', 0)
                 snapshot.total_equity = balance.get('total', 0)  # Approximate
-                self.logger.debug(f"Risk snapshot enriched from REST: balance=${snapshot.total_wallet_balance:.2f}")
+                self.logger.debug("Risk snapshot enriched from REST: balance=$%.2f", snapshot.total_wallet_balance)
         except Exception as e:
-            self.logger.warning(f"Failed to enrich risk snapshot from REST: {e}")
+            self.logger.warning("Failed to enrich risk snapshot from REST: %s", e)
         
         return snapshot
     
@@ -245,7 +246,8 @@ class GlobalRiskView:
         Returns:
             Tuple of (is_healthy, reason_if_unhealthy)
         """
-        now = time.time()
+        # monotonic() can't go backward — immune to NTP clock corrections
+        now = time.monotonic()
 
         try:
             # Check if WebSocket is connected and receiving data
@@ -264,8 +266,9 @@ class GlobalRiskView:
                     metrics_stale = self.state.is_account_metrics_stale(30.0)
                     wallet_stale = self.state.is_wallet_stale(max_age_seconds=30.0)
                     self.logger.warning(
-                        f"WS became unhealthy: private_connected={priv} "
-                        f"metrics_stale={metrics_stale} wallet_stale={wallet_stale}"
+                        "WS became unhealthy: private_connected=%s "
+                        "metrics_stale=%s wallet_stale=%s",
+                        priv, metrics_stale, wallet_stale,
                     )
 
                 unhealthy_duration = now - self._ws_unhealthy_since
@@ -282,7 +285,7 @@ class GlobalRiskView:
 
         except Exception as e:
             # Fail-closed: if we can't check health, block trading
-            self.logger.warning(f"Could not check WebSocket health: {e}")
+            self.logger.warning("Could not check WebSocket health: %s", e)
             if self._ws_unhealthy_since is None:
                 self._ws_unhealthy_since = now
             return False, f"WebSocket health check failed: {e}. Blocking trades for safety."
@@ -431,7 +434,7 @@ class GlobalRiskView:
         for key, value in kwargs.items():
             if hasattr(self.limits, key):
                 setattr(self.limits, key, value)
-                self.logger.info(f"Updated risk limit: {key} = {value}")
+                self.logger.info("Updated risk limit: %s = %s", key, value)
     
     def get_equity_drawdown(self) -> dict[str, float]:
         """Get current drawdown from high-water mark."""

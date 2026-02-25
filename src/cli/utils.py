@@ -9,7 +9,9 @@ Contains:
 """
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime
+
+from ..utils.datetime_utils import utc_now
 from typing import Any
 
 from rich.console import Console
@@ -270,7 +272,7 @@ def _parse_datetime_input(value: str, default_now: bool = False) -> datetime | N
     """Parse a datetime string. If default_now=True, blank input returns current datetime."""
     value = value.strip()
     if not value:
-        return datetime.now(timezone.utc).replace(tzinfo=None) if default_now else None
+        return utc_now() if default_now else None
     
     formats = ["%Y-%m-%d", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"]
     
@@ -293,7 +295,7 @@ def select_time_range_cli(
     from datetime import timedelta
     
     # Calculate the earliest allowed date
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = utc_now()
     earliest = now - timedelta(days=max_days)
     earliest_str = earliest.strftime("%Y-%m-%d")
     
@@ -333,7 +335,7 @@ def _prompt_custom_date_range(max_days: int, endpoint_name: str) -> TimeRangeSel
     """Prompt user for custom start and end dates."""
     from datetime import timedelta
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = utc_now()
     earliest = now - timedelta(days=max_days)
     earliest_str = earliest.strftime("%Y-%m-%d")
     now_str = now.strftime("%Y-%m-%d %H:%M")
@@ -530,7 +532,7 @@ def run_long_action(action_key: str, tool_fn, *args, cancel_store: bool = True, 
                     store = get_historical_store()
                     store.cancel()
                 except Exception as e:
-                    logger.debug(f"Could not cancel data store: {e}")
+                    logger.debug("Could not cancel data store: %s", e)
 
             logger.warning("[tool.call.cancelled] tool_name=%s elapsed_ms=%.1f reason=user_interrupt", tool_name, elapsed_ms)
 

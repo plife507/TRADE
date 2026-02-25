@@ -231,7 +231,7 @@ class IndicatorMetadata:
     # Versioning
     pandas_ta_version: str = field(default_factory=get_pandas_ta_version)
     code_version: str = field(default_factory=get_code_version)
-    computed_at_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    computed_at_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     def __post_init__(self):
         """Validate metadata fields."""

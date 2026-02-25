@@ -334,13 +334,13 @@ class TimeRange:
     
     @property
     def start_datetime(self) -> datetime:
-        """Get start time as datetime (UTC)."""
-        return datetime.fromtimestamp(self.start_ms / 1000, tz=timezone.utc)
-    
+        """Get start time as UTC-naive datetime."""
+        return datetime.fromtimestamp(self.start_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+
     @property
     def end_datetime(self) -> datetime:
-        """Get end time as datetime (UTC)."""
-        return datetime.fromtimestamp(self.end_ms / 1000, tz=timezone.utc)
+        """Get end time as UTC-naive datetime."""
+        return datetime.fromtimestamp(self.end_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
     
     @property
     def duration_hours(self) -> float:

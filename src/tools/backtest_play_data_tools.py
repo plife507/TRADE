@@ -8,12 +8,12 @@ Extracted from backtest_play_tools.py:
 """
 
 import traceback
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from .shared import ToolResult
-from ..utils.datetime_utils import datetime_to_epoch_ms, normalize_timestamp
+from ..utils.datetime_utils import datetime_to_epoch_ms, normalize_timestamp, utc_now
 from ..utils.timeframes import validate_canonical_tf
 from ..config.constants import (
     DataEnv,
@@ -134,14 +134,14 @@ def backtest_indicators_tool(
             result_data["computed_info"] = {"warning": "Not yet supported"}
 
         # Log output
-        logger.info(f"Indicator key discovery for {play_id}:")
+        logger.info("Indicator key discovery for %s:", play_id)
         for tf in sorted(all_tfs):
             if tf in declared_keys_by_role:
                 declared = declared_keys_by_role[tf]
                 expanded = expanded_keys_by_role[tf]
-                logger.info(f"  {tf}:")
-                logger.info(f"    declared: {declared}")
-                logger.info(f"    expanded: {expanded}")
+                logger.info("  %s:", tf)
+                logger.info("    declared: %s", declared)
+                logger.info("    expanded: %s", expanded)
 
         return ToolResult(
             success=True,
@@ -151,7 +151,7 @@ def backtest_indicators_tool(
         )
 
     except Exception as e:
-        logger.error(f"Indicator discovery failed: {e}\n{traceback.format_exc()}")
+        logger.error("Indicator discovery failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Indicator discovery error: {e}",
@@ -232,7 +232,7 @@ def backtest_data_fix_tool(
         def progress_callback(sym: str, tf: str, msg: str):
             nonlocal progress_lines_count
             progress_lines_count += 1
-            logger.info(f"  [{sym} {tf}] {msg}")
+            logger.info("  [%s %s] %s", sym, tf, msg)
 
         operations: list[dict[str, Any]] = []
 
@@ -241,7 +241,7 @@ def backtest_data_fix_tool(
         original_start = start
 
         if end is None:
-            end = datetime.now(timezone.utc).replace(tzinfo=None)
+            end = utc_now()
         else:
             end = normalize_timestamp(end)
 
@@ -253,7 +253,7 @@ def backtest_data_fix_tool(
                 # Clamp start to end - max_lookback_days
                 start = end - timedelta(days=max_lookback_days)
                 bounds_applied = True
-                logger.info(f"Data-fix: Clamped start from {original_start} to {start} (max_lookback_days={max_lookback_days})")
+                logger.info("Data-fix: Clamped start from %s to %s (max_lookback_days=%s)", original_start, start, max_lookback_days)
 
         # Build bounds info
         bounds = {
@@ -263,9 +263,9 @@ def backtest_data_fix_tool(
             "applied": bounds_applied,
         }
 
-        logger.info(f"Data fix for {play_id}: env={env}, db={db_path}, symbol={symbol}, tfs={tfs}")
+        logger.info("Data fix for %s: env=%s, db=%s, symbol=%s, tfs=%s", play_id, env, db_path, symbol, tfs)
         if bounds_applied:
-            logger.info(f"  Bounds applied: start clamped to {start}")
+            logger.info("  Bounds applied: start clamped to %s", start)
 
         # Sync range if start provided
         if start and not sync_to_now:
@@ -356,7 +356,7 @@ def backtest_data_fix_tool(
             )
 
     except Exception as e:
-        logger.error(f"Data fix failed: {e}\n{traceback.format_exc()}")
+        logger.error("Data fix failed: %s\n%s", e, traceback.format_exc())
         return ToolResult(
             success=False,
             error=f"Data fix error: {e}",

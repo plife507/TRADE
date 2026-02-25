@@ -10,11 +10,22 @@ Handles:
 - Batch operations
 """
 
+from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
 from ..utils.helpers import safe_float
 from ..utils.logger import get_module_logger
 from ..utils.time_range import TimeRange
+
+
+def _parse_bybit_ts(ms_str: str | None) -> datetime | None:
+    """Parse Bybit epoch-ms string to UTC-naive datetime."""
+    if not ms_str:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ms_str) / 1000, tz=timezone.utc).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
 
 logger = get_module_logger(__name__)
 
@@ -52,14 +63,14 @@ def get_open_orders(manager: "ExchangeManager", symbol: str | None = None) -> li
                 trigger_by=order.get("triggerBy"),
                 take_profit=safe_float(order.get("takeProfit")) if order.get("takeProfit") else None,
                 stop_loss=safe_float(order.get("stopLoss")) if order.get("stopLoss") else None,
-                created_time=order.get("createdTime"),
-                updated_time=order.get("updatedTime"),
+                created_time=_parse_bybit_ts(order.get("createdTime")),
+                updated_time=_parse_bybit_ts(order.get("updatedTime")),
             ))
         
         return orders
         
     except Exception as e:
-        manager.logger.error(f"Get open orders failed: {e}")
+        manager.logger.error("Get open orders failed: %s", e)
         return []
 
 
@@ -81,10 +92,10 @@ def cancel_order(
     try:
         manager._validate_trading_operation()
         manager.bybit.cancel_order(symbol=symbol, order_id=order_id, order_link_id=order_link_id)
-        manager.logger.info(f"Cancelled order {order_id or order_link_id} for {symbol}")
+        manager.logger.info("Cancelled order %s for %s", order_id or order_link_id, symbol)
         return True
     except Exception as e:
-        manager.logger.error(f"Cancel order failed: {e}")
+        manager.logger.error("Cancel order failed: %s", e)
         return False
 
 
@@ -95,7 +106,7 @@ def cancel_all_orders(manager: "ExchangeManager", symbol: str | None = None) -> 
         
         orders = get_open_orders(manager, symbol)
         if not orders:
-            manager.logger.debug(f"No orders to cancel{f' for {symbol}' if symbol else ''}")
+            manager.logger.debug("No orders to cancel%s", f" for {symbol}" if symbol else "")
             return True
         
         if symbol is None:
@@ -106,21 +117,21 @@ def cancel_all_orders(manager: "ExchangeManager", symbol: str | None = None) -> 
                     manager.bybit.cancel_all_orders(symbol=sym)
                     success_count += 1
                 except Exception as e:
-                    manager.logger.warning(f"Failed to cancel orders for {sym}: {e}")
+                    manager.logger.warning("Failed to cancel orders for %s: %s", sym, e)
             
             total = len(symbols)
             if success_count < total:
-                manager.logger.error(f"Partial cancel: only {success_count}/{total} symbol(s) succeeded")
+                manager.logger.error("Partial cancel: only %s/%s symbol(s) succeeded", success_count, total)
             else:
-                manager.logger.info(f"Cancelled orders for all {total} symbol(s)")
+                manager.logger.info("Cancelled orders for all %s symbol(s)", total)
             return success_count == total
         else:
             manager.bybit.cancel_all_orders(symbol)
-            manager.logger.warning(f"Cancelled all orders for {symbol}")
+            manager.logger.warning("Cancelled all orders for %s", symbol)
             return True
             
     except Exception as e:
-        manager.logger.error(f"Cancel all orders failed: {e}")
+        manager.logger.error("Cancel all orders failed: %s", e)
         return False
 
 
@@ -158,11 +169,11 @@ def amend_order(
             kwargs["trigger_price"] = str(trigger_price)
 
         manager.bybit.amend_order(**kwargs)
-        manager.logger.info(f"Amended order {order_id or order_link_id} for {symbol}")
+        manager.logger.info("Amended order %s for %s", order_id or order_link_id, symbol)
         return True
         
     except Exception as e:
-        manager.logger.error(f"Amend order failed: {e}")
+        manager.logger.error("Amend order failed: %s", e)
         return False
 
 
@@ -211,7 +222,7 @@ def close_position(
                 # Non-fatal: position is closed, stale conditionals will be
                 # rejected by exchange (reduce_only on a closed position).
                 manager.logger.warning(
-                    f"Position closed but failed to cancel conditionals for {symbol}: {cancel_err}"
+                    "Position closed but failed to cancel conditionals for %s: %s", symbol, cancel_err
                 )
 
         logger.info(
@@ -227,7 +238,7 @@ def close_position(
         )
 
     except Exception as e:
-        manager.logger.error(f"Close position failed for {symbol}: {e}")
+        manager.logger.error("Close position failed for %s: %s", symbol, e)
         return OrderResult(success=False, error=str(e))
 
 
@@ -243,7 +254,7 @@ def close_all_positions(manager: "ExchangeManager") -> list["OrderResult"]:
     results = []
     positions = manager.get_all_positions()
     
-    manager.logger.warning(f"Closing all positions ({len(positions)} open)")
+    manager.logger.warning("Closing all positions (%s open)", len(positions))
     
     for pos in positions:
         result = close_position(manager, pos.symbol)
@@ -267,7 +278,7 @@ def get_order_history(
         result = manager.bybit.get_order_history(time_range=time_range, symbol=symbol, limit=limit)
         return result.get("list", [])
     except Exception as e:
-        manager.logger.error(f"Get order history failed: {e}")
+        manager.logger.error("Get order history failed: %s", e)
         return []
 
 
@@ -281,7 +292,7 @@ def get_executions(
     try:
         return manager.bybit.get_executions(time_range=time_range, symbol=symbol, limit=limit)
     except Exception as e:
-        manager.logger.error(f"Get executions failed: {e}")
+        manager.logger.error("Get executions failed: %s", e)
         return []
 
 
@@ -342,7 +353,7 @@ def batch_market_orders(
         qty = inst.calculate_qty(manager, symbol, order["usd_amount"], price)
 
         if qty <= 0:
-            manager.logger.warning(f"Batch order skipped: qty={qty} for {symbol} (usd_amount={order['usd_amount']})")
+            manager.logger.warning("Batch order skipped: qty=%s for %s (usd_amount=%s)", qty, symbol, order['usd_amount'])
             results_skipped.append(OrderResult(success=False, error=f"Calculated qty <= 0 for {symbol}"))
             continue
 
@@ -371,11 +382,11 @@ def batch_market_orders(
                 order_type="Market", error=item.get("msg") if not is_success else None,
             ))
         
-        manager.logger.info(f"Batch created {sum(1 for r in results if r.success)}/{len(results)} market orders")
+        manager.logger.info("Batch created %s/%s market orders", sum(1 for r in results if r.success), len(results))
         return results_skipped + results
         
     except Exception as e:
-        manager.logger.error(f"Batch market orders failed: {e}")
+        manager.logger.error("Batch market orders failed: %s", e)
         return [OrderResult(success=False, error=str(e))]
 
 
@@ -418,7 +429,7 @@ def batch_limit_orders(
         qty = inst.calculate_qty(manager, symbol, order["usd_amount"], price)
 
         if qty <= 0:
-            manager.logger.warning(f"Batch limit order skipped: qty={qty} for {symbol} (usd_amount={order['usd_amount']})")
+            manager.logger.warning("Batch limit order skipped: qty=%s for %s (usd_amount=%s)", qty, symbol, order['usd_amount'])
             results_skipped.append(OrderResult(success=False, error=f"Calculated qty <= 0 for {symbol}"))
             continue
         
@@ -453,11 +464,11 @@ def batch_limit_orders(
                 order_type="Limit", error=item.get("msg") if not is_success else None,
             ))
 
-        manager.logger.info(f"Batch created {sum(1 for r in results if r.success)}/{len(results)} limit orders")
+        manager.logger.info("Batch created %s/%s limit orders", sum(1 for r in results if r.success), len(results))
         return results_skipped + results
 
     except Exception as e:
-        manager.logger.error(f"Batch limit orders failed: {e}")
+        manager.logger.error("Batch limit orders failed: %s", e)
         return results_skipped + [OrderResult(success=False, error=str(e))]
 
 
@@ -481,10 +492,10 @@ def batch_cancel_orders(
     try:
         result = manager.bybit.batch_cancel_orders(orders)
         results = [item.get("code") == 0 for item in result.get("list", [])]
-        manager.logger.info(f"Batch cancelled {sum(results)}/{len(results)} orders")
+        manager.logger.info("Batch cancelled %s/%s orders", sum(results), len(results))
         return results
     except Exception as e:
-        manager.logger.error(f"Batch cancel failed: {e}")
+        manager.logger.error("Batch cancel failed: %s", e)
         return [False] * len(orders)
 
 
@@ -519,9 +530,9 @@ def batch_amend_orders(
     try:
         result = manager.bybit.batch_amend_orders(formatted_orders)
         results = [item.get("code") == 0 for item in result.get("list", [])]
-        manager.logger.info(f"Batch amended {sum(results)}/{len(results)} orders")
+        manager.logger.info("Batch amended %s/%s orders", sum(results), len(results))
         return results
     except Exception as e:
-        manager.logger.error(f"Batch amend failed: {e}")
+        manager.logger.error("Batch amend failed: %s", e)
         return [False] * len(orders)
 

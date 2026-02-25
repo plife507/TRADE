@@ -18,8 +18,9 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 
+from ..utils.datetime_utils import utc_now
 from .exchange_manager import ExchangeManager, OrderResult
 from .risk_manager import RiskManager, Signal, RiskCheckResult
 from .position_manager import PositionManager
@@ -41,7 +42,7 @@ class ExecutionResult:
 
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
+            self.timestamp = utc_now()
 
     def to_dict(self) -> dict:
         return {
@@ -179,7 +180,7 @@ class OrderExecutor:
                 # Auto-cleanup failed orders to prevent memory leak
                 del self._pending_orders[order_id]
 
-        self.logger.debug(f"Order {order_id} status: {order_data.status}")
+        self.logger.debug("Order %s status: %s", order_id, order_data.status)
 
     def _on_execution(self, exec_data):
         """Handle execution update from WebSocket."""
@@ -202,7 +203,7 @@ class OrderExecutor:
         # Idempotency check: skip if already recorded via REST
         with self._recorded_orders_lock:
             if order_id in self._recorded_orders:
-                self.logger.debug(f"Order {order_id} already recorded via REST, skipping WS recording")
+                self.logger.debug("Order %s already recorded via REST, skipping WS recording", order_id)
                 return
             self._recorded_orders[order_id] = None
             if len(self._recorded_orders) > self._recorded_orders_max:
@@ -211,8 +212,8 @@ class OrderExecutor:
         self.position.record_execution_from_ws(exec_data)
 
         self.logger.info(
-            f"Execution received via WS: {exec_data.symbol} "
-            f"{exec_data.side} {exec_data.qty} @ {exec_data.price}"
+            "Execution received via WS: %s %s %s @ %s",
+            exec_data.symbol, exec_data.side, exec_data.qty, exec_data.price,
         )
 
     # ==================== Core Execution ====================
@@ -266,7 +267,7 @@ class OrderExecutor:
         # SAFETY GUARD RAIL: Validate trading mode consistency FIRST
         is_valid, error_msg = self._validate_trading_mode()
         if not is_valid:
-            self.logger.error(f"Trading mode validation failed: {error_msg}")
+            self.logger.error("Trading mode validation failed: %s", error_msg)
             # Create a minimal risk check result for the error case
             from .risk_manager import RiskCheckResult
             risk_result = RiskCheckResult(allowed=False, reason=error_msg)
@@ -279,7 +280,7 @@ class OrderExecutor:
             self._invoke_callbacks(result)
             return result
 
-        self.logger.info(f"Executing signal: {signal.symbol} {signal.direction} ${signal.size_usdt:.2f}")
+        self.logger.info("Executing signal: %s %s $%.2f", signal.symbol, signal.direction, signal.size_usdt)
 
         # Emit order.execute.start event
         self.logger.info(
@@ -294,7 +295,7 @@ class OrderExecutor:
         risk_result = self.risk.check(signal, portfolio)
 
         if not risk_result.allowed:
-            self.logger.warning(f"Signal blocked by risk manager: {risk_result.reason}")
+            self.logger.warning("Signal blocked by risk manager: %s", risk_result.reason)
 
             # Emit order.execute.end event (blocked by risk)
             self.logger.warning(
@@ -314,7 +315,7 @@ class OrderExecutor:
 
         # Log any warnings
         for warning in (risk_result.warnings or []):
-            self.logger.warning(f"Risk warning: {warning}")
+            self.logger.warning("Risk warning: %s", warning)
 
         # Determine execution size
         exec_size = risk_result.adjusted_size or signal.size_usdt
@@ -383,7 +384,7 @@ class OrderExecutor:
                 return result
 
         except Exception as e:
-            self.logger.error(f"Order execution failed: {e}")
+            self.logger.error("Order execution failed: %s", e)
 
             # Emit order.execute.end event (exception)
             self.logger.error(
@@ -436,7 +437,7 @@ class OrderExecutor:
                 should_record = False
                 with self._recorded_orders_lock:
                     if order_result.order_id in self._recorded_orders:
-                        self.logger.debug(f"Order {order_result.order_id} already recorded, skipping")
+                        self.logger.debug("Order %s already recorded, skipping", order_result.order_id)
                     else:
                         self._recorded_orders[order_result.order_id] = None
                         if len(self._recorded_orders) > self._recorded_orders_max:
@@ -579,7 +580,7 @@ class OrderExecutor:
                 del self._pending_orders[order_id]
 
         if to_remove:
-            self.logger.debug(f"Cleaned up {len(to_remove)} old pending orders")
+            self.logger.debug("Cleaned up %s old pending orders", len(to_remove))
 
     def _cleanup_completed_order(self, order_id: str) -> None:
         """
@@ -650,7 +651,7 @@ class OrderExecutor:
                         f"Order {order_id} not found in open orders (REST fallback) - may be filled"
                     )
             except Exception as e:
-                self.logger.warning(f"REST fallback query failed for order {order_id}: {e}")
+                self.logger.warning("REST fallback query failed for order %s: %s", order_id, e)
 
         return pending
 
@@ -773,7 +774,7 @@ class OrderExecutor:
             try:
                 callback(result)
             except Exception as e:
-                self.logger.error(f"Execution callback error: {e}")
+                self.logger.error("Execution callback error: %s", e)
 
     # ==================== Diagnostics ====================
 

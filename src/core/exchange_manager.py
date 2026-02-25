@@ -14,6 +14,7 @@ This module delegates to helper modules:
 - exchange_positions: Position queries and management
 """
 
+from datetime import datetime
 from typing import Any
 from dataclasses import dataclass
 from enum import Enum
@@ -74,7 +75,9 @@ class Position:
     adl_rank: int | None = None
     is_reduce_only: bool = False
     cumulative_pnl: float | None = None
-    
+    created_time: datetime | None = None
+    updated_time: datetime | None = None
+
     @property
     def is_open(self) -> bool:
         return abs(self.size) > 0
@@ -99,9 +102,9 @@ class Order:
     trigger_by: str | None = None
     take_profit: float | None = None
     stop_loss: float | None = None
-    created_time: str | None = None
-    updated_time: str | None = None
-    
+    created_time: datetime | None = None
+    updated_time: datetime | None = None
+
     @property
     def is_conditional(self) -> bool:
         return self.trigger_price is not None
@@ -195,8 +198,9 @@ class ExchangeManager:
             key_source = "BYBIT_LIVE_API_KEY" if self.config.bybit.live_api_key else "MISSING"
         
         self.logger.info(
-            f"ExchangeManager initialized: API={mode}, base_url={self.bybit.base_url}, "
-            f"trading_mode={trading_mode}, auth={key_status}, key_source={key_source}"
+            "ExchangeManager initialized: API=%s, base_url=%s, "
+            "trading_mode=%s, auth=%s, key_source=%s",
+            mode, self.bybit.base_url, trading_mode, key_status, key_source,
         )
         
         self._instruments: dict[str, dict] = {}
@@ -215,7 +219,7 @@ class ExchangeManager:
                 self.bybit.set_disconnect_cancel_all(time_window=10)
                 self.logger.info("DCP activated: exchange will cancel orders after 10s disconnect")
             except Exception as e:
-                self.logger.warning(f"Failed to activate DCP (non-fatal): {e}")
+                self.logger.warning("Failed to activate DCP (non-fatal): %s", e)
 
         self._initialized = True
 
@@ -239,13 +243,14 @@ class ExchangeManager:
                     config_maker = DEFAULTS.fees.maker_rate
                     if abs(taker - config_taker) > 0.00001 or abs(maker - config_maker) > 0.00001:
                         self.logger.warning(
-                            f"Fee rate mismatch! Exchange: taker={taker:.6f} maker={maker:.6f}, "
-                            f"Config: taker={config_taker:.6f} maker={config_maker:.6f}"
+                            "Fee rate mismatch! Exchange: taker=%.6f maker=%.6f, "
+                            "Config: taker=%.6f maker=%.6f",
+                            taker, maker, config_taker, config_maker,
                         )
                     break  # Only check first result
                 self._actual_fee_rates = fee_info
         except Exception as e:
-            self.logger.debug(f"Could not query fee rates (non-fatal): {e}")
+            self.logger.debug("Could not query fee rates (non-fatal): %s", e)
     
     def _validate_trading_operation(self) -> None:
         """SAFETY GUARD RAIL: Validate trading mode consistency."""
@@ -291,11 +296,11 @@ class ExchangeManager:
             if coins:
                 coin_names = [c.get("coin", "?") for c in coins]
                 self.logger.warning(
-                    f"No USDT in balance response. Coins present: {coin_names}"
+                    "No USDT in balance response. Coins present: %s", coin_names
                 )
             else:
                 self.logger.warning(
-                    f"Empty coin list in balance response: {balance}"
+                    "Empty coin list in balance response: %s", balance
                 )
 
         return {"total": total, "available": available, "used": total - available}
@@ -563,7 +568,7 @@ class ExchangeManager:
         try:
             return self.bybit.get_time_offset()
         except Exception as e:
-            self.logger.debug(f"Failed to get server time offset: {e}, using 0")
+            self.logger.debug("Failed to get server time offset: %s, using 0", e)
             return 0
     
     def test_connection(self) -> dict[str, Any]:

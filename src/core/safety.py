@@ -208,7 +208,7 @@ class PanicState:
         """Trigger panic state."""
         with self._lock:
             self._triggered = True
-            self._trigger_time = datetime.now(timezone.utc)
+            self._trigger_time = datetime.now(timezone.utc).replace(tzinfo=None)
             self._reason = reason
 
         # Execute callbacks (copy-under-lock for thread safety)
@@ -286,7 +286,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
         exchange_manager.bybit.set_disconnect_cancel_all(time_window=1)
         logger.info("DCP set to 1s for panic close")
     except Exception as e:
-        logger.warning(f"Failed to set DCP during panic (continuing): {e}")
+        logger.warning("Failed to set DCP during panic (continuing): %s", e)
 
     # Step 1: Cancel all open orders (with retry)
     for attempt in range(1, PANIC_RETRY_ATTEMPTS + 1):
@@ -302,7 +302,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
                     results["errors"].append(error)
                     logger.error(error)
                 else:
-                    logger.warning(f"Cancel orders attempt {attempt} returned False, retrying")
+                    logger.warning("Cancel orders attempt %s returned False, retrying", attempt)
                     time.sleep(PANIC_RETRY_DELAY)
         except Exception as e:
             if attempt == PANIC_RETRY_ATTEMPTS:
@@ -310,7 +310,7 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
                 results["errors"].append(error)
                 logger.error(error)
             else:
-                logger.warning(f"Cancel orders attempt {attempt} failed, retrying: {e}")
+                logger.warning("Cancel orders attempt %s failed, retrying: %s", attempt, e)
                 time.sleep(PANIC_RETRY_DELAY)
 
     # Step 2: Close all positions (with retry per position)
@@ -319,22 +319,22 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
         for result in close_results:
             if result.success:
                 results["positions_closed"].append(result.symbol)
-                logger.info(f"Closed position: {result.symbol}")
+                logger.info("Closed position: %s", result.symbol)
             else:
                 # Retry failed position closes
                 closed = False
                 for retry in range(1, PANIC_RETRY_ATTEMPTS + 1):
                     try:
-                        logger.warning(f"Retrying close {result.symbol} (attempt {retry})")
+                        logger.warning("Retrying close %s (attempt %s)", result.symbol, retry)
                         time.sleep(PANIC_RETRY_DELAY)
                         retry_result = exchange_manager.close_position(result.symbol)
                         if retry_result.success:
                             results["positions_closed"].append(result.symbol)
-                            logger.info(f"Closed position: {result.symbol} (retry {retry})")
+                            logger.info("Closed position: %s (retry %s)", result.symbol, retry)
                             closed = True
                             break
                     except Exception as retry_e:
-                        logger.warning(f"Retry {retry} failed: {retry_e}")
+                        logger.warning("Retry %s failed: %s", retry, retry_e)
 
                 if not closed:
                     error = f"Failed to close {result.symbol}: {result.error}"
@@ -354,14 +354,14 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
             if open_positions:
                 for p in open_positions:
                     results["errors"].append(f"Position still open: {p.symbol} size={p.size}")
-                logger.error(f"PANIC INCOMPLETE: {len(open_positions)} position(s) still open after close attempts")
+                logger.error("PANIC INCOMPLETE: %s position(s) still open after close attempts", len(open_positions))
             verified = True
             break
         except Exception as e:
             if verify_attempt == PANIC_RETRY_ATTEMPTS:
                 results["errors"].append(f"Failed to verify position closure after {verify_attempt} attempts: {e}")
             else:
-                logger.warning(f"Verify attempt {verify_attempt} failed, retrying: {e}")
+                logger.warning("Verify attempt %s failed, retrying: %s", verify_attempt, e)
                 time.sleep(PANIC_RETRY_DELAY)
 
     # Determine overall success
@@ -386,7 +386,7 @@ def check_panic_and_halt() -> bool:
     """
     if _panic_state.is_triggered:
         logger = get_module_logger(__name__)
-        logger.warning(f"HALTED: Panic triggered at {_panic_state.trigger_time} - {_panic_state.reason}")
+        logger.warning("HALTED: Panic triggered at %s - %s", _panic_state.trigger_time, _panic_state.reason)
         return True
     return False
 

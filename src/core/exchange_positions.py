@@ -10,11 +10,22 @@ Handles:
 """
 
 import re
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ..exchanges.bybit_client import BybitAPIError
 from ..utils.helpers import safe_float
 from ..utils.time_range import TimeRange
+
+
+def _parse_bybit_ts(ms_str: str | None) -> datetime | None:
+    """Parse Bybit epoch-ms string to UTC-naive datetime."""
+    if not ms_str:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ms_str) / 1000, tz=timezone.utc).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
 
 if TYPE_CHECKING:
     from .exchange_manager import ExchangeManager, Position
@@ -71,6 +82,8 @@ def get_position(manager: "ExchangeManager", symbol: str) -> "Position | None":
                 adl_rank=int(pos.get("adlRankIndicator", 0)) if pos.get("adlRankIndicator") else None,
                 is_reduce_only=pos.get("isReduceOnly", False),
                 cumulative_pnl=safe_float(pos.get("cumRealisedPnl")) if pos.get("cumRealisedPnl") else None,
+                created_time=_parse_bybit_ts(pos.get("createdTime")),
+                updated_time=_parse_bybit_ts(pos.get("updatedTime")),
             )
     
     return None
@@ -124,6 +137,8 @@ def get_all_positions(manager: "ExchangeManager") -> list["Position"]:
             adl_rank=int(pos.get("adlRankIndicator", 0)) if pos.get("adlRankIndicator") else None,
             is_reduce_only=pos.get("isReduceOnly", False),
             cumulative_pnl=safe_float(pos.get("cumRealisedPnl")) if pos.get("cumRealisedPnl") else None,
+            created_time=_parse_bybit_ts(pos.get("createdTime")),
+            updated_time=_parse_bybit_ts(pos.get("updatedTime")),
         ))
     
     return positions
@@ -168,10 +183,10 @@ def set_position_tpsl(
             stop_loss=str(stop_loss) if stop_loss else "0",
             tpsl_mode=tpsl_mode,
         )
-        manager.logger.info(f"Set TP/SL for {symbol}: TP={take_profit}, SL={stop_loss}")
+        manager.logger.info("Set TP/SL for %s: TP=%s, SL=%s", symbol, take_profit, stop_loss)
         return True
     except Exception as e:
-        manager.logger.error(f"Set TP/SL failed for {symbol}: {e}")
+        manager.logger.error("Set TP/SL failed for %s: %s", symbol, e)
         return False
 
 
@@ -200,11 +215,11 @@ def set_trailing_stop(
         if active_price is not None:
             kwargs["active_price"] = str(active_price)
         manager.bybit.set_trading_stop(**kwargs)
-        manager.logger.info(f"Set trailing stop for {symbol}: {trailing_stop}" +
-                            (f" (active at {active_price})" if active_price else ""))
+        active_suffix = f" (active at {active_price})" if active_price else ""
+        manager.logger.info("Set trailing stop for %s: %s%s", symbol, trailing_stop, active_suffix)
         return True
     except Exception as e:
-        manager.logger.error(f"Set trailing stop failed: {e}")
+        manager.logger.error("Set trailing stop failed: %s", e)
         return False
 
 
@@ -227,7 +242,7 @@ def set_leverage(manager: "ExchangeManager", symbol: str, leverage: int) -> None
     # Enforce config limit
     max_leverage = manager.config.risk.max_leverage
     if leverage > max_leverage:
-        manager.logger.warning(f"Leverage {leverage} exceeds max {max_leverage}, using {max_leverage}")
+        manager.logger.warning("Leverage %s exceeds max %s, using %s", leverage, max_leverage, max_leverage)
         leverage = max_leverage
 
     manager._validate_trading_operation()
@@ -237,7 +252,7 @@ def set_leverage(manager: "ExchangeManager", symbol: str, leverage: int) -> None
     except BybitAPIError as e:
         # "leverage not modified" = already at requested level, not an error
         if "leverage not modified" in str(e).lower():
-            manager.logger.info(f"Leverage already {leverage}x for {symbol}")
+            manager.logger.info("Leverage already %sx for %s", leverage, symbol)
             return
         raise RuntimeError(f"Failed to set leverage {leverage}x for {symbol}: {e}") from e
 
@@ -266,11 +281,11 @@ def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str, leverage
             buy_leverage=lev_str,
             sell_leverage=lev_str,
         )
-        manager.logger.info(f"Set margin mode for {symbol} to {mode} at {lev_str}x leverage")
+        manager.logger.info("Set margin mode for %s to %s at %sx leverage", symbol, mode, lev_str)
     except Exception as e:
         # "margin mode is not modified" = already at requested mode, not an error
         if "margin mode is not modified" in str(e).lower():
-            manager.logger.info(f"Margin mode already {mode} for {symbol}")
+            manager.logger.info("Margin mode already %s for %s", mode, symbol)
             return
         raise RuntimeError(
             f"Failed to set margin mode {mode} at {lev_str}x for {symbol}: {e}"
@@ -295,13 +310,13 @@ def set_position_mode(manager: "ExchangeManager", mode: str = "MergedSingle") ->
             mode=0 if mode == "MergedSingle" else 3,  # 0=one-way, 3=hedge
             coin="USDT",
         )
-        manager.logger.info(f"Set position mode to {mode}")
+        manager.logger.info("Set position mode to %s", mode)
         return True
     except Exception as e:
         # Mode might already be set
         if "position mode is not modified" in str(e).lower():
             return True
-        manager.logger.error(f"Set position mode failed: {e}")
+        manager.logger.error("Set position mode failed: %s", e)
         return False
 
 
@@ -326,10 +341,10 @@ def add_margin(manager: "ExchangeManager", symbol: str, amount: float) -> bool:
             margin=str(amount),
             positionIdx=0,  # One-way mode
         )
-        manager.logger.info(f"Added {amount} margin to {symbol}")
+        manager.logger.info("Added %s margin to %s", amount, symbol)
         return True
     except Exception as e:
-        manager.logger.error(f"Add margin failed: {e}")
+        manager.logger.error("Add margin failed: %s", e)
         return False
 
 
@@ -392,8 +407,8 @@ def cancel_position_conditional_orders(
                     continue
                 if not tp_pattern.match(order.order_link_id):
                     manager.logger.debug(
-                        f"Skipping order {order.order_id} - order_link_id '{order.order_link_id}' "
-                        f"doesn't match bot pattern"
+                        "Skipping order %s - order_link_id '%s' doesn't match bot pattern",
+                        order.order_id, order.order_link_id,
                     )
                     continue
             
@@ -403,7 +418,7 @@ def cancel_position_conditional_orders(
             return cancelled
         
         manager.logger.info(
-            f"Cancelling {len(orders_to_cancel)} conditional orders for {symbol} position"
+            "Cancelling %s conditional orders for %s position", len(orders_to_cancel), symbol
         )
         
         # Cancel each order
@@ -419,25 +434,25 @@ def cancel_position_conditional_orders(
                     order_identifier = order.order_link_id or order.order_id
                     cancelled.append(order_identifier)
                     manager.logger.debug(
-                        f"Cancelled conditional order {order_identifier} "
-                        f"({order.side} {order.qty} @ trigger ${order.trigger_price})"
+                        "Cancelled conditional order %s (%s %s @ trigger $%s)",
+                        order_identifier, order.side, order.qty, order.trigger_price,
                     )
             except Exception as e:
                 # Log but don't fail - individual order cancellation shouldn't block
                 manager.logger.warning(
-                    f"Failed to cancel order {order.order_id or order.order_link_id}: {e}"
+                    "Failed to cancel order %s: %s", order.order_id or order.order_link_id, e
                 )
         
         if cancelled:
             manager.logger.info(
-                f"Successfully cancelled {len(cancelled)}/{len(orders_to_cancel)} "
-                f"conditional orders for {symbol}"
+                "Successfully cancelled %s/%s conditional orders for %s",
+                len(cancelled), len(orders_to_cancel), symbol,
             )
         
     except Exception as e:
         # Don't raise - this is cleanup, not critical
         manager.logger.warning(
-            f"Error cancelling conditional orders for {symbol}: {e}"
+            "Error cancelling conditional orders for %s: %s", symbol, e
         )
     
     return cancelled
@@ -507,8 +522,8 @@ def reconcile_orphaned_orders(
                 
                 if orphaned:
                     manager.logger.warning(
-                        f"Found {len(orphaned)} orphaned conditional orders for {order_symbol} "
-                        f"(no position exists)"
+                        "Found %s orphaned conditional orders for %s (no position exists)",
+                        len(orphaned), order_symbol,
                     )
                     
                     cancelled = []
@@ -522,12 +537,12 @@ def reconcile_orphaned_orders(
                             ):
                                 cancelled.append(order.order_link_id or order.order_id)
                         except Exception as e:
-                            manager.logger.warning(f"Failed to cancel orphaned order: {e}")
-                    
+                            manager.logger.warning("Failed to cancel orphaned order: %s", e)
+
                     if cancelled:
                         cancelled_by_symbol[order_symbol] = cancelled
                         manager.logger.info(
-                            f"Cancelled {len(cancelled)} orphaned orders for {order_symbol}"
+                            "Cancelled %s orphaned orders for %s", len(cancelled), order_symbol
                         )
             else:
                 # Position exists - verify orders match position side
@@ -547,8 +562,8 @@ def reconcile_orphaned_orders(
                 
                 if mismatched:
                     manager.logger.warning(
-                        f"Found {len(mismatched)} mismatched conditional orders for {order_symbol} "
-                        f"(wrong side for current position)"
+                        "Found %s mismatched conditional orders for %s (wrong side for current position)",
+                        len(mismatched), order_symbol
                     )
                     # Cancel mismatched orders
                     cancelled = []
@@ -562,13 +577,13 @@ def reconcile_orphaned_orders(
                             ):
                                 cancelled.append(order.order_link_id or order.order_id)
                         except Exception as e:
-                            manager.logger.warning(f"Failed to cancel mismatched order: {e}")
-                    
+                            manager.logger.warning("Failed to cancel mismatched order: %s", e)
+
                     if cancelled:
                         cancelled_by_symbol[order_symbol] = cancelled
-    
+
     except Exception as e:
-        manager.logger.error(f"Error reconciling orphaned orders: {e}")
+        manager.logger.error("Error reconciling orphaned orders: %s", e)
     
     return cancelled_by_symbol
 
@@ -599,10 +614,10 @@ def set_risk_limit_by_id(
     """
     try:
         manager.bybit.set_risk_limit(symbol, risk_id, position_idx=position_idx)
-        manager.logger.info(f"Set risk limit for {symbol} to ID {risk_id}")
+        manager.logger.info("Set risk limit for %s to ID %s", symbol, risk_id)
         return True
     except Exception as e:
-        manager.logger.error(f"Set risk limit failed: {e}")
+        manager.logger.error("Set risk limit failed: %s", e)
         return False
 
 
@@ -620,7 +635,7 @@ def get_risk_limits(manager: "ExchangeManager", symbol: str | None = None) -> li
     try:
         return manager.bybit.get_risk_limit(symbol)
     except Exception as e:
-        manager.logger.error(f"Get risk limits failed: {e}")
+        manager.logger.error("Get risk limits failed: %s", e)
         return []
 
 
@@ -639,13 +654,13 @@ def set_symbol_tp_sl_mode(manager: "ExchangeManager", symbol: str, full_mode: bo
     try:
         mode = "Full" if full_mode else "Partial"
         manager.bybit.set_tp_sl_mode(symbol, mode)
-        manager.logger.info(f"Set TP/SL mode for {symbol} to {mode}")
+        manager.logger.info("Set TP/SL mode for %s to %s", symbol, mode)
         return True
     except Exception as e:
         # Mode might already be set
         if "not modified" in str(e).lower():
             return True
-        manager.logger.error(f"Set TP/SL mode failed: {e}")
+        manager.logger.error("Set TP/SL mode failed: %s", e)
         return False
 
 
@@ -664,32 +679,32 @@ def set_auto_add_margin(manager: "ExchangeManager", symbol: str, enabled: bool) 
     try:
         manager.bybit.set_auto_add_margin(symbol, enabled)
         status = "enabled" if enabled else "disabled"
-        manager.logger.info(f"Auto-add-margin {status} for {symbol}")
+        manager.logger.info("Auto-add-margin %s for %s", status, symbol)
         return True
     except Exception as e:
-        manager.logger.error(f"Set auto-add-margin failed: {e}")
+        manager.logger.error("Set auto-add-margin failed: %s", e)
         return False
 
 
 def modify_position_margin(manager: "ExchangeManager", symbol: str, margin: float) -> bool:
     """
     Add or reduce margin for isolated margin position.
-    
+
     Args:
         manager: ExchangeManager instance
         symbol: Trading symbol
         margin: Amount to add (positive) or reduce (negative)
-    
+
     Returns:
         True if successful
     """
     try:
         manager.bybit.modify_position_margin(symbol, str(margin))
         action = "Added" if margin > 0 else "Reduced"
-        manager.logger.info(f"{action} {abs(margin)} margin for {symbol}")
+        manager.logger.info("%s %s margin for %s", action, abs(margin), symbol)
         return True
     except Exception as e:
-        manager.logger.error(f"Modify position margin failed: {e}")
+        manager.logger.error("Modify position margin failed: %s", e)
         return False
 
 
@@ -715,7 +730,7 @@ def switch_to_cross_margin(manager: "ExchangeManager", symbol: str, leverage: in
     except Exception as e:
         if "not modified" in str(e).lower():
             return True
-        manager.logger.error(f"Switch to cross margin failed: {e}")
+        manager.logger.error("Switch to cross margin failed: %s", e)
         return False
 
 
@@ -741,7 +756,7 @@ def switch_to_isolated_margin(manager: "ExchangeManager", symbol: str, leverage:
     except Exception as e:
         if "not modified" in str(e).lower():
             return True
-        manager.logger.error(f"Switch to isolated margin failed: {e}")
+        manager.logger.error("Switch to isolated margin failed: %s", e)
         return False
 
 
@@ -761,7 +776,7 @@ def switch_to_one_way_mode(manager: "ExchangeManager") -> bool:
     except Exception as e:
         if "not modified" in str(e).lower():
             return True
-        manager.logger.error(f"Switch to one-way mode failed: {e}")
+        manager.logger.error("Switch to one-way mode failed: %s", e)
         return False
 
 
@@ -780,7 +795,7 @@ def switch_to_hedge_mode(manager: "ExchangeManager") -> bool:
     except Exception as e:
         if "not modified" in str(e).lower():
             return True
-        manager.logger.error(f"Switch to hedge mode failed: {e}")
+        manager.logger.error("Switch to hedge mode failed: %s", e)
         return False
 
 
@@ -822,7 +837,7 @@ def get_transaction_log(
         )
         return result
     except Exception as e:
-        manager.logger.error(f"Get transaction log failed: {e}")
+        manager.logger.error("Get transaction log failed: %s", e)
         return {"list": [], "error": str(e)}
 
 
@@ -843,7 +858,7 @@ def get_collateral_info(manager: "ExchangeManager", currency: str | None = None)
     try:
         return manager.bybit.get_collateral_info(currency)
     except Exception as e:
-        manager.logger.error(f"Get collateral info failed: {e}")
+        manager.logger.error("Get collateral info failed: %s", e)
         return []
 
 
@@ -862,10 +877,10 @@ def set_collateral_coin(manager: "ExchangeManager", coin: str, enabled: bool) ->
     try:
         switch = "ON" if enabled else "OFF"
         manager.bybit.set_collateral_coin(coin, switch)
-        manager.logger.info(f"Set {coin} as collateral: {switch}")
+        manager.logger.info("Set %s as collateral: %s", coin, switch)
         return True
     except Exception as e:
-        manager.logger.error(f"Set collateral coin failed: {e}")
+        manager.logger.error("Set collateral coin failed: %s", e)
         return False
 
 
@@ -897,7 +912,7 @@ def get_borrow_history(
         )
         return result
     except Exception as e:
-        manager.logger.error(f"Get borrow history failed: {e}")
+        manager.logger.error("Get borrow history failed: %s", e)
         return {"list": [], "error": str(e)}
 
 
@@ -915,7 +930,7 @@ def get_coin_greeks(manager: "ExchangeManager", base_coin: str | None = None) ->
     try:
         return manager.bybit.get_coin_greeks(base_coin)
     except Exception as e:
-        manager.logger.error(f"Get coin greeks failed: {e}")
+        manager.logger.error("Get coin greeks failed: %s", e)
         return []
 
 
@@ -933,13 +948,13 @@ def set_account_margin_mode(manager: "ExchangeManager", portfolio_margin: bool) 
     try:
         mode = "PORTFOLIO_MARGIN" if portfolio_margin else "REGULAR_MARGIN"
         manager.bybit.set_account_margin_mode(mode)
-        manager.logger.info(f"Set account margin mode to {mode}")
+        manager.logger.info("Set account margin mode to %s", mode)
         return True
     except Exception as e:
         # Mode might already be set
         if "not modified" in str(e).lower():
             return True
-        manager.logger.error(f"Set account margin mode failed: {e}")
+        manager.logger.error("Set account margin mode failed: %s", e)
         return False
 
 
@@ -959,6 +974,6 @@ def get_transferable_amount(manager: "ExchangeManager", coin: str) -> float:
         balance = result.get("balance", {})
         return safe_float(balance.get("transferBalance", 0))
     except Exception as e:
-        manager.logger.error(f"Get transferable amount failed: {e}")
+        manager.logger.error("Get transferable amount failed: %s", e)
         return 0.0
 

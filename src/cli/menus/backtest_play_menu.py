@@ -12,8 +12,10 @@ Handles Play-based backtesting operations (Golden Path):
 All operations call tools - no direct engine access from CLI.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
+
+from ...utils.datetime_utils import utc_now
 
 from rich.console import Console
 from rich.panel import Panel
@@ -234,7 +236,7 @@ def _get_date_range() -> tuple[datetime | None, datetime | None]:
     console.print(f"[{CLIColors.DIM_TEXT}]Press Enter for defaults: 30 days ago to today[/]")
 
     # Default dates
-    default_end = datetime.now(timezone.utc).replace(tzinfo=None)
+    default_end = utc_now()
     default_start = default_end - timedelta(days=30)
 
     start_str = Prompt.ask(

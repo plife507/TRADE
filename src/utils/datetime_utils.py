@@ -4,10 +4,20 @@ Datetime normalization and validation utilities.
 Single source of truth for datetime parsing across the codebase.
 """
 
+from calendar import timegm
 from datetime import datetime, timezone
 
 # Maximum allowed range in days for query tools (to prevent bloat)
 MAX_QUERY_RANGE_DAYS = 365
+
+
+def utc_now() -> datetime:
+    """Return the current UTC time as a timezone-naive datetime.
+
+    This is the canonical way to get "now" in the TRADE codebase.
+    All timestamps are UTC-naive by convention.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def normalize_datetime(
@@ -174,5 +184,5 @@ def datetime_to_epoch_ms(dt: datetime | None) -> int | None:
     # Handle both aware and naive datetimes
     if dt.tzinfo is not None:
         return int(dt.timestamp() * 1000)
-    # Assume naive datetime is UTC
-    return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    # Assume naive datetime is UTC — use timegm (not .timestamp() which assumes local time)
+    return timegm(dt.timetuple()) * 1000 + dt.microsecond // 1000

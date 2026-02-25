@@ -207,7 +207,7 @@ class RulesRiskPolicy(RiskPolicy):
             unrealized_pnl: Unrealized PnL from open positions (P1-004 fix)
             position_count: Number of open positions (P1-004 fix)
         """
-        from datetime import datetime, timezone
+        from src.utils.datetime_utils import utc_now
 
         # P1-004 FIX: Include unrealized_pnl and position count from exchange
         # PortfolioSnapshot.positions expects list[Position] but we only need the count
@@ -224,7 +224,7 @@ class RulesRiskPolicy(RiskPolicy):
                 )
             ] * position_count
         portfolio = PortfolioSnapshot(
-            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+            timestamp=utc_now(),
             balance=equity,
             available=available_balance,
             total_exposure=total_exposure,

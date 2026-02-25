@@ -21,8 +21,10 @@ Usage:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from ...utils.datetime_utils import utc_now
 
 from ..play_engine import PlayEngine
 
@@ -163,8 +165,18 @@ class ShadowRunner:
             return
 
         self._running = True
-        self._stats = ShadowStats(started_at=datetime.now(timezone.utc).replace(tzinfo=None))
+        self._stats = ShadowStats(started_at=utc_now())
         self._stop_event.clear()
+
+        # Bind structlog context so all shadow logs carry play_hash/symbol/mode
+        from ...backtest.execution_validation import compute_play_hash
+        from ...utils.logging_config import bind_engine_context
+        play_hash = compute_play_hash(self._engine.play)
+        bind_engine_context(
+            play_hash=play_hash,
+            symbol=self._engine.symbol,
+            mode=self._engine.mode,
+        )
 
         logger.info(
             f"ShadowRunner started: {self._engine.symbol} {self._engine.timeframe}"
@@ -185,7 +197,11 @@ class ShadowRunner:
 
         self._stop_event.set()
         self._running = False
-        self._stats.stopped_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        self._stats.stopped_at = utc_now()
+
+        # Clear structlog engine context
+        from ...utils.logging_config import clear_engine_context
+        clear_engine_context()
 
         logger.info(
             f"ShadowRunner stopped: {self._stats.signals_generated} signals "
@@ -249,9 +265,9 @@ class ShadowRunner:
             candle_close = candle.close
             timestamp = candle.ts_close
         except Exception as e:
-            logger.warning(f"Failed to get candle at bar_idx={bar_idx}, using fallback: {e}")
+            logger.warning("Failed to get candle at bar_idx=%s, using fallback: %s", bar_idx, e)
             candle_close = 0.0
-            timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
+            timestamp = utc_now()
 
         # Create shadow signal record
         shadow_signal = ShadowSignal(

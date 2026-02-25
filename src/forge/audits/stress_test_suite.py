@@ -16,6 +16,8 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+from ...utils.datetime_utils import utc_now
 from typing import Any
 
 from src.forge.validation import (
@@ -89,7 +91,7 @@ class StressTestReport:
     seed: int
     bars_per_tf: int
     validation_plays_dir: str
-    generated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    generated_at: str = field(default_factory=lambda: utc_now().isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -10,8 +10,10 @@ Used by verification suite to enable pandas_ta parity audits.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
+
+from ..utils.datetime_utils import utc_now
 from typing import Any, cast
 import json
 
@@ -56,7 +58,7 @@ class SnapshotManifest:
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            self.created_at = utc_now()
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""

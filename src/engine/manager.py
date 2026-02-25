@@ -41,7 +41,7 @@ import uuid
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -54,6 +54,7 @@ else:
 
 from .play_engine import PlayEngine
 from .runners.live_runner import LiveRunner
+from ..utils.datetime_utils import utc_now
 from ..utils.logger import get_module_logger
 
 if TYPE_CHECKING:
@@ -229,12 +230,12 @@ class EngineManager:
         cooldown, starting).
         """
         result: list[_DiskInstance] = []
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = utc_now()
 
         try:
             paths = list(self._instances_dir.glob("*.json"))
         except Exception as e:
-            logger.warning(f"Failed to list instance files: {e}")
+            logger.warning("Failed to list instance files: %s", e)
             return result
 
         for path in paths:
@@ -244,7 +245,7 @@ class EngineManager:
             except (json.JSONDecodeError, OSError) as e:
                 # Invalid JSON (from old partial writes) or read error
                 if clean_stale:
-                    logger.info(f"Removing invalid instance file {path.name}: {e}")
+                    logger.info("Removing invalid instance file %s: %s", path.name, e)
                     path.unlink(missing_ok=True)
                 continue
 
@@ -343,7 +344,7 @@ class EngineManager:
             "play_id": play.name,
             "symbol": play.symbol_universe[0],
             "mode": mode,
-            "started_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "started_at": utc_now().isoformat(),
             "status": "starting",
         }
         target = self._instances_dir / f"{instance_id}.json"
@@ -360,7 +361,7 @@ class EngineManager:
         immediate restart while the old process cleans up (cancel orders,
         close WebSocket, release DuckDB locks).
         """
-        cooldown_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=_INSTANCE_COOLDOWN_SECONDS)
+        cooldown_until = utc_now() + timedelta(seconds=_INSTANCE_COOLDOWN_SECONDS)
         try:
             data: dict = {
                 "instance_id": instance_id,
@@ -377,7 +378,7 @@ class EngineManager:
         except Exception as e:
             # If we can't write the cooldown file (filesystem full, etc.),
             # fall back to just removing the instance file
-            logger.warning(f"Failed to write cooldown file for {instance_id}: {e}")
+            logger.warning("Failed to write cooldown file for %s: %s", instance_id, e)
             self._remove_instance_file(instance_id)
 
     def _write_cooldown_file_raw(
@@ -393,7 +394,7 @@ class EngineManager:
 
         Used by stop_cross_process where we only have the disk data.
         """
-        cooldown_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=_INSTANCE_COOLDOWN_SECONDS)
+        cooldown_until = utc_now() + timedelta(seconds=_INSTANCE_COOLDOWN_SECONDS)
         try:
             data: dict = {
                 "instance_id": instance_id,
@@ -408,7 +409,7 @@ class EngineManager:
             target = self._instances_dir / f"{instance_id}.json"
             self._atomic_write_json(target, data)
         except Exception as e:
-            logger.warning(f"Failed to write cooldown file for {instance_id}: {e}")
+            logger.warning("Failed to write cooldown file for %s: %s", instance_id, e)
             self._remove_instance_file(instance_id)
 
     def _atomic_write_json(self, target: Path, data: dict) -> None:
@@ -435,7 +436,7 @@ class EngineManager:
         try:
             path.unlink(missing_ok=True)
         except Exception as e:
-            logger.warning(f"Failed to remove instance file {path.name}: {e}")
+            logger.warning("Failed to remove instance file %s: %s", path.name, e)
 
     # ------------------------------------------------------------------
     # Limit checking (cross-process aware)
@@ -536,7 +537,7 @@ class EngineManager:
         """Build informative cooldown suffix for error messages."""
         for d in disk_instances:
             if d.mode == mode and d.status == "cooldown" and d.cooldown_until:
-                remaining = (d.cooldown_until - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds()
+                remaining = (d.cooldown_until - utc_now()).total_seconds()
                 if remaining > 0:
                     return f" (cooldown: {remaining:.0f}s remaining)"
         return ""
@@ -603,7 +604,7 @@ class EngineManager:
                     self._remove_instance_file(instance_id)
                     raise
 
-            logger.info(f"Starting engine instance: {instance_id}")
+            logger.info("Starting engine instance: %s", instance_id)
 
             try:
                 if mode == "backtest":
@@ -655,7 +656,7 @@ class EngineManager:
                     engine=engine,
                     runner=runner,
                     mode=InstanceMode(mode),
-                    started_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                    started_at=utc_now(),
                 )
 
                 self._instances[instance_id] = instance
@@ -670,7 +671,7 @@ class EngineManager:
                 # Phase 2: Upgrade reservation to "running"
                 self._write_instance_file(instance_id, instance, status="running")
 
-                logger.info(f"Engine instance started: {instance_id}")
+                logger.info("Engine instance started: %s", instance_id)
                 return instance_id
 
             except Exception as e:
@@ -680,7 +681,7 @@ class EngineManager:
                     self._update_counts(mode, symbol, -1)
                 # Release reservation on failure
                 self._remove_instance_file(instance_id)
-                logger.error(f"Failed to start engine: {e}")
+                logger.error("Failed to start engine: %s", e)
                 raise RuntimeError(f"Failed to start engine: {e}") from e
 
     async def stop(self, instance_id: str) -> bool:
@@ -698,11 +699,11 @@ class EngineManager:
         """
         async with self._lock:
             if instance_id not in self._instances:
-                logger.warning(f"Instance not found: {instance_id}")
+                logger.warning("Instance not found: %s", instance_id)
                 return False
 
             instance = self._instances[instance_id]
-            logger.info(f"Stopping engine instance: {instance_id}")
+            logger.info("Stopping engine instance: %s", instance_id)
 
             try:
                 # Stop runner
@@ -728,11 +729,11 @@ class EngineManager:
                 # Remove from tracking
                 del self._instances[instance_id]
 
-                logger.info(f"Engine instance stopped: {instance_id} (cooldown {_INSTANCE_COOLDOWN_SECONDS:.0f}s)")
+                logger.info("Engine instance stopped: %s (cooldown %.0fs)", instance_id, _INSTANCE_COOLDOWN_SECONDS)
                 return True
 
             except Exception as e:
-                logger.error(f"Error stopping instance {instance_id}: {e}")
+                logger.error("Error stopping instance %s: %s", instance_id, e)
                 return False
 
     def list(self) -> list[InstanceInfo]:
@@ -803,7 +804,7 @@ class EngineManager:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logger.error(f"Instance {instance.instance_id} error: {e}")
+            logger.error("Instance %s error: %s", instance.instance_id, e)
             # M9: Clean up crashed instance so it doesn't block new starts
             iid = instance.instance_id
             symbol = instance.play.symbol_universe[0]
@@ -813,7 +814,7 @@ class EngineManager:
                 # Write cooldown instead of removing — prevents crash-restart loops
                 with self._instance_lock():
                     self._write_cooldown_file(iid, instance)
-                logger.info(f"Cleaned up crashed instance: {iid} (cooldown {_INSTANCE_COOLDOWN_SECONDS:.0f}s)")
+                logger.info("Cleaned up crashed instance: %s (cooldown %.0fs)", iid, _INSTANCE_COOLDOWN_SECONDS)
 
     # ------------------------------------------------------------------
     # Stop all / cross-process stop
@@ -857,7 +858,7 @@ class EngineManager:
             play_id = data.get("play_id", "?")
             symbol = data.get("symbol", "?")
             mode = data.get("mode", "demo")
-            started_at = data.get("started_at", datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
+            started_at = data.get("started_at", utc_now().isoformat())
 
             if not self._is_pid_alive(pid):
                 # Already dead — write cooldown instead of just unlinking
@@ -882,7 +883,7 @@ class EngineManager:
 
             # SIGKILL fallback if SIGTERM didn't work
             if self._is_pid_alive(pid):
-                logger.warning(f"PID {pid} didn't exit after SIGTERM, force-killing")
+                logger.warning("PID %s didn't exit after SIGTERM, force-killing", pid)
                 self._force_kill_pid(pid)
                 # Brief wait for OS cleanup
                 for _ in range(8):  # 2s max
@@ -906,7 +907,7 @@ class EngineManager:
 
             return True
         except Exception as e:
-            logger.warning(f"Failed to stop cross-process instance {instance_id}: {e}")
+            logger.warning("Failed to stop cross-process instance %s: %s", instance_id, e)
             return False
 
     def get_cross_process_pid(self, instance_id: str) -> int:
@@ -940,7 +941,7 @@ class EngineManager:
             # Determine display status
             if d.status == "cooldown":
                 if d.cooldown_until:
-                    remaining = (d.cooldown_until - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds()
+                    remaining = (d.cooldown_until - utc_now()).total_seconds()
                     display_status = f"cooldown ({remaining:.0f}s)" if remaining > 0 else "cooldown"
                 else:
                     display_status = "cooldown"
@@ -1027,10 +1028,10 @@ class EngineManager:
         except ProcessLookupError:
             return False  # Already dead
         except PermissionError:
-            logger.warning(f"Permission denied sending SIGTERM to PID {pid}")
+            logger.warning("Permission denied sending SIGTERM to PID %s", pid)
             return False
         except OSError as e:
-            logger.warning(f"Failed to terminate PID {pid}: {e}")
+            logger.warning("Failed to terminate PID %s: %s", pid, e)
             return False
 
     @staticmethod
@@ -1062,8 +1063,8 @@ class EngineManager:
         except ProcessLookupError:
             return False  # Already dead
         except PermissionError:
-            logger.warning(f"Permission denied sending SIGKILL to PID {pid}")
+            logger.warning("Permission denied sending SIGKILL to PID %s", pid)
             return False
         except OSError as e:
-            logger.warning(f"Failed to force-kill PID {pid}: {e}")
+            logger.warning("Failed to force-kill PID %s: %s", pid, e)
             return False

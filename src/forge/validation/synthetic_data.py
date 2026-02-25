@@ -17,6 +17,8 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from ...utils.datetime_utils import utc_now
 from typing import Literal
 from types import MappingProxyType
 
@@ -150,7 +152,7 @@ class SyntheticCandles:
     data_hash: str
 
     # Generation metadata
-    generated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    generated_at: str = field(default_factory=lambda: utc_now().isoformat())
 
     def get_tf(self, tf: str) -> pd.DataFrame:
         """Get DataFrame for a specific timeframe."""

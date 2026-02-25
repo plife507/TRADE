@@ -238,7 +238,8 @@ def run_extensive_data_smoke(env: str = "live") -> int:
     Returns:
         Number of failures (0 = success)
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+    from src.utils.datetime_utils import utc_now
 
     env_label = env.upper()
     env_color = "green" if env == "live" else "cyan"
@@ -312,7 +313,7 @@ def run_extensive_data_smoke(env: str = "live") -> int:
     console.print(f"  Range 3: 20-10 days ago (10 days)")
     console.print(f"  GAPS: 50-40 days, 30-20 days, 10 days to now")
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = utc_now()
     ranges = [
         (now - timedelta(days=60), now - timedelta(days=50)),  # 60-50 days ago
         (now - timedelta(days=40), now - timedelta(days=30)),  # 40-30 days ago

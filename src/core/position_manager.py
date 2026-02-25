@@ -15,10 +15,11 @@ Features:
 import threading
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime
 from dataclasses import dataclass, field
 
 from .exchange_manager import ExchangeManager, Position
+from ..utils.datetime_utils import utc_now
 from ..utils.logger import get_module_logger
 
 
@@ -149,7 +150,7 @@ class PositionManager:
         # Daily tracking
         self._daily_realized_pnl = 0.0
         self._daily_trades = 0
-        self._last_reset_date = datetime.now(timezone.utc).replace(tzinfo=None).date()
+        self._last_reset_date = utc_now().date()
 
         # Thread safety for trade recording
         self._trade_lock = threading.Lock()
@@ -190,7 +191,7 @@ class PositionManager:
     
     def _check_daily_reset(self):
         """Reset daily counters at midnight."""
-        today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+        today = utc_now().date()
         if today > self._last_reset_date:
             self._daily_realized_pnl = 0.0
             self._daily_trades = 0
@@ -210,7 +211,7 @@ class PositionManager:
             try:
                 return self._get_snapshot_from_ws()
             except Exception as e:
-                self.logger.warning(f"Failed to get WS snapshot: {e}, falling back to REST")
+                self.logger.warning("Failed to get WS snapshot: %s, falling back to REST", e)
         
         # Fallback to REST
         return self._get_snapshot_from_rest()
@@ -265,7 +266,7 @@ class PositionManager:
             available = balance_info.get("available", 0)
         
         return PortfolioSnapshot(
-            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+            timestamp=utc_now(),
             balance=balance,
             available=available,
             total_exposure=total_exposure,
@@ -287,7 +288,7 @@ class PositionManager:
         self._last_rest_sync = time.time()
         
         return PortfolioSnapshot(
-            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+            timestamp=utc_now(),
             balance=balance_info.get("total", 0),
             available=balance_info.get("available", 0),
             total_exposure=total_exposure,
@@ -379,7 +380,7 @@ class PositionManager:
             self._check_daily_reset()
 
             trade = TradeRecord(
-                timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+                timestamp=utc_now(),
                 symbol=symbol,
                 side=side.upper(),
                 size_usdt=size_usdt,
@@ -515,13 +516,13 @@ class PositionManager:
             try:
                 ws_snapshot = self._get_snapshot_from_ws()
             except Exception as e:
-                self.logger.warning(f"Failed to get WS snapshot for reconciliation: {e}")
+                self.logger.warning("Failed to get WS snapshot for reconciliation: %s", e)
         
         # Always get REST data for comparison
         rest_snapshot = self._get_snapshot_from_rest()
         
         result = {
-            "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "timestamp": utc_now().isoformat(),
             "rest_positions": rest_snapshot.position_count,
             "rest_balance": rest_snapshot.balance,
             "ws_available": ws_snapshot is not None,
