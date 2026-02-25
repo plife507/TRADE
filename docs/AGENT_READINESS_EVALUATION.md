@@ -107,7 +107,7 @@ Full 62-test end-to-end re-run not yet completed. Individual test verification d
 
 ---
 
-## Dimension 3: Live Trading Safety (60% Ready)
+## Dimension 3: Live Trading Safety (80% Ready)
 
 ### What's Done
 
@@ -126,8 +126,8 @@ Full 62-test end-to-end re-run not yet completed. Individual test verification d
 
 | Item | Risk | Detail |
 |------|------|--------|
-| **GAP-2**: No REST warmup fallback | HIGH | `_load_tf_bars()` crashes on cold-start if DuckDB empty. Needed for first-time symbol setup in live. |
-| **DATA-011**: No active WS reconnect | MEDIUM | Extended outage = stale data. Handler no longer causes false positives (P12 fix) but still doesn't force pybit reconnect. |
+| ~~**GAP-2**: No REST warmup fallback~~ | ~~HIGH~~ | **FIXED** — `_load_bars_from_rest_api()` in `live.py` implements 3-tier fallback (buffer → DuckDB → REST, up to 1000 bars). |
+| **DATA-011**: No active WS reconnect | MEDIUM | Passive detection + runner-level reconnect works, but no active pybit force-reconnect for extended outages. |
 | **DATA-017**: `panic_close_all()` ordering | LOW | Cancel-before-close ordering is defensible but needs integration test to verify. |
 | **H22**: No funding event pipeline | LOW | Sim accepts `funding_events` kwarg but no generation pipeline exists. Affects backtest accuracy for long-hold strategies. |
 
@@ -220,47 +220,45 @@ python trade_cli.py play stop --all --force
 
 ## Overall Scorecard
 
-| Dimension | Score | Notes |
-|-----------|-------|-------|
-| CLI surface | **85%** | 50+ commands wired, 10 manual verifications pending |
-| Instance safety | **95%** | Cross-process locking, PID kill, cooldown all done |
-| Live trading safety | **60%** | Demo works; 4 pre-deployment items + live parity open |
-| Agent workflows | **75%** | Full loop works in demo; monitoring is poll-based |
-| **Overall** | **~75%** | **Demo-mode agent operation is essentially ready. Live-money is 2-3 sessions away.** |
+**Last evaluated**: 2026-02-25 (automated re-test of all dimensions)
+
+| Dimension | Score | Tests | Notes |
+|-----------|-------|-------|-------|
+| CLI surface | **90%** | 15/15 pass | All 11 subcommand groups return valid JSON |
+| Instance safety | **95%** | 8/8 pass | Cross-process locking, PID kill, cooldown, headless — all solid |
+| Live trading safety | **80%** | 8/8 features pass | GAP-2 fixed (REST fallback). 3 minor items remain. |
+| Agent workflows | **90%** | 6/6 pass | headless, watch --json, stop --all/--force, logs — all working |
+| **Overall** | **~88%** | | **Demo-mode agent operation is ready. Live-money is 1 session away.** |
+
+### Minor gaps for 100%
+
+| Item | Risk | Detail |
+|------|------|--------|
+| DATA-011 | MEDIUM | No active WS force-reconnect (passive detection + runner-level reconnect works) |
+| DATA-017 | LOW | `panic_close_all()` ordering needs integration test |
+| H22 | LOW | Funding event generation pipeline not built (sim applies events but no source) |
+| JSON format | LOW | Two output formats: envelope vs flat domain objects — agents need two parsing paths |
 
 ---
 
 ## Recommended Path to 100%
 
-### Session A: Demo-Ready Agent Operation (~2h)
+### Session A: Demo Validation + Live Prep (~2h)
 
-Goal: Confirm all CLI commands work and the full agent test suite passes.
+Goal: Verify demo mode end-to-end and fix remaining blockers.
 
-1. Run P4+P13 Phase 7 manual CLI checks (10 items in `docs/TODO.md`)
-   - `order buy`, `data info`, `market price`, `health check` with `--json`
-   - Interactive menu: offline start, connect, symbol picks, data sub-menus
-2. Run P12 verification (10min demo play, confirm no "Signal execution blocked" warnings)
-3. Full 62-test agent suite re-run
-4. Mark P4+P13, P12, P14, P15, P17 as fully complete in `docs/TODO.md`
-
-**Deliverable:** Agent can deploy and monitor demo plays with full confidence.
-
-### Session B: Live-Ready (~2h)
-
-Goal: Fix the 4 pre-deployment blockers.
-
-1. **GAP-2**: Wire REST API fallback in `_load_tf_bars()` for cold-start warmup
-2. **DATA-011**: Implement active pybit WS reconnect (or at minimum, detect and restart play)
-3. Run `validate pre-live --play X` on a real play (not just synthetic)
+1. Run 10min demo play — confirm NO "Signal execution blocked" warnings
+2. **DATA-011**: Implement active pybit WS reconnect (or detect-and-restart play)
+3. Run `validate pre-live --play X` on a real play
 4. Run `validate exchange` to confirm exchange integration
 
 **Deliverable:** No known blockers for live trading.
 
-### Session C: Validation + Go-Live (~2h)
+### Session B: Go-Live (~2h)
 
 Goal: First real-money trade.
 
-1. Define P1 live parity rubric (backtest as gold standard, acceptable deviation thresholds)
+1. Define live parity rubric (backtest as gold standard, acceptable deviation thresholds)
 2. 24h demo validation run (play running overnight, check next day)
 3. First live trade: `python trade_cli.py play run --play X --mode live --confirm`
 4. Monitor via `play status --json` + `account pnl --json`

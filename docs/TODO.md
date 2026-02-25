@@ -27,8 +27,8 @@ Design: `docs/brainstorm/STRUCTURE_TRADING_SYSTEM.md` (PivotRingBuffer, unified 
 ## Pre-Deployment (fix before live trading)
 
 ### T3: Live Blockers
-- [ ] **GAP-2** No REST API fallback for warmup data. `_load_tf_bars()` tries buffer → DuckDB → fails. Needed for cold-start live.
-- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but doesn't force pybit reconnect.
+- [x] **GAP-2** REST API fallback for warmup data — `_load_bars_from_rest_api()` in `live.py` (3-tier: buffer → DuckDB → REST)
+- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but doesn't force pybit reconnect. Passive detection + runner-level reconnect works, but no active force-reconnect.
 - [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering — needs integration test.
 - [ ] **H22** Sim accepts `funding_events` kwarg but no funding event generation pipeline exists yet.
 
