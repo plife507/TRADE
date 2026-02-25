@@ -62,6 +62,13 @@ class PreparedFrame:
     simulation_start: datetime
     sim_start_index: int  # Index in full_df where simulation starts
 
+    def __post_init__(self) -> None:
+        assert self.requested_start.tzinfo is None, f"PreparedFrame.requested_start must be UTC-naive, got tzinfo={self.requested_start.tzinfo}"
+        assert self.requested_end.tzinfo is None, f"PreparedFrame.requested_end must be UTC-naive, got tzinfo={self.requested_end.tzinfo}"
+        assert self.loaded_start.tzinfo is None, f"PreparedFrame.loaded_start must be UTC-naive, got tzinfo={self.loaded_start.tzinfo}"
+        assert self.loaded_end.tzinfo is None, f"PreparedFrame.loaded_end must be UTC-naive, got tzinfo={self.loaded_end.tzinfo}"
+        assert self.simulation_start.tzinfo is None, f"PreparedFrame.simulation_start must be UTC-naive, got tzinfo={self.simulation_start.tzinfo}"
+
 
 @dataclass
 class MultiTFPreparedFrames:
@@ -95,6 +102,14 @@ class MultiTFPreparedFrames:
     requested_start: datetime | None = None
     requested_end: datetime | None = None
     simulation_start: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.requested_start is not None:
+            assert self.requested_start.tzinfo is None, f"MultiTFPreparedFrames.requested_start must be UTC-naive, got tzinfo={self.requested_start.tzinfo}"
+        if self.requested_end is not None:
+            assert self.requested_end.tzinfo is None, f"MultiTFPreparedFrames.requested_end must be UTC-naive, got tzinfo={self.requested_end.tzinfo}"
+        if self.simulation_start is not None:
+            assert self.simulation_start.tzinfo is None, f"MultiTFPreparedFrames.simulation_start must be UTC-naive, got tzinfo={self.simulation_start.tzinfo}"
 
 
 def timeframe_to_timedelta(tf: str) -> timedelta:

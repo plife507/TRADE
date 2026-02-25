@@ -33,7 +33,10 @@ class PortfolioSnapshot:
     unrealized_pnl: float
     positions: list[Position]
     source: str = "rest"  # "rest" or "websocket"
-    
+
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"PortfolioSnapshot.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     @property
     def position_count(self) -> int:
         return len(self.positions)
@@ -88,7 +91,10 @@ class TradeRecord:
     fees: float = 0.0
     order_id: str | None = None
     strategy: str | None = None
-    
+
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"TradeRecord.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     def to_dict(self) -> dict:
         return {
             "timestamp": self.timestamp.isoformat(),

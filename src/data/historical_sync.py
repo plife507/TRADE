@@ -11,21 +11,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 import pandas as pd
 
-
-def _normalize_to_naive_utc(dt: datetime | None) -> datetime | None:
-    """
-    Normalize datetime to naive UTC for consistent comparison.
-
-    DuckDB returns timezone-aware timestamps, CLI returns naive.
-    This ensures both can be compared by stripping timezone info
-    (assuming all datetimes are UTC).
-    """
-    if dt is None:
-        return None
-    if dt.tzinfo is not None:
-        # Convert to UTC then strip timezone
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-    return dt
+from src.utils.datetime_utils import normalize_timestamp
 
 if TYPE_CHECKING:
     from .historical_data_store import HistoricalDataStore, ActivitySpinner as _ActivitySpinner
@@ -260,7 +246,7 @@ def _sync_forward_symbol_timeframe(
     """, [symbol, timeframe]).fetchone()
 
     # Normalize to naive UTC for consistent comparison
-    last_ts = _normalize_to_naive_utc(existing[0]) if existing and existing[0] else None
+    last_ts = normalize_timestamp(existing[0]) if existing and existing[0] else None
 
     if last_ts is None:
         return 0
@@ -304,10 +290,10 @@ def _sync_symbol_timeframe(
 
     # Normalize all datetimes to naive UTC for consistent comparison
     # (DuckDB returns tz-aware, CLI input is naive)
-    first_ts = _normalize_to_naive_utc(existing[0]) if existing else None
-    last_ts = _normalize_to_naive_utc(existing[1]) if existing else None
-    target_start_norm = _normalize_to_naive_utc(target_start)
-    target_end_norm = _normalize_to_naive_utc(target_end)
+    first_ts = normalize_timestamp(existing[0]) if existing else None
+    last_ts = normalize_timestamp(existing[1]) if existing else None
+    target_start_norm = normalize_timestamp(target_start)
+    target_end_norm = normalize_timestamp(target_end)
     assert target_start_norm is not None
     assert target_end_norm is not None
     target_start = target_start_norm

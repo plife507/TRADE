@@ -86,6 +86,11 @@ class InstanceInfo:
     signals_generated: int = 0
     last_candle_ts: datetime | None = None
 
+    def __post_init__(self) -> None:
+        assert self.started_at.tzinfo is None, f"InstanceInfo.started_at must be UTC-naive, got tzinfo={self.started_at.tzinfo}"
+        if self.last_candle_ts is not None:
+            assert self.last_candle_ts.tzinfo is None, f"InstanceInfo.last_candle_ts must be UTC-naive, got tzinfo={self.last_candle_ts.tzinfo}"
+
     def to_dict(self) -> dict:
         return {
             "instance_id": self.instance_id,
@@ -113,6 +118,11 @@ class _DiskInstance:
     play_id: str
     path: Path
 
+    def __post_init__(self) -> None:
+        if self.cooldown_until is not None:
+            assert self.cooldown_until.tzinfo is None, f"_DiskInstance.cooldown_until must be UTC-naive, got tzinfo={self.cooldown_until.tzinfo}"
+        assert self.started_at.tzinfo is None, f"_DiskInstance.started_at must be UTC-naive, got tzinfo={self.started_at.tzinfo}"
+
 
 @dataclass
 class _EngineInstance:
@@ -124,6 +134,9 @@ class _EngineInstance:
     mode: InstanceMode
     started_at: datetime
     task: asyncio.Task | None = None
+
+    def __post_init__(self) -> None:
+        assert self.started_at.tzinfo is None, f"_EngineInstance.started_at must be UTC-naive, got tzinfo={self.started_at.tzinfo}"
 
 
 class EngineManager:

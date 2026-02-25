@@ -389,11 +389,15 @@ class BarRecord:
     close: float
     volume: float
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"BarRecord.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     @classmethod
     def from_kline_data(cls, kline: 'KlineData') -> 'BarRecord':
+        from src.utils.datetime_utils import epoch_ms_to_datetime
         # UTC-naive datetime for DuckDB compatibility (system stores UTC-naive)
         return cls(
-            timestamp=datetime.fromtimestamp(kline.start_time / 1000, tz=timezone.utc).replace(tzinfo=None),
+            timestamp=epoch_ms_to_datetime(kline.start_time),
             open=kline.open, high=kline.high, low=kline.low,
             close=kline.close, volume=kline.volume,
         )

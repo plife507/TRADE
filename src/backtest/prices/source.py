@@ -47,6 +47,9 @@ class PricePoint:
     bid: float | None = None
     ask: float | None = None
 
+    def __post_init__(self) -> None:
+        assert self.ts.tzinfo is None, f"PricePoint.ts must be UTC-naive, got tzinfo={self.ts.tzinfo}"
+
     @classmethod
     def from_mark(cls, ts: datetime, mark: float) -> PricePoint:
         """Create PricePoint with only mark price (backtest mode)."""

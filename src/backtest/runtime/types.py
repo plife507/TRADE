@@ -116,6 +116,10 @@ class Bar:
     volume: float
     turnover: float | None = None
     
+    def __post_init__(self) -> None:
+        assert self.ts_open.tzinfo is None, f"Bar.ts_open must be UTC-naive, got tzinfo={self.ts_open.tzinfo}"
+        assert self.ts_close.tzinfo is None, f"Bar.ts_close must be UTC-naive, got tzinfo={self.ts_close.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
@@ -179,6 +183,11 @@ class FeatureSnapshot:
     not_ready_reason: str | None = None
     features_computed_at: datetime | None = None  # When features were computed
     
+    def __post_init__(self) -> None:
+        assert self.ts_close.tzinfo is None, f"FeatureSnapshot.ts_close must be UTC-naive, got tzinfo={self.ts_close.tzinfo}"
+        if self.features_computed_at is not None:
+            assert self.features_computed_at.tzinfo is None, f"FeatureSnapshot.features_computed_at must be UTC-naive, got tzinfo={self.features_computed_at.tzinfo}"
+
     def is_stale_at(self, exec_ts_close: datetime) -> bool:
         """
         Check if this snapshot is stale relative to exec timestamp.
@@ -318,6 +327,9 @@ class RuntimeSnapshot:
     history_features_med_tf: tuple[FeatureSnapshot, ...] = field(default_factory=tuple)
     history_config: HistoryConfig | None = None
     history_ready: bool = True  # True if no history required or history is filled
+
+    def __post_init__(self) -> None:
+        assert self.ts_close.tzinfo is None, f"RuntimeSnapshot.ts_close must be UTC-naive, got tzinfo={self.ts_close.tzinfo}"
 
     @property
     def ready(self) -> bool:

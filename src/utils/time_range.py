@@ -238,12 +238,15 @@ class TimeRange:
         Raises:
             ValueError: If range exceeds max for endpoint type
         """
+        from src.utils.datetime_utils import datetime_to_epoch_ms
+
         # Ensure UTC
         start_utc = cls._to_utc(start)
         end_utc = cls._to_utc(end)
-        
-        start_ms = int(start_utc.timestamp() * 1000)
-        end_ms = int(end_utc.timestamp() * 1000)
+
+        start_ms = datetime_to_epoch_ms(start_utc)
+        end_ms = datetime_to_epoch_ms(end_utc)
+        assert start_ms is not None and end_ms is not None
         
         # Format label with readable dates
         start_str = start_utc.strftime("%Y-%m-%d %H:%M")
@@ -308,19 +311,16 @@ class TimeRange:
     def to_dict(self) -> dict:
         """
         Convert to a dictionary for inclusion in ToolResult.data.
-        
+
         Returns:
             Dict with start_ms, end_ms, label, start_iso, end_iso
         """
-        start_dt = datetime.fromtimestamp(self.start_ms / 1000, tz=timezone.utc)
-        end_dt = datetime.fromtimestamp(self.end_ms / 1000, tz=timezone.utc)
-        
         return {
             "start_ms": self.start_ms,
             "end_ms": self.end_ms,
             "label": self.label,
-            "start_iso": start_dt.isoformat(),
-            "end_iso": end_dt.isoformat(),
+            "start_iso": self.start_datetime.isoformat(),
+            "end_iso": self.end_datetime.isoformat(),
             "endpoint_type": self.endpoint_type,
         }
     
@@ -335,12 +335,14 @@ class TimeRange:
     @property
     def start_datetime(self) -> datetime:
         """Get start time as UTC-naive datetime."""
-        return datetime.fromtimestamp(self.start_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+        from src.utils.datetime_utils import epoch_ms_to_datetime
+        return epoch_ms_to_datetime(self.start_ms)
 
     @property
     def end_datetime(self) -> datetime:
         """Get end time as UTC-naive datetime."""
-        return datetime.fromtimestamp(self.end_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+        from src.utils.datetime_utils import epoch_ms_to_datetime
+        return epoch_ms_to_datetime(self.end_ms)
     
     @property
     def duration_hours(self) -> float:
@@ -394,16 +396,22 @@ class TimeRange:
         endpoint_type: str,
     ) -> TimeRange:
         """Create a time range going back N hours from now."""
+        from src.utils.datetime_utils import datetime_to_epoch_ms
+
         now_utc = cls._get_now_utc(now)
         start_utc = now_utc - timedelta(hours=hours)
-        
+
+        start_ms = datetime_to_epoch_ms(start_utc)
+        end_ms = datetime_to_epoch_ms(now_utc)
+        assert start_ms is not None and end_ms is not None
+
         return cls(
-            start_ms=int(start_utc.timestamp() * 1000),
-            end_ms=int(now_utc.timestamp() * 1000),
+            start_ms=start_ms,
+            end_ms=end_ms,
             label=label,
             endpoint_type=endpoint_type,
         )
-    
+
     @classmethod
     def _from_days_back(
         cls,
@@ -413,12 +421,18 @@ class TimeRange:
         endpoint_type: str,
     ) -> TimeRange:
         """Create a time range going back N days from now."""
+        from src.utils.datetime_utils import datetime_to_epoch_ms
+
         now_utc = cls._get_now_utc(now)
         start_utc = now_utc - timedelta(days=days)
-        
+
+        start_ms = datetime_to_epoch_ms(start_utc)
+        end_ms = datetime_to_epoch_ms(now_utc)
+        assert start_ms is not None and end_ms is not None
+
         return cls(
-            start_ms=int(start_utc.timestamp() * 1000),
-            end_ms=int(now_utc.timestamp() * 1000),
+            start_ms=start_ms,
+            end_ms=end_ms,
             label=label,
             endpoint_type=endpoint_type,
         )

@@ -78,6 +78,12 @@ class Position:
     created_time: datetime | None = None
     updated_time: datetime | None = None
 
+    def __post_init__(self):
+        if self.created_time is not None:
+            assert self.created_time.tzinfo is None, f"Position.created_time must be UTC-naive, got tzinfo={self.created_time.tzinfo}"
+        if self.updated_time is not None:
+            assert self.updated_time.tzinfo is None, f"Position.updated_time must be UTC-naive, got tzinfo={self.updated_time.tzinfo}"
+
     @property
     def is_open(self) -> bool:
         return abs(self.size) > 0
@@ -104,6 +110,12 @@ class Order:
     stop_loss: float | None = None
     created_time: datetime | None = None
     updated_time: datetime | None = None
+
+    def __post_init__(self):
+        if self.created_time is not None:
+            assert self.created_time.tzinfo is None, f"Order.created_time must be UTC-naive, got tzinfo={self.created_time.tzinfo}"
+        if self.updated_time is not None:
+            assert self.updated_time.tzinfo is None, f"Order.updated_time must be UTC-naive, got tzinfo={self.updated_time.tzinfo}"
 
     @property
     def is_conditional(self) -> bool:

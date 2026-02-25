@@ -35,6 +35,17 @@ Open questions before investing more work:
 - [x] **GATE**: `python trade_cli.py validate module --module timestamps` passes (483 checks, 22 categories, 2.9s)
 - [x] **GATE**: `python trade_cli.py validate quick` passes (ALL 7 GATES, 80.6s)
 
+### T8: Timestamp Architecture Consolidation
+
+- [x] Phase 1: Add `epoch_ms_to_datetime()` to `datetime_utils.py`, extend `normalize_timestamp()` for None
+- [x] Phase 2: Replace 10 inline `fromtimestamp+replace` patterns with `epoch_ms_to_datetime()` (5 files)
+- [x] Phase 3: Migrate TimeRange `.timestamp()*1000` to `datetime_to_epoch_ms()` (6 call sites)
+- [x] Phase 4: Delete `_normalize_to_naive_utc()` from `historical_sync.py`, use `normalize_timestamp()`
+- [x] Phase 5: Add runtime `__post_init__` tz-naive assertions to 7 dataclasses (Candle, Trade, EquityPoint, AccountCurvePoint, BarRecord, TradeRecord, PortfolioSnapshot)
+- [x] Phase 6: G17 Cat 23 (Runtime Guard Tests) — 7 checks, proves assertions fire on tz-aware input
+- [x] **GATE**: `python trade_cli.py validate module --module timestamps` passes (490 checks, 23 categories)
+- [x] **GATE**: `python trade_cli.py validate quick` passes (ALL GATES)
+
 ---
 
 ## P21: Timestamp Audit Phase 2 — 29 Remaining Bugs

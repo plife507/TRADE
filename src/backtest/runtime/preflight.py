@@ -51,6 +51,9 @@ class ToolCallRecord:
     message: str = ""
     timestamp: datetime = field(default_factory=utc_now)
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"ToolCallRecord.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
@@ -100,7 +103,11 @@ class GapInfo:
     expected_bars: int
     actual_bars: int
     gap_duration_minutes: float
-    
+
+    def __post_init__(self) -> None:
+        assert self.start_ts.tzinfo is None, f"GapInfo.start_ts must be UTC-naive, got tzinfo={self.start_ts.tzinfo}"
+        assert self.end_ts.tzinfo is None, f"GapInfo.end_ts must be UTC-naive, got tzinfo={self.end_ts.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
         return {
@@ -145,6 +152,16 @@ class TFPreflightResult:
     # Errors
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.min_ts is not None:
+            assert self.min_ts.tzinfo is None, f"TFPreflightResult.min_ts must be UTC-naive, got tzinfo={self.min_ts.tzinfo}"
+        if self.max_ts is not None:
+            assert self.max_ts.tzinfo is None, f"TFPreflightResult.max_ts must be UTC-naive, got tzinfo={self.max_ts.tzinfo}"
+        if self.required_start is not None:
+            assert self.required_start.tzinfo is None, f"TFPreflightResult.required_start must be UTC-naive, got tzinfo={self.required_start.tzinfo}"
+        if self.required_end is not None:
+            assert self.required_end.tzinfo is None, f"TFPreflightResult.required_end must be UTC-naive, got tzinfo={self.required_end.tzinfo}"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
@@ -207,6 +224,9 @@ class PreflightReport:
     has_1m_coverage: bool = False
     exec_to_1m_mapping_feasible: bool = False
     required_1m_bars: int = 0
+
+    def __post_init__(self) -> None:
+        assert self.run_timestamp.tzinfo is None, f"PreflightReport.run_timestamp must be UTC-naive, got tzinfo={self.run_timestamp.tzinfo}"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
@@ -790,7 +810,8 @@ def _validate_exec_to_1m_mapping(
                     break
 
             if not found_nearby:
-                missing_ts = datetime.fromtimestamp(current_exec_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+                from src.utils.datetime_utils import epoch_ms_to_datetime
+                missing_ts = epoch_ms_to_datetime(current_exec_ms)
                 missing_mappings.append(missing_ts)
 
                 # Stop after finding first few missing (avoid huge list)

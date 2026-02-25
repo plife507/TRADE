@@ -51,6 +51,9 @@ class ShadowSignal:
     candle_close: float
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"ShadowSignal.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     def to_dict(self) -> dict:
         return {
             "timestamp": self.timestamp.isoformat(),

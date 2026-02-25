@@ -23,8 +23,8 @@ import sys
 import time
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
-from src.utils.datetime_utils import utc_now, datetime_to_epoch_ms
+from datetime import datetime, timedelta
+from src.utils.datetime_utils import utc_now, datetime_to_epoch_ms, epoch_ms_to_datetime
 from pathlib import Path
 from collections.abc import Callable, Generator
 from typing import Any
@@ -1110,7 +1110,7 @@ class HistoricalDataStore:
                     break
 
                 for r in records:
-                    ts = datetime.fromtimestamp(int(r.get("fundingRateTimestamp", 0)) / 1000, tz=timezone.utc).replace(tzinfo=None)
+                    ts = epoch_ms_to_datetime(int(r.get("fundingRateTimestamp", 0)))
                     if ts >= fetch_start and ts <= current_end:
                         all_records.append({
                             "symbol": symbol,
@@ -1127,7 +1127,7 @@ class HistoricalDataStore:
                     earliest_ts = min(
                         int(r.get("fundingRateTimestamp", 0)) for r in records
                     )
-                    current_end = datetime.fromtimestamp(earliest_ts / 1000, tz=timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+                    current_end = epoch_ms_to_datetime(earliest_ts) - timedelta(hours=1)
                 else:
                     break
 
@@ -1357,7 +1357,7 @@ class HistoricalDataStore:
                     break
 
                 for r in records:
-                    ts = datetime.fromtimestamp(int(r.get("timestamp", 0)) / 1000, tz=timezone.utc).replace(tzinfo=None)
+                    ts = epoch_ms_to_datetime(int(r.get("timestamp", 0)))
                     if ts >= fetch_start and ts <= current_end:
                         all_records.append({
                             "symbol": symbol,
@@ -1372,7 +1372,7 @@ class HistoricalDataStore:
 
                 if records:
                     earliest_ts = min(int(r.get("timestamp", 0)) for r in records)
-                    current_end = datetime.fromtimestamp(earliest_ts / 1000, tz=timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+                    current_end = epoch_ms_to_datetime(earliest_ts) - timedelta(hours=1)
                 else:
                     break
 

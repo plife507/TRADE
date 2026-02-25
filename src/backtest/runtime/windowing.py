@@ -67,6 +67,12 @@ class LoadWindow:
     warmup_bars_by_tf: dict[str, int]
     max_lookback_bars: int
     
+    def __post_init__(self) -> None:
+        assert self.test_start.tzinfo is None, f"LoadWindow.test_start must be UTC-naive, got tzinfo={self.test_start.tzinfo}"
+        assert self.test_end.tzinfo is None, f"LoadWindow.test_end must be UTC-naive, got tzinfo={self.test_end.tzinfo}"
+        assert self.load_start.tzinfo is None, f"LoadWindow.load_start must be UTC-naive, got tzinfo={self.load_start.tzinfo}"
+        assert self.load_end.tzinfo is None, f"LoadWindow.load_end must be UTC-naive, got tzinfo={self.load_end.tzinfo}"
+
     def to_dict(self) -> dict:
         """Convert to dict for serialization."""
         return {

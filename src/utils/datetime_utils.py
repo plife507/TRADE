@@ -166,12 +166,15 @@ def normalize_datetime_for_storage(dt: datetime | str | None) -> str | None:
     return normalized.strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def normalize_timestamp(ts: datetime) -> datetime:
+def normalize_timestamp(ts: datetime | None) -> datetime | None:
     """Normalize timestamp to be timezone-naive (UTC).
 
     If tz-aware, converts to UTC first then strips tzinfo.
     If tz-naive, assumes already UTC and returns as-is.
+    If None, returns None.
     """
+    if ts is None:
+        return None
     if ts.tzinfo is not None:
         return ts.astimezone(timezone.utc).replace(tzinfo=None)
     return ts
@@ -211,3 +214,12 @@ def parse_bybit_ts(ms_str: str | None) -> datetime | None:
         return datetime.fromtimestamp(int(ms_str) / 1000, tz=timezone.utc).replace(tzinfo=None)
     except (ValueError, TypeError):
         return None
+
+
+def epoch_ms_to_datetime(ms: int) -> datetime:
+    """Convert epoch milliseconds to UTC-naive datetime.
+
+    Inverse of datetime_to_epoch_ms(). Canonical way to convert
+    exchange epoch-ms values to the system's naive datetime convention.
+    """
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).replace(tzinfo=None)

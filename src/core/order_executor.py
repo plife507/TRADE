@@ -43,6 +43,8 @@ class ExecutionResult:
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = utc_now()
+        if self.timestamp is not None:
+            assert self.timestamp.tzinfo is None, f"ExecutionResult.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
 
     def to_dict(self) -> dict:
         return {

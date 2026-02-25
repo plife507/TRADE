@@ -33,6 +33,10 @@ class Candle:
     close: float
     volume: float
 
+    def __post_init__(self) -> None:
+        assert self.ts_open.tzinfo is None, f"Candle.ts_open must be UTC-naive, got tzinfo={self.ts_open.tzinfo}"
+        assert self.ts_close.tzinfo is None, f"Candle.ts_close must be UTC-naive, got tzinfo={self.ts_close.tzinfo}"
+
     @property
     def ohlc4(self) -> float:
         """Average of OHLC."""
@@ -140,6 +144,12 @@ class EngineState:
 
     # Metadata
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.last_bar_ts is not None:
+            assert self.last_bar_ts.tzinfo is None, f"EngineState.last_bar_ts must be UTC-naive, got tzinfo={self.last_bar_ts.tzinfo}"
+        if self.last_signal_ts is not None:
+            assert self.last_signal_ts.tzinfo is None, f"EngineState.last_signal_ts must be UTC-naive, got tzinfo={self.last_signal_ts.tzinfo}"
 
 
 # =============================================================================

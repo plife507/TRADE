@@ -150,6 +150,10 @@ class Order:
     # Used at fill time to adjust SL/TP for the actual fill price.
     sl_tp_ref_price: float | None = None
 
+    def __post_init__(self) -> None:
+        if self.created_at is not None:
+            assert self.created_at.tzinfo is None, f"Order.created_at must be UTC-naive, got tzinfo={self.created_at.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "order_id": self.order_id,
@@ -230,6 +234,9 @@ class Position:
     tp_order_type: str = "Market"
     sl_order_type: str = "Market"
 
+    def __post_init__(self) -> None:
+        assert self.entry_time.tzinfo is None, f"Position.entry_time must be UTC-naive, got tzinfo={self.entry_time.tzinfo}"
+
     def unrealized_pnl(self, mark_price: float) -> float:
         """Calculate unrealized PnL at given mark price."""
         if self.side == OrderSide.LONG:
@@ -284,6 +291,9 @@ class Fill:
     fee: float = 0.0
     slippage: float = 0.0
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"Fill.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "fill_id": self.fill_id,
@@ -315,6 +325,9 @@ class FundingEvent:
     symbol: str
     funding_rate: float
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"FundingEvent.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -339,6 +352,9 @@ class LiquidationEvent:
     equity_usdt: float
     maintenance_margin_usdt: float
     liquidation_fee: float
+
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"LiquidationEvent.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -372,6 +388,9 @@ class PriceSnapshot:
     ask_price: float
     spread: float
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"PriceSnapshot.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -399,6 +418,9 @@ class PricePoint:
     price: float
     sequence: int  # Order within the bar (0 = first)
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"PricePoint.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -418,6 +440,9 @@ class Rejection:
     reason: str
     code: str
     timestamp: datetime
+
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"Rejection.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -557,6 +582,11 @@ class StepResult:
     prices: PriceSnapshot | None = None
     debug_audit: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"StepResult.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+        if self.ts_close is not None:
+            assert self.ts_close.tzinfo is None, f"StepResult.ts_close must be UTC-naive, got tzinfo={self.ts_close.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -613,6 +643,10 @@ class SimulatorExchangeState:
         if self.taker_fee_rate is None:
             from src.config.constants import DEFAULTS
             self.taker_fee_rate = DEFAULTS.fees.taker_rate
+        if self.timestamp is not None:
+            assert self.timestamp.tzinfo is None, f"SimulatorExchangeState.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+        if self.first_starved_ts is not None:
+            assert self.first_starved_ts.tzinfo is None, f"SimulatorExchangeState.first_starved_ts must be UTC-naive, got tzinfo={self.first_starved_ts.tzinfo}"
 
     def to_dict(self) -> dict[str, Any]:
         return {

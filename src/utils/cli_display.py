@@ -1182,9 +1182,8 @@ def _format_cleanup_result(data: Any, message: str) -> dict[str, Any]:
 def _ms_to_datetime_str(ms_str: str, format: str = "%Y-%m-%d %H:%M") -> str:
     """Convert millisecond timestamp string to readable datetime."""
     try:
-        ms = int(ms_str)
-        from datetime import datetime, timezone
-        dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+        from src.utils.datetime_utils import epoch_ms_to_datetime
+        dt = epoch_ms_to_datetime(int(ms_str))
         return dt.strftime(format)
     except (ValueError, TypeError):
         return str(ms_str)[:16] if ms_str else "N/A"

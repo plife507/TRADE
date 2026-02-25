@@ -13,7 +13,7 @@ CLI and agents should use these tools, not direct engine access.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, cast
@@ -363,7 +363,8 @@ def _compute_smoke_window(
     if not smoke or not db_end_ts_ms:
         return start, end
 
-    db_latest_dt = datetime.fromtimestamp(db_end_ts_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+    from src.utils.datetime_utils import epoch_ms_to_datetime
+    db_latest_dt = epoch_ms_to_datetime(db_end_ts_ms)
 
     # Use DB latest as end for smoke (not now(), which is always ahead)
     if end is None:

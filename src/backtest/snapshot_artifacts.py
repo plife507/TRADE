@@ -33,6 +33,10 @@ class SnapshotFrameInfo:
     outputs_written: dict[str, list[str]]  # output_key -> actual outputs in frame
     extras_dropped: dict[str, list[str]]  # output_key -> extras dropped by vendor
 
+    def __post_init__(self) -> None:
+        assert self.timestamp_range[0].tzinfo is None, f"SnapshotFrameInfo.timestamp_range[0] must be UTC-naive, got tzinfo={self.timestamp_range[0].tzinfo}"
+        assert self.timestamp_range[1].tzinfo is None, f"SnapshotFrameInfo.timestamp_range[1] must be UTC-naive, got tzinfo={self.timestamp_range[1].tzinfo}"
+
 
 @dataclass
 class SnapshotManifest:
@@ -59,6 +63,10 @@ class SnapshotManifest:
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = utc_now()
+        assert self.window_start.tzinfo is None, f"SnapshotManifest.window_start must be UTC-naive, got tzinfo={self.window_start.tzinfo}"
+        assert self.window_end.tzinfo is None, f"SnapshotManifest.window_end must be UTC-naive, got tzinfo={self.window_end.tzinfo}"
+        if self.created_at is not None:
+            assert self.created_at.tzinfo is None, f"SnapshotManifest.created_at must be UTC-naive, got tzinfo={self.created_at.tzinfo}"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for JSON serialization."""

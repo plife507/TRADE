@@ -24,7 +24,8 @@ import queue
 import threading
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
+from src.utils.datetime_utils import epoch_ms_to_datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Callable
 
@@ -81,6 +82,16 @@ class LiveRunnerStats:
     last_candle_ts: datetime | None = None
     last_signal_ts: datetime | None = None
     errors: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.started_at is not None:
+            assert self.started_at.tzinfo is None, f"LiveRunnerStats.started_at must be UTC-naive, got tzinfo={self.started_at.tzinfo}"
+        if self.stopped_at is not None:
+            assert self.stopped_at.tzinfo is None, f"LiveRunnerStats.stopped_at must be UTC-naive, got tzinfo={self.stopped_at.tzinfo}"
+        if self.last_candle_ts is not None:
+            assert self.last_candle_ts.tzinfo is None, f"LiveRunnerStats.last_candle_ts must be UTC-naive, got tzinfo={self.last_candle_ts.tzinfo}"
+        if self.last_signal_ts is not None:
+            assert self.last_signal_ts.tzinfo is None, f"LiveRunnerStats.last_signal_ts must be UTC-naive, got tzinfo={self.last_signal_ts.tzinfo}"
 
     @property
     def duration_seconds(self) -> float:
@@ -598,8 +609,8 @@ class LiveRunner:
             else:
                 close_ts_ms = kline_data.start_time + tf_minutes(kline_tf) * 60 * 1000
             candle = Candle(
-                ts_open=datetime.fromtimestamp(kline_data.start_time / 1000.0, tz=timezone.utc).replace(tzinfo=None),
-                ts_close=datetime.fromtimestamp(close_ts_ms / 1000.0, tz=timezone.utc).replace(tzinfo=None),
+                ts_open=epoch_ms_to_datetime(kline_data.start_time),
+                ts_close=epoch_ms_to_datetime(close_ts_ms),
                 open=kline_data.open,
                 high=kline_data.high,
                 low=kline_data.low,

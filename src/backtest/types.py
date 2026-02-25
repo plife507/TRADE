@@ -105,6 +105,11 @@ class Trade:
     # Phase 12: Funding PnL (cumulative from all settlements during trade)
     funding_pnl: float = 0.0
 
+    def __post_init__(self) -> None:
+        assert self.entry_time.tzinfo is None, f"Trade.entry_time must be UTC-naive, got tzinfo={self.entry_time.tzinfo}"
+        if self.exit_time is not None:
+            assert self.exit_time.tzinfo is None, f"Trade.exit_time must be UTC-naive, got tzinfo={self.exit_time.tzinfo}"
+
     @property
     def is_closed(self) -> bool:
         return self.exit_time is not None
@@ -177,6 +182,9 @@ class EquityPoint:
     drawdown: float = 0.0
     drawdown_pct: float = 0.0
 
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"EquityPoint.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -190,7 +198,7 @@ class EquityPoint:
 class AccountCurvePoint:
     """
     Full margin state at each bar for proof-grade metrics.
-    
+
     Captures all Bybit-aligned margin values post-process_bar:
     - equity_usdt: cash + unrealized PnL
     - used_margin_usdt: position IM
@@ -206,6 +214,9 @@ class AccountCurvePoint:
     maintenance_margin_usdt: float
     has_position: bool = False
     entries_disabled: bool = False
+
+    def __post_init__(self) -> None:
+        assert self.timestamp.tzinfo is None, f"AccountCurvePoint.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -226,6 +237,10 @@ class WindowConfig:
     window_name: str  # "hygiene" or "test"
     start: datetime
     end: datetime
+
+    def __post_init__(self) -> None:
+        assert self.start.tzinfo is None, f"WindowConfig.start must be UTC-naive, got tzinfo={self.start.tzinfo}"
+        assert self.end.tzinfo is None, f"WindowConfig.end must be UTC-naive, got tzinfo={self.end.tzinfo}"
 
 
 @dataclass
@@ -555,10 +570,22 @@ class BacktestResult:
     entry_attempts_count: int = 0
     entry_rejections_count: int = 0
     
+    def __post_init__(self) -> None:
+        assert self.start_ts.tzinfo is None, f"BacktestResult.start_ts must be UTC-naive, got tzinfo={self.start_ts.tzinfo}"
+        assert self.end_ts.tzinfo is None, f"BacktestResult.end_ts must be UTC-naive, got tzinfo={self.end_ts.tzinfo}"
+        assert self.started_at.tzinfo is None, f"BacktestResult.started_at must be UTC-naive, got tzinfo={self.started_at.tzinfo}"
+        assert self.finished_at.tzinfo is None, f"BacktestResult.finished_at must be UTC-naive, got tzinfo={self.finished_at.tzinfo}"
+        if self.simulation_start_ts is not None:
+            assert self.simulation_start_ts.tzinfo is None, f"BacktestResult.simulation_start_ts must be UTC-naive, got tzinfo={self.simulation_start_ts.tzinfo}"
+        if self.stop_ts is not None:
+            assert self.stop_ts.tzinfo is None, f"BacktestResult.stop_ts must be UTC-naive, got tzinfo={self.stop_ts.tzinfo}"
+        if self.first_starved_ts is not None:
+            assert self.first_starved_ts.tzinfo is None, f"BacktestResult.first_starved_ts must be UTC-naive, got tzinfo={self.first_starved_ts.tzinfo}"
+
     def to_dict(self) -> dict[str, Any]:
         """
         Convert to dict for JSON serialization.
-        
+
         Note: trades and equity_curve are NOT included by default
         since they are written to separate CSV files.
         """

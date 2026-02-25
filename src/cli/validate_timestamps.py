@@ -20,6 +20,8 @@ prices, fills, and PnL. Runs in <5s, covering:
 14. DuckDB tz-aware normalization (fetch returns aware, must strip to naive)
 15. WS staleness pattern (time.time() interval math)
 16. Sim exchange timestamp flow (bar timestamp -> Order -> Fill -> Trade)
+17-22. Extended checks (storage, TimeRange internals, to_dict, DataFrame, self-test, guards)
+23. Runtime guards (__post_init__ tz-naive assertions on key dataclasses)
 """
 
 from __future__ import annotations
@@ -166,6 +168,7 @@ def _cat_timezone_handling() -> tuple[int, list[str]]:
     ts_aware = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
     ts_norm = normalize_timestamp(ts_aware)
     checks += 1
+    assert ts_norm is not None  # input is not None
     if ts_norm.tzinfo is not None:
         failures.append(f"2f: normalize_timestamp returned tz-aware: {ts_norm.tzinfo}")
 
@@ -340,6 +343,7 @@ def _cat_numpy_pandas_interop() -> tuple[int, list[str]]:
     py_aware: datetime = pd_aware.to_pydatetime()  # type: ignore[assignment]  # NaTType excluded at runtime
     py_naive = normalize_timestamp(py_aware)
     checks += 1
+    assert py_naive is not None  # input is not None
     if py_naive.tzinfo is not None:
         failures.append(f"5c: tz-aware pd.Timestamp not stripped: {py_naive.tzinfo}")
 
@@ -989,15 +993,15 @@ def _cat_order_position_rest() -> tuple[int, list[str]]:
 # ── Category 14: DuckDB Tz-Aware Normalization ──────────────────────
 
 def _cat_duckdb_normalization() -> tuple[int, list[str]]:
-    """Test the _normalize_to_naive_utc function used after DuckDB fetches."""
-    from src.data.historical_sync import _normalize_to_naive_utc
+    """Test normalize_timestamp (canonical function for DuckDB tz-aware → naive)."""
+    from src.utils.datetime_utils import normalize_timestamp
 
     checks = 0
     failures: list[str] = []
 
     # 14a: tz-aware UTC -> naive
     dt_aware = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
-    result = _normalize_to_naive_utc(dt_aware)
+    result = normalize_timestamp(dt_aware)
     checks += 1
     if result is None or result.tzinfo is not None:
         failures.append(f"14a: tz-aware UTC not stripped: {result}")
@@ -1008,28 +1012,28 @@ def _cat_duckdb_normalization() -> tuple[int, list[str]]:
     # 14b: tz-aware non-UTC -> converted then stripped
     tz_plus5 = timezone(timedelta(hours=5))
     dt_plus5 = datetime(2025, 6, 15, 17, 0, 0, tzinfo=tz_plus5)  # == 12:00 UTC
-    result_plus5 = _normalize_to_naive_utc(dt_plus5)
+    result_plus5 = normalize_timestamp(dt_plus5)
     checks += 1
     if result_plus5 != datetime(2025, 6, 15, 12, 0, 0):
         failures.append(f"14b: +05:00 not converted to UTC: expected 12:00, got {result_plus5}")
 
     # 14c: already naive -> passthrough
     dt_naive = datetime(2025, 6, 15, 12, 0, 0)
-    result_naive = _normalize_to_naive_utc(dt_naive)
+    result_naive = normalize_timestamp(dt_naive)
     checks += 1
     if result_naive != dt_naive:
         failures.append(f"14c: naive passthrough failed: {result_naive}")
 
     # 14d: None -> None
     checks += 1
-    if _normalize_to_naive_utc(None) is not None:
+    if normalize_timestamp(None) is not None:
         failures.append("14d: None should return None")
 
     # 14e: Simulate DuckDB returning tz-aware pd.Timestamp (common pattern)
     # DuckDB returns timestamps with UTC tzinfo via fetchdf()
     pd_aware = pd.Timestamp("2025-06-15T12:00:00", tz=timezone.utc)
     py_from_duck: datetime = pd_aware.to_pydatetime()  # type: ignore[assignment]  # NaTType excluded at runtime
-    result_duck = _normalize_to_naive_utc(py_from_duck)  # type: ignore[arg-type]
+    result_duck = normalize_timestamp(py_from_duck)
     checks += 1
     if result_duck is None or result_duck.tzinfo is not None:
         failures.append(f"14e: DuckDB pd.Timestamp not normalized: {result_duck}")
@@ -1549,6 +1553,79 @@ def _cat_selftest_canary() -> tuple[int, list[str]]:
     return checks, failures
 
 
+# ── Category 23: Runtime Guard Tests ─────────────────────────────────
+
+def _cat_runtime_guards() -> tuple[int, list[str]]:
+    """Test __post_init__ tz-naive assertions on key dataclasses."""
+    from src.utils.datetime_utils import (
+        epoch_ms_to_datetime,
+        datetime_to_epoch_ms,
+        normalize_timestamp,
+    )
+
+    checks = 0
+    failures: list[str] = []
+
+    tz_aware = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+    naive = datetime(2025, 6, 15, 12, 0, 0)
+
+    # 23a: Candle rejects tz-aware ts_open
+    from src.engine.interfaces import Candle
+    try:
+        Candle(ts_open=tz_aware, ts_close=naive, open=1.0, high=2.0, low=0.5, close=1.5, volume=100.0)
+        failures.append("23a: Candle accepted tz-aware ts_open")
+    except AssertionError:
+        pass
+    checks += 1
+
+    # 23b: Trade rejects tz-aware entry_time
+    from src.backtest.types import Trade
+    try:
+        Trade(trade_id="test", symbol="BTCUSDT", side="long",
+              entry_time=tz_aware, entry_price=100.0, entry_size=1.0, entry_size_usdt=100.0)
+        failures.append("23b: Trade accepted tz-aware entry_time")
+    except AssertionError:
+        pass
+    checks += 1
+
+    # 23c: EquityPoint rejects tz-aware timestamp
+    from src.backtest.types import EquityPoint
+    try:
+        EquityPoint(timestamp=tz_aware, equity=1000.0)
+        failures.append("23c: EquityPoint accepted tz-aware timestamp")
+    except AssertionError:
+        pass
+    checks += 1
+
+    # 23d: BarRecord rejects tz-aware timestamp
+    from src.data.realtime_models import BarRecord
+    try:
+        BarRecord(timestamp=tz_aware, open=1.0, high=2.0, low=0.5, close=1.5, volume=100.0)
+        failures.append("23d: BarRecord accepted tz-aware timestamp")
+    except AssertionError:
+        pass
+    checks += 1
+
+    # 23e: epoch_ms_to_datetime roundtrip matches datetime_to_epoch_ms
+    dt = datetime(2025, 6, 15, 12, 30, 45)
+    ms = datetime_to_epoch_ms(dt)
+    assert ms is not None
+    rt = epoch_ms_to_datetime(ms)
+    checks += 1
+    if rt != dt:
+        failures.append(f"23e: roundtrip failed: {dt} -> {ms} -> {rt}")
+    checks += 1
+    if rt.tzinfo is not None:
+        failures.append(f"23e: epoch_ms_to_datetime returned tz-aware: {rt.tzinfo}")
+
+    # 23f: normalize_timestamp(None) returns None
+    checks += 1
+    if normalize_timestamp(None) is not None:
+        failures.append("23f: normalize_timestamp(None) should return None")
+
+    return checks, failures
+
+
 # ── Gate Entry Point ─────────────────────────────────────────────────
 
 CATEGORIES: list[tuple[str, _CategoryFn]] = [
@@ -1574,6 +1651,7 @@ CATEGORIES: list[tuple[str, _CategoryFn]] = [
     ("Tz-Aware DataFrame Strip", _cat_tzaware_dataframe_strip),
     ("Self-Test Canary", _cat_selftest_canary),
     ("Tz-Aware Guards (E/F)", _cat_static_analysis_warnings),
+    ("Runtime Guards", _cat_runtime_guards),
 ]
 
 

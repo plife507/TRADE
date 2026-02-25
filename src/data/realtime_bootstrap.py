@@ -28,7 +28,6 @@ Usage:
 import time
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -679,11 +678,10 @@ class RealtimeBootstrap:
             return
 
         try:
+            from src.utils.datetime_utils import epoch_ms_to_datetime
             store = self._get_db_store()
             # Convert start_time (int ms) to UTC-naive datetime for DuckDB
-            ts_dt = datetime.fromtimestamp(
-                kline.start_time / 1000, tz=timezone.utc
-            ).replace(tzinfo=None)
+            ts_dt = epoch_ms_to_datetime(kline.start_time)
             store.upsert_candle(
                 symbol=kline.symbol,
                 timeframe=kline.interval,
