@@ -145,7 +145,7 @@ All timestamps in the system are **UTC-naive** `datetime` objects. This is enfor
 | `_datetime_to_epoch_ms(dt)` | `src/backtest/runtime/feed_store.py` | Hot-loop parity version (identical to `datetime_to_epoch_ms`) |
 | `_np_dt64_to_epoch_ms(ts)` | `src/backtest/runtime/feed_store.py` | numpy datetime64 → int64 ms |
 | `_np_dt64_to_datetime(ts)` | `src/backtest/runtime/feed_store.py` | numpy datetime64 → naive datetime |
-| `_normalize_to_naive_utc(dt)` | `src/data/historical_sync.py` | DuckDB tz-aware fetch → naive UTC |
+| `normalize_timestamp(ts)` | `src/utils/datetime_utils.py` | Strip tz-aware → naive UTC (used by historical_sync for DuckDB fetches) |
 
 ### Validation Gate: G17 Timestamp Correctness
 
@@ -156,7 +156,7 @@ python trade_cli.py validate module --module timestamps       # Standalone
 python trade_cli.py validate module --module timestamps --json # JSON output
 ```
 
-**483 checks across 22 categories, <3 seconds:**
+**490 checks across 23 categories, <4 seconds:**
 
 | # | Category | Checks | What it catches |
 |---|----------|--------|-----------------|
@@ -173,7 +173,7 @@ python trade_cli.py validate module --module timestamps --json # JSON output
 | 11 | Live Candle Conversion | 6 | KlineData → Candle, `end_time + 1` logic, fallback formula |
 | 12 | TimeRange Roundtrip | 8 | `from_dates()` → `to_bybit_params()` → `start_datetime` identity |
 | 13 | Order/Position REST | 5 | `parse_bybit_ts()` → Order/Position dataclass fields |
-| 14 | DuckDB Normalization | 6 | tz-aware fetch → `_normalize_to_naive_utc()` → naive |
+| 14 | DuckDB Normalization | 6 | tz-aware fetch → `normalize_timestamp()` → naive |
 | 15 | WS Staleness Pattern | 6 | `time.time()` interval math, STALENESS_THRESHOLDS |
 | 16 | Sim Exchange Flow | 7 | Bar timestamp → Trade entry/exit → isoformat roundtrip |
 | 17 | Storage Serialization | 7 | `normalize_datetime_for_storage()` strftime behavior |
@@ -182,6 +182,7 @@ python trade_cli.py validate module --module timestamps --json # JSON output
 | 20 | Tz-Aware DataFrame Strip | 6 | `pd.to_datetime(utc=True)` → FeedStore naive pipeline |
 | 21 | Self-Test Canary | 11 | Proves the gate itself detects known-bad inputs |
 | 22 | Tz-Aware Guards (E/F) | ~31 | Scans for unguarded `.fromisoformat()` and `pd.to_datetime(utc=True)` |
+| 23 | Runtime Guards | 7 | `__post_init__` tz-naive assertions on Candle, Trade, EquityPoint, BarRecord |
 
 ### Banned Patterns (Static Scan)
 

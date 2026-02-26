@@ -630,7 +630,11 @@ def _cat_static_analysis_warnings() -> tuple[int, list[str]]:
             # Pattern F: pd.to_datetime(utc=True) creates tz-aware
             if pat_pd_utc.search(line) and "utc=True" in line:
                 checks += 1
-                guard_context_f = text[max(0, text.find(line)):text.find(line) + 500]
+                # Build context from current line + next 5 lines (same approach as Pattern E)
+                guard_context_f = line
+                for fwd in range(1, 6):
+                    if line_num - 1 + fwd < len(lines):
+                        guard_context_f += " " + lines[line_num - 1 + fwd]
                 has_strip = (
                     "tz_localize(None)" in guard_context_f
                     or "tz_convert" in guard_context_f

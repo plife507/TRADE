@@ -6,12 +6,12 @@ Contains: sync, sync_range, sync_forward, and internal sync methods.
 
 import time
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 import pandas as pd
 
-from src.utils.datetime_utils import normalize_timestamp
+from src.utils.datetime_utils import normalize_timestamp, utc_now
 
 if TYPE_CHECKING:
     from .historical_data_store import HistoricalDataStore, ActivitySpinner as _ActivitySpinner
@@ -39,7 +39,7 @@ def sync(
 
     symbols = [s.upper() for s in symbols]
     timeframes = timeframes or list(TIMEFRAMES.keys())
-    target_start = datetime.now(timezone.utc).replace(tzinfo=None) - store.parse_period(period)
+    target_start = utc_now() - store.parse_period(period)
 
     results = {}
 
@@ -67,7 +67,7 @@ def sync(
                 spinner.start()
 
             try:
-                count = _sync_symbol_timeframe(store, symbol, tf, target_start, datetime.now(timezone.utc).replace(tzinfo=None), spinner=spinner)
+                count = _sync_symbol_timeframe(store, symbol, tf, target_start, utc_now(), spinner=spinner)
                 results[key] = count
 
                 if spinner:
@@ -252,7 +252,7 @@ def _sync_forward_symbol_timeframe(
         return 0
 
     start = last_ts + timedelta(minutes=tf_minutes)
-    end = datetime.now(timezone.utc).replace(tzinfo=None)
+    end = utc_now()
 
     if start >= end:
         return 0
@@ -471,5 +471,5 @@ def _update_metadata(store: "HistoricalDataStore", symbol: str, timeframe: str):
                 INSERT OR REPLACE INTO {store.table_sync_metadata}
                 (symbol, timeframe, first_timestamp, last_timestamp, candle_count, last_sync)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, [symbol, timeframe, first_ts, last_ts, count, datetime.now(timezone.utc).replace(tzinfo=None)])
+            """, [symbol, timeframe, first_ts, last_ts, count, utc_now()])
 

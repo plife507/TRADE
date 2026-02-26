@@ -85,12 +85,12 @@ def handle_account_history(args) -> int:
 
     if start and end:
         from datetime import datetime
-        from calendar import timegm
+        from src.utils.datetime_utils import datetime_to_epoch_ms
         start_dt = datetime.fromisoformat(start).replace(tzinfo=None)
         end_dt = datetime.fromisoformat(end).replace(tzinfo=None)
         result = get_order_history_tool(
-            start_ms=int(timegm(start_dt.timetuple()) * 1000),
-            end_ms=int(timegm(end_dt.timetuple()) * 1000),
+            start_ms=datetime_to_epoch_ms(start_dt),
+            end_ms=datetime_to_epoch_ms(end_dt),
             symbol=symbol,
         )
     else:
@@ -114,12 +114,12 @@ def handle_account_pnl(args) -> int:
 
     if start and end:
         from datetime import datetime
-        from calendar import timegm
+        from src.utils.datetime_utils import datetime_to_epoch_ms
         start_dt = datetime.fromisoformat(start).replace(tzinfo=None)
         end_dt = datetime.fromisoformat(end).replace(tzinfo=None)
         result = get_closed_pnl_tool(
-            start_ms=int(timegm(start_dt.timetuple()) * 1000),
-            end_ms=int(timegm(end_dt.timetuple()) * 1000),
+            start_ms=datetime_to_epoch_ms(start_dt),
+            end_ms=datetime_to_epoch_ms(end_dt),
             symbol=symbol,
         )
     else:
@@ -139,12 +139,12 @@ def handle_account_transactions(args) -> int:
 
     if start and end:
         from datetime import datetime
-        from calendar import timegm
+        from src.utils.datetime_utils import datetime_to_epoch_ms
         start_dt = datetime.fromisoformat(start).replace(tzinfo=None)
         end_dt = datetime.fromisoformat(end).replace(tzinfo=None)
         result = get_transaction_log_tool(
-            start_ms=int(timegm(start_dt.timetuple()) * 1000),
-            end_ms=int(timegm(end_dt.timetuple()) * 1000),
+            start_ms=datetime_to_epoch_ms(start_dt),
+            end_ms=datetime_to_epoch_ms(end_dt),
         )
     else:
         result = get_transaction_log_tool(window=window)
