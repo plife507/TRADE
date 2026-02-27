@@ -4,21 +4,86 @@ Open work, bugs, and priorities. Completed work is in `memory/completed_work.md`
 
 ---
 
-## Active Work (backtest quality)
+## Active Work (backtest quality + new features)
 
 ### T1: Warmup Parity Validation
 - [ ] Add a validation check that runs each indicator to `is_ready()` and compares vs registry formula
 - [ ] **GATE**: `python trade_cli.py validate module --module coverage` passes
 
-### T2: Structure Detection (needs rethink)
+### T2: Structure Detection (known limitations)
 
-Current detectors work but have known limitations. See `docs/STRUCTURE_DETECTION_AUDIT.md`.
+Current detectors work but have documented limitations. See `docs/STRUCTURE_DETECTION_AUDIT.md`.
 
-Open questions before investing more work:
-- `confirmation_close` default should be `True` — simple fix
-- Trend detector `strength=2` never fires on real BTC data (4h/12h/D, 6 months)
-- Trend/MS timing mismatch: MS fires CHoCH before trend confirms direction change
-- CHoCH should only break the BOS-producing swing level, not any prior swing
+- [ ] `confirmation_close` default should be `True` — simple fix
+- [ ] Trend detector `strength=2` never fires on real BTC data — needs investigation
+- [ ] Trend/MS timing mismatch — document as architectural trade-off, not bug
+- [ ] CHoCH should only break the BOS-producing swing level, not any prior swing
+
+### T9: New Market Structure Features
+
+See `docs/MARKET_STRUCTURE_FEATURES.md` for full specs.
+
+#### Phase 1: Tier 1 — Core ICT Chain
+- [ ] Displacement detector (`src/structures/detectors/displacement.py`)
+- [ ] Fair Value Gap detector (`src/structures/detectors/fair_value_gap.py`)
+- [ ] Order Block detector (`src/structures/detectors/order_block.py`)
+- [ ] Liquidity Zones detector (`src/structures/detectors/liquidity_zones.py`)
+- [ ] Registry entries (output types + warmup formulas) for all 4
+- [ ] Validation plays for all 4
+- [ ] Synthetic data patterns if needed (displacement_impulse, trending_with_gaps, etc.)
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+- [ ] **GATE**: `python trade_cli.py validate module --module coverage` — no gaps
+
+#### Phase 2: Tier 2 — M6 Intelligence
+- [ ] Volume Profile / POC indicator
+- [ ] Anchored Volume Profile indicator
+- [ ] Premium/Discount zone detector
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+
+#### Phase 3: Tier 3 — Refinements
+- [ ] Breaker Blocks detector
+- [ ] Session Highs/Lows indicator
+- [ ] Mitigation tracking enhancement to FVG + OB
+- [ ] **GATE**: `python trade_cli.py validate standard` passes
+
+---
+
+## P1: Shadow Exchange Order Fidelity (SimExchange vs Bybit Parity)
+
+See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis, code references, and Bybit API cross-reference.
+
+**Context:** Shadow Exchange (M4) = SimulatedExchange + real WS feed. No live Bybit order API. The sim IS the exchange.
+
+**14 features correct today:** Market/limit/stop fills, GTC/IOC/FOK/PostOnly, maker/taker fees, OCO, liquidation on mark, bankruptcy settlement, funding, reduce-only, break-even stop, order amendment, 1m granular TP/SL.
+
+**4 HIGH gaps, 3 MEDIUM gaps identified.**
+
+### Phase 1: Price Fidelity (H1 + H2)
+- [ ] `PriceModel.set_external_prices(mark, last, index)` — shadow mode feeds real WS prices
+- [ ] Add `TriggerSource` enum (`LAST_PRICE`, `MARK_PRICE`, `INDEX_PRICE`) to `types.py`
+- [ ] Add `tp_trigger_by`, `sl_trigger_by` to `Position` and `Order` (default `LAST_PRICE`)
+- [ ] `check_tp_sl()` / `check_tp_sl_1m()` compare against configured price source
+- [ ] `OrderBook.check_triggers()` respects `trigger_by` on stop orders
+- [ ] Add `tp_trigger_by`, `sl_trigger_by` to Play DSL risk_model
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+- [ ] **GATE**: Validation plays for mark vs last trigger divergence
+
+### Phase 2: Exit Fidelity (H3 + H4)
+- [ ] New `TpSlLevel` dataclass: `price`, `size_pct`, `order_type`, `trigger_by`, `limit_price`, `triggered`
+- [ ] Replace single `Position.take_profit`/`stop_loss` with `list[TpSlLevel]` (backward compat via computed properties)
+- [ ] Wire `_check_tp_sl_exits()` to iterate levels, call `_partial_close_position()` for partials
+- [ ] Add `modify_position_stops()` public API to `SimulatedExchange`
+- [ ] DSL: split-TP syntax (`take_profit: [{level: 1.5, size_pct: 50}, ...]`)
+- [ ] Engine adapter: modify-stops hook for strategy-driven TP/SL changes
+- [ ] **GATE**: `python trade_cli.py validate quick` passes
+- [ ] **GATE**: Validation plays for split-TP (3-level exit, SL after partial TP, modify SL post-entry)
+- [ ] **GATE**: Existing 170 synthetic plays still pass
+
+### Phase 3: Safety & Polish (M1 + M2 + M3)
+- [ ] `closeOnTrigger`: cancel competing orders to free margin when SL fires
+- [ ] Partial fills: `PARTIALLY_FILLED` status, `LiquidityModel` depth estimation, IOC/FOK differentiation
+- [ ] Trailing stop: absolute `activePrice` + fixed `trail_distance` alongside existing pct/ATR modes
+- [ ] **GATE**: `python trade_cli.py validate standard` passes
 
 ---
 

@@ -331,6 +331,7 @@ Play YAML actions -> PARSE (dsl_parser.py) -> Block/Case/AllExpr tree
 | Document | Location | Purpose |
 |----------|----------|---------|
 | **Project TODO** | `docs/TODO.md` | Active work tracker |
+| **Market Structure Features** | `docs/MARKET_STRUCTURE_FEATURES.md` | Implementation plan for new detectors (FVG, OB, etc.) |
 | **Play DSL Reference** | `docs/PLAY_DSL_REFERENCE.md` | DSL truth (frozen 2026-01-08) |
 | **Synthetic Data Reference** | `docs/SYNTHETIC_DATA_REFERENCE.md` | 34 data patterns |
 | **Validation Best Practices** | `docs/VALIDATION_BEST_PRACTICES.md` | Validation guide |

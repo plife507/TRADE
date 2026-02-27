@@ -448,11 +448,13 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 |-------|----------|
 | Goal & module architecture | `docs/architecture/ARCHITECTURE.md` |
 | Project status & active work | `docs/TODO.md` |
+| New feature specs (FVG, OB, etc.) | `docs/MARKET_STRUCTURE_FEATURES.md` |
 | DSL syntax (frozen) | `docs/PLAY_DSL_REFERENCE.md` |
 | Validation best practices | `docs/VALIDATION_BEST_PRACTICES.md` |
 | Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
 | CLI patterns | `docs/CLI_QUICK_REFERENCE.md` |
 | Agent readiness scorecard | `docs/AGENT_READINESS_EVALUATION.md` |
+| Shadow order fidelity review | `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` |
 | System defaults | `config/defaults.yml` |
 
 ## Reference Documentation
