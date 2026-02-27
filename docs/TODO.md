@@ -20,8 +20,6 @@ Open questions before investing more work:
 - Trend/MS timing mismatch: MS fires CHoCH before trend confirms direction change
 - CHoCH should only break the BOS-producing swing level, not any prior swing
 
-Design: `docs/brainstorm/STRUCTURE_TRADING_SYSTEM.md` (PivotRingBuffer, unified TradingRun)
-
 ---
 
 ## Pre-Deployment (fix before live trading)

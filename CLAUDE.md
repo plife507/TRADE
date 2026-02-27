@@ -446,12 +446,13 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 
 | Topic | Location |
 |-------|----------|
-| Project status & session context | `docs/TODO.md` |
+| Goal & module architecture | `docs/architecture/ARCHITECTURE.md` |
+| Project status & active work | `docs/TODO.md` |
+| DSL syntax (frozen) | `docs/PLAY_DSL_REFERENCE.md` |
 | Validation best practices | `docs/VALIDATION_BEST_PRACTICES.md` |
-| DSL syntax | `docs/PLAY_DSL_REFERENCE.md` |
 | Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
-| Architecture & roadmap | `docs/architecture/ARCHITECTURE.md` |
-| Agent readiness & go-live path | `docs/AGENT_READINESS_EVALUATION.md` |
+| CLI patterns | `docs/CLI_QUICK_REFERENCE.md` |
+| Agent readiness scorecard | `docs/AGENT_READINESS_EVALUATION.md` |
 | System defaults | `config/defaults.yml` |
 
 ## Reference Documentation
