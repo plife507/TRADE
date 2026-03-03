@@ -89,8 +89,6 @@ See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis, code references, a
 
 ## P0: Codebase Review Remediation (Safety-Critical Fixes)
 
-See `docs/CODEBASE_REVIEW.md` and `docs/CODEBASE_REVIEW_FULL.md` for full analysis.
-
 ### Phase 1: DuckDB Lock Eviction (P0 — prevents DB corruption) ✅
 - [x] Skip age-based eviction when PID is alive (line 506-513 in `historical_data_store.py`)
 - [x] Add mtime heartbeat refresh during long write operations
