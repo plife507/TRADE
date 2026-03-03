@@ -175,8 +175,11 @@ def set_position_tpsl(
         )
         manager.logger.info("Set TP/SL for %s: TP=%s, SL=%s", symbol, take_profit, stop_loss)
         return True
+    except (ConnectionError, TimeoutError, OSError) as e:
+        manager.logger.error("Set TP/SL failed for %s (network): [%s] %s", symbol, type(e).__name__, e)
+        return False
     except Exception as e:
-        manager.logger.error("Set TP/SL failed for %s: %s", symbol, e)
+        manager.logger.error("Set TP/SL failed for %s (API/unknown): [%s] %s", symbol, type(e).__name__, e)
         return False
 
 

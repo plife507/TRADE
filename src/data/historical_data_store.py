@@ -494,23 +494,27 @@ class HistoricalDataStore:
                     self._lock_file.flush()
                     return True
                 except FileExistsError:
-                    # Lock file exists - check PID and age before eviction
+                    # Lock file exists - check PID before eviction
                     try:
                         lock_pid = self._read_lock_pid()
-                        if lock_pid is not None and not self._is_pid_alive(lock_pid):
-                            self.logger.warning(
-                                f"Removing stale lock file (pid={lock_pid} dead): {self._lock_file_path}"
-                            )
-                            self._lock_file_path.unlink()
-                            continue  # Retry
-                        # PID alive or unreadable — fall back to age check
-                        age = time.time() - self._lock_file_path.stat().st_mtime
-                        if age > 300:  # 5 minutes
-                            self.logger.warning(
-                                f"Removing stale lock file (age={age:.0f}s, pid={lock_pid}): {self._lock_file_path}"
-                            )
-                            self._lock_file_path.unlink()
-                            continue  # Retry
+                        if lock_pid is not None:
+                            if not self._is_pid_alive(lock_pid):
+                                # PID is dead — safe to evict
+                                self.logger.warning(
+                                    f"Removing stale lock file (pid={lock_pid} dead): {self._lock_file_path}"
+                                )
+                                self._lock_file_path.unlink()
+                                continue  # Retry
+                            # PID is alive — never evict, wait for release
+                        else:
+                            # PID unreadable (corrupted lock file) — fall back to age check
+                            age = time.time() - self._lock_file_path.stat().st_mtime
+                            if age > 300:  # 5 minutes
+                                self.logger.warning(
+                                    f"Removing stale lock file (age={age:.0f}s, unreadable pid): {self._lock_file_path}"
+                                )
+                                self._lock_file_path.unlink()
+                                continue  # Retry
                     except OSError:
                         pass
 
@@ -559,6 +563,14 @@ class HistoricalDataStore:
         except PermissionError:
             return True  # Process exists but we can't signal it
 
+    def _refresh_lock_mtime(self) -> None:
+        """Touch lock file mtime to signal liveness during long writes."""
+        try:
+            if self._lock_file_path.exists():
+                os.utime(self._lock_file_path)
+        except OSError:
+            pass
+
     def __del__(self):
         """Cleanup: release lock on deletion."""
         try:
@@ -587,6 +599,7 @@ class HistoricalDataStore:
                 "Another process may be writing to the database."
             )
         try:
+            self._refresh_lock_mtime()
             yield
         finally:
             self._release_write_lock()
@@ -1999,26 +2012,16 @@ def reset_stores(force_read_only: bool = False) -> None:
     _force_read_only = force_read_only
 
     # Close existing connections if any
-    if _store_backtest is not None:
-        try:
-            _store_backtest.conn.close()
-        except Exception:
-            pass
-        _store_backtest = None
-
-    if _store_live is not None:
-        try:
-            _store_live.conn.close()
-        except Exception:
-            pass
-        _store_live = None
-
-    if _store_demo is not None:
-        try:
-            _store_demo.conn.close()
-        except Exception:
-            pass
-        _store_demo = None
+    _reset_logger = get_module_logger(__name__)
+    for _name, _store in [("backtest", _store_backtest), ("live", _store_live), ("demo", _store_demo)]:
+        if _store is not None:
+            try:
+                _store.conn.close()
+            except Exception as e:
+                _reset_logger.error("Failed to close %s DuckDB connection: %s", _name, e)
+    _store_backtest = None
+    _store_live = None
+    _store_demo = None
 
 
 def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV, read_only: bool = False) -> HistoricalDataStore:

@@ -914,6 +914,13 @@ class LiveDataProvider:
             if len(rest_bars) > len(bars):
                 bars = rest_bars
 
+        if len(bars) < needed:
+            logger.error(
+                "WARMUP INSUFFICIENT: %s (%s) has %s/%s bars after all fallback tiers. "
+                "Indicators may produce invalid signals until enough bars accumulate.",
+                tf_role, tf_str, len(bars), needed,
+            )
+
         if bars:
             # Convert BarRecords to interface Candles
             tf_duration = timedelta(minutes=tf_minutes(tf_str))
@@ -1077,8 +1084,9 @@ class LiveDataProvider:
             logger.info("Loaded %s bars from DuckDB (%s) for %s", len(bars), self._env, tf_str)
             return bars
 
-        except Exception as e:
-            logger.warning("Failed to load bars from DuckDB for %s: %s", tf_str, e)
+        except (OSError, RuntimeError, ConnectionError) as e:
+            # Infrastructure errors (DB lock, disk, connection) — fall through to next tier
+            logger.error("Failed to load bars from DuckDB for %s: %s", tf_str, e)
             return []
 
     async def _load_bars_from_rest_api(self, tf_str: str) -> list:
@@ -1146,8 +1154,9 @@ class LiveDataProvider:
             logger.info("Loaded %s bars from REST API for %s warm-up", len(bars), tf_str)
             return bars
 
-        except Exception as e:
-            logger.warning("Failed to load bars from REST API for %s: %s", tf_str, e)
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
+            # Infrastructure errors (network, timeout, API) — return empty, caller logs gap
+            logger.error("Failed to load bars from REST API for %s: %s", tf_str, e)
             return []
 
     def _get_structure_specs_by_tf_role(self) -> dict[str, list[dict]]:
@@ -1211,40 +1220,31 @@ class LiveDataProvider:
         # low_tf / exec structures
         low_tf_specs = specs_by_role["low_tf"]
         if low_tf_specs:
-            try:
-                self._low_tf_structure = TFIncrementalState(
-                    self._tf_mapping["low_tf"],
-                    low_tf_specs,
-                )
-                logger.info("Initialized low_tf structure state with %s specs", len(low_tf_specs))
-            except Exception as e:
-                logger.warning("Failed to initialize low_tf structure state: %s", e)
+            self._low_tf_structure = TFIncrementalState(
+                self._tf_mapping["low_tf"],
+                low_tf_specs,
+            )
+            logger.info("Initialized low_tf structure state with %s specs", len(low_tf_specs))
 
         # med_tf structures (only if different from low_tf)
         if self._tf_mapping["med_tf"] != self._tf_mapping["low_tf"]:
             med_tf_specs = specs_by_role["med_tf"]
             if med_tf_specs:
-                try:
-                    self._med_tf_structure = TFIncrementalState(
-                        self._tf_mapping["med_tf"],
-                        med_tf_specs,
-                    )
-                    logger.info("Initialized med_tf structure state with %s specs", len(med_tf_specs))
-                except Exception as e:
-                    logger.warning("Failed to initialize med_tf structure state: %s", e)
+                self._med_tf_structure = TFIncrementalState(
+                    self._tf_mapping["med_tf"],
+                    med_tf_specs,
+                )
+                logger.info("Initialized med_tf structure state with %s specs", len(med_tf_specs))
 
         # high_tf structures (only if different from med_tf)
         if self._tf_mapping["high_tf"] != self._tf_mapping["med_tf"]:
             high_tf_specs = specs_by_role["high_tf"]
             if high_tf_specs:
-                try:
-                    self._high_tf_structure = TFIncrementalState(
-                        self._tf_mapping["high_tf"],
-                        high_tf_specs,
-                    )
-                    logger.info("Initialized high_tf structure state with %s specs", len(high_tf_specs))
-                except Exception as e:
-                    logger.warning("Failed to initialize high_tf structure state: %s", e)
+                self._high_tf_structure = TFIncrementalState(
+                    self._tf_mapping["high_tf"],
+                    high_tf_specs,
+                )
+                logger.info("Initialized high_tf structure state with %s specs", len(high_tf_specs))
 
     def get_candle(self, index: int) -> Candle:
         """

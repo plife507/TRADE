@@ -53,13 +53,13 @@ def handle_play_run(args) -> int:
         console.print(f"[red]Failed to load Play: {e}[/]")
         return 1
 
-    # G15.1: Auto-run pre-live validation gate for live mode (after play resolution)
-    if mode == "live":
+    # G15.1: Auto-run pre-live validation gate for live and demo modes (after play resolution)
+    if mode in ("live", "demo"):
         from src.cli.validate import run_validation, Tier
-        console.print("[cyan]Running pre-live validation gate...[/]")
+        console.print(f"[cyan]Running pre-live validation gate ({mode} mode)...[/]")
         gate_result = run_validation(Tier.PRE_LIVE, play_id=play.id)
         if gate_result != 0:
-            console.print("[bold red]Pre-live validation FAILED. Cannot start live trading.[/]")
+            console.print(f"[bold red]Pre-live validation FAILED. Cannot start {mode} trading.[/]")
             return 1
         console.print("[green]Pre-live validation passed.[/]")
 

@@ -360,8 +360,9 @@ def panic_close_all(exchange_manager, reason: str = "Manual panic button") -> di
                 logger.error("PANIC INCOMPLETE: %s position(s) still open after close attempts", len(open_positions))
             verified = True
             break
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError, RuntimeError) as e:
             if verify_attempt == PANIC_RETRY_ATTEMPTS:
+                logger.error("PANIC: Position verification FAILED after %s attempts: %s", verify_attempt, e)
                 results["errors"].append(f"Failed to verify position closure after {verify_attempt} attempts: {e}")
             else:
                 logger.warning("Verify attempt %s failed, retrying: %s", verify_attempt, e)

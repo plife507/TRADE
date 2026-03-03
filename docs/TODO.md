@@ -87,6 +87,50 @@ See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis, code references, a
 
 ---
 
+## P0: Codebase Review Remediation (Safety-Critical Fixes)
+
+See `docs/CODEBASE_REVIEW.md` and `docs/CODEBASE_REVIEW_FULL.md` for full analysis.
+
+### Phase 1: DuckDB Lock Eviction (P0 — prevents DB corruption) ✅
+- [x] Skip age-based eviction when PID is alive (line 506-513 in `historical_data_store.py`)
+- [x] Add mtime heartbeat refresh during long write operations
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+
+### Phase 2: LiveRunner Queue Backpressure (P0 — prevents stale signal execution) ✅
+- [x] Soft queue depth warning (threshold=5, logs when exceeded)
+- [x] Add queue age tracking (monotonic timestamp when item enqueued)
+- [x] Add circuit breaker: halt trading + trigger panic if queue age > 2× exec timeframe
+- [x] Log queue depth + age metrics on each consumption
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+
+### Phase 3: Risk Controls for Demo Mode (P1 — prevents unguarded demo runs) ✅
+- [x] Extend PL4 pre-live validation gate to demo mode in `cli/subcommands/play.py`
+- [x] Add max_drawdown_pct value validation (reject >= 100% as effectively disabled)
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+
+### Phase 4: Dangerous Exception Handlers (P1 — stops silent failures in live path) ✅
+- [x] `engine/adapters/live.py` — warm-up bar load: narrow to infrastructure errors, log at ERROR
+- [x] `engine/adapters/live.py` — structure init: removed silent catches (now fails loud)
+- [x] `engine/adapters/live.py` — added insufficient-warmup ERROR log when all tiers fail
+- [x] `core/safety.py` — panic verification: narrowed to network errors, escalate on final failure
+- [x] `data/historical_data_store.py` — DB close: log at ERROR with context
+- [x] `engine/runners/live_runner.py` — drawdown check: added traceback in error log
+- [x] `core/exchange_positions.py` — set_tp_sl: split network vs API error types in log
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+
+### Phase 5: Artifact Atomicity (P2 — prevents corruption cascade)
+- [x] Add `atomic_write_text()` and `atomic_write_bytes()` helpers in `utils/helpers.py`
+- [x] Apply to `ResultsSummary.write_json()` (result.json)
+- [x] Apply to `RunManifest.write_json()` (run_manifest.json)
+- [x] Apply to `ManifestWriter.write()` (run_manifest.json)
+- [x] Apply to `PipelineSignature.write_json()` (pipeline_signature.json)
+- [x] Apply to `write_parquet()` (trades.parquet, equity.parquet) via temp + rename
+- [x] Add `fcntl.flock()` file locking to `index.jsonl` appender
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+- [x] **GATE**: `python3 scripts/run_full_suite.py` — 154/171 pass (17 pre-existing: 14 timeouts on WSL2, 1 VWAP deprecation, 1 numeric overflow, 1 cosmetic)
+
+---
+
 ## Pre-Deployment (fix before live trading)
 
 ### T3: Live Blockers

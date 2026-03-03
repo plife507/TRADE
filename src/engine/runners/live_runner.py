@@ -22,6 +22,7 @@ Usage:
 import asyncio
 import queue
 import threading
+import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -205,8 +206,9 @@ class LiveRunner:
         self._realtime_state = None
         self._bootstrap = None
         # stdlib Queue (not asyncio.Queue) for thread-safe put from sync WebSocket callbacks
-        # Unbounded: candle close events are precious and can't be recovered if dropped
+        # Unbounded to avoid blocking WS thread; staleness enforced by consumer circuit breaker
         self._candle_queue: queue.Queue = queue.Queue(maxsize=0)
+        self._QUEUE_WARN_DEPTH = 5   # Log warning when queue exceeds this depth
         self._subscription_task: asyncio.Task | None = None
         self._kline_callback_registered = False
 
@@ -618,11 +620,15 @@ class LiveRunner:
                 volume=kline_data.volume,
             )
 
-            # Enqueue (candle, timeframe) tuple
-            self._candle_queue.put_nowait((candle, kline_data.interval))
+            # Enqueue (candle, timeframe, enqueue_time) for age tracking
+            self._candle_queue.put_nowait((candle, kline_data.interval, time.monotonic()))
             depth = self._candle_queue.qsize()
-            if depth > 10:
-                logger.warning("Candle queue depth=%s, processing may be falling behind", depth)
+            if depth > self._QUEUE_WARN_DEPTH:
+                logger.warning(
+                    "Candle queue depth=%s exceeds warn threshold=%s, "
+                    "processing may be falling behind",
+                    depth, self._QUEUE_WARN_DEPTH,
+                )
 
         except Exception as e:
             logger.warning("Failed to convert kline to candle: %s", e)
@@ -674,7 +680,32 @@ class LiveRunner:
                     )
                     continue
 
-                candle, timeframe = result
+                candle, timeframe, enqueue_time = result
+                queue_age = time.monotonic() - enqueue_time
+                queue_depth = self._candle_queue.qsize()
+
+                # Circuit breaker: halt if candle waited too long (stale signals)
+                exec_tf_seconds = tf_minutes(self._exec_tf) * 60
+                if exec_tf_seconds > 0 and queue_age > exec_tf_seconds * 2:
+                    logger.error(
+                        "CIRCUIT BREAKER: candle queue age %.1fs exceeds 2x exec TF (%ss). "
+                        "Halting trading to prevent stale signal execution.",
+                        queue_age, exec_tf_seconds * 2,
+                    )
+                    panic = get_panic_state()
+                    panic.trigger(
+                        f"Candle queue stale: age={queue_age:.0f}s > "
+                        f"limit={exec_tf_seconds * 2:.0f}s"
+                    )
+                    self._stop_event.set()
+                    break
+
+                # Log queue latency metrics
+                if queue_age > 1.0 or queue_depth > 0:
+                    logger.info(
+                        "Candle processed: tf=%s queue_age=%.1fs depth=%s",
+                        timeframe, queue_age, queue_depth,
+                    )
 
                 # Process candle
                 await self._process_candle(candle, timeframe)
@@ -1168,7 +1199,10 @@ class LiveRunner:
                 self._stop_event.set()
 
         except Exception as e:
-            logger.error("Max drawdown check failed — halting trading: %s", e)
+            logger.error(
+                "Max drawdown check failed — halting trading: %s\n%s",
+                e, traceback.format_exc(),
+            )
             panic = get_panic_state()
             panic.trigger(f"Max drawdown check error: {e}")
             self._stop_event.set()

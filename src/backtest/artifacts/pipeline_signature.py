@@ -80,8 +80,9 @@ class PipelineSignature:
         return json.dumps(self.to_dict(), indent=2, default=str, sort_keys=True)
     
     def write_json(self, path: Path) -> None:
-        """Write to JSON file."""
-        path.write_text(self.to_json(), encoding="utf-8", newline="\n")
+        """Write to JSON file (atomic: temp + replace)."""
+        from src.utils.helpers import atomic_write_text
+        atomic_write_text(path, self.to_json())
     
     def validate(self) -> list[str]:
         """

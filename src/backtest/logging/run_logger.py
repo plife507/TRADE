@@ -292,8 +292,15 @@ def write_run_index_entry(
     if run_hash:
         entry["run_hash"] = run_hash
 
+    import fcntl
+
     with open(index_path, "a", encoding="utf-8", newline="\n") as f:
-        f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+            f.flush()
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 # Singleton for current run logger

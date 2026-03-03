@@ -127,20 +127,21 @@ class ManifestWriter:
     
     def write(self) -> Path:
         """
-        Write manifest to run_dir/run_manifest.json.
-        
+        Write manifest to run_dir/run_manifest.json (atomic: temp + replace).
+
         Returns:
             Path to written manifest file
         """
+        from src.utils.helpers import atomic_write_text
+
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Add final timestamp
         self._manifest["written_at"] = utc_now().isoformat()
-        
+
         manifest_path = self.run_dir / "run_manifest.json"
-        with open(manifest_path, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(self._manifest, f, indent=2, default=str, sort_keys=True)
-        
+        atomic_write_text(manifest_path, json.dumps(self._manifest, indent=2, default=str, sort_keys=True))
+
         return manifest_path
     
     def get_manifest(self) -> dict:

@@ -39,7 +39,7 @@ def write_parquet(
     compression: str = DEFAULT_COMPRESSION,
 ) -> Path:
     """
-    Write DataFrame to Parquet with consistent settings.
+    Write DataFrame to Parquet with consistent settings (atomic: temp + replace).
 
     Args:
         df: DataFrame to write
@@ -55,19 +55,34 @@ def write_parquet(
         - Lossless dtypes (floats remain float64, ints remain int64)
         - Stable compression (snappy)
         - Version controlled via PARQUET_VERSION constant
+        - Atomic via temp file + os.replace to prevent partial writes
     """
+    import os
+    import tempfile
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     # Convert to pyarrow table for explicit control
     table = pa.Table.from_pandas(df, preserve_index=False)
 
-    # Write with consistent settings
-    pq.write_table(
-        table,
-        path,
-        compression=compression,
-        version=PARQUET_VERSION,
-        # Don't write pandas metadata (keeps files clean)
-        # Note: We preserve dtypes via pyarrow's native type inference
-    )
+    # Write to temp file first, then atomically replace
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp", prefix=f".{path.name}.")
+    os.close(fd)  # PyArrow opens the file itself
+    try:
+        pq.write_table(
+            table,
+            tmp,
+            compression=compression,
+            version=PARQUET_VERSION,
+        )
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
     return path
 

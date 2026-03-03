@@ -1291,6 +1291,14 @@ def _gate_pre_live_explicit_config(play_id: str) -> GateResult:
 
                 if "fee_model" not in account_raw or not account_raw.get("fee_model"):
                     failures.append("Missing explicit 'fee_model' (taker_bps, maker_bps)")
+
+                # Validate max_drawdown_pct is meaningful (not effectively disabled)
+                dd_pct = account_raw.get("max_drawdown_pct")
+                if dd_pct is not None and dd_pct >= 100:
+                    failures.append(
+                        f"max_drawdown_pct={dd_pct} is effectively disabled "
+                        f"(allows 100% loss). Set a meaningful limit (e.g., 25.0)"
+                    )
         else:
             failures.append(f"Play YAML not found: {play_path}")
 
