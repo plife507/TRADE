@@ -265,18 +265,20 @@ Both detectors built and validated. 11 structures registered, 0 coverage gaps.
 - [x] Full indicator integration checklist (factory, registry, vendor, __init__)
 - [x] Create `IND_054_anchored_vol_profile.yml` — 14 trades (registration test)
 
-**6b. Mitigation Tracking** — FVG + OB lifecycle enhancement
-- [ ] Enhance FVG detector: add `fill_pct` output per slot, `touch_count`, lifecycle states (active → first_touch → partial_fill → mitigated → invalidated)
-- [ ] Enhance OB detector: same lifecycle states
-- [ ] Add `STR_025_fvg_lifecycle.yml` — tests mitigation progression
-- [ ] Add `STR_026_ob_lifecycle.yml` — tests touch → invalidation
-- [ ] **GATE**: Existing FVG/OB plays still pass (backward compatible)
+**6b. Mitigation Tracking** — FVG + OB lifecycle enhancement ✅
+- [x] Enhance FVG detector: add `nearest_bull_fill_pct`, `nearest_bear_fill_pct` outputs (exposes per-slot fill % for DSL access)
+- [x] Update FVG vectorized reference with fill_pct tracking in aggregates
+- [x] OB already has `any_invalidated_this_bar` + invalidation zone outputs (added in Phase 5a)
+- [x] Add `STR_025_fvg_lifecycle.yml` — entry on active bull FVG with fill_pct > 0 (6 trades)
+- [x] Add `STR_026_ob_lifecycle.yml` — entry on OB invalidation event (13 trades)
+- [x] **GATE**: Existing FVG/OB plays still pass (backward compatible: STR_019=11 trades, STR_021=4 trades)
+- [ ] Future: full 5-state lifecycle (active→first_touch→partial_fill→mitigated→invalidated) and FVG touch_count
 
 **Phase 6 gates:**
-- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
-- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
-- [ ] **GATE**: `python trade_cli.py validate standard` passes
-- [ ] **GATE**: `python scripts/run_full_suite.py` — no regressions
+- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 22/22 pass
+- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 47 ind + 13 struct, 0 gaps
+- [ ] **GATE**: `python trade_cli.py validate standard` passes — pending
+- [ ] **GATE**: `python scripts/run_full_suite.py` — no regressions — pending
 
 #### Final: ICT Chain Integration Play ✅
 

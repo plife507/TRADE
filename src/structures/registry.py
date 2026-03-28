@@ -185,6 +185,8 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "active_bull_count": FeatureOutputType.INT,      # Number of active bullish FVGs
         "active_bear_count": FeatureOutputType.INT,      # Number of active bearish FVGs
         "any_mitigated_this_bar": FeatureOutputType.BOOL,  # True if any FVG mitigated this bar
+        "nearest_bull_fill_pct": FeatureOutputType.FLOAT,  # Fill % of nearest bullish FVG (0.0-1.0)
+        "nearest_bear_fill_pct": FeatureOutputType.FLOAT,  # Fill % of nearest bearish FVG (0.0-1.0)
         "version": FeatureOutputType.INT,                # Monotonic counter, increments on new FVG
     },
     "order_block": {

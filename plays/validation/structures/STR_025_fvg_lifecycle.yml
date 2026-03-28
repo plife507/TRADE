@@ -1,0 +1,55 @@
+version: "3.0.0"
+name: "str_025_fvg_lifecycle"
+description: |
+  Structure Suite - FVG lifecycle/mitigation tracking test.
+  Entry when a bullish FVG is active with partial fill (fill_pct > 0).
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: fair_value_gap
+      key: fvg
+      params:
+        atr_key: atr_14
+        max_active: 5
+
+actions:
+  entry_long:
+    all:
+      - ["fvg.active_bull_count", ">", 0]
+      - ["fvg.nearest_bull_fill_pct", ">", 0]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0
+
+validation:
+  pattern: "trending_with_gaps"

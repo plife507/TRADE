@@ -170,6 +170,8 @@ class IncrementalFVG(BaseIncrementalDetector):
         self._nearest_bull_lower: float = float("nan")
         self._nearest_bear_upper: float = float("nan")
         self._nearest_bear_lower: float = float("nan")
+        self._nearest_bull_fill_pct: float = float("nan")
+        self._nearest_bear_fill_pct: float = float("nan")
 
         # Aggregates
         self._active_bull_count: int = 0
@@ -333,6 +335,8 @@ class IncrementalFVG(BaseIncrementalDetector):
         self._nearest_bull_lower = float("nan")
         self._nearest_bear_upper = float("nan")
         self._nearest_bear_lower = float("nan")
+        self._nearest_bull_fill_pct = float("nan")
+        self._nearest_bear_fill_pct = float("nan")
 
         nearest_bull_dist = float("inf")
         nearest_bear_dist = float("inf")
@@ -344,13 +348,13 @@ class IncrementalFVG(BaseIncrementalDetector):
 
             if fvg["direction"] == 1:
                 self._active_bull_count += 1
-                # Distance from price to gap midpoint
                 mid = (fvg["upper"] + fvg["lower"]) / 2.0
                 dist = abs(price - mid)
                 if dist < nearest_bull_dist:
                     nearest_bull_dist = dist
                     self._nearest_bull_upper = fvg["upper"]
                     self._nearest_bull_lower = fvg["lower"]
+                    self._nearest_bull_fill_pct = fvg["fill_pct"]
             else:
                 self._active_bear_count += 1
                 mid = (fvg["upper"] + fvg["lower"]) / 2.0
@@ -359,6 +363,7 @@ class IncrementalFVG(BaseIncrementalDetector):
                     nearest_bear_dist = dist
                     self._nearest_bear_upper = fvg["upper"]
                     self._nearest_bear_lower = fvg["lower"]
+                    self._nearest_bear_fill_pct = fvg["fill_pct"]
 
     def reset(self) -> None:
         """Reset all mutable state to initial values."""
@@ -373,6 +378,8 @@ class IncrementalFVG(BaseIncrementalDetector):
         self._nearest_bull_lower = float("nan")
         self._nearest_bear_upper = float("nan")
         self._nearest_bear_lower = float("nan")
+        self._nearest_bull_fill_pct = float("nan")
+        self._nearest_bear_fill_pct = float("nan")
         self._active_bull_count = 0
         self._active_bear_count = 0
         self._version = 0
@@ -399,6 +406,8 @@ class IncrementalFVG(BaseIncrementalDetector):
             "active_bull_count",
             "active_bear_count",
             "any_mitigated_this_bar",
+            "nearest_bull_fill_pct",
+            "nearest_bear_fill_pct",
             "version",
         ]
 
@@ -437,6 +446,10 @@ class IncrementalFVG(BaseIncrementalDetector):
             return self._active_bear_count
         elif key == "any_mitigated_this_bar":
             return self._any_mitigated_this_bar
+        elif key == "nearest_bull_fill_pct":
+            return self._nearest_bull_fill_pct
+        elif key == "nearest_bear_fill_pct":
+            return self._nearest_bear_fill_pct
         elif key == "version":
             return self._version
         else:

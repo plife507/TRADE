@@ -52,6 +52,8 @@ def vectorized_fair_value_gap(
     out_active_bull_count = np.zeros(n)
     out_active_bear_count = np.zeros(n)
     out_any_mitigated_this_bar = np.zeros(n)
+    out_nearest_bull_fill_pct = np.full(n, np.nan)
+    out_nearest_bear_fill_pct = np.full(n, np.nan)
     out_version = np.zeros(n)
 
     # State: list of FVG dicts (newest first)
@@ -178,6 +180,8 @@ def vectorized_fair_value_gap(
         nearest_bear_lower = float("nan")
         nearest_bull_dist = float("inf")
         nearest_bear_dist = float("inf")
+        nearest_bull_fill_pct = float("nan")
+        nearest_bear_fill_pct = float("nan")
 
         for fvg in fvgs:
             if fvg["state"] != "active":
@@ -191,12 +195,14 @@ def vectorized_fair_value_gap(
                     nearest_bull_dist = dist
                     nearest_bull_upper = fvg["upper"]
                     nearest_bull_lower = fvg["lower"]
+                    nearest_bull_fill_pct = fvg["fill_pct"]
             else:
                 active_bear_count += 1
                 if dist < nearest_bear_dist:
                     nearest_bear_dist = dist
                     nearest_bear_upper = fvg["upper"]
                     nearest_bear_lower = fvg["lower"]
+                    nearest_bear_fill_pct = fvg["fill_pct"]
 
         # Write outputs
         out_new_this_bar[i] = 1.0 if new_this_bar else 0.0
@@ -210,6 +216,8 @@ def vectorized_fair_value_gap(
         out_active_bull_count[i] = float(active_bull_count)
         out_active_bear_count[i] = float(active_bear_count)
         out_any_mitigated_this_bar[i] = 1.0 if any_mitigated else 0.0
+        out_nearest_bull_fill_pct[i] = nearest_bull_fill_pct
+        out_nearest_bear_fill_pct[i] = nearest_bear_fill_pct
         out_version[i] = float(version)
 
     return {
@@ -224,6 +232,8 @@ def vectorized_fair_value_gap(
         "active_bull_count": out_active_bull_count,
         "active_bear_count": out_active_bear_count,
         "any_mitigated_this_bar": out_any_mitigated_this_bar,
+        "nearest_bull_fill_pct": out_nearest_bull_fill_pct,
+        "nearest_bear_fill_pct": out_nearest_bear_fill_pct,
         "version": out_version,
     }
 
