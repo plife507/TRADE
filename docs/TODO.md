@@ -256,12 +256,14 @@ Both detectors built and validated. 11 structures registered, 0 coverage gaps.
 
 #### Phase 6: Enhancements (depend on Phases 2 + 4)
 
-**6a. Anchored Volume Profile** — resets on structural event
-- [ ] Create class extending VolumeProfile logic
-  - Resets accumulation on swing pair version change (same pattern as `anchored_vwap`)
+**6a. Anchored Volume Profile** — resets on structural event ✅
+- [x] Create `src/indicators/incremental/anchored_volume_profile.py`
+  - Wraps IncrementalVolumeProfile, resets on swing pair version change
   - Additional output: `bars_since_anchor`=INT
-- [ ] Full indicator integration checklist
-- [ ] Create `IND_054_anchored_vol_profile.yml`
+  - Batch: NaN placeholder (engine overwrites bar-by-bar like anchored_vwap)
+  - Added to `RUNTIME_ONLY_INDICATORS` whitelist
+- [x] Full indicator integration checklist (factory, registry, vendor, __init__)
+- [x] Create `IND_054_anchored_vol_profile.yml` — 14 trades (registration test)
 
 **6b. Mitigation Tracking** — FVG + OB lifecycle enhancement
 - [ ] Enhance FVG detector: add `fill_pct` output per slot, `touch_count`, lifecycle states (active → first_touch → partial_fill → mitigated → invalidated)

@@ -73,6 +73,7 @@ from .volume import (
     IncrementalVolumeProfile,
 )
 from .session import IncrementalSessionLevels
+from .anchored_volume_profile import IncrementalAnchoredVolumeProfile
 
 
 # =============================================================================
@@ -127,6 +128,7 @@ _VALID_PARAMS: dict[str, frozenset[str]] = {
     "anchored_vwap": frozenset({"anchor_source"}),
     "volume_profile": frozenset({"num_buckets", "lookback", "value_area_pct"}),
     "session_levels": frozenset(),
+    "anchored_volume_profile": frozenset({"num_buckets", "lookback", "value_area_pct"}),
 }
 
 
@@ -200,6 +202,7 @@ _FACTORY: dict[str, Callable[[dict[str, Any]], IncrementalIndicator]] = {
     "anchored_vwap": lambda p: IncrementalAnchoredVWAP(anchor_source=p.get("anchor_source", "swing_any")),
     "volume_profile": lambda p: IncrementalVolumeProfile(num_buckets=p.get("num_buckets", 50), lookback=p.get("lookback", 50), value_area_pct=p.get("value_area_pct", 0.70)),
     "session_levels": lambda p: IncrementalSessionLevels(),
+    "anchored_volume_profile": lambda p: IncrementalAnchoredVolumeProfile(num_buckets=p.get("num_buckets", 50), lookback=p.get("lookback", 50), value_area_pct=p.get("value_area_pct", 0.70)),
 }
 
 

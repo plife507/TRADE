@@ -192,7 +192,7 @@ def get_required_indicator_columns_from_specs(feature_specs: list) -> list[str]:
 
 # Indicators whose batch output is intentionally all-NaN (filled at runtime).
 # anchored_vwap: engine fills bar-by-bar via _update_anchored_vwap().
-RUNTIME_ONLY_INDICATORS = frozenset({"anchored_vwap"})
+RUNTIME_ONLY_INDICATORS = frozenset({"anchored_vwap", "anchored_volume_profile"})
 
 
 def get_validity_check_columns_from_specs(feature_specs: list) -> list[str]:

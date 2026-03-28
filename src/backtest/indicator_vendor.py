@@ -246,6 +246,27 @@ def _compute_anchored_vwap(
     return {"value": values, "bars_since_anchor": bars_since}
 
 
+def _compute_anchored_volume_profile_placeholder(
+    close: pd.Series,
+) -> dict[str, pd.Series]:
+    """NaN placeholder for anchored volume profile.
+
+    Like anchored_vwap, the engine overwrites bar-by-bar with swing-aware
+    resets. Batch precomputation without swing state produces wrong values.
+    """
+    import numpy as np
+    nan = pd.Series(np.nan, index=close.index, dtype=float)
+    return {
+        "poc": nan.copy(),
+        "vah": nan.copy(),
+        "val": nan.copy(),
+        "poc_volume": nan.copy(),
+        "above_poc": nan.copy(),
+        "in_value_area": nan.copy(),
+        "bars_since_anchor": nan.copy(),
+    }
+
+
 def _compute_session_levels_batch(
     high: pd.Series,
     low: pd.Series,
@@ -531,6 +552,14 @@ def compute_indicator(
         result = _compute_anchored_vwap(
             high=high, low=low, close=close, volume=volume, **kwargs
         )
+    elif indicator_name == "anchored_volume_profile":
+        # Anchored Volume Profile batch: NaN placeholder like anchored_vwap.
+        # Engine's bar-by-bar loop overwrites with swing-aware resets.
+        assert high is not None
+        assert low is not None
+        assert close is not None
+        assert volume is not None
+        result = _compute_anchored_volume_profile_placeholder(close=close)
     elif indicator_name == "session_levels":
         # Session Levels is incremental-only (no pandas_ta equivalent).
         assert high is not None, "Session Levels requires 'high' series"
