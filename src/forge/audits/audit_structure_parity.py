@@ -39,6 +39,8 @@ from .vectorized_references.zone_reference import vectorized_zone
 from .vectorized_references.fibonacci_reference import vectorized_fibonacci
 from .vectorized_references.market_structure_reference import vectorized_market_structure
 from .vectorized_references.derived_zone_reference import vectorized_derived_zone
+from .vectorized_references.displacement_reference import vectorized_displacement
+from .vectorized_references.fair_value_gap_reference import vectorized_fair_value_gap
 
 
 # Keys to skip during comparison (hashes, enum strings stored as NaN)
@@ -881,6 +883,116 @@ def audit_derived_zone(ohlcv: dict[str, np.ndarray], tolerance: float, dataset: 
         )
 
 
+def audit_displacement(ohlcv: dict[str, np.ndarray], tolerance: float, dataset: str) -> StructureDetectorResult:
+    """Audit displacement detector parity."""
+    try:
+        params = {
+            "atr_key": "atr",
+            "body_atr_min": 1.5,
+            "wick_ratio_max": 0.4,
+        }
+        warmup = 1
+
+        # Compute a simple ATR(14) from the OHLCV data
+        n = len(ohlcv["close"])
+        atr_period = 14
+        atr_array = np.full(n, np.nan)
+
+        # True Range
+        tr = np.zeros(n)
+        for i in range(n):
+            hl = ohlcv["high"][i] - ohlcv["low"][i]
+            if i == 0:
+                tr[i] = hl
+            else:
+                hc = abs(ohlcv["high"][i] - ohlcv["close"][i - 1])
+                lc = abs(ohlcv["low"][i] - ohlcv["close"][i - 1])
+                tr[i] = max(hl, hc, lc)
+
+        # Simple moving average of TR for ATR
+        for i in range(atr_period - 1, n):
+            atr_array[i] = np.mean(tr[i - atr_period + 1 : i + 1])
+
+        # Run incremental via run_detector_batch
+        inc = run_detector_batch(
+            "displacement", ohlcv, params, indicators_data={"atr": atr_array}
+        )
+
+        # Encode incremental output (bool -> float)
+        inc = _encode_incremental_output(inc, "displacement")
+
+        # Run vectorized
+        vec = vectorized_displacement(
+            ohlcv, atr_array, body_atr_min=1.5, wick_ratio_max=0.4
+        )
+
+        passed, max_diff, mismatched, keys = _compare_outputs(
+            inc, vec, warmup, tolerance
+        )
+
+        return StructureDetectorResult(
+            detector="displacement",
+            dataset=dataset,
+            passed=passed,
+            max_abs_diff=max_diff,
+            mismatched_keys=mismatched,
+            total_keys_checked=keys,
+            warmup_bars=warmup,
+        )
+    except Exception as e:
+        return StructureDetectorResult(
+            detector="displacement",
+            dataset=dataset,
+            passed=False,
+            max_abs_diff=float("inf"),
+            error_message=str(e),
+        )
+
+
+def audit_fair_value_gap(ohlcv: dict[str, np.ndarray], tolerance: float, dataset: str) -> StructureDetectorResult:
+    """Audit fair_value_gap detector parity (no ATR filter)."""
+    try:
+        params = {
+            "atr_key": "atr",
+            "min_gap_atr": 0.0,
+            "max_active": 5,
+        }
+        warmup = 3
+
+        # Run incremental via run_detector_batch
+        inc = run_detector_batch("fair_value_gap", ohlcv, params)
+
+        # Encode incremental output (bool -> float)
+        inc = _encode_incremental_output(inc, "fair_value_gap")
+
+        # Run vectorized
+        vec = vectorized_fair_value_gap(
+            ohlcv, atr_array=None, min_gap_atr=0.0, max_active=5
+        )
+
+        passed, max_diff, mismatched, keys = _compare_outputs(
+            inc, vec, warmup, tolerance
+        )
+
+        return StructureDetectorResult(
+            detector="fair_value_gap",
+            dataset=dataset,
+            passed=passed,
+            max_abs_diff=max_diff,
+            mismatched_keys=mismatched,
+            total_keys_checked=keys,
+            warmup_bars=warmup,
+        )
+    except Exception as e:
+        return StructureDetectorResult(
+            detector="fair_value_gap",
+            dataset=dataset,
+            passed=False,
+            max_abs_diff=float("inf"),
+            error_message=str(e),
+        )
+
+
 # =============================================================================
 # NaN-Resilience Audit (Phase 2: Live/Backtest Indicator Parity)
 # =============================================================================
@@ -1273,6 +1385,8 @@ def run_structure_parity_audit(
             audit_fibonacci_trend,
             audit_market_structure,
             audit_derived_zone,
+            audit_displacement,
+            audit_fair_value_gap,
         ]
 
         # Run each audit on each dataset

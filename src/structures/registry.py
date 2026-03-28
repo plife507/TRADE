@@ -164,6 +164,29 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "break_level_low": FeatureOutputType.FLOAT,  # Level to watch for bearish break
         "version": FeatureOutputType.INT,            # Monotonic counter, increments on structure event
     },
+    "displacement": {
+        "is_displacement": FeatureOutputType.BOOL,   # True if current bar is a displacement
+        "direction": FeatureOutputType.INT,          # 1 (bullish), -1 (bearish), 0 (none)
+        "body_atr_ratio": FeatureOutputType.FLOAT,   # Body size as ATR multiple
+        "wick_ratio": FeatureOutputType.FLOAT,       # Total wick size as fraction of body
+        "last_idx": FeatureOutputType.INT,           # Bar index of most recent displacement
+        "last_direction": FeatureOutputType.INT,     # Direction of most recent displacement
+        "version": FeatureOutputType.INT,            # Monotonic counter, increments on displacement
+    },
+    "fair_value_gap": {
+        "new_this_bar": FeatureOutputType.BOOL,          # True if new FVG detected this bar
+        "new_direction": FeatureOutputType.INT,          # 1 (bull), -1 (bear), 0 (none)
+        "new_upper": FeatureOutputType.FLOAT,            # Upper boundary of newest FVG
+        "new_lower": FeatureOutputType.FLOAT,            # Lower boundary of newest FVG
+        "nearest_bull_upper": FeatureOutputType.FLOAT,   # Upper of nearest active bullish FVG
+        "nearest_bull_lower": FeatureOutputType.FLOAT,   # Lower of nearest active bullish FVG
+        "nearest_bear_upper": FeatureOutputType.FLOAT,   # Upper of nearest active bearish FVG
+        "nearest_bear_lower": FeatureOutputType.FLOAT,   # Lower of nearest active bearish FVG
+        "active_bull_count": FeatureOutputType.INT,      # Number of active bullish FVGs
+        "active_bear_count": FeatureOutputType.INT,      # Number of active bearish FVGs
+        "any_mitigated_this_bar": FeatureOutputType.BOOL,  # True if any FVG mitigated this bar
+        "version": FeatureOutputType.INT,                # Monotonic counter, increments on new FVG
+    },
 }
 
 
@@ -203,6 +226,12 @@ STRUCTURE_WARMUP_FORMULAS: dict[str, Callable] = {
     # MARKET_STRUCTURE: needs multiple swings for structure detection
     # Conservative heuristic: (left + right) * 3
     "market_structure": lambda params, swing_params: (swing_params["left"] + swing_params["right"]) * 3,
+
+    # DISPLACEMENT: only needs 1 bar (compares current bar body/wick vs ATR)
+    "displacement": lambda params, swing_params: 1,
+
+    # FAIR_VALUE_GAP: needs 3 bars for the 3-candle pattern
+    "fair_value_gap": lambda params, swing_params: 3,
 }
 
 

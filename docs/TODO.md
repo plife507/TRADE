@@ -98,29 +98,29 @@ Dependency graph:
 6. Create validation play `plays/validation/indicators/IND_0XX_<name>.yml`
 7. Verify G15 coverage + G9 suite pass
 
-#### Phase 1: Displacement + Fair Value Gap (parallel, zero deps)
+#### Phase 1: Displacement + Fair Value Gap (parallel, zero deps) ✅
 
-These two detectors have NO dependencies on each other or new features. Can be built in parallel.
+Both detectors built and validated. 9 structures registered, 0 coverage gaps.
 
 **1a. Displacement detector** — strong impulsive candle detection
-- [ ] Create `src/structures/detectors/displacement.py`
+- [x] Create `src/structures/detectors/displacement.py`
   - `@register_structure("displacement")`
   - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `body_atr_min` (1.5), `wick_ratio_max` (0.4)
   - `DEPENDS_ON`: [] (reads ATR from `bar.indicators`)
   - State: per-bar flags (`is_displacement`, `direction`, `body_atr_ratio`, `wick_ratio`) + persistent (`last_idx`, `last_direction`, `version`)
   - O(1) update: compute body/ATR ratio and wick ratio, classify
   - Handle NaN ATR gracefully (no displacement, return early)
-- [ ] Add to `detectors/__init__.py` — import + `__all__`
-- [ ] `STRUCTURE_OUTPUT_TYPES["displacement"]`: `is_displacement`=BOOL, `direction`=INT, `body_atr_ratio`=FLOAT, `wick_ratio`=FLOAT, `last_idx`=INT, `last_direction`=INT, `version`=INT
-- [ ] `STRUCTURE_WARMUP_FORMULAS["displacement"]`: `lambda params, swing_params: 1`
-- [ ] Create `vectorized_references/displacement_reference.py`
-- [ ] Add `audit_displacement()` to parity audit + register in `audit_funcs`
-- [ ] Add synthetic pattern `displacement_impulse` — phases: calm (40%), impulse burst (20%), calm (40%). Strong body candles with small wicks during burst phase.
-- [ ] Create `STR_018_displacement.yml` — entry on `disp.is_displacement == 1 AND disp.direction == 1` with `displacement_impulse` pattern
-- [ ] **GATE**: G5 parity passes for displacement
+- [x] Add to `detectors/__init__.py` — import + `__all__`
+- [x] `STRUCTURE_OUTPUT_TYPES["displacement"]`: `is_displacement`=BOOL, `direction`=INT, `body_atr_ratio`=FLOAT, `wick_ratio`=FLOAT, `last_idx`=INT, `last_direction`=INT, `version`=INT
+- [x] `STRUCTURE_WARMUP_FORMULAS["displacement"]`: `lambda params, swing_params: 1`
+- [x] Create `vectorized_references/displacement_reference.py`
+- [x] Add `audit_displacement()` to parity audit + register in `audit_funcs`
+- [x] Add synthetic pattern `displacement_impulse` — phases: calm (40%), impulse burst (20%), calm (40%). Strong body candles with small wicks during burst phase.
+- [x] Create `STR_018_displacement.yml` — entry on `disp.is_displacement == 1 AND disp.direction == 1` with `displacement_impulse` pattern
+- [x] **GATE**: G5 parity passes for displacement
 
 **1b. Fair Value Gap detector** — 3-candle price imbalance gaps
-- [ ] Create `src/structures/detectors/fair_value_gap.py`
+- [x] Create `src/structures/detectors/fair_value_gap.py`
   - `@register_structure("fair_value_gap")`
   - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `min_gap_atr` (0.0), `max_active` (5)
   - `DEPENDS_ON`: []
@@ -128,20 +128,20 @@ These two detectors have NO dependencies on each other or new features. Can be b
   - O(1) update: push candle, check 3-candle gap pattern, update mitigation on active FVGs
   - Mitigation: track fill_pct; 50%+ fill → "mitigated"; close through → "invalidated"
   - Slot management: newest first, evict oldest beyond `max_active`
-- [ ] Add to `detectors/__init__.py`
-- [ ] `STRUCTURE_OUTPUT_TYPES["fair_value_gap"]`: `new_this_bar`=BOOL, `new_direction`=INT, `new_upper`=FLOAT, `new_lower`=FLOAT, `nearest_bull_upper`=FLOAT, `nearest_bull_lower`=FLOAT, `nearest_bear_upper`=FLOAT, `nearest_bear_lower`=FLOAT, `active_bull_count`=INT, `active_bear_count`=INT, `any_mitigated_this_bar`=BOOL, `version`=INT
-- [ ] `STRUCTURE_WARMUP_FORMULAS["fair_value_gap"]`: `lambda params, swing_params: 3`
-- [ ] Create `vectorized_references/fair_value_gap_reference.py`
-- [ ] Add `audit_fair_value_gap()` to parity audit + register
-- [ ] Add synthetic pattern `trending_with_gaps` — strong directional moves creating 3-candle gaps (can use `trend_parabolic` as base but ensure OHLC ranges don't overlap between candles 1 and 3)
-- [ ] Create `STR_019_fvg_basic.yml` — entry on `fvg.active_bull_count > 0` with `trending_with_gaps` pattern
-- [ ] Create `STR_020_fvg_mitigation.yml` — entry on `fvg.any_mitigated_this_bar == 1` with `reversal_v_bottom` pattern
-- [ ] **GATE**: G5 parity passes for fair_value_gap
+- [x] Add to `detectors/__init__.py`
+- [x] `STRUCTURE_OUTPUT_TYPES["fair_value_gap"]`: 12 output fields registered
+- [x] `STRUCTURE_WARMUP_FORMULAS["fair_value_gap"]`: warmup=3
+- [x] Create `vectorized_references/fair_value_gap_reference.py`
+- [x] Add `audit_fair_value_gap()` to parity audit + register
+- [x] Add synthetic pattern `trending_with_gaps`
+- [x] Create `STR_019_fvg_basic.yml` — 11 trades on trending_with_gaps
+- [ ] Create `STR_020_fvg_mitigation.yml` — deferred to Phase 6 (mitigation tracking enhancement)
+- [x] **GATE**: G5 parity passes for fair_value_gap (18/18 detectors, 0 failures)
 
 **Phase 1 gates:**
-- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
-- [ ] **GATE**: `python trade_cli.py validate module --module structures --json` — all pass
-- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
+- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 18/18 pass
+- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 19/19 pass
+- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 9 structures, 0 gaps
 
 #### Phase 2: Order Block + Liquidity Zones (parallel, depend on Phase 1)
 

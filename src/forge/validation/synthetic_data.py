@@ -82,6 +82,9 @@ PatternType = Literal[
     "accumulation", "distribution",
     # Multi-timeframe patterns
     "mtf_aligned_bull", "mtf_aligned_bear", "mtf_pullback_bull", "mtf_pullback_bear",
+    # Structure-specific patterns
+    "displacement_impulse",
+    "trending_with_gaps",
 ]
 
 
@@ -1302,6 +1305,121 @@ def _generate_mtf_pullback_bear(
     return prices
 
 
+def _generate_displacement_impulse(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate displacement impulse pattern.
+
+    Creates scattered single-candle impulses separated by extended calm
+    periods. Impulses are 3-5% of price, dwarfing the ~0.5% wick noise
+    added by _prices_to_ohlcv, so body/ATR ratios are well above 1.5x
+    and wick ratios stay below 0.4.
+
+    Structure: calm -> single impulse -> calm -> single impulse -> calm
+    Spacing of ~30 bars lets ATR(14) settle back to calm-regime levels
+    before the next impulse fires.
+    """
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    # Calm noise scale (very tight)
+    calm_noise = volatility * base_price * cfg.noise_level * 0.3
+
+    # Place impulse candles at specific positions after enough calm bars
+    # for ATR(14) to settle. Space them ~30 bars apart.
+    impulse_bars: set[int] = set()
+    spacing = max(30, n_bars // 8)
+    # Start after ATR warmup (>= 14 bars of calm)
+    bar = 20
+    while bar < n_bars:
+        impulse_bars.add(bar)
+        bar += spacing
+
+    sorted_impulses = sorted(impulse_bars)
+
+    for i in range(1, n_bars):
+        if i in impulse_bars:
+            # Impulse: 3-5% of base_price, well above wick noise (~0.5%)
+            impulse_size = base_price * rng.uniform(0.03, 0.05)
+            # Alternate between bullish and bearish
+            idx_in_sequence = sorted_impulses.index(i)
+            d = 1 if idx_in_sequence % 2 == 0 else -1
+            prices[i] = prices[i - 1] + d * impulse_size
+        else:
+            # Calm: very small random walk
+            prices[i] = prices[i - 1] + rng.normal(0, calm_noise)
+
+    return prices
+
+
+def _generate_trending_with_gaps(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate trending data with impulsive moves that create 3-candle gaps.
+
+    Phase 1 (30%): Calm consolidation with small moves.
+    Phase 2 (40%): Strong uptrend with periodic impulse bursts.
+        Every few bars, a large additive jump creates gaps between
+        candle 1's high and candle 3's low (bullish FVG).
+    Phase 3 (30%): Pullback/retracement that fills some gaps.
+
+    IMPORTANT: Standard OHLC derivation creates continuous bars. For FVGs
+    to appear (c3.low > c1.high), the close-to-close moves must be large
+    enough that derived wicks don't bridge the gap. Uses additive jumps
+    based on base_price to avoid exponential compounding.
+    """
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    phase1_end = int(n_bars * 0.30)
+    phase2_end = int(n_bars * 0.70)
+
+    impulse_interval = 8  # Every N bars in phase 2, fire an impulse
+    noise_scale = volatility * base_price * cfg.noise_level
+
+    # Additive jump size: 3-5% of base_price (not current price)
+    jump_base = base_price * 0.03
+
+    for i in range(1, n_bars):
+        if i < phase1_end:
+            # Phase 1: Calm consolidation
+            prices[i] = prices[i - 1] + rng.normal(0, noise_scale * 0.3)
+
+        elif i < phase2_end:
+            # Phase 2: Strong trend with impulse gaps
+            phase2_progress = i - phase1_end
+            if phase2_progress % impulse_interval == 1:
+                # Impulse bar: large additive upward jump
+                jump = rng.uniform(jump_base, jump_base * 1.5)
+                prices[i] = prices[i - 1] + jump
+            elif phase2_progress % impulse_interval == 2:
+                # Bar after impulse: continue higher to widen gap
+                prices[i] = prices[i - 1] + rng.uniform(jump_base * 0.3, jump_base * 0.5)
+            else:
+                # Normal trend bar: gentle upward drift
+                drift = base_price * 0.001
+                prices[i] = prices[i - 1] + rng.uniform(drift * 0.5, drift * 2.0)
+
+        else:
+            # Phase 3: Pullback that fills some gaps
+            phase3_len = n_bars - phase2_end
+            target_pullback = (prices[phase2_end - 1] - prices[phase1_end]) * 0.4
+            pullback_rate = target_pullback / max(phase3_len, 1)
+            prices[i] = prices[i - 1] - pullback_rate + rng.normal(0, noise_scale * 0.5)
+
+    return prices
+
+
 # =============================================================================
 # Pattern Registry - Maps pattern names to generators
 # =============================================================================
@@ -1348,6 +1466,9 @@ PATTERN_GENERATORS = {
     "mtf_aligned_bear": _generate_mtf_aligned_bear,
     "mtf_pullback_bull": _generate_mtf_pullback_bull,
     "mtf_pullback_bear": _generate_mtf_pullback_bear,
+    # Structure-specific patterns
+    "displacement_impulse": _generate_displacement_impulse,
+    "trending_with_gaps": _generate_trending_with_gaps,
 }
 
 
