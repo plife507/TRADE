@@ -288,6 +288,88 @@ Both detectors built and validated. 11 structures registered, 0 coverage gaps.
 
 ---
 
+### T10: Deep Dive Structure Detector Verification
+
+Systematic line-by-line verification of all 13 structure detectors. Every algorithm, math formula, edge case — on hand-crafted synthetic data AND regime-matched real SOLUSDT 1h market data. No forced passes.
+
+**Architecture**: `src/forge/audits/structure_deep_tests/` — 13 scripts + harness + runner.
+
+**Real Data**: SOLUSDT 1h from DuckDB, regime-matched per detector:
+
+| Regime | Date Range | Character |
+|--------|-----------|-----------|
+| BULL | Jul 14-27 2025 | Clean 2-week rally, low ATR |
+| BEAR | Feb 24 - Mar 2 2025 | Strong persistent sell-off |
+| CONSOLIDATION | Sep 15-21 2025 | Tightest range (2.8% max swing) |
+| CHOPPY | Jan 27 - Feb 2 2025 | Whipsaw, 12.9% max range |
+| BULL→BEAR | Sep 8 - Oct 12 2025 | Trend reversal (avoid Oct 10 black swan) |
+| BEAR→BULL | Mar 24 - Apr 13 2025 | V-reversal |
+
+**Structure → Regime Mapping**:
+
+| # | Structure | Regime | Why |
+|---|-----------|--------|-----|
+| 1 | rolling_window | BULL | Needs price movement |
+| 2 | swing | BULL + BEAR | Clear pivots form in trends |
+| 3 | trend | BULL, BEAR, CONSOL | Test all 3 directions |
+| 4 | zone | BULL + CONSOL | Zone formation + zone holds |
+| 5 | fibonacci | BULL+pullback | Retracement levels during pullback |
+| 6 | derived_zone | BULL+pullback | Fib-based zone tracking |
+| 7 | market_structure | BULL→BEAR | BOS in trend, CHoCH at reversal |
+| 8 | displacement | BEAR start | Impulsive sell candles |
+| 9 | fair_value_gap | BULL + BEAR | Gaps form in strong moves |
+| 10 | order_block | BEAR→BULL | OB before displacement, reversal retests |
+| 11 | liquidity_zones | CONSOL→sweep | Consolidation builds zones, trend sweeps |
+| 12 | premium_discount | CONSOL | Clear defined range |
+| 13 | breaker_block | BULL→BEAR | OB invalidation + CHoCH at reversal |
+
+**Per-Detector Test Categories** (5 per script):
+1. **MATH** — Hand-computed known inputs → expected outputs
+2. **ALGORITHM** — State transitions, ordering, guards
+3. **EDGE** — NaN, zero ATR, doji, flat, gap, single-bar
+4. **PARITY** — Inc vs vec on regime-matched REAL data (not synthetic)
+5. **REAL SANITY** — Outputs make logical sense on real market data
+
+**Cross-Detector Consistency** (run at end):
+- X1: Swing→Trend: when trend=1, recent waves show HH+HL
+- X2: Swing→Fibonacci: anchor_high == pair_high_level exactly
+- X3: Swing→Premium/Discount: equilibrium == (pair_high+pair_low)/2
+- X4: Displacement→Order Block: every OB bar has displacement
+- X5: OB+MS→Breaker: every breaker has ob.invalidated + ms.choch
+
+**Execution**: `python -m src.forge.audits.structure_deep_tests.run_all`
+
+#### Phase 1: Harness + Foundation Detectors
+- [ ] Create `_harness.py` — TestCase, TestReport, load_sol_1h(), compute_atr_array(), make_bar(), assert_close()
+- [ ] `test_01_rolling_window.py` — M1.1-M1.4, A1.1-A1.2, E1.1, P1.1, R1.1
+- [ ] `test_02_swing.py` — M2.1-M2.6, A2.1-A2.2, E2.1-E2.2, P2.1-P2.2, R2.1-R2.2
+- [ ] **GATE**: Phase 1 scripts all pass
+
+#### Phase 2: Swing-Dependent Detectors
+- [ ] `test_03_trend.py` — M3.1-M3.4, A3.1, E3.1, P3.1, R3.1-R3.3
+- [ ] `test_04_zone.py` — M4.1-M4.4, E4.1, P4.1, R4.1-R4.2
+- [ ] `test_05_fibonacci.py` — M5.1-M5.4, A5.1, E5.1, P5.1, R5.1
+- [ ] `test_06_derived_zone.py` — M6.1-M6.2, A6.1-A6.2, E6.1, P6.1, R6.1
+- [ ] `test_07_market_structure.py` — M7.1-M7.3, A7.1-A7.4, E7.1, P7.1, R7.1-R7.3
+- [ ] **GATE**: Phase 2 scripts all pass
+
+#### Phase 3: Independent + Complex Detectors
+- [ ] `test_08_displacement.py` — M8.1-M8.4, E8.1-E8.2, P8.1, R8.1-R8.2
+- [ ] `test_09_fair_value_gap.py` — M9.1-M9.5, A9.1-A9.3, E9.1, P9.1-P9.2, R9.1-R9.2
+- [ ] `test_10_order_block.py` — M10.1-M10.3, A10.1-A10.4, E10.1, P10.1, R10.1
+- [ ] `test_11_liquidity_zones.py` — M11.1-M11.3, A11.1-A11.3, E11.1, P11.1, R11.1-R11.2
+- [ ] `test_12_premium_discount.py` — M12.1-M12.3, A12.1-A12.2, E12.1, P12.1, R12.1-R12.2
+- [ ] `test_13_breaker_block.py` — M13.1-M13.4, A13.1-A13.3, E13.1, P13.1, R13.1-R13.2
+- [ ] **GATE**: Phase 3 scripts all pass
+
+#### Phase 4: Cross-Detector + Final
+- [ ] Cross-detector consistency tests X1-X5 in `run_all.py`
+- [ ] `run_all.py` — sequential runner with JSON output
+- [ ] **GATE**: `python -m src.forge.audits.structure_deep_tests.run_all` — 0 failures
+- [ ] Save report to `docs/STRUCTURE_DEEP_TEST_REPORT.json`
+
+---
+
 ## P1: Shadow Exchange Order Fidelity (SimExchange vs Bybit Parity)
 
 See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis, code references, and Bybit API cross-reference.
