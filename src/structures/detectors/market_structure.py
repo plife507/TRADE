@@ -80,7 +80,7 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
 
     REQUIRED_PARAMS: list[str] = []
     OPTIONAL_PARAMS: dict[str, Any] = {
-        "confirmation_close": False,  # Require candle close beyond level (vs wick)
+        "confirmation_close": True,  # Require candle close beyond level (ICT/SMC canon)
     }
     DEPENDS_ON: list[str] = ["swing"]
 
@@ -93,7 +93,7 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             deps: Dependencies dict. Must contain "swing" with a swing detector.
         """
         self.swing = deps["swing"]
-        self._confirmation_close = params.get("confirmation_close", False)
+        self._confirmation_close = params.get("confirmation_close", True)
 
         # Current market bias (integer to match trend detector convention)
         # 1 = bullish, -1 = bearish, 0 = ranging
@@ -122,6 +122,13 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         self._last_bos_idx: int = -1
         self._last_bos_level: float = float("nan")
         self._bos_direction: str = "none"
+
+        # BOS-anchored CHoCH levels:
+        # When a BOS fires, the opposing swing level at that moment becomes
+        # the CHoCH trigger. CHoCH should only break this anchor, not any
+        # subsequent swing.
+        self._choch_anchor_level: float = float("nan")  # Level CHoCH must break
+        self._choch_anchor_idx: int = -1  # Index of the swing that anchors CHoCH
 
         # Last CHoCH event
         self._last_choch_idx: int = -1
@@ -162,34 +169,22 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._prev_prev_swing_high = self._prev_swing_high
             self._prev_swing_high = high_level  # type: ignore[assignment]
             self._last_high_idx = high_idx  # type: ignore[assignment]
-            self._update_break_levels()
+            # Only update the high break level (not low)
+            if not math.isnan(self._prev_swing_high):
+                if self._last_high_idx > self._broken_high_idx:
+                    self._break_level_high = self._prev_swing_high
 
         if low_changed:
             self._prev_prev_swing_low = self._prev_swing_low
             self._prev_swing_low = low_level  # type: ignore[assignment]
             self._last_low_idx = low_idx  # type: ignore[assignment]
-            self._update_break_levels()
+            # Only update the low break level (not high)
+            if not math.isnan(self._prev_swing_low):
+                if self._last_low_idx > self._broken_low_idx:
+                    self._break_level_low = self._prev_swing_low
 
         # Check for structure breaks
         self._check_breaks(bar_idx, bar)
-
-    def _update_break_levels(self) -> None:
-        """Update the break levels based on current swing structure.
-
-        Only updates if the swing is NEWER than the one we already broke.
-        This prevents re-triggering BOS on the same level.
-        """
-        # High to break: only update if this is a new swing we haven't broken
-        if not math.isnan(self._prev_swing_high):
-            # Only set break level if this swing is newer than the one we broke
-            if self._last_high_idx > self._broken_high_idx:
-                self._break_level_high = self._prev_swing_high
-
-        # Low to break: only update if this is a new swing we haven't broken
-        if not math.isnan(self._prev_swing_low):
-            # Only set break level if this swing is newer than the one we broke
-            if self._last_low_idx > self._broken_low_idx:
-                self._break_level_low = self._prev_swing_low
 
     def _check_breaks(self, bar_idx: int, bar: "BarData") -> None:
         """
@@ -215,20 +210,25 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         Check for breaks in bullish bias.
 
         In bullish bias:
-        - Break below swing low = CHoCH (potential reversal to bearish) - checked first, takes priority
+        - Break below BOS-anchored swing low = CHoCH (reversal to bearish) - checked first
         - Break above swing high = BOS (bullish continuation)
+
+        CHoCH only fires when price breaks the swing low that was the anchor
+        at the time the last BOS fired, not any arbitrary prior swing low.
         """
-        # Check for CHoCH (reversal) - takes priority over BOS
-        if not math.isnan(self._break_level_low) and check_low < self._break_level_low:
+        # Check for CHoCH (reversal) using BOS-anchored level - takes priority
+        if not math.isnan(self._choch_anchor_level) and check_low < self._choch_anchor_level:
             self._choch_this_bar = True
             self._last_choch_idx = bar_idx
-            self._last_choch_level = self._break_level_low
+            self._last_choch_level = self._choch_anchor_level
             self._choch_direction = "bearish"
             self.bias = -1
             self._version += 1
-            # Mark this swing as broken and clear break level
-            self._broken_low_idx = self._last_low_idx
+            # Mark this swing as broken and clear levels
+            self._broken_low_idx = self._choch_anchor_idx
             self._break_level_low = float("nan")
+            self._choch_anchor_level = float("nan")
+            self._choch_anchor_idx = -1
             return  # CHoCH supersedes BOS on same bar
 
         # Check for bullish BOS (continuation)
@@ -242,26 +242,36 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._broken_high_idx = self._last_high_idx
             # Clear break level - require NEW swing to form before next BOS
             self._break_level_high = float("nan")
+            # Set CHoCH anchor: the opposing swing low at this moment
+            # becomes the level CHoCH must break to reverse
+            if not math.isnan(self._prev_swing_low):
+                self._choch_anchor_level = self._prev_swing_low
+                self._choch_anchor_idx = self._last_low_idx
 
     def _check_bearish_bias_breaks(self, bar_idx: int, check_high: float, check_low: float) -> None:
         """
         Check for breaks in bearish bias.
 
         In bearish bias:
-        - Break above swing high = CHoCH (potential reversal to bullish) - checked first, takes priority
+        - Break above BOS-anchored swing high = CHoCH (reversal to bullish) - checked first
         - Break below swing low = BOS (bearish continuation)
+
+        CHoCH only fires when price breaks the swing high that was the anchor
+        at the time the last BOS fired, not any arbitrary prior swing high.
         """
-        # Check for CHoCH (reversal) - takes priority over BOS
-        if not math.isnan(self._break_level_high) and check_high > self._break_level_high:
+        # Check for CHoCH (reversal) using BOS-anchored level - takes priority
+        if not math.isnan(self._choch_anchor_level) and check_high > self._choch_anchor_level:
             self._choch_this_bar = True
             self._last_choch_idx = bar_idx
-            self._last_choch_level = self._break_level_high
+            self._last_choch_level = self._choch_anchor_level
             self._choch_direction = "bullish"
             self.bias = 1
             self._version += 1
-            # Mark this swing as broken and clear break level
-            self._broken_high_idx = self._last_high_idx
+            # Mark this swing as broken and clear levels
+            self._broken_high_idx = self._choch_anchor_idx
             self._break_level_high = float("nan")
+            self._choch_anchor_level = float("nan")
+            self._choch_anchor_idx = -1
             return  # CHoCH supersedes BOS on same bar
 
         # Check for bearish BOS (continuation)
@@ -275,6 +285,11 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._broken_low_idx = self._last_low_idx
             # Clear break level - require NEW swing to form before next BOS
             self._break_level_low = float("nan")
+            # Set CHoCH anchor: the opposing swing high at this moment
+            # becomes the level CHoCH must break to reverse
+            if not math.isnan(self._prev_swing_high):
+                self._choch_anchor_level = self._prev_swing_high
+                self._choch_anchor_idx = self._last_high_idx
 
     def _check_ranging_breaks(self, bar_idx: int, check_high: float, check_low: float) -> None:
         """
@@ -297,6 +312,10 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._broken_high_idx = self._last_high_idx
             # Clear break level - require NEW swing to form before next BOS
             self._break_level_high = float("nan")
+            # Set CHoCH anchor for the new bullish bias
+            if not math.isnan(self._prev_swing_low):
+                self._choch_anchor_level = self._prev_swing_low
+                self._choch_anchor_idx = self._last_low_idx
             return
 
         # Check for bearish break to establish bias
@@ -311,6 +330,10 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             self._broken_low_idx = self._last_low_idx
             # Clear break level - require NEW swing to form before next BOS
             self._break_level_low = float("nan")
+            # Set CHoCH anchor for the new bearish bias
+            if not math.isnan(self._prev_swing_high):
+                self._choch_anchor_level = self._prev_swing_high
+                self._choch_anchor_idx = self._last_high_idx
 
     def reset(self) -> None:
         """Reset all mutable state to initial values."""
@@ -328,6 +351,8 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
         self._last_bos_idx = -1
         self._last_bos_level = float("nan")
         self._bos_direction = "none"
+        self._choch_anchor_level = float("nan")
+        self._choch_anchor_idx = -1
         self._last_choch_idx = -1
         self._last_choch_level = float("nan")
         self._choch_direction = "none"
@@ -352,6 +377,8 @@ class IncrementalMarketStructure(BaseIncrementalDetector):
             "last_bos_idx": self._last_bos_idx,
             "last_bos_level": self._last_bos_level,
             "bos_direction": self._bos_direction,
+            "choch_anchor_level": self._choch_anchor_level,
+            "choch_anchor_idx": self._choch_anchor_idx,
             "last_choch_idx": self._last_choch_idx,
             "last_choch_level": self._last_choch_level,
             "choch_direction": self._choch_direction,

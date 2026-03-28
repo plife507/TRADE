@@ -10,41 +10,268 @@ Open work, bugs, and priorities. Completed work is in `memory/completed_work.md`
 - [ ] Add a validation check that runs each indicator to `is_ready()` and compares vs registry formula
 - [ ] **GATE**: `python trade_cli.py validate module --module coverage` passes
 
-### T2: Structure Detection (known limitations)
+### T2: Structure Health — Test & Heal
 
-Current detectors work but have documented limitations. See `docs/STRUCTURE_DETECTION_AUDIT.md`.
+Replaces old T2. Covers all structure detector issues identified in investigation (2026-03-27).
+See `docs/STRUCTURE_DETECTION_AUDIT.md` for 6-month BTCUSDT audit data.
 
-- [ ] `confirmation_close` default should be `True` — simple fix
-- [ ] Trend detector `strength=2` never fires on real BTC data — needs investigation
-- [ ] Trend/MS timing mismatch — document as architectural trade-off, not bug
-- [ ] CHoCH should only break the BOS-producing swing level, not any prior swing
+#### Phase 1: Confirmation Close Default + Noise Reduction ✅
+- [x] Change `confirmation_close` default from `False` to `True` in `market_structure.py:83`
+- [x] Update vectorized reference in `vectorized_references/market_structure_reference.py` to match
+- [x] Update G5 parity audit expected values if needed (not needed — uses defaults)
+- [x] Audit all 14 structure validation plays — added `confirmation_close: false` to STR_003 (wick-based BOS test)
+- [x] Add new play `STR_015_ms_confirmation_close.yml` — tests both close and wick modes
+- [x] Document in `STRUCTURE_DETECTION_AUDIT.md`: "default changed, wick mode still available"
+- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — G5 9/9 pass
+- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 15/15 pass
 
-### T9: New Market Structure Features
+#### Phase 2: Live/Backtest Indicator Parity (Shadow Exchange readiness)
+- [x] Add NaN-input tests for all 7 detectors — feed BarData with NaN indicators, verify no crash and predictable behavior
+- [x] Zone detector (`zone.py:191-193`): returns early on NaN ATR — test proves zone stays "none" until ATR available
+- [x] Swing detector: significance outputs are NaN (not crash) when `atr_key` indicator missing — verified
+- [x] Fibonacci detector: levels stay NaN when source swing hasn't formed yet — verified
+- [x] Derived zone detector: empty-slot sentinels returned when no zones exist — verified
+- [x] Zone late-ATR parity test: NaN for first 50 bars then real ATR — no crash, zones form after — verified
+- [ ] Add integration test: feed identical 500-bar candle sequence through both `FeedStore` (backtest path) and `LiveIndicatorCache` (live path), compare all structure outputs bar-by-bar (deferred: requires engine-level integration test harness)
+- [ ] Add integration test: verify med_tf/high_tf structure update timing — `TFIndexManager` (backtest) vs buffer-length (live) produce updates on same bars (deferred: requires live provider mock)
+- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — G5 16/16 pass (was 9)
+- [x] **GATE**: 7 NaN-resilience tests added to G5, all pass
 
-See `docs/MARKET_STRUCTURE_FEATURES.md` for full specs.
+#### Phase 3: Trend Strength=2 Investigation + Fix ✅
+- [x] Instrument `_classify_trend()` — tested wave sequences with synthetic staircase and real-like data
+- [x] Root cause confirmed: **data characteristic, not algorithm bug**. BTC 4h volatility alternates wave direction too fast for 2+ consecutive same-direction pairs. Algorithm correctly produces strength=2 on `trend_stairs` pattern (27.6% of bars).
+- [x] On real BTC data with default params (left=5, right=5), wave pairs alternate: UP→RANGING→DOWN→RANGING. Need calmer markets or higher TFs.
+- [x] No existing plays depend on `strength >= 2` (all use `>= 1`). Confirmed via grep.
+- [x] Added `STR_016_trend_strength.yml` — uses `trend_stairs` pattern, left=3/right=3, produces strength=2.
+- [x] Document: strength=2 requires orderly trending markets. Use higher TFs (4h+) or altcoins with cleaner structure for reliable strength=2 signals. See `STRUCTURE_DETECTION_AUDIT.md`.
+- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 16/16 pass
+- [x] **GATE**: STR_016 produces strength=2 on synthetic data (551/2000 bars = 27.6%)
 
-#### Phase 1: Tier 1 — Core ICT Chain
-- [ ] Displacement detector (`src/structures/detectors/displacement.py`)
-- [ ] Fair Value Gap detector (`src/structures/detectors/fair_value_gap.py`)
-- [ ] Order Block detector (`src/structures/detectors/order_block.py`)
-- [ ] Liquidity Zones detector (`src/structures/detectors/liquidity_zones.py`)
-- [ ] Registry entries (output types + warmup formulas) for all 4
-- [ ] Validation plays for all 4
-- [ ] Synthetic data patterns if needed (displacement_impulse, trending_with_gaps, etc.)
+#### Phase 4: CHoCH Break-Level Correctness ✅
+- [x] CHoCH now only fires when price breaks the BOS-anchored swing level (not any prior swing)
+- [x] Added `_choch_anchor_level` / `_choch_anchor_idx` tracking to market_structure.py
+- [x] Fixed `_update_break_levels` — split into per-side updates to match vectorized reference (prevented stale break level re-assertion after CHoCH)
+- [x] Updated vectorized reference to match BOS-anchored CHoCH logic
+- [x] Added `STR_017_choch_bos_anchor.yml` — long_short mode, wick-based, trending pattern (11 trades)
+- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — G5 16/16 pass
+- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 17/17 pass
+- [ ] **GATE**: Run `scripts/run_full_suite.py` — pending (running in background)
+
+### T9: ICT Structure Features — Full Integration Plan
+
+See `docs/MARKET_STRUCTURE_FEATURES.md` for algorithm specs, output fields, edge cases, and DSL examples.
+
+**Current state**: 7 structures + 44 indicators (mechanics layer).
+**Goal**: Add 7 structures + 3 indicators (institutional narrative layer) across 6 gated phases.
+
+```
+Dependency graph:
+  swing (exists) ──┬──> order_block ──> breaker_block
+                   ├──> liquidity_zones
+                   ├──> premium_discount (trivial)
+  ATR (exists) ────┼──> displacement ──> order_block
+  (none) ──────────┼──> fair_value_gap ──> mitigation_tracking
+  (none) ──────────┼──> volume_profile ──> anchored_volume_profile
+  (time-based) ────┴──> session_levels
+```
+
+**Per-detector integration checklist** (12 steps, all required):
+1. Create `src/structures/detectors/<name>.py` — `@register_structure`, `BaseIncrementalDetector`
+2. Import in `src/structures/detectors/__init__.py` + add to `__all__`
+3. Add output types to `STRUCTURE_OUTPUT_TYPES` in `registry.py`
+4. Add warmup formula to `STRUCTURE_WARMUP_FORMULAS` in `registry.py`
+5. Create vectorized reference in `src/forge/audits/vectorized_references/<name>_reference.py`
+6. Add `audit_<name>()` function in `audit_structure_parity.py`
+7. Register audit function in `audit_funcs` list (line ~1270)
+8. Create validation play `plays/validation/structures/STR_0XX_<name>.yml`
+9. Add synthetic data pattern if needed (to `PatternType` + `PATTERN_GENERATORS`)
+10. Verify G15 coverage: `python trade_cli.py validate module --module coverage`
+11. Verify G5 parity: `python trade_cli.py validate module --module parity`
+12. Verify G9 suite: `python trade_cli.py validate module --module structures`
+
+**Per-indicator integration checklist** (7 steps):
+1. Create incremental class in `src/indicators/incremental/<module>.py` — inherit `IncrementalIndicator`
+2. Register in factory `src/indicators/incremental/factory.py` — `_FACTORY` + `_VALID_PARAMS`
+3. Export from `src/indicators/incremental/__init__.py`
+4. Add to `SUPPORTED_INDICATORS` in `src/backtest/indicator_registry.py` — warmup, inputs, params, output_keys
+5. Add to `INDICATOR_OUTPUT_TYPES` in `src/backtest/indicator_registry.py`
+6. Create validation play `plays/validation/indicators/IND_0XX_<name>.yml`
+7. Verify G15 coverage + G9 suite pass
+
+#### Phase 1: Displacement + Fair Value Gap (parallel, zero deps)
+
+These two detectors have NO dependencies on each other or new features. Can be built in parallel.
+
+**1a. Displacement detector** — strong impulsive candle detection
+- [ ] Create `src/structures/detectors/displacement.py`
+  - `@register_structure("displacement")`
+  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `body_atr_min` (1.5), `wick_ratio_max` (0.4)
+  - `DEPENDS_ON`: [] (reads ATR from `bar.indicators`)
+  - State: per-bar flags (`is_displacement`, `direction`, `body_atr_ratio`, `wick_ratio`) + persistent (`last_idx`, `last_direction`, `version`)
+  - O(1) update: compute body/ATR ratio and wick ratio, classify
+  - Handle NaN ATR gracefully (no displacement, return early)
+- [ ] Add to `detectors/__init__.py` — import + `__all__`
+- [ ] `STRUCTURE_OUTPUT_TYPES["displacement"]`: `is_displacement`=BOOL, `direction`=INT, `body_atr_ratio`=FLOAT, `wick_ratio`=FLOAT, `last_idx`=INT, `last_direction`=INT, `version`=INT
+- [ ] `STRUCTURE_WARMUP_FORMULAS["displacement"]`: `lambda params, swing_params: 1`
+- [ ] Create `vectorized_references/displacement_reference.py`
+- [ ] Add `audit_displacement()` to parity audit + register in `audit_funcs`
+- [ ] Add synthetic pattern `displacement_impulse` — phases: calm (40%), impulse burst (20%), calm (40%). Strong body candles with small wicks during burst phase.
+- [ ] Create `STR_018_displacement.yml` — entry on `disp.is_displacement == 1 AND disp.direction == 1` with `displacement_impulse` pattern
+- [ ] **GATE**: G5 parity passes for displacement
+
+**1b. Fair Value Gap detector** — 3-candle price imbalance gaps
+- [ ] Create `src/structures/detectors/fair_value_gap.py`
+  - `@register_structure("fair_value_gap")`
+  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `min_gap_atr` (0.0), `max_active` (5)
+  - `DEPENDS_ON`: []
+  - State: 3-candle deque buffer, active FVG slots (list of dicts: direction, upper, lower, anchor_idx, state, fill_pct), per-bar flags, nearest bull/bear accessors, aggregate counts
+  - O(1) update: push candle, check 3-candle gap pattern, update mitigation on active FVGs
+  - Mitigation: track fill_pct; 50%+ fill → "mitigated"; close through → "invalidated"
+  - Slot management: newest first, evict oldest beyond `max_active`
+- [ ] Add to `detectors/__init__.py`
+- [ ] `STRUCTURE_OUTPUT_TYPES["fair_value_gap"]`: `new_this_bar`=BOOL, `new_direction`=INT, `new_upper`=FLOAT, `new_lower`=FLOAT, `nearest_bull_upper`=FLOAT, `nearest_bull_lower`=FLOAT, `nearest_bear_upper`=FLOAT, `nearest_bear_lower`=FLOAT, `active_bull_count`=INT, `active_bear_count`=INT, `any_mitigated_this_bar`=BOOL, `version`=INT
+- [ ] `STRUCTURE_WARMUP_FORMULAS["fair_value_gap"]`: `lambda params, swing_params: 3`
+- [ ] Create `vectorized_references/fair_value_gap_reference.py`
+- [ ] Add `audit_fair_value_gap()` to parity audit + register
+- [ ] Add synthetic pattern `trending_with_gaps` — strong directional moves creating 3-candle gaps (can use `trend_parabolic` as base but ensure OHLC ranges don't overlap between candles 1 and 3)
+- [ ] Create `STR_019_fvg_basic.yml` — entry on `fvg.active_bull_count > 0` with `trending_with_gaps` pattern
+- [ ] Create `STR_020_fvg_mitigation.yml` — entry on `fvg.any_mitigated_this_bar == 1` with `reversal_v_bottom` pattern
+- [ ] **GATE**: G5 parity passes for fair_value_gap
+
+**Phase 1 gates:**
+- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
+- [ ] **GATE**: `python trade_cli.py validate module --module structures --json` — all pass
+- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
+
+#### Phase 2: Order Block + Liquidity Zones (parallel, depend on Phase 1)
+
+**2a. Order Block detector** — last opposing candle before displacement
+- [ ] Create `src/structures/detectors/order_block.py`
+  - `@register_structure("order_block")`
+  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `use_body` (True), `require_displacement` (True), `body_atr_min` (1.5), `wick_ratio_max` (0.4), `max_active` (5), `lookback` (3)
+  - `DEPENDS_ON`: ["swing"], `OPTIONAL_DEPS`: ["displacement"]
+  - State: candle history deque (lookback+2), active OB slots (direction, upper, lower, anchor_idx, state, volume), per-bar flags, nearest accessors, aggregate counts
+  - O(1) update: check displacement (via dep or inline), search backward for opposing candle, create OB, update mitigation on active OBs
+  - If displacement dep available: use `disp.is_displacement`; else: compute inline with same body_atr_min/wick_ratio_max
+  - OB zone: body range (use_body=True) or full range (use_body=False) of opposing candle
+  - Mitigation: price enters OB zone → "touched"; close through → "invalidated"
+- [ ] Add to `detectors/__init__.py`
+- [ ] `STRUCTURE_OUTPUT_TYPES["order_block"]`: same pattern as FVG (new_this_bar, new_direction, new_upper, new_lower, nearest_bull/bear, active counts, any_mitigated, version)
+- [ ] `STRUCTURE_WARMUP_FORMULAS["order_block"]`: `lambda params, swing_params: max(params.get("lookback", 3) + 2, swing_params["left"] + swing_params["right"])`
+- [ ] Create vectorized reference + parity audit function
+- [ ] Add synthetic pattern `ob_retest` — displacement from opposing candle, then retracement to OB zone
+- [ ] Create `STR_021_order_block.yml` — entry on `ob.active_bull_count > 0 AND close near_abs ob.nearest_bull_lower`
+- [ ] **GATE**: G5 parity passes for order_block
+
+**2b. Liquidity Zones detector** — equal highs/lows clustering + sweep detection
+- [ ] Create `src/structures/detectors/liquidity_zones.py`
+  - `@register_structure("liquidity_zones")`
+  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `tolerance_atr` (0.3), `sweep_atr` (0.1), `min_touches` (2), `max_active` (5)
+  - `DEPENDS_ON`: ["swing"]
+  - State: swing history deques (highs/lows), active zone slots (direction, level, touches, state, sweep_bar_idx), per-bar flags (new_zone, sweep_this_bar, sweep_direction), nearest level accessors
+  - O(1) update: track new swing pivots, cluster detection on last 10 swings, check sweeps on active zones, recompute nearest
+  - Clustering: find N swings within tolerance_atr * ATR of each other → form zone at average level
+  - Sweep: price exceeds zone level by sweep_atr * ATR then reverses
+- [ ] Add to `detectors/__init__.py`
+- [ ] `STRUCTURE_OUTPUT_TYPES["liquidity_zones"]`: `new_zone_this_bar`=BOOL, `sweep_this_bar`=BOOL, `sweep_direction`=INT, `swept_level`=FLOAT, `nearest_high_level`=FLOAT, `nearest_low_level`=FLOAT, `nearest_high_touches`=INT, `nearest_low_touches`=INT, `version`=INT
+- [ ] `STRUCTURE_WARMUP_FORMULAS["liquidity_zones"]`: `lambda params, swing_params: (swing_params["left"] + swing_params["right"]) * params.get("min_touches", 2)`
+- [ ] Create vectorized reference + parity audit function
+- [ ] Add synthetic pattern `equal_highs_lows` — range-bound with multiple swing touches at same level, then sweep + reversal
+- [ ] Create `STR_022_liquidity_zones.yml` — entry on `liq.sweep_this_bar == 1 AND liq.sweep_direction == -1` (swept lows = bullish signal)
+- [ ] **GATE**: G5 parity passes for liquidity_zones
+
+**Phase 2 gates:**
+- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
+- [ ] **GATE**: `python trade_cli.py validate module --module structures --json` — all pass
+- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
+
+#### Phase 3: Premium/Discount (trivial, depends on swing pairs)
+
+- [ ] Create `src/structures/detectors/premium_discount.py`
+  - `@register_structure("premium_discount")`
+  - `DEPENDS_ON`: ["swing"]
+  - Reads `pair_high_level`, `pair_low_level` from swing dependency
+  - Computes: `equilibrium` = midpoint, `premium_level` = 75%, `discount_level` = 25%, `zone` = "premium"/"discount"/"equilibrium"/"none", `depth_pct` = position 0.0-1.0
+  - O(1): just reads swing pair values and divides
+- [ ] Add to `detectors/__init__.py`
+- [ ] `STRUCTURE_OUTPUT_TYPES["premium_discount"]`: `equilibrium`=FLOAT, `premium_level`=FLOAT, `discount_level`=FLOAT, `zone`=ENUM, `depth_pct`=FLOAT, `version`=INT
+- [ ] `STRUCTURE_WARMUP_FORMULAS["premium_discount"]`: `lambda params, swing_params: swing_params["left"] + swing_params["right"]`
+- [ ] Create vectorized reference + parity audit
+- [ ] Create `STR_023_premium_discount.yml` — entry on `pd.zone == "discount" AND trend.direction == 1`
+- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
+- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
+
+#### Phase 4: Volume Profile indicator (standalone, hard)
+
+**4a. IncrementalVolumeProfile** — volume distribution across price levels
+- [ ] Create class in `src/indicators/incremental/volume.py`
+  - Inherit `IncrementalIndicator`
+  - Params: `num_buckets` (100), `lookback` (50), `value_area_pct` (0.70)
+  - State: price range tracker, bucket volumes array, bar contribution deque for rolling eviction
+  - O(buckets) per bar for volume distribution (acceptable: ~100 ops)
+  - Lazy rebinning: only rebin when price exceeds range by 10%+
+  - Outputs: `poc` (FLOAT), `vah` (FLOAT), `val` (FLOAT), `poc_volume` (FLOAT), `above_poc` (BOOL), `in_value_area` (BOOL)
+- [ ] Register in factory `_FACTORY` + `_VALID_PARAMS`
+- [ ] Export from `src/indicators/incremental/__init__.py`
+- [ ] Add to `SUPPORTED_INDICATORS` — multi_output=True, output_keys=("poc", "vah", "val", "poc_volume", "above_poc", "in_value_area"), warmup=lookback
+- [ ] Add to `INDICATOR_OUTPUT_TYPES` — poc=FLOAT, vah=FLOAT, val=FLOAT, poc_volume=FLOAT, above_poc=BOOL, in_value_area=BOOL
+- [ ] Create `IND_052_volume_profile_poc.yml` — entry on `vp.above_poc == 1 AND trend.direction == 1`
+- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
 - [ ] **GATE**: `python trade_cli.py validate quick` passes
-- [ ] **GATE**: `python trade_cli.py validate module --module coverage` — no gaps
 
-#### Phase 2: Tier 2 — M6 Intelligence
-- [ ] Volume Profile / POC indicator
-- [ ] Anchored Volume Profile indicator
-- [ ] Premium/Discount zone detector
+#### Phase 5: Breaker Blocks + Session Levels (depend on Phase 2)
+
+**5a. Breaker Block detector** — failed OB that flips polarity on CHoCH
+- [ ] Create `src/structures/detectors/breaker_block.py`
+  - `@register_structure("breaker_block")`
+  - `DEPENDS_ON`: ["order_block", "market_structure"]
+  - Monitors OB invalidations; when an OB is invalidated during a CHoCH event, it flips polarity (bullish OB → bearish resistance, vice versa)
+  - State: active breaker slots (direction, upper, lower, state), per-bar flags
+  - Outputs: same pattern as OB (nearest, active counts, version)
+- [ ] Full integration checklist (registry, vectorized ref, parity audit, validation play)
+- [ ] Create `STR_024_breaker_block.yml`
+- [ ] **GATE**: G5 parity + G9 suite pass
+
+**5b. Session Levels indicator** — previous daily/weekly/monthly highs/lows
+- [ ] Create class in `src/indicators/incremental/volume.py` (or new `session.py`)
+  - Tracks session boundaries using `ts_open` from bar data
+  - Outputs: `prev_day_high`=FLOAT, `prev_day_low`=FLOAT, `current_day_high`=FLOAT, `current_day_low`=FLOAT, `prev_week_high`=FLOAT, `prev_week_low`=FLOAT
+  - Needs: timestamp awareness for session boundary detection
+- [ ] Full indicator integration checklist
+- [ ] Create `IND_053_session_levels.yml`
+- [ ] **GATE**: Coverage + quick validation pass
+
+**Phase 5 gates:**
+- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
+- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
 - [ ] **GATE**: `python trade_cli.py validate quick` passes
 
-#### Phase 3: Tier 3 — Refinements
-- [ ] Breaker Blocks detector
-- [ ] Session Highs/Lows indicator
-- [ ] Mitigation tracking enhancement to FVG + OB
+#### Phase 6: Enhancements (depend on Phases 2 + 4)
+
+**6a. Anchored Volume Profile** — resets on structural event
+- [ ] Create class extending VolumeProfile logic
+  - Resets accumulation on swing pair version change (same pattern as `anchored_vwap`)
+  - Additional output: `bars_since_anchor`=INT
+- [ ] Full indicator integration checklist
+- [ ] Create `IND_054_anchored_vol_profile.yml`
+
+**6b. Mitigation Tracking** — FVG + OB lifecycle enhancement
+- [ ] Enhance FVG detector: add `fill_pct` output per slot, `touch_count`, lifecycle states (active → first_touch → partial_fill → mitigated → invalidated)
+- [ ] Enhance OB detector: same lifecycle states
+- [ ] Add `STR_025_fvg_lifecycle.yml` — tests mitigation progression
+- [ ] Add `STR_026_ob_lifecycle.yml` — tests touch → invalidation
+- [ ] **GATE**: Existing FVG/OB plays still pass (backward compatible)
+
+**Phase 6 gates:**
+- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
+- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
 - [ ] **GATE**: `python trade_cli.py validate standard` passes
+- [ ] **GATE**: `python scripts/run_full_suite.py` — no regressions
+
+#### Final: ICT Chain Integration Play
+
+- [ ] Create `STR_027_full_ict_chain.yml` — all new structures in one play: swing → displacement → FVG → OB → liquidity → market_structure → premium_discount → breaker_block. Entry: BOS + OB retest + FVG confluence in discount zone. The "complete ICT trade setup" as a single Play.
+- [ ] **GATE**: `python trade_cli.py validate standard` — full pass
 
 ---
 

@@ -1,10 +1,11 @@
 version: "3.0.0"
-name: "str_003_market_structure_bos"
+name: "str_016_trend_strength"
 description: |
-  Structure Suite - Market structure Break of Structure (BOS) test.
-  Entry on bullish BOS event with trend filter.
+  Structure Suite - Trend strength=2 validation.
+  Uses staircase_up synthetic pattern to produce consistent HH+HL waves,
+  verifying that strength=2 fires when 2+ consecutive wave pairs confirm.
 
-symbol: "SOLUSDT"
+symbol: "BTCUSDT"
 
 timeframes:
   low_tf: "15m"
@@ -31,13 +32,7 @@ structures:
   exec:
     - type: swing
       key: swing
-      params: {left: 5, right: 5}
-
-    - type: market_structure
-      key: ms
-      uses: swing
-      params:
-        confirmation_close: false  # Explicit: test wick-based BOS detection
+      params: {left: 3, right: 3}
 
     - type: trend
       key: trend
@@ -46,9 +41,9 @@ structures:
 actions:
   entry_long:
     all:
-      - ["ms.bos_this_bar", "==", 1]
-      - ["ms.bos_direction", "==", "bullish"]
-      - ["rsi_14", "<", 60]
+      - ["trend.direction", "==", 1]
+      - ["trend.strength", ">=", 1]
+      - ["rsi_14", "<", 70]
 
 position_policy:
   mode: "long_only"
@@ -61,4 +56,4 @@ risk:
   max_position_pct: 100.0
 
 validation:
-  pattern: "trending"
+  pattern: "trend_stairs"

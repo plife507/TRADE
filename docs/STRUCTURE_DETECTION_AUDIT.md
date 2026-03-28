@@ -136,11 +136,11 @@ If a play uses BOTH `trend.direction == -1` AND `market_structure.choch_this_bar
 
 ---
 
-## 4. Default `confirmation_close=False` Is Wrong for ICT/SMC
+## 4. ~~Default `confirmation_close=False` Is Wrong for ICT/SMC~~ FIXED (2026-03-27)
 
 Per ICT/SMC canon, a structure break requires a **candle body close** beyond the level. A wick-only breach is a **liquidity sweep**, not a structural break.
 
-Our default `confirmation_close=False` uses wicks, producing:
+Original default `confirmation_close=False` used wicks, producing:
 
 | TF | Wick Events | Close Events | Extra (likely false) |
 |----|------------|-------------|---------------------|
@@ -148,21 +148,31 @@ Our default `confirmation_close=False` uses wicks, producing:
 | 12h | 19 | 13 | 6 (46% more) |
 | D | 8 | 6 | 2 (33% more) |
 
-**Recommendation**: Change default to `confirmation_close=True` for ICT/SMC strategies. Keep `False` available as an option for strategies that intentionally use wick breaks.
+**Resolution**: Default changed to `confirmation_close=True` in `market_structure.py` and vectorized reference. Wick-based mode still available via `params: {confirmation_close: false}`. Validation play `STR_015_ms_confirmation_close.yml` tests both modes. Existing wick-dependent play `STR_003_ms_bos.yml` updated with explicit `confirmation_close: false`.
 
 ---
 
-## 5. Trend Never Reaches strength=2
+## 5. ~~Trend Never Reaches strength=2~~ INVESTIGATED (2026-03-27)
 
-On 4h: 53 trend changes over 6 months. Every single one is `strength=0` (ranging) or `strength=1` (normal). **Zero** instances of `strength=2` (strong trend).
+On BTC 4h: 53 trend changes over 6 months. Every single one is `strength=0` (ranging) or `strength=1` (normal). **Zero** instances of `strength=2` (strong trend).
 
-This means the wave-pair comparison in `_classify_trend()` never finds 2+ consecutive pairs confirming the same direction. The trend oscillates rapidly: UP -> RANGING -> DOWN -> RANGING -> UP...
+**Root cause confirmed: data characteristic, not algorithm bug.** The algorithm correctly produces strength=2 on synthetic `trend_stairs` data (27.6% of bars, 551/2000). BTC's 4h volatility alternates wave direction too rapidly for 2+ consecutive same-direction pairs to form within the 4-wave history window.
 
-On 12h and D: same pattern. No strength=2 ever achieved.
+**When strength=2 fires:**
+- Orderly staircase trends (consistent HH+HL or LH+LL sequences)
+- Higher timeframes (4h, D) on altcoins with cleaner structure (e.g., SOL, ETH during trend phases)
+- Lower TFs are too choppy for reliable strength=2
 
-**Root cause**: The 4-wave deque is too short, and BTC's volatility means wave pairs frequently alternate direction before 2 consecutive same-direction pairs can form.
+**When it won't fire:**
+- BTC 4h with default `left=5, right=5` — wave pairs oscillate direction too fast
+- Choppy/ranging markets on any asset
+- Short-lookback swings (more noise swings = more direction changes)
 
-**Impact**: Any play condition checking `trend.strength >= 2` will NEVER fire on real BTC data with default params.
+**Recommendations:**
+1. Use `strength >= 1` for BTC strategies (proven reliable)
+2. Use `strength >= 2` only on higher TFs or cleaner-structure altcoins
+3. Consider increasing `wave_history_size` to 6-8 for BTC if strength=2 is needed (trades sensitivity for reliability)
+4. No plays currently depend on `strength >= 2` (all use `>= 1`)
 
 ---
 

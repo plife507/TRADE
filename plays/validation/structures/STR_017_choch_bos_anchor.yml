@@ -1,0 +1,74 @@
+version: "3.0.0"
+name: "str_017_choch_bos_anchor"
+description: |
+  Structure Suite - CHoCH BOS-anchor correctness test.
+  Validates that CHoCH only fires when price breaks the swing level
+  that anchored the most recent BOS, not any arbitrary prior swing.
+  Uses reversal pattern to force multiple BOS then CHoCH sequences.
+
+symbol: "ETHUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  rsi_14:
+    indicator: rsi
+    params: {length: 14}
+
+structures:
+  exec:
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    - type: market_structure
+      key: ms
+      uses: swing
+      params:
+        confirmation_close: false  # Wick-based for more events
+
+actions:
+  entry_long:
+    any:
+      - all:
+          - ["ms.choch_this_bar", "==", 1]
+          - ["ms.choch_direction", "==", "bullish"]
+      - all:
+          - ["ms.bos_this_bar", "==", 1]
+          - ["ms.bos_direction", "==", "bullish"]
+
+  entry_short:
+    any:
+      - all:
+          - ["ms.choch_this_bar", "==", 1]
+          - ["ms.choch_direction", "==", "bearish"]
+      - all:
+          - ["ms.bos_this_bar", "==", 1]
+          - ["ms.bos_direction", "==", "bearish"]
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0
+
+validation:
+  pattern: "trending"
