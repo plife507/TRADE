@@ -1,0 +1,1219 @@
+{
+  "status": "PASS",
+  "total_passed": 151,
+  "total_failed": 0,
+  "total_tests": 151,
+  "duration_ms": 181459.1,
+  "modules": [
+    {
+      "detector": "rolling_window",
+      "passed": 9,
+      "failed": 0,
+      "total": 9,
+      "duration_ms": 627.7,
+      "results": [
+        {
+          "test_id": "M1.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M1.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M1.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M1.4",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A1.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A1.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E1.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "P1.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 610.3
+        },
+        {
+          "test_id": "R1.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 17.2
+        }
+      ]
+    },
+    {
+      "detector": "swing",
+      "passed": 14,
+      "failed": 0,
+      "total": 14,
+      "duration_ms": 77.5,
+      "results": [
+        {
+          "test_id": "M2.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.2
+        },
+        {
+          "test_id": "M2.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M2.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M2.4",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M2.5",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M2.6",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A2.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A2.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E2.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E2.2",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "P2.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 20.0
+        },
+        {
+          "test_id": "P2.2",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 19.0
+        },
+        {
+          "test_id": "R2.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 18.0
+        },
+        {
+          "test_id": "R2.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 20.0
+        }
+      ]
+    },
+    {
+      "detector": "trend",
+      "passed": 10,
+      "failed": 0,
+      "total": 10,
+      "duration_ms": 67.9,
+      "results": [
+        {
+          "test_id": "M3.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.3
+        },
+        {
+          "test_id": "M3.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M3.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M3.4",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "A3.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E3.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "P3.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 20.6
+        },
+        {
+          "test_id": "R3.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 19.7
+        },
+        {
+          "test_id": "R3.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 18.1
+        },
+        {
+          "test_id": "R3.3",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 8.9
+        }
+      ]
+    },
+    {
+      "detector": "zone",
+      "passed": 8,
+      "failed": 0,
+      "total": 8,
+      "duration_ms": 53.0,
+      "results": [
+        {
+          "test_id": "M4.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M4.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M4.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M4.4",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E4.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "P4.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 23.0
+        },
+        {
+          "test_id": "R4.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 20.3
+        },
+        {
+          "test_id": "R4.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 9.5
+        }
+      ]
+    },
+    {
+      "detector": "fibonacci",
+      "passed": 8,
+      "failed": 0,
+      "total": 8,
+      "duration_ms": 38.8,
+      "results": [
+        {
+          "test_id": "M5.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M5.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M5.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M5.4",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A5.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E5.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "P5.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 20.5
+        },
+        {
+          "test_id": "R5.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 18.0
+        }
+      ]
+    },
+    {
+      "detector": "derived_zone",
+      "passed": 7,
+      "failed": 0,
+      "total": 7,
+      "duration_ms": 45.3,
+      "results": [
+        {
+          "test_id": "M6.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M6.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "A6.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A6.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "E6.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "P6.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 24.6
+        },
+        {
+          "test_id": "R6.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 20.4
+        }
+      ]
+    },
+    {
+      "detector": "market_structure",
+      "passed": 12,
+      "failed": 0,
+      "total": 12,
+      "duration_ms": 131.5,
+      "results": [
+        {
+          "test_id": "M7.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.3
+        },
+        {
+          "test_id": "M7.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.2
+        },
+        {
+          "test_id": "M7.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.2
+        },
+        {
+          "test_id": "A7.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A7.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "A7.3",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A7.4",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E7.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "P7.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 45.9
+        },
+        {
+          "test_id": "R7.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 20.0
+        },
+        {
+          "test_id": "R7.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 18.8
+        },
+        {
+          "test_id": "R7.3",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 45.9
+        }
+      ]
+    },
+    {
+      "detector": "displacement",
+      "passed": 9,
+      "failed": 0,
+      "total": 9,
+      "duration_ms": 51.1,
+      "results": [
+        {
+          "test_id": "M8.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M8.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M8.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M8.4",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E8.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E8.2",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "P8.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 21.1
+        },
+        {
+          "test_id": "R8.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 19.4
+        },
+        {
+          "test_id": "R8.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 10.6
+        }
+      ]
+    },
+    {
+      "detector": "fair_value_gap",
+      "passed": 13,
+      "failed": 0,
+      "total": 13,
+      "duration_ms": 77.1,
+      "results": [
+        {
+          "test_id": "M9.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M9.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M9.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M9.4",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M9.5",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A9.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A9.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A9.3",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E9.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "P9.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 19.7
+        },
+        {
+          "test_id": "P9.2",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 19.1
+        },
+        {
+          "test_id": "R9.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 19.2
+        },
+        {
+          "test_id": "R9.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 18.9
+        }
+      ]
+    },
+    {
+      "detector": "order_block",
+      "passed": 10,
+      "failed": 0,
+      "total": 10,
+      "duration_ms": 53.3,
+      "results": [
+        {
+          "test_id": "M10.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.2
+        },
+        {
+          "test_id": "M10.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M10.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "A10.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "A10.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A10.3",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A10.4",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "E10.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "P10.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 27.3
+        },
+        {
+          "test_id": "R10.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 25.3
+        }
+      ]
+    },
+    {
+      "detector": "liquidity_zones",
+      "passed": 10,
+      "failed": 0,
+      "total": 10,
+      "duration_ms": 68.5,
+      "results": [
+        {
+          "test_id": "M11.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.2
+        },
+        {
+          "test_id": "M11.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M11.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A11.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A11.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A11.3",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E11.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "P11.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 11.8
+        },
+        {
+          "test_id": "R11.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 9.4
+        },
+        {
+          "test_id": "R11.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 46.8
+        }
+      ]
+    },
+    {
+      "detector": "premium_discount",
+      "passed": 9,
+      "failed": 0,
+      "total": 9,
+      "duration_ms": 39.0,
+      "results": [
+        {
+          "test_id": "M12.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M12.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "M12.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A12.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A12.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E12.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "P12.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 9.8
+        },
+        {
+          "test_id": "R12.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 10.9
+        },
+        {
+          "test_id": "R12.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 18.0
+        }
+      ]
+    },
+    {
+      "detector": "breaker_block",
+      "passed": 11,
+      "failed": 0,
+      "total": 11,
+      "duration_ms": 151.5,
+      "results": [
+        {
+          "test_id": "M13.1",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.3
+        },
+        {
+          "test_id": "M13.2",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M13.3",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "M13.4",
+          "category": "MATH",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "A13.1",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "A13.2",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "A13.3",
+          "category": "ALGORITHM",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.0
+        },
+        {
+          "test_id": "E13.1",
+          "category": "EDGE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 0.1
+        },
+        {
+          "test_id": "P13.1",
+          "category": "PARITY",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 54.1
+        },
+        {
+          "test_id": "R13.1",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 49.8
+        },
+        {
+          "test_id": "R13.2",
+          "category": "REAL",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 47.0
+        }
+      ]
+    },
+    {
+      "detector": "engine_integration",
+      "passed": 5,
+      "failed": 0,
+      "total": 5,
+      "duration_ms": 114747.4,
+      "results": [
+        {
+          "test_id": "ENG.1",
+          "category": "ENGINE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 25548.2
+        },
+        {
+          "test_id": "ENG.2",
+          "category": "ENGINE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 25097.9
+        },
+        {
+          "test_id": "ENG.3",
+          "category": "ENGINE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 24994.3
+        },
+        {
+          "test_id": "ENG.4",
+          "category": "ENGINE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 19433.9
+        },
+        {
+          "test_id": "ENG.5",
+          "category": "ENGINE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 19672.9
+        }
+      ]
+    },
+    {
+      "detector": "live_path_parity",
+      "passed": 5,
+      "failed": 0,
+      "total": 5,
+      "duration_ms": 27433.9,
+      "results": [
+        {
+          "test_id": "LIVE.1",
+          "category": "LIVE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 5456.6
+        },
+        {
+          "test_id": "LIVE.2",
+          "category": "LIVE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 5504.0
+        },
+        {
+          "test_id": "LIVE.3",
+          "category": "LIVE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 5605.3
+        },
+        {
+          "test_id": "LIVE.4",
+          "category": "LIVE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 5570.6
+        },
+        {
+          "test_id": "LIVE.5",
+          "category": "LIVE",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 5297.3
+        }
+      ]
+    },
+    {
+      "detector": "live_engine_parity",
+      "passed": 6,
+      "failed": 0,
+      "total": 6,
+      "duration_ms": 37489.5,
+      "results": [
+        {
+          "test_id": "PROD.1",
+          "category": "PROD",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 6210.2
+        },
+        {
+          "test_id": "PROD.2",
+          "category": "PROD",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 6345.4
+        },
+        {
+          "test_id": "PROD.3",
+          "category": "PROD",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 6298.9
+        },
+        {
+          "test_id": "PROD.4",
+          "category": "PROD",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 6179.4
+        },
+        {
+          "test_id": "PROD.5",
+          "category": "PROD",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 6139.5
+        },
+        {
+          "test_id": "PROD.6",
+          "category": "PROD",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 6316.1
+        }
+      ]
+    },
+    {
+      "detector": "cross_detector",
+      "passed": 5,
+      "failed": 0,
+      "total": 5,
+      "duration_ms": 122.0,
+      "results": [
+        {
+          "test_id": "X1",
+          "category": "CROSS",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 18.2
+        },
+        {
+          "test_id": "X2",
+          "category": "CROSS",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 18.3
+        },
+        {
+          "test_id": "X3",
+          "category": "CROSS",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 11.6
+        },
+        {
+          "test_id": "X4",
+          "category": "CROSS",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 25.0
+        },
+        {
+          "test_id": "X5",
+          "category": "CROSS",
+          "passed": true,
+          "message": "OK",
+          "duration_ms": 48.9
+        }
+      ]
+    }
+  ]
+}

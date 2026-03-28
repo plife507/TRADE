@@ -340,33 +340,50 @@ Systematic line-by-line verification of all 13 structure detectors. Every algori
 **Execution**: `python -m src.forge.audits.structure_deep_tests.run_all`
 
 #### Phase 1: Harness + Foundation Detectors
-- [ ] Create `_harness.py` — TestCase, TestReport, load_sol_1h(), compute_atr_array(), make_bar(), assert_close()
-- [ ] `test_01_rolling_window.py` — M1.1-M1.4, A1.1-A1.2, E1.1, P1.1, R1.1
-- [ ] `test_02_swing.py` — M2.1-M2.6, A2.1-A2.2, E2.1-E2.2, P2.1-P2.2, R2.1-R2.2
-- [ ] **GATE**: Phase 1 scripts all pass
+- [x] Create `_harness.py` — TestCase, TestReport, load_sol_1h(), compute_atr_array(), make_bar(), assert_close()
+- [x] `test_01_rolling_window.py` — M1.1-M1.4, A1.1-A1.2, E1.1, P1.1, R1.1
+- [x] `test_02_swing.py` — M2.1-M2.6, A2.1-A2.2, E2.1-E2.2, P2.1-P2.2, R2.1-R2.2
+- [x] **GATE**: Phase 1 scripts all pass (23/23)
 
 #### Phase 2: Swing-Dependent Detectors
-- [ ] `test_03_trend.py` — M3.1-M3.4, A3.1, E3.1, P3.1, R3.1-R3.3
-- [ ] `test_04_zone.py` — M4.1-M4.4, E4.1, P4.1, R4.1-R4.2
-- [ ] `test_05_fibonacci.py` — M5.1-M5.4, A5.1, E5.1, P5.1, R5.1
-- [ ] `test_06_derived_zone.py` — M6.1-M6.2, A6.1-A6.2, E6.1, P6.1, R6.1
-- [ ] `test_07_market_structure.py` — M7.1-M7.3, A7.1-A7.4, E7.1, P7.1, R7.1-R7.3
-- [ ] **GATE**: Phase 2 scripts all pass
+- [x] `test_03_trend.py` — M3.1-M3.4, A3.1, E3.1, P3.1, R3.1-R3.3
+- [x] `test_04_zone.py` — M4.1-M4.4, E4.1, P4.1, R4.1-R4.2
+- [x] `test_05_fibonacci.py` — M5.1-M5.4, A5.1, E5.1, P5.1, R5.1
+- [x] `test_06_derived_zone.py` — M6.1-M6.2, A6.1-A6.2, E6.1, P6.1, R6.1
+- [x] `test_07_market_structure.py` — M7.1-M7.3, A7.1-A7.4, E7.1, P7.1, R7.1-R7.3
+- [x] **GATE**: Phase 2 scripts all pass (68/68)
 
 #### Phase 3: Independent + Complex Detectors
-- [ ] `test_08_displacement.py` — M8.1-M8.4, E8.1-E8.2, P8.1, R8.1-R8.2
-- [ ] `test_09_fair_value_gap.py` — M9.1-M9.5, A9.1-A9.3, E9.1, P9.1-P9.2, R9.1-R9.2
-- [ ] `test_10_order_block.py` — M10.1-M10.3, A10.1-A10.4, E10.1, P10.1, R10.1
-- [ ] `test_11_liquidity_zones.py` — M11.1-M11.3, A11.1-A11.3, E11.1, P11.1, R11.1-R11.2
-- [ ] `test_12_premium_discount.py` — M12.1-M12.3, A12.1-A12.2, E12.1, P12.1, R12.1-R12.2
-- [ ] `test_13_breaker_block.py` — M13.1-M13.4, A13.1-A13.3, E13.1, P13.1, R13.1-R13.2
-- [ ] **GATE**: Phase 3 scripts all pass
+- [x] `test_08_displacement.py` — M8.1-M8.4, E8.1-E8.2, P8.1, R8.1-R8.2
+- [x] `test_09_fair_value_gap.py` — M9.1-M9.5, A9.1-A9.3, E9.1, P9.1-P9.2, R9.1-R9.2
+- [x] `test_10_order_block.py` — M10.1-M10.3, A10.1-A10.4, E10.1, P10.1, R10.1
+- [x] `test_11_liquidity_zones.py` — M11.1-M11.3, A11.1-A11.3, E11.1, P11.1, R11.1-R11.2
+- [x] `test_12_premium_discount.py` — M12.1-M12.3, A12.1-A12.2, E12.1, P12.1, R12.1-R12.2
+- [x] `test_13_breaker_block.py` — M13.1-M13.4, A13.1-A13.3, E13.1, P13.1, R13.1-R13.2
+- [x] **GATE**: Phase 3 scripts all pass (130/130)
 
 #### Phase 4: Cross-Detector + Final
-- [ ] Cross-detector consistency tests X1-X5 in `run_all.py`
-- [ ] `run_all.py` — sequential runner with JSON output
-- [ ] **GATE**: `python -m src.forge.audits.structure_deep_tests.run_all` — 0 failures
-- [ ] Save report to `docs/STRUCTURE_DEEP_TEST_REPORT.json`
+- [x] Cross-detector consistency tests X1-X5 in `run_all.py`
+- [x] `run_all.py` — sequential runner with JSON output
+- [x] **GATE**: `python -m src.forge.audits.structure_deep_tests.run_all` — 135/135 pass (1.7s)
+- [x] Save report to `docs/STRUCTURE_DEEP_TEST_REPORT.json`
+
+#### Phase 5: Engine Integration
+- [x] `test_14_engine_integration.py` — ENG.1-ENG.5: PlayEngine snapshot outputs == direct detector calls
+- [x] **GATE**: Engine structure outputs match direct detectors (0 mismatches on swing/trend/MS)
+
+#### Phase 6: Live Path Parity
+- [x] `test_15_live_path_parity.py` — LIVE.1-LIVE.5: LiveIndicatorCache path == FeedStore backtest path
+- [x] **GATE**: Backtest vs live structure outputs identical (0 mismatches on same OHLCV)
+- [x] **GATE**: `python -m src.forge.audits.structure_deep_tests.run_all` — 145/145 pass (141s)
+
+#### Phase 7: Production Live Engine Parity
+- [x] `test_16_live_engine_parity.py` — PROD.1-PROD.6: per-bar `on_candle_close()` production path
+- [x] Feeds 24K+ candles one-by-one through `LiveDataProvider.on_candle_close()` (real production code)
+- [x] Compares structure outputs bar-by-bar against direct backtest detectors: 0 mismatches
+- [x] RSI incremental vs batch: max diff 0.00000000 across 24K bars
+- [x] Buffer trim survival verified (global_bar_count=24480, buffer_size=500)
+- [x] **FINAL GATE**: `python -m src.forge.audits.structure_deep_tests.run_all` — 151/151 pass (182s)
 
 ---
 
