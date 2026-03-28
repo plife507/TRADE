@@ -46,6 +46,8 @@ structures:
     - type: market_structure
       key: ms
       uses: swing
+      params:
+        confirmation_close: false
 
 actions:
   entry_long:
