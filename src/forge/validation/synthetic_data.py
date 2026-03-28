@@ -85,6 +85,8 @@ PatternType = Literal[
     # Structure-specific patterns
     "displacement_impulse",
     "trending_with_gaps",
+    "equal_highs_lows",
+    "ob_retest",
 ]
 
 
@@ -1420,6 +1422,187 @@ def _generate_trending_with_gaps(
     return prices
 
 
+def _generate_equal_highs_lows(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate equal highs/lows pattern for liquidity zone testing.
+
+    Creates price action with clustered swing highs and lows at similar
+    price levels, followed by a sweep and reversal.
+
+    Phase 1 (40%): Range-bound with multiple swing highs clustering near
+        a target level (~base_price * 1.05). Small oscillations create
+        repeated touches of roughly the same high.
+    Phase 2 (10%): Sweep above the highs (sharp spike up then reversal).
+        Price pushes beyond the clustered high level then reverses down.
+    Phase 3 (30%): Downtrend away from the highs, establishing distance.
+    Phase 4 (20%): Secondary range with swing lows clustering near a
+        target level (~base_price * 0.92).
+    """
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    phase1_end = int(n_bars * 0.40)
+    phase2_end = int(n_bars * 0.50)
+    phase3_end = int(n_bars * 0.80)
+
+    # Target levels for clustering
+    high_target = base_price * 1.05
+    low_target = base_price * 0.92
+
+    # Oscillation period for creating swing points
+    osc_period = max(12, n_bars // 40)
+    noise_scale = volatility * base_price * cfg.noise_level * 0.3
+
+    for i in range(1, n_bars):
+        if i < phase1_end:
+            # Phase 1: Oscillate around base_price with highs clustering near high_target
+            # Use sine wave to create regular swing points
+            phase_progress = (i - 0) / max(phase1_end, 1)
+            osc = np.sin(2 * np.pi * i / osc_period)
+
+            # Center around midpoint between base and high_target
+            mid = (base_price + high_target) / 2
+            amplitude = (high_target - base_price) / 2
+
+            prices[i] = mid + osc * amplitude + rng.normal(0, noise_scale)
+
+            # Add slight randomization to avoid perfectly equal highs
+            # (within ~0.3% of target, matching tolerance_atr * ATR)
+            if osc > 0.8:
+                jitter = rng.uniform(-0.003, 0.003) * base_price
+                prices[i] = high_target + jitter + rng.normal(0, noise_scale * 0.5)
+
+        elif i < phase2_end:
+            # Phase 2: Sweep above the clustered highs then reverse
+            phase2_len = phase2_end - phase1_end
+            phase2_progress = (i - phase1_end) / max(phase2_len, 1)
+
+            if phase2_progress < 0.4:
+                # Push up through the highs
+                sweep_height = high_target * 0.03  # 3% above target
+                prices[i] = high_target + sweep_height * (phase2_progress / 0.4)
+                prices[i] += rng.normal(0, noise_scale * 0.3)
+            else:
+                # Reverse sharply
+                peak = high_target * 1.03
+                drop_progress = (phase2_progress - 0.4) / 0.6
+                prices[i] = peak - (peak - high_target) * drop_progress * 1.5
+                prices[i] += rng.normal(0, noise_scale * 0.5)
+
+        elif i < phase3_end:
+            # Phase 3: Downtrend
+            phase3_len = phase3_end - phase2_end
+            phase3_progress = (i - phase2_end) / max(phase3_len, 1)
+
+            start_price = prices[phase2_end - 1]
+            target_end = low_target * 1.05  # End slightly above low_target
+            drift = (target_end - start_price) * phase3_progress
+            prices[i] = start_price + drift + rng.normal(0, noise_scale)
+
+        else:
+            # Phase 4: Oscillate with lows clustering near low_target
+            osc = np.sin(2 * np.pi * (i - phase3_end) / osc_period)
+
+            mid = (low_target + low_target * 1.04) / 2
+            amplitude = (low_target * 1.04 - low_target) / 2
+
+            prices[i] = mid + osc * amplitude + rng.normal(0, noise_scale)
+
+            # Cluster lows near low_target
+            if osc < -0.8:
+                jitter = rng.uniform(-0.003, 0.003) * base_price
+                prices[i] = low_target + jitter + rng.normal(0, noise_scale * 0.5)
+
+    return prices
+
+
+def _generate_ob_retest(
+    rng: np.random.Generator,
+    n_bars: int,
+    base_price: float,
+    volatility: float,
+    config: PatternConfig | None = None,
+) -> np.ndarray:
+    """Generate Order Block retest pattern.
+
+    Creates a scenario where a displacement move leaves an OB (opposing candle)
+    behind, then price pulls back to retest the OB zone before continuing.
+
+    Phase 1 (20%): Consolidation/range with small candles (future OB forms here).
+    Phase 2a (few bars): Bearish candle(s) — the OB candle(s).
+    Phase 2b (few bars): Strong bullish displacement candle(s).
+        body/ATR >= 1.5 and wick_ratio <= 0.4 after _prices_to_ohlcv processing.
+    Phase 3 (30%): Continuation upward away from OB zone.
+    Phase 4 (20%): Pullback toward OB zone (retest).
+    Phase 5 (20%): Continuation up from OB area.
+
+    Scale-invariant: works correctly from 200 to 25,000+ bars.
+    """
+    cfg = config or PatternConfig()
+    prices = np.zeros(n_bars)
+    prices[0] = base_price
+
+    phase1_end = int(n_bars * 0.20)
+    # OB event is a fixed small number of bars, not percentage-based
+    ob_bearish_bars = min(5, max(2, int(n_bars * 0.005)))
+    ob_disp_bars = min(5, max(2, int(n_bars * 0.005)))
+    phase2a_end = phase1_end + ob_bearish_bars
+    phase2b_end = phase2a_end + ob_disp_bars
+    phase3_end = int(n_bars * 0.60)
+    phase4_end = int(n_bars * 0.80)
+
+    noise_scale = volatility * base_price * cfg.noise_level * 0.3
+
+    for i in range(1, n_bars):
+        if i < phase1_end:
+            # Phase 1: Consolidation — small random walk
+            prices[i] = prices[i - 1] + rng.normal(0, noise_scale)
+
+        elif i < phase2a_end:
+            # Phase 2a: Bearish candle(s) — the OB candle(s)
+            # Total drop targets ~3% of current price, spread over ob_bearish_bars
+            drop_per_bar = prices[phase1_end - 1] * 0.03 / ob_bearish_bars
+            prices[i] = prices[i - 1] - drop_per_bar + rng.normal(0, noise_scale * 0.2)
+
+        elif i < phase2b_end:
+            # Phase 2b: Bullish displacement — large jump per bar
+            # Each bar jumps 4-6% of base_price (must exceed ATR by 1.5x)
+            jump = base_price * rng.uniform(0.04, 0.06)
+            prices[i] = prices[i - 1] + jump
+
+        elif i < phase3_end:
+            # Phase 3: Continuation upward (rate scales with phase length)
+            phase3_len = phase3_end - phase2b_end
+            rate = (base_price * cfg.trend_magnitude * 0.4) / max(phase3_len, 1)
+            prices[i] = prices[i - 1] + rate + rng.normal(0, noise_scale * 0.5)
+
+        elif i < phase4_end:
+            # Phase 4: Pullback toward OB zone
+            phase4_len = phase4_end - phase3_end
+            phase4_progress = (i - phase3_end) / max(phase4_len, 1)
+
+            ob_zone_approx = prices[phase1_end]
+            peak = prices[phase3_end - 1]
+            target = ob_zone_approx + (peak - ob_zone_approx) * 0.3
+
+            interp = peak + (target - peak) * phase4_progress
+            prices[i] = interp + rng.normal(0, noise_scale * 0.5)
+
+        else:
+            # Phase 5: Continuation up from OB
+            phase5_len = n_bars - phase4_end
+            rate = (base_price * cfg.trend_magnitude * 0.3) / max(phase5_len, 1)
+            prices[i] = prices[i - 1] + rate + rng.normal(0, noise_scale * 0.5)
+
+    return prices
+
+
 # =============================================================================
 # Pattern Registry - Maps pattern names to generators
 # =============================================================================
@@ -1469,6 +1652,8 @@ PATTERN_GENERATORS = {
     # Structure-specific patterns
     "displacement_impulse": _generate_displacement_impulse,
     "trending_with_gaps": _generate_trending_with_gaps,
+    "equal_highs_lows": _generate_equal_highs_lows,
+    "ob_retest": _generate_ob_retest,
 }
 
 

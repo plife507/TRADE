@@ -187,6 +187,39 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "any_mitigated_this_bar": FeatureOutputType.BOOL,  # True if any FVG mitigated this bar
         "version": FeatureOutputType.INT,                # Monotonic counter, increments on new FVG
     },
+    "order_block": {
+        "new_this_bar": FeatureOutputType.BOOL,          # True if new OB detected this bar
+        "new_direction": FeatureOutputType.INT,          # 1 (bull), -1 (bear), 0 (none)
+        "new_upper": FeatureOutputType.FLOAT,            # Upper boundary of newest OB
+        "new_lower": FeatureOutputType.FLOAT,            # Lower boundary of newest OB
+        "nearest_bull_upper": FeatureOutputType.FLOAT,   # Upper of nearest active bullish OB
+        "nearest_bull_lower": FeatureOutputType.FLOAT,   # Lower of nearest active bullish OB
+        "nearest_bear_upper": FeatureOutputType.FLOAT,   # Upper of nearest active bearish OB
+        "nearest_bear_lower": FeatureOutputType.FLOAT,   # Lower of nearest active bearish OB
+        "active_bull_count": FeatureOutputType.INT,      # Number of active bullish OBs
+        "active_bear_count": FeatureOutputType.INT,      # Number of active bearish OBs
+        "any_mitigated_this_bar": FeatureOutputType.BOOL,  # True if any OB mitigated this bar
+        "version": FeatureOutputType.INT,                # Monotonic counter, increments on new OB
+    },
+    "liquidity_zones": {
+        "new_zone_this_bar": FeatureOutputType.BOOL,     # True if new zone created this bar
+        "sweep_this_bar": FeatureOutputType.BOOL,        # True if zone swept this bar
+        "sweep_direction": FeatureOutputType.INT,        # 1 (swept highs, bearish), -1 (swept lows, bullish), 0
+        "swept_level": FeatureOutputType.FLOAT,          # Price level of swept zone (NaN if none)
+        "nearest_high_level": FeatureOutputType.FLOAT,   # Level of nearest active high zone
+        "nearest_low_level": FeatureOutputType.FLOAT,    # Level of nearest active low zone
+        "nearest_high_touches": FeatureOutputType.INT,   # Touch count of nearest active high zone
+        "nearest_low_touches": FeatureOutputType.INT,    # Touch count of nearest active low zone
+        "version": FeatureOutputType.INT,                # Monotonic counter, increments on new zone or sweep
+    },
+    "premium_discount": {
+        "equilibrium": FeatureOutputType.FLOAT,          # Midpoint of swing pair range
+        "premium_level": FeatureOutputType.FLOAT,        # 75th percentile (upper boundary)
+        "discount_level": FeatureOutputType.FLOAT,       # 25th percentile (lower boundary)
+        "zone": FeatureOutputType.ENUM,                  # "premium", "discount", "equilibrium", "none"
+        "depth_pct": FeatureOutputType.FLOAT,            # Position 0.0 (at low) to 1.0 (at high)
+        "version": FeatureOutputType.INT,                # Monotonic counter, increments on zone change
+    },
 }
 
 
@@ -232,6 +265,21 @@ STRUCTURE_WARMUP_FORMULAS: dict[str, Callable] = {
 
     # FAIR_VALUE_GAP: needs 3 bars for the 3-candle pattern
     "fair_value_gap": lambda params, swing_params: 3,
+
+    # ORDER_BLOCK: needs lookback + 2 bars for candle history, or swing warmup
+    "order_block": lambda params, swing_params: max(
+        params.get("lookback", 3) + 2,
+        swing_params["left"] + swing_params["right"],
+    ),
+
+    # LIQUIDITY_ZONES: needs multiple swings to cluster
+    # Conservative: (left + right) * min_touches
+    "liquidity_zones": lambda params, swing_params: (
+        (swing_params["left"] + swing_params["right"]) * params.get("min_touches", 2)
+    ),
+
+    # PREMIUM_DISCOUNT: same as source swing warmup (needs a swing pair)
+    "premium_discount": lambda params, swing_params: swing_params["left"] + swing_params["right"],
 }
 
 

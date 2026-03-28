@@ -41,6 +41,9 @@ from .vectorized_references.market_structure_reference import vectorized_market_
 from .vectorized_references.derived_zone_reference import vectorized_derived_zone
 from .vectorized_references.displacement_reference import vectorized_displacement
 from .vectorized_references.fair_value_gap_reference import vectorized_fair_value_gap
+from .vectorized_references.order_block_reference import vectorized_order_block
+from .vectorized_references.liquidity_zones_reference import vectorized_liquidity_zones
+from .vectorized_references.premium_discount_reference import vectorized_premium_discount
 
 
 # Keys to skip during comparison (hashes, enum strings stored as NaN)
@@ -993,6 +996,267 @@ def audit_fair_value_gap(ohlcv: dict[str, np.ndarray], tolerance: float, dataset
         )
 
 
+def audit_liquidity_zones(ohlcv: dict[str, np.ndarray], tolerance: float, dataset: str) -> StructureDetectorResult:
+    """Audit liquidity_zones detector parity."""
+    try:
+        left, right = 3, 3
+        swing_params = {"left": left, "right": right, "mode": "fractal"}
+        lz_params = {
+            "atr_key": "atr",
+            "tolerance_atr": 0.3,
+            "sweep_atr": 0.1,
+            "min_touches": 2,
+            "max_active": 5,
+            "max_swing_history": 20,
+        }
+        warmup = (left + right) * lz_params["min_touches"]
+
+        # Compute a simple ATR(14) from the OHLCV data
+        n = len(ohlcv["close"])
+        atr_period = 14
+        atr_array = np.full(n, np.nan)
+
+        # True Range
+        tr = np.zeros(n)
+        for i in range(n):
+            hl = ohlcv["high"][i] - ohlcv["low"][i]
+            if i == 0:
+                tr[i] = hl
+            else:
+                hc = abs(ohlcv["high"][i] - ohlcv["close"][i - 1])
+                lc = abs(ohlcv["low"][i] - ohlcv["close"][i - 1])
+                tr[i] = max(hl, hc, lc)
+
+        # Simple moving average of TR for ATR
+        for i in range(atr_period - 1, n):
+            atr_array[i] = np.mean(tr[i - atr_period + 1 : i + 1])
+
+        # Run incremental: swing -> liquidity_zones with ATR in indicators
+        from src.structures.registry import STRUCTURE_REGISTRY
+        from src.structures.base import BarData
+        swing_cls = STRUCTURE_REGISTRY["swing"]
+        swing_det = swing_cls(swing_params, None)
+        lz_cls = STRUCTURE_REGISTRY["liquidity_zones"]
+        lz_det = lz_cls(lz_params, {"swing": swing_det})
+
+        inc_keys = lz_det.get_output_keys()
+        inc_outputs: dict[str, np.ndarray] = {}
+        for k in inc_keys:
+            inc_outputs[k] = np.full(n, np.nan, dtype=object)
+
+        for i in range(n):
+            atr_val = float(atr_array[i]) if not np.isnan(atr_array[i]) else float("nan")
+            bar = BarData(
+                idx=i, open=float(ohlcv["open"][i]), high=float(ohlcv["high"][i]),
+                low=float(ohlcv["low"][i]), close=float(ohlcv["close"][i]),
+                volume=float(ohlcv["volume"][i]),
+                indicators={"atr": atr_val},
+            )
+            swing_det.update(i, bar)
+            lz_det.update(i, bar)
+            for k in inc_keys:
+                try:
+                    inc_outputs[k][i] = lz_det.get_value(k)
+                except (KeyError, ValueError):
+                    pass
+
+        inc = _encode_incremental_output(inc_outputs, "liquidity_zones")
+
+        # Run vectorized: swing -> liquidity_zones
+        vec_swing = vectorized_swing(ohlcv, left=left, right=right)
+        vec = vectorized_liquidity_zones(
+            ohlcv, vec_swing, atr_array=atr_array,
+            tolerance_atr=0.3, sweep_atr=0.1,
+            min_touches=2, max_active=5, max_swing_history=20,
+        )
+
+        passed, max_diff, mismatched, keys = _compare_outputs(
+            inc, vec, warmup, tolerance
+        )
+
+        return StructureDetectorResult(
+            detector="liquidity_zones",
+            dataset=dataset,
+            passed=passed,
+            max_abs_diff=max_diff,
+            mismatched_keys=mismatched,
+            total_keys_checked=keys,
+            warmup_bars=warmup,
+        )
+    except Exception as e:
+        return StructureDetectorResult(
+            detector="liquidity_zones",
+            dataset=dataset,
+            passed=False,
+            max_abs_diff=float("inf"),
+            error_message=str(e),
+        )
+
+
+def audit_order_block(ohlcv: dict[str, np.ndarray], tolerance: float, dataset: str) -> StructureDetectorResult:
+    """Audit order_block detector parity (inline displacement, no dep)."""
+    try:
+        params = {
+            "atr_key": "atr",
+            "use_body": True,
+            "require_displacement": True,
+            "body_atr_min": 1.5,
+            "wick_ratio_max": 0.4,
+            "max_active": 5,
+            "lookback": 3,
+        }
+        warmup = max(params["lookback"] + 2, 10)  # swing L+R default 5+5
+
+        # Compute a simple ATR(14) from the OHLCV data
+        n = len(ohlcv["close"])
+        atr_period = 14
+        atr_array = np.full(n, np.nan)
+
+        # True Range
+        tr = np.zeros(n)
+        for i in range(n):
+            hl = ohlcv["high"][i] - ohlcv["low"][i]
+            if i == 0:
+                tr[i] = hl
+            else:
+                hc = abs(ohlcv["high"][i] - ohlcv["close"][i - 1])
+                lc = abs(ohlcv["low"][i] - ohlcv["close"][i - 1])
+                tr[i] = max(hl, hc, lc)
+
+        # Simple moving average of TR for ATR
+        for i in range(atr_period - 1, n):
+            atr_array[i] = np.mean(tr[i - atr_period + 1 : i + 1])
+
+        # Run incremental: swing -> order_block (manual loop)
+        from src.structures.registry import STRUCTURE_REGISTRY
+        from src.structures.base import BarData
+
+        swing_cls = STRUCTURE_REGISTRY["swing"]
+        swing_params = {"left": 5, "right": 5, "mode": "fractal"}
+        swing_det = swing_cls(swing_params, None)
+
+        ob_cls = STRUCTURE_REGISTRY["order_block"]
+        ob_det = ob_cls(params, {"swing": swing_det})
+
+        inc_keys = ob_det.get_output_keys()
+        inc_outputs: dict[str, np.ndarray] = {k: np.full(n, np.nan, dtype=object) for k in inc_keys}
+
+        for i in range(n):
+            bar_indicators: dict[str, float] = {}
+            if not np.isnan(atr_array[i]):
+                bar_indicators["atr"] = float(atr_array[i])
+
+            bar = BarData(
+                idx=i, open=float(ohlcv["open"][i]), high=float(ohlcv["high"][i]),
+                low=float(ohlcv["low"][i]), close=float(ohlcv["close"][i]),
+                volume=float(ohlcv["volume"][i]), indicators=bar_indicators,
+            )
+            swing_det.update(i, bar)
+            ob_det.update(i, bar)
+            for k in inc_keys:
+                try:
+                    inc_outputs[k][i] = ob_det.get_value(k)
+                except (KeyError, ValueError):
+                    pass
+
+        inc = _encode_incremental_output(inc_outputs, "order_block")
+
+        # Run vectorized: swing -> order_block
+        vec_swing = vectorized_swing(ohlcv, left=5, right=5)
+        vec = vectorized_order_block(
+            ohlcv, vec_swing, atr_array=atr_array,
+            use_body=True, body_atr_min=1.5, wick_ratio_max=0.4,
+            max_active=5, lookback=3,
+        )
+
+        passed, max_diff, mismatched, keys = _compare_outputs(
+            inc, vec, warmup, tolerance
+        )
+
+        return StructureDetectorResult(
+            detector="order_block",
+            dataset=dataset,
+            passed=passed,
+            max_abs_diff=max_diff,
+            mismatched_keys=mismatched,
+            total_keys_checked=keys,
+            warmup_bars=warmup,
+        )
+    except Exception as e:
+        return StructureDetectorResult(
+            detector="order_block",
+            dataset=dataset,
+            passed=False,
+            max_abs_diff=float("inf"),
+            error_message=str(e),
+        )
+
+
+def audit_premium_discount(ohlcv: dict[str, np.ndarray], tolerance: float, dataset: str) -> StructureDetectorResult:
+    """Audit premium_discount detector parity."""
+    try:
+        params: dict[str, object] = {}
+        warmup = 10  # swing L+R default 5+5
+
+        # Run incremental: swing -> premium_discount (manual loop)
+        from src.structures.registry import STRUCTURE_REGISTRY
+        from src.structures.base import BarData
+
+        n = len(ohlcv["close"])
+
+        swing_cls = STRUCTURE_REGISTRY["swing"]
+        swing_params = {"left": 5, "right": 5, "mode": "fractal"}
+        swing_det = swing_cls(swing_params, None)
+
+        pd_cls = STRUCTURE_REGISTRY["premium_discount"]
+        pd_det = pd_cls(params, {"swing": swing_det})
+
+        inc_keys = pd_det.get_output_keys()
+        inc_outputs: dict[str, np.ndarray] = {k: np.full(n, np.nan, dtype=object) for k in inc_keys}
+
+        for i in range(n):
+            bar = BarData(
+                idx=i, open=float(ohlcv["open"][i]), high=float(ohlcv["high"][i]),
+                low=float(ohlcv["low"][i]), close=float(ohlcv["close"][i]),
+                volume=float(ohlcv["volume"][i]), indicators={},
+            )
+            swing_det.update(i, bar)
+            pd_det.update(i, bar)
+            for k in inc_keys:
+                try:
+                    inc_outputs[k][i] = pd_det.get_value(k)
+                except (KeyError, ValueError):
+                    pass
+
+        inc = _encode_incremental_output(inc_outputs, "premium_discount")
+
+        # Run vectorized: swing -> premium_discount
+        vec_swing = vectorized_swing(ohlcv, left=5, right=5)
+        vec = vectorized_premium_discount(ohlcv, vec_swing)
+
+        passed, max_diff, mismatched, keys = _compare_outputs(
+            inc, vec, warmup, tolerance
+        )
+
+        return StructureDetectorResult(
+            detector="premium_discount",
+            dataset=dataset,
+            passed=passed,
+            max_abs_diff=max_diff,
+            mismatched_keys=mismatched,
+            total_keys_checked=keys,
+            warmup_bars=warmup,
+        )
+    except Exception as e:
+        return StructureDetectorResult(
+            detector="premium_discount",
+            dataset=dataset,
+            passed=False,
+            max_abs_diff=float("inf"),
+            error_message=str(e),
+        )
+
+
 # =============================================================================
 # NaN-Resilience Audit (Phase 2: Live/Backtest Indicator Parity)
 # =============================================================================
@@ -1387,6 +1651,9 @@ def run_structure_parity_audit(
             audit_derived_zone,
             audit_displacement,
             audit_fair_value_gap,
+            audit_order_block,
+            audit_liquidity_zones,
+            audit_premium_discount,
         ]
 
         # Run each audit on each dataset

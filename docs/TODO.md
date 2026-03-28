@@ -143,63 +143,67 @@ Both detectors built and validated. 9 structures registered, 0 coverage gaps.
 - [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 19/19 pass
 - [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 9 structures, 0 gaps
 
-#### Phase 2: Order Block + Liquidity Zones (parallel, depend on Phase 1)
+#### Phase 2: Order Block + Liquidity Zones (parallel, depend on Phase 1) ✅
+
+Both detectors built and validated. 11 structures registered, 0 coverage gaps.
 
 **2a. Order Block detector** — last opposing candle before displacement
-- [ ] Create `src/structures/detectors/order_block.py`
+- [x] Create `src/structures/detectors/order_block.py`
   - `@register_structure("order_block")`
   - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `use_body` (True), `require_displacement` (True), `body_atr_min` (1.5), `wick_ratio_max` (0.4), `max_active` (5), `lookback` (3)
   - `DEPENDS_ON`: ["swing"], `OPTIONAL_DEPS`: ["displacement"]
-  - State: candle history deque (lookback+2), active OB slots (direction, upper, lower, anchor_idx, state, volume), per-bar flags, nearest accessors, aggregate counts
+  - State: candle history deque (lookback+2), active OB slots (direction, upper, lower, anchor_idx, state, touch_count), per-bar flags, nearest accessors, aggregate counts
   - O(1) update: check displacement (via dep or inline), search backward for opposing candle, create OB, update mitigation on active OBs
   - If displacement dep available: use `disp.is_displacement`; else: compute inline with same body_atr_min/wick_ratio_max
   - OB zone: body range (use_body=True) or full range (use_body=False) of opposing candle
-  - Mitigation: price enters OB zone → "touched"; close through → "invalidated"
-- [ ] Add to `detectors/__init__.py`
-- [ ] `STRUCTURE_OUTPUT_TYPES["order_block"]`: same pattern as FVG (new_this_bar, new_direction, new_upper, new_lower, nearest_bull/bear, active counts, any_mitigated, version)
-- [ ] `STRUCTURE_WARMUP_FORMULAS["order_block"]`: `lambda params, swing_params: max(params.get("lookback", 3) + 2, swing_params["left"] + swing_params["right"])`
-- [ ] Create vectorized reference + parity audit function
-- [ ] Add synthetic pattern `ob_retest` — displacement from opposing candle, then retracement to OB zone
-- [ ] Create `STR_021_order_block.yml` — entry on `ob.active_bull_count > 0 AND close near_abs ob.nearest_bull_lower`
-- [ ] **GATE**: G5 parity passes for order_block
+  - Mitigation: price enters OB zone → "touched"/"mitigated"; close through → "invalidated"
+- [x] Add to `detectors/__init__.py`
+- [x] `STRUCTURE_OUTPUT_TYPES["order_block"]`: 12 output fields (new_this_bar, new_direction, new_upper, new_lower, nearest_bull/bear upper/lower, active counts, any_mitigated, version)
+- [x] `STRUCTURE_WARMUP_FORMULAS["order_block"]`: `lambda params, swing_params: max(params.get("lookback", 3) + 2, swing_params["left"] + swing_params["right"])`
+- [x] Create vectorized reference + parity audit function
+- [x] Add synthetic pattern `ob_retest` — scale-invariant displacement from opposing candle, then retracement to OB zone
+- [x] Create `STR_021_order_block.yml` — entry on `ob.new_this_bar == 1 AND ob.new_direction == 1`
+- [x] **GATE**: G5 parity passes for order_block (20/20 detectors)
 
 **2b. Liquidity Zones detector** — equal highs/lows clustering + sweep detection
-- [ ] Create `src/structures/detectors/liquidity_zones.py`
+- [x] Create `src/structures/detectors/liquidity_zones.py`
   - `@register_structure("liquidity_zones")`
-  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `tolerance_atr` (0.3), `sweep_atr` (0.1), `min_touches` (2), `max_active` (5)
+  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `tolerance_atr` (0.3), `sweep_atr` (0.1), `min_touches` (2), `max_active` (5), `max_swing_history` (20)
   - `DEPENDS_ON`: ["swing"]
-  - State: swing history deques (highs/lows), active zone slots (direction, level, touches, state, sweep_bar_idx), per-bar flags (new_zone, sweep_this_bar, sweep_direction), nearest level accessors
-  - O(1) update: track new swing pivots, cluster detection on last 10 swings, check sweeps on active zones, recompute nearest
+  - State: swing history deques (highs/lows), active zone slots (side, level, touches, state, sweep_bar_idx), per-bar flags (new_zone, sweep_this_bar, sweep_direction), nearest level accessors
+  - O(1) update: track new swing pivots, cluster detection on last N swings, check sweeps on active zones, recompute nearest
   - Clustering: find N swings within tolerance_atr * ATR of each other → form zone at average level
-  - Sweep: price exceeds zone level by sweep_atr * ATR then reverses
-- [ ] Add to `detectors/__init__.py`
-- [ ] `STRUCTURE_OUTPUT_TYPES["liquidity_zones"]`: `new_zone_this_bar`=BOOL, `sweep_this_bar`=BOOL, `sweep_direction`=INT, `swept_level`=FLOAT, `nearest_high_level`=FLOAT, `nearest_low_level`=FLOAT, `nearest_high_touches`=INT, `nearest_low_touches`=INT, `version`=INT
-- [ ] `STRUCTURE_WARMUP_FORMULAS["liquidity_zones"]`: `lambda params, swing_params: (swing_params["left"] + swing_params["right"]) * params.get("min_touches", 2)`
-- [ ] Create vectorized reference + parity audit function
-- [ ] Add synthetic pattern `equal_highs_lows` — range-bound with multiple swing touches at same level, then sweep + reversal
-- [ ] Create `STR_022_liquidity_zones.yml` — entry on `liq.sweep_this_bar == 1 AND liq.sweep_direction == -1` (swept lows = bullish signal)
-- [ ] **GATE**: G5 parity passes for liquidity_zones
+  - Sweep: price exceeds zone level by sweep_atr * ATR
+- [x] Add to `detectors/__init__.py`
+- [x] `STRUCTURE_OUTPUT_TYPES["liquidity_zones"]`: 9 output fields registered
+- [x] `STRUCTURE_WARMUP_FORMULAS["liquidity_zones"]`: `lambda params, swing_params: (swing_params["left"] + swing_params["right"]) * params.get("min_touches", 2)`
+- [x] Create vectorized reference + parity audit function
+- [x] Add synthetic pattern `equal_highs_lows` — range-bound with multiple swing touches at same level, then sweep + reversal
+- [x] Create `STR_022_liquidity_zones.yml` — entry on `liq.sweep_this_bar == 1 AND liq.sweep_direction == -1` (swept lows = bullish signal)
+- [x] **GATE**: G5 parity passes for liquidity_zones (20/20 detectors)
 
 **Phase 2 gates:**
-- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
-- [ ] **GATE**: `python trade_cli.py validate module --module structures --json` — all pass
-- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
+- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 20/20 pass
+- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 21/21 pass
+- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 11 structures, 0 gaps
 
-#### Phase 3: Premium/Discount (trivial, depends on swing pairs)
+#### Phase 3: Premium/Discount (trivial, depends on swing pairs) ✅
 
-- [ ] Create `src/structures/detectors/premium_discount.py`
+- [x] Create `src/structures/detectors/premium_discount.py`
   - `@register_structure("premium_discount")`
   - `DEPENDS_ON`: ["swing"]
   - Reads `pair_high_level`, `pair_low_level` from swing dependency
   - Computes: `equilibrium` = midpoint, `premium_level` = 75%, `discount_level` = 25%, `zone` = "premium"/"discount"/"equilibrium"/"none", `depth_pct` = position 0.0-1.0
   - O(1): just reads swing pair values and divides
-- [ ] Add to `detectors/__init__.py`
-- [ ] `STRUCTURE_OUTPUT_TYPES["premium_discount"]`: `equilibrium`=FLOAT, `premium_level`=FLOAT, `discount_level`=FLOAT, `zone`=ENUM, `depth_pct`=FLOAT, `version`=INT
-- [ ] `STRUCTURE_WARMUP_FORMULAS["premium_discount"]`: `lambda params, swing_params: swing_params["left"] + swing_params["right"]`
-- [ ] Create vectorized reference + parity audit
-- [ ] Create `STR_023_premium_discount.yml` — entry on `pd.zone == "discount" AND trend.direction == 1`
-- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
-- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
+- [x] Add to `detectors/__init__.py`
+- [x] `STRUCTURE_OUTPUT_TYPES["premium_discount"]`: 6 fields registered
+- [x] `STRUCTURE_WARMUP_FORMULAS["premium_discount"]`: `lambda params, swing_params: swing_params["left"] + swing_params["right"]`
+- [x] Create vectorized reference + parity audit
+- [x] Add "premium", "discount", "equilibrium" to `_KNOWN_ENUM_VALUES` in `dsl_parser.py`
+- [x] Create `STR_023_premium_discount.yml` — entry on `pd.zone == "discount" AND trend.direction == 1` (8 trades)
+- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 21/21 pass
+- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 22/22 pass
+- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 12 structures, 0 gaps
 
 #### Phase 4: Volume Profile indicator (standalone, hard)
 

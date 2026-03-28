@@ -418,6 +418,8 @@ _KNOWN_ENUM_VALUES = frozenset({
     # Market structure
     "higher_high", "higher_low", "lower_high", "lower_low",
     "strong_bullish", "strong_bearish", "weak_bullish", "weak_bearish",
+    # Premium/discount zones
+    "premium", "discount", "equilibrium",
 })
 
 

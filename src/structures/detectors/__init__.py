@@ -15,6 +15,9 @@ Available Detectors:
 - market_structure: ICT-style BOS/CHoCH detection
 - displacement: Strong impulsive candle detection via ATR
 - fair_value_gap: 3-candle imbalance gap detection with mitigation tracking
+- order_block: Last opposing candle before displacement, zone tracking
+- liquidity_zones: Swing cluster detection with sweep tracking
+- premium_discount: ICT premium/discount zone classification from swing pairs
 
 See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 """
@@ -24,7 +27,10 @@ from .derived_zone import IncrementalDerivedZone
 from .displacement import IncrementalDisplacement
 from .fair_value_gap import IncrementalFVG
 from .fibonacci import IncrementalFibonacci
+from .liquidity_zones import IncrementalLiquidityZones
 from .market_structure import IncrementalMarketStructure
+from .order_block import IncrementalOrderBlock
+from .premium_discount import IncrementalPremiumDiscount
 from .rolling_window import IncrementalRollingWindow
 from .swing import IncrementalSwing
 from .trend import IncrementalTrend
@@ -35,7 +41,10 @@ __all__ = [
     "IncrementalDisplacement",
     "IncrementalFVG",
     "IncrementalFibonacci",
+    "IncrementalLiquidityZones",
     "IncrementalMarketStructure",
+    "IncrementalOrderBlock",
+    "IncrementalPremiumDiscount",
     "IncrementalRollingWindow",
     "IncrementalSwing",
     "IncrementalTrend",
