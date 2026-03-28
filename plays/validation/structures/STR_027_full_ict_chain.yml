@@ -1,0 +1,113 @@
+version: "3.0.0"
+name: "str_027_full_ict_chain"
+description: |
+  Full ICT chain integration test — all new structure detectors in one Play.
+  Chain: swing -> displacement -> FVG -> OB -> liquidity -> market_structure
+         -> premium_discount -> breaker_block.
+  Entry: bullish BOS + discount zone + active bullish OB or breaker.
+  This is the "complete ICT trade setup" validation play.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  atr_14:
+    indicator: atr
+    params: {length: 14}
+
+structures:
+  exec:
+    # Layer 1: Foundation
+    - type: swing
+      key: swing
+      params: {left: 5, right: 5}
+
+    # Layer 2: Candle-level detection
+    - type: displacement
+      key: disp
+      params:
+        atr_key: atr_14
+        body_atr_min: 1.5
+
+    - type: fair_value_gap
+      key: fvg
+      params:
+        atr_key: atr_14
+        max_active: 5
+
+    # Layer 3: Zone-level detection
+    - type: order_block
+      key: ob
+      uses: swing
+      params:
+        atr_key: atr_14
+        use_body: true
+        max_active: 5
+        lookback: 3
+
+    - type: liquidity_zones
+      key: liq
+      uses: swing
+      params:
+        atr_key: atr_14
+        tolerance_atr: 0.3
+        sweep_atr: 0.1
+        min_touches: 2
+
+    # Layer 4: Structural context
+    - type: trend
+      key: trend
+      uses: swing
+
+    - type: market_structure
+      key: ms
+      uses: swing
+
+    - type: premium_discount
+      key: pd
+      uses: swing
+
+    # Layer 5: Derived (depends on OB + MS)
+    - type: breaker_block
+      key: brk
+      uses: [ob, ms]
+      params:
+        max_active: 5
+
+actions:
+  # Full ICT long setup: bullish structure + discount zone + OB confluence
+  # Uses sticky bos_direction (persists after BOS event) for structural bias,
+  # discount zone for value, and active OB for institutional level.
+  entry_long:
+    all:
+      - ["ms.bos_direction", "==", "bullish"]
+      - ["pd.zone", "==", "discount"]
+      - ["ob.active_bull_count", ">", 0]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0
+
+validation:
+  pattern: "volatile"

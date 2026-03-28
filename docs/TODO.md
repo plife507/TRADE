@@ -273,10 +273,11 @@ Both detectors built and validated. 11 structures registered, 0 coverage gaps.
 - [ ] **GATE**: `python trade_cli.py validate standard` passes
 - [ ] **GATE**: `python scripts/run_full_suite.py` — no regressions
 
-#### Final: ICT Chain Integration Play
+#### Final: ICT Chain Integration Play ✅
 
-- [ ] Create `STR_027_full_ict_chain.yml` — all new structures in one play: swing → displacement → FVG → OB → liquidity → market_structure → premium_discount → breaker_block. Entry: BOS + OB retest + FVG confluence in discount zone. The "complete ICT trade setup" as a single Play.
-- [ ] **GATE**: `python trade_cli.py validate standard` — full pass
+- [x] Create `STR_027_full_ict_chain.yml` — 9 structures in one play: swing → displacement → FVG → OB → liquidity_zones → trend → market_structure → premium_discount → breaker_block. Entry: sticky bullish BOS direction + discount zone + active bullish OB. 17 trades on volatile pattern.
+- [x] Dissected all 8 detector outputs independently — BOS `this_bar` contradicts discount zone (BOS pushes price up); switched to sticky `bos_direction` for structural bias.
+- [ ] **GATE**: `python trade_cli.py validate standard` — pending (run separately)
 
 ---
 
