@@ -96,6 +96,7 @@ from .volume import (
     IncrementalKVO,
     IncrementalVWAP,
     IncrementalAnchoredVWAP,
+    IncrementalVolumeProfile,
 )
 
 # Factory and utilities
@@ -160,6 +161,7 @@ __all__ = [
     "IncrementalKVO",
     "IncrementalVWAP",
     "IncrementalAnchoredVWAP",
+    "IncrementalVolumeProfile",
     # Factory and utilities
     "create_incremental_indicator",
     "supports_incremental",

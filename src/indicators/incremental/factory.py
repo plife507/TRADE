@@ -70,6 +70,7 @@ from .volume import (
     IncrementalKVO,
     IncrementalVWAP,
     IncrementalAnchoredVWAP,
+    IncrementalVolumeProfile,
 )
 
 
@@ -123,6 +124,7 @@ _VALID_PARAMS: dict[str, frozenset[str]] = {
     "kvo": frozenset({"fast", "slow", "signal"}),
     "vwap": frozenset({"anchor"}),
     "anchored_vwap": frozenset({"anchor_source"}),
+    "volume_profile": frozenset({"num_buckets", "lookback", "value_area_pct"}),
 }
 
 
@@ -194,6 +196,7 @@ _FACTORY: dict[str, Callable[[dict[str, Any]], IncrementalIndicator]] = {
     "kvo": lambda p: IncrementalKVO(fast=p.get("fast", 34), slow=p.get("slow", 55), signal=p.get("signal", 13)),
     "vwap": lambda p: IncrementalVWAP(anchor=p.get("anchor", "D")),
     "anchored_vwap": lambda p: IncrementalAnchoredVWAP(anchor_source=p.get("anchor_source", "swing_any")),
+    "volume_profile": lambda p: IncrementalVolumeProfile(num_buckets=p.get("num_buckets", 50), lookback=p.get("lookback", 50), value_area_pct=p.get("value_area_pct", 0.70)),
 }
 
 

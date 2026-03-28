@@ -246,6 +246,70 @@ def _compute_anchored_vwap(
     return {"value": values, "bars_since_anchor": bars_since}
 
 
+def _compute_volume_profile_batch(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    **kwargs: Any,
+) -> dict[str, pd.Series]:
+    """
+    Compute Volume Profile using the incremental class in batch mode.
+
+    No pandas_ta equivalent exists. Feeds bars one-by-one through the
+    IncrementalVolumeProfile and collects outputs per bar.
+
+    Args:
+        high, low, close, volume: Price/volume series.
+        num_buckets, lookback, value_area_pct: VP params.
+
+    Returns:
+        Dict with poc, vah, val, poc_volume, above_poc, in_value_area Series.
+    """
+    import numpy as np
+    from src.indicators.incremental.volume import IncrementalVolumeProfile
+
+    num_buckets = kwargs.get("num_buckets", 50)
+    lookback = kwargs.get("lookback", 50)
+    value_area_pct = kwargs.get("value_area_pct", 0.70)
+
+    vp = IncrementalVolumeProfile(
+        num_buckets=num_buckets, lookback=lookback, value_area_pct=value_area_pct
+    )
+
+    n = len(close)
+    out_poc = np.full(n, np.nan)
+    out_vah = np.full(n, np.nan)
+    out_val = np.full(n, np.nan)
+    out_poc_volume = np.full(n, np.nan)
+    out_above_poc = np.full(n, np.nan)
+    out_in_value_area = np.full(n, np.nan)
+
+    for i in range(n):
+        vp.update(
+            high=float(high.iloc[i]),
+            low=float(low.iloc[i]),
+            close=float(close.iloc[i]),
+            volume=float(volume.iloc[i]),
+        )
+        if vp.is_ready:
+            out_poc[i] = vp.poc
+            out_vah[i] = vp.vah
+            out_val[i] = vp.val
+            out_poc_volume[i] = vp.poc_volume
+            out_above_poc[i] = vp.above_poc
+            out_in_value_area[i] = vp.in_value_area
+
+    return {
+        "poc": pd.Series(out_poc, index=close.index),
+        "vah": pd.Series(out_vah, index=close.index),
+        "val": pd.Series(out_val, index=close.index),
+        "poc_volume": pd.Series(out_poc_volume, index=close.index),
+        "above_poc": pd.Series(out_above_poc, index=close.index),
+        "in_value_area": pd.Series(out_in_value_area, index=close.index),
+    }
+
+
 def _compute_cci(
     high: pd.Series,
     low: pd.Series,
@@ -405,6 +469,16 @@ def compute_indicator(
         assert close is not None, "Anchored VWAP requires 'close' series"
         assert volume is not None, "Anchored VWAP requires 'volume' series"
         result = _compute_anchored_vwap(
+            high=high, low=low, close=close, volume=volume, **kwargs
+        )
+    elif indicator_name == "volume_profile":
+        # Volume Profile is incremental-only (no pandas_ta equivalent).
+        # Compute using the incremental class in batch mode.
+        assert high is not None, "Volume Profile requires 'high' series"
+        assert low is not None, "Volume Profile requires 'low' series"
+        assert close is not None, "Volume Profile requires 'close' series"
+        assert volume is not None, "Volume Profile requires 'volume' series"
+        result = _compute_volume_profile_batch(
             high=high, low=low, close=close, volume=volume, **kwargs
         )
     elif indicator_name == "cci":

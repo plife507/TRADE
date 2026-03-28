@@ -205,23 +205,25 @@ Both detectors built and validated. 11 structures registered, 0 coverage gaps.
 - [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 22/22 pass
 - [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 12 structures, 0 gaps
 
-#### Phase 4: Volume Profile indicator (standalone, hard)
+#### Phase 4: Volume Profile indicator (standalone, hard) ✅
 
 **4a. IncrementalVolumeProfile** — volume distribution across price levels
-- [ ] Create class in `src/indicators/incremental/volume.py`
+- [x] Create class in `src/indicators/incremental/volume.py`
   - Inherit `IncrementalIndicator`
-  - Params: `num_buckets` (100), `lookback` (50), `value_area_pct` (0.70)
+  - Params: `num_buckets` (50), `lookback` (50), `value_area_pct` (0.70)
   - State: price range tracker, bucket volumes array, bar contribution deque for rolling eviction
-  - O(buckets) per bar for volume distribution (acceptable: ~100 ops)
+  - O(buckets) per bar for volume distribution
   - Lazy rebinning: only rebin when price exceeds range by 10%+
-  - Outputs: `poc` (FLOAT), `vah` (FLOAT), `val` (FLOAT), `poc_volume` (FLOAT), `above_poc` (BOOL), `in_value_area` (BOOL)
-- [ ] Register in factory `_FACTORY` + `_VALID_PARAMS`
-- [ ] Export from `src/indicators/incremental/__init__.py`
-- [ ] Add to `SUPPORTED_INDICATORS` — multi_output=True, output_keys=("poc", "vah", "val", "poc_volume", "above_poc", "in_value_area"), warmup=lookback
-- [ ] Add to `INDICATOR_OUTPUT_TYPES` — poc=FLOAT, vah=FLOAT, val=FLOAT, poc_volume=FLOAT, above_poc=BOOL, in_value_area=BOOL
-- [ ] Create `IND_052_volume_profile_poc.yml` — entry on `vp.above_poc == 1 AND trend.direction == 1`
-- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
-- [ ] **GATE**: `python trade_cli.py validate quick` passes
+  - Outputs: `poc` (FLOAT), `vah` (FLOAT), `val` (FLOAT), `poc_volume` (FLOAT), `above_poc` (INT), `in_value_area` (INT)
+  - Note: above_poc/in_value_area typed as INT not BOOL — FeedStore float64 arrays cause BOOL `==` to fail in evaluator
+- [x] Register in factory `_FACTORY` + `_VALID_PARAMS`
+- [x] Export from `src/indicators/incremental/__init__.py`
+- [x] Add to `SUPPORTED_INDICATORS` — multi_output=True, 6 output_keys, warmup=lookback
+- [x] Add to `INDICATOR_OUTPUT_TYPES`
+- [x] Add `_compute_volume_profile_batch()` to `indicator_vendor.py` (no pandas_ta equivalent)
+- [x] Create `IND_052_volume_profile_poc.yml` — entry on `vp.above_poc == 1 AND trend.direction == 1` (13 trades)
+- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 45 indicators, 0 gaps
+- [ ] **GATE**: `python trade_cli.py validate quick` passes — pending
 
 #### Phase 5: Breaker Blocks + Session Levels (depend on Phase 2)
 

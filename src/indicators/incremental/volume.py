@@ -7,6 +7,7 @@ volume data in their calculations.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -338,3 +339,244 @@ class IncrementalAnchoredVWAP(IncrementalIndicator):
     @property
     def is_ready(self) -> bool:
         return self._count >= 1
+
+
+@dataclass
+class IncrementalVolumeProfile(IncrementalIndicator):
+    """
+    Incremental Volume Profile with O(buckets) updates.
+
+    Distributes volume across price buckets over a rolling lookback window.
+    Computes Point of Control (POC), Value Area High/Low (VAH/VAL), and
+    price position relative to these levels.
+
+    Algorithm:
+        1. Each bar distributes its volume across buckets spanned by [low, high]
+        2. A deque tracks per-bar contributions for rolling eviction
+        3. When price exceeds the tracked range by 10%+, buckets are lazily rebinned
+        4. POC = price level of the bucket with highest volume
+        5. Value Area = smallest set of contiguous buckets around POC
+           containing value_area_pct of total volume
+
+    Params:
+        num_buckets: Number of price buckets (default: 50)
+        lookback: Rolling window in bars (default: 50)
+        value_area_pct: Fraction of volume defining the value area (default: 0.70)
+    """
+
+    num_buckets: int = 50
+    lookback: int = 50
+    value_area_pct: float = 0.70
+
+    _count: int = field(default=0, init=False)
+    _bucket_volumes: np.ndarray = field(init=False)
+    _range_low: float = field(default=np.nan, init=False)
+    _range_high: float = field(default=np.nan, init=False)
+    _bucket_width: float = field(default=0.0, init=False)
+    _bar_contributions: deque = field(init=False)
+
+    _poc: float = field(default=np.nan, init=False)
+    _vah: float = field(default=np.nan, init=False)
+    _val: float = field(default=np.nan, init=False)
+    _poc_volume: float = field(default=np.nan, init=False)
+    _above_poc: bool = field(default=False, init=False)
+    _in_value_area: bool = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        self._bucket_volumes = np.zeros(self.num_buckets)
+        self._bar_contributions = deque(maxlen=self.lookback)
+
+    def update(
+        self, high: float, low: float, close: float, volume: float, **kwargs: Any
+    ) -> None:
+        """Update volume profile with new bar data."""
+        self._count += 1
+
+        if np.isnan(high) or np.isnan(low) or np.isnan(close) or np.isnan(volume):
+            self._bar_contributions.append((np.array([], dtype=int), np.array([])))
+            self._recompute_outputs(close)
+            return
+
+        if volume <= 0:
+            self._bar_contributions.append((np.array([], dtype=int), np.array([])))
+            self._recompute_outputs(close)
+            return
+
+        # Initialize range on first valid bar
+        if np.isnan(self._range_low):
+            spread = high - low
+            if spread <= 0:
+                spread = high * 0.01
+            self._range_low = low - spread * 2
+            self._range_high = high + spread * 2
+            self._bucket_width = (self._range_high - self._range_low) / self.num_buckets
+
+        # Lazy rebinning: only when price exceeds range by 10%+
+        current_range = self._range_high - self._range_low
+        if high > self._range_high or low < self._range_low:
+            overshoot = max(
+                (high - self._range_high) / current_range if high > self._range_high else 0,
+                (self._range_low - low) / current_range if low < self._range_low else 0,
+            )
+            if overshoot > 0.10:
+                self._rebin(low, high)
+
+        # Distribute volume across touched buckets
+        lo_bucket = self._price_to_bucket(low)
+        hi_bucket = self._price_to_bucket(high)
+        n_touched = hi_bucket - lo_bucket + 1
+        vol_per_bucket = volume / max(n_touched, 1)
+
+        indices = np.arange(lo_bucket, hi_bucket + 1, dtype=int)
+        volumes_arr = np.full(len(indices), vol_per_bucket)
+
+        # Evict oldest bar if at capacity
+        if len(self._bar_contributions) == self.lookback:
+            old_indices, old_volumes = self._bar_contributions[0]
+            if len(old_indices) > 0:
+                self._bucket_volumes[old_indices] -= old_volumes
+                self._bucket_volumes[old_indices] = np.maximum(
+                    0, self._bucket_volumes[old_indices]
+                )
+
+        self._bucket_volumes[indices] += volumes_arr
+        self._bar_contributions.append((indices, volumes_arr))
+        self._recompute_outputs(close)
+
+    def _price_to_bucket(self, price: float) -> int:
+        if self._bucket_width <= 0:
+            return 0
+        idx = int((price - self._range_low) / self._bucket_width)
+        return max(0, min(self.num_buckets - 1, idx))
+
+    def _bucket_to_price(self, bucket: int) -> float:
+        return self._range_low + (bucket + 0.5) * self._bucket_width
+
+    def _rebin(self, new_low: float, new_high: float) -> None:
+        """Rebin buckets to cover new price range."""
+        spread = new_high - new_low
+        if spread <= 0:
+            spread = new_high * 0.01
+        new_range_low = new_low - spread * 0.5
+        new_range_high = new_high + spread * 0.5
+        new_width = (new_range_high - new_range_low) / self.num_buckets
+
+        new_buckets = np.zeros(self.num_buckets)
+        new_contributions: deque = deque(maxlen=self.lookback)
+
+        for old_indices, old_volumes in self._bar_contributions:
+            if len(old_indices) == 0:
+                new_contributions.append((np.array([], dtype=int), np.array([])))
+                continue
+            new_bar_indices = []
+            new_bar_volumes = []
+            for j, vol in zip(old_indices, old_volumes):
+                price = self._bucket_to_price(j)
+                new_idx = int((price - new_range_low) / new_width)
+                new_idx = max(0, min(self.num_buckets - 1, new_idx))
+                new_buckets[new_idx] += vol
+                new_bar_indices.append(new_idx)
+                new_bar_volumes.append(vol)
+            new_contributions.append(
+                (np.array(new_bar_indices, dtype=int), np.array(new_bar_volumes))
+            )
+
+        self._range_low = new_range_low
+        self._range_high = new_range_high
+        self._bucket_width = new_width
+        self._bucket_volumes = new_buckets
+        self._bar_contributions = new_contributions
+
+    def _recompute_outputs(self, close: float) -> None:
+        """Recompute POC, VAH, VAL from current bucket volumes."""
+        total_vol = self._bucket_volumes.sum()
+        if total_vol <= 0 or self._count < 2:
+            self._poc = np.nan
+            self._vah = np.nan
+            self._val = np.nan
+            self._poc_volume = np.nan
+            self._above_poc = False
+            self._in_value_area = False
+            return
+
+        poc_bucket = int(np.argmax(self._bucket_volumes))
+        self._poc = self._bucket_to_price(poc_bucket)
+        self._poc_volume = float(self._bucket_volumes[poc_bucket])
+
+        # Value Area: expand outward from POC
+        target_vol = total_vol * self.value_area_pct
+        va_low = poc_bucket
+        va_high = poc_bucket
+        accumulated = float(self._bucket_volumes[poc_bucket])
+
+        while accumulated < target_vol:
+            expand_low = (
+                float(self._bucket_volumes[va_low - 1]) if va_low > 0 else 0.0
+            )
+            expand_high = (
+                float(self._bucket_volumes[va_high + 1])
+                if va_high < self.num_buckets - 1
+                else 0.0
+            )
+            if expand_low == 0 and expand_high == 0:
+                break
+            if expand_high >= expand_low:
+                va_high += 1
+                accumulated += expand_high
+            else:
+                va_low -= 1
+                accumulated += expand_low
+
+        self._vah = self._bucket_to_price(va_high)
+        self._val = self._bucket_to_price(va_low)
+        self._above_poc = close > self._poc
+        self._in_value_area = self._val <= close <= self._vah
+
+    def reset(self) -> None:
+        self._count = 0
+        self._bucket_volumes = np.zeros(self.num_buckets)
+        self._bar_contributions = deque(maxlen=self.lookback)
+        self._range_low = np.nan
+        self._range_high = np.nan
+        self._bucket_width = 0.0
+        self._poc = np.nan
+        self._vah = np.nan
+        self._val = np.nan
+        self._poc_volume = np.nan
+        self._above_poc = False
+        self._in_value_area = False
+
+    @property
+    def value(self) -> float:
+        """Primary output: POC price level."""
+        return self._poc
+
+    @property
+    def poc(self) -> float:
+        return self._poc
+
+    @property
+    def vah(self) -> float:
+        return self._vah
+
+    @property
+    def val(self) -> float:
+        return self._val
+
+    @property
+    def poc_volume(self) -> float:
+        return self._poc_volume
+
+    @property
+    def above_poc(self) -> float:
+        """1.0 if close > POC, 0.0 otherwise."""
+        return 1.0 if self._above_poc else 0.0
+
+    @property
+    def in_value_area(self) -> float:
+        """1.0 if close within VAL-VAH, 0.0 otherwise."""
+        return 1.0 if self._in_value_area else 0.0
+
+    @property
+    def is_ready(self) -> bool:
+        return self._count >= 2 and not np.isnan(self._poc)

@@ -575,6 +575,15 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "warmup_formula": _warmup_minimal,  # Cumulative from anchor point
         "incremental_class": "IncrementalAnchoredVWAP",
     },
+    "volume_profile": {
+        "inputs": {"high", "low", "close", "volume"},
+        "params": {"num_buckets", "lookback", "value_area_pct"},
+        "multi_output": True,
+        "output_keys": ("poc", "vah", "val", "poc_volume", "above_poc", "in_value_area"),
+        "primary_output": "poc",
+        "warmup_formula": lambda p: p.get("lookback", 50),
+        "incremental_class": "IncrementalVolumeProfile",
+    },
 }
 
 # Common params accepted by most indicators (added to each indicator's params)
@@ -627,6 +636,14 @@ INDICATOR_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
     "anchored_vwap": {
         "value": FeatureOutputType.FLOAT,
         "bars_since_anchor": FeatureOutputType.INT,
+    },
+    "volume_profile": {
+        "poc": FeatureOutputType.FLOAT,
+        "vah": FeatureOutputType.FLOAT,
+        "val": FeatureOutputType.FLOAT,
+        "poc_volume": FeatureOutputType.FLOAT,
+        "above_poc": FeatureOutputType.INT,
+        "in_value_area": FeatureOutputType.INT,
     },
 
     # -------------------------------------------------------------------------
