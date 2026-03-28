@@ -199,6 +199,10 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "active_bull_count": FeatureOutputType.INT,      # Number of active bullish OBs
         "active_bear_count": FeatureOutputType.INT,      # Number of active bearish OBs
         "any_mitigated_this_bar": FeatureOutputType.BOOL,  # True if any OB mitigated this bar
+        "any_invalidated_this_bar": FeatureOutputType.BOOL,  # True if any OB invalidated this bar
+        "last_invalidated_direction": FeatureOutputType.INT,  # Direction of last invalidated OB
+        "last_invalidated_upper": FeatureOutputType.FLOAT,   # Upper of last invalidated OB
+        "last_invalidated_lower": FeatureOutputType.FLOAT,   # Lower of last invalidated OB
         "version": FeatureOutputType.INT,                # Monotonic counter, increments on new OB
     },
     "liquidity_zones": {
@@ -219,6 +223,20 @@ STRUCTURE_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "zone": FeatureOutputType.ENUM,                  # "premium", "discount", "equilibrium", "none"
         "depth_pct": FeatureOutputType.FLOAT,            # Position 0.0 (at low) to 1.0 (at high)
         "version": FeatureOutputType.INT,                # Monotonic counter, increments on zone change
+    },
+    "breaker_block": {
+        "new_this_bar": FeatureOutputType.BOOL,          # True if new breaker detected this bar
+        "new_direction": FeatureOutputType.INT,          # 1 (bull support), -1 (bear resistance), 0 (none)
+        "new_upper": FeatureOutputType.FLOAT,            # Upper boundary of newest breaker
+        "new_lower": FeatureOutputType.FLOAT,            # Lower boundary of newest breaker
+        "nearest_bull_upper": FeatureOutputType.FLOAT,   # Upper of nearest active bullish breaker
+        "nearest_bull_lower": FeatureOutputType.FLOAT,   # Lower of nearest active bullish breaker
+        "nearest_bear_upper": FeatureOutputType.FLOAT,   # Upper of nearest active bearish breaker
+        "nearest_bear_lower": FeatureOutputType.FLOAT,   # Lower of nearest active bearish breaker
+        "active_bull_count": FeatureOutputType.INT,      # Number of active bullish breakers
+        "active_bear_count": FeatureOutputType.INT,      # Number of active bearish breakers
+        "any_mitigated_this_bar": FeatureOutputType.BOOL,  # True if any breaker touched this bar
+        "version": FeatureOutputType.INT,                # Monotonic counter, increments on new breaker
     },
 }
 
@@ -280,6 +298,10 @@ STRUCTURE_WARMUP_FORMULAS: dict[str, Callable] = {
 
     # PREMIUM_DISCOUNT: same as source swing warmup (needs a swing pair)
     "premium_discount": lambda params, swing_params: swing_params["left"] + swing_params["right"],
+
+    # BREAKER_BLOCK: needs OB to form and invalidate, plus CHoCH detection
+    # Conservative: (left + right) * 4 (OB formation + structure change)
+    "breaker_block": lambda params, swing_params: (swing_params["left"] + swing_params["right"]) * 4,
 }
 
 

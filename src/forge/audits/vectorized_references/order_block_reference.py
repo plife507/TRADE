@@ -68,6 +68,10 @@ def vectorized_order_block(
     out_active_bull_count = np.zeros(n)
     out_active_bear_count = np.zeros(n)
     out_any_mitigated_this_bar = np.zeros(n)
+    out_any_invalidated_this_bar = np.zeros(n)
+    out_last_invalidated_direction = np.zeros(n)
+    out_last_invalidated_upper = np.full(n, np.nan)
+    out_last_invalidated_lower = np.full(n, np.nan)
     out_version = np.zeros(n)
 
     # State
@@ -86,6 +90,10 @@ def vectorized_order_block(
         new_upper = float("nan")
         new_lower = float("nan")
         any_mitigated = False
+        any_invalidated = False
+        last_inv_direction = 0
+        last_inv_upper = float("nan")
+        last_inv_lower = float("nan")
 
         bar_open = float(open_arr[i])
         bar_high = float(high[i])
@@ -186,6 +194,10 @@ def vectorized_order_block(
                 # Bullish OB: invalidation takes priority
                 if bar_close < ob_lower:
                     ob["state"] = "invalidated"
+                    any_invalidated = True
+                    last_inv_direction = ob["direction"]
+                    last_inv_upper = ob_upper
+                    last_inv_lower = ob_lower
                 elif bar_low <= ob_upper:
                     ob["touch_count"] += 1
                     ob["state"] = "mitigated"
@@ -194,6 +206,10 @@ def vectorized_order_block(
                 # Bearish OB: invalidation takes priority
                 if bar_close > ob_upper:
                     ob["state"] = "invalidated"
+                    any_invalidated = True
+                    last_inv_direction = ob["direction"]
+                    last_inv_upper = ob_upper
+                    last_inv_lower = ob_lower
                 elif bar_high >= ob_lower:
                     ob["touch_count"] += 1
                     ob["state"] = "mitigated"
@@ -244,6 +260,10 @@ def vectorized_order_block(
         out_active_bull_count[i] = float(active_bull_count)
         out_active_bear_count[i] = float(active_bear_count)
         out_any_mitigated_this_bar[i] = 1.0 if any_mitigated else 0.0
+        out_any_invalidated_this_bar[i] = 1.0 if any_invalidated else 0.0
+        out_last_invalidated_direction[i] = float(last_inv_direction)
+        out_last_invalidated_upper[i] = last_inv_upper
+        out_last_invalidated_lower[i] = last_inv_lower
         out_version[i] = float(version)
 
     return {
@@ -258,5 +278,9 @@ def vectorized_order_block(
         "active_bull_count": out_active_bull_count,
         "active_bear_count": out_active_bear_count,
         "any_mitigated_this_bar": out_any_mitigated_this_bar,
+        "any_invalidated_this_bar": out_any_invalidated_this_bar,
+        "last_invalidated_direction": out_last_invalidated_direction,
+        "last_invalidated_upper": out_last_invalidated_upper,
+        "last_invalidated_lower": out_last_invalidated_lower,
         "version": out_version,
     }

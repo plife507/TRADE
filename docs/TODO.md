@@ -225,16 +225,17 @@ Both detectors built and validated. 11 structures registered, 0 coverage gaps.
 
 #### Phase 5: Breaker Blocks + Session Levels (depend on Phase 2)
 
-**5a. Breaker Block detector** — failed OB that flips polarity on CHoCH
-- [ ] Create `src/structures/detectors/breaker_block.py`
+**5a. Breaker Block detector** — failed OB that flips polarity on CHoCH ✅
+- [x] Add OB invalidation tracking outputs (`any_invalidated_this_bar`, `last_invalidated_direction/upper/lower`) to order_block detector + vectorized reference + registry
+- [x] Create `src/structures/detectors/breaker_block.py`
   - `@register_structure("breaker_block")`
-  - `DEPENDS_ON`: ["order_block", "market_structure"]
+  - `DEPENDS_ON`: ["order_block"], `OPTIONAL_DEPS`: ["market_structure"]
   - Monitors OB invalidations; when an OB is invalidated during a CHoCH event, it flips polarity (bullish OB → bearish resistance, vice versa)
-  - State: active breaker slots (direction, upper, lower, state), per-bar flags
-  - Outputs: same pattern as OB (nearest, active counts, version)
-- [ ] Full integration checklist (registry, vectorized ref, parity audit, validation play)
-- [ ] Create `STR_024_breaker_block.yml`
-- [ ] **GATE**: G5 parity + G9 suite pass
+  - State: active breaker slots (direction, upper, lower, state, touch_count), per-bar flags
+  - Outputs: same pattern as OB (nearest, active counts, any_mitigated, version)
+- [x] Full integration checklist (registry, vectorized ref, parity audit, validation play)
+- [x] Create `STR_024_breaker_block.yml` — uses `[ob, ms]` multi-dep, entry on `brk.active_bull_count > 0` (7 trades)
+- [x] **GATE**: G5 parity 22/22, G9 suite 23/23, G15 coverage 13 structures 0 gaps
 
 **5b. Session Levels indicator** — previous daily/weekly/monthly highs/lows
 - [ ] Create class in `src/indicators/incremental/volume.py` (or new `session.py`)

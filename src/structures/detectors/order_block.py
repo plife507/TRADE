@@ -194,6 +194,10 @@ class IncrementalOrderBlock(BaseIncrementalDetector):
         self._new_upper: float = float("nan")
         self._new_lower: float = float("nan")
         self._any_mitigated_this_bar: bool = False
+        self._any_invalidated_this_bar: bool = False
+        self._last_invalidated_direction: int = 0
+        self._last_invalidated_upper: float = float("nan")
+        self._last_invalidated_lower: float = float("nan")
 
         # Nearest accessors (recomputed each bar)
         self._nearest_bull_upper: float = float("nan")
@@ -231,6 +235,10 @@ class IncrementalOrderBlock(BaseIncrementalDetector):
         self._new_upper = float("nan")
         self._new_lower = float("nan")
         self._any_mitigated_this_bar = False
+        self._any_invalidated_this_bar = False
+        self._last_invalidated_direction = 0
+        self._last_invalidated_upper = float("nan")
+        self._last_invalidated_lower = float("nan")
 
         # Step 2: Check for displacement
         is_disp, disp_dir = self._check_displacement(bar)
@@ -401,19 +409,25 @@ class IncrementalOrderBlock(BaseIncrementalDetector):
             lower = ob["lower"]
 
             if ob["direction"] == 1:
-                # Bullish OB: zone is below price, price returns down to it
-                # Invalidation takes priority: close below lower boundary
+                # Bullish OB: invalidation takes priority
                 if bar.close < lower:
                     ob["state"] = "invalidated"
+                    self._any_invalidated_this_bar = True
+                    self._last_invalidated_direction = ob["direction"]
+                    self._last_invalidated_upper = upper
+                    self._last_invalidated_lower = lower
                 elif bar.low <= upper:
                     ob["touch_count"] += 1
                     ob["state"] = "mitigated"
                     self._any_mitigated_this_bar = True
             else:
-                # Bearish OB: zone is above price, price returns up to it
-                # Invalidation takes priority: close above upper boundary
+                # Bearish OB: invalidation takes priority
                 if bar.close > upper:
                     ob["state"] = "invalidated"
+                    self._any_invalidated_this_bar = True
+                    self._last_invalidated_direction = ob["direction"]
+                    self._last_invalidated_upper = upper
+                    self._last_invalidated_lower = lower
                 elif bar.high >= lower:
                     ob["touch_count"] += 1
                     ob["state"] = "mitigated"
@@ -466,6 +480,10 @@ class IncrementalOrderBlock(BaseIncrementalDetector):
         self._new_upper = float("nan")
         self._new_lower = float("nan")
         self._any_mitigated_this_bar = False
+        self._any_invalidated_this_bar = False
+        self._last_invalidated_direction = 0
+        self._last_invalidated_upper = float("nan")
+        self._last_invalidated_lower = float("nan")
         self._nearest_bull_upper = float("nan")
         self._nearest_bull_lower = float("nan")
         self._nearest_bear_upper = float("nan")
@@ -496,6 +514,10 @@ class IncrementalOrderBlock(BaseIncrementalDetector):
             "active_bull_count",
             "active_bear_count",
             "any_mitigated_this_bar",
+            "any_invalidated_this_bar",
+            "last_invalidated_direction",
+            "last_invalidated_upper",
+            "last_invalidated_lower",
             "version",
         ]
 
@@ -534,6 +556,14 @@ class IncrementalOrderBlock(BaseIncrementalDetector):
             return self._active_bear_count
         elif key == "any_mitigated_this_bar":
             return self._any_mitigated_this_bar
+        elif key == "any_invalidated_this_bar":
+            return self._any_invalidated_this_bar
+        elif key == "last_invalidated_direction":
+            return self._last_invalidated_direction
+        elif key == "last_invalidated_upper":
+            return self._last_invalidated_upper
+        elif key == "last_invalidated_lower":
+            return self._last_invalidated_lower
         elif key == "version":
             return self._version
         else:

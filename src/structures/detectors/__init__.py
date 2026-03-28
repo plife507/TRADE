@@ -18,11 +18,13 @@ Available Detectors:
 - order_block: Last opposing candle before displacement, zone tracking
 - liquidity_zones: Swing cluster detection with sweep tracking
 - premium_discount: ICT premium/discount zone classification from swing pairs
+- breaker_block: Failed OB that flips polarity on CHoCH
 
 See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 """
 
 # Import detectors to trigger registration
+from .breaker_block import IncrementalBreakerBlock
 from .derived_zone import IncrementalDerivedZone
 from .displacement import IncrementalDisplacement
 from .fair_value_gap import IncrementalFVG
@@ -37,6 +39,7 @@ from .trend import IncrementalTrend
 from .zone import IncrementalZone
 
 __all__ = [
+    "IncrementalBreakerBlock",
     "IncrementalDerivedZone",
     "IncrementalDisplacement",
     "IncrementalFVG",

@@ -44,6 +44,7 @@ from .vectorized_references.fair_value_gap_reference import vectorized_fair_valu
 from .vectorized_references.order_block_reference import vectorized_order_block
 from .vectorized_references.liquidity_zones_reference import vectorized_liquidity_zones
 from .vectorized_references.premium_discount_reference import vectorized_premium_discount
+from .vectorized_references.breaker_block_reference import vectorized_breaker_block
 
 
 # Keys to skip during comparison (hashes, enum strings stored as NaN)
@@ -1257,6 +1258,126 @@ def audit_premium_discount(ohlcv: dict[str, np.ndarray], tolerance: float, datas
         )
 
 
+def audit_breaker_block(ohlcv: dict[str, np.ndarray], tolerance: float, dataset: str) -> StructureDetectorResult:
+    """Audit breaker_block detector parity (swing -> OB -> MS -> breaker)."""
+    try:
+        ob_params = {
+            "atr_key": "atr",
+            "use_body": True,
+            "require_displacement": True,
+            "body_atr_min": 1.5,
+            "wick_ratio_max": 0.4,
+            "max_active": 5,
+            "lookback": 3,
+        }
+        brk_params: dict[str, object] = {"max_active": 5}
+        warmup = 40  # swing(10) * 4 for breaker block
+
+        # Compute ATR(14)
+        n = len(ohlcv["close"])
+        atr_period = 14
+        atr_array = np.full(n, np.nan)
+        tr = np.zeros(n)
+        for i in range(n):
+            hl = ohlcv["high"][i] - ohlcv["low"][i]
+            if i == 0:
+                tr[i] = hl
+            else:
+                hc = abs(ohlcv["high"][i] - ohlcv["close"][i - 1])
+                lc = abs(ohlcv["low"][i] - ohlcv["close"][i - 1])
+                tr[i] = max(hl, hc, lc)
+        for i in range(atr_period - 1, n):
+            atr_array[i] = np.mean(tr[i - atr_period + 1 : i + 1])
+
+        # Run incremental: swing -> OB, swing -> MS, OB + MS -> breaker
+        from src.structures.registry import STRUCTURE_REGISTRY
+        from src.structures.base import BarData
+
+        swing_cls = STRUCTURE_REGISTRY["swing"]
+        swing_params = {"left": 5, "right": 5, "mode": "fractal"}
+        swing_det = swing_cls(swing_params, None)
+
+        ob_cls = STRUCTURE_REGISTRY["order_block"]
+        ob_det = ob_cls(ob_params, {"swing": swing_det})
+
+        ms_cls = STRUCTURE_REGISTRY["market_structure"]
+        ms_det = ms_cls({}, {"swing": swing_det})
+
+        brk_cls = STRUCTURE_REGISTRY["breaker_block"]
+        brk_det = brk_cls(brk_params, {"order_block": ob_det, "market_structure": ms_det})
+
+        inc_keys = brk_det.get_output_keys()
+        inc_outputs: dict[str, np.ndarray] = {k: np.full(n, np.nan, dtype=object) for k in inc_keys}
+
+        # Also collect OB and MS outputs for vectorized path
+        ob_keys = ob_det.get_output_keys()
+        ob_inc: dict[str, np.ndarray] = {k: np.full(n, np.nan, dtype=object) for k in ob_keys}
+        ms_keys = ms_det.get_output_keys()
+        ms_inc: dict[str, np.ndarray] = {k: np.full(n, np.nan, dtype=object) for k in ms_keys}
+
+        for i in range(n):
+            bar_indicators: dict[str, float] = {}
+            if not np.isnan(atr_array[i]):
+                bar_indicators["atr"] = float(atr_array[i])
+
+            bar = BarData(
+                idx=i, open=float(ohlcv["open"][i]), high=float(ohlcv["high"][i]),
+                low=float(ohlcv["low"][i]), close=float(ohlcv["close"][i]),
+                volume=float(ohlcv["volume"][i]), indicators=bar_indicators,
+            )
+            swing_det.update(i, bar)
+            ob_det.update(i, bar)
+            ms_det.update(i, bar)
+            brk_det.update(i, bar)
+
+            for k in inc_keys:
+                try:
+                    inc_outputs[k][i] = brk_det.get_value(k)
+                except (KeyError, ValueError):
+                    pass
+            for k in ob_keys:
+                try:
+                    ob_inc[k][i] = ob_det.get_value(k)
+                except (KeyError, ValueError):
+                    pass
+            for k in ms_keys:
+                try:
+                    ms_inc[k][i] = ms_det.get_value(k)
+                except (KeyError, ValueError):
+                    pass
+
+        inc = _encode_incremental_output(inc_outputs, "breaker_block")
+
+        # Run vectorized: use OB and MS incremental outputs to feed breaker
+        # (The OB and MS vectorized paths are already validated separately)
+        ob_encoded = _encode_incremental_output(ob_inc, "order_block")
+        ms_encoded = _encode_incremental_output(ms_inc, "market_structure")
+
+        vec = vectorized_breaker_block(ohlcv, ob_encoded, ms_encoded, max_active=5)
+
+        passed, max_diff, mismatched, keys = _compare_outputs(
+            inc, vec, warmup, tolerance
+        )
+
+        return StructureDetectorResult(
+            detector="breaker_block",
+            dataset=dataset,
+            passed=passed,
+            max_abs_diff=max_diff,
+            mismatched_keys=mismatched,
+            total_keys_checked=keys,
+            warmup_bars=warmup,
+        )
+    except Exception as e:
+        return StructureDetectorResult(
+            detector="breaker_block",
+            dataset=dataset,
+            passed=False,
+            max_abs_diff=float("inf"),
+            error_message=str(e),
+        )
+
+
 # =============================================================================
 # NaN-Resilience Audit (Phase 2: Live/Backtest Indicator Parity)
 # =============================================================================
@@ -1654,6 +1775,7 @@ def run_structure_parity_audit(
             audit_order_block,
             audit_liquidity_zones,
             audit_premium_discount,
+            audit_breaker_block,
         ]
 
         # Run each audit on each dataset
