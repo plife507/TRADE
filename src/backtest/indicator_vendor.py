@@ -246,6 +246,66 @@ def _compute_anchored_vwap(
     return {"value": values, "bars_since_anchor": bars_since}
 
 
+def _compute_session_levels_batch(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    ts_open: pd.Series | None = None,
+) -> dict[str, pd.Series]:
+    """
+    Compute Session Levels using the incremental class in batch mode.
+
+    Args:
+        high, low, close: Price series.
+        ts_open: Bar open timestamps in milliseconds.
+
+    Returns:
+        Dict with prev_day_high/low, current_day_high/low, prev_week_high/low Series.
+    """
+    import numpy as np
+    from src.indicators.incremental.session import IncrementalSessionLevels
+
+    sl = IncrementalSessionLevels()
+    n = len(close)
+
+    out = {
+        "prev_day_high": np.full(n, np.nan),
+        "prev_day_low": np.full(n, np.nan),
+        "current_day_high": np.full(n, np.nan),
+        "current_day_low": np.full(n, np.nan),
+        "prev_week_high": np.full(n, np.nan),
+        "prev_week_low": np.full(n, np.nan),
+    }
+
+    for i in range(n):
+        kwargs: dict[str, Any] = {}
+        if ts_open is not None:
+            ts_val = ts_open.iloc[i]
+            # Handle both int64 (epoch ms) and pd.Timestamp
+            if hasattr(ts_val, 'value'):
+                # pd.Timestamp — .value is nanoseconds
+                kwargs["ts_open"] = int(ts_val.value // 1_000_000)
+            else:
+                kwargs["ts_open"] = int(ts_val)
+
+        sl.update(
+            high=float(high.iloc[i]),
+            low=float(low.iloc[i]),
+            close=float(close.iloc[i]),
+            volume=0.0,
+            **kwargs,
+        )
+
+        out["prev_day_high"][i] = sl.prev_day_high
+        out["prev_day_low"][i] = sl.prev_day_low
+        out["current_day_high"][i] = sl.current_day_high
+        out["current_day_low"][i] = sl.current_day_low
+        out["prev_week_high"][i] = sl.prev_week_high
+        out["prev_week_low"][i] = sl.prev_week_low
+
+    return {k: pd.Series(v, index=close.index) for k, v in out.items()}
+
+
 def _compute_volume_profile_batch(
     high: pd.Series,
     low: pd.Series,
@@ -470,6 +530,14 @@ def compute_indicator(
         assert volume is not None, "Anchored VWAP requires 'volume' series"
         result = _compute_anchored_vwap(
             high=high, low=low, close=close, volume=volume, **kwargs
+        )
+    elif indicator_name == "session_levels":
+        # Session Levels is incremental-only (no pandas_ta equivalent).
+        assert high is not None, "Session Levels requires 'high' series"
+        assert low is not None, "Session Levels requires 'low' series"
+        assert close is not None, "Session Levels requires 'close' series"
+        result = _compute_session_levels_batch(
+            high=high, low=low, close=close, ts_open=ts_open
         )
     elif indicator_name == "volume_profile":
         # Volume Profile is incremental-only (no pandas_ta equivalent).

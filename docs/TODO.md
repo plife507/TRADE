@@ -239,19 +239,20 @@ Both detectors built and validated. 11 structures registered, 0 coverage gaps.
 - [x] Create `STR_024_breaker_block.yml` — uses `[ob, ms]` multi-dep, entry on `brk.active_bull_count > 0` (7 trades)
 - [x] **GATE**: G5 parity 22/22, G9 suite 23/23, G15 coverage 13 structures 0 gaps
 
-**5b. Session Levels indicator** — previous daily/weekly/monthly highs/lows
-- [ ] Create class in `src/indicators/incremental/volume.py` (or new `session.py`)
-  - Tracks session boundaries using `ts_open` from bar data
-  - Outputs: `prev_day_high`=FLOAT, `prev_day_low`=FLOAT, `current_day_high`=FLOAT, `current_day_low`=FLOAT, `prev_week_high`=FLOAT, `prev_week_low`=FLOAT
-  - Needs: timestamp awareness for session boundary detection
-- [ ] Full indicator integration checklist
-- [ ] Create `IND_053_session_levels.yml`
-- [ ] **GATE**: Coverage + quick validation pass
+**5b. Session Levels indicator** — previous daily/weekly highs/lows ✅
+- [x] Create `src/indicators/incremental/session.py`
+  - Tracks daily/weekly session boundaries using `ts_open` from bar data
+  - Outputs: `prev_day_high`, `prev_day_low`, `current_day_high`, `current_day_low`, `prev_week_high`, `prev_week_low` (all FLOAT)
+  - Reuses VWAP's boundary detection pattern (epoch ms // ms_per_day)
+- [x] Full indicator integration checklist (factory, registry, vendor batch path, __init__)
+- [x] Handle pd.Timestamp → epoch ms conversion in batch function
+- [x] Create `IND_053_session_levels.yml` — entry on `current_day_high > prev_day_high AND trend up` (12 trades)
+- [x] **GATE**: Coverage — 46 indicators, 13 structures, 0 gaps
 
 **Phase 5 gates:**
-- [ ] **GATE**: `python trade_cli.py validate module --module parity --json` — all pass
-- [ ] **GATE**: `python trade_cli.py validate module --module coverage --json` — no gaps
-- [ ] **GATE**: `python trade_cli.py validate quick` passes
+- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 22/22 pass
+- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 46 ind + 13 struct, 0 gaps
+- [x] **GATE**: `python trade_cli.py validate quick` — 946 checks, 0 failures (run after V_CORE_002 fix)
 
 #### Phase 6: Enhancements (depend on Phases 2 + 4)
 

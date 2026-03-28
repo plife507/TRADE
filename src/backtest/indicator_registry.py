@@ -584,6 +584,15 @@ SUPPORTED_INDICATORS: dict[str, dict[str, Any]] = {
         "warmup_formula": lambda p: p.get("lookback", 50),
         "incremental_class": "IncrementalVolumeProfile",
     },
+    "session_levels": {
+        "inputs": {"high", "low", "close", "volume"},
+        "params": set(),
+        "multi_output": True,
+        "output_keys": ("prev_day_high", "prev_day_low", "current_day_high", "current_day_low", "prev_week_high", "prev_week_low"),
+        "primary_output": "prev_day_high",
+        "warmup_formula": lambda p: 96,  # ~1 day of 15m bars needed for prev_day
+        "incremental_class": "IncrementalSessionLevels",
+    },
 }
 
 # Common params accepted by most indicators (added to each indicator's params)
@@ -644,6 +653,14 @@ INDICATOR_OUTPUT_TYPES: dict[str, dict[str, FeatureOutputType]] = {
         "poc_volume": FeatureOutputType.FLOAT,
         "above_poc": FeatureOutputType.INT,
         "in_value_area": FeatureOutputType.INT,
+    },
+    "session_levels": {
+        "prev_day_high": FeatureOutputType.FLOAT,
+        "prev_day_low": FeatureOutputType.FLOAT,
+        "current_day_high": FeatureOutputType.FLOAT,
+        "current_day_low": FeatureOutputType.FLOAT,
+        "prev_week_high": FeatureOutputType.FLOAT,
+        "prev_week_low": FeatureOutputType.FLOAT,
     },
 
     # -------------------------------------------------------------------------

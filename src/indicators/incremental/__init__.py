@@ -98,6 +98,7 @@ from .volume import (
     IncrementalAnchoredVWAP,
     IncrementalVolumeProfile,
 )
+from .session import IncrementalSessionLevels
 
 # Factory and utilities
 from .factory import (
@@ -162,6 +163,7 @@ __all__ = [
     "IncrementalVWAP",
     "IncrementalAnchoredVWAP",
     "IncrementalVolumeProfile",
+    "IncrementalSessionLevels",
     # Factory and utilities
     "create_incremental_indicator",
     "supports_incremental",
