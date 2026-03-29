@@ -852,6 +852,11 @@ def main():
             gate_timeout=getattr(args, "gate_timeout", 300),
         ))
 
+    # ===== SHADOW SUBCOMMANDS =====
+    if args.command == "shadow":
+        from src.cli.subcommands.shadow import handle_shadow
+        sys.exit(handle_shadow(args))
+
     # ===== ACCOUNT SUBCOMMANDS =====
     if args.command == "account":
         if args.account_command == "balance":

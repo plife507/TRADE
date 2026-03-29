@@ -85,6 +85,7 @@ Examples:
     _setup_data_subcommands(subparsers)
     _setup_market_subcommands(subparsers)
     _setup_health_subcommands(subparsers)
+    _setup_shadow_subcommands(subparsers)
 
     return parser.parse_args()
 
@@ -650,3 +651,37 @@ def _setup_health_subcommands(subparsers) -> None:
     # health environment
     env_parser = health_subparsers.add_parser("environment", help="Show API environment configuration")
     env_parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+
+def _setup_shadow_subcommands(subparsers) -> None:
+    """Shadow Exchange — multi-play paper trading with SimExchange + real WS data."""
+    shadow_parser = subparsers.add_parser("shadow", help="Shadow Exchange (M4) — paper trading")
+    shadow_subparsers = shadow_parser.add_subparsers(dest="shadow_command", help="Shadow commands")
+
+    # shadow run --play X  (single play, foreground)
+    run_parser = shadow_subparsers.add_parser("run", help="Run a single play in shadow mode")
+    run_parser.add_argument("--play", required=True, help="Play name or path")
+    run_parser.add_argument("--equity", type=float, default=10000.0, help="Starting equity (USDT)")
+    run_parser.add_argument("--plays-dir", help="Directory to search for plays")
+    run_parser.add_argument("--json", action="store_true", dest="json_output", help="JSON output")
+
+    # shadow add --play X  (add to orchestrator)
+    add_parser = shadow_subparsers.add_parser("add", help="Add a play to the shadow exchange")
+    add_parser.add_argument("--play", required=True, help="Play name or path")
+    add_parser.add_argument("--equity", type=float, default=10000.0, help="Starting equity (USDT)")
+    add_parser.add_argument("--plays-dir", help="Directory to search for plays")
+
+    # shadow remove --instance X
+    remove_parser = shadow_subparsers.add_parser("remove", help="Remove a play from shadow exchange")
+    remove_parser.add_argument("--instance", required=True, help="Instance ID to remove")
+
+    # shadow list
+    list_parser = shadow_subparsers.add_parser("list", help="List all shadow plays")
+    list_parser.add_argument("--json", action="store_true", dest="json_output", help="JSON output")
+
+    # shadow stats --instance X | --all
+    stats_parser = shadow_subparsers.add_parser("stats", help="Show shadow play stats")
+    stats_group = stats_parser.add_mutually_exclusive_group(required=True)
+    stats_group.add_argument("--instance", help="Instance ID")
+    stats_group.add_argument("--all", action="store_true", help="All plays")
+    stats_parser.add_argument("--json", action="store_true", dest="json_output", help="JSON output")
