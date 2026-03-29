@@ -25,6 +25,7 @@ from ..utils.logger import get_module_logger
 from .config import ShadowConfig, ShadowPlayConfig
 from .engine import ShadowEngine
 from .feed_hub import SharedFeedHub
+from .performance_db import ShadowPerformanceDB
 from .types import ShadowEngineState, ShadowEngineStats, ShadowInstanceInfo
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ class ShadowOrchestrator:
         self._config = config or ShadowConfig()
         self._engines: dict[str, ShadowEngine] = {}   # instance_id -> engine
         self._feed_hub = SharedFeedHub()
+        self._perf_db = ShadowPerformanceDB()
         self._started_at = utc_now()
 
         # Background tasks (set by start())
@@ -105,6 +107,16 @@ class ShadowOrchestrator:
 
         self._engines[iid] = engine
 
+        # Register in performance DB
+        self._perf_db.register_instance(
+            instance_id=iid,
+            play_id=play.id,
+            symbol=symbol,
+            exec_tf=play.exec_tf,
+            initial_equity=config.initial_equity_usdt,
+            started_at_iso=utc_now().isoformat(),
+        )
+
         logger.info(
             "Orchestrator: added play %s (%s) as %s [%d engines total]",
             play.id, symbol, iid, len(self._engines),
@@ -128,6 +140,9 @@ class ShadowOrchestrator:
 
         # Unregister from feed (may close WS if last listener)
         self._feed_hub.unregister_engine(symbol, engine)
+
+        # Mark stopped in DB
+        self._perf_db.mark_instance_stopped(instance_id, "manual")
 
         logger.info(
             "Orchestrator: removed %s (trades=%d pnl=%.2f)",
@@ -161,7 +176,8 @@ class ShadowOrchestrator:
     # ── Async Lifecycle ─────────────────────────────────────────
 
     async def start(self) -> None:
-        """Start background tasks (health check, DB flush)."""
+        """Start background tasks (health check, DB flush) and open DB."""
+        self._perf_db.open()
         self._running = True
         self._health_task = asyncio.create_task(self._health_loop())
         self._flush_task = asyncio.create_task(self._flush_loop())
@@ -186,6 +202,10 @@ class ShadowOrchestrator:
                 self.remove_play(iid)
             except Exception as e:
                 logger.warning("Error stopping engine %s: %s", iid, e)
+
+        # Final flush + close DB
+        self._flush_all()
+        self._perf_db.close()
 
         # Close all feeds
         self._feed_hub.stop()
@@ -255,19 +275,26 @@ class ShadowOrchestrator:
     # ── Flush / DB Integration ──────────────────────────────────
 
     def _flush_all(self) -> None:
-        """Drain all engine buffers. Called by flush loop."""
+        """Drain all engine buffers and batch write to DB."""
         total_trades = 0
         total_snapshots = 0
+
+        all_trades = []
+        all_snapshots = []
 
         for engine in self._engines.values():
             trades = engine.drain_trades()
             snapshots = engine.drain_snapshots()
+            all_trades.extend(trades)
+            all_snapshots.extend(snapshots)
             total_trades += len(trades)
             total_snapshots += len(snapshots)
 
-            # TODO: write to ShadowPerformanceDB when implemented
-            # self._perf_db.batch_write_trades(trades)
-            # self._perf_db.batch_write_snapshots(snapshots)
+        # Batch write to DuckDB (single transaction)
+        if all_trades:
+            self._perf_db.batch_write_trades(all_trades)
+        if all_snapshots:
+            self._perf_db.batch_write_snapshots(all_snapshots)
 
         if total_trades > 0 or total_snapshots > 0:
             logger.info(
@@ -276,15 +303,18 @@ class ShadowOrchestrator:
             )
 
     def _flush_engine(self, engine: ShadowEngine) -> None:
-        """Flush a single engine's buffers (called before stop)."""
+        """Flush a single engine's buffers to DB (called before stop)."""
         trades = engine.drain_trades()
         snapshots = engine.drain_snapshots()
+        if trades:
+            self._perf_db.batch_write_trades(trades)
+        if snapshots:
+            self._perf_db.batch_write_snapshots(snapshots)
         if trades or snapshots:
             logger.info(
                 "Flushed engine %s: %d trades, %d snapshots",
                 engine.instance_id, len(trades), len(snapshots),
             )
-            # TODO: write to ShadowPerformanceDB
 
     # ── Limit Checks ────────────────────────────────────────────
 
