@@ -23,8 +23,10 @@ from ..types import (
     Fill,
     FillReason,
     FillResult,
+    PriceSnapshot,
     Rejection,
     Position,
+    TriggerSource,
 )
 from .slippage_model import SlippageModel, SlippageConfig
 from .impact_model import ImpactModel, ImpactConfig
@@ -484,15 +486,18 @@ class ExecutionModel:
         self,
         position: Position,
         bar: Bar,
+        prices: PriceSnapshot | None = None,
     ) -> FillReason | None:
         """
         Check if TP or SL is hit for a position.
 
         Uses conservative tie-break: SL checked first.
+        Respects position's tp_trigger_by / sl_trigger_by settings.
 
         Args:
             position: Open position
             bar: Current bar (legacy or canonical)
+            prices: PriceSnapshot with mark/index (for non-LAST triggers)
 
         Returns:
             FillReason.STOP_LOSS, FillReason.TAKE_PROFIT, or None
@@ -503,6 +508,9 @@ class ExecutionModel:
             position.entry_price,
             position.take_profit,
             position.stop_loss,
+            tp_trigger_by=position.tp_trigger_by,
+            sl_trigger_by=position.sl_trigger_by,
+            prices=prices,
         )
     
     def fill_exit(

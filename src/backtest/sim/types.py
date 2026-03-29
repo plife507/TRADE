@@ -85,6 +85,24 @@ class TriggerDirection(int, Enum):
     FALLS_TO = 2   # Trigger when bar.low <= trigger_price
 
 
+class TriggerSource(str, Enum):
+    """Price source for TP/SL/stop trigger evaluation.
+
+    Bybit V5 API: tpTriggerBy, slTriggerBy, triggerBy parameters.
+    Controls which price stream is compared against trigger/TP/SL levels.
+
+    - LAST_PRICE: Bar OHLC (high/low) — Bybit default, current sim behavior
+    - MARK_PRICE: Exchange mark price (median of last, index, moving avg basis)
+    - INDEX_PRICE: Spot index price (average across major exchanges)
+
+    In backtest mode, all three are derived from OHLC (no divergence).
+    In shadow mode, mark/index come from real WS ticker data.
+    """
+    LAST_PRICE = "LastPrice"
+    MARK_PRICE = "MarkPrice"
+    INDEX_PRICE = "IndexPrice"
+
+
 # StopReason imported from canonical location (no duplication)
 from ..types import StopReason
 
@@ -146,6 +164,11 @@ class Order:
     submission_bar_index: int | None = None
     tp_order_type: str = "Market"
     sl_order_type: str = "Market"
+    # Price source for TP/SL trigger evaluation (Bybit: tpTriggerBy, slTriggerBy)
+    tp_trigger_by: TriggerSource = TriggerSource.LAST_PRICE
+    sl_trigger_by: TriggerSource = TriggerSource.LAST_PRICE
+    # Price source for conditional order trigger (Bybit: triggerBy)
+    trigger_by: TriggerSource = TriggerSource.LAST_PRICE
     # Reference price used for SL/TP computation (signal bar close).
     # Used at fill time to adjust SL/TP for the actual fill price.
     sl_tp_ref_price: float | None = None
@@ -170,6 +193,9 @@ class Order:
             "take_profit": self.take_profit,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "status": self.status.value,
+            "tp_trigger_by": self.tp_trigger_by.value,
+            "sl_trigger_by": self.sl_trigger_by.value,
+            "trigger_by": self.trigger_by.value,
         }
 
     @property
@@ -233,6 +259,9 @@ class Position:
     # TP/SL order types (Bybit convention: "Market" or "Limit")
     tp_order_type: str = "Market"
     sl_order_type: str = "Market"
+    # Price source for TP/SL trigger evaluation (Bybit: tpTriggerBy, slTriggerBy)
+    tp_trigger_by: TriggerSource = TriggerSource.LAST_PRICE
+    sl_trigger_by: TriggerSource = TriggerSource.LAST_PRICE
 
     def __post_init__(self) -> None:
         assert self.entry_time.tzinfo is None, f"Position.entry_time must be UTC-naive, got tzinfo={self.entry_time.tzinfo}"
@@ -265,6 +294,9 @@ class Position:
             "max_price": self.max_price,
             # Phase 12: Funding
             "funding_pnl_cumulative": self.funding_pnl_cumulative,
+            # Trigger sources
+            "tp_trigger_by": self.tp_trigger_by.value,
+            "sl_trigger_by": self.sl_trigger_by.value,
         }
 
 
@@ -377,12 +409,17 @@ class LiquidationEvent:
 class PriceSnapshot:
     """
     Point-in-time price state.
-    
+
     Contains all price references for a given bar.
+    Three primary streams (Bybit V5):
+    - mark_price: median(last, index, moving_avg_basis) — drives liquidation, margin, unrealized PnL
+    - last_price: most recent trade price — drives default TP/SL triggers
+    - index_price: spot index (average across major exchanges) — optional trigger source
     """
     timestamp: datetime
     mark_price: float
     last_price: float
+    index_price: float
     mid_price: float
     bid_price: float
     ask_price: float
@@ -396,6 +433,7 @@ class PriceSnapshot:
             "timestamp": self.timestamp.isoformat(),
             "mark_price": self.mark_price,
             "last_price": self.last_price,
+            "index_price": self.index_price,
             "mid_price": self.mid_price,
             "bid_price": self.bid_price,
             "ask_price": self.ask_price,
@@ -784,16 +822,26 @@ class OrderBook:
 
         return len(to_cancel)
 
-    def check_triggers(self, bar: Bar) -> list[Order]:
+    def check_triggers(
+        self,
+        bar: Bar,
+        prices: PriceSnapshot | None = None,
+    ) -> list[Order]:
         """
-        Check which stop orders should trigger based on bar OHLC.
+        Check which stop orders should trigger based on price data.
 
         Stop order trigger logic (Bybit semantics):
-        - RISES_TO (1): Trigger if bar.high >= trigger_price
-        - FALLS_TO (2): Trigger if bar.low <= trigger_price
+        - RISES_TO (1): Trigger if high >= trigger_price
+        - FALLS_TO (2): Trigger if low <= trigger_price
+
+        Price source depends on order.trigger_by:
+        - LAST_PRICE: bar.high / bar.low (default, current behavior)
+        - MARK_PRICE: prices.mark_price (single point)
+        - INDEX_PRICE: prices.index_price (single point)
 
         Args:
             bar: Current bar to check against
+            prices: PriceSnapshot with mark/index (for non-LAST triggers)
 
         Returns:
             List of orders that triggered (still in book, caller handles)
@@ -809,11 +857,23 @@ class OrderBook:
 
             direction = order.trigger_direction or TriggerDirection.RISES_TO
 
+            # Resolve price range based on trigger_by
+            trigger_source = order.trigger_by
+            if trigger_source == TriggerSource.LAST_PRICE or prices is None:
+                high = bar.high
+                low = bar.low
+            elif trigger_source == TriggerSource.MARK_PRICE:
+                high = prices.mark_price
+                low = prices.mark_price
+            else:  # INDEX_PRICE
+                high = prices.index_price
+                low = prices.index_price
+
             if direction == TriggerDirection.RISES_TO:
-                if bar.high >= order.trigger_price:
+                if high >= order.trigger_price:
                     triggered.append(order)
             elif direction == TriggerDirection.FALLS_TO:
-                if bar.low <= order.trigger_price:
+                if low <= order.trigger_price:
                     triggered.append(order)
 
         return triggered

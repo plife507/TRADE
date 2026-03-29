@@ -19,7 +19,7 @@ Tie-break rules:
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from ..types import Bar, PricePoint, OrderSide, FillReason
+from ..types import Bar, PricePoint, PriceSnapshot, OrderSide, FillReason, TriggerSource
 
 
 @dataclass
@@ -136,52 +136,102 @@ class IntrabarPath:
         entry_price: float,
         tp: float | None,
         sl: float | None,
+        tp_trigger_by: TriggerSource = TriggerSource.LAST_PRICE,
+        sl_trigger_by: TriggerSource = TriggerSource.LAST_PRICE,
+        prices: PriceSnapshot | None = None,
     ) -> FillReason | None:
         """
         Check if TP or SL is hit within the bar.
-        
+
         Uses conservative tie-break: SL is checked first.
-        
+
+        Trigger source behavior:
+        - LAST_PRICE: check bar.high/bar.low (full intrabar range)
+        - MARK_PRICE: check prices.mark_price (single point, smoother)
+        - INDEX_PRICE: check prices.index_price (single point)
+
+        For MARK/INDEX, only a single price point is available per bar,
+        so the check is whether that point crosses the level. This is
+        conservative: mark/index never wick as far as last price.
+
         Args:
-            bar: OHLC bar (legacy or canonical)
+            bar: OHLC bar
             side: Position side
             entry_price: Entry price (not used in current logic)
             tp: Take profit price (or None)
             sl: Stop loss price (or None)
-            
+            tp_trigger_by: Price source for TP evaluation
+            sl_trigger_by: Price source for SL evaluation
+            prices: PriceSnapshot with mark/index (needed for non-LAST triggers)
+
         Returns:
             FillReason.TAKE_PROFIT, FillReason.STOP_LOSS, or None
         """
+        # Resolve price ranges for each trigger source
+        sl_high, sl_low = self._resolve_trigger_range(bar, sl_trigger_by, prices)
+        tp_high, tp_low = self._resolve_trigger_range(bar, tp_trigger_by, prices)
+
         sl_hit = False
         tp_hit = False
-        
+
         if side == OrderSide.LONG:
             # For longs: SL below entry, TP above entry
-            if sl is not None and bar.low <= sl:
+            if sl is not None and sl_low <= sl:
                 sl_hit = True
-            if tp is not None and bar.high >= tp:
+            if tp is not None and tp_high >= tp:
                 tp_hit = True
-            
+
             # Conservative tie-break: SL first
             if sl_hit:
                 return FillReason.STOP_LOSS
             if tp_hit:
                 return FillReason.TAKE_PROFIT
-        
+
         else:  # SHORT
             # For shorts: SL above entry, TP below entry
-            if sl is not None and bar.high >= sl:
+            if sl is not None and sl_high >= sl:
                 sl_hit = True
-            if tp is not None and bar.low <= tp:
+            if tp is not None and tp_low <= tp:
                 tp_hit = True
-            
+
             # Conservative tie-break: SL first
             if sl_hit:
                 return FillReason.STOP_LOSS
             if tp_hit:
                 return FillReason.TAKE_PROFIT
-        
+
         return None
+
+    @staticmethod
+    def _resolve_trigger_range(
+        bar: Bar,
+        trigger_by: TriggerSource,
+        prices: PriceSnapshot | None,
+    ) -> tuple[float, float]:
+        """Resolve the (high, low) price range for a trigger source.
+
+        - LAST_PRICE: full bar range (bar.high, bar.low)
+        - MARK_PRICE: single point (mark, mark)
+        - INDEX_PRICE: single point (index, index)
+
+        Returns:
+            (high, low) tuple for trigger comparison
+        """
+        if trigger_by == TriggerSource.LAST_PRICE:
+            return bar.high, bar.low
+
+        if prices is None:
+            # No external prices available — fall back to bar OHLC
+            return bar.high, bar.low
+
+        if trigger_by == TriggerSource.MARK_PRICE:
+            return prices.mark_price, prices.mark_price
+
+        if trigger_by == TriggerSource.INDEX_PRICE:
+            return prices.index_price, prices.index_price
+
+        # Unreachable with current enum, but defensive
+        return bar.high, bar.low
     
     def get_exit_price(
         self,
@@ -218,11 +268,21 @@ def check_tp_sl_1m(
     take_profit: float | None,
     stop_loss: float | None,
     bars_1m: list[tuple[float, float, float, float]],  # List of (open, high, low, close)
+    tp_trigger_by: TriggerSource = TriggerSource.LAST_PRICE,
+    sl_trigger_by: TriggerSource = TriggerSource.LAST_PRICE,
+    prices: PriceSnapshot | None = None,
 ) -> tuple[str, int, float] | None:
     """Check TP/SL against each 1m bar in order.
 
     Iterates through 1m bars chronologically and checks if TP or SL
     is triggered. Uses conservative tie-break (SL checked before TP).
+
+    For LAST_PRICE triggers: checks each 1m bar's high/low (granular).
+    For MARK_PRICE/INDEX_PRICE triggers: only a single price point is
+    available per exec bar (not per 1m bar), so we check that single
+    point and report it as hitting on the first 1m bar (conservative
+    timing). The caller should prefer the exec-bar-level check for
+    non-LAST triggers when possible.
 
     Args:
         position_side: "long" or "short"
@@ -230,6 +290,9 @@ def check_tp_sl_1m(
         take_profit: TP level or None
         stop_loss: SL level or None
         bars_1m: List of 1m bars as (open, high, low, close) tuples
+        tp_trigger_by: Price source for TP evaluation
+        sl_trigger_by: Price source for SL evaluation
+        prices: PriceSnapshot with mark/index (for non-LAST triggers)
 
     Returns:
         Tuple of (reason, hit_bar_idx, exit_price) or None if no hit
@@ -242,15 +305,44 @@ def check_tp_sl_1m(
 
     is_long = position_side.lower() == "long"
 
-    for idx, (bar_open, bar_high, bar_low, bar_close) in enumerate(bars_1m):
+    # For non-LAST triggers, check the single mark/index point first.
+    # If triggered, report as bar_idx=0 (earliest possible timing).
+    sl_uses_last = sl_trigger_by == TriggerSource.LAST_PRICE
+    tp_uses_last = tp_trigger_by == TriggerSource.LAST_PRICE
+
+    if prices is not None:
+        # Check SL on mark/index (single point, not per-1m)
+        if not sl_uses_last and stop_loss is not None:
+            sl_price = (prices.mark_price if sl_trigger_by == TriggerSource.MARK_PRICE
+                        else prices.index_price)
+            if is_long and sl_price <= stop_loss:
+                return ("stop_loss", 0, stop_loss)
+            if not is_long and sl_price >= stop_loss:
+                return ("stop_loss", 0, stop_loss)
+
+        # Check TP on mark/index (single point, not per-1m)
+        if not tp_uses_last and take_profit is not None:
+            tp_price = (prices.mark_price if tp_trigger_by == TriggerSource.MARK_PRICE
+                        else prices.index_price)
+            if is_long and tp_price >= take_profit:
+                return ("take_profit", 0, take_profit)
+            if not is_long and tp_price <= take_profit:
+                return ("take_profit", 0, take_profit)
+
+    # For LAST_PRICE triggers (or fallback), iterate 1m bars
+    if not sl_uses_last and not tp_uses_last:
+        # Both triggers already checked above via prices
+        return None
+
+    for idx, (_bar_open, bar_high, bar_low, _bar_close) in enumerate(bars_1m):
         # Conservative tie-break: check SL before TP
-        if stop_loss is not None:
+        if sl_uses_last and stop_loss is not None:
             if is_long and bar_low <= stop_loss:
                 return ("stop_loss", idx, stop_loss)
             if not is_long and bar_high >= stop_loss:
                 return ("stop_loss", idx, stop_loss)
 
-        if take_profit is not None:
+        if tp_uses_last and take_profit is not None:
             if is_long and bar_high >= take_profit:
                 return ("take_profit", idx, take_profit)
             if not is_long and bar_low <= take_profit:

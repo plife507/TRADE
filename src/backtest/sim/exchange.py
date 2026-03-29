@@ -632,8 +632,14 @@ class SimulatedExchange:
         ts_open: datetime,
         quote_feed: "FeedStore | None",
         exec_1m_range: tuple[int, int] | None,
+        prices: "PriceSnapshot | None" = None,
     ) -> tuple[list[Trade], list[Fill]]:
-        """Check and execute TP/SL exits."""
+        """Check and execute TP/SL exits.
+
+        Passes PriceSnapshot through to trigger checks so TP/SL can
+        evaluate against mark/last/index prices per the position's
+        tp_trigger_by / sl_trigger_by settings.
+        """
         closed_trades = []
         fills = []
 
@@ -664,6 +670,9 @@ class SimulatedExchange:
                     take_profit=self.position.take_profit,
                     stop_loss=self.position.stop_loss,
                     bars_1m=bars_1m,
+                    tp_trigger_by=self.position.tp_trigger_by,
+                    sl_trigger_by=self.position.sl_trigger_by,
+                    prices=prices,
                 )
                 if result_1m:
                     reason_str, _, price = result_1m
@@ -673,7 +682,7 @@ class SimulatedExchange:
 
         # 2. Fallback to exec-bar OHLC check
         if exit_reason is None:
-            exit_reason = self._execution.check_tp_sl(self.position, bar)
+            exit_reason = self._execution.check_tp_sl(self.position, bar, prices=prices)
             if exit_reason:
                 exit_price = self._intrabar.get_exit_price(
                     bar, self.position.side, exit_reason,
@@ -815,7 +824,7 @@ class SimulatedExchange:
         # (no position left to close).
 
         # 3. Process order book (pending limit/stop entries)
-        order_book_fills = self._process_order_book(bar, quote_feed, exec_1m_range)
+        order_book_fills = self._process_order_book(bar, quote_feed, exec_1m_range, prices=prices)
         fills.extend(order_book_fills)
 
         # 4. Update dynamic stops (before TP/SL check so trailing/BE
@@ -823,7 +832,7 @@ class SimulatedExchange:
         self._update_dynamic_stops(mark_price, trailing_config, break_even_config, atr_value)
 
         # 5. Check TP/SL exits (exchange-side, highest priority)
-        tpsl_trades, tpsl_fills = self._check_tp_sl_exits(bar, ts_open, quote_feed, exec_1m_range)
+        tpsl_trades, tpsl_fills = self._check_tp_sl_exits(bar, ts_open, quote_feed, exec_1m_range, prices=prices)
         fills.extend(tpsl_fills)
 
         # 6. Process pending close (signal exits — only if TP/SL didn't
@@ -864,6 +873,7 @@ class SimulatedExchange:
         bar: Bar,
         quote_feed: "FeedStore | None" = None,
         exec_1m_range: tuple[int, int] | None = None,
+        prices: "PriceSnapshot | None" = None,
     ) -> list[Fill]:
         """
         Process all orders in the order book against the current bar.
@@ -880,6 +890,7 @@ class SimulatedExchange:
             bar: Current bar OHLC
             quote_feed: Optional 1m FeedStore for granular entry fills
             exec_1m_range: Optional (start_idx, end_idx) of 1m bars within this exec bar
+            prices: PriceSnapshot for trigger_by evaluation on stop orders
 
         Returns:
             List of fills from order book processing
@@ -918,7 +929,7 @@ class SimulatedExchange:
                 self._handle_entry_fill(fill, order)
 
         # 2. Check and process triggered stop orders
-        triggered_stops = self._order_book.check_triggers(bar)
+        triggered_stops = self._order_book.check_triggers(bar, prices=prices)
         for order in triggered_stops:
             # Check reduce-only constraints
             if order.reduce_only:
