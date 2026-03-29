@@ -647,7 +647,7 @@ class EngineManager:
                 # Create engine
                 engine = PlayEngine(
                     play=play,
-                    data_provider=data_provider,  # type: ignore[arg-type]  # LiveDataProvider protocol mismatch (pre-existing)
+                    data_provider=data_provider,
                     exchange=exchange,
                     state_store=state_store,
                     config=config,

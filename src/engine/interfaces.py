@@ -218,7 +218,7 @@ class DataProvider(Protocol):
         """
         ...
 
-    def get_structure(self, key: str, field: str) -> float:
+    def get_structure(self, key: str, field: str) -> float | int | str:
         """
         Get structure field value (current state).
 
@@ -234,7 +234,7 @@ class DataProvider(Protocol):
         """
         ...
 
-    def get_structure_at(self, key: str, field: str, index: int) -> float:
+    def get_structure_at(self, key: str, field: str, index: int) -> float | int | str:
         """
         Get structure field value at specific bar index.
 

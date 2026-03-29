@@ -156,6 +156,10 @@ class ShadowEngine:
         # Without this, on_candle_close() pushes OHLCV but indicators never compute
         self._init_indicator_caches()
 
+        # Pre-fill LiveDataProvider with historical bars from DuckDB/REST
+        # so warmup completes immediately instead of waiting N minutes for live candles
+        self._warmup_from_history()
+
         # Journal
         self._journal = ShadowJournal(self._instance_id)
 
@@ -335,6 +339,10 @@ class ShadowEngine:
         for fill in step_result.fills:
             if fill.reason.value == "entry":
                 self._stats.trades_opened += 1
+                logger.info(
+                    "FILL entry %s %s @ %.4f size=%.4f",
+                    fill.side, self.symbol, fill.price, fill.size,
+                )
             else:
                 # Exit fill — record as completed trade
                 self._stats.trades_closed += 1
@@ -347,6 +355,11 @@ class ShadowEngine:
                 trade = self._build_trade_record(fill, pnl)
                 self._trades_buffer.append(trade)
                 self._journal.record_trade(trade)
+                logger.info(
+                    "FILL exit %s %s @ %.4f pnl=%.2f equity=%.2f",
+                    fill.side, self.symbol, fill.price, pnl,
+                    self._sim_exchange.equity_usdt if self._sim_exchange else 0,
+                )
 
     def _compute_trade_pnl(self, exit_fill: Fill) -> float:
         """Compute realized PnL from exit fill. Uses sim ledger."""
@@ -478,7 +491,8 @@ class ShadowEngine:
         )
 
         # LiveDataProvider for real-time indicators/structures
-        data_provider = LiveDataProvider(play, demo=True)
+        # Shadow uses LIVE WS data (real market data, paper-trade execution)
+        data_provider = LiveDataProvider(play, demo=False)
 
         # BacktestExchange wrapping our SimExchange
         exchange = BacktestExchange(play, config)
@@ -486,18 +500,62 @@ class ShadowEngine:
 
         state_store = InMemoryStateStore()
 
-        # Pre-existing protocol mismatch: LiveDataProvider.get_structure returns
-        # float|int|str but DataProvider protocol declares float. Harmless — the
-        # engine handles all return types correctly at runtime.
         engine = PlayEngine(
             play=play,
-            data_provider=data_provider,  # type: ignore[arg-type]
+            data_provider=data_provider,
             exchange=exchange,
             state_store=state_store,
             config=config,
         )
 
         return engine
+
+    def _warmup_from_history(self) -> None:
+        """Pre-fill LiveDataProvider buffers with historical bars from DuckDB/REST.
+
+        Reuses LiveDataProvider's existing warmup pipeline (same as LiveRunner):
+        1. _sync_warmup_data() — fetch from Bybit REST into DuckDB
+        2. _load_initial_bars() — load from DuckDB into buffers, compute indicators
+
+        This means shadow engines start ready immediately instead of waiting
+        N minutes for enough live candles to fill the warmup window.
+        """
+        assert self._engine is not None
+        from ..engine.adapters.live import LiveDataProvider
+        from ..data.realtime_state import RealtimeState
+        import asyncio
+
+        dp = self._engine._data_provider
+        if not isinstance(dp, LiveDataProvider):
+            logger.warning("DataProvider is not LiveDataProvider, skipping history pre-fill")
+            return
+
+        try:
+            # _load_initial_bars() early-returns if _realtime_state is None.
+            # Set a temporary state so the bar-buffer check proceeds (it will be
+            # empty, causing fallback to DuckDB/REST — which is what we want).
+            if dp._realtime_state is None:
+                dp._realtime_state = RealtimeState()
+
+            # Skip _sync_warmup_data() — it writes to DuckDB, which conflicts
+            # when multiple shadow engines warm up in parallel (single-writer lock).
+            # _load_initial_bars() reads from DuckDB (safe for concurrent reads)
+            # and falls back to REST API if DuckDB has insufficient data.
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(dp._load_initial_bars())
+            finally:
+                loop.close()
+
+            logger.info(
+                "ShadowEngine %s warmup from history complete: ready=%s",
+                self._instance_id, dp.is_ready(),
+            )
+        except Exception as e:
+            logger.warning(
+                "ShadowEngine %s warmup from history failed (will warm up from live): %s",
+                self._instance_id, e,
+            )
 
     def _init_indicator_caches(self) -> None:
         """Initialize LiveDataProvider indicator caches with play's feature specs.

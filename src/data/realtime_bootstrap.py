@@ -164,9 +164,9 @@ class RealtimeBootstrap:
                 use_demo=self.app_config.bybit.use_demo,
             )
         
-        # Log WebSocket environment (matches trading mode)
-        ws_env = "DEMO (stream-demo.bybit.com)" if self.app_config.bybit.use_demo else "LIVE (stream.bybit.com)"
-        account_type = "fake-money demo account" if self.app_config.bybit.use_demo else "real-money live account"
+        # Log WebSocket environment — derive from actual client, not global config
+        ws_env = "DEMO (stream-demo.bybit.com)" if self.client.use_demo else "LIVE (stream.bybit.com)"
+        account_type = "fake-money demo account" if self.client.use_demo else "real-money live account"
         self.logger.info(
             "RealtimeBootstrap: data_env=%s, WebSocket environment=%s, account=%s",
             self.env, ws_env, account_type,
@@ -438,10 +438,10 @@ class RealtimeBootstrap:
         endpoints since the market data is the same. This is configured via
         sub_config.use_live_for_public_streams.
         """
-        # Determine stream mode for logging using DEMO/LIVE terminology
+        # Determine stream mode for logging from actual client, not global config
         if self.sub_config.use_live_for_public_streams:
             stream_mode = "LIVE (market data shared)"
-        elif self.app_config.bybit.is_demo:
+        elif self.client.use_demo:
             stream_mode = "DEMO"
         else:
             stream_mode = "LIVE"

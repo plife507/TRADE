@@ -33,12 +33,13 @@ class SharedFeedHub:
     register as listeners on the same feed.
     """
 
-    __slots__ = ("_feeds", "_states", "_listeners")
+    __slots__ = ("_feeds", "_states", "_listeners", "_subscribed_intervals")
 
     def __init__(self) -> None:
         self._feeds: dict[str, RealtimeBootstrap] = {}   # symbol -> WS
         self._states: dict[str, RealtimeState] = {}       # symbol -> state
         self._listeners: dict[str, list[ShadowEngine]] = {}  # symbol -> engines
+        self._subscribed_intervals: dict[str, set[str]] = {}  # symbol -> bybit intervals
 
     def ensure_feed(self, symbol: str) -> RealtimeState:
         """Create WS connection for symbol if not exists.
@@ -48,8 +49,23 @@ class SharedFeedHub:
         if symbol in self._feeds:
             return self._states[symbol]
 
+        # Shadow always uses LIVE WS (stream.bybit.com) for real market data.
+        # Demo WS (stream-demo.bybit.com) returns 404 on public/linear.
+        from ..exchanges.bybit_client import BybitClient
+        from ..config.config import get_config
+
+        app_config = get_config()
+        api_key, api_secret = app_config.bybit.get_credentials()
+
+        # Force live WS regardless of trading mode config
+        client = BybitClient(
+            api_key=api_key,
+            api_secret=api_secret,
+            use_demo=False,  # Always live for public market data
+        )
+
         state = RealtimeState()
-        bootstrap = RealtimeBootstrap(state=state)
+        bootstrap = RealtimeBootstrap(client=client, state=state, env="live")
 
         # Start WS with public-only (no private — sim handles orders)
         bootstrap.start(symbols=[symbol], include_private=False)
@@ -57,6 +73,7 @@ class SharedFeedHub:
         self._feeds[symbol] = bootstrap
         self._states[symbol] = state
         self._listeners[symbol] = []
+        self._subscribed_intervals[symbol] = set()
 
         # Register fan-out callbacks
         state.on_kline_update(lambda kline: self._on_kline(symbol, kline))
@@ -66,10 +83,18 @@ class SharedFeedHub:
         return state
 
     def register_engine(self, symbol: str, engine: ShadowEngine) -> None:
-        """Register engine to receive candles/tickers for this symbol."""
+        """Register engine to receive candles/tickers for this symbol.
+
+        Also subscribes to kline intervals required by the engine's play
+        (if not already subscribed).
+        """
         if symbol not in self._listeners:
             raise ValueError(f"No feed for {symbol}. Call ensure_feed() first.")
         self._listeners[symbol].append(engine)
+
+        # Subscribe kline intervals from the engine's play timeframes
+        self._ensure_kline_subscriptions(symbol, engine)
+
         logger.info(
             "SharedFeedHub: registered engine %s on %s (%d listeners)",
             engine.instance_id, symbol, len(self._listeners[symbol]),
@@ -114,6 +139,42 @@ class SharedFeedHub:
         return sum(len(engines) for engines in self._listeners.values())
 
     # ── Internal ───────────────────────────────────────────────
+
+    def _ensure_kline_subscriptions(self, symbol: str, engine: ShadowEngine) -> None:
+        """Subscribe to any kline intervals the engine needs that aren't active yet."""
+        from ..config.constants import TIMEFRAME_TO_BYBIT
+
+        play = engine._play
+        tf_map = play.tf_mapping or {}
+
+        # Collect unique concrete timeframes from the play
+        unique_tfs: set[str] = set()
+        for role in ("low_tf", "med_tf", "high_tf"):
+            tf = tf_map.get(role)
+            if tf:
+                unique_tfs.add(tf)
+        if not unique_tfs and play.exec_tf:
+            unique_tfs.add(play.exec_tf)
+
+        # Convert to Bybit interval format, skip already-subscribed
+        already = self._subscribed_intervals.get(symbol, set())
+        new_intervals: list[str] = []
+        for tf in sorted(unique_tfs):
+            bybit_iv = TIMEFRAME_TO_BYBIT.get(tf)
+            if bybit_iv and bybit_iv not in already:
+                new_intervals.append(bybit_iv)
+
+        if not new_intervals:
+            return
+
+        bootstrap = self._feeds[symbol]
+        bootstrap.subscribe_kline_intervals(symbol, new_intervals)
+        already.update(new_intervals)
+
+        logger.info(
+            "SharedFeedHub: subscribed kline intervals %s for %s",
+            new_intervals, symbol,
+        )
 
     def _on_kline(self, symbol: str, kline: KlineData) -> None:
         """Fan-out kline to all engines for this symbol.
@@ -177,4 +238,5 @@ class SharedFeedHub:
             del self._feeds[symbol]
             del self._states[symbol]
             del self._listeners[symbol]
+            self._subscribed_intervals.pop(symbol, None)
             logger.info("SharedFeedHub: WS closed for %s", symbol)

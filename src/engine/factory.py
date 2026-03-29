@@ -319,7 +319,8 @@ class PlayEngineFactory:
             play, "shadow", persist_state=False, config_override=config_override,
         )
 
-        data_provider = LiveDataProvider(play, demo=True)
+        # Shadow uses LIVE WS data (real market data, paper-trade execution)
+        data_provider = LiveDataProvider(play, demo=False)
         exchange = ShadowExchange(play, config)
         state_store = InMemoryStateStore()
 
