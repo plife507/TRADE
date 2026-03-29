@@ -426,6 +426,104 @@ See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis, code references, a
 
 ---
 
+## M4: Shadow Exchange — The Training Ground
+
+See `docs/SHADOW_EXCHANGE_DESIGN.md` for full architecture (7 layers, resource estimates, M6 integration, VPS deployment).
+See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for SimExchange fidelity gaps (H1-H4, M1-M3).
+
+**What it is:** Always-on paper trading using SimExchange + real WS data. NOT demo mode (no Bybit API calls for orders). Runs 50+ plays in parallel on a VPS. Tracks P&L per play, per market condition. Graduates winning plays to live trading (M5).
+
+**Critical path:** P1 (sim fidelity H1+H2) → M4 Phase 1-2 → M4 Phase 3-4 → M4 Phase 5-6
+
+### Phase 1: ShadowEngine — Single Play with SimExchange
+**Goal:** Replace no-op ShadowExchange with real SimExchange fed by live WS data.
+
+- [ ] Create `src/shadow/` module: `__init__.py`, `types.py`, `config.py`
+- [ ] `ShadowEngine` class: wraps PlayEngine + SimExchange + LiveDataProvider
+  - Process real WS candles through SimExchange (fills, fees, margin, ledger)
+  - Inject real mark/last prices from WS ticker into SimExchange (depends on P1 Phase 1 H1 fix)
+  - Inject real funding rates from WS ticker
+  - Full P&L tracking via SimExchange ledger (equity, drawdown, realized PnL)
+- [ ] `ShadowJournal`: JSONL trade + periodic equity snapshot logging
+  - `data/shadow/{instance_id}/events.jsonl` (fills, closes, errors)
+  - `data/shadow/{instance_id}/snapshots.jsonl` (hourly equity + market context)
+- [ ] Wire into `PlayEngineFactory._create_shadow()`: SimExchange instead of no-op ShadowExchange
+- [ ] CLI: `python trade_cli.py shadow run --play X` (single play, foreground, Ctrl+C to stop)
+- [ ] **GATE**: Single play produces trades with correct P&L on live WS data
+- [ ] **GATE**: `python trade_cli.py validate quick` passes (no regressions)
+
+### Phase 2: SharedFeedHub + Multi-Play Orchestration
+**Goal:** Run N plays simultaneously on shared WS connections.
+
+- [ ] `SharedFeedHub`: one RealtimeBootstrap per symbol, fan-out candles to registered engines
+  - Register/unregister engines dynamically
+  - Auto-close WS when no engines remain for a symbol
+  - No private WS needed (sim handles orders internally)
+- [ ] `ShadowOrchestrator`: lifecycle manager for multiple ShadowEngines
+  - `add_play()`, `remove_play()`, `list_plays()`, `get_stats()`
+  - Resource limits: max 50 engines, max 10 per symbol
+  - Health monitoring: detect stale engines (no candle in 5min), auto-restart
+  - DuckDB write queue: single-writer pattern (no parallel DuckDB access)
+- [ ] CLI: `shadow add/remove/list/stats` subcommands
+- [ ] `src/tools/shadow_tools.py`: agent API tools (ToolResult envelope)
+- [ ] **GATE**: 5 plays running simultaneously on 2 symbols, all generating trades
+- [ ] **GATE**: Remove one play, WS closes if last listener for that symbol
+
+### Phase 3: ShadowPerformanceDB
+**Goal:** DuckDB for long-term performance tracking, analytics, and graduation.
+
+- [ ] `ShadowPerformanceDB` class: `data/shadow/shadow_performance.duckdb`
+  - Tables: `shadow_instances`, `shadow_snapshots`, `shadow_trades`, `shadow_graduation_scores`, `shadow_regime_log`
+  - Write: periodic snapshots (hourly), trade records, graduation scores (daily)
+  - Read: equity curves, trade analytics, leaderboard, regime breakdown
+- [ ] Simple regime classifier: `classify_regime(atr_pct, trend_strength, funding)` → trending_up/down, ranging, volatile
+- [ ] CLI: `shadow stats --all`, `shadow leaderboard`, `shadow trades --instance X`, `shadow equity --instance X`
+- [ ] JSON output on all commands (`--json` flag)
+- [ ] **GATE**: Performance DB accumulates data over 24h test run
+- [ ] **GATE**: Leaderboard correctly ranks plays by Sharpe/PF/PnL
+
+### Phase 4: ShadowDaemon — VPS Always-On
+**Goal:** Resilient daemon process for unattended VPS operation.
+
+- [ ] `ShadowDaemon`: process management wrapper around ShadowOrchestrator
+  - SIGTERM → graceful shutdown (stop engines, flush DB, save state)
+  - SIGHUP → config hot-reload (add/remove plays without restart)
+  - State persistence: save engine state (position, ledger, pending orders) on shutdown
+  - State resume: restore engines from saved state on startup
+- [ ] `config/shadow.yml`: daemon configuration (play list, limits, intervals)
+- [ ] Health HTTP endpoint: `GET /health` → JSON status (for monitoring)
+- [ ] `deploy/trade-shadow.service`: systemd unit file (Restart=always, MemoryMax=3G)
+- [ ] `deploy/deploy.sh`: VPS setup script (venv, systemd, firewall, logrotate)
+- [ ] CLI: `shadow daemon [start|stop|status]`
+- [ ] **GATE**: Daemon survives simulated crash (kill -9) and restores state
+- [ ] **GATE**: Hot-reload adds new play without stopping existing ones
+
+### Phase 5: ShadowGraduator — Promotion Pipeline
+**Goal:** Score shadow plays and recommend promotion to live trading.
+
+- [ ] `ShadowGraduator`: computes graduation scores daily
+  - 10 graduation criteria (configurable thresholds): runtime, trades, PnL, Sharpe, drawdown, win rate, PF, consistency, regime diversity, no active drawdown
+  - Composite scoring: consistency_score, regime_diversity_score, recency_score
+  - Allocation sizing: half-Kelly × confidence adjustment, capped at 10% per play
+- [ ] `config/shadow_graduation.yml`: default graduation thresholds
+- [ ] Graduation report: Rich-formatted terminal output (metrics, regime breakdown, criteria checklist, recommendation)
+- [ ] CLI: `shadow graduation check --instance X`, `shadow graduation check --all`, `shadow graduation report --instance X`
+- [ ] Manual promotion: `shadow graduation promote --instance X --confirm` (creates M5 live config)
+- [ ] **GATE**: Graduation scoring produces correct pass/fail for test scenarios
+- [ ] **GATE**: Promotion outputs valid Play YAML with recommended risk parameters
+
+### Phase 6: M6 Integration Hooks
+**Goal:** Provide training data interface for Market Intelligence module.
+
+- [ ] Market context capture: record regime + metrics alongside every trade and snapshot
+- [ ] `export_training_data(symbol, days)` → DataFrame for M6 consumption
+- [ ] Performance-by-regime analytics: per-play breakdown across 4 regime types
+- [ ] Play recommendation interface: `PlayRecommendation` dataclass (activate/deactivate/promote/demote + confidence + reason)
+- [ ] **GATE**: Training data export covers 90 days, all required columns present
+- [ ] **GATE**: Regime-performance breakdown matches manual verification
+
+---
+
 ## P0: Codebase Review Remediation (Safety-Critical Fixes)
 
 ### Phase 1: DuckDB Lock Eviction (P0 — prevents DB corruption) ✅
