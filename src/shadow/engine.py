@@ -29,9 +29,10 @@ from .types import ShadowEngineState, ShadowEngineStats, ShadowSnapshot, ShadowT
 if TYPE_CHECKING:
     from ..backtest.play import Play
     from ..backtest.sim.exchange import SimulatedExchange
-    from ..backtest.sim.types import Bar, Fill, StepResult, OrderSide
+    from ..backtest.sim.types import Fill, StepResult
+    from ..backtest.runtime.types import Bar
+    from ..engine.interfaces import Candle
     from ..engine.play_engine import PlayEngine, PlayEngineConfig
-    from ..data.realtime_models import KlineData, TickerData
 
 logger = get_module_logger(__name__)
 
@@ -151,6 +152,10 @@ class ShadowEngine:
         # Create PlayEngine in shadow mode with BacktestExchange wrapping the sim
         self._engine = self._create_play_engine()
 
+        # Initialize LiveDataProvider indicator caches with play's feature specs
+        # Without this, on_candle_close() pushes OHLCV but indicators never compute
+        self._init_indicator_caches()
+
         # Journal
         self._journal = ShadowJournal(self._instance_id)
 
@@ -205,7 +210,7 @@ class ShadowEngine:
         This is the hot path — minimize allocations.
 
         Args:
-            bar: Closed candle (canonical Bar type)
+            bar: Closed candle (canonical Bar type from runtime.types)
             timeframe: Timeframe string (e.g., "15m", "1h")
         """
         if self._state not in (ShadowEngineState.WARMING_UP, ShadowEngineState.RUNNING):
@@ -230,9 +235,19 @@ class ShadowEngine:
         assert self._journal is not None
 
         # 1. Feed candle to LiveDataProvider (updates indicators, structures)
-        #    The engine's data provider handles warmup tracking internally
+        #    LiveDataProvider expects Candle (interfaces.py), not Bar (runtime.types)
+        from ..engine.interfaces import Candle
+        candle = Candle(
+            ts_open=bar.ts_open,
+            ts_close=bar.ts_close,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+            volume=bar.volume,
+        )
         data_provider = self._engine._data_provider
-        data_provider.on_candle_close(bar, timeframe)  # type: ignore[union-attr]
+        data_provider.on_candle_close(candle, timeframe)  # type: ignore[union-attr]
 
         # 2. Check if this is the exec timeframe
         exec_tf = self._play.exec_tf
@@ -258,13 +273,20 @@ class ShadowEngine:
                 index_price=self._latest_index_price,
             )
 
-        # 5. Process bar through SimExchange (fills, TP/SL, liquidation, funding)
+        # 5. Set bar timestamp on BacktestExchange (required for order submission)
+        exchange_adapter = self._engine.exchange
+        set_ts = getattr(exchange_adapter, "set_current_bar_timestamp", None)
+        if set_ts is not None:
+            set_ts(bar.ts_close)
+
+        # 6. Process bar through SimExchange FIRST (fills pending orders from
+        #    previous bar's signal — same fill-on-next-bar pattern as backtest)
         step_result = self._sim_exchange.process_bar(
             bar,
             self._prev_bar,
         )
 
-        # 6. Process bar through PlayEngine (signal generation)
+        # 7. Process bar through PlayEngine (signal generation → may submit new order)
         signal = self._engine.process_bar(-1)
 
         # 7. Update stats (zero allocations)
@@ -274,9 +296,10 @@ class ShadowEngine:
         self._stats.last_funding_rate = self._latest_funding_rate
         self._stats.update_equity(self._sim_exchange.equity_usdt)
 
-        # 8. Record signal
+        # 8. Execute signal (submit order to SimExchange for next bar's fill)
         if signal is not None:
             self._stats.signals_generated += 1
+            self._engine.execute_signal(signal)
             self._journal.record_signal(
                 direction=signal.direction,
                 symbol=signal.symbol,
@@ -447,8 +470,10 @@ class ShadowEngine:
 
         play = self._play
 
+        # Use "backtest" mode so PlayEngine actually executes signals through
+        # the BacktestExchange/SimExchange. "shadow" mode skips execution (no-op).
         config = PlayEngineConfig(
-            mode="shadow",
+            mode="backtest",
             initial_equity=self._config.initial_equity_usdt,
         )
 
@@ -473,3 +498,43 @@ class ShadowEngine:
         )
 
         return engine
+
+    def _init_indicator_caches(self) -> None:
+        """Initialize LiveDataProvider indicator caches with play's feature specs.
+
+        LiveDataProvider.on_candle_close() pushes OHLCV into buffers but
+        indicator computation requires initialize_from_history() to register
+        the incremental indicator instances. Normally this happens during
+        connect() → _load_initial_bars(). For shadow mode (no WS connect),
+        we call it directly with a seed candle so specs are registered.
+        """
+        assert self._engine is not None
+        from ..engine.interfaces import Candle
+
+        dp = self._engine._data_provider
+        # Access LiveDataProvider internals (type: ignore for protocol)
+        get_specs = getattr(dp, "_get_indicator_specs_for_tf", None)
+        if get_specs is None:
+            return  # Not a LiveDataProvider
+
+        tf_mapping = getattr(dp, "_tf_mapping", {})
+
+        # Create a seed candle (values don't matter — just triggers spec registration)
+        seed = Candle(
+            ts_open=self._play.features[0].tf if False else utc_now(),  # type: ignore[arg-type]
+            ts_close=utc_now(),
+            open=50000.0, high=50001.0, low=49999.0, close=50000.0, volume=1000.0,
+        )
+
+        # Initialize each TF's indicator cache with its specs
+        for tf_role in ("low_tf", "med_tf", "high_tf"):
+            cache = getattr(dp, f"_{tf_role}_indicators", None)
+            if cache is None:
+                continue
+            specs = get_specs(tf_role)
+            if specs:
+                cache.initialize_from_history([seed], specs)
+                logger.info(
+                    "Initialized %d indicator specs for %s (%s)",
+                    len(specs), tf_role, tf_mapping.get(tf_role, "?"),
+                )
