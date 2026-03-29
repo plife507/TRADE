@@ -13,6 +13,7 @@ that callback. Engine.on_candle/on_ticker are designed for zero allocations.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from ..data.realtime_bootstrap import RealtimeBootstrap
@@ -33,13 +34,16 @@ class SharedFeedHub:
     register as listeners on the same feed.
     """
 
-    __slots__ = ("_feeds", "_states", "_listeners", "_subscribed_intervals")
+    __slots__ = ("_feeds", "_states", "_listeners", "_subscribed_intervals",
+                 "_last_bar_ts", "_backfilling")
 
     def __init__(self) -> None:
         self._feeds: dict[str, RealtimeBootstrap] = {}   # symbol -> WS
         self._states: dict[str, RealtimeState] = {}       # symbol -> state
         self._listeners: dict[str, list[ShadowEngine]] = {}  # symbol -> engines
         self._subscribed_intervals: dict[str, set[str]] = {}  # symbol -> bybit intervals
+        self._last_bar_ts: dict[tuple[str, str], datetime] = {}  # (symbol, tf) -> last ts_open
+        self._backfilling: bool = False  # prevent re-entrant backfill
 
     def ensure_feed(self, symbol: str) -> RealtimeState:
         """Create WS connection for symbol if not exists.
@@ -180,7 +184,7 @@ class SharedFeedHub:
         """Fan-out kline to all engines for this symbol.
 
         Called from WS thread via RealtimeState callback. Must be fast.
-        Only processes closed candles.
+        Only processes closed candles. Detects gaps and backfills from REST.
         """
         if not kline.is_closed:
             return
@@ -189,24 +193,32 @@ class SharedFeedHub:
         if not engines:
             return
 
-        # Convert KlineData to Bar for engine consumption
-        from datetime import datetime, timezone
         from ..backtest.runtime.types import Bar
+        from ..backtest.runtime.timeframe import tf_minutes
 
         tf = kline.interval
         ts_open = datetime.fromtimestamp(kline.start_time / 1000, tz=timezone.utc).replace(tzinfo=None)
         ts_close = datetime.fromtimestamp(kline.end_time / 1000, tz=timezone.utc).replace(tzinfo=None) if kline.end_time else ts_open
 
+        # Gap detection: check if we missed bars since last close
+        key = (symbol, tf)
+        last_ts = self._last_bar_ts.get(key)
+        if last_ts is not None and not self._backfilling:
+            expected_next = last_ts + timedelta(minutes=tf_minutes(tf))
+            gap_bars = int((ts_open - expected_next).total_seconds() / 60 / tf_minutes(tf))
+            if gap_bars > 0:
+                logger.warning(
+                    "Gap detected: %s %s missed %d bar(s) (%s → %s), backfilling from REST",
+                    symbol, tf, gap_bars, last_ts.isoformat(), ts_open.isoformat(),
+                )
+                self._backfill_gap(symbol, tf, expected_next, ts_open, engines)
+
+        self._last_bar_ts[key] = ts_open
+
         bar = Bar(
-            symbol=symbol,
-            tf=tf,
-            ts_open=ts_open,
-            ts_close=ts_close,
-            open=kline.open,
-            high=kline.high,
-            low=kline.low,
-            close=kline.close,
-            volume=kline.volume,
+            symbol=symbol, tf=tf, ts_open=ts_open, ts_close=ts_close,
+            open=kline.open, high=kline.high, low=kline.low,
+            close=kline.close, volume=kline.volume,
         )
         for engine in engines:
             engine.on_candle(bar, tf)
@@ -228,6 +240,80 @@ class SharedFeedHub:
         for engine in engines:
             engine.on_ticker(mark, last, index, funding)
 
+    def _backfill_gap(
+        self, symbol: str, tf: str,
+        gap_start: datetime, gap_end: datetime,
+        engines: list[ShadowEngine],
+    ) -> None:
+        """Fetch missed bars from REST API and fan-out to engines in order.
+
+        Called when a gap is detected between the last processed bar and the
+        current bar. Uses Bybit REST kline endpoint (no DuckDB writes).
+        """
+        from ..backtest.runtime.types import Bar
+        from ..config.constants import TIMEFRAME_TO_BYBIT
+        from ..utils.datetime_utils import datetime_to_epoch_ms
+        from ..backtest.runtime.timeframe import tf_minutes
+
+        self._backfilling = True
+        try:
+            bybit_tf = TIMEFRAME_TO_BYBIT.get(tf)
+            if not bybit_tf:
+                return
+
+            bootstrap = self._feeds.get(symbol)
+            if not bootstrap:
+                return
+
+            start_ms = datetime_to_epoch_ms(gap_start)
+            end_ms = datetime_to_epoch_ms(gap_end)
+            if start_ms is None or end_ms is None:
+                return
+
+            # Fetch from Bybit REST via the bootstrap's client
+            # get_klines returns a DataFrame with timestamp, open, high, low, close, volume
+            df = bootstrap.client.get_klines(
+                symbol=symbol,
+                interval=bybit_tf,
+                start=start_ms,
+                end=end_ms,
+                limit=200,
+            )
+
+            if df is None or df.empty:
+                logger.warning("Backfill: no bars returned for %s %s", symbol, tf)
+                return
+
+            tf_dur = timedelta(minutes=tf_minutes(tf))
+            filled = 0
+            for rec in df.to_dict("records"):
+                bar_open: datetime = rec["timestamp"]
+                # Ensure naive UTC
+                if bar_open.tzinfo is not None:
+                    bar_open = bar_open.replace(tzinfo=None)
+
+                # Skip bars outside the gap
+                if bar_open < gap_start or bar_open >= gap_end:
+                    continue
+
+                bar = Bar(
+                    symbol=symbol, tf=tf,
+                    ts_open=bar_open, ts_close=bar_open + tf_dur,
+                    open=float(rec["open"]), high=float(rec["high"]),
+                    low=float(rec["low"]), close=float(rec["close"]),
+                    volume=float(rec["volume"]),
+                )
+                for engine in engines:
+                    engine.on_candle(bar, tf)
+                filled += 1
+
+            logger.info("Backfill complete: %s %s filled %d bar(s)", symbol, tf, filled)
+
+        except Exception as e:
+            logger.warning("Backfill failed for %s %s: %s", symbol, tf, e)
+        finally:
+            self._backfilling = False
+
     def _close_feed(self, symbol: str) -> None:
         """Close WS connection for a symbol."""
         if symbol in self._feeds:
@@ -239,4 +325,7 @@ class SharedFeedHub:
             del self._states[symbol]
             del self._listeners[symbol]
             self._subscribed_intervals.pop(symbol, None)
+            # Clear bar tracking for this symbol
+            for key in [k for k in self._last_bar_ts if k[0] == symbol]:
+                del self._last_bar_ts[key]
             logger.info("SharedFeedHub: WS closed for %s", symbol)
