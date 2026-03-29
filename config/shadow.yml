@@ -1,0 +1,46 @@
+# Shadow Exchange Configuration
+#
+# This file defines which plays run in the shadow exchange and global settings.
+# Used by: python trade_cli.py shadow daemon [--config config/shadow.yml]
+#
+# Hot-reload: Send SIGHUP to the daemon process to reload this file.
+# New plays are added, removed plays are stopped, existing plays continue.
+
+shadow:
+  # Engine limits
+  max_engines: 50                     # Max concurrent shadow engines
+  max_engines_per_symbol: 10          # Max engines per symbol
+
+  # Monitoring intervals
+  snapshot_interval_minutes: 60       # Equity snapshot frequency (to DB)
+  health_check_interval_seconds: 60   # Stale engine detection
+  stale_threshold_seconds: 300        # Engine considered stale after 5min no candle
+  db_flush_interval_seconds: 60       # Batch flush trades/snapshots to DuckDB
+
+  # Auto-recovery
+  auto_restart_on_stale: true         # Restart stale/errored engines
+  max_restart_attempts: 3             # Max restarts before giving up
+
+  # Default play config (can be overridden per-play below)
+  default_equity_usdt: 10000.0        # Starting equity per play
+  default_max_drawdown_pct: 25.0      # Max drawdown before warning/stop
+  auto_stop_on_drawdown: false        # true = stop engine, false = log warning
+
+# Plays to run in shadow mode.
+# Each entry is a play ID (filename without .yml) or a dict with overrides.
+#
+# Simple format:
+#   - my_play_name
+#
+# With overrides:
+#   - id: my_play_name
+#     equity_usdt: 5000.0
+#     max_drawdown_pct: 15.0
+#
+# Uncomment and customize:
+plays: []
+  # - AT_001_ema_cross_basic
+  # - AT_002_rsi_momentum
+  # - id: AT_003_multi_tf_structure
+  #   equity_usdt: 20000.0
+  #   max_drawdown_pct: 15.0

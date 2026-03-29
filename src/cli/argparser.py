@@ -685,3 +685,7 @@ def _setup_shadow_subcommands(subparsers) -> None:
     stats_group.add_argument("--instance", help="Instance ID")
     stats_group.add_argument("--all", action="store_true", help="All plays")
     stats_parser.add_argument("--json", action="store_true", dest="json_output", help="JSON output")
+
+    # shadow daemon  (always-on mode for VPS)
+    daemon_parser = shadow_subparsers.add_parser("daemon", help="Run shadow daemon (always-on, VPS)")
+    daemon_parser.add_argument("--config", default="config/shadow.yml", help="Config file path")

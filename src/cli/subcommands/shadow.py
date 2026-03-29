@@ -33,6 +33,8 @@ def handle_shadow(args) -> int:
 
     if cmd == "run":
         return _handle_shadow_run(args)
+    elif cmd == "daemon":
+        return _handle_shadow_daemon(args)
     elif cmd == "add":
         return _handle_shadow_add(args)
     elif cmd == "remove":
@@ -110,6 +112,30 @@ def _handle_shadow_run(args) -> int:
         console.print(json.dumps(stats.to_dict(), indent=2))
     else:
         _print_engine_stats(play.id, symbol, stats)
+
+    return 0
+
+
+def _handle_shadow_daemon(args) -> int:
+    """Run the shadow daemon (always-on, config-driven)."""
+    from pathlib import Path
+    from ...shadow.daemon import ShadowDaemon
+
+    config_path = Path(args.config) if args.config else None
+
+    console.print("[cyan]Starting shadow daemon...[/]")
+    if config_path:
+        console.print(f"[dim]Config: {config_path}[/]")
+
+    daemon = ShadowDaemon(config_path=config_path)
+
+    try:
+        asyncio.run(daemon.run())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Daemon stopped by user[/]")
+    except Exception as e:
+        console.print(f"\n[red]Daemon error: {e}[/]")
+        return 1
 
     return 0
 

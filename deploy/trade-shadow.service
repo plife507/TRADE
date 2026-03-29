@@ -1,0 +1,39 @@
+# systemd service for TRADE Shadow Exchange
+#
+# Install:
+#   sudo cp deploy/trade-shadow.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable trade-shadow
+#   sudo systemctl start trade-shadow
+#
+# Logs:
+#   journalctl -u trade-shadow -f
+#
+# Hot-reload config (add/remove plays without restart):
+#   sudo systemctl reload trade-shadow
+
+[Unit]
+Description=TRADE Shadow Exchange
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trade
+WorkingDirectory=/opt/trade
+ExecStart=/opt/trade/.venv/bin/python trade_cli.py shadow daemon --config config/shadow.yml
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+
+# Resource limits
+MemoryMax=3G
+CPUQuota=250%
+
+# Environment (override with /etc/systemd/system/trade-shadow.service.d/override.conf)
+Environment=TRADE_LOG_LEVEL=INFO
+
+[Install]
+WantedBy=multi-user.target
