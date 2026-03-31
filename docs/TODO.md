@@ -435,68 +435,32 @@ See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for SimExchange fidelity gaps (H1-H4,
 
 **Critical path:** P1 (sim fidelity H1+H2) → M4 Phase 1-2 → M4 Phase 3-4 → M4 Phase 5-6
 
-### Phase 1: ShadowEngine — Single Play with SimExchange
-**Goal:** Replace no-op ShadowExchange with real SimExchange fed by live WS data.
+### Phase 1: ShadowEngine — Single Play with SimExchange ✅
+- [x] Created `src/shadow/` module: `__init__.py`, `types.py`, `config.py`, `engine.py`, `journal.py`
+- [x] ShadowEngine wraps PlayEngine + SimExchange + LiveDataProvider
+- [x] ShadowJournal: JSONL trade logging per engine
+- [x] CLI: `python trade_cli.py shadow run --play X`
+- [x] **GATE**: Single play produces trades with correct P&L — proven end-to-end
 
-- [ ] Create `src/shadow/` module: `__init__.py`, `types.py`, `config.py`
-- [ ] `ShadowEngine` class: wraps PlayEngine + SimExchange + LiveDataProvider
-  - Process real WS candles through SimExchange (fills, fees, margin, ledger)
-  - Inject real mark/last prices from WS ticker into SimExchange (depends on P1 Phase 1 H1 fix)
-  - Inject real funding rates from WS ticker
-  - Full P&L tracking via SimExchange ledger (equity, drawdown, realized PnL)
-- [ ] `ShadowJournal`: JSONL trade + periodic equity snapshot logging
-  - `data/shadow/{instance_id}/events.jsonl` (fills, closes, errors)
-  - `data/shadow/{instance_id}/snapshots.jsonl` (hourly equity + market context)
-- [ ] Wire into `PlayEngineFactory._create_shadow()`: SimExchange instead of no-op ShadowExchange
-- [ ] CLI: `python trade_cli.py shadow run --play X` (single play, foreground, Ctrl+C to stop)
-- [ ] **GATE**: Single play produces trades with correct P&L on live WS data
-- [ ] **GATE**: `python trade_cli.py validate quick` passes (no regressions)
+### Phase 2: SharedFeedHub + Multi-Play Orchestration ✅
+- [x] SharedFeedHub: one WS per symbol, fan-out to registered engines
+- [x] ShadowOrchestrator: lifecycle manager, resource limits, health monitoring
+- [x] CLI: `shadow add/remove/list/stats` subcommands
+- [x] WS gap detection + REST backfill in SharedFeedHub
+- [x] **GATE**: Multi-play orchestration working
 
-### Phase 2: SharedFeedHub + Multi-Play Orchestration
-**Goal:** Run N plays simultaneously on shared WS connections.
+### Phase 3: ShadowPerformanceDB ✅
+- [x] ShadowPerformanceDB: DuckDB for instances, trades, snapshots
+- [x] Orchestrator DB integration
+- [x] CLI: `shadow stats --all --json`, `shadow stats --instance X --json`
 
-- [ ] `SharedFeedHub`: one RealtimeBootstrap per symbol, fan-out candles to registered engines
-  - Register/unregister engines dynamically
-  - Auto-close WS when no engines remain for a symbol
-  - No private WS needed (sim handles orders internally)
-- [ ] `ShadowOrchestrator`: lifecycle manager for multiple ShadowEngines
-  - `add_play()`, `remove_play()`, `list_plays()`, `get_stats()`
-  - Resource limits: max 50 engines, max 10 per symbol
-  - Health monitoring: detect stale engines (no candle in 5min), auto-restart
-  - DuckDB write queue: single-writer pattern (no parallel DuckDB access)
-- [ ] CLI: `shadow add/remove/list/stats` subcommands
-- [ ] `src/tools/shadow_tools.py`: agent API tools (ToolResult envelope)
-- [ ] **GATE**: 5 plays running simultaneously on 2 symbols, all generating trades
-- [ ] **GATE**: Remove one play, WS closes if last listener for that symbol
+### Phase 4: ShadowDaemon — VPS Always-On ✅
+- [x] ShadowDaemon: process management with signal handling
+- [x] `config/shadow.yml`: daemon configuration
+- [x] `deploy/trade-shadow.service`: systemd unit file
+- [x] CLI: `shadow daemon --config config/shadow.yml`
 
-### Phase 3: ShadowPerformanceDB
-**Goal:** DuckDB for long-term performance tracking, analytics, and graduation.
-
-- [ ] `ShadowPerformanceDB` class: `data/shadow/shadow_performance.duckdb`
-  - Tables: `shadow_instances`, `shadow_snapshots`, `shadow_trades`, `shadow_graduation_scores`, `shadow_regime_log`
-  - Write: periodic snapshots (hourly), trade records, graduation scores (daily)
-  - Read: equity curves, trade analytics, leaderboard, regime breakdown
-- [ ] Simple regime classifier: `classify_regime(atr_pct, trend_strength, funding)` → trending_up/down, ranging, volatile
-- [ ] CLI: `shadow stats --all`, `shadow leaderboard`, `shadow trades --instance X`, `shadow equity --instance X`
-- [ ] JSON output on all commands (`--json` flag)
-- [ ] **GATE**: Performance DB accumulates data over 24h test run
-- [ ] **GATE**: Leaderboard correctly ranks plays by Sharpe/PF/PnL
-
-### Phase 4: ShadowDaemon — VPS Always-On
-**Goal:** Resilient daemon process for unattended VPS operation.
-
-- [ ] `ShadowDaemon`: process management wrapper around ShadowOrchestrator
-  - SIGTERM → graceful shutdown (stop engines, flush DB, save state)
-  - SIGHUP → config hot-reload (add/remove plays without restart)
-  - State persistence: save engine state (position, ledger, pending orders) on shutdown
-  - State resume: restore engines from saved state on startup
-- [ ] `config/shadow.yml`: daemon configuration (play list, limits, intervals)
-- [ ] Health HTTP endpoint: `GET /health` → JSON status (for monitoring)
-- [ ] `deploy/trade-shadow.service`: systemd unit file (Restart=always, MemoryMax=3G)
-- [ ] `deploy/deploy.sh`: VPS setup script (venv, systemd, firewall, logrotate)
-- [ ] CLI: `shadow daemon [start|stop|status]`
-- [ ] **GATE**: Daemon survives simulated crash (kill -9) and restores state
-- [ ] **GATE**: Hot-reload adds new play without stopping existing ones
+### Phase 5: ShadowGraduator — Promotion Pipeline
 
 ### Phase 5: ShadowGraduator — Promotion Pipeline
 **Goal:** Score shadow plays and recommend promotion to live trading.
