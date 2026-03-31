@@ -100,65 +100,15 @@ class ToolResult:
     data: dict | None    # Structured output (varies by tool)
 ```
 
-## Interactive Menus (8 total)
-
-| Menu | Purpose | Submenus |
-|---|---|---|
-| **account_menu** | Account ops | Balance, Portfolio, History, Transactions |
-| **positions_menu** | Position mgmt | List, Close, TP/SL, Margin, Trailing stops |
-| **orders_menu** | Order placement | Place (Market/Limit/Stop), Manage (List/Amend/Cancel) |
-| **market_data_menu** | Market data | Ticker, OHLCV, Funding, Orderbook, Instruments |
-| **data_menu** | Data builder | Build, Sync, Browse, Maintenance (LIVE/DEMO state) |
-| **backtest_menu** | Backtesting | Play, Analytics, Audits, Data maintenance |
-| **forge_menu** | Play dev | Validate, Batch, Audits, Stress tests |
-| **plays_menu** | Play lifecycle | Run, Monitor, Stop (future) |
-
-## Menu Pattern
-
-```python
-def domain_menu(cli: "TradeCLI"):
-    while True:
-        clear_screen()
-        print_header()
-
-        menu = CLIStyles.create_menu_table()
-        menu.add_row("1", "Option A", "Description")
-        menu.add_row("2", "Option B", "Description")
-        console.print(menu)
-
-        choice = get_choice(range(1, N))
-
-        if choice is BACK:
-            break
-        elif choice == 1:
-            _action_a()
-        elif choice == 2:
-            _action_b()
-```
-
-## Data Menu State (Unique Pattern)
-
-Data menu maintains local `data_env` variable (LIVE/DEMO) within session:
-
-```python
-def data_menu(cli: "TradeCLI"):
-    data_env: DataEnv = DEFAULT_DATA_ENV  # Persists across menu iterations
-
-    while True:
-        # All actions in this menu use data_env
-        # User can toggle with menu choice
-```
-
 ## Key Files Reference
 
 | File | Purpose |
 |---|---|
-| `trade_cli.py` | Main CLI entry, TradeCLI class, main() dispatcher |
+| `trade_cli.py` | Main CLI entry, headless subcommand dispatcher |
 | `src/cli/argparser.py` | Subcommand registration (_setup_* functions) |
 | `src/cli/subcommands/` | Handler implementations (parse → tool → format) |
 | `src/cli/subcommands/__init__.py` | Handler re-exports |
 | `src/cli/subcommands/_helpers.py` | Shared helpers (_json_result, _print_result, etc.) |
-| `src/cli/menus/` | Interactive menu handlers |
 | `src/tools/` | Tool functions (business logic layer) |
 | `docs/architecture/ARCHITECTURE.md` | System architecture & roadmap |
 

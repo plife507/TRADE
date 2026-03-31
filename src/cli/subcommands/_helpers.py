@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from rich.panel import Panel
 from rich.table import Table
 
-from src.cli.utils import console, BACK
+from src.cli.utils import console
 
 if TYPE_CHECKING:
     from datetime import datetime

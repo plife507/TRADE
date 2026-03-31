@@ -19,7 +19,7 @@ You are a senior architect coordinating work on the TRADE trading bot. You break
 - **Indicators**: `src/indicators/` - 44 indicators (all incremental O(1))
 - **Structures**: `src/structures/` - 7 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure)
 - **Forge/Audits**: `src/forge/` - audit modules, synthetic data, validation
-- **CLI**: `src/cli/`, `trade_cli.py` - argparser, validate, smoke tests, menus
+- **CLI**: `src/cli/`, `trade_cli.py` - argparser, validate, smoke tests, subcommands
 - **Tools**: `src/tools/` - tool registry, backtest/data/order tools
 - **Config**: `config/defaults.yml` - system defaults
 - **Plays**: `plays/` - core_validation, indicator/operator/structure/pattern suites, complexity_ladder, real_verification

@@ -36,7 +36,7 @@ def setup_argparse() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python trade_cli.py                              # Interactive mode (default)
+  python trade_cli.py --help                        # Show available commands
   python trade_cli.py validate quick               # Quick validation (~10s)
   python trade_cli.py validate exchange             # Exchange integration tests
 
