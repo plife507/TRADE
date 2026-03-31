@@ -8,7 +8,7 @@ import time
 
 from datetime import datetime, timedelta
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 import pandas as pd
 
 from src.utils.datetime_utils import normalize_timestamp, utc_now
@@ -370,8 +370,10 @@ def _fetch_from_api(
     total_fetched = 0
     total_estimate = _estimate_candle_count(start, end, bybit_tf)
 
-    start_ts = cast(pd.Timestamp, pd.Timestamp(start, tz='UTC') if start.tzinfo is None else pd.Timestamp(start))
-    end_ts = cast(pd.Timestamp, pd.Timestamp(end, tz='UTC') if end.tzinfo is None else pd.Timestamp(end))
+    # Both start/end and df["timestamp"] must be tz-naive UTC (project convention).
+    # get_klines() returns tz-naive datetime64 after .dt.tz_localize(None).
+    start_ts = pd.Timestamp(start)
+    end_ts = pd.Timestamp(end)
     current_end_ts = end_ts
 
     while current_end_ts > start_ts:

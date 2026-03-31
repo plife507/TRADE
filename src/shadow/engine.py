@@ -160,6 +160,10 @@ class ShadowEngine:
         # so warmup completes immediately instead of waiting N minutes for live candles
         self._warmup_from_history()
 
+        # Wire LiveDataProvider's structure states into PlayEngine so
+        # RuntimeSnapshotView can resolve structure references (e.g. trend.direction)
+        self._wire_structure_state()
+
         # Journal
         self._journal = ShadowJournal(self._instance_id)
 
@@ -556,6 +560,45 @@ class ShadowEngine:
                 "ShadowEngine %s warmup from history failed (will warm up from live): %s",
                 self._instance_id, e,
             )
+
+    def _wire_structure_state(self) -> None:
+        """Wire LiveDataProvider's TFIncrementalState into PlayEngine._incremental_state.
+
+        RuntimeSnapshotView reads structure values from PlayEngine._incremental_state
+        (a MultiTFIncrementalState). LiveDataProvider maintains its own TFIncrementalState
+        objects that get updated on each candle. We bridge these by creating a
+        MultiTFIncrementalState wrapper that shares the same TFIncrementalState objects.
+        """
+        assert self._engine is not None
+        from ..engine.adapters.live import LiveDataProvider
+        from ..structures.state import MultiTFIncrementalState
+
+        dp = self._engine._data_provider
+        if not isinstance(dp, LiveDataProvider):
+            return
+        if dp._low_tf_structure is None:
+            return
+
+        # Create MultiTFIncrementalState with empty specs, then swap in real states
+        multi = object.__new__(MultiTFIncrementalState)
+        multi.exec_tf = dp._tf_mapping["low_tf"]
+        multi.exec = dp._low_tf_structure
+        multi.med_tf = {}
+        multi.high_tf = {}
+
+        if dp._med_tf_structure is not None:
+            med_tf_name = dp._tf_mapping["med_tf"]
+            multi.med_tf[med_tf_name] = dp._med_tf_structure
+        if dp._high_tf_structure is not None:
+            high_tf_name = dp._tf_mapping["high_tf"]
+            multi.high_tf[high_tf_name] = dp._high_tf_structure
+
+        self._engine._incremental_state = multi
+        self._engine._live_structures_external = True
+        logger.info(
+            "Wired structure state: exec=%s, med_tf=%s, high_tf=%s",
+            multi.exec_tf, list(multi.med_tf.keys()), list(multi.high_tf.keys()),
+        )
 
     def _init_indicator_caches(self) -> None:
         """Initialize LiveDataProvider indicator caches with play's feature specs.

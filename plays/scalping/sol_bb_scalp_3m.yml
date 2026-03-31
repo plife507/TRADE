@@ -67,10 +67,5 @@ position_policy:
   exit_mode: "signal"
   max_positions_per_symbol: 1
 
-synthetic:
+validation:
   pattern: "range_wide"
-  bars: 500
-  seed: 42
-
-expected:
-  min_trades: 1

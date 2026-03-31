@@ -113,12 +113,12 @@ def _setup_backtest_subcommands(subparsers) -> None:
     run_parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
     run_parser.add_argument("--json-verbose", action="store_true", dest="json_verbose", help="Include full metrics, hashes, and artifact path in JSON output")
     # Synthetic data mode (for validation without DB)
-    run_parser.add_argument("--synthetic", action="store_true", help="Use synthetic data from play's synthetic: block (required). Fails if block missing.")
-    run_parser.add_argument("--synthetic-bars", type=int, default=None, help="Override bars per TF from play's synthetic.bars")
-    run_parser.add_argument("--synthetic-seed", type=int, default=None, help="Override seed from play's synthetic.seed")
+    run_parser.add_argument("--synthetic", action="store_true", help="Use synthetic data from play's validation: block (required). Fails if block missing.")
+    run_parser.add_argument("--synthetic-bars", type=int, default=None, help="Override bars per TF (auto-computed from warmup if omitted)")
+    run_parser.add_argument("--synthetic-seed", type=int, default=None, help="Override seed (default: 42)")
     # Import available patterns from synthetic data module
     from src.forge.validation import PATTERN_GENERATORS
-    run_parser.add_argument("--synthetic-pattern", choices=list(PATTERN_GENERATORS.keys()), default=None, help="Override pattern from play's synthetic.pattern")
+    run_parser.add_argument("--synthetic-pattern", choices=list(PATTERN_GENERATORS.keys()), default=None, help="Override pattern from play's validation.pattern")
     run_parser.add_argument("--trace", action="store_true", default=False, dest="engine_trace", help="Enable verbose engine tracing (bar OHLCV, signal results, position changes)")
 
     # backtest preflight

@@ -169,7 +169,5 @@ risk_model:
     value: 50.0
     max_leverage: 3.0
 
-synthetic:
-  pattern: trending_up
-  bars_per_tf: 500
-  seed: 42
+validation:
+  pattern: "trend_up_clean"

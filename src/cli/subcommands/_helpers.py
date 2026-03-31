@@ -69,8 +69,8 @@ def _print_preflight_diagnostics(diag: dict):
 
     tf_results = diag.get("tf_results", {})
     first_tf_result = next(iter(tf_results.values()), {}) if tf_results else {}
-    symbol = first_tf_result.get("symbol", "N/A")
-    exec_tf = first_tf_result.get("tf", "N/A")
+    symbol = diag.get("symbol", first_tf_result.get("symbol", "N/A"))
+    exec_tf = diag.get("exec_tf", first_tf_result.get("tf", "N/A"))
 
     table.add_row("Play", play_id)
     table.add_row("Symbol", symbol)

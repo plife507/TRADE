@@ -2,6 +2,9 @@
 
 > Single source of truth for Play YAML syntax. DSL semantics frozen 2026-01-08.
 > Validated by 170 synthetic + 60 real-data plays.
+>
+> **For agents:** Use the modular playbook at `docs/dsl/` instead — token-efficient,
+> load only what you need. See `docs/dsl/README.md` for the index.
 
 ## 1. Play Skeleton
 
@@ -274,6 +277,30 @@ structures:
 - Slot outputs (per zone N): `zone[N].lower`, `zone[N].upper`, `zone[N].state`, `zone[N].anchor_idx`, `zone[N].age_bars`, `zone[N].touched_this_bar`, `zone[N].touch_count`, `zone[N].last_touch_age`, `zone[N].inside`, `zone[N].instance_id`
 - Aggregate outputs: `active_count`, `any_active`, `any_touched`, `any_inside`, `first_active_lower`, `first_active_upper`, `first_active_idx`, `newest_active_idx`, `source_version`
 
+**displacement** (no deps)
+- Params: `atr_key` (required), `body_atr_min` (default 1.5), `wick_ratio_max` (default 0.4)
+- Outputs: `is_displacement` (bool), `direction` (1/-1/0), `body_atr_ratio`, `wick_ratio`, `last_idx`, `last_direction`, `version`
+
+**fair_value_gap** (no deps)
+- Params: `atr_key` (optional), `min_gap_atr` (default 0.0), `max_active` (default 5)
+- Outputs: `new_this_bar` (bool), `new_direction` (1/-1/0), `new_upper`, `new_lower`, `nearest_bull_upper`, `nearest_bull_lower`, `nearest_bear_upper`, `nearest_bear_lower`, `active_bull_count`, `active_bear_count`, `any_mitigated_this_bar`, `nearest_bull_fill_pct`, `nearest_bear_fill_pct`, `version`
+
+**order_block** (uses: swing)
+- Params: `atr_key` (required), `use_body` (default true), `require_displacement` (default true), `body_atr_min` (default 1.5), `wick_ratio_max` (default 0.4), `max_active` (default 5), `lookback` (default 3)
+- Outputs: `new_this_bar` (bool), `new_direction` (1/-1/0), `new_upper`, `new_lower`, `nearest_bull_upper`, `nearest_bull_lower`, `nearest_bear_upper`, `nearest_bear_lower`, `active_bull_count`, `active_bear_count`, `any_mitigated_this_bar`, `any_invalidated_this_bar`, `version`
+
+**liquidity_zones** (uses: swing)
+- Params: `atr_key`, `tolerance_atr` (default 0.3), `sweep_atr` (default 0.1), `min_touches` (default 2), `max_active` (default 5), `max_swing_history` (default 20)
+- Outputs: `sweep_this_bar` (bool), `sweep_direction` (1/-1/0), `swept_level`, `nearest_high_level`, `nearest_low_level`, `nearest_high_touches`, `nearest_low_touches`, `new_zone_this_bar`, `version`
+
+**premium_discount** (uses: swing)
+- No params (derived from swing pair)
+- Outputs: `zone` ("premium"/"discount"/"equilibrium"/"none"), `equilibrium`, `premium_level`, `discount_level`, `depth_pct` (0.0-1.0), `version`
+
+**breaker_block** (uses: order_block)
+- Params: `max_active` (default 5), `ms_key` (optional)
+- Outputs: `new_this_bar` (bool), `new_direction` (1/-1/0), `new_upper`, `new_lower`, `nearest_bull_upper`, `nearest_bull_lower`, `nearest_bear_upper`, `nearest_bear_lower`, `active_bull_count`, `active_bear_count`, `any_mitigated_this_bar`, `version`
+
 ### Warmup formulas
 
 | Structure | Formula | left=5,right=5 |
@@ -284,6 +311,12 @@ structures:
 | fibonacci/zone | left + right | 10 |
 | derived_zone | left + right + 1 | 11 |
 | rolling_window | size | size |
+| displacement | 1 | 1 |
+| fair_value_gap | 3 | 3 |
+| order_block | max(lookback+2, left+right) | varies |
+| liquidity_zones | (left+right) * min_touches | varies |
+| premium_discount | left + right | 10 |
+| breaker_block | (left+right) * 4 | 40 |
 
 Engine skips first `max(all_warmups)` bars automatically.
 
@@ -704,31 +737,25 @@ account:
 
 ### Embedding in plays
 
-The `synthetic:` block is **metadata only**. It defines how to generate test data for the play but is **NOT auto-activated**. To use it, pass `--synthetic` on the CLI:
+The `validation:` block configures synthetic data for `--synthetic` backtests. It is **NOT auto-activated** — pass `--synthetic` on the CLI:
 
 ```bash
-# Uses real data (synthetic: block IGNORED)
+# Uses real data (validation: block IGNORED)
 python trade_cli.py backtest run --play my_play
 
-# Uses synthetic data via CLI args
+# Uses synthetic data — pattern from play's validation: block
 python trade_cli.py backtest run --play my_play --synthetic
 
-# Programmatic callers (validate.py) auto-use synthetic: block via create_engine_from_play()
+# Programmatic callers (validate.py) auto-use validation: block via create_engine_from_play()
 ```
 
 ```yaml
-synthetic:
+validation:
   pattern: "trend_up_clean"
-  bars: 500
-  seed: 42
-  config:                     # Optional overrides
-    trend_magnitude: 0.25
-    pullback_depth: 0.20
-
-expected:                     # Optional assertions
-  min_trades: 3
-  pnl_direction: positive
 ```
+
+Bars are auto-computed from indicator/structure warmup requirements. CLI can override:
+`--synthetic-bars 500`, `--synthetic-seed 42`, `--synthetic-pattern trend_stairs`
 
 Choose a pattern that matches the strategy concept:
 

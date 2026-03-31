@@ -101,13 +101,5 @@ risk:
   take_profit_pct: 6.0
   max_position_pct: 100.0
 
-synthetic:
-  pattern: "trend_up_clean"
-  bars: 500
-  seed: 42
-
-expected:
-  min_trades: 1
-
 validation:
   pattern: "trend_up_clean"

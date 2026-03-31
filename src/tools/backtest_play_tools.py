@@ -208,6 +208,7 @@ def backtest_preflight_play_tool(
         report_dict["env"] = env
         report_dict["db_path"] = str(db_path)
         report_dict["symbol"] = symbol
+        report_dict["exec_tf"] = exec_tf
 
         if preflight_report.overall_status.value == "passed":
             return ToolResult(

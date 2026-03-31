@@ -211,6 +211,9 @@ class PlayEngine:
         # Incremental state for structures (swing, trend, zones)
         # This is shared with data_provider in backtest mode
         self._incremental_state: MultiTFIncrementalState | None = None
+        # When True, LiveDataProvider owns structure updates (on_candle_close).
+        # PlayEngine skips _update_incremental_state to avoid double-update.
+        self._live_structures_external: bool = False
 
         # 3-feed system for multi-timeframe indicators (set by parity test or runner)
         self._low_tf_feed: FeedStore | None = None   # FeedStore for low_tf (always present)
@@ -418,7 +421,8 @@ class PlayEngine:
         self._update_high_tf_med_tf_indices(candle)
 
         # 1. Update incremental state (structures)
-        if self._incremental_state is not None:
+        # Skip when LiveDataProvider owns structure updates (on_candle_close handles it)
+        if self._incremental_state is not None and not self._live_structures_external:
             self._update_incremental_state(bar_index, candle)
 
         # 2. Check readiness (warmup complete, data available)
