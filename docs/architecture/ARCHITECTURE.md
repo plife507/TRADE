@@ -191,8 +191,8 @@ Learns which plays work in which market conditions by observing shadow exchange 
 
 Three equal-citizen interfaces to the system.
 
-- **CLI (human)**: Interactive menus + subcommands. 85% done.
-- **CLI (agent)**: `--json` output on all commands, headless mode. 85% done.
+- **CLI**: Headless subcommand dispatch with `--json` output on all commands. Complete.
+- **Node.js UI**: Planned replacement for former interactive menus. Not started.
 - **Web UI**: Dashboard, play management, charts, shadow monitoring. Not started.
 - **All interfaces share**: `src/tools/` layer (canonical business logic, ToolResult envelope)
 

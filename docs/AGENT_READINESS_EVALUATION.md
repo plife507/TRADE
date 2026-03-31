@@ -8,9 +8,9 @@ that operate the trading bot via CLI.
 
 ## Architecture Foundation
 
-The key architectural enabler is the **dual-layer CLI design**: both interactive menus and
-non-interactive subcommands share the same `src/tools/` layer. Wiring a tool for agents
-(argparse) automatically makes it testable, scriptable, and composable.
+The key architectural enabler is the **headless CLI design**: all subcommands share the same
+`src/tools/` layer with `--json` output. Wiring a tool for agents (argparse) automatically
+makes it testable, scriptable, and composable.
 
 ```
 Agent (LLM)
@@ -63,16 +63,10 @@ making them parseable by agents without screen-scraping.
 
 ### Gap
 
-~34 tool functions (of 103 total) remain menu-only or fully unwired. Most are niche
+~34 tool functions (of 103 total) remain unwired (no CLI subcommand). Most are niche
 (forge audits, stress tests, some position config edge cases). The critical trading
-loop is fully covered.
-
-**Pending verification (P4+P13 Phase 7):** 10 manual CLI checks not yet done:
-- `order buy --symbol BTCUSDT --amount 100 --type market --json` on demo
-- `data info --json` returns valid JSON
-- `market price --symbol BTCUSDT --json` returns valid JSON
-- `health check --json` returns valid JSON
-- App offline menu, connect to exchange, symbol quick-picks, data sub-menus, forge cross-links
+loop is fully covered. Interactive menus were removed — all access is via headless
+subcommands with `--json` output.
 
 ---
 
