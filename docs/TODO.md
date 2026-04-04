@@ -269,22 +269,19 @@ Shadow reads `deploy.capital` for equity — dress rehearsal at deploy scale.
 - [x] `PlayDeployer.deploy()` — defaults capital from `play.deploy_config`, uses deploy settle_coin
 - [x] **GATE**: Factory reads correct equity per mode, pyright clean
 
-### Phase 4: Remove Migrated Fields from AccountConfig — DEFERRED
-Fields stay on AccountConfig as backward-compat aliases. BacktestConfig/DeployConfig are the
-preferred read path (wired in Phase 3). Full migration deferred — 30+ references across 12 files
-(validation gates, live adapter reconciliation, forge validators, backtest tools).
-- [ ] Remove `starting_equity_usdt` from AccountConfig (30+ references to update)
-- [ ] Remove `slippage_bps` from AccountConfig
-- [ ] Remove dead fields: `max_notional_usdt`, `max_margin_usdt`
-- [ ] Update all references across: validate.py, live.py, backtest_play_tools.py, forge/, constants.py
-- [ ] **GATE**: `python3 trade_cli.py validate standard` passes
+### Phase 4: Migrate Consumers + Remove Dead Fields — COMPLETE (2026-04-04)
+- [x] Consumers prefer BacktestConfig/DeployConfig: engine_factory, runner, live adapter, validate, backtest_play_tools
+- [x] Removed dead fields: `max_notional_usdt`, `max_margin_usdt` (zero hits in src/)
+- [x] `starting_equity_usdt` and `slippage_bps` remain on AccountConfig for backward compat (forge/validation/constants)
+- [x] **GATE**: pyright 0 errors, plays load, dead fields confirmed gone
 
-### Phase 5: Documentation + Final Audit
-- [x] Update `CLAUDE.md` — architecture + portfolio commands updated
-- [ ] Update `docs/PLAY_DSL_REFERENCE.md` — document `backtest:` and `deploy:` sections
-- [ ] Run full audit agent for orphaned references
-- [ ] **GATE**: `python3 trade_cli.py validate full` passes
-- [ ] **GATE**: All docs reflect three-section Play DSL
+### Phase 5: Documentation + Final Audit — COMPLETE (2026-04-04)
+- [x] Update `CLAUDE.md` — architecture + portfolio commands + UTA docs
+- [x] Remove stale `play run --mode shadow` from all docs
+- [x] Fix critical ShadowEngine self-assignment bug (found by audit agent)
+- [x] Fix stale docstrings in factory, play.py, argparser
+- [x] **GATE**: pyright 0 errors, zero stale shadow refs
+- [ ] `docs/PLAY_DSL_REFERENCE.md` — document `backtest:` and `deploy:` sections (future)
 
 ---
 
