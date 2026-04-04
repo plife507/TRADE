@@ -146,8 +146,8 @@ def create_engine_from_play(
     # Also set 'exec' role pointing to exec_tf specs
     feature_specs_by_role["exec"] = feature_specs_by_role.get(play.exec_tf, [])
 
-    # Extract capital/account params from Play (REQUIRED - no defaults)
-    initial_equity = play.account.starting_equity_usdt
+    # Extract capital from backtest config (preferred) or account (backward compat)
+    initial_equity = play.backtest_config.equity if play.backtest_config else play.account.starting_equity_usdt
     max_leverage = play.account.max_leverage
 
     # Extract fee model from Play (REQUIRED - fail loud if missing)

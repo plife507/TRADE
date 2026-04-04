@@ -99,8 +99,6 @@ class AccountConfig:
     fee_model: FeeModel | None = None
     slippage_bps: float | None = None
     min_trade_notional_usdt: float | None = None
-    max_notional_usdt: float | None = None
-    max_margin_usdt: float | None = None
     maintenance_margin_rate: float | None = None
     mm_deduction: float = 0.0  # Bybit mmDeduction (0 for tier 1)
     on_sl_beyond_liq: str = "reject"  # "reject", "adjust", or "warn"
@@ -142,10 +140,6 @@ class AccountConfig:
             result["slippage_bps"] = self.slippage_bps
         if self.min_trade_notional_usdt is not None:
             result["min_trade_notional_usdt"] = self.min_trade_notional_usdt
-        if self.max_notional_usdt is not None:
-            result["max_notional_usdt"] = self.max_notional_usdt
-        if self.max_margin_usdt is not None:
-            result["max_margin_usdt"] = self.max_margin_usdt
         if self.maintenance_margin_rate is not None:
             result["maintenance_margin_rate"] = self.maintenance_margin_rate
         if self.mm_deduction != 0.0:
@@ -240,8 +234,6 @@ class AccountConfig:
             fee_model=fee_model,
             slippage_bps=float(slippage),
             min_trade_notional_usdt=float(min_notional),
-            max_notional_usdt=float(d["max_notional_usdt"]) if "max_notional_usdt" in d else None,
-            max_margin_usdt=float(d["max_margin_usdt"]) if "max_margin_usdt" in d else None,
             maintenance_margin_rate=float(mmr),
             mm_deduction=mm_deduction,
             on_sl_beyond_liq=str(d.get("on_sl_beyond_liq", "reject")),

@@ -1912,13 +1912,13 @@ class LiveExchange:
         assert account is not None, "Play.account is required for live trading"
 
         # --- Equity: use real exchange balance ---
+        play_equity = self._play.deploy_config.capital if self._play.deploy_config else account.starting_equity_usdt
         actual_equity = self._last_known_equity
-        if actual_equity > 0 and abs(actual_equity - account.starting_equity_usdt) > 0.01:
+        if actual_equity > 0 and abs(actual_equity - play_equity) > 0.01:
             logger.info(
-                f"Equity: Play ${account.starting_equity_usdt:,.2f} "
-                f"-> exchange ${actual_equity:,.2f}"
+                "Equity: Play $%.2f -> exchange $%.2f",
+                play_equity, actual_equity,
             )
-            account = replace(account, starting_equity_usdt=actual_equity)
             self._config.initial_equity = actual_equity
 
         # --- Fees: use actual exchange rates ---

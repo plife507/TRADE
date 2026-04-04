@@ -277,7 +277,7 @@ def _resolve_backtest_config(
     starting_equity = (
         initial_equity_override
         if initial_equity_override is not None
-        else play.account.starting_equity_usdt
+        else (play.backtest_config.equity if play.backtest_config else play.account.starting_equity_usdt)
     )
     max_leverage = (
         max_leverage_override

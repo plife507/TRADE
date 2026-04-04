@@ -643,7 +643,7 @@ def _write_results_summary(ctx: _RunContext) -> ResultsSummary:
 
     # Extract leverage and equity from Play
     play_leverage = int(ctx.play.account.max_leverage) if ctx.play.account else 1
-    play_initial_equity = ctx.play.account.starting_equity_usdt if ctx.play.account else 10000.0
+    play_initial_equity = ctx.play.backtest_config.equity if ctx.play.backtest_config else (ctx.play.account.starting_equity_usdt if ctx.play.account else 10000.0)
 
     summary = compute_results_summary(
         play_id=ctx.play.id,

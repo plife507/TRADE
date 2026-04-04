@@ -1120,7 +1120,8 @@ def _gate_pre_live_balance(play_id: str) -> GateResult:
         elif result.data:
             available = float(result.data.get("available", 0))
             assert play.account is not None
-            required = play.account.starting_equity_usdt
+            # Pre-live: check against deploy capital (live scale), not backtest equity
+            required = play.deploy_config.capital if play.deploy_config else play.account.starting_equity_usdt
             if available < required:
                 failures.append(f"Insufficient balance: {available:.2f} < {required:.2f} USDT")
     except Exception as e:
