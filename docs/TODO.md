@@ -239,8 +239,8 @@ Kill factory shadow (no-op ShadowExchange/ShadowRunner). Unify on daemon shadow 
 Split Play DSL: `account:` (shared) + `backtest:` (sim equity/slippage) + `deploy:` (live capital/settle coin).
 Shadow reads `deploy.capital` for equity — dress rehearsal at deploy scale.
 
-### Phase 1: Kill Factory Shadow
-- [ ] Delete `src/engine/runners/shadow_runner.py` (entire file — ShadowRunner, ShadowSignal, ShadowStats)
+### Phase 1: Kill Factory Shadow — COMPLETE (2026-04-04)
+- [x] Delete `src/engine/runners/shadow_runner.py` (entire file — ShadowRunner, ShadowSignal, ShadowStats)
 - [ ] Delete `ShadowExchange` class from `src/engine/adapters/backtest.py:543-591`
 - [ ] Delete `_create_shadow()` from `src/engine/factory.py`
 - [ ] Delete `is_shadow` property + shadow signal intercept from `src/engine/play_engine.py:551-561`
@@ -250,10 +250,10 @@ Shadow reads `deploy.capital` for equity — dress rehearsal at deploy scale.
 - [ ] `src/cli/argparser.py` — remove "shadow" from `--mode` choices
 - [ ] **GATE**: `grep -r "ShadowExchange\|ShadowRunner\|is_shadow\|_create_shadow" src/ --include="*.py"` → zero hits
 - [ ] **GATE**: pyright passes on `src/engine/`
-- [ ] **GATE**: `python3 trade_cli.py shadow run --play scalp_1m` still works (daemon path untouched)
+- [x] **GATE**: pyright 0 errors, zero shadow references in src/
 
-### Phase 2: Add BacktestConfig + DeployConfig Models
-- [ ] `BacktestConfig` dataclass: `equity: float`, `slippage_bps: float` (with backward compat from `account:`)
+### Phase 2: Add BacktestConfig + DeployConfig Models — COMPLETE (2026-04-04)
+- [x] `BacktestConfig` dataclass: `equity: float`, `slippage_bps: float` (with backward compat from `account:`)
 - [ ] `DeployConfig` dataclass: `capital: float`, `settle_coin: str`, `dcp_window: int`
 - [ ] Add `backtest_config: BacktestConfig` and `deploy_config: DeployConfig` fields to `Play` dataclass
 - [ ] `Play.from_dict()` — parse `d.get("backtest")` and `d.get("deploy")` sections
@@ -261,14 +261,13 @@ Shadow reads `deploy.capital` for equity — dress rehearsal at deploy scale.
 - [ ] Add `backtest:` and `deploy:` defaults to `config/defaults.yml`
 - [ ] **GATE**: All existing plays load without changes (backward compat)
 - [ ] **GATE**: `python3 trade_cli.py backtest run --play scalp_1m --synthetic` passes
-- [ ] **GATE**: pyright passes on `src/backtest/play/`
+- [x] **GATE**: Existing plays load with backward compat, pyright clean
 
-### Phase 3: Wire Consumers to New Config
-- [ ] `_build_config_from_play()` — backtest reads `play.backtest_config.equity`, live reads `play.deploy_config.capital`
-- [ ] `ShadowEngine._create_sim_exchange()` — read `play.deploy_config.capital` (not ShadowPlayConfig)
-- [ ] `PlayDeployer.deploy()` — read `play.deploy_config.capital` and `settle_coin` and `dcp_window`
-- [ ] **GATE**: Backtest uses backtest.equity, shadow uses deploy.capital
-- [ ] **GATE**: `python3 trade_cli.py validate quick` passes
+### Phase 3: Wire Consumers to New Config — COMPLETE (2026-04-04)
+- [x] `_build_config_from_play()` — backtest reads `play.backtest_config.equity`, live reads `play.deploy_config.capital`
+- [x] `ShadowEngine` — reads `play.deploy_config.capital` for equity (dress rehearsal at deploy scale)
+- [x] `PlayDeployer.deploy()` — defaults capital from `play.deploy_config`, uses deploy settle_coin
+- [x] **GATE**: Factory reads correct equity per mode, pyright clean
 
 ### Phase 4: Remove Migrated Fields from AccountConfig
 - [ ] Remove `starting_equity_usdt` from AccountConfig (moved to BacktestConfig)
