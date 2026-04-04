@@ -26,11 +26,13 @@ When working with this codebase, target `src/` not `scripts/` unless explicitly 
 
 ```text
 src/engine/        # ONE unified engine (PlayEngine) for backtest/live
+src/shadow/        # Shadow daemon (SimExchange + PerformanceDB, multi-play, live WS data)
+src/core/          # Exchange, portfolio, sub-account management, risk
 src/indicators/    # 44 indicators (all incremental O(1))
 src/structures/    # 7 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure)
 src/backtest/      # Infrastructure only (sim, runtime, features) - NOT an engine
 src/data/          # DuckDB historical data (1m candles mandatory for all runs)
-src/tools/         # CLI/API surface
+src/tools/         # CLI/API surface (22 portfolio tools + 60+ existing)
 ```
 
 **1m data is mandatory**: Every backtest/live run pulls 1m candles regardless of exec timeframe. Drives fill simulation, TP/SL evaluation, and signal subloop.
@@ -95,7 +97,7 @@ All loggers live under `trade.*`. Never create orphan loggers.
 
 ### Backtest Event Journal
 
-Every backtest writes `events.jsonl` to its artifact folder via `BacktestJournal` (in `src/engine/journal.py`). Records fill and close events per trade. Live/demo uses `TradeJournal` which writes to `data/journal/`.
+Every backtest writes `events.jsonl` to its artifact folder via `BacktestJournal` (in `src/engine/journal.py`). Records fill and close events per trade. Live uses `TradeJournal` which writes to `data/journal/`.
 
 ## Hash Tracing
 
@@ -381,9 +383,22 @@ python trade_cli.py debug snapshot-plumbing --play X   # Snapshot field check
 python trade_cli.py debug determinism --run-a A --run-b B  # Compare runs
 python trade_cli.py debug metrics                      # Financial calc audit
 
-# Live/Demo
-python trade_cli.py play run --play X --mode demo   # Demo mode (no real money)
+# Shadow (daemon — full sim with live WS data)
+python trade_cli.py shadow run --play X                # Single play shadow
+python trade_cli.py shadow daemon                      # Multi-play VPS daemon
+
+# Live
 python trade_cli.py play run --play X --mode live --confirm  # Live (REAL MONEY)
+
+# Portfolio (UTA management — all --json for web UI)
+python trade_cli.py portfolio snapshot --json           # Full UTA snapshot
+python trade_cli.py portfolio wallet --json             # All wallet coins
+python trade_cli.py portfolio instruments --settle-coin USDC --json  # List USDC perps
+python trade_cli.py portfolio resolve BTCPERP --json    # Symbol → category/settle
+python trade_cli.py portfolio subs list --json          # Sub-accounts
+python trade_cli.py portfolio deploy --play X --capital 50 --confirm  # Deploy to sub
+python trade_cli.py portfolio stop --uid 12345          # Stop deployed play
+python trade_cli.py portfolio recall-all --confirm      # Emergency stop all
 ```
 
 ## Validation Coverage
@@ -450,11 +465,20 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 | Project status & active work | `docs/TODO.md` |
 | New feature specs (FVG, OB, etc.) | `docs/MARKET_STRUCTURE_FEATURES.md` |
 | DSL syntax (frozen) | `docs/PLAY_DSL_REFERENCE.md` |
+| DSL playbook (modular) | `docs/dsl/` (8 modules) |
 | Validation best practices | `docs/VALIDATION_BEST_PRACTICES.md` |
 | Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
 | CLI patterns | `docs/CLI_QUICK_REFERENCE.md` |
 | Agent readiness scorecard | `docs/AGENT_READINESS_EVALUATION.md` |
+| Shadow exchange design | `docs/SHADOW_EXCHANGE_DESIGN.md` |
 | Shadow order fidelity review | `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` |
+| VPS deployment | `docs/DEPLOYMENT_GUIDE.md` |
+| Multi-account architecture | `docs/MULTI_ACCOUNT_ARCHITECTURE.md` |
+| CRT + TBS strategy review | `docs/CRT_TBS_STRATEGY_REVIEW.md` |
+| Structure detection audit | `docs/STRUCTURE_DETECTION_AUDIT.md` |
+| TV parity verification design | `docs/TV_PARITY_DESIGN.md` |
+| UTA portfolio design (API reference) | `docs/UTA_PORTFOLIO_DESIGN.md` |
+| UTA portfolio spec (implementation) | `docs/UTA_PORTFOLIO_SPEC.md` |
 | System defaults | `config/defaults.yml` |
 
 ## Reference Documentation

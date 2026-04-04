@@ -6,11 +6,8 @@ Flow: Signal -> RiskManager.check() -> ExchangeManager
 Now supports WebSocket-fed order and execution tracking for faster feedback.
 
 SAFETY GUARD RAILS:
-- Validates trading mode consistency before executing any order
-- Enforces strict mode/API mapping:
-  - PAPER mode -> DEMO API only (BYBIT_USE_DEMO=true)
-  - REAL mode -> LIVE API only (BYBIT_USE_DEMO=false)
-- Blocks any other combination as invalid configuration
+- Validates live credentials exist before executing any order
+- Price deviation guard (G14.3) rejects orders during flash crashes
 """
 
 import threading
@@ -222,24 +219,15 @@ class OrderExecutor:
 
     def _validate_trading_mode(self) -> tuple[bool, str]:
         """
-        SAFETY GUARD RAIL: Validate trading mode consistency.
+        SAFETY GUARD RAIL: Validate live credentials exist before trading.
 
         Returns:
             Tuple of (is_valid, error_message)
         """
         config = get_config()
-        is_consistent, messages = config.validate_trading_mode_consistency()
-
-        if not is_consistent:
-            # Return the first error message
-            error_msg = messages[0] if messages else "Trading mode consistency check failed"
-            return False, error_msg
-
-        # Log warnings but don't block
-        for msg in messages:
-            if "[WARN]" in msg:
-                self.logger.warning(msg.replace("[WARN] ", ""))
-
+        can_trade, reason = config.validate_for_trading()
+        if not can_trade:
+            return False, reason
         return True, ""
 
     def execute(self, signal: Signal) -> ExecutionResult:

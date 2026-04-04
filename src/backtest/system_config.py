@@ -190,7 +190,7 @@ class DataBuildConfig:
     The env field determines which DuckDB file is used:
     - "backtest": market_data_backtest.duckdb (default for backtests, uses live API data)
     - "live": market_data_live.duckdb (for live trading warm-up)
-    - "demo": market_data_demo.duckdb (for paper trading)
+    (No demo database -- only backtest and live are supported)
     """
     env: str = "backtest"  # Default to backtest DB for historical simulations
     period: str = "3M"

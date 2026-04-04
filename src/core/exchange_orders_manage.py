@@ -15,6 +15,7 @@ from typing import Any, TYPE_CHECKING
 from ..utils.datetime_utils import parse_bybit_ts as _parse_bybit_ts
 from ..utils.helpers import safe_float
 from ..utils.logger import get_module_logger
+from ..config.constants import LINEAR_SETTLE_COINS
 from ..utils.time_range import TimeRange
 
 logger = get_module_logger(__name__)
@@ -28,12 +29,18 @@ if TYPE_CHECKING:
 # =============================================================================
 
 def get_open_orders(manager: "ExchangeManager", symbol: str | None = None) -> list["Order"]:
-    """Get all open orders."""
+    """Get all open orders. When no symbol, queries all settle coins."""
     from .exchange_manager import Order
-    
+
     try:
-        raw_orders = manager.bybit.get_open_orders(symbol)
-        
+        if symbol:
+            raw_orders = manager.bybit.get_open_orders(symbol=symbol)
+        else:
+            # Query all settle coins to get complete order list
+            raw_orders = []
+            for settle_coin in LINEAR_SETTLE_COINS:
+                raw_orders.extend(manager.bybit.get_open_orders(settle_coin=settle_coin))
+
         orders = []
         for order in raw_orders:
             orders.append(Order(
@@ -80,7 +87,6 @@ def cancel_order(
         return False
     
     try:
-        manager._validate_trading_operation()
         manager.bybit.cancel_order(symbol=symbol, order_id=order_id, order_link_id=order_link_id)
         manager.logger.info("Cancelled order %s for %s", order_id or order_link_id, symbol)
         return True
@@ -92,8 +98,6 @@ def cancel_order(
 def cancel_all_orders(manager: "ExchangeManager", symbol: str | None = None) -> bool:
     """Cancel all open orders."""
     try:
-        manager._validate_trading_operation()
-        
         orders = get_open_orders(manager, symbol)
         if not orders:
             manager.logger.debug("No orders to cancel%s", f" for {symbol}" if symbol else "")
@@ -144,8 +148,6 @@ def amend_order(
         return False
     
     try:
-        manager._validate_trading_operation()
-        
         kwargs = {"symbol": symbol, "order_id": order_id, "order_link_id": order_link_id}
         if qty is not None:
             kwargs["qty"] = str(qty)
@@ -180,12 +182,7 @@ def close_position(
     from .exchange_manager import OrderResult
     from . import exchange_websocket as ws
     from . import exchange_positions as pos
-    
-    try:
-        manager._validate_trading_operation()
-    except ValueError as e:
-        return OrderResult(success=False, error=str(e))
-    
+
     position = manager.get_position(symbol)
     
     if position is None or not position.is_open:
@@ -235,12 +232,7 @@ def close_position(
 def close_all_positions(manager: "ExchangeManager") -> list["OrderResult"]:
     """Close all open positions."""
     from .exchange_manager import OrderResult
-    
-    try:
-        manager._validate_trading_operation()
-    except ValueError as e:
-        return [OrderResult(success=False, error=str(e))]
-    
+
     results = []
     positions = manager.get_all_positions()
     
@@ -263,10 +255,19 @@ def get_order_history(
     symbol: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
-    """Get order history. TimeRange is REQUIRED."""
+    """Get order history. TimeRange is REQUIRED. Queries all settle coins when no symbol."""
     try:
-        result = manager.bybit.get_order_history(time_range=time_range, symbol=symbol, limit=limit)
-        return result.get("list", [])
+        if symbol:
+            result = manager.bybit.get_order_history(time_range=time_range, symbol=symbol, limit=limit)
+            return result.get("list", [])
+        else:
+            all_orders: list[dict] = []
+            for settle_coin in LINEAR_SETTLE_COINS:
+                result = manager.bybit.get_order_history(
+                    time_range=time_range, symbol=None, limit=limit, settle_coin=settle_coin,
+                )
+                all_orders.extend(result.get("list", []))
+            return all_orders
     except Exception as e:
         manager.logger.error("Get order history failed: %s", e)
         return []
@@ -311,11 +312,6 @@ def batch_market_orders(
     """Execute multiple market orders in a batch."""
     from .exchange_manager import OrderResult
     from . import exchange_instruments as inst
-
-    try:
-        manager._validate_trading_operation()
-    except ValueError as e:
-        return [OrderResult(success=False, error=str(e))]
 
     # Safety: check panic state before batch execution
     from .safety import get_panic_state
@@ -387,11 +383,6 @@ def batch_limit_orders(
     """Execute multiple limit orders in a batch."""
     from .exchange_manager import OrderResult
     from . import exchange_instruments as inst
-
-    try:
-        manager._validate_trading_operation()
-    except ValueError as e:
-        return [OrderResult(success=False, error=str(e))]
 
     # Safety: check panic state before batch execution
     from .safety import get_panic_state
@@ -467,12 +458,6 @@ def batch_cancel_orders(
     orders: list[dict[str, str]],
 ) -> list[bool]:
     """Cancel multiple orders in a batch."""
-    try:
-        manager._validate_trading_operation()
-    except ValueError as e:
-        manager.logger.error(str(e))
-        return [False] * len(orders)
-    
     if len(orders) > 10:
         results = []
         for i in range(0, len(orders), 10):
@@ -495,13 +480,7 @@ def batch_amend_orders(
 ) -> list[bool]:
     """Amend multiple orders in a batch."""
     from . import exchange_instruments as inst
-    
-    try:
-        manager._validate_trading_operation()
-    except ValueError as e:
-        manager.logger.error(str(e))
-        return [False] * len(orders)
-    
+
     if len(orders) > 10:
         results = []
         for i in range(0, len(orders), 10):

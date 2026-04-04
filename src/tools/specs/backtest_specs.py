@@ -52,7 +52,7 @@ SPECS = [
         "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
-            "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
+            "env": {"type": "string", "description": "Data environment ('live')", "default": "live"},
             "start": {"type": "string", "description": "Window start datetime", "optional": True},
             "end": {"type": "string", "description": "Window end datetime", "optional": True},
             "sync": {"type": "boolean", "description": "Auto-fetch missing data", "default": False},
@@ -65,7 +65,7 @@ SPECS = [
         "category": "backtest.play",
         "parameters": {
             "play_id": {"type": "string", "description": "Play identifier"},
-            "env": {"type": "string", "description": "Data environment ('live' or 'demo')", "default": "live"},
+            "env": {"type": "string", "description": "Data environment ('live')", "default": "live"},
             "start": {"type": "string", "description": "Window start datetime", "optional": True},
             "end": {"type": "string", "description": "Window end datetime", "optional": True},
             "smoke": {"type": "boolean", "description": "Run in smoke mode (small window)", "default": False},

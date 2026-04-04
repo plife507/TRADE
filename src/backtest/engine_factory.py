@@ -6,7 +6,7 @@ This module provides factory functions for creating and running backtests:
 - run_engine_with_play: Run engine with Play signal evaluation
 
 DataBuilder handles all data preparation.
-PlayEngine is the unified engine for backtest/demo/live modes.
+PlayEngine is the unified engine for backtest/live modes.
 """
 
 from dataclasses import dataclass
@@ -80,7 +80,7 @@ def create_engine_from_play(
         on_snapshot: Optional snapshot callback for auditing
         synthetic_provider: Optional SyntheticDataProvider for DB-free validation
         window_name: Window name for engine config (default: "run")
-        data_env: Data environment ("backtest", "live", "demo") - determines DuckDB file
+        data_env: Data environment ("backtest", "live") - determines DuckDB file
 
     Returns:
         PlayEngine with pre-built FeedStores, SimulatedExchange, and incremental state
@@ -146,8 +146,8 @@ def create_engine_from_play(
     # Also set 'exec' role pointing to exec_tf specs
     feature_specs_by_role["exec"] = feature_specs_by_role.get(play.exec_tf, [])
 
-    # Extract capital/account params from Play (REQUIRED - no defaults)
-    initial_equity = play.account.starting_equity_usdt
+    # Extract capital from backtest config (preferred) or account (backward compat)
+    initial_equity = play.backtest_config.equity if play.backtest_config else play.account.starting_equity_usdt
     max_leverage = play.account.max_leverage
 
     # Extract fee model from Play (REQUIRED - fail loud if missing)
@@ -344,7 +344,7 @@ def create_engine_from_play(
         warmup_by_tf=warmup_by_tf,
         warmup_bars_by_role=warmup_bars_by_role,
         feature_specs_by_role=feature_specs_by_role,
-        # Data environment (backtest, live, demo) - determines which DuckDB to use
+        # Data environment (backtest, live) - determines which DuckDB to use
         data_build=DataBuildConfig(env=data_env),
     )
 

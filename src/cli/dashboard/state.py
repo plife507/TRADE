@@ -15,7 +15,7 @@ class DashboardState:
     play_name: str = ""
     description: str = ""
     symbol: str = ""
-    mode: str = "DEMO"
+    mode: str = "LIVE"
     exec_tf: str = ""
     leverage: float = 1.0
 

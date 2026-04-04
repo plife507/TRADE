@@ -8,26 +8,26 @@
 
 ## 1. What Is the Shadow Exchange?
 
-The Shadow Exchange is an **always-on paper trading system** that runs proven plays against real market data using the SimExchange for order execution. It is NOT demo mode.
+The Shadow Exchange is an **always-on paper trading system** that runs proven plays against real market data using the SimExchange for order execution.
 
-| Aspect | Demo Mode | Shadow Exchange |
-|--------|-----------|-----------------|
-| Exchange | Bybit demo API (`api-demo.bybit.com`) | Local SimExchange |
-| Orders | REST API calls to Bybit demo | Simulated locally (zero latency) |
-| Parallelism | API rate-limited (120 req/s shared) | Unlimited (CPU-bound only) |
-| Execution model | Bybit's demo matching engine | Our SimExchange (configurable slippage, impact) |
-| Data source | Demo WS feed (sometimes stale/different) | **Live** WS feed (real market data) |
-| Fidelity control | Black box (Bybit controls) | Full control (known gaps, tunable) |
-| Use case | Quick single-play test | Multi-play extended run, M6 training ground |
-| Cost | Free Bybit demo account | Free (no API calls for orders) |
-| Duration | Minutes to hours | Days, weeks, months |
+| Aspect | Shadow Exchange |
+|--------|-----------------|
+| Exchange | Local SimExchange |
+| Orders | Simulated locally (zero latency) |
+| Parallelism | Unlimited (CPU-bound only) |
+| Execution model | Our SimExchange (configurable slippage, impact) |
+| Data source | **Live** WS feed (real market data) |
+| Fidelity control | Full control (known gaps, tunable) |
+| Use case | Multi-play extended run, M6 training ground |
+| Cost | Free (no API calls for orders) |
+| Duration | Days, weeks, months |
 
 ### Why SimExchange + Real Data?
 
 1. **Unlimited parallelism** — 50+ plays simultaneously with no API rate limits
 2. **Full accounting** — Bybit-aligned ledger, margin, liquidation, funding (already built)
 3. **Real market data** — Live WS gives real prices, funding rates, volume
-4. **Known fidelity** — Every gap is documented (see `SHADOW_ORDER_FIDELITY_REVIEW.md`), not a Bybit black box
+4. **Known fidelity** — Every gap is documented (see `SHADOW_ORDER_FIDELITY_REVIEW.md`), fully tunable
 5. **M6 training ground** — Market Intelligence learns regime-to-performance correlation from shadow results
 6. **Deterministic replay** — Can replay shadow periods for analysis
 
@@ -446,7 +446,6 @@ The existing `EngineManager` already has `InstanceMode.SHADOW`. We extend its li
 ```python
 # Current limits:
 _max_live = 1               # 1 live instance (safety)
-_max_demo_per_symbol = 1    # 1 demo per symbol
 _max_backtest = 1           # 1 backtest (DuckDB)
 
 # New shadow limits:
@@ -601,7 +600,7 @@ class ShadowPerformanceDB:
 
 ### DuckDB Concurrency
 
-Per project rules: **no parallel DuckDB writes**. Shadow uses its own DB file (`shadow_performance.duckdb`), separate from backtest/live/demo databases. The `ShadowOrchestrator` is the single writer — all engines funnel snapshots/trades through the orchestrator's write queue.
+Per project rules: **no parallel DuckDB writes**. Shadow uses its own DB file (`shadow_performance.duckdb`), separate from backtest/live databases. The `ShadowOrchestrator` is the single writer — all engines funnel snapshots/trades through the orchestrator's write queue.
 
 ```python
 # Write queue pattern (in ShadowOrchestrator)
@@ -1153,6 +1152,6 @@ deploy/                               # VPS deployment files
 | DuckDB corruption | Performance data lost | WAL mode, periodic backups, JSONL journals as fallback |
 | VPS reboot | All plays stop | systemd Restart=always, state persistence + resume |
 | Memory OOM | Process killed | systemd MemoryMax, per-engine budgets, alert on high usage |
-| Sim divergence | Graduation scores unreliable | Fidelity fixes (H1-H4), periodic demo-vs-shadow comparison |
+| Sim divergence | Graduation scores unreliable | Fidelity fixes (H1-H4), periodic shadow-vs-live comparison |
 | Bybit API change | WS format breaks | Version-pinned pybit, canary play for early detection |
 | Clock drift | Timestamp misalignment | NTP on VPS, `time.monotonic()` for intervals |

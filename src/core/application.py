@@ -151,10 +151,7 @@ class Application:
         self.logger.info("Initializing application...")
 
         # Emit app.init.start event
-        self.logger.info(
-            "[app.init.start] trading_mode=%s use_demo=%s",
-            self.config.trading.mode, self.config.bybit.use_demo,
-        )
+        self.logger.info("[app.init.start] mode=LIVE")
 
         try:
             # Validate config

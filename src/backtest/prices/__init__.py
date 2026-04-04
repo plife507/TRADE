@@ -1,7 +1,7 @@
 """
 Price module.
 
-Provides PriceSource protocol for unified backtest/demo/live interface.
+Provides PriceSource protocol for unified backtest/live interface.
 MARK is implicit - always available, never declared in Play.
 """
 

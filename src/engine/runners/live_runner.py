@@ -1,7 +1,7 @@
 """
 Live runner for PlayEngine.
 
-Drives the PlayEngine in live/demo mode using WebSocket data:
+Drives the PlayEngine in live mode using WebSocket data:
 1. Subscribe to real-time candle stream
 2. Process each closed candle through engine
 3. Execute signals through exchange adapter
@@ -11,7 +11,7 @@ Usage:
     from src.engine import PlayEngineFactory
     from src.engine.runners import LiveRunner
 
-    engine = PlayEngineFactory.create(play, mode="demo")
+    engine = PlayEngineFactory.create(play, mode="live", confirm_live=True)
     runner = LiveRunner(engine)
     await runner.start()
     # ... runs until stopped or error

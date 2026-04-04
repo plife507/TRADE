@@ -12,6 +12,7 @@ from .market_specs import SPECS as MARKET_SPECS, get_imports as get_market_impor
 from .data_specs import SPECS as DATA_SPECS, get_imports as get_data_imports
 from .system_specs import SPECS as SYSTEM_SPECS, get_imports as get_system_imports
 from .backtest_specs import SPECS as BACKTEST_SPECS, get_imports as get_backtest_imports
+from .portfolio_specs import SPECS as PORTFOLIO_SPECS, get_imports as get_portfolio_imports
 
 ALL_SPECS = (
     ORDERS_SPECS +
@@ -20,7 +21,8 @@ ALL_SPECS = (
     MARKET_SPECS +
     DATA_SPECS +
     SYSTEM_SPECS +
-    BACKTEST_SPECS
+    BACKTEST_SPECS +
+    PORTFOLIO_SPECS
 )
 
 ALL_IMPORTS = {
@@ -31,6 +33,7 @@ ALL_IMPORTS = {
     "data": get_data_imports,
     "system": get_system_imports,
     "backtest": get_backtest_imports,
+    "portfolio": get_portfolio_imports,
 }
 
 __all__ = [
@@ -46,4 +49,5 @@ __all__ = [
     "DATA_SPECS",
     "SYSTEM_SPECS",
     "BACKTEST_SPECS",
+    "PORTFOLIO_SPECS",
 ]

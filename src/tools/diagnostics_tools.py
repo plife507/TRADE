@@ -27,8 +27,7 @@ def test_connection_tool() -> ToolResult:
         exchange = _get_exchange_manager()
         result = exchange.test_connection()
         
-        is_demo = result.get("demo_mode", True)
-        env = "DEMO (fake money)" if is_demo else "LIVE (real money)"
+        env = "LIVE (real money)"
         
         # Determine success - public must work, private should work if key is configured
         public_ok = result.get("public_ok", False)
@@ -57,7 +56,6 @@ def test_connection_tool() -> ToolResult:
             error=error_msg,
             data={
                 "environment": env,
-                "is_demo": is_demo,
                 "base_url": result.get("base_url"),
                 "public_ok": public_ok,
                 "private_ok": private_ok,
@@ -400,7 +398,7 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
     try:
         exchange = _get_exchange_manager()
         conn_result = exchange.test_connection()
-        env = "DEMO" if conn_result.get("demo_mode") else "LIVE"
+        env = "LIVE"
         pub_ok = _OK if conn_result.get("public_ok") else _FAIL
         priv_ok = _OK if conn_result.get("private_ok") else _FAIL
         tests["connection_test"] = {
@@ -415,17 +413,15 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
     total_count = len(tests)
     all_passed = passed_count == total_count
     
-    # Get API environment info (all 4 legs)
+    # Get API environment info (2 legs: trade + data)
     try:
         config = get_config()
         api_env = config.bybit.get_api_environment_summary()
         api_environment = {
-            "trading_mode": api_env["trading"]["mode"],
+            "trading_mode": api_env["trading"].get("trading_mode", "live"),
             "trading_base_url": api_env["trading"]["base_url"],
             "trade_live_configured": api_env["trade_live"]["key_configured"],
-            "trade_demo_configured": api_env["trade_demo"]["key_configured"],
             "data_live_configured": api_env["data_live"]["key_configured"],
-            "data_demo_configured": api_env["data_demo"]["key_configured"],
             "websocket_mode": api_env["websocket"]["mode"],
         }
     except Exception:
@@ -447,82 +443,63 @@ def exchange_health_check_tool(symbol: str) -> ToolResult:
 
 def get_api_environment_tool() -> ToolResult:
     """
-    Get comprehensive API environment information for all 4 legs.
-    
-    The system has 4 independent API legs:
+    Get comprehensive API environment information (2 legs: trade + data).
+
+    The system has 2 API legs:
     - Trade LIVE: Real money trading (api.bybit.com)
-    - Trade DEMO: Fake money trading (api-demo.bybit.com)
     - Data LIVE: Canonical historical data for backtesting (api.bybit.com)
-    - Data DEMO: Demo-only history for demo validation (api-demo.bybit.com)
-    
+
     Returns:
-        ToolResult with all 4 leg statuses and current active mode
+        ToolResult with leg statuses and current active mode
     """
     try:
         config = get_config()
         env = config.bybit.get_api_environment_summary()
-        
+
         # Current active trading mode
         trading = env["trading"]
         websocket = env["websocket"]
         safety = env["safety"]
-        
-        # All 4 legs
+
+        # 2 legs
         trade_live = env["trade_live"]
-        trade_demo = env["trade_demo"]
         data_live = env["data_live"]
-        data_demo = env["data_demo"]
-        
+
         # Build status indicators
         tl = _OK if trade_live["key_configured"] else _FAIL
-        td = _OK if trade_demo["key_configured"] else _FAIL
         dl = _OK if data_live["key_configured"] else _FAIL
-        dd = _OK if data_demo["key_configured"] else _FAIL
-        
+
         trading_status = f"Active Trading: {trading['mode']} ({trading['base_url']})"
-        legs_status = f"Keys: Trade[L:{tl} D:{td}] Data[L:{dl} D:{dd}]"
-        
+        legs_status = f"Keys: Trade[{tl}] Data[{dl}]"
+
         return ToolResult(
             success=True,
             message=f"{trading_status} | {legs_status}",
             data={
                 # Current active trading mode (CLI and docs expect "trading")
-                "trading": {
+                "active_trading": {
                     "mode": trading["mode"],
                     "base_url": trading["base_url"],
                     "key_configured": trading["key_configured"],
-                    "is_demo": trading["is_demo"],
-                    "is_live": trading["is_live"],
                 },
-                # Legacy "data" key for CLI compatibility (shows LIVE data only)
+                # Data key for CLI compatibility (shows LIVE data only)
                 "data": {
                     "mode": "LIVE",
                     "base_url": data_live["base_url"],
                     "key_configured": data_live["key_configured"],
                     "key_source": data_live["key_source"],
                 },
-                # All 4 legs explicitly
+                # Explicit legs
                 "trade_live": {
                     "base_url": trade_live["base_url"],
                     "key_configured": trade_live["key_configured"],
                     "key_source": trade_live["key_source"],
-                },
-                "trade_demo": {
-                    "base_url": trade_demo["base_url"],
-                    "key_configured": trade_demo["key_configured"],
-                    "key_source": trade_demo["key_source"],
                 },
                 "data_live": {
                     "base_url": data_live["base_url"],
                     "key_configured": data_live["key_configured"],
                     "key_source": data_live["key_source"],
                     "purpose": data_live["purpose"],
-                },
-                "data_demo": {
-                    "base_url": data_demo["base_url"],
-                    "key_configured": data_demo["key_configured"],
-                    "key_source": data_demo["key_source"],
-                    "purpose": data_demo["purpose"],
                 },
                 # WebSocket
                 "websocket": {

@@ -21,7 +21,7 @@ def get_database_stats_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
     - Per-symbol open interest breakdown
     
     Args:
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with detailed database stats
@@ -110,7 +110,7 @@ def list_cached_symbols_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
     Each symbol includes: timeframe list, total candles, earliest and latest dates.
     
     Args:
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with list of symbols and their summary data
@@ -191,7 +191,7 @@ def get_symbol_status_tool(symbol: str | None = None, env: DataEnv = DEFAULT_DAT
     
     Args:
         symbol: Specific symbol to check (None for all)
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with symbol status data (aggregated per symbol)
@@ -257,7 +257,7 @@ def get_symbol_summary_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
     use get_symbol_timeframe_ranges_tool.
     
     Args:
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with symbol summary data (one row per symbol)
@@ -290,7 +290,7 @@ def get_symbol_timeframe_ranges_tool(symbol: str | None = None, env: DataEnv = D
     
     Args:
         symbol: Specific symbol to check (None for all symbols)
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with list of per-symbol/timeframe range details

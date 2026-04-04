@@ -191,7 +191,7 @@ class PositionManager:
         """Check if we have fresh WebSocket wallet data."""
         if not self._prefer_websocket or not self.realtime_state:
             return False
-        return not self.realtime_state.is_wallet_stale("USDT", self._staleness_threshold)
+        return not self.realtime_state.is_account_metrics_stale(self._staleness_threshold)
     
     # ==================== Core Position Methods ====================
     
@@ -258,17 +258,17 @@ class PositionManager:
                 total_exposure += ws_pos.position_value
                 unrealized_pnl += ws_pos.unrealized_pnl
         
-        # Get wallet from RealtimeState
+        # Get account-wide metrics from RealtimeState (UTA cross-collateral)
         assert self.realtime_state is not None
-        ws_wallet = self.realtime_state.get_wallet("USDT")
-        
-        if ws_wallet:
-            balance = ws_wallet.wallet_balance
-            available = ws_wallet.available_balance
+        metrics = self.realtime_state.get_account_metrics()
+
+        if metrics:
+            balance = metrics.total_wallet_balance
+            available = metrics.total_available_balance
         else:
-            # Fall back to REST for wallet
+            # REST fallback: use wallet_balance (not total/equity) to match WS semantics
             balance_info = self.exchange.get_balance()
-            balance = balance_info.get("total", 0)
+            balance = balance_info.get("wallet_balance", 0)
             available = balance_info.get("available", 0)
         
         return PortfolioSnapshot(
@@ -295,7 +295,7 @@ class PositionManager:
         
         return PortfolioSnapshot(
             timestamp=utc_now(),
-            balance=balance_info.get("total", 0),
+            balance=balance_info.get("wallet_balance", 0),
             available=balance_info.get("available", 0),
             total_exposure=total_exposure,
             unrealized_pnl=unrealized_pnl,
@@ -352,9 +352,11 @@ class PositionManager:
                 self._last_source = "websocket"
                 return [order.to_dict() for order in ws_orders]
         
-        # Fallback to REST
+        # Fallback to REST (via ExchangeManager which handles multi-settle-coin)
+        from dataclasses import asdict
         self._last_source = "rest"
-        return self.exchange.bybit.get_open_orders(symbol=symbol)
+        orders = self.exchange.get_open_orders(symbol=symbol)
+        return [asdict(order) for order in orders]
     
     # ==================== Trade Recording ====================
     

@@ -9,7 +9,7 @@ risk controls, and diagnostic tools.
 __version__ = "1.0.0"
 __author__ = "TRADE"
 
-from .config import get_config, TradingMode
+from .config import get_config
 from .core import (
     ExchangeManager,
     RiskManager,
@@ -20,7 +20,6 @@ from .data import get_market_data, get_historical_store
 __all__ = [
     "__version__",
     "get_config",
-    "TradingMode",
     "ExchangeManager",
     "RiskManager",
     "panic_close_all",

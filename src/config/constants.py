@@ -27,77 +27,49 @@ JOURNAL_DIR = PROJECT_ROOT / "data" / "journal"
 STATE_DIR = RUNTIME_DIR / "state"
 
 
+# ==================== UTA Settle Coins ====================
+
+# Linear perpetual settlement currencies — used when iterating all positions/orders
+LINEAR_SETTLE_COINS: tuple[str, ...] = ("USDT", "USDC")
+
+
 # ==================== Trading Environment ====================
 
-# TradingEnv: Identifies which trading API environment we're targeting.
-# This maps to the combination of:
-#   - BYBIT_USE_DEMO (true/false) - controls which Bybit API endpoint
-#   - TRADING_MODE (paper/real) - controls order execution style
-#
-# ONLY two valid combinations are allowed (enforced at startup):
-#   - "demo" -> BYBIT_USE_DEMO=true, TRADING_MODE=paper (fake money on api-demo.bybit.com)
-#   - "live" -> BYBIT_USE_DEMO=false, TRADING_MODE=real (real money on api.bybit.com)
-#
-# NOTE: TradingEnv is used by agents/tools to VALIDATE intent, not to switch env.
-# A running process has a fixed trading env set at startup. If an agent requests
-# a different trading_env than the process is configured for, the tool returns an error.
-TradingEnv = Literal["demo", "live"]
+# TradingEnv: The trading API environment. Always "live" (api.bybit.com).
+# Shadow exchange handles simulated trading; live handles real orders.
+TradingEnv = Literal["live"]
 
 # Valid trading environments
-TRADING_ENVS: list[TradingEnv] = ["demo", "live"]
+TRADING_ENVS: list[TradingEnv] = ["live"]
 
 
 def validate_trading_env(env: str) -> TradingEnv:
     """
     Validate and normalize a trading environment string.
-    
+
     Args:
-        env: The environment to validate (e.g., "live", "DEMO")
-        
+        env: The environment to validate (e.g., "live", "LIVE")
+
     Returns:
-        Normalized TradingEnv ("live" or "demo")
-        
+        Normalized TradingEnv ("live")
+
     Raises:
         ValueError: If env is not a valid trading environment
     """
     normalized = env.lower().strip()
     if normalized not in TRADING_ENVS:
-        raise ValueError(f"Invalid trading environment: '{env}'. Must be 'live' or 'demo'.")
+        raise ValueError(f"Invalid trading environment: '{env}'. Must be 'live'.")
     return cast(TradingEnv, normalized)
-
-
-def get_trading_env_mapping() -> dict:
-    """
-    Return documentation of how TradingEnv maps to config settings.
-    
-    Returns:
-        Dict with "demo" and "live" keys, each containing expected config values
-    """
-    return {
-        "demo": {
-            "description": "Demo trading with fake money",
-            "api_endpoint": "api-demo.bybit.com",
-            "use_demo": True,
-            "trading_mode": "paper",
-        },
-        "live": {
-            "description": "Live trading with real money",
-            "api_endpoint": "api.bybit.com",
-            "use_demo": False,
-            "trading_mode": "real",
-        },
-    }
 
 
 # ==================== Data Environment ====================
 #
-# Three separate databases for concurrent operations:
+# Two separate databases for concurrent operations:
 #
-# | Database  | API Source         | Purpose                              |
-# |-----------|--------------------|--------------------------------------|
-# | backtest  | api.bybit.com      | Historical backtests (read-heavy)    |
-# | demo      | api-demo.bybit.com | Paper trading (demo feed)            |
-# | live      | api.bybit.com      | Live trading warm-up (real-time)     |
+# | Database  | API Source    | Purpose                              |
+# |-----------|--------------|--------------------------------------|
+# | backtest  | api.bybit.com | Historical backtests (read-heavy)    |
+# | live      | api.bybit.com | Live trading warm-up (real-time)     |
 #
 # Why separate backtest from live (both use api.bybit.com)?
 # - Backtests are long-running, read-heavy operations
@@ -105,19 +77,16 @@ def get_trading_env_mapping() -> dict:
 # - DuckDB has no concurrent write access
 # - Separate files allow backtest + live trading simultaneously
 
-DataEnv = Literal["backtest", "live", "demo"]
+DataEnv = Literal["backtest", "live"]
 
 # Valid data environments
-DATA_ENVS: list[DataEnv] = ["backtest", "live", "demo"]
+DATA_ENVS: list[DataEnv] = ["backtest", "live"]
 
 # Default for backtests (uses live API data, separate DB for concurrency)
 DEFAULT_BACKTEST_ENV: DataEnv = "backtest"
 
 # Default for live trading warm-up
 DEFAULT_LIVE_ENV: DataEnv = "live"
-
-# Default for demo/paper trading
-DEFAULT_DEMO_ENV: DataEnv = "demo"
 
 # Generic default for data tools
 # Points to "backtest" since most data operations are for preparing backtest data
@@ -129,37 +98,35 @@ def validate_data_env(env: str) -> DataEnv:
     Validate and normalize a data environment string.
 
     Args:
-        env: The environment to validate (e.g., "live", "DEMO", "backtest")
+        env: The environment to validate (e.g., "live", "backtest")
 
     Returns:
-        Normalized DataEnv ("backtest", "live", or "demo")
+        Normalized DataEnv ("backtest" or "live")
 
     Raises:
         ValueError: If env is not a valid data environment
     """
     normalized = env.lower().strip()
     if normalized not in DATA_ENVS:
-        raise ValueError(f"Invalid data environment: '{env}'. Must be 'backtest', 'live', or 'demo'.")
+        raise ValueError(f"Invalid data environment: '{env}'. Must be 'backtest' or 'live'.")
     return cast(DataEnv, normalized)
 
 
 # ==================== DuckDB Path and Table Mapping ====================
 #
-# Three separate databases to enable concurrent operations:
+# Two separate databases to enable concurrent operations:
 #
-# | Database                      | Data Source        | Purpose                    |
-# |-------------------------------|--------------------|----------------------------|
-# | market_data_backtest.duckdb   | api.bybit.com      | Backtests (most accurate)  |
-# | market_data_demo.duckdb       | api-demo.bybit.com | Paper trading (demo feed)  |
-# | market_data_live.duckdb       | api.bybit.com      | Live trading warm-up       |
+# | Database                      | Data Source   | Purpose                    |
+# |-------------------------------|--------------|----------------------------|
+# | market_data_backtest.duckdb   | api.bybit.com | Backtests (most accurate)  |
+# | market_data_live.duckdb       | api.bybit.com | Live trading warm-up       |
 #
-# Why 3 DBs?
-# - Backtest uses LIVE data (more accurate) but is read-heavy with long runs
-# - Demo trading needs its own feed from api-demo.bybit.com (similar but not exact)
+# Why 2 DBs?
+# - Backtest uses LIVE data but is read-heavy with long runs
 # - Live trading needs real-time writes for warm-up
 # - DuckDB has no concurrent write access - separate files solve this
 #
-# This allows: backtest + demo trading + live trading to run simultaneously
+# This allows: backtest + live trading to run simultaneously
 
 # Base directory for data files (absolute, under project root)
 DATA_DIR = PROJECT_ROOT / "data"
@@ -167,14 +134,12 @@ DATA_DIR = PROJECT_ROOT / "data"
 # DuckDB file names per environment
 DB_FILENAMES: dict[DataEnv, str] = {
     "backtest": "market_data_backtest.duckdb",  # Live data for backtests
-    "demo": "market_data_demo.duckdb",          # Demo data for paper trading
     "live": "market_data_live.duckdb",          # Live data for live trading warm-up
 }
 
 # Data source per database (which API endpoint feeds it)
 DB_DATA_SOURCES: dict[DataEnv, str] = {
     "backtest": "api.bybit.com",      # Live API (most accurate)
-    "demo": "api-demo.bybit.com",     # Demo API (paper trading feed)
     "live": "api.bybit.com",          # Live API (real-time warm-up)
 }
 
@@ -183,7 +148,6 @@ DB_DATA_SOURCES: dict[DataEnv, str] = {
 TABLE_SUFFIXES: dict[DataEnv, str] = {
     "backtest": "_live",  # Backtest DB contains live data, uses _live tables
     "live": "_live",
-    "demo": "_demo",
 }
 
 
@@ -192,7 +156,7 @@ def resolve_db_path(env: DataEnv) -> Path:
     Get the DuckDB file path for a given environment.
 
     Args:
-        env: Data environment ("backtest", "live", or "demo")
+        env: Data environment ("backtest" or "live")
 
     Returns:
         Path to the DuckDB file (e.g., data/market_data_backtest.duckdb)
@@ -207,10 +171,10 @@ def resolve_table_name(base_table: str, env: DataEnv) -> str:
 
     Args:
         base_table: Base table name (e.g., "ohlcv", "funding_rates", "open_interest")
-        env: Data environment ("backtest", "live", or "demo")
+        env: Data environment ("backtest" or "live")
 
     Returns:
-        Full table name with env suffix (e.g., "ohlcv_live", "funding_rates_demo")
+        Full table name with env suffix (e.g., "ohlcv_live")
         Note: "backtest" env uses "_live" suffix since it contains live API data
     """
     env = validate_data_env(env)

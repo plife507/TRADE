@@ -22,7 +22,7 @@ from enum import Enum
 import threading
 
 from ..exchanges.bybit_client import BybitClient
-from ..config.config import get_config, TradingMode
+from ..config.config import get_config
 from ..utils.logger import get_module_logger
 from ..utils.helpers import safe_float
 from ..utils.time_range import TimeRange
@@ -164,7 +164,13 @@ class ExchangeManager:
     _instance: 'ExchangeManager | None' = None
     _singleton_lock = threading.Lock()
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args, client: BybitClient | None = None, **kwargs):
+        # Sub-account instances bypass the singleton
+        if client is not None:
+            instance = super().__new__(cls)
+            instance._initialized = False
+            return instance
+        # Default singleton for main account
         if cls._instance is None:
             with cls._singleton_lock:
                 if cls._instance is None:
@@ -172,66 +178,56 @@ class ExchangeManager:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
-        """Initialize exchange manager."""
+    def __init__(self, client: BybitClient | None = None):
+        """Initialize exchange manager.
+
+        Args:
+            client: Optional pre-configured BybitClient (for sub-account deployment).
+                    If None, creates one from config credentials.
+        """
         if self._initialized:
             return
         self.config = get_config()
         self.logger = get_module_logger(__name__)
-        
-        # === STRICT MODE/API MAPPING ASSERTION ===
-        trading_mode = self.config.trading.mode
-        use_demo = self.config.bybit.use_demo
-        
-        valid_paper = (trading_mode == TradingMode.PAPER and use_demo)
-        valid_real = (trading_mode == TradingMode.REAL and not use_demo)
-        
-        if not (valid_paper or valid_real):
-            raise ValueError(
-                f"INVALID MODE/API MAPPING: TRADING_MODE={trading_mode}, BYBIT_USE_DEMO={use_demo}. "
-                f"Valid combinations: (paper, True) or (real, False)."
-            )
-        
-        self.use_demo = use_demo
-        api_key, api_secret = self.config.bybit.get_credentials()
-        
-        self.bybit = BybitClient(
-            api_key=api_key,
-            api_secret=api_secret,
-            use_demo=self.use_demo,
-        )
-        
-        mode = "DEMO (fake money)" if self.use_demo else "LIVE (REAL MONEY!)"
-        key_status = "authenticated" if api_key else "NO KEY"
-        
-        if self.use_demo:
-            key_source = "BYBIT_DEMO_API_KEY" if self.config.bybit.demo_api_key else "MISSING"
+
+        if client:
+            self.bybit = client
         else:
-            key_source = "BYBIT_LIVE_API_KEY" if self.config.bybit.live_api_key else "MISSING"
-        
+            api_key, api_secret = self.config.bybit.get_credentials()
+            self.bybit = BybitClient(
+                api_key=api_key,
+                api_secret=api_secret,
+            )
+
+        key_status = "authenticated" if self.bybit.api_key else "NO KEY"
+        key_source = "injected" if client else ("BYBIT_LIVE_API_KEY" if self.config.bybit.live_api_key else "MISSING")
+
         self.logger.info(
-            "ExchangeManager initialized: API=%s, base_url=%s, "
-            "trading_mode=%s, auth=%s, key_source=%s",
-            mode, self.bybit.base_url, trading_mode, key_status, key_source,
+            "ExchangeManager initialized: LIVE (REAL MONEY!), base_url=%s, "
+            "auth=%s, key_source=%s",
+            self.bybit.base_url, key_status, key_source,
         )
         
         self._instruments: dict[str, dict] = {}
         self._previous_positions: dict[str, bool] = {}
         self._position_tracking_lock = threading.Lock()  # Protects _previous_positions
 
-        # Setup position-close cleanup (cancels orphaned TP orders)
-        from . import exchange_websocket as ws
-        ws.setup_position_close_cleanup(self)
+        # Sub-account instances skip global singleton hooks
+        # (they don't share the main account's RealtimeState or DCP)
+        is_sub_account = client is not None
 
-        # G14.4: Activate Disconnect Cancel All (DCP) for live mode.
-        # If our process crashes, the exchange will cancel all open orders
-        # after time_window seconds of disconnection.
-        if trading_mode == TradingMode.REAL:
-            try:
-                self.bybit.set_disconnect_cancel_all(time_window=10)
-                self.logger.info("DCP activated: exchange will cancel orders after 10s disconnect")
-            except Exception as e:
-                self.logger.warning("Failed to activate DCP (non-fatal): %s", e)
+        if not is_sub_account:
+            # Setup position-close cleanup (cancels orphaned TP orders)
+            from . import exchange_websocket as ws
+            ws.setup_position_close_cleanup(self)
+
+        # G14.4: Activate Disconnect Cancel All (DCP).
+        try:
+            dcp_window = 30 if is_sub_account else 10
+            self.bybit.set_disconnect_cancel_all(time_window=dcp_window)
+            self.logger.info("DCP activated: cancel orders after %ds disconnect", dcp_window)
+        except Exception as e:
+            self.logger.warning("Failed to activate DCP (non-fatal): %s", e)
 
         self._initialized = True
 
@@ -264,20 +260,6 @@ class ExchangeManager:
         except Exception as e:
             self.logger.debug("Could not query fee rates (non-fatal): %s", e)
     
-    def _validate_trading_operation(self) -> None:
-        """SAFETY GUARD RAIL: Validate trading mode consistency."""
-        config = get_config()
-        
-        if config.trading.mode == TradingMode.REAL and config.bybit.use_demo:
-            raise ValueError(
-                "INVALID CONFIGURATION: TRADING_MODE=real but BYBIT_USE_DEMO=true."
-            )
-        
-        if config.trading.mode == TradingMode.PAPER and not config.bybit.use_demo:
-            raise ValueError(
-                "INVALID CONFIGURATION: TRADING_MODE=paper but BYBIT_USE_DEMO=false."
-            )
-    
     # ==================== Market Data ====================
     
     def get_price(self, symbol: str) -> float:
@@ -291,31 +273,28 @@ class ExchangeManager:
     # ==================== Account ====================
     
     def get_balance(self) -> dict[str, float]:
-        """Get account balance."""
+        """Get UTA account-wide balance (all coins, cross-collateral).
+
+        Returns account-level totals from Bybit's wallet balance endpoint.
+        These are UTA-wide figures that include all coins and cross-collateral.
+        """
         balance = self.bybit.get_balance()
-        total = available = 0.0
 
-        coins = balance.get("coin", [])
-        for coin in coins:
-            if coin.get("coin") == "USDT":
-                total = safe_float(coin.get("walletBalance", 0))
-                available = safe_float(coin.get("availableToWithdraw")) or \
-                           safe_float(coin.get("availableToBorrow")) or \
-                           safe_float(coin.get("equity")) or total
-                break
-        else:
-            # for/else: no USDT coin found in response
-            if coins:
-                coin_names = [c.get("coin", "?") for c in coins]
-                self.logger.warning(
-                    "No USDT in balance response. Coins present: %s", coin_names
-                )
-            else:
-                self.logger.warning(
-                    "Empty coin list in balance response: %s", balance
-                )
+        total_equity = safe_float(balance.get("totalEquity", 0))
+        total_wallet = safe_float(balance.get("totalWalletBalance", 0))
+        total_available = safe_float(balance.get("totalAvailableBalance", 0))
+        total_margin = safe_float(balance.get("totalMarginBalance", 0))
+        total_im = safe_float(balance.get("totalInitialMargin", 0))
+        total_mm = safe_float(balance.get("totalMaintenanceMargin", 0))
 
-        return {"total": total, "available": available, "used": total - available}
+        return {
+            "total": total_equity,
+            "available": total_available,
+            "used": total_im,
+            "wallet_balance": total_wallet,
+            "margin_balance": total_margin,
+            "maintenance_margin": total_mm,
+        }
     
     # ==================== Positions (delegated) ====================
     

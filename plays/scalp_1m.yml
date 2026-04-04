@@ -1,10 +1,10 @@
 version: "3.0.0"
-name: "demo_1m_scalp"
+name: "scalp_1m"
 description: |
-  1m EMA scalper for demo testing.
+  1m EMA scalper for quick testing.
 
   Fast EMA 5/13 crossover on 1m with RSI guard.
-  Designed to fire frequently so you can test demo live actions
+  Designed to fire frequently so you can test live actions
   (entries, exits, TP/SL hits) quickly.
 
   Entry long:  EMA5 crosses above EMA13, RSI < 70 (not overbought)

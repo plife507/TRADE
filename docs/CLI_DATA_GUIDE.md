@@ -115,16 +115,12 @@ DuckDB allows only one writer at a time. If another process has the database ope
 - The runner scripts retry automatically (5 attempts, 3-15s backoff)
 
 ### Data environment mismatch
-The CLI defaults to `--data-env live` (uses `market_data_live.duckdb`). If you synced data to a different environment:
-```bash
-python trade_cli.py backtest run --play my_play --data-env demo
-```
+The CLI defaults to `--data-env live` (uses `market_data_live.duckdb`). Verify your data was synced to the correct environment.
 
 ## Database Files
 
 | CLI `--data-env` | Database File | Usage |
 |------------------|--------------|-------|
 | `live` (default) | `data/market_data_live.duckdb` | Backtests, verification, live warm-up |
-| `demo` | `data/market_data_demo.duckdb` | Paper trading (demo API feed) |
 
-A third environment `backtest` (`data/market_data_backtest.duckdb`) exists in `src/config/constants.py` as the programmatic default for tools, but is not exposed via the CLI `--data-env` flag.
+A second environment `backtest` (`data/market_data_backtest.duckdb`) exists in `src/config/constants.py` as the programmatic default for tools, but is not exposed via the CLI `--data-env` flag.

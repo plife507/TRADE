@@ -9,7 +9,7 @@ Usage:
   python trade_cli.py validate quick|standard|full|pre-live|exchange
   python trade_cli.py backtest run --play X
   python trade_cli.py debug math-parity|snapshot-plumbing|determinism|metrics
-  python trade_cli.py play run --play X --mode demo
+  python trade_cli.py play run --play X --mode live --confirm
 
 Verbosity:
   python trade_cli.py -q ...        # Quiet (WARNING only)
@@ -201,6 +201,11 @@ def main():
     elif args.command == "shadow":
         from src.cli.subcommands.shadow import handle_shadow
         sys.exit(handle_shadow(args))
+
+    # ===== PORTFOLIO =====
+    elif args.command == "portfolio":
+        from src.cli.subcommands.portfolio import handle_portfolio
+        sys.exit(handle_portfolio(args))
 
     # ===== ACCOUNT =====
     elif args.command == "account":

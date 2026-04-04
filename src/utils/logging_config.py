@@ -295,7 +295,7 @@ def bind_engine_context(
     Args:
         play_hash: Play configuration hash (16 hex chars).
         symbol: Trading symbol (e.g. ``BTCUSDT``).
-        mode: Engine mode (``backtest``, ``demo``, ``live``).
+        mode: Engine mode (``backtest``, ``live``).
     """
     structlog.contextvars.bind_contextvars(
         play_hash=play_hash,

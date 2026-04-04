@@ -3,9 +3,9 @@ Unified Play Engine Package.
 
 This package provides a unified engine for executing Plays across all modes:
 - Backtest: Historical data with simulated execution
-- Demo: Real-time data with Bybit demo API (fake money)
-- Live: Real-time data with Bybit live API (real money)
-- Shadow: Real-time data with signal logging only (no execution)
+- Live: Real-time live data with real order execution
+
+Shadow mode uses the daemon at src/shadow/ (not this engine package).
 
 The key design principle is that signal generation logic is IDENTICAL across
 all modes. Mode differences are isolated to adapter implementations.
@@ -35,9 +35,7 @@ Usage:
 
     # Create engine for any mode (auto-configures adapters)
     engine = PlayEngineFactory.create(play, mode="backtest")
-    engine = PlayEngineFactory.create(play, mode="demo")
-    engine = PlayEngineFactory.create(play, mode="live")
-
+    engine = PlayEngineFactory.create(play, mode="live", confirm_live=True)
     # GATE 4: Create backtest engine with pre-built components
     engine = create_backtest_engine(
         play=play,
@@ -68,7 +66,7 @@ from .factory import PlayEngineFactory, create_backtest_engine
 
 from .runners import BacktestRunner, BacktestResult
 
-from .adapters.backtest import BacktestDataProvider, BacktestExchange, ShadowExchange
+from .adapters.backtest import BacktestDataProvider, BacktestExchange
 
 from .sizing import SizingModel, SizingConfig, SizingResult
 
@@ -96,7 +94,6 @@ __all__ = [
     # Adapters
     "BacktestDataProvider",
     "BacktestExchange",
-    "ShadowExchange",
     # Sizing
     "SizingModel",
     "SizingConfig",

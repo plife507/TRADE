@@ -1,5 +1,5 @@
 version: "3.0.0"
-name: "sol_ema_cross_demo"
+name: "sol_ema_cross"
 description: |
   EMA 9/21 golden cross strategy for SOLUSDT with filters.
   Long only, single timeframe (15m), hybrid exits (signal or SL/TP).

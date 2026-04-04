@@ -2,7 +2,7 @@
 ShadowPerformanceDB — DuckDB for long-term shadow performance tracking.
 
 Separate database file (data/shadow/shadow_performance.duckdb) to avoid
-DuckDB lock conflicts with backtest/live/demo databases.
+DuckDB lock conflicts with backtest/live databases.
 
 Design:
 - Single writer pattern: only the orchestrator flush loop writes

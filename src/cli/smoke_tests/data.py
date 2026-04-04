@@ -233,7 +233,7 @@ def run_extensive_data_smoke(env: str = "live") -> int:
     8. Verifies final database state
 
     Args:
-        env: Data environment to test ("live" or "demo"). Defaults to "live".
+        env: Data environment to test ("live"). Defaults to "live".
 
     Returns:
         Number of failures (0 = success)

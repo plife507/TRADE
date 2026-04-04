@@ -9,9 +9,8 @@ This module provides:
 All tools should import ToolResult from this module.
 
 NOTE on Trading Environment:
-- A running process has a FIXED trading env (DEMO or LIVE) set at startup
+- All processes use the live Bybit API (shadow and live modes)
 - Tools accept an optional `trading_env` parameter to VALIDATE intent
-- If the caller's requested env doesn't match the process, tools return an error
 - This enables multi-process orchestration where agents route calls correctly
 """
 
@@ -48,7 +47,7 @@ class ToolResult:
     data: dict[str, Any] | None = None
     error: str | None = None
     source: str | None = None
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
@@ -68,8 +67,7 @@ def _get_exchange_manager() -> "ExchangeManager":
     CLI-020: Uses double-checked locking to prevent race condition where
     two threads create duplicate ExchangeManager instances.
 
-    NOTE: Per-process trading env is fixed at startup. The returned ExchangeManager
-    is either configured for DEMO or LIVE based on BYBIT_USE_DEMO and TRADING_MODE.
+    NOTE: The returned ExchangeManager is configured for LIVE trading.
     Use `trading_env` parameter in tools only for VALIDATION, not switching.
     """
     from ..core.exchange_manager import ExchangeManager
@@ -87,27 +85,17 @@ def _get_exchange_manager() -> "ExchangeManager":
 def get_trading_env_summary() -> dict[str, Any]:
     """
     Get summary of the current process's trading environment.
-    
+
     Returns:
         Dict with keys:
-        - mode: "DEMO" or "LIVE"
-        - use_demo: bool (config.bybit.use_demo)
-        - trading_mode: "paper" or "real" (config.trading.mode)
+        - mode: "LIVE"
         - api_endpoint: The API URL being used
-        
+
     Use this to query what environment a process is configured for.
     """
-    from ..config.config import get_config
-    
-    config = get_config()
-    use_demo = config.bybit.use_demo
-    trading_mode = str(config.trading.mode)
-    
     return {
-        "mode": "DEMO" if use_demo else "LIVE",
-        "use_demo": use_demo,
-        "trading_mode": trading_mode,
-        "api_endpoint": "api-demo.bybit.com" if use_demo else "api.bybit.com",
+        "mode": "LIVE",
+        "api_endpoint": "api.bybit.com",
     }
 
 
@@ -124,51 +112,36 @@ def _get_exchange_manager_for_env(trading_env: str | None = None) -> "ExchangeMa
     correct environment. It does NOT switch environments - it only validates.
 
     Args:
-        trading_env: Optional trading environment ("demo" or "live").
+        trading_env: Optional trading environment ("live").
                      If None, returns the manager without validation.
-                     If provided, validates against the process's configured env.
+                     If provided, validates that it equals "live".
 
     Returns:
         ExchangeManager instance if validation passes
 
     Raises:
-        TradingEnvMismatchError: If trading_env doesn't match process config
+        TradingEnvMismatchError: If trading_env is not "live"
         ValueError: If trading_env is invalid
-
-    Usage:
-        # Agent calling for DEMO trading
-        manager = _get_exchange_manager_for_env("demo")
-
-        # If this process is configured for LIVE, raises TradingEnvMismatchError
-        # with a clear message explaining the mismatch
     """
     manager = _get_exchange_manager()
-    
+
     # If no trading_env specified, return without validation
     if trading_env is None:
         return manager
-    
+
     # Validate trading_env value
     from ..config.constants import validate_trading_env
     try:
         normalized_env = validate_trading_env(trading_env)
     except ValueError as e:
         raise ValueError(f"Invalid trading_env: {e}")
-    
-    # Get current process config
-    env_summary = get_trading_env_summary()
-    process_env = "demo" if env_summary["use_demo"] else "live"
-    
-    # Check for mismatch
-    if normalized_env != process_env:
+
+    # Only LIVE is supported
+    if normalized_env != "live":
         raise TradingEnvMismatchError(
-            f"Requested trading_env='{normalized_env}' but this process is configured "
-            f"for {env_summary['mode']} (use_demo={env_summary['use_demo']}, "
-            f"trading_mode={env_summary['trading_mode']}). "
-            f"To use {normalized_env.upper()}, start a process with the appropriate "
-            f"BYBIT_USE_DEMO and TRADING_MODE settings."
+            f"Requested trading_env='{normalized_env}' but only 'live' is supported."
         )
-    
+
     return manager
 
 
@@ -179,7 +152,7 @@ def validate_trading_env_or_error(trading_env: str | None = None) -> ToolResult 
     This is a convenience wrapper for use in tools. Instead of try/except,
     tools can call this and return early if there's an error.
 
-    Pattern: Agents specify their intended environment ("demo"/"live"), and this
+    Pattern: Agents specify their intended environment ("live"), and this
     validates against the process config. Prevents routing errors in multi-process setups.
 
     Args:
@@ -197,7 +170,7 @@ def validate_trading_env_or_error(trading_env: str | None = None) -> ToolResult 
     """
     if trading_env is None:
         return None
-    
+
     try:
         _get_exchange_manager_for_env(trading_env)
         return None
@@ -222,7 +195,7 @@ def _get_realtime_state() -> "RealtimeState":
 def _is_websocket_connected() -> bool:
     """Check if WebSocket is connected and receiving non-stale data.
 
-    Under lazy WS, returning False is the expected default — callers fall
+    Under lazy WS, returning False is the expected default --- callers fall
     through to REST. WS only connects when a play is running.
 
     DATA-003: Also checks ticker staleness so that a connected-but-silent
@@ -234,7 +207,7 @@ def _is_websocket_connected() -> bool:
         if not priv_status.is_connected:
             return False
         # DATA-003: Check data freshness — connected but stale = not healthy
-        if state.is_wallet_stale(max_age_seconds=60.0):
+        if state.is_account_metrics_stale(max_age_seconds=60.0):
             return False
         return True
     except Exception:
@@ -246,7 +219,7 @@ def _get_historical_store(env: DataEnv = "live") -> "HistoricalDataStore":
     Get the HistoricalDataStore singleton for a given environment (lazy import).
 
     Args:
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
 
     Returns:
         HistoricalDataStore instance for the specified environment.

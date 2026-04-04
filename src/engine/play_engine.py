@@ -1,5 +1,5 @@
 """
-Unified Play Engine for backtest, demo, and live modes.
+Unified Play Engine for backtest, live, and shadow modes.
 
 This is the core engine that processes bars and generates signals. The key
 design principle is that signal generation logic is IDENTICAL across all
@@ -94,7 +94,7 @@ class PlayEngineConfig:
     """Configuration for PlayEngine."""
 
     # Mode
-    mode: Literal["backtest", "demo", "live", "shadow"]
+    mode: Literal["backtest", "live"]
 
     # Risk parameters
     initial_equity: float = 10000.0
@@ -302,11 +302,6 @@ class PlayEngine:
         return self.config.mode == "live"
 
     @property
-    def is_shadow(self) -> bool:
-        """True if running in shadow mode (signals only)."""
-        return self.config.mode == "shadow"
-
-    @property
     def is_backtest(self) -> bool:
         """True if running in backtest mode."""
         return self.config.mode == "backtest"
@@ -394,7 +389,7 @@ class PlayEngine:
         self._current_bar_index = bar_index
         self._bars_processed += 1
 
-        # Refresh equity from exchange for accurate sizing (live/demo only)
+        # Refresh equity from exchange for accurate sizing (live only)
         if not self.is_backtest:
             try:
                 self._sizing_model.update_equity(self.exchange.get_equity())
@@ -545,21 +540,7 @@ class PlayEngine:
         Returns:
             OrderResult with fill info or error
 
-        Note:
-            In shadow mode, this logs but doesn't execute.
         """
-        # Shadow mode: log but don't execute
-        if self.is_shadow:
-            self.logger.info(
-                f"[SHADOW] Signal: {signal.direction} {self.symbol} "
-                f"size={signal.size_usdt:.2f} USDT"
-            )
-            return OrderResult(
-                success=True,
-                order_id=f"shadow_{uuid.uuid4().hex[:8]}",
-                metadata={"shadow": True, "signal": signal},
-            )
-
         # Handle exit signals (FLAT) differently - submit close request
         if signal.direction.upper() == "FLAT":
             # Get exit percent from metadata (default 100%)
@@ -732,7 +713,7 @@ class PlayEngine:
         return EngineState(
             engine_id=self.engine_id,
             play_id=self.play.name or self.engine_id,
-            mode=cast(Literal["backtest", "demo", "live", "shadow"], self.config.mode),
+            mode=cast(Literal["backtest", "live"], self.config.mode),
             symbol=self.symbol,
             position=position,
             pending_orders=self.exchange.get_pending_orders(self.symbol),

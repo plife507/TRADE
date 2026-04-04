@@ -3,7 +3,7 @@ Argument parser setup for TRADE CLI.
 
 Defines all subcommands and their arguments:
 - backtest: Play-based backtesting (run, preflight, indicators, data-fix, list, normalize)
-- play: Unified Play engine (backtest/demo/live/shadow)
+- play: Unified Play engine (backtest/live)
 - validate: Unified validation suite (quick/standard/full/pre-live/exchange)
 - debug: Diagnostic tools (math-parity, snapshot-plumbing, determinism, metrics)
 """
@@ -86,6 +86,7 @@ Examples:
     _setup_market_subcommands(subparsers)
     _setup_health_subcommands(subparsers)
     _setup_shadow_subcommands(subparsers)
+    _setup_portfolio_subcommands(subparsers)
 
     return parser.parse_args()
 
@@ -99,7 +100,7 @@ def _setup_backtest_subcommands(subparsers) -> None:
     run_parser = backtest_subparsers.add_parser("run", help="Run an Play backtest")
     run_parser.add_argument("--play", required=True, help="Play identifier (e.g., SOLUSDT_15m_ema_crossover)")
     run_parser.add_argument("--dir", dest="plays_dir", help="Override Play directory")
-    run_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment (default: live)")
+    run_parser.add_argument("--data-env", choices=["live"], default="live", help="Data environment (default: live)")
     run_parser.add_argument("--start", help="Window start (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
     run_parser.add_argument("--end", help="Window end (YYYY-MM-DD or YYYY-MM-DD HH:MM)")
     run_parser.add_argument("--smoke", action="store_true", help="Smoke mode: fast wiring check with small window")
@@ -124,7 +125,7 @@ def _setup_backtest_subcommands(subparsers) -> None:
     # backtest preflight
     preflight_parser = backtest_subparsers.add_parser("preflight", help="Run preflight check without executing")
     preflight_parser.add_argument("--play", required=True, help="Play identifier")
-    preflight_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
+    preflight_parser.add_argument("--data-env", choices=["live"], default="live", help="Data environment")
     preflight_parser.add_argument("--start", help="Window start")
     preflight_parser.add_argument("--end", help="Window end")
     preflight_parser.add_argument("--sync", action="store_true", help="Auto-sync missing data using existing tools")
@@ -133,7 +134,7 @@ def _setup_backtest_subcommands(subparsers) -> None:
     # backtest indicators (indicator key discovery)
     indicators_parser = backtest_subparsers.add_parser("indicators", help="Discover indicator keys for an Play")
     indicators_parser.add_argument("--play", help="Play identifier (required unless --audit-math-from-snapshots)")
-    indicators_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
+    indicators_parser.add_argument("--data-env", choices=["live"], default="live", help="Data environment")
     indicators_parser.add_argument("--print-keys", action="store_true", default=True, help="Print all indicator keys")
     indicators_parser.add_argument("--compute", action="store_true", help="Actually compute indicators (requires --start/--end)")
     indicators_parser.add_argument("--start", help="Window start (for --compute)")
@@ -155,7 +156,7 @@ def _setup_backtest_subcommands(subparsers) -> None:
     # backtest data-fix
     datafix_parser = backtest_subparsers.add_parser("data-fix", help="Fix data for an Play")
     datafix_parser.add_argument("--play", required=True, help="Play identifier")
-    datafix_parser.add_argument("--data-env", choices=["live", "demo"], default="live", help="Data environment")
+    datafix_parser.add_argument("--data-env", choices=["live"], default="live", help="Data environment")
     datafix_parser.add_argument("--start", help="Sync from this date")
     datafix_parser.add_argument("--sync-to-now", action="store_true", help="Sync data to current time")
     datafix_parser.add_argument("--sync", action="store_true", default=True, help="Sync gaps after range sync")
@@ -197,7 +198,7 @@ def _setup_play_subcommands(subparsers) -> None:
     play_run_parser.add_argument("--play", required=True, help="Play identifier or YAML path")
     play_run_parser.add_argument(
         "--mode",
-        choices=["backtest", "demo", "live", "shadow"],
+        choices=["backtest", "live"],
         default="backtest",
         help="Execution mode (default: backtest)"
     )
@@ -654,8 +655,8 @@ def _setup_health_subcommands(subparsers) -> None:
 
 
 def _setup_shadow_subcommands(subparsers) -> None:
-    """Shadow Exchange — multi-play paper trading with SimExchange + real WS data."""
-    shadow_parser = subparsers.add_parser("shadow", help="Shadow Exchange (M4) — paper trading")
+    """Shadow Exchange — multi-play simulated trading with SimExchange + live WS data."""
+    shadow_parser = subparsers.add_parser("shadow", help="Shadow Exchange (M4) — simulated trading")
     shadow_subparsers = shadow_parser.add_subparsers(dest="shadow_command", help="Shadow commands")
 
     # shadow run --play X  (single play, foreground)
@@ -689,3 +690,122 @@ def _setup_shadow_subcommands(subparsers) -> None:
     # shadow daemon  (always-on mode for VPS)
     daemon_parser = shadow_subparsers.add_parser("daemon", help="Run shadow daemon (always-on, VPS)")
     daemon_parser.add_argument("--config", default="config/shadow.yml", help="Config file path")
+
+
+def _setup_portfolio_subcommands(subparsers) -> None:
+    """UTA Portfolio Management — full account control, sub-accounts, play deployment."""
+    portfolio_parser = subparsers.add_parser("portfolio", help="UTA Portfolio Management")
+    port_sub = portfolio_parser.add_subparsers(dest="portfolio_command", help="Portfolio commands")
+
+    def _add_json(parser):
+        parser.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
+    # portfolio snapshot
+    p = port_sub.add_parser("snapshot", help="Complete UTA portfolio snapshot")
+    _add_json(p)
+
+    # portfolio wallet
+    _add_json(port_sub.add_parser("wallet", help="All wallet coins with balances and collateral"))
+
+    # portfolio risk
+    _add_json(port_sub.add_parser("risk", help="Account-level risk metrics"))
+
+    # portfolio exposure
+    _add_json(port_sub.add_parser("exposure", help="Exposure breakdown by category and settle coin"))
+
+    # portfolio instruments [--category linear] [--settle-coin USDC]
+    inst_parser = port_sub.add_parser("instruments", help="List available instruments")
+    inst_parser.add_argument("--category", choices=["linear", "inverse"], help="Filter by category")
+    inst_parser.add_argument("--settle-coin", dest="settle_coin", help="Filter by settle coin (USDT, USDC)")
+    _add_json(inst_parser)
+
+    # portfolio resolve <SYMBOL>
+    resolve_parser = port_sub.add_parser("resolve", help="Resolve symbol to instrument spec")
+    resolve_parser.add_argument("symbol", help="Symbol to resolve (e.g., BTCPERP)")
+    _add_json(resolve_parser)
+
+    # portfolio subs <subcommand>
+    subs_parser = port_sub.add_parser("subs", help="Sub-account management")
+    subs_sub = subs_parser.add_subparsers(dest="subs_command", help="Sub-account commands")
+
+    _add_json(subs_parser)
+    _add_json(subs_sub.add_parser("list", help="List all sub-accounts"))
+
+    subs_create = subs_sub.add_parser("create", help="Create a new sub-account")
+    subs_create.add_argument("--username", required=True, help="Username (6-16 chars, letters+digits)")
+    _add_json(subs_create)
+
+    subs_fund = subs_sub.add_parser("fund", help="Transfer funds main → sub")
+    subs_fund.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    subs_fund.add_argument("--coin", required=True, help="Coin (USDT, USDC)")
+    subs_fund.add_argument("--amount", type=float, required=True, help="Amount to transfer")
+    _add_json(subs_fund)
+
+    subs_withdraw = subs_sub.add_parser("withdraw", help="Transfer funds sub → main")
+    subs_withdraw.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    subs_withdraw.add_argument("--coin", required=True, help="Coin")
+    subs_withdraw.add_argument("--amount", type=float, required=True, help="Amount")
+    _add_json(subs_withdraw)
+
+    subs_balance = subs_sub.add_parser("balance", help="Query sub-account balance")
+    subs_balance.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    _add_json(subs_balance)
+
+    subs_positions = subs_sub.add_parser("positions", help="Query sub-account positions")
+    subs_positions.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    _add_json(subs_positions)
+
+    subs_freeze = subs_sub.add_parser("freeze", help="Freeze sub-account")
+    subs_freeze.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    _add_json(subs_freeze)
+
+    subs_delete = subs_sub.add_parser("delete", help="Delete sub-account (must be empty)")
+    subs_delete.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    _add_json(subs_delete)
+
+    # portfolio deploy --play X --symbol Y --capital Z --confirm
+    deploy_parser = port_sub.add_parser("deploy", help="Deploy a play into a sub-account")
+    deploy_parser.add_argument("--play", required=True, help="Play identifier")
+    deploy_parser.add_argument("--symbol", required=True, help="Trading symbol")
+    deploy_parser.add_argument("--capital", type=float, required=True, help="Capital to allocate (USD)")
+    deploy_parser.add_argument("--confirm", action="store_true", help="Confirm deployment (required)")
+    _add_json(deploy_parser)
+
+    # portfolio stop --uid X [--no-close-positions]
+    stop_parser = port_sub.add_parser("stop", help="Stop a deployed play")
+    stop_parser.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    stop_parser.add_argument("--no-close-positions", action="store_false", dest="close_positions",
+                             help="Don't close open positions")
+    _add_json(stop_parser)
+
+    # portfolio status --uid X
+    status_parser = port_sub.add_parser("status", help="Status of a deployed play")
+    status_parser.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    _add_json(status_parser)
+
+    # portfolio rebalance --uid X --capital Y
+    rebalance_parser = port_sub.add_parser("rebalance", help="Add/remove capital from deployed play")
+    rebalance_parser.add_argument("--uid", type=int, required=True, help="Sub-account UID")
+    rebalance_parser.add_argument("--capital", type=float, required=True, help="New target capital")
+    _add_json(rebalance_parser)
+
+    # portfolio plays
+    _add_json(port_sub.add_parser("plays", help="List all active plays"))
+
+    # portfolio recall-all --confirm
+    recall_parser = port_sub.add_parser("recall-all", help="Emergency: stop all, close all, sweep to main")
+    recall_parser.add_argument("--confirm", action="store_true", help="Confirm recall (required)")
+    _add_json(recall_parser)
+
+    # portfolio collateral [--currency BTC]
+    collateral_parser = port_sub.add_parser("collateral", help="Get collateral tiers")
+    collateral_parser.add_argument("--currency", help="Filter by currency")
+    _add_json(collateral_parser)
+
+    # portfolio toggle-collateral --coin BTC --enable/--disable
+    toggle_parser = port_sub.add_parser("toggle-collateral", help="Enable/disable coin as collateral")
+    toggle_parser.add_argument("--coin", required=True, help="Coin to toggle")
+    toggle_group = toggle_parser.add_mutually_exclusive_group(required=True)
+    toggle_group.add_argument("--enable", action="store_true", help="Enable as collateral")
+    toggle_group.add_argument("--disable", action="store_true", help="Disable as collateral")
+    _add_json(toggle_parser)

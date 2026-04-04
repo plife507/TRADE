@@ -132,13 +132,10 @@ class MarketData:
                 "No fallback to trading keys or generic keys is allowed."
             )
         
-        # Initialize client with LIVE API (use_demo=False)
-        # This ensures we get real market data regardless of trading mode or env
-        # Future: may use demo API for env="demo" when demo-specific market data is needed
+        # Initialize client with LIVE API
         self.client = BybitClient(
             api_key=data_key if data_key else None,
             api_secret=data_secret if data_secret else None,
-            use_demo=False,  # ALWAYS use LIVE API for data accuracy (for now)
         )
         
         # Log detailed API environment info (STRICT - canonical keys only)
@@ -545,38 +542,27 @@ class MarketData:
 # Env-aware Singleton Instances
 # ==============================================================================
 
-# Cached instances per environment
+# Cached instance
 _market_data_live: MarketData | None = None
-_market_data_demo: MarketData | None = None
 
 
 def get_market_data(env: DataEnv = DEFAULT_DATA_ENV) -> MarketData:
     """
-    Get or create the MarketData instance for a given environment.
-    
+    Get or create the MarketData instance.
+
     Args:
-        env: Data environment ("live" or "demo"). Defaults to "live".
-        
+        env: Data environment ("backtest" or "live"). Defaults to "live".
+
     Returns:
-        MarketData instance for the specified environment.
-        
-    Note:
-        Currently both environments use LIVE API endpoints for market data.
-        The env parameter is stored for future differentiation when demo
-        API endpoints may be used for demo-specific market data.
+        MarketData instance (always uses LIVE API).
     """
-    global _market_data_live, _market_data_demo
-    
+    global _market_data_live
+
     env = validate_data_env(env)
-    
-    if env == "live":
-        if _market_data_live is None:
-            _market_data_live = MarketData(env="live")
-        return _market_data_live
-    else:
-        if _market_data_demo is None:
-            _market_data_demo = MarketData(env="demo")
-        return _market_data_demo
+
+    if _market_data_live is None:
+        _market_data_live = MarketData(env="live")
+    return _market_data_live
 
 
 def get_live_market_data() -> MarketData:
@@ -586,17 +572,11 @@ def get_live_market_data() -> MarketData:
 
 def reset_market_data(env: DataEnv | None = None):
     """
-    Reset the MarketData instance(s) (for testing).
-    
+    Reset the MarketData instance (for testing).
+
     Args:
-        env: Specific environment to reset, or None to reset all.
+        env: Ignored (kept for API compatibility). Resets the singleton.
     """
-    global _market_data_live, _market_data_demo
-    
-    if env is None:
-        _market_data_live = None
-        _market_data_demo = None
-    elif env == "live":
-        _market_data_live = None
-    elif env == "demo":
-        _market_data_demo = None
+    global _market_data_live
+
+    _market_data_live = None

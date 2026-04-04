@@ -157,13 +157,7 @@ python trade_cli.py data sync --symbol BTCUSDT --period 3M
 python trade_cli.py backtest run --play scalper_btc_production --fix-gaps --start 2025-10-01 --end 2026-01-01
 ```
 
-### 4. Run Live (Demo)
-
-```bash
-python trade_cli.py play run --play scalper_btc_production --mode demo
-```
-
-### 5. Run Live (Real Money)
+### 4. Run Live (Real Money)
 
 ```bash
 python trade_cli.py play run --play scalper_btc_production --mode live --confirm
@@ -182,7 +176,6 @@ python trade_cli.py backtest run --play <name> --synthetic --synthetic-bars 500
 python trade_cli.py backtest run --play <name> --start 2025-10-01 --end 2026-01-01
 
 # Live Trading
-python trade_cli.py play run --play <name> --mode demo          # Paper trading
 python trade_cli.py play run --play <name> --mode live --confirm # Real money
 python trade_cli.py play status [--json]                         # Running instances
 python trade_cli.py play stop --play <name> [--close-positions]  # Stop with position handling
@@ -227,34 +220,10 @@ Results: 170/170 pass on synthetic data, 170/170 pass on real data (BTC, ETH, SO
 
 Additionally, a 60-play Wyckoff real-data verification suite validates 41/43 indicators, 7/7 structures, and 19/24 DSL operators across 4 symbols (BTC, ETH, SOL, LTC) with 23 math checks per play.
 
-### Demo Readiness Stress Test (84 Checks)
-
-`scripts/test_demo_readiness.py` exercises the REAL engine code through the REAL Bybit demo API. 84 checks across 12 phases:
-
-| Phase | What | Checks |
-|-------|------|--------|
-| 1 | Play Loading & Config | 5 |
-| 2 | REST Connectivity | 7 |
-| 3 | DataProvider + Indicator Warmup | 7 |
-| 4 | WebSocket Data Feed | 8 |
-| 5 | Order Execution (market orders) | 12 |
-| 6 | Error Edge Cases | 6 |
-| 7 | Full EngineManager Integration | 8 |
-| 8 | Journal & State Persistence | 5 |
-| 9 | Safety & Circuit Breakers | 6 |
-| 10 | Multi-TF Data Routing | 5 |
-| 11 | Advanced Order Lifecycle | 5 |
-| 12 | Runner State Machine & Limits | 10 |
-
-```bash
-python scripts/test_demo_readiness.py                # Full run (~5min)
-python scripts/test_demo_readiness.py --skip-orders  # Read-only mode (~3min)
-```
-
 ## Exchange Support
 
 - **Bybit** perpetual futures (USDT-margined)
-- Four-leg API architecture: separate keys for live trading, demo trading, live data, demo data
+- Two-leg API architecture: separate keys for trade and data
 - WebSocket streaming for real-time execution
 - Isolated margin, one-way position mode
 

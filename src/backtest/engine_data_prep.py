@@ -879,7 +879,7 @@ def load_1m_data_impl(
         window_start: Backtest window start
         window_end: Backtest window end
         warmup_bars_1m: Number of 1m warmup bars to load before window_start
-        data_env: Data environment ("live" or "demo")
+        data_env: Data environment ("live")
         logger: Optional logger instance
         synthetic_provider: Optional synthetic data provider for DB-free validation
 
@@ -968,7 +968,7 @@ def load_funding_data_impl(
         symbol: Trading symbol (e.g., "SOLUSDT")
         window_start: Backtest window start
         window_end: Backtest window end
-        data_env: Data environment ("live" or "demo")
+        data_env: Data environment ("live")
         logger: Optional logger instance
 
     Returns:
@@ -1026,7 +1026,7 @@ def load_open_interest_data_impl(
         symbol: Trading symbol (e.g., "SOLUSDT")
         window_start: Backtest window start
         window_end: Backtest window end
-        data_env: Data environment ("live" or "demo")
+        data_env: Data environment ("live")
         logger: Optional logger instance
 
     Returns:

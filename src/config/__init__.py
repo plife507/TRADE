@@ -5,7 +5,6 @@ Configuration management.
 from .config import (
     Config,
     get_config,
-    TradingMode,
     BybitConfig,
     RiskConfig,
     DataConfig,
@@ -16,13 +15,11 @@ from .constants import (
     TradingEnv,
     TRADING_ENVS,
     validate_trading_env,
-    get_trading_env_mapping,
     DataEnv,
     DATA_ENVS,
     DEFAULT_DATA_ENV,
     DEFAULT_BACKTEST_ENV,
     DEFAULT_LIVE_ENV,
-    DEFAULT_DEMO_ENV,
     validate_data_env,
 )
 
@@ -30,7 +27,6 @@ __all__ = [
     # Config classes
     "Config",
     "get_config",
-    "TradingMode",
     "BybitConfig",
     "RiskConfig",
     "DataConfig",
@@ -39,13 +35,11 @@ __all__ = [
     "TradingEnv",
     "TRADING_ENVS",
     "validate_trading_env",
-    "get_trading_env_mapping",
     # Data environment
     "DataEnv",
     "DATA_ENVS",
     "DEFAULT_DATA_ENV",
     "DEFAULT_BACKTEST_ENV",
     "DEFAULT_LIVE_ENV",
-    "DEFAULT_DEMO_ENV",
     "validate_data_env",
 ]

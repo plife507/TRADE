@@ -123,7 +123,7 @@ class EngineState:
 
     engine_id: str
     play_id: str
-    mode: Literal["backtest", "demo", "live", "shadow"]
+    mode: Literal["backtest", "live"]
     symbol: str
 
     # Position state

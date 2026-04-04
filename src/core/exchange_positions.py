@@ -12,6 +12,7 @@ Handles:
 import re
 from typing import TYPE_CHECKING
 
+from ..config.constants import LINEAR_SETTLE_COINS
 from ..exchanges.bybit_client import BybitAPIError
 from ..utils.datetime_utils import parse_bybit_ts as _parse_bybit_ts
 from ..utils.helpers import safe_float
@@ -89,8 +90,11 @@ def get_all_positions(manager: "ExchangeManager") -> list["Position"]:
     from .exchange_manager import Position
     
     positions = []
-    raw_positions = manager.bybit.get_positions()
-    
+    # Query all settle coins for complete position discovery
+    raw_positions: list[dict] = []
+    for settle_coin in LINEAR_SETTLE_COINS:
+        raw_positions.extend(manager.bybit.get_positions(settle_coin=settle_coin))
+
     for pos in raw_positions:
         size = safe_float(pos.get("size", 0))
         if size == 0:
@@ -165,7 +169,6 @@ def set_position_tpsl(
         True if successful
     """
     try:
-        manager._validate_trading_operation()
         
         manager.bybit.set_trading_stop(
             symbol=symbol,
@@ -202,7 +205,6 @@ def set_trailing_stop(
         True if successful
     """
     try:
-        manager._validate_trading_operation()
         
         kwargs = {"symbol": symbol, "trailing_stop": str(trailing_stop)}
         if active_price is not None:
@@ -238,8 +240,6 @@ def set_leverage(manager: "ExchangeManager", symbol: str, leverage: int) -> None
         manager.logger.warning("Leverage %s exceeds max %s, using %s", leverage, max_leverage, max_leverage)
         leverage = max_leverage
 
-    manager._validate_trading_operation()
-
     try:
         manager.bybit.set_leverage(symbol, leverage)
     except BybitAPIError as e:
@@ -263,8 +263,6 @@ def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str, leverage
     Raises:
         RuntimeError: If margin mode cannot be set on the exchange
     """
-    manager._validate_trading_operation()
-
     lev_str = str(int(leverage)) if leverage == int(leverage) else str(leverage)
     trade_mode = 0 if mode == "REGULAR_MARGIN" else 1  # 0=cross, 1=isolated
     try:
@@ -297,12 +295,14 @@ def set_position_mode(manager: "ExchangeManager", mode: str = "MergedSingle") ->
         True if successful
     """
     try:
-        manager._validate_trading_operation()
         
-        manager.bybit.switch_position_mode_v5(
-            mode=0 if mode == "MergedSingle" else 3,  # 0=one-way, 3=hedge
-            coin="USDT",
-        )
+        mode_int = 0 if mode == "MergedSingle" else 3  # 0=one-way, 3=hedge
+        for coin in LINEAR_SETTLE_COINS:
+            try:
+                manager.bybit.switch_position_mode_v5(mode=mode_int, coin=coin)
+            except Exception as coin_err:
+                if "not modified" not in str(coin_err).lower():
+                    manager.logger.warning("Position mode switch for %s: %s", coin, coin_err)
         manager.logger.info("Set position mode to %s", mode)
         return True
     except Exception as e:
@@ -326,7 +326,6 @@ def add_margin(manager: "ExchangeManager", symbol: str, amount: float) -> bool:
         True if successful
     """
     try:
-        manager._validate_trading_operation()
         
         manager.bybit.session.add_or_reduce_margin(
             category="linear",
@@ -755,29 +754,29 @@ def switch_to_isolated_margin(manager: "ExchangeManager", symbol: str, leverage:
 
 def switch_to_one_way_mode(manager: "ExchangeManager") -> bool:
     """
-    Switch to one-way position mode for all USDT linear pairs.
-
-    Uses coin="USDT" to batch-switch all USDT perpetuals that have no
-    open positions or orders. Bybit V5 requires either symbol or coin.
+    Switch to one-way position mode for all linear pairs (USDT + USDC).
 
     Returns:
         True if successful or already in one-way mode
     """
-    try:
-        manager.bybit.switch_position_mode_v5(mode=0, coin="USDT")
-        return True
-    except Exception as e:
-        if "not modified" in str(e).lower():
-            return True
-        manager.logger.error("Switch to one-way mode failed: %s", e)
-        return False
+    success = True
+    for coin in LINEAR_SETTLE_COINS:
+        try:
+            manager.bybit.switch_position_mode_v5(mode=0, coin=coin)
+        except Exception as e:
+            err_str = str(e).lower()
+            # "not modified" = already one-way; "not supported" = USDC always one-way
+            if "not modified" not in err_str and "not supported" not in err_str:
+                manager.logger.error("Switch to one-way mode failed for %s: %s", coin, e)
+                success = False
+    return success
 
 
 def switch_to_hedge_mode(manager: "ExchangeManager") -> bool:
     """
     Switch to hedge position mode for all USDT linear pairs.
 
-    Uses coin="USDT" to batch-switch. Bybit V5 requires either symbol or coin.
+    Note: USDC perps only support one-way mode (Bybit restriction).
 
     Returns:
         True if successful or already in hedge mode

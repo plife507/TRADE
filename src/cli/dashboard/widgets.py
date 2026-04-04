@@ -207,7 +207,7 @@ def build_status_panel(state: DashboardState, handler: DashboardLogHandler) -> P
     t.append(f" {state.play_name}", style="bold cyan")
     t.append(f"  {state.symbol}", style="bold yellow")
     t.append(f"  {state.exec_tf}  {state.leverage}x", style="white")
-    mode_style = "bold green" if state.mode == "DEMO" else "bold red"
+    mode_style = "bold red"
     t.append(f"  {state.mode}", style=mode_style)
     t.append("  ")
     t.append_text(_state_badge(state))

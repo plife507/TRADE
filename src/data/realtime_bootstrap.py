@@ -141,18 +141,17 @@ class RealtimeBootstrap:
             client: BybitClient instance (creates one if None)
             state: RealtimeState instance (uses global if None)
             config: Subscription configuration
-            env: Data environment ("live" or "demo"). If None, inferred from use_demo config.
+            env: Data environment ("backtest" or "live"). Defaults to "live".
         """
         self.app_config = get_config()
         self.logger = get_module_logger(__name__)
-        
-        # Determine data environment
-        # If not specified, infer from use_demo config (demo trading -> demo env)
+
+        # Determine data environment (always live)
         if env is None:
-            self.env: DataEnv = "demo" if self.app_config.bybit.use_demo else "live"
+            self.env: DataEnv = "live"
         else:
             self.env = validate_data_env(env)
-        
+
         # Initialize client
         if client:
             self.client = client
@@ -161,15 +160,11 @@ class RealtimeBootstrap:
             self.client = BybitClient(
                 api_key=api_key,
                 api_secret=api_secret,
-                use_demo=self.app_config.bybit.use_demo,
             )
-        
-        # Log WebSocket environment — derive from actual client, not global config
-        ws_env = "DEMO (stream-demo.bybit.com)" if self.client.use_demo else "LIVE (stream.bybit.com)"
-        account_type = "fake-money demo account" if self.client.use_demo else "real-money live account"
+
         self.logger.info(
-            "RealtimeBootstrap: data_env=%s, WebSocket environment=%s, account=%s",
-            self.env, ws_env, account_type,
+            "RealtimeBootstrap: data_env=%s, WebSocket=LIVE (stream.bybit.com)",
+            self.env,
         )
         
         # State management
@@ -438,23 +433,14 @@ class RealtimeBootstrap:
         endpoints since the market data is the same. This is configured via
         sub_config.use_live_for_public_streams.
         """
-        # Determine stream mode for logging from actual client, not global config
-        if self.sub_config.use_live_for_public_streams:
-            stream_mode = "LIVE (market data shared)"
-        elif self.client.use_demo:
-            stream_mode = "DEMO"
-        else:
-            stream_mode = "LIVE"
+        stream_mode = "LIVE"
         
         self.logger.info("Starting public WebSocket streams (%s)...", stream_mode)
         
         try:
             # Connect to public WebSocket with appropriate mode
             # This creates the WebSocket connection with correct endpoint
-            self.client.connect_public_ws(
-                channel_type="linear",
-                use_live_for_market_data=self.sub_config.use_live_for_public_streams,
-            )
+            self.client.connect_public_ws(channel_type="linear")
             
             # Ticker streams
             if self.sub_config.enable_ticker and self._symbols:
@@ -894,8 +880,11 @@ class RealtimeBootstrap:
         try:
             self.logger.debug("Fetching initial positions...")
             
-            # Get all positions for the symbols we're tracking
-            positions = self.client.get_positions(settle_coin="USDT")
+            # Get all positions across all settle coins
+            from ..config.constants import LINEAR_SETTLE_COINS
+            positions: list[dict] = []
+            for sc in LINEAR_SETTLE_COINS:
+                positions.extend(self.client.get_positions(settle_coin=sc))
             
             if not positions:
                 self.logger.debug("No open positions")
@@ -933,8 +922,11 @@ class RealtimeBootstrap:
         try:
             self.logger.debug("Fetching initial open orders...")
             
-            # Get all open orders
-            orders = self.client.get_open_orders()
+            # Get all open orders across settle coins
+            from ..config.constants import LINEAR_SETTLE_COINS
+            orders: list[dict] = []
+            for sc in LINEAR_SETTLE_COINS:
+                orders.extend(self.client.get_open_orders(settle_coin=sc))
             
             if not orders:
                 self.logger.debug("No open orders")
@@ -1179,20 +1171,9 @@ class RealtimeBootstrap:
     
     def get_status(self) -> dict[str, object]:
         """Get current bootstrap status."""
-        # Determine API modes using standardized DEMO/LIVE terminology
-        if self.app_config.bybit.is_demo:
-            rest_api_mode = "DEMO (FAKE MONEY)"
-        else:
-            rest_api_mode = "LIVE (REAL MONEY)"
-        
-        if self.sub_config.use_live_for_public_streams:
-            public_ws_mode = "LIVE (shared market data)"
-        elif self.app_config.bybit.is_demo:
-            public_ws_mode = "DEMO"
-        else:
-            public_ws_mode = "LIVE"
-        
-        private_ws_mode = rest_api_mode  # Private WS must match REST API
+        rest_api_mode = "LIVE (REAL MONEY)"
+        public_ws_mode = "LIVE"
+        private_ws_mode = rest_api_mode
         
         return {
             "running": self._running,
@@ -1251,12 +1232,7 @@ def get_realtime_bootstrap() -> RealtimeBootstrap:
             app_config = get_config()
             ws_config = app_config.websocket
             
-            # In demo mode, auto-enable live public streams because
-            # stream-demo.bybit.com/v5/public/linear returns 404.
-            # Market data is identical on live vs demo.
             use_live_public = ws_config.use_live_for_public_streams
-            if app_config.bybit.use_demo and not use_live_public:
-                use_live_public = True
 
             sub_config = SubscriptionConfig(
                 enable_ticker=ws_config.enable_ticker_stream,

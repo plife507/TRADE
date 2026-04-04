@@ -69,7 +69,7 @@ def backtest_preflight_play_tool(
 
     Args:
         play_id: Play identifier
-        env: Data environment ("live" or "demo")
+        env: Data environment ("live")
         start: Window start (required)
         end: Window end (default: now)
         plays_dir: Override Play directory
@@ -277,7 +277,7 @@ def _resolve_backtest_config(
     starting_equity = (
         initial_equity_override
         if initial_equity_override is not None
-        else play.account.starting_equity_usdt
+        else (play.backtest_config.equity if play.backtest_config else play.account.starting_equity_usdt)
     )
     max_leverage = (
         max_leverage_override
@@ -466,7 +466,7 @@ def backtest_run_play_tool(
 
     Args:
         play_id: Play identifier
-        env: Data environment ("live" or "demo")
+        env: Data environment ("live")
         start: Window start
         end: Window end
         smoke: If True, run fast smoke check (small window if not provided)

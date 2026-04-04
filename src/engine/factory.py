@@ -3,34 +3,29 @@ PlayEngine factory for creating engines in different modes.
 
 The factory provides a unified interface for creating PlayEngine instances:
 - Backtest: Historical data with simulated execution
-- Demo: Real-time data with Bybit demo API (paper trading)
 - Live: Real-time data with Bybit live API (real money)
 - Shadow: Real-time data with signal logging only
 
-Architecture (3-Database Model):
+Architecture (2-Database Model):
     Each mode uses a separate DuckDB file to enable concurrent operations:
 
     | Mode     | Database File              | API Endpoint         | Purpose           |
     |----------|----------------------------|----------------------|-------------------|
     | backtest | market_data_backtest.duckdb| api.bybit.com        | Historical sims   |
-    | demo     | market_data_demo.duckdb    | api-demo.bybit.com   | Paper trading     |
     | live     | market_data_live.duckdb    | api.bybit.com        | Live trading      |
 
-    This allows: backtest + demo + live to run in separate processes simultaneously.
+    This allows: backtest + live to run in separate processes simultaneously.
 
 Instance Isolation:
     - Each PlayEngine gets a unique engine_id: "{play}_{mode}_{uuid8}"
     - Backtest mode: Fully isolated, can run multiple in parallel (separate processes)
-    - Demo/Live mode: Use global singletons for WebSocket (one instance per process)
+    - Live mode: Uses global singletons for WebSocket (one instance per process)
 
 Usage:
     from src.engine import PlayEngineFactory
 
     # Create backtest engine (uses market_data_backtest.duckdb)
     engine = PlayEngineFactory.create(play, mode="backtest")
-
-    # Create demo engine (uses market_data_demo.duckdb + api-demo.bybit.com)
-    engine = PlayEngineFactory.create(play, mode="demo")
 
     # Create live engine (uses market_data_live.duckdb + api.bybit.com)
     engine = PlayEngineFactory.create(play, mode="live", confirm_live=True)
@@ -55,6 +50,7 @@ if TYPE_CHECKING:
     from ..backtest.play import Play
     from ..backtest.runtime.feed_store import FeedStore
     from ..backtest.sim.exchange import SimulatedExchange
+    from ..exchanges.bybit_client import BybitClient
     from ..structures import MultiTFIncrementalState
 
 
@@ -63,7 +59,7 @@ logger = get_module_logger(__name__)
 
 def _build_config_from_play(
     play: "Play",
-    mode: Literal["backtest", "demo", "live", "shadow"],
+    mode: Literal["backtest", "live"],
     *,
     persist_state: bool = False,
     state_save_interval: int = 100,
@@ -76,7 +72,7 @@ def _build_config_from_play(
 
     Args:
         play: Play instance with account + risk_model
-        mode: Engine mode (backtest/demo/live/shadow)
+        mode: Engine mode (backtest/live)
         persist_state: Whether to enable state persistence
         state_save_interval: How often to save state (bars)
         config_override: Optional overrides applied last
@@ -114,15 +110,29 @@ def _build_config_from_play(
             "Play account.slippage_bps is None. "
             "AccountConfig.from_dict() should always populate this from defaults.yml."
         )
+    # Equity source depends on mode:
+    # - backtest: sim capital from backtest_config.equity
+    # - live: deploy capital from deploy_config.capital (overridden by actual exchange balance)
+    if mode == "backtest" and play.backtest_config:
+        initial_equity = play.backtest_config.equity
+        slippage = play.backtest_config.slippage_bps
+    elif mode == "live" and play.deploy_config:
+        initial_equity = play.deploy_config.capital
+        slippage = account.slippage_bps  # Sim-only but kept for sizing estimation
+    else:
+        # Fallback to account values (backward compat)
+        initial_equity = account.starting_equity_usdt
+        slippage = account.slippage_bps
+
     config = PlayEngineConfig(
         mode=mode,
-        initial_equity=account.starting_equity_usdt,
+        initial_equity=initial_equity,
         risk_per_trade_pct=risk_per_trade_pct,
         max_leverage=max_leverage,
         min_trade_usdt=account.min_trade_notional_usdt,
         taker_fee_rate=fee_model.taker_bps / 10000.0,
         maker_fee_rate=fee_model.maker_bps / 10000.0,
-        slippage_bps=account.slippage_bps,
+        slippage_bps=slippage,
         persist_state=persist_state,
         state_save_interval=state_save_interval,
         on_sl_beyond_liq=account.on_sl_beyond_liq,
@@ -153,9 +163,6 @@ class PlayEngineFactory:
         # Create engine for backtest
         engine = PlayEngineFactory.create(play, mode="backtest")
 
-        # Create engine for demo trading
-        engine = PlayEngineFactory.create(play, mode="demo")
-
         # Create engine for live trading
         engine = PlayEngineFactory.create(
             play,
@@ -167,7 +174,7 @@ class PlayEngineFactory:
     @staticmethod
     def create(
         play: "Play",
-        mode: Literal["backtest", "demo", "live", "shadow"],
+        mode: Literal["backtest", "live"],
         confirm_live: bool = False,
         run_dir: Path | None = None,
         config_override: dict | None = None,
@@ -190,8 +197,8 @@ class PlayEngineFactory:
             RuntimeError: If environment not configured for mode
         """
         # Validate mode
-        if mode not in ("backtest", "demo", "live", "shadow"):
-            raise ValueError(f"Invalid mode: {mode}. Must be backtest/demo/live/shadow")
+        if mode not in ("backtest", "live"):
+            raise ValueError(f"Invalid mode: {mode}. Must be backtest or live. Use 'shadow run' for shadow mode.")
 
         # Safety check for live trading
         if mode == "live":
@@ -200,10 +207,8 @@ class PlayEngineFactory:
         # Create mode-specific components
         if mode == "backtest":
             return PlayEngineFactory._create_backtest(play, run_dir, config_override)
-        elif mode in ("demo", "live"):
-            return PlayEngineFactory._create_live(play, mode, config_override)
-        else:  # shadow
-            return PlayEngineFactory._create_shadow(play, config_override)
+        else:  # live
+            return PlayEngineFactory._create_live(play, config_override=config_override)
 
     @staticmethod
     def _validate_live_mode(confirm_live: bool) -> None:
@@ -224,22 +229,9 @@ class PlayEngineFactory:
                 "This ensures you understand you're trading with real money."
             )
 
-        # C6: Check Config singleton, not raw env vars
+        # Check for live API keys
         from ..config.config import get_config
         config = get_config()
-
-        if config.bybit.use_demo:
-            raise RuntimeError(
-                "Cannot use live mode with BYBIT_USE_DEMO=true. "
-                "Set BYBIT_USE_DEMO=false for live trading."
-            )
-
-        if config.trading.mode != "real":
-            raise RuntimeError(
-                f"TRADING_MODE must be 'real' for live trading, got '{config.trading.mode}'"
-            )
-
-        # Check for live API keys
         if not config.bybit.live_api_key:
             raise RuntimeError("BYBIT_LIVE_API_KEY not set for live trading")
 
@@ -279,22 +271,28 @@ class PlayEngineFactory:
     @staticmethod
     def _create_live(
         play: "Play",
-        mode: Literal["demo", "live"],
         config_override: dict | None,
+        client: "BybitClient | None" = None,
     ) -> PlayEngine:
-        """Create live/demo engine with real exchange components."""
+        """Create live engine with real exchange components.
+
+        Args:
+            play: Play instance
+            config_override: Optional config overrides
+            client: Optional BybitClient (for sub-account deployment).
+                    If None, uses the default singleton from ExchangeManager.
+        """
         from .adapters.live import LiveDataProvider, LiveExchange
         from .adapters.state import FileStateStore
 
         config = _build_config_from_play(
-            play, mode,
+            play, "live",
             persist_state=True, state_save_interval=10,
             config_override=config_override,
         )
 
-        is_demo = mode == "demo"
-        data_provider = LiveDataProvider(play, demo=is_demo)
-        exchange = LiveExchange(play, config, demo=is_demo)
+        data_provider = LiveDataProvider(play)
+        exchange = LiveExchange(play, config, client=client)
         state_store = FileStateStore()
 
         return PlayEngine(
@@ -304,34 +302,6 @@ class PlayEngineFactory:
             state_store=state_store,
             config=config,
         )
-
-    @staticmethod
-    def _create_shadow(
-        play: "Play",
-        config_override: dict | None,
-    ) -> PlayEngine:
-        """Create shadow engine (live data, no execution)."""
-        from .adapters.live import LiveDataProvider
-        from .adapters.state import InMemoryStateStore
-        from .adapters.backtest import ShadowExchange
-
-        config = _build_config_from_play(
-            play, "shadow", persist_state=False, config_override=config_override,
-        )
-
-        # Shadow uses LIVE WS data (real market data, paper-trade execution)
-        data_provider = LiveDataProvider(play, demo=False)
-        exchange = ShadowExchange(play, config)
-        state_store = InMemoryStateStore()
-
-        return PlayEngine(
-            play=play,
-            data_provider=data_provider,
-            exchange=exchange,
-            state_store=state_store,
-            config=config,
-        )
-
 
 def create_backtest_engine(
     play: "Play",
