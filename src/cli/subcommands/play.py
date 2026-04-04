@@ -97,25 +97,9 @@ def handle_play_run(args) -> int:
     if mode == "backtest":
         return _run_play_backtest(play, args)
 
-    from src.engine import PlayEngineFactory, EngineManager
+    from src.engine import EngineManager
 
-    if mode == "shadow":
-        # Shadow mode: factory creates engine directly (no manager)
-        try:
-            engine = PlayEngineFactory.create(
-                play, mode=mode, confirm_live=False,
-            )
-        except Exception as e:
-            from src.utils.debug import is_debug_enabled
-            if is_debug_enabled():
-                import traceback
-                console.print(f"[red]Failed to create engine:[/]")
-                console.print(f"[red]{traceback.format_exc()}[/]")
-            else:
-                console.print(f"[red]Failed to create engine: {e}[/]")
-            return 1
-        return _run_play_shadow(engine, play, args)
-    elif mode == "live":
+    if mode == "live":
         # C5: Manager creates the engine -- do NOT create one here via factory
         # (the old code created a factory engine that was thrown away)
         return _run_play_live(play, args, manager=EngineManager.get_instance())
@@ -160,31 +144,6 @@ def _run_play_backtest(play, args) -> int:
     return rc
 
 
-def _run_play_shadow(engine, play, args) -> int:
-    """Run Play in shadow mode (signals only, no execution)."""
-    import asyncio
-    from src.engine.runners import ShadowRunner
-
-    runner = ShadowRunner(engine)
-
-    console.print("[cyan]Starting shadow mode...[/]")
-    console.print("[dim]Press Ctrl+C to stop[/]")
-
-    try:
-        stats = asyncio.run(runner.run_replay(start_idx=0, end_idx=None))
-        console.print(f"\n[green]Shadow run complete:[/]")
-        console.print(f"  Bars: {stats.bars_processed}")
-        console.print(f"  Signals: {stats.signals_generated}")
-        console.print(f"  Long: {stats.long_signals} | Short: {stats.short_signals}")
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Shadow mode stopped by user[/]")
-    except Exception as e:
-        console.print(f"\n[red]Shadow mode error: {e}[/]")
-        return 1
-
-    return 0
-
-
 def _run_play_live(play, args, manager=None) -> int:
     """Run Play in live mode via EngineManager.
 
@@ -217,7 +176,7 @@ def _run_play_live_headless(play, args, manager=None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
 
-    mode: Literal["live", "shadow", "backtest"] = args.mode
+    mode: Literal["live", "backtest"] = args.mode
     if manager is None:
         manager = EngineManager.get_instance()
 

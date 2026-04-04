@@ -198,7 +198,7 @@ def _setup_play_subcommands(subparsers) -> None:
     play_run_parser.add_argument("--play", required=True, help="Play identifier or YAML path")
     play_run_parser.add_argument(
         "--mode",
-        choices=["backtest", "live", "shadow"],
+        choices=["backtest", "live"],
         default="backtest",
         help="Execution mode (default: backtest)"
     )

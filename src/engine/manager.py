@@ -541,7 +541,7 @@ class EngineManager:
     async def start(
         self,
         play: "Play",
-        mode: Literal["live", "shadow", "backtest"],
+        mode: Literal["live", "backtest"],
         on_signal: "Callable | None" = None,
     ) -> str:
         """

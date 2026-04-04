@@ -9,7 +9,6 @@ Provides mode-specific implementations of:
 Backtest Adapters (backtest.py):
 - BacktestDataProvider: Wraps FeedStore arrays
 - BacktestExchange: Wraps SimulatedExchange
-- ShadowExchange: No-op for shadow mode
 
 Live Adapters (live.py):
 - LiveDataProvider: WebSocket + indicator cache
@@ -23,7 +22,6 @@ State Adapters (state.py):
 from .backtest import (
     BacktestDataProvider,
     BacktestExchange,
-    ShadowExchange,
 )
 
 from .state import (
@@ -37,7 +35,6 @@ __all__ = [
     # Backtest
     "BacktestDataProvider",
     "BacktestExchange",
-    "ShadowExchange",
     # State
     "InMemoryStateStore",
     "FileStateStore",

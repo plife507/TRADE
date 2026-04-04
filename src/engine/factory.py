@@ -59,7 +59,7 @@ logger = get_module_logger(__name__)
 
 def _build_config_from_play(
     play: "Play",
-    mode: Literal["backtest", "live", "shadow"],
+    mode: Literal["backtest", "live"],
     *,
     persist_state: bool = False,
     state_save_interval: int = 100,
@@ -160,7 +160,7 @@ class PlayEngineFactory:
     @staticmethod
     def create(
         play: "Play",
-        mode: Literal["backtest", "live", "shadow"],
+        mode: Literal["backtest", "live"],
         confirm_live: bool = False,
         run_dir: Path | None = None,
         config_override: dict | None = None,
@@ -183,8 +183,8 @@ class PlayEngineFactory:
             RuntimeError: If environment not configured for mode
         """
         # Validate mode
-        if mode not in ("backtest", "live", "shadow"):
-            raise ValueError(f"Invalid mode: {mode}. Must be backtest/live/shadow")
+        if mode not in ("backtest", "live"):
+            raise ValueError(f"Invalid mode: {mode}. Must be backtest or live. Use 'shadow run' for shadow mode.")
 
         # Safety check for live trading
         if mode == "live":
@@ -193,10 +193,8 @@ class PlayEngineFactory:
         # Create mode-specific components
         if mode == "backtest":
             return PlayEngineFactory._create_backtest(play, run_dir, config_override)
-        elif mode == "live":
+        else:  # live
             return PlayEngineFactory._create_live(play, config_override=config_override)
-        else:  # shadow
-            return PlayEngineFactory._create_shadow(play, config_override)
 
     @staticmethod
     def _validate_live_mode(confirm_live: bool) -> None:
@@ -290,34 +288,6 @@ class PlayEngineFactory:
             state_store=state_store,
             config=config,
         )
-
-    @staticmethod
-    def _create_shadow(
-        play: "Play",
-        config_override: dict | None,
-    ) -> PlayEngine:
-        """Create shadow engine (live data, no execution)."""
-        from .adapters.live import LiveDataProvider
-        from .adapters.state import InMemoryStateStore
-        from .adapters.backtest import ShadowExchange
-
-        config = _build_config_from_play(
-            play, "shadow", persist_state=False, config_override=config_override,
-        )
-
-        # Shadow uses LIVE WS data (real market data, paper-trade execution)
-        data_provider = LiveDataProvider(play)
-        exchange = ShadowExchange(play, config)
-        state_store = InMemoryStateStore()
-
-        return PlayEngine(
-            play=play,
-            data_provider=data_provider,
-            exchange=exchange,
-            state_store=state_store,
-            config=config,
-        )
-
 
 def create_backtest_engine(
     play: "Play",

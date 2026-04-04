@@ -4,7 +4,6 @@ Backtest adapters for PlayEngine.
 These adapters wrap existing backtest infrastructure:
 - BacktestDataProvider: Wraps FeedStore for O(1) array access
 - BacktestExchange: Wraps SimulatedExchange for order execution
-- ShadowExchange: No-op exchange for shadow mode
 
 Fully integrated with existing backtest engine infrastructure.
 """
@@ -538,55 +537,4 @@ class BacktestExchange:
         if self._sim_exchange is None:
             return []
         return self._sim_exchange.trades
-
-
-class ShadowExchange:
-    """
-    No-op exchange for shadow mode.
-
-    Records signals without executing. Used for testing
-    signal generation with live data.
-    """
-
-    def __init__(self, play: "Play", config: PlayEngineConfig):
-        self._play = play
-        self._config = config
-        self._balance = config.initial_equity
-        self._signals: list[Order] = []
-
-    def submit_order(self, order: Order) -> OrderResult:
-        """Record order without executing."""
-        self._signals.append(order)
-        return OrderResult(
-            success=True,
-            order_id=f"shadow_{len(self._signals)}",
-            metadata={"shadow": True},
-        )
-
-    def cancel_order(self, order_id: str) -> bool:
-        return True
-
-    def get_position(self, symbol: str) -> Position | None:
-        return None  # Shadow mode never has positions
-
-    def get_balance(self) -> float:
-        return self._balance
-
-    def get_equity(self) -> float:
-        return self._balance
-
-    def get_pending_orders(self, symbol: str | None = None) -> list[Order]:
-        return []
-
-    def submit_close(self, reason: str = "signal", percent: float = 100.0) -> "OrderResult":
-        """No-op in shadow mode - no positions to close."""
-        from ..interfaces import OrderResult
-        return OrderResult(success=True, metadata={"shadow": True})
-
-    def get_realized_pnl(self) -> float:
-        """Shadow mode has no realized PnL."""
-        return 0.0
-
-    def step(self, candle: Candle) -> None:
-        pass  # No-op
 
