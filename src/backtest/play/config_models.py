@@ -3,7 +3,9 @@ Configuration models for Play specifications.
 
 Contains:
 - FeeModel: Trading fee configuration
-- AccountConfig: Account/capital configuration
+- AccountConfig: Shared account parameters (leverage, fees, risk)
+- BacktestConfig: Simulation-only parameters (equity, slippage)
+- DeployConfig: Live deployment + shadow dress rehearsal (capital, settle coin)
 - ExitMode: Position exit mode enum
 """
 
@@ -245,3 +247,87 @@ class AccountConfig:
             on_sl_beyond_liq=str(d.get("on_sl_beyond_liq", "reject")),
             risk_per_trade_pct=float(d["risk_per_trade_pct"]) if "risk_per_trade_pct" in d else None,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class BacktestConfig:
+    """Simulation-only parameters for backtest engine.
+
+    These control the sim environment and have no effect in live mode.
+    Shadow daemon reads deploy.capital for equity instead.
+    """
+    equity: float = 10_000.0       # Starting capital for sim
+    slippage_bps: float = 2.0      # Sim execution slippage
+
+    def __post_init__(self) -> None:
+        if self.equity <= 0:
+            raise ValueError(f"backtest.equity must be positive. Got: {self.equity}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"equity": self.equity, "slippage_bps": self.slippage_bps}
+
+    @classmethod
+    def from_dict(cls, d: dict | None, account_fallback: dict | None = None) -> "BacktestConfig":
+        """Parse from backtest: section. Falls back to account: for backward compat.
+
+        Priority: backtest.equity > account.starting_equity_usdt > defaults.yml
+        """
+        if d is None:
+            d = {}
+        fb = account_fallback or {}
+
+        equity = float(
+            d.get("equity")
+            or fb.get("starting_equity_usdt")
+            or DEFAULTS.account.starting_equity_usdt
+        )
+        slippage = float(
+            d.get("slippage_bps")
+            or fb.get("slippage_bps")
+            or DEFAULTS.execution.slippage_bps
+        )
+        return cls(equity=equity, slippage_bps=slippage)
+
+
+@dataclass(frozen=True, slots=True)
+class DeployConfig:
+    """Live deployment + shadow dress rehearsal parameters.
+
+    Shadow reads capital for equity (dress rehearsal at deploy scale).
+    PlayDeployer reads capital, settle_coin, and dcp_window for sub-account setup.
+    """
+    capital: float = 10_000.0      # Fund sub-account / shadow equity
+    settle_coin: str = "USDT"      # Route to USDT or USDC perps
+    dcp_window: int = 30           # DCP timeout seconds
+
+    def __post_init__(self) -> None:
+        if self.capital <= 0:
+            raise ValueError(f"deploy.capital must be positive. Got: {self.capital}")
+        if self.settle_coin not in ("USDT", "USDC"):
+            raise ValueError(f"deploy.settle_coin must be USDT or USDC. Got: {self.settle_coin}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "capital": self.capital,
+            "settle_coin": self.settle_coin,
+            "dcp_window": self.dcp_window,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict | None, account_fallback: dict | None = None) -> "DeployConfig":
+        """Parse from deploy: section. Falls back to account: for backward compat.
+
+        Priority: deploy.capital > account.starting_equity_usdt > defaults.yml
+        """
+        if d is None:
+            d = {}
+        fb = account_fallback or {}
+
+        capital = float(
+            d.get("capital")
+            or fb.get("starting_equity_usdt")
+            or DEFAULTS.account.starting_equity_usdt
+        )
+        settle_coin = str(d.get("settle_coin", "USDT"))
+        dcp_window = int(d.get("dcp_window", 30))
+        return cls(capital=capital, settle_coin=settle_coin, dcp_window=dcp_window)

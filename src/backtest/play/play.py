@@ -22,7 +22,7 @@ import yaml
 
 from ..feature_registry import Feature, FeatureType, FeatureRegistry, InputSource
 from ..rules.dsl_parser import _is_enum_literal
-from .config_models import AccountConfig, FeeModel, ExitMode
+from .config_models import AccountConfig, BacktestConfig, DeployConfig, FeeModel, ExitMode
 from .risk_model import (
     RiskModel,
     StopLossRule,
@@ -377,8 +377,12 @@ class Play:
     name: str | None = None
     description: str | None = None
 
-    # Account configuration (REQUIRED)
+    # Account configuration (REQUIRED — shared params)
     account: AccountConfig | None = None
+
+    # Mode-specific configs (parsed from backtest: and deploy: YAML sections)
+    backtest_config: "BacktestConfig | None" = None
+    deploy_config: "DeployConfig | None" = None
 
     # Scope
     symbol_universe: tuple = field(default_factory=tuple)
@@ -967,9 +971,13 @@ class Play:
         1. Internal format (from to_dict): features as list, symbol_universe, exec_tf
         2. YAML format: features as dict, symbol, tf
         """
-        # Parse account config
+        # Parse account config (shared params)
         account_dict = d.get("account")
         account = AccountConfig.from_dict(account_dict) if account_dict else None
+
+        # Parse mode-specific configs (backward compat: fall back to account: values)
+        backtest_cfg = BacktestConfig.from_dict(d.get("backtest"), account_dict)
+        deploy_cfg = DeployConfig.from_dict(d.get("deploy"), account_dict)
 
         # Parse timeframes
         exec_tf, tf_mapping, _ = cls._parse_timeframes(d)
@@ -1032,6 +1040,8 @@ class Play:
             name=d.get("name"),
             description=d.get("description"),
             account=account,
+            backtest_config=backtest_cfg,
+            deploy_config=deploy_cfg,
             symbol_universe=tuple(symbol_universe),
             exec_tf=exec_tf,
             tf_mapping=tf_mapping,
