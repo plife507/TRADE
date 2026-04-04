@@ -280,7 +280,7 @@ preferred read path (wired in Phase 3). Full migration deferred — 30+ referenc
 - [ ] **GATE**: `python3 trade_cli.py validate standard` passes
 
 ### Phase 5: Documentation + Final Audit
-- [ ] Update `CLAUDE.md` — remove `play run --mode shadow`, update architecture
+- [x] Update `CLAUDE.md` — architecture + portfolio commands updated
 - [ ] Update `docs/PLAY_DSL_REFERENCE.md` — document `backtest:` and `deploy:` sections
 - [ ] Run full audit agent for orphaned references
 - [ ] **GATE**: `python3 trade_cli.py validate full` passes
@@ -306,7 +306,7 @@ preferred read path (wired in Phase 3). Full migration deferred — 30+ referenc
 
 ### T6: Manual Verification (requires exchange connection)
 - [ ] Run shadow play 10+ minutes — NO "Signal execution blocked" warnings
-- [ ] `play run --play AT_001 --mode shadow --headless` prints JSON, Ctrl+C stops
+- [ ] `shadow run --play AT_001` runs and Ctrl+C stops
 - [ ] `play watch --json`, `play stop --all` work correctly
 - [ ] Start -> stop -> cooldown -> restart timing works (15s)
 

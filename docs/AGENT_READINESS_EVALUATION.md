@@ -148,7 +148,7 @@ These items were coded but never manually verified:
 
 | Workflow | CLI Commands | Status |
 |----------|-------------|--------|
-| **Deploy a play** | `validate pre-live --play X` then `play run --headless --mode shadow` | Ready |
+| **Deploy a play** | `validate pre-live --play X` then `shadow run --play X` or `portfolio deploy --play X --confirm` | Ready |
 | **Monitor** | `play status --json` / `play watch --json` | Ready |
 | **Signal execution** | Automatic (engine handles internally) | Ready |
 | **Check P&L** | `account balance --json` / `account pnl --json` | Ready |
@@ -167,8 +167,8 @@ These items were coded but never manually verified:
 # 1. Validate play before deployment
 python trade_cli.py validate pre-live --play my_strategy.yml --json
 
-# 2. Start headless shadow
-python trade_cli.py play run --play my_strategy.yml --mode shadow --headless &
+# 2. Start shadow (daemon mode)
+python trade_cli.py shadow run --play my_strategy.yml &
 # First stdout line: {"event": "started", "instance_id": "...", ...}
 
 # 3. Monitor loop
