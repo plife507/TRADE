@@ -6,15 +6,20 @@ No interactive mode — all access via `python trade_cli.py <command> [subcomman
 ## Architecture
 
 ```
-trade_cli.py (337 lines)          Entry point: argparse + dispatch
-  src/cli/argparser.py (652)      Argument definitions for 11 command groups
-  src/cli/subcommands/ (2978)     63 handler functions (args -> tool -> format)
-    _helpers.py                   _json_result, _print_result, _parse_datetime
-  src/cli/utils.py (6)            console singleton only
-  src/cli/validate.py (1864)      Validation suite engine
+trade_cli.py                      Entry point: argparse + dispatch
+  src/cli/argparser.py            Argument definitions for 13 command groups
+  src/cli/subcommands/            Handler functions (args -> tool -> format)
+    play.py                       backtest/live modes
+    portfolio.py                  UTA portfolio (22 tools)
+    shadow.py                     Shadow daemon commands
+    _helpers.py                   _json_result, _print_result
+  src/cli/utils.py                console singleton
+  src/cli/validate.py             Validation suite engine
   src/cli/validate_timestamps.py  G17 timestamp gate (503 checks)
-  src/cli/dashboard/ (~2500)      Rich TUI for live play monitoring
-  src/cli/smoke_tests/ (~1860)    Smoke test infrastructure
+  src/cli/dashboard/              Rich TUI for live play monitoring
+  src/cli/smoke_tests/            Smoke test infrastructure
+  src/tools/                      82+ registered tools (ToolResult envelope)
+    portfolio_tools.py            22 UTA portfolio tools
 ```
 
 **Data flow**: `argparse -> handler(args) -> tool_fn() -> ToolResult -> format -> exit code`
@@ -75,6 +80,36 @@ play watch --play X [--interval 2.0] [--json]           # Watch live snapshots
 play logs --play X [-f] [-n 50]                         # Tail play logs
 play pause --play X                                     # Pause signal processing
 play resume --play X                                    # Resume signal processing
+```
+
+### shadow — Shadow daemon (full sim with live data)
+
+```bash
+shadow run --play X [--equity 1000]                     # Single play shadow
+shadow add --play X                                     # Add play to running daemon
+shadow remove --instance X                              # Remove play
+shadow list [--json]                                    # List shadow instances
+shadow stats [--instance X] [--json]                    # Performance stats
+shadow daemon [--config shadow.yml]                     # Multi-play VPS daemon
+```
+
+### portfolio — UTA portfolio management
+
+```bash
+portfolio snapshot [--json]                             # Full UTA snapshot
+portfolio wallet [--json]                               # All wallet coins
+portfolio risk [--json]                                 # Margin/liquidation metrics
+portfolio instruments --settle-coin USDC [--json]       # List instruments
+portfolio resolve BTCPERP [--json]                      # Symbol → category/settle
+portfolio subs list [--json]                            # Sub-accounts
+portfolio subs create --username play01                 # Create sub-account
+portfolio subs fund --uid X --coin USDT --amount 50     # Fund sub
+portfolio deploy --play X --capital 50 --confirm        # Deploy play to sub
+portfolio stop --uid X                                  # Stop deployed play
+portfolio plays [--json]                                # Active plays
+portfolio recall-all --confirm                          # Emergency: stop all
+portfolio collateral [--currency BTC] [--json]          # Collateral tiers
+portfolio toggle-collateral --coin BTC --enable         # Toggle collateral
 ```
 
 ### validate — Validation suite

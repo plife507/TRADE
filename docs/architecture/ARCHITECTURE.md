@@ -30,7 +30,7 @@ KNOWLEDGE ──> AGENT BUILDS PLAYS ──> BACKTEST (iterate until profitable)
 | Autonomy model | Graduated — pause+alert first, auto-rotate as trust builds | System earns trust over time with real results |
 | Shadow = training ground | Market intelligence trains in shadow, not separate | Learns regime-to-performance correlation from real paper data |
 | Interfaces | Web UI + CLI (human) + CLI (agent) — equal citizens | All three access the same tools layer |
-| Exchange | Bybit USDT linear perpetuals (future: coin-margined, USDC, unified cross-margin) | Start focused, expand later |
+| Exchange | Bybit UTA 2.0: USDT + USDC linear perps (675 instruments), inverse deferred | InstrumentRegistry resolves any symbol |
 | Hosting | Always-on Linux VPS for shadow + live | No downtime tolerance for extended runs |
 
 ---
@@ -68,13 +68,13 @@ KNOWLEDGE ──> AGENT BUILDS PLAYS ──> BACKTEST (iterate until profitable)
 |                       +-------------------+-----------------------+    |
 |                                           | promote                    |
 |                                  +--------v--------+                   |
-|                                  | M5: LIVE TRADE  |                   |
-|                                  |    MANAGER      |                   |
+|                                  | M5/M8: UTA      |                   |
+|                                  |  PORTFOLIO MGR  |                   |
 |                                  |                 |                   |
 |                                  | Sub-accounts    |<-- M6 advises    |
-|                                  | Risk controls   |    (which play,  |
-|                                  | Auto-rotation   |     when to      |
-|                                  | Trust scoring   |     rotate)      |
+|                                  | PlayDeployer    |    (which play,  |
+|                                  | 22 tools (API)  |     when to      |
+|                                  | InstrumentReg   |     rotate)      |
 |                                  +--------+--------+                   |
 |                                           |                            |
 |                                  +--------v--------+                   |

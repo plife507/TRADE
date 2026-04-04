@@ -38,31 +38,43 @@ actions:
 
 ```
 src/
-  engine/          PlayEngine - unified backtest/live engine (1600 lines)
+  engine/          PlayEngine - unified backtest/live engine
+  shadow/          Shadow daemon (SimExchange + PerformanceDB, multi-play, live WS)
+  core/            Exchange manager, portfolio, sub-accounts, risk, order execution
   indicators/      44 incremental O(1) indicators
   structures/      7 market structure detectors
   backtest/        Backtest infrastructure (sim exchange, data prep, DSL parser)
-  data/            DuckDB historical data store
+  data/            DuckDB historical data store + realtime WS state
   exchanges/       Bybit REST + WebSocket clients
-  cli/             CLI subcommands
-  tools/           CLI/API tool layer
+  cli/             CLI subcommands (backtest, play, shadow, portfolio, validate)
+  tools/           82+ registered tools — CLI, agents, and web UI all use the same layer
   risk/            Risk management + global risk view
+  config/          Configuration + UTA constants
 
-plays/             277 strategy definitions (YAML)
+plays/             Strategy definitions (YAML)
 config/            System defaults
 scripts/           Suite runners and generators
+```
+
+### Pipeline
+
+```
+Backtest (historical sim, USDT)  →  Shadow (live data sim, deploy scale)  →  Portfolio Deploy (sub-account, real money)
 ```
 
 ### Key Components
 
 | Component | Description |
 |-----------|-------------|
-| **PlayEngine** | Single engine for both backtest and live. Processes bars, evaluates DSL conditions, manages positions. |
-| **Play DSL** | YAML strategy definitions with conditions, operators, arithmetic, window operators, and multi-timeframe support. |
+| **PlayEngine** | Single engine for backtest and live. Processes bars, evaluates DSL conditions, manages positions. |
+| **Play DSL** | YAML strategy specs: `account` (shared), `backtest` (sim equity), `deploy` (live capital). |
 | **SimulatedExchange** | Tick-accurate backtest execution with 1-minute quote data, slippage, and fee modeling. |
+| **ShadowEngine** | Multi-play daemon with full SimExchange fills, PerformanceDB tracking, live WS data. |
+| **PortfolioManager** | Full UTA control: sub-account lifecycle, parallel deployment, 22 registered tools. |
+| **InstrumentRegistry** | Resolves any Bybit symbol (USDT/USDC/inverse) to category, settle coin, and filters. |
 | **DuckDB Store** | Historical OHLCV storage with gap detection, auto-repair, and multi-timeframe support. |
 | **Incremental Indicators** | All 44 indicators compute in O(1) per bar. No lookback recomputation. |
-| **Structure Detectors** | Swing points, trend detection, market structure (BOS/CHoCH), Fibonacci retracements, derived zones, rolling windows. |
+| **Structure Detectors** | Swing points, trend detection, market structure (BOS/CHoCH), Fibonacci, derived zones. |
 
 ### Live Trading Safety
 
